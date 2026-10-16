@@ -506,7 +506,7 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
         let psbt = null;
         try {
           const quote = (await controllerEmitter(
-            ['wallet', 'syscoinTransaction', 'getEstimateSysTransactionFee'],
+            ['wallet', 'getEstimateSysTransactionFee'],
             [
               {
                 amount: amount, // Keep as string to preserve precision
@@ -664,7 +664,7 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
         let tokenPsbt = null;
         try {
           const { fee: estimatedFee, psbt } = (await controllerEmitter(
-            ['wallet', 'syscoinTransaction', 'getEstimateSysTransactionFee'],
+            ['wallet', 'getEstimateSysTransactionFee'],
             [
               {
                 amount: builderAmount,

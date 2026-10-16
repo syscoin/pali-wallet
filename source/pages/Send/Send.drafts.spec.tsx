@@ -521,7 +521,7 @@ describe('send forms across wallet navigation', () => {
       const estimate = new Promise((resolve) => {
         finishEstimate = resolve;
       });
-      mockEmitter.mockImplementation(([, , method]: string[]) =>
+      mockEmitter.mockImplementation(([, method]: string[]) =>
         method === 'getEstimateSysTransactionFee'
           ? estimate
           : Promise.resolve(0.0000001)
@@ -532,7 +532,7 @@ describe('send forms across wallet navigation', () => {
         pending = mockSubmitForm();
       });
       expect(mockEmitter).toHaveBeenCalledWith(
-        ['wallet', 'syscoinTransaction', 'getEstimateSysTransactionFee'],
+        ['wallet', 'getEstimateSysTransactionFee'],
         expect.any(Array)
       );
       if (change === 'account') mockState.vault.activeAccount.id = 1;
@@ -567,7 +567,7 @@ describe('send forms across wallet navigation', () => {
         formValues: { receiver: 'recipient-a', amount: '1' },
       },
     };
-    mockEmitter.mockImplementation(([, , method]: string[]) =>
+    mockEmitter.mockImplementation(([, method]: string[]) =>
       method === 'getEstimateSysTransactionFee'
         ? Promise.resolve({ fee: 0.001, psbt: 'synthetic-unsigned-psbt' })
         : Promise.resolve(0.0000001)
@@ -621,7 +621,7 @@ describe('send forms across wallet navigation', () => {
       const estimate = new Promise((resolve) => {
         finishEstimate = resolve;
       });
-      mockEmitter.mockImplementation(([, , method]: string[]) =>
+      mockEmitter.mockImplementation(([, method]: string[]) =>
         method === 'getEstimateSysTransactionFee'
           ? estimate
           : Promise.resolve(0.0000001)
@@ -633,7 +633,7 @@ describe('send forms across wallet navigation', () => {
         pending = mockSubmitForm();
       });
       expect(mockEmitter).toHaveBeenCalledWith(
-        ['wallet', 'syscoinTransaction', 'getEstimateSysTransactionFee'],
+        ['wallet', 'getEstimateSysTransactionFee'],
         [
           expect.objectContaining({
             amount: '0.00010000',
@@ -704,7 +704,7 @@ describe('send forms across wallet navigation', () => {
       const estimate = new Promise((resolve) => {
         finishEstimate = resolve;
       });
-      mockEmitter.mockImplementation(([, , method]: string[]) =>
+      mockEmitter.mockImplementation(([, method]: string[]) =>
         method === 'getEstimateSysTransactionFee'
           ? estimate
           : Promise.resolve(0.0000001)
@@ -716,7 +716,7 @@ describe('send forms across wallet navigation', () => {
         pending = mockSubmitForm();
       });
       expect(mockEmitter).toHaveBeenCalledWith(
-        ['wallet', 'syscoinTransaction', 'getEstimateSysTransactionFee'],
+        ['wallet', 'getEstimateSysTransactionFee'],
         expect.any(Array)
       );
       mockState.testAssets = {
@@ -785,7 +785,7 @@ describe('send forms across wallet navigation', () => {
       const estimate = new Promise((resolve) => {
         finishEstimate = resolve;
       });
-      mockEmitter.mockImplementation(([, , method]: string[]) =>
+      mockEmitter.mockImplementation(([, method]: string[]) =>
         method === 'getEstimateSysTransactionFee'
           ? estimate
           : Promise.resolve(0.0000001)
@@ -797,7 +797,7 @@ describe('send forms across wallet navigation', () => {
         pending = mockSubmitForm();
       });
       expect(mockEmitter).toHaveBeenCalledWith(
-        ['wallet', 'syscoinTransaction', 'getEstimateSysTransactionFee'],
+        ['wallet', 'getEstimateSysTransactionFee'],
         expect.any(Array)
       );
       if (field === 'asset') {
@@ -994,7 +994,7 @@ describe('send forms across wallet navigation', () => {
           formValues: { receiver: 'recipient-a', amount },
         },
       };
-      mockEmitter.mockImplementation(([, , method]: string[]) =>
+      mockEmitter.mockImplementation(([, method]: string[]) =>
         method === 'getEstimateSysTransactionFee'
           ? Promise.resolve({ fee: 1e-8, psbt: 'exact-unsigned-psbt' })
           : Promise.resolve(0.0000001)
@@ -1010,7 +1010,7 @@ describe('send forms across wallet navigation', () => {
           await mockSubmitForm();
         });
         expect(mockEmitter).toHaveBeenCalledWith(
-          ['wallet', 'syscoinTransaction', 'getEstimateSysTransactionFee'],
+          ['wallet', 'getEstimateSysTransactionFee'],
           [expect.objectContaining({ amount, isMax })]
         );
         const [path, options] = mockNavigate.mock.calls.find(
@@ -1261,7 +1261,7 @@ describe('send forms across wallet navigation', () => {
           ...(isToken ? { selectedAsset: asset } : {}),
         },
       };
-      mockEmitter.mockImplementation(([, , method]: string[]) =>
+      mockEmitter.mockImplementation(([, method]: string[]) =>
         method === 'getEstimateSysTransactionFee'
           ? Promise.resolve({ fee: 1e-8, psbt: 'token-unsigned-psbt' })
           : isToken
@@ -1518,7 +1518,7 @@ describe('send forms across wallet navigation', () => {
         await mockSubmitForm();
       });
       expect(mockEmitter).toHaveBeenCalledWith(
-        ['wallet', 'syscoinTransaction', 'getEstimateSysTransactionFee'],
+        ['wallet', 'getEstimateSysTransactionFee'],
         [
           expect.objectContaining({
             amount: '0.09775331',
@@ -1731,7 +1731,7 @@ describe('send forms across wallet navigation', () => {
       await mockSubmitForm();
     });
     expect(mockEmitter).toHaveBeenCalledWith(
-      ['wallet', 'syscoinTransaction', 'getEstimateSysTransactionFee'],
+      ['wallet', 'getEstimateSysTransactionFee'],
       [expect.objectContaining({ amount: '0.09775761', isMax: true })]
     );
     expect(navigateWithContext).toHaveBeenCalledWith(
@@ -1884,7 +1884,7 @@ describe('send forms across wallet navigation', () => {
       await mockSubmitForm();
     });
     expect(mockEmitter).toHaveBeenLastCalledWith(
-      ['wallet', 'syscoinTransaction', 'getEstimateSysTransactionFee'],
+      ['wallet', 'getEstimateSysTransactionFee'],
       [expect.objectContaining({ amount: '0.09775761', isMax: true })]
     );
     expect(navigateWithContext).toHaveBeenCalledTimes(1);
@@ -1926,7 +1926,7 @@ describe('send forms across wallet navigation', () => {
         await mockSubmitForm();
       });
       expect(mockEmitter).toHaveBeenCalledWith(
-        ['wallet', 'syscoinTransaction', 'getEstimateSysTransactionFee'],
+        ['wallet', 'getEstimateSysTransactionFee'],
         [expect.objectContaining({ amount, isMax: false })]
       );
       if (fee === 1e-8) expect(navigateWithContext).toHaveBeenCalled();

@@ -75,7 +75,16 @@ export const SysProvider = (host: string) => {
       accountTransactions[connection.accountType]?.[connection.accountId]
         ?.syscoin?.[activeNetwork.chainId] || [];
 
-    return transactions;
+    // Local acknowledgement provenance is an internal read-after-write fence,
+    // not part of a dapp transaction response. In particular it can contain the
+    // wallet's configured backend URL. Preserve every ordinary public field and
+    // return new rows so the guard remains intact in the wallet's own store.
+    return transactions.map((transaction) => {
+      const { localAcknowledgedInputs: _local, ...publicTransaction } =
+        transaction;
+      void _local;
+      return publicTransaction;
+    });
   };
 
   const transaction = (params: any[]) => {

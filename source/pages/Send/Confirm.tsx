@@ -773,6 +773,9 @@ export const SendConfirm = () => {
               [
                 {
                   psbt: basicTxValues.psbt,
+                  ordinaryWalletSend:
+                    location.pathname === '/send/confirm' &&
+                    location.state?.external !== true,
                   isTrezor: activeAccount.isTrezorWallet,
                   isLedger: activeAccount.isLedgerWallet,
                 },

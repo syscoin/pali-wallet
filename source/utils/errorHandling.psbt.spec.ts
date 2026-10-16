@@ -34,6 +34,13 @@ describe('PSBT signing errors', () => {
       new Error('Wallet signing context changed'),
       'transactions.psbtSigningContextChanged',
     ],
+    [{ code: 'UTXO_NETWORK_CATCHING_UP' }, 'send.networkCatchingUp'],
+    [
+      new Error(
+        'The network is still updating your previous transaction. Please try again shortly.'
+      ),
+      'send.networkCatchingUp',
+    ],
   ])('translates %p without exposing internal errors', (error, key) => {
     const alert = { error: jest.fn() };
     const t = jest.fn((value) => `translated:${value}`);

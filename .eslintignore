@@ -1,6 +1,7 @@
 node_modules/
 dist/
 build/
+e2e/artifacts/
 .yarn/
 .pnp.js
 webpack.config.js

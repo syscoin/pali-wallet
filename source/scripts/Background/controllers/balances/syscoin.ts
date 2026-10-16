@@ -24,20 +24,34 @@ const SyscoinBalanceController = (): ISysBalanceController => {
       true
     );
 
+    // The backend library resolves failed reads as null. Do not turn that
+    // absence (or an error envelope) into a successful, freshly cached zero.
+    if (
+      !accountData ||
+      typeof accountData !== 'object' ||
+      Array.isArray(accountData) ||
+      'error' in accountData
+    ) {
+      throw new Error('Native balance summary is unavailable or invalid');
+    }
+
     // Validate and parse balance values with proper error handling
-    const parseBalance = (value: unknown, required = false): BigNumber => {
+    const parseBalance = (
+      value: unknown,
+      required = false,
+      field = 'Pending native balance delta'
+    ): BigNumber => {
       const stringValue =
         value === undefined || value === null ? '' : String(value).trim();
       // Blockbook balances are signed integer satoshis. Keep strings exact,
       // including values larger than Number.MAX_SAFE_INTEGER.
       if (
+        !['number', 'string'].includes(typeof value) ||
         !/^-?\d+$/.test(stringValue) ||
         (typeof value === 'number' && !Number.isSafeInteger(value))
       ) {
         if (required) {
-          throw new Error(
-            'Pending native balance delta is unavailable or invalid'
-          );
+          throw new Error(`${field} is unavailable or invalid`);
         }
         console.error(
           '[SyscoinBalanceController] Invalid balance value:',
@@ -50,10 +64,27 @@ const SyscoinBalanceController = (): ISysBalanceController => {
     };
 
     // Parse balance and unconfirmedBalance safely
-    const confirmedBalance = parseBalance(accountData?.balance);
+    const confirmedBalance = parseBalance(
+      accountData.balance,
+      true,
+      'Confirmed native balance'
+    );
+    if (confirmedBalance.lt(0)) {
+      throw new Error('Confirmed native balance is unavailable or invalid');
+    }
+    const pendingTxCount = accountData.unconfirmedTxs ?? 0;
+    if (
+      !['number', 'string'].includes(typeof pendingTxCount) ||
+      !/^\d+$/.test(String(pendingTxCount).trim()) ||
+      !Number.isSafeInteger(Number(pendingTxCount))
+    ) {
+      throw new Error(
+        'Pending native transaction count is unavailable or invalid'
+      );
+    }
     const unconfirmedBalance = parseBalance(
-      accountData?.unconfirmedBalance,
-      Number(accountData?.unconfirmedTxs ?? 0) > 0
+      accountData.unconfirmedBalance,
+      Number(pendingTxCount) > 0
     );
 
     // Pending spends and self-transfer fees are already absent from the UTXO

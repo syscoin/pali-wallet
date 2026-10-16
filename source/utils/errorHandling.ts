@@ -175,6 +175,14 @@ export const handleTransactionError = (
   basicTxValues?: any,
   sanitizeErrorMessage?: (errorInput: any) => string
 ): boolean => {
+  if (
+    error?.code === 'UTXO_NETWORK_CATCHING_UP' ||
+    error?.message ===
+      'The network is still updating your previous transaction. Please try again shortly.'
+  ) {
+    alert.error(t('send.networkCatchingUp'));
+    return true;
+  }
   // The exact upstream messages are retained for IPC implementations that
   // normalize Error objects to their message and omit custom properties.
   if (

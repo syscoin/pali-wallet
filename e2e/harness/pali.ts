@@ -217,7 +217,8 @@ export class PaliWallet {
       await this.unlock();
     }
     await this.page
-      .locator('#home-balance')
+      .locator('#home-balance, #home-balance-pending')
+      .first()
       .waitFor({ state: 'visible', timeout: 60_000 });
     await this.dismissBlockingModals();
   }
