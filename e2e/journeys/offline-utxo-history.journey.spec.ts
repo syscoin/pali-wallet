@@ -76,6 +76,7 @@ test('offline UTXO history: account amounts, bridge type and pending detail unit
   try {
     wallet = await PaliWallet.launch('offline-utxo-history', {
       offlineHttpProxy: server.url,
+      viewport: { width: 400, height: 620 },
     });
     const routes = await installUtxoFixtureRoutes(
       wallet.context,

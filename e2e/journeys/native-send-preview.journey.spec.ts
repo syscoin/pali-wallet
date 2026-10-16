@@ -40,6 +40,7 @@ test('offline native Send: edited fees survive Confirm, Cancel and Back', async 
   try {
     wallet = await PaliWallet.launch('offline-native-send-preview', {
       offlineHttpProxy: server.url,
+      viewport: { width: 400, height: 620 },
     });
     const routes = await installUtxoFixtureRoutes(
       wallet.context,
