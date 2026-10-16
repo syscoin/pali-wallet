@@ -17,6 +17,8 @@ import { UtxoTransactionsListComponent } from './UtxoList';
 
 const mockNavigate = jest.fn();
 const mockEmitter = jest.fn();
+const mockTokenIcon = jest.fn();
+let mockActiveAssets: { syscoin: any[] };
 let mockScope: { account: string; network: string };
 let mockUrl: string;
 let mockSequence = 0;
@@ -35,7 +37,7 @@ jest.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 jest.mock('state/vault/selectors', () => ({
-  selectActiveAccountAssets: () => ({ syscoin: [] }),
+  selectActiveAccountAssets: () => mockActiveAssets,
 }));
 jest.mock('hooks/useUtils', () => ({
   useUtils: () => ({
@@ -65,7 +67,12 @@ jest.mock('components/Icon/Icon', () => ({
 jest.mock('components/Tooltip', () => ({
   Tooltip: ({ children }: any) => children,
 }));
-jest.mock('components/TokenIcon', () => ({ TokenIcon: () => null }));
+jest.mock('components/TokenIcon', () => ({
+  TokenIcon: (props: unknown) => {
+    mockTokenIcon(props);
+    return null;
+  },
+}));
 jest.mock('utils/index', () => ({
   getTokenLogo: () => undefined,
   ellipsis: (value: string) => value,
@@ -75,6 +82,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockScope = { account: 'account-a', network: `network-${++mockSequence}` };
   mockUrl = 'https://blockbook.example';
+  mockActiveAssets = { syscoin: [] };
 });
 
 const fullBridge = (amount = '100000000') => ({
@@ -184,6 +192,61 @@ it('keeps ordinary compact SPT transfer value without hydration', () => {
   expect(screen.getByText('send.confirmed')).toBeTruthy();
   expect(mockEmitter).not.toHaveBeenCalled();
 });
+
+it.each(['unscoped-only', 'wrong-chain-only', 'exact-chain-after-legacy'])(
+  'selects only exact-chain Activity icon metadata: %s',
+  (scenario) => {
+    const legacy = {
+      assetGuid: '900001',
+      symbol: 'CUSTOM',
+      image: 'https://icons.example/activity-unscoped.png',
+    };
+    const wrongChain = {
+      ...legacy,
+      chainId: 57,
+      image: 'https://icons.example/activity-wrong-chain.png',
+    };
+    const exact = {
+      ...legacy,
+      chainId: 5700,
+      image: 'https://icons.example/activity-exact-chain.png',
+    };
+    mockActiveAssets.syscoin =
+      scenario === 'unscoped-only'
+        ? [legacy]
+        : scenario === 'wrong-chain-only'
+        ? [wrongChain]
+        : [legacy, wrongChain, exact];
+
+    render(
+      <UtxoTransactionsListComponent
+        tx={{
+          ...compactBridgeWithAccountAsset,
+          tokenType: 'SPTAssetAllocationSend',
+          accountAssetTransfers: [
+            {
+              assetGuid: '900001',
+              value: '10000000',
+              decimals: 8,
+              symbol: 'CUSTOM',
+            },
+          ],
+        }}
+      />
+    );
+
+    expect(screen.getByText('0.100000 CUSTOM')).toBeTruthy();
+    if (scenario === 'exact-chain-after-legacy') {
+      expect(mockTokenIcon).toHaveBeenCalledWith(
+        expect.objectContaining({ assetGuid: '900001', logo: exact.image })
+      );
+    } else {
+      // Unimported/unknown Activity tokens retain their existing no-icon fallback.
+      expect(mockTokenIcon).not.toHaveBeenCalled();
+    }
+    expect(mockEmitter).not.toHaveBeenCalled();
+  }
+);
 
 it('keeps an SPT receipt compact without the native funding breakdown', () => {
   render(

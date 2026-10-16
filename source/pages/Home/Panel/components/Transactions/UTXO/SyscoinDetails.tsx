@@ -144,8 +144,7 @@ export const SyscoinTransactionDetails = ({
     ? activeAssets.syscoin.find(
         (asset) =>
           String(asset.assetGuid) === String(tokenIntent.assetGuid) &&
-          (asset.chainId === undefined ||
-            asset.chainId === activeNetwork.chainId)
+          asset.chainId === activeNetwork.chainId
       )
     : undefined;
 

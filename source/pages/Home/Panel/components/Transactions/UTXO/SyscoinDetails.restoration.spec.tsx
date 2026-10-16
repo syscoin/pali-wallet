@@ -6,7 +6,7 @@ import React from 'react';
 import { clearTokenIconCache } from 'components/TokenIcon';
 import { ISysTransaction } from 'scripts/Background/controllers/transactions/types';
 import { selectActiveAccountAssets } from 'state/vault/selectors';
-import { getKnownTokenLogo } from 'utils/tokens';
+import { getKnownTokenLogo, getTokenLogo } from 'utils/tokens';
 
 import {
   compactBridgeNativeOffset,
@@ -194,6 +194,56 @@ it('uses a custom logo only from the active account and exact GUID on the active
   await expectAmountIcon('1.0000 CUSTOM', logo);
   expect(mockIconFetch.mock.calls.map(([url]) => url)).toEqual([logo]);
 });
+
+it('does not let an earlier unscoped or wrong-chain entry shadow the exact-chain logo', async () => {
+  const logo = 'https://icons.example/exact-chain-after-legacy.png';
+  setAccountAssets([
+    {
+      assetGuid: '900001',
+      symbol: 'CUSTOM',
+      image: 'https://icons.example/unscoped-legacy.png',
+    },
+    {
+      assetGuid: '900001',
+      chainId: 5700,
+      symbol: 'CUSTOM',
+      image: 'https://icons.example/wrong-chain-before-exact.png',
+    },
+    { assetGuid: '900001', chainId: 57, symbol: 'CUSTOM', image: logo },
+  ]);
+  const transaction = tokenTransaction('900001', 'CUSTOM');
+  mockEmitter.mockResolvedValue(transaction);
+
+  render(<SyscoinTransactionDetails hash={mockHash} tx={transaction} />);
+
+  await expectAmountIcon('1.0000 CUSTOM', logo);
+  expect(mockIconFetch.mock.calls.map(([url]) => url)).toEqual([logo]);
+});
+
+it.each([undefined, 5700])(
+  'keeps the normal unknown-token fallback when a custom logo has chainId %s',
+  async (chainId) => {
+    const logo = 'https://icons.example/not-exact-chain.png';
+    setAccountAssets([
+      { assetGuid: '900001', chainId, symbol: 'CUSTOM', image: logo },
+    ]);
+    const transaction = tokenTransaction('900001', 'CUSTOM');
+    mockEmitter.mockResolvedValue(transaction);
+
+    render(<SyscoinTransactionDetails hash={mockHash} tx={transaction} />);
+
+    await waitFor(() => {
+      const icon = screen.getByAltText('CUSTOM');
+      expect(icon.getAttribute('src')).toBe(
+        getTokenLogo('CUSTOM', true, '900001')
+      );
+      expect(
+        screen.getByText('1.0000 CUSTOM').parentElement!.contains(icon)
+      ).toBe(true);
+    });
+    expect(mockIconFetch).not.toHaveBeenCalled();
+  }
+);
 
 it.each(['wrong-chain', 'other-account', 'same-symbol-other-guid'])(
   'does not borrow a custom logo from a %s imported asset',

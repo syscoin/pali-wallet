@@ -182,8 +182,7 @@ const UtxoTransactionsListComponentBase = ({
       list.find(
         (asset: any) =>
           String(asset?.assetGuid) === txAssetGuid &&
-          (asset?.chainId === undefined ||
-            asset.chainId === activeNetwork.chainId)
+          asset.chainId === activeNetwork.chainId
       ) || null
     );
   }, [txAssetGuid, activeAssets?.syscoin, activeNetwork.chainId]);
