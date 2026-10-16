@@ -756,6 +756,7 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
               token: {
                 symbol: selectedAsset.symbol,
                 guid: selectedAsset.assetGuid,
+                decimals: assetDecimals,
               },
               isMax: false, // Tokens don't support max send functionality
               transactionType: TransactionType.UTXO,

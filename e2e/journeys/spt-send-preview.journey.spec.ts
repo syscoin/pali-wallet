@@ -79,6 +79,9 @@ test('offline SPT: exact adjacent amount, MAX, Cancel/Back and draft reopen with
       ).toBeEnabled();
       const expected = `${expectedAmount} ${SPT_SYMBOL}`;
       await expect(page.locator('p.text-2xl')).toHaveText(expected);
+      await expect(
+        page.getByText('Decimals', { exact: true }).locator('..')
+      ).toHaveText('Decimals8');
       // This existing UI decodes the actual prepared PSBT, independently of
       // the typed amount retained in navigation/return context.
       await page
