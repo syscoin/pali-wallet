@@ -2086,7 +2086,9 @@ export const SendConfirm = () => {
             {!(isBitcoinBased && basicTxValues.fee === 0) && (
               <div className="flex flex-row items-end w-full">
                 <div className="flex flex-col text-xs text-brand-gray200 font-poppins font-normal">
-                  {t('send.estimatedGasFee')}
+                  {t(
+                    isBitcoinBased ? 'send.networkFee' : 'send.estimatedGasFee'
+                  )}
                   <span className="text-white text-xs">
                     {(() => {
                       if (feeCalculationError) {
@@ -2475,8 +2477,13 @@ export const SendConfirm = () => {
                 : 'send.cantCompleteTxs'
             )}
           </p>
-          <Button type="button" onClick={cancelConfirmation}>
-            {t('buttons.cancel')}
+          <Button
+            variant="secondary"
+            type="button"
+            onClick={cancelConfirmation}
+            className="mx-auto mt-4"
+          >
+            {t(submission.unknown ? 'buttons.close' : 'send.backToEdit')}
           </Button>
         </div>
       )}

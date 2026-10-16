@@ -1,3 +1,5 @@
+jest.unmock('syscoinjs-lib');
+
 jest.mock('..', () => ({ getController: jest.fn() }));
 jest.mock('./providers/patchFetchWithPaliHeaders', () => ({
   patchFetchWithPaliHeaders: jest.fn(),
@@ -5,18 +7,47 @@ jest.mock('./providers/patchFetchWithPaliHeaders', () => ({
 jest.mock('@sidhujag/sysweb3-keyring', () => ({
   KeyringManager: jest.fn(),
   CustomJsonRpcProvider: jest.fn(),
-  PsbtUtils: { toPali: (psbt: unknown) => psbt },
+  PsbtUtils: {
+    toPali: (psbt: unknown) => psbt,
+    fromPali: jest.fn(),
+  },
 }));
 jest.mock('utils/navigationState', () => ({
   clearNavigationState: jest.fn().mockResolvedValue(undefined),
   clearTransactionNavigationState: jest.fn().mockResolvedValue(undefined),
 }));
 
+import { PsbtUtils } from '@sidhujag/sysweb3-keyring';
+import { utils as syscoinUtils } from 'syscoinjs-lib';
+
 import store from 'state/store';
 import { INetworkType, KeyringAccountType } from 'types/network';
 import { UTXO_SIGNING_CONTEXT_CHANGED } from 'utils/utxoSigningContext';
 
 import MainController from './MainController';
+
+// A structurally finalized public fixture, with dummy witness bytes only. No
+// private key or cryptographic signature is generated, and no network is used.
+const syntheticPsbt = (fee: bigint, finalized = true) => {
+  const psbt = new syscoinUtils.bitcoinjs.Psbt();
+  const script = Buffer.from('0014' + '00'.repeat(20), 'hex');
+  psbt.addInput({
+    hash: Buffer.alloc(32, 1),
+    index: 0,
+    witnessUtxo: { script, value: BigInt(10000000) },
+  });
+  psbt.addOutput({ script, value: BigInt(10000000) - fee });
+  if (finalized)
+    psbt.updateInput(0, {
+      finalScriptWitness: Buffer.concat([
+        Buffer.from([2, 72]),
+        Buffer.alloc(72),
+        Buffer.from([33]),
+        Buffer.alloc(33),
+      ]),
+    });
+  return psbt;
+};
 
 describe('PSBT approval context', () => {
   let wallet: any;
@@ -57,6 +88,9 @@ describe('PSBT approval context', () => {
       .fn()
       .mockResolvedValue({ psbt: 'verified-fixture' });
     wallet.sendAndSaveTransaction = jest.fn();
+    (PsbtUtils.fromPali as jest.Mock).mockReset().mockImplementation(() => ({
+      extractTransaction: jest.fn(() => ({})),
+    }));
   });
   afterEach(() => jest.restoreAllMocks());
 
@@ -118,9 +152,86 @@ describe('PSBT approval context', () => {
     });
     await expect(
       wallet.signSendAndSaveTransaction({ psbt: 'fixture' })
-    ).rejects.toThrow(UTXO_SIGNING_CONTEXT_CHANGED);
+    ).rejects.toMatchObject({
+      message: UTXO_SIGNING_CONTEXT_CHANGED,
+      transactionNotBroadcast: true,
+    });
     expect(keyring.syscoinTransaction.sendTransaction).not.toHaveBeenCalled();
     expect(wallet.sendAndSaveTransaction).not.toHaveBeenCalled();
+  });
+
+  it('classifies a signing rejection before the sender as safe to edit', async () => {
+    keyring.syscoinTransaction.signPSBT.mockRejectedValueOnce(
+      new Error('Device signing cancelled')
+    );
+    await expect(
+      wallet.signSendAndSaveTransaction({ psbt: 'fixture' })
+    ).rejects.toMatchObject({
+      message: 'Device signing cancelled',
+      transactionNotBroadcast: true,
+    });
+    expect(keyring.syscoinTransaction.sendTransaction).not.toHaveBeenCalled();
+  });
+
+  it('rejects a real excessive-fee finalized PSBT without invoking the sender', async () => {
+    const psbt = syntheticPsbt(BigInt(1130000));
+    expect(() => psbt.extractTransaction()).toThrow('10272 satoshi per byte');
+    (PsbtUtils.fromPali as jest.Mock).mockReturnValueOnce(psbt);
+
+    await expect(
+      wallet.signSendAndSaveTransaction({ psbt: 'fixture' })
+    ).rejects.toMatchObject({
+      code: 'UTXO_FEE_RATE_EXCEEDED',
+      message:
+        'Transaction fee exceeds the wallet safety limit. Lower the fee and try again.',
+      transactionNotBroadcast: true,
+    });
+    expect(keyring.syscoinTransaction.sendTransaction).not.toHaveBeenCalled();
+    expect(wallet.sendAndSaveTransaction).not.toHaveBeenCalled();
+  });
+
+  it('rejects a real unfinalized PSBT without invoking the sender', async () => {
+    (PsbtUtils.fromPali as jest.Mock).mockReturnValueOnce(
+      syntheticPsbt(BigInt(1000), false)
+    );
+    await expect(
+      wallet.signSendAndSaveTransaction({ psbt: 'fixture' })
+    ).rejects.toMatchObject({
+      message: 'Not finalized',
+      transactionNotBroadcast: true,
+    });
+    expect(keyring.syscoinTransaction.sendTransaction).not.toHaveBeenCalled();
+  });
+
+  it('does not classify a sender timeout as safe even if its error carries an earlier safe marker', async () => {
+    keyring.syscoinTransaction.sendTransaction.mockRejectedValueOnce(
+      Object.assign(new Error('Network request timed out'), {
+        transactionNotBroadcast: true,
+      })
+    );
+    await expect(
+      wallet.signSendAndSaveTransaction({ psbt: 'fixture' })
+    ).rejects.toMatchObject({
+      message: 'Network request timed out',
+      transactionNotBroadcast: false,
+    });
+    expect(keyring.syscoinTransaction.sendTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('extracts an ordinary finalized PSBT with the fee guard before invoking the sender', async () => {
+    const psbt = syntheticPsbt(BigInt(1000));
+    const extract = jest.spyOn(psbt, 'extractTransaction');
+    (PsbtUtils.fromPali as jest.Mock).mockReturnValueOnce(psbt);
+    keyring.syscoinTransaction.sendTransaction.mockImplementationOnce(
+      async () => {
+        expect(extract).toHaveBeenCalledWith();
+        return { txid: 'hash' };
+      }
+    );
+    await expect(
+      wallet.signSendAndSaveTransaction({ psbt: 'fixture' })
+    ).resolves.toEqual({ txid: 'hash' });
+    expect(keyring.syscoinTransaction.sendTransaction).toHaveBeenCalledTimes(1);
   });
 
   it('returns an acknowledged broadcast after context changes without filing it under another account', async () => {

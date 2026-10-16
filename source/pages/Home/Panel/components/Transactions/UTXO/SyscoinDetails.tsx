@@ -10,7 +10,6 @@ import { useTransactionsListConfig, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { ISysTransaction } from 'scripts/Background/controllers/transactions/types';
 import { RootState } from 'state/store';
-import { BigNumber } from 'utils/ethersV6Compat';
 import {
   formatSyscoinValue,
   formatDisplayValue,
@@ -21,6 +20,7 @@ import {
   getSyscoinTransactionTypeLabel,
   getSyscoinTransactionTypeStyle,
   getSyscoinIntentAmount,
+  getSyscoinAccountDelta,
   formatSyscoinConfirmationETA,
 } from 'utils/syscoinTransactionUtils';
 import { isTransactionInBlock } from 'utils/transactionUtils';
@@ -113,28 +113,6 @@ const mergeAccountSummaryWithFullTransaction = (
   };
 };
 
-const getSummaryAccountDelta = (transaction: any): string | null => {
-  if (
-    transaction?.addressValueIn === undefined &&
-    transaction?.addressValueOut === undefined
-  ) {
-    return null;
-  }
-
-  try {
-    const valueIn = BigNumber.from(String(transaction?.addressValueIn ?? '0'));
-    const valueOut = BigNumber.from(
-      String(transaction?.addressValueOut ?? '0')
-    );
-    const delta = valueIn.gte(valueOut)
-      ? valueIn.sub(valueOut)
-      : valueOut.sub(valueIn);
-    return delta.gt(0) ? delta.toString() : null;
-  } catch {
-    return null;
-  }
-};
-
 interface ISyscoinTransactionDetailsProps {
   hash: string;
   tx?: ISysTransaction;
@@ -155,7 +133,7 @@ export const SyscoinTransactionDetails = ({
   const { getTxType, getTxStatus } = useTransactionsListConfig();
 
   const { useCopyClipboard, alert } = useUtils();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
 
   const [enhancedTransaction, setEnhancedTransaction] = useState<{
     data: ISysTransaction;
@@ -268,7 +246,7 @@ export const SyscoinTransactionDetails = ({
   let isTxCanceled: boolean;
   let isConfirmed: boolean;
   let isTxSent: boolean;
-  let txValue: number | string = 0;
+  let txValue: number | string | null = null;
 
   useEffect(() => {
     if (rawTransaction) {
@@ -324,8 +302,9 @@ export const SyscoinTransactionDetails = ({
   const txSource =
     rawTransaction && (rawTransaction as any).txid ? rawTransaction : null;
   if (txSource) {
-    txValue =
-      getSummaryAccountDelta(txSource) || txSource?.vout?.[0]?.value || 0;
+    // A full transaction lookup has no account scope. Keep the native amount
+    // from the passed account row, and wait when a minimal pending row lacks it.
+    txValue = getSyscoinAccountDelta(accountTransaction);
     isTxCanceled = Boolean((txSource as any)?.isCanceled);
     isConfirmed = isTransactionInBlock(txSource as any);
     isTxSent = (txSource as any)?.direction === 'sent';
@@ -358,6 +337,46 @@ export const SyscoinTransactionDetails = ({
 
     for (const [key, value] of Object.entries(txSource as any)) {
       const formattedKey = camelCaseToText(key);
+      if (key === 'blockHash') {
+        const blockHash = typeof value === 'string' ? value : '';
+        formattedTransaction.push({
+          value: isConfirmed
+            ? blockHash || t('settings.unavailable')
+            : t('send.pending'),
+          label: formattedKey,
+          canCopy: isConfirmed && blockHash.length > 0,
+        });
+        continue;
+      }
+      if (key === 'blockTime') {
+        const blockDate = new Date(Number(value) * 1000);
+        formattedTransaction.push({
+          value: !isConfirmed
+            ? t('send.pending')
+            : Number(value) > 0 && Number.isFinite(blockDate.getTime())
+            ? blockDate.toLocaleString(i18n?.resolvedLanguage || i18n?.language)
+            : t('settings.unavailable'),
+          label: formattedKey,
+          canCopy: false,
+        });
+        continue;
+      }
+      if (key === 'fees') {
+        const rawFee = String(value ?? '');
+        formattedTransaction.push({
+          value: /^\d+$/.test(rawFee)
+            ? `${formatSyscoinValue(rawFee)} ${
+                currency?.toUpperCase() || 'SYS'
+              }`
+            : t('settings.unavailable'),
+          label: formattedKey,
+          canCopy: false,
+        });
+        continue;
+      }
+      if (value === undefined || value === null || typeof value === 'object') {
+        continue;
+      }
       const formattedBoolean = Boolean(value) ? t('send.yes') : t('send.no');
 
       const formattedValue = {
@@ -371,9 +390,20 @@ export const SyscoinTransactionDetails = ({
         formattedValue.canCopy = true;
       }
 
-      const isValid = typeof value !== 'object';
-
-      if (isValid) formattedTransaction.push(formattedValue);
+      formattedTransaction.push(formattedValue);
+    }
+    // Blockbook omits block fields for some pending rows instead of returning
+    // null. Keep that normal REST shape as readable as an explicit empty field.
+    if (!isConfirmed) {
+      for (const key of ['blockHash', 'blockTime']) {
+        if (!Object.prototype.hasOwnProperty.call(txSource, key)) {
+          formattedTransaction.push({
+            value: t('send.pending'),
+            label: camelCaseToText(key),
+            canCopy: false,
+          });
+        }
+      }
     }
   }
 
@@ -408,11 +438,18 @@ export const SyscoinTransactionDetails = ({
             : getSyscoinTransactionTypeLabel(rawTransaction?.tokenType)}
         </p>
 
-        {/* Display transaction amount */}
+        {accountTransaction && (
+          <p className="text-brand-gray200 text-xs mt-1">
+            {t('send.accountBalanceChange')}
+          </p>
+        )}
+
+        {/* Display the queried account's change, not a global output amount. */}
         {accountTransaction &&
           (() => {
-            // Priority 1: Use SPT intent from compact summaries or full vin/vout data.
-            const intent = getSyscoinIntentAmount(rawTransaction);
+            // Header amounts stay relative to the account, even after fetching
+            // transaction-wide asset information for the detail fields.
+            const intent = getSyscoinIntentAmount(accountTransaction);
 
             if (intent) {
               const decimals = intent.decimals ?? 8;
@@ -428,7 +465,11 @@ export const SyscoinTransactionDetails = ({
             // Priority 2: For regular SYS transactions without asset transfers
             return (
               <p className="text-white text-base">
-                {formatSyscoinValue(txValue)} {currency?.toUpperCase() || 'SYS'}
+                {txValue === null
+                  ? t('settings.unavailable')
+                  : `${formatSyscoinValue(txValue)} ${
+                      currency?.toUpperCase() || 'SYS'
+                    }`}
               </p>
             );
           })()}
@@ -550,7 +591,7 @@ export const SyscoinTransactionDetails = ({
               <div className="flex items-center justify-between my-1 pl-0 pr-3 py-2 w-full text-xs border-b border-dashed border-[#FFFFFF29] cursor-default transition-all duration-300">
                 <p className="text-xs font-normal text-white">{label}</p>
                 <span>
-                  {value.length >= 20 ? (
+                  {value.length >= 20 && canCopy ? (
                     <Tooltip content={value} childrenClassName="flex">
                       <p className="text-xs font-normal text-white">
                         {ellipsis(value, 2, 4)}

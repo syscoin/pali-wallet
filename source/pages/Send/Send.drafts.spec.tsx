@@ -1484,6 +1484,200 @@ describe('send forms across wallet navigation', () => {
     }
   );
 
+  it('rebases explicit native MAX on pending debits and keeps the confirmed amount', async () => {
+    mockState.vault.isBitcoinBased = true;
+    mockState.vault.activeNetwork.kind = INetworkType.Syscoin;
+    mockState.vault.accounts.HDAccount[0].balances.syscoin = '0.09889168';
+    mockLocation = {
+      ...mockLocation,
+      pathname: '/send/sys',
+      state: {
+        walletScope: getWalletNavigationScope(),
+        formValues: { receiver: 'recipient-a' },
+      },
+    };
+    mockEmitter.mockImplementation((path: string[]) =>
+      path[path.length - 1] === 'getEstimateSysTransactionFee'
+        ? Promise.resolve({ fee: 0.00000226, psbt: 'fresh-max-unsigned-psbt' })
+        : Promise.resolve(1.25390625e-8)
+    );
+    const view = render(<SendSys />);
+    await act(async () => undefined);
+    fireEvent.click(screen.getByText('MAX'));
+    expect(
+      (screen.getByPlaceholderText('send.amount') as HTMLInputElement).value
+    ).toBe('0.09889168');
+
+    // Both pending self-transfer fees are already absent from spendable UTXOs.
+    mockState.vault.accounts.HDAccount[0].balances = {
+      ...mockState.vault.accounts.HDAccount[0].balances,
+      syscoin: '0.09775761',
+    };
+    view.rerender(<SendSys />);
+    expect(
+      (screen.getByPlaceholderText('send.amount') as HTMLInputElement).value
+    ).toBe('0.09775761');
+
+    // Confirmation changes the backend's confirmed/pending split, not the total.
+    view.rerender(<SendSys />);
+    await act(async () => {
+      await mockSubmitForm();
+    });
+    expect(mockEmitter).toHaveBeenCalledWith(
+      ['wallet', 'syscoinTransaction', 'getEstimateSysTransactionFee'],
+      [expect.objectContaining({ amount: '0.09775761', isMax: true })]
+    );
+    expect(navigateWithContext).toHaveBeenCalledWith(
+      mockNavigate,
+      '/send/confirm',
+      expect.objectContaining({ tx: expect.objectContaining({ isMax: true }) }),
+      expect.any(Object)
+    );
+  });
+
+  it.each(['0.09', '0.09889168'])(
+    'keeps manually entered native amount %s when available balance refreshes',
+    async (amount) => {
+      mockState.vault.isBitcoinBased = true;
+      mockState.vault.activeNetwork.kind = INetworkType.Syscoin;
+      mockState.vault.accounts.HDAccount[0].balances.syscoin = '0.09889168';
+      mockLocation = { ...mockLocation, pathname: '/send/sys' };
+      const view = render(<SendSys />);
+      fireEvent.click(screen.getByText('MAX'));
+      fireEvent.change(screen.getByPlaceholderText('send.amount'), {
+        target: { value: '' },
+      });
+      fireEvent.change(screen.getByPlaceholderText('send.amount'), {
+        target: { value: amount },
+      });
+      await act(async () => undefined);
+      expect(
+        mockSave.mock.calls[mockSave.mock.calls.length - 1][2].isMaxSend
+      ).toBe(false);
+      mockState.vault.accounts.HDAccount[0].balances = {
+        ...mockState.vault.accounts.HDAccount[0].balances,
+        syscoin: '0.09775761',
+      };
+      view.rerender(<SendSys />);
+      expect(
+        (screen.getByPlaceholderText('send.amount') as HTMLInputElement).value
+      ).toBe(amount);
+    }
+  );
+
+  it('restores native MAX at the latest balance without a delayed overwrite of a manual edit', async () => {
+    jest.useFakeTimers();
+    try {
+      mockState.vault.isBitcoinBased = true;
+      mockState.vault.activeNetwork.kind = INetworkType.Syscoin;
+      mockState.vault.accounts.HDAccount[0].balances.syscoin = '0.09775761';
+      mockLocation = {
+        ...mockLocation,
+        pathname: '/send/sys',
+        state: {
+          walletScope: getWalletNavigationScope(),
+          formValues: { receiver: 'recipient-a', amount: '0.09889168' },
+          isMaxSend: true,
+        },
+      };
+      const view = render(<SendSys />);
+      expect(
+        (screen.getByPlaceholderText('send.amount') as HTMLInputElement).value
+      ).toBe('0.09775761');
+      fireEvent.change(screen.getByPlaceholderText('send.amount'), {
+        target: { value: '0.09' },
+      });
+      mockState.vault.accounts.HDAccount[0].balances = {
+        ...mockState.vault.accounts.HDAccount[0].balances,
+        syscoin: '0.09775535',
+      };
+      view.rerender(<SendSys />);
+      await act(async () => {
+        jest.runOnlyPendingTimers();
+      });
+      expect(
+        (screen.getByPlaceholderText('send.amount') as HTMLInputElement).value
+      ).toBe('0.09');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('rebases native MAX after reconnecting without writing the draft while disconnected', async () => {
+    mockState.vault.isBitcoinBased = true;
+    mockState.vault.activeNetwork.kind = INetworkType.Syscoin;
+    mockState.vault.accounts.HDAccount[0].balances.syscoin = '0.09889168';
+    mockLocation = { ...mockLocation, pathname: '/send/sys' };
+    const view = render(<SendSys />);
+    fireEvent.click(screen.getByText('MAX'));
+    mockSave.mockClear();
+    mockStatus.connectionUnavailable = true;
+    mockState.vault.accounts.HDAccount[0].balances = {
+      ...mockState.vault.accounts.HDAccount[0].balances,
+      syscoin: '0.09775761',
+    };
+    view.rerender(<SendSys />);
+    expect(mockSave).not.toHaveBeenCalled();
+    expect(
+      (screen.getByPlaceholderText('send.amount') as HTMLInputElement).value
+    ).toBe('0.09889168');
+    mockStatus.connectionUnavailable = false;
+    view.rerender(<SendSys />);
+    expect(
+      (screen.getByPlaceholderText('send.amount') as HTMLInputElement).value
+    ).toBe('0.09775761');
+    await act(async () => undefined);
+    expect(mockSave).toHaveBeenCalled();
+  });
+
+  it('discards a native MAX estimate whose balance changes and prepares the updated amount', async () => {
+    mockState.vault.isBitcoinBased = true;
+    mockState.vault.activeNetwork.kind = INetworkType.Syscoin;
+    mockState.vault.accounts.HDAccount[0].balances.syscoin = '0.09889168';
+    mockLocation = {
+      ...mockLocation,
+      pathname: '/send/sys',
+      state: {
+        walletScope: getWalletNavigationScope(),
+        formValues: { receiver: 'recipient-a' },
+      },
+    };
+    let finishEstimate!: (value: any) => void;
+    const estimate = new Promise((resolve) => {
+      finishEstimate = resolve;
+    });
+    mockEmitter.mockImplementation((path: string[]) =>
+      path[path.length - 1] === 'getEstimateSysTransactionFee'
+        ? estimate
+        : Promise.resolve(1.25390625e-8)
+    );
+    const view = render(<SendSys />);
+    await act(async () => undefined);
+    fireEvent.click(screen.getByText('MAX'));
+    let pending!: Promise<void>;
+    act(() => {
+      pending = mockSubmitForm();
+    });
+    mockState.vault.accounts.HDAccount[0].balances = {
+      ...mockState.vault.accounts.HDAccount[0].balances,
+      syscoin: '0.09775761',
+    };
+    view.rerender(<SendSys />);
+    await act(async () => {
+      finishEstimate({ fee: 0.00000226, psbt: 'stale-max-unsigned-psbt' });
+      await pending;
+    });
+    expect(navigateWithContext).not.toHaveBeenCalled();
+    await act(async () => {
+      await mockSubmitForm();
+    });
+    expect(mockEmitter).toHaveBeenLastCalledWith(
+      ['wallet', 'syscoinTransaction', 'getEstimateSysTransactionFee'],
+      [expect.objectContaining({ amount: '0.09775761', isMax: true })]
+    );
+    expect(navigateWithContext).toHaveBeenCalledTimes(1);
+  });
+
   it.each([1e-8, 2e-8])(
     'uses exact native atomic MAX and affordability comparisons (fee=%s)',
     async (fee) => {

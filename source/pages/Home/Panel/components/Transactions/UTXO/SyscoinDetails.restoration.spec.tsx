@@ -5,6 +5,10 @@ import React from 'react';
 
 import { ISysTransaction } from 'scripts/Background/controllers/transactions/types';
 
+import {
+  compactBridgeNativeOffset,
+  compactBridgeWithAccountAsset,
+} from './history.fixtures';
 import { SyscoinTransactionDetails } from './SyscoinDetails';
 
 let mockState: any;
@@ -16,7 +20,7 @@ jest.mock('react-redux', () => ({
   useSelector: (select: any) => select(mockState),
 }));
 jest.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({ t: (key: string) => key, i18n: { language: 'en' } }),
 }));
 jest.mock('hooks/useController', () => ({
   useController: () => ({ controllerEmitter: mockEmitter }),
@@ -69,6 +73,8 @@ const rawTransaction = (changes: Partial<ISysTransaction> = {}) =>
   } as ISysTransaction);
 const confirmationValue = () =>
   within(screen.getByText('Confirmations').parentElement!).getByText(/^\d+$/);
+const detailValue = (label: string, value: string) =>
+  within(screen.getByText(label).parentElement!).getByText(value);
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -92,7 +98,7 @@ it('restores hash-only details from a full Blockbook read without inventing an a
 
   expect(await screen.findByText('raw-from')).toBeTruthy();
   expect(screen.getByText('raw-to')).toBeTruthy();
-  expect(screen.getByText('send.pending')).toBeTruthy();
+  expect(screen.getAllByText('send.pending')).toHaveLength(3);
   expect(confirmationValue().textContent).toBe('0');
   expect(screen.queryByText('9 SYS')).toBeNull();
   expect(
@@ -112,7 +118,7 @@ it('restores the same hash-only detail from raw cache without another controller
 
   render(<SyscoinTransactionDetails hash={mockHash.toUpperCase()} />);
   expect(await screen.findByText('raw-to')).toBeTruthy();
-  expect(screen.getByText('send.pending')).toBeTruthy();
+  expect(screen.getAllByText('send.pending')).toHaveLength(3);
   expect(screen.queryByText('9 SYS')).toBeNull();
   expect(mockEmitter).toHaveBeenCalledTimes(1);
 });
@@ -193,6 +199,133 @@ it('uses current summary confirmation and account amount over pending raw cached
   expect(confirmationValue().textContent).toBe('8');
   expect(mockEmitter).toHaveBeenCalledTimes(1);
 });
+
+it.each([false, true])(
+  'formats fee units and pending block fields, omitted REST fields: %s',
+  async (omitted) => {
+    mockState.vault.activeNetwork.currency = 'tsys';
+    const pendingRow = rawTransaction({
+      fees: '226',
+      blockHash: undefined,
+      blockTime: omitted ? undefined : 1791600000,
+      addressValueIn: '100000226',
+      addressValueOut: '100000000',
+    });
+    const pending = omitted
+      ? JSON.parse(JSON.stringify(pendingRow))
+      : pendingRow;
+    mockEmitter.mockResolvedValue(pending);
+    render(<SyscoinTransactionDetails hash={mockHash} tx={pending} />);
+
+    await screen.findByText('raw-from');
+    expect(detailValue('Fees', '0.00000226 TSYS')).toBeTruthy();
+    expect(screen.getByText('send.accountBalanceChange')).toBeTruthy();
+    expect(detailValue('Block Hash', 'send.pending')).toBeTruthy();
+    expect(detailValue('Block Time', 'send.pending')).toBeTruthy();
+    expect(screen.queryByText('undefined')).toBeNull();
+    expect(screen.queryByText('1791600000')).toBeNull();
+  }
+);
+
+it('formats a confirmed block time using the selected language', async () => {
+  const blockTime = 1791600000;
+  const confirmed = rawTransaction({
+    blockHeight: 1,
+    confirmations: 1,
+    blockHash: 'confirmed-block',
+    blockTime,
+  });
+  mockEmitter.mockResolvedValue(confirmed);
+  render(<SyscoinTransactionDetails hash={mockHash} tx={confirmed} />);
+  await screen.findByText('raw-from');
+  expect(detailValue('Block Hash', 'confirmed-block')).toBeTruthy();
+  expect(
+    detailValue('Block Time', new Date(blockTime * 1000).toLocaleString('en'))
+  ).toBeTruthy();
+  expect(screen.queryByText(String(blockTime))).toBeNull();
+});
+
+it('keeps an exact native account amount stable while full details hydrate', async () => {
+  const full = deferred<ISysTransaction>();
+  mockEmitter.mockReturnValue(full.promise);
+  const summary = rawTransaction({
+    addressValueIn: '100000226',
+    addressValueOut: '100000000',
+    vin: [],
+    vout: [],
+    fees: '1000',
+  });
+  render(<SyscoinTransactionDetails hash={mockHash} tx={summary} />);
+  expect(screen.getByText('0.00000226 SYS')).toBeTruthy();
+  await act(async () => full.resolve(rawTransaction()));
+  expect(await screen.findByText('raw-from')).toBeTruthy();
+  expect(screen.getByText('0.00000226 SYS')).toBeTruthy();
+  expect(screen.queryByText('9 SYS')).toBeNull();
+});
+
+it('waits for account totals instead of inferring an amount from a full output', async () => {
+  mockEmitter.mockResolvedValue(rawTransaction());
+  const minimal = rawTransaction({ vin: [], vout: [] });
+  const view = render(
+    <SyscoinTransactionDetails hash={mockHash} tx={minimal} />
+  );
+  expect(screen.getByText('settings.unavailable')).toBeTruthy();
+  await screen.findByText('raw-from');
+  expect(screen.getByText('settings.unavailable')).toBeTruthy();
+  expect(screen.queryByText('9 SYS')).toBeNull();
+
+  view.rerender(
+    <SyscoinTransactionDetails
+      hash={mockHash}
+      tx={{
+        ...minimal,
+        addressValueIn: '100000000',
+        addressValueOut: '100000000',
+      }}
+    />
+  );
+  expect(screen.getByText('0 SYS')).toBeTruthy();
+  expect(screen.queryByText('settings.unavailable')).toBeNull();
+});
+
+it.each([
+  [compactBridgeNativeOffset, '29.5985194 SYS'],
+  [compactBridgeWithAccountAsset, '0.100000 SYSX'],
+])(
+  'keeps compact bridge account amounts after full transaction hydration',
+  async (compact, amount) => {
+    const summary = rawTransaction({
+      ...compact,
+      txid: mockHash,
+      vin: [],
+      vout: [],
+    });
+    const full = deferred<ISysTransaction>();
+    mockEmitter.mockReturnValue(full.promise);
+    render(<SyscoinTransactionDetails hash={mockHash} tx={summary} />);
+    expect(screen.getByText(amount)).toBeTruthy();
+    await act(async () =>
+      full.resolve(
+        rawTransaction({
+          blockHeight: 1,
+          confirmations: 1,
+          tokenType: 'SPTAssetAllocationBurnToNEVM',
+          vout: [
+            {
+              addresses: ['OP_RETURN'],
+              value: '0',
+              assetInfo: { assetGuid: '123456', value: '100000000' },
+            },
+          ] as any,
+        })
+      )
+    );
+    expect(await screen.findByText('raw-from')).toBeTruthy();
+    expect(screen.getByText(amount)).toBeTruthy();
+    expect(screen.queryByText('1.0000 SYSX')).toBeNull();
+    expect(screen.getAllByText('Bridge to NEVM').length).toBeGreaterThan(0);
+  }
+);
 
 it.each(
   ['account', 'network'].flatMap((scope) =>

@@ -2,8 +2,8 @@ import { IKeyringAccountState } from '@sidhujag/sysweb3-keyring';
 // Removed unused import: INetworkType
 
 import { fetchBackendAccountCached } from '../utils/fetchBackendAccountWrapper';
+import { BigNumber } from 'utils/ethersV6Compat';
 import { formatSyscoinValue } from 'utils/formatSyscoinValue';
-import { verifyZerosInBalanceAndFormat } from 'utils/verifyZerosInValueAndFormat';
 
 import { ISysBalanceController } from './types';
 
@@ -23,13 +23,13 @@ const SyscoinBalanceController = (): ISysBalanceController => {
     );
 
     // Validate and parse balance values with proper error handling
-    const parseBalance = (value: any): number => {
+    const parseBalance = (value: unknown): BigNumber => {
       // Handle missing or invalid values
       if (value === undefined || value === null) {
         console.warn(
           '[SyscoinBalanceController] Missing balance value, defaulting to 0'
         );
-        return 0;
+        return BigNumber.from(0);
       }
 
       // Convert to string and trim whitespace
@@ -40,59 +40,33 @@ const SyscoinBalanceController = (): ISysBalanceController => {
         console.warn(
           '[SyscoinBalanceController] Empty balance value, defaulting to 0'
         );
-        return 0;
+        return BigNumber.from(0);
       }
 
-      // Parse the number
-      const parsed = Number(stringValue);
-
-      // Check for NaN or invalid numbers
-      if (isNaN(parsed) || !isFinite(parsed)) {
+      // Blockbook balances are signed integer satoshis. Keep strings exact,
+      // including values larger than Number.MAX_SAFE_INTEGER.
+      if (
+        !/^-?\d+$/.test(stringValue) ||
+        (typeof value === 'number' && !Number.isSafeInteger(value))
+      ) {
         console.error(
           '[SyscoinBalanceController] Invalid balance value:',
           value
         );
-        return 0;
+        return BigNumber.from(0);
       }
 
-      return parsed;
+      return BigNumber.from(stringValue);
     };
 
     // Parse balance and unconfirmedBalance safely
     const confirmedBalance = parseBalance(accountData?.balance);
     const unconfirmedBalance = parseBalance(accountData?.unconfirmedBalance);
 
-    // Convert from satoshis to SYS safely without precision loss
-    // Using formatSyscoinValue which handles large values correctly
-    const confirmedBalanceInSys = parseFloat(
-      formatSyscoinValue(confirmedBalance.toString())
-    );
-    const unconfirmedBalanceInSys = parseFloat(
-      formatSyscoinValue(unconfirmedBalance.toString())
-    );
-
-    // For display purposes, show the total spendable balance
-    // This includes confirmed balance + pending incoming (positive unconfirmed)
-    // but excludes pending outgoing (negative unconfirmed) to avoid confusion
-    let displayBalance: number;
-
-    if (unconfirmedBalanceInSys >= 0) {
-      // Positive unconfirmed means incoming transaction - add to total
-      displayBalance = confirmedBalanceInSys + unconfirmedBalanceInSys;
-    } else {
-      // Negative unconfirmed means outgoing transaction
-      // Show only confirmed balance to avoid confusion
-      // The pending transaction might fail or be replaced
-      displayBalance = confirmedBalanceInSys;
-    }
-
-    // Ensure balance is not negative (should not happen with the logic above)
-    const formattedBalance = Math.max(0, displayBalance);
-
-    //Prevent to send undefined from verifyZeros when formattedBalance is 0
-    return formattedBalance > 0
-      ? verifyZerosInBalanceAndFormat(formattedBalance, 8)
-      : '0';
+    // Pending spends and self-transfer fees are already absent from the UTXO
+    // set used to prepare sends. Include their signed delta in MAX's balance.
+    const availableBalance = confirmedBalance.add(unconfirmedBalance);
+    return availableBalance.gt(0) ? formatSyscoinValue(availableBalance) : '0';
   };
 
   return {

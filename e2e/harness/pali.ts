@@ -148,6 +148,9 @@ export class PaliWallet {
     );
     fs.mkdirSync(path.dirname(file), { recursive: true });
     await page.screenshot({
+      // Finish finite route fades before capture; do not publish a nearly
+      // transparent transition frame as evidence of the completed screen.
+      animations: 'disabled',
       fullPage: true,
       // Screenshots get published to GitHub comments via the e2e-media
       // branch, and failure shots can land mid-onboarding with the seed or

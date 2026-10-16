@@ -104,6 +104,9 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
   );
   const [isLoading, setIsLoading] = useState(false);
   const [isMaxSend, setIsMaxSend] = useState<boolean>(initialIsMaxSend);
+  // Only explicit native MAX intent follows balance refreshes. A manually
+  // entered amount remains fixed, even when it happened to equal the balance.
+  const nativeMaxIntent = useRef(initialIsMaxSend && !initialSelectedAsset);
 
   const [form] = Form.useForm();
 
@@ -151,8 +154,14 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
     () => ({ selectedAsset, RBF, isMaxSend }),
     [selectedAsset, RBF, isMaxSend]
   );
-  const preparationOptions = useRef({ selectedAsset, RBF, feeRate });
-  preparationOptions.current = { selectedAsset, RBF, feeRate };
+  const nativeBalance = activeAccount?.balances[INetworkType.Syscoin] || '0';
+  const preparationOptions = useRef({
+    selectedAsset,
+    RBF,
+    feeRate,
+    nativeBalance,
+  });
+  preparationOptions.current = { selectedAsset, RBF, feeRate, nativeBalance };
   const saveCurrentState = useSendDraftWriter({
     form,
     location,
@@ -167,6 +176,9 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
     (changedValues: any, allValues: any) => {
       if (Object.prototype.hasOwnProperty.call(changedValues, 'fee')) {
         feeWasChosen.current = true;
+      }
+      if (Object.prototype.hasOwnProperty.call(changedValues, 'amount')) {
+        nativeMaxIntent.current = false;
       }
       formValuesRef.current = allValues;
       void saveCurrentState(allValues);
@@ -256,13 +268,18 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
         : activeAccount?.balances[INetworkType.Syscoin] || '0',
     [selectedAsset, activeAccount?.balances]
   );
+  const maxSelection = useRef({ balanceStr, selectedAsset });
+  maxSelection.current = { balanceStr, selectedAsset };
 
   const handleMaxButton = useCallback(() => {
+    if (!isCurrentForm()) return;
+    const current = maxSelection.current;
+    nativeMaxIntent.current = !current.selectedAsset;
     // Simply fill in the full balance
-    form.setFieldValue('amount', balanceStr);
+    form.setFieldValue('amount', current.balanceStr);
     setIsMaxSend(true);
     form.validateFields(['amount']); // Trigger validation after setting value
-  }, [balanceStr, form]);
+  }, [form, isCurrentForm]);
 
   // Restore form values if coming back from navigation
   useEffect(() => {
@@ -277,8 +294,9 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
         // Also update the ref to keep it in sync
         formValuesRef.current = formValues;
 
-        // If this was a verified MAX send, recalculate the max amount.
-        if (initialIsMaxSend) {
+        // Native MAX rebases in the balance effect below. Asset MAX retains its
+        // existing deferred restoration once the form is initialized.
+        if (initialIsMaxSend && initialSelectedAsset) {
           // Add a small delay to ensure form is fully initialized
           setTimeout(() => {
             if (!isCurrentForm()) {
@@ -296,13 +314,34 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
       // Do NOT clear the navigation state here - we need it to persist
       // for when the popup is closed and reopened
     }
-  }, [initialDraft, initialIsMaxSend, form, handleMaxButton, isCurrentForm]);
+  }, [
+    initialDraft,
+    initialIsMaxSend,
+    initialSelectedAsset,
+    form,
+    handleMaxButton,
+    isCurrentForm,
+  ]);
 
   // Watch the amount field for changes
   const watchedAmount = Form.useWatch('amount', form);
 
-  // Update isMaxSend based on comparison with balance
+  // Rebase explicit native MAX before rechecking asset equality. The amount change
+  // also invalidates any unsigned preparation started with the old balance.
   useEffect(() => {
+    if (!isCurrentForm()) return;
+    if (selectedAsset) nativeMaxIntent.current = false;
+    if (nativeMaxIntent.current) {
+      if (String(form.getFieldValue('amount')) !== String(balanceStr)) {
+        form.setFieldValue('amount', balanceStr);
+        formValuesRef.current = form.getFieldsValue();
+        void saveCurrentState(formValuesRef.current);
+        void form.validateFields(['amount']).catch(() => undefined);
+      }
+      setIsMaxSend(true);
+      return;
+    }
+
     if (watchedAmount !== undefined && watchedAmount !== null) {
       const inputAmount = String(watchedAmount).trim();
 
@@ -317,9 +356,9 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
               )
             );
           } else {
-            setIsMaxSend(
-              nativeAtomicAmount(inputAmount).eq(nativeAtomicAmount(balanceStr))
-            );
+            // A manually entered full-balance amount can still subtract fees
+            // at submission, but must not become live MAX intent in its draft.
+            setIsMaxSend(false);
           }
         } catch {
           setIsMaxSend(false);
@@ -330,7 +369,18 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
     } else {
       setIsMaxSend(false);
     }
-  }, [watchedAmount, balanceStr, selectedAsset, assetDecimals]);
+  }, [
+    watchedAmount,
+    balanceStr,
+    selectedAsset,
+    assetDecimals,
+    form,
+    saveCurrentState,
+    isCurrentForm,
+    isUnlocked,
+    controllerLoading,
+    connectionUnavailable,
+  ]);
 
   const handleSelectedAsset = useCallback(
     (item: number) => {
@@ -422,6 +472,9 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
           : null,
         rbf: preparationOptions.current.RBF,
         feeRate: preparationOptions.current.feeRate,
+        nativeBalance: preparationOptions.current.selectedAsset
+          ? null
+          : preparationOptions.current.nativeBalance,
       });
     const submittedInputs = preparationInputs();
     const isCurrentPreparation = () =>

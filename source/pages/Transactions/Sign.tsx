@@ -25,8 +25,9 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
   const { alert } = useUtils();
   const [loading, setLoading] = useState(false);
   const [closing, setClosing] = useState(false);
+  const [submissionUnknown, setSubmissionUnknown] = useState(false);
   const approvalActionRef = React.useRef<
-    'ready' | 'submitting' | 'dismissed' | 'completed'
+    'ready' | 'submitting' | 'outcome-unknown' | 'dismissed' | 'completed'
   >('ready');
   // Cleared callbacks may already be running; every exit must own its attempt.
   const approvalLifetimeRef = React.useRef(0);
@@ -184,6 +185,16 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
       }, 2000);
     } catch (error: any) {
       if (!ownsLifetime(lifetime, 'submitting')) return;
+      // A rejected response or timeout after invoking the atomic sender does
+      // not prove that publication failed. Only its explicit pre-send marker
+      // can make this approval retryable; sign-only behavior is unchanged.
+      if (!signOnly && error?.transactionNotBroadcast !== true) {
+        approvalActionRef.current = 'outcome-unknown';
+        setSubmissionUnknown(true);
+        setErrorMsg('');
+        setLoading(false);
+        return;
+      }
       // Create custom alert object that routes to appropriate display method
       const customAlert = {
         error: (msg: string) => setErrorMsg(msg),
@@ -220,7 +231,11 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
   };
 
   const handleDismiss = async () => {
-    if (!mountedRef.current || approvalActionRef.current !== 'ready') return;
+    if (
+      !mountedRef.current ||
+      !['ready', 'outcome-unknown'].includes(approvalActionRef.current)
+    )
+      return;
     const lifetime = invalidateScheduledClose();
     approvalActionRef.current = 'dismissed';
     setClosing(true);
@@ -288,6 +303,14 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
           {/* Fixed button container at bottom */}
           <div className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 shadow-lg z-50">
             <DeviceWaitingBanner account={activeAccount} show={loading} />
+            {submissionUnknown && (
+              <p
+                role="status"
+                className="text-sm text-brand-gray200 text-center mb-3"
+              >
+                {t('send.submissionStatusUnknown')}
+              </p>
+            )}
             <div className="flex gap-3 justify-center">
               <Button
                 variant="secondary"
@@ -295,13 +318,18 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
                 disabled={loading || closing || confirmed}
                 onClick={handleDismiss}
               >
-                {t('buttons.cancel')}
+                {t(submissionUnknown ? 'buttons.close' : 'buttons.cancel')}
               </Button>
 
               <Button
                 variant="primary"
                 type="submit"
-                disabled={closing || confirmed || Boolean(reviewError)}
+                disabled={
+                  closing ||
+                  confirmed ||
+                  submissionUnknown ||
+                  Boolean(reviewError)
+                }
                 loading={loading}
                 onClick={onSubmit}
               >

@@ -257,6 +257,65 @@ describe('offline UTXO browser fixture', () => {
       expect(fixtureRead(f, url, method)).toBeUndefined();
   });
 
+  it('serves phase-specific pending balances and only explicit history reads', () => {
+    const f = createUtxoFixture('10000000');
+    const host = 'https://blockbook-dev.syscoin.org';
+    const accountUrl = host + '/api/v2/xpub/' + f.userXpub;
+    expect(f.parentTxs[0].outs[0].value).toBe(BigInt(10000000));
+    expect(fixtureRead(f, host + '/api/v2/utxo/' + f.userXpub, 'GET')).toEqual(
+      expect.arrayContaining([expect.objectContaining({ value: '10000000' })])
+    );
+    const pendingId = 'ab'.repeat(32);
+    const row = {
+      txid: pendingId,
+      confirmations: 0,
+      addressValueIn: '10000000',
+      addressValueOut: '9999774',
+      fees: '226',
+    };
+    const state = {
+      balance: '10000000',
+      unconfirmedBalance: '-226',
+      unconfirmedTxs: 1,
+      transactions: [row],
+      utxos: [{ txid: pendingId, vout: 0, value: '9999774', confirmations: 0 }],
+      rawTransactions: { [pendingId]: { ...row, hex: '00' } },
+    };
+    expect(fixtureRead(f, accountUrl + '?details=basic', 'GET')).toMatchObject({
+      balance: '10000000',
+      unconfirmedBalance: '0',
+    });
+    expect(fixtureRead(f, accountUrl + '?details=basic', 'GET', state)).toEqual(
+      expect.objectContaining({
+        balance: '10000000',
+        unconfirmedBalance: '-226',
+      })
+    );
+    expect(
+      fixtureRead(f, accountUrl + '?details=basic', 'GET', state)
+    ).not.toHaveProperty('transactions');
+    expect(
+      fixtureRead(f, accountUrl + '?details=txsummary', 'GET', state)
+    ).toMatchObject({
+      transactions: [row],
+      unconfirmedTxs: 1,
+    });
+    expect(
+      fixtureRead(f, host + '/api/v2/utxo/' + f.userXpub, 'GET', state)
+    ).toEqual(state.utxos);
+    expect(
+      fixtureRead(f, host + '/api/v2/tx/' + pendingId, 'GET', state)
+    ).toEqual(state.rawTransactions[pendingId]);
+    for (const [url, method] of [
+      [host + '/api/v2/sendtx/' + pendingId, 'GET'],
+      [host + '/api/v2/tx/' + pendingId, 'POST'],
+      [host + '/api/v2/tx/' + 'ff'.repeat(32), 'GET'],
+      [host + '/api/v2/xpub/unrelated-wallet?details=txsummary', 'GET'],
+      ['https://example.com/api/v2/tx/' + pendingId, 'GET'],
+    ])
+      expect(fixtureRead(f, url, method, state)).toBeUndefined();
+  });
+
   it('launch-time proxy denies HTTP forwarding and HTTPS CONNECT on loopback only', async () => {
     const server = await startUtxoFixtureServer();
     const request = (method: string, target: string) =>

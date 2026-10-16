@@ -14,8 +14,9 @@ const mockState = {
 jest.mock('react-redux', () => ({
   useSelector: (select: any) => select(mockState),
 }));
+const mockTranslation = jest.fn((key: string) => key);
 jest.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({ t: mockTranslation }),
 }));
 jest.mock('hooks/index', () => ({
   usePrice: () => ({ getFiatAmount: () => '' }),
@@ -50,6 +51,7 @@ describe('fee-rate submission validity', () => {
   beforeEach(() => {
     mockState.vault.isBitcoinBased = true;
     form.validateFields.mockReset().mockResolvedValue(undefined);
+    mockTranslation.mockClear();
   });
 
   it.each(['-1', '-0.00000001', '0', 0, '', ' ', 'Infinity', '0.00000001junk'])(
@@ -67,9 +69,53 @@ describe('fee-rate submission validity', () => {
     ).resolves.toBeUndefined();
   });
 
-  it('still rejects the existing excessive UTXO fee bound', async () => {
+  it.each(['0.00005', '0.0001', '0.001', '0.1', '1'])(
+    'rejects a UTXO rate at or above the signed extraction safety limit: %s',
+    async (value) => {
+      render(<Fee disabled={false} form={form} />);
+      await expect(mockValidate(undefined, value)).rejects.toBe('');
+      expect(mockTranslation).toHaveBeenCalledWith(
+        'send.feeRateSafetyLimit',
+        expect.objectContaining({ currency: 'SYS', limit: '0.00005000' })
+      );
+    }
+  );
+
+  it.each(['0.00001', '0.00004999'])(
+    'warns but allows the sub-limit rate %s in coin/vbyte',
+    async (value) => {
+      render(<Fee disabled={false} form={form} />);
+      await expect(mockValidate(undefined, value)).resolves.toBeUndefined();
+      expect(mockTranslation).toHaveBeenCalledWith(
+        'send.feeRateNormal',
+        expect.objectContaining({ currency: 'SYS' })
+      );
+    }
+  );
+
+  it('shows the coin/vbyte unit even after a rate is entered', () => {
     render(<Fee disabled={false} form={form} />);
-    await expect(mockValidate(undefined, '0.1')).rejects.toBe('');
+    expect(
+      (screen.getByLabelText('components.feeRateLabel') as HTMLInputElement)
+        .value
+    ).toBe('0.00000001');
+  });
+
+  it('renders small recommended numeric rates without exponent notation', () => {
+    const localForm = {
+      ...form,
+      getFieldValue: () => 1.25390625e-8,
+    };
+    render(<Fee disabled={false} form={localForm} recommend={1.25390625e-8} />);
+    expect(screen.getByRole('spinbutton').getAttribute('value')).toBe(
+      '0.0000000125390625'
+    );
+  });
+
+  it('does not apply the UTXO safety threshold to EVM gas prices', async () => {
+    mockState.vault.isBitcoinBased = false;
+    render(<Fee disabled={false} form={form} />);
+    await expect(mockValidate(undefined, '1')).resolves.toBeUndefined();
   });
 
   it('rejects non-finite values when the field represents an EVM gas price', async () => {
