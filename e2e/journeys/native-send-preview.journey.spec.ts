@@ -251,6 +251,28 @@ test('offline native Send: edited fees survive Confirm, Cancel and Back', async 
         await page.getByRole('button', { name: 'Cancel', exact: true }).click();
         await expect(amountInput).toHaveValue('0.09');
         expect(Number(await feeInput.inputValue())).toBe(0.00001);
+        // At popup size the fixed Next footer must not make the last option
+        // unreachable. Exercise ordinary wheel scrolling, not auto-scroll click.
+        await page.mouse.move(200, 450);
+        await page.mouse.wheel(0, 400);
+        await expect
+          .poll(() =>
+            page.getByRole('switch').evaluate((button) => {
+              const box = button.getBoundingClientRect();
+              const target = document.elementFromPoint(
+                box.x + box.width / 2,
+                box.y + box.height / 2
+              );
+              return (
+                box.top >= 0 &&
+                box.bottom <= innerHeight &&
+                Boolean(
+                  target && (target === button || button.contains(target))
+                )
+              );
+            })
+          )
+          .toBe(true);
         expect(routes.deniedWrites).toEqual([]);
       }
     );
