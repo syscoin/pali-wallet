@@ -74,7 +74,7 @@ jobs:
           PALI_E2E_RUN_ID: pr-conformance-${{ github.run_id }}-${{ github.run_attempt }}
           PALI_TEST_DAPP_REVISION: ${{ github.sha }}
           PALI_TEST_DAPP_EXTENSION_PATH: ${{ github.workspace }}/build/chrome
-        run: yarn e2e:harness test-dapp-conformance.journey.spec.ts provider-property-toggle.journey.spec.ts utxo-psbt.journey.spec.ts native-send-preview.journey.spec.ts offline-utxo-history.journey.spec.ts spt-send-preview.journey.spec.ts offline-wallet-lifecycle.journey.spec.ts offline-cold-restart.journey.spec.ts offline-vault-isolation.journey.spec.ts
+        run: yarn e2e:harness test-dapp-conformance.journey.spec.ts provider-property-toggle.journey.spec.ts utxo-psbt.journey.spec.ts native-send-preview.journey.spec.ts pending-native-max.journey.spec.ts offline-utxo-history.journey.spec.ts spt-send-preview.journey.spec.ts offline-wallet-lifecycle.journey.spec.ts offline-cold-restart.journey.spec.ts offline-vault-isolation.journey.spec.ts
       - name: Upload conformance evidence
         if: always()
         uses: actions/upload-artifact@v7

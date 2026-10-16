@@ -838,6 +838,98 @@ it('reset invalidates an old native poll even when the same vault is restored', 
   expect(state.vault.accounts[type][0].nativeBalance).toBe(77);
 });
 
+it.each(
+  ['older-first', 'newer-first'].flatMap((order) =>
+    [false, true].map((rotateAddress) => ({ order, rotateAddress }))
+  )
+)(
+  'keeps the latest same-account UTXO balance ($order, rotated address=$rotateAddress)',
+  async ({ order, rotateAddress }) => {
+    state.vault.activeNetwork.kind = 'syscoin';
+    state.vault.accounts[type][0].xpub = 'vpub-same-account';
+    const completions: Array<(value: string) => void> = [];
+    controller.balancesManager = {
+      utils: {
+        getBalanceUpdatedForAccount: () =>
+          new Promise<string>((resolve) => completions.push(resolve)),
+      },
+    };
+    const refresh = () =>
+      controller.updateUserNativeBalance({
+        activeAccount: state.vault.activeAccount,
+        activeNetwork: state.vault.activeNetwork,
+        isBitcoinBased: true,
+        isPolling: true,
+      });
+    const older = refresh();
+    if (rotateAddress)
+      state.vault.accounts[type][0] = {
+        ...state.vault.accounts[type][0],
+        address: U,
+      };
+    const newer = refresh();
+    if (order === 'older-first') {
+      completions[0]('0.09889168');
+      await older;
+      expect(state.vault.accounts[type][0].nativeBalance).toBeUndefined();
+    }
+    completions[1]('0.09775331');
+    await newer;
+    if (order === 'newer-first') {
+      completions[0]('0.09889168');
+      await older;
+    }
+    expect(state.vault.accounts[type][0].nativeBalance).toBe('0.09775331');
+  }
+);
+
+it.each(['chain', 'rpc', 'kind', 'account', 'restored-vault'])(
+  'discards a delayed UTXO balance after the %s context changes',
+  async (change) => {
+    state.vault.activeNetwork.kind = 'syscoin';
+    let finish!: (value: string) => void;
+    controller.balancesManager = {
+      utils: {
+        getBalanceUpdatedForAccount: () =>
+          new Promise<string>((resolve) => {
+            finish = resolve;
+          }),
+      },
+    };
+    const pending = controller.updateUserNativeBalance({
+      activeAccount: state.vault.activeAccount,
+      activeNetwork: state.vault.activeNetwork,
+      isBitcoinBased: true,
+      isPolling: true,
+    });
+    if (change === 'chain')
+      state.vault.activeNetwork = { ...state.vault.activeNetwork, chainId: 2 };
+    else if (change === 'rpc')
+      state.vault.activeNetwork = {
+        ...state.vault.activeNetwork,
+        url: 'https://other.test',
+      };
+    else if (change === 'kind')
+      state.vault.activeNetwork = {
+        ...state.vault.activeNetwork,
+        kind: 'ethereum',
+      };
+    else {
+      // Account switches and reset invalidate reads before replacing state,
+      // including when restoration returns to the exact same account/network.
+      controller.stopAllRapidPolling();
+      if (change === 'account') {
+        state.vault.accounts[type][1] = { address: U };
+        state.vault.activeAccount = { type, id: 1 };
+      } else state.vault = JSON.parse(JSON.stringify(state.vault));
+    }
+    state.vault.accounts[type][0].nativeBalance = '0.09775331';
+    finish('0.09889168');
+    await pending;
+    expect(state.vault.accounts[type][0].nativeBalance).toBe('0.09775331');
+  }
+);
+
 it('does not overwrite a newer regular token balance with a delayed receipt response', async () => {
   let resolve!: (value: bigint) => void;
   balanceOf.mockReturnValue(

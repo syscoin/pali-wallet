@@ -108,6 +108,7 @@ export type UtxoFixture = ReturnType<typeof createUtxoFixture>;
 // Exact origin, account and transaction allowlists still apply to every read.
 export type UtxoFixtureReadState = {
   balance?: string;
+  omitUnconfirmedBalance?: boolean;
   rawTransactions?: Record<string, unknown>;
   transactions?: unknown[];
   unconfirmedBalance?: string;
@@ -272,7 +273,10 @@ export function fixtureRead(
     return {
       address: decodeURIComponent(url.pathname.split('/').pop()!),
       balance: state.balance ?? fixture.nativeBalanceSatoshis,
-      unconfirmedBalance: state.unconfirmedBalance ?? '0',
+      ...(state.omitUnconfirmedBalance &&
+      url.searchParams.get('details') === 'basic'
+        ? {}
+        : { unconfirmedBalance: state.unconfirmedBalance ?? '0' }),
       totalReceived: state.balance ?? fixture.nativeBalanceSatoshis,
       totalSent: '0',
       txs: state.transactions?.length ?? 0,
@@ -389,12 +393,16 @@ export async function installUtxoFixtureRoutes(
   fixture: UtxoFixture,
   localOrigin: string,
   options: {
+    // Test-only opt-in. The callback must validate the synthetic raw transaction
+    // before returning a local receipt; this route never forwards broadcasts.
+    onSyntheticBroadcast?: (raw: string) => { result: string };
     readState?: () => UtxoFixtureReadState;
   } = {}
 ) {
   const deniedWrites: string[] = [],
     reads: string[] = [],
-    deniedUnknown: string[] = [];
+    deniedUnknown: string[] = [],
+    syntheticBroadcasts: string[] = [];
   await context.route('**/*', async (route) => {
     const request = route.request(),
       url = new URL(request.url());
@@ -414,6 +422,35 @@ export async function installUtxoFixtureRoutes(
     }
     const calls = Array.isArray(rpc) ? rpc : [rpc];
     if (
+      options.onSyntheticBroadcast &&
+      BACKENDS.has(url.origin) &&
+      !url.username &&
+      !url.password &&
+      !url.search &&
+      !url.hash &&
+      url.pathname === '/api/v2/sendtx/' &&
+      request.method() === 'POST'
+    ) {
+      try {
+        const raw = request.postData() || '';
+        if (raw.length > 32768 || !/^(?:[0-9a-f]{2})+$/i.test(raw))
+          throw new Error('Malformed synthetic broadcast body');
+        const receipt = options.onSyntheticBroadcast(raw);
+        syntheticBroadcasts.push(receipt.result);
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          headers: { 'access-control-allow-origin': '*' },
+          body: JSON.stringify(receipt),
+        });
+      } catch {
+        deniedWrites.push(url.pathname);
+        deniedUnknown.push(request.method() + ' ' + url.origin + url.pathname);
+        return route.abort('blockedbyclient');
+      }
+    }
+    if (
+      !['GET', 'HEAD', 'OPTIONS'].includes(request.method()) ||
       /\/sendtx(?:\/|$)/i.test(url.pathname) ||
       calls.some((row) =>
         /^(?:eth_send|sendrawtransaction|sys_signAndSend|wallet_sendCalls)/i.test(
@@ -436,5 +473,5 @@ export async function installUtxoFixtureRoutes(
       body: JSON.stringify(body),
     });
   });
-  return { deniedWrites, reads, deniedUnknown };
+  return { deniedWrites, reads, deniedUnknown, syntheticBroadcasts };
 }
