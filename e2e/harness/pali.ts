@@ -2,6 +2,8 @@ import { type BrowserContext, type Page, expect } from '@playwright/test';
 import fs from 'fs';
 import path from 'path';
 
+import en from '../../source/assets/locales/en.json';
+
 import { E2E_CONFIG } from './config';
 import { type LaunchOptions, launchExtension } from './launch';
 import { verifyExecutingWorker } from './runtimeIdentity';
@@ -310,9 +312,47 @@ export class PaliWallet {
       .first()
       .click();
 
-    await expect(this.networkMenuButton()).toContainText(label, {
-      timeout: 120_000,
-    });
+    const escapeRegex = (value: string) =>
+      value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const faucetTitle = new RegExp(
+      '^' +
+        escapeRegex(en.faucet.firstAccessTitle)
+          .replace(escapeRegex('{{token}}'), '\\S+')
+          .replace(escapeRegex('{{network}}'), escapeRegex(label)) +
+        '$'
+    );
+    const faucet = this.page.getByRole('dialog', { name: faucetTitle });
+    // The informational prompt can mount after the network selection. Its
+    // accessible dialog correctly hides the header until the user closes it.
+    // Never dismiss an approval/security dialog or activate the faucet here.
+    await expect
+      .poll(
+        async () => {
+          if (
+            (await faucet.isVisible()) &&
+            (await faucet
+              .getByRole('button', {
+                name: en.faucet.grabTokens,
+                exact: true,
+              })
+              .isVisible())
+          ) {
+            await faucet
+              .getByRole('button', { name: en.buttons.close, exact: true })
+              .click();
+          }
+          const header = this.networkMenuButton();
+          if (!(await header.isVisible())) return '';
+          // A late prompt may hide it between the visibility read and text
+          // read. Retry within the same bounded readiness check in that case.
+          const text = await header
+            .innerText({ timeout: 1000 })
+            .catch(() => '');
+          return text.replace(/\s*(UTXO|EVM)\s*$/, '').trim();
+        },
+        { timeout: 120_000 }
+      )
+      .toBe(label);
     await this.page
       .locator('#home-balance')
       .waitFor({ state: 'visible', timeout: 120_000 });
