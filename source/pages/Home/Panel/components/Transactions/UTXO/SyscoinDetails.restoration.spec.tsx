@@ -164,6 +164,40 @@ it('shows the canonical SYSX icon beside its amount without importing the token'
   expect(mockIconFetch).toHaveBeenCalledWith(officialLogo);
 });
 
+it.each(['syscoinburntoallocation', 'SPTSyscoinBurnToAssetAllocation'])(
+  'shows the canonical native-burn icon for %s without assetInfo or tokenTransfers',
+  async (tokenType) => {
+    const officialLogo = getKnownTokenLogo(undefined, undefined, '123456')!;
+    const transaction = rawTransaction({
+      tokenType,
+      fees: '226',
+      addressValueIn: '300000226',
+      addressValueOut: '100000000',
+      valueIn: '300000226',
+      value: '300000000',
+      vin: [{ addresses: ['raw-from'], value: '300000226' }] as any,
+      vout: [
+        { addresses: ['raw-change'], value: '100000000' },
+        { addresses: ['OP_RETURN'], value: '200000000' },
+      ] as any,
+    });
+    mockEmitter.mockResolvedValue(transaction);
+    expect(selectActiveAccountAssets(mockState).syscoin).toEqual([]);
+
+    render(<SyscoinTransactionDetails hash={mockHash} tx={transaction} />);
+
+    await expectAmountIcon('2.0000 SYSX', officialLogo);
+    expect(mockIconFetch.mock.calls.map(([url]) => url)).toEqual([
+      officialLogo,
+    ]);
+    expect(screen.queryByText('1.0000 SYSX')).toBeNull();
+    expect(
+      screen.getByText('send.nativeBalanceChange: -2.00000226 SYS')
+    ).toBeTruthy();
+    expect(detailValue('Fees', '0.00000226 SYS')).toBeTruthy();
+  }
+);
+
 it('uses a custom logo only from the active account and exact GUID on the active chain', async () => {
   const logo = 'https://icons.example/exact-active-token.png';
   setAccountAssets([

@@ -7,6 +7,7 @@ import {
 import { BigNumber } from 'utils/ethersV6Compat';
 
 import { formatSyscoinValue } from './formatSyscoinValue';
+import { SYSX_ASSET_GUID } from './tokens';
 import type { CSSProperties } from 'react';
 
 /** Absolute native balance change for the account queried by Blockbook. */
@@ -298,6 +299,7 @@ export const getSyscoinIntentAmount = (
       const formatted = formatSyscoinValue(opReturn.value.toString());
       return {
         amount: parseFloat(formatted),
+        assetGuid: SYSX_ASSET_GUID,
         decimals: 8,
         symbol: 'SYSX',
       };
