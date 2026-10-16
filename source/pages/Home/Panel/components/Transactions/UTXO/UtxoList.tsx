@@ -29,14 +29,22 @@ import {
 } from 'utils/formatSyscoinValue';
 import { getTokenLogo } from 'utils/index';
 import { ellipsis } from 'utils/index';
+import { getWalletNavigationScope } from 'utils/navigationState';
 import {
   getSyscoinTransactionTypeStyle,
-  getSyscoinIntentAmount,
-  getSyscoinAccountDelta,
+  getSyscoinOperationAmount,
+  isSyscoinTokenOperation,
+  getSyscoinNativeTransferAmount,
+  getSyscoinAccountChange,
   formatSyscoinConfirmationETA,
   normalizeSyscoinTransactionType,
 } from 'utils/syscoinTransactionUtils';
 import { isTransactionInBlock } from 'utils/transactionUtils';
+
+import {
+  mergeAccountOwnershipFlags,
+  readUtxoTransactionDetails,
+} from './utxoTransactionDetails';
 
 const SERVER_PAGE_SIZE = 30;
 
@@ -54,6 +62,71 @@ const UtxoTransactionsListComponentBase = ({
     (state: RootState) => state.vault.activeNetwork
   );
   const activeAssets = useSelector(selectActiveAccountAssets);
+  const walletScope = useSelector(getWalletNavigationScope);
+  const scope = `${walletScope.account}:${
+    walletScope.network
+  }:${tx.txid.toLowerCase()}`;
+  const scopeRef = useRef(scope);
+  scopeRef.current = scope;
+  const compactTokenOperation = isSyscoinTokenOperation(tx);
+  const normalizedTokenType = normalizeSyscoinTransactionType(tx?.tokenType);
+  const compactIntent = getSyscoinOperationAmount(tx);
+  const compactNativeIntent = compactTokenOperation
+    ? null
+    : getSyscoinNativeTransferAmount(tx);
+  const [hydrated, setHydrated] = React.useState<{
+    data?: ITransactionInfoUtxo;
+    scope: string;
+    status: 'loading' | 'complete' | 'unavailable';
+  }>();
+  const needsHydration = compactTokenOperation
+    ? !compactIntent
+    : !compactNativeIntent;
+  useEffect(() => {
+    if (!needsHydration || !activeNetwork.url) return;
+    let cancelled = false;
+    const isCurrent = () => !cancelled && scopeRef.current === scope;
+    setHydrated({ scope, status: 'loading' });
+    readUtxoTransactionDetails(
+      scope,
+      tx.txid,
+      () =>
+        controllerEmitter(
+          ['wallet', 'getSysTransactionFromBlockbook'],
+          [tx.txid, activeNetwork.url],
+          10000,
+          false
+        ),
+      isCurrent
+    ).then(
+      (data) => {
+        if (isCurrent()) setHydrated({ scope, status: 'complete', data });
+      },
+      () => {
+        if (isCurrent()) setHydrated({ scope, status: 'unavailable' });
+      }
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [scope, needsHydration, activeNetwork.url, tx.txid]);
+  const displayTransaction =
+    hydrated?.scope === scope && hydrated.data
+      ? {
+          ...tx,
+          ...hydrated.data,
+          tokenType: hydrated.data.tokenType || tx.tokenType,
+          tokenTransfers: hydrated.data.tokenTransfers ?? tx.tokenTransfers,
+          accountAssetTransfers: tx.accountAssetTransfers,
+          vin: mergeAccountOwnershipFlags(tx.vin, hydrated.data.vin),
+          vout: mergeAccountOwnershipFlags(tx.vout, hydrated.data.vout),
+        }
+      : tx;
+  const tokenOperation = isSyscoinTokenOperation(displayTransaction);
+  const intent = getSyscoinOperationAmount(displayTransaction);
+  const nativeIntent = !tokenOperation
+    ? getSyscoinNativeTransferAmount(tx, displayTransaction)
+    : null;
 
   const isConfirmed = isTransactionInBlock(tx);
 
@@ -77,7 +150,6 @@ const UtxoTransactionsListComponentBase = ({
 
   // Get SPT transaction styling - always returns a style (has default fallback)
   const sptInfo = getSyscoinTransactionTypeStyle(tx.tokenType);
-  const intent = getSyscoinIntentAmount(tx);
 
   // Resolve the SPT asset guid involved in this tx (tokenTransfers first,
   // then vout/vin assetInfo) so we can show the imported asset's icon
@@ -117,58 +189,33 @@ const UtxoTransactionsListComponentBase = ({
     );
   }, [txAssetGuid, activeAssets?.syscoin, activeNetwork.chainId]);
 
-  // Compute compact display for SPT and native SYS amounts (intent-based for SPT; vout[0] for SYS)
+  // Primary values describe the operation/transfer, never its account delta.
   let sptAmountDisplay: string | null = null;
   let sysAmountDisplay: string | null = null;
   if (intent) {
     const decimals = intent.decimals ?? (sptAssetInfo as any)?.decimals ?? 8;
-    const symbol = intent.symbol ?? (sptAssetInfo as any)?.symbol ?? 'SYSX';
+    const symbol =
+      intent.symbol ??
+      (sptAssetInfo as any)?.symbol ??
+      `SPT (${intent.assetGuid || '?'})`;
     const amountText = formatDisplayValue(intent.amount, decimals);
     sptAmountDisplay = `${amountText} ${symbol}`;
   }
-  // Determine direction using only vin: if any input is ours, we are sending
-  const summaryDirection = (tx as any)?.direction;
-  const anyVinOwn = Array.isArray(tx?.vin)
-    ? tx.vin.some((v: any) => v?.isOwn === true)
-    : false;
-  const isSentByUs =
-    summaryDirection === 'sent' ||
-    (summaryDirection !== 'received' && anyVinOwn);
+  const isSentByUs = nativeIntent?.direction === 'sent';
   const signChar = isSentByUs ? '-' : '+';
   const signClass = isSentByUs ? 'text-warning-error' : 'text-brand-green';
-  const normalizedTokenType = normalizeSyscoinTransactionType(tx?.tokenType);
-  const isSptSentByUs =
-    normalizedTokenType === 'assetallocationburntosyscoin' ||
-    normalizedTokenType === 'assetallocationburntoethereum'
-      ? true
-      : normalizedTokenType === 'syscoinburntoallocation' ||
-        normalizedTokenType === 'assetallocationmint'
-      ? false
-      : isSentByUs;
+  const isSptSentByUs = intent?.direction === 'sent';
   const sptSignChar = isSptSentByUs ? '-' : '+';
   const sptSignClass = isSptSentByUs
     ? 'text-warning-error'
     : 'text-brand-green';
-  // Summary amounts are relative to the queried account, including a zero delta.
-  const summaryValue = !intent ? getSyscoinAccountDelta(tx) : null;
-  if (summaryValue !== null) {
+  const nativeAccountChange = getSyscoinAccountChange(tx);
+  if (nativeIntent) {
     const baseSymbol = activeNetwork?.currency
       ? String(activeNetwork.currency).toUpperCase()
       : '';
-    const decimalValue = parseFloat(formatSyscoinValue(summaryValue));
+    const decimalValue = parseFloat(formatSyscoinValue(nativeIntent.amount));
     sysAmountDisplay = `${formatDisplayValue(decimalValue, 8)} ${baseSymbol}`;
-  } else if (!intent && Array.isArray(tx?.vout) && tx.vout.length > 0) {
-    const candidateVout =
-      tx.vout.find((v: any) => v?.isOwn === true) || tx.vout[0];
-
-    const value = Number(candidateVout?.value || 0); // satoshis
-    if (!isNaN(value) && value > 0) {
-      const baseSymbol = activeNetwork?.currency
-        ? String(activeNetwork.currency).toUpperCase()
-        : '';
-      const decimalValue = parseFloat(formatSyscoinValue(value));
-      sysAmountDisplay = `${formatDisplayValue(decimalValue, 8)} ${baseSymbol}`;
-    }
   }
 
   const handleGoTxDetails = () => {
@@ -231,7 +278,17 @@ const UtxoTransactionsListComponentBase = ({
             </Tooltip>
           ) : isConfirmed ? (
             <p className="text-xs font-normal text-brand-green">
-              {isSentByUs ? t('send.sent') : t('send.received')}
+              {tokenOperation
+                ? intent?.direction
+                  ? t(
+                      intent.direction === 'sent'
+                        ? 'send.sent'
+                        : 'send.received'
+                    )
+                  : t('send.confirmed')
+                : nativeIntent?.direction
+                ? t(isSentByUs ? 'send.sent' : 'send.received')
+                : t('send.confirmed')}
             </p>
           ) : (
             <Tooltip
@@ -272,7 +329,9 @@ const UtxoTransactionsListComponentBase = ({
             className="flex items-center gap-1 text-[10px] text-brand-gray300 mt-0.5 truncate max-w-[160px]"
             title={sptAmountDisplay}
           >
-            <span className={`${sptSignClass}`}>{sptSignChar}</span>
+            {intent?.scope === 'account' && intent.direction && (
+              <span className={`${sptSignClass}`}>{sptSignChar}</span>
+            )}
             {(sptAssetInfo?.image ||
               (sptAssetInfo?.symbol &&
                 getTokenLogo(
@@ -302,14 +361,49 @@ const UtxoTransactionsListComponentBase = ({
             <span className="truncate">{sptAmountDisplay}</span>
           </div>
         )}
+        {!sptAmountDisplay && !sysAmountDisplay && (
+          <p className="text-[10px] text-brand-gray300">
+            {t(
+              hydrated?.scope === scope && hydrated.status === 'loading'
+                ? 'buttons.loading'
+                : 'settings.unavailable'
+            )}
+          </p>
+        )}
+        {!tokenOperation && nativeIntent?.outputTotal && (
+          <p className="text-[10px] text-brand-gray300">
+            {t('send.selfTransferOutputTotal')}
+          </p>
+        )}
         {!sptAmountDisplay && sysAmountDisplay && (
           <div
             className="flex items-center gap-1 text-[10px] text-brand-gray300 mt-0.5 truncate max-w-[160px]"
             title={sysAmountDisplay}
           >
-            <span className={`${signClass}`}>{signChar}</span>
+            {nativeIntent?.direction && (
+              <span className={`${signClass}`}>{signChar}</span>
+            )}
             <span className="truncate">{sysAmountDisplay}</span>
           </div>
+        )}
+        {nativeAccountChange !== null && (
+          <p
+            className="text-[10px] text-brand-gray300"
+            title={t('send.nativeBalanceChange')}
+          >
+            {t('send.nativeBalanceChange')}:{' '}
+            {nativeAccountChange !== '0' && !nativeAccountChange.startsWith('-')
+              ? '+'
+              : ''}
+            {formatSyscoinValue(nativeAccountChange)}{' '}
+            {String(activeNetwork.currency || '').toUpperCase()}
+          </p>
+        )}
+        {/^\d+$/.test(String(tx.fees ?? '')) && (
+          <p className="text-[10px] text-brand-gray300">
+            {t('send.fee')}: {formatSyscoinValue(tx.fees)}{' '}
+            {String(activeNetwork.currency || '').toUpperCase()}
+          </p>
         )}
       </div>
 

@@ -475,6 +475,7 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
         nativeBalance: preparationOptions.current.selectedAsset
           ? null
           : preparationOptions.current.nativeBalance,
+        nativeMaxIntent: nativeMaxIntent.current,
       });
     const submittedInputs = preparationInputs();
     const isCurrentPreparation = () =>
@@ -493,28 +494,64 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
           activeAccount.balances[INetworkType.Syscoin]
         );
 
-        // Determine if this is a MAX send by comparing amount to balance
-        const isMaxTransaction = amountAtomic.eq(balanceAtomic);
+        // Only the explicit MAX button/restored MAX draft may sweep a fresh
+        // funding snapshot. A manually entered full-balance amount remains a
+        // bounded subtract-fee request, never permission to expand that amount.
+        const nativeSweep = nativeMaxIntent.current;
+        const isMaxTransaction = nativeSweep || amountAtomic.eq(balanceAtomic);
+        let quotedGrossAmount = String(amount);
 
         // For validation, we need to estimate the total fee to ensure sufficient funds
         let estimatedTotalFee = 0.001; // Conservative default
         let psbt = null;
         try {
-          const { fee: estimatedFee, psbt: estimatedPsbt } =
-            (await controllerEmitter(
-              ['wallet', 'syscoinTransaction', 'getEstimateSysTransactionFee'],
-              [
-                {
-                  amount: amount, // Keep as string to preserve precision
-                  receivingAddress: receiver,
-                  feeRate,
-                  txOptions: { rbf: RBF },
-                  isMax: isMaxTransaction,
-                  token: null, // Explicitly pass null for native transactions
-                },
-              ]
-            )) as { fee: number; psbt: any };
+          const quote = (await controllerEmitter(
+            ['wallet', 'syscoinTransaction', 'getEstimateSysTransactionFee'],
+            [
+              {
+                amount: amount, // Keep as string to preserve precision
+                receivingAddress: receiver,
+                feeRate,
+                txOptions: { rbf: RBF },
+                isMax: isMaxTransaction,
+                ...(nativeSweep ? { nativeSweep: true } : {}),
+                token: null, // Explicitly pass null for native transactions
+              },
+            ]
+          )) as {
+            fee: number;
+            grossAmount?: string;
+            psbt: any;
+            recipientAmount?: string;
+          };
           if (!isCurrentPreparation()) return;
+
+          const { fee: estimatedFee, psbt: estimatedPsbt } = quote;
+          if (nativeSweep) {
+            // MAX's reviewed amount must come from the same UTXOs used to
+            // construct its unsigned PSBT, not an independently timed balance
+            // summary. Refuse old/malformed quotes rather than falling back.
+            const decimal = /^(?:0|[1-9]\d*)(?:\.\d{1,8})?$/;
+            if (
+              typeof quote.grossAmount !== 'string' ||
+              typeof quote.recipientAmount !== 'string' ||
+              !decimal.test(quote.grossAmount) ||
+              !decimal.test(quote.recipientAmount)
+            ) {
+              throw new Error('Invalid native MAX quote');
+            }
+            const gross = nativeAtomicAmount(quote.grossAmount);
+            const recipient = nativeAtomicAmount(quote.recipientAmount);
+            const fee = nativeAtomicAmount(estimatedFee);
+            if (
+              recipient.lte(0) ||
+              fee.lt(0) ||
+              !gross.eq(recipient.add(fee))
+            ) {
+              throw new Error('Invalid native MAX quote');
+            }
+            quotedGrossAmount = quote.grossAmount;
+          }
 
           estimatedTotalFee = estimatedFee;
           psbt = estimatedPsbt;
@@ -594,7 +631,7 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
         const txData = {
           sender: activeAccount?.address,
           receivingAddress: receiver,
-          amount: String(amount),
+          amount: quotedGrossAmount,
           fee: estimatedTotalFee, // Actual fee amount (compliant with SysProvider API)
           feeRate: feeRate, // Add fee rate for transaction details display
           rbf: RBF, // RBF state for transaction details display

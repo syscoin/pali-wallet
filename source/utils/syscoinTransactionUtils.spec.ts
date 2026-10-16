@@ -5,7 +5,10 @@ import {
 
 import {
   getSyscoinAccountDelta,
+  getSyscoinAccountChange,
+  getSyscoinNativeTransferAmount,
   getSyscoinIntentAmount,
+  getSyscoinOperationAmount,
   getSyscoinTransactionTypeLabel,
 } from './syscoinTransactionUtils';
 
@@ -57,6 +60,111 @@ describe('getSyscoinIntentAmount', () => {
   });
 });
 
+describe('getSyscoinNativeTransferAmount', () => {
+  const txid = 'ab'.repeat(32);
+  const account = {
+    txid,
+    fees: '226',
+    addressValueIn: '100000226',
+    addressValueOut: '100000000',
+    // These compact aliases must never be treated as full transaction totals.
+    valueIn: '100000226',
+    value: '100000000',
+    vin: [],
+    vout: [],
+  };
+  const full = {
+    txid,
+    fees: '226',
+    vin: [{ value: '100000226' }],
+    vout: [{ value: '100000000' }],
+  };
+
+  it('shows a self MAX output rather than its fee-sized account change', () => {
+    expect(getSyscoinNativeTransferAmount(account)).toBeNull();
+    expect(getSyscoinNativeTransferAmount(account, full)).toEqual({
+      amount: '100000000',
+      kind: 'self',
+      outputTotal: false,
+    });
+  });
+  it('totals external recipient outputs and excludes owned change when every input is owned', () => {
+    expect(
+      getSyscoinNativeTransferAmount(
+        { ...account, addressValueOut: '30000000' },
+        {
+          ...full,
+          vout: [
+            { value: '20000000' },
+            { value: '30000000' },
+            { value: '50000000' },
+          ],
+        }
+      )
+    ).toEqual({ amount: '70000000', kind: 'external', direction: 'sent' });
+  });
+  it('marks a multi-output self transfer as an output total, not a guessed recipient amount', () => {
+    expect(
+      getSyscoinNativeTransferAmount(account, {
+        ...full,
+        vout: [{ value: '20000000' }, { value: '80000000' }],
+      })
+    ).toEqual({ amount: '100000000', kind: 'self', outputTotal: true });
+  });
+  it('can show an explicit receipt without requesting global transaction data', () => {
+    expect(
+      getSyscoinNativeTransferAmount({ ...account, addressValueIn: '0' })
+    ).toEqual({
+      amount: '100000000',
+      kind: 'received',
+      direction: 'received',
+    });
+    expect(
+      getSyscoinNativeTransferAmount({ ...account, addressValueIn: undefined })
+    ).toBeNull();
+  });
+  it.each([
+    [{ addressValueIn: '50000000' }, {}],
+    [{ addressValueOut: '100000001' }, {}],
+    [{ addressValueIn: '0', addressValueOut: '0' }, {}],
+    [{ addressValueIn: undefined }, {}],
+    [{}, { txid: 'cd'.repeat(32) }],
+    [{}, { fees: '227' }],
+    [{}, { vin: [{ value: '-1' }] }],
+    [{}, { vin: [{ value: '100000226' }, { value: '0' }] }],
+    [{}, { vin: [{ value: Number.MAX_SAFE_INTEGER + 1 }] }],
+    [{}, { vout: [{}] }],
+    [{ tokenType: 'SPTAssetAllocationSend' }, {}],
+  ])(
+    'does not guess a mixed, missing or inconsistent native transfer %j %j',
+    (summaryChanges, fullChanges) => {
+      expect(
+        getSyscoinNativeTransferAmount(
+          { ...account, ...summaryChanges },
+          { ...full, ...fullChanges }
+        )
+      ).toBeNull();
+    }
+  );
+  it('keeps atomic output totals exact beyond Number.MAX_SAFE_INTEGER', () => {
+    expect(
+      getSyscoinNativeTransferAmount(
+        {
+          ...account,
+          addressValueIn: '9007199254740993',
+          addressValueOut: '9007199254740992',
+        },
+        {
+          ...full,
+          fees: '1',
+          vin: [{ value: '9007199254740993' }],
+          vout: [{ value: '9007199254740992' }],
+        }
+      )
+    ).toMatchObject({ amount: '9007199254740992', kind: 'self' });
+  });
+});
+
 describe('getSyscoinAccountDelta', () => {
   it.each([
     ['100000226', '100000000', '226'],
@@ -76,4 +184,160 @@ describe('getSyscoinAccountDelta', () => {
     expect(getSyscoinAccountDelta({})).toBeNull();
     expect(getSyscoinAccountDelta({ addressValueIn: 'invalid' })).toBeNull();
   });
+
+  it.each([
+    ['100000226', '100000000', '-226'],
+    ['100000000', '100000226', '226'],
+    ['100000000', '100000000', '0'],
+    ['9007199254740993', '9007199254740992', '-1'],
+  ])(
+    'keeps the signed native account change independent of token direction',
+    (addressValueIn, addressValueOut, expected) => {
+      expect(getSyscoinAccountChange({ addressValueIn, addressValueOut })).toBe(
+        expected
+      );
+    }
+  );
+});
+
+describe('getSyscoinOperationAmount', () => {
+  it('uses full bridge burn semantics ahead of native funding or account asset deltas', () => {
+    const full = {
+      ...compactBridgeNativeOffset,
+      vout: [
+        {
+          addresses: ['OP_RETURN'],
+          value: '0',
+          assetInfo: { assetGuid: '123456', value: '100000000' },
+        },
+      ],
+      tokenTransfers: [{ token: '123456', symbol: 'SYSX', decimals: 8 }],
+    };
+    expect(getSyscoinOperationAmount(full)).toMatchObject({
+      amount: 1,
+      symbol: 'SYSX',
+      scope: 'transaction',
+    });
+    expect(getSyscoinOperationAmount(compactBridgeNativeOffset)).toBeNull();
+    expect(getSyscoinOperationAmount(compactBridgeWithAccountAsset)).toBeNull();
+  });
+
+  it('preserves an ordinary SPT account transfer and does not pick an unrelated first asset output', () => {
+    expect(
+      getSyscoinOperationAmount({
+        ...compactBridgeWithAccountAsset,
+        tokenType: 'SPTAssetAllocationSend',
+      })
+    ).toMatchObject({ amount: 0.1, scope: 'account' });
+    expect(
+      getSyscoinOperationAmount({
+        tokenType: 'SPTAssetAllocationSend',
+        vout: [{ assetInfo: { assetGuid: '999', value: '999999999' } }],
+      })
+    ).toBeNull();
+  });
+
+  it('uses the burned output and its metadata, not unrelated asset change or the funding account amount', () => {
+    expect(
+      getSyscoinOperationAmount({
+        tokenType: 'SPTAssetAllocationBurnToNEVM',
+        accountAssetTransfers: [
+          { assetGuid: 'burned', value: '100', decimals: 2, symbol: 'BURN' },
+        ],
+        vout: [
+          {
+            addresses: ['change'],
+            assetInfo: { assetGuid: 'unrelated', value: '99999999' },
+          },
+          {
+            addresses: ['OP_RETURN'],
+            assetInfo: { assetGuid: 'burned', value: '500' },
+          },
+        ],
+      })
+    ).toMatchObject({
+      amount: 5,
+      symbol: 'BURN',
+      decimals: 2,
+      scope: 'transaction',
+    });
+  });
+
+  it('does not select the first of multiple unrelated mint assets', () => {
+    expect(
+      getSyscoinOperationAmount({
+        tokenType: 'SPTAssetAllocationMint',
+        vout: [
+          { assetInfo: { assetGuid: 'first', value: '100000000' } },
+          { assetInfo: { assetGuid: 'second', value: '200000000' } },
+        ],
+      })
+    ).toBeNull();
+  });
+
+  it('rejects multiple burn outputs rather than taking the first one', () => {
+    expect(
+      getSyscoinOperationAmount({
+        ...compactBridgeWithAccountAsset,
+        vout: ['10000000', '20000000'].map((value) => ({
+          addresses: ['OP_RETURN'],
+          assetInfo: { assetGuid: '123456', value },
+        })),
+      })
+    ).toBeNull();
+  });
+
+  it('uses minted asset net and native conversion amount without native-account attribution', () => {
+    expect(
+      getSyscoinOperationAmount({
+        tokenType: 'SPTAssetAllocationMint',
+        vin: [{ assetInfo: { assetGuid: 'minted', value: '100000000' } }],
+        vout: [{ assetInfo: { assetGuid: 'minted', value: '300000000' } }],
+        tokenTransfers: [{ token: 'minted', decimals: 8, symbol: 'MINT' }],
+      })
+    ).toMatchObject({ amount: 2, symbol: 'MINT', scope: 'transaction' });
+    expect(
+      getSyscoinOperationAmount({
+        tokenType: 'SPTSyscoinBurnToAssetAllocation',
+        vout: [{ addresses: ['OP_RETURN'], value: '300000000' }],
+      })
+    ).toMatchObject({ amount: 3, symbol: 'SYSX', scope: 'transaction' });
+  });
+
+  it('keeps SPT receive direction independent of native funding', () => {
+    expect(
+      getSyscoinOperationAmount({
+        ...compactBridgeWithAccountAsset,
+        tokenType: 'SPTAssetAllocationSend',
+        direction: 'sent',
+        accountAssetTransfers: [
+          {
+            assetGuid: '123456',
+            value: '10000000',
+            decimals: 8,
+            symbol: 'SYSX',
+          },
+        ],
+        vout: [
+          {
+            isOwn: true,
+            assetInfo: { assetGuid: '123456', value: '10000000' },
+          },
+        ],
+      })
+    ).toMatchObject({ amount: 0.1, direction: 'received', scope: 'account' });
+  });
+
+  it.each(['sent', 'received'])(
+    'does not infer SPT direction from an absolute account amount or native %s direction',
+    (nativeDirection) => {
+      expect(
+        getSyscoinOperationAmount({
+          ...compactBridgeWithAccountAsset,
+          tokenType: 'SPTAssetAllocationSend',
+          direction: nativeDirection,
+        })
+      ).toMatchObject({ amount: 0.1, direction: undefined, scope: 'account' });
+    }
+  );
 });

@@ -1132,13 +1132,13 @@ describe('send forms across wallet navigation', () => {
         fireEvent.click(
           screen.getByRole('button', { name: `buttons.${action}` })
         );
-        const [path, back] = mockNavigate.mock.calls
+        const [returnPath, back] = mockNavigate.mock.calls
           .filter(([target]) => target === '/send/sys')
           .pop()!;
         confirm.unmount();
 
         window.history.replaceState(null, '', '/app.html#/send/sys');
-        mockLocation = { pathname: path, state: back.state };
+        mockLocation = { pathname: returnPath, state: back.state };
         const restored = render(<SendSys />);
         await act(async () => {
           jest.advanceTimersByTime(100);
@@ -1370,13 +1370,13 @@ describe('send forms across wallet navigation', () => {
         };
         const confirm = render(<SendConfirm />);
         fireEvent.click(screen.getByRole('button', { name: 'buttons.cancel' }));
-        const [path, back] = mockNavigate.mock.calls
+        const [returnPath, back] = mockNavigate.mock.calls
           .filter(([target]) => target === '/send/sys')
           .pop()!;
         expect(back.state.formValues.fee).toBe('0.0000002');
         confirm.unmount();
         window.history.replaceState(null, '', '/app.html#/send/sys');
-        mockLocation = { pathname: path, state: back.state };
+        mockLocation = { pathname: returnPath, state: back.state };
         render(<SendSys />);
         await act(async () => undefined);
         expect(
@@ -1413,7 +1413,7 @@ describe('send forms across wallet navigation', () => {
           formValues: { receiver: 'recipient-a', amount: '1' },
         },
       };
-      let finish!: (value: number) => void;
+      let finish!: (recommendedFee: number) => void;
       let fail!: (reason: Error) => void;
       const recommendation = new Promise<number>((resolve, rejection) => {
         finish = resolve;
@@ -1484,6 +1484,208 @@ describe('send forms across wallet navigation', () => {
     }
   );
 
+  it.each([
+    ['0.06547561', '0.06547335'],
+    ['0.12', '0.11999774'],
+  ])(
+    'reviews explicit MAX from one funding quote (%s gross)',
+    async (grossAmount, recipientAmount) => {
+      mockState.vault.isBitcoinBased = true;
+      mockState.vault.activeNetwork.kind = INetworkType.Syscoin;
+      mockState.vault.accounts.HDAccount[0].balances.syscoin = '0.09775331';
+      mockLocation = {
+        ...mockLocation,
+        pathname: '/send/sys',
+        state: {
+          walletScope: getWalletNavigationScope(),
+          formValues: { receiver: 'recipient-a' },
+        },
+      };
+      mockEmitter.mockImplementation((path: string[]) =>
+        path[path.length - 1] === 'getEstimateSysTransactionFee'
+          ? Promise.resolve({
+              fee: 0.00000226,
+              psbt: 'snapshot-unsigned-psbt',
+              grossAmount,
+              recipientAmount,
+            })
+          : Promise.resolve(1.2529296875e-8)
+      );
+      render(<SendSys />);
+      await act(async () => undefined);
+      fireEvent.click(screen.getByText('MAX'));
+      await act(async () => {
+        await mockSubmitForm();
+      });
+      expect(mockEmitter).toHaveBeenCalledWith(
+        ['wallet', 'syscoinTransaction', 'getEstimateSysTransactionFee'],
+        [
+          expect.objectContaining({
+            amount: '0.09775331',
+            isMax: true,
+            nativeSweep: true,
+          }),
+        ]
+      );
+      expect(navigateWithContext).toHaveBeenCalledWith(
+        mockNavigate,
+        '/send/confirm',
+        expect.objectContaining({
+          tx: expect.objectContaining({
+            amount: grossAmount,
+            fee: 0.00000226,
+            isMax: true,
+            psbt: 'snapshot-unsigned-psbt',
+          }),
+        }),
+        expect.any(Object)
+      );
+    }
+  );
+
+  it('never expands a manually entered full-balance amount into a fresh sweep', async () => {
+    mockState.vault.isBitcoinBased = true;
+    mockState.vault.activeNetwork.kind = INetworkType.Syscoin;
+    mockState.vault.accounts.HDAccount[0].balances.syscoin = '0.09775331';
+    mockLocation = {
+      ...mockLocation,
+      pathname: '/send/sys',
+      state: {
+        walletScope: getWalletNavigationScope(),
+        formValues: { receiver: 'recipient-a', amount: '0.09775331' },
+      },
+    };
+    mockEmitter.mockImplementation((path: string[]) =>
+      path[path.length - 1] === 'getEstimateSysTransactionFee'
+        ? Promise.resolve({
+            fee: 0.00000226,
+            psbt: 'bounded-unsigned-psbt',
+            grossAmount: '0.12',
+            recipientAmount: '0.11999774',
+          })
+        : Promise.resolve(1.2529296875e-8)
+    );
+    render(<SendSys />);
+    await act(async () => undefined);
+    await act(async () => {
+      await mockSubmitForm();
+    });
+    const request = mockEmitter.mock.calls.find(
+      ([path]) => path[path.length - 1] === 'getEstimateSysTransactionFee'
+    )[1][0];
+    expect(request).not.toHaveProperty('nativeSweep');
+    expect(navigateWithContext).toHaveBeenCalledWith(
+      mockNavigate,
+      '/send/confirm',
+      expect.objectContaining({
+        tx: expect.objectContaining({ amount: '0.09775331' }),
+      }),
+      expect.any(Object)
+    );
+  });
+
+  it('discards a MAX quote after a manual edit returns to the same amount', async () => {
+    mockState.vault.isBitcoinBased = true;
+    mockState.vault.activeNetwork.kind = INetworkType.Syscoin;
+    mockState.vault.accounts.HDAccount[0].balances.syscoin = '0.09775331';
+    mockLocation = {
+      ...mockLocation,
+      pathname: '/send/sys',
+      state: {
+        walletScope: getWalletNavigationScope(),
+        formValues: { receiver: 'recipient-a' },
+      },
+    };
+    let finishEstimate!: (value: any) => void;
+    const estimate = new Promise((resolve) => {
+      finishEstimate = resolve;
+    });
+    mockEmitter.mockImplementation((path: string[]) =>
+      path[path.length - 1] === 'getEstimateSysTransactionFee'
+        ? estimate
+        : Promise.resolve(1.2529296875e-8)
+    );
+    render(<SendSys />);
+    await act(async () => undefined);
+    fireEvent.click(screen.getByText('MAX'));
+    let pending!: Promise<void>;
+    act(() => {
+      pending = mockSubmitForm();
+    });
+    fireEvent.change(screen.getByPlaceholderText('send.amount'), {
+      target: { value: '0.09' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('send.amount'), {
+      target: { value: '0.09775331' },
+    });
+    await act(async () => {
+      finishEstimate({
+        fee: 0.00000226,
+        psbt: 'obsolete-sweep-psbt',
+        grossAmount: '0.12',
+        recipientAmount: '0.11999774',
+      });
+      await pending;
+    });
+    expect(navigateWithContext).not.toHaveBeenCalled();
+    mockEmitter.mockClear();
+    await act(async () => {
+      await mockSubmitForm();
+    });
+    const request = mockEmitter.mock.calls.find(
+      ([path]) => path[path.length - 1] === 'getEstimateSysTransactionFee'
+    )[1][0];
+    expect(request).not.toHaveProperty('nativeSweep');
+    expect(navigateWithContext).toHaveBeenCalledWith(
+      mockNavigate,
+      '/send/confirm',
+      expect.objectContaining({
+        tx: expect.objectContaining({ amount: '0.09775331' }),
+      }),
+      expect.any(Object)
+    );
+  });
+
+  it.each([
+    {},
+    { grossAmount: '0.06547561', recipientAmount: '0.06547561' },
+    { grossAmount: '0.06547561', recipientAmount: '0' },
+    { grossAmount: '-0.06547561', recipientAmount: '0.06547335' },
+    { grossAmount: '6.547561e-2', recipientAmount: '0.06547335' },
+  ])(
+    'refuses an incomplete or inconsistent explicit MAX quote: %j',
+    async (amounts) => {
+      mockState.vault.isBitcoinBased = true;
+      mockState.vault.activeNetwork.kind = INetworkType.Syscoin;
+      mockState.vault.accounts.HDAccount[0].balances.syscoin = '0.09775331';
+      mockLocation = {
+        ...mockLocation,
+        pathname: '/send/sys',
+        state: {
+          walletScope: getWalletNavigationScope(),
+          formValues: { receiver: 'recipient-a' },
+        },
+      };
+      mockEmitter.mockImplementation((path: string[]) =>
+        path[path.length - 1] === 'getEstimateSysTransactionFee'
+          ? Promise.resolve({
+              fee: 0.00000226,
+              psbt: 'invalid-quote-psbt',
+              ...amounts,
+            })
+          : Promise.resolve(1.2529296875e-8)
+      );
+      render(<SendSys />);
+      await act(async () => undefined);
+      fireEvent.click(screen.getByText('MAX'));
+      await act(async () => {
+        await mockSubmitForm();
+      });
+      expect(navigateWithContext).not.toHaveBeenCalled();
+      expect(mockAlert.error).toHaveBeenCalled();
+    }
+  );
+
   it('rebases explicit native MAX on pending debits and keeps the confirmed amount', async () => {
     mockState.vault.isBitcoinBased = true;
     mockState.vault.activeNetwork.kind = INetworkType.Syscoin;
@@ -1498,7 +1700,12 @@ describe('send forms across wallet navigation', () => {
     };
     mockEmitter.mockImplementation((path: string[]) =>
       path[path.length - 1] === 'getEstimateSysTransactionFee'
-        ? Promise.resolve({ fee: 0.00000226, psbt: 'fresh-max-unsigned-psbt' })
+        ? Promise.resolve({
+            fee: 0.00000226,
+            psbt: 'fresh-max-unsigned-psbt',
+            grossAmount: '0.09775761',
+            recipientAmount: '0.09775535',
+          })
         : Promise.resolve(1.25390625e-8)
     );
     const view = render(<SendSys />);
@@ -1664,7 +1871,12 @@ describe('send forms across wallet navigation', () => {
     };
     view.rerender(<SendSys />);
     await act(async () => {
-      finishEstimate({ fee: 0.00000226, psbt: 'stale-max-unsigned-psbt' });
+      finishEstimate({
+        fee: 0.00000226,
+        psbt: 'stale-max-unsigned-psbt',
+        grossAmount: '0.09775761',
+        recipientAmount: '0.09775535',
+      });
       await pending;
     });
     expect(navigateWithContext).not.toHaveBeenCalled();
@@ -1743,7 +1955,7 @@ describe('send forms across wallet navigation', () => {
           formValues: { receiver: 'recipient-a', amount: '1' },
         },
       };
-      let finish!: (value: number) => void;
+      let finish!: (recommendedFee: number) => void;
       let fail!: (reason: Error) => void;
       const recommendation = new Promise<number>((resolve, rejection) => {
         finish = resolve;

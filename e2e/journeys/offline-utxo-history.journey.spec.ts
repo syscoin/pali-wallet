@@ -17,7 +17,7 @@ import {
   UTXO_FIXTURE_SEED,
 } from '../harness/utxoFixture';
 
-test('offline UTXO history: account amounts, bridge type and pending detail units', async () => {
+test('offline UTXO history: bridge value, native account change and pending detail units', async () => {
   test.setTimeout(180000);
   const extensionPath = process.env.PALI_TEST_DAPP_EXTENSION_PATH;
   if (!extensionPath || !path.isAbsolute(extensionPath))
@@ -46,6 +46,8 @@ test('offline UTXO history: account amounts, bridge type and pending detail unit
     blockTime: 1791600000,
     addressValueIn: '10000000',
     addressValueOut: '9999774',
+    valueIn: '10000000',
+    value: '9999774',
     vin: [],
     vout: [],
   };
@@ -139,7 +141,7 @@ test('offline UTXO history: account amounts, bridge type and pending detail unit
       await page.locator('#activity-btn').click();
     };
     await wallet.step(
-      'normal Activity shows both bridge types with their different account amounts',
+      'normal Activity shows bridge values separately from native funding',
       async () => {
         await wallet!.importSeedAndCreatePassword();
         await wallet!.switchNetwork('Syscoin Testnet', 'UTXO');
@@ -149,10 +151,18 @@ test('offline UTXO history: account amounts, bridge type and pending detail unit
           row(compactBridgeNativeOffset.txid).getByText('Bridge to NEVM')
         ).toBeVisible();
         await expect(
-          row(compactBridgeNativeOffset.txid).getByText('29.5985 TSYS')
+          row(compactBridgeNativeOffset.txid).getByText('1.0000 SYSX')
         ).toBeVisible();
         await expect(
-          row(compactBridgeNativeOffset.txid).getByText(/SYSX/)
+          row(compactBridgeNativeOffset.txid).getByText(
+            'Native account balance change: -29.5985194 TSYS',
+            { exact: true }
+          )
+        ).toBeVisible();
+        await expect(
+          row(compactBridgeNativeOffset.txid).getByText('29.5985 TSYS', {
+            exact: true,
+          })
         ).toHaveCount(0);
         await expect(
           row(compactBridgeWithAccountAsset.txid).getByText('Bridge to NEVM')
@@ -160,25 +170,49 @@ test('offline UTXO history: account amounts, bridge type and pending detail unit
         await expect(
           row(compactBridgeWithAccountAsset.txid).getByText('0.100000 SYSX')
         ).toBeVisible();
+        await expect(
+          row(pending.txid).getByText('0.099998 TSYS', { exact: true })
+        ).toBeVisible();
+        await expect(
+          row(pending.txid).getByText(
+            'Native account balance change: -0.00000226 TSYS',
+            { exact: true }
+          )
+        ).toBeVisible();
+        await expect(
+          row(pending.txid).getByText('Fee: 0.00000226 TSYS', { exact: true })
+        ).toBeVisible();
         expect(routes.deniedWrites).toEqual([]);
       }
     );
     await wallet.step(
-      'full transaction details preserve the compact account amount',
+      'full transaction details preserve bridge value and separately label native account change',
       async () => {
         await openDetails(compactBridgeNativeOffset.txid);
         await expect(
-          page.getByText('29.5985194 TSYS', { exact: true })
+          page.getByText('1.0000 SYSX', { exact: true })
         ).toBeVisible();
         await expect(
-          page.getByText('1.0000 SYSX', { exact: true })
-        ).toHaveCount(0);
+          page.getByText('Native account balance change: -29.5985194 TSYS', {
+            exact: true,
+          })
+        ).toBeVisible();
+        await expect(
+          page.getByText('Transaction value', { exact: true })
+        ).toBeVisible();
         await back();
         await openDetails(compactBridgeWithAccountAsset.txid);
         await expect(
           page.getByText('0.100000 SYSX', { exact: true })
         ).toBeVisible();
         await back();
+        for (const bridge of [
+          compactBridgeNativeOffset,
+          compactBridgeWithAccountAsset,
+        ])
+          expect(
+            routes.reads.filter((read) => read === '/api/v2/tx/' + bridge.txid)
+          ).toHaveLength(1);
         expect(routes.deniedWrites).toEqual([]);
       }
     );
@@ -186,6 +220,17 @@ test('offline UTXO history: account amounts, bridge type and pending detail unit
       'pending self-transfer details show fee units and pending block fields',
       async () => {
         await openDetails(pending.txid);
+        await expect(
+          page.getByText('Transaction value', { exact: true })
+        ).toBeVisible();
+        await expect(
+          page.getByText('0.09999774 TSYS', { exact: true })
+        ).toBeVisible();
+        await expect(
+          page.getByText('Native account balance change: -0.00000226 TSYS', {
+            exact: true,
+          })
+        ).toBeVisible();
         await expect(
           page
             .getByText('Fees', { exact: true })

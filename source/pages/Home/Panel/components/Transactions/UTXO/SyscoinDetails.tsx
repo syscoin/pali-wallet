@@ -19,11 +19,18 @@ import { getWalletNavigationScope } from 'utils/navigationState';
 import {
   getSyscoinTransactionTypeLabel,
   getSyscoinTransactionTypeStyle,
-  getSyscoinIntentAmount,
-  getSyscoinAccountDelta,
+  getSyscoinOperationAmount,
+  isSyscoinTokenOperation,
+  getSyscoinNativeTransferAmount,
+  getSyscoinAccountChange,
   formatSyscoinConfirmationETA,
 } from 'utils/syscoinTransactionUtils';
 import { isTransactionInBlock } from 'utils/transactionUtils';
+
+import {
+  mergeAccountOwnershipFlags,
+  readUtxoTransactionDetails,
+} from './utxoTransactionDetails';
 
 // Memoize copy icon to prevent unnecessary re-renders
 const CopyIcon = memo(() => (
@@ -34,34 +41,6 @@ const CopyIcon = memo(() => (
   />
 ));
 CopyIcon.displayName = 'CopyIcon';
-
-const txDetailsCache = new Map<
-  string,
-  { data: ISysTransaction; timestamp: number }
->();
-const CACHE_TTL = 5 * 60 * 1000;
-
-const mergeAccountOwnershipFlags = (
-  accountEntries: any[] | undefined,
-  fullEntries: any[] | undefined
-) => {
-  if (!Array.isArray(accountEntries) || !Array.isArray(fullEntries)) {
-    return fullEntries;
-  }
-
-  return fullEntries.map((entry, index) => {
-    const accountEntry = accountEntries[index];
-
-    if (entry?.isOwn !== undefined || accountEntry?.isOwn === undefined) {
-      return entry;
-    }
-
-    return {
-      ...entry,
-      isOwn: accountEntry.isOwn,
-    };
-  });
-};
 
 const selectFresherStatusTransaction = (
   accountTransaction: ISysTransaction,
@@ -87,6 +66,9 @@ const mergeAccountSummaryWithFullTransaction = (
 
   return {
     ...fullTransaction,
+    tokenType: fullTransaction.tokenType ?? accountTransaction.tokenType,
+    tokenTransfers:
+      fullTransaction.tokenTransfers ?? accountTransaction.tokenTransfers,
     accountAssetTransfers: accountTransaction.accountAssetTransfers,
     addressValueIn: accountTransaction.addressValueIn,
     addressValueOut: accountTransaction.addressValueOut,
@@ -162,34 +144,25 @@ export const SyscoinTransactionDetails = ({
 
       setEnhancedTransaction(null);
 
-      const cacheKey = scope;
-      const cached = txDetailsCache.get(cacheKey);
-      if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
-        if (isCurrent()) {
-          setEnhancedTransaction({ scope, data: cached.data });
-        }
-        return;
-      }
-
       if (fetchingRef.current) return;
 
       fetchingRef.current = true;
       try {
-        const fullTransaction = (await controllerEmitter(
-          ['wallet', 'getSysTransactionFromBlockbook'],
-          [hash, networkUrl]
+        const fullTransaction = (await readUtxoTransactionDetails(
+          scope,
+          hash,
+          () =>
+            controllerEmitter(
+              ['wallet', 'getSysTransactionFromBlockbook'],
+              [hash, networkUrl]
+            ),
+          isCurrent
         )) as ISysTransaction | null;
 
         if (
           isCurrent() &&
           fullTransaction?.txid?.toLowerCase() === normalizedHash
         ) {
-          txDetailsCache.set(cacheKey, {
-            data: fullTransaction,
-            timestamp: Date.now(),
-          });
-          if (txDetailsCache.size > 100)
-            txDetailsCache.delete(txDetailsCache.keys().next().value);
           setEnhancedTransaction({ scope, data: fullTransaction });
         }
       } catch (error) {
@@ -246,7 +219,11 @@ export const SyscoinTransactionDetails = ({
   let isTxCanceled: boolean;
   let isConfirmed: boolean;
   let isTxSent: boolean;
-  let txValue: number | string | null = null;
+  const nativeIntent = getSyscoinNativeTransferAmount(
+    accountTransaction,
+    rawTransaction
+  );
+  const nativeAccountChange = getSyscoinAccountChange(accountTransaction);
 
   useEffect(() => {
     if (rawTransaction) {
@@ -302,9 +279,6 @@ export const SyscoinTransactionDetails = ({
   const txSource =
     rawTransaction && (rawTransaction as any).txid ? rawTransaction : null;
   if (txSource) {
-    // A full transaction lookup has no account scope. Keep the native amount
-    // from the passed account row, and wait when a minimal pending row lacks it.
-    txValue = getSyscoinAccountDelta(accountTransaction);
     isTxCanceled = Boolean((txSource as any)?.isCanceled);
     isConfirmed = isTransactionInBlock(txSource as any);
     isTxSent = (txSource as any)?.direction === 'sent';
@@ -438,22 +412,25 @@ export const SyscoinTransactionDetails = ({
             : getSyscoinTransactionTypeLabel(rawTransaction?.tokenType)}
         </p>
 
-        {accountTransaction && (
+        {(accountTransaction || isSyscoinTokenOperation(rawTransaction)) && (
           <p className="text-brand-gray200 text-xs mt-1">
-            {t('send.accountBalanceChange')}
+            {t(
+              nativeIntent?.outputTotal
+                ? 'send.selfTransferOutputTotal'
+                : 'send.transactionValue'
+            )}
           </p>
         )}
 
-        {/* Display the queried account's change, not a global output amount. */}
-        {accountTransaction &&
+        {/* Token operation value is distinct from native account funding. */}
+        {(accountTransaction || isSyscoinTokenOperation(rawTransaction)) &&
           (() => {
-            // Header amounts stay relative to the account, even after fetching
-            // transaction-wide asset information for the detail fields.
-            const intent = getSyscoinIntentAmount(accountTransaction);
+            const intent = getSyscoinOperationAmount(rawTransaction);
 
             if (intent) {
               const decimals = intent.decimals ?? 8;
-              const symbol = intent.symbol ?? 'SYSX';
+              const symbol =
+                intent.symbol ?? `SPT (${intent.assetGuid || '?'})`;
 
               return (
                 <p className="text-white text-base">
@@ -465,14 +442,25 @@ export const SyscoinTransactionDetails = ({
             // Priority 2: For regular SYS transactions without asset transfers
             return (
               <p className="text-white text-base">
-                {txValue === null
+                {isSyscoinTokenOperation(rawTransaction) || !nativeIntent
                   ? t('settings.unavailable')
-                  : `${formatSyscoinValue(txValue)} ${
+                  : `${formatSyscoinValue(nativeIntent.amount)} ${
                       currency?.toUpperCase() || 'SYS'
                     }`}
               </p>
             );
           })()}
+
+        {accountTransaction && nativeAccountChange !== null && (
+          <p className="text-brand-gray200 text-xs mt-1">
+            {t('send.nativeBalanceChange')}:{' '}
+            {nativeAccountChange !== '0' && !nativeAccountChange.startsWith('-')
+              ? '+'
+              : ''}
+            {formatSyscoinValue(nativeAccountChange)}{' '}
+            {currency?.toUpperCase() || 'SYS'}
+          </p>
+        )}
 
         {(() => {
           // Detect SPT tx (either explicit tokenType or vout with assetInfo)

@@ -159,7 +159,7 @@ it.each(['null', 'rejected', 'wrong-hash'])(
   }
 );
 
-it('uses current summary confirmation and account amount over pending raw cached metadata', async () => {
+it('uses current summary confirmation and separate native change over pending raw cached metadata', async () => {
   mockEmitter.mockResolvedValue(rawTransaction());
   const first = render(<SyscoinTransactionDetails hash={mockHash} />);
   await screen.findByText('raw-from');
@@ -177,7 +177,10 @@ it('uses current summary confirmation and account amount over pending raw cached
   const view = render(
     <SyscoinTransactionDetails hash={mockHash} tx={summary} />
   );
-  expect(await screen.findByText('2 SYS')).toBeTruthy();
+  expect(
+    await screen.findByText('send.nativeBalanceChange: -2 SYS')
+  ).toBeTruthy();
+  expect(screen.queryByText('2 SYS')).toBeNull();
   expect(screen.getByText('send.confirmed')).toBeTruthy();
   expect(screen.queryByText('send.pending')).toBeNull();
   expect(confirmationValue().textContent).toBe('7');
@@ -194,7 +197,7 @@ it('uses current summary confirmation and account amount over pending raw cached
       }}
     />
   );
-  expect(screen.getByText('3 SYS')).toBeTruthy();
+  expect(screen.getByText('send.nativeBalanceChange: -3 SYS')).toBeTruthy();
   expect(screen.queryByText('2 SYS')).toBeNull();
   expect(confirmationValue().textContent).toBe('8');
   expect(mockEmitter).toHaveBeenCalledTimes(1);
@@ -219,7 +222,7 @@ it.each([false, true])(
 
     await screen.findByText('raw-from');
     expect(detailValue('Fees', '0.00000226 TSYS')).toBeTruthy();
-    expect(screen.getByText('send.accountBalanceChange')).toBeTruthy();
+    expect(screen.getByText('send.transactionValue')).toBeTruthy();
     expect(detailValue('Block Hash', 'send.pending')).toBeTruthy();
     expect(detailValue('Block Time', 'send.pending')).toBeTruthy();
     expect(screen.queryByText('undefined')).toBeNull();
@@ -245,7 +248,7 @@ it('formats a confirmed block time using the selected language', async () => {
   expect(screen.queryByText(String(blockTime))).toBeNull();
 });
 
-it('keeps an exact native account amount stable while full details hydrate', async () => {
+it('hydrates a native self-send output value while keeping its small native change secondary', async () => {
   const full = deferred<ISysTransaction>();
   mockEmitter.mockReturnValue(full.promise);
   const summary = rawTransaction({
@@ -253,13 +256,31 @@ it('keeps an exact native account amount stable while full details hydrate', asy
     addressValueOut: '100000000',
     vin: [],
     vout: [],
-    fees: '1000',
+    fees: '226',
   });
   render(<SyscoinTransactionDetails hash={mockHash} tx={summary} />);
-  expect(screen.getByText('0.00000226 SYS')).toBeTruthy();
-  await act(async () => full.resolve(rawTransaction()));
+  expect(
+    screen.getByText('send.nativeBalanceChange: -0.00000226 SYS')
+  ).toBeTruthy();
+  expect(
+    within(
+      screen.getByText('send.transactionValue').parentElement!
+    ).queryByText('0.00000226 SYS')
+  ).toBeNull();
+  await act(async () =>
+    full.resolve(
+      rawTransaction({
+        fees: '226',
+        vin: [{ addresses: ['raw-from'], value: '100000226' }] as any,
+        vout: [{ addresses: ['raw-to'], value: '100000000' }] as any,
+      })
+    )
+  );
   expect(await screen.findByText('raw-from')).toBeTruthy();
-  expect(screen.getByText('0.00000226 SYS')).toBeTruthy();
+  expect(screen.getByText('1 SYS')).toBeTruthy();
+  expect(
+    screen.getByText('send.nativeBalanceChange: -0.00000226 SYS')
+  ).toBeTruthy();
   expect(screen.queryByText('9 SYS')).toBeNull();
 });
 
@@ -284,15 +305,37 @@ it('waits for account totals instead of inferring an amount from a full output',
       }}
     />
   );
-  expect(screen.getByText('0 SYS')).toBeTruthy();
-  expect(screen.queryByText('settings.unavailable')).toBeNull();
+  expect(screen.getByText('send.nativeBalanceChange: 0 SYS')).toBeTruthy();
+  expect(screen.getByText('settings.unavailable')).toBeTruthy();
+  expect(screen.queryByText('0 SYS')).toBeNull();
+});
+
+it('labels multiple all-self native outputs as a total in Details', async () => {
+  const tx = rawTransaction({
+    fees: '226',
+    addressValueIn: '100000226',
+    addressValueOut: '100000000',
+    vin: [{ addresses: ['raw-from'], value: '100000226' }] as any,
+    vout: [
+      { addresses: ['raw-to'], value: '20000000' },
+      { addresses: ['raw-change'], value: '80000000' },
+    ] as any,
+  });
+  mockEmitter.mockResolvedValueOnce(tx);
+  render(<SyscoinTransactionDetails hash={mockHash} tx={tx} />);
+  expect(screen.getByText('send.selfTransferOutputTotal')).toBeTruthy();
+  expect(screen.getByText('1 SYS')).toBeTruthy();
+  expect(
+    screen.getByText('send.nativeBalanceChange: -0.00000226 SYS')
+  ).toBeTruthy();
+  await screen.findByText('raw-from');
 });
 
 it.each([
-  [compactBridgeNativeOffset, '29.5985194 SYS'],
+  [compactBridgeNativeOffset, '1.0000 SYSX'],
   [compactBridgeWithAccountAsset, '0.100000 SYSX'],
 ])(
-  'keeps compact bridge account amounts after full transaction hydration',
+  'shows actual compact bridge operation value after full transaction hydration',
   async (compact, amount) => {
     const summary = rawTransaction({
       ...compact,
@@ -303,7 +346,9 @@ it.each([
     const full = deferred<ISysTransaction>();
     mockEmitter.mockReturnValue(full.promise);
     render(<SyscoinTransactionDetails hash={mockHash} tx={summary} />);
-    expect(screen.getByText(amount)).toBeTruthy();
+    expect(screen.getAllByText('settings.unavailable').length).toBeGreaterThan(
+      0
+    );
     await act(async () =>
       full.resolve(
         rawTransaction({
@@ -314,15 +359,27 @@ it.each([
             {
               addresses: ['OP_RETURN'],
               value: '0',
-              assetInfo: { assetGuid: '123456', value: '100000000' },
+              assetInfo: {
+                assetGuid: '123456',
+                value:
+                  compact === compactBridgeNativeOffset
+                    ? '100000000'
+                    : '10000000',
+              },
             },
+          ] as any,
+          tokenTransfers: [
+            { token: '123456', symbol: 'SYSX', decimals: 8 },
           ] as any,
         })
       )
     );
     expect(await screen.findByText('raw-from')).toBeTruthy();
     expect(screen.getByText(amount)).toBeTruthy();
-    expect(screen.queryByText('1.0000 SYSX')).toBeNull();
+    expect(screen.getByText('send.transactionValue')).toBeTruthy();
+    expect(
+      screen.getByText(new RegExp('send.nativeBalanceChange'))
+    ).toBeTruthy();
     expect(screen.getAllByText('Bridge to NEVM').length).toBeGreaterThan(0);
   }
 );
@@ -340,6 +397,7 @@ it.each(
       .mockReturnValueOnce(old.promise)
       .mockReturnValueOnce(current.promise);
     const view = render(<SyscoinTransactionDetails hash={mockHash} />);
+    await waitFor(() => expect(mockEmitter).toHaveBeenCalledTimes(1));
     mockState = {
       ...mockState,
       scope: { ...mockState.scope, [scope]: `${scope}-b` },

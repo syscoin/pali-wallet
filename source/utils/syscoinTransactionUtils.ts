@@ -34,6 +34,17 @@ export const getSyscoinAccountDelta = (transaction: {
   }
 };
 
+/** Signed native account movement, independent of the token operation direction. */
+export const getSyscoinAccountChange = (transaction: {
+  addressValueIn?: string;
+  addressValueOut?: string;
+}): string | null => {
+  if (getSyscoinAccountDelta(transaction) === null) return null;
+  return BigNumber.from(String(transaction?.addressValueOut ?? '0'))
+    .sub(String(transaction?.addressValueIn ?? '0'))
+    .toString();
+};
+
 export const formatSyscoinConfirmationETA = (transaction: {
   confirmationETASeconds?: number;
 }): string | null => {
@@ -101,7 +112,7 @@ const compareNormalizedTransferValues = (a: any, b: any) => {
 export const normalizeSyscoinTransactionType = (
   tokenType: string | undefined
 ): string | undefined => {
-  if (!tokenType) return undefined;
+  if (typeof tokenType !== 'string' || !tokenType) return undefined;
 
   // First, normalize to lowercase and remove underscores
   const normalized = tokenType.toLowerCase().replace(/_/g, '');
@@ -412,6 +423,200 @@ export const getSyscoinIntentAmount = (
     };
   }
 
+  return null;
+};
+
+/** Token-operation values are separate from native funding/account deltas. */
+export const isSyscoinTokenOperation = (transaction: any): boolean => {
+  const kind = normalizeSyscoinTransactionType(transaction?.tokenType);
+  return Boolean(
+    (kind && kind !== 'nevmdata') ||
+      transaction?.accountAssetTransfers?.length ||
+      transaction?.tokenTransfers?.length ||
+      [transaction?.vin, transaction?.vout].some(
+        (entries) =>
+          Array.isArray(entries) && entries.some((entry) => entry?.assetInfo)
+      )
+  );
+};
+
+/**
+ * A native transfer/output value, not the account's fee-inclusive balance delta.
+ * Compact value/valueIn are account aliases; only full input/output arrays can
+ * prove that a spend is wholly funded by this account.
+ */
+export const getSyscoinNativeTransferAmount = (
+  account: any,
+  full: any = account
+): {
+  amount: string;
+  direction?: 'sent' | 'received';
+  kind: 'external' | 'received' | 'self';
+  outputTotal?: boolean;
+} | null => {
+  if (
+    typeof account?.txid !== 'string' ||
+    !/^[a-f0-9]{64}$/i.test(account.txid) ||
+    typeof full?.txid !== 'string' ||
+    full.txid.toLowerCase() !== account.txid.toLowerCase() ||
+    isSyscoinTokenOperation(account) ||
+    isSyscoinTokenOperation(full)
+  )
+    return null;
+  const atomic = (value: unknown) => {
+    if (
+      (typeof value !== 'string' && typeof value !== 'number') ||
+      (typeof value === 'number' && !Number.isSafeInteger(value)) ||
+      !/^\d+$/.test(String(value))
+    )
+      throw new Error('Invalid native transaction amount');
+    return BigNumber.from(String(value));
+  };
+  try {
+    const accountIn = atomic(account.addressValueIn);
+    const accountOut = atomic(account.addressValueOut);
+    if (accountIn.isZero()) {
+      return accountOut.gt(0)
+        ? {
+            amount: accountOut.toString(),
+            direction: 'received',
+            kind: 'received',
+          }
+        : null;
+    }
+    if (
+      !Array.isArray(full.vin) ||
+      !full.vin.length ||
+      !Array.isArray(full.vout) ||
+      !full.vout.length
+    )
+      return null;
+    // Equality of positive input totals proves none belongs to another account.
+    // A foreign zero-value input would not affect that equality, so leave such
+    // collaborative/ambiguous records unavailable rather than claiming ownership.
+    if (full.vin.some((entry: any) => atomic(entry?.value).isZero()))
+      return null;
+    const sum = (entries: any[]) =>
+      entries.reduce(
+        (total, entry) => total.add(atomic(entry?.value)),
+        BigNumber.from(0)
+      );
+    const inputTotal = sum(full.vin);
+    const outputTotal = sum(full.vout);
+    const fee = atomic(full.fees ?? account.fees);
+    if (
+      !accountIn.eq(inputTotal) ||
+      accountOut.gt(outputTotal) ||
+      outputTotal.lte(0) ||
+      !outputTotal.add(fee).eq(inputTotal)
+    )
+      return null;
+    const external = outputTotal.sub(accountOut);
+    return external.gt(0)
+      ? { amount: external.toString(), direction: 'sent', kind: 'external' }
+      : {
+          amount: outputTotal.toString(),
+          kind: 'self',
+          outputTotal:
+            full.vout.filter((entry: any) => atomic(entry.value).gt(0)).length >
+            1,
+        };
+  } catch {
+    return null;
+  }
+};
+
+export const getSyscoinOperationAmount = (
+  transaction: any
+):
+  | (NonNullable<ReturnType<typeof getSyscoinIntentAmount>> & {
+      direction?: 'sent' | 'received';
+      scope: 'transaction' | 'account';
+    })
+  | null => {
+  if (!isSyscoinTokenOperation(transaction)) return null;
+  const kind = normalizeSyscoinTransactionType(transaction?.tokenType);
+  const bridge = kind && kind !== 'assetallocationsend' && kind !== 'nevmdata';
+  if (bridge) {
+    // Full bridge burn/mint semantics take precedence over an account's funding
+    // or asset delta. Do not select an arbitrary asset from a multi-asset record.
+    const outputs = Array.isArray(transaction?.vout) ? transaction.vout : [];
+    const assetBurn =
+      kind === 'assetallocationburntoethereum' ||
+      kind === 'assetallocationburntosyscoin';
+    const nativeBurn = kind === 'syscoinburntoallocation';
+    const relevantOutputs =
+      assetBurn || nativeBurn
+        ? outputs.filter(
+            (output: any) =>
+              typeof output?.addresses?.[0] === 'string' &&
+              output.addresses[0].startsWith('OP_RETURN') &&
+              (!assetBurn || output.assetInfo)
+          )
+        : outputs;
+    if ((assetBurn || nativeBurn) && relevantOutputs.length !== 1) return null;
+    const assets = new Set<string>();
+    for (const output of relevantOutputs)
+      if (output?.assetInfo?.assetGuid)
+        assets.add(String(output.assetInfo.assetGuid));
+    if (assets.size <= 1) {
+      const operation = getSyscoinIntentAmount({
+        ...transaction,
+        vout: relevantOutputs,
+        accountAssetTransfers: [],
+        // Account metadata can describe precision/symbol without implying that
+        // the account owns the transaction-wide burned or minted asset.
+        tokenTransfers: [
+          ...(Array.isArray(transaction.accountAssetTransfers)
+            ? transaction.accountAssetTransfers
+            : []),
+          ...(Array.isArray(transaction.tokenTransfers)
+            ? transaction.tokenTransfers
+            : []),
+        ],
+      });
+      if (operation && operation.amount > 0)
+        return { ...operation, scope: 'transaction' as const };
+    }
+    return null;
+  }
+  // Ordinary allocation transfers use the relevant account asset, not a
+  // transaction-wide first output or the native funding account's direction.
+  const account = getSyscoinIntentAmount(transaction);
+  if (account && account.amount > 0) {
+    let direction: 'sent' | 'received' | undefined;
+    const transfers = Array.isArray(transaction.accountAssetTransfers)
+      ? transaction.accountAssetTransfers
+      : [];
+    if (transfers.length) {
+      const transfer = transfers.reduce((selected: any, current: any) =>
+        compareNormalizedTransferValues(current, selected) > 0
+          ? current
+          : selected
+      );
+      if (transfer.direction === 'sent' || transfer.direction === 'received')
+        direction = transfer.direction;
+    }
+    if (!direction) {
+      // Blockbook compact accountAssetTransfers contains absolute values. Its
+      // positive amount (and the native funding direction) says nothing about
+      // whether this account sent or received the asset.
+      const ownedAmount = (entries: any) =>
+        Array.isArray(entries)
+          ? entries.reduce(
+              (total: number, entry: any) =>
+                entry?.isOwn === true &&
+                entry?.assetInfo?.assetGuid === account.assetGuid
+                  ? total + parseAssetValue(entry.assetInfo, account.decimals)
+                  : total,
+              0
+            )
+          : 0;
+      const net = ownedAmount(transaction.vout) - ownedAmount(transaction.vin);
+      if (net !== 0) direction = net < 0 ? 'sent' : 'received';
+    }
+    return { ...account, direction, scope: 'account' };
+  }
   return null;
 };
 

@@ -6305,9 +6305,16 @@ class MainController {
     const nativeKey = `${this.accountBalanceKeyPrefix(
       activeNetwork,
       activeAccount,
-      currentAccount.address
+      isBitcoinBased
+        ? currentAccount.xpub || currentAccount.address
+        : currentAccount.address
     )}native`;
-    const nativeReadIsCurrent = this.captureBalanceReadVersion(nativeKey);
+    // UTXO polls and foreground refreshes can overlap for the same account.
+    // Its xpub stays stable when receiving addresses rotate. Only the latest
+    // read owns that snapshot. EVM ordering with receipt reads stays unchanged.
+    const nativeReadIsCurrent = isBitcoinBased
+      ? this.beginTargetedBalanceRead(nativeKey)
+      : this.captureBalanceReadVersion(nativeKey);
 
     // No need to create a new provider - let the BalancesManager use its own provider
     // The BalancesManager already handles EVM vs UTXO networks correctly
@@ -6328,15 +6335,14 @@ class MainController {
 
             const latestNetwork = store.getState().vault.activeNetwork;
             if (
-              (!isBitcoinBased &&
-                (nativeRevision !== this.nativeBalanceRevision ||
-                  !nativeReadIsCurrent())) ||
+              nativeRevision !== this.nativeBalanceRevision ||
+              !nativeReadIsCurrent() ||
               latestNetwork.chainId !== activeNetwork.chainId ||
               latestNetwork.kind !== activeNetwork.kind ||
               latestNetwork.url !== activeNetwork.url
             ) {
               console.log(
-                '[MainController] Skipping stale balance update after network change'
+                '[MainController] Skipping superseded balance or changed wallet context'
               );
               clearBalanceLoadingIfOwned();
               resolve();
