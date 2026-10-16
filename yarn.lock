@@ -3025,10 +3025,10 @@
   resolved "https://registry.npmjs.org/@sidhujag/sysweb3-core/-/sysweb3-core-1.0.29.tgz#ba86f171956513e423d2c328c9098ddbc76774d1"
   integrity sha512-ZQGSdwHG2Q9FX+PbHj3MnV6I413z+pN2Sm2qjoi1TrOqWZHXVnzfhjvxkj9s3djfTD56OAiu1nW2TUhX98rrdQ==
 
-"@sidhujag/sysweb3-keyring@^1.0.618":
-  version "1.0.618"
-  resolved "https://registry.npmjs.org/@sidhujag/sysweb3-keyring/-/sysweb3-keyring-1.0.618.tgz#0c01acfb190d17295ee6db07db3bffbbcfde8514"
-  integrity sha512-/0CmIyeRuFi9EQ4VAWvqGE0nrlx1qImkjGKguxUQg4PtE9A4Tg47ep+MES5Qpms/R/DvaGYzUer8f0ItMGd5Tw==
+"@sidhujag/sysweb3-keyring@1.0.619":
+  version "1.0.619"
+  resolved "https://registry.npmjs.org/@sidhujag/sysweb3-keyring/-/sysweb3-keyring-1.0.619.tgz#312bb42fdf447a460e3ff940b1758503b1b358c2"
+  integrity sha512-zAjdOm0ZTbMlYBiDvciHXYtrYg+wwd2I1zJgso2m6VQPs9lzyEAae8D/yBZkmtvr8xXUdMXIPBrj1CsDIPeu1g==
   dependencies:
     "@bitcoinerlab/secp256k1" "^1.2.0"
     "@ledgerhq/hw-app-eth" "^6.47.1"
