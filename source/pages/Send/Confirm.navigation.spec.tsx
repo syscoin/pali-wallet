@@ -96,10 +96,10 @@ jest.mock('state/vault/selectors', () => ({
   selectValidEnsCache: () => ({}),
 }));
 jest.mock('components/index', () => ({
-  Button: ({ children, onClick, disabled }: any) => {
+  Button: ({ children, onClick, disabled, variant }: any) => {
     if (children === 'buttons.confirm') mockConfirmClick = onClick;
     return (
-      <button onClick={onClick} disabled={disabled}>
+      <button onClick={onClick} disabled={disabled} data-variant={variant}>
         {children}
       </button>
     );
@@ -988,7 +988,9 @@ it('an ambiguous attempt returns only to its public caller after trust recovers'
     'send.submissionStatusUnknown'
   );
   expect(screen.queryByRole('button', { name: 'buttons.confirm' })).toBeNull();
-  fireEvent.click(screen.getByRole('button', { name: 'buttons.cancel' }));
+  const close = screen.getByRole('button', { name: 'buttons.close' });
+  expect(close.getAttribute('data-variant')).toBe('secondary');
+  fireEvent.click(close);
   expect(mockNavigate).toHaveBeenCalledWith('/home?tab=activity');
   const context = mockNavigateBack.mock.calls[0][1].state.returnContext;
   expect(JSON.stringify(context)).not.toContain('/send/sys');
@@ -1081,6 +1083,32 @@ it('does not save a confirmation again when submission outcome is unknown', asyn
       returnContext: undefined,
     },
   });
+});
+
+it('a proven fee rejection keeps the active unsigned confirmation editable without unknown status', async () => {
+  const originalState = mockLocation.state;
+  mockControllerEmitter.mockImplementation(async ([, method]: string[]) => {
+    if (method === 'refreshActiveAccountBalances')
+      return { nativeBalance: '100' };
+    throw Object.assign(new Error('Lower the transaction fee'), {
+      transactionNotBroadcast: true,
+    });
+  });
+  render(<SendConfirm />);
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
+  await waitFor(() => expect(mockAlert.error).toHaveBeenCalled());
+  expect(screen.queryByRole('status')).toBeNull();
+  expect(
+    screen
+      .getByRole('button', { name: 'buttons.confirm' })
+      .hasAttribute('disabled')
+  ).toBe(false);
+  expect(mockNavigate).toHaveBeenLastCalledWith('/send/confirm', {
+    replace: true,
+    state: originalState,
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.cancel' }));
+  expect(mockNavigate).toHaveBeenLastCalledWith('/send/sys');
 });
 
 it('removes transaction payload from history before RPC and rejects a duplicate pending attempt', async () => {
@@ -1265,7 +1293,7 @@ it('native MAX display leaves the total as gross debit and displays the quoted f
   expect(screen.getByText('Total (send.amountAndFee)').textContent).toContain(
     '0.00100000 SYS'
   );
-  expect(screen.getByText('send.estimatedGasFee').textContent).toContain(
+  expect(screen.getByText('send.networkFee').textContent).toContain(
     '0.00000113 SYS'
   );
 });

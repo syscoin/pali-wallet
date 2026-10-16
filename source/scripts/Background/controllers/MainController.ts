@@ -5129,10 +5129,10 @@ class MainController {
     isTrezor?: boolean;
     psbt?: any;
   }): Promise<any> {
-    this.assertWalletReadyForSigning();
-    const { isBitcoinBased } = store.getState().vault;
-
+    let senderInvoked = false;
     try {
+      this.assertWalletReadyForSigning();
+      const { isBitcoinBased, activeNetwork } = store.getState().vault;
       if (isBitcoinBased && params.psbt) {
         // UTXO flow: sign -> send -> save
         const signing = this.captureUtxoSigningContext(params.expectedContext);
@@ -5146,7 +5146,29 @@ class MainController {
         });
         signing.assertCurrent();
 
+        // Reject incomplete or excessive-fee signatures before the sender can
+        // publish anything. Keep the normal PSBT fee safety check enabled.
+        try {
+          PsbtUtils.fromPali(signedPsbt, activeNetwork).extractTransaction();
+        } catch (error) {
+          if (
+            error instanceof Error &&
+            error.message.startsWith('Warning: You are paying around ') &&
+            error.message.includes('setMaximumFeeRate')
+          ) {
+            throw Object.assign(
+              new Error(
+                'Transaction fee exceeds the wallet safety limit. Lower the fee and try again.'
+              ),
+              { code: 'UTXO_FEE_RATE_EXCEEDED' }
+            );
+          }
+          throw error;
+        }
+        signing.assertCurrent();
+
         // Step 2: Send the transaction
+        senderInvoked = true;
         const txResult = await signing.transactions.sendTransaction(signedPsbt);
         // Broadcast acknowledgement is authoritative even if the user changes
         // context or local history persistence fails afterward.
@@ -5177,7 +5199,17 @@ class MainController {
           e
         );
       }
-      throw error;
+      throw Object.assign(
+        new Error(
+          error instanceof Error
+            ? error.message
+            : typeof error?.message === 'string'
+            ? error.message
+            : 'Failed to submit transaction.'
+        ),
+        error && typeof error === 'object' ? error : {},
+        { transactionNotBroadcast: !senderInvoked }
+      );
     }
   }
 

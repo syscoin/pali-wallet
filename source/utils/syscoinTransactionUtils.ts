@@ -9,6 +9,31 @@ import { BigNumber } from 'utils/ethersV6Compat';
 import { formatSyscoinValue } from './formatSyscoinValue';
 import type { CSSProperties } from 'react';
 
+/** Absolute native balance change for the account queried by Blockbook. */
+export const getSyscoinAccountDelta = (transaction: {
+  addressValueIn?: string;
+  addressValueOut?: string;
+}): string | null => {
+  if (
+    transaction?.addressValueIn === undefined &&
+    transaction?.addressValueOut === undefined
+  ) {
+    return null;
+  }
+
+  try {
+    const valueIn = BigNumber.from(String(transaction?.addressValueIn ?? '0'));
+    const valueOut = BigNumber.from(
+      String(transaction?.addressValueOut ?? '0')
+    );
+    return valueIn.gte(valueOut)
+      ? valueIn.sub(valueOut).toString()
+      : valueOut.sub(valueIn).toString();
+  } catch {
+    return null;
+  }
+};
+
 export const formatSyscoinConfirmationETA = (transaction: {
   confirmationETASeconds?: number;
 }): string | null => {
@@ -173,7 +198,13 @@ const parseAssetValue = (assetInfo: IAssetInfo, decimals?: number): number => {
  * @returns Object with amount and assetGuid, or null if no intent found
  */
 export const getSyscoinIntentAmount = (
-  transaction: ITransactionInfoUtxo
+  transaction: Pick<
+    ITransactionInfoUtxo,
+    'accountAssetTransfers' | 'tokenTransfers' | 'tokenType'
+  > & {
+    vin?: Pick<ITransactionVin, 'assetInfo' | 'isOwn'>[];
+    vout?: Pick<ITransactionVout, 'addresses' | 'assetInfo' | 'isOwn'>[];
+  }
 ): {
   amount: number;
   assetGuid?: string;

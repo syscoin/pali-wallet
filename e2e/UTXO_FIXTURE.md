@@ -100,3 +100,12 @@ recovery and public-chain sends are separate from these synthetic fixtures.
 scrolling, a renderer-only password-generation failure and nine translated
 locales. Each uses an empty fresh profile behind the same deny proxy; none
 submits Next or creates a wallet.
+
+`offline-utxo-history.journey.spec.ts` uses ordinary Activity and Details UI
+with a synthetic HD account. Its two compact bridge rows preserve captured
+public account amounts, while addresses and full transaction shapes are
+synthetic. It checks that a known Bridge type remains visible without an
+account asset delta, that full detail reads preserve account-relative amounts,
+and that pending details show native fee units and readable pending block
+fields. It requests no signature and submits no transaction. PR conformance
+selects this fixture journey explicitly.

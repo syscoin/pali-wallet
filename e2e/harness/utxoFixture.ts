@@ -16,7 +16,7 @@ const BACKENDS = new Set([
   'https://blockbook-dev.syscoin.org',
 ]);
 
-export function createUtxoFixture() {
+export function createUtxoFixture(nativeBalanceSatoshis = '100000') {
   bitcoin.initEccLib(ecc);
   const hd = new sys.HDSigner(UTXO_FIXTURE_SEED, '', true);
   const user = hd.deriveKeypair(UTXO_FIXTURE_PATH);
@@ -30,7 +30,7 @@ export function createUtxoFixture() {
   const parent = (script: Buffer, marker: number) => {
     const tx = new bitcoin.Transaction();
     tx.addInput(Buffer.alloc(32, marker), 0);
-    tx.addOutput(script, BigInt(100000));
+    tx.addOutput(script, BigInt(nativeBalanceSatoshis));
     return tx;
   };
   const parents = [
@@ -83,6 +83,7 @@ export function createUtxoFixture() {
   const single = make(false),
     mixed = make(true);
   return {
+    nativeBalanceSatoshis,
     userAddress: userPayment.address!,
     userXpub: hd.getAccountXpub(),
     recipientAddress: destination.address!,
@@ -102,6 +103,17 @@ export function createUtxoFixture() {
 }
 
 export type UtxoFixture = ReturnType<typeof createUtxoFixture>;
+
+// Read-only scenario data is supplied by a journey, never by the extension.
+// Exact origin, account and transaction allowlists still apply to every read.
+export type UtxoFixtureReadState = {
+  balance?: string;
+  rawTransactions?: Record<string, unknown>;
+  transactions?: unknown[];
+  unconfirmedBalance?: string;
+  unconfirmedTxs?: number;
+  utxos?: unknown[];
+};
 export const importFixturePsbt = (value: any) =>
   sys.importPsbtFromJson(value, network).psbt;
 export const exportFixturePsbt = (value: any) => sys.exportPsbtToJson(value);
@@ -241,7 +253,8 @@ export function verifyCompletedSponsor(fixture: UtxoFixture, psbt: any) {
 export function fixtureRead(
   fixture: UtxoFixture,
   requestUrl: string,
-  method: string
+  method: string,
+  state: UtxoFixtureReadState = {}
 ): unknown | undefined {
   const url = new URL(requestUrl);
   if (method !== 'GET' || !BACKENDS.has(url.origin)) return undefined;
@@ -258,37 +271,53 @@ export function fixtureRead(
   if (ownIdentifier('/api/v2/xpub/') || ownIdentifier('/api/v2/address/'))
     return {
       address: decodeURIComponent(url.pathname.split('/').pop()!),
-      balance: '100000',
-      unconfirmedBalance: '0',
-      totalReceived: '100000',
+      balance: state.balance ?? fixture.nativeBalanceSatoshis,
+      unconfirmedBalance: state.unconfirmedBalance ?? '0',
+      totalReceived: state.balance ?? fixture.nativeBalanceSatoshis,
       totalSent: '0',
-      txs: 0,
-      unconfirmedTxs: 0,
+      txs: state.transactions?.length ?? 0,
+      unconfirmedTxs: state.unconfirmedTxs ?? 0,
+      ...(url.searchParams.get('details')?.startsWith('txs')
+        ? { transactions: state.transactions ?? [] }
+        : {}),
       usedTokens: 1,
       tokens: [
         {
           type: 'XPUBAddress',
           name: fixture.userAddress,
           path: UTXO_FIXTURE_PATH,
-          balance: '100000',
-          totalReceived: '100000',
+          balance: state.balance ?? fixture.nativeBalanceSatoshis,
+          totalReceived: state.balance ?? fixture.nativeBalanceSatoshis,
           totalSent: '0',
           transfers: 0,
         },
       ],
     };
   if (ownIdentifier('/api/v2/utxo/'))
-    return [
-      {
-        txid: fixture.parentTxs[0].getId(),
-        vout: 0,
-        value: '100000',
-        height: 1,
-        confirmations: 1,
-        address: fixture.userAddress,
-        path: UTXO_FIXTURE_PATH,
-      },
-    ];
+    return (
+      state.utxos ?? [
+        {
+          txid: fixture.parentTxs[0].getId(),
+          vout: 0,
+          value: fixture.nativeBalanceSatoshis,
+          height: 1,
+          confirmations: 1,
+          address: fixture.userAddress,
+          path: UTXO_FIXTURE_PATH,
+        },
+      ]
+    );
+  const transactionId = url.pathname.match(
+    /^\/api\/v2\/tx\/([a-f0-9]{64})$/i
+  )?.[1];
+  if (
+    transactionId &&
+    Object.prototype.hasOwnProperty.call(
+      state.rawTransactions ?? {},
+      transactionId
+    )
+  )
+    return state.rawTransactions![transactionId];
   const tx = fixture.parentTxs.find(
     (row) => url.pathname === '/api/v2/tx/' + row.getId()
   );
@@ -358,10 +387,14 @@ export async function startUtxoFixtureServer() {
 export async function installUtxoFixtureRoutes(
   context: BrowserContext,
   fixture: UtxoFixture,
-  localOrigin: string
+  localOrigin: string,
+  options: {
+    readState?: () => UtxoFixtureReadState;
+  } = {}
 ) {
   const deniedWrites: string[] = [],
-    reads: string[] = [];
+    reads: string[] = [],
+    deniedUnknown: string[] = [];
   await context.route('**/*', async (route) => {
     const request = route.request(),
       url = new URL(request.url());
@@ -389,8 +422,12 @@ export async function installUtxoFixtureRoutes(
       )
     )
       deniedWrites.push(url.pathname);
-    const body = fixtureRead(fixture, request.url(), request.method());
-    if (body === undefined) return route.abort('blockedbyclient');
+    const state = options.readState?.() ?? {};
+    const body = fixtureRead(fixture, request.url(), request.method(), state);
+    if (body === undefined) {
+      deniedUnknown.push(request.method() + ' ' + url.origin + url.pathname);
+      return route.abort('blockedbyclient');
+    }
     reads.push(url.pathname);
     return route.fulfill({
       status: 200,
@@ -399,5 +436,5 @@ export async function installUtxoFixtureRoutes(
       body: JSON.stringify(body),
     });
   });
-  return { deniedWrites, reads };
+  return { deniedWrites, reads, deniedUnknown };
 }

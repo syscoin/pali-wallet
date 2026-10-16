@@ -29,9 +29,11 @@ export const beginApprovalSubmission = (
     !Array.isArray(methods) ||
     methods.length !== 2 ||
     methods[0] !== 'wallet' ||
-    !['sendAndSaveEthTransaction', 'submitSmartAccountExecution'].includes(
-      methods[1]
-    )
+    ![
+      'sendAndSaveEthTransaction',
+      'submitSmartAccountExecution',
+      'signSendAndSaveTransaction',
+    ].includes(methods[1])
   )
     return () => undefined;
   // Chrome's document id was enrolled with the popup's window identity. Later

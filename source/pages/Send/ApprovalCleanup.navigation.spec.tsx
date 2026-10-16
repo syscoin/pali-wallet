@@ -354,7 +354,11 @@ it.each([true, false])(
   'an old Sign error timer cannot close a pending retry (signOnly=%s)',
   async (signOnly) => {
     await draft();
-    mockEmitter.mockRejectedValueOnce(new Error('Device signing cancelled'));
+    mockEmitter.mockRejectedValueOnce(
+      Object.assign(new Error('Device signing cancelled'), {
+        transactionNotBroadcast: true,
+      })
+    );
     let finishRetry!: (value: string) => void;
     mockEmitter.mockImplementationOnce(
       () => new Promise((resolve) => (finishRetry = resolve))
@@ -372,6 +376,62 @@ it.each([true, false])(
     await act(async () => finishRetry('retry-response'));
   }
 );
+
+it('a dapp send timeout consumes its approval and cannot be retried by a retained handler', async () => {
+  await draft();
+  mockEmitter.mockRejectedValueOnce(new Error('Network request timed out'));
+  await prepareSign(false);
+  const confirm = mockButtonHandlers['buttons.confirm'];
+  await act(async () => confirm());
+  expect(screen.getByRole('status').textContent).toBe(
+    'send.submissionStatusUnknown'
+  );
+  expect(
+    (
+      screen.getByRole('button', {
+        name: 'buttons.confirm',
+      }) as HTMLButtonElement
+    ).disabled
+  ).toBe(true);
+  await act(async () => {
+    await confirm();
+    jest.advanceTimersByTime(4000);
+  });
+  expect(mockEmitter).toHaveBeenCalledTimes(1);
+  expect(mockClose).not.toHaveBeenCalled();
+  expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
+  await act(async () => mockButtonHandlers['buttons.close']());
+  expect(mockClose).toHaveBeenCalledTimes(1);
+});
+
+it('a proven dapp pre-send fee rejection permits an explicit fresh approval attempt', async () => {
+  await draft();
+  mockEmitter
+    .mockRejectedValueOnce(
+      Object.assign(new Error('Lower the transaction fee'), {
+        transactionNotBroadcast: true,
+      })
+    )
+    .mockResolvedValueOnce({ txid: 'acknowledged' });
+  await prepareSign(false);
+  const confirm = mockButtonHandlers['buttons.confirm'];
+  await act(async () => confirm());
+  expect(screen.queryByRole('status')).toBeNull();
+  expect(
+    (
+      screen.getByRole('button', {
+        name: 'buttons.confirm',
+      }) as HTMLButtonElement
+    ).disabled
+  ).toBe(false);
+  await act(async () => confirm());
+  expect(mockEmitter).toHaveBeenCalledTimes(2);
+  await act(async () => lastCloseTimer(2000)());
+  expect(dispatchBackgroundEvent).toHaveBeenCalledWith(
+    'signPsbt.https://dapp.example',
+    { txid: 'acknowledged' }
+  );
+});
 
 it('only the latest failed Sign attempt owns its error exit', async () => {
   await draft();

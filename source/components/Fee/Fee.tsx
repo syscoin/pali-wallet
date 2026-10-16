@@ -7,6 +7,16 @@ import { Icon, Tooltip } from '..';
 import { usePrice } from 'hooks/index';
 import { RootState } from 'state/store';
 
+// Keep small recommended rates readable instead of exposing exponent notation.
+// Strings are user edits and must remain untouched while they are being typed.
+const feeInputValue = (value: number | string) =>
+  typeof value === 'number' && Number.isFinite(value)
+    ? value.toLocaleString('en-US', {
+        useGrouping: false,
+        maximumSignificantDigits: 21,
+      })
+    : value;
+
 export const Fee = ({
   recommend,
   disabled,
@@ -44,13 +54,13 @@ export const Fee = ({
     const currentFormValue = form.getFieldValue('fee');
     // Set form value if we have a recommend value and form is empty
     if (recommend !== null && recommend !== undefined && !currentFormValue) {
-      form.setFieldsValue({ fee: recommend });
-      setCurrentFee(String(recommend));
+      form.setFieldsValue({ fee: feeInputValue(recommend) });
+      setCurrentFee(String(feeInputValue(recommend)));
       // Notify parent component of initial fee
       handleFeeChange(recommend);
     } else if (currentFormValue) {
       // Use existing form value if user has already entered something
-      setCurrentFee(String(currentFormValue));
+      setCurrentFee(String(feeInputValue(currentFormValue)));
       // Notify parent component of existing fee
       const numValue = Number(currentFormValue);
       // Only call if it's a valid positive number
@@ -59,54 +69,27 @@ export const Fee = ({
       }
     } else {
       // Default case
-      setCurrentFee(String(recommend || ''));
+      setCurrentFee(String(feeInputValue(recommend || '')));
     }
   }, [form, recommend, handleFeeChange]);
-
-  // Fee rate validation thresholds for UTXO networks (coin/byte)
-  const getFeeRateThresholds = () => {
-    if (isBitcoinBased) {
-      return {
-        normal: 0.001, // 1000 satoshis/byte = 0.001 coin/byte
-        high: 0.01, // 10000 satoshis/byte = 0.01 coin/byte
-        extreme: 0.1, // 100000 satoshis/byte = 0.1 coin/byte
-        insane: 1.0, // 1 coin/byte - definitely wrong
-      };
-    }
-    return null;
-  };
 
   const validateFeeRate = (value: number) => {
     if (!isBitcoinBased || !value) return null;
 
-    const thresholds = getFeeRateThresholds();
-    if (!thresholds) return null;
-
-    if (value >= thresholds.insane) {
+    // The form is coin/vbyte; the SDK rounds up to atomic units/vbyte.
+    // Match its normal 5,000 sat/vbyte extraction guard here, before signing.
+    // The finalized transaction is still checked by that guard independently.
+    const satoshisPerVbyte = Math.ceil(value * 1e8);
+    if (satoshisPerVbyte >= 5000) {
       return {
         level: 'error',
-        message: t('send.feeRateInsane', {
+        message: t('send.feeRateSafetyLimit', {
           value: value.toFixed(8),
           currency: activeNetwork.currency.toUpperCase(),
+          limit: '0.00005000',
         }),
       };
-    } else if (value >= thresholds.extreme) {
-      return {
-        level: 'error',
-        message: t('send.feeRateExtreme', {
-          value: value.toFixed(8),
-          currency: activeNetwork.currency.toUpperCase(),
-        }),
-      };
-    } else if (value >= thresholds.high) {
-      return {
-        level: 'warning',
-        message: t('send.feeRateHigh', {
-          value: value.toFixed(8),
-          currency: activeNetwork.currency.toUpperCase(),
-        }),
-      };
-    } else if (value >= thresholds.normal) {
+    } else if (satoshisPerVbyte >= 1000) {
       return {
         level: 'warning',
         message: t('send.feeRateNormal', {
@@ -158,6 +141,12 @@ export const Fee = ({
 
   return (
     <div className="flex flex-col gap-2 w-full">
+      <label
+        htmlFor="fee-input"
+        className="text-left text-xs text-brand-gray200"
+      >
+        {getPlaceholder()}
+      </label>
       <div className="flex">
         <div className="sender-custom-input w-full">
           <Form.Item
@@ -182,11 +171,6 @@ export const Fee = ({
                     // empty reject keeps the error border without a
                     // duplicate explain line.
                     return Promise.reject('');
-                  }
-
-                  // Warnings don't block submission, just show in console/UI
-                  if (validation && validation.level === 'warning') {
-                    console.warn('Fee rate warning:', validation.message);
                   }
 
                   return Promise.resolve();
@@ -214,7 +198,9 @@ export const Fee = ({
                       </span>
                     );
                   })()}
-                  value={form.getFieldValue('fee') ?? (recommend || '')}
+                  value={feeInputValue(
+                    form.getFieldValue('fee') ?? (recommend || '')
+                  )}
                   onChange={(event) => {
                     const newValue = event.target.value;
                     setCurrentFee(newValue); // Update local state for real-time validation

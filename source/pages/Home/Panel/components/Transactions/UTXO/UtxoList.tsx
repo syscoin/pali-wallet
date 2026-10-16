@@ -23,7 +23,6 @@ import {
 } from 'state/vault/selectors';
 import { ITransactionInfoUtxo } from 'types/useTransactionsInfo';
 import { keccak256, toUtf8Bytes } from 'utils/ethersV6Compat';
-import { BigNumber } from 'utils/ethersV6Compat';
 import {
   formatDisplayValue,
   formatSyscoinValue,
@@ -33,29 +32,13 @@ import { ellipsis } from 'utils/index';
 import {
   getSyscoinTransactionTypeStyle,
   getSyscoinIntentAmount,
+  getSyscoinAccountDelta,
   formatSyscoinConfirmationETA,
   normalizeSyscoinTransactionType,
 } from 'utils/syscoinTransactionUtils';
 import { isTransactionInBlock } from 'utils/transactionUtils';
 
 const SERVER_PAGE_SIZE = 30;
-
-const getSummaryAccountDelta = (tx: any): string | null => {
-  if (tx?.addressValueIn === undefined && tx?.addressValueOut === undefined) {
-    return null;
-  }
-
-  try {
-    const valueIn = BigNumber.from(String(tx?.addressValueIn ?? '0'));
-    const valueOut = BigNumber.from(String(tx?.addressValueOut ?? '0'));
-    const delta = valueIn.gte(valueOut)
-      ? valueIn.sub(valueOut)
-      : valueOut.sub(valueIn);
-    return delta.gt(0) ? delta.toString() : null;
-  } catch {
-    return null;
-  }
-};
 
 const UtxoTransactionsListComponentBase = ({
   tx,
@@ -166,20 +149,14 @@ const UtxoTransactionsListComponentBase = ({
   const sptSignClass = isSptSentByUs
     ? 'text-warning-error'
     : 'text-brand-green';
-  // Native SYS amount: prefer output to our address for watch-only single-address accounts
-  // Fallback to first vout when no match (legacy behavior)
-  if (
-    !intent &&
-    ((tx as any)?.addressValueIn || (tx as any)?.addressValueOut)
-  ) {
-    const summaryValue = getSummaryAccountDelta(tx);
-    if (summaryValue) {
-      const baseSymbol = activeNetwork?.currency
-        ? String(activeNetwork.currency).toUpperCase()
-        : '';
-      const decimalValue = parseFloat(formatSyscoinValue(summaryValue));
-      sysAmountDisplay = `${formatDisplayValue(decimalValue, 8)} ${baseSymbol}`;
-    }
+  // Summary amounts are relative to the queried account, including a zero delta.
+  const summaryValue = !intent ? getSyscoinAccountDelta(tx) : null;
+  if (summaryValue !== null) {
+    const baseSymbol = activeNetwork?.currency
+      ? String(activeNetwork.currency).toUpperCase()
+      : '';
+    const decimalValue = parseFloat(formatSyscoinValue(summaryValue));
+    sysAmountDisplay = `${formatDisplayValue(decimalValue, 8)} ${baseSymbol}`;
   } else if (!intent && Array.isArray(tx?.vout) && tx.vout.length > 0) {
     const candidateVout =
       tx.vout.find((v: any) => v?.isOwn === true) || tx.vout[0];
@@ -279,7 +256,7 @@ const UtxoTransactionsListComponentBase = ({
 
       <div className="flex flex-[0.8] flex-col gap-1">
         {formatTimeStampUtxo(tx[blocktime] * 1000)}
-        {intent && (
+        {(normalizedTokenType || intent) && (
           <div
             className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full max-w-fit transition-all duration-200 hover:scale-105 hover:brightness-110 cursor-default"
             style={sptInfo.bgStyle}
