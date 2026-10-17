@@ -43,3 +43,43 @@ it('enforces format, label, selected scheme and twenty-key bounds', () => {
   expect(result.entries).toHaveLength(20);
   expect(result.issues).toEqual([{ line: 21, reason: 'limit' }]);
 });
+
+it.each([
+  [
+    'same-row hexadecimal',
+    `${'11'.repeat(32)} | ${'11'.repeat(32)}`,
+    'bls-basic',
+  ],
+  [
+    'cross-row hexadecimal',
+    `${'22'.repeat(32)} | ${'11'.repeat(32)}\nBeta | ${'22'.repeat(32)}`,
+    'bls-basic',
+  ],
+  [
+    'prefixed hexadecimal',
+    `0x${'AA'.repeat(32)} | ${'11'.repeat(32)}`,
+    'bls-basic',
+  ],
+  [
+    'same-row WIF',
+    'KwDiBf89QgGbjEhKnhXJuH7LrciVrZi3qYjgd9M7rFU73sVHnoWn | KwDiBf89QgGbjEhKnhXJuH7LrciVrZi3qYjgd9M7rFU73sVHnoWn',
+    'secp256k1',
+  ],
+  [
+    'cross-row WIF',
+    `KwDiBf89QgGbjEhKnhXJuH7LrciVrZi3qYjgd9M7rFU74NMTptX4 | KwDiBf89QgGbjEhKnhXJuH7LrciVrZi3qYjgd9M7rFU73sVHnoWn\nBeta | KwDiBf89QgGbjEhKnhXJuH7LrciVrZi3qYjgd9M7rFU74NMTptX4`,
+    'secp256k1',
+  ],
+] as const)(
+  'never exposes a %s private key in a preview label',
+  (_name, text, scheme) => {
+    const result = parseSentryKeyBatch(text, scheme);
+    expect(result.issues).toContainEqual({ line: 1, reason: 'label' });
+    expect(result.entries.every((entry) => entry.label === 'Beta')).toBe(true);
+    expect(
+      result.issues.every(
+        (issue) => Object.keys(issue).join(',') === 'line,reason'
+      )
+    ).toBe(true);
+  }
+);

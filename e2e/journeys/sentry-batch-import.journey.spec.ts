@@ -75,6 +75,34 @@ test('Sentry batch import validates and stores all keys atomically in a short wi
       await button.click();
     };
     await wallet.step(
+      'keep a private key out of the masked batch preview when pasted as a label',
+      async () => {
+        await openBatch();
+        const input = page.getByLabel('Sentry keys (one per line)');
+        await input.fill(`${keys[0]} | ${keys[0]}\nBeta | ${keys[1]}`);
+        await expect(page.getByRole('alert')).toContainText('private keys');
+        const preview = (await page.locator('ol li').allTextContents()).join(
+          ' '
+        );
+        expect(preview).not.toContain(keys[0]);
+        expect(preview).not.toContain(keys[1]);
+        expect(
+          await input.evaluate((element) =>
+            getComputedStyle(element).getPropertyValue('-webkit-text-security')
+          )
+        ).toBe('disc');
+        await page.getByLabel('Wallet password').fill(E2E_CONFIG.password);
+        await page.getByRole('checkbox').check();
+        await expect(
+          page.getByRole('button', { name: 'Import', exact: true })
+        ).toBeDisabled();
+        await input.fill(`Alpha | ${keys[0]}\nBeta | ${keys[1]}`);
+        await expect(page.getByRole('alert')).toHaveCount(0);
+        await expect(page.getByRole('checkbox')).not.toBeChecked();
+        await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+      }
+    );
+    await wallet.step(
       'reject malformed lines and reset the complete batch acknowledgement after edits',
       async () => {
         await openBatch();

@@ -1120,7 +1120,7 @@
     "batchImported": "{{count}} Sentry keys imported securely.",
     "batchIssues": {
       "format": "Line {{line}}: use one key, optionally preceded by Label |.",
-      "label": "Line {{line}}: labels must be at most 80 characters.",
+      "label": "Line {{line}}: use a label of at most 80 characters without private keys.",
       "key": "Line {{line}}: enter a complete key for the selected type.",
       "duplicate": "Line {{line}}: this key is repeated in the batch.",
       "limit": "Import at most 20 keys in one batch."

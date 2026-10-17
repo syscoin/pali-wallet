@@ -10,6 +10,11 @@ export interface SentryImportIssue {
   reason: 'format' | 'label' | 'key' | 'duplicate' | 'limit';
 }
 
+// Labels are rendered outside the masked input. Reject complete key-shaped
+// values even when misplaced from another row, before creating a preview.
+const containsPrivateKey = (label: string) =>
+  /[0-9a-fA-F]{64}|[5KL9c][1-9A-HJ-NP-Za-km-z]{50,51}/.test(label);
+
 /** Parse only local form text. Errors never contain key material. */
 export const parseSentryKeyBatch = (
   text: string,
@@ -40,7 +45,7 @@ export const parseSentryKeyBatch = (
       parts.length === 2 && parts[0].trim()
         ? parts[0].trim()
         : `${defaultLabel} ${entries.length + 1}`;
-    if (label.length > 80) {
+    if (label.length > 80 || containsPrivateKey(label)) {
       issues.push({ line, reason: 'label' });
       continue;
     }

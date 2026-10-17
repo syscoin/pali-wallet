@@ -268,6 +268,56 @@ it('invalidates single-key backup acknowledgement when its label changes', async
   });
   expect(screen.getByRole('checkbox')).not.toBeChecked();
 });
+
+it.each(['same-row', 'cross-row'])(
+  'hides private keys misplaced in %s preview labels until corrected',
+  async (kind) => {
+    render(<SentryKeys />);
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Import Sentry key' })
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Batch import' }));
+    const first = '11'.repeat(32);
+    const second = '22'.repeat(32);
+    const input = screen.getByLabelText('Sentry keys (one per line)');
+    fireEvent.change(input, {
+      target: {
+        value: `${
+          kind === 'same-row' ? first : second
+        } | ${first}\nBeta | ${second}`,
+      },
+    });
+    expect(screen.getByRole('alert')).toHaveTextContent('private keys');
+    const preview = screen
+      .queryAllByRole('listitem')
+      .map((item) => item.textContent)
+      .join(' ');
+    expect(preview).not.toContain(first);
+    expect(preview).not.toContain(second);
+    expect(input.className).toContain('[-webkit-text-security:disc]');
+    fireEvent.change(screen.getByLabelText('Wallet password'), {
+      target: { value: 'pw' },
+    });
+    fireEvent.click(screen.getByRole('checkbox'));
+    expect(
+      screen.getByRole('button', { name: 'buttons.import' })
+    ).toBeDisabled();
+    expect(
+      mockEmitter.mock.calls.some(
+        ([method]) => method[1] === 'importSentryKeys'
+      )
+    ).toBe(false);
+    fireEvent.change(input, {
+      target: { value: `Alpha | ${first}\nBeta | ${second}` },
+    });
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getByRole('checkbox')).not.toBeChecked();
+    fireEvent.click(screen.getByRole('checkbox'));
+    expect(
+      screen.getByRole('button', { name: 'buttons.import' })
+    ).toBeEnabled();
+  }
+);
 it('requires a fresh backup acknowledgement for each consecutive import', async () => {
   render(<SentryKeys />);
   fireEvent.click(
