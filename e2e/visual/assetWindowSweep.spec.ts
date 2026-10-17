@@ -243,6 +243,19 @@ test('long ERC20 and NFT metadata stays readable in lists, details and import pr
           name: 'LongNamedSyntheticCollectibleCollectionForResponsiveWalletQualityAssurance',
         })
         .waitFor();
+      await expect
+        .poll(() =>
+          page.evaluate(() =>
+            [
+              ...document.querySelectorAll<HTMLElement>(
+                '[data-navigation-scroll]'
+              ),
+            ]
+              .map((element) => element.scrollTop)
+              .every((top) => top === 0)
+          )
+        )
+        .toBe(true);
       await capture(page, `nft-collection-${width}x${height}-top`);
       await page.mouse.move(width - 8, 180);
       await page.mouse.wheel(0, 4000);

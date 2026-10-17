@@ -304,6 +304,9 @@ test('settings, navigation menus and token search fit small localized windows', 
         locale
       );
       await evmPage.goto(wallet.appUrl('#/tokens/add'));
+      // Reusing the same hash route is not a document navigation. Reload so
+      // this renderer reads the new persisted locale before checking labels.
+      await evmPage.reload();
       for (const [width, height] of [
         [320, 360],
         [400, 360],
