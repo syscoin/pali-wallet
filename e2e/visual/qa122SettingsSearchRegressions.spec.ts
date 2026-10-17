@@ -163,6 +163,14 @@ test('token and NFT searches distinguish empty results and clear back to the ful
       });
       await button.click();
       await expect(button).toBeDisabled();
+      // The success toast temporarily overlays the lower list in short windows.
+      // Let it dismiss naturally before evaluating the settled search layout.
+      const successToast = page.getByText(
+        en.tokens.hasBeenAddedToYourWallet.replace('{{token}}', symbol),
+        { exact: true }
+      );
+      await expect(successToast).toBeVisible();
+      await expect(successToast).toBeHidden({ timeout: 15_000 });
     };
     await importAsset(contract, 'QAASSET');
     const checkSearch = async (
@@ -211,6 +219,35 @@ test('token and NFT searches distinguish empty results and clear back to the ful
       });
       await input.press('Tab');
       await expect(clear).toBeFocused();
+      const clearVisibility = await clear.evaluate((element) => {
+        const box = element.getBoundingClientRect();
+        const hit = document.elementFromPoint(
+          box.left + box.width / 2,
+          box.top + box.height / 2
+        );
+        return {
+          bounds: {
+            left: box.left,
+            top: box.top,
+            right: box.right,
+            bottom: box.bottom,
+          },
+          inViewport:
+            box.width > 0 &&
+            box.height > 0 &&
+            box.left >= 0 &&
+            box.top >= 0 &&
+            box.right <= innerWidth &&
+            box.bottom <= innerHeight,
+          hit: !!hit && (hit === element || element.contains(hit)),
+        };
+      });
+      await info.attach(`clear-visibility-${symbol}-${width}`, {
+        body: JSON.stringify(clearVisibility, null, 2),
+        contentType: 'application/json',
+      });
+      expect(clearVisibility.inViewport).toBe(true);
+      expect(clearVisibility.hit).toBe(true);
       const screenshot = info.outputPath(
         `${isNft ? 'nft' : 'token'}-no-results-${width}x${height}.png`
       );

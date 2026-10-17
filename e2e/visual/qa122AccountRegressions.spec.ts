@@ -1,4 +1,10 @@
-import { expect, test, type Page, type TestInfo } from '@playwright/test';
+import {
+  expect,
+  test,
+  type Locator,
+  type Page,
+  type TestInfo,
+} from '@playwright/test';
 import fs from 'fs';
 import path from 'path';
 import { utils as sys } from 'syscoinjs-lib';
@@ -93,6 +99,45 @@ async function capture(page: Page, info: TestInfo, name: string) {
     ],
   });
   await info.attach(name, { path: file, contentType: 'image/png' });
+}
+
+async function visibleAction(page: Page, action: Locator) {
+  await action.scrollIntoViewIfNeeded();
+  // Capture the settled scroller, not a compositor overscroll/resize frame.
+  await page.waitForTimeout(650);
+  const measure = () =>
+    action.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      const hit = document.elementFromPoint(
+        rect.left + rect.width / 2,
+        rect.top + rect.height / 2
+      );
+      return {
+        name: element.getAttribute('aria-label'),
+        width: rect.width,
+        height: rect.height,
+        left: rect.left,
+        right: rect.right,
+        top: rect.top,
+        bottom: rect.bottom,
+        inViewport:
+          rect.left >= 0 &&
+          rect.top >= 0 &&
+          rect.right <= innerWidth &&
+          rect.bottom <= innerHeight,
+        centerHit: hit !== null && element.contains(hit),
+      };
+    });
+  await expect
+    .poll(async () => {
+      const geometry = await measure();
+      return geometry.inViewport && geometry.centerHit;
+    })
+    .toBe(true);
+  const geometry = await measure();
+  expect(geometry.width).toBeGreaterThanOrEqual(44);
+  expect(geometry.height).toBeGreaterThanOrEqual(44);
+  return geometry;
 }
 
 test('regenerating a phrase requires fresh acknowledgement and exact-word confirmation', async ({}, info) => {
@@ -216,13 +261,15 @@ test('account actions are distinct and reachable; private import stays masked ac
             const list = page.locator(
               '[data-navigation-scroll="settings-manage-accounts"]'
             );
-            const targets = await list.locator('button').evaluateAll((items) =>
-              items.map((item) => {
-                const r = item.getBoundingClientRect();
-                return { width: r.width, height: r.height };
-              })
-            );
-            for (const target of targets) {
+            const allTargets = await list
+              .locator('button')
+              .evaluateAll((items) =>
+                items.map((item) => {
+                  const rect = item.getBoundingClientRect();
+                  return { width: rect.width, height: rect.height };
+                })
+              );
+            for (const target of allTargets) {
               expect(target.width).toBeGreaterThanOrEqual(44);
               expect(target.height).toBeGreaterThanOrEqual(44);
             }
@@ -234,15 +281,51 @@ test('account actions are distinct and reachable; private import stays masked ac
             ).toHaveCount(1);
             await expect(
               page.getByRole('button', {
-                name: `${en.buttons.remove}: Spending account`,
+                name: `${en.buttons.remove}: Family savings — travel and rainy-day fund 2026`,
                 exact: true,
               })
             ).toHaveCount(1);
+            // Creation selects the new Spending account. Active accounts must
+            // retain their removal protection even though editing is allowed.
+            await expect(
+              page.getByRole('button', {
+                name: `${en.buttons.edit}: Spending account`,
+                exact: true,
+              })
+            ).toHaveCount(1);
+            await expect(
+              page.getByRole('button', {
+                name: `${en.buttons.remove}: Spending account`,
+                exact: true,
+              })
+            ).toHaveCount(0);
+            const targets = [];
+            for (const name of [
+              `${en.buttons.edit}: Family savings — travel and rainy-day fund 2026`,
+              `${en.buttons.remove}: Family savings — travel and rainy-day fund 2026`,
+            ]) {
+              targets.push(
+                await visibleAction(
+                  page,
+                  page.getByRole('button', { name, exact: true })
+                )
+              );
+            }
+            await capture(page, info, `account-controls-${width}`);
+            targets.push(
+              await visibleAction(
+                page,
+                page.getByRole('button', {
+                  name: `${en.buttons.edit}: Spending account`,
+                  exact: true,
+                })
+              )
+            );
+            await capture(page, info, `active-account-controls-${width}`);
             observations[`manager${width}`] = {
               tree: await list.ariaSnapshot(),
               targets,
             };
-            await capture(page, info, `account-controls-${width}`);
           }
           const edit = page.getByRole('button', {
             name: `${en.buttons.edit}: Family savings — travel and rainy-day fund 2026`,
