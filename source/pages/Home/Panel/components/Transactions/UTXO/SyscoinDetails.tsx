@@ -275,10 +275,13 @@ export const SyscoinTransactionDetails = ({
     }
   };
 
-  const handleCopyWithMessage = (value: string, label: string) => {
-    copy(value);
-
-    alert.info(getCopyMessage(label));
+  const handleCopyWithMessage = async (value: string, label: string) => {
+    try {
+      await copy(value);
+      alert.info(getCopyMessage(label));
+    } catch {
+      alert.error(t('transactions.copyFailed'));
+    }
   };
 
   const recipients: any = {};

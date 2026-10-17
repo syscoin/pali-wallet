@@ -695,7 +695,7 @@ export const EvmTransactionDetailsEnhanced = ({
     );
 
   // Handle copy actions with appropriate messages
-  const handleCopy = (value: string, label: string) => {
+  const handleCopy = async (value: string, label: string) => {
     const copyRisk = getEvmHistoryAddressCopyRisk({
       accountAddress: currentAccount?.address || '',
       address: value,
@@ -714,8 +714,12 @@ export const EvmTransactionDetailsEnhanced = ({
       return;
     }
 
-    copy(value ?? '');
-    alert.info(getCopyMessage(label));
+    try {
+      await copy(value ?? '');
+      alert.info(getCopyMessage(label));
+    } catch {
+      alert.error(t('transactions.copyFailed'));
+    }
   };
 
   if (!transactionTx && !isLoadingDetails) {

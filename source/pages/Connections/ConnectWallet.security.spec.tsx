@@ -8,7 +8,7 @@ let mockState: any;
 let mockQuery: any;
 const mockEmitter = jest.fn();
 const mockCopy = jest.fn();
-const mockAlert = { info: jest.fn() };
+const mockAlert = { info: jest.fn(), error: jest.fn() };
 jest.mock('react-redux', () => ({
   useSelector: (select: any) => select(mockState),
 }));
@@ -140,6 +140,9 @@ describe('large connection approval account selection', () => {
       }
     });
     mockEmitter.mockReset().mockResolvedValue(null);
+    mockCopy.mockReset().mockResolvedValue(undefined);
+    mockAlert.info.mockClear();
+    mockAlert.error.mockClear();
     const accounts = Object.fromEntries(
       Array.from({ length: 500 }, (_, id) => [
         id,
@@ -237,5 +240,42 @@ describe('large connection approval account selection', () => {
     ).toBe('connections.noMatchingAccounts');
     search('');
     expect(selected('Account 500')).toBe(true);
+  });
+
+  it('waits for the selected public address copy before announcing success', async () => {
+    await initialize();
+    let complete!: () => void;
+    mockCopy.mockReturnValueOnce(
+      new Promise<void>((resolve) => (complete = resolve))
+    );
+    const copyButton = allElements(row('Account 500')).find(
+      (element) =>
+        element.type === 'button' &&
+        allElements(element).some((child) => child.props.name === 'copy')
+    )!;
+    const request = copyButton.props.onClick();
+    expect(mockCopy).toHaveBeenCalledWith(
+      mockState.vault.accounts.HDAccount[499].address
+    );
+    expect(mockAlert.info).not.toHaveBeenCalled();
+    complete();
+    await request;
+    expect(mockAlert.info).toHaveBeenCalledWith('home.addressCopied');
+    expect(mockAlert.error).not.toHaveBeenCalled();
+  });
+
+  it('handles public address copy refusal without announcing success', async () => {
+    await initialize();
+    const failure = Promise.reject(new Error('Synthetic clipboard refusal'));
+    void failure.catch(() => undefined);
+    mockCopy.mockReturnValueOnce(failure);
+    const copyButton = allElements(row('Account 500')).find(
+      (element) =>
+        element.type === 'button' &&
+        allElements(element).some((child) => child.props.name === 'copy')
+    )!;
+    await copyButton.props.onClick();
+    expect(mockAlert.info).not.toHaveBeenCalled();
+    expect(mockAlert.error).toHaveBeenCalledWith('transactions.copyFailed');
   });
 });

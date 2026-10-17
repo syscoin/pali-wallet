@@ -17,7 +17,7 @@ const CreateAccount = () => {
   const [loading, setLoading] = useState<boolean>(false);
   const [accountName, setAccountName] = useState<string>('');
   const [error, setError] = useState<string>('');
-  const smartCreationPending = useRef(false);
+  const creationPending = useRef(false);
   const { t } = useTranslation();
   const { controllerEmitter, handleWalletLockedError } = useController();
   const navigate = useNavigate();
@@ -30,6 +30,8 @@ const CreateAccount = () => {
   const isSmartAccountSupported = activeNetwork.kind === INetworkType.Ethereum;
 
   const onSubmit = async ({ label }: { label?: string }) => {
+    if (creationPending.current) return;
+    creationPending.current = true;
     setLoading(true);
     setError('');
 
@@ -40,10 +42,7 @@ const CreateAccount = () => {
       )) as any;
 
       setAddress(newAddress);
-      setLoading(false);
     } catch (caughtError: any) {
-      setLoading(false);
-
       // Check if this is a wallet locked error and handle redirect
       const wasHandled = handleWalletLockedError(caughtError);
       if (!wasHandled) {
@@ -52,18 +51,21 @@ const CreateAccount = () => {
         // didn't have explicit error handling UI for create account failures
         console.error('Error creating account:', caughtError);
       }
+    } finally {
+      creationPending.current = false;
+      setLoading(false);
     }
   };
 
   const createSmartAccount = async () => {
     if (
       loading ||
-      smartCreationPending.current ||
+      creationPending.current ||
       isContextChanging ||
       !isSmartAccountSupported
     )
       return;
-    smartCreationPending.current = true;
+    creationPending.current = true;
     setLoading(true);
     setError('');
 
@@ -88,7 +90,7 @@ const CreateAccount = () => {
         console.error('Error creating smart account:', caughtError);
       }
     } finally {
-      smartCreationPending.current = false;
+      creationPending.current = false;
       setLoading(false);
     }
   };
@@ -112,6 +114,7 @@ const CreateAccount = () => {
           className="flex flex-col gap-8 items-center justify-center text-center w-full"
           name="newaccount"
           autoComplete="off"
+          disabled={loading}
           onFinish={smartAccountOnly ? createSmartAccount : onSubmit}
         >
           <Form.Item

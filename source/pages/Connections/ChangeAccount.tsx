@@ -526,9 +526,15 @@ export const ChangeAccount = () => {
                                       className="inline-flex flex-shrink-0 items-center relative z-20"
                                     >
                                       <IconButton
-                                        onClick={() => {
-                                          copy(acc.address);
-                                          alert.info(t('home.addressCopied'));
+                                        onClick={async () => {
+                                          try {
+                                            await copy(acc.address);
+                                            alert.info(t('home.addressCopied'));
+                                          } catch {
+                                            alert.error(
+                                              t('transactions.copyFailed')
+                                            );
+                                          }
                                         }}
                                         className="opacity-0 group-hover:opacity-100 transition-opacity duration-200"
                                       >

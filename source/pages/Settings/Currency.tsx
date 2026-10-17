@@ -138,6 +138,7 @@ const CurrencyView = () => {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(false);
   const savingRef = useRef(false);
+  const draftEdited = useRef(false);
 
   // Currency to flag mapping for all supported currencies
   const currencyFlags = {
@@ -208,7 +209,9 @@ const CurrencyView = () => {
     if (fiat.asset) {
       const lowerAsset = fiat.asset.toLowerCase();
       setSavedCoin(lowerAsset);
-      setSelectedCoin(lowerAsset);
+      // Price refreshes or another open wallet view can update the saved fiat
+      // while this form has an unsaved selection. Keep that local choice.
+      if (!draftEdited.current) setSelectedCoin(lowerAsset);
     }
   }, [fiat.asset]);
 
@@ -301,6 +304,7 @@ const CurrencyView = () => {
                       key={coin}
                       type="button"
                       onClick={() => {
+                        draftEdited.current = true;
                         setSelectedCoin(coin.toLowerCase());
                         setInputValue(''); // Clear search when currency is selected
                         setSaveError(false);

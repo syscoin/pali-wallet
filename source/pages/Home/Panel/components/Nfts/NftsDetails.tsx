@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
@@ -31,12 +31,18 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
   const currentAccount = accounts[activeAccount.type]?.[activeAccount.id];
   const { explorer } = activeNetwork;
 
-  const { useCopyClipboard, alert } = useUtils();
+  const { alert } = useUtils();
 
   // Get NFT data from navigation state if available (for import preview/search results)
   const currentNft = nftData;
+  const nftScope = `${getHomeBrowsingScope(
+    { ...currentAccount, ...activeAccount },
+    activeNetwork
+  )}:${currentNft?.contractAddress}:${currentNft?.tokenStandard}`;
 
-  const [copied, copy] = useCopyClipboard();
+  const copyContextRef = useRef({ active: true, scope: nftScope });
+  copyContextRef.current.scope = nftScope;
+  const copySequenceRef = useRef(0);
   const [nftTokenIds, setNftTokenIds] = useState<
     { balance: number; tokenId: string }[]
   >([]);
@@ -44,17 +50,10 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
   const [nftView, setNftView] = useHomeBrowsingState<{
     manualTokenId: string;
     selectedTokenId: string | null;
-  }>(
-    'nftView',
-    `${getHomeBrowsingScope(
-      { ...currentAccount, ...activeAccount },
-      activeNetwork
-    )}:${currentNft?.contractAddress}`,
-    {
-      selectedTokenId: null,
-      manualTokenId: '',
-    }
-  );
+  }>('nftView', nftScope, {
+    selectedTokenId: null,
+    manualTokenId: '',
+  });
   const { selectedTokenId, manualTokenId } = nftView;
   const setSelectedTokenId = (tokenId: string | null) =>
     setNftView((previous) => ({ ...previous, selectedTokenId: tokenId }));
@@ -73,122 +72,122 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
 
   // Load token IDs when component mounts
   useEffect(() => {
-    if (currentNft && currentNft.balance > 0) {
-      if (currentNft.tokenStandard === 'ERC-1155') {
-        // ERC-1155 always has stored tokenId
-        if (currentNft.tokenId) {
-          setSelectedTokenId(currentNft.tokenId);
-        }
-        setVerifiedTokenBalance(currentNft.balance);
-      } else {
-        // ERC-721 - enumerate token IDs
-        loadTokenIds();
-      }
-    }
-  }, [currentNft]);
-
-  // Verify manually entered token ID
-  const verifyTokenId = async (tokenId: string) => {
-    if (!currentNft || !currentAccount?.address || !tokenId.trim()) {
-      setVerifiedTokenBalance(null);
-      setVerificationError(null);
+    let current = true;
+    setNftTokenIds([]);
+    setHasMoreTokens(false);
+    if (
+      !currentNft ||
+      !currentAccount?.address ||
+      currentNft.balance <= 0 ||
+      currentNft.tokenStandard === 'ERC-1155'
+    ) {
+      setIsLoadingTokenIds(false);
       return;
     }
 
-    setIsVerifyingTokenId(true);
-    setVerificationError(null);
-
-    try {
-      const result = (await controllerEmitter(
-        [
-          'wallet',
-          currentNft.tokenStandard === 'ERC-721'
-            ? 'verifyERC721Ownership'
-            : 'verifyERC1155Ownership',
-        ],
-        [currentNft.contractAddress, currentAccount?.address, [tokenId]]
-      )) as { balance: number; tokenId: string; verified: boolean }[];
-
-      if (result && result.length > 0) {
-        const tokenInfo = result[0];
-        if (tokenInfo.verified && tokenInfo.balance > 0) {
-          setVerifiedTokenBalance(tokenInfo.balance);
-          setVerificationError(null);
-        } else {
-          setVerifiedTokenBalance(0);
-          setVerificationError(
-            tokenInfo.balance === 0
-              ? t('send.youDontOwnThisToken')
-              : t('send.tokenVerificationFailed')
-          );
-        }
-      } else {
-        setVerifiedTokenBalance(0);
-        setVerificationError(t('send.tokenNotFound'));
-      }
-    } catch (error) {
-      console.error('Error verifying token ID:', error);
-      setVerifiedTokenBalance(0);
-      setVerificationError(t('send.verificationFailed'));
-    } finally {
-      setIsVerifyingTokenId(false);
-    }
-  };
-
-  const loadTokenIds = async () => {
-    if (!currentNft || !currentAccount?.address) return;
-
-    // This function is only called for ERC-721
-
     setIsLoadingTokenIds(true);
-    try {
-      const result = (await controllerEmitter(
-        ['wallet', 'fetchNftTokenIds'],
-        [
-          currentNft.contractAddress,
-          currentAccount?.address,
-          currentNft.tokenStandard || 'ERC-721',
-        ]
-      )) as { balance: number; tokenId: string }[] & {
-        hasMore?: boolean;
-        requiresManualEntry?: boolean;
-      };
-
-      setNftTokenIds(result || []);
-      setHasMoreTokens(result.hasMore || false);
-
-      // Auto-select first token if we have any and no manual selection
-      if (result && result.length > 0 && !selectedTokenId && !manualTokenId) {
-        setSelectedTokenId(result[0].tokenId);
-        setVerifiedTokenBalance(result[0].balance); // Already verified from enumeration
+    void (async () => {
+      try {
+        const result = (await controllerEmitter(
+          ['wallet', 'fetchNftTokenIds'],
+          [
+            currentNft.contractAddress,
+            currentAccount.address,
+            currentNft.tokenStandard || 'ERC-721',
+          ]
+        )) as { balance: number; tokenId: string }[] & {
+          hasMore?: boolean;
+          requiresManualEntry?: boolean;
+        };
+        if (!current) return;
+        setNftTokenIds(result || []);
+        setHasMoreTokens(result?.hasMore || false);
+        if (result?.length > 0 && !selectedTokenId && !manualTokenId) {
+          setSelectedTokenId(result[0].tokenId);
+        }
+      } catch (error) {
+        console.error('Error loading NFT token IDs:', error);
+      } finally {
+        if (current) setIsLoadingTokenIds(false);
       }
-    } catch (error) {
-      console.error('Error loading NFT token IDs:', error);
-      setNftTokenIds([]);
-    } finally {
-      setIsLoadingTokenIds(false);
+    })();
+    return () => {
+      current = false;
+    };
+  }, [nftScope, currentNft?.balance]);
+
+  // Event handlers do not run returned cleanup functions. Own both the debounce
+  // and in-flight result here so old edits, accounts and collections cannot
+  // update the current token's ownership indicator.
+  useEffect(() => {
+    let current = true;
+    const tokenId = manualTokenId.trim();
+    setVerificationError(null);
+    setVerifiedTokenBalance(null);
+    if (currentNft?.tokenStandard === 'ERC-1155') {
+      setVerifiedTokenBalance(currentNft.balance);
+      setIsVerifyingTokenId(false);
+      return;
     }
-  };
+    if (!currentNft || !currentAccount?.address || !tokenId) {
+      const selected = nftTokenIds.find(
+        (token) => token.tokenId === selectedTokenId
+      );
+      setVerifiedTokenBalance(selected?.balance ?? null);
+      setIsVerifyingTokenId(false);
+      return;
+    }
+    setIsVerifyingTokenId(true);
+    const timer = setTimeout(() => {
+      void (async () => {
+        try {
+          const result = (await controllerEmitter(
+            ['wallet', 'verifyERC721Ownership'],
+            [currentNft.contractAddress, currentAccount.address, [tokenId]]
+          )) as { balance: number; tokenId: string; verified: boolean }[];
+          if (!current) return;
+          const tokenInfo = result?.[0];
+          if (tokenInfo?.verified && tokenInfo.balance > 0) {
+            setVerifiedTokenBalance(tokenInfo.balance);
+          } else {
+            setVerifiedTokenBalance(0);
+            setVerificationError(
+              !tokenInfo
+                ? t('send.tokenNotFound')
+                : tokenInfo.balance === 0
+                ? t('send.youDontOwnThisToken')
+                : t('send.tokenVerificationFailed')
+            );
+          }
+        } catch (error) {
+          console.error('Error verifying token ID:', error);
+          if (current) {
+            setVerifiedTokenBalance(0);
+            setVerificationError(t('send.verificationFailed'));
+          }
+        } finally {
+          if (current) setIsVerifyingTokenId(false);
+        }
+      })();
+    }, 500);
+    return () => {
+      current = false;
+      clearTimeout(timer);
+    };
+  }, [
+    manualTokenId,
+    selectedTokenId,
+    nftTokenIds,
+    nftScope,
+    currentNft?.balance,
+  ]);
 
   // Handle manual token ID input with debounced verification
   const handleManualTokenIdChange = (value: string) => {
     setManualTokenId(value);
-    if (value) {
-      setSelectedTokenId(value);
-      // Clear previous verification
-      setVerifiedTokenBalance(null);
-      setVerificationError(null);
-
-      // Debounce verification to avoid too many calls
-      const timeoutId = setTimeout(() => {
-        verifyTokenId(value);
-      }, 500);
-
-      return () => clearTimeout(timeoutId);
-    } else {
-      setVerifiedTokenBalance(null);
-      setVerificationError(null);
-    }
+    setSelectedTokenId(value || null);
+    setVerifiedTokenBalance(null);
+    setVerificationError(null);
   };
 
   // Get display token ID
@@ -215,10 +214,27 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
     );
 
   useEffect(() => {
-    if (!copied) return;
+    copyContextRef.current.active = true;
+    return () => {
+      copyContextRef.current.active = false;
+      copySequenceRef.current += 1;
+    };
+  }, []);
 
-    alert.info(t('home.contractCopied'));
-  }, [copied, alert, t]);
+  const copy = async (value: string, successMessage: string) => {
+    const scope = nftScope;
+    const sequence = ++copySequenceRef.current;
+    const isCurrent = () =>
+      copyContextRef.current.active &&
+      copyContextRef.current.scope === scope &&
+      copySequenceRef.current === sequence;
+    try {
+      await navigator.clipboard.writeText(value);
+      if (isCurrent()) alert.info(t(successMessage));
+    } catch {
+      if (isCurrent()) alert.error(t('transactions.copyFailed'));
+    }
+  };
 
   return (
     <>
@@ -258,7 +274,10 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
             ) : (
               /* Token ID selector for ERC-721 */
               <div className="w-full">
-                <label className="text-brand-gray200 text-xs mb-2 block">
+                <label
+                  htmlFor="nft-details-token-id"
+                  className="text-brand-gray200 text-xs mb-2 block"
+                >
                   {t('send.tokenId')}:
                 </label>
 
@@ -269,11 +288,12 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
                       {nftTokenIds.map((token) => (
                         <button
                           key={token.tokenId}
+                          type="button"
                           onClick={() => {
                             setSelectedTokenId(token.tokenId);
                             setManualTokenId('');
                           }}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                          className={`max-w-full break-all px-3 py-1.5 rounded-lg text-xs font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue ${
                             selectedTokenId === token.tokenId && !manualTokenId
                               ? 'bg-brand-royalblue text-white'
                               : 'bg-bkg-2 text-brand-gray200 hover:bg-bkg-3 hover:text-white border border-bkg-4'
@@ -286,6 +306,7 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
                     </div>
                     {hasMoreTokens && (
                       <button
+                        type="button"
                         onClick={openCollectionOnExplorer}
                         className="text-brand-royalblue text-xs hover:underline flex items-center gap-1"
                       >
@@ -299,6 +320,7 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
                 {/* Manual token ID input */}
                 <div className="relative">
                   <input
+                    id="nft-details-token-id"
                     type="text"
                     value={manualTokenId}
                     onChange={(e) => handleManualTokenIdChange(e.target.value)}
@@ -462,12 +484,16 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
                           : displayTokenId}
                       </span>
 
-                      <CopyIcon
-                        size={15}
-                        className="hover:text-brand-deepPink100 cursor-pointer"
-                        color="text-brand-white"
-                        onClick={() => copy(displayTokenId ?? '')}
-                      />
+                      <button
+                        type="button"
+                        aria-label={`${t('buttons.copy')} ${t('send.tokenId')}`}
+                        className="inline-flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg text-brand-white hover:text-brand-deepPink100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue"
+                        onClick={() =>
+                          void copy(displayTokenId, 'components.copied')
+                        }
+                      >
+                        <CopyIcon size={15} />
+                      </button>
                     </div>
                   </li>
                 )}
@@ -482,12 +508,19 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
                       {ellipsis(currentNft.contractAddress)}
                     </span>
 
-                    <CopyIcon
-                      size={15}
-                      className="hover:text-brand-deepPink100 cursor-pointer"
-                      color="text-brand-white"
-                      onClick={() => copy(currentNft.contractAddress ?? '')}
-                    />
+                    <button
+                      type="button"
+                      aria-label={t('send.copyContractAddress')}
+                      className="inline-flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg text-brand-white hover:text-brand-deepPink100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue"
+                      onClick={() =>
+                        void copy(
+                          currentNft.contractAddress,
+                          'home.contractCopied'
+                        )
+                      }
+                    >
+                      <CopyIcon size={15} />
+                    </button>
                   </div>
                 </li>
               </ul>
