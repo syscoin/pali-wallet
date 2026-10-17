@@ -7,17 +7,26 @@ import React from 'react';
 import RenderAccountsListByBitcoinBased from './RenderAccountsListByBitcoinBased';
 
 const mockAlert = { error: jest.fn(), info: jest.fn() };
+type MockAccount = {
+  address: string;
+  id: number;
+  isImported?: boolean;
+  label: string;
+  slip44: number;
+  smartAccount?: { chainId: number };
+};
+const createMockAccounts = (): Record<string, Record<number, MockAccount>> => ({
+  HDAccount: {
+    0: { id: 0, label: 'Alpha', address: 'tsys1qalpha', slip44: 1 },
+    1: { id: 1, label: 'Beta', address: 'tsys1qbeta', slip44: 1 },
+  },
+});
 const mockState = {
   vaultGlobal: { isSwitchingAccount: false },
   vault: {
     activeAccount: { id: 0, type: 'HDAccount' },
     activeNetwork: { kind: 'syscoin', chainId: 5700, slip44: 1 },
-    accounts: {
-      HDAccount: {
-        0: { id: 0, label: 'Alpha', address: 'tsys1qalpha', slip44: 1 },
-        1: { id: 1, label: 'Beta', address: 'tsys1qbeta', slip44: 1 },
-      },
-    },
+    accounts: createMockAccounts(),
   },
 };
 
@@ -80,6 +89,9 @@ const openAccounts = async (
 beforeEach(() => {
   jest.clearAllMocks();
   mockState.vaultGlobal.isSwitchingAccount = false;
+  mockState.vault.activeAccount = { id: 0, type: 'HDAccount' };
+  mockState.vault.activeNetwork = { kind: 'syscoin', chainId: 5700, slip44: 1 };
+  mockState.vault.accounts = createMockAccounts();
 });
 
 it('keeps compact 38px account rows with an independent 44px-wide copy target', async () => {
@@ -144,6 +156,97 @@ it('centers badge text and the active check inside explicit local boxes', async 
   expect(Array.from(check.classList)).toEqual(
     expect.arrayContaining(['block', 'h-[12px]', 'w-[12px]'])
   );
+});
+
+it('compacts the Smart badge without shrinking text or losing its full accessible type', async () => {
+  const address = '0x1111111111111111111111111111111111111111';
+  mockState.vault.activeAccount = { id: 0, type: 'SmartAccount' };
+  mockState.vault.activeNetwork = { kind: 'ethereum', chainId: 1, slip44: 60 };
+  mockState.vault.accounts = {
+    SmartAccount: {
+      0: {
+        id: 0,
+        label: 'My longer smart account name',
+        address,
+        slip44: 60,
+        smartAccount: { chainId: 1 },
+      },
+    },
+  };
+  await openAccounts();
+
+  const account = screen.getByRole('menuitem', {
+    name: /My longer smart account name.*Smart Account/,
+  });
+  expect(account.getAttribute('aria-label')).toContain(address);
+  const badge = within(account).getByTitle('Smart Account');
+  expect(
+    within(badge).getByText('Smart').classList.contains('leading-none')
+  ).toBe(true);
+  expect(within(account).queryByText('Smart Account')).toBeNull();
+  expect(Array.from(badge.classList)).toEqual(
+    expect.arrayContaining([
+      'inline-flex',
+      'h-[20px]',
+      'items-center',
+      'px-1',
+      'text-xs',
+      'leading-none',
+      'bg-purple-500',
+    ])
+  );
+  expect(badge.classList.contains('px-2')).toBe(false);
+
+  const check = within(badge).getByTestId('icon-check');
+  expect(Array.from(check.parentElement?.classList || [])).toEqual(
+    expect.arrayContaining([
+      'flex',
+      'h-[12px]',
+      'w-[12px]',
+      'items-center',
+      'justify-center',
+      'leading-none',
+    ])
+  );
+  expect(Array.from(check.classList)).toEqual(
+    expect.arrayContaining(['block', 'h-[12px]', 'w-[12px]'])
+  );
+  const copy = screen.getByRole('menuitem', {
+    name: 'buttons.copy: My longer smart account name',
+  });
+  expect(account.classList.contains('min-h-[38px]')).toBe(true);
+  expect(copy.classList.contains('min-h-[38px]')).toBe(true);
+  expect(copy.classList.contains('min-w-[44px]')).toBe(true);
+});
+
+it.each([
+  ['HDAccount', 'Pali'],
+  ['Trezor', 'Trezor'],
+  ['Ledger', 'Ledger'],
+  ['Imported', 'Imported'],
+])('preserves the %s badge label and size', async (type, label) => {
+  mockState.vault.activeAccount = { id: 0, type };
+  mockState.vault.accounts = {
+    [type]: {
+      0: {
+        id: 0,
+        label: 'Unchanged account',
+        address: 'tsys1qunchanged',
+        slip44: 1,
+        isImported: type === 'Imported',
+      },
+    },
+  };
+  await openAccounts();
+
+  const account = screen.getByRole('menuitem', {
+    name: /Unchanged account.*tsys1qunchanged/,
+  });
+  const badge = within(account).getByText(label).parentElement;
+  expect(Array.from(badge?.classList || [])).toEqual(
+    expect.arrayContaining(['h-[20px]', 'px-2', 'text-xs', 'items-center'])
+  );
+  expect(badge?.classList.contains('px-1')).toBe(false);
 });
 
 it('keeps reopened account controls disabled during a background switch', async () => {
