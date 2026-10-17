@@ -8,6 +8,7 @@ import {
   Button,
   ValidatedPasswordInput,
   SeedPhraseDisplay,
+  PageActionFooter,
 } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
@@ -99,7 +100,7 @@ const PhraseView = () => {
         </Card>
       </div>
 
-      <div className="w-full px-4 absolute bottom-12 md:static">
+      <PageActionFooter className="absolute bottom-12 md:static">
         <Button
           type="button"
           onClick={handleClose}
@@ -107,7 +108,7 @@ const PhraseView = () => {
         >
           {t('buttons.close')}
         </Button>
-      </div>
+      </PageActionFooter>
     </>
   );
 };

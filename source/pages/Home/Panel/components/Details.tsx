@@ -113,13 +113,16 @@ export const DetailsView = () => {
 
       {!isAsset && !isNft ? (
         <li className="mt-6 mb-4 flex items-center justify-center">
-          <div
-            className="flex items-center justify-center gap-2 cursor-pointer transition-all duration-300 hover:opacity-60 py-3 px-4 rounded-lg border border-dashed border-[#FFFFFF29]"
+          <button
+            type="button"
+            className="flex items-center justify-center gap-2 cursor-pointer transition-all duration-300 hover:opacity-60 py-3 px-4 rounded-lg border border-dashed border-[#FFFFFF29] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
             onClick={isBitcoinBased ? openSysExplorer : openEthExplorer}
           >
             <ExternalLinkSvg className="w-4 h-4" />
-            <p className="text-sm text-white underline">View on Explorer</p>
-          </div>
+            <span className="text-sm text-white underline">
+              View on Explorer
+            </span>
+          </button>
         </li>
       ) : null}
     </ul>

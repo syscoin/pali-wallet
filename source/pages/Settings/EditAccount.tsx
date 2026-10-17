@@ -7,7 +7,7 @@ import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
 import { LockIconSvg } from 'components/Icon/Icon';
-import { Button, Icon } from 'components/index';
+import { Button, Icon, PageActionFooter } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { HardWallets } from 'scripts/Background/controllers/message-handler/types';
@@ -221,8 +221,8 @@ const EditAccountView = () => {
           </button>
         )}
 
-        <div
-          className={`w-full px-4 ${
+        <PageActionFooter
+          className={`${
             isSmartAccount ? 'static' : 'absolute bottom-12 md:static'
           }`}
         >
@@ -235,7 +235,7 @@ const EditAccountView = () => {
           >
             {t('buttons.save')}
           </Button>
-        </div>
+        </PageActionFooter>
       </Form>
     </>
   );

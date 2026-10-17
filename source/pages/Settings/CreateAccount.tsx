@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useNavigate, useLocation } from 'react-router-dom';
 
-import { Button, Card, Icon } from 'components/index';
+import { Button, Icon, PageActionFooter } from 'components/index';
 import { CreatedAccountSuccessfully } from 'components/Modal/WarningBaseModal';
 import { useController } from 'hooks/useController';
 import { usePageLoadingState } from 'hooks/usePageLoadingState';
@@ -136,12 +136,6 @@ const CreateAccount = () => {
             />
           </Form.Item>
 
-          {error && (
-            <Card type="error">
-              <p className="text-left text-sm font-normal">{error}</p>
-            </Card>
-          )}
-
           {isSmartAccountSupported && !smartAccountOnly && (
             <button
               type="button"
@@ -176,7 +170,10 @@ const CreateAccount = () => {
             </button>
           )}
 
-          <div className="w-full px-4 absolute bottom-12 md:static">
+          <PageActionFooter
+            className="absolute bottom-12 md:static"
+            error={error}
+          >
             <Button
               variant="neutral"
               className="text-sm text-brand-royalblue"
@@ -194,7 +191,7 @@ const CreateAccount = () => {
                 ? t('settings.createSmartAccount')
                 : t('buttons.create')}
             </Button>
-          </div>
+          </PageActionFooter>
         </Form>
       )}
     </>

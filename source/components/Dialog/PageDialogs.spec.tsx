@@ -65,6 +65,8 @@ jest.mock('components/index', () => ({
   IconButton: jest.requireActual('../IconButton/IconButton').IconButton,
   Icon: () => <svg aria-hidden="true" />,
   Modal: jest.requireActual('../Modal/Modal').Modal,
+  PageActionFooter: jest.requireActual('../PageActionFooter/PageActionFooter')
+    .PageActionFooter,
   Tooltip: ({ children }: any) => children,
 }));
 jest.mock('components/ChainIcon', () => ({

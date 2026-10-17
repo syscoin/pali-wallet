@@ -4,7 +4,13 @@ import { useLocation } from 'react-router-dom';
 
 import packageJson from '../../../package.json';
 import { PaliWhiteSmallIconSvg } from 'components/Icon/Icon';
-import { Icon, SimpleCard, IconButton, Button } from 'components/index';
+import {
+  Icon,
+  SimpleCard,
+  IconButton,
+  Button,
+  PageActionFooter,
+} from 'components/index';
 import { useUtils } from 'hooks/index';
 import { navigateBack } from 'utils/navigationState';
 
@@ -92,7 +98,7 @@ const AboutView: FC = () => {
           {t('settings.tokenDataProvider', { provider: 'Routescan' })}
         </a>
 
-        <div className="w-full px-4 absolute bottom-12 md:static">
+        <PageActionFooter className="absolute bottom-12 md:static">
           <Button
             className="flex items-center justify-center w-full h-10 bg-white text-brand-blue400 text-base font-medium rounded-[100px]"
             type="button"
@@ -100,7 +106,7 @@ const AboutView: FC = () => {
           >
             {t('buttons.close')}
           </Button>
-        </div>
+        </PageActionFooter>
       </div>
     </>
   );

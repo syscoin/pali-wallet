@@ -163,8 +163,8 @@ const ConnectHardwareWalletView: FC = () => {
   }, [isLoading]);
 
   return (
-    <div className="fixed inset-0 flex items-center justify-center bg-brand-blue600 overflow-y-auto">
-      <div className="w-full max-w-md px-4 min-h-popup flex flex-col py-8">
+    <div className="fixed inset-0 flex items-start justify-center bg-brand-blue600 overflow-y-auto">
+      <div className="my-auto w-full max-w-md px-4 min-h-popup flex flex-col py-8">
         <>
           {/* Wallet logged out message */}
           {!isUnlocked && (

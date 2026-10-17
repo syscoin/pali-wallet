@@ -1281,7 +1281,18 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
               }),
             ]}
           >
-            <div className="relative">
+            <div
+              className="relative"
+              onBlur={(event) => {
+                if (
+                  !event.currentTarget.contains(
+                    event.relatedTarget as Node | null
+                  )
+                ) {
+                  setIsSuggestionsOpen(false);
+                }
+              }}
+            >
               <Input
                 type="text"
                 placeholder={t('send.receiver')}
