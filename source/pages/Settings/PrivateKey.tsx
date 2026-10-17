@@ -28,6 +28,16 @@ const PrivateKeyView = () => {
     activeAccountMeta.type === KeyringAccountType.Ledger ||
     activeAccountMeta.type === KeyringAccountType.Trezor ||
     activeAccountMeta.type === KeyringAccountType.SmartAccount;
+  // Imported watch-only records deliberately have no encrypted private key.
+  // Do not mistake a signing import's address-shaped xpub for watch-only.
+  const isWatchOnlyAccount =
+    activeAccountMeta.type === KeyringAccountType.Imported &&
+    !activeAccount?.xprv;
+  const isPublicAddress =
+    isWatchOnlyAccount &&
+    (!isBitcoinBased || activeAccount?.xpub === activeAccount?.address);
+  const isPublicDescriptor =
+    isWatchOnlyAccount && /^[a-z_]+\s*\(/i.test(activeAccount?.xpub || '');
 
   const { useCopyClipboard, alert } = useUtils();
 
@@ -88,6 +98,7 @@ const PrivateKeyView = () => {
   const handleValidationError = () => {
     setValid(false);
     setCurrentXprv('');
+    setIsPrivateKeyVisible(false);
   };
 
   const { url: activeUrl, explorer } = activeNetwork;
@@ -96,24 +107,25 @@ const PrivateKeyView = () => {
 
   const url = isBitcoinBased ? activeUrl : adjustedExplorer;
 
-  const property = isBitcoinBased ? 'xpub' : 'address';
-  const value = isBitcoinBased ? activeAccount?.xpub : activeAccount.address;
-  const copyPublicXpub = async () => {
-    if (!activeAccount?.xpub) return;
+  const property = isBitcoinBased && !isPublicAddress ? 'xpub' : 'address';
+  const value =
+    property === 'xpub' ? activeAccount?.xpub : activeAccount?.address;
+  const copyPublicIdentifier = async () => {
+    if (!value) return;
     try {
-      await copyText(String(activeAccount.xpub));
+      await copyText(String(value));
     } catch {
       alert.error(t('transactions.copyFailed'));
     }
   };
 
   const explorerLink = isBitcoinBased
-    ? `${url}/${property}/${value}`
+    ? `${url}/${property}/${encodeURIComponent(value || '')}`
     : `${url}${property}/${value}`;
 
   return (
     <>
-      {isBitcoinBased && (
+      {isBitcoinBased && !isWatchOnlyAccount && (
         <Card type="info">
           <p>
             <b className="text-warning-info">{t('settings.forgetWarning')}: </b>
@@ -123,19 +135,29 @@ const PrivateKeyView = () => {
         </Card>
       )}
 
-      {isBitcoinBased && (
+      {(isBitcoinBased || isWatchOnlyAccount) && (
         <CopyCard
           className="my-4 w-full md:max-w-md"
-          onClick={copyPublicXpub}
-          label={t('settings.yourXpub')}
+          onClick={copyPublicIdentifier}
+          label={t(
+            isPublicAddress
+              ? 'settings.yourPublicAddress'
+              : isPublicDescriptor
+              ? 'settings.yourPublicDescriptor'
+              : 'settings.yourXpub'
+          )}
         >
-          <p>{ellipsis(activeAccount?.xpub, 4, 16)}</p>
+          <p title={value}>{ellipsis(value, 4, 16)}</p>
         </CopyCard>
       )}
 
       {isHardwareAccount ? (
         <Card type="info" className="my-4">
           <p>{t('settings.hardwareWalletPrivateKeyUnavailable')}</p>
+        </Card>
+      ) : isWatchOnlyAccount ? (
+        <Card type="info" className="my-4">
+          <p>{t('settings.watchOnlyNoPrivateKey')}</p>
         </Card>
       ) : (
         <Form
@@ -160,7 +182,7 @@ const PrivateKeyView = () => {
         </Form>
       )}
 
-      {!isHardwareAccount && (
+      {!isHardwareAccount && !isWatchOnlyAccount && (
         <>
           {/* Private key display - view-only, no copy to prevent clipboard attacks */}
           <div className="w-full md:max-w-md bg-bkg-4 border border-bkg-4 p-4 text-xs rounded-lg">

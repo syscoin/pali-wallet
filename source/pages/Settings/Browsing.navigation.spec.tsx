@@ -9,6 +9,12 @@ import EditAccount from './EditAccount';
 import ForgetWallet from './ForgetWallet';
 import TrustedSites from './TrustedSites';
 
+jest.mock('./customRpcDraft', () => ({
+  readCustomRpcDraft: () => undefined,
+  writeCustomRpcDraft: jest.fn(),
+  discardCustomRpcDraft: jest.fn(),
+}));
+
 let mockState: any;
 let mockLocation: any;
 let mockHooks: any[];
@@ -31,6 +37,7 @@ const mockForm = {
   setFields: jest.fn(),
   setFieldsValue: jest.fn(),
   getFieldValue: jest.fn(),
+  getFieldsValue: jest.fn().mockReturnValue({}),
 };
 const rpc = {
   chainId: 12345,
@@ -184,6 +191,9 @@ describe('settings browsing context', () => {
       .spyOn(React, 'useRef')
       .mockImplementation((initial) => ({ current: initial }));
     jest.spyOn(React, 'useEffect').mockImplementation((callback) => {
+      mockEffects.push(callback);
+    });
+    jest.spyOn(React, 'useLayoutEffect').mockImplementation((callback) => {
       mockEffects.push(callback);
     });
   });

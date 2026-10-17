@@ -183,6 +183,18 @@ describe('account removal confirmation context', () => {
     expect(dialog()!.props.title).toBeDefined();
   });
 
+  it('keeps account rows compact without shrinking their action targets', () => {
+    const row = findElement(render(), (element) => element.type === 'li')!;
+    expect(row.props.className).toContain('my-0.5 py-0.5');
+    expect(row.props.className).not.toContain('my-3');
+    expect(row.props.className).not.toContain('py-2');
+    const action = findElement(
+      row,
+      (element) => element.props['aria-label'] === 'buttons.edit: Anchor'
+    )!;
+    expect(action.props.className).toContain('h-11 w-11');
+  });
+
   it('preserves the caller and the account list position through an edit detour', () => {
     const parent = { returnRoute: '/home/smart-account?tab=modules' };
     mockLocation = {

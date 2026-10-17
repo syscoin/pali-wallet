@@ -5,6 +5,8 @@ import {
   encodeCustomApprovalData,
   formatApprovalTokenAmount,
   getApprovalAmountDisplay,
+  getEffectiveApprovalData,
+  parseApprovalAmount,
 } from './approval';
 
 const SPENDER = '0x1111111111111111111111111111111111111111';
@@ -74,4 +76,91 @@ describe('approval editing', () => {
       })
     ).toEqual({ amount: '1.5', isUnlimited: false });
   });
+
+  it.each(['', '-1', 'NaN', '1e9', '0x10', '1.0000001'])(
+    'rejects malformed or nonrepresentable token amount %p',
+    (value) => {
+      expect(parseApprovalAmount(value, 6)).toBeNull();
+    }
+  );
+
+  it('accepts exact zero and the uint256 maximum but refuses overflow or invalid decimals', () => {
+    const maximum = ((BigInt(1) << BigInt(256)) - BigInt(1)).toString();
+    expect(parseApprovalAmount('0', 18)).toBe(BigInt(0));
+    expect(parseApprovalAmount(maximum, 0)?.toString()).toBe(maximum);
+    expect(
+      parseApprovalAmount((BigInt(maximum) + BigInt(1)).toString(), 0)
+    ).toBeNull();
+    expect(parseApprovalAmount('1', -1)).toBeNull();
+    expect(parseApprovalAmount('1', 1.5)).toBeNull();
+  });
+
+  const decodedTx = {
+    method: 'approve',
+    inputs: [SPENDER, '100000000'],
+    names: ['spender', 'amount'],
+    types: ['address', 'uint256'],
+  };
+  const originalData = new Interface(ERC20_ABI).encodeFunctionData(
+    'approve',
+    decodedTx.inputs
+  );
+
+  it('derives the review amount from the exact custom calldata while preserving authority', () => {
+    const review = getEffectiveApprovalData({
+      approvalType: 'erc20-amount',
+      customAmount: '1.5',
+      data: originalData,
+      decimals: 6,
+      decodedTx,
+      isCustom: true,
+    });
+    expect(review).not.toBeNull();
+    const encoded = new Interface(ERC20_ABI).decodeFunctionData(
+      'approve',
+      review!.data
+    );
+    expect(encoded[0]).toBe(SPENDER);
+    expect(encoded[1].toString()).toBe('1500000');
+    expect(review!.decodedTx).toEqual({
+      ...decodedTx,
+      inputs: [SPENDER, encoded[1].toString()],
+    });
+    expect(decodedTx.inputs[1]).toBe('100000000');
+  });
+
+  it('preserves original default and non-approval data without requiring token metadata', () => {
+    const review = getEffectiveApprovalData({
+      data: originalData,
+      decodedTx,
+      isCustom: false,
+    });
+    expect(review).toEqual({ data: originalData, decodedTx });
+    expect(review!.decodedTx).toBe(decodedTx);
+    expect(
+      getEffectiveApprovalData({ data: '0x1234', decodedTx, isCustom: false })
+        ?.data
+    ).toBe('0x1234');
+  });
+
+  it.each([
+    { customAmount: '-1', decimals: 6, method: 'approve' },
+    { customAmount: '1', decimals: undefined, method: 'approve' },
+    { customAmount: null, decimals: 6, method: 'approve' },
+    { customAmount: '1', decimals: 6, method: 'increaseAllowance' },
+  ])(
+    'does not show original calldata as a valid edited transaction for %p',
+    (input) => {
+      expect(
+        getEffectiveApprovalData({
+          approvalType: 'erc20-amount',
+          customAmount: input.customAmount,
+          data: originalData,
+          decimals: input.decimals,
+          decodedTx: { ...decodedTx, method: input.method },
+          isCustom: true,
+        })
+      ).toBeNull();
+    }
+  );
 });
