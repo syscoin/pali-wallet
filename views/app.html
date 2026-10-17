@@ -78,19 +78,22 @@
         opacity: 1;
       }
 
-      /* Keep the normal popup size, but let short windows scroll real content. */
+      /* Only externally sized views may follow the viewport. A toolbar popup
+       * gets its viewport from this document's intrinsic size: using 100dvh
+       * there feeds its initially tiny height back into Chrome's sizing. */
       @media (max-height: 619px) {
-        body.h-popup {
+        html[data-pali-view='standalone'] body.h-popup {
           height: 100vh;
           height: 100dvh;
         }
 
-        #app-root,
-        #app-root .min-h-popup {
+        html[data-pali-view='standalone'] #app-root,
+        html[data-pali-view='standalone'] #app-root .min-h-popup {
           min-height: 0;
         }
 
-        .min-h-popup[data-navigation-scroll='wallet-layout'] {
+        html[data-pali-view='standalone']
+          .min-h-popup[data-navigation-scroll='wallet-layout'] {
           height: 100%;
           min-height: 0;
           max-height: 100%;
