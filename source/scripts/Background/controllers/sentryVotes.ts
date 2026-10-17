@@ -12,6 +12,7 @@ import type {
   SentryGovernanceVoteContext,
   SentryGovernanceVoteRequest,
   SentryGovernanceVoteResponse,
+  SentryGovernanceVoteReview,
 } from '@sidhujag/sysweb3-sentry';
 
 interface ISentryVoteHost {
@@ -37,12 +38,6 @@ interface IPendingSentryVote {
   scope: SentryWalletScope;
   signing: boolean;
 }
-
-const loadSdk = () =>
-  import(
-    /* webpackChunkName: "sentry-sdk", webpackExports: ["validateSentryGovernanceVoteRequest", "reviewSentryGovernanceVote"] */
-    '@sidhujag/sysweb3-sentry'
-  );
 
 /** Dedicated governance protocol: never accept an arbitrary digest from a site. */
 export class SentryVoteController {
@@ -100,10 +95,15 @@ export class SentryVoteController {
 
   public async prepare(raw: unknown, origin: string) {
     const scope = this.host.captureScope();
-    const sdk = await loadSdk();
-    const request = sdk.validateSentryGovernanceVoteRequest(raw);
+    const request = await runSentryCrypto<SentryGovernanceVoteRequest>(
+      { type: 'validateVote', request: raw },
+      () => this.assertCurrent(scope)
+    );
     const { settings, context } = await this.context(scope, request);
-    sdk.reviewSentryGovernanceVote(request, context);
+    await runSentryCrypto<SentryGovernanceVoteReview>(
+      { type: 'reviewVote', request, context },
+      () => this.assertCurrent(scope)
+    );
     const votingKeys = settings.keys.filter(
       (key) => key.role === 'voting' && key.scheme === 'secp256k1'
     );
@@ -228,9 +228,17 @@ export class SentryVoteController {
         const { scope, publicApproval: approval } = pending;
         const seed = await this.host.getSeed(params.password);
         this.assertCurrent(scope);
-        const sdk = await loadSdk();
         const fresh = await this.context(scope, approval.request);
-        sdk.reviewSentryGovernanceVote(approval.request, fresh.context);
+        await runSentryCrypto<SentryGovernanceVoteReview>(
+          {
+            type: 'reviewVote',
+            request: approval.request,
+            context: fresh.context,
+          },
+          () => this.assertCurrent(scope)
+        );
+        if (this.pending(params.id) !== pending)
+          throw new Error('Vote approval was cancelled');
         // Ignore only the current clock; all reviewed identities/metadata must remain exact.
         if (
           !isEqual(
@@ -245,6 +253,8 @@ export class SentryVoteController {
         const vaultId = await getSentryVaultId(scope.rootPublicIdentity);
         const votes: SentryGovernanceVoteResponse[] = [];
         for (const node of approval.nodes) {
+          if (this.pending(params.id) !== pending)
+            throw new Error('Vote approval was cancelled');
           let key: SentryAuthorityKey;
           if (
             node.keyId === 'wallet-voting' &&

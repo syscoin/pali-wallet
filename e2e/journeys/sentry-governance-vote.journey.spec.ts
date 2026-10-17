@@ -169,6 +169,13 @@ test('Pali reviews and signs exact legacy governance votes without disclosing ke
     const popup = await popupFor(wallet.context, page, id);
     await popup.setViewportSize({ width: 320, height: 360 });
     await popup
+      .locator('form')
+      .getByRole('heading', { name: 'Authorize governance vote', exact: true })
+      .scrollIntoViewIfNeeded();
+    await popup.screenshot({
+      path: info.outputPath('governance-top-320x360.png'),
+    });
+    await popup
       .getByText('Review nodes and vote details', { exact: true })
       .click();
     await expect(
@@ -182,6 +189,9 @@ test('Pali reviews and signs exact legacy governance votes without disclosing ke
     await popup
       .getByText('Review nodes and vote details', { exact: true })
       .click();
+    await popup
+      .getByLabel('Wallet password', { exact: true })
+      .scrollIntoViewIfNeeded();
     await popup.screenshot({ path: info.outputPath('governance-320x360.png') });
     await popup
       .getByLabel('Wallet password', { exact: true })

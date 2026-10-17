@@ -5,6 +5,8 @@ import {
   signSentryGovernanceVote,
   governanceVotingKeyIds,
   verifySentryGovernanceVote,
+  validateSentryGovernanceVoteRequest,
+  reviewSentryGovernanceVote,
 } from '@sidhujag/sysweb3-sentry';
 
 import type { SentryCryptoJob } from 'utils/sentry/workerClient';
@@ -12,6 +14,14 @@ import type { SentryCryptoJob } from 'utils/sentry/workerClient';
 self.onmessage = async (event: MessageEvent<{ job: SentryCryptoJob }>) => {
   try {
     const { job } = event.data;
+    if (job.type === 'validateVote' || job.type === 'reviewVote') {
+      const result =
+        job.type === 'validateVote'
+          ? validateSentryGovernanceVoteRequest(job.request)
+          : reviewSentryGovernanceVote(job.request, job.context);
+      self.postMessage({ success: true, result });
+      return;
+    }
     if (job.type === 'votingIdentities') {
       if (!Array.isArray(job.publicKeys) || job.publicKeys.length > 100)
         throw new Error('Invalid voting key list');

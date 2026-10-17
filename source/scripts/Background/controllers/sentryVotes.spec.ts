@@ -108,6 +108,25 @@ beforeEach(() => {
   mockLoadKey.mockResolvedValue(key);
   mockCrypto.mockImplementation(async (job, assertCurrent) => {
     assertCurrent();
+    if (job.type === 'validateVote') {
+      if (job.request.version !== 1) throw new Error('Invalid request');
+      return structuredClone(job.request);
+    }
+    if (job.type === 'reviewVote') {
+      const { request: req, context: ctx } = job;
+      if (
+        req.chain.genesisHash !== ctx.chain.genesisHash ||
+        ctx.chain.era !== 'legacy-v3'
+      )
+        throw new Error('Wrong network');
+      if (req.proposalHash !== ctx.proposalHash)
+        throw new Error('Wrong proposal');
+      if (Math.abs(req.timestamp - ctx.now) > 3600)
+        throw new Error('Stale vote');
+      if (ctx.nodes.length !== req.nodes.length)
+        throw new Error('Missing node');
+      return { request: req };
+    }
     if (job.type === 'votingIdentities')
       return job.publicKeys.map((publicKey: string) => ({
         publicKey,
@@ -225,11 +244,13 @@ it('retires cancelled and old-account approvals without exposing partial signatu
 it('rejects duplicate clicks and cancellation while cryptography is running', async () => {
   const id = await controller.prepare(request, 'https://dapp.test');
   let release!: () => void;
-  mockCrypto.mockImplementationOnce(
-    () =>
-      new Promise((resolve) => {
-        release = () => resolve({ proTxHash: request.nodes[0].proTxHash });
-      })
+  const normalCrypto = mockCrypto.getMockImplementation()!;
+  mockCrypto.mockImplementation((job, assertCurrent) =>
+    job.type === 'signVote'
+      ? new Promise((resolve) => {
+          release = () => resolve({ proTxHash: request.nodes[0].proTxHash });
+        })
+      : normalCrypto(job, assertCurrent)
   );
   const signing = controller.sign({ id, password: 'synthetic' });
   while (!release) await new Promise((resolve) => setTimeout(resolve, 0));
