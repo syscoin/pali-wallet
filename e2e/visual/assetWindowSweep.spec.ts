@@ -331,7 +331,9 @@ test('long ERC20 and NFT metadata stays readable in lists, details and import pr
       await capture(page, `erc20-details-${width}x${height}-bottom`);
       expect.soft(await exposed(close)).toBe(true);
       await close.click();
-      const nftToggle = page.locator('div.w-14.h-8 span.cursor-pointer').last();
+      const nftToggle = page.getByRole('button', {
+        name: en.tooltip.viewNFTs,
+      });
       await reveal(page, nftToggle);
       await nftToggle.click();
       const nftDetails = page.getByRole('button', {

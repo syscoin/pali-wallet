@@ -200,7 +200,9 @@ test('NFT detail ownership follows the latest edit and cancels reads on Back in 
       await page.setViewportSize(viewport);
       await page.goto(wallet.appUrl('#/home'));
       await page.locator('#assets-btn').click();
-      const nftToggle = page.locator('div.w-14.h-8 span.cursor-pointer').last();
+      const nftToggle = page.getByRole('button', {
+        name: en.tooltip.viewNFTs,
+      });
       await reveal(page, nftToggle);
       await nftToggle.click();
       const details = page.getByRole('button', {

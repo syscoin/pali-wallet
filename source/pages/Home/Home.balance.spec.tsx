@@ -97,4 +97,21 @@ describe('Home unknown balance', () => {
     const send = markup.match(/<button[^>]*id="send-btn"[^>]*>/)?.[0];
     expect(send).not.toContain('disabled');
   });
+
+  it.each(['999999.9999', '999999.999999'])(
+    'keeps the displayed balance and symbol in a bounded responsive row: %s',
+    (balance) => {
+      mockState.account.balances.ethereum = balance;
+      mockState.vault.activeNetwork.currency = 'TSYS';
+      const markup = renderToStaticMarkup(<Home />);
+      expect(markup).toContain(`>${balance}</p>`);
+      expect(markup).toContain('>TSYS</p>');
+      expect(markup).toMatch(
+        /class="[^"]*balance-account[^"]*max-w-full[^"]*flex-wrap/
+      );
+      expect(markup).toMatch(
+        /id="home-balance" class="[^"]*text-4xl[^"]*\[@media\(min-width:400px\)\]:text-5xl/
+      );
+    }
+  );
 });

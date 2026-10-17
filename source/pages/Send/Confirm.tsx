@@ -2251,16 +2251,22 @@ export const SendConfirm = () => {
                 {!isBitcoinBased &&
                   !feeCalculationError &&
                   (isEIP1559Compatible ? (
-                    <span
-                      className="hover:text-fields-input-borderfocus pb-[3px]"
+                    <button
+                      type="button"
+                      id="edit-fee-button"
+                      aria-label={t('send.editFee')}
+                      disabled={loading || submission.pending}
+                      className="flex h-11 w-11 shrink-0 items-center justify-center rounded hover:text-fields-input-borderfocus focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue500 disabled:cursor-not-allowed"
                       onClick={() => setIsOpenEditFeeModal(true)}
                     >
-                      <Icon
-                        name="EditTx"
-                        isSvg
-                        className="px-2 cursor-pointer text-brand-white hover:text-fields-input-borderfocus"
-                      />
-                    </span>
+                      <span aria-hidden="true">
+                        <Icon
+                          name="EditTx"
+                          isSvg
+                          className="text-brand-white hover:text-fields-input-borderfocus"
+                        />
+                      </span>
+                    </button>
                   ) : null)}
               </div>
             )}

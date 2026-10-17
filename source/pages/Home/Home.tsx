@@ -61,11 +61,16 @@ const BalanceDisplay = memo(
     }
 
     return (
-      <div className="balance-account flex gap-x-0.5 items-center justify-center">
-        <p id="home-balance" className="font-rubik text-5xl font-medium">
+      <div className="balance-account flex max-w-full flex-wrap gap-x-0.5 items-center justify-center">
+        <p
+          id="home-balance"
+          className="max-w-full break-all font-rubik text-4xl [@media(min-width:400px)]:text-5xl font-medium"
+        >
           {formatFullPrecisionBalance(actualBalance, 4)}
         </p>
-        <p className="mt-4 font-poppins">{currency.toUpperCase()}</p>
+        <p className="max-w-full break-all mt-3 [@media(min-width:400px)]:mt-4 font-poppins">
+          {currency.toUpperCase()}
+        </p>
       </div>
     );
   }
@@ -338,7 +343,7 @@ export const Home = () => {
 
             <section className="flex flex-col gap-1 items-center pt-8 pb-24 text-brand-white bg-bkg-1">
               <div
-                className={`flex flex-col items-center justify-center text-center floating-dots-content ${
+                className={`flex min-w-0 w-full flex-col items-center justify-center px-4 text-center floating-dots-content ${
                   shouldShowFaucet ? 'mt-12' : ''
                 }`}
               >
