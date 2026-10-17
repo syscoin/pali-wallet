@@ -1,4 +1,5 @@
 import {
+  getPersonalSignParams,
   getPersonalSignReview,
   isValidPersonalSignMessage,
 } from './personalSignReview';
@@ -8,6 +9,55 @@ const ORIGIN = 'https://metamask.github.io';
 const message = (header = 'metamask.github.io', address = ADDRESS) =>
   `${header} wants you to sign in with your Ethereum account:\n${address}\n\nI accept the MetaMask Terms of Service: https://community.metamask.io/tos\n\nURI: https://metamask.github.io\nVersion: 1\nChain ID: 1\nNonce: 32891757\nIssued At: 2021-09-30T16:25:24.000Z`;
 const encode = (value: string) => `0x${Buffer.from(value).toString('hex')}`;
+
+describe('personal_sign parameter order', () => {
+  it.each([
+    'message',
+    '0x' + 'ab'.repeat(20),
+    '0x' + 'ab'.repeat(21),
+    '0X' + 'AB'.repeat(20),
+  ])('keeps canonical message-first bytes unchanged: %s', (payload) => {
+    const params = [payload, ADDRESS, 'legacy-extra'];
+    expect(getPersonalSignParams(params)).toEqual({
+      address: ADDRESS,
+      message: payload,
+    });
+    expect(params).toEqual([payload, ADDRESS, 'legacy-extra']);
+  });
+  it.each(['message', '0x' + 'ab'.repeat(21)])(
+    'retains unambiguous legacy address-first data: %s',
+    (payload) => {
+      expect(getPersonalSignParams([ADDRESS, payload])).toEqual({
+        address: ADDRESS,
+        message: payload,
+      });
+    }
+  );
+  it('uses the second address even when both values could be wallet-owned', () => {
+    const other = '0x' + '22'.repeat(20);
+    expect(getPersonalSignParams([ADDRESS, other])).toEqual({
+      address: other,
+      message: ADDRESS,
+    });
+    expect(getPersonalSignParams([other, ADDRESS])).toEqual({
+      address: ADDRESS,
+      message: other,
+    });
+    expect(getPersonalSignParams([ADDRESS, ADDRESS])).toEqual({
+      address: ADDRESS,
+      message: ADDRESS,
+    });
+  });
+  it.each([
+    undefined,
+    [],
+    [ADDRESS],
+    [null, ADDRESS],
+    ['message', 'not-an-address'],
+  ])('rejects missing or malformed address/message pairs: %p', (params) =>
+    expect(getPersonalSignParams(params)).toBeUndefined()
+  );
+});
 
 describe.each([
   ['plain', (value: string) => value],

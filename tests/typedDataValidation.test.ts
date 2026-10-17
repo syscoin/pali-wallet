@@ -34,6 +34,90 @@ describe('TypedData Validation Security Tests', () => {
     mockNext.mockClear();
   });
 
+  describe.each(['eth_signTypedData_v3', 'eth_signTypedData_v4'])(
+    '%s payload shape',
+    (method) => {
+      const address = '0x1111111111111111111111111111111111111111';
+
+      it.each(
+        [
+          'not-json',
+          '',
+          '   ',
+          '{',
+          ' \n {',
+          'null',
+          'true',
+          '42',
+          '"plain string"',
+          '[]',
+          ' \n []',
+          null,
+          undefined,
+          false,
+          42,
+          [],
+        ].flatMap((payload) => [
+          { payload, reversed: false },
+          { payload, reversed: true },
+        ])
+      )(
+        'rejects $payload without calling next (reversed: $reversed)',
+        async ({ payload, reversed }) => {
+          const context = createMockContext(
+            reversed ? [payload, address] : [address, payload]
+          );
+          context.originalRequest.method = method;
+          await expect(
+            typedDataValidationMiddleware(context, mockNext)
+          ).rejects.toMatchObject({ code: -32602 });
+          expect(mockNext).not.toHaveBeenCalled();
+        }
+      );
+
+      it.each([
+        { json: false, reversed: false },
+        { json: false, reversed: true },
+        { json: true, reversed: false },
+        { json: true, reversed: true },
+      ])(
+        'accepts valid objects, including whitespace JSON ($json, $reversed)',
+        async ({ json, reversed }) => {
+          const typedData = {
+            types: { Message: [{ name: 'contents', type: 'string' }] },
+            primaryType: 'Message',
+            domain: {},
+            message: { contents: 'Hello' },
+          };
+          const payload = json ? ` \n ${JSON.stringify(typedData)}` : typedData;
+          const context = createMockContext(
+            reversed ? [payload, address] : [address, payload]
+          );
+          context.originalRequest.method = method;
+          await typedDataValidationMiddleware(context, mockNext);
+          expect(mockNext).toHaveBeenCalledTimes(1);
+        }
+      );
+    }
+  );
+
+  it.each([
+    { json: false, reversed: false },
+    { json: false, reversed: true },
+    { json: true, reversed: false },
+    { json: true, reversed: true },
+  ])('preserves V1 arrays ($json, $reversed)', async ({ json, reversed }) => {
+    const fields = [{ name: 'Message', type: 'string', value: 'Hello' }];
+    const payload = json ? ` \n ${JSON.stringify(fields)}` : fields;
+    const address = '0x1111111111111111111111111111111111111111';
+    const context = createMockContext(
+      reversed ? [payload, address] : [address, payload]
+    );
+    context.originalRequest.method = 'eth_signTypedData';
+    await typedDataValidationMiddleware(context, mockNext);
+    expect(mockNext).toHaveBeenCalledTimes(1);
+  });
+
   describe('Security vulnerabilities that are now caught', () => {
     it('should reject typed data with non-existent primaryType', async () => {
       const maliciousTypedData = {

@@ -20,7 +20,7 @@ import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { IDApp } from 'state/dapp/types';
 import { RootState } from 'state/store';
-import { truncate, ellipsis } from 'utils/index';
+import { ellipsis } from 'utils/index';
 import { navigateBack } from 'utils/navigationState';
 
 const ConnectedSites = () => {
@@ -89,13 +89,21 @@ const ConnectedSites = () => {
           {dappsList.map((_dapp) => (
             <li
               key={_dapp.host}
-              className="flex items-center justify-between my-2 py-3 w-full text-xs border-b border-dashed border-gray-500"
+              className="flex items-center justify-between gap-3 my-2 py-3 w-full text-xs border-b border-dashed border-gray-500"
             >
-              <div className="flex-1">
-                <p className="font-medium">{truncate(_dapp.host, 40)}</p>
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-medium" title={_dapp.host}>
+                  {_dapp.host}
+                </p>
                 {(_dapp.accountType !== activeAccountMeta.type ||
                   _dapp.accountId !== activeAccountMeta.id) && (
-                  <p className="text-brand-graylight text-[10px] mt-1">
+                  <p
+                    className="truncate text-brand-graylight text-[10px] mt-1"
+                    title={
+                      accounts[_dapp.accountType]?.[_dapp.accountId]?.label ||
+                      `Account ${_dapp.accountId + 1}`
+                    }
+                  >
                     Connected to:{' '}
                     {accounts[_dapp.accountType]?.[_dapp.accountId]?.label ||
                       `Account ${_dapp.accountId + 1}`}

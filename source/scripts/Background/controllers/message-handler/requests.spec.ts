@@ -142,12 +142,17 @@ describe('personal_sign byte encoding admission', () => {
   );
 
   it.each(
-    ['', '0x', '0xAbCd', 'An ordinary message 日本語', '0Xmalformed'].flatMap(
-      (payload) => [
-        [payload, address, '0xlegacy-password'],
-        [address, payload, '0xlegacy-password'],
-      ]
-    )
+    [
+      '',
+      '0x',
+      '0xAbCd',
+      '0x' + '22'.repeat(20),
+      'An ordinary message 日本語',
+      '0Xmalformed',
+    ].flatMap((payload) => [
+      [payload, address, '0xlegacy-password'],
+      [address, payload, '0xlegacy-password'],
+    ])
   )(
     'preserves valid messages and original parameter order: %p',
     async (...params) => {

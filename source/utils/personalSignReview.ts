@@ -16,6 +16,19 @@ export const isValidPersonalSignMessage = (
   typeof payload === 'string' &&
   (!payload.startsWith('0x') || /^0x(?:[A-Fa-f0-9]{2})*$/.test(payload));
 
+/** Both address-shaped values use canonical [message, address], never ownership. */
+export const getPersonalSignParams = (params?: {
+  [index: number]: unknown;
+}) => {
+  const first = params?.[0];
+  const second = params?.[1];
+  if (typeof first !== 'string' || typeof second !== 'string') return;
+  const address = /^0x[\da-f]{40}$/i;
+  if (address.test(second)) return { address: second, message: first };
+  // Retain legacy [address, message] only when its order is unambiguous.
+  if (address.test(first)) return { address: first, message: second };
+};
+
 const SIWE_PHRASE = 'wants you to sign in with your Ethereum account';
 const REG_NAME = "(?:[A-Za-z0-9._~!$&'()*+,;=-]|%[A-Fa-f0-9]{2})";
 const URI_PCHAR = "(?:[A-Za-z0-9._~!$&'()*+,;=:@-]|%[A-Fa-f0-9]{2})";
