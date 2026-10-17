@@ -17,6 +17,7 @@ import type {
 } from '@sidhujag/sysweb3-sentry';
 
 export type SentryCryptoJob =
+  | { publicKeys: string[]; type: 'votingIdentities' }
   | {
       role: SentryAuthorityRole;
       scheme: SentryAuthorityScheme;
@@ -50,6 +51,7 @@ export const runSentryCrypto = async <
     | SentryOperationResponse
     | SentryManagementResponse
     | SentryGovernanceVoteResponse
+    | Array<{ compressed: string; publicKey: string; uncompressed: string }>
 >(
   job: SentryCryptoJob,
   assertCurrent: () => void

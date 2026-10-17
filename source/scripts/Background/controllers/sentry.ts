@@ -78,7 +78,7 @@ type Pending = {
 const APPROVAL_TTL_MS = 10 * 60 * 1000;
 const loadSdk = () =>
   import(
-    /* webpackChunkName: "sentry-sdk", webpackExports: ["inspectSentryOperation", "inspectSentryManagementOperation", "validateSentryOperationRequest", "validateSentryManagementRequest", "reviewSentryOperation", "reviewSentryManagementOperation", "sentryKeyId", "validateSentryGovernanceVoteRequest", "reviewSentryGovernanceVote", "governanceVotingKeyIds"] */
+    /* webpackChunkName: "sentry-sdk", webpackExports: ["inspectSentryOperation", "inspectSentryManagementOperation", "validateSentryOperationRequest", "validateSentryManagementRequest", "reviewSentryOperation", "reviewSentryManagementOperation", "sentryKeyId", "validateSentryGovernanceVoteRequest", "reviewSentryGovernanceVote"] */
     '@sidhujag/sysweb3-sentry'
   );
 

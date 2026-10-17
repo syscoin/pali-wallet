@@ -6,7 +6,6 @@ import { SentryVoteController } from './sentryVotes';
 
 const mockLoadKey = jest.fn();
 const mockCrypto = jest.fn();
-const mockVerify = jest.fn();
 jest.mock('utils/sentry/keyStore', () => ({
   getSentryVaultId: async () => 'synthetic-vault',
   loadSentryKey: (...args: unknown[]) => mockLoadKey(...args),
@@ -39,7 +38,6 @@ jest.mock(
       compressed: publicKey.slice(2, 42),
       uncompressed: '22'.repeat(20),
     }),
-    verifySentryGovernanceVote: (...args: unknown[]) => mockVerify(...args),
   }),
   { virtual: true }
 );
@@ -108,9 +106,14 @@ beforeEach(() => {
   readJson = jest.fn(async () => structuredClone(context));
   getSeed = jest.fn(async () => 'private-synthetic-seed');
   mockLoadKey.mockResolvedValue(key);
-  mockVerify.mockResolvedValue(true);
   mockCrypto.mockImplementation(async (job, assertCurrent) => {
     assertCurrent();
+    if (job.type === 'votingIdentities')
+      return job.publicKeys.map((publicKey: string) => ({
+        publicKey,
+        compressed: publicKey.slice(2, 42),
+        uncompressed: '22'.repeat(20),
+      }));
     return {
       proTxHash: job.proTxHash,
       collateralOutpoint: request.nodes.find(
@@ -142,8 +145,9 @@ it('signs only the reviewed batch and never returns key material', async () => {
   expect(result.votes.map((vote) => vote.proTxHash)).toEqual(
     request.nodes.map((node: any) => node.proTxHash)
   );
-  expect(mockCrypto).toHaveBeenCalledTimes(2);
-  expect(mockVerify).toHaveBeenCalledTimes(2);
+  expect(
+    mockCrypto.mock.calls.filter(([job]) => job.type === 'signVote')
+  ).toHaveLength(2);
   expect(JSON.stringify(result)).not.toContain(key.secretKey);
   expect(JSON.stringify(result)).not.toContain('private-synthetic-seed');
   expect(() => controller.getApproval(id)).toThrow('expired');
@@ -181,7 +185,9 @@ it('does not treat an operator key as a voting key', async () => {
   await expect(
     controller.prepare(request, 'https://dapp.test')
   ).rejects.toThrow(request.nodes[0].proTxHash);
-  expect(mockCrypto).not.toHaveBeenCalled();
+  expect(
+    mockCrypto.mock.calls.filter(([job]) => job.type === 'signVote')
+  ).toHaveLength(0);
 });
 
 it('rechecks voting registration and proposal metadata before signing', async () => {
@@ -190,7 +196,9 @@ it('rechecks voting registration and proposal metadata before signing', async ()
   await expect(controller.sign({ id, password: 'synthetic' })).rejects.toThrow(
     'changed'
   );
-  expect(mockCrypto).not.toHaveBeenCalled();
+  expect(
+    mockCrypto.mock.calls.filter(([job]) => job.type === 'signVote')
+  ).toHaveLength(0);
   context.nodes[0].votingKeyId = '11'.repeat(20);
   context.proposal.name = 'Different proposal label';
   await expect(controller.sign({ id, password: 'synthetic' })).rejects.toThrow(
@@ -208,8 +216,10 @@ it('retires cancelled and old-account approvals without exposing partial signatu
   scope = { ...scope, identity: 'new-account' };
   await expect(
     controller.sign({ id: next, password: 'synthetic' })
-  ).rejects.toThrow('session changed');
-  expect(mockCrypto).not.toHaveBeenCalled();
+  ).rejects.toThrow('context changed');
+  expect(
+    mockCrypto.mock.calls.filter(([job]) => job.type === 'signVote')
+  ).toHaveLength(0);
 });
 
 it('rejects duplicate clicks and cancellation while cryptography is running', async () => {
@@ -229,13 +239,15 @@ it('rejects duplicate clicks and cancellation while cryptography is running', as
   controller.cancel(id);
   release();
   await expect(signing).rejects.toThrow('expired');
-  expect(mockCrypto).toHaveBeenCalledTimes(1);
+  expect(
+    mockCrypto.mock.calls.filter(([job]) => job.type === 'signVote')
+  ).toHaveLength(1);
 });
 
 it('does not return an invalid generated signature', async () => {
   const id = await controller.prepare(request, 'https://dapp.test');
-  mockVerify.mockResolvedValue(false);
+  mockCrypto.mockRejectedValue(new Error('Generated vote failed verification'));
   await expect(controller.sign({ id, password: 'synthetic' })).rejects.toThrow(
-    'does not match'
+    'failed verification'
   );
 });

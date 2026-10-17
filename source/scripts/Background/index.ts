@@ -44,7 +44,7 @@ void import(
 // Register the optional Sentry signer chunk while the classic worker evaluates.
 // This does not unlock keys or initialize its cryptographic implementations.
 void import(
-  /* webpackChunkName: "sentry-sdk", webpackExports: ["inspectSentryOperation", "inspectSentryManagementOperation", "validateSentryOperationRequest", "validateSentryManagementRequest", "reviewSentryOperation", "reviewSentryManagementOperation", "sentryKeyId", "validateSentryGovernanceVoteRequest", "reviewSentryGovernanceVote", "governanceVotingKeyIds"] */
+  /* webpackChunkName: "sentry-sdk", webpackExports: ["inspectSentryOperation", "inspectSentryManagementOperation", "validateSentryOperationRequest", "validateSentryManagementRequest", "reviewSentryOperation", "reviewSentryManagementOperation", "sentryKeyId", "validateSentryGovernanceVoteRequest", "reviewSentryGovernanceVote"] */
   '@sidhujag/sysweb3-sentry'
 ).catch(() => undefined);
 void import(

@@ -14,7 +14,7 @@ import type {
   SentryGovernanceVoteResponse,
 } from '@sidhujag/sysweb3-sentry';
 
-interface Host {
+interface ISentryVoteHost {
   captureScope: () => SentryWalletScope;
   getSeed: (password: string) => Promise<string>;
   getSettings: (scope: SentryWalletScope) => Promise<SentrySettings>;
@@ -30,7 +30,7 @@ interface Host {
   runExclusive: <T>(operation: () => Promise<T>) => Promise<T>;
 }
 
-interface Pending {
+interface IPendingSentryVote {
   context: SentryGovernanceVoteContext;
   expiresAt: number;
   publicApproval: SentryVoteApproval;
@@ -40,21 +40,19 @@ interface Pending {
 
 const loadSdk = () =>
   import(
-    /* webpackChunkName: "sentry-sdk", webpackExports: ["validateSentryGovernanceVoteRequest", "reviewSentryGovernanceVote", "verifySentryGovernanceVote", "governanceVotingKeyIds"] */
+    /* webpackChunkName: "sentry-sdk", webpackExports: ["validateSentryGovernanceVoteRequest", "reviewSentryGovernanceVote"] */
     '@sidhujag/sysweb3-sentry'
   );
 
 /** Dedicated governance protocol: never accept an arbitrary digest from a site. */
 export class SentryVoteController {
-  private readonly approvals = new Map<string, Pending>();
+  private readonly approvals = new Map<string, IPendingSentryVote>();
 
-  constructor(private readonly host: Host) {}
+  constructor(private readonly host: ISentryVoteHost) {}
 
   private assertCurrent(scope: SentryWalletScope) {
     if (this.host.captureScope().identity !== scope.identity)
-      throw new Error(
-        'Wallet account, network or session changed. Start the vote again.'
-      );
+      throw new Error('Wallet context changed. Start the vote again.');
   }
 
   public clear() {
@@ -68,14 +66,12 @@ export class SentryVoteController {
     const settings = await this.host.getSettings(scope);
     this.assertCurrent(scope);
     if (!settings.serviceUrl)
-      throw new Error(
-        'Configure a trusted Sentry data service in wallet settings first'
-      );
+      throw new Error('Set a trusted Sentry service in wallet settings.');
     if (
       request.chain.genesisHash !==
       SENTRY_NETWORKS[settings.network].genesisHash
     )
-      throw new Error('Switch to the requested Syscoin network before voting');
+      throw new Error('Switch to the requested Syscoin network.');
     const query = new URLSearchParams({
       network: settings.network,
       proposalHash: request.proposalHash,
@@ -90,12 +86,10 @@ export class SentryVoteController {
       context?.chain?.genesisHash !==
       SENTRY_NETWORKS[settings.network].genesisHash
     )
-      throw new Error(
-        'The Sentry data service returned a different network genesis'
-      );
+      throw new Error('Sentry service returned the wrong network genesis.');
     if (!context.proposal)
       throw new Error(
-        'The Sentry data service did not identify the registered proposal'
+        'Sentry service could not verify the registered proposal.'
       );
     // Time is a wallet observation, not a server-controlled authorization window.
     return {
@@ -110,16 +104,20 @@ export class SentryVoteController {
     const request = sdk.validateSentryGovernanceVoteRequest(raw);
     const { settings, context } = await this.context(scope, request);
     sdk.reviewSentryGovernanceVote(request, context);
-    const votingKeys = await Promise.all(
-      settings.keys
-        .filter((key) => key.role === 'voting' && key.scheme === 'secp256k1')
-        .map(async (key) => ({
-          key,
-          identities: Object.values(
-            await sdk.governanceVotingKeyIds(key.publicKey)
-          ),
-        }))
+    const votingKeys = settings.keys.filter(
+      (key) => key.role === 'voting' && key.scheme === 'secp256k1'
     );
+    const identities = votingKeys.length
+      ? await runSentryCrypto<
+          Array<{ compressed: string; publicKey: string; uncompressed: string }>
+        >(
+          {
+            type: 'votingIdentities',
+            publicKeys: votingKeys.map((key) => key.publicKey),
+          },
+          () => this.assertCurrent(scope)
+        )
+      : [];
     this.assertCurrent(scope);
     const nodes: SentryVoteApproval['nodes'] = [];
     const missingNodes: string[] = [];
@@ -127,15 +125,19 @@ export class SentryVoteController {
       const node = context.nodes.find(
         (item) => item.proTxHash === requested.proTxHash
       )!;
-      const key = votingKeys.find((item) =>
-        item.identities.includes(node.votingKeyId)
-      )?.key;
+      const publicKey = identities.find(
+        (item) =>
+          item.compressed === node.votingKeyId ||
+          item.uncompressed === node.votingKeyId
+      )?.publicKey;
+      const key = votingKeys.find((item) => item.publicKey === publicKey);
       if (key)
         nodes.push({
           ...requested,
           votingKeyId: node.votingKeyId,
           keyId: key.id,
           keyLabel: key.label,
+          publicKey: key.publicKey,
         });
       else {
         if (
@@ -158,13 +160,14 @@ export class SentryVoteController {
           votingKeyId: node.votingKeyId,
           keyId: 'wallet-voting',
           keyLabel: 'Selected wallet account',
+          publicKey: '',
         });
       }
       this.assertCurrent(scope);
     }
     if (missingNodes.length)
       throw new Error(
-        `Import the matching voting keys for these nodes: ${missingNodes.join(
+        `SENTRY_VOTING_KEY_MISSING: Import the matching voting keys for these nodes: ${missingNodes.join(
           ', '
         )}`
       );
@@ -199,7 +202,7 @@ export class SentryVoteController {
     const pending = this.approvals.get(id);
     if (!pending || pending.expiresAt <= Date.now()) {
       this.approvals.delete(id);
-      throw new Error('This vote approval expired. Start again from the dapp.');
+      throw new Error('Vote approval expired. Start again from the dapp.');
     }
     this.assertCurrent(pending.scope);
     return pending;
@@ -237,7 +240,7 @@ export class SentryVoteController {
           fresh.settings.serviceUrl !== approval.serviceUrl
         )
           throw new Error(
-            'Proposal or registered voting authority changed after review. Start the vote again.'
+            'Proposal or voting key changed. Review the vote again.'
           );
         const vaultId = await getSentryVaultId(scope.rootPublicIdentity);
         const votes: SentryGovernanceVoteResponse[] = [];
@@ -277,9 +280,7 @@ export class SentryVoteController {
           if (
             key.role !== 'voting' ||
             key.scheme !== 'secp256k1' ||
-            !Object.values(
-              await sdk.governanceVotingKeyIds(key.publicKey)
-            ).includes(node.votingKeyId)
+            (node.publicKey && node.publicKey !== key.publicKey)
           )
             throw new Error(
               'The selected key is not this node’s registered voting key'
@@ -294,16 +295,6 @@ export class SentryVoteController {
             },
             () => this.assertCurrent(scope)
           );
-          if (
-            !(await sdk.verifySentryGovernanceVote(
-              approval.request,
-              fresh.context,
-              vote
-            ))
-          )
-            throw new Error(
-              'The generated vote does not match the approved node and proposal'
-            );
           if (this.pending(params.id) !== pending)
             throw new Error('Vote approval was cancelled');
           votes.push(vote);

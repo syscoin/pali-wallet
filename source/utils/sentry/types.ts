@@ -64,6 +64,7 @@ export interface SentryVoteApproval {
     keyId: string;
     keyLabel: string;
     proTxHash: string;
+    publicKey: string;
     votingKeyId: string;
   }>;
   origin: string;
