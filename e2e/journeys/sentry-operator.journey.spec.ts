@@ -55,7 +55,41 @@ test('Sentry operator custody stays local, survives locking, and fits short wind
         await wallet!.importSeedAndCreatePassword();
         await wallet!.switchNetwork('Syscoin Testnet', 'UTXO');
         await wallet!.ensureOnHome();
-        await wallet!.gotoRoute('#/settings/sentry');
+        const sentryEntry = page.getByRole('menuitem', {
+          name: 'Sentry operators',
+          exact: true,
+          includeHidden: true,
+        });
+        await expect(sentryEntry).toHaveCount(1);
+        expect(
+          await sentryEntry.evaluate((element) => {
+            (element as HTMLElement).focus();
+            return document.activeElement === element;
+          })
+        ).toBe(false);
+        await page.locator('#general-settings-button').click();
+        await page.setViewportSize({ width: 320, height: 360 });
+        await sentryEntry.scrollIntoViewIfNeeded();
+        expect(
+          await sentryEntry.evaluate((element) => {
+            const box = element.getBoundingClientRect();
+            const hit = document.elementFromPoint(
+              box.left + box.width / 2,
+              box.top + box.height / 2
+            );
+            return (
+              box.left >= 0 &&
+              box.right <= innerWidth &&
+              box.top >= 0 &&
+              box.bottom <= innerHeight &&
+              !!hit &&
+              (hit === element || element.contains(hit))
+            );
+          })
+        ).toBe(true);
+        await sentryEntry.click();
+        await expect(page).toHaveURL(/#\/settings\/sentry$/);
+        await page.setViewportSize({ width: 400, height: 620 });
         await expect(
           page.getByText('No Sentry keys imported on this network.')
         ).toBeVisible();
