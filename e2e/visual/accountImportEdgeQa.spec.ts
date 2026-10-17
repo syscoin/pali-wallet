@@ -286,7 +286,7 @@ test('late language preference reads preserve keyboard-selected drafts in short 
   }
 });
 
-test('About support links and URL copy are named keyboard controls in small windows', async () => {
+test('About support links and URL copy are named keyboard controls in small windows', async ({}, info) => {
   test.setTimeout(120_000);
   const before = { ...E2E_CONFIG };
   const server = await startUtxoFixtureServer();
@@ -320,6 +320,55 @@ test('About support links and URL copy are named keyboard controls in small wind
       name: `${en.buttons.copy} ${en.settings.userSupport}`,
       exact: true,
     });
+    const close = page
+      .getByRole('button', { name: en.buttons.close, exact: true })
+      .filter({ hasText: new RegExp(`^${en.buttons.close}$`) });
+    const expectCloseUnobscured = async (control = close) => {
+      const result = await control.evaluate((element) => {
+        const rect = element.getBoundingClientRect();
+        const hits = [
+          [rect.left + 2, rect.top + rect.height / 2],
+          [rect.right - 2, rect.top + rect.height / 2],
+          [rect.left + rect.width / 2, rect.top + 2],
+          [rect.left + rect.width / 2, rect.bottom - 2],
+        ].map(([x, y]) => {
+          const hit = document.elementFromPoint(x, y);
+          return {
+            clear: !!hit && (element === hit || element.contains(hit)),
+            tag: hit?.tagName,
+            className: hit?.className,
+          };
+        });
+        return {
+          bounds: rect.toJSON(),
+          hits,
+          clear:
+            rect.width > 0 &&
+            rect.height > 0 &&
+            rect.top >= 0 &&
+            rect.bottom <= innerHeight &&
+            hits.every((hit) => hit.clear),
+        };
+      });
+      expect(result.clear, JSON.stringify(result)).toBe(true);
+    };
+    const settleToast = async (message: string) => {
+      const toast = page
+        .locator('.Toastify__toast')
+        .filter({ hasText: message });
+      await expect(toast).toBeVisible();
+      // Wait for this toast's own entrance animation, not the descendant
+      // auto-close progress animation: assert while feedback is still present.
+      await toast.evaluate((element) =>
+        Promise.all(
+          element
+            .getAnimations()
+            .map((animation) => animation.finished.catch(() => undefined))
+        )
+      );
+      await expect(toast).toBeVisible();
+      return toast;
+    };
     expect(await support.count()).toBe(1);
     expect(await address.count()).toBe(1);
     expect(await copy.count()).toBe(1);
@@ -358,14 +407,91 @@ test('About support links and URL copy are named keyboard controls in small wind
       expect(box.y + box.height).toBeLessThanOrEqual(viewport.height);
       expect(box.width).toBeGreaterThanOrEqual(44);
       expect(box.height).toBeGreaterThanOrEqual(44);
+      await page.screenshot({
+        path: info.outputPath(
+          `about-support-${viewport.width}x${viewport.height}.png`
+        ),
+        animations: 'disabled',
+      });
       await page.keyboard.press('Enter');
+      const toast = await settleToast(en.settings.linkCopied);
+      await expectCloseUnobscured();
+      await page.setViewportSize({
+        width: viewport.width,
+        height: viewport.height + 40,
+      });
+      await expect(toast).toBeVisible();
+      await expectCloseUnobscured();
     }
     expect(await page.evaluate(() => (window as any).__supportCopies)).toEqual([
       supportUrl,
       supportUrl,
     ]);
+    await expect(page.locator('.Toastify__toast')).toHaveCount(0, {
+      timeout: 10_000,
+    });
+    await page.evaluate(() => {
+      (navigator.clipboard as any).writeText = async () => {
+        throw new Error('Synthetic clipboard permission refusal');
+      };
+    });
+    await copy.click();
+    await settleToast(en.transactions.copyFailed);
+    await expectCloseUnobscured();
+    await expect(page.locator('.Toastify__toast')).toHaveCount(0, {
+      timeout: 10_000,
+    });
+    await page.evaluate(() => {
+      (navigator.clipboard as any).writeText = async () => undefined;
+    });
+    await page.setViewportSize({ width: 320, height: 360 });
+    await copy.click();
+    const heldToast = await settleToast(en.settings.linkCopied);
+    // Toastify supports pause-on-window-blur. Pause only its dismissal timer
+    // while navigating/saving so slow CI does not race the two-second lifetime;
+    // entrance animations and actual layout/hit-testing remain unchanged.
+    await page.evaluate(() => window.dispatchEvent(new Event('blur')));
+    await expect(heldToast.locator('.Toastify__progress-bar')).toHaveCSS(
+      'animation-play-state',
+      'paused'
+    );
+    // Navigate normally while the copy notification is alive, then save a
+    // disposable preference. The modal footer is in-flow, unlike the page
+    // action above, and must be protected without waiting for toast expiry.
+    await wallet.gotoRoute('#/settings/currency');
+    await page
+      .getByRole('button', { name: en.settings.setYourPreferred, exact: true })
+      .click();
+    const search = page.getByRole('textbox', {
+      name: en.settings.searchCurrencies,
+      exact: true,
+    });
+    await search.fill('eur');
+    // Use the dropdown's normal keyboard path so the deliberately held toast
+    // need not be dismissed just to pass over a temporary option overlay.
+    await search.press('Tab');
+    await page.keyboard.press('Enter');
+    await page
+      .getByRole('button', { name: en.buttons.save, exact: true })
+      .click();
+    const modal = page.getByRole('dialog');
+    const action = modal.locator('#got-it-btn');
+    await expect(action).toBeVisible();
+    const modalToast = await settleToast(en.settings.linkCopied);
+    await expectCloseUnobscured(action);
+    await page.screenshot({
+      path: info.outputPath('modal-footer-with-live-toast-320x360.png'),
+      animations: 'allow',
+    });
+    await expect(modalToast).toBeVisible();
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await action.click();
+    await expect(modal).toBeHidden();
     expect(routes.deniedWrites).toEqual([]);
   } finally {
+    await wallet?.page
+      .evaluate(() => window.dispatchEvent(new Event('focus')))
+      .catch(() => undefined);
     await wallet?.context.close().catch(() => undefined);
     await server.close();
     Object.assign(E2E_CONFIG, before);

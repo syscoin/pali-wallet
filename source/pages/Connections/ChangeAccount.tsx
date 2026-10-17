@@ -13,6 +13,7 @@ import { LazyAccountBalance } from 'components/AccountBalance';
 import { LoadingSvg } from 'components/Icon/Icon';
 import { Button, Icon, IconButton, Tooltip } from 'components/index';
 import { ListLoadMore } from 'components/Loading/ListLoadMore';
+import { ToastActionFooter } from 'components/ToastActionFooter';
 import { TokenIcon } from 'components/TokenIcon';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
@@ -625,7 +626,7 @@ export const ChangeAccount = () => {
       </div>
 
       {/* Fixed button container at bottom */}
-      <div className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 shadow-lg z-50">
+      <ToastActionFooter className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 shadow-lg z-50">
         <div className="flex gap-3 justify-center">
           <Button
             variant="secondary"
@@ -648,7 +649,7 @@ export const ChangeAccount = () => {
               : t('buttons.change')}
           </Button>
         </div>
-      </div>
+      </ToastActionFooter>
     </div>
   );
 };

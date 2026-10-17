@@ -12,6 +12,7 @@ import { ChainIcon } from 'components/ChainIcon';
 import { Icon } from 'components/Icon';
 import { Button, Tooltip } from 'components/index';
 import { StatusModal } from 'components/Modal/StatusModal';
+import { ToastActionFooter } from 'components/ToastActionFooter';
 import { getControllerStatus } from 'hooks/controllerStatus';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
@@ -1416,7 +1417,7 @@ const CustomRPCView = () => {
           </div>
         )}
         {/* Fixed button container at bottom of viewport - inside form */}
-        <div className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 shadow-lg z-50 min-h-[76px]">
+        <ToastActionFooter className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 shadow-lg z-50 min-h-[76px]">
           {state?.isEditing ? (
             <div className="flex gap-3 justify-center">
               <Button
@@ -1449,7 +1450,7 @@ const CustomRPCView = () => {
               </Button>
             </div>
           )}
-        </div>
+        </ToastActionFooter>
 
         {/* Add bottom padding to form content to account for fixed buttons */}
         <div className="pb-20"></div>

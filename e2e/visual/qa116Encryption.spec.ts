@@ -1,4 +1,4 @@
-import { expect, test, type Locator } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 
 import { E2E_CONFIG } from '../harness/config';
 import { PaliWallet } from '../harness/pali';
@@ -18,6 +18,42 @@ const fitsHorizontally = (locator: Locator) =>
       element.scrollWidth <= element.clientWidth + 1
     );
   });
+
+const expectToastAboveActions = async (page: Page, message: string) => {
+  const toast = page.locator('.Toastify__toast').filter({ hasText: message });
+  await expect(toast).toBeVisible();
+  await toast.evaluate(async (node) => {
+    await Promise.all(
+      node
+        .getAnimations()
+        .map((animation) => animation.finished.catch(() => undefined))
+    );
+  });
+  const toastBottom = await toast.evaluate(
+    (node) => node.getBoundingClientRect().bottom
+  );
+  for (const name of ['Cancel', 'Confirm']) {
+    const action = page.getByRole('button', { name, exact: true });
+    const geometry = await action.evaluate((node) => {
+      const rect = node.getBoundingClientRect();
+      const footer = node.closest('.fixed')!.getBoundingClientRect();
+      const accessible = [
+        [rect.left + 2, rect.top + rect.height / 2],
+        [rect.right - 2, rect.top + rect.height / 2],
+        [rect.left + rect.width / 2, rect.top + 2],
+        [rect.left + rect.width / 2, rect.bottom - 2],
+      ].every(([x, y]) => {
+        const hit = document.elementFromPoint(x, y);
+        return !!hit && (node === hit || node.contains(hit));
+      });
+      return { accessible, footerTop: footer.top };
+    });
+    expect(geometry.accessible, `${name} is not covered by ${message}`).toBe(
+      true
+    );
+    expect(toastBottom).toBeLessThanOrEqual(geometry.footerTop - 8);
+  }
+};
 
 test('encryption review wraps long identifiers and announces successful or denied address copy once', async ({}, info) => {
   test.setTimeout(120_000);
@@ -166,6 +202,7 @@ test('encryption review wraps long identifiers and announces successful or denie
         await expect(
           page.getByText('Address successfully copied', { exact: true })
         ).toBeVisible();
+        await expectToastAboveActions(page, 'Address successfully copied');
         expect(
           await page.evaluate(() => (window as any).__encryptionQa.copied)
         ).toEqual([address]);
@@ -178,6 +215,10 @@ test('encryption review wraps long identifiers and announces successful or denie
             exact: true,
           })
         ).toBeVisible();
+        await expectToastAboveActions(
+          page,
+          'Could not copy to clipboard. Please try again.'
+        );
         expect(
           await page.evaluate(() => (window as any).__encryptionQa.copied)
         ).toEqual([address]);
@@ -225,6 +266,7 @@ test('encryption review wraps long identifiers and announces successful or denie
           await expect(
             page.getByText('Message successfully copied', { exact: true })
           ).toBeVisible();
+          await expectToastAboveActions(page, 'Message successfully copied');
           expect(
             await page.evaluate(() => (window as any).__encryptionQa.copied)
           ).toEqual([address, plaintext]);

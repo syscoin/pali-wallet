@@ -5,6 +5,7 @@ import { useSelector } from 'react-redux';
 import { DropdownArrowSvg, LoadingSvg } from 'components/Icon/Icon';
 import { Button, Card, Icon } from 'components/index';
 import { PqOperationStatus } from 'components/Loading';
+import { ToastActionFooter } from 'components/ToastActionFooter';
 import { useQueryData } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
@@ -762,7 +763,7 @@ export const PrepareSmartAccount = () => {
         <div className="pb-32" />
       </div>
 
-      <div className="fixed bottom-0 left-0 right-0 z-50 border-t border-brand-gray300 bg-bkg-3 px-4 py-3 shadow-lg">
+      <ToastActionFooter className="fixed bottom-0 left-0 right-0 z-50 border-t border-brand-gray300 bg-bkg-3 px-4 py-3 shadow-lg">
         <PqOperationStatus
           expectedSeconds={360}
           show={loading && isRequestedSLHDSA && creationStep !== 'idle'}
@@ -806,7 +807,7 @@ export const PrepareSmartAccount = () => {
             {t('buttons.confirm')}
           </Button>
         </div>
-      </div>
+      </ToastActionFooter>
     </div>
   );
 };

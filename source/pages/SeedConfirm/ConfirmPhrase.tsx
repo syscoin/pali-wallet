@@ -6,6 +6,7 @@ import { Button } from 'components/index';
 import { OnboardingLayout } from 'components/Layout/OnboardingLayout';
 import { StatusModal } from 'components/Modal/StatusModal';
 import { WalletReadyModal } from 'components/Modal/WarningBaseModal';
+import { ToastActionFooter } from 'components/ToastActionFooter';
 
 export const ConfirmPhrase = ({
   passed,
@@ -85,7 +86,7 @@ export const ConfirmPhrase = ({
             ))}
           </section>
 
-          <div className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 shadow-lg z-50">
+          <ToastActionFooter className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 shadow-lg z-50">
             <div className="flex justify-center gap-3">
               <Button
                 className={`bg-brand-deepPink100 ${
@@ -99,7 +100,7 @@ export const ConfirmPhrase = ({
                 {t('buttons.validate')}
               </Button>
             </div>
-          </div>
+          </ToastActionFooter>
         </>
         {showModal && !passed && (
           <StatusModal

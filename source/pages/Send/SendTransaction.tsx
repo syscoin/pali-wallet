@@ -5,6 +5,7 @@ import { useLocation } from 'react-router-dom';
 
 import { Button, DeviceWaitingBanner, WarningModal } from 'components/index';
 import { LoadingComponent, PqSigningOverlay } from 'components/Loading';
+import { ToastActionFooter } from 'components/ToastActionFooter';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import store, { RootState } from 'state/store';
@@ -1807,7 +1808,7 @@ export const SendTransaction = () => {
           </div>
 
           {/* Fixed button container at bottom */}
-          <div className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 shadow-lg z-50">
+          <ToastActionFooter className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 shadow-lg z-50">
             <DeviceWaitingBanner account={activeAccount} show={loading} />
             <PqSigningOverlay
               expectedSeconds={90}
@@ -1868,7 +1869,7 @@ export const SendTransaction = () => {
                 {t('buttons.confirm')}
               </Button>
             </div>
-          </div>
+          </ToastActionFooter>
         </div>
       ) : // Render a clear error state when ENS couldn't be resolved
       ensResolutionFailed ? (

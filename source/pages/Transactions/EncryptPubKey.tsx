@@ -6,6 +6,7 @@ import { useSelector } from 'react-redux';
 import { LazyAccountBalance } from 'components/AccountBalance';
 import { LockIconSvg } from 'components/Icon/Icon';
 import { Button, Icon, Tooltip } from 'components/index';
+import { ToastActionFooter } from 'components/ToastActionFooter';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
@@ -157,7 +158,7 @@ const EncryptPubKey: React.FC<ISign> = () => {
       </div>
 
       {/* Fixed button container at bottom */}
-      <div className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 shadow-lg z-50">
+      <ToastActionFooter className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 shadow-lg z-50">
         <div className="flex gap-3 justify-center">
           <Button
             variant="secondary"
@@ -178,7 +179,7 @@ const EncryptPubKey: React.FC<ISign> = () => {
             {t('buttons.confirm')}
           </Button>
         </div>
-      </div>
+      </ToastActionFooter>
     </div>
   );
 };

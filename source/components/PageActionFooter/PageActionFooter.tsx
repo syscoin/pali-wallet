@@ -1,4 +1,6 @@
-import React, { useLayoutEffect, useRef } from 'react';
+import React, { useLayoutEffect } from 'react';
+
+import { useToastFooter } from 'hooks/useToastFooter';
 
 interface IPageActionFooterProps {
   children: React.ReactNode;
@@ -12,7 +14,7 @@ export const PageActionFooter = ({
   className = '',
   error,
 }: IPageActionFooterProps) => {
-  const footerRef = useRef<HTMLDivElement>(null);
+  const footerRef = useToastFooter();
   useLayoutEffect(() => {
     const footer = footerRef.current;
     const layout = footer?.closest<HTMLElement>(

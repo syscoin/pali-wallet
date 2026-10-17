@@ -54,9 +54,15 @@
 /* Pali Toast Styles */
 .pali-toast {
   font-family: 'Poppins', sans-serif !important;
-  bottom: 1rem !important;
+  bottom: calc(var(--pali-toast-footer-clearance, 0px) + 1rem) !important;
   left: 50% !important;
   transform: translateX(-50%) !important;
+  max-height: max(
+    0px,
+    calc(100dvh - var(--pali-toast-footer-clearance, 0px) - 2rem)
+  );
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 /* Override the default toast content wrapper */
