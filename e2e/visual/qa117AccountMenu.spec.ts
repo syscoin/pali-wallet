@@ -13,18 +13,34 @@ import {
 const activeAccount = (page: Page) =>
   page.evaluate(
     () =>
-      new Promise<{ address: string; id: number; label: string }>((resolve) => {
-        chrome.runtime.sendMessage({ type: 'getCurrentState' }, ({ vault }) => {
-          const ref = vault.activeAccount;
-          const account = vault.accounts[ref.type][ref.id];
-          resolve({
-            id: ref.id,
-            label: account.label,
-            address: account.address,
-          });
-        });
+      new Promise<{
+        address: string;
+        id: number;
+        label: string;
+        switching: boolean;
+      }>((resolve) => {
+        chrome.runtime.sendMessage(
+          { type: 'getCurrentState' },
+          ({ vault, vaultGlobal }) => {
+            const ref = vault.activeAccount;
+            const account = vault.accounts[ref.type][ref.id];
+            resolve({
+              id: ref.id,
+              label: account.label,
+              address: account.address,
+              switching: !!vaultGlobal.isSwitchingAccount,
+            });
+          }
+        );
       })
   );
+
+const isActiveMenuItem = async (menu: Locator, item: Locator) => {
+  // Account refreshes can replace menu nodes. Compare both current IDs in
+  // the same poll rather than retaining an ID from an earlier render.
+  const activeId = await menu.getAttribute('aria-activedescendant');
+  return !!activeId && activeId === (await item.getAttribute('id'));
+};
 
 const tabTo = async (page: Page, control: Locator) => {
   for (let i = 0; i < 35; i++) {
@@ -87,7 +103,9 @@ test('account dropdown supports keyboard selection and separate copy actions in 
     await page.locator('#create-btn').click();
     await page.getByRole('button', { name: /^ok$/i }).click();
     await wallet.ensureOnHome();
-    await expect.poll(async () => (await activeAccount(page)).id).toBe(1);
+    await expect
+      .poll(() => activeAccount(page))
+      .toMatchObject({ id: 1, switching: false });
     await page.evaluate(() => {
       (window as any).__qa117Copied = [];
       (window as any).__qa117DenyCopy = true;
@@ -105,6 +123,9 @@ test('account dropdown supports keyboard selection and separate copy actions in 
     });
     for (const width of [320, 400]) {
       await page.setViewportSize({ width, height: 360 });
+      // Keep this a keyboard-only journey: the previous setup click leaves
+      // the pointer where an animated menu row would otherwise appear.
+      await page.mouse.move(0, 0);
       const menuButton = page.locator('#general-settings-button').locator('..');
       await tabTo(page, menuButton);
       await page.keyboard.press('ArrowDown');
@@ -124,37 +145,37 @@ test('account dropdown supports keyboard selection and separate copy actions in 
       await expect(menuButton).toHaveAccessibleName(
         en.generalMenu.generalOptions
       );
-      await expect
-        .poll(() => menu.getAttribute('aria-activedescendant'))
-        .toBe(await firstAccount.getAttribute('id'));
+      await expect.poll(() => isActiveMenuItem(menu, firstAccount)).toBe(true);
       await expect.poll(() => exposed(firstAccount)).toBe(true);
       await info.attach(`account-menu-keyboard-${width}x360`, {
         body: await page.screenshot({ animations: 'disabled' }),
         contentType: 'image/png',
       });
       await page.keyboard.press('Enter');
-      await expect.poll(async () => (await activeAccount(page)).id).toBe(0);
+      await expect
+        .poll(() => activeAccount(page))
+        .toMatchObject({ id: 0, switching: false });
       await tabTo(page, menuButton);
       await page.keyboard.press('ArrowDown');
+      await expect.poll(() => isActiveMenuItem(menu, firstAccount)).toBe(true);
       await page.keyboard.type('Beta');
       const beta = menu.getByRole('menuitem', {
         name: /^Beta keyboard account \(/,
       });
-      await expect
-        .poll(() => menu.getAttribute('aria-activedescendant'))
-        .toBe(await beta.getAttribute('id'));
+      await expect.poll(() => isActiveMenuItem(menu, beta)).toBe(true);
       await page.keyboard.press('Enter');
-      await expect.poll(async () => (await activeAccount(page)).id).toBe(1);
+      await expect
+        .poll(() => activeAccount(page))
+        .toMatchObject({ id: 1, switching: false });
       await tabTo(page, menuButton);
       await page.keyboard.press('ArrowDown');
+      await expect.poll(() => isActiveMenuItem(menu, firstAccount)).toBe(true);
       await page.keyboard.press('End');
       const lastAction = menu.getByRole('menuitem', {
         name: en.generalMenu.advanced,
         exact: true,
       });
-      await expect
-        .poll(() => menu.getAttribute('aria-activedescendant'))
-        .toBe(await lastAction.getAttribute('id'));
+      await expect.poll(() => isActiveMenuItem(menu, lastAction)).toBe(true);
       await expect
         .poll(() =>
           lastAction.evaluate((element) => {
@@ -181,14 +202,13 @@ test('account dropdown supports keyboard selection and separate copy actions in 
       // Copy is an independent menu action, not a click on the account row.
       await tabTo(page, menuButton);
       await page.keyboard.press('ArrowDown');
+      await expect.poll(() => isActiveMenuItem(menu, firstAccount)).toBe(true);
       await page.keyboard.press('ArrowDown');
       const copyFirst = menu.getByRole('menuitem', {
         name: `${en.buttons.copy}: ${original.label}`,
         exact: true,
       });
-      await expect
-        .poll(() => menu.getAttribute('aria-activedescendant'))
-        .toBe(await copyFirst.getAttribute('id'));
+      await expect.poll(() => isActiveMenuItem(menu, copyFirst)).toBe(true);
       await expect.poll(() => exposed(copyFirst)).toBe(true);
       await page.keyboard.press('Enter');
       await expect(
@@ -200,6 +220,7 @@ test('account dropdown supports keyboard selection and separate copy actions in 
       });
       await tabTo(page, menuButton);
       await page.keyboard.press('ArrowDown');
+      await expect.poll(() => isActiveMenuItem(menu, firstAccount)).toBe(true);
       await page.keyboard.press('ArrowDown');
       await page.keyboard.press('Enter');
       await expect(

@@ -178,7 +178,14 @@ it('does not announce a transaction clipboard copy before completion or after re
   const denied = Promise.reject(new Error('denied'));
   void denied.catch(() => undefined);
   mockCopy.mockReturnValueOnce(denied);
-  fireEvent.click(copyButton);
+  // Hydration can replace the rendered details tree while copying. Interact
+  // with the current row, not the detached button from the previous render.
+  const currentCopyButton = within(
+    screen.getByText('Txid').parentElement!
+  ).getByRole('button');
+  expect(currentCopyButton.isConnected).toBe(true);
+  fireEvent.click(currentCopyButton);
+  expect(mockCopy).toHaveBeenCalledTimes(2);
   await act(async () => undefined);
   expect(mockCopyAlert.info).not.toHaveBeenCalled();
   expect(mockCopyAlert.error).toHaveBeenCalledWith('transactions.copyFailed');
