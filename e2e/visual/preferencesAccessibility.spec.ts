@@ -174,6 +174,7 @@ test('offline onboarding and preferences remain keyboard accessible with localiz
     });
     await language.focus();
     await page.keyboard.press('Enter');
+    await expect(page.getByRole('menu')).toBeFocused();
     await page.keyboard.type('ger');
     await page.keyboard.press('Enter');
     await expect(language).toContainText('Deutsch');
