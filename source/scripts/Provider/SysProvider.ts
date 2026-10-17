@@ -113,7 +113,14 @@ export const SysProvider = (host: string) => {
       getSentryNetwork(store.getState().vault.activeNetwork);
       return {
         version: 1,
-        operations: ['register', 'updateService', 'updateRegistrar', 'registerOperator', 'rotateOperator', 'revoke'],
+        operations: [
+          'register',
+          'updateService',
+          'updateRegistrar',
+          'registerOperator',
+          'rotateOperator',
+          'revoke',
+        ],
         linkNode: true,
         eras: ['legacy-v3', 'pq-v4'],
         schemes: ['secp256k1', 'bls-basic', 'slh-dsa-shake-128s'],

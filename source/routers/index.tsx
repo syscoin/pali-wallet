@@ -146,7 +146,9 @@ const SmartAccountPolicy = lazy(
   () => import('pages/Settings/SmartAccountPolicy')
 );
 const SentryKeys = lazy(() => import('pages/Settings/SentryKeys'));
-const SentryOperation = lazy(() => import('pages/Transactions/SentryOperation'));
+const SentryOperation = lazy(
+  () => import('pages/Transactions/SentryOperation')
+);
 const SentryLink = lazy(() => import('pages/Transactions/SentryLink'));
 const SmartAccountHub = lazy(() => import('pages/SmartAccount/Hub'));
 const EditAccount = lazy(() => import('pages/Settings/EditAccount'));

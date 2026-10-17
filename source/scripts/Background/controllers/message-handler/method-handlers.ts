@@ -885,7 +885,10 @@ export class SysMethodHandler implements IMethodHandler {
       // For sys methods, params are usually in array form already
       let popupData = params?.[0] || params;
       let sentryApprovalId: string | undefined;
-      if (methodName === 'signSentryOperation' || methodName === 'linkSentryNode') {
+      if (
+        methodName === 'signSentryOperation' ||
+        methodName === 'linkSentryNode'
+      ) {
         const { dapp, wallet } = getController();
         const connection = dapp.get(host);
         const { vault } = store.getState();
@@ -905,9 +908,10 @@ export class SysMethodHandler implements IMethodHandler {
           throw cleanErrorStack(
             ethErrors.rpc.invalidParams('Supply one typed Sentry operation')
           );
-        sentryApprovalId = methodName === 'linkSentryNode'
-          ? await wallet.prepareSentryLink(params[0], host)
-          : await wallet.prepareSentryOperation(params[0], host);
+        sentryApprovalId =
+          methodName === 'linkSentryNode'
+            ? await wallet.prepareSentryLink(params[0], host)
+            : await wallet.prepareSentryOperation(params[0], host);
         // The site never controls the popup's request, origin, key list or review.
         popupData = { sentryApprovalId };
       }
@@ -964,7 +968,8 @@ export class SysMethodHandler implements IMethodHandler {
           const wallet = getController().wallet;
           await (methodName === 'linkSentryNode'
             ? wallet.cancelSentryLink(sentryApprovalId)
-            : wallet.cancelSentryApproval(sentryApprovalId)).catch(() => undefined);
+            : wallet.cancelSentryApproval(sentryApprovalId)
+          ).catch(() => undefined);
         }
       }
     }

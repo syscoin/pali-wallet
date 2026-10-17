@@ -290,12 +290,15 @@ for (const scheme of ['bls-basic', 'slh-dsa-shake-128s'] as const) {
       ).toBeVisible();
       const controller = <T>(method: string, params: unknown[]): Promise<T> =>
         page.evaluate(
-          ({ method, params }) =>
+          ({ method: controllerMethod, params: controllerParams }) =>
             new Promise((resolve, reject) => {
               chrome.runtime.sendMessage(
                 {
                   type: 'CONTROLLER_ACTION',
-                  data: { methods: ['wallet', method], params },
+                  data: {
+                    methods: ['wallet', controllerMethod],
+                    params: controllerParams,
+                  },
                 },
                 (result) =>
                   result?.error
