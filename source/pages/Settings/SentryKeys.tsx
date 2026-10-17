@@ -6,6 +6,7 @@ import { Button, Icon, PageActionFooter } from 'components/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import type { SentryCollateralReservation } from 'utils/sentry/collateral';
+import { parseSentryKeyBatch } from 'utils/sentry/importBatch';
 import { getSentryNetwork } from 'utils/sentry/network';
 import type { SentrySettings } from 'utils/sentry/types';
 
@@ -38,6 +39,9 @@ const SentryKeys = () => {
   const [scheme, setScheme] = useState<SentryAuthorityScheme>('bls-basic');
   const [label, setLabel] = useState('');
   const [secret, setSecret] = useState('');
+  const [importMode, setImportMode] = useState<'single' | 'batch'>('single');
+  const [batchText, setBatchText] = useState('');
+  const [showKeys, setShowKeys] = useState(false);
   const [password, setPassword] = useState('');
   const [backup, setBackup] = useState(false);
   const [serviceUrl, setServiceUrl] = useState('');
@@ -49,6 +53,17 @@ const SentryKeys = () => {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const selectedRemovalKey = settings?.keys.find((key) => key.id === removeId);
+  const batch = parseSentryKeyBatch(
+    batchText,
+    scheme,
+    t('sentry.batchDefaultLabel')
+  );
+  const canImport =
+    importMode === 'batch'
+      ? batch.entries.length > 0 &&
+        !batch.issues.length &&
+        batch.entries.length + (settings?.keys.length || 0) <= 100
+      : !!secret && !!label.trim();
   const owner = useRef(scope);
   const active = useRef(true);
   const inFlight = useRef<symbol | null>(null);
@@ -69,6 +84,8 @@ const SentryKeys = () => {
     setSettings(undefined);
     setMode('list');
     setSecret('');
+    setBatchText('');
+    setShowKeys(false);
     setPassword('');
     setBackup(false);
     setRemoveId('');
@@ -95,6 +112,8 @@ const SentryKeys = () => {
   const back = () => {
     setMode('list');
     setSecret('');
+    setBatchText('');
+    setShowKeys(false);
     setPassword('');
     setBackup(false);
     setRemoveId('');
@@ -114,9 +133,27 @@ const SentryKeys = () => {
       if (mode === 'import') {
         if (!backup)
           throw new Error(t('sentry.confirmThatYouHaveBackedUpThisOperator'));
+        if (!canImport) throw new Error(t('sentry.fixBatchBeforeImport'));
         await controllerEmitter(
-          ['wallet', 'importSentryKey'],
-          [{ role, scheme, label, secretKey: secret, password }],
+          [
+            'wallet',
+            importMode === 'batch' ? 'importSentryKeys' : 'importSentryKey',
+          ],
+          [
+            importMode === 'batch'
+              ? {
+                  role,
+                  scheme,
+                  entries: batch.entries.map(
+                    ({ label: entryLabel, secretKey }) => ({
+                      label: entryLabel,
+                      secretKey,
+                    })
+                  ),
+                  password,
+                }
+              : { role, scheme, label, secretKey: secret, password },
+          ],
           180000,
           false
         );
@@ -171,7 +208,9 @@ const SentryKeys = () => {
       setMode('list');
       setNotice(
         mode === 'import'
-          ? t('sentry.operatorKeyImportedSecurely')
+          ? importMode === 'batch'
+            ? t('sentry.batchImported', { count: batch.entries.length })
+            : t('sentry.operatorKeyImportedSecurely')
           : mode === 'remove'
           ? t(
               'sentry.localOperatorKeyRemovedRegisteredCollateralRemainsProtected'
@@ -196,6 +235,9 @@ const SentryKeys = () => {
           setBusy(false);
           setPassword('');
           setSecret('');
+          setBatchText('');
+          setShowKeys(false);
+          if (mode === 'import') setBackup(false);
         }
       }
     }
@@ -253,6 +295,9 @@ const SentryKeys = () => {
                 setBackup(false);
                 setLabel('');
                 setSecret('');
+                setBatchText('');
+                setShowKeys(false);
+                setImportMode('single');
                 setPassword('');
                 setError('');
                 setNotice('');
@@ -363,6 +408,34 @@ const SentryKeys = () => {
       )}
       {mode === 'import' && (
         <>
+          <fieldset className="grid grid-cols-2 gap-2">
+            <legend className="mb-2 text-sm">{t('sentry.importMode')}</legend>
+            {(['single', 'batch'] as const).map((value) => (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={importMode === value}
+                disabled={busy}
+                className={`min-h-11 rounded-xl border p-2 text-sm focus-visible:outline focus-visible:outline-2 ${
+                  importMode === value
+                    ? 'border-brand-royalblue bg-bkg-2'
+                    : 'border-brand-blue600'
+                }`}
+                onClick={() => {
+                  setImportMode(value);
+                  setSecret('');
+                  setBatchText('');
+                  setBackup(false);
+                  setShowKeys(false);
+                  setError('');
+                }}
+              >
+                {t(
+                  value === 'single' ? 'sentry.singleKey' : 'sentry.batchImport'
+                )}
+              </button>
+            ))}
+          </fieldset>
           <label className="text-sm">
             {t('sentry.keyRole')}
             <select
@@ -375,6 +448,7 @@ const SentryKeys = () => {
                 setRole(next);
                 setScheme(next === 'operator' ? 'bls-basic' : 'secp256k1');
                 setSecret('');
+                setBatchText('');
                 setBackup(false);
               }}
             >
@@ -394,6 +468,7 @@ const SentryKeys = () => {
               onChange={(e) => {
                 setScheme(e.target.value as SentryAuthorityScheme);
                 setSecret('');
+                setBatchText('');
                 setBackup(false);
               }}
             >
@@ -409,36 +484,110 @@ const SentryKeys = () => {
               )}
             </select>
           </label>
-          <label className="text-sm">
-            {t('sentry.keyLabel')}
-            <input
-              className={fieldClass}
-              value={label}
-              maxLength={80}
-              disabled={busy}
-              onChange={(e) => setLabel(e.target.value)}
-            />
-          </label>
-          <label className="text-sm">
-            {t(
-              scheme === 'secp256k1'
-                ? 'sentry.sentryPrivateKeyHexOrWif'
-                : 'sentry.sentryPrivateKeyHex'
-            )}
-            <input
-              className={fieldClass}
-              type="password"
-              autoComplete="new-password"
-              spellCheck={false}
-              value={secret}
-              maxLength={130}
-              disabled={busy}
-              onChange={(e) => {
-                setSecret(e.target.value);
-                setBackup(false);
-              }}
-            />
-          </label>
+          {importMode === 'single' ? (
+            <>
+              <label className="text-sm">
+                {t('sentry.keyLabel')}
+                <input
+                  className={fieldClass}
+                  value={label}
+                  maxLength={80}
+                  disabled={busy}
+                  onChange={(e) => {
+                    setLabel(e.target.value);
+                    setBackup(false);
+                  }}
+                />
+              </label>
+            </>
+          ) : (
+            <section className="min-w-0">
+              <label className="block text-sm">
+                {t('sentry.batchKeys')}
+                <textarea
+                  aria-label={t('sentry.batchKeys')}
+                  className={`${fieldClass} min-h-36 font-mono text-xs ${
+                    showKeys ? '' : '[-webkit-text-security:disc]'
+                  }`}
+                  rows={6}
+                  autoComplete="off"
+                  spellCheck={false}
+                  maxLength={6000}
+                  disabled={busy}
+                  value={batchText}
+                  onChange={(e) => {
+                    setBatchText(e.target.value);
+                    setBackup(false);
+                  }}
+                />
+              </label>
+              <button
+                type="button"
+                disabled={busy}
+                className="mt-2 min-h-11 rounded-lg px-3 text-sm hover:bg-bkg-2 focus-visible:outline focus-visible:outline-2"
+                onClick={() => setShowKeys(!showKeys)}
+              >
+                {t(
+                  showKeys ? 'sentry.hidePrivateKeys' : 'sentry.showPrivateKeys'
+                )}
+              </button>
+              <p className="mt-2 text-xs text-brand-gray200">
+                {t('sentry.batchHelp')}
+              </p>
+              {!!batch.entries.length && (
+                <div className="mt-3 rounded-xl border border-brand-blue600 p-3">
+                  <p className="text-sm">
+                    {t('sentry.batchCount', { count: batch.entries.length })}
+                  </p>
+                  <ol className="mt-2 space-y-1 text-xs text-brand-gray200">
+                    {batch.entries.map((entry) => (
+                      <li key={entry.line} className="break-words">
+                        {entry.line}. {entry.label}
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              )}
+              {batch.issues.map((issue) => (
+                <p
+                  key={`${issue.line}-${issue.reason}`}
+                  role="alert"
+                  className="mt-2 break-words text-xs text-warning-error"
+                >
+                  {t(`sentry.batchIssues.${issue.reason}`, {
+                    line: issue.line,
+                  })}
+                </p>
+              ))}
+              {batch.entries.length + (settings?.keys.length || 0) > 100 && (
+                <p role="alert" className="mt-2 text-xs text-warning-error">
+                  {t('sentry.batchVaultLimit')}
+                </p>
+              )}
+            </section>
+          )}
+          {importMode === 'single' && (
+            <label className="text-sm">
+              {t(
+                scheme === 'secp256k1'
+                  ? 'sentry.sentryPrivateKeyHexOrWif'
+                  : 'sentry.sentryPrivateKeyHex'
+              )}
+              <input
+                className={fieldClass}
+                type="password"
+                autoComplete="new-password"
+                spellCheck={false}
+                value={secret}
+                maxLength={130}
+                disabled={busy}
+                onChange={(e) => {
+                  setSecret(e.target.value);
+                  setBackup(false);
+                }}
+              />
+            </label>
+          )}
           <label className="flex items-start gap-3 text-sm">
             <input
               type="checkbox"
@@ -447,7 +596,14 @@ const SentryKeys = () => {
               disabled={busy}
               onChange={(e) => setBackup(e.target.checked)}
             />
-            <span>{t('sentry.iHaveASeparateBackupImportedSentryKeys')}</span>
+            <span>
+              {t(
+                importMode === 'batch'
+                  ? 'sentry.batchBackup'
+                  : 'sentry.iHaveASeparateBackupImportedSentryKeys',
+                { count: batch.entries.length }
+              )}
+            </span>
           </label>
         </>
       )}
@@ -559,7 +715,7 @@ const SentryKeys = () => {
                 !password ||
                 (mode === 'remove' && !selectedRemovalKey) ||
                 (mode === 'release' && !releaseAcknowledged) ||
-                (mode === 'import' && (!secret || !label.trim() || !backup))
+                (mode === 'import' && (!canImport || !backup))
               }
               loading={busy}
               className="flex-1"

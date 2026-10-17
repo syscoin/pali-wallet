@@ -1629,6 +1629,14 @@ class MainController {
   public async removeSentryKey(params: { id: string; password: string }) {
     return (await this.getSentryController()).removeKey(params);
   }
+  public async importSentryKeys(params: {
+    entries: Array<{ label: string; secretKey: string }>;
+    password: string;
+    role?: SentryAuthorityRole;
+    scheme: SentryAuthorityScheme;
+  }) {
+    return (await this.getSentryController()).importKeys(params);
+  }
   public async releaseSentryCollateral(params: {
     acknowledgeNodeStops: boolean;
     password: string;

@@ -108,6 +108,89 @@ it('requires explicit backup acknowledgement and local reauthentication for a ke
   expect(screen.queryByDisplayValue('synthetic-password')).toBeNull();
   expect(screen.queryByDisplayValue('11'.repeat(32))).toBeNull();
 });
+
+it('imports one reviewed batch with optional labels and one explicit backup acknowledgement', async () => {
+  render(<SentryKeys />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Import Sentry key' })
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Batch import' }));
+  const text = `First node | ${'11'.repeat(32)}\nSecond node | ${'22'.repeat(
+    32
+  )}`;
+  fireEvent.change(screen.getByLabelText('Sentry keys (one per line)'), {
+    target: { value: text },
+  });
+  expect(screen.queryByLabelText('Sentry private key (hex)')).toBeNull();
+  expect(screen.getByText('1. First node')).toBeInTheDocument();
+  expect(screen.getByText('2. Second node')).toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText('Wallet password'), {
+    target: { value: 'synthetic-password' },
+  });
+  expect(screen.getByRole('button', { name: 'buttons.import' })).toBeDisabled();
+  fireEvent.click(screen.getByRole('checkbox'));
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.import' }));
+  await waitFor(() =>
+    expect(mockEmitter).toHaveBeenCalledWith(
+      ['wallet', 'importSentryKeys'],
+      [
+        {
+          role: 'operator',
+          scheme: 'bls-basic',
+          password: 'synthetic-password',
+          entries: [
+            { label: 'First node', secretKey: '11'.repeat(32) },
+            { label: 'Second node', secretKey: '22'.repeat(32) },
+          ],
+        },
+      ],
+      180000,
+      false
+    )
+  );
+  await waitFor(() => expect(screen.queryByDisplayValue(text)).toBeNull());
+  expect(screen.queryByDisplayValue('synthetic-password')).toBeNull();
+});
+
+it('invalidates the whole-batch acknowledgement on edits and never submits invalid lines', async () => {
+  render(<SentryKeys />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Import Sentry key' })
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Batch import' }));
+  const input = screen.getByLabelText('Sentry keys (one per line)');
+  fireEvent.change(input, { target: { value: '11'.repeat(32) } });
+  fireEvent.click(screen.getByRole('checkbox'));
+  expect(screen.getByRole('checkbox')).toBeChecked();
+  fireEvent.change(input, {
+    target: { value: `${'11'.repeat(32)}\nBad | invalid-secret` },
+  });
+  expect(screen.getByRole('checkbox')).not.toBeChecked();
+  expect(screen.getByRole('alert')).toHaveTextContent('enter a complete key');
+  fireEvent.change(screen.getByLabelText('Wallet password'), {
+    target: { value: 'pw' },
+  });
+  fireEvent.click(screen.getByRole('checkbox'));
+  expect(screen.getByRole('button', { name: 'buttons.import' })).toBeDisabled();
+  expect(
+    mockEmitter.mock.calls.some(([method]) => method[1] === 'importSentryKeys')
+  ).toBe(false);
+  fireEvent.click(screen.getByRole('button', { name: 'Single key' }));
+  expect(screen.queryByDisplayValue('invalid-secret')).toBeNull();
+  expect(screen.getByRole('checkbox')).not.toBeChecked();
+});
+
+it('invalidates single-key backup acknowledgement when its label changes', async () => {
+  render(<SentryKeys />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Import Sentry key' })
+  );
+  fireEvent.click(screen.getByRole('checkbox'));
+  fireEvent.change(screen.getByLabelText('Key label'), {
+    target: { value: 'Changed label' },
+  });
+  expect(screen.getByRole('checkbox')).not.toBeChecked();
+});
 it('requires a fresh backup acknowledgement for each consecutive import', async () => {
   render(<SentryKeys />);
   fireEvent.click(
