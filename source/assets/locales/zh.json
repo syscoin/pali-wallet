@@ -1215,6 +1215,8 @@
     "votingNodes": "Nodes selected: {{count}}",
     "signVotes": "Sign votes",
     "voteDetails": "Review nodes and vote details",
+    "missingVotingKey": "Voting key not available",
+    "missingVotingKeyHelp": "Some nodes need their voting keys imported in Pali. Open the details to identify them, then cancel and import those keys before voting.",
     "sentryPrivateKeyHexOrWif": "Sentry private key (hex or WIF)",
     "voteOutcomes": {
       "yes": "Yes",

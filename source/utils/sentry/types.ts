@@ -58,6 +58,7 @@ export interface SentryApproval {
 
 export interface SentryVoteApproval {
   id: string;
+  missingVotingKeys: string[];
   network: SentryNetwork;
   nodes: Array<{
     collateralOutpoint: { txid: string; vout: number };

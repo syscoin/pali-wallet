@@ -66,6 +66,7 @@ const request = {
 };
 const approval = {
   id: 'vote-one',
+  missingVotingKeys: [],
   request,
   origin: 'https://sysnode.test',
   network: 'testnet',
@@ -166,6 +167,21 @@ it('cancels without signing', async () => {
       ([methods]) => methods[1] === 'signSentryVoteApproval'
     )
   ).toBe(false);
+});
+
+it('keeps missing-key guidance inside the wallet and does not offer signing', async () => {
+  mockEmitter.mockImplementation(async (methods) =>
+    methods[1] === 'getSentryVoteApproval'
+      ? { ...approval, missingVotingKeys: [request.nodes[0].proTxHash] }
+      : response
+  );
+  render(<SentryVote />);
+  await screen.findByRole('alert');
+  expect(screen.getByRole('button', { name: 'Sign votes' })).toBeDisabled();
+  expect(screen.queryByLabelText('Wallet password')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+  await waitFor(() => expect(window.close).toHaveBeenCalled());
+  expect(mockDispatch).not.toHaveBeenCalled();
 });
 
 it('does not emit a late signature after the approval page changes', async () => {

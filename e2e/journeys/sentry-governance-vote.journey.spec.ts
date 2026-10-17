@@ -214,6 +214,24 @@ test('Pali reviews and signs exact legacy governance votes without disclosing ke
     ).toBeLessThan(31);
     expect(JSON.stringify(signed.result)).not.toContain(secret);
     expect(JSON.stringify(signed.result)).not.toContain(pair.toWIF());
+    observation.nodes[0].votingKeyId = 'ab'.repeat(20);
+    const missingId = await startRequest(page, 'sys_signSentryVote', [request]);
+    const missingPopup = await popupFor(wallet.context, page, missingId);
+    await expect(missingPopup.getByRole('alert')).toContainText(
+      'Some nodes need their voting keys'
+    );
+    await expect(
+      missingPopup.getByRole('button', { name: 'Sign votes', exact: true })
+    ).toBeDisabled();
+    await expect(
+      missingPopup.getByLabel('Wallet password', { exact: true })
+    ).toHaveCount(0);
+    await missingPopup
+      .getByRole('button', { name: 'Cancel', exact: true })
+      .click();
+    const missingResult = await settle(page, missingId);
+    expect(missingResult.error).toBeTruthy();
+    expect(JSON.stringify(missingResult)).not.toContain('missingVotingKeys');
     expect(routes.deniedWrites).toEqual([]);
     expect(routes.syntheticBroadcasts).toEqual([]);
   } finally {

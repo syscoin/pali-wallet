@@ -61,6 +61,7 @@ const SentryVote = () => {
     if (
       inFlight.current ||
       !approval ||
+      !!approval.missingVotingKeys?.length ||
       !password ||
       connectionUnavailable ||
       !isUnlocked
@@ -199,7 +200,9 @@ const SentryVote = () => {
                   key={node.proTxHash}
                   className="min-w-0 border-b border-brand-blue600 pb-3 last:border-b-0 last:pb-0"
                 >
-                  <p className="break-words text-sm">{node.keyLabel}</p>
+                  <p className="break-words text-sm">
+                    {node.keyLabel || t('sentry.missingVotingKey')}
+                  </p>
                   <p className="mt-1 break-all font-mono text-xs">
                     {node.proTxHash}
                   </p>
@@ -214,17 +217,27 @@ const SentryVote = () => {
               ))}
             </ul>
           </details>
-          <label className="text-sm">
-            {t('sentry.walletPassword')}
-            <input
-              type="password"
-              autoComplete="current-password"
-              className="mt-2 min-h-11 w-full min-w-0 rounded-xl border border-fields-input-border bg-bkg-1 p-3"
-              value={password}
-              disabled={busy}
-              onChange={(event) => setPassword(event.target.value)}
-            />
-          </label>
+          {!!approval.missingVotingKeys?.length && (
+            <p
+              role="alert"
+              className="rounded-xl border border-warning-error p-3 text-sm"
+            >
+              {t('sentry.missingVotingKeyHelp')}
+            </p>
+          )}
+          {!approval.missingVotingKeys?.length && (
+            <label className="text-sm">
+              {t('sentry.walletPassword')}
+              <input
+                type="password"
+                autoComplete="current-password"
+                className="mt-2 min-h-11 w-full min-w-0 rounded-xl border border-fields-input-border bg-bkg-1 p-3"
+                value={password}
+                disabled={busy}
+                onChange={(event) => setPassword(event.target.value)}
+              />
+            </label>
+          )}
         </>
       )}
       <PageActionFooter error={error || undefined}>
@@ -243,6 +256,7 @@ const SentryVote = () => {
             disabled={
               busy ||
               !approval ||
+              !!approval?.missingVotingKeys?.length ||
               !password ||
               connectionUnavailable ||
               !isUnlocked

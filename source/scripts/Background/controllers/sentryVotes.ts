@@ -145,6 +145,13 @@ export class SentryVoteController {
           !this.host.hasWalletAuthority
         ) {
           missingNodes.push(requested.proTxHash);
+          nodes.push({
+            ...requested,
+            votingKeyId: node.votingKeyId,
+            keyId: '',
+            keyLabel: '',
+            publicKey: '',
+          });
           continue;
         }
         const address = syscoinUtils.bitcoinjs.address.toBase58Check(
@@ -153,6 +160,13 @@ export class SentryVoteController {
         );
         if (!(await this.host.hasWalletAuthority(address, scope))) {
           missingNodes.push(requested.proTxHash);
+          nodes.push({
+            ...requested,
+            votingKeyId: node.votingKeyId,
+            keyId: '',
+            keyLabel: '',
+            publicKey: '',
+          });
           continue;
         }
         nodes.push({
@@ -165,12 +179,7 @@ export class SentryVoteController {
       }
       this.assertCurrent(scope);
     }
-    if (missingNodes.length)
-      throw new Error(
-        `SENTRY_VOTING_KEY_MISSING: Import the matching voting keys for these nodes: ${missingNodes.join(
-          ', '
-        )}`
-      );
+    // Key availability stays inside the approval; it is not a provider oracle.
     for (const [id, approval] of this.approvals)
       if (
         approval.expiresAt <= Date.now() ||
@@ -187,6 +196,7 @@ export class SentryVoteController {
       expiresAt: Date.now() + 10 * 60 * 1000,
       publicApproval: {
         id,
+        missingVotingKeys: missingNodes,
         origin,
         network: settings.network,
         serviceUrl: settings.serviceUrl,
@@ -226,6 +236,10 @@ export class SentryVoteController {
         if (this.pending(params.id) !== pending)
           throw new Error('Vote approval was cancelled');
         const { scope, publicApproval: approval } = pending;
+        if (approval.missingVotingKeys.length)
+          throw new Error(
+            'SENTRY_VOTING_KEY_MISSING: Import matching voting keys in Pali and start again.'
+          );
         const seed = await this.host.getSeed(params.password);
         this.assertCurrent(scope);
         const fresh = await this.context(scope, approval.request);

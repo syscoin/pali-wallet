@@ -201,9 +201,14 @@ it('rejects a mismatched service genesis and unknown proposal', async () => {
 
 it('does not treat an operator key as a voting key', async () => {
   settings.keys[0].role = 'operator';
-  await expect(
-    controller.prepare(request, 'https://dapp.test')
-  ).rejects.toThrow(request.nodes[0].proTxHash);
+  const id = await controller.prepare(request, 'https://dapp.test');
+  expect(controller.getApproval(id).missingVotingKeys).toEqual(
+    request.nodes.map((node: any) => node.proTxHash)
+  );
+  await expect(controller.sign({ id, password: 'synthetic' })).rejects.toThrow(
+    'SENTRY_VOTING_KEY_MISSING'
+  );
+  expect(getSeed).not.toHaveBeenCalled();
   expect(
     mockCrypto.mock.calls.filter(([job]) => job.type === 'signVote')
   ).toHaveLength(0);

@@ -141,6 +141,9 @@ a synthetic voting WIF and exercise the real typed governance approval. It
 checks wrong-network rejection, cancellation, a two-node batch with compressed
 and uncompressed voting identities, exact cryptographic signatures, and the
 320×360 review layout. This browser fixture does not broadcast governance votes.
+`sentry-batch-import.journey.spec.ts` exercises per-line validation, fresh backup
+acknowledgement, atomic multi-key import, encrypted persistence, and recovery
+from a rejected batch using only synthetic keys in the fenced wallet.
 See `UTXO_FIXTURE.md`, `NATIVE_SEND_PREVIEW.md` and
 `SPT_SEND_PREVIEW.md` for the launch-time network fence and simulated/live limits. The job needs no wallet
 secrets and uploads browser evidence. Live testnet journeys stay in the
