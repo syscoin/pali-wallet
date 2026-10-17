@@ -242,7 +242,7 @@ for (const scheme of ['bls-basic', 'slh-dsa-shake-128s'] as const) {
     const parent = fixture.parentTxs[0];
     let wallet: PaliWallet | undefined;
     try {
-      wallet = await PaliWallet.launch('sentry-nevm-authorization', {
+      wallet = await PaliWallet.launch(`sentry-nevm-authorization-${scheme}`, {
         offlineHttpProxy: server.url,
         viewport: { width: 400, height: 620 },
       });
@@ -459,7 +459,7 @@ for (const scheme of ['bls-basic', 'slh-dsa-shake-128s'] as const) {
         proTxHash: node.proTxHash,
       });
       await wallet.step(
-        'linked node and separate-account collateral survive reload and lock',
+        `${scheme} linked node and separate-account collateral survive reload and lock`,
         async () => {
           const assertSavedNode = async () => {
             const settings = await controller<{
@@ -506,7 +506,7 @@ for (const scheme of ['bls-basic', 'slh-dsa-shake-128s'] as const) {
         }
       );
       await wallet.step(
-        'ordinary public PSBT signing refuses the protected separate-account output',
+        `${scheme} ordinary public PSBT signing refuses the protected separate-account output`,
         async (capture) => {
           await page.goto(server.url);
           await page.waitForFunction(() => Boolean((window as any).pali));
