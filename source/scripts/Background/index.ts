@@ -41,6 +41,18 @@ console.log('[Background] Initializing controller...');
 void import(
   /* webpackChunkName: "wallet-recovery" */ './controllers/walletRecovery'
 ).catch(() => undefined);
+// Register the optional Sentry signer chunk while the classic worker evaluates.
+// This does not unlock keys or initialize its cryptographic implementations.
+void import(
+  /* webpackChunkName: "sentry-sdk", webpackExports: ["inspectSentryOperation", "inspectSentryManagementOperation", "validateSentryOperationRequest", "validateSentryManagementRequest", "reviewSentryOperation", "reviewSentryManagementOperation", "sentryKeyId"] */
+  '@sidhujag/sysweb3-sentry'
+).catch(() => undefined);
+void import(
+  /* webpackChunkName: "sentry-controller" */ './controllers/sentry'
+).catch(() => undefined);
+void import(
+  /* webpackChunkName: "sentry-wallet-authority" */ 'utils/sentry/walletAuthority'
+).catch(() => undefined);
 
 // Start offscreen preload IMMEDIATELY - don't wait for controller
 // This ensures the popup loads instantly when clicked

@@ -9,9 +9,12 @@ const directory = path.resolve(process.argv[2] || 'build/chrome');
 const budget = {
   app: 1600000,
   external: 1600000,
-  background: 4300000,
+  // Sentry custody/review adds under 100 KB over 4,288,463-byte baseline startup.
+  // Count every mandatory MV3 warm chunk below, including the optional feature.
+  background: 4400000,
   contentScript: 16000,
-  package: 9000000,
+  // Legacy/PQ crypto and localized Sentry UI add ~368 KB to 8,940,628 bytes.
+  package: 9400000,
 };
 const allFiles = (root) =>
   fs.readdirSync(root, { withFileTypes: true }).flatMap((entry) => {
@@ -33,7 +36,12 @@ const scripts = {
     path.join(directory, 'js/background.bundle.js'),
     // This packaged recovery chunk is preloaded when the worker evaluates.
     // Include it in startup cost, even though webpack emits a separate file.
-    ...['js/wallet-recovery.bundle.js']
+    ...[
+      'js/wallet-recovery.bundle.js',
+      'js/sentry-controller.bundle.js',
+      'js/sentry-sdk.bundle.js',
+      'js/sentry-wallet-authority.bundle.js',
+    ]
       .map((file) => path.join(directory, file))
       .filter((file) => fs.existsSync(file)),
   ],

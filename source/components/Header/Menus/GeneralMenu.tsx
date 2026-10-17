@@ -154,6 +154,8 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
           {!disabled && (
             <Menu.Items
               as="div"
+              aria-hidden={!open}
+              {...(open ? {} : { inert: '' })}
               className={`fixed overflow-x-hidden z-50 inset-x-0 top-8 bottom-0 w-full text-center text-brand-white font-poppins bg-brand-blue600 rounded-2xl focus:outline-none shadow-2xl ring-1 ring-black ring-opacity-5
               transform transition-all duration-100 ease-out ${
                 open
@@ -213,6 +215,24 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
                         {t('smartAccountHub.menuEntry')}
                       </span>
                     </li>
+                  </Menu.Item>
+
+                  <Menu.Item>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        navigateWithContext(
+                          navigate,
+                          '/settings/sentry',
+                          {},
+                          createBrowsingNavigationContext(location)
+                        )
+                      }
+                      className="flex min-h-11 w-full items-center gap-2 px-5 text-left text-sm text-white hover:bg-brand-blue500 hover:bg-opacity-20 focus-visible:outline focus-visible:outline-2"
+                    >
+                      <KeySvg className="text-brand-white" />
+                      <span>{t('sentry.sentryOperators')}</span>
+                    </button>
                   </Menu.Item>
 
                   <Menu.Item>

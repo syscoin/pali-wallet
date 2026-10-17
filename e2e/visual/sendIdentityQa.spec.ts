@@ -64,6 +64,52 @@ test('Send keeps long account identities readable and copyable in narrow windows
       await wallet.ensureOnHome();
       await page.locator('#send-btn').click();
       await expect(page).toHaveURL(new RegExp(`#/send/${network.route}$`));
+      // The route URL can update before the scoped form finishes replacing
+      // its provisional account. Wait for the actual selected identity, not a
+      // label in a form that is about to unmount when its account key settles.
+      const expectedAddress =
+        network.route === 'sys'
+          ? fixture.utxo.userAddress
+          : fixture.evmAddresses[0];
+      await expect
+        .poll(() =>
+          page.evaluate(
+            () =>
+              new Promise((resolve) => {
+                chrome.runtime.sendMessage(
+                  {
+                    type: 'CONTROLLER_ACTION',
+                    data: { methods: ['wallet', 'getState'], params: [] },
+                  },
+                  ({ vault, vaultGlobal }) => {
+                    const account =
+                      vault.accounts[vault.activeAccount.type][
+                        vault.activeAccount.id
+                      ];
+                    resolve({
+                      address: account.address,
+                      changing:
+                        vaultGlobal.isSwitchingAccount ||
+                        ['switching', 'connecting'].includes(
+                          vaultGlobal.networkStatus
+                        ),
+                    });
+                  }
+                );
+              })
+          )
+        )
+        .toEqual({ address: expectedAddress, changing: false });
+      await expect(
+        page.locator(
+          '[data-navigation-scroll="wallet-layout"] [aria-busy="true"]'
+        )
+      ).toHaveCount(0);
+      await expect(
+        page.getByRole('button', { name: en.buttons.copy, exact: true })
+      ).toHaveText(
+        `${expectedAddress.slice(0, 4)}...${expectedAddress.slice(-4)}`
+      );
       await page.evaluate(() => {
         (window as any).__identityCopies = [];
         (window as any).__explorerUrls = [];
