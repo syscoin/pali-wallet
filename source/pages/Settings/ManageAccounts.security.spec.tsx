@@ -55,6 +55,7 @@ jest.mock('components/index', () => ({
   IconButton: 'button',
   Icon: 'span',
   ConfirmationModal: 'confirmation-dialog',
+  PageActionFooter: 'footer',
 }));
 jest.mock('utils/index', () => ({ ellipsis: (value: string) => value }));
 jest.mock('utils/navigationState', () => ({

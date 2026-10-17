@@ -1,6 +1,12 @@
 import { Form, Input } from 'antd';
 import { debounce } from 'lodash';
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, {
+  useState,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 
 interface IValidatedPasswordInputProps {
@@ -94,6 +100,7 @@ export const ValidatedPasswordInput: React.FC<IValidatedPasswordInputProps> = ({
   const [validationStatus, setValidationStatus] = useState<
     'success' | 'error' | ''
   >('');
+  const fieldRef = useRef<HTMLDivElement>(null);
 
   // Use refs to store state values for stable access in callbacks
   const isValidatingRef = useRef(isValidating);
@@ -118,6 +125,34 @@ export const ValidatedPasswordInput: React.FC<IValidatedPasswordInputProps> = ({
   const performValidationRef = useRef<
     ((password: string) => Promise<void>) | null
   >(null);
+
+  useLayoutEffect(() => {
+    const field = fieldRef.current;
+    if (
+      !field ||
+      validationTrigger !== 'submit' ||
+      validationStatus !== 'error'
+    )
+      return;
+    const runId = validationRunIdRef.current;
+    // AntD inserts/animates help after this commit. Follow that field's size
+    // only while the current explicit attempt still owns keyboard focus.
+    const reveal = () => {
+      if (
+        runId === validationRunIdRef.current &&
+        field.contains(document.activeElement)
+      ) {
+        field.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+      }
+    };
+    reveal();
+    const observer =
+      typeof ResizeObserver === 'undefined'
+        ? undefined
+        : new ResizeObserver(reveal);
+    observer?.observe(field);
+    return () => observer?.disconnect();
+  }, [validationStatus, validationTrigger]);
 
   // Update refs when props change
   useEffect(() => {
@@ -303,47 +338,49 @@ export const ValidatedPasswordInput: React.FC<IValidatedPasswordInputProps> = ({
   }, []);
 
   return (
-    <Form.Item
-      name={name}
-      className={`w-full md:max-w-md ${className}`}
-      hasFeedback
-      validateStatus={isValidating ? 'validating' : validationStatus || ''}
-      rules={[
-        {
-          required,
-          message: placeholder || t('settings.enterYourPassword'),
-        },
-      ]}
-    >
-      <Input
-        type="password"
-        className="custom-import-input relative"
-        placeholder={placeholder || t('settings.enterYourPassword')}
-        id={id}
-        onChange={handlePasswordChange}
-        onPressEnter={
-          validationTrigger === 'submit'
-            ? (event) => {
-                event.preventDefault();
-                handleExplicitValidation();
-              }
-            : undefined
-        }
-        suffix={
-          validationTrigger === 'submit' ? (
-            <button
-              type="button"
-              className="text-brand-blue500 text-xs font-medium disabled:opacity-50"
-              disabled={!hasPassword || isValidating}
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={handleExplicitValidation}
-            >
-              {t('buttons.confirm')}
-            </button>
-          ) : undefined
-        }
-      />
-    </Form.Item>
+    <div ref={fieldRef} className="w-full md:max-w-md">
+      <Form.Item
+        name={name}
+        className={`w-full md:max-w-md ${className}`}
+        hasFeedback
+        validateStatus={isValidating ? 'validating' : validationStatus || ''}
+        rules={[
+          {
+            required,
+            message: placeholder || t('settings.enterYourPassword'),
+          },
+        ]}
+      >
+        <Input
+          type="password"
+          className="custom-import-input relative"
+          placeholder={placeholder || t('settings.enterYourPassword')}
+          id={id}
+          onChange={handlePasswordChange}
+          onPressEnter={
+            validationTrigger === 'submit'
+              ? (event) => {
+                  event.preventDefault();
+                  handleExplicitValidation();
+                }
+              : undefined
+          }
+          suffix={
+            validationTrigger === 'submit' ? (
+              <button
+                type="button"
+                className="text-brand-blue500 text-xs font-medium disabled:opacity-50"
+                disabled={!hasPassword || isValidating}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={handleExplicitValidation}
+              >
+                {t('buttons.confirm')}
+              </button>
+            ) : undefined
+          }
+        />
+      </Form.Item>
+    </div>
   );
 };
 

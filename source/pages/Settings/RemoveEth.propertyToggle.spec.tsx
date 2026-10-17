@@ -35,6 +35,9 @@ jest.mock('components/index', () => ({
   Button: ({ children }: any) => <button>{children}</button>,
   DefaultModal: () => null,
   Icon: () => null,
+  PageActionFooter: jest.requireActual(
+    '../../components/PageActionFooter/PageActionFooter'
+  ).PageActionFooter,
 }));
 
 it('blocks overlapping settings choices while normal property delivery is pending', async () => {

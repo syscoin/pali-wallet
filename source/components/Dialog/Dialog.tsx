@@ -190,7 +190,7 @@ export const DialogActions = ({
   className?: string;
 }) => (
   <div
-    className={`flex w-full flex-wrap items-stretch justify-center gap-3 [&>button]:min-w-0 [&>button]:flex-1 ${className}`}
+    className={`flex w-full flex-wrap items-stretch justify-center gap-3 [&>button]:min-w-0 [&>button]:flex-[1_1_8rem] ${className}`}
   >
     {children}
   </div>
@@ -210,7 +210,7 @@ export const DialogActionButton = forwardRef<
     variant={
       tone === 'secondary' ? 'ghost' : tone === 'danger' ? 'danger' : 'primary'
     }
-    className={`!h-auto min-h-[44px] px-4 py-3 !text-sm hover:!scale-100 active:!scale-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-content-primary motion-reduce:transition-none ${
+    className={`!h-auto min-h-[44px] px-4 py-3 !text-sm [overflow-wrap:anywhere] hover:!scale-100 active:!scale-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-content-primary motion-reduce:transition-none ${
       tone === 'primary'
         ? '!text-surface-base hover:!bg-accent-primary [&_svg]:!text-surface-base'
         : tone === 'danger'
@@ -258,7 +258,7 @@ export const DialogHeader = ({
   title: ReactNode;
 }) => (
   <header
-    className={`flex shrink-0 items-center gap-3 border-b border-alpha-whiteAlpha300 px-5 py-4 text-left ${className}`}
+    className={`flex w-full min-w-0 shrink-0 items-center gap-3 border-b border-alpha-whiteAlpha300 px-5 py-4 text-left ${className}`}
   >
     <span
       aria-hidden="true"

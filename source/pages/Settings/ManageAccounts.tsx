@@ -13,7 +13,13 @@ import ledgerLogo from 'assets/all_assets/ledgerLogo.png';
 import trezorLogo from 'assets/all_assets/trezorLogo.png';
 import { RiUserReceivedLine } from 'components/Icon/Icon';
 import { LockIconSvg, PaliWhiteSmallIconSvg } from 'components/Icon/Icon';
-import { Button, ConfirmationModal, Icon, IconButton } from 'components/index';
+import {
+  Button,
+  ConfirmationModal,
+  Icon,
+  IconButton,
+  PageActionFooter,
+} from 'components/index';
 import { getControllerStatus } from 'hooks/controllerStatus';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
@@ -397,13 +403,13 @@ const ManageAccountsView = React.memo(() => {
       <ul
         data-navigation-scroll="settings-manage-accounts"
         ref={scrollContainerRef}
-        className="remove-scrollbar mb-4 w-full h-80 text-sm overflow-auto md:h-96"
+        className="remove-scrollbar mb-4 w-full h-80 max-h-[calc(100dvh-16rem)] text-sm overflow-auto md:h-96"
       >
         {accountsList.map(({ account, accountType }) =>
           renderAccount(account, accountType)
         )}
       </ul>
-      <div className="w-full px-4 absolute bottom-12 md:static">
+      <PageActionFooter className="absolute bottom-12 md:static">
         <Button
           variant="neutral"
           className="text-sm text-brand-royalblue"
@@ -413,7 +419,7 @@ const ManageAccountsView = React.memo(() => {
         >
           {t('buttons.close')}
         </Button>
-      </div>
+      </PageActionFooter>
 
       {/* Confirmation Modal */}
       {accountToRemove && canConfirmRemoval && (

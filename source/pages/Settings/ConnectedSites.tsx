@@ -15,7 +15,7 @@ import {
   DialogPrimitive,
 } from 'components/Dialog/Dialog';
 import { EditIconSvg } from 'components/Icon/Icon';
-import { Button, Icon, IconButton } from 'components/index';
+import { Button, Icon, IconButton, PageActionFooter } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { IDApp } from 'state/dapp/types';
@@ -83,7 +83,7 @@ const ConnectedSites = () => {
       <div className="flex flex-col items-center justify-center w-full">
         <ul
           data-navigation-scroll="settings-connected-sites"
-          className="remove-scrollbar w-full max-w-xs h-80 overflow-auto md:max-w-md"
+          className="remove-scrollbar w-full max-w-xs h-80 max-h-[calc(100dvh-16rem)] overflow-auto md:max-w-md"
         >
           {' '}
           {dappsList.map((_dapp) => (
@@ -186,7 +186,7 @@ const ConnectedSites = () => {
           </DialogPrimitive>
         )}
 
-        <div className="w-full px-4 absolute bottom-12 md:static">
+        <PageActionFooter className="absolute bottom-12 md:static">
           <Button
             variant="neutral"
             className="text-sm text-brand-royalblue"
@@ -196,7 +196,7 @@ const ConnectedSites = () => {
           >
             {t('buttons.close')}
           </Button>
-        </div>
+        </PageActionFooter>
       </div>
     </>
   );

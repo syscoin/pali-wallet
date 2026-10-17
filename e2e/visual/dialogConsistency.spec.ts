@@ -23,6 +23,7 @@ const families = [
   'import-warning',
   'hardware-choice',
 ] as const;
+const locales = ['en', 'de', 'es', 'fr', 'ja', 'ko', 'pt', 'ru', 'zh'];
 let server: http.Server;
 let origin: string;
 let outputDirectory: string;
@@ -65,6 +66,15 @@ const compileFixture = async () => {
     import en from ${JSON.stringify(
       path.join(root, 'source/assets/locales/en.json')
     )};
+    ${locales
+      .filter((locale) => locale !== 'en')
+      .map(
+        (locale) =>
+          `import ${locale} from ${JSON.stringify(
+            path.join(root, `source/assets/locales/${locale}.json`)
+          )};`
+      )
+      .join('\n')}
     import { DefaultModal, WarningModal, ConfirmationModal, ErrorModal } from ${JSON.stringify(
       path.join(root, 'source/components/Modal/Modal')
     )};
@@ -78,12 +88,18 @@ const compileFixture = async () => {
     import ${JSON.stringify(path.join(root, 'source/assets/fonts/index.css'))};
     const query = new URLSearchParams(location.search);
     const family = query.get('family');
+    const locale = query.get('locale') || 'en';
     const long = query.get('long') === 'true';
-    const title = long ? 'Review this longer synthetic account message before continuing' : 'Synthetic dialog';
+    const copy = { en, de, es, fr, ja, ko, pt, ru, zh }[locale];
+    const title = query.has('locale')
+      ? family === 'import-warning' ? copy.settings.recoveryTitle
+      : family === 'error' ? copy.transactions.signatureFailed
+      : copy.accountMenu.connectTrezor.toUpperCase()
+      : long ? 'Review this longer synthetic account message before continuing' : 'Synthetic dialog';
     const description = long
       ? 'This is synthetic visual fixture content. Review the details before continuing. '.repeat(30)
       : 'This is synthetic visual fixture content.';
-    i18next.init({ lng: 'en', initImmediate: false, resources: { en: { translation: en } }, interpolation: { escapeValue: false } });
+    i18next.init({ lng: locale, initImmediate: false, resources: Object.fromEntries(Object.entries({ en, de, es, fr, ja, ko, pt, ru, zh }).map(([key, translation]) => [key, { translation }])), interpolation: { escapeValue: false } });
     function Fixture() {
       const [show, setShow] = useState(false);
       const close = () => setShow(false);
@@ -97,7 +113,7 @@ const compileFixture = async () => {
         {family?.startsWith('status-') && <StatusModal {...props} status={family.slice(7)} />}
         {family === 'wallet-ready' && <WalletReadyModal {...props} phraseOne={description} />}
         {family === 'account-created' && <CreatedAccountSuccessfully {...props} phraseOne={description} phraseTwo="0x0000000000000000000000000000000000000064" />}
-        {family === 'import-warning' && <ImportWalletWarning {...props} phraseOne={description} phraseTwo="This is a disposable component fixture." phraseThree="No recovery action will be submitted." />}
+        {family === 'import-warning' && <ImportWalletWarning {...props} phraseOne={query.has('locale') ? copy.settings.recoveryIntro : description} phraseTwo={query.has('locale') ? copy.settings.recoverySeedHelp : 'This is a disposable component fixture.'} phraseThree={query.has('locale') ? copy.settings.recoveryLimitations : 'No recovery action will be submitted.'} />}
         {family === 'hardware-choice' && <ConnectHardwareWallet {...props} phraseOne={description} />}
       </main>;
     }
@@ -280,7 +296,7 @@ test.describe('production dialog family consistency', () => {
       if (url.pathname === '/') {
         response.writeHead(200, { 'Content-Type': 'text/html' });
         response.end(
-          '<!doctype html><html><body><div id="root"></div><script src="/fixture.js"></script></body></html>'
+          '<!doctype html><html><head><meta charset="utf-8"></head><body><div id="root"></div><script src="/fixture.js"></script></body></html>'
         );
         return;
       }
@@ -312,6 +328,96 @@ test.describe('production dialog family consistency', () => {
   test.afterAll(async () => {
     if (server)
       await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+
+  test('localized long dialog actions fit 320x360 and 400x480', async ({
+    page,
+  }, info) => {
+    const errors: string[] = [];
+    const externalRequests: string[] = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    await page.route('**/*', (route) => {
+      if (new URL(route.request().url()).origin === origin)
+        return route.continue();
+      externalRequests.push(route.request().url());
+      return route.abort('blockedbyclient');
+    });
+    for (const locale of locales) {
+      for (const family of ['error', 'import-warning', 'hardware-choice']) {
+        for (const viewport of [
+          { width: 320, height: 360 },
+          { width: 400, height: 480 },
+        ]) {
+          await page.setViewportSize(viewport);
+          await page.goto(
+            `${origin}/?family=${family}&long=true&locale=${locale}`
+          );
+          await page.locator('#fixture-open').click();
+          const dialog = page.getByRole('dialog');
+          await expect(dialog).toBeVisible();
+          await page.evaluate(async () => {
+            await Promise.all(
+              document
+                .getAnimations()
+                .filter(
+                  (animation) =>
+                    animation.effect?.getComputedTiming().iterations !==
+                    Infinity
+                )
+                .map((animation) => animation.finished.catch(() => undefined))
+            );
+          });
+          const panel = page.locator('[id^="headlessui-dialog-panel"]');
+          const bounds = (await panel.boundingBox())!;
+          await screenshot(
+            page,
+            `${family}-${locale}`,
+            `${viewport.width}x${viewport.height}-long`,
+            info
+          );
+          expect(
+            bounds.y,
+            `${locale}/${family}: top margin`
+          ).toBeGreaterThanOrEqual(15.5);
+          expect(
+            bounds.y + bounds.height,
+            `${locale}/${family}: bottom margin`
+          ).toBeLessThanOrEqual(viewport.height - 15.5);
+          const horizontal = await panel.evaluate((element) => ({
+            clientWidth: element.clientWidth,
+            scrollWidth: element.scrollWidth,
+            overflowing: [...element.querySelectorAll('*')]
+              .filter((child) => child.scrollWidth > child.clientWidth + 1)
+              .map((child) => ({
+                tag: child.tagName,
+                text: child.textContent?.slice(0, 100),
+                clientWidth: child.clientWidth,
+                scrollWidth: child.scrollWidth,
+              })),
+          }));
+          expect
+            .soft(
+              horizontal.scrollWidth <= horizontal.clientWidth,
+              `${locale}/${family}/${viewport.width}: ${JSON.stringify(
+                horizontal
+              )}`
+            )
+            .toBe(true);
+          for (const button of await dialog.getByRole('button').all()) {
+            expect
+              .soft(
+                await inViewport(button),
+                `${locale}/${family}: ${await button.innerText()} is fully visible`
+              )
+              .toBe(true);
+          }
+          await page.keyboard.press('Escape');
+          await expect(dialog).toHaveCount(0);
+        }
+      }
+    }
+    expect(errors).toEqual([]);
+    expect(externalRequests).toEqual([]);
   });
 
   for (const family of families) {

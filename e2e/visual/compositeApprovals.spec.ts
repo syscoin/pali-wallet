@@ -397,6 +397,11 @@ test('Combined approvals: isolated real-extension interaction and layout', async
       expect(await visibleHitTarget(save)).toBe(true);
       const cancel = dialog.getByRole('button', { name: en.buttons.cancel });
       expect(await visibleHitTarget(cancel)).toBe(true);
+      // fullWidth buttons still share one row at the supported 400px popup
+      // width. Stacking them here takes room away from the approval rule.
+      const saveBounds = (await save.boundingBox())!;
+      const cancelBounds = (await cancel.boundingBox())!;
+      expect(saveBounds.y).toBeCloseTo(cancelBounds.y, 0);
       const close = dialog.getByRole('button', { name: en.buttons.close });
       expect(await visibleHitTarget(close)).toBe(true);
       expect(

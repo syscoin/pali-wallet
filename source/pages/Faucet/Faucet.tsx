@@ -8,6 +8,7 @@ import errorIcon from 'assets/all_assets/faucet-error.svg';
 import loadingIcon from 'assets/all_assets/faucet-loading.svg';
 import successIcon from 'assets/all_assets/faucet-success.svg';
 import { Button } from 'components/Button';
+import { PageActionFooter } from 'components/PageActionFooter';
 import { RootState } from 'state/store';
 import { INetworkType } from 'types/network';
 import { ellipsis } from 'utils/format';
@@ -122,7 +123,7 @@ export const Faucet: React.FC = () => {
       )}
       {renderFaucetContent()}
       {!isLoading && (
-        <div className="w-full px-4 absolute bottom-12 md:static">
+        <PageActionFooter className="absolute bottom-12 md:static">
           <Button
             variant="neutral"
             className="text-sm text-brand-royalblue"
@@ -132,7 +133,7 @@ export const Faucet: React.FC = () => {
           >
             {faucetButtonLabel}
           </Button>
-        </div>
+        </PageActionFooter>
       )}
     </>
   );

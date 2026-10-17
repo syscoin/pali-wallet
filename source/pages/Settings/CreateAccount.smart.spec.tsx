@@ -72,6 +72,8 @@ jest.mock('antd', () => {
 jest.mock('components/index', () => ({
   Icon: () => null,
   Card: ({ children }: any) => <div role="alert">{children}</div>,
+  PageActionFooter: jest.requireActual('components/PageActionFooter')
+    .PageActionFooter,
   Button: ({ children, variant, loading, fullWidth, ...props }: any) => (
     <button
       data-variant={variant}

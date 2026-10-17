@@ -342,6 +342,53 @@ describe('send forms across wallet navigation', () => {
 
   const wrongNetworkSmartAddress = '0x3333333333333333333333333333333333333333';
 
+  it('closes recipient suggestions when keyboard focus leaves for Amount', () => {
+    mockState.vault.accounts.HDAccount[1].label = 'Local recipient';
+    render(<SendEth />);
+    const receiver = screen.getByPlaceholderText('send.receiver');
+    const amount = screen.getByPlaceholderText('send.amount');
+    fireEvent.focus(receiver);
+    expect(
+      screen.getByRole('button', { name: /Local recipient/ })
+    ).toBeTruthy();
+    fireEvent.blur(receiver, { relatedTarget: amount });
+    expect(
+      screen.queryByRole('button', { name: /Local recipient/ })
+    ).toBeNull();
+  });
+
+  it('preserves suggestion selection while keyboard focus moves within the chooser', () => {
+    mockState.vault.accounts.HDAccount[1].label = 'Local recipient';
+    render(<SendEth />);
+    const receiver = screen.getByPlaceholderText(
+      'send.receiver'
+    ) as HTMLInputElement;
+    fireEvent.focus(receiver);
+    const suggestion = screen.getByRole('button', { name: /Local recipient/ });
+    fireEvent.blur(receiver, { relatedTarget: suggestion });
+    expect(
+      screen.getByRole('button', { name: /Local recipient/ })
+    ).toBeTruthy();
+    fireEvent.click(suggestion);
+    expect(receiver.value).toBe(mockState.vault.accounts.HDAccount[1].address);
+    expect(
+      screen.queryByRole('button', { name: /Local recipient/ })
+    ).toBeNull();
+  });
+
+  it('closes the chooser when its suggestion loses focus to another field', () => {
+    mockState.vault.accounts.HDAccount[1].label = 'Local recipient';
+    render(<SendEth />);
+    fireEvent.focus(screen.getByPlaceholderText('send.receiver'));
+    const suggestion = screen.getByRole('button', { name: /Local recipient/ });
+    fireEvent.blur(suggestion, {
+      relatedTarget: screen.getByPlaceholderText('send.amount'),
+    });
+    expect(
+      screen.queryByRole('button', { name: /Local recipient/ })
+    ).toBeNull();
+  });
+
   it.each(
     ['evm', 'utxo'].flatMap((kind) =>
       ['{Enter}', ' '].map((key) => ({ kind, key }))

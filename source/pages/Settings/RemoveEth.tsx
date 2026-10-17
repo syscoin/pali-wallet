@@ -4,7 +4,7 @@ import { useSelector } from 'react-redux';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 import metamaskIcon from 'assets/all_assets/metamask.svg';
-import { Button, DefaultModal, Icon } from 'components/index';
+import { Button, DefaultModal, Icon, PageActionFooter } from 'components/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { navigateBack } from 'utils/navigationState';
@@ -152,7 +152,7 @@ const RemoveEthView = () => {
           </div>
         )}
 
-        <div className="w-full px-4 absolute bottom-12 md:static">
+        <PageActionFooter className="absolute bottom-12 md:static">
           <Button
             variant="neutral"
             className="text-sm text-brand-royalblue"
@@ -163,7 +163,7 @@ const RemoveEthView = () => {
           >
             {t('buttons.close')}
           </Button>
-        </div>
+        </PageActionFooter>
       </div>
     </>
   );
