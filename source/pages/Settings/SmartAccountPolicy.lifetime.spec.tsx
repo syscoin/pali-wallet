@@ -430,6 +430,84 @@ describe('SmartAccountPolicy async UI lifetime', () => {
         expect(mockAlert.error).not.toHaveBeenCalled();
       }
     );
+
+    it.each(['connectionUnavailable', 'isLoading'])(
+      'starts one read-only hydration when an entry opened with %s recovers',
+      async (flag) => {
+        mockStatus = { ...mockStatus, [flag]: true };
+        const pending = deferred<any>();
+        const view = mountWithHydration(pending);
+        expect(
+          mockEmitter.mock.calls.some(
+            ([path]) => path[1] === 'hydrateSmartAccount'
+          )
+        ).toBe(false);
+        mockStatus = { ...mockStatus, [flag]: false };
+        view.rerender(<SmartAccountPolicy />);
+        await waitFor(() =>
+          expect(
+            mockEmitter.mock.calls.filter(
+              ([path]) => path[1] === 'hydrateSmartAccount'
+            )
+          ).toHaveLength(1)
+        );
+        await act(async () => pending.resolve(metadata(true)));
+        expect(screen.getByTitle(OWNER)).toBeTruthy();
+        expect(
+          mockEmitter.mock.calls.some(([path]) =>
+            /register|sign|submit/i.test(path[1])
+          )
+        ).toBe(false);
+      }
+    );
+
+    it('invalidates ready metadata during an outage and re-verifies on reconnection', async () => {
+      const initial = deferred<any>();
+      const view = mountWithHydration(initial);
+      await act(async () => initial.resolve(metadata(true)));
+      expect(screen.getByTitle(OWNER)).toBeTruthy();
+      mockStatus = { ...mockStatus, connectionUnavailable: true };
+      view.rerender(<SmartAccountPolicy />);
+      expect(screen.queryByTitle(OWNER)).toBeNull();
+      mockStatus = { ...mockStatus, connectionUnavailable: false };
+      view.rerender(<SmartAccountPolicy />);
+      await waitFor(() =>
+        expect(
+          mockEmitter.mock.calls.filter(
+            ([path]) => path[1] === 'hydrateSmartAccount'
+          )
+        ).toHaveLength(2)
+      );
+      expect(screen.queryByTitle(OWNER)).toBeNull();
+      expect(
+        mockEmitter.mock.calls.some(([path]) =>
+          /register|sign|submit/i.test(path[1])
+        )
+      ).toBe(false);
+    });
+
+    it('rejects a pre-outage result and issues a fresh read after reconnection', async () => {
+      const initial = deferred<any>();
+      const view = mountWithHydration(initial);
+      mockStatus = { ...mockStatus, connectionUnavailable: true };
+      view.rerender(<SmartAccountPolicy />);
+      await act(async () => initial.resolve(metadata(true)));
+      mockStatus = { ...mockStatus, connectionUnavailable: false };
+      view.rerender(<SmartAccountPolicy />);
+      await waitFor(() =>
+        expect(
+          mockEmitter.mock.calls.filter(
+            ([path]) => path[1] === 'hydrateSmartAccount'
+          )
+        ).toHaveLength(2)
+      );
+      expect(screen.queryByTitle(OWNER)).toBeNull();
+      expect(
+        mockEmitter.mock.calls.some(([path]) =>
+          /register|sign|submit/i.test(path[1])
+        )
+      ).toBe(false);
+    });
   });
 
   it.each([
@@ -721,6 +799,21 @@ describe('SmartAccountPolicy async UI lifetime', () => {
         )
       ).toBe(false);
       view.unmount();
+    });
+
+    it('does not resume a prior signing action after an outage and reconnection', async () => {
+      const { pending, view } = await install('gas');
+      mockStatus = { ...mockStatus, connectionUnavailable: true };
+      view.rerender(<SmartAccountPolicy />);
+      mockStatus = { ...mockStatus, connectionUnavailable: false };
+      view.rerender(<SmartAccountPolicy />);
+      await act(async () => pending.resolve({ hasNativeGas: true }));
+      expect(createPasskeyCredential).not.toHaveBeenCalled();
+      expect(
+        mockEmitter.mock.calls.some(
+          ([path]) => path[1] === 'signSmartAccountActionDigestInternal'
+        )
+      ).toBe(false);
     });
 
     it('does not sign after departing while execution preparation is pending', async () => {

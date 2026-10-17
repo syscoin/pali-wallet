@@ -192,10 +192,23 @@ const SmartAccountPolicy = () => {
   }`;
   const latestSelectedAccountRef = useRef(selectedAccountKey);
   const scopeKey = JSON.stringify(getWalletNavigationScope());
+  const controllerStatus = getControllerStatus();
+  const controllerReady =
+    controllerStatus.isUnlocked &&
+    !controllerStatus.isLoading &&
+    !controllerStatus.connectionUnavailable;
+  const metadataAvailability = useRef({ ready: controllerReady, revision: 0 });
+  if (metadataAvailability.current.ready !== controllerReady) {
+    metadataAvailability.current = {
+      ready: controllerReady,
+      revision: metadataAvailability.current.revision + 1,
+    };
+  }
   const metadataEntryKey = JSON.stringify([
     scopeKey,
     selectedAccountKey,
     location.key,
+    metadataAvailability.current.revision,
   ]);
   const [metadataEntry, setMetadataEntry] = useState<{
     key: string;
@@ -204,7 +217,8 @@ const SmartAccountPolicy = () => {
   const metadataRead = useRef<{ key: string } | null>(null);
   const isEntryMetadataReady =
     !account?.isSmartAccount ||
-    (metadataEntry?.key === metadataEntryKey &&
+    (controllerReady &&
+      metadataEntry?.key === metadataEntryKey &&
       metadataEntry.status === 'ready');
   latestLocationRef.current = location;
   latestSelectedAccountRef.current = selectedAccountKey;
@@ -221,6 +235,7 @@ const SmartAccountPolicy = () => {
   const createUiGuard = () => {
     const origin = location;
     const originRoute = origin.pathname + origin.search + origin.hash;
+    const originAvailability = metadataAvailability.current.revision;
     return (requireTrustedAuth = true) => {
       const current = latestLocationRef.current;
       const status = getControllerStatus();
@@ -232,6 +247,8 @@ const SmartAccountPolicy = () => {
         typeof window === 'undefined' ? undefined : window.history.state?.key;
       return (
         mountedRef.current &&
+        (!requireTrustedAuth ||
+          metadataAvailability.current.revision === originAvailability) &&
         (!requireTrustedAuth || current.key === origin.key) &&
         current.pathname + current.search + current.hash === originRoute &&
         latestSelectedAccountRef.current === selectedAccountKey &&

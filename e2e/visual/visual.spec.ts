@@ -378,25 +378,78 @@ test.describe('visual baselines', () => {
     await expect(wallet.page).toHaveURL(/settings\/edit-account/, {
       timeout: 30_000,
     });
-    await wallet.page
-      .getByRole('button', { name: /smart account settings/i })
-      .first()
-      .click();
-    await expect(wallet.page).toHaveURL(/smart-account-policy/, {
-      timeout: 30_000,
+    // This golden describes the undeployed local-account state. The shared QA
+    // address may later be deployed, so pin only this read-only hydration result.
+    await wallet.page.evaluate(async () => {
+      const sendMessage = chrome.runtime.sendMessage.bind(chrome.runtime);
+      const state = await sendMessage({ type: 'getCurrentState' });
+      const accounts = state.vault.accounts.SmartAccount;
+      (window as any).__policyVisualHydrations = 0;
+      (window as any).__restorePolicyVisualRead = () => {
+        chrome.runtime.sendMessage = sendMessage;
+      };
+      chrome.runtime.sendMessage = ((...args: any[]) => {
+        const [message, callback] = args;
+        const params = message?.data?.params;
+        if (
+          location.hash === '#/settings/account/smart-account-policy' &&
+          message?.type === 'CONTROLLER_ACTION' &&
+          message.data?.methods?.length === 2 &&
+          message.data.methods[0] === 'wallet' &&
+          message.data.methods[1] === 'hydrateSmartAccount' &&
+          params?.length === 1 &&
+          accounts[params[0]]?.smartAccount
+        ) {
+          (window as any).__policyVisualHydrations += 1;
+          const metadata = {
+            ...accounts[params[0]].smartAccount,
+            isDeployed: false,
+          };
+          if (typeof callback === 'function') {
+            queueMicrotask(() => callback(metadata));
+            return;
+          }
+          return Promise.resolve(metadata);
+        }
+        return (sendMessage as any)(...args);
+      }) as typeof chrome.runtime.sendMessage;
     });
-    // Wait out the hydration spinners so the baseline captures settled state.
-    await wallet.page
-      .getByText(/checking/i)
-      .first()
-      .waitFor({ state: 'hidden', timeout: 60_000 })
-      .catch(() => undefined);
-    await settle(1500);
-    await expect(wallet.page).toHaveScreenshot(['smart-account-policy.png'], {
-      mask: commonMasks(),
-      // Policy page scrolls; capture everything for layout coverage.
-      fullPage: true,
-    });
+    try {
+      await wallet.page
+        .getByRole('button', { name: /smart account settings/i })
+        .first()
+        .click();
+      await expect(wallet.page).toHaveURL(/smart-account-policy/, {
+        timeout: 30_000,
+      });
+      // Wait out the hydration spinners so the baseline captures settled state.
+      await wallet.page
+        .getByText(/checking/i)
+        .first()
+        .waitFor({ state: 'hidden', timeout: 60_000 })
+        .catch(() => undefined);
+      await settle(1500);
+      await expect
+        .poll(() =>
+          wallet.page.evaluate(() => (window as any).__policyVisualHydrations)
+        )
+        .toBe(1);
+      await expect(
+        wallet.page.getByRole('button', {
+          name: 'Register account',
+          exact: true,
+        })
+      ).toBeVisible();
+      await expect(wallet.page).toHaveScreenshot(['smart-account-policy.png'], {
+        mask: commonMasks(),
+        // Policy page scrolls; capture everything for layout coverage.
+        fullPage: true,
+      });
+    } finally {
+      await wallet.page.evaluate(() =>
+        (window as any).__restorePolicyVisualRead?.()
+      );
+    }
   });
 
   for (const ready of [true, false]) {
