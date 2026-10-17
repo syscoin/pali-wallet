@@ -249,7 +249,7 @@ const RenderAccountsListByBitcoinBased =
                       : undefined
                   }
                   disabled={busy}
-                  className={`flex flex-1 items-center gap-2 min-w-0 min-h-[44px] text-left rounded-lg px-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue ${
+                  className={`flex flex-1 items-center gap-2 min-w-0 min-h-[38px] text-left rounded-lg px-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue ${
                     active ? 'bg-brand-blue500/30' : 'hover:bg-brand-blue500/20'
                   } disabled:cursor-wait`}
                   onPointerDown={(e) => {
@@ -301,7 +301,7 @@ const RenderAccountsListByBitcoinBased =
                   disabled={busy}
                   title={t('buttons.copy')}
                   aria-label={`${t('buttons.copy')}: ${account.label}`}
-                  className={`flex items-center justify-center flex-shrink-0 min-w-[44px] min-h-[44px] rounded-lg text-brand-gray300 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue ${
+                  className={`flex items-center justify-center flex-shrink-0 min-w-[44px] min-h-[38px] rounded-lg text-brand-gray300 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue ${
                     active
                       ? 'bg-brand-blue500/30 text-white'
                       : 'hover:bg-brand-blue500/20'

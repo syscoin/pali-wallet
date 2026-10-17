@@ -82,7 +82,7 @@ beforeEach(() => {
   mockState.vaultGlobal.isSwitchingAccount = false;
 });
 
-it('keeps account rows compact without shrinking either touch target', async () => {
+it('keeps compact 38px account rows with an independent 44px-wide copy target', async () => {
   await openAccounts();
 
   for (const label of ['Alpha', 'Beta']) {
@@ -95,12 +95,12 @@ it('keeps account rows compact without shrinking either touch target', async () 
     const row = account.closest('li');
 
     expect(row).not.toBeNull();
-    // Vertical row padding would add height outside the 44px controls.
+    // Vertical row padding would add height outside the compact 38px controls.
     expect(row?.className.split(/\s+/)).not.toEqual(
       expect.arrayContaining([expect.stringMatching(/^(?:p|py|pt|pb)-/)])
     );
-    expect(account.classList.contains('min-h-[44px]')).toBe(true);
-    expect(copy.classList.contains('min-h-[44px]')).toBe(true);
+    expect(account.classList.contains('min-h-[38px]')).toBe(true);
+    expect(copy.classList.contains('min-h-[38px]')).toBe(true);
     expect(copy.classList.contains('min-w-[44px]')).toBe(true);
   }
 });

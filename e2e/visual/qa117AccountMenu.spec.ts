@@ -60,7 +60,7 @@ const exposed = (control: Locator) =>
     const b = element.getBoundingClientRect();
     return (
       b.width >= 44 &&
-      b.height >= 44 &&
+      b.height >= 38 &&
       b.left >= 0 &&
       b.top >= 0 &&
       b.right <= innerWidth &&
@@ -184,7 +184,7 @@ test('account dropdown supports keyboard selection and separate copy actions in 
           checkToLabelOffset: center(checkBounds) - center(labelBounds),
         };
       });
-      expect.soft(alignment.rowHeight).toBeCloseTo(44, 1);
+      expect.soft(alignment.rowHeight).toBeCloseTo(38, 1);
       expect.soft(Math.abs(alignment.checkOffset)).toBeLessThanOrEqual(0.25);
       // Text ink has font-specific ascender/descender metrics; keep it
       // optically close without imposing a fractional-pixel translation.
