@@ -439,6 +439,22 @@ test('a long smart-account menu keeps bottom actions reachable by keyboard and s
       await expect(menu.locator('[id^="account-SmartAccount-"]')).toHaveCount(
         24
       );
+      await expect(first).toHaveAccessibleName(/Smart Account$/);
+      const smartBadge = first.getByTitle('Smart Account', { exact: true });
+      await expect(smartBadge).toHaveText('Smart');
+      expect(
+        await smartBadge.evaluate((node) => {
+          const style = getComputedStyle(node);
+          const label = node.previousElementSibling!;
+          return (
+            style.fontSize === '12px' &&
+            style.paddingLeft === '4px' &&
+            style.paddingRight === '4px' &&
+            node.getBoundingClientRect().width < 80 &&
+            label.getBoundingClientRect().width >= 100
+          );
+        })
+      ).toBe(true);
       expect(
         await menu.evaluate((node) => {
           const rect = node.getBoundingClientRect();
@@ -451,6 +467,12 @@ test('a long smart-account menu keeps bottom actions reachable by keyboard and s
           );
         })
       ).toBe(true);
+      await page.screenshot({
+        path: info.outputPath(
+          `24-smart-accounts-top-${viewport.width}x${viewport.height}.png`
+        ),
+        animations: 'disabled',
+      });
       await page.keyboard.press('End');
       const advanced = menu.getByRole('menuitem', {
         name: en.generalMenu.advanced,

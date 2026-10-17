@@ -226,6 +226,7 @@ const RenderAccountsListByBitcoinBased =
         busy: boolean
       ) => {
         const badgeInfo = BADGE_INFO_MAP[accountType];
+        const isSmartAccount = accountType === KeyringAccountType.SmartAccount;
         const key = `${accountType}-${account.id}`;
         return (
           <li
@@ -242,7 +243,9 @@ const RenderAccountsListByBitcoinBased =
               {({ active, close }) => (
                 <button
                   type="button"
-                  aria-label={`${account.label} (${account.address})`}
+                  aria-label={`${account.label} (${account.address})${
+                    isSmartAccount ? `, ${badgeInfo.label}` : ''
+                  }`}
                   aria-current={
                     isAccountActive(account.id, accountType)
                       ? 'true'
@@ -279,7 +282,12 @@ const RenderAccountsListByBitcoinBased =
                     />
                   ) : (
                     <span
-                      className={`inline-flex h-[20px] flex-shrink-0 items-center gap-1 px-2 text-xs leading-none text-white ${badgeInfo.bgColor} rounded-full font-medium`}
+                      title={isSmartAccount ? badgeInfo.label : undefined}
+                      className={`inline-flex h-[20px] flex-shrink-0 items-center gap-1 ${
+                        isSmartAccount ? 'px-1' : 'px-2'
+                      } text-xs leading-none text-white ${
+                        badgeInfo.bgColor
+                      } rounded-full font-medium`}
                     >
                       {isAccountActive(account.id, accountType) && (
                         <Icon
@@ -288,7 +296,9 @@ const RenderAccountsListByBitcoinBased =
                           className="block h-[12px] w-[12px]"
                         />
                       )}
-                      <span className="leading-none">{badgeInfo.label}</span>
+                      <span className="leading-none">
+                        {isSmartAccount ? 'Smart' : badgeInfo.label}
+                      </span>
                     </span>
                   )}
                 </button>
