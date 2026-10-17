@@ -1,4 +1,24 @@
 // This runs before the bundles, so failed chunk loads still have a recovery UI.
+// Chrome toolbar popups need an intrinsic height. Only a positively identified
+// non-popup view may opt into viewport-relative sizing for short windows.
+try {
+  if (
+    typeof chrome !== 'undefined' &&
+    chrome.extension &&
+    typeof chrome.extension.getViews === 'function'
+  ) {
+    const isToolbarPopup = chrome.extension
+      .getViews({ type: 'popup' })
+      .includes(window);
+    document.documentElement.setAttribute(
+      'data-pali-view',
+      isToolbarPopup ? 'toolbar-popup' : 'standalone'
+    );
+  }
+} catch {
+  // Keep the fixed popup size if view classification is unavailable.
+}
+
 const loaderTimeout = setTimeout(function () {
   if (document.body.classList.contains('app-loaded')) return;
   const loader = document.getElementById('initial-loader');
