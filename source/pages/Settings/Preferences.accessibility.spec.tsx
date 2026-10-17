@@ -55,6 +55,8 @@ jest.mock('./SmartAccountInfrastructure', () => ({
 }));
 jest.mock('components/Icon/Icon', () => ({ ArrowDownSvg: () => <svg /> }));
 jest.mock('components/index', () => ({
+  PageActionFooter: jest.requireActual('components/PageActionFooter')
+    .PageActionFooter,
   Button: ({ children, loading, disabled, onClick, type }: any) => (
     <button type={type} onClick={onClick} disabled={disabled || loading}>
       {children}

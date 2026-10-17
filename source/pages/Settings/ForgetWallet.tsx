@@ -7,6 +7,7 @@ import { useLocation } from 'react-router-dom';
 import {
   Button,
   Card,
+  PageActionFooter,
   SeedPhraseDisplay,
   ValidatedPasswordInput,
 } from 'components/index';
@@ -175,7 +176,7 @@ const ForgetWalletView = () => {
       </div>
 
       {/* Buttons container - pushed to bottom */}
-      <div className="w-full px-4 absolute bottom-12 md:static">
+      <PageActionFooter className="absolute bottom-12 md:static">
         <div className="flex gap-x-8 justify-between md:gap-x-40">
           <Button
             variant="secondary"
@@ -196,7 +197,7 @@ const ForgetWalletView = () => {
             {t('buttons.forget')}
           </Button>
         </div>
-      </div>
+      </PageActionFooter>
     </>
   );
 };

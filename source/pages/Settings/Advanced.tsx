@@ -5,7 +5,12 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useNavigate, useLocation } from 'react-router-dom';
 
-import { Button, ConfirmationModal, DefaultModal } from 'components/index';
+import {
+  Button,
+  ConfirmationModal,
+  DefaultModal,
+  PageActionFooter,
+} from 'components/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { navigateBack } from 'utils/navigationState';
@@ -297,12 +302,10 @@ const Advanced = () => {
           </Form.Item>
         ))}
 
-        {saveError && (
-          <p role="alert" className="text-sm text-[#ff8f8f]">
-            {t('settings.preferencesSaveFailed')}
-          </p>
-        )}
-        <div className="w-full px-4 pb-12">
+        <PageActionFooter
+          className="pb-12"
+          error={saveError ? t('settings.preferencesSaveFailed') : undefined}
+        >
           <Button
             variant="neutral"
             className="text-sm text-brand-royalblue"
@@ -313,7 +316,7 @@ const Advanced = () => {
           >
             {t('buttons.save')}
           </Button>
-        </div>
+        </PageActionFooter>
       </Form>
     </>
   );
