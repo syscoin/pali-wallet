@@ -246,7 +246,11 @@ for (const scheme of ['bls-basic', 'slh-dsa-shake-128s'] as const) {
         offlineHttpProxy: server.url,
         viewport: { width: 400, height: 620 },
       });
-      await installUtxoFixtureRoutes(wallet.context, fixture, server.url);
+      const routes = await installUtxoFixtureRoutes(
+        wallet.context,
+        fixture,
+        server.url
+      );
       await wallet.context.route(`${server.url}/api/v2/**`, (route) =>
         route.continue()
       );
@@ -451,6 +455,87 @@ for (const scheme of ['bls-basic', 'slh-dsa-shake-128s'] as const) {
         linked: true,
         proTxHash: node.proTxHash,
       });
+      await wallet.step(
+        'linked node and separate-account collateral survive reload and lock',
+        async () => {
+          const assertSavedNode = async () => {
+            const settings = await controller<{
+              collateral: Array<{
+                proTxHash?: string;
+                txid: string;
+                vout: number;
+              }>;
+              linkedNodes: Array<{
+                collateralOutpoint: { txid: string; vout: number };
+                proTxHash: string;
+              }>;
+            }>('getSentrySettings', []);
+            expect(settings.linkedNodes).toContainEqual(
+              expect.objectContaining({
+                proTxHash: node.proTxHash,
+                collateralOutpoint: node.collateralOutpoint,
+              })
+            );
+            expect(settings.collateral).toContainEqual({
+              proTxHash: node.proTxHash,
+              ...node.collateralOutpoint,
+            });
+            await expect(
+              page.getByText(node.proTxHash, { exact: true })
+            ).toBeVisible();
+            await expect(
+              page.getByText(
+                `${node.collateralOutpoint.txid}:${node.collateralOutpoint.vout}`,
+                { exact: true }
+              )
+            ).toBeVisible();
+          };
+          await wallet!.gotoRoute('#/settings/sentry');
+          await assertSavedNode();
+          await page.reload();
+          await wallet!.waitAppReady();
+          await assertSavedNode();
+          await controller('lock', []);
+          await wallet!.gotoRoute('#/');
+          await wallet!.unlock();
+          await wallet!.gotoRoute('#/settings/sentry');
+          await assertSavedNode();
+        }
+      );
+      await wallet.step(
+        'ordinary public PSBT signing refuses the protected separate-account output',
+        async (capture) => {
+          await page.goto(server.url);
+          await page.waitForFunction(() => Boolean((window as any).pali));
+          expect(await providerRequest(page, 'sys_requestAccounts')).toEqual([
+            fixture.userAddress,
+          ]);
+          // This same mixed-owner PSBT succeeds in the ordinary UTXO journey.
+          // Its account-1 input is now explicitly linked collateral, so account-0
+          // signing must refuse the whole request before returning any witness.
+          const protectedId = await startRequest(page, 'sys_sign', [
+            fixture.mixed,
+          ]);
+          const protectedPopup = await popupFor(
+            wallet!.context,
+            page,
+            protectedId
+          );
+          await protectedPopup
+            .getByRole('button', { name: /^(sign|confirm)$/i })
+            .last()
+            .click();
+          await expect(
+            protectedPopup.getByText(/spends protected Sentry Node collateral/)
+          ).toBeVisible();
+          await capture(protectedPopup);
+          const refused = await settle(page, protectedId, 15000);
+          expect(refused.error).toBeTruthy();
+          expect(refused.result).toBeUndefined();
+          expect(routes.deniedWrites).toEqual([]);
+          expect(routes.syntheticBroadcasts).toEqual([]);
+        }
+      );
       await wallet.dispose('passed');
       wallet = undefined;
     } catch (error) {

@@ -1100,7 +1100,7 @@
     "copyPublicKey": "Copy public key",
     "removeLocalKey": "Remove local key",
     "protectedCollateral": "Protected collateral",
-    "onlyLinkedVerifiedCollateralOutputsAreProtectedOther": "Verified collateral from linked nodes and pending registrations is protected. Other funds sent to the same address remain spendable. Removing a key does not unlock collateral.",
+    "onlyLinkedVerifiedCollateralOutputsAreProtectedOther": "Verified collateral from linked nodes and pending registrations is protected. Other funds sent to the same address remain spendable. Removing a key does not unlock collateral. After restoring your wallet on a new device, link your nodes again before spending from collateral accounts.",
     "noLinkedCollateralInThisWallet": "No protected collateral in this wallet.",
     "node": "Node",
     "protectedOutpoint": "Protected outpoint",

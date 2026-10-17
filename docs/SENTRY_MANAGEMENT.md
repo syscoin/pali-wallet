@@ -53,11 +53,13 @@ network has activated the corresponding PQ operation.
 ```json
 {
   "method": "sys_linkSentryNode",
-  "params": [{
-    "version": 1,
-    "proTxHash": "<registered node transaction hash>",
-    "genesisHash": "<expected Syscoin network genesis hash>"
-  }]
+  "params": [
+    {
+      "version": 1,
+      "proTxHash": "<registered node transaction hash>",
+      "genesisHash": "<expected Syscoin network genesis hash>"
+    }
+  ]
 }
 ```
 
@@ -67,6 +69,10 @@ not a key or hosting account. Pali protects the verified collateral outpoint
 across this wallet's accounts, including when linked from a reward account.
 Other outputs at the same address are unaffected. Linking does not sign or send
 a blockchain transaction.
+
+Linked nodes and collateral protection are local wallet metadata, not recovered
+from the seed. After restoring on a new device, link your nodes again before
+spending from collateral accounts.
 
 Protected collateral can only be unlocked through the wallet's explicit
 stop-node acknowledgement and reauthentication. The warning makes clear that
@@ -84,12 +90,14 @@ abandoned, release it explicitly in Pali after reviewing the stop-node warning.
 ```json
 {
   "method": "sys_signSentryOperation",
-  "params": [{
-    "version": 1,
-    "operation": "updateService",
-    "chain": { "genesisHash": "<hash>", "era": "legacy-v3" },
-    "transactionHex": "<funded transaction with unsigned fee inputs>"
-  }]
+  "params": [
+    {
+      "version": 1,
+      "operation": "updateService",
+      "chain": { "genesisHash": "<hash>", "era": "legacy-v3" },
+      "transactionHex": "<funded transaction with unsigned fee inputs>"
+    }
+  ]
 }
 ```
 
@@ -121,7 +129,8 @@ The PR browser-conformance job runs `sentry-operator.journey.spec.ts` with a
 disposable synthetic wallet and local-only read endpoints. It checks encrypted
 key storage across lock/unlock, small-window controls, real BLS and SHAKE-128s
 authorizations through the public provider, wrong-network rejection, signature
-tampering and public node linking. This does not broadcast or claim a live-chain
+tampering, public node linking, persistence across reload/lock and ordinary PSBT
+refusal for linked collateral. This does not broadcast or claim a live-chain
 registration. Core/SDK vectors and the Sysnode transaction-admission tests cover
 the protocol side separately.
 
