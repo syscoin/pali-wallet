@@ -15,7 +15,15 @@ jest.mock('react-redux', () => ({
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
-jest.mock('hooks/index', () => ({ useUtils: () => ({ navigate: jest.fn() }) }));
+const mockNavigate = jest.fn();
+const mockNavigateWithContext = jest.fn();
+jest.mock('hooks/index', () => ({
+  useUtils: () => ({ navigate: mockNavigate }),
+}));
+jest.mock('utils/navigationState', () => ({
+  createBrowsingNavigationContext: (location: any) => location,
+  navigateWithContext: (...args: any[]) => mockNavigateWithContext(...args),
+}));
 jest.mock('hooks/useController', () => ({
   useController: () => ({ controllerEmitter: jest.fn() }),
 }));
@@ -37,6 +45,7 @@ jest.mock('components/Icon/Icon', () => ({
 
 const originalChrome = global.chrome;
 beforeEach(() => {
+  mockNavigateWithContext.mockReset();
   global.chrome = {
     ...originalChrome,
     tabs: { query: jest.fn().mockResolvedValue([]) },
@@ -55,6 +64,17 @@ it('removes the closed menu from accessibility and sequential keyboard navigatio
     </>
   );
   expect(screen.queryByRole('menu')).toBeNull();
+  await user.tab();
+  expect(document.activeElement).toBe(
+    screen.getByRole('button', { name: 'settings.connectedSites' })
+  );
+  await user.keyboard('{Enter}');
+  expect(mockNavigateWithContext).toHaveBeenCalledWith(
+    mockNavigate,
+    '/settings/networks/connected-sites',
+    {},
+    { pathname: '/home', search: '', hash: '' }
+  );
   await user.tab();
   const trigger = screen.getByRole('button', {
     name: 'generalMenu.generalOptions',

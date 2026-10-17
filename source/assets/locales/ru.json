@@ -102,6 +102,8 @@
     "viewNFTs": "Показать NFT"
   },
   "assetsHeader": {
+    "noMatchingAssets": "Нет активов, соответствующих поиску.",
+    "clearSearch": "Очистить поиск",
     "sortBy": "СОРТИРОВАТЬ ПО:",
     "name": "Имя",
     "tokenOrContractAddress": "Токен или адрес контракта",

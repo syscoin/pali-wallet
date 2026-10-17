@@ -14,6 +14,7 @@ import { Tooltip } from 'components/Tooltip';
 
 interface IAssetsHeader {
   isCoinSelected: boolean;
+  searchInputRef?: React.RefObject<HTMLInputElement>;
   searchValue: string;
   setIsCoinSelected: React.Dispatch<React.SetStateAction<boolean>>;
   setSearchValue: React.Dispatch<React.SetStateAction<string>>;
@@ -23,6 +24,7 @@ interface IAssetsHeader {
 
 export const AssetsHeader = ({
   isCoinSelected,
+  searchInputRef: providedSearchInputRef,
   searchValue,
   setIsCoinSelected,
   setSearchValue,
@@ -35,7 +37,8 @@ export const AssetsHeader = ({
     Boolean(searchValue)
   );
   const currentSortBy = sortByValue;
-  const searchInputRef = useRef<HTMLInputElement>(null);
+  const localSearchInputRef = useRef<HTMLInputElement>(null);
+  const searchInputRef = providedSearchInputRef || localSearchInputRef;
   const searchButtonRef = useRef<HTMLButtonElement>(null);
   const sortButtonRef = useRef<HTMLButtonElement>(null);
   const firstSortOptionRef = useRef<HTMLButtonElement>(null);
@@ -51,7 +54,7 @@ export const AssetsHeader = ({
       searchButtonRef.current?.focus();
       restoreSearchFocus.current = false;
     }
-  }, [isSearchOpen]);
+  }, [isSearchOpen, searchInputRef]);
 
   useEffect(() => {
     if (isSortByOpen) firstSortOptionRef.current?.focus();

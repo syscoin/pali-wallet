@@ -21,12 +21,14 @@ export const CreatePhrase = () => {
   const generatedWordCount = useRef<number | null>(seed ? wordCount : null);
   const { t } = useTranslation();
 
-  const [isTermsConfirmed, setIsTermsConfirmed] = useState<boolean>(false);
+  const [acknowledgedSeed, setAcknowledgedSeed] = useState<string>();
+  const isTermsConfirmed = Boolean(seed) && acknowledgedSeed === seed;
 
   const navigate = useNavigate();
 
   useEffect(() => {
     if (generatedWordCount.current === wordCount) return;
+    setAcknowledgedSeed(undefined);
     let current = true;
     controllerEmitter(['wallet', 'createNewSeed'], [wordCount]).then(
       (response: string) => {
@@ -65,11 +67,13 @@ export const CreatePhrase = () => {
           </select>
           <Button
             type="button"
-            onClick={() =>
-              controllerEmitter(['wallet', 'createNewSeed'], [wordCount]).then(
-                (response: string) => setSeed(response)
-              )
-            }
+            onClick={() => {
+              setAcknowledgedSeed(undefined);
+              void controllerEmitter(
+                ['wallet', 'createNewSeed'],
+                [wordCount]
+              ).then((response: string) => setSeed(response));
+            }}
             className="bg-brand-blue px-3 py-1 h-8 text-xs rounded-md"
           >
             {t('buttons.generate')}
@@ -88,7 +92,10 @@ export const CreatePhrase = () => {
             <input
               type="checkbox"
               className="custom-checkbox"
-              onClick={() => setIsTermsConfirmed(!isTermsConfirmed)}
+              checked={isTermsConfirmed}
+              onChange={(event) =>
+                setAcknowledgedSeed(event.target.checked ? seed : undefined)
+              }
             />
             <span className="text-brand-gray200 text-xs font-normal w-60">
               I'm aware that this word combination is unique to identify my
@@ -101,7 +108,7 @@ export const CreatePhrase = () => {
         <ToastActionFooter className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 shadow-lg z-50">
           <div className="flex justify-center gap-3">
             <Button
-              disabled={!seed}
+              disabled={!isTermsConfirmed}
               id="unlock-btn"
               type="button"
               className={`bg-brand-deepPink100 ${

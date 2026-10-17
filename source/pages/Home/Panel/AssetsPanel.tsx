@@ -67,16 +67,18 @@ export const AssetsPanel = () => {
           {isBitcoinBased ? <SyscoinAssetsList /> : <EvmAssetsList />}
         </ul>
       )}
-      <div className="flex items-center justify-center mb-9 mt-6 w-full hover:text-brand-deepPink100 text-brand-white font-normal cursor-pointer transition-all duration-300">
+      <button
+        type="button"
+        onClick={handleImportTokenClick}
+        className="flex items-center justify-center mb-9 mt-6 w-full hover:text-brand-deepPink100 text-brand-white font-normal cursor-pointer transition-all duration-300 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue"
+      >
         <ImportIcon
           size={12}
           color="text-brand-white"
           style={{ marginRight: '6px' }}
         />
-        <p className="underline text-sm" onClick={handleImportTokenClick}>
-          {t('home.importToken')}
-        </p>
-      </div>
+        <span className="underline text-sm">{t('home.importToken')}</span>
+      </button>
     </div>
   );
 };

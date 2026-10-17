@@ -313,8 +313,9 @@ export const ChainErrorPage = () => {
           </div>
 
           <div className="flex flex-col mb-2">
-            <div
-              className="bg-brand-blue600 mb-[2px] rounded-[10px] p-2 w-full h-[37px] text-white text-sm font-normal transition-all cursor-pointer hover:bg-brand-blue800 flex items-center justify-center"
+            <button
+              type="button"
+              className="bg-brand-blue600 mb-[2px] rounded-[10px] p-2 w-full h-[37px] text-white text-sm font-normal transition-all cursor-pointer hover:bg-brand-blue800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue flex items-center justify-center"
               onClick={() => {
                 // Reset network status to prevent redirect loops when navigating away
                 store.dispatch(resetNetworkStatus());
@@ -336,7 +337,7 @@ export const ChainErrorPage = () => {
               }}
             >
               {t('chainError.editCurrentRpc')}
-            </div>
+            </button>
           </div>
           <div className="text-xs text-gray-300 text-center">
             {t('networkConnection.mayBeRateLimited')}

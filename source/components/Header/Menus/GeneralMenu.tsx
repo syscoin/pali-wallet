@@ -95,7 +95,9 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
       {({ open }) => (
         <>
           <Tooltip content={truncate(currentTab.host)}>
-            <div
+            <button
+              type="button"
+              aria-label={t('settings.connectedSites')}
               onClick={() => {
                 const returnContext = createBrowsingNavigationContext(location);
                 navigateWithContext(
@@ -105,7 +107,7 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
                   returnContext
                 );
               }}
-              className="relative mx-1.5 text-brand-white cursor-pointer"
+              className="relative mx-1.5 text-brand-white cursor-pointer rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue"
             >
               <Icon
                 name="globe"
@@ -115,7 +117,7 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
               <Badge
                 className={`absolute -right-1 top-1.2 w-3 h-3 text-warning-${className} bg-warning-${className} rounded-full`}
               />
-            </div>
+            </button>
           </Tooltip>
           {advancedSettings['refresh'] && (
             <div

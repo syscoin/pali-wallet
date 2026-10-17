@@ -86,14 +86,21 @@ const CustomRPCView = () => {
 
   const [form] = useForm();
   const mountedRef = React.useRef(true);
+  const draftRevisionRef = React.useRef(0);
   const latestLocationRef = React.useRef(location);
   latestLocationRef.current = location;
   useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
+      draftRevisionRef.current += 1;
     };
   }, []);
+  const invalidatePendingChecks = () => {
+    draftRevisionRef.current += 1;
+    setTestingRpcs(false);
+    setCurrentRpcTest(null);
+  };
   const isCurrentRoute = (origin: typeof location) => {
     const current = latestLocationRef.current;
     const nativeKey = window.history.state?.key;
@@ -115,11 +122,13 @@ const CustomRPCView = () => {
   const createOperationGuard = () => {
     const origin = location;
     const scope = getWalletNavigationScope();
+    const draftRevision = draftRevisionRef.current;
     return (allowNetworkChange = false) => {
       const status = getControllerStatus();
       const currentScope = getWalletNavigationScope();
       return (
         isCurrentRoute(origin) &&
+        draftRevisionRef.current === draftRevision &&
         status.isUnlocked &&
         !status.isLoading &&
         !status.connectionUnavailable &&
@@ -626,6 +635,8 @@ const CustomRPCView = () => {
 
   // Preload chains based on network type for instant searching
   useEffect(() => {
+    let active = true;
+    setAllChains([]);
     const loadChains = async () => {
       try {
         const networkType = isSyscoinRpc
@@ -635,6 +646,7 @@ const CustomRPCView = () => {
           ['wallet', 'getChainData'],
           [networkType]
         )) as IChainInfo[];
+        if (!active) return;
         setAllChains(chains);
         console.log(
           `[CustomRPC] Preloaded ${chains.length} ${
@@ -642,12 +654,16 @@ const CustomRPCView = () => {
           } chains`
         );
       } catch (error) {
+        if (!active) return;
         console.error('[CustomRPC] Failed to preload chains:', error);
         setAllChains([]);
       }
     };
 
     loadChains();
+    return () => {
+      active = false;
+    };
   }, [isSyscoinRpc]); // Reload when network type changes
 
   // Track if we've already initialized the form to prevent overriding user changes
@@ -776,6 +792,7 @@ const CustomRPCView = () => {
 
   // Handle network selection from autocomplete
   const handleNetworkSelect = async (chain: IChainInfo) => {
+    invalidatePendingChecks();
     // Clear suggestions immediately to close dropdown
     closeSuggestions();
     setNetworkQuery(chain.name);
@@ -815,6 +832,10 @@ const CustomRPCView = () => {
   // Try multiple RPCs/Blockbooks until we find one that works - with latency testing
   const tryBestWorkingRpc = async (chain: IChainInfo) => {
     if (!chain.rpc || chain.rpc.length === 0) return;
+    const canApply = createOperationGuard();
+    const draftRevision = draftRevisionRef.current;
+    const origin = location;
+    if (!canApply()) return;
 
     setTestingRpcs(true);
 
@@ -834,105 +855,118 @@ const CustomRPCView = () => {
       return scoreB - scoreA;
     });
 
-    // Try each RPC until we find one that works
-    for (let i = 0; i < orderedRpcs.length; i++) {
-      const rpc = orderedRpcs[i];
+    try {
+      // Try each RPC until we find one that works for this same draft.
+      for (let i = 0; i < orderedRpcs.length; i++) {
+        if (!canApply()) return;
+        const rpc = orderedRpcs[i];
 
-      // Update progress
-      setCurrentRpcTest({
-        index: i + 1,
-        total: orderedRpcs.length,
-        url: rpc.url,
-      });
-
-      try {
-        // Set this RPC in the form
-        form.setFieldsValue({ url: rpc.url });
-
-        // Add a small delay for UX
-        await new Promise((resolve) => setTimeout(resolve, 300));
-
-        // Use validateRpcBatchUniversal for both EVM and UTXO with different minimum latencies
-        const result = (await controllerEmitter(
-          ['wallet', 'testRpcConnection'],
-          [
-            rpc.url,
-            isSyscoinRpc ? INetworkType.Syscoin : INetworkType.Ethereum,
-            chain.chainId,
-            5000,
-            500,
-          ]
-        )) as {
-          chainId?: number;
-          data?: any;
-          error?: string;
-          latency?: number;
-          requiresAuth?: boolean;
-          success: boolean;
-        };
-
-        if (!result.success) {
-          // Log why this RPC failed for debugging
-          console.log(
-            `${isSyscoinRpc ? 'Blockbook' : 'RPC'} ${rpc.url} failed:`,
-            result.error
-          );
-
-          // If it requires authentication, skip to next without showing error
-          if ('requiresAuth' in result && result.requiresAuth) {
-            console.log(
-              `${isSyscoinRpc ? 'Blockbook' : 'RPC'} ${
-                rpc.url
-              } requires authentication, skipping...`
-            );
-            continue;
-          }
-
-          continue; // Try next RPC
-        }
-
-        // This RPC works!
-        setTestingRpcs(false);
-        setCurrentRpcTest(null);
-
-        // Store the validated chainId to avoid re-validating
-        if (result.chainId) {
-          // Also update the form field
-          form.setFieldsValue({ chainId: result.chainId.toString() });
-        }
-        // Symbol is already filled from chain.nativeCurrency.symbol in handleNetworkSelect
-
-        const hostname = new URL(rpc.url).hostname;
-        const latencyInfo =
-          'latency' in result && result.latency ? ` (${result.latency}ms)` : '';
-        const successMessage = `Connected to ${chain.name} via ${hostname}${latencyInfo}`;
-
-        alert.success(successMessage, {
-          autoClose: 3000,
+        // Update progress
+        setCurrentRpcTest({
+          index: i + 1,
+          total: orderedRpcs.length,
+          url: rpc.url,
         });
 
-        return;
-      } catch (error) {
-        console.log(
-          `${isSyscoinRpc ? 'Blockbook' : 'RPC'} ${rpc.url} failed:`,
-          error
-        );
-        continue;
+        try {
+          // Set this RPC in the form
+          form.setFieldsValue({ url: rpc.url });
+
+          // Add a small delay for UX
+          await new Promise((resolve) => setTimeout(resolve, 300));
+          if (!canApply()) return;
+
+          // Use validateRpcBatchUniversal for both EVM and UTXO with different minimum latencies
+          const result = (await controllerEmitter(
+            ['wallet', 'testRpcConnection'],
+            [
+              rpc.url,
+              isSyscoinRpc ? INetworkType.Syscoin : INetworkType.Ethereum,
+              chain.chainId,
+              5000,
+              500,
+            ]
+          )) as {
+            chainId?: number;
+            data?: any;
+            error?: string;
+            latency?: number;
+            requiresAuth?: boolean;
+            success: boolean;
+          };
+          if (!canApply()) return;
+
+          if (!result.success) {
+            // Log why this RPC failed for debugging
+            console.log(
+              `${isSyscoinRpc ? 'Blockbook' : 'RPC'} ${rpc.url} failed:`,
+              result.error
+            );
+
+            // If it requires authentication, skip to next without showing error
+            if ('requiresAuth' in result && result.requiresAuth) {
+              console.log(
+                `${isSyscoinRpc ? 'Blockbook' : 'RPC'} ${
+                  rpc.url
+                } requires authentication, skipping...`
+              );
+              continue;
+            }
+
+            continue; // Try next RPC
+          }
+
+          // This RPC works!
+          // Store the validated chainId to avoid re-validating
+          if (result.chainId) {
+            // Also update the form field
+            form.setFieldsValue({ chainId: result.chainId.toString() });
+          }
+          // Symbol is already filled from chain.nativeCurrency.symbol in handleNetworkSelect
+
+          const hostname = new URL(rpc.url).hostname;
+          const latencyInfo =
+            'latency' in result && result.latency
+              ? ` (${result.latency}ms)`
+              : '';
+          const successMessage = `Connected to ${chain.name} via ${hostname}${latencyInfo}`;
+
+          alert.success(successMessage, {
+            autoClose: 3000,
+          });
+
+          return;
+        } catch (error) {
+          if (!canApply()) return;
+          console.log(
+            `${isSyscoinRpc ? 'Blockbook' : 'RPC'} ${rpc.url} failed:`,
+            error
+          );
+          continue;
+        }
+      }
+
+      // If we get here, no RPC worked
+      if (!canApply()) return;
+      alert.error(
+        t('settings.unableToConnectToNetwork', {
+          networkName: chain.name,
+          rpcType: isSyscoinRpc ? 'Blockbook URLs' : 'RPCs',
+        }),
+        {
+          autoClose: 5000,
+        }
+      );
+    } finally {
+      // A stale completion must not clear the progress of a newer selection.
+      if (
+        draftRevisionRef.current === draftRevision &&
+        isCurrentRoute(origin)
+      ) {
+        setTestingRpcs(false);
+        setCurrentRpcTest(null);
       }
     }
-
-    // If we get here, no RPC worked
-    setTestingRpcs(false);
-    setCurrentRpcTest(null);
-    alert.error(
-      t('settings.unableToConnectToNetwork', {
-        networkName: chain.name,
-        rpcType: isSyscoinRpc ? 'Blockbook URLs' : 'RPCs',
-      }),
-      {
-        autoClose: 5000,
-      }
-    );
   };
 
   // Custom icon component for autocomplete with proper caching
@@ -1133,6 +1167,7 @@ const CustomRPCView = () => {
         name="rpc"
         initialValues={initialValues}
         onFinish={onSubmit}
+        onValuesChange={invalidatePendingChecks}
         autoComplete="off"
         className="flex flex-col gap-3 items-center justify-center text-center w-full"
       >
@@ -1159,7 +1194,10 @@ const CustomRPCView = () => {
                 >
                   <Switch
                     checked={isSyscoinRpc}
-                    onChange={(checked) => setIsSyscoinRpc(checked)}
+                    onChange={(checked) => {
+                      invalidatePendingChecks();
+                      setIsSyscoinRpc(checked);
+                    }}
                     className="relative inline-flex items-center w-9 h-4 border border-white rounded-full"
                     disabled={state?.isEditing}
                   >
@@ -1208,6 +1246,7 @@ const CustomRPCView = () => {
                   )}`}
                   className="custom-input-normal relative"
                   onChange={(e) => {
+                    invalidatePendingChecks();
                     const value = e.target.value;
                     form.setFieldsValue({ label: value });
                     setNetworkQuery(value);

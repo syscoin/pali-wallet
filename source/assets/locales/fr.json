@@ -102,6 +102,8 @@
     "viewNFTs": "Voir les NFTs"
   },
   "assetsHeader": {
+    "noMatchingAssets": "Aucun actif ne correspond à votre recherche.",
+    "clearSearch": "Effacer la recherche",
     "sortBy": "TRIER PAR:",
     "name": "Nom",
     "tokenOrContractAddress": "Token ou adresse de contrat",
