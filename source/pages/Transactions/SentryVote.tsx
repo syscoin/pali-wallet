@@ -123,34 +123,35 @@ const SentryVote = () => {
         <div className="flex items-start gap-3">
           <Icon name="Key" isSvg className="shrink-0" />
           <div className="min-w-0">
-            <h2 className="font-medium">
-              {t('sentry.authorizeGovernanceVote')}
+            <h2 className="break-words font-medium">
+              {approval?.proposal?.name ||
+                approval?.request.proposalHash ||
+                t('sentry.authorizeGovernanceVote')}
             </h2>
             <p className="mt-2 break-all text-sm text-brand-gray200">
               {approval?.origin || host}
             </p>
           </div>
         </div>
-        <p className="mt-3 text-sm">{t('sentry.voteSignatureOnly')}</p>
+        {approval && (
+          <>
+            <p className="mt-3 text-lg font-semibold">
+              {t(`sentry.voteOutcomes.${approval.request.outcome}`)} ·{' '}
+              {t('sentry.fundingVote')}
+            </p>
+            <p className="mt-1 text-sm">
+              {approval.network} ·{' '}
+              {t('sentry.votingNodes', { count: approval.nodes.length })}
+            </p>
+          </>
+        )}
       </section>
+      <p className="text-sm">{t('sentry.voteSignatureOnly')}</p>
       {!approval && !error && (
         <p role="status">{t('sentry.loadingIndependentlyCheckedNodeState')}</p>
       )}
       {approval && (
         <>
-          <section className="min-w-0 rounded-xl bg-bkg-2 p-4">
-            <h3 className="break-words text-lg font-medium">
-              {approval.proposal?.name || approval.request.proposalHash}
-            </h3>
-            <p className="mt-3 text-lg font-semibold">
-              {t(`sentry.voteOutcomes.${approval.request.outcome}`)} ·{' '}
-              {t('sentry.fundingVote')}
-            </p>
-            <p className="mt-3 text-sm">
-              {approval.network} ·{' '}
-              {t('sentry.votingNodes', { count: approval.nodes.length })}
-            </p>
-          </section>
           <details className="min-w-0 rounded-xl border border-brand-blue600 p-4">
             <summary className="cursor-pointer text-sm font-medium">
               {t('sentry.voteDetails')}

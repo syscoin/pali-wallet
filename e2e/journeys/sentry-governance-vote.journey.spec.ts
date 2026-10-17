@@ -170,7 +170,10 @@ test('Pali reviews and signs exact legacy governance votes without disclosing ke
     await popup.setViewportSize({ width: 320, height: 360 });
     await popup
       .locator('form')
-      .getByRole('heading', { name: 'Authorize governance vote', exact: true })
+      .getByRole('heading', {
+        name: 'Independent funding proposal',
+        exact: true,
+      })
       .scrollIntoViewIfNeeded();
     await popup.screenshot({
       path: info.outputPath('governance-top-320x360.png'),
