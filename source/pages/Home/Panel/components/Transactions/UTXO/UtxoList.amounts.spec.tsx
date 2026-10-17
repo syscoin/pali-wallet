@@ -378,6 +378,38 @@ it('uses Details-cached SPT metadata while preserving account ownership, not the
   expect(mockEmitter).not.toHaveBeenCalled();
 });
 
+it('uses the Details-cached operation type when a compact summary omits it', async () => {
+  const tx = {
+    ...compactBridgeNativeOffset,
+    tokenType: undefined,
+  };
+  render(<UtxoTransactionsListComponent tx={tx} />);
+  expect(screen.queryByText('Bridge to NEVM')).toBeNull();
+
+  await visitDetails(fullBridge());
+
+  expect(screen.getByText('1.0000 SYSX')).toBeTruthy();
+  expect(screen.getByText('Bridge to NEVM')).toBeTruthy();
+  expect(screen.queryByText('29.5985 TSYS')).toBeNull();
+  expect(mockEmitter).not.toHaveBeenCalled();
+});
+
+it('updates a compact operation badge to the authoritative Details type', async () => {
+  const tx = {
+    ...compactBridgeNativeOffset,
+    tokenType: 'SPTAssetAllocationSend',
+  };
+  render(<UtxoTransactionsListComponent tx={tx} />);
+  expect(screen.getByText('SPT Transfer')).toBeTruthy();
+
+  await visitDetails(fullBridge());
+
+  expect(screen.getByText('1.0000 SYSX')).toBeTruthy();
+  expect(screen.getByText('Bridge to NEVM')).toBeTruthy();
+  expect(screen.queryByText('SPT Transfer')).toBeNull();
+  expect(mockEmitter).not.toHaveBeenCalled();
+});
+
 it('shows zero account movement instead of an unrelated transaction output', async () => {
   render(
     <UtxoTransactionsListComponent

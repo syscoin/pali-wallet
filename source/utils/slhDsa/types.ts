@@ -59,6 +59,7 @@ export type SLHDSAWorkerRequest =
       id: string;
       payload: {
         accountId?: number;
+        setupJobId?: string;
         setupSecretHex: string;
       };
       type: 'prepare_keypair';

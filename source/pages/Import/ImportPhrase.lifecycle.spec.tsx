@@ -8,6 +8,7 @@ import {
   OnboardingSecretsProvider,
   useOnboardingSecrets,
 } from 'hooks/useOnboardingSecrets';
+import * as format from 'utils/format';
 
 import ImportPhrase from './ImportPhrase';
 
@@ -48,7 +49,7 @@ jest.mock('components/Layout/OnboardingLayout', () => ({
 }));
 jest.mock('components/Modal/StatusModal', () => ({ StatusModal: () => null }));
 jest.mock('utils/format', () => ({
-  formatSeedPhrase: (value: string) => value,
+  formatSeedPhrase: jest.fn((value: string) => value),
 }));
 jest.mock('antd/lib/form/Form', () => ({ useForm: () => [mockForm] }));
 jest.mock('antd', () => {
@@ -103,6 +104,79 @@ beforeEach(() => {
 });
 afterEach(() => jest.restoreAllMocks());
 
+it('rejects an invalid word count without sending an object to the controller', async () => {
+  jest
+    .mocked(format.formatSeedPhrase)
+    .mockReturnValueOnce({ seedLength: 2, seedLengthError: true });
+  render(<Tree />);
+  await act(async () => {
+    await expect(mockValidator(undefined, 'one two')).rejects.toThrow(
+      'Invalid seed phrase length'
+    );
+  });
+  expect(mockEmitter).not.toHaveBeenCalled();
+  expect(mockForm.setFieldsValue).not.toHaveBeenCalled();
+});
+
+it('exposes the seed visibility action as a named keyboard button', () => {
+  render(<Tree />);
+  const hide = screen.getByRole('button', { name: 'import.hideSeedPhrase' });
+  expect(hide.getAttribute('type')).toBe('button');
+  fireEvent.click(hide);
+  expect(
+    screen.getByRole('button', { name: 'import.showSeedPhrase' })
+  ).toBeTruthy();
+});
+
+it('disables import again when a previously valid phrase fails validation', async () => {
+  render(<Tree />);
+  await act(async () => {
+    await mockValidator(undefined, phrase);
+  });
+  expect(
+    screen
+      .getByRole('button', { name: 'buttons.import' })
+      .hasAttribute('disabled')
+  ).toBe(false);
+  mockEmitter.mockResolvedValueOnce(false);
+  await act(async () => {
+    await expect(
+      mockValidator(undefined, 'invalid checksum phrase')
+    ).rejects.toThrow('Invalid seed phrase');
+  });
+  expect(
+    screen
+      .getByRole('button', { name: 'buttons.import' })
+      .hasAttribute('disabled')
+  ).toBe(true);
+});
+
+it('does not let an older valid reply re-enable a newer invalid phrase', async () => {
+  const response = deferred();
+  mockEmitter.mockReturnValueOnce(response.promise);
+  render(<Tree />);
+  let olderValidation!: Promise<unknown>;
+  act(() => {
+    olderValidation = mockValidator(undefined, phrase).catch((error) => error);
+  });
+  jest.mocked(format.formatSeedPhrase).mockReturnValueOnce({
+    seedLength: 2,
+    seedLengthError: true,
+  });
+  await act(async () => {
+    await expect(mockValidator(undefined, 'one two')).rejects.toThrow(
+      'Invalid seed phrase length'
+    );
+    response.resolve(true);
+    await olderValidation;
+  });
+  expect(
+    screen
+      .getByRole('button', { name: 'buttons.import' })
+      .hasAttribute('disabled')
+  ).toBe(true);
+});
+
 it.each(['pagehide', 'hidden', 'route cancel', 'native departure', 'unmount'])(
   'cannot revive a cleared recovery phrase or ticket when submit validation resolves after %s',
   async (departure) => {
@@ -153,7 +227,10 @@ it.each(['pagehide', 'hidden'])(
     mockEmitter.mockReturnValueOnce(response.promise);
     render(<Tree />);
     fireEvent.click(screen.getByRole('button', { name: 'begin recovery' }));
-    const pending = mockValidator(undefined, phrase).catch((error) => error);
+    let pending!: Promise<unknown>;
+    act(() => {
+      pending = mockValidator(undefined, phrase).catch((error) => error);
+    });
     if (departure === 'pagehide') fireEvent(window, new Event('pagehide'));
     else {
       jest.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');

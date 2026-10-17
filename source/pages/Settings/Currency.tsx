@@ -1,6 +1,6 @@
-import { Menu } from '@headlessui/react';
+import { Popover } from '@headlessui/react';
 import getSymbolFromCurrency from 'currency-symbol-map';
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
@@ -106,12 +106,20 @@ const CurrencyView = () => {
 
   //* Functions
   const handleConfirmCurrencyChange = async () => {
-    if (hasUnsavedChanges) {
-      // Actually save the currency (ensure it's lowercase)
-      const currencyToSave = selectedCoin.toLowerCase();
+    if (!hasUnsavedChanges || savingRef.current) return;
+    const currencyToSave = selectedCoin.toLowerCase();
+    savingRef.current = true;
+    setSaving(true);
+    setSaveError(false);
+    try {
       await controllerEmitter(['wallet', 'setFiat'], [currencyToSave]);
-      setSavedCoin(currencyToSave); // Update saved state
+      setSavedCoin(currencyToSave);
       setConfirmed(true);
+    } catch {
+      setSaveError(true);
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
     }
   };
 
@@ -127,6 +135,9 @@ const CurrencyView = () => {
   const [savedCoin, setSavedCoin] = useState<string>(initialCurrency); // Track saved currency
   const [confirmed, setConfirmed] = useState(false);
   const [inputValue, setInputValue] = useState<string>('');
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState(false);
+  const savingRef = useRef(false);
 
   // Currency to flag mapping for all supported currencies
   const currencyFlags = {
@@ -233,11 +244,15 @@ const CurrencyView = () => {
           {t('settings.setYourPreferred')}
         </p>
 
-        <Menu as="div" className="relative inline-block text-left w-[352px]">
-          {({ open }) => (
+        <Popover
+          as="div"
+          className="relative inline-block w-full max-w-[352px] text-left"
+        >
+          {({ open, close }) => (
             <>
-              <Menu.Button
-                disabled={!fiat || !coins}
+              <Popover.Button
+                aria-label={t('settings.setYourPreferred')}
+                disabled={!fiat || !coins || saving}
                 className="inline-flex justify-between p-[10px] w-full h-[44px] text-white text-sm font-light bg-brand-blue600 border border-alpha-whiteAlpha300 focus:border-fields-input-borderfocus rounded-[10px] hover:bg-brand-blue500 hover:bg-opacity-20 transition-all duration-200 group"
               >
                 <div className="flex items-center gap-2 ml-2">
@@ -259,74 +274,82 @@ const CurrencyView = () => {
                     open ? 'rotate-180' : ''
                   }`}
                 />
-              </Menu.Button>
+              </Popover.Button>
 
               {fiat && coins && (
-                <Menu.Items
+                <Popover.Panel
                   as="div"
+                  focus
                   className={`scrollbar-styled absolute z-10 px-4 py-5 w-full max-h-80 text-brand-white font-poppins bg-brand-blue600 border border-fields-input-border rounded-[10px] shadow-2xl overflow-auto origin-top-right
                   transform transition-all duration-100 ease-out ${
                     open
                       ? 'opacity-100 scale-100 pointer-events-auto'
                       : 'opacity-0 scale-95 pointer-events-none'
                   }`}
-                  static
                 >
                   <div className="flex justify-center items-center mb-4">
                     <input
                       className="text-xs text-brand-gray200 w-full h-[40px] py-[11px] px-[20px] bg-brand-blue800 border border-alpha-whiteAlpha300 rounded-[100px]"
-                      placeholder="Search currencies..."
+                      aria-label={t('settings.searchCurrencies')}
+                      placeholder={t('settings.searchCurrencies')}
                       value={inputValue}
                       onChange={(e) => setInputValue(e.target.value)}
                     />
                   </div>
-                  {filteredCoins.map((coin, index) => (
-                    <Menu.Item as="div" key={index}>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSelectedCoin(coin.toLowerCase());
-                          setInputValue(''); // Clear search when currency is selected
-                        }}
-                        className={`group flex gap-x-3 items-center justify-start px-4 py-3 w-full hover:text-brand-royalbluemedium text-brand-white font-poppins text-sm border-0 border-b border-dashed border-border-default transition-all duration-200 hover:bg-brand-blue500 hover:bg-opacity-20 rounded-lg ${
-                          selectedCoin === coin.toLowerCase()
-                            ? 'text-brand-royalbluemedium bg-brand-blue500 bg-opacity-20'
-                            : ''
+                  {filteredCoins.map((coin) => (
+                    <button
+                      key={coin}
+                      type="button"
+                      onClick={() => {
+                        setSelectedCoin(coin.toLowerCase());
+                        setInputValue(''); // Clear search when currency is selected
+                        setSaveError(false);
+                        close();
+                      }}
+                      className={`group flex gap-x-3 items-center justify-start px-4 py-3 w-full hover:text-brand-royalbluemedium text-brand-white font-poppins text-sm border-0 border-b border-dashed border-border-default transition-all duration-200 hover:bg-brand-blue500 hover:bg-opacity-20 rounded-lg ${
+                        selectedCoin === coin.toLowerCase()
+                          ? 'text-brand-royalbluemedium bg-brand-blue500 bg-opacity-20'
+                          : ''
+                      }`}
+                    >
+                      <span
+                        className={`text-lg flex-shrink-0 transform transition-transform duration-200 group-hover:scale-110 ${
+                          selectedCoin === coin.toLowerCase() ? 'scale-110' : ''
                         }`}
                       >
-                        <span
-                          className={`text-lg flex-shrink-0 transform transition-transform duration-200 group-hover:scale-110 ${
-                            selectedCoin === coin.toLowerCase()
-                              ? 'scale-110'
-                              : ''
-                          }`}
-                        >
-                          {currencyFlags[coin.toLowerCase()] || '💰'}
+                        {currencyFlags[coin.toLowerCase()] || '💰'}
+                      </span>
+                      <div className="flex flex-col items-start text-left">
+                        <span className="text-sm font-medium">
+                          {coin.toUpperCase()}
                         </span>
-                        <div className="flex flex-col items-start text-left">
-                          <span className="text-sm font-medium">
-                            {coin.toUpperCase()}
-                          </span>
-                          <span className="text-xs text-brand-gray200">
-                            {getSymbolFromCurrency(coin.toUpperCase())}
-                          </span>
-                        </div>
-                        {selectedCoin === coin.toLowerCase() && (
-                          <span className="ml-auto text-brand-royalbluemedium">
-                            ✓
-                          </span>
-                        )}
-                      </button>
-                    </Menu.Item>
+                        <span className="text-xs text-brand-gray200">
+                          {getSymbolFromCurrency(coin.toUpperCase())}
+                        </span>
+                      </div>
+                      {selectedCoin === coin.toLowerCase() && (
+                        <span className="ml-auto text-brand-royalbluemedium">
+                          ✓
+                        </span>
+                      )}
+                    </button>
                   ))}
-                </Menu.Items>
+                  {filteredCoins.length === 0 && (
+                    <p
+                      role="status"
+                      className="px-4 py-3 text-sm text-content-secondary"
+                    >
+                      {t('settings.noCurrenciesFound')}
+                    </p>
+                  )}
+                </Popover.Panel>
               )}
             </>
           )}
-        </Menu>
+        </Popover>
 
         <div
-          className="flex flex-col items-center justify-center text-center bg-brand-blue800 rounded-lg p-6 border border-brand-blue600 hover:border-brand-blue500 transition-all duration-200 group w-[352px] mx-auto"
+          className="flex w-full max-w-[352px] flex-col items-center justify-center text-center bg-brand-blue800 rounded-lg p-6 border border-brand-blue600 hover:border-brand-blue500 transition-all duration-200 group mx-auto"
           key={`balance-${selectedCoin}`}
         >
           <p className="text-brand-gray200 text-xs mb-4">
@@ -376,13 +399,19 @@ const CurrencyView = () => {
         </div>
       </div>
 
-      <div className="w-full px-4 absolute bottom-12 md:static">
+      {saveError && (
+        <p role="alert" className="mt-4 text-sm text-[#ff8f8f]">
+          {t('settings.preferencesSaveFailed')}
+        </p>
+      )}
+      <div className="mt-8 w-full px-4 pb-6">
         <Button
           variant="neutral"
           className="text-sm text-brand-royalblue"
           fullWidth={true}
           type="button"
-          disabled={!hasUnsavedChanges}
+          disabled={!hasUnsavedChanges || saving}
+          loading={saving}
           onClick={handleConfirmCurrencyChange}
         >
           {t('buttons.save')}

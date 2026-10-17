@@ -186,6 +186,8 @@
     "importWallet": "Importar carteira"
   },
   "import": {
+    "showSeedPhrase": "Mostrar frase de recuperação",
+    "hideSeedPhrase": "Ocultar frase de recuperação",
     "importModalWordMissing": "Palavra ausente!",
     "importModalSeed": "A frase-semente deve ter 12, 15, 18, 21 ou 24 palavras e você inseriu {{seedLength}}.",
     "importAttention": "ATENÇÃO: ",
@@ -454,6 +456,19 @@
     "receipts": "Recibos"
   },
   "settings": {
+    "smartAccountMetadataLoadFailed": "Não foi possível verificar as configurações atuais desta conta. Verifique sua conexão e tente novamente.",
+    "smartAccountMetadataRetry": "Tentar novamente",
+    "invalidWatchOnlyIdentifier": "Use um endereço público, uma chave pública estendida ou um descritor que contenha apenas informações públicas. Nunca insira uma chave privada.",
+    "searchTrustedSites": "Buscar sites confiáveis",
+    "trustedSiteMatch": "Na lista de confiança",
+    "unlistedSite": "Não está na lista de confiança",
+    "noTrustedSitesFound": "Nenhum site confiável corresponde à sua busca.",
+    "selectSmartAccountBeforePolicyChange": "Selecione esta conta inteligente antes de alterar sua política de aprovação ou recuperação.",
+    "currentLanguage": "Idioma atual",
+    "previewLanguage": "Prévia: {{language}}",
+    "preferencesSaveFailed": "Não foi possível salvar as alterações. Tente novamente.",
+    "searchCurrencies": "Buscar moedas…",
+    "noCurrenciesFound": "Nenhuma moeda corresponde à sua busca.",
     "walletSetupFailed": "Não foi possível confirmar a configuração da carteira. Guarde sua frase de recuperação e verifique o estado da carteira.",
     "recoveryTitle": "Recuperar carteira",
     "recoveryIntro": "Use sua Frase de Recuperação Secreta para restaurar apenas a primeira conta derivada da seed (HD) e escolher uma nova senha. Adicione novamente as outras contas derivadas da mesma frase.",
@@ -711,6 +726,8 @@
     "welcomeTo": "BEM-VINDO AO"
   },
   "tokens": {
+    "viewTokenDetails": "Ver detalhes do token {{symbol}}",
+    "importNamedToken": "Importar token {{symbol}}",
     "tokenNotAdded": "Token não adicionado.",
     "tokenAlreadyImported": "Este token já está importado",
     "deleteToken": "Excluir {{symbol}}",

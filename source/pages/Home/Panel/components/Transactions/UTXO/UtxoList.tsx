@@ -66,7 +66,6 @@ const UtxoTransactionsListComponentBase = ({
   const scope = `${walletScope.account}:${
     walletScope.network
   }:${tx.txid.toLowerCase()}`;
-  const normalizedTokenType = normalizeSyscoinTransactionType(tx?.tokenType);
   const cachedDetails = React.useSyncExternalStore(
     useCallback(
       (onChange) => subscribeUtxoTransactionDetails(scope, onChange),
@@ -85,6 +84,9 @@ const UtxoTransactionsListComponentBase = ({
         vout: mergeAccountOwnershipFlags(tx.vout, cachedDetails.vout),
       }
     : tx;
+  const normalizedTokenType = normalizeSyscoinTransactionType(
+    displayTransaction.tokenType
+  );
   const tokenOperation = isSyscoinTokenOperation(displayTransaction);
   const intent = getSyscoinActivityOperationAmount(tx, displayTransaction);
   // Native Activity is the account's signed movement, including fees. Token
@@ -104,7 +106,7 @@ const UtxoTransactionsListComponentBase = ({
           typeof v.sequence === 'number' && v.sequence < MAX_SEQ_MINUS_ONE
       )
     : false;
-  const isSptTx = Boolean(tx?.tokenType);
+  const isSptTx = Boolean(displayTransaction.tokenType);
   const isZdagConfirmed =
     isSptTx && hasSequenceData && !rbfEnabled && !isConfirmed;
   const confirmationETA = !isConfirmed
@@ -112,7 +114,7 @@ const UtxoTransactionsListComponentBase = ({
     : null;
 
   // Get SPT transaction styling - always returns a style (has default fallback)
-  const sptInfo = getSyscoinTransactionTypeStyle(tx.tokenType);
+  const sptInfo = getSyscoinTransactionTypeStyle(displayTransaction.tokenType);
 
   // Resolve the SPT asset guid involved in this tx (tokenTransfers first,
   // then vout/vin assetInfo) so we can show the imported asset's icon

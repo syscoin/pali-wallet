@@ -128,5 +128,20 @@ describe.each(cases)(
       );
       expect(sendMessage).toHaveBeenCalledTimes(1);
     });
+
+    if (testCase.name === 'key preparation') {
+      it('carries the exact public setup identity to the offscreen worker', async () => {
+        const params = {
+          accountId: 23,
+          setupJobId: 'public-setup-job-id',
+          setupSecretHex: `0x${'66'.repeat(32)}`,
+        };
+        await prepareSLHDSAKeypairInOffscreen(params, assertSession);
+        expect(sendMessage).toHaveBeenCalledWith({
+          type: 'PALI_SLH_DSA_PREPARE_KEYPAIR',
+          payload: params,
+        });
+      });
+    }
   }
 );

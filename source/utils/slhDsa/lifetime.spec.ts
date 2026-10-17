@@ -37,7 +37,11 @@ import {
   registerRuntimeSLHDSAState,
   signSLHDSAActionHashLocal,
 } from './signer';
-import { provisionSLHDSASmartAccountValidator } from './smartAccountSetup';
+import {
+  provisionSLHDSASmartAccountValidator,
+  saveSLHDSAPreparedSmartAccountSigner,
+  startSLHDSASmartAccountValidatorSetup,
+} from './smartAccountSetup';
 import {
   createSLHDSAProvisionedState,
   loadEncryptedSLHDSAState,
@@ -450,6 +454,7 @@ describe('SLH-DSA local lifetime accounting', () => {
     await derivationStarted.promise;
     clearRuntimeSLHDSAStates();
     configureSLHDSASessionStateCrypto(crypto);
+    jest.mocked(chromeStorage.setItem).mockClear();
     derived.resolve({
       derivationLabel: 'account/0',
       setupSecretHex: `0x${'44'.repeat(32)}`,
@@ -458,5 +463,219 @@ describe('SLH-DSA local lifetime accounting', () => {
     await rejected;
     expect(prepareSLHDSAKeypairInOffscreen).not.toHaveBeenCalled();
     expect(mockStorage.has(storageKey)).toBe(false);
+    expect(chromeStorage.setItem).not.toHaveBeenCalled();
+  });
+
+  it('reserves one setup before its initial status write completes', async () => {
+    const started = deferred<void>();
+    const release = deferred<void>();
+    const secret = deferred<{
+      derivationLabel: string;
+      setupSecretHex: string;
+    }>();
+    const getSetupSecret = jest.fn(() => secret.promise);
+    jest
+      .mocked(chromeStorage.setItem)
+      .mockImplementationOnce(async (key, value) => {
+        started.resolve();
+        await release.promise;
+        mockStorage.set(key, value);
+      });
+    const args = { accountId: 91, accountIndex: 0, getSetupSecret };
+    const first = startSLHDSASmartAccountValidatorSetup(args);
+    await started.promise;
+    const second = startSLHDSASmartAccountValidatorSetup(args);
+    try {
+      await new Promise(setImmediate);
+      expect(chromeStorage.setItem).toHaveBeenCalledTimes(1);
+    } finally {
+      release.resolve();
+      await Promise.all([first, second]);
+      secret.resolve({
+        derivationLabel: 'account/0',
+        setupSecretHex: `0x${'44'.repeat(32)}`,
+      });
+      await provisionSLHDSASmartAccountValidator(args);
+    }
+    expect(getSetupSecret).toHaveBeenCalledTimes(1);
+    const runningStatus = await first;
+    expect(runningStatus.setupJobId).toEqual(expect.any(String));
+    expect(prepareSLHDSAKeypairInOffscreen).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accountId: 91,
+        setupJobId: runningStatus.setupJobId,
+      }),
+      expect.any(Function)
+    );
+  });
+
+  it('keeps a new session setup behind the old in-flight status write without stranding its job', async () => {
+    const started = deferred<void>();
+    const release = deferred<void>();
+    const getOldSecret = jest.fn(async () => ({
+      derivationLabel: 'old',
+      setupSecretHex: `0x${'44'.repeat(32)}`,
+    }));
+    jest
+      .mocked(chromeStorage.setItem)
+      .mockImplementationOnce(async (key, value) => {
+        started.resolve();
+        await release.promise;
+        mockStorage.set(key, value);
+      });
+    const old = startSLHDSASmartAccountValidatorSetup({
+      accountId: 92,
+      accountIndex: 0,
+      getSetupSecret: getOldSecret,
+    });
+    const oldResult = old.then(
+      () => null,
+      (error) => error
+    );
+    await started.promise;
+    clearRuntimeSLHDSAStates();
+    configureSLHDSASessionStateCrypto(crypto);
+    const getNewSecret = jest.fn(async () => ({
+      derivationLabel: 'new',
+      setupSecretHex: `0x${'44'.repeat(32)}`,
+    }));
+    const current = provisionSLHDSASmartAccountValidator({
+      accountId: 92,
+      accountIndex: 0,
+      getSetupSecret: getNewSecret,
+    });
+    try {
+      await new Promise(setImmediate);
+      expect(chromeStorage.setItem).toHaveBeenCalledTimes(1);
+    } finally {
+      release.resolve();
+      await current;
+      await oldResult;
+    }
+    expect((await oldResult)?.message).toContain('wallet session changed');
+    expect(getOldSecret).not.toHaveBeenCalled();
+    expect(getNewSecret).toHaveBeenCalledTimes(1);
+  });
+
+  it('serializes public prepared-signer writes across sessions so an old write cannot replace the new record', async () => {
+    const accountId = 93;
+    const config = {
+      keyId,
+      parameterSet: SLH_DSA_PARAMETER_SET,
+      pkRoot: keypair.pkRoot,
+      pkSeed: keypair.pkSeed,
+      signatureLimit: SLH_DSA_SIGNATURE_LIMIT,
+    };
+    const started = deferred<void>();
+    const release = deferred<void>();
+    jest
+      .mocked(chromeStorage.setItem)
+      .mockImplementationOnce(async (key, value) => {
+        started.resolve();
+        await release.promise;
+        mockStorage.set(key, value);
+      });
+    const old = saveSLHDSAPreparedSmartAccountSigner({ accountId, config });
+    const oldResult = old.then(
+      () => null,
+      (error) => error
+    );
+    await started.promise;
+    clearRuntimeSLHDSAStates();
+    configureSLHDSASessionStateCrypto(crypto);
+    const nextConfig = { ...config, keyId: 'new-public-key-id' };
+    const current = saveSLHDSAPreparedSmartAccountSigner({
+      accountId,
+      config: nextConfig,
+    });
+    try {
+      await new Promise(setImmediate);
+      expect(chromeStorage.setItem).toHaveBeenCalledTimes(1);
+    } finally {
+      release.resolve();
+      await Promise.all([oldResult, current]);
+    }
+    expect((await oldResult)?.message).toContain('wallet session changed');
+    expect(
+      (
+        mockStorage.get(
+          `pali-slh-dsa-prepared-smart-account-signer:v1:${accountId}`
+        ) as any
+      ).config.keyId
+    ).toBe('new-public-key-id');
+  });
+
+  it('does not let an old job finalizer remove the new session job', async () => {
+    const oldStarted = deferred<void>();
+    const oldSecret = deferred<{
+      derivationLabel: string;
+      setupSecretHex: string;
+    }>();
+    const newSecret = deferred<{
+      derivationLabel: string;
+      setupSecretHex: string;
+    }>();
+    const old = provisionSLHDSASmartAccountValidator({
+      accountId: 94,
+      accountIndex: 0,
+      getSetupSecret: () => {
+        oldStarted.resolve();
+        return oldSecret.promise;
+      },
+    });
+    const oldResult = old.then(
+      () => null,
+      (error) => error
+    );
+    await oldStarted.promise;
+    clearRuntimeSLHDSAStates();
+    configureSLHDSASessionStateCrypto(crypto);
+    const getSetupSecret = jest.fn(() => newSecret.promise);
+    const args = { accountId: 94, accountIndex: 0, getSetupSecret };
+    await startSLHDSASmartAccountValidatorSetup(args);
+    let completed: Promise<unknown> | undefined;
+    try {
+      await new Promise(setImmediate);
+      expect(getSetupSecret).toHaveBeenCalledTimes(1);
+      oldSecret.resolve({
+        derivationLabel: 'old',
+        setupSecretHex: `0x${'44'.repeat(32)}`,
+      });
+      expect((await oldResult)?.message).toContain('wallet session changed');
+      completed = provisionSLHDSASmartAccountValidator(args);
+      await new Promise(setImmediate);
+      expect(getSetupSecret).toHaveBeenCalledTimes(1);
+    } finally {
+      oldSecret.resolve({
+        derivationLabel: 'old',
+        setupSecretHex: `0x${'44'.repeat(32)}`,
+      });
+      newSecret.resolve({
+        derivationLabel: 'new',
+        setupSecretHex: `0x${'44'.repeat(32)}`,
+      });
+      await oldResult;
+      if (completed) await completed;
+    }
+  });
+
+  it('releases a synchronously failed setup so a normal retry can complete', async () => {
+    const getSetupSecret = jest
+      .fn()
+      .mockImplementationOnce(() => {
+        throw new Error('Synthetic derivation failed');
+      })
+      .mockResolvedValue({
+        derivationLabel: 'retry',
+        setupSecretHex: `0x${'44'.repeat(32)}`,
+      });
+    const args = { accountId: 95, accountIndex: 0, getSetupSecret };
+    await expect(provisionSLHDSASmartAccountValidator(args)).rejects.toThrow(
+      'Synthetic derivation failed'
+    );
+    await expect(
+      provisionSLHDSASmartAccountValidator(args)
+    ).resolves.toMatchObject({ keyId });
+    expect(getSetupSecret).toHaveBeenCalledTimes(2);
   });
 });

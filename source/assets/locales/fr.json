@@ -186,6 +186,8 @@
     "importWallet": "Importer le portefeuille"
   },
   "import": {
+    "showSeedPhrase": "Afficher la phrase de récupération",
+    "hideSeedPhrase": "Masquer la phrase de récupération",
     "importModalWordMissing": "Mot manquant !",
     "importModalSeed": "La phrase de récupération doit contenir 12, 15, 18, 21 ou 24 mots et vous en avez saisi {{seedLength}}.",
     "importAttention": "ATTENTION : ",
@@ -454,6 +456,19 @@
     "receipts": "Reçus"
   },
   "settings": {
+    "smartAccountMetadataLoadFailed": "Impossible de vérifier les paramètres actuels de ce compte. Vérifiez votre connexion et réessayez.",
+    "smartAccountMetadataRetry": "Réessayer",
+    "invalidWatchOnlyIdentifier": "Utilisez une adresse publique, une clé publique étendue ou un descripteur contenant uniquement des informations publiques. Ne saisissez jamais de clé privée.",
+    "searchTrustedSites": "Rechercher des sites de confiance",
+    "trustedSiteMatch": "Sur la liste de confiance",
+    "unlistedSite": "Absent de la liste de confiance",
+    "noTrustedSitesFound": "Aucun site de confiance ne correspond à votre recherche.",
+    "selectSmartAccountBeforePolicyChange": "Sélectionnez ce compte intelligent avant de modifier sa politique d'approbation ou de récupération.",
+    "currentLanguage": "Langue actuelle",
+    "previewLanguage": "Aperçu : {{language}}",
+    "preferencesSaveFailed": "Impossible d'enregistrer vos modifications. Veuillez réessayer.",
+    "searchCurrencies": "Rechercher des devises…",
+    "noCurrenciesFound": "Aucune devise ne correspond à votre recherche.",
     "walletSetupFailed": "Impossible de confirmer la configuration du portefeuille. Conservez votre phrase de récupération et vérifiez l’état du portefeuille.",
     "recoveryTitle": "Récupérer le portefeuille",
     "recoveryIntro": "Utilisez votre phrase de récupération secrète pour restaurer uniquement le premier compte dérivé de la phrase (HD) et choisir un nouveau mot de passe. Ajoutez à nouveau les autres comptes dérivés de la même phrase.",
@@ -711,6 +726,8 @@
     "welcomeTo": "BIENVENUE SUR"
   },
   "tokens": {
+    "viewTokenDetails": "Voir les détails du token {{symbol}}",
+    "importNamedToken": "Importer le token {{symbol}}",
     "tokenNotAdded": "Jeton non ajouté.",
     "tokenAlreadyImported": "Ce token est déjà importé",
     "deleteToken": "Supprimer {{symbol}}",

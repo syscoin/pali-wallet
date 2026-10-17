@@ -186,6 +186,10 @@ import {
   IUtxoSigningContext,
   UTXO_SIGNING_CONTEXT_CHANGED,
 } from 'utils/utxoSigningContext';
+import {
+  assertPublicWatchOnlyIdentifier,
+  isPublicWatchOnlyIdentifier,
+} from 'utils/watchOnlyIdentifier';
 
 import EthAccountController, { IEthAccountController } from './account/evm';
 import SysAccountController, { ISysAccountController } from './account/syscoin';
@@ -2943,15 +2947,19 @@ class MainController {
     return this.smartAccount.prepareSmartAccount(params);
   }
 
-  public async registerSmartAccountOnChain(params: { accountId: number }) {
+  public async registerSmartAccountOnChain(params: {
+    accountId: number;
+    expectedContext?: IEvmTransactionContext;
+  }) {
     this.assertWalletReadyForSigning();
     return this.smartAccount.registerSmartAccountOnChain(params);
   }
 
   public async hydrateSmartAccount(
-    accountId: number
+    accountId: number,
+    expectedContext?: IEvmTransactionContext
   ): Promise<ISmartAccountMetadata> {
-    return this.smartAccount.hydrateSmartAccount(accountId);
+    return this.smartAccount.hydrateSmartAccount(accountId, expectedContext);
   }
 
   public async getSmartAccountNativeGasStatus(params: {
@@ -3172,6 +3180,7 @@ class MainController {
 
   public async submitSmartAccountGuardianStartRecovery(params: {
     account: string;
+    expectedContext?: IEvmTransactionContext;
     guardian: string;
     target: PaliRecoveryTarget;
   }) {
@@ -3181,6 +3190,7 @@ class MainController {
 
   public async prepareSmartAccountGuardianStartRecovery(params: {
     account: string;
+    expectedContext?: IEvmTransactionContext;
     guardian: string;
     target: PaliRecoveryTarget;
   }) {
@@ -3191,6 +3201,8 @@ class MainController {
   public async submitPreparedSmartAccountGuardianStartRecovery(params: {
     account: string;
     approval: { guardian: string; signature: string };
+    executionContextId?: string;
+    expectedContext?: IEvmTransactionContext;
     gasPayer?: { address: string; id: number; type: KeyringAccountType };
     guardian: string;
     operation: SmartAccountGuardianRecoveryOperation;
@@ -3217,6 +3229,7 @@ class MainController {
       account: string;
       chainId: number;
       executionCalldata: string;
+      expectedContext?: IEvmTransactionContext;
       mode: string;
       recoveryModule?: string;
       salt: string;
@@ -4137,11 +4150,16 @@ class MainController {
     return importedAccount;
   }
 
+  public validateWatchOnlyIdentifier(identifier: unknown): boolean {
+    return isPublicWatchOnlyIdentifier(identifier);
+  }
+
   public async importWatchOnlyFromController(
     identifier: string,
     label?: string
   ) {
     const { keyring, assertCurrent } = this.accountMutationContext();
+    assertPublicWatchOnlyIdentifier(identifier);
     const importedAccount = await (keyring as any).importWatchOnly(
       identifier,
       label
@@ -5659,9 +5677,23 @@ class MainController {
 
   public async startSLHDSASmartAccountValidatorSetup(params: {
     accountId: number;
+    expectedContext?: IEvmTransactionContext;
     force?: boolean;
   }): Promise<SLHDSASmartAccountSetupStatus> {
     this.assertWalletReadyForSigning();
+    const generation = this.walletSessionGeneration;
+    const keyring = this.getActiveKeyring();
+    const assertCurrent = () => {
+      this.assertWalletReadyForSigning();
+      if (params.expectedContext) {
+        this.smartAccount.assertExpectedExecutionContext(
+          params.expectedContext,
+          params.accountId
+        );
+      }
+      this.assertCurrentWalletSession(generation, keyring);
+    };
+    assertCurrent();
     this.configureSLHDSASessionStateCrypto();
     const { accountIndex } = this.getSLHDSASmartAccountDerivationContext(
       params.accountId
@@ -5669,11 +5701,16 @@ class MainController {
     return startSLHDSASmartAccountValidatorSetup({
       accountId: params.accountId,
       accountIndex,
+      assertCurrent,
       force: params.force,
-      getSetupSecret: () =>
-        this.deriveSLHDSASetupSecretForAccount({
+      getSetupSecret: async () => {
+        assertCurrent();
+        const secret = await this.deriveSLHDSASetupSecretForAccount({
           accountIndex,
-        }),
+        });
+        assertCurrent();
+        return secret;
+      },
     });
   }
 
@@ -5823,12 +5860,17 @@ class MainController {
   }
 
   private async signSLHDSARecoveryTargetActionHash(
-    params: SLHDSASignActionHashParams
+    params: SLHDSASignActionHashParams & { executionContextId?: string }
   ): Promise<string> {
     const generation = this.walletSessionGeneration;
     const assertCurrent = () => {
       this.assertWalletReadyForSigning();
       this.assertCurrentWalletSession(generation);
+      if (params.executionContextId)
+        this.assertSmartAccountExecutionContext(
+          params.executionContextId,
+          params.actionHash
+        );
     };
     assertCurrent();
     this.configureSLHDSASessionStateCrypto();

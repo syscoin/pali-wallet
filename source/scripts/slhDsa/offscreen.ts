@@ -12,20 +12,21 @@ let workerRequestQueue: Promise<SLHDSAWorkerResponse | void> =
 let workerRequestGeneration = 0;
 let rejectActiveWorkerRequest: ((error: Error) => void) | null = null;
 const lastPersistedSetupProgress = new Map<
-  number,
+  string,
   { percent: number; updatedAt: number }
 >();
 
 const updateSetupProgress = async (
   accountId: number | undefined,
+  setupJobId: string | undefined,
   progress: Extract<SLHDSAWorkerResponse, { type: 'progress' }>['result']
 ) => {
-  if (typeof accountId !== 'number') {
+  if (typeof accountId !== 'number' || !setupJobId) {
     return;
   }
   const percent = Math.floor((progress.completed / progress.total) * 100);
   const now = Date.now();
-  const lastPersisted = lastPersistedSetupProgress.get(accountId);
+  const lastPersisted = lastPersistedSetupProgress.get(setupJobId);
   const shouldPersist =
     !lastPersisted ||
     percent >= lastPersisted.percent + 5 ||
@@ -34,13 +35,14 @@ const updateSetupProgress = async (
   if (!shouldPersist) {
     return;
   }
-  lastPersistedSetupProgress.set(accountId, {
+  lastPersistedSetupProgress.set(setupJobId, {
     percent,
     updatedAt: now,
   });
   try {
     await chrome.runtime.sendMessage({
       accountId,
+      setupJobId,
       progress: {
         completed: progress.completed,
         level: progress.level,
@@ -98,6 +100,9 @@ const runWorkerRequest = (
       }
       settled = true;
       activeWorker.removeEventListener('message', onMessage);
+      if (request.type === 'prepare_keypair' && request.payload.setupJobId) {
+        lastPersistedSetupProgress.delete(request.payload.setupJobId);
+      }
       if (rejectActiveWorkerRequest === rejectActive) {
         rejectActiveWorkerRequest = null;
       }
@@ -117,6 +122,9 @@ const runWorkerRequest = (
         void updateSetupProgress(
           request.type === 'prepare_keypair'
             ? request.payload.accountId
+            : undefined,
+          request.type === 'prepare_keypair'
+            ? request.payload.setupJobId
             : undefined,
           event.data.result
         );

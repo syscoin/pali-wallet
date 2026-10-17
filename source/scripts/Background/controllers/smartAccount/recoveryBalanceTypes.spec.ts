@@ -6,7 +6,7 @@ jest.mock('state/vault', () => ({ setAccountPropertyByIdAndType: jest.fn() }));
 jest.mock('utils/security/blacklistService', () => ({ blacklistService: {} }));
 
 import store from 'state/store';
-import { KeyringAccountType } from 'types/network';
+import { INetworkType, KeyringAccountType } from 'types/network';
 import { BigNumber } from 'utils/ethersV6Compat';
 import {
   ERC7579_MODE_SINGLE_DEFAULT,
@@ -56,12 +56,21 @@ describe('guardian recovery provider numeric boundaries', () => {
     state = {
       vault: {
         activeAccount: { id: 3, type: KeyringAccountType.SmartAccount },
-        activeNetwork: { chainId: 57057 },
+        activeNetwork: {
+          chainId: 57057,
+          kind: INetworkType.Ethereum,
+          url: 'https://fixture.invalid',
+        },
+        isBitcoinBased: false,
         accounts: {
+          [KeyringAccountType.SmartAccount]: {
+            3: { address: TARGET, id: 3, isSmartAccount: true },
+          },
           [KeyringAccountType.HDAccount]: { 0: { address: PAYER, id: 0 } },
           [KeyringAccountType.Imported]: {},
         },
       },
+      vaultGlobal: { activeSlip44: 60 },
     };
     (store.getState as jest.Mock).mockImplementation(() => state);
     // The live SDK provider returns a native bigint balance; gas estimates
@@ -72,8 +81,10 @@ describe('guardian recovery provider numeric boundaries', () => {
       getFeeData: jest.fn().mockResolvedValue({ maxFeePerGas: BigInt(2) }),
     };
     send = jest.fn().mockResolvedValue({ hash: `0x${'55'.repeat(32)}` });
+    const transaction = { web3Provider: provider };
     controller = new SmartAccountController({
-      getEthereumTransaction: () => ({ web3Provider: provider }),
+      getEthereumTransaction: () => transaction,
+      getWalletSessionGeneration: () => 9,
       sendAndSaveEthTransaction: send,
     } as any);
     jest

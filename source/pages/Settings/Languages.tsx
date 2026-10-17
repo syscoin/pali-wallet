@@ -1,6 +1,6 @@
 import { Menu } from '@headlessui/react';
 import { Form } from 'antd';
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useLocation } from 'react-router-dom';
 
@@ -13,6 +13,9 @@ import { PaliLanguages } from 'utils/types';
 
 const Languages = () => {
   const [confirmed, setConfirmed] = useState<boolean>(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState(false);
+  const savingRef = useRef(false);
   const [savedLang, setSavedLang] = useState<PaliLanguages>(PaliLanguages.EN); // Actually saved language
   const [selectedLang, setSelectedLang] = useState<PaliLanguages>(
     PaliLanguages.EN
@@ -106,15 +109,26 @@ const Languages = () => {
   const location = useLocation();
 
   const onSubmit = async () => {
-    // Only save when explicitly clicking save button
-    await changeLanguage(selectedLang);
-    setSavedLang(selectedLang); // Update saved state
-    setConfirmed(true);
+    if (savingRef.current || selectedLang === savedLang) return;
+    savingRef.current = true;
+    setSaving(true);
+    setSaveError(false);
+    try {
+      await changeLanguage(selectedLang);
+      setSavedLang(selectedLang);
+      setConfirmed(true);
+    } catch {
+      setSaveError(true);
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
+    }
   };
 
   const handleLanguageChange = (langValue: PaliLanguages) => {
     // Only update preview state - don't save yet
     setSelectedLang(langValue);
+    setSaveError(false);
   };
 
   const selectedLanguage = availableLanguages.find(
@@ -148,15 +162,19 @@ const Languages = () => {
         onFinish={onSubmit}
         autoComplete="off"
       >
-        <div className="flex flex-col gap-y-6">
+        <div className="flex w-full max-w-[352px] flex-col gap-y-6">
           <p className="mb-2 text-left text-white text-sm">
             {t('settings.setYourPreferredLanguage')}
           </p>
 
-          <Menu as="div" className="relative inline-block text-left w-[352px]">
+          <Menu as="div" className="relative inline-block w-full text-left">
             {({ open }) => (
               <>
-                <Menu.Button className="inline-flex justify-between p-[10px] w-full h-[44px] text-white text-sm font-light bg-brand-blue600 border border-alpha-whiteAlpha300 focus:border-fields-input-borderfocus rounded-[10px] hover:bg-brand-blue500 hover:bg-opacity-20 transition-all duration-200 group">
+                <Menu.Button
+                  disabled={saving}
+                  aria-label={t('settings.setYourPreferredLanguage')}
+                  className="inline-flex justify-between p-[10px] w-full h-[44px] text-white text-sm font-light bg-brand-blue600 border border-alpha-whiteAlpha300 focus:border-fields-input-borderfocus rounded-[10px] hover:bg-brand-blue500 hover:bg-opacity-20 transition-all duration-200 group"
+                >
                   <div className="flex items-center gap-2 ml-2">
                     <span className="text-lg transform transition-transform duration-300 group-hover:scale-110">
                       {selectedLanguage?.flag}
@@ -185,12 +203,12 @@ const Languages = () => {
                       ? 'opacity-100 scale-100 pointer-events-auto'
                       : 'opacity-0 scale-95 pointer-events-none'
                   }`}
-                  static
                 >
                   {availableLanguages.map((lang) => (
-                    <Menu.Item as="div" key={lang.id}>
+                    <Menu.Item key={lang.id}>
                       <button
                         type="button"
+                        aria-label={`${lang.name} ${lang.nativeName}`}
                         onClick={() => handleLanguageChange(lang.value)}
                         className={`group flex gap-x-3 items-center justify-start px-4 py-3 w-full hover:text-brand-royalbluemedium text-brand-white font-poppins text-sm border-0 border-b border-dashed border-border-default transition-all duration-200 hover:bg-brand-blue500 hover:bg-opacity-20 rounded-lg ${
                           selectedLang === lang.value
@@ -199,6 +217,7 @@ const Languages = () => {
                         }`}
                       >
                         <span
+                          aria-hidden="true"
                           className={`text-lg flex-shrink-0 transform transition-transform duration-200 group-hover:scale-110 ${
                             selectedLang === lang.value ? 'scale-110' : ''
                           }`}
@@ -228,7 +247,7 @@ const Languages = () => {
 
           <div className="bg-brand-blue800 rounded-lg p-6 border border-brand-blue600 hover:border-brand-blue500 transition-all duration-200 group">
             <p className="text-brand-gray200 text-xs mb-4 text-center">
-              Current Language
+              {t('settings.currentLanguage')}
             </p>
             <div className="flex items-center justify-center gap-6">
               <span className="text-6xl transform transition-transform duration-200 group-hover:scale-110">
@@ -246,22 +265,30 @@ const Languages = () => {
             {hasUnsavedChanges && selectedLang !== savedLang && (
               <div className="mt-4 text-center">
                 <p className="text-xs text-brand-royalblue300">
-                  Preview: {selectedLanguage?.name}
+                  {t('settings.previewLanguage', {
+                    language: selectedLanguage?.nativeName,
+                  })}
                 </p>
               </div>
             )}
           </div>
         </div>
 
-        <div className="w-full px-4 absolute bottom-12 md:static">
+        {saveError && (
+          <p role="alert" className="text-sm text-[#ff8f8f]">
+            {t('settings.preferencesSaveFailed')}
+          </p>
+        )}
+        <div className="w-full px-4 pb-6">
           <Button
             variant="neutral"
             className="text-sm text-brand-royalblue"
             type="submit"
             fullWidth
-            disabled={!hasUnsavedChanges}
+            disabled={!hasUnsavedChanges || saving}
+            loading={saving}
           >
-            Save
+            {t('buttons.save')}
           </Button>
         </div>
       </Form>

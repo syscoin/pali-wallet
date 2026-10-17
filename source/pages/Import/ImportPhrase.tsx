@@ -12,11 +12,11 @@ import { useOnboardingSecrets } from 'hooks/useOnboardingSecrets';
 import { formatSeedPhrase } from 'utils/format';
 
 type SeedValidationType = {
-  seedLength: string;
+  seedLength: number | null;
   seedLengthError: boolean;
 };
 
-const eyeStyle = 'w-[18px] max-w-none cursor-pointer hover:cursor-pointer z-20';
+const eyeStyle = 'w-[18px] max-w-none';
 
 const ImportPhrase: React.FC = () => {
   const { TextArea } = Input;
@@ -28,6 +28,7 @@ const ImportPhrase: React.FC = () => {
   const isRecovery = Boolean(secrets.recoveryTicket);
   const active = useRef(true);
   const requestGeneration = useRef(0);
+  const validationRequest = useRef(0);
   const submissionPending = useRef(false);
   const routeKey = useRef(location.key);
   routeKey.current = location.key;
@@ -110,6 +111,7 @@ const ImportPhrase: React.FC = () => {
 
   return (
     <OnboardingLayout
+      scrollable
       title={t(isRecovery ? 'settings.recoveryTitle' : 'titles.importWallet')}
     >
       <StatusModal
@@ -140,12 +142,26 @@ const ImportPhrase: React.FC = () => {
             () => ({
               validator(_, value) {
                 const generation = requestGeneration.current;
+                const validationId = ++validationRequest.current;
                 const url = window.location.href;
                 if (!isCurrent(generation, url))
                   return Promise.reject(
                     new Error('Seed import is no longer active.')
                   );
-                value = formatSeedPhrase(value);
+                setSeedIsValid(false);
+                value = formatSeedPhrase(
+                  typeof value === 'string' ? value : ''
+                );
+                if (typeof value !== 'string') {
+                  setSeedIsValid(false);
+                  setSeedValidation({
+                    seedLength: value.seedLength,
+                    seedLengthError: true,
+                  });
+                  return Promise.reject(
+                    new Error('Invalid seed phrase length')
+                  );
+                }
                 form.setFieldsValue({ phrase: value });
 
                 //todo: we should validate the seed phrase with the new fn
@@ -153,23 +169,19 @@ const ImportPhrase: React.FC = () => {
                   ['wallet', 'isSeedValid'],
                   [value]
                 ).then((isSeedValid: boolean) => {
-                  if (!isCurrent(generation, url))
+                  if (
+                    !isCurrent(generation, url) ||
+                    validationId !== validationRequest.current
+                  )
                     throw new Error('Seed import is no longer active.');
+                  setSeedIsValid(isSeedValid);
+                  setSeedValidation({
+                    seedLength: value.split(/\s+/).length,
+                    seedLengthError: false,
+                  });
                   if (isSeedValid) {
-                    setSeedIsValid(isSeedValid && value);
-
-                    setSeedValidation({
-                      seedLength: value.seedLength,
-                      seedLengthError: false,
-                    });
-
                     return Promise.resolve();
                   }
-
-                  setSeedValidation({
-                    seedLength: value.seedLength,
-                    seedLengthError: value.seedLengthError,
-                  });
                   return Promise.reject(new Error('Invalid seed phrase'));
                 });
               },
@@ -179,32 +191,36 @@ const ImportPhrase: React.FC = () => {
           <div className="relative">
             <TextArea
               id="import-wallet-input"
+              aria-label={t('import.pasteYourWalletSeed')}
               rows={3}
               onBlur={() =>
                 seedValidation.seedLengthError
                   ? setShowModal(true)
                   : setShowModal(false)
               }
-              style={{ padding: '15px 38px 15px 15px' }}
+              style={{ padding: '15px 48px 15px 15px' }}
               className={`${formBorderStatusStyle} ${textAreaNotVisibleStyle} bg-fields-input-primary overflow-hidden max-w-[17.5rem] w-[17.5rem] h-[5.625rem] text-brand-graylight text-sm border focus:border-fields-input-borderfocus rounded-lg outline-none resize-none `}
               placeholder={t('import.pasteYourWalletSeed')}
               onKeyPress={handleKeypress}
             />
-            <div className="absolute left-[88%] top-[18%] flex bg-brand-blue800">
-              {visible ? (
-                <img
-                  className={eyeStyle}
-                  onClick={() => setVisible(false)}
-                  src="/assets/all_assets/visibleEye.svg"
-                />
-              ) : (
-                <img
-                  className={eyeStyle}
-                  onClick={() => setVisible(true)}
-                  src="/assets/all_assets/notVisibleEye.svg"
-                />
+            <button
+              type="button"
+              aria-label={t(
+                visible ? 'import.showSeedPhrase' : 'import.hideSeedPhrase'
               )}
-            </div>
+              onClick={() => setVisible((hidden) => !hidden)}
+              className="absolute right-1 top-1 flex h-11 w-11 items-center justify-center rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-content-primary"
+            >
+              <img
+                className={eyeStyle}
+                alt=""
+                src={
+                  visible
+                    ? '/assets/all_assets/visibleEye.svg'
+                    : '/assets/all_assets/notVisibleEye.svg'
+                }
+              />
+            </button>
           </div>
         </Form.Item>
 
@@ -217,7 +233,7 @@ const ImportPhrase: React.FC = () => {
           </span>
         </div>
 
-        <div className="absolute bottom-12 md:bottom-80">
+        <div className="w-full pb-6 pt-2">
           <Button
             id="import-wallet-action"
             type="submit"

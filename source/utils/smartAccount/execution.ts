@@ -89,6 +89,7 @@ const getSmartAccountSubmitJobKey = async ({
   accountAddress,
   accountId,
   executions,
+  expectedContext,
   feeOverrides,
   maximumUserOpFeeWei,
   smartAccount,
@@ -96,6 +97,7 @@ const getSmartAccountSubmitJobKey = async ({
   accountAddress?: string;
   accountId?: number;
   executions: SmartAccountExecutionIntent[];
+  expectedContext?: IEvmTransactionContext;
   feeOverrides?: SmartAccountFeeOverrides;
   maximumUserOpFeeWei?: string;
   smartAccount: ISmartAccountMetadata;
@@ -114,6 +116,7 @@ const getSmartAccountSubmitJobKey = async ({
         target: execution.target.toLowerCase(),
         value: execution.value,
       })),
+      expectedContext: expectedContext ?? null,
       feeOverrides: {
         gasPrice: feeOverrides?.gasPrice ?? null,
         maxFeePerGas: feeOverrides?.maxFeePerGas ?? null,
@@ -365,6 +368,8 @@ export type SubmitSmartAccountExecutionsParams = {
   onPrepared?: () => void;
   skipRapidPolling?: boolean;
   smartAccount: ISmartAccountMetadata;
+  /** Internal wallet controls share only the same exact approval context. */
+  trackLocalSubmission?: boolean;
   useCachedMetadata?: boolean;
   waitForConfirmation?: boolean;
 };
@@ -1079,6 +1084,7 @@ export const signAndSubmitSmartAccountExecutions = async (
     onBeforeSubmit,
     onPrepared,
     skipRapidPolling,
+    trackLocalSubmission,
     smartAccount,
     useCachedMetadata,
     waitForConfirmation,
@@ -1088,12 +1094,13 @@ export const signAndSubmitSmartAccountExecutions = async (
   // An external approval owns its own context checks and durable submit marker.
   const shouldTrackJob =
     (validatorIdForJob === 'slh-dsa' || validatorIdForJob === 'composite') &&
-    !expectedContext;
+    (!expectedContext || trackLocalSubmission === true);
   const submitJobKey = shouldTrackJob
     ? await getSmartAccountSubmitJobKey({
         accountAddress,
         accountId,
         executions,
+        expectedContext,
         feeOverrides,
         maximumUserOpFeeWei,
         smartAccount,

@@ -186,6 +186,8 @@
     "importWallet": "ウォレットをインポート"
   },
   "import": {
+    "showSeedPhrase": "リカバリーフレーズを表示",
+    "hideSeedPhrase": "リカバリーフレーズを非表示",
     "importModalWordMissing": "単語が不足しています！",
     "importModalSeed": "シードフレーズは12、15、18、21、または24単語である必要があり、{{seedLength}}単語入力されました。",
     "importAttention": "注意：",
@@ -454,6 +456,19 @@
     "receipts": "レシート"
   },
   "settings": {
+    "smartAccountMetadataLoadFailed": "このアカウントの現在の設定を確認できませんでした。接続を確認して、もう一度お試しください。",
+    "smartAccountMetadataRetry": "再試行",
+    "invalidWatchOnlyIdentifier": "公開アドレス、拡張公開鍵、または公開情報のみを含むディスクリプターを使用してください。秘密鍵は絶対に入力しないでください。",
+    "searchTrustedSites": "信頼できるサイトを検索",
+    "trustedSiteMatch": "信頼リストに登録済み",
+    "unlistedSite": "信頼リストに未登録",
+    "noTrustedSitesFound": "検索条件に一致する信頼できるサイトはありません。",
+    "selectSmartAccountBeforePolicyChange": "承認または復元ポリシーを変更する前に、このスマートアカウントを選択してください。",
+    "currentLanguage": "現在の言語",
+    "previewLanguage": "プレビュー：{{language}}",
+    "preferencesSaveFailed": "変更を保存できませんでした。もう一度お試しください。",
+    "searchCurrencies": "通貨を検索…",
+    "noCurrenciesFound": "検索条件に一致する通貨はありません。",
     "walletSetupFailed": "ウォレットの設定が完了したか確認できませんでした。リカバリーフレーズを保管し、ウォレットの状態を確認してください。",
     "recoveryTitle": "ウォレットを復元",
     "recoveryIntro": "シークレットリカバリーフレーズを使ってシードから派生した最初のアカウント（HD）のみを復元し、新しいパスワードを設定してください。同じフレーズから派生した他のアカウントは再追加してください。",
@@ -711,6 +726,8 @@
     "welcomeTo": "ようこそ"
   },
   "tokens": {
+    "viewTokenDetails": "{{symbol}} トークンの詳細を表示",
+    "importNamedToken": "{{symbol}} トークンをインポート",
     "tokenNotAdded": "トークンが追加されませんでした。",
     "tokenAlreadyImported": "このトークンは既にインポートされています",
     "deleteToken": "{{symbol}}を削除",

@@ -159,6 +159,7 @@ export const provisionRuntimeSLHDSAStateFromSetupSecret = async (
     accountId?: number;
     accountIndex: number;
     derivationLabel: string;
+    setupJobId?: string;
     setupSecretHex: string;
   },
   expectedGeneration = sessionGeneration
@@ -167,6 +168,7 @@ export const provisionRuntimeSLHDSAStateFromSetupSecret = async (
   const keypair = await prepareSLHDSAKeypairInOffscreen(
     {
       accountId: params.accountId,
+      ...(params.setupJobId ? { setupJobId: params.setupJobId } : {}),
       setupSecretHex: params.setupSecretHex,
     },
     () => assertSLHDSASessionGeneration(expectedGeneration)

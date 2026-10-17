@@ -186,6 +186,8 @@
     "importWallet": "지갑 가져오기"
   },
   "import": {
+    "showSeedPhrase": "복구 구문 표시",
+    "hideSeedPhrase": "복구 구문 숨기기",
     "importModalWordMissing": "단어가 누락되었습니다!",
     "importModalSeed": "시드 구문은 12, 15, 18, 21 또는 24개의 단어여야 하며 {{seedLength}}개를 입력했습니다.",
     "importAttention": "주의: ",
@@ -454,6 +456,19 @@
     "receipts": "영수증"
   },
   "settings": {
+    "smartAccountMetadataLoadFailed": "이 계정의 현재 설정을 확인할 수 없습니다. 연결을 확인한 후 다시 시도하세요.",
+    "smartAccountMetadataRetry": "다시 시도",
+    "invalidWatchOnlyIdentifier": "공개 주소, 확장 공개 키 또는 공개 정보만 포함하는 디스크립터를 사용하세요. 개인 키는 절대 입력하지 마세요.",
+    "searchTrustedSites": "신뢰할 수 있는 사이트 검색",
+    "trustedSiteMatch": "신뢰 목록에 있음",
+    "unlistedSite": "신뢰 목록에 없음",
+    "noTrustedSitesFound": "검색과 일치하는 신뢰할 수 있는 사이트가 없습니다.",
+    "selectSmartAccountBeforePolicyChange": "승인 또는 복구 정책을 변경하기 전에 이 스마트 계정을 선택하세요.",
+    "currentLanguage": "현재 언어",
+    "previewLanguage": "미리보기: {{language}}",
+    "preferencesSaveFailed": "변경 사항을 저장하지 못했습니다. 다시 시도하세요.",
+    "searchCurrencies": "통화 검색…",
+    "noCurrenciesFound": "검색과 일치하는 통화가 없습니다.",
     "walletSetupFailed": "지갑 설정 완료 여부를 확인할 수 없습니다. 복구 구문을 보관하고 지갑 상태를 확인하세요.",
     "recoveryTitle": "지갑 복구",
     "recoveryIntro": "비밀 복구 구문으로 시드에서 파생된 첫 번째 계정(HD)만 복원하고 새 비밀번호를 설정하세요. 같은 구문에서 파생된 다른 계정은 다시 추가하세요.",
@@ -711,6 +726,8 @@
     "welcomeTo": "환영합니다"
   },
   "tokens": {
+    "viewTokenDetails": "{{symbol}} 토큰 세부 정보 보기",
+    "importNamedToken": "{{symbol}} 토큰 가져오기",
     "tokenNotAdded": "토큰이 추가되지 않았습니다.",
     "tokenAlreadyImported": "이 토큰은 이미 가져와졌습니다",
     "deleteToken": "{{symbol}} 삭제",

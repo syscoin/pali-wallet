@@ -11,6 +11,7 @@ import React from 'react';
 
 import { KeyringAccountType } from 'types/network';
 import {
+  createPasskeyCredential,
   setActivePasskeyRecord,
   signP256WebAuthnActionHash,
 } from 'utils/passkey';
@@ -22,6 +23,7 @@ let mockLocation: any;
 let mockVault: any;
 let mockScope: { account: string; network: string };
 let mockStatus: any;
+let mockGeneration: number;
 const mockNavigate = jest.fn();
 const mockEmitter = jest.fn();
 const mockHandleLockedError = jest.fn();
@@ -64,7 +66,8 @@ jest.mock('hooks/useUtils', () => ({
   }),
 }));
 jest.mock('react-redux', () => ({
-  useSelector: (selector: any) => selector({ vault: mockVault }),
+  useSelector: (selector: any) =>
+    selector({ vault: mockVault, vaultGlobal: { activeSlip44: 60 } }),
 }));
 jest.mock('react-router-dom', () => ({ useLocation: () => mockLocation }));
 jest.mock('react-i18next', () => ({
@@ -76,6 +79,7 @@ jest.mock('utils/navigationState', () => ({
 }));
 jest.mock('utils/passkey', () => ({
   ...jest.requireActual('utils/passkey'),
+  createPasskeyCredential: jest.fn(),
   setActivePasskeyRecord: jest.fn(() => true),
   signP256WebAuthnActionHash: jest.fn(),
 }));
@@ -142,6 +146,7 @@ describe('SmartAccountPolicy async UI lifetime', () => {
       isLoading: false,
       isUnlocked: true,
     };
+    mockGeneration = 7;
     mockLocation = {
       hash: '',
       key: 'policy-entry',
@@ -167,10 +172,11 @@ describe('SmartAccountPolicy async UI lifetime', () => {
         },
       },
       activeAccount: { id: 1, type: KeyringAccountType.SmartAccount },
-      activeNetwork: { chainId: CHAIN_ID },
+      activeNetwork: { chainId: CHAIN_ID, url: 'https://rpc.test' },
     };
     mockHandleLockedError.mockReturnValue(false);
     mockEmitter.mockImplementation(async ([, method]: string[]) => {
+      if (method === 'getWalletSessionGeneration') return mockGeneration;
       if (method === 'getSLHDSASmartAccountSetupStatus') return null;
       if (method === 'getSmartAccountGuardianRecoveryStatus') {
         return {
@@ -180,7 +186,10 @@ describe('SmartAccountPolicy async UI lifetime', () => {
           threshold: 1,
         };
       }
-      if (method === 'hydrateSmartAccount') return metadata();
+      if (method === 'hydrateSmartAccount')
+        return mockVault.accounts[KeyringAccountType.SmartAccount][
+          mockLocation.state?.id ?? mockVault.activeAccount.id
+        ]?.smartAccount;
       if (method === 'getSmartAccountNativeGasStatus')
         return { hasNativeGas: true };
       throw new Error(`Unexpected controller method ${method}`);
@@ -217,17 +226,19 @@ describe('SmartAccountPolicy async UI lifetime', () => {
         : original(path, ...args)
     );
     const view = render(<SmartAccountPolicy />);
-    const button = screen.getByRole('button', {
+    const button = await screen.findByRole('button', {
       name: 'settings.smartAccountGuardianRecoveryFinalize',
     });
     await waitFor(() =>
       expect((button as HTMLButtonElement).disabled).toBe(false)
     );
     fireEvent.click(button);
-    expect(mockEmitter).toHaveBeenCalledWith(
-      ['wallet', 'finalizeSmartAccountGuardianRecovery'],
-      [expect.objectContaining({ account: ACCOUNT, chainId: CHAIN_ID })],
-      300000
+    await waitFor(() =>
+      expect(mockEmitter).toHaveBeenCalledWith(
+        ['wallet', 'finalizeSmartAccountGuardianRecovery'],
+        [expect.objectContaining({ account: ACCOUNT, chainId: CHAIN_ID })],
+        300000
+      )
     );
     return { ...pending, view };
   };
@@ -278,6 +289,226 @@ describe('SmartAccountPolicy async UI lifetime', () => {
       mockStatus = { ...mockStatus, connectionUnavailable: true };
     }
   };
+
+  describe('entry metadata verification', () => {
+    const mountWithHydration = (pending: ReturnType<typeof deferred<any>>) => {
+      void pending.promise.catch(() => undefined);
+      const original = mockEmitter.getMockImplementation()!;
+      let reads = 0;
+      mockEmitter.mockImplementation((path: string[], ...args: any[]) =>
+        path[1] === 'hydrateSmartAccount'
+          ? ++reads === 1
+            ? pending.promise
+            : new Promise(() => undefined)
+          : original(path, ...args)
+      );
+      return render(<SmartAccountPolicy />);
+    };
+
+    it('verifies recreated metadata before showing the deployed policy or allowing registration', async () => {
+      mockVault.accounts[KeyringAccountType.SmartAccount][1].smartAccount =
+        metadata(false);
+      const pending = deferred<any>();
+      const view = mountWithHydration(pending);
+      expect(
+        screen.queryByRole('button', { name: 'settings.registerSmartAccount' })
+      ).toBeNull();
+      await waitFor(() =>
+        expect(mockEmitter).toHaveBeenCalledWith(
+          ['wallet', 'hydrateSmartAccount'],
+          [1],
+          300000
+        )
+      );
+      await act(async () => pending.resolve(metadata(true)));
+      expect(
+        screen.getByText('settings.smartAccountCurrentApprovalMethod')
+      ).toBeTruthy();
+      expect(screen.getByTitle(OWNER)).toBeTruthy();
+      view.rerender(<SmartAccountPolicy />);
+      expect(
+        mockEmitter.mock.calls.filter(
+          ([path]) => path[1] === 'hydrateSmartAccount'
+        )
+      ).toHaveLength(1);
+      expect(
+        mockEmitter.mock.calls.some(
+          ([path]) => path[1] === 'registerSmartAccountOnChain'
+        )
+      ).toBe(false);
+    });
+
+    it('retains a genuine counterfactual registration after the chain read', async () => {
+      mockVault.accounts[KeyringAccountType.SmartAccount][1].smartAccount =
+        metadata(false);
+      const pending = deferred<any>();
+      mountWithHydration(pending);
+      await act(async () => pending.resolve(metadata(false)));
+      expect(
+        (
+          screen.getByRole('button', {
+            name: 'settings.registerSmartAccount',
+          }) as HTMLButtonElement
+        ).disabled
+      ).toBe(false);
+      expect(
+        mockEmitter.mock.calls.filter(
+          ([path]) => path[1] === 'hydrateSmartAccount'
+        )
+      ).toHaveLength(1);
+    });
+
+    it('refreshes a populated but stale cached owner on every entry', async () => {
+      const pending = deferred<any>();
+      mountWithHydration(pending);
+      expect(screen.queryByTitle(OWNER)).toBeNull();
+      const refreshed = metadata(true);
+      refreshed.installedModules[0].config.owners = [GUARDIAN];
+      await act(async () => pending.resolve(refreshed));
+      expect(screen.getByTitle(GUARDIAN)).toBeTruthy();
+      expect(screen.queryByTitle(OWNER)).toBeNull();
+    });
+
+    it('allows verified read-only browsing of a nonselected smart account', async () => {
+      mockVault.activeAccount = { id: 0, type: KeyringAccountType.HDAccount };
+      const pending = deferred<any>();
+      mountWithHydration(pending);
+      await act(async () => pending.resolve(metadata(true)));
+      expect(screen.getByTitle(OWNER)).toBeTruthy();
+      expect(mockVault.activeAccount).toEqual({
+        id: 0,
+        type: KeyringAccountType.HDAccount,
+      });
+      expect(
+        mockEmitter.mock.calls.some(([path]) =>
+          /register|sign|submit/i.test(path[1])
+        )
+      ).toBe(false);
+    });
+
+    it('keeps failed entry verification closed until an explicit read-only retry', async () => {
+      const pending = deferred<any>();
+      mountWithHydration(pending);
+      await act(async () => pending.reject(new Error('Network unavailable')));
+      expect(
+        screen.queryByText('settings.smartAccountCurrentApprovalMethod')
+      ).toBeNull();
+      const next = deferred<any>();
+      mockEmitter.mockImplementation((path: string[]) =>
+        path[1] === 'hydrateSmartAccount' ? next.promise : Promise.resolve(null)
+      );
+      const retry = screen.getByRole('button', {
+        name: 'settings.smartAccountMetadataRetry',
+      });
+      act(() => {
+        retry.click();
+        retry.click();
+      });
+      expect(
+        mockEmitter.mock.calls.filter(
+          ([path]) => path[1] === 'hydrateSmartAccount'
+        )
+      ).toHaveLength(2);
+      expect(screen.queryByTitle(OWNER)).toBeNull();
+      await act(async () => next.resolve(metadata(true)));
+      expect(screen.getByTitle(OWNER)).toBeTruthy();
+      expect(
+        mockEmitter.mock.calls.some(([path]) =>
+          /register|sign|submit/i.test(path[1])
+        )
+      ).toBe(false);
+    });
+
+    it.each(['unmount', 'native route', 'selected account', 'network'])(
+      'does not apply stale entry metadata after %s',
+      async (reason) => {
+        const pending = deferred<any>();
+        const view = mountWithHydration(pending);
+        depart(reason, view);
+        await act(async () => pending.resolve(metadata(true)));
+        expect(screen.queryByTitle(OWNER)).toBeNull();
+        expect(mockAlert.error).not.toHaveBeenCalled();
+      }
+    );
+
+    it.each(['connectionUnavailable', 'isLoading'])(
+      'starts one read-only hydration when an entry opened with %s recovers',
+      async (flag) => {
+        mockStatus = { ...mockStatus, [flag]: true };
+        const pending = deferred<any>();
+        const view = mountWithHydration(pending);
+        expect(
+          mockEmitter.mock.calls.some(
+            ([path]) => path[1] === 'hydrateSmartAccount'
+          )
+        ).toBe(false);
+        mockStatus = { ...mockStatus, [flag]: false };
+        view.rerender(<SmartAccountPolicy />);
+        await waitFor(() =>
+          expect(
+            mockEmitter.mock.calls.filter(
+              ([path]) => path[1] === 'hydrateSmartAccount'
+            )
+          ).toHaveLength(1)
+        );
+        await act(async () => pending.resolve(metadata(true)));
+        expect(screen.getByTitle(OWNER)).toBeTruthy();
+        expect(
+          mockEmitter.mock.calls.some(([path]) =>
+            /register|sign|submit/i.test(path[1])
+          )
+        ).toBe(false);
+      }
+    );
+
+    it('invalidates ready metadata during an outage and re-verifies on reconnection', async () => {
+      const initial = deferred<any>();
+      const view = mountWithHydration(initial);
+      await act(async () => initial.resolve(metadata(true)));
+      expect(screen.getByTitle(OWNER)).toBeTruthy();
+      mockStatus = { ...mockStatus, connectionUnavailable: true };
+      view.rerender(<SmartAccountPolicy />);
+      expect(screen.queryByTitle(OWNER)).toBeNull();
+      mockStatus = { ...mockStatus, connectionUnavailable: false };
+      view.rerender(<SmartAccountPolicy />);
+      await waitFor(() =>
+        expect(
+          mockEmitter.mock.calls.filter(
+            ([path]) => path[1] === 'hydrateSmartAccount'
+          )
+        ).toHaveLength(2)
+      );
+      expect(screen.queryByTitle(OWNER)).toBeNull();
+      expect(
+        mockEmitter.mock.calls.some(([path]) =>
+          /register|sign|submit/i.test(path[1])
+        )
+      ).toBe(false);
+    });
+
+    it('rejects a pre-outage result and issues a fresh read after reconnection', async () => {
+      const initial = deferred<any>();
+      const view = mountWithHydration(initial);
+      mockStatus = { ...mockStatus, connectionUnavailable: true };
+      view.rerender(<SmartAccountPolicy />);
+      await act(async () => initial.resolve(metadata(true)));
+      mockStatus = { ...mockStatus, connectionUnavailable: false };
+      view.rerender(<SmartAccountPolicy />);
+      await waitFor(() =>
+        expect(
+          mockEmitter.mock.calls.filter(
+            ([path]) => path[1] === 'hydrateSmartAccount'
+          )
+        ).toHaveLength(2)
+      );
+      expect(screen.queryByTitle(OWNER)).toBeNull();
+      expect(
+        mockEmitter.mock.calls.some(([path]) =>
+          /register|sign|submit/i.test(path[1])
+        )
+      ).toBe(false);
+    });
+  });
 
   it.each([
     'unmount',
@@ -355,15 +586,29 @@ describe('SmartAccountPolicy async UI lifetime', () => {
       metadata(false);
     const pending = deferred<unknown>();
     const original = mockEmitter.getMockImplementation()!;
+    let hydrationReads = 0;
     mockEmitter.mockImplementation((path: string[], ...args: any[]) => {
       if (path[1] === 'registerSmartAccountOnChain') return pending.promise;
-      if (hydrate && path[1] === 'hydrateSmartAccount') return hydrate;
+      if (path[1] === 'hydrateSmartAccount') {
+        if (++hydrationReads === 1) return Promise.resolve(metadata(false));
+        if (hydrate) return hydrate;
+        return Promise.resolve(metadata(true));
+      }
       return original(path, ...args);
     });
     const view = render(<SmartAccountPolicy />);
     await act(async () => undefined);
     fireEvent.click(
-      screen.getByRole('button', { name: 'settings.registerSmartAccount' })
+      await screen.findByRole('button', {
+        name: 'settings.registerSmartAccount',
+      })
+    );
+    await waitFor(() =>
+      expect(
+        mockEmitter.mock.calls.some(
+          ([path]) => path[1] === 'registerSmartAccountOnChain'
+        )
+      ).toBe(true)
     );
     return { ...pending, view };
   };
@@ -416,8 +661,8 @@ describe('SmartAccountPolicy async UI lifetime', () => {
     depart('network', pending.view);
     await act(async () => hydration.resolve(metadata(true)));
     expect(
-      screen.getByRole('button', { name: 'settings.registerSmartAccount' })
-    ).toBeDefined();
+      screen.queryByText('settings.smartAccountCurrentApprovalMethod')
+    ).toBeNull();
     expect(mockAlert.success).not.toHaveBeenCalled();
     expect(mockNavigate).not.toHaveBeenCalled();
   });
@@ -455,5 +700,178 @@ describe('SmartAccountPolicy async UI lifetime', () => {
     ).toBeNull();
     expect(mockHandleLockedError).not.toHaveBeenCalled();
     view.unmount();
+  });
+
+  describe('policy approval lifetime before signing', () => {
+    const prepared = (executions: unknown) => ({
+      actionHash: `0x${'77'.repeat(32)}`,
+      executionContextId: 'policy-operation',
+      executions,
+      smartAccount: metadata(),
+    });
+    const install = async (slow: 'gas' | 'prepare' | 'none') => {
+      const pending = deferred<any>();
+      const original = mockEmitter.getMockImplementation()!;
+      (createPasskeyCredential as jest.Mock).mockResolvedValue({
+        ...PUBLIC_KEY,
+        rawId: 'bmV3',
+        credentialId: 'bmV3',
+        credentialIdHash: `0x${'66'.repeat(32)}`,
+        userHandle: 'ZnJlc2g',
+      });
+      mockEmitter.mockImplementation((path: string[], params: any[]) => {
+        if (path[1] === 'getWalletSessionGeneration')
+          return Promise.resolve(mockGeneration);
+        if (path[1] === 'getSmartAccountNativeGasStatus' && slow === 'gas')
+          return pending.promise;
+        if (path[1] === 'prepareSmartAccountExecutions')
+          return slow === 'prepare'
+            ? pending.promise
+            : Promise.resolve(prepared(params[0]));
+        if (path[1] === 'assertSmartAccountExecutionContext')
+          return mockGeneration === 7
+            ? Promise.resolve()
+            : Promise.reject(new Error('PALI_TRANSACTION_CONTEXT_CHANGED'));
+        if (path[1] === 'signSmartAccountActionDigestInternal')
+          return Promise.resolve(`0x${'88'.repeat(65)}`);
+        if (path[1] === 'submitSmartAccountExecution')
+          return Promise.resolve({ hash: `0x${'99'.repeat(32)}` });
+        return original(path, params);
+      });
+      const view = render(<SmartAccountPolicy />);
+      await act(async () => undefined);
+      const card = screen
+        .getByText('settings.passkeyAuthenticator')
+        .closest('div.rounded-2xl')!;
+      fireEvent.click(card.querySelector('button')!);
+      const method =
+        slow === 'prepare'
+          ? 'prepareSmartAccountExecutions'
+          : 'getSmartAccountNativeGasStatus';
+      await waitFor(() =>
+        expect(
+          mockEmitter.mock.calls.some(([path]) => path[1] === method)
+        ).toBe(true)
+      );
+      return { pending, view };
+    };
+
+    it('retains ordinary current-context signing as a control', async () => {
+      const { view } = await install('none');
+      await waitFor(() =>
+        expect(
+          mockEmitter.mock.calls.some(
+            ([path]) => path[1] === 'signSmartAccountActionDigestInternal'
+          )
+        ).toBe(true)
+      );
+      expect(createPasskeyCredential).toHaveBeenCalledTimes(1);
+      const preparation = mockEmitter.mock.calls.find(
+        ([path]) => path[1] === 'prepareSmartAccountExecutions'
+      )!;
+      expect(preparation[1][2].expectedContext).toEqual({
+        account: {
+          address: ACCOUNT,
+          id: 1,
+          type: KeyringAccountType.SmartAccount,
+        },
+        chainId: CHAIN_ID,
+        rpcUrl: 'https://rpc.test',
+        slip44: 60,
+        sessionGeneration: 7,
+      });
+      view.unmount();
+    });
+
+    it('does not create credentials or sign after departing during the gas check', async () => {
+      const { pending, view } = await install('gas');
+      depart('native route', view);
+      await act(async () => pending.resolve({ hasNativeGas: true }));
+      expect(createPasskeyCredential).not.toHaveBeenCalled();
+      expect(
+        mockEmitter.mock.calls.some(
+          ([path]) => path[1] === 'signSmartAccountActionDigestInternal'
+        )
+      ).toBe(false);
+      expect(
+        mockEmitter.mock.calls.some(
+          ([path]) => path[1] === 'submitSmartAccountExecution'
+        )
+      ).toBe(false);
+      view.unmount();
+    });
+
+    it('does not resume a prior signing action after an outage and reconnection', async () => {
+      const { pending, view } = await install('gas');
+      mockStatus = { ...mockStatus, connectionUnavailable: true };
+      view.rerender(<SmartAccountPolicy />);
+      mockStatus = { ...mockStatus, connectionUnavailable: false };
+      view.rerender(<SmartAccountPolicy />);
+      await act(async () => pending.resolve({ hasNativeGas: true }));
+      expect(createPasskeyCredential).not.toHaveBeenCalled();
+      expect(
+        mockEmitter.mock.calls.some(
+          ([path]) => path[1] === 'signSmartAccountActionDigestInternal'
+        )
+      ).toBe(false);
+    });
+
+    it('does not sign after departing while execution preparation is pending', async () => {
+      const { pending, view } = await install('prepare');
+      const call = mockEmitter.mock.calls.find(
+        ([path]) => path[1] === 'prepareSmartAccountExecutions'
+      )!;
+      depart('native route', view);
+      await act(async () => pending.resolve(prepared(call[1][0])));
+      expect(
+        mockEmitter.mock.calls.some(
+          ([path]) => path[1] === 'signSmartAccountActionDigestInternal'
+        )
+      ).toBe(false);
+      expect(
+        mockEmitter.mock.calls.some(
+          ([path]) => path[1] === 'submitSmartAccountExecution'
+        )
+      ).toBe(false);
+      view.unmount();
+    });
+
+    it.each(['account', 'network', 'native key', 'unmount', 'session'])(
+      'does not create a credential after %s changes during gas lookup',
+      async (axis) => {
+        const { pending, view } = await install('gas');
+        if (axis === 'session') mockGeneration++;
+        else depart(axis, view);
+        await act(async () => pending.resolve({ hasNativeGas: true }));
+        expect(createPasskeyCredential).not.toHaveBeenCalled();
+        expect(
+          mockEmitter.mock.calls.some(
+            ([path]) => path[1] === 'prepareSmartAccountExecutions'
+          )
+        ).toBe(false);
+      }
+    );
+
+    it('keeps a nonselected policy browsable but refuses mutations', async () => {
+      mockVault.activeAccount = { id: 0, type: KeyringAccountType.HDAccount };
+      const view = render(<SmartAccountPolicy />);
+      await act(async () => undefined);
+      const card = screen
+        .getByText('settings.passkeyAuthenticator')
+        .closest('div.rounded-2xl')!;
+      fireEvent.click(card.querySelector('button')!);
+      await waitFor(() =>
+        expect(mockAlert.error).toHaveBeenCalledWith(
+          'settings.selectSmartAccountBeforePolicyChange'
+        )
+      );
+      expect(createPasskeyCredential).not.toHaveBeenCalled();
+      expect(
+        mockEmitter.mock.calls.some(
+          ([path]) => path[1] === 'getSmartAccountNativeGasStatus'
+        )
+      ).toBe(false);
+      view.unmount();
+    });
   });
 });

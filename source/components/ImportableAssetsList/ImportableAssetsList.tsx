@@ -200,7 +200,9 @@ const ImportableAssetsListComponent: React.FC<IImportableAssetsListProps> = ({
                   <IconButton
                     onClick={() => onDetailsClick(asset)}
                     className="p-2 hover:bg-brand-royalbluemedium/20 rounded-full transition-colors duration-200"
-                    aria-label={`View details for ${asset.symbol} token`}
+                    aria-label={t('tokens.viewTokenDetails', {
+                      symbol: asset.symbol,
+                    })}
                   >
                     <DetailsIcon
                       size={16}
@@ -236,7 +238,9 @@ const ImportableAssetsListComponent: React.FC<IImportableAssetsListProps> = ({
                           ? 'cursor-not-allowed'
                           : 'hover:bg-brand-royalblue/20'
                       }`}
-                      aria-label={`Import ${asset.symbol} token`}
+                      aria-label={t('tokens.importNamedToken', {
+                        symbol: asset.symbol,
+                      })}
                       disabled={isImported || isImporting}
                     >
                       <ImportIcon

@@ -186,6 +186,8 @@
     "importWallet": "导入钱包"
   },
   "import": {
+    "showSeedPhrase": "显示恢复短语",
+    "hideSeedPhrase": "隐藏恢复短语",
     "importModalWordMissing": "缺少单词！",
     "importModalSeed": "助记词必须是12、15、18、21或24个单词，您输入了{{seedLength}}个。",
     "importAttention": "注意：",
@@ -454,6 +456,19 @@
     "receipts": "收据"
   },
   "settings": {
+    "smartAccountMetadataLoadFailed": "无法验证此账户的当前设置。请检查网络连接后重试。",
+    "smartAccountMetadataRetry": "重试",
+    "invalidWatchOnlyIdentifier": "请使用公开地址、扩展公钥或仅包含公开信息的描述符。切勿输入私钥。",
+    "searchTrustedSites": "搜索受信任的网站",
+    "trustedSiteMatch": "在信任列表中",
+    "unlistedSite": "不在信任列表中",
+    "noTrustedSitesFound": "没有与搜索条件匹配的受信任网站。",
+    "selectSmartAccountBeforePolicyChange": "请先选择此智能账户，再更改其批准或恢复策略。",
+    "currentLanguage": "当前语言",
+    "previewLanguage": "预览：{{language}}",
+    "preferencesSaveFailed": "无法保存您的更改。请重试。",
+    "searchCurrencies": "搜索货币…",
+    "noCurrenciesFound": "没有与搜索条件匹配的货币。",
     "walletSetupFailed": "无法确认钱包设置是否完成。请保管好恢复助记词并检查钱包状态。",
     "recoveryTitle": "恢复钱包",
     "recoveryIntro": "使用您的秘密恢复短语仅恢复由助记词派生的第一个账户（HD），并设置新密码。请重新添加由同一恢复短语派生的其他账户。",
@@ -711,6 +726,8 @@
     "welcomeTo": "欢迎来到"
   },
   "tokens": {
+    "viewTokenDetails": "查看 {{symbol}} 代币详情",
+    "importNamedToken": "导入 {{symbol}} 代币",
     "tokenNotAdded": "代币未添加。",
     "tokenAlreadyImported": "此代币已导入",
     "deleteToken": "删除{{symbol}}",

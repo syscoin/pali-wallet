@@ -1,3 +1,5 @@
+jest.unmock('syscoinjs-lib');
+
 jest.mock('..', () => ({
   getController: jest.fn(),
   notificationManager: { cleanup: jest.fn() },
@@ -41,7 +43,7 @@ const flows: [string, any[], string][] = [
   ['importAccountFromPrivateKey', ['synthetic-test-key'], 'importAccount'],
   [
     'importWatchOnlyFromController',
-    ['public-watch-address'],
+    ['1BoatSLRHtKNngkdXEeobR76b53LETtpyT'],
     'importWatchOnly',
   ],
   ['importTrezorAccountFromController', ['Trezor'], 'importTrezorAccount'],

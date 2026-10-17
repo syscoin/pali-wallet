@@ -266,7 +266,7 @@ describe('custom token validation cancellation', () => {
     expect(setSearchParams.mock.calls[0][0].get('tab')).toBe('owned');
   });
 
-  it('restores token ID zero and carries it through a nested details preview', () => {
+  it('restores token ID zero and carries it through a freshly verified details preview', async () => {
     const returnContext = { returnRoute: '/home?tab=assets' };
     const customTokenDetails = {
       contractAddress: TOKEN,
@@ -296,7 +296,17 @@ describe('custom token validation cancellation', () => {
       find(tree, (element) => element.props.id === 'custom-token-id')?.props
         .value
     ).toBe('0');
-    const assetList = find(tree, (element) => element.type === 'asset-list');
+    // Restored identifiers are preserved, but an old ownership/balance result
+    // must not make a new token ID immediately importable.
+    expect(
+      find(tree, (element) => element.type === 'asset-list')
+    ).toBeUndefined();
+    resolve([{ tokenId: '0', verified: true, balance: 1, rawBalance: '1' }]);
+    await jest.advanceTimersByTimeAsync(0);
+    const assetList = find(
+      render(),
+      (element) => element.type === 'asset-list'
+    );
     assetList!.props.onDetailsClick({ id: 'nft-preview' });
     expect(navigateWithContext).toHaveBeenCalledWith(
       expect.any(Function),
