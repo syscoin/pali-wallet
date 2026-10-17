@@ -34,6 +34,43 @@ const revealWithWheel = async (page: Page, locator: Locator) => {
   await page.mouse.wheel(0, 900);
   await expect.poll(() => hitTarget(locator)).toBe(true);
 };
+const assertReadableError = async (locator: Locator) => {
+  const contrast = await locator.evaluate((element) => {
+    const rgb = (value: string) =>
+      value
+        .match(/[\d.]+/g)!
+        .slice(0, 3)
+        .map(Number);
+    const luminance = (channels: number[]) =>
+      channels.reduce((total, value, index) => {
+        const channel = value / 255;
+        return (
+          total +
+          (channel <= 0.04045
+            ? channel / 12.92
+            : ((channel + 0.055) / 1.055) ** 2.4) *
+            [0.2126, 0.7152, 0.0722][index]
+        );
+      }, 0);
+    let ancestor: Element | null = element;
+    let background = 'rgb(255, 255, 255)';
+    while (ancestor) {
+      const candidate = getComputedStyle(ancestor).backgroundColor;
+      if (candidate !== 'rgba(0, 0, 0, 0)' && candidate !== 'transparent') {
+        background = candidate;
+        break;
+      }
+      ancestor = ancestor.parentElement;
+    }
+    const foreground = luminance(rgb(getComputedStyle(element).color));
+    const behind = luminance(rgb(background));
+    return (
+      (Math.max(foreground, behind) + 0.05) /
+      (Math.min(foreground, behind) + 0.05)
+    );
+  });
+  expect(contrast).toBeGreaterThanOrEqual(4.5);
+};
 
 test('offline onboarding and preferences remain keyboard accessible with localized failures', async ({}, info) => {
   test.setTimeout(120_000);
@@ -208,6 +245,7 @@ test('offline onboarding and preferences remain keyboard accessible with localiz
     await expect(page.getByRole('alert')).toContainText(
       de.settings.preferencesSaveFailed
     );
+    await assertReadableError(page.getByRole('alert'));
     await capture(page, 'currency-failure-german-400x480');
 
     await wallet.gotoRoute('#/settings/advanced');
@@ -232,6 +270,7 @@ test('offline onboarding and preferences remain keyboard accessible with localiz
     await expect(page.getByRole('alert')).toContainText(
       de.settings.preferencesSaveFailed
     );
+    await assertReadableError(page.getByRole('alert'));
     await capture(page, 'advanced-failure-german-400x480');
     await wallet.gotoRoute('#/settings/networks/trusted-sites');
     const trustedSearch = page.getByRole('textbox', {

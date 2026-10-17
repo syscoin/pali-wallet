@@ -275,7 +275,7 @@ const Languages = () => {
         </div>
 
         {saveError && (
-          <p role="alert" className="text-sm text-warning-error">
+          <p role="alert" className="text-sm text-[#ff8f8f]">
             {t('settings.preferencesSaveFailed')}
           </p>
         )}

@@ -400,7 +400,7 @@ const CurrencyView = () => {
       </div>
 
       {saveError && (
-        <p role="alert" className="mt-4 text-sm text-warning-error">
+        <p role="alert" className="mt-4 text-sm text-[#ff8f8f]">
           {t('settings.preferencesSaveFailed')}
         </p>
       )}
