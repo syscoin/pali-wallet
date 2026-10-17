@@ -1,13 +1,21 @@
+import {
+  CheckCircleIcon,
+  DesktopComputerIcon,
+  ExclamationIcon,
+} from '@heroicons/react/outline';
 import React, { ReactNode, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 
 import {
   DialogPrimitive,
-  SheetHeader,
+  DialogActions,
+  DialogActionButton,
+  DialogHeader,
+  DialogBody,
+  DialogFooter,
   SheetPanel,
 } from 'components/Dialog/Dialog';
-import { Button } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { useOnboardingSecrets } from 'hooks/useOnboardingSecrets';
@@ -51,20 +59,27 @@ export const WalletReadyModal = ({
   return (
     <ModalBase onClose={onClose} show={show}>
       <SheetPanel fullWidth={false}>
-        <SheetHeader title={title} />
-        <p className="text-white text-left text-sm font-normal w-[94%] px-6 pt-6 pb-7">
-          {phraseOne}
-        </p>
-        <Button
-          id="unlock-btn"
-          type="submit"
-          className="bg-white w-[22rem] h-10 text-brand-blue200 text-base mb-12 font-base font-medium rounded-2xl"
-          onClick={() => {
-            if (onClose) onClose(false);
-          }}
-        >
-          {t('buttons.unlock')}
-        </Button>
+        <DialogHeader
+          title={title}
+          icon={<CheckCircleIcon />}
+          onClose={onClose}
+        />
+        <DialogBody>
+          <p>{phraseOne}</p>
+        </DialogBody>
+        <DialogFooter className="w-full">
+          <DialogActions>
+            <DialogActionButton
+              id="unlock-btn"
+              type="button"
+              onClick={() => {
+                if (onClose) onClose(false);
+              }}
+            >
+              {t('buttons.unlock')}
+            </DialogActionButton>
+          </DialogActions>
+        </DialogFooter>
       </SheetPanel>
     </ModalBase>
   );
@@ -140,32 +155,37 @@ export const ImportWalletWarning = ({
   return (
     <ModalBase onClose={close} show={show}>
       <SheetPanel fullWidth={false}>
-        <SheetHeader title={title} />
-        <div className="flex flex-col pt-6 pb-7 px-6 text-white text-left text-sm font-normal w-[94%] gap-5">
+        <DialogHeader
+          title={title}
+          icon={<ExclamationIcon />}
+          onClose={close}
+        />
+        <DialogBody className="w-full space-y-4">
           <p>{phraseOne}</p>
           <p>{phraseTwo}</p>
           <p>{phraseThree}</p>
-        </div>
-        <div className="flex gap-[21.10px]">
-          <Button
-            id="cancel-import-btn"
-            type="button"
-            className="bg-transparent w-[10.313rem] h-10 text-white text-base mb-12 font-base font-medium rounded-2xl border border-white"
-            onClick={close}
-          >
-            {t('buttons.cancel')}
-          </Button>
-          <Button
-            id="confirm-import-btn"
-            type="button"
-            className="bg-white w-[10.313rem] h-10 text-brand-blue200 text-base mb-12 font-base font-medium rounded-2xl"
-            disabled={isBeginning}
-            loading={isBeginning}
-            onClick={begin}
-          >
-            {t('buttons.recoverWallet')}
-          </Button>
-        </div>
+        </DialogBody>
+        <DialogFooter className="w-full">
+          <DialogActions>
+            <DialogActionButton
+              id="cancel-import-btn"
+              type="button"
+              tone="secondary"
+              onClick={close}
+            >
+              {t('buttons.cancel')}
+            </DialogActionButton>
+            <DialogActionButton
+              id="confirm-import-btn"
+              type="button"
+              disabled={isBeginning}
+              loading={isBeginning}
+              onClick={begin}
+            >
+              {t('buttons.recoverWallet')}
+            </DialogActionButton>
+          </DialogActions>
+        </DialogFooter>
       </SheetPanel>
     </ModalBase>
   );
@@ -184,24 +204,29 @@ export const CreatedAccountSuccessfully = ({
   return (
     <ModalBase onClose={onClose} show={show}>
       <SheetPanel>
-        <SheetHeader title={title} />
-        <div className="flex flex-col pt-6  px-6 text-white text-left text-sm font-normal w-[94%]">
+        <DialogHeader
+          title={title}
+          icon={<CheckCircleIcon />}
+          onClose={onClose}
+        />
+        <DialogBody className="w-full space-y-4">
           <p>{phraseOne}</p>
-        </div>
-        <div className="flex flex-col  pb-7 px-6 text-white text-left text-sm font-normal w-[94%]">
           <p>{phraseTwo}</p>
-        </div>
-        <Button
-          id="account-created-ok-btn"
-          type="button"
-          className="bg-white w-[22rem] h-10 text-brand-blue200 text-base mb-12 font-base font-medium rounded-2xl"
-          onClick={() => {
-            if (onClose) onClose();
-            else navigate('/home');
-          }}
-        >
-          {t('buttons.ok')}
-        </Button>
+        </DialogBody>
+        <DialogFooter className="w-full">
+          <DialogActions>
+            <DialogActionButton
+              id="account-created-ok-btn"
+              type="button"
+              onClick={() => {
+                if (onClose) onClose();
+                else navigate('/home');
+              }}
+            >
+              {t('buttons.ok')}
+            </DialogActionButton>
+          </DialogActions>
+        </DialogFooter>
       </SheetPanel>
     </ModalBase>
   );
@@ -218,15 +243,22 @@ export const ImportedWalletSuccessfully = ({
   return (
     <ModalBase onClose={onClose} show={show}>
       <SheetPanel>
-        <SheetHeader title={title} />
-        <Button
-          id="wallet-imported-ok-btn"
-          type="button"
-          className="bg-white w-[22rem] h-10 text-brand-blue200 text-base mb-12 font-base font-medium rounded-2xl"
-          onClick={() => navigate('/home')}
-        >
-          {t('buttons.ok')}
-        </Button>
+        <DialogHeader
+          title={title}
+          icon={<CheckCircleIcon />}
+          onClose={onClose}
+        />
+        <DialogFooter className="w-full">
+          <DialogActions>
+            <DialogActionButton
+              id="wallet-imported-ok-btn"
+              type="button"
+              onClick={() => navigate('/home')}
+            >
+              {t('buttons.ok')}
+            </DialogActionButton>
+          </DialogActions>
+        </DialogFooter>
       </SheetPanel>
     </ModalBase>
   );
@@ -256,31 +288,36 @@ export const ConnectHardwareWallet = ({
   return (
     <ModalBase onClose={onClose} show={show}>
       <SheetPanel>
-        <SheetHeader title={title} />
-        <div className="flex flex-col pt-6 pb-7 px-6 text-white text-left text-sm font-normal w-[94%]">
+        <DialogHeader
+          title={title}
+          icon={<DesktopComputerIcon />}
+          onClose={onClose}
+        />
+        <DialogBody className="w-full">
           <p>{phraseOne}</p>
-        </div>
+        </DialogBody>
 
-        <div className="flex gap-[21.10px]">
-          <Button
-            id="hardware-cancel-btn"
-            type="button"
-            className="bg-transparent w-[10.313rem] h-10 text-white text-base mb-12 font-base font-medium rounded-2xl border border-white"
-            onClick={() => {
-              if (onClose) onClose(true);
-            }}
-          >
-            {t('buttons.cancel')}
-          </Button>
-          <Button
-            id="hardware-connect-btn"
-            type="button"
-            className="bg-white w-[10.313rem] h-10 text-brand-blue200 text-base mb-12 font-base font-medium rounded-2xl"
-            onClick={handleConnectHardwareWallet}
-          >
-            {t('buttons.connect')}
-          </Button>
-        </div>
+        <DialogFooter className="w-full">
+          <DialogActions>
+            <DialogActionButton
+              id="hardware-cancel-btn"
+              type="button"
+              tone="secondary"
+              onClick={() => {
+                if (onClose) onClose(true);
+              }}
+            >
+              {t('buttons.cancel')}
+            </DialogActionButton>
+            <DialogActionButton
+              id="hardware-connect-btn"
+              type="button"
+              onClick={handleConnectHardwareWallet}
+            >
+              {t('buttons.connect')}
+            </DialogActionButton>
+          </DialogActions>
+        </DialogFooter>
       </SheetPanel>
     </ModalBase>
   );

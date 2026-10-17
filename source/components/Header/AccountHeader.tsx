@@ -1,5 +1,12 @@
 import { toSvg } from 'jdenticon';
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, {
+  useEffect,
+  useState,
+  useCallback,
+  useMemo,
+  useRef,
+  useSyncExternalStore,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
@@ -17,6 +24,21 @@ import {
   createBrowsingNavigationContext,
   navigateWithContext,
 } from 'utils/navigationState';
+
+// A dialog/route may disappear while the device RPC is still pending. Keep
+// this latch at renderer-module scope so a new AccountHeader cannot start a
+// second device prompt; UI cancellation only invalidates the result below.
+let hardwareVerificationRequest: object | undefined;
+const hardwareVerificationListeners = new Set<() => void>();
+const subscribeHardwareVerification = (listener: () => void) => {
+  hardwareVerificationListeners.add(listener);
+  return () => hardwareVerificationListeners.delete(listener);
+};
+const isHardwareVerificationPending = () =>
+  Boolean(hardwareVerificationRequest);
+const notifyHardwareVerification = () => {
+  hardwareVerificationListeners.forEach((listener) => listener());
+};
 
 export const AccountHeader: React.FC = () => {
   const currentAccount = useSelector(selectActiveAccount);
@@ -40,8 +62,62 @@ export const AccountHeader: React.FC = () => {
   const { t } = useTranslation();
   const { controllerEmitter } = useController();
   const [copied, copy] = useCopyClipboard();
-  const [isLoading, setIsLoading] = useState(false);
+  const isLoading = useSyncExternalStore(
+    subscribeHardwareVerification,
+    isHardwareVerificationPending
+  );
   const [isOpenModal, setIsOpenModal] = useState(false);
+  const verificationScope = JSON.stringify([
+    activeAccount?.id,
+    activeAccount?.type,
+    currentAccount?.address,
+    currentAccount?.xpub,
+    isBitcoinBased,
+    activeNetwork.kind,
+    activeNetwork.chainId,
+    activeNetwork.url,
+    activeNetwork.currency,
+    activeNetwork.slip44,
+    networkStatus,
+    isSwitchingAccount,
+    location.pathname,
+    location.search,
+    location.hash,
+    location.key,
+  ]);
+  const verification = useRef({
+    generation: 0,
+    scope: verificationScope,
+    mounted: true,
+  });
+  // Invalidate synchronously on render, before an old device response can
+  // settle between a selection change and its passive effect.
+  if (verification.current.scope !== verificationScope) {
+    verification.current.scope = verificationScope;
+    verification.current.generation += 1;
+  }
+  const closeVerification = useCallback(() => {
+    verification.current.generation += 1;
+    setIsOpenModal(false);
+  }, []);
+  useEffect(() => {
+    closeVerification();
+  }, [verificationScope, closeVerification]);
+  useEffect(() => {
+    verification.current.mounted = true;
+    // A native hash change can precede React Router's next render. Closing
+    // only discards this UI request; it does not cancel device activity.
+    window.addEventListener('hashchange', closeVerification);
+    window.addEventListener('popstate', closeVerification);
+    window.addEventListener('pagehide', closeVerification);
+    return () => {
+      verification.current.mounted = false;
+      verification.current.generation += 1;
+      window.removeEventListener('hashchange', closeVerification);
+      window.removeEventListener('popstate', closeVerification);
+      window.removeEventListener('pagehide', closeVerification);
+    };
+  }, [closeVerification]);
 
   const isLedger = useMemo(
     () => activeAccount?.type === KeyringAccountType.Ledger,
@@ -116,9 +192,18 @@ export const AccountHeader: React.FC = () => {
   ]);
 
   const handleVerifyAddress = useCallback(async () => {
+    if (!isOpenModal || hardwareVerificationRequest) return;
+    const request = {};
+    hardwareVerificationRequest = request;
+    notifyHardwareVerification();
+    const generation = ++verification.current.generation;
+    const nativeUrl = window.location.href;
+    const isCurrent = () =>
+      verification.current.mounted &&
+      verification.current.generation === generation &&
+      verification.current.scope === verificationScope &&
+      window.location.href === nativeUrl;
     try {
-      setIsLoading(true);
-
       // Route through ethereumTransaction.verifyUtxoAddress, which dispatches to the correct HW
       await (controllerEmitter as any)(
         ['wallet', 'ethereumTransaction', 'verifyUtxoAddress'],
@@ -126,10 +211,11 @@ export const AccountHeader: React.FC = () => {
         300000 // 5 minutes timeout for hardware wallet operations
       );
 
-      setIsLoading(false);
+      if (!isCurrent()) return;
       setIsOpenModal(false);
       alert.success(t('home.addressVerified'));
     } catch (error: any) {
+      if (!isCurrent()) return;
       // Handle user cancellation - show specific message
       if (isUserCancellationError(error)) {
         alert.error(t('home.verificationDeniedByUser'));
@@ -139,7 +225,13 @@ export const AccountHeader: React.FC = () => {
       }
 
       setIsOpenModal(false);
-      setIsLoading(false);
+    } finally {
+      // Only settlement of this exact RPC releases the device, even if its
+      // dialog was closed, the account changed, or the component unmounted.
+      if (hardwareVerificationRequest === request) {
+        hardwareVerificationRequest = undefined;
+        notifyHardwareVerification();
+      }
     }
   }, [
     activeAccount?.id,
@@ -147,11 +239,13 @@ export const AccountHeader: React.FC = () => {
     activeNetwork.slip44,
     alert,
     t,
-    isLedger,
+    isOpenModal,
+    verificationScope,
   ]);
 
   const handleHardwareAddressClick = useCallback(() => {
     if ((isLedger || isTrezor) && isBitcoinBased) {
+      verification.current.generation += 1;
       setIsOpenModal(true);
     }
   }, [isLedger, isTrezor, isBitcoinBased]);
@@ -187,9 +281,10 @@ export const AccountHeader: React.FC = () => {
         })}
         buttonText={t('buttons.verify')}
         onClick={handleVerifyAddress}
-        onClose={() => setIsOpenModal(false)}
+        onClose={closeVerification}
         show={isOpenModal}
         isButtonLoading={isLoading}
+        allowCloseWhileLoading
       />
       <div className="flex ml-[15px] items-center w-full text-brand-white">
         <Tooltip content={t('home.viewOnExplorer')}>

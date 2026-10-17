@@ -1,9 +1,19 @@
+import { Dialog } from '@headlessui/react';
+import { SparklesIcon } from '@heroicons/react/outline';
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
-import closeIcon from 'assets/all_assets/close.svg';
 import { ChainIcon } from 'components/ChainIcon';
+import {
+  CenterPanel,
+  DialogActionButton,
+  DialogActions,
+  DialogBody,
+  DialogFooter,
+  DialogHeader,
+  DialogPrimitive,
+} from 'components/Dialog/Dialog';
 import { useUtils } from 'hooks/useUtils';
 import { RootState } from 'state/store';
 import { faucetNetworkData } from 'utils/constants';
@@ -23,20 +33,17 @@ export const FaucetFirstAccessModal = ({
   const currentNetworkData = faucetNetworkData?.[chainId];
 
   return (
-    <div className="fixed z-[100] inset-0 flex items-center justify-center">
-      <div
-        className="absolute inset-0 bg-black bg-opacity-50"
-        onClick={onClose}
-      />
-      <div className="relative z-[101] w-[364px] p-6 bg-brand-blue600 rounded-[20px] shadow-lg">
-        <button
-          onClick={onClose}
-          className="absolute top-4 right-4 hover:opacity-60 z-[102]"
-        >
-          <img src={closeIcon} alt="Close" className="w-5 h-5" />
-        </button>
-
-        <div className="flex flex-col items-center gap-4">
+    <DialogPrimitive show onClose={onClose}>
+      <CenterPanel padded={false} scroll={false} className="flex flex-col">
+        <DialogHeader
+          title={t('faucet.firstAccessTitle', {
+            token: currentNetworkData?.token,
+            network: currentNetworkData?.network,
+          })}
+          icon={<SparklesIcon />}
+          onClose={onClose}
+        />
+        <DialogBody className="flex flex-col items-center gap-4">
           <ChainIcon
             chainId={chainId}
             size={80}
@@ -44,30 +51,27 @@ export const FaucetFirstAccessModal = ({
             networkKind={kind}
           />
 
-          <h2 className="text-lg font-medium text-white">
-            {t('faucet.firstAccessTitle', {
-              token: currentNetworkData?.token,
-              network: currentNetworkData?.network,
-            })}
-          </h2>
-
-          <p className="text-sm text-center text-white/80">
+          <Dialog.Description className="text-sm text-center text-content-secondary">
             {t('faucet.firstAccessDescription', {
               token: currentNetworkData?.token,
             })}
-          </p>
-
-          <button
-            onClick={() => {
-              navigate('/faucet');
-              onClose();
-            }}
-            className="w-full py-3 mt-2 text-brand-blue600 bg-white rounded-full hover:opacity-90 transition-opacity"
-          >
-            {t('faucet.grabTokens')}
-          </button>
-        </div>
-      </div>
-    </div>
+          </Dialog.Description>
+        </DialogBody>
+        <DialogFooter>
+          <DialogActions>
+            <DialogActionButton
+              tone="primary"
+              type="button"
+              onClick={() => {
+                navigate('/faucet');
+                onClose();
+              }}
+            >
+              {t('faucet.grabTokens')}
+            </DialogActionButton>
+          </DialogActions>
+        </DialogFooter>
+      </CenterPanel>
+    </DialogPrimitive>
   );
 };

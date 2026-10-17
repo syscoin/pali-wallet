@@ -1432,8 +1432,21 @@ class SmartAccountController {
    */
   public async addSmartAccountCustomModule(params: {
     accountId: number;
+    expectedContext?: IEvmTransactionContext;
     record: SmartAccountCustomModuleRecord;
   }): Promise<ISmartAccountMetadata> {
+    if (params.expectedContext) {
+      try {
+        this.assertExpectedExecutionContext(
+          params.expectedContext,
+          params.accountId
+        );
+      } catch {
+        // This guards local metadata after the install was acknowledged. It
+        // must not turn an accepted transaction into a not-broadcast result.
+        throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+      }
+    }
     const active = this.getSmartAccountById(params.accountId);
     const address = getAddress(params.record.address);
     const existing = active.metadata.customModules || [];
@@ -1461,7 +1474,20 @@ class SmartAccountController {
   public async removeSmartAccountCustomModule(params: {
     accountId: number;
     address: string;
+    expectedContext?: IEvmTransactionContext;
   }): Promise<ISmartAccountMetadata> {
+    if (params.expectedContext) {
+      try {
+        this.assertExpectedExecutionContext(
+          params.expectedContext,
+          params.accountId
+        );
+      } catch {
+        // The on-chain removal has already been acknowledged; only this
+        // local metadata write is rejected when its account/session changed.
+        throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+      }
+    }
     const active = this.getSmartAccountById(params.accountId);
     const metadata: ISmartAccountMetadata = {
       ...active.metadata,

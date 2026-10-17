@@ -1,14 +1,26 @@
+import { CubeIcon } from '@heroicons/react/outline';
 import { Form, Input } from 'antd';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
+import { useLocation } from 'react-router-dom';
 
 import {
   AddressText,
   Button,
   CenterPanel,
-  CenterTitle,
   ConfirmationModal,
+  DialogActionButton,
+  DialogActions,
+  DialogBody,
+  DialogFooter,
+  DialogHeader,
   DialogPrimitive,
   Icon,
 } from 'components/index';
@@ -22,6 +34,8 @@ import {
 } from 'types/network';
 import { isHexString } from 'utils/ethersV6Compat';
 import { getAddress, isAddress } from 'utils/ethersV6Compat';
+import { IEvmTransactionContext } from 'utils/evmTransactionContext';
+import { getWalletNavigationScope } from 'utils/navigationState';
 import {
   encodeCompositeValidatorInitData,
   encodeInstallValidatorModuleCall,
@@ -37,6 +51,7 @@ import {
 import type { CustomValidatorPreflightResult } from 'utils/smartAccount';
 import { getSmartAccountActionErrorMessage } from 'utils/smartAccountErrors';
 
+import CompositeApprovalDialog from './CompositeApprovalDialog';
 import SmartAccountEntry from './SmartAccountEntry';
 
 // ---------------------------------------------------------------------------
@@ -90,6 +105,14 @@ const INITIAL_CUSTOM_INSTALL: CustomInstallState = {
   step: 'form',
 };
 
+type HubScope = {
+  generation: number;
+  key: string;
+  nativeLocation: string;
+  navigationScope: string;
+};
+type ApprovalScope = HubScope & { expectedContext: IEvmTransactionContext };
+
 const buildCustomValidatorInstallExecutions = ({
   accountAddress,
   activeValidatorAddress,
@@ -124,12 +147,93 @@ const buildCustomValidatorInstallExecutions = ({
 const SmartAccountHub = () => {
   const { t } = useTranslation();
   const { alert, navigate } = useUtils();
-  const { controllerEmitter } = useController();
+  const location = useLocation();
+  const { controllerEmitter, isUnlocked, isLoading, connectionUnavailable } =
+    useController();
   const account = useSelector(selectActiveAccount);
   const accounts = useSelector((state: RootState) => state.vault.accounts);
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
+  const activeAccountMeta = useSelector(
+    (state: RootState) => state.vault.activeAccount
+  );
+  const activeSlip44 = useSelector(
+    (state: RootState) => state.vaultGlobal?.activeSlip44
+  );
+  const navigationScope = JSON.stringify(getWalletNavigationScope());
+  const scopeKey = JSON.stringify([
+    navigationScope,
+    activeAccountMeta.type,
+    activeAccountMeta.id,
+    account?.address,
+    activeNetwork.chainId,
+    activeNetwork.url,
+    activeSlip44,
+    location.pathname,
+    location.search,
+    location.hash,
+    location.key,
+    isUnlocked,
+    isLoading,
+    connectionUnavailable,
+  ]);
+  const lifetime = useRef({
+    generation: 0,
+    key: scopeKey,
+    nativeLocation: window.location.href,
+  });
+  if (lifetime.current.key !== scopeKey)
+    lifetime.current = {
+      key: scopeKey,
+      generation: lifetime.current.generation + 1,
+      nativeLocation: window.location.href,
+    };
+  const mounted = useRef(true);
+  const trusted = useRef(false);
+  trusted.current = Boolean(isUnlocked && !isLoading && !connectionUnavailable);
+  const compositeScope = useRef<ApprovalScope>();
+  const compositeOpenGeneration = useRef(0);
+  const compositeSaveJob = useRef<object>();
+  const customScope = useRef<ApprovalScope>();
+  const customOpenGeneration = useRef(0);
+  const customJob = useRef<object>();
+  const uninstallScope = useRef<ApprovalScope>();
+  const uninstallOpenGeneration = useRef(0);
+  const uninstallJob = useRef<object>();
+  const captureScope = useCallback(
+    (): HubScope => ({
+      ...lifetime.current,
+      navigationScope: JSON.stringify(getWalletNavigationScope()),
+    }),
+    []
+  );
+  const isCurrentScope = useCallback(
+    (scope: HubScope) =>
+      mounted.current &&
+      trusted.current &&
+      scope.generation === lifetime.current.generation &&
+      scope.key === lifetime.current.key &&
+      scope.nativeLocation === window.location.href &&
+      scope.navigationScope === JSON.stringify(getWalletNavigationScope()),
+    []
+  );
+  const assertCurrentScope = useCallback(
+    (scope: HubScope) => {
+      if (!isCurrentScope(scope))
+        throw Object.assign(new Error('PALI_TRANSACTION_CONTEXT_CHANGED'), {
+          transactionNotBroadcast: true,
+        });
+    },
+    [isCurrentScope]
+  );
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      lifetime.current.generation += 1;
+    };
+  }, []);
 
   const [metadata, setMetadata] = useState<ISmartAccountMetadata | null>(
     account?.smartAccount || null
@@ -149,22 +253,57 @@ const SmartAccountHub = () => {
   const smartAccountAddress = account?.address;
 
   const refreshMetadata = useCallback(async () => {
-    if (!account?.isSmartAccount) return null;
+    // An old action can invoke its captured refresh callback after selection
+    // changes; do not capture the new scope for that callback's old account.
+    if (!account?.isSmartAccount || lifetime.current.key !== scopeKey)
+      return null;
+    const scope = captureScope();
     const hydrated = (await controllerEmitter(
       ['wallet', 'hydrateSmartAccount'],
       [account.id],
       300000
     )) as ISmartAccountMetadata;
+    if (!isCurrentScope(scope)) return null;
     setMetadata(hydrated);
     return hydrated;
-  }, [account?.id, account?.isSmartAccount, controllerEmitter]);
+  }, [
+    account?.id,
+    account?.isSmartAccount,
+    controllerEmitter,
+    captureScope,
+    isCurrentScope,
+    scopeKey,
+  ]);
 
   useEffect(() => {
+    compositeOpenGeneration.current += 1;
+    compositeScope.current = undefined;
+    compositeSaveJob.current = undefined;
+    customOpenGeneration.current += 1;
+    customScope.current = undefined;
+    customJob.current = undefined;
+    uninstallOpenGeneration.current += 1;
+    uninstallScope.current = undefined;
+    uninstallJob.current = undefined;
+    setCompositeBuilder(null);
+    setCustomInstall(null);
+    setConfirmUninstall(null);
+    setBusyKey((key) =>
+      key.startsWith('composite:') ||
+      key.startsWith('custom:') ||
+      key.startsWith('uninstall:')
+        ? ''
+        : key
+    );
     setMetadata(account?.smartAccount || null);
-    if (account?.isSmartAccount && account?.smartAccount?.isDeployed) {
+    if (
+      trusted.current &&
+      account?.isSmartAccount &&
+      account?.smartAccount?.isDeployed
+    ) {
       refreshMetadata().catch(() => undefined);
     }
-  }, [account?.address, account?.id]);
+  }, [scopeKey]);
 
   const installedModules = metadata?.installedModules || [];
   const installedValidators = installedModules.filter(
@@ -206,56 +345,286 @@ const SmartAccountHub = () => {
     [accounts, controllerEmitter]
   );
 
+  const readApprovalScope = useCallback(
+    async (scope: HubScope): Promise<ApprovalScope> => {
+      assertCurrentScope(scope);
+      if (!account?.address || lifetime.current.key !== scopeKey)
+        throw new Error('PALI_TRANSACTION_CONTEXT_CHANGED');
+      const sessionGeneration = await controllerEmitter(
+        ['wallet', 'getWalletSessionGeneration'],
+        []
+      );
+      assertCurrentScope(scope);
+      if (
+        typeof sessionGeneration !== 'number' ||
+        !Number.isSafeInteger(sessionGeneration) ||
+        sessionGeneration < 0
+      )
+        throw new Error('Invalid wallet session');
+      return {
+        ...scope,
+        expectedContext: {
+          account: {
+            address: account.address,
+            id: activeAccountMeta.id,
+            type: activeAccountMeta.type,
+          },
+          chainId: activeNetwork.chainId,
+          rpcUrl: activeNetwork.url,
+          slip44: activeSlip44,
+          sessionGeneration,
+        },
+      };
+    },
+    [
+      account?.address,
+      activeAccountMeta,
+      activeNetwork.chainId,
+      activeNetwork.url,
+      activeSlip44,
+      assertCurrentScope,
+      controllerEmitter,
+      scopeKey,
+    ]
+  );
+
+  const assertApprovalSession = useCallback(
+    async (scope: ApprovalScope) => {
+      assertCurrentScope(scope);
+      const generation = await controllerEmitter(
+        ['wallet', 'getWalletSessionGeneration'],
+        []
+      );
+      assertCurrentScope(scope);
+      if (generation !== scope.expectedContext.sessionGeneration)
+        throw Object.assign(new Error('PALI_TRANSACTION_CONTEXT_CHANGED'), {
+          transactionNotBroadcast: true,
+        });
+    },
+    [assertCurrentScope, controllerEmitter]
+  );
+
   const submitExecutions = useCallback(
     async (
-      executions: Array<{ data: string; target: string; value: string }>
+      executions: Array<{ data: string; target: string; value: string }>,
+      scope?: ApprovalScope
     ) => {
       if (!account?.isSmartAccount || !metadata) return;
-      await signAndSubmitSmartAccountExecutions({
+      if (scope) assertCurrentScope(scope);
+      const response = await signAndSubmitSmartAccountExecutions({
         accountAddress: account.address,
         accountId: account.id,
         authenticatorContexts: getLocalOwnerContexts(),
         controllerEmitter,
         executions,
+        ...(scope
+          ? {
+              expectedContext: scope.expectedContext,
+              onPrepared: () => assertCurrentScope(scope),
+              onBeforeSubmit: async () => assertCurrentScope(scope),
+            }
+          : {}),
         skipRapidPolling: true,
         smartAccount: metadata,
         useCachedMetadata: true,
         waitForConfirmation: true,
       });
-      await refreshMetadata();
+      // The transaction acknowledgement remains authoritative after a switch.
+      // A late read or UI update must not apply to the newly selected account.
+      if (!scope) await refreshMetadata();
+      else if (isCurrentScope(scope))
+        await refreshMetadata().catch(() => undefined);
+      return response;
     },
     [
       account?.id,
       account?.isSmartAccount,
       controllerEmitter,
       getLocalOwnerContexts,
+      assertCurrentScope,
+      isCurrentScope,
       metadata,
       refreshMetadata,
     ]
   );
 
+  const closeUninstall = useCallback(() => {
+    if (uninstallJob.current) return;
+    uninstallOpenGeneration.current++;
+    uninstallScope.current = undefined;
+    setConfirmUninstall(null);
+  }, []);
+
+  const openUninstall = useCallback(
+    async (module: SmartAccountValidatorModule) => {
+      if (busyKey || lifetime.current.key !== scopeKey) return;
+      const scope = captureScope();
+      if (!isCurrentScope(scope)) return;
+      const opening = ++uninstallOpenGeneration.current;
+      try {
+        const approval = await readApprovalScope(scope);
+        if (
+          !isCurrentScope(scope) ||
+          opening !== uninstallOpenGeneration.current
+        )
+          return;
+        uninstallScope.current = approval;
+        setConfirmUninstall(module);
+      } catch (error) {
+        if (
+          isCurrentScope(scope) &&
+          opening === uninstallOpenGeneration.current
+        )
+          alert.error(
+            getSmartAccountActionErrorMessage(
+              error,
+              t('send.cantCompleteTxs'),
+              t('send.insufficientFundsForGas'),
+              t('settings.slhDsaLocalSignerMissing')
+            )
+          );
+      }
+    },
+    [
+      alert,
+      busyKey,
+      captureScope,
+      isCurrentScope,
+      readApprovalScope,
+      scopeKey,
+      t,
+    ]
+  );
+
   const handleUninstall = useCallback(
     async (module: SmartAccountValidatorModule) => {
-      if (!account?.address) return;
+      const scope = uninstallScope.current;
+      if (
+        !account?.address ||
+        !scope ||
+        uninstallJob.current ||
+        !isCurrentScope(scope) ||
+        module !== confirmUninstall
+      )
+        return;
+      const job = {};
+      uninstallJob.current = job;
       setBusyKey(`uninstall:${module.address}`);
+      let acknowledged = false;
+      const finishAcknowledged = (warning = false) => {
+        if (uninstallScope.current !== scope) return;
+        if (isCurrentScope(scope)) {
+          alert.success(t('smartAccountHub.moduleUninstalled'));
+          if (warning)
+            alert.error(t('smartAccountHub.moduleMetadataRemoveFailed'));
+        }
+        uninstallScope.current = undefined;
+        setConfirmUninstall(null);
+      };
       try {
-        await submitExecutions([
-          {
-            data: encodeUninstallValidatorModuleCall(module.address),
-            target: account.address,
-            value: '0x0',
-          },
-        ]);
+        await assertApprovalSession(scope);
+        await submitExecutions(
+          [
+            {
+              data: encodeUninstallValidatorModuleCall(module.address),
+              target: account.address,
+              value: '0x0',
+            },
+          ],
+          scope
+        );
+        acknowledged = true;
+        if (!isCurrentScope(scope) || uninstallScope.current !== scope) {
+          finishAcknowledged();
+          return;
+        }
         if (module.id === 'custom') {
+          const generation = await controllerEmitter(
+            ['wallet', 'getWalletSessionGeneration'],
+            []
+          );
+          if (
+            !isCurrentScope(scope) ||
+            uninstallScope.current !== scope ||
+            generation !== scope.expectedContext.sessionGeneration
+          ) {
+            finishAcknowledged(true);
+            return;
+          }
           await controllerEmitter(
             ['wallet', 'removeSmartAccountCustomModule'],
-            [{ accountId: account.id, address: module.address }],
+            [
+              {
+                accountId: account.id,
+                address: module.address,
+                expectedContext: scope.expectedContext,
+              },
+            ],
             30000
           );
+          if (!isCurrentScope(scope) || uninstallScope.current !== scope)
+            return;
           await refreshMetadata();
         }
-        alert.success(t('smartAccountHub.moduleUninstalled'));
+        finishAcknowledged();
       } catch (error) {
+        if (acknowledged) finishAcknowledged(true);
+        else if (isCurrentScope(scope) && uninstallScope.current === scope)
+          alert.error(
+            getSmartAccountActionErrorMessage(
+              error,
+              t('send.cantCompleteTxs'),
+              t('send.insufficientFundsForGas'),
+              t('settings.slhDsaLocalSignerMissing')
+            )
+          );
+      } finally {
+        if (uninstallJob.current === job) {
+          uninstallJob.current = undefined;
+          setBusyKey('');
+        }
+      }
+    },
+    [
+      account?.address,
+      account?.id,
+      alert,
+      assertApprovalSession,
+      confirmUninstall,
+      controllerEmitter,
+      isCurrentScope,
+      refreshMetadata,
+      submitExecutions,
+      t,
+    ]
+  );
+
+  const closeCustomInstall = useCallback(() => {
+    if (customJob.current) return;
+    customOpenGeneration.current += 1;
+    customScope.current = undefined;
+    setCustomInstall(null);
+  }, []);
+
+  const openCustomInstall = useCallback(async () => {
+    if (
+      busyKey ||
+      !account?.address ||
+      !metadata?.isDeployed ||
+      lifetime.current.key !== scopeKey
+    )
+      return;
+    const scope = captureScope();
+    if (!isCurrentScope(scope)) return;
+    const opening = ++customOpenGeneration.current;
+    try {
+      const approval = await readApprovalScope(scope);
+      if (!isCurrentScope(scope) || opening !== customOpenGeneration.current)
+        return;
+      customScope.current = approval;
+      setCustomInstall({ ...INITIAL_CUSTOM_INSTALL });
+    } catch (error) {
+      if (isCurrentScope(scope) && opening === customOpenGeneration.current)
         alert.error(
           getSmartAccountActionErrorMessage(
             error,
@@ -264,24 +633,30 @@ const SmartAccountHub = () => {
             t('settings.slhDsaLocalSignerMissing')
           )
         );
-      } finally {
-        setBusyKey('');
-        setConfirmUninstall(null);
-      }
-    },
-    [
-      account?.address,
-      account?.id,
-      alert,
-      controllerEmitter,
-      refreshMetadata,
-      submitExecutions,
-      t,
-    ]
-  );
+    }
+  }, [
+    account?.address,
+    alert,
+    busyKey,
+    captureScope,
+    isCurrentScope,
+    metadata?.isDeployed,
+    readApprovalScope,
+    scopeKey,
+    t,
+  ]);
 
   const runCustomPreflight = useCallback(async () => {
-    if (!customInstall || !account?.id) return;
+    const scope = customScope.current;
+    if (
+      !customInstall ||
+      !Number.isSafeInteger(account?.id) ||
+      !scope ||
+      customJob.current ||
+      !isCurrentScope(scope)
+    )
+      return;
+    const draft = customInstall;
     const address = customInstall.address.trim();
     if (!isAddress(address)) {
       alert.error(t('smartAccountHub.invalidModuleAddress'));
@@ -291,16 +666,26 @@ const SmartAccountHub = () => {
       alert.error(t('smartAccountHub.invalidInitData'));
       return;
     }
+    const job = {};
+    customJob.current = job;
     setBusyKey('custom:preflight');
     try {
+      await assertApprovalSession(scope);
       const preflight = (await controllerEmitter(
         ['wallet', 'preflightSmartAccountCustomValidator'],
         [{ accountId: account.id, address }],
         60000
       )) as CustomValidatorPreflightResult;
+      await assertApprovalSession(scope);
+      if (customJob.current !== job) return;
       setCustomInstall((state) =>
-        state
-          ? { ...state, preflight, step: preflight.ok ? 'review' : 'form' }
+        state === draft
+          ? {
+              ...state,
+              acknowledged: false,
+              preflight,
+              step: preflight.ok ? 'review' : 'form',
+            }
           : state
       );
       if (!preflight.ok) {
@@ -314,31 +699,66 @@ const SmartAccountHub = () => {
         );
       }
     } catch (error) {
-      alert.error(
-        getSmartAccountActionErrorMessage(
-          error,
-          t('send.cantCompleteTxs'),
-          t('send.insufficientFundsForGas'),
-          t('settings.slhDsaLocalSignerMissing')
-        )
-      );
+      if (isCurrentScope(scope) && customScope.current === scope)
+        alert.error(
+          getSmartAccountActionErrorMessage(
+            error,
+            t('send.cantCompleteTxs'),
+            t('send.insufficientFundsForGas'),
+            t('settings.slhDsaLocalSignerMissing')
+          )
+        );
     } finally {
-      setBusyKey('');
+      if (customJob.current === job) {
+        customJob.current = undefined;
+        setBusyKey('');
+      }
     }
-  }, [account?.id, alert, controllerEmitter, customInstall, t]);
+  }, [
+    account?.id,
+    alert,
+    assertApprovalSession,
+    controllerEmitter,
+    customInstall,
+    isCurrentScope,
+    t,
+  ]);
 
   const handleCustomInstall = useCallback(async () => {
-    if (!customInstall || !account?.address || !customInstall.acknowledged) {
+    const scope = customScope.current;
+    if (
+      !customInstall ||
+      !account?.address ||
+      !customInstall.acknowledged ||
+      !customInstall.preflight?.ok ||
+      customInstall.step !== 'review' ||
+      !scope ||
+      customJob.current ||
+      !isCurrentScope(scope)
+    ) {
       return;
     }
     if (!activeValidator?.data) {
       alert.error(t('smartAccountHub.noActiveValidator'));
       return;
     }
-    const address = getAddress(customInstall.address.trim());
-    const initData = customInstall.initData || '0x';
+    const job = {};
+    customJob.current = job;
     setBusyKey('custom:install');
+    let acknowledged = false;
+    const finishAcknowledged = (warning = false) => {
+      if (customScope.current !== scope) return;
+      if (isCurrentScope(scope)) {
+        alert.success(t('smartAccountHub.moduleInstalled'));
+        if (warning) alert.error(t('smartAccountHub.moduleMetadataSaveFailed'));
+      }
+      customScope.current = undefined;
+      setCustomInstall(null);
+    };
     try {
+      await assertApprovalSession(scope);
+      const address = getAddress(customInstall.address.trim());
+      const initData = customInstall.initData || '0x';
       await submitExecutions(
         buildCustomValidatorInstallExecutions({
           accountAddress: account.address,
@@ -346,13 +766,34 @@ const SmartAccountHub = () => {
           activeValidatorData: activeValidator.data,
           customInitData: initData,
           customValidatorAddress: address,
-        })
+        }),
+        scope
       );
+      acknowledged = true;
+      // A published result remains acknowledged, but must not write a custom
+      // record into a different account/session or close its new dialog.
+      if (!isCurrentScope(scope) || customScope.current !== scope) {
+        finishAcknowledged();
+        return;
+      }
+      const generation = await controllerEmitter(
+        ['wallet', 'getWalletSessionGeneration'],
+        []
+      );
+      if (
+        !isCurrentScope(scope) ||
+        customScope.current !== scope ||
+        generation !== scope.expectedContext.sessionGeneration
+      ) {
+        finishAcknowledged(true);
+        return;
+      }
       await controllerEmitter(
         ['wallet', 'addSmartAccountCustomModule'],
         [
           {
             accountId: account.id,
+            expectedContext: scope.expectedContext,
             record: {
               address,
               compositeCompatible:
@@ -366,28 +807,37 @@ const SmartAccountHub = () => {
         ],
         30000
       );
+      if (!isCurrentScope(scope) || customScope.current !== scope) return;
       await refreshMetadata();
-      alert.success(t('smartAccountHub.moduleInstalled'));
-      setCustomInstall(null);
+      if (!isCurrentScope(scope) || customScope.current !== scope) return;
+      finishAcknowledged();
     } catch (error) {
-      alert.error(
-        getSmartAccountActionErrorMessage(
-          error,
-          t('send.cantCompleteTxs'),
-          t('send.insufficientFundsForGas'),
-          t('settings.slhDsaLocalSignerMissing')
-        )
-      );
+      if (acknowledged) finishAcknowledged(true);
+      else if (isCurrentScope(scope) && customScope.current === scope) {
+        alert.error(
+          getSmartAccountActionErrorMessage(
+            error,
+            t('send.cantCompleteTxs'),
+            t('send.insufficientFundsForGas'),
+            t('settings.slhDsaLocalSignerMissing')
+          )
+        );
+      }
     } finally {
-      setBusyKey('');
+      if (customJob.current === job) {
+        customJob.current = undefined;
+        setBusyKey('');
+      }
     }
   }, [
     account?.address,
     account?.id,
     alert,
     activeValidator,
+    assertApprovalSession,
     controllerEmitter,
     customInstall,
+    isCurrentScope,
     refreshMetadata,
     submitExecutions,
     t,
@@ -400,16 +850,96 @@ const SmartAccountHub = () => {
     (module) => module.id === 'composite'
   );
 
+  const closeCompositeBuilder = useCallback(() => {
+    if (compositeSaveJob.current) return;
+    compositeOpenGeneration.current += 1;
+    compositeScope.current = undefined;
+    setCompositeBuilder(null);
+  }, []);
+
+  const openCompositeBuilder = useCallback(async () => {
+    if (busyKey || !account?.address || !metadata?.isDeployed) return;
+    const scope = captureScope();
+    if (!isCurrentScope(scope)) return;
+    const opening = ++compositeOpenGeneration.current;
+    try {
+      const approval = await readApprovalScope(scope);
+      if (!isCurrentScope(scope) || opening !== compositeOpenGeneration.current)
+        return;
+      compositeScope.current = approval;
+      setCompositeBuilder({
+        children:
+          installedComposite?.id === 'composite'
+            ? [...installedComposite.config.childValidators]
+            : [],
+        threshold:
+          installedComposite?.id === 'composite'
+            ? installedComposite.config.threshold
+            : 1,
+      });
+    } catch (error) {
+      if (isCurrentScope(scope) && opening === compositeOpenGeneration.current)
+        alert.error(
+          getSmartAccountActionErrorMessage(
+            error,
+            t('send.cantCompleteTxs'),
+            t('send.insufficientFundsForGas'),
+            t('settings.slhDsaLocalSignerMissing')
+          )
+        );
+    }
+  }, [
+    account?.address,
+    alert,
+    busyKey,
+    captureScope,
+    installedComposite,
+    isCurrentScope,
+    metadata?.isDeployed,
+    readApprovalScope,
+    t,
+  ]);
+
   const handleCompositeSave = useCallback(async () => {
-    if (!compositeBuilder || !account?.address || !metadata) return;
+    const scope = compositeScope.current;
+    if (
+      !compositeBuilder ||
+      !account?.address ||
+      !metadata ||
+      !scope ||
+      compositeSaveJob.current ||
+      !isCurrentScope(scope)
+    )
+      return;
     const { children, threshold } = compositeBuilder;
-    if (children.length === 0 || threshold < 1 || threshold > children.length) {
+    let normalizedChildren: string[];
+    try {
+      normalizedChildren = children.map(getAddress);
+    } catch {
+      alert.error(t('smartAccountHub.compositeInvalid'));
+      return;
+    }
+    if (
+      normalizedChildren.length === 0 ||
+      !Number.isSafeInteger(threshold) ||
+      threshold < 1 ||
+      threshold > normalizedChildren.length ||
+      new Set(normalizedChildren).size !== normalizedChildren.length ||
+      normalizedChildren.some(
+        (child) =>
+          child === '0x0000000000000000000000000000000000000000' ||
+          !compositeCandidates.some(
+            (candidate) =>
+              candidate.address.toLowerCase() === child.toLowerCase()
+          )
+      )
+    ) {
       alert.error(t('smartAccountHub.compositeInvalid'));
       return;
     }
     // Lockout guard: the composite must keep at least one Pali-signable
     // child below threshold reach (i.e. signable children >= threshold).
-    const signableChildren = children.filter((child) => {
+    const signableChildren = normalizedChildren.filter((child) => {
       const childModule = installedValidators.find(
         (module) => module.address.toLowerCase() === child.toLowerCase()
       );
@@ -424,7 +954,6 @@ const SmartAccountHub = () => {
       return;
     }
 
-    const initData = encodeCompositeValidatorInitData(children, threshold);
     const compositeAddress = marketplaceModules.find(
       (module) => module.id === 'composite'
     );
@@ -432,69 +961,105 @@ const SmartAccountHub = () => {
       alert.error(t('smartAccountHub.compositeUnavailable'));
       return;
     }
+    const job = {};
+    compositeSaveJob.current = job;
     setBusyKey('composite:save');
     try {
+      assertCurrentScope(scope);
+      const sessionGeneration = await controllerEmitter(
+        ['wallet', 'getWalletSessionGeneration'],
+        []
+      );
+      assertCurrentScope(scope);
+      if (
+        typeof sessionGeneration !== 'number' ||
+        sessionGeneration !== scope.expectedContext.sessionGeneration
+      )
+        throw Object.assign(new Error('PALI_TRANSACTION_CONTEXT_CHANGED'), {
+          transactionNotBroadcast: true,
+        });
+      const initData = encodeCompositeValidatorInitData(
+        normalizedChildren,
+        threshold
+      );
       const moduleAddress = installedComposite?.address;
       if (moduleAddress) {
         const isActive = moduleAddress.toLowerCase() === activeValidatorAddress;
-        await submitExecutions([
-          {
-            data: isActive
-              ? encodeRotateValidatorModuleCall(moduleAddress, initData)
-              : encodeUninstallValidatorModuleCall(moduleAddress),
-            target: account.address,
-            value: '0x0',
-          },
-          ...(!isActive
-            ? [
-                {
-                  data: encodeInstallValidatorModuleCall(
-                    moduleAddress,
-                    initData
-                  ),
-                  target: account.address,
-                  value: '0x0',
-                },
-              ]
-            : []),
-        ]);
+        await submitExecutions(
+          [
+            {
+              data: isActive
+                ? encodeRotateValidatorModuleCall(moduleAddress, initData)
+                : encodeUninstallValidatorModuleCall(moduleAddress),
+              target: account.address,
+              value: '0x0',
+            },
+            ...(!isActive
+              ? [
+                  {
+                    data: encodeInstallValidatorModuleCall(
+                      moduleAddress,
+                      initData
+                    ),
+                    target: account.address,
+                    value: '0x0',
+                  },
+                ]
+              : []),
+          ],
+          scope
+        );
       } else {
         // Fresh install: resolve the builtin composite module address.
-        await submitExecutions([
-          {
-            data: encodeInstallValidatorModuleCall(
-              getPaliModuleAddress(activeNetwork.chainId, 'composite'),
-              initData
-            ),
-            target: account.address,
-            value: '0x0',
-          },
-        ]);
+        await submitExecutions(
+          [
+            {
+              data: encodeInstallValidatorModuleCall(
+                getPaliModuleAddress(activeNetwork.chainId, 'composite'),
+                initData
+              ),
+              target: account.address,
+              value: '0x0',
+            },
+          ],
+          scope
+        );
       }
-      alert.success(t('smartAccountHub.compositeSaved'));
-      setCompositeBuilder(null);
+      if (isCurrentScope(scope)) {
+        alert.success(t('smartAccountHub.compositeSaved'));
+        compositeScope.current = undefined;
+        setCompositeBuilder(null);
+      }
     } catch (error) {
-      alert.error(
-        getSmartAccountActionErrorMessage(
-          error,
-          t('send.cantCompleteTxs'),
-          t('send.insufficientFundsForGas'),
-          t('settings.slhDsaLocalSignerMissing')
-        )
-      );
+      if (isCurrentScope(scope))
+        alert.error(
+          getSmartAccountActionErrorMessage(
+            error,
+            t('send.cantCompleteTxs'),
+            t('send.insufficientFundsForGas'),
+            t('settings.slhDsaLocalSignerMissing')
+          )
+        );
     } finally {
-      setBusyKey('');
+      if (compositeSaveJob.current === job) {
+        compositeSaveJob.current = undefined;
+        setBusyKey('');
+      }
     }
   }, [
     account?.address,
     activeNetwork.chainId,
     activeValidatorAddress,
     alert,
+    assertCurrentScope,
     compositeBuilder,
+    compositeCandidates,
+    controllerEmitter,
     installedComposite?.address,
     installedValidators,
     marketplaceModules,
     metadata,
+    isCurrentScope,
     submitExecutions,
     t,
   ]);
@@ -625,9 +1190,7 @@ const SmartAccountHub = () => {
                       }
                       loading={busyKey === `uninstall:${module.address}`}
                       onClick={() =>
-                        setConfirmUninstall(
-                          module as SmartAccountValidatorModule
-                        )
+                        openUninstall(module as SmartAccountValidatorModule)
                       }
                     >
                       {t('smartAccountHub.uninstall')}
@@ -696,20 +1259,12 @@ const SmartAccountHub = () => {
             <button
               type="button"
               className="flex-shrink-0 whitespace-nowrap ml-3 text-xs text-brand-royalbluemedium hover:underline disabled:text-brand-gray300"
-              disabled={compositeCandidates.length < 2 || !metadata?.isDeployed}
-              onClick={() =>
-                setCompositeBuilder({
-                  children: installedComposite
-                    ? installedComposite.id === 'composite'
-                      ? installedComposite.config.childValidators
-                      : []
-                    : [],
-                  threshold:
-                    installedComposite?.id === 'composite'
-                      ? installedComposite.config.threshold
-                      : 1,
-                })
+              disabled={
+                compositeCandidates.length < 2 ||
+                !metadata?.isDeployed ||
+                Boolean(busyKey)
               }
+              onClick={openCompositeBuilder}
             >
               {installedComposite
                 ? t('smartAccountHub.edit')
@@ -730,8 +1285,8 @@ const SmartAccountHub = () => {
             <button
               type="button"
               className="flex-shrink-0 whitespace-nowrap ml-3 text-xs text-brand-royalbluemedium hover:underline disabled:text-brand-gray300"
-              disabled={!metadata?.isDeployed}
-              onClick={() => setCustomInstall({ ...INITIAL_CUSTOM_INSTALL })}
+              disabled={!metadata?.isDeployed || Boolean(busyKey)}
+              onClick={openCustomInstall}
             >
               {t('smartAccountHub.install')}
             </button>
@@ -768,227 +1323,182 @@ const SmartAccountHub = () => {
         description={t('smartAccountHub.uninstallDescription')}
         buttonText={t('smartAccountHub.uninstall')}
         onClick={() => confirmUninstall && handleUninstall(confirmUninstall)}
-        onClose={() => setConfirmUninstall(null)}
+        onClose={closeUninstall}
         isButtonLoading={busyKey.startsWith('uninstall:')}
       />
 
       {/* BYO validator dialog */}
       {customInstall && (
-        <DialogPrimitive
-          show
-          onClose={() => busyKey === '' && setCustomInstall(null)}
-        >
-          <CenterPanel>
-            <CenterTitle>{t('smartAccountHub.customModule')}</CenterTitle>
-            {customInstall.step === 'form' ? (
-              <Form layout="vertical" className="mt-4 text-left">
-                <Form.Item label={t('smartAccountHub.moduleName')}>
-                  <Input
-                    value={customInstall.name}
-                    onChange={(event) =>
-                      setCustomInstall((state) =>
-                        state ? { ...state, name: event.target.value } : state
-                      )
-                    }
-                    placeholder="My validator"
-                  />
-                </Form.Item>
-                <Form.Item label={t('smartAccountHub.moduleAddress')}>
-                  <Input
-                    value={customInstall.address}
-                    onChange={(event) =>
+        <DialogPrimitive show onClose={closeCustomInstall}>
+          <CenterPanel padded={false} scroll={false} className="flex flex-col">
+            <DialogHeader
+              title={t('smartAccountHub.customModule')}
+              icon={<CubeIcon className="h-6 w-6" aria-hidden="true" />}
+              onClose={closeCustomInstall}
+              disabled={Boolean(busyKey)}
+            />
+            <DialogBody>
+              {customInstall.step === 'form' ? (
+                <Form layout="vertical" className="text-left">
+                  <Form.Item
+                    label={t('smartAccountHub.moduleName')}
+                    htmlFor="custom-validator-name"
+                  >
+                    <Input
+                      id="custom-validator-name"
+                      disabled={Boolean(busyKey)}
+                      value={customInstall.name}
+                      onChange={(event) =>
+                        !customJob.current &&
+                        setCustomInstall((state) =>
+                          state ? { ...state, name: event.target.value } : state
+                        )
+                      }
+                      placeholder="My validator"
+                    />
+                  </Form.Item>
+                  <Form.Item
+                    label={t('smartAccountHub.moduleAddress')}
+                    htmlFor="custom-validator-address"
+                  >
+                    <Input
+                      id="custom-validator-address"
+                      disabled={Boolean(busyKey)}
+                      value={customInstall.address}
+                      onChange={(event) =>
+                        !customJob.current &&
+                        setCustomInstall((state) =>
+                          state
+                            ? {
+                                ...state,
+                                address: event.target.value.trim(),
+                                preflight: null,
+                                acknowledged: false,
+                              }
+                            : state
+                        )
+                      }
+                      placeholder="0x..."
+                    />
+                  </Form.Item>
+                  <Form.Item
+                    label={t('smartAccountHub.moduleInitData')}
+                    htmlFor="custom-validator-init-data"
+                  >
+                    <Input
+                      id="custom-validator-init-data"
+                      disabled={Boolean(busyKey)}
+                      value={customInstall.initData}
+                      onChange={(event) =>
+                        !customJob.current &&
+                        setCustomInstall((state) =>
+                          state
+                            ? {
+                                ...state,
+                                initData: event.target.value.trim(),
+                                preflight: null,
+                                acknowledged: false,
+                              }
+                            : state
+                        )
+                      }
+                      placeholder="0x"
+                    />
+                  </Form.Item>
+                </Form>
+              ) : (
+                <div className="text-left flex flex-col gap-3">
+                  <p className="text-xs text-brand-gray200">
+                    {t('smartAccountHub.preflightPassed')}
+                  </p>
+                  <div className="rounded-card bg-warning-error bg-opacity-10 border border-warning-error p-3 text-xs text-left">
+                    {t('smartAccountHub.customRisk')}
+                  </div>
+                  <label className="flex items-start gap-2 text-xs cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="custom-checkbox mt-0.5"
+                      checked={customInstall.acknowledged}
+                      disabled={Boolean(busyKey)}
+                      onChange={(event) =>
+                        !customJob.current &&
+                        setCustomInstall((state) =>
+                          state
+                            ? { ...state, acknowledged: event.target.checked }
+                            : state
+                        )
+                      }
+                    />
+                    <span>{t('smartAccountHub.customRiskAck')}</span>
+                  </label>
+                </div>
+              )}
+            </DialogBody>
+            <DialogFooter>
+              <DialogActions>
+                <DialogActionButton
+                  type="button"
+                  tone="secondary"
+                  disabled={Boolean(busyKey)}
+                  onClick={() => {
+                    if (customJob.current) return;
+                    if (customInstall.step === 'form') closeCustomInstall();
+                    else
                       setCustomInstall((state) =>
                         state
-                          ? { ...state, address: event.target.value.trim() }
+                          ? {
+                              ...state,
+                              step: 'form',
+                              preflight: null,
+                              acknowledged: false,
+                            }
                           : state
-                      )
-                    }
-                    placeholder="0x..."
-                  />
-                </Form.Item>
-                <Form.Item label={t('smartAccountHub.moduleInitData')}>
-                  <Input
-                    value={customInstall.initData}
-                    onChange={(event) =>
-                      setCustomInstall((state) =>
-                        state
-                          ? { ...state, initData: event.target.value.trim() }
-                          : state
-                      )
-                    }
-                    placeholder="0x"
-                  />
-                </Form.Item>
-                <div className="flex justify-end gap-2 mt-4">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setCustomInstall(null)}
-                  >
-                    {t('buttons.cancel')}
-                  </Button>
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    loading={busyKey === 'custom:preflight'}
-                    onClick={runCustomPreflight}
-                  >
-                    {t('smartAccountHub.checkModule')}
-                  </Button>
-                </div>
-              </Form>
-            ) : (
-              <div className="mt-4 text-left flex flex-col gap-3">
-                <p className="text-xs text-brand-gray200">
-                  {t('smartAccountHub.preflightPassed')}
-                </p>
-                <div className="rounded-card bg-warning-error bg-opacity-10 border border-warning-error p-3 text-xs text-left">
-                  {t('smartAccountHub.customRisk')}
-                </div>
-                <label className="flex items-start gap-2 text-xs cursor-pointer">
-                  <input
-                    type="checkbox"
-                    className="custom-checkbox mt-0.5"
-                    checked={customInstall.acknowledged}
-                    onChange={(event) =>
-                      setCustomInstall((state) =>
-                        state
-                          ? { ...state, acknowledged: event.target.checked }
-                          : state
-                      )
-                    }
-                  />
-                  <span>{t('smartAccountHub.customRiskAck')}</span>
-                </label>
-                <div className="flex justify-end gap-2">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() =>
-                      setCustomInstall((state) =>
-                        state ? { ...state, step: 'form' } : state
-                      )
-                    }
-                  >
-                    {t('buttons.cancel')}
-                  </Button>
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    disabled={!customInstall.acknowledged}
-                    loading={busyKey === 'custom:install'}
-                    onClick={handleCustomInstall}
-                  >
-                    {t('smartAccountHub.install')}
-                  </Button>
-                </div>
-              </div>
-            )}
+                      );
+                  }}
+                >
+                  {t('buttons.cancel')}
+                </DialogActionButton>
+                <DialogActionButton
+                  type="button"
+                  disabled={
+                    Boolean(busyKey) ||
+                    (customInstall.step === 'review' &&
+                      !customInstall.acknowledged)
+                  }
+                  loading={busyKey.startsWith('custom:')}
+                  onClick={
+                    customInstall.step === 'form'
+                      ? runCustomPreflight
+                      : handleCustomInstall
+                  }
+                >
+                  {customInstall.step === 'form'
+                    ? t('smartAccountHub.checkModule')
+                    : t('smartAccountHub.install')}
+                </DialogActionButton>
+              </DialogActions>
+            </DialogFooter>
           </CenterPanel>
         </DialogPrimitive>
       )}
 
       {/* Composite builder dialog */}
       {compositeBuilder && (
-        <DialogPrimitive
-          show
-          onClose={() => busyKey === '' && setCompositeBuilder(null)}
-        >
-          <CenterPanel>
-            <CenterTitle>{t('settings.compositeAuthenticator')}</CenterTitle>
-            <div className="mt-4 text-left flex flex-col gap-3">
-              <p className="text-xs text-brand-gray200">
-                {t('smartAccountHub.compositeBuilderHint')}
-              </p>
-              <ul className="flex flex-col gap-2">
-                {compositeCandidates.map((candidate) => {
-                  const checked = compositeBuilder.children.some(
-                    (child) =>
-                      child.toLowerCase() === candidate.address.toLowerCase()
-                  );
-                  return (
-                    <li key={candidate.address}>
-                      <label className="flex items-center gap-2 text-sm cursor-pointer">
-                        <input
-                          type="checkbox"
-                          className="custom-checkbox"
-                          checked={checked}
-                          onChange={() =>
-                            setCompositeBuilder((state) => {
-                              if (!state) return state;
-                              const children = checked
-                                ? state.children.filter(
-                                    (child) =>
-                                      child.toLowerCase() !==
-                                      candidate.address.toLowerCase()
-                                  )
-                                : [...state.children, candidate.address];
-                              return {
-                                ...state,
-                                children,
-                                threshold: Math.min(
-                                  state.threshold,
-                                  Math.max(children.length, 1)
-                                ),
-                              };
-                            })
-                          }
-                        />
-                        <span>{moduleDisplayName(candidate, t)}</span>
-                        <AddressText
-                          value={candidate.address}
-                          preset="short"
-                          copyable={false}
-                          className="text-xs text-brand-gray200"
-                        />
-                      </label>
-                    </li>
-                  );
-                })}
-              </ul>
-              <label className="flex items-center gap-2 text-xs">
-                {t('smartAccountHub.threshold')}
-                <input
-                  type="number"
-                  min={1}
-                  max={Math.max(compositeBuilder.children.length, 1)}
-                  value={compositeBuilder.threshold}
-                  className="w-16 bg-bkg-1 border border-brand-whiteAlpaBlue rounded-field px-2 py-1 text-brand-white"
-                  onChange={(event) =>
-                    setCompositeBuilder((state) =>
-                      state
-                        ? {
-                            ...state,
-                            threshold: Math.max(
-                              1,
-                              Number(event.target.value) || 1
-                            ),
-                          }
-                        : state
-                    )
-                  }
-                />
-              </label>
-              <div className="flex justify-end gap-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setCompositeBuilder(null)}
-                >
-                  {t('buttons.cancel')}
-                </Button>
-                <Button
-                  variant="primary"
-                  size="sm"
-                  loading={busyKey === 'composite:save'}
-                  onClick={handleCompositeSave}
-                >
-                  {t('buttons.save')}
-                </Button>
-              </div>
-            </div>
-          </CenterPanel>
-        </DialogPrimitive>
+        <CompositeApprovalDialog
+          candidates={compositeCandidates}
+          value={compositeBuilder}
+          saving={busyKey === 'composite:save'}
+          onChange={(value) => {
+            if (
+              !compositeSaveJob.current &&
+              compositeScope.current &&
+              isCurrentScope(compositeScope.current)
+            )
+              setCompositeBuilder(value);
+          }}
+          onClose={closeCompositeBuilder}
+          onSave={handleCompositeSave}
+        />
       )}
     </div>
   );

@@ -1,4 +1,5 @@
 import { Dialog } from '@headlessui/react';
+import { ShieldExclamationIcon } from '@heroicons/react/outline';
 import { toSvg } from 'jdenticon';
 import React, {
   useCallback,
@@ -11,8 +12,17 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { LazyAccountBalance } from 'components/AccountBalance';
+import {
+  CenterPanel,
+  DialogActionButton,
+  DialogActions,
+  DialogBody,
+  DialogFooter,
+  DialogHeader,
+  DialogPrimitive,
+} from 'components/Dialog/Dialog';
 import { LoadingSvg } from 'components/Icon/Icon';
-import { Button, Icon, IconButton, Modal, Tooltip } from 'components/index';
+import { Button, Icon, IconButton, Tooltip } from 'components/index';
 import { ListLoadMore } from 'components/Loading/ListLoadMore';
 import { TokenIcon } from 'components/TokenIcon';
 import trustedApps from 'constants/trustedApps.json';
@@ -162,6 +172,7 @@ export const ConnectWallet = () => {
   const [confirmUntrusted, setConfirmUntrusted] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isConnecting, setIsConnecting] = useState(false);
+  const warningCancelRef = useRef<HTMLButtonElement>(null);
   const [search, setSearch] = useState('');
   const accountsRef = useRef(accounts);
   const activeAccountRef = useRef(activeAccountData);
@@ -634,46 +645,55 @@ export const ConnectWallet = () => {
         </div>
       </div>
 
-      <Modal show={confirmUntrusted} onClose={() => setConfirmUntrusted(false)}>
-        <div className="inline-block align-middle my-8 p-6 w-full max-w-2xl text-center font-poppins bg-bkg-4 border border-brand-royalblue rounded-2xl shadow-xl overflow-hidden transform transition-all">
-          <Dialog.Title
-            as="h3"
-            className="flex gap-3 items-center justify-center text-brand-white text-lg font-medium leading-6"
-          >
-            <Icon name="warning" className="mb-2 text-brand-white" />
-            <p>{t('connections.nonTrusted')}</p>
-          </Dialog.Title>
+      <DialogPrimitive
+        show={confirmUntrusted}
+        initialFocus={warningCancelRef}
+        onClose={() => !isConnecting && setConfirmUntrusted(false)}
+      >
+        <CenterPanel
+          padded={false}
+          scroll={false}
+          className="flex flex-col"
+          aria-busy={isConnecting}
+        >
+          <DialogHeader
+            title={t('connections.nonTrusted')}
+            icon={<ShieldExclamationIcon />}
+            disabled={isConnecting}
+            onClose={() => !isConnecting && setConfirmUntrusted(false)}
+          />
 
-          <div className="mt-4">
-            <p className="text-brand-white text-sm">
+          <DialogBody>
+            <Dialog.Description className="text-content-secondary text-sm">
               {t('connections.nonTrustedMessage')}
-            </p>
-          </div>
+            </Dialog.Description>
+          </DialogBody>
 
-          <div className="flex gap-5 items-center justify-between mt-8">
-            <Button
-              variant="secondary"
-              width="36"
-              type="button"
-              onClick={() => setConfirmUntrusted(false)}
-              disabled={isConnecting}
-            >
-              {t('buttons.cancel')}
-            </Button>
+          <DialogFooter>
+            <DialogActions>
+              <DialogActionButton
+                ref={warningCancelRef}
+                tone="secondary"
+                type="button"
+                onClick={() => setConfirmUntrusted(false)}
+                disabled={isConnecting}
+              >
+                {t('buttons.cancel')}
+              </DialogActionButton>
 
-            <Button
-              variant="primary"
-              width="36"
-              type="button"
-              onClick={handleConnect}
-              loading={isConnecting}
-              disabled={isConnecting}
-            >
-              {t('buttons.confirm')}
-            </Button>
-          </div>
-        </div>
-      </Modal>
+              <DialogActionButton
+                tone="primary"
+                type="button"
+                onClick={handleConnect}
+                loading={isConnecting}
+                disabled={isConnecting}
+              >
+                {t('buttons.confirm')}
+              </DialogActionButton>
+            </DialogActions>
+          </DialogFooter>
+        </CenterPanel>
+      </DialogPrimitive>
     </div>
   );
 };

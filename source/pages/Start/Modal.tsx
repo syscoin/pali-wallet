@@ -1,8 +1,17 @@
+import { ExclamationIcon } from '@heroicons/react/outline';
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 
-import { Button, Modal } from 'components/index';
+import {
+  CenterPanel,
+  DialogPrimitive,
+  DialogHeader,
+  DialogBody,
+  DialogFooter,
+  DialogActions,
+  DialogActionButton,
+} from 'components/Dialog';
 
 interface IValidationModalProps {
   setIsOpen: React.Dispatch<React.SetStateAction<boolean>>;
@@ -15,48 +24,41 @@ export const ValidationModal = (props: IValidationModalProps) => {
   const { t } = useTranslation();
 
   return (
-    <Modal
+    <DialogPrimitive
       show={showModal}
       onClose={() => {
         setIsOpen(false);
       }}
     >
-      <div className="inline-block align-middle p-6 w-full max-w-2xl text-brand-white font-poppins bg-bkg-2 border border-brand-royalblue rounded-2xl shadow-xl overflow-hidden transform transition-all">
-        <div className="flex flex-col items-center justify-center w-full">
-          <p className="flex flex-col items-center justify-center mb-5 text-center font-poppins text-xs">
-            <span className="font-rubik text-base">
-              {t('settings.forgetWarning')}
-            </span>
-            <span className="font-rubik text-xs mb-4">
-              {t('start.paliDoesnt')}
-            </span>
-            <span className="font-rubik text-xs text-brand-royalblue">
-              {t('start.ifYouPlan')}
-            </span>
-          </p>
+      <CenterPanel padded={false} scroll={false} className="flex flex-col">
+        <DialogHeader
+          title={t('settings.forgetWarning')}
+          icon={<ExclamationIcon />}
+          onClose={() => setIsOpen(false)}
+        />
+        <DialogBody className="space-y-4">
+          <p>{t('start.paliDoesnt')}</p>
+          <p>{t('start.ifYouPlan')}</p>
+        </DialogBody>
+        <DialogFooter>
+          <DialogActions>
+            <DialogActionButton
+              tone="secondary"
+              type="button"
+              onClick={() => setIsOpen(false)}
+            >
+              {t('buttons.cancel')}
+            </DialogActionButton>
 
-          <div className="flex flex-col gap-7 items-center justify-center w-full">
-            <div className="flex items-center justify-between w-full md:max-w-2xl">
-              <Button
-                variant="secondary"
-                type="button"
-                onClick={() => setIsOpen(false)}
-              >
-                {t('buttons.cancel')}
-              </Button>
-
-              <Button
-                variant="primary"
-                type="button"
-                width="40"
-                onClick={() => navigate('/import')}
-              >
-                {t('buttons.import')}
-              </Button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </Modal>
+            <DialogActionButton
+              type="button"
+              onClick={() => navigate('/import')}
+            >
+              {t('buttons.import')}
+            </DialogActionButton>
+          </DialogActions>
+        </DialogFooter>
+      </CenterPanel>
+    </DialogPrimitive>
   );
 };

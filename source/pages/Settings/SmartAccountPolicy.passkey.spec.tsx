@@ -114,6 +114,16 @@ describe('SmartAccountPolicy passkey preservation', () => {
     const button = find(card, (element) => element.type === 'button')!;
     await button.props.onClick();
   };
+  const waitForTerminalResult = async () => {
+    const deadline = Date.now() + 5000;
+    while (!alert.error.mock.calls.length && !alert.success.mock.calls.length) {
+      if (Date.now() >= deadline)
+        throw new Error(
+          'Passkey recreation did not report a terminal result within 5 seconds'
+        );
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+  };
   const recreate = async () => {
     await clickUsePasskey();
     const confirmation = find(
@@ -124,8 +134,7 @@ describe('SmartAccountPolicy passkey preservation', () => {
     )!;
     expect(confirmation.props.show).toBe(true);
     confirmation.props.onClick();
-    for (let i = 0; i < 15; i++)
-      await new Promise((resolve) => setImmediate(resolve));
+    await waitForTerminalResult();
   };
 
   beforeEach(async () => {
@@ -259,6 +268,46 @@ describe('SmartAccountPolicy passkey preservation', () => {
   afterEach(() => {
     jest.restoreAllMocks();
     jest.clearAllMocks();
+  });
+
+  it('waits for delayed recreation to report its terminal result', async () => {
+    let finishCredential!: () => void;
+    let credentialStarted!: () => void;
+    const credentialGate = new Promise<void>((resolve) => {
+      finishCredential = resolve;
+    });
+    const started = new Promise<void>((resolve) => {
+      credentialStarted = resolve;
+    });
+    const original = (
+      createPasskeyCredential as jest.Mock
+    ).getMockImplementation()!;
+    (createPasskeyCredential as jest.Mock).mockImplementation(
+      async (params) => {
+        credentialStarted();
+        await credentialGate;
+        return original(params);
+      }
+    );
+    let finished = false;
+    const recreating = recreate().then(() => {
+      finished = true;
+    });
+    await started;
+    try {
+      // Keep the operation deliberately pending beyond the old tick budget.
+      for (let tick = 0; tick < 20; tick++)
+        await new Promise((resolve) => setImmediate(resolve));
+      expect(finished).toBe(false);
+      expect(alert.error).not.toHaveBeenCalled();
+      expect(alert.success).not.toHaveBeenCalled();
+    } finally {
+      finishCredential();
+      await recreating;
+      await waitForTerminalResult();
+    }
+    expect(alert.error).toHaveBeenCalled();
+    expect(getPasskeyAccountRecords(ACCOUNT).active?.credentialId).toBe('b2xk');
   });
 
   it('preserves the old composite child when recreation is followed by a failed rotation', async () => {

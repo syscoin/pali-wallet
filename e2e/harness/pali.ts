@@ -2,6 +2,8 @@ import { type BrowserContext, type Page, expect } from '@playwright/test';
 import fs from 'fs';
 import path from 'path';
 
+import en from '../../source/assets/locales/en.json';
+
 import { E2E_CONFIG } from './config';
 import { type LaunchOptions, launchExtension } from './launch';
 import { verifyExecutingWorker } from './runtimeIdentity';
@@ -204,8 +206,9 @@ export class PaliWallet {
   }
 
   async unlock() {
-    await this.page.locator('#password').fill(E2E_CONFIG.password);
-    await this.page.locator('#unlock-btn').click();
+    const login = this.page.locator('#login');
+    await login.locator('#password').fill(E2E_CONFIG.password);
+    await login.locator('#unlock-btn').click();
     await expect(this.page).toHaveURL(/#\/home/, { timeout: 60_000 });
   }
 
@@ -219,20 +222,40 @@ export class PaliWallet {
     const balance = this.page
       .locator('#home-balance, #home-balance-pending')
       .first();
-    const unlock = this.page.locator('#unlock-btn');
+    const login = this.page.locator('#login');
+    const password = login.locator('#password');
+    const unlock = login.locator('#unlock-btn');
+    const isIdleLockedForm = async () =>
+      new URL(this.page.url()).hash.split('?')[0] === '#/' &&
+      (await login.isVisible()) &&
+      (await password.isVisible()) &&
+      (await unlock.isVisible()) &&
+      (await unlock.isEnabled());
+    let readyToUnlock = false;
     // A rehydrating router can still show #/home before redirecting to Lock.
-    // Wait for an actual normal UI state rather than guessing from that URL.
+    // A completed unlock can also leave its old form visible briefly at Home.
+    // Authenticate only the real idle login form on its root route, never a
+    // stale button or an in-flight submit (other prompts reuse unlock-btn).
     // Pending is valid readiness when the fenced fixture denies the default
     // network; each journey still asserts its own exact balance afterward.
     await expect
       .poll(
-        async () => (await balance.isVisible()) || (await unlock.isVisible()),
+        async () => {
+          readyToUnlock = false;
+          if (
+            new URL(this.page.url()).hash.split('?')[0] === '#/home' &&
+            (await balance.isVisible())
+          )
+            return true;
+          readyToUnlock = await isIdleLockedForm();
+          return readyToUnlock;
+        },
         {
           timeout: 60_000,
         }
       )
       .toBe(true);
-    if (await unlock.isVisible()) {
+    if (readyToUnlock && (await isIdleLockedForm())) {
       await this.unlock();
     }
     await balance.waitFor({ state: 'visible', timeout: 60_000 });
@@ -281,10 +304,7 @@ export class PaliWallet {
   // --- Network --------------------------------------------------------------
 
   async getActiveNetworkLabel(): Promise<string> {
-    const headerButton = this.networkMenuButton();
-    return (await headerButton.innerText())
-      .replace(/\s*(UTXO|EVM)\s*$/, '')
-      .trim();
+    return (await this.networkMenuLabel().innerText()).trim();
   }
 
   async switchNetwork(label: string, group: 'EVM' | 'UTXO' = 'EVM') {
@@ -310,12 +330,131 @@ export class PaliWallet {
       .first()
       .click();
 
-    await expect(this.networkMenuButton()).toContainText(label, {
-      timeout: 120_000,
-    });
-    await this.page
-      .locator('#home-balance')
-      .waitFor({ state: 'visible', timeout: 120_000 });
+    const escapeRegex = (value: string) =>
+      value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const faucetTitle = new RegExp(
+      '^' +
+        escapeRegex(en.faucet.firstAccessTitle)
+          .replace(escapeRegex('{{token}}'), '\\S+')
+          .replace(escapeRegex('{{network}}'), escapeRegex(label)) +
+        '$'
+    );
+    const faucet = this.page.getByRole('dialog', { name: faucetTitle });
+    const balance = this.page.locator('#home-balance');
+    let previouslyReady = false;
+    // The informational prompt can mount after the network selection. Its
+    // accessible dialog correctly hides the header until the user closes it.
+    // Never dismiss an approval/security dialog or activate the faucet here.
+    await expect
+      .poll(
+        async () => {
+          const resetReadiness = () => {
+            previouslyReady = false;
+            return false;
+          };
+          // Observe the existing read-only state response, projecting only
+          // network readiness. A cached balance can precede post-load finish.
+          const status = await this.page.evaluate(
+            () =>
+              new Promise<{
+                network: {
+                  chainId: number;
+                  kind: string;
+                  label: string;
+                  url: string;
+                };
+                networkStatus: string;
+                postLoading: boolean;
+                switchingAccount: boolean;
+              } | null>((resolve) => {
+                let finished = false;
+                const finish = (value: any) => {
+                  if (finished) return;
+                  finished = true;
+                  clearTimeout(timer);
+                  resolve(value);
+                };
+                const timer = setTimeout(() => finish(null), 1000);
+                try {
+                  chrome.runtime.sendMessage(
+                    { type: 'getCurrentState' },
+                    (state) => {
+                      if (
+                        chrome.runtime.lastError ||
+                        !state?.vault?.activeNetwork ||
+                        !state?.vaultGlobal
+                      ) {
+                        finish(null);
+                        return;
+                      }
+                      const network = state.vault.activeNetwork;
+                      finish({
+                        network: {
+                          chainId: network.chainId,
+                          kind: network.kind,
+                          label: network.label,
+                          url: network.url,
+                        },
+                        networkStatus: state.vaultGlobal.networkStatus,
+                        postLoading:
+                          state.vaultGlobal.isPostNetworkSwitchLoading,
+                        switchingAccount: state.vaultGlobal.isSwitchingAccount,
+                      });
+                    }
+                  );
+                } catch {
+                  finish(null);
+                }
+              })
+          );
+          if (
+            !status ||
+            status.network.label !== label ||
+            status.network.kind !==
+              (group === 'EVM' ? 'ethereum' : 'syscoin') ||
+            !Number.isSafeInteger(status.network.chainId) ||
+            !status.network.url ||
+            status.networkStatus !== 'idle' ||
+            status.postLoading !== false ||
+            status.switchingAccount !== false
+          )
+            return resetReadiness();
+          if (
+            (await faucet.isVisible()) &&
+            (await faucet
+              .getByRole('button', {
+                name: en.faucet.grabTokens,
+                exact: true,
+              })
+              .isVisible())
+          ) {
+            await faucet
+              .getByRole('button', { name: en.buttons.close, exact: true })
+              .click();
+            return resetReadiness();
+          }
+          const header = this.networkMenuButton();
+          if (!(await header.isVisible()) || !(await balance.isVisible()))
+            return resetReadiness();
+          // A late prompt may hide it between the visibility read and text
+          // read. Retry within the same bounded readiness check in that case.
+          const text = await this.networkMenuLabel()
+            .innerText({ timeout: 1000 })
+            .catch(() => '');
+          if (
+            text.trim() !== label ||
+            (await faucet.isVisible()) ||
+            !(await header.isVisible()) ||
+            !(await balance.isVisible())
+          )
+            return resetReadiness();
+          const settled = previouslyReady;
+          previouslyReady = true;
+          return settled;
+        },
+        { timeout: 120_000 }
+      )
+      .toBe(true);
   }
 
   private networkMenuButton() {
@@ -325,6 +464,12 @@ export class PaliWallet {
       .getByRole('button')
       .filter({ hasText: /UTXO|EVM/ })
       .first();
+  }
+
+  private networkMenuLabel() {
+    // NetworkMenu's first direct span is the name; the next span is its
+    // UTXO/EVM badge. Custom ChainIcon children may also contain a chain id.
+    return this.networkMenuButton().locator(':scope > span').first();
   }
 
   // --- Accounts -------------------------------------------------------------

@@ -41,6 +41,20 @@ jest.mock('components/Dialog/Dialog', () => ({
     ) : null,
   SheetPanel: ({ children }: any) => <>{children}</>,
   SheetHeader: ({ title }: any) => <h1>{title}</h1>,
+  DialogHeader: ({ title }: any) => <h1>{title}</h1>,
+  DialogBody: ({ children }: any) => <>{children}</>,
+  DialogFooter: ({ children }: any) => <>{children}</>,
+  DialogActions: ({ children }: any) => <>{children}</>,
+  DialogActionButton: ({ children, loading, tone, ...props }: any) => (
+    <button
+      {...props}
+      data-tone={tone}
+      disabled={Boolean(props.disabled || loading)}
+      aria-busy={loading}
+    >
+      {children}
+    </button>
+  ),
 }));
 
 const Probe = () => {

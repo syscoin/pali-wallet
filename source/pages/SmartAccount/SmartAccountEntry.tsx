@@ -1,9 +1,20 @@
+import { UserGroupIcon } from '@heroicons/react/outline';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
-import { Button, CenterTitle, DialogPrimitive, Icon } from 'components/index';
+import {
+  Button,
+  CenterPanel,
+  DialogPrimitive,
+  DialogHeader,
+  DialogBody,
+  DialogFooter,
+  DialogActions,
+  DialogActionButton,
+  Icon,
+} from 'components/index';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { useIncrementalList } from 'hooks/useIncrementalList';
@@ -287,74 +298,84 @@ const SmartAccountEntry = ({
           if (!switching.current) updatePicker(false);
         }}
       >
-        <div className="w-screen max-w-md max-h-[85vh] overflow-y-auto rounded-t-2xl bg-bkg-4 p-5 text-brand-white">
-          <CenterTitle>{t('smartAccountHub.chooseAccount')}</CenterTitle>
-          <p className="mt-3 text-xs text-brand-gray200">
-            {activeNetwork.label}
-          </p>
-          <input
-            type="search"
-            className="mt-4 mb-3 w-full rounded-lg border border-bkg-white200/30 bg-bkg-2 p-3 text-sm text-brand-white"
-            placeholder={t('connections.searchAccounts')}
-            aria-label={t('connections.searchAccounts')}
-            value={search}
-            disabled={disabled}
-            onChange={(event) => updatePicker(true, event.target.value)}
-          />
-          <div
-            ref={listRef}
-            data-navigation-scroll="smart-account-picker"
-            className="max-h-[35vh] overflow-y-auto remove-scrollbar space-y-2"
-          >
-            {visibleItems.map((account) => (
-              <button
-                key={account.id}
-                data-testid={`smart-account-option-${account.id}`}
-                type="button"
-                disabled={disabled}
-                aria-busy={pendingId === account.id}
-                onClick={() => chooseAccount(account)}
-                className="w-full rounded-lg bg-bkg-2 p-3 text-left hover:bg-bkg-3 disabled:opacity-60 disabled:cursor-wait"
-              >
-                <span className="block truncate text-sm text-brand-white">
-                  {account.label}
-                </span>
-                <span
-                  className="block mt-1 text-xs text-brand-gray200"
-                  title={account.address}
-                >
-                  {pendingId === account.id
-                    ? t('buttons.loading')
-                    : ellipsis(account.address, 8, 8)}
-                </span>
-              </button>
-            ))}
-            {matchingAccounts.length === 0 && (
-              <p role="status" className="py-3 text-sm text-brand-gray200">
-                {t('connections.noMatchingAccounts')}
-              </p>
-            )}
-            {hasMore && (
-              <button
-                type="button"
-                disabled={disabled}
-                onClick={showMore}
-                className="py-2 text-sm text-brand-royalblue"
-              >
-                {t('buttons.loadMore')}
-              </button>
-            )}
-          </div>
-          <Button
-            variant="ghost"
-            type="button"
-            className="mt-4"
+        <CenterPanel padded={false} scroll={false} className="flex flex-col">
+          <DialogHeader
+            title={t('smartAccountHub.chooseAccount')}
+            icon={<UserGroupIcon />}
+            onClose={() => {
+              if (!switching.current) updatePicker(false);
+            }}
             disabled={pendingId !== null}
-            onClick={() => updatePicker(false)}
-          >
-            {t('buttons.cancel')}
-          </Button>
-        </div>
+          />
+          <DialogBody>
+            <p className="text-xs text-content-muted">{activeNetwork.label}</p>
+            <input
+              type="search"
+              className="mt-4 mb-3 w-full rounded-lg border border-bkg-white200/30 bg-bkg-2 p-3 text-sm text-brand-white"
+              placeholder={t('connections.searchAccounts')}
+              aria-label={t('connections.searchAccounts')}
+              value={search}
+              disabled={disabled}
+              onChange={(event) => updatePicker(true, event.target.value)}
+            />
+            <div
+              ref={listRef}
+              data-navigation-scroll="smart-account-picker"
+              className="max-h-[35vh] overflow-y-auto remove-scrollbar space-y-2"
+            >
+              {visibleItems.map((account) => (
+                <button
+                  key={account.id}
+                  data-testid={`smart-account-option-${account.id}`}
+                  type="button"
+                  disabled={disabled}
+                  aria-busy={pendingId === account.id}
+                  onClick={() => chooseAccount(account)}
+                  className="w-full rounded-lg bg-bkg-2 p-3 text-left hover:bg-bkg-3 disabled:opacity-60 disabled:cursor-wait"
+                >
+                  <span className="block truncate text-sm text-brand-white">
+                    {account.label}
+                  </span>
+                  <span
+                    className="block mt-1 text-xs text-brand-gray200"
+                    title={account.address}
+                  >
+                    {pendingId === account.id
+                      ? t('buttons.loading')
+                      : ellipsis(account.address, 8, 8)}
+                  </span>
+                </button>
+              ))}
+              {matchingAccounts.length === 0 && (
+                <p role="status" className="py-3 text-sm text-brand-gray200">
+                  {t('connections.noMatchingAccounts')}
+                </p>
+              )}
+              {hasMore && (
+                <button
+                  type="button"
+                  disabled={disabled}
+                  onClick={showMore}
+                  className="py-2 text-sm text-brand-royalblue"
+                >
+                  {t('buttons.loadMore')}
+                </button>
+              )}
+            </div>
+          </DialogBody>
+          <DialogFooter>
+            <DialogActions>
+              <DialogActionButton
+                tone="secondary"
+                type="button"
+                disabled={pendingId !== null}
+                onClick={() => updatePicker(false)}
+              >
+                {t('buttons.cancel')}
+              </DialogActionButton>
+            </DialogActions>
+          </DialogFooter>
+        </CenterPanel>
       </DialogPrimitive>
     </>
   );
