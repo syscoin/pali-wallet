@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { Icon } from '..';
 
@@ -68,17 +69,22 @@ export const CopyCard: React.FC<ICopyCard> = ({
   className = '',
   label,
   onClick,
-}) => (
-  <div
-    className={`${className} bg-bkg-4 border border-bkg-4 p-4 text-xs rounded-lg cursor-pointer w-full max-w-xs md:max-w-md`}
-    onClick={onClick}
-  >
-    <div className="flex items-center justify-between w-full">
-      <p>{label}</p>
+}) => {
+  const { t } = useTranslation();
+  return (
+    <button
+      type="button"
+      aria-label={`${t('buttons.copy')} ${label}`}
+      className={`${className} bg-bkg-4 border border-bkg-4 p-4 text-left text-xs rounded-lg cursor-pointer w-full max-w-xs md:max-w-md hover:border-fields-input-borderfocus focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue500`}
+      onClick={onClick}
+    >
+      <div className="flex items-center justify-between w-full">
+        <p>{label}</p>
 
-      <Icon name="copy" className="text-brand-white" id="copy-btn" />
-    </div>
+        <Icon name="copy" className="text-brand-white" id="copy-btn" />
+      </div>
 
-    <div>{children}</div>
-  </div>
-);
+      <div>{children}</div>
+    </button>
+  );
+};

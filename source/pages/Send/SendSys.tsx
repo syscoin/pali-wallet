@@ -12,6 +12,7 @@ import { useLocation } from 'react-router-dom';
 import { TransactionType } from '../../types/transactions';
 import { PaliWhiteSmallIconSvg, ArrowDownSvg } from 'components/Icon/Icon';
 import { Button, Fee, Icon, Tooltip } from 'components/index';
+import { ToastActionFooter } from 'components/ToastActionFooter';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
@@ -1202,7 +1203,7 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
           </Form.Item>
         </div>
 
-        <div className="fixed bottom-4 left-4 right-4 md:relative md:bottom-auto md:left-auto md:right-auto md:mt-3 md:w-[96%]">
+        <ToastActionFooter className="fixed bottom-4 left-4 right-4 md:relative md:bottom-auto md:left-auto md:right-auto md:mt-3 md:w-[96%]">
           <Button
             variant="neutral"
             className="text-sm text-brand-royalblue"
@@ -1212,7 +1213,7 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
           >
             {t('buttons.next')}
           </Button>
-        </div>
+        </ToastActionFooter>
       </Form>
     </div>
   );

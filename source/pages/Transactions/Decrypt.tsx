@@ -7,6 +7,7 @@ import { LazyAccountBalance } from 'components/AccountBalance';
 import { LockFilled } from 'components/Icon/Icon';
 import { LoadingSvg, LockIconSvg } from 'components/Icon/Icon';
 import { Button, Icon, IconButton, Tooltip } from 'components/index';
+import { ToastActionFooter } from 'components/ToastActionFooter';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
@@ -35,7 +36,7 @@ const AccountIcon = React.memo(
     return (
       <div
         ref={iconRef}
-        className="rounded-full overflow-hidden cursor-pointer transition-all duration-200 hover:scale-105 hover:opacity-80"
+        className="rounded-full shrink-0 overflow-hidden transition-all duration-200 hover:scale-105 hover:opacity-80"
         style={{ width: size, height: size }}
       />
     );
@@ -48,7 +49,7 @@ const Decrypt: React.FC<ISign> = () => {
   const { host, ...data } = useQueryData();
   const { t } = useTranslation();
   const { useCopyClipboard, alert } = useUtils();
-  const [copied, copyText] = useCopyClipboard();
+  const [, copyText] = useCopyClipboard();
   const [loading, setLoading] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -62,11 +63,14 @@ const Decrypt: React.FC<ISign> = () => {
     accounts[activeAccountMeta.type]?.[activeAccountMeta.id];
   const { isBitcoinBased } = useSelector((state: RootState) => state.vault);
 
-  // All hooks must be called before any conditional returns
-  React.useEffect(() => {
-    if (!copied) return;
-    alert.info(t('transactions.messageCopied'));
-  }, [copied, alert, t]);
+  const copyValue = async (value: string, message: string) => {
+    try {
+      await copyText(value);
+      alert.info(t(message));
+    } catch {
+      alert.error(t('transactions.copyFailed'));
+    }
+  };
 
   // Handle missing account
   if (!activeAccount) {
@@ -145,16 +149,18 @@ const Decrypt: React.FC<ISign> = () => {
   };
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex min-w-0 flex-col h-full">
       {/* Scrollable content area */}
       <div className="flex-1 overflow-y-auto remove-scrollbar">
         {/* Account section */}
         <div className="bg-bkg-2 p-4 mb-4">
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center gap-3">
             <AccountIcon account={activeAccount} size={48} />
-            <div className="flex-1">
+            <div className="min-w-0 flex-1 basis-40">
               <div className="flex items-center gap-2">
-                <p className="text-lg font-medium text-brand-white">{label}</p>
+                <p className="min-w-0 break-words [overflow-wrap:anywhere] text-lg font-medium text-brand-white">
+                  {label}
+                </p>
               </div>
               <div className="flex items-center gap-1 mt-1">
                 <Tooltip content={address} placement="top">
@@ -163,11 +169,10 @@ const Decrypt: React.FC<ISign> = () => {
                   </p>
                 </Tooltip>
                 <button
-                  onClick={() => {
-                    copyText(address);
-                    alert.info(t('home.addressCopied'));
-                  }}
-                  className="hover:text-brand-royalblue transition-colors duration-200"
+                  type="button"
+                  aria-label={t('transactions.copyAddress')}
+                  onClick={() => void copyValue(address, 'home.addressCopied')}
+                  className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full hover:bg-brand-blue800 hover:text-brand-royalblue focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-royalblue transition-colors duration-200"
                 >
                   <Icon
                     name="copy"
@@ -178,7 +183,7 @@ const Decrypt: React.FC<ISign> = () => {
                 </button>
               </div>
             </div>
-            <div className="text-right">
+            <div className="ml-auto min-w-0 max-w-full text-right">
               <LazyAccountBalance
                 account={activeAccount}
                 showFiat={true}
@@ -193,12 +198,12 @@ const Decrypt: React.FC<ISign> = () => {
         <div className="px-6 pb-24">
           <div className="bg-bkg-1 rounded-lg p-4 mb-4">
             <div className="flex items-start gap-3">
-              <LockIconSvg className="text-brand-royalblue mt-0.5 w-5 h-5" />
-              <div className="flex-1">
+              <LockIconSvg className="text-brand-royalblue mt-0.5 w-5 h-5 shrink-0" />
+              <div className="min-w-0 flex-1">
                 <h3 className="text-base font-medium text-brand-white mb-2">
                   {t('send.decrypt')}
                 </h3>
-                <p className="text-sm text-brand-graylight">
+                <p className="break-words [overflow-wrap:anywhere] text-sm text-brand-graylight">
                   {host} {t('transactions.wouldLikeTo')}
                 </p>
               </div>
@@ -210,21 +215,25 @@ const Decrypt: React.FC<ISign> = () => {
             <h4 className="text-sm font-medium text-brand-white mb-2">
               {t('transactions.message')}:
             </h4>
-            {!decryptedMessage ? (
-              <div
-                className="bg-bkg-1 rounded-lg p-4 cursor-pointer hover:bg-bkg-2 transition-colors"
+            {decryptedMessage === null ? (
+              <button
+                type="button"
+                aria-label={t('transactions.decryptMessage')}
+                aria-busy={isDecrypting}
+                disabled={isDecrypting}
+                className="w-full min-w-0 bg-bkg-1 rounded-lg p-4 cursor-pointer text-left hover:bg-bkg-2 disabled:cursor-wait focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-royalblue transition-colors"
                 onClick={handleDecrypt}
               >
-                <div className="flex items-center justify-between gap-4">
-                  <p className="text-xs text-brand-graylight/50 break-all font-mono flex-1">
+                <span className="flex items-center justify-between gap-4">
+                  <span className="min-w-0 text-xs text-brand-graylight/50 break-all font-mono flex-1">
                     {/* Display truncated encrypted data */}
                     {typeof data[0] === 'string' && data[0].length > 100
                       ? `${data[0].substring(0, 50)}...${data[0].substring(
                           data[0].length - 50
                         )}`
                       : data[0]}
-                  </p>
-                  <div className="flex flex-col items-center gap-1 flex-shrink-0">
+                  </span>
+                  <span className="flex flex-col items-center gap-1 flex-shrink-0">
                     {isDecrypting ? (
                       <LoadingSvg className="w-5 h-5 text-brand-royalblue animate-spin" />
                     ) : (
@@ -235,19 +244,25 @@ const Decrypt: React.FC<ISign> = () => {
                         </span>
                       </>
                     )}
-                  </div>
-                </div>
-              </div>
+                  </span>
+                </span>
+              </button>
             ) : (
               <div className="bg-bkg-1 rounded-lg p-4">
                 <div className="flex items-start justify-between gap-2">
-                  <p className="text-sm text-brand-white break-all flex-1">
+                  <p className="min-w-0 text-sm text-brand-white break-all flex-1">
                     {decryptedMessage}
                   </p>
                   <Tooltip content={t('buttons.copy')}>
                     <IconButton
-                      onClick={() => copyText(decryptedMessage ?? '')}
-                      className="flex-shrink-0 p-1"
+                      aria-label={t('transactions.copyMessage')}
+                      onClick={() =>
+                        void copyValue(
+                          decryptedMessage ?? '',
+                          'transactions.messageCopied'
+                        )
+                      }
+                      className="min-h-11 min-w-11 flex-shrink-0 p-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-royalblue"
                     >
                       <Icon
                         name="copy"
@@ -271,7 +286,7 @@ const Decrypt: React.FC<ISign> = () => {
       </div>
 
       {/* Fixed button container at bottom */}
-      <div className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 shadow-lg z-50">
+      <ToastActionFooter className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 shadow-lg z-50">
         <div className="flex gap-3 justify-center">
           <Button
             variant="secondary"
@@ -292,7 +307,7 @@ const Decrypt: React.FC<ISign> = () => {
             {t('buttons.confirm')}
           </Button>
         </div>
-      </div>
+      </ToastActionFooter>
     </div>
   );
 };

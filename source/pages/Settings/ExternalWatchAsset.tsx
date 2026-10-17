@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { Button, LoadingComponent } from 'components/index';
+import { ToastActionFooter } from 'components/ToastActionFooter';
 import { TokenIcon } from 'components/TokenIcon';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useAdjustedExplorer } from 'hooks/useAdjustedExplorer';
@@ -369,7 +370,7 @@ const ExternalWatchAsset = () => {
       </div>
 
       {/* Fixed button container at bottom of viewport */}
-      <div className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 shadow-lg z-50 min-h-[76px]">
+      <ToastActionFooter className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 shadow-lg z-50 min-h-[76px]">
         <div className="max-w-md mx-auto">
           {formatError || assetError ? (
             <div className="flex justify-center">
@@ -405,7 +406,7 @@ const ExternalWatchAsset = () => {
             </div>
           ) : null}
         </div>
-      </div>
+      </ToastActionFooter>
     </div>
   );
 };

@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 
 import { Button, Icon, Tooltip } from 'components/index';
 import { LoadingComponent, PqSigningOverlay } from 'components/Loading';
+import { ToastActionFooter } from 'components/ToastActionFooter';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
@@ -1518,7 +1519,7 @@ export const SendCalls = () => {
       </div>
 
       {/* Action buttons */}
-      <div className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 shadow-lg z-50">
+      <ToastActionFooter className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 shadow-lg z-50">
         <PqSigningOverlay
           expectedSeconds={90}
           show={isPqSigning}
@@ -1589,7 +1590,7 @@ export const SendCalls = () => {
               : t('send.sign')}
           </Button>
         </div>
-      </div>
+      </ToastActionFooter>
     </div>
   );
 };

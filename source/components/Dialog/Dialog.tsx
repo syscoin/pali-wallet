@@ -11,6 +11,7 @@ import React, {
 import { useTranslation } from 'react-i18next';
 
 import { Button, IButtonProps } from 'components/Button';
+import { useToastFooter } from 'hooks/useToastFooter';
 
 // ---------------------------------------------------------------------------
 // Dialog primitive
@@ -334,10 +335,14 @@ export const DialogFooter = ({
 }: {
   children: ReactNode;
   className?: string;
-}) => (
-  <footer
-    className={`shrink-0 space-y-4 border-t border-alpha-whiteAlpha300 px-5 py-4 [@media(max-width:360px)]:px-4 [@media(max-width:360px)]:py-3 ${className}`}
-  >
-    {children}
-  </footer>
-);
+}) => {
+  const ref = useToastFooter<HTMLElement>({ includeInFlow: true });
+  return (
+    <footer
+      ref={ref}
+      className={`shrink-0 space-y-4 border-t border-alpha-whiteAlpha300 px-5 py-4 [@media(max-width:360px)]:px-4 [@media(max-width:360px)]:py-3 ${className}`}
+    >
+      {children}
+    </footer>
+  );
+};

@@ -11,6 +11,7 @@ import {
   WarningModal,
 } from 'components/index';
 import { LoadingComponent, PqSigningOverlay } from 'components/Loading';
+import { ToastActionFooter } from 'components/ToastActionFooter';
 import { TypedOrderReview } from 'components/TypedOrderReview/TypedOrderReview';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
@@ -1419,7 +1420,7 @@ const EthSign: React.FC<ISign> = () => {
           </div>
 
           {/* Fixed button container at bottom */}
-          <div className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 shadow-lg z-50">
+          <ToastActionFooter className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 shadow-lg z-50">
             <DeviceWaitingBanner account={activeAccount} show={loading} />
             <PqSigningOverlay
               expectedSeconds={90}
@@ -1448,7 +1449,7 @@ const EthSign: React.FC<ISign> = () => {
                 {t('buttons.confirm')}
               </Button>
             </div>
-          </div>
+          </ToastActionFooter>
         </div>
       )}
     </>

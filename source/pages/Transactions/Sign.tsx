@@ -4,6 +4,7 @@ import { useSelector } from 'react-redux';
 
 import { Button, DeviceWaitingBanner, ErrorModal } from 'components/index';
 import { LoadingComponent } from 'components/Loading';
+import { ToastActionFooter } from 'components/ToastActionFooter';
 import { SyscoinTransactionDetailsFromPSBT } from 'components/TransactionDetails';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
@@ -301,7 +302,7 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
           </div>
 
           {/* Fixed button container at bottom */}
-          <div className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 shadow-lg z-50">
+          <ToastActionFooter className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 shadow-lg z-50">
             <DeviceWaitingBanner account={activeAccount} show={loading} />
             {submissionUnknown && (
               <p
@@ -336,7 +337,7 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
                 {signOnly ? t('send.sign') : t('buttons.confirm')}
               </Button>
             </div>
-          </div>
+          </ToastActionFooter>
         </div>
       )}
     </>

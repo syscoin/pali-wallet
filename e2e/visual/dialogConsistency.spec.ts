@@ -187,6 +187,8 @@ const compileFixture = async () => {
           'hooks/useOnboardingSecrets$': hooks,
           assets: path.join(root, 'source/assets'),
           components: path.join(root, 'source/components'),
+          hooks: path.join(root, 'source/hooks'),
+          utils: path.join(root, 'source/utils'),
         },
         extensions: ['.tsx', '.ts', '.js', '.json'],
         modules: [path.join(root, 'node_modules'), 'node_modules'],

@@ -688,6 +688,7 @@ test('busy signing, device prompts and long diagnostic overlays fit small window
           'hooks/useUtils$': inertHooks,
           assets: path.join(root, 'source/assets'),
           components: path.join(root, 'source/components'),
+          hooks: path.join(root, 'source/hooks'),
           utils: path.join(root, 'source/utils'),
         },
         extensions: ['.tsx', '.ts', '.js', '.json'],

@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { Button } from 'components/index';
+import { ToastActionFooter } from 'components/ToastActionFooter';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { INetwork } from 'types/network';
@@ -510,7 +511,7 @@ const CustomRPCExternal = () => {
       </Form>
 
       {/* Fixed button container at bottom of viewport */}
-      <div className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 shadow-lg z-50 min-h-[76px]">
+      <ToastActionFooter className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 shadow-lg z-50 min-h-[76px]">
         <div className="flex gap-3 justify-center">
           <Button
             variant="secondary"
@@ -533,7 +534,7 @@ const CustomRPCExternal = () => {
               : t('buttons.addNetwork')}
           </Button>
         </div>
-      </div>
+      </ToastActionFooter>
     </div>
   );
 };

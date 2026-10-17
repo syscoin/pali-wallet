@@ -15,6 +15,7 @@ import { useLocation } from 'react-router-dom';
 import { TransactionType } from '../../types/transactions';
 import { PaliWhiteSmallIconSvg, ArrowDownSvg } from 'components/Icon/Icon';
 import { Button, Icon, Tooltip } from 'components/index';
+import { ToastActionFooter } from 'components/ToastActionFooter';
 import { useUtils } from 'hooks/index';
 import { useAdjustedExplorer } from 'hooks/useAdjustedExplorer';
 import { useController } from 'hooks/useController';
@@ -1998,7 +1999,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
             </div>
           )}
 
-        <div className="fixed bottom-4 left-4 right-4 md:relative md:bottom-auto md:left-auto md:right-auto md:mt-3 md:w-[96%]">
+        <ToastActionFooter className="fixed bottom-4 left-4 right-4 md:relative md:bottom-auto md:left-auto md:right-auto md:mt-3 md:w-[96%]">
           <Button
             id="send-eth-next-btn"
             variant="neutral"
@@ -2009,7 +2010,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
           >
             {t('buttons.next')}
           </Button>
-        </div>
+        </ToastActionFooter>
       </Form>
     </div>
   );

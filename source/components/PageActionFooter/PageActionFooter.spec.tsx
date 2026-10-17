@@ -40,7 +40,7 @@ it('measures changing action height for native focus scrolling and cleans up', (
     configurable: true,
     value: jest.fn((callback: ResizeObserverCallback) => {
       notify = callback;
-      return { observe: jest.fn(), disconnect };
+      return { observe: jest.fn(), unobserve: jest.fn(), disconnect };
     }),
   });
   const container = document.createElement('div');
@@ -67,7 +67,9 @@ it('measures changing action height for native focus scrolling and cleans up', (
       container.style.getPropertyValue('--wallet-page-action-height')
     ).toBe('128px');
     view.unmount();
-    expect(disconnect).toHaveBeenCalledTimes(1);
+    // Local keyboard scroll padding and shared toast clearance both release
+    // their independent observers when the footer unmounts.
+    expect(disconnect).toHaveBeenCalledTimes(2);
     expect(
       container.style.getPropertyValue('--wallet-page-action-height')
     ).toBe('12px');

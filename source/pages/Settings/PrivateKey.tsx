@@ -98,6 +98,14 @@ const PrivateKeyView = () => {
 
   const property = isBitcoinBased ? 'xpub' : 'address';
   const value = isBitcoinBased ? activeAccount?.xpub : activeAccount.address;
+  const copyPublicXpub = async () => {
+    if (!activeAccount?.xpub) return;
+    try {
+      await copyText(String(activeAccount.xpub));
+    } catch {
+      alert.error(t('transactions.copyFailed'));
+    }
+  };
 
   const explorerLink = isBitcoinBased
     ? `${url}/${property}/${value}`
@@ -118,7 +126,7 @@ const PrivateKeyView = () => {
       {isBitcoinBased && (
         <CopyCard
           className="my-4 w-full md:max-w-md"
-          onClick={() => copyText(String(activeAccount?.xpub))}
+          onClick={copyPublicXpub}
           label={t('settings.yourXpub')}
         >
           <p>{ellipsis(activeAccount?.xpub, 4, 16)}</p>

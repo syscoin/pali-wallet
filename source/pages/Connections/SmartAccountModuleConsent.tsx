@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { AddressText, Button, Card, Icon } from 'components/index';
+import { ToastActionFooter } from 'components/ToastActionFooter';
 import { useQueryData } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
@@ -490,7 +491,7 @@ export const SmartAccountModuleConsent = () => {
         <div className="pb-32" />
       </div>
 
-      <div className="fixed bottom-0 left-0 right-0 z-50 border-t border-brand-gray300 bg-bkg-3 px-4 py-3 shadow-lg">
+      <ToastActionFooter className="fixed bottom-0 left-0 right-0 z-50 border-t border-brand-gray300 bg-bkg-3 px-4 py-3 shadow-lg">
         <div className="flex justify-center gap-3">
           <Button
             variant="secondary"
@@ -510,7 +511,7 @@ export const SmartAccountModuleConsent = () => {
             {t('buttons.confirm')}
           </Button>
         </div>
-      </div>
+      </ToastActionFooter>
     </div>
   );
 };
