@@ -81,12 +81,12 @@ const RemoveEthView = () => {
   const icon = useMemo(
     () =>
       isEnabled ? (
-        <img className="pr-2" src={metamaskIcon} />
+        <img className="h-5 w-5" src={metamaskIcon} alt="" />
       ) : (
         <Icon
           name="PaliWhiteSmall"
           isSvg
-          className="pr-2 text-brand-gray300 opacity-80"
+          className="h-5 w-5 text-brand-gray300 opacity-80"
         />
       ),
     [isEnabled]
@@ -103,7 +103,7 @@ const RemoveEthView = () => {
         title={t('settings.windowObjectWasSet')}
         description={t('settings.yourWalletWasConfigured')}
       />
-      <div className="flex flex-col items-center gap-[38px]">
+      <div className="flex w-full min-w-0 flex-col items-center gap-[38px]">
         <div className="flex flex-col items-center text-center gap-2">
           <Icon
             wrapperClassname={'rounded-[100px] p-[15px] bg-brand-deepPink100 '}
@@ -122,24 +122,6 @@ const RemoveEthView = () => {
           )}
         </div>
 
-        <button
-          onClick={onSubmit}
-          disabled={loading}
-          className="flex items-center justify-center w-[352px] border-2 border-white rounded-[100px] py-2 px-[13px] text-base font-medium"
-        >
-          {isEnabled ? (
-            <>
-              {icon}
-              Set Metamask as default wallet
-            </>
-          ) : (
-            <>
-              {icon}
-              Set Pali as default wallet
-            </>
-          )}
-        </button>
-
         {isEnabled && (
           <div className="flex p-4 rounded-[20px] flex-col gap-[11px] w-full border-dashed border-alpha-whiteAlpha300 bg-alpha-whiteAlpha100">
             <p className="text-xs font-medium text-white">
@@ -153,16 +135,33 @@ const RemoveEthView = () => {
         )}
 
         <PageActionFooter>
-          <Button
-            variant="neutral"
-            className="text-sm text-brand-royalblue"
-            onClick={() => navigateBack(navigate, location)}
-            type="button"
-            fullWidth={true}
-            loading={loading}
-          >
-            {t('buttons.close')}
-          </Button>
+          <div className="flex w-full flex-col gap-3">
+            <button
+              type="button"
+              onClick={onSubmit}
+              disabled={loading}
+              className="flex min-h-[44px] w-full min-w-0 items-center justify-center gap-2 rounded-[100px] border-2 border-white py-2 px-3 text-sm font-medium leading-5"
+            >
+              <span aria-hidden="true" className="shrink-0">
+                {icon}
+              </span>
+              <span className="min-w-0 whitespace-normal break-words">
+                {isEnabled
+                  ? 'Set Metamask as default wallet'
+                  : 'Set Pali as default wallet'}
+              </span>
+            </button>
+            <Button
+              variant="neutral"
+              className="text-sm text-brand-royalblue"
+              onClick={() => navigateBack(navigate, location)}
+              type="button"
+              fullWidth={true}
+              loading={loading}
+            >
+              {t('buttons.close')}
+            </Button>
+          </div>
         </PageActionFooter>
       </div>
     </>

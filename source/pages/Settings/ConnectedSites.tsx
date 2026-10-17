@@ -93,7 +93,8 @@ const ConnectedSites = () => {
             >
               <div className="flex-1">
                 <p className="font-medium">{truncate(_dapp.host, 40)}</p>
-                {_dapp.accountId !== activeAccountMeta.id && (
+                {(_dapp.accountType !== activeAccountMeta.type ||
+                  _dapp.accountId !== activeAccountMeta.id) && (
                   <p className="text-brand-graylight text-[10px] mt-1">
                     Connected to:{' '}
                     {accounts[_dapp.accountType]?.[_dapp.accountId]?.label ||

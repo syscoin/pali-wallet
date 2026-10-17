@@ -315,8 +315,9 @@ export class PaliWallet {
     }
 
     await this.networkMenuButton().click();
-    const groupButton = this.page
-      .getByRole('button', { name: new RegExp(`${group} Networks`, 'i') })
+    const menu = this.page.getByRole('menu');
+    const groupButton = menu
+      .getByRole('menuitem', { name: new RegExp(`${group} Networks`, 'i') })
       .first();
     await expect(groupButton).toHaveAttribute(
       'aria-expanded',
@@ -325,8 +326,8 @@ export class PaliWallet {
     if ((await groupButton.getAttribute('aria-expanded')) !== 'true')
       await groupButton.click();
     await expect(groupButton).toHaveAttribute('aria-expanded', 'true');
-    await this.page
-      .locator('li', { hasText: new RegExp(`^\\s*${label}\\s*$`) })
+    await menu
+      .getByRole('menuitem', { name: label, exact: true })
       .first()
       .click();
 

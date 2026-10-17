@@ -286,8 +286,11 @@ export const AccountHeader: React.FC = () => {
         isButtonLoading={isLoading}
         allowCloseWhileLoading
       />
-      <div className="flex ml-[15px] items-center w-full text-brand-white">
-        <Tooltip content={t('home.viewOnExplorer')}>
+      <div className="flex min-w-0 flex-1 ml-[15px] items-center text-brand-white">
+        <Tooltip
+          content={t('home.viewOnExplorer')}
+          childrenClassName="shrink-0"
+        >
           <div
             className="add-identicon ml-1 mr-2 my-2 cursor-pointer transition-all duration-200 hover:scale-105 hover:opacity-80 rounded-full"
             onClick={openAccountInExplorer}
@@ -295,27 +298,34 @@ export const AccountHeader: React.FC = () => {
           />
         </Tooltip>
 
-        <div className="items-center justify-center px-1 text-brand-white">
+        <div className="min-w-0 flex-1 items-center justify-center px-1 text-brand-white">
           {isSwitchInProgress ? (
             <SkeletonLoader width="150px" height="20px" />
           ) : (
             <p
-              className="mb-1 text-base font-medium"
+              className="mb-1 flex min-w-0 items-center gap-1 text-base font-medium"
               id="active-account-label items-center"
             >
-              {currentAccount?.label}
+              <span className="min-w-0 truncate" title={currentAccount?.label}>
+                {currentAccount?.label}
+              </span>
               <IconButton
+                aria-label={t('buttons.edit')}
+                className="flex h-6 w-6 shrink-0 items-center justify-center rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue500"
                 onClick={() => editAccount(currentAccount)}
                 type="primary"
                 shape="circle"
               >
                 <Icon
                   name="edit"
-                  className="hover:text-brand-royalblue text-xs ml-1 flex justify-center w-4 h-4"
+                  className="hover:text-brand-royalblue text-xs flex justify-center w-4 h-4"
                 />
               </IconButton>
               {currentAccount?.isSmartAccount && (
-                <Tooltip content={t('smartAccountHub.openHub')}>
+                <Tooltip
+                  content={t('smartAccountHub.openHub')}
+                  childrenClassName="shrink-0"
+                >
                   <button
                     type="button"
                     id="smart-account-hub-badge"
@@ -331,8 +341,9 @@ export const AccountHeader: React.FC = () => {
           {isSwitchInProgress ? (
             <SkeletonLoader width="200px" height="15px" margin="5px 0 0 0" />
           ) : (
-            <div className="flex items-center">
+            <div className="flex min-w-0 items-center">
               <Tooltip
+                childrenClassName="min-w-0"
                 content={
                   (isLedger || isTrezor) && isBitcoinBased
                     ? t('home.clickToVerify', {
@@ -342,7 +353,7 @@ export const AccountHeader: React.FC = () => {
                 }
               >
                 <p
-                  className={`text-xs ${
+                  className={`min-w-0 truncate text-xs ${
                     (isLedger || isTrezor) && isBitcoinBased
                       ? 'cursor-pointer'
                       : ''
@@ -356,7 +367,7 @@ export const AccountHeader: React.FC = () => {
                 onClick={copyAddress}
                 type="primary"
                 shape="circle"
-                className="ml-2"
+                className="ml-2 shrink-0"
               >
                 <Icon
                   name="copy"

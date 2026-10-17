@@ -370,13 +370,18 @@ test('published legacy wallet upgrades in-place without reimporting its vault', 
       .first();
     if ((await button.innerText()).includes(label)) return;
     await button.click();
+    // The store baseline exposes family buttons and plain li choices. The
+    // current wallet uses native buttons registered as accessible menuitems.
     const family = page
-      .getByRole('button', { name: new RegExp(group + ' Networks', 'i') })
+      .locator('button')
+      .filter({ hasText: new RegExp(`^${group} Networks$`, 'i') })
       .first();
     if ((await family.getAttribute('aria-expanded')) !== 'true')
       await family.click();
     await page
-      .locator('li', { hasText: new RegExp(`^\\s*${label}\\s*$`) })
+      .locator('li, button[role="menuitem"]', {
+        hasText: new RegExp(`^\\s*${label}\\s*$`),
+      })
       .first()
       .click();
     await expect(button).toContainText(label, { timeout: 60000 });

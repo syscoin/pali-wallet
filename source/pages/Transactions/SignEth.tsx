@@ -171,9 +171,40 @@ const EthSign: React.FC<ISign> = () => {
     return typeof typedData === 'string' ? JSON.parse(typedData) : typedData;
   };
 
-  // Read the original signed fields locally. These are order-term advisories,
-  // not a threat verdict or a check of the verifying contract on this chain.
+  // Normalize legacy fields once for both review and signing, without changing
+  // their values or assuming which parameter contains the account address.
+  // Modern order-term advisories are not a verdict on the verifying contract.
   const typedOrderRequest = useMemo(() => {
+    if (data.eventName === 'eth_signTypedData') {
+      try {
+        const legacyFields = getTypedDataPayload();
+        if (
+          !Array.isArray(legacyFields) ||
+          legacyFields.length === 0 ||
+          legacyFields.some(
+            (field) =>
+              !field ||
+              typeof field !== 'object' ||
+              Array.isArray(field) ||
+              typeof field.name !== 'string' ||
+              typeof field.type !== 'string' ||
+              !Object.prototype.hasOwnProperty.call(field, 'value')
+          )
+        )
+          throw new Error('Invalid legacy typed data');
+        return { legacyFields, error: null, review: null };
+      } catch {
+        return {
+          legacyFields: null,
+          error: t(
+            isActiveAccountAddress(data[0]) || isActiveAccountAddress(data[1])
+              ? 'send.invalidApprovalDetails'
+              : 'send.signingForWrongAddress'
+          ),
+          review: null,
+        };
+      }
+    }
     if (
       data.eventName !== 'eth_signTypedData_v3' &&
       data.eventName !== 'eth_signTypedData_v4'
@@ -184,7 +215,11 @@ const EthSign: React.FC<ISign> = () => {
       : isActiveAccountAddress(data[1])
       ? data[0]
       : undefined;
-    return { review: getTypedOrderReview(payload) };
+    return {
+      legacyFields: null,
+      error: null,
+      review: getTypedOrderReview(payload),
+    };
   }, [
     requestData,
     data.eventName,
@@ -200,6 +235,7 @@ const EthSign: React.FC<ISign> = () => {
     activeAccount.isLedgerWallet,
     activeAccount.isTrezorWallet,
     isBitcoinBased,
+    t,
   ]);
   const currentTypedOrderRequestRef = React.useRef(typedOrderRequest);
   currentTypedOrderRequestRef.current = typedOrderRequest;
@@ -288,6 +324,10 @@ const EthSign: React.FC<ISign> = () => {
   const onSubmit = async () => {
     if (signingRef.current !== 'ready' || confirmed) return;
     if (typedOrderRequest !== currentTypedOrderRequestRef.current) return;
+    if (typedOrderRequest?.error) {
+      setErrorMsg(typedOrderRequest.error);
+      return;
+    }
     // Recheck the current account/origin and the original signed bytes before
     // any signer call, including callbacks captured before a state change.
     if (data.eventName === 'personal_sign') {
@@ -366,21 +406,10 @@ const EthSign: React.FC<ISign> = () => {
             : 10000 // Default 10 seconds for regular wallets
         )) as string;
       else {
-        let typedData;
-        if (
-          typeof data[0] === 'string' &&
-          data[0].toLowerCase() === address.toLowerCase()
-        ) {
-          typedData = data[1];
-        } else if (
-          typeof data[1] === 'string' &&
-          data[1].toLowerCase() === address.toLowerCase()
-        ) {
-          typedData = data[0];
-        } else {
-          throw { message: t('send.signingForWrongAddress') };
-        }
-        if (typeof typedData === 'string') typedData = JSON.parse(typedData);
+        const typedData =
+          data.eventName === 'eth_signTypedData'
+            ? typedOrderRequest?.legacyFields
+            : getTypedDataPayload();
         if (data.eventName === 'eth_signTypedData') {
           response = (await controllerEmitter(
             ['wallet', 'ethereumTransaction', 'signTypedData'],
@@ -1110,13 +1139,17 @@ const EthSign: React.FC<ISign> = () => {
   const SignatureDetails = () => (
     <div className="space-y-3">
       {data.eventName === 'eth_signTypedData' &&
-        data[0].map((item: any, number: number) => (
+        typedOrderRequest?.legacyFields?.map((item: any, number: number) => (
           <div
             key={number}
             className="flex flex-row justify-between w-full font-poppins text-sm text-white"
           >
             <span className="text-gray-300">{item?.name}</span>
-            <span className="font-medium break-all">{item?.value}</span>
+            <span className="font-medium break-all">
+              {typeof item.value === 'object'
+                ? JSON.stringify(item.value)
+                : String(item.value)}
+            </span>
           </div>
         ))}
     </div>
@@ -1125,11 +1158,11 @@ const EthSign: React.FC<ISign> = () => {
   return (
     <>
       <ErrorModal
-        show={Boolean(errorMsg)}
+        show={Boolean(errorMsg || typedOrderRequest?.error)}
         onClose={window.close}
         title={t('transactions.signatureFailed')}
         description={t('transactions.sorryWeCould')}
-        log={errorMsg || '...'}
+        log={errorMsg || typedOrderRequest?.error || '...'}
         buttonText="Ok"
       />
 
@@ -1442,7 +1475,10 @@ const EthSign: React.FC<ISign> = () => {
               <Button
                 variant="primary"
                 type="submit"
-                disabled={confirmed || Boolean(personalSignReview?.error)}
+                disabled={
+                  confirmed ||
+                  Boolean(personalSignReview?.error || typedOrderRequest?.error)
+                }
                 loading={loading}
                 onClick={onSubmit}
               >

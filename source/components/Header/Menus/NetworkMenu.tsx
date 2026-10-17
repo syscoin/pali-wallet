@@ -1,5 +1,5 @@
-import { Disclosure, Menu } from '@headlessui/react';
-import React, { memo, useCallback, useMemo } from 'react';
+import { Menu } from '@headlessui/react';
+import React, { memo, useCallback, useId, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
@@ -58,6 +58,11 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
   const { t, i18n } = useTranslation();
   const { language } = i18n;
   const { navigate } = useUtils();
+  const groupId = useId();
+  const [openNetworkGroups, setOpenNetworkGroups] = useState({
+    [INetworkType.Syscoin]: false,
+    [INetworkType.Ethereum]: false,
+  });
 
   const networks = useSelector(
     (state: RootState) => state.vaultGlobal.networks
@@ -138,6 +143,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
   // ✅ MEMOIZED: Network change handler
   const handleChangeNetwork = useCallback(
     async (network: INetwork, closeMenu?: () => void) => {
+      if (disabled || isNetworkChanging) return;
       // Check if user is trying to switch to the same network that's already active
       if (activeNetworkValidator(network)) {
         // Already on this network, no need to switch
@@ -168,7 +174,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
         store.dispatch(switchNetworkError());
       }
     },
-    [activeNetworkValidator]
+    [activeNetworkValidator, disabled, isNetworkChanging]
   );
 
   // ✅ MEMOIZED: Navigation handlers
@@ -210,6 +216,157 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
 
     navigateWithContext(navigate, '/settings/networks/edit', {}, returnContext);
   }, [navigate, location]);
+
+  const handleGroupKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    const activeItem = event.currentTarget.ownerDocument.getElementById(
+      event.currentTarget.getAttribute('aria-activedescendant') || ''
+    );
+    if (
+      !activeItem?.hasAttribute('data-network-group-toggle') ||
+      !event.currentTarget.contains(activeItem)
+    )
+      return;
+
+    // Menu keeps DOM focus on its root and normally closes before clicking
+    // the active item. Group toggles expand in place; choices still use the
+    // standard Menu keyboard activation and dismissal behavior.
+    event.preventDefault();
+    event.stopPropagation();
+    activeItem.click();
+  };
+
+  const renderNetworkChoice = (
+    currentNetwork: INetwork,
+    kind: INetworkType,
+    closeMenu: () => void
+  ) => {
+    const isCurrent = activeNetworkValidator(currentNetwork);
+    return (
+      <div
+        key={`${currentNetwork.chainId}-${currentNetwork.url}`}
+        className="mx-4"
+        role="none"
+      >
+        <Menu.Item disabled={isNetworkChanging}>
+          {({ active }) => (
+            <button
+              type="button"
+              disabled={isNetworkChanging}
+              aria-label={currentNetwork.label}
+              aria-current={
+                isCurrent && networkType === kind ? 'true' : undefined
+              }
+              className={`group relative py-1.5 px-5 w-full max-w-full backface-visibility-hidden flex items-center justify-between text-white text-sm font-medium cursor-pointer hover:bg-gradient-to-r hover:from-brand-blue600 hover:to-brand-blue500 active:bg-brand-blue700 active:scale-[0.98] focus:outline-none transform transition-all duration-300 ease-in-out hover:shadow-lg hover:shadow-brand-blue600/20 overflow-hidden disabled:cursor-wait ${
+                active ? 'bg-brand-blue500/30' : ''
+              }`}
+              onClick={() => {
+                void handleChangeNetwork(currentNetwork, closeMenu);
+              }}
+            >
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-brand-blue600/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-lg" />
+
+              <div className="flex items-center gap-3 flex-1 min-w-0 relative z-10">
+                <div className="transform group-hover:scale-110 transition-transform duration-300 ease-out">
+                  <ChainIcon
+                    chainId={currentNetwork.chainId}
+                    size={18}
+                    networkKind={kind}
+                    className="flex-shrink-0 group-hover:brightness-110 transition-all duration-300"
+                  />
+                </div>
+                <span className="text-left group-hover:text-white transition-colors duration-300 truncate">
+                  {currentNetwork.label}
+                </span>
+              </div>
+
+              <div className="flex items-center flex-shrink-0 relative z-10 mr-2">
+                {isNetworkChanging && isCurrent ? (
+                  <div className="transform group-hover:scale-110 transition-transform duration-300">
+                    <LoadingSvg className="w-4 animate-spin h-4 text-brand-graylight" />
+                  </div>
+                ) : (
+                  isCurrent &&
+                  networkType === kind && (
+                    <div className="transform group-hover:scale-110 transition-transform duration-300">
+                      <Icon name="check" className="w-4 h-4" color="#8EC100" />
+                    </div>
+                  )
+                )}
+              </div>
+            </button>
+          )}
+        </Menu.Item>
+      </div>
+    );
+  };
+
+  const renderNetworkGroup = (kind: INetworkType, closeMenu: () => void) => {
+    const isUtxo = kind === INetworkType.Syscoin;
+    const open = openNetworkGroups[kind];
+    const label = t(
+      isUtxo ? 'networkMenu.utxoNetworks' : 'networkMenu.evmNetworks'
+    );
+    const panelId = `${groupId}-${kind}`;
+    const choices = Object.values(networks[kind]) as INetwork[];
+    if (!isUtxo) choices.sort(customSort);
+
+    return (
+      <React.Fragment key={kind}>
+        <Menu.Item>
+          {({ active }) => (
+            <button
+              type="button"
+              data-network-group-toggle
+              aria-label={label}
+              aria-expanded={open}
+              aria-controls={open ? panelId : undefined}
+              onClick={(event) => {
+                // Prevent Menu.Item's pointer handler from dismissing this
+                // menu; keyboard group activation is handled above as well.
+                event.preventDefault();
+                setOpenNetworkGroups((groups) => ({
+                  ...groups,
+                  [kind]: !groups[kind],
+                }));
+                event.currentTarget
+                  .closest<HTMLElement>('[role="menu"]')
+                  ?.focus({ preventScroll: true });
+              }}
+              className={`flex items-center justify-start px-5 w-full text-base hover:bg-brand-blue500 hover:bg-opacity-20 cursor-pointer transition-all duration-200 ${
+                isUtxo ? 'py-1' : 'pt-3'
+              } ${active ? 'bg-brand-blue500/30' : ''}`}
+            >
+              {isUtxo ? <BtcIconSvg /> : <EthIconSvg />}
+              <span className="px-3 text-sm">{label}</span>
+              <DropdownArrowSvg isOpen={open} className="ml-auto" />
+            </button>
+          )}
+        </Menu.Item>
+        {open && (
+          <div
+            id={panelId}
+            role="group"
+            aria-label={label}
+            className={`h-max pb-2 text-sm ${isUtxo ? 'pt-0.5' : 'pt-4'}`}
+          >
+            <div
+              className={`relative w-full block ${
+                isNetworkChanging ? 'pointer-events-none' : ''
+              }`}
+            >
+              {isNetworkChanging && (
+                <div className="absolute inset-0 bg-gray-500/30 z-20 rounded-lg backdrop-blur-[0.5px]" />
+              )}
+              {choices.map((network) =>
+                renderNetworkChoice(network, kind, closeMenu)
+              )}
+            </div>
+          </div>
+        )}
+      </React.Fragment>
+    );
+  };
 
   return (
     <Menu
@@ -278,6 +435,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
           {!disabled && (
             <Menu.Items
               as="div"
+              onKeyDownCapture={handleGroupKeyDown}
               className={`fixed overflow-x-hidden z-50 inset-x-0 top-8 bottom-0 w-full text-center text-brand-white font-poppins bg-brand-blue600 rounded-2xl focus:outline-none shadow-2xl ring-1 ring-black ring-opacity-5
               transform transition-all duration-100 ease-out ${
                 menuprops.open
@@ -319,196 +477,11 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                     </span>
                   </li>
                 </Menu.Item>
-                <Menu.Item>
-                  <>
-                    <span className="disabled text-xs flex justify-start px-5 py-4">
-                      {t('networkMenu.networks')}
-                    </span>
-                    <Disclosure>
-                      {({ open }) => (
-                        <>
-                          <Disclosure.Button className="flex items-center justify-start px-5 py-1 w-full text-base hover:bg-brand-blue500 hover:bg-opacity-20 cursor-pointer transition-all duration-200">
-                            <BtcIconSvg />
-
-                            <span className="px-3 text-sm">
-                              {t('networkMenu.utxoNetworks')}
-                            </span>
-
-                            <DropdownArrowSvg
-                              isOpen={open}
-                              className="ml-auto"
-                              id="network-settings-btn"
-                            />
-                          </Disclosure.Button>
-
-                          <Disclosure.Panel className="h-max pb-2 pt-0.5 text-sm">
-                            <div
-                              className={`relative w-full block ${
-                                isNetworkChanging ? 'pointer-events-none' : ''
-                              }`}
-                            >
-                              {/* Gray overlay when network is switching */}
-                              {isNetworkChanging && (
-                                <div className="absolute inset-0 bg-gray-500/30 z-20 rounded-lg backdrop-blur-[0.5px]" />
-                              )}
-
-                              {Object.values(networks.syscoin).map(
-                                (currentNetwork: INetwork) => (
-                                  <li
-                                    key={`${currentNetwork.chainId}-${currentNetwork.url}`}
-                                    className="group relative py-1.5 px-5 mx-4 w-auto max-w-full backface-visibility-hidden flex items-center justify-between text-white text-sm 
-                                  font-medium cursor-pointer hover:bg-gradient-to-r hover:from-brand-blue600 hover:to-brand-blue500 active:bg-brand-blue700 active:scale-[0.98] focus:outline-none transform
-                                   transition-all duration-300 ease-in-out hover:shadow-lg hover:shadow-brand-blue600/20 overflow-hidden"
-                                    onClick={() => {
-                                      handleChangeNetwork(
-                                        currentNetwork,
-                                        menuprops.close
-                                      );
-                                    }}
-                                  >
-                                    {/* Background glow effect on hover */}
-                                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-brand-blue600/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-lg"></div>
-
-                                    {/* Left side: Icon + Network name */}
-                                    <div className="flex items-center gap-3 flex-1 min-w-0 relative z-10">
-                                      <div className="transform group-hover:scale-110 transition-transform duration-300 ease-out">
-                                        <ChainIcon
-                                          chainId={currentNetwork.chainId}
-                                          size={18}
-                                          networkKind={INetworkType.Syscoin}
-                                          className="flex-shrink-0 group-hover:brightness-110 transition-all duration-300"
-                                        />
-                                      </div>
-                                      <span className="text-left group-hover:text-white transition-colors duration-300 truncate">
-                                        {currentNetwork.label}
-                                      </span>
-                                    </div>
-
-                                    {/* Right side: Checkmark or Spinner */}
-                                    <div className="flex items-center flex-shrink-0 relative z-10 mr-2">
-                                      {isNetworkChanging &&
-                                      activeNetworkValidator(currentNetwork) ? (
-                                        <div className="transform group-hover:scale-110 transition-transform duration-300">
-                                          <LoadingSvg className="w-4 animate-spin h-4 text-brand-graylight" />
-                                        </div>
-                                      ) : (
-                                        isBitcoinBased &&
-                                        activeNetworkValidator(
-                                          currentNetwork
-                                        ) && (
-                                          <div className="transform group-hover:scale-110 transition-transform duration-300">
-                                            <Icon
-                                              name="check"
-                                              className="w-4 h-4"
-                                              color="#8EC100"
-                                            />
-                                          </div>
-                                        )
-                                      )}
-                                    </div>
-                                  </li>
-                                )
-                              )}
-                            </div>
-                          </Disclosure.Panel>
-                        </>
-                      )}
-                    </Disclosure>
-                  </>
-                </Menu.Item>
-
-                <Menu.Item>
-                  <Disclosure>
-                    {({ open }) => (
-                      <>
-                        <Disclosure.Button className="flex items-center justify-start px-5 pt-3 w-full text-base hover:bg-brand-blue500 hover:bg-opacity-20 cursor-pointer transition-all duration-200">
-                          <EthIconSvg />
-
-                          <span className="px-3 text-sm">
-                            {t('networkMenu.evmNetworks')}
-                          </span>
-
-                          <DropdownArrowSvg
-                            isOpen={open}
-                            className="ml-auto"
-                            id="network-settings-btn"
-                          />
-                        </Disclosure.Button>
-
-                        <Disclosure.Panel className="h-max pb-2 pt-4 text-sm">
-                          <div
-                            className={`relative w-full block ${
-                              isNetworkChanging ? 'pointer-events-none' : ''
-                            }`}
-                          >
-                            {/* Gray overlay when network is switching */}
-                            {isNetworkChanging && (
-                              <div className="absolute inset-0 bg-gray-500/30 z-20 rounded-lg backdrop-blur-[0.5px]" />
-                            )}
-
-                            {Object.values(networks.ethereum)
-                              .sort(customSort)
-                              .map((currentNetwork: any) => (
-                                <li
-                                  key={`${currentNetwork.chainId}-${currentNetwork.url}`}
-                                  className="group relative py-1.5 px-5 mx-4 w-auto max-w-full backface-visibility-hidden flex items-center justify-between text-white text-sm 
-                                  font-medium cursor-pointer hover:bg-gradient-to-r hover:from-brand-blue600 hover:to-brand-blue500 active:bg-brand-blue700 active:scale-[0.98] focus:outline-none transform
-                                   transition-all duration-300 ease-in-out hover:shadow-lg hover:shadow-brand-blue600/20 overflow-hidden"
-                                  onClick={() => {
-                                    handleChangeNetwork(
-                                      currentNetwork,
-                                      menuprops.close
-                                    );
-                                  }}
-                                >
-                                  {/* Background glow effect on hover */}
-                                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-brand-blue600/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-lg"></div>
-
-                                  {/* Left side: Icon + Network name */}
-                                  <div className="flex items-center gap-3 flex-1 min-w-0 relative z-10">
-                                    <div className="transform group-hover:scale-110 transition-transform duration-300 ease-out">
-                                      <ChainIcon
-                                        chainId={currentNetwork.chainId}
-                                        size={18}
-                                        networkKind={INetworkType.Ethereum}
-                                        className="flex-shrink-0 group-hover:brightness-110 transition-all duration-300"
-                                      />
-                                    </div>
-                                    <span className="text-left group-hover:text-white transition-colors duration-300 truncate">
-                                      {currentNetwork.label}
-                                    </span>
-                                  </div>
-
-                                  {/* Right side: Checkmark or Spinner */}
-                                  <div className="flex items-center flex-shrink-0 relative z-10 mr-2">
-                                    {isNetworkChanging &&
-                                    activeNetworkValidator(currentNetwork) ? (
-                                      <div className="transform group-hover:scale-110 transition-transform duration-300">
-                                        <LoadingSvg className="w-4 animate-spin h-4 text-brand-graylight" />
-                                      </div>
-                                    ) : (
-                                      !isBitcoinBased &&
-                                      activeNetworkValidator(
-                                        currentNetwork
-                                      ) && (
-                                        <div className="transform group-hover:scale-110 transition-transform duration-300">
-                                          <Icon
-                                            name="check"
-                                            className="w-4 h-4"
-                                            color="#8EC100"
-                                          />
-                                        </div>
-                                      )
-                                    )}
-                                  </div>
-                                </li>
-                              ))}
-                          </div>
-                        </Disclosure.Panel>
-                      </>
-                    )}
-                  </Disclosure>
-                </Menu.Item>
+                <span className="disabled text-xs flex justify-start px-5 py-4">
+                  {t('networkMenu.networks')}
+                </span>
+                {renderNetworkGroup(INetworkType.Syscoin, menuprops.close)}
+                {renderNetworkGroup(INetworkType.Ethereum, menuprops.close)}
 
                 <span className="disabled text-xs flex justify-start px-5 py-3 mt-6">
                   {t('networkMenu.networkSettings')}

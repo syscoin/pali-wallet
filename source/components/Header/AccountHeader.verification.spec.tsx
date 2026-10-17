@@ -135,6 +135,29 @@ const start = async (user: ReturnType<typeof userEvent.setup>) => {
   return dialog;
 };
 
+it.each([false, true])(
+  'preserves the full account label while reserving header controls (smart=%s)',
+  (isSmartAccount) => {
+    const label = 'A'.repeat(80);
+    mockState.vault.account.label = label;
+    mockState.vault.account.isSmartAccount = isSmartAccount;
+    render(<AccountHeader />);
+
+    const name = screen.getByTitle(label);
+    expect(name.textContent).toBe(label);
+    expect(name.classList.contains('truncate')).toBe(true);
+    expect(name.classList.contains('min-w-0')).toBe(true);
+    expect(name.parentElement?.classList.contains('min-w-0')).toBe(true);
+    const edit = screen.getByRole('button', { name: 'buttons.edit' });
+    expect(edit.classList.contains('shrink-0')).toBe(true);
+    if (isSmartAccount) {
+      expect(
+        screen.getByRole('button', { name: 'smartAccountHub.badge' })
+      ).toBeTruthy();
+    }
+  }
+);
+
 it.each(['success', 'failure'])(
   'can cancel a pending read-only verification and ignores its late %s',
   async (outcome) => {
