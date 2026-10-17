@@ -96,20 +96,22 @@ test('Pali reviews and signs exact legacy governance votes without disclosing ke
     wallet = await PaliWallet.launch('sentry-governance-voting', {
       offlineHttpProxy: server.url,
     });
-    const routes = await installUtxoFixtureRoutes(
-      wallet.context,
-      fixture,
-      server.url
-    );
-    await wallet.context.route(`${server.url}/**`, (route) => route.continue());
     const page = wallet.page;
     const pair = utils.bitcoinjs.ECPair.fromPrivateKey(
       Buffer.from(secret, 'hex'),
       { network: utils.syscoinNetworks.testnet, compressed: false }
     );
-    await wallet.step(
+    const routes = await wallet.step(
       'set up the wallet, import a voting key, and connect the dapp',
       async () => {
+        const fixtureRoutes = await installUtxoFixtureRoutes(
+          wallet.context,
+          fixture,
+          server.url
+        );
+        await wallet.context.route(`${server.url}/**`, (route) =>
+          route.continue()
+        );
         await wallet.importSeedAndCreatePassword();
         await wallet.switchNetwork('Syscoin Testnet', 'UTXO');
         await wallet.ensureOnHome();
@@ -162,6 +164,7 @@ test('Pali reviews and signs exact legacy governance votes without disclosing ke
           (await providerRequest(page, 'sys_getSentryCapabilities'))
             .governanceVote
         ).toEqual({ scheme: 'secp256k1', signal: 'funding', maxNodes: 20 });
+        return fixtureRoutes;
       }
     );
     await wallet.step(
@@ -400,8 +403,13 @@ test('Pali reviews and signs exact legacy governance votes without disclosing ke
         );
       }
     );
-    expect(routes.deniedWrites).toEqual([]);
-    expect(routes.syntheticBroadcasts).toEqual([]);
+    await wallet.step(
+      'verify the governance fixture never broadcasts',
+      async () => {
+        expect(routes.deniedWrites).toEqual([]);
+        expect(routes.syntheticBroadcasts).toEqual([]);
+      }
+    );
     await wallet.dispose('passed');
     wallet = undefined;
   } catch (error) {

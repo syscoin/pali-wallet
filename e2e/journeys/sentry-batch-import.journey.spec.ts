@@ -31,16 +31,22 @@ test('Sentry batch import validates and stores all keys atomically in a short wi
       offlineHttpProxy: server.url,
       viewport: { width: 320, height: 360 },
     });
-    const routes = await installUtxoFixtureRoutes(
-      wallet.context,
-      createUtxoFixture(),
-      server.url
-    );
     const page = wallet.page;
-    await wallet.importSeedAndCreatePassword();
-    await wallet.switchNetwork('Syscoin Testnet', 'UTXO');
-    await wallet.ensureOnHome();
-    await wallet.gotoRoute('#/settings/sentry');
+    const routes = await wallet.step(
+      'set up the isolated wallet and open Sentry key settings',
+      async () => {
+        const fixtureRoutes = await installUtxoFixtureRoutes(
+          wallet.context,
+          createUtxoFixture(),
+          server.url
+        );
+        await wallet.importSeedAndCreatePassword();
+        await wallet.switchNetwork('Syscoin Testnet', 'UTXO');
+        await wallet.ensureOnHome();
+        await wallet.gotoRoute('#/settings/sentry');
+        return fixtureRoutes;
+      }
+    );
     const keys = ['01', '02', '03', '04'].map((byte) => '00'.repeat(31) + byte);
     const openBatch = async () => {
       await page
@@ -213,8 +219,13 @@ test('Sentry batch import validates and stores all keys atomically in a short wi
         ).toBeVisible();
       }
     );
-    expect(routes.deniedWrites).toEqual([]);
-    expect(routes.syntheticBroadcasts).toEqual([]);
+    await wallet.step(
+      'verify the batch import fixture never broadcasts',
+      async () => {
+        expect(routes.deniedWrites).toEqual([]);
+        expect(routes.syntheticBroadcasts).toEqual([]);
+      }
+    );
     await wallet.dispose('passed');
     wallet = undefined;
   } finally {
