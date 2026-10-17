@@ -33,9 +33,10 @@ describe('controller submission timeout', () => {
   });
 
   it.each([
-    { success: false },
     { success: false, error: '' },
     { success: false, error: null },
+    { success: false, error: false },
+    { success: false, error: undefined },
   ])(
     'rejects an explicit failure even when no usable error message was serialized: %p',
     async (response) => {
@@ -52,6 +53,53 @@ describe('controller submission timeout', () => {
       expect(send).toHaveBeenCalledTimes(1);
     }
   );
+
+  it.each([
+    { success: false },
+    {
+      hash: `0x${'ab'.repeat(32)}`,
+      success: false,
+      status: 'failed',
+      // Match the provider transaction schema without renaming its field.
+      // eslint-disable-next-line camelcase
+      txreceipt_status: '0',
+      gasUsed: '21000',
+      logs: [],
+      revertReason: null,
+    },
+  ])(
+    'preserves unsuccessful domain results without an error envelope: %p',
+    async (response) => {
+      (chrome.runtime as any).id = 'pali';
+      const send = jest
+        .spyOn(chrome.runtime, 'sendMessage')
+        .mockImplementation(((
+          _message: unknown,
+          callback: (value: unknown) => void
+        ) => callback(response)) as any);
+      await expect(
+        controllerEmitter(
+          ['wallet', 'getEvmTransactionFromProvider'],
+          [`0x${'ab'.repeat(32)}`]
+        )
+      ).resolves.toBe(response);
+      expect(send).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  it('still rejects an unknown-method transport response', async () => {
+    (chrome.runtime as any).id = 'pali';
+    const send = jest
+      .spyOn(chrome.runtime, 'sendMessage')
+      .mockImplementation(((
+        _message: unknown,
+        callback: (value: unknown) => void
+      ) => callback({ success: false, error: 'Method not found' })) as any);
+    await expect(
+      controllerEmitter(['wallet', 'getSentrySettings'])
+    ).rejects.toThrow('Method not found');
+    expect(send).toHaveBeenCalledTimes(1);
+  });
 
   it('preserves successful void responses and structured transaction errors', async () => {
     (chrome.runtime as any).id = 'pali';
