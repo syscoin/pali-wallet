@@ -41,7 +41,7 @@ test('Sentry batch import validates and stores all keys atomically in a short wi
     await wallet.switchNetwork('Syscoin Testnet', 'UTXO');
     await wallet.ensureOnHome();
     await wallet.gotoRoute('#/settings/sentry');
-    const keys = ['01', '02', '03'].map((byte) => '00'.repeat(31) + byte);
+    const keys = ['01', '02', '03', '04'].map((byte) => '00'.repeat(31) + byte);
     const openBatch = async () => {
       await page
         .getByRole('button', { name: 'Import Sentry key', exact: true })
@@ -132,7 +132,7 @@ test('Sentry batch import validates and stores all keys atomically in a short wi
       }
     );
     await wallet.step(
-      'a later invalid cryptographic key does not partially import the valid first line',
+      'a rejected second key remains editable and imports atomically after correction and fresh approval',
       async () => {
         await openBatch();
         await page
@@ -143,10 +143,40 @@ test('Sentry batch import validates and stores all keys atomically in a short wi
           'Key 2: invalid key',
           { timeout: 30000 }
         );
-        await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+        const input = page.getByLabel('Sentry keys (one per line)');
+        await expect(input).toHaveValue(
+          `Gamma | ${keys[2]}\nInvalid scalar | ${'00'.repeat(32)}`
+        );
+        await expect(page.getByLabel('Wallet password')).toHaveValue('');
+        await expect(page.getByRole('checkbox')).not.toBeChecked();
+        const worker = wallet!.context
+          .serviceWorkers()
+          .find((w) => w.url().endsWith('background.bundle.js'))!;
+        const count = await worker.evaluate(async () => {
+          const items = await new Promise<Record<string, any>>((resolve) =>
+            chrome.storage.local.get(null, resolve)
+          );
+          return Object.entries(items)
+            .filter(([key]) => key.startsWith('sentry-operator-v1:'))
+            .flatMap(([, value]) => value.keys).length;
+        });
+        expect(count).toBe(2);
+        await input.fill(`Gamma | ${keys[2]}\nDelta | ${keys[3]}`);
+        await expect(
+          page.getByRole('button', { name: 'Import', exact: true })
+        ).toBeDisabled();
+        await submit();
         await expect(
           page.getByRole('heading', { name: 'Gamma', exact: true })
-        ).toHaveCount(0);
+        ).toBeVisible();
+        await expect(
+          page.getByRole('heading', { name: 'Delta', exact: true })
+        ).toBeVisible();
+        await openBatch();
+        await expect(page.getByLabel('Sentry keys (one per line)')).toHaveValue(
+          ''
+        );
+        await page.getByRole('button', { name: 'Cancel', exact: true }).click();
         await expect(
           page.getByRole('heading', { name: 'Alpha', exact: true })
         ).toBeVisible();

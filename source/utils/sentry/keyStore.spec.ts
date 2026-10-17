@@ -264,6 +264,38 @@ it('rejects duplicates, invalid labels and oversized batches before writing anyt
   expect(await listSentryKeys(vaultId, 'testnet')).toEqual([]);
 });
 
+it.each(['same', 'other'])(
+  'never persists the %s entry private key in a public label',
+  async (mode) => {
+    const vaultId = await getSentryVaultId('batch-vault');
+    const first = { ...key, secretKey: 'ab'.repeat(32) };
+    const second = {
+      ...key,
+      publicKey: '56'.repeat(48),
+      secretKey: 'cd'.repeat(32),
+    };
+    await expect(
+      saveSentryKeys({
+        vaultId,
+        network: 'testnet',
+        seed,
+        assertCurrent,
+        entries: [
+          {
+            label:
+              'Key 0x' +
+              (mode === 'same' ? first : second).secretKey.toUpperCase(),
+            key: first,
+          },
+          { label: 'Second', key: second },
+        ],
+      })
+    ).rejects.toThrow('Key labels must not contain private keys');
+    expect(chromeStorage.setItem).not.toHaveBeenCalled();
+    expect(await listSentryKeys(vaultId, 'testnet')).toEqual([]);
+  }
+);
+
 it('does not partially persist a batch invalidated after all encryption completed', async () => {
   const vaultId = await getSentryVaultId('batch-vault');
   let checks = 0;

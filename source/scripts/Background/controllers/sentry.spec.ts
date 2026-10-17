@@ -390,6 +390,30 @@ it('validates every imported key before committing a batch', async () => {
   );
 });
 
+it.each([
+  [{ label: `Node 0x${'AB'.repeat(32)}`, secretKey: 'ab'.repeat(32) }],
+  [
+    { label: 'cd'.repeat(32), secretKey: 'ab'.repeat(32) },
+    { label: 'Second', secretKey: '0x' + 'cd'.repeat(32) },
+  ],
+  [{ label: 'Node ' + 'K'.repeat(52), secretKey: 'K'.repeat(52) }],
+])(
+  'rejects private input copied into any public batch label',
+  async (...entries) => {
+    await expect(
+      controller.importKeys({
+        entries,
+        scheme: 'bls-basic',
+        role: 'operator',
+        password: 'pw',
+      })
+    ).rejects.toThrow('Key labels must not contain private keys');
+    expect(getSeed).not.toHaveBeenCalled();
+    expect(runSentryCrypto).not.toHaveBeenCalled();
+    expect(saveSentryKeys).not.toHaveBeenCalled();
+  }
+);
+
 it('rejects one bad or interrupted import without persisting the earlier valid key', async () => {
   (runSentryCrypto as jest.Mock)
     .mockResolvedValueOnce(imported)

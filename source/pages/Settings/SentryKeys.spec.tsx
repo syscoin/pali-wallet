@@ -180,6 +180,75 @@ it('invalidates the whole-batch acknowledgement on edits and never submits inval
   expect(screen.getByRole('checkbox')).not.toBeChecked();
 });
 
+it('keeps an uncommitted batch editable after a rejected key and requires fresh approval', async () => {
+  let imports = 0;
+  mockEmitter.mockImplementation((methods) => {
+    if (methods[1] === 'importSentryKeys' && ++imports === 1)
+      return Promise.reject(new Error('Key 2: invalid key'));
+    return Promise.resolve(settings);
+  });
+  render(<SentryKeys />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Import Sentry key' })
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Batch import' }));
+  const text = `First | ${'11'.repeat(32)}\nSecond | ${'00'.repeat(32)}`;
+  const input = screen.getByLabelText('Sentry keys (one per line)');
+  fireEvent.change(input, { target: { value: text } });
+  fireEvent.click(screen.getByRole('button', { name: 'Show private keys' }));
+  fireEvent.change(screen.getByLabelText('Wallet password'), {
+    target: { value: 'pw' },
+  });
+  fireEvent.click(screen.getByRole('checkbox'));
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.import' }));
+  await screen.findByText('Key 2: invalid key');
+  expect(input).toHaveValue(text);
+  expect(screen.getByLabelText('Wallet password')).toHaveValue('');
+  expect(screen.getByRole('checkbox')).not.toBeChecked();
+  expect(
+    screen.getByRole('button', { name: 'Show private keys' })
+  ).toBeVisible();
+  fireEvent.change(input, {
+    target: { value: text.replace('00'.repeat(32), '22'.repeat(32)) },
+  });
+  fireEvent.change(screen.getByLabelText('Wallet password'), {
+    target: { value: 'pw' },
+  });
+  expect(screen.getByRole('button', { name: 'buttons.import' })).toBeDisabled();
+  fireEvent.click(screen.getByRole('checkbox'));
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.import' }));
+  await waitFor(() =>
+    expect(screen.queryByLabelText('Sentry keys (one per line)')).toBeNull()
+  );
+  expect(imports).toBe(2);
+});
+
+it('clears a committed batch even when the following settings refresh fails', async () => {
+  let loads = 0;
+  mockEmitter.mockImplementation((methods) => {
+    if (methods[1] === 'getSentrySettings' && ++loads > 1)
+      return Promise.reject(new Error('Refresh failed'));
+    return Promise.resolve(settings);
+  });
+  render(<SentryKeys />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Import Sentry key' })
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Batch import' }));
+  fireEvent.change(screen.getByLabelText('Sentry keys (one per line)'), {
+    target: { value: '11'.repeat(32) },
+  });
+  fireEvent.change(screen.getByLabelText('Wallet password'), {
+    target: { value: 'pw' },
+  });
+  fireEvent.click(screen.getByRole('checkbox'));
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.import' }));
+  await screen.findByText('Refresh failed');
+  expect(screen.getByLabelText('Sentry keys (one per line)')).toHaveValue('');
+  expect(screen.getByLabelText('Wallet password')).toHaveValue('');
+  expect(screen.getByRole('checkbox')).not.toBeChecked();
+});
+
 it('invalidates single-key backup acknowledgement when its label changes', async () => {
   render(<SentryKeys />);
   fireEvent.click(

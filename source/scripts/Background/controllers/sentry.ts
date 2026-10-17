@@ -446,6 +446,23 @@ export class SentryController {
         params.entries.length > 20
       )
         throw new Error('Import between 1 and 20 Sentry keys at a time');
+      const privateInputs = params.entries
+        .map((entry) =>
+          typeof entry?.secretKey === 'string'
+            ? entry.secretKey.replace(/^0x/i, '').toLowerCase()
+            : ''
+        )
+        .filter((value) => value.length >= 50);
+      if (
+        params.entries.some(
+          (entry) =>
+            typeof entry?.label === 'string' &&
+            privateInputs.some((value) =>
+              entry.label.toLowerCase().includes(value)
+            )
+        )
+      )
+        throw new Error('Key labels must not contain private keys');
       if (
         !['bls-basic', 'slh-dsa-shake-128s', 'secp256k1'].includes(
           params.scheme
@@ -500,7 +517,7 @@ export class SentryController {
       });
       const seed = await this.host.getSeed(params.password);
       this.assertCurrent(scope);
-      const keys: Array<{ label: string; key: SentryAuthorityKey }> = [];
+      const keys: Array<{ key: SentryAuthorityKey; label: string }> = [];
       for (const [index, entry] of entries.entries()) {
         let key: SentryAuthorityKey;
         try {

@@ -129,6 +129,7 @@ const SentryKeys = () => {
     setBusy(true);
     setError('');
     setNotice('');
+    let importCommitted = false;
     try {
       if (mode === 'import') {
         if (!backup)
@@ -157,6 +158,15 @@ const SentryKeys = () => {
           180000,
           false
         );
+        importCommitted = true;
+        if (
+          active.current &&
+          owner.current === current &&
+          inFlight.current === job
+        ) {
+          setBatchText('');
+          setShowKeys(false);
+        }
       } else if (mode === 'service') {
         await controllerEmitter(
           ['wallet', 'saveSentrySettings'],
@@ -235,7 +245,8 @@ const SentryKeys = () => {
           setBusy(false);
           setPassword('');
           setSecret('');
-          setBatchText('');
+          if (mode !== 'import' || importMode !== 'batch' || importCommitted)
+            setBatchText('');
           setShowKeys(false);
           if (mode === 'import') setBackup(false);
         }

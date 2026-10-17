@@ -179,6 +179,12 @@ export const saveSentryKeys = async (args: {
       throw new Error(`Key ${index + 1}: invalid key metadata`);
     return { label: label.trim(), key };
   });
+  if (
+    entries.some(({ label }) =>
+      entries.some(({ key }) => label.toLowerCase().includes(key.secretKey))
+    )
+  )
+    throw new Error('Key labels must not contain private keys');
   assertCurrent();
   const store = await getStore(vaultId, network);
   assertCurrent();
