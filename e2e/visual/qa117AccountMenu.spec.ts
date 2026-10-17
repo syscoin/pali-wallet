@@ -2,6 +2,10 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 
 import en from '../../source/assets/locales/en.json';
 import { E2E_CONFIG } from '../harness/config';
+import {
+  createIsolatedVaultFixture,
+  installIsolatedVaultRoutes,
+} from '../harness/isolatedVaultFixture';
 import { PaliWallet } from '../harness/pali';
 import {
   createUtxoFixture,
@@ -235,6 +239,225 @@ test('account dropdown supports keyboard selection and separate copy actions in 
       });
     }
     expect(routes.deniedWrites).toEqual([]);
+  } finally {
+    await wallet?.context.close().catch(() => undefined);
+    await server.close();
+    Object.assign(E2E_CONFIG, previous);
+  }
+});
+
+test('a long smart-account menu keeps bottom actions reachable by keyboard and scrolling', async ({}, info) => {
+  test.setTimeout(120_000);
+  const previous = { ...E2E_CONFIG };
+  const server = await startUtxoFixtureServer();
+  Object.assign(E2E_CONFIG, {
+    seedPhrase: UTXO_FIXTURE_SEED,
+    password: 'LongSmartMenuSynthetic!2026',
+    rpcUrl: server.url,
+  });
+  let wallet: PaliWallet | undefined;
+  try {
+    wallet = await PaliWallet.launch('qa117-long-smart-menu', {
+      offlineHttpProxy: server.url,
+      viewport: { width: 400, height: 480 },
+    });
+    const routes = await installIsolatedVaultRoutes(
+      wallet.context,
+      createIsolatedVaultFixture(),
+      server.url
+    );
+    await wallet.importSeedAndCreatePassword();
+    await wallet.ensureOnHome();
+    const page = wallet.page;
+    const errors: string[] = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    await page.addInitScript(() => {
+      const address = (id: number) =>
+        `0x${(id + 1).toString(16).padStart(40, '0')}`;
+      const metadata = {
+        auth: { validator: address(99), module: 'ecdsa', data: '0x' },
+        chainId: 5700,
+        isDeployed: true,
+        installedModules: [],
+      };
+      (window as any).__qa117MenuMutations = [];
+      const transform = (state: any) => {
+        if (!state?.vault) return state;
+        const value = structuredClone(state);
+        value.vault.accounts.SmartAccount = Object.fromEntries(
+          Array.from({ length: 24 }, (_, id) => [
+            id,
+            {
+              id,
+              type: 'SmartAccount',
+              isSmartAccount: true,
+              address: address(id),
+              label: `Synthetic smart account ${id + 1} with a long label`,
+              smartAccount: metadata,
+              balances: { ethereum: 0, syscoin: 0 },
+            },
+          ])
+        );
+        value.vault.activeAccount = { id: 0, type: 'SmartAccount' };
+        value.vault.activeNetwork = {
+          chainId: 5700,
+          kind: 'ethereum',
+          currency: 'TSYS',
+          label: 'Synthetic',
+          url: 'https://rpc.tanenbaum.io',
+          slip44: 60,
+        };
+        value.vault.isBitcoinBased = false;
+        value.vaultGlobal.activeSlip44 = 60;
+        value.vaultGlobal.networkStatus = 'connected';
+        value.vaultGlobal.isSwitchingAccount = false;
+        return value;
+      };
+      const send = chrome.runtime.sendMessage.bind(chrome.runtime);
+      chrome.runtime.sendMessage = ((...args: any[]) => {
+        const [message, callback] = args;
+        const reply = (value: any) =>
+          typeof callback === 'function'
+            ? queueMicrotask(() => callback(value))
+            : Promise.resolve(value);
+        if (message?.type === 'getCurrentState')
+          return typeof callback === 'function'
+            ? (send as any)(message, (state: any) => callback(transform(state)))
+            : (send as any)(message).then(transform);
+        if (
+          message?.type === 'CONTROLLER_ACTION' &&
+          message.data?.methods?.[0] === 'wallet'
+        ) {
+          const method = message.data.methods[1];
+          if (method === 'hydrateSmartAccount') return reply(metadata);
+          if (
+            /^(?:setAccount|sign|send|deploy|install|uninstall|rotate|add|remove|register|start|finalize|prepare)/i.test(
+              method
+            )
+          ) {
+            (window as any).__qa117MenuMutations.push(method);
+            return reply({ error: 'Synthetic menu fixture forbids mutation' });
+          }
+        }
+        return (send as any)(...args);
+      }) as typeof chrome.runtime.sendMessage;
+      const add = chrome.runtime.onMessage.addListener.bind(
+        chrome.runtime.onMessage
+      );
+      const remove = chrome.runtime.onMessage.removeListener.bind(
+        chrome.runtime.onMessage
+      );
+      const wrappers = new Map<any, any>();
+      chrome.runtime.onMessage.addListener = (listener: any) => {
+        const wrapper = (message: any, ...rest: any[]) => {
+          if (message?.type === 'CONTROLLER_STATE_CHANGE')
+            return listener(
+              { ...message, data: transform(message.data) },
+              ...rest
+            );
+          if (
+            [
+              'CONTROLLER_ACCOUNTS_CHANGE',
+              'CONTROLLER_ACTIVE_ACCOUNT_CHANGE',
+              'CONTROLLER_NETWORK_CHANGE',
+              'CONTROLLER_ACCOUNT_BALANCE_CHANGE',
+            ].includes(message?.type)
+          )
+            return false;
+          return listener(message, ...rest);
+        };
+        wrappers.set(listener, wrapper);
+        add(wrapper);
+      };
+      chrome.runtime.onMessage.removeListener = (listener: any) => {
+        remove(wrappers.get(listener) || listener);
+        wrappers.delete(listener);
+      };
+    });
+    await page.reload();
+    await wallet.ensureOnHome();
+    for (const viewport of [
+      { width: 320, height: 360 },
+      { width: 400, height: 480 },
+    ]) {
+      await page.setViewportSize(viewport);
+      await page.mouse.move(0, 0);
+      const menuButton = page.locator('#general-settings-button').locator('..');
+      await tabTo(page, menuButton);
+      await page.keyboard.press('ArrowDown');
+      const menu = page.getByRole('menu');
+      const first = menu.getByRole('menuitem').first();
+      await expect.poll(() => isActiveMenuItem(menu, first)).toBe(true);
+      await expect(menu.locator('[id^="account-SmartAccount-"]')).toHaveCount(
+        24
+      );
+      expect(
+        await menu.evaluate((node) => {
+          const rect = node.getBoundingClientRect();
+          const scrollport = node.firstElementChild!;
+          return (
+            rect.top >= 0 &&
+            rect.bottom <= innerHeight &&
+            scrollport.scrollHeight > scrollport.clientHeight * 3 &&
+            scrollport.scrollWidth <= scrollport.clientWidth
+          );
+        })
+      ).toBe(true);
+      await page.keyboard.press('End');
+      const advanced = menu.getByRole('menuitem', {
+        name: en.generalMenu.advanced,
+        exact: true,
+      });
+      await expect.poll(() => isActiveMenuItem(menu, advanced)).toBe(true);
+      await expect
+        .poll(() =>
+          advanced.evaluate((node) => {
+            const rect = node.getBoundingClientRect();
+            const hit = document.elementFromPoint(
+              rect.left + rect.width / 2,
+              rect.top + rect.height / 2
+            );
+            return (
+              rect.top >= 0 &&
+              rect.bottom <= innerHeight &&
+              !!hit &&
+              (hit === node || node.contains(hit))
+            );
+          })
+        )
+        .toBe(true);
+      await info.attach(
+        `24-smart-accounts-keyboard-end-${viewport.width}x${viewport.height}`,
+        {
+          body: await page.screenshot({ animations: 'disabled' }),
+          contentType: 'image/png',
+        }
+      );
+      await page.keyboard.press('Home');
+      await expect.poll(() => isActiveMenuItem(menu, first)).toBe(true);
+      await first.hover();
+      await page.mouse.wheel(0, 8000);
+      await expect
+        .poll(() =>
+          menu.evaluate((node) => {
+            const scrollport = node.firstElementChild!;
+            return (
+              scrollport.scrollTop + scrollport.clientHeight >=
+              scrollport.scrollHeight - 2
+            );
+          })
+        )
+        .toBe(true);
+      await advanced.click();
+      await expect(page).toHaveURL(/#\/settings\/advanced$/);
+      await wallet.gotoRoute('#/home');
+      await wallet.ensureOnHome();
+    }
+    expect(
+      await page.evaluate(() => (window as any).__qa117MenuMutations)
+    ).toEqual([]);
+    expect(routes.deniedWrites).toEqual([]);
+    expect(errors).toEqual([]);
   } finally {
     await wallet?.context.close().catch(() => undefined);
     await server.close();
