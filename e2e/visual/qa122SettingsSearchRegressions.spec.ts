@@ -150,11 +150,23 @@ test('token and NFT searches distinguish empty results and clear back to the ful
     await page
       .getByRole('button', { name: en.home.importToken, exact: true })
       .click();
-    const custom = page.getByRole('button', {
-      name: en.tokens.addCustomTab,
-      exact: true,
-    });
-    if (await custom.count()) await custom.first().click();
+    const selectCustomTab = async () => {
+      await expect(page).toHaveURL(/#\/tokens\/add(?:\?|$)/);
+      // The owned-token empty state can include another Add Custom button.
+      // Select the tab itself only after the destination has rendered.
+      const custom = page
+        .getByRole('button', {
+          name: en.tokens.addCustomTab,
+          exact: true,
+        })
+        .and(page.locator('button[aria-pressed]'));
+      await expect(custom).toHaveCount(1);
+      await expect(custom).toBeVisible();
+      await custom.click();
+      await expect(custom).toHaveAttribute('aria-pressed', 'true');
+      await expect(page.locator('#custom-token-contract')).toBeVisible();
+    };
+    await selectCustomTab();
     const importAsset = async (address: string, symbol: string) => {
       await page.locator('#custom-token-contract').fill(address);
       const button = page.getByRole('button', {
@@ -282,7 +294,7 @@ test('token and NFT searches distinguish empty results and clear back to the ful
       page.getByText(en.assetsHeader.noMatchingAssets, { exact: true })
     ).toHaveCount(0);
     await wallet.gotoRoute('#/tokens/add?tab=custom');
-    if (await custom.count()) await custom.first().click();
+    await selectCustomTab();
     await importAsset(nftContract, 'QANFT');
     for (const [width, height] of [
       [320, 360],
