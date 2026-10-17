@@ -121,7 +121,6 @@ const ImportPhrase: React.FC = () => {
           seedLength: seedValidation.seedLength,
         })}
         onClose={() => setShowModal(false)}
-        position="inset-[-6.5rem]"
         show={showModal}
       />
       <Form

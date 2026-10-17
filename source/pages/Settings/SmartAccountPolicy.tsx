@@ -2321,8 +2321,8 @@ const SmartAccountPolicy = () => {
               />
             </div>
             <div className="min-w-0 flex-1">
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-sm font-semibold text-brand-white">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="min-w-0 break-words text-sm font-semibold text-brand-white">
                   {isUndeployedSmartAccount
                     ? t('settings.registerSmartAccount')
                     : t('settings.smartAccountCurrentApprovalMethod')}
@@ -2475,7 +2475,7 @@ const SmartAccountPolicy = () => {
                     }`}
                   >
                     <div className="space-y-3 text-sm">
-                      <div className="flex items-start justify-between gap-3">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
                         <div className="min-w-0">
                           <p className="font-semibold text-brand-white">
                             {t(moduleDisplayKey(module.id)) ||

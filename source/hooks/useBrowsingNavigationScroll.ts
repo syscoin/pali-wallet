@@ -6,6 +6,7 @@ export const useBrowsingNavigationScroll = (walletScope: string) => {
   const location = useLocation();
   const positionsKey = JSON.stringify(location.state?.scrollPositions || {});
   const windowPosition = location.state?.scrollPosition;
+  // Different assets can share a pathname; the history key marks a new view.
   useEffect(() => {
     const targets = location.state?.scrollPositions;
     const windowTarget = location.state?.scrollPosition;
@@ -86,5 +87,11 @@ export const useBrowsingNavigationScroll = (walletScope: string) => {
     document.addEventListener('keydown', cleanup, true);
     schedule();
     return cleanup;
-  }, [location.pathname, positionsKey, windowPosition, walletScope]);
+  }, [
+    location.key,
+    location.pathname,
+    positionsKey,
+    windowPosition,
+    walletScope,
+  ]);
 };

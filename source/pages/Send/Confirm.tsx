@@ -2583,7 +2583,7 @@ export const SendConfirm = () => {
             warningSeconds={180}
           />
 
-          <div className="flex items-center justify-around py-6 w-full mt-4">
+          <div className="flex items-center justify-center gap-3 py-6 w-full mt-4">
             <Button
               type="button"
               disabled={loading || submission.pending}

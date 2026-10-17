@@ -223,11 +223,11 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
   return (
     <>
       {currentNft?.contractAddress ? (
-        <div className="pb-6">
+        <div className="w-full min-w-0 pb-6">
           <div className="w-full flex flex-col items-center justify-center gap-y-4">
             {/* Collection Header */}
             <div className="w-full text-center mb-2">
-              <h3 className="text-brand-white text-lg font-medium">
+              <h3 className="break-words text-brand-white text-lg font-medium">
                 {currentNft.name || t('send.nftCollection')}
               </h3>
               <p className="text-brand-gray200 text-sm">
@@ -400,7 +400,7 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
                 {t('nftDetails.about')}
               </p>
 
-              <p className="text-xs font-normal">
+              <p className="max-w-full break-words text-xs font-normal">
                 {currentNft.name || t('send.nftCollection')}
               </p>
 
@@ -433,7 +433,9 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
                     className="rounded-full"
                   />
 
-                  <span className="text-brand-gray200">{currentNft.name}</span>
+                  <span className="min-w-0 break-words text-brand-gray200">
+                    {currentNft.name}
+                  </span>
                 </div>
               </div>
             )}

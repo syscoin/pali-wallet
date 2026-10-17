@@ -71,6 +71,9 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
+  const refreshEnabled = useSelector((state: RootState) =>
+    Boolean(state.vaultGlobal.advancedSettings?.refresh)
+  );
 
   const dapps = useSelector((state: RootState) => state.dapp.dapps);
 
@@ -211,13 +214,15 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
   return (
     <Menu
       as="div"
-      className="absolute z-[9999] w-full left-4 inline-block mr-8 text-left"
+      className={`absolute z-[9999] left-4 inline-block text-left ${
+        refreshEnabled ? 'right-36' : 'right-24'
+      }`}
     >
       {(menuprops) => (
         <>
           <Menu.Button
             disabled={disabled}
-            className={`group relative inline-flex gap-x-2 items-center justify-start ml-2 w-max text-white text-sm font-medium rounded-lg px-2 py-1.5 focus:outline-none transition-all duration-300 ease-in-out ${
+            className={`group relative inline-flex gap-x-2 items-center justify-start ml-2 w-max max-w-full text-white text-sm font-medium rounded-lg px-2 py-1.5 focus:outline-none transition-all duration-300 ease-in-out ${
               disabled
                 ? 'opacity-50 cursor-not-allowed'
                 : 'hover:bg-gradient-to-r hover:from-brand-blue600/20 hover:to-brand-blue500/20 hover:backdrop-blur-sm cursor-pointer hover:shadow-lg hover:shadow-brand-blue600/10 active:scale-[0.98]'
@@ -226,7 +231,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
             {/* Background glow effect on hover */}
             <div className="absolute inset-0 bg-gradient-to-r from-transparent via-brand-blue600/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-lg"></div>
 
-            <div className="relative z-10 transform group-hover:scale-110 transition-transform duration-300 ease-out">
+            <div className="relative z-10 flex-shrink-0 transform group-hover:scale-110 transition-transform duration-300 ease-out">
               <ChainIcon
                 chainId={activeNetwork.chainId}
                 size={20}
@@ -236,21 +241,24 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                 className="flex-shrink-0 group-hover:brightness-110 transition-all duration-300"
               />
             </div>
-            <span className="relative z-10 font-light group-hover:font-medium group-hover:text-white transition-all duration-300">
+            <span
+              title={activeNetwork.label}
+              className="relative z-10 min-w-0 truncate font-light group-hover:font-medium group-hover:text-white transition-all duration-300"
+            >
               {activeNetwork.label}
             </span>
             <span
-              className={`relative z-10 px-[6px] py-[2px] text-xs font-medium text-white rounded-full ${bgColor} group-hover:shadow-md transform group-hover:scale-105 transition-all duration-300`}
+              className={`relative z-10 flex-shrink-0 px-[6px] py-[2px] text-xs font-medium text-white rounded-full ${bgColor} group-hover:shadow-md transform group-hover:scale-105 transition-all duration-300`}
             >
               {networkDisplayType}
             </span>
             {isNetworkChanging && (
-              <div className="relative z-10">
+              <div className="relative z-10 flex-shrink-0">
                 <Spinner size={16} color="#ffffff" />
               </div>
             )}
 
-            <div className="relative z-10 transform group-hover:scale-110 transition-transform duration-300">
+            <div className="relative z-10 flex-shrink-0 transform group-hover:scale-110 transition-transform duration-300">
               <DropdownArrowSvg
                 isOpen={menuprops.open}
                 className="right-2 group-hover:brightness-110 transition-all duration-300"
@@ -270,7 +278,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
           {!disabled && (
             <Menu.Items
               as="div"
-              className={`absolute overflow-x-hidden z-50 top-[10px] left-[-17px] w-screen h-screen text-center text-brand-white font-poppins bg-brand-blue600 rounded-2xl focus:outline-none shadow-2xl ring-1 ring-black ring-opacity-5
+              className={`fixed overflow-x-hidden z-50 inset-x-0 top-8 bottom-0 w-full text-center text-brand-white font-poppins bg-brand-blue600 rounded-2xl focus:outline-none shadow-2xl ring-1 ring-black ring-opacity-5
               transform transition-all duration-100 ease-out ${
                 menuprops.open
                   ? 'opacity-100 scale-100 pointer-events-auto'
@@ -278,12 +286,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
               }`}
               static
             >
-              <div
-                className="remove-scrollbar h-full overflow-y-auto overscroll-contain pt-5"
-                style={{
-                  paddingBottom: 'calc(100vh - 350px)',
-                }}
-              >
+              <div className="remove-scrollbar h-full overflow-y-auto overscroll-contain pt-5 pb-6">
                 <Menu.Item>
                   <li
                     onClick={handleConnectedSitesNavigation}

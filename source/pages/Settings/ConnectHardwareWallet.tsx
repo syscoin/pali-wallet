@@ -295,7 +295,7 @@ const ConnectHardwareWalletView: FC = () => {
                   </p>
 
                   <button
-                    className={`${trezorSelectedButtonStyle} mt-6 rounded-full py-2 w-80 mx-auto text-center text-base font-medium mb-[6px] hover:bg-brand-blue400 hover:border-brand-blue400 hover:cursor-pointer`}
+                    className={`${trezorSelectedButtonStyle} mt-6 rounded-full py-2 w-full max-w-80 mx-auto text-center text-base font-medium mb-[6px] hover:bg-brand-blue400 hover:border-brand-blue400 hover:cursor-pointer`}
                     onClick={() =>
                       setSelectedHardwareWallet(HardWallets.TREZOR)
                     }
@@ -305,7 +305,7 @@ const ConnectHardwareWalletView: FC = () => {
                     Trezor
                   </button>
                   <button
-                    className={`${ledgerSelectedButtonStyle} rounded-full py-2 w-80 mx-auto text-center text-base font-medium hover:bg-brand-blue400 hover:border-brand-blue400 hover:cursor-pointer`}
+                    className={`${ledgerSelectedButtonStyle} rounded-full py-2 w-full max-w-80 mx-auto text-center text-base font-medium hover:bg-brand-blue400 hover:border-brand-blue400 hover:cursor-pointer`}
                     onClick={() =>
                       setSelectedHardwareWallet(HardWallets.LEDGER)
                     }

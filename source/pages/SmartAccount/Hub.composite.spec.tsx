@@ -338,7 +338,7 @@ it.each(['account', 'rpc', 'chain', 'lock'])(
   }
 );
 
-it('binds the saved execution to the modal-opening wallet generation and account', async () => {
+it('tracks the saved execution within the modal-opening wallet generation and account', async () => {
   render(<SmartAccountHub />);
   await open();
   save();
@@ -354,6 +354,7 @@ it('binds the saved execution to the modal-opening wallet generation and account
     slip44: 60,
     sessionGeneration: 7,
   });
+  expect(mockSubmit.mock.calls[0][0].trackLocalSubmission).toBe(true);
 });
 
 it('refuses a changed generation before signing even when visible account and network are unchanged', async () => {
@@ -710,7 +711,7 @@ describe('custom-validator dialog', () => {
     ).toBeDefined();
   });
 
-  it('binds custom installation to the opening wallet generation', async () => {
+  it('tracks custom installation within the opening wallet generation', async () => {
     render(<SmartAccountHub />);
     await openCustom();
     await check();
@@ -720,6 +721,7 @@ describe('custom-validator dialog', () => {
     expect(mockSubmit.mock.calls[0][0].expectedContext?.sessionGeneration).toBe(
       7
     );
+    expect(mockSubmit.mock.calls[0][0].trackLocalSubmission).toBe(true);
     await waitFor(() =>
       expect(
         mockEmitter.mock.calls.find(
@@ -846,7 +848,7 @@ describe('uninstall approval scope', () => {
     }
   );
 
-  it('binds uninstall and local removal to the opening session', async () => {
+  it('tracks uninstall and binds local removal to the opening session', async () => {
     render(<SmartAccountHub />);
     await openUninstall();
     fireEvent.click(screen.getByRole('button', { name: 'confirm-uninstall' }));
@@ -854,6 +856,7 @@ describe('uninstall approval scope', () => {
     expect(mockSubmit.mock.calls[0][0].expectedContext?.sessionGeneration).toBe(
       7
     );
+    expect(mockSubmit.mock.calls[0][0].trackLocalSubmission).toBe(true);
     await waitFor(() =>
       expect(
         mockEmitter.mock.calls.find(

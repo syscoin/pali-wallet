@@ -19,6 +19,7 @@ const mockState = {
     isBitcoinBased: false,
   },
   vaultGlobal: {
+    advancedSettings: { refresh: false },
     networkStatus: 'idle',
     networks: { syscoin: {}, ethereum: {} },
   },
@@ -118,6 +119,35 @@ it.each([
       );
     } finally {
       scroller.remove();
+    }
+  }
+);
+
+it.each([false, true])(
+  'keeps the full network name accessible while reserving header controls (refresh=%s)',
+  (refresh) => {
+    const previous = mockState.vault.activeNetwork.label;
+    const label = 'A very long regional development network name';
+    mockState.vault.activeNetwork.label = label;
+    mockState.vaultGlobal.advancedSettings.refresh = refresh;
+    mockLocation = { pathname: '/home', search: '', hash: '', state: {} };
+    try {
+      const { container } = render(<NetworkMenu />);
+      const name = screen.getByTitle(label);
+      expect(name.textContent).toBe(label);
+      expect(name.classList.contains('truncate')).toBe(true);
+      expect(name.classList.contains('min-w-0')).toBe(true);
+      expect(name.closest('button')?.classList.contains('max-w-full')).toBe(
+        true
+      );
+      expect(
+        (container.firstChild as Element).classList.contains(
+          refresh ? 'right-36' : 'right-24'
+        )
+      ).toBe(true);
+    } finally {
+      mockState.vault.activeNetwork.label = previous;
+      mockState.vaultGlobal.advancedSettings.refresh = false;
     }
   }
 );

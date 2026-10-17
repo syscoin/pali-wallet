@@ -38,6 +38,7 @@ import {
   signSLHDSAActionHashLocal,
 } from './signer';
 import {
+  getSLHDSASmartAccountSetupStatus,
   provisionSLHDSASmartAccountValidator,
   saveSLHDSAPreparedSmartAccountSigner,
   startSLHDSASmartAccountValidatorSetup,
@@ -677,5 +678,94 @@ describe('SLH-DSA local lifetime accounting', () => {
       provisionSLHDSASmartAccountValidator(args)
     ).resolves.toMatchObject({ keyId });
     expect(getSetupSecret).toHaveBeenCalledTimes(2);
+  });
+
+  it('retires an invalidated same-session owner before reporting its setup as running', async () => {
+    const secret = deferred<{
+      derivationLabel: string;
+      setupSecretHex: string;
+    }>();
+    let current = true;
+    await startSLHDSASmartAccountValidatorSetup({
+      accountId: 96,
+      accountIndex: 0,
+      assertCurrent: () => {
+        if (!current) throw new Error('Account context changed');
+      },
+      getSetupSecret: () => secret.promise,
+    });
+    current = false;
+    try {
+      await expect(
+        getSLHDSASmartAccountSetupStatus({ accountId: 96 })
+      ).resolves.toBeNull();
+    } finally {
+      secret.resolve({
+        derivationLabel: 'stale',
+        setupSecretHex: `0x${'44'.repeat(32)}`,
+      });
+      await new Promise(setImmediate);
+    }
+  });
+
+  it('restarts after account-context invalidation without reusing or being overwritten by its old job', async () => {
+    const staleSecret = deferred<{
+      derivationLabel: string;
+      setupSecretHex: string;
+    }>();
+    const freshSecret = deferred<{
+      derivationLabel: string;
+      setupSecretHex: string;
+    }>();
+    let current = true;
+    const old = await startSLHDSASmartAccountValidatorSetup({
+      accountId: 97,
+      accountIndex: 0,
+      assertCurrent: () => {
+        if (!current) throw new Error('Account context changed');
+      },
+      getSetupSecret: () => staleSecret.promise,
+    });
+    current = false;
+    const getSetupSecret = jest.fn(() => freshSecret.promise);
+    const args = { accountId: 97, accountIndex: 0, getSetupSecret };
+    try {
+      const replacement = await startSLHDSASmartAccountValidatorSetup(args);
+      expect(replacement.setupJobId).not.toBe(old.setupJobId);
+      await new Promise(setImmediate);
+      expect(getSetupSecret).toHaveBeenCalledTimes(1);
+      // Switching back can satisfy an equality-based context guard again, but
+      // the retired job must never regain ownership over its replacement.
+      current = true;
+      staleSecret.resolve({
+        derivationLabel: 'stale',
+        setupSecretHex: `0x${'44'.repeat(32)}`,
+      });
+      await new Promise(setImmediate);
+      await expect(
+        getSLHDSASmartAccountSetupStatus({ accountId: 97 })
+      ).resolves.toMatchObject({
+        setupJobId: replacement.setupJobId,
+        status: 'running',
+      });
+      freshSecret.resolve({
+        derivationLabel: 'fresh',
+        setupSecretHex: `0x${'44'.repeat(32)}`,
+      });
+      await expect(
+        provisionSLHDSASmartAccountValidator(args)
+      ).resolves.toMatchObject({ keyId });
+      expect(getSetupSecret).toHaveBeenCalledTimes(1);
+    } finally {
+      staleSecret.resolve({
+        derivationLabel: 'stale',
+        setupSecretHex: `0x${'44'.repeat(32)}`,
+      });
+      freshSecret.resolve({
+        derivationLabel: 'fresh',
+        setupSecretHex: `0x${'44'.repeat(32)}`,
+      });
+      await new Promise(setImmediate);
+    }
   });
 });
