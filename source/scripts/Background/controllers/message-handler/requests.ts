@@ -3,7 +3,10 @@ import { ethErrors } from 'helpers/errors';
 import { getController } from 'scripts/Background';
 import cleanErrorStack from 'utils/cleanErrorStack';
 import { normalizeDappTransaction } from 'utils/dappTransaction';
-import { isValidPersonalSignMessage } from 'utils/personalSignReview';
+import {
+  getPersonalSignParams,
+  isValidPersonalSignMessage,
+} from 'utils/personalSignReview';
 import { assertProviderRequestBudget } from 'utils/requestPayloadBudget';
 
 import {
@@ -101,21 +104,12 @@ export const methodRequest = async (
     data.params = [normalizeDappTransaction(data.params[0])];
   }
   if (data.method === 'personal_sign') {
-    const params = data.params;
-    const isAddress = (value: unknown) =>
-      typeof value === 'string' && /^0x[\da-f]{40}$/i.test(value);
-    if (
-      !params ||
-      params.length < 2 ||
-      !(
-        (isAddress(params[0]) && typeof params[1] === 'string') ||
-        (isAddress(params[1]) && typeof params[0] === 'string')
-      )
-    )
+    const params = getPersonalSignParams(data.params);
+    if (!params)
       throw ethErrors.rpc.invalidParams(
         'personal_sign requires a message and an account address'
       );
-    if (!params.slice(0, 2).every(isValidPersonalSignMessage))
+    if (!isValidPersonalSignMessage(params.message))
       throw ethErrors.rpc.invalidParams(
         'personal_sign hexadecimal messages must contain complete bytes'
       );

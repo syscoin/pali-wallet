@@ -24,7 +24,10 @@ import { handleTransactionError } from 'utils/errorHandling';
 import { hashMessage } from 'utils/ethersV6Compat';
 import { arrayify, isHexString } from 'utils/ethersV6Compat';
 import { getNetworkChain } from 'utils/network';
-import { getPersonalSignReview } from 'utils/personalSignReview';
+import {
+  getPersonalSignParams,
+  getPersonalSignReview,
+} from 'utils/personalSignReview';
 import {
   assertPaliErc7739TypedDataV4Method,
   encodeSmartAccountAuthenticatorSignature,
@@ -119,17 +122,13 @@ const EthSign: React.FC<ISign> = () => {
   const isActiveAccountAddress = (value: unknown) =>
     typeof value === 'string' && value.toLowerCase() === address.toLowerCase();
 
-  const getPersonalSignMessage = () => {
-    if (isActiveAccountAddress(data[0])) {
-      return data[1] || '';
-    }
-
-    if (isActiveAccountAddress(data[1])) {
-      return data[0] || '';
-    }
-
-    throw { message: t('send.signingForWrongAddress') };
+  const getPersonalSignRequest = () => {
+    const request = getPersonalSignParams(data);
+    if (!request || !isActiveAccountAddress(request.address))
+      throw { message: t('send.signingForWrongAddress') };
+    return request;
   };
+  const getPersonalSignMessage = () => getPersonalSignRequest().message;
 
   const reviewPersonalSign = () => {
     try {
@@ -192,10 +191,11 @@ const EthSign: React.FC<ISign> = () => {
           )
         )
           throw new Error('Invalid legacy typed data');
-        return { legacyFields, error: null, review: null };
+        return { legacyFields, modernData: null, error: null, review: null };
       } catch {
         return {
           legacyFields: null,
+          modernData: null,
           error: t(
             isActiveAccountAddress(data[0]) || isActiveAccountAddress(data[1])
               ? 'send.invalidApprovalDetails'
@@ -210,16 +210,32 @@ const EthSign: React.FC<ISign> = () => {
       data.eventName !== 'eth_signTypedData_v4'
     )
       return null;
-    const payload = isActiveAccountAddress(data[0])
-      ? data[1]
-      : isActiveAccountAddress(data[1])
-      ? data[0]
-      : undefined;
-    return {
-      legacyFields: null,
-      error: null,
-      review: getTypedOrderReview(payload),
-    };
+    try {
+      const modernData = getTypedDataPayload();
+      if (
+        !modernData ||
+        typeof modernData !== 'object' ||
+        Array.isArray(modernData)
+      )
+        throw new Error('Invalid typed data');
+      return {
+        legacyFields: null,
+        modernData,
+        error: null,
+        review: getTypedOrderReview(modernData),
+      };
+    } catch {
+      return {
+        legacyFields: null,
+        modernData: null,
+        error: t(
+          isActiveAccountAddress(data[0]) || isActiveAccountAddress(data[1])
+            ? 'send.invalidApprovalDetails'
+            : 'send.signingForWrongAddress'
+        ),
+        review: null,
+      };
+    }
   }, [
     requestData,
     data.eventName,
@@ -361,7 +377,9 @@ const EthSign: React.FC<ISign> = () => {
           data.eventName === 'eth_signTypedData' ||
           data.eventName === 'eth_signTypedData_v3' ||
           data.eventName === 'eth_signTypedData_v4'
-            ? getTypedDataPayload()
+            ? data.eventName === 'eth_signTypedData'
+              ? typedOrderRequest?.legacyFields
+              : typedOrderRequest?.modernData
             : undefined;
         if (typedData) {
           if (data.eventName === 'eth_signTypedData') {
@@ -380,7 +398,7 @@ const EthSign: React.FC<ISign> = () => {
         data.eventName === 'eth_signTypedData_v3' ||
         data.eventName === 'eth_signTypedData_v4'
       ) {
-        const typedData = getTypedDataPayload();
+        const typedData = typedOrderRequest?.modernData;
         const version = data.eventName === 'eth_signTypedData_v3' ? 'V3' : 'V4';
         response = (await controllerEmitter(
           ['wallet', 'ethereumTransaction', 'signTypedData'],
@@ -397,15 +415,16 @@ const EthSign: React.FC<ISign> = () => {
             ? 300000 // 5 minutes timeout for hardware wallet operations
             : 10000 // Default 10 seconds for regular wallets
         )) as string;
-      else if (data.eventName === 'personal_sign')
+      else if (data.eventName === 'personal_sign') {
+        const request = getPersonalSignRequest();
         response = (await controllerEmitter(
           ['wallet', 'ethereumTransaction', 'signPersonalMessage'],
-          [data],
+          [{ ...data, 0: request.address, 1: request.message }],
           activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
             ? 300000 // 5 minutes timeout for hardware wallet operations
             : 10000 // Default 10 seconds for regular wallets
         )) as string;
-      else {
+      } else {
         const typedData =
           data.eventName === 'eth_signTypedData'
             ? typedOrderRequest?.legacyFields
@@ -604,29 +623,12 @@ const EthSign: React.FC<ISign> = () => {
         return;
       }
 
+      const typedData = typedOrderRequest?.modernData;
+      if (!typedData) return;
+
       try {
         // Mark as checked before starting the async operation
         setHasCheckedBlacklist(true);
-        // Get the typed data
-        let typedData;
-        if (
-          typeof data[0] === 'string' &&
-          data[0].toLowerCase() === address.toLowerCase()
-        ) {
-          typedData = data[1];
-        } else if (
-          typeof data[1] === 'string' &&
-          data[1].toLowerCase() === address.toLowerCase()
-        ) {
-          typedData = data[0];
-        } else {
-          return;
-        }
-
-        // Parse the typed data if it's a string
-        if (typeof typedData === 'string') {
-          typedData = JSON.parse(typedData);
-        }
 
         // Check if this is a permit message
         const primaryType = typedData.primaryType;
@@ -993,7 +995,7 @@ const EthSign: React.FC<ISign> = () => {
     const typedData =
       data.eventName === 'eth_signTypedData_v3' ||
       data.eventName === 'eth_signTypedData_v4'
-        ? getTypedDataPayload()
+        ? typedOrderRequest?.modernData
         : null;
 
     return (

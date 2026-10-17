@@ -127,10 +127,14 @@ it.each([
   ['A message 日本語', true],
   ['0Xmalformed', true],
   ['0x', false],
+  [`0x${'22'.repeat(20)}`, false],
+  [ADDRESS, false],
+  [ADDRESS.toUpperCase(), false],
 ])(
-  'signs valid personal_sign without changing original params or their order',
+  'signs valid personal_sign with normalized SDK params and preserves the request',
   async (payload, reversed) => {
     await prepare(payload as string, reversed as boolean);
+    const originalRequest = { ...mockQuery };
     expect(screen.queryByRole('alert')).toBeNull();
     expect(
       (
@@ -141,20 +145,36 @@ it.each([
     ).toBe(false);
     fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
     await waitFor(() => expect(window.close).toHaveBeenCalledTimes(1));
-    const originalParams = { ...mockQuery };
-    delete originalParams.host;
+    const sdkParams = { ...originalRequest, 0: ADDRESS, 1: payload };
+    delete sdkParams.host;
     expect(mockEmitter).toHaveBeenCalledTimes(1);
     expect(mockEmitter).toHaveBeenCalledWith(
       ['wallet', 'ethereumTransaction', 'signPersonalMessage'],
-      [originalParams],
+      [sdkParams],
       10000
     );
+    expect(mockQuery).toEqual(originalRequest);
     expect(dispatchBackgroundEvent).toHaveBeenCalledWith(
       'personal_sign.https://metamask.github.io',
       '0xsignature'
     );
   }
 );
+
+it('does not confuse an address-shaped message with a different requested signer', async () => {
+  mockQuery[0] = ADDRESS;
+  mockQuery[1] = `0x${'22'.repeat(20)}`;
+  render(<EthSign />);
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: 'buttons.confirm' })).toBeTruthy()
+  );
+  expect(screen.getByRole('alert').textContent).toBe(
+    'send.signingForWrongAddress'
+  );
+  await act(async () => mockConfirm());
+  expect(mockEmitter).not.toHaveBeenCalled();
+  expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
+});
 
 it.each([
   [message('metamask.badactor.io'), 'send.suspiciousSignInRequest'],

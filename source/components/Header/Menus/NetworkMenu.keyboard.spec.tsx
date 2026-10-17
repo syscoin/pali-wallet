@@ -1,5 +1,6 @@
 /** @jest-environment jsdom */
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -236,6 +237,127 @@ it('preserves choice typeahead and restores trigger focus after Escape without s
   await user.keyboard('{Escape}');
   expect(screen.queryByRole('menu')).toBeNull();
   await waitFor(() => expect(document.activeElement).toBe(trigger));
+  expect(mockEmitter).not.toHaveBeenCalled();
+});
+
+it.each([
+  ['UTXO networks', 'UTXO', mockNetworks.syscoin.testnet],
+  ['EVM networks', 'EVM', mockNetworks.ethereum.testnet],
+])(
+  'keeps the space in a %s-prefixed custom network typeahead query',
+  async (family, prefix, network) => {
+    const originalLabel = network.label;
+    network.label = `${prefix} Custom`;
+    try {
+      const { user, menu } = await openMenu();
+      const group = screen.getByRole('menuitem', { name: family });
+      await user.click(group);
+      await user.keyboard(`{Home}${prefix}`);
+      await expectActive(menu, group);
+      await user.keyboard(' C');
+      expect(group.getAttribute('aria-expanded')).toBe('true');
+      await expectActive(
+        menu,
+        screen.getByRole('menuitem', { name: network.label })
+      );
+      expect(mockEmitter).not.toHaveBeenCalled();
+      await user.keyboard('{Enter}');
+      expect(mockEmitter).toHaveBeenCalledTimes(1);
+      expect(mockEmitter).toHaveBeenCalledWith(
+        ['wallet', 'setActiveNetwork'],
+        [network]
+      );
+    } finally {
+      network.label = originalLabel;
+    }
+  }
+);
+
+it('starts a fresh choice query after activating a typeahead-selected group with Enter', async () => {
+  const { user, menu } = await openMenu();
+  await user.keyboard('{Home}UTXO');
+  const group = screen.getByRole('menuitem', { name: 'UTXO networks' });
+  await expectActive(menu, group);
+  await user.keyboard('{Enter}');
+  expect(group.getAttribute('aria-expanded')).toBe('true');
+  await user.keyboard('Syscoin T');
+  await expectActive(
+    menu,
+    screen.getByRole('menuitem', { name: 'Syscoin Testnet' })
+  );
+  expect(mockEmitter).not.toHaveBeenCalled();
+});
+
+it('treats Space as group activation after the native typeahead timeout', async () => {
+  const { user, menu } = await openMenu();
+  await user.keyboard('{Home}UTXO');
+  const group = screen.getByRole('menuitem', { name: 'UTXO networks' });
+  await expectActive(menu, group);
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 400));
+  });
+  await user.keyboard(' ');
+  expect(group.getAttribute('aria-expanded')).toBe('true');
+  await expectActive(menu, group);
+  expect(mockEmitter).not.toHaveBeenCalled();
+});
+
+it('keeps the native query active when paused after a typeahead Space', async () => {
+  const { user, menu } = await openMenu();
+  const group = screen.getByRole('menuitem', { name: 'UTXO networks' });
+  await user.click(group);
+  await user.keyboard('{Home}UTXO ');
+  await expectActive(menu, group);
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 400));
+  });
+  await user.keyboard(' ');
+  expect(screen.getByRole('menu')).toBe(menu);
+  expect(group.getAttribute('aria-expanded')).toBe('true');
+  await expectActive(menu, group);
+  expect(mockEmitter).not.toHaveBeenCalled();
+});
+
+it('clears the query when pointer movement makes a group the active item', async () => {
+  const { user, menu } = await openMenu();
+  const group = screen.getByRole('menuitem', { name: 'UTXO networks' });
+  await user.click(group);
+  await user.keyboard('{Home}Syscoin T');
+  await expectActive(
+    menu,
+    screen.getByRole('menuitem', { name: 'Syscoin Testnet' })
+  );
+  fireEvent.mouseEnter(group, { screenX: 10, screenY: 10 });
+  fireEvent.mouseMove(group, { screenX: 11, screenY: 10 });
+  await expectActive(menu, group);
+  await user.keyboard(' ');
+  expect(screen.getByRole('menu')).toBe(menu);
+  expect(group.getAttribute('aria-expanded')).toBe('false');
+  expect(mockEmitter).not.toHaveBeenCalled();
+});
+
+it('does not clear typeahead for a stationary pointer on the active group', async () => {
+  const { user, menu } = await openMenu();
+  const group = screen.getByRole('menuitem', { name: 'UTXO networks' });
+  await user.click(group);
+  await user.keyboard('{Home}UTXO');
+  await expectActive(menu, group);
+  fireEvent.mouseEnter(group, { screenX: 10, screenY: 10 });
+  fireEvent.mouseMove(group, { screenX: 10, screenY: 10 });
+  await user.keyboard(' ');
+  expect(screen.getByRole('menu')).toBe(menu);
+  expect(group.getAttribute('aria-expanded')).toBe('true');
+  expect(mockEmitter).not.toHaveBeenCalled();
+});
+
+it('clears typeahead for navigation keys before activating a group with Space', async () => {
+  const { user, menu } = await openMenu();
+  await user.keyboard('{Home}UTXO{End}{Home}{ArrowDown}{ArrowDown}');
+  const group = screen.getByRole('menuitem', { name: 'UTXO networks' });
+  await expectActive(menu, group);
+  await user.keyboard(' ');
+  expect(group.getAttribute('aria-expanded')).toBe('true');
+  await expectActive(menu, group);
   expect(mockEmitter).not.toHaveBeenCalled();
 });
 

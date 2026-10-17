@@ -380,4 +380,124 @@ describe('accountSwitchingMiddleware site-level account selection', () => {
     expect(changeAccount).not.toHaveBeenCalled();
     expect(next).not.toHaveBeenCalled();
   });
+
+  it.each([
+    [false, true],
+    [true, true],
+    [false, false],
+    [true, false],
+  ])(
+    'asks consent for the canonical second signer, not the owned message (already active=%s, accepted=%s)',
+    async (alreadyActive, accepted) => {
+      mockGetState.mockReturnValue({
+        vault: {
+          accounts: {
+            HDAccount: { 0: accountA },
+            Imported: { 1: accountB },
+          },
+          activeAccount: alreadyActive
+            ? { id: 1, type: KeyringAccountType.Imported }
+            : { id: 0, type: KeyringAccountType.HDAccount },
+        },
+      });
+      const context = createContext();
+      context.originalRequest.method = 'personal_sign';
+      context.originalRequest.params = [accountA.address, accountB.address];
+      const original = [...context.originalRequest.params];
+      jest.mocked(popupPromise).mockImplementation(async () => {
+        if (!accepted) throw new Error('user rejected');
+        return null;
+      });
+      jest
+        .spyOn(requestCoordinator, 'coordinatePopupRequest')
+        .mockImplementation(async (_context, openPopup) => openPopup());
+      const next = jest.fn();
+
+      if (accepted) await accountSwitchingMiddleware(context, next);
+      else
+        await expect(
+          accountSwitchingMiddleware(context, next)
+        ).rejects.toMatchObject({ code: 4100 });
+
+      expect(popupPromise).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: {
+            connectedAccount: accountB,
+            accountType: KeyringAccountType.Imported,
+          },
+        })
+      );
+      expect(changeAccount).toHaveBeenCalledTimes(accepted ? 1 : 0);
+      if (accepted)
+        expect(changeAccount).toHaveBeenCalledWith(
+          host,
+          1,
+          KeyringAccountType.Imported
+        );
+      expect(next).toHaveBeenCalledTimes(accepted ? 1 : 0);
+      expect(context.originalRequest.params).toEqual(original);
+    }
+  );
+
+  it('does not switch to another owned account mentioned only as canonical message bytes', async () => {
+    mockGetState.mockReturnValue({
+      vault: {
+        accounts: { HDAccount: { 0: accountA, 1: accountB } },
+        activeAccount: { id: 0, type: KeyringAccountType.HDAccount },
+      },
+    });
+    const context = createContext();
+    context.originalRequest.method = 'personal_sign';
+    context.originalRequest.params = [accountB.address, accountA.address];
+    const popup = jest.spyOn(requestCoordinator, 'coordinatePopupRequest');
+    const next = jest.fn();
+    await accountSwitchingMiddleware(context, next);
+    expect(popup).not.toHaveBeenCalled();
+    expect(changeAccount).not.toHaveBeenCalled();
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects an unknown canonical signer even when the message is an owned address', async () => {
+    mockGetState.mockReturnValue({
+      vault: {
+        accounts: { HDAccount: { 0: accountA, 1: accountB } },
+        activeAccount: { id: 0, type: KeyringAccountType.HDAccount },
+      },
+    });
+    const context = createContext();
+    context.originalRequest.method = 'personal_sign';
+    context.originalRequest.params = [accountA.address, '0x' + '33'.repeat(20)];
+    const popup = jest.spyOn(requestCoordinator, 'coordinatePopupRequest');
+    const next = jest.fn();
+    await expect(
+      accountSwitchingMiddleware(context, next)
+    ).rejects.toMatchObject({ code: 4100 });
+    expect(popup).not.toHaveBeenCalled();
+    expect(changeAccount).not.toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('retains the unambiguous legacy signer for a 21-byte hexadecimal message', async () => {
+    mockGetState.mockReturnValue({
+      vault: {
+        accounts: { HDAccount: { 0: accountA }, Imported: { 1: accountB } },
+        activeAccount: { id: 0, type: KeyringAccountType.HDAccount },
+      },
+    });
+    const context = createContext();
+    context.originalRequest.method = 'personal_sign';
+    context.originalRequest.params = [accountB.address, '0x' + 'ab'.repeat(21)];
+    const popup = jest
+      .spyOn(requestCoordinator, 'coordinatePopupRequest')
+      .mockResolvedValue(null);
+    const next = jest.fn();
+    await accountSwitchingMiddleware(context, next);
+    expect(popup).toHaveBeenCalledTimes(1);
+    expect(changeAccount).toHaveBeenCalledWith(
+      host,
+      1,
+      KeyringAccountType.Imported
+    );
+    expect(next).toHaveBeenCalledTimes(1);
+  });
 });
