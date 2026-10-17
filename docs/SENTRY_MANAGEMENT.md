@@ -43,9 +43,11 @@ are unchanged. They require the selected connected Syscoin UTXO account; a
 network/account/session change invalidates an open approval.
 Submitting another transaction from the same wallet and network also requires
 reopening a pending node operation, so a stale approval cannot protect an
-output that is being spent. Collateral reservation and final broadcast checks
-share one admission boundary; an uncertain broadcast does not revive old
-approvals.
+output that is being spent. Collateral reservation, final broadcast checks and
+release of signed PSBTs share one admission boundary; disclosing a signature or
+an uncertain broadcast does not revive old approvals. Linking a node cannot
+revoke signatures already returned before the link was prepared, or keys held
+elsewhere.
 
 ### `sys_getSentryCapabilities`
 
@@ -130,11 +132,13 @@ wallet hardware features are unchanged.
 
 ## Repeatable checks
 
-The PR browser-conformance job runs `sentry-operator.journey.spec.ts` with a
-disposable synthetic wallet and local-only read endpoints. It checks encrypted
+The PR browser-conformance job runs `sentry-operator.journey.spec.ts` and
+`sentry-wallet-authority.journey.spec.ts` with a disposable synthetic wallet and
+local-only read endpoints. It checks encrypted
 key storage across lock/unlock, small-window controls, real BLS and SHAKE-128s
 authorizations through the public provider, wrong-network rejection, signature
-tampering, public node linking, persistence across reload/lock and ordinary PSBT
+tampering, imported Taproot WIF owner authorization, public node linking,
+persistence across reload/lock and ordinary PSBT
 refusal for linked collateral. This does not broadcast or claim a live-chain
 registration. Core/SDK vectors and the Sysnode transaction-admission tests cover
 the protocol side separately.

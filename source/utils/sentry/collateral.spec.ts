@@ -223,7 +223,7 @@ it.each(['acknowledged', 'ambiguous'])(
     const sendResult = sending.catch((error) => error.message);
     await invoked;
     await expect(captureSentryCollateralAdmission(scope)).rejects.toThrow(
-      'being submitted'
+      'authorization is in progress'
     );
     const reserving = reserveWithAdmission({
       ...scope,

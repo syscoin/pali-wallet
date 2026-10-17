@@ -40,7 +40,7 @@ export const captureSentryCollateralAdmission = async (params: {
   const generation = generations.get(key) || 0;
   if (generation % 2)
     throw new Error(
-      'A wallet transaction is being submitted. Start the Sentry operation again.'
+      'A wallet transaction authorization is in progress. Start the Sentry operation again.'
     );
   return { key, generation };
 };
@@ -62,11 +62,15 @@ export const withSentryCollateralBroadcast = async <T>(
         }
       });
     } finally {
-      // Even an ambiguous send invalidates reviews prepared before/during it.
+      // A disclosed signature or ambiguous send invalidates earlier reviews.
       if (invoked) generations.set(key, generation + 2);
     }
   });
 };
+
+/** Releasing a signature gives its recipient the ability to broadcast later. */
+export const withSentryCollateralSignatureRelease =
+  withSentryCollateralBroadcast;
 
 export const getSentryCollateralReservations = async (params: {
   genesisHash: string;

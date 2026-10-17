@@ -146,6 +146,7 @@ import { blacklistService } from 'utils/security/blacklistService';
 import {
   getSentryCollateralReservations,
   withSentryCollateralBroadcast,
+  withSentryCollateralSignatureRelease,
 } from 'utils/sentry/collateral';
 import { getSentryNetwork, SENTRY_NETWORKS } from 'utils/sentry/network';
 import {
@@ -8347,11 +8348,18 @@ class MainController {
       psbt: PsbtUtils.toPali(verified.psbt),
     });
     signing.assertCurrent();
-    await this.assertNoSentryCollateralInputs(() =>
-      PsbtUtils.fromPali(signed, store.getState().vault.activeNetwork)
-    );
-    signing.assertCurrent();
-    return signed;
+    const sentryScope = this.getSentryCollateralScope();
+    const release = async (markDisclosed: () => void) => {
+      await this.assertNoSentryCollateralInputs(() =>
+        PsbtUtils.fromPali(signed, store.getState().vault.activeNetwork)
+      );
+      signing.assertCurrent();
+      markDisclosed();
+      return signed;
+    };
+    return sentryScope
+      ? withSentryCollateralSignatureRelease(sentryScope, release)
+      : release(() => undefined);
   }
 
   // Add decodeRawTransaction method for PSBT/transaction details display
