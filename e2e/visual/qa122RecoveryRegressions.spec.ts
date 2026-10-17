@@ -53,6 +53,7 @@ for (const editDraft of [true, false]) {
         rpcUrl: server.url,
       });
       let wallet: PaliWallet | undefined;
+      let status: 'passed' | 'failed' = 'failed';
       let releaseFirst!: () => void;
       const released = new Promise<void>((resolve) => {
         releaseFirst = resolve;
@@ -61,10 +62,15 @@ for (const editDraft of [true, false]) {
       let firstResponded = false;
       const reads: string[] = [];
       try {
-        wallet = await PaliWallet.launch('qa122-recovery-network-draft', {
-          offlineHttpProxy: server.url,
-          viewport: { width: 400, height: 620 },
-        });
+        wallet = await PaliWallet.launch(
+          editDraft
+            ? 'qa122-recovery-network-draft'
+            : 'qa122-recovery-network-fallback',
+          {
+            offlineHttpProxy: server.url,
+            viewport: { width: 400, height: 620 },
+          }
+        );
         const routes = await installIsolatedVaultRoutes(
           wallet.context,
           createIsolatedVaultFixture(),
@@ -202,11 +208,18 @@ for (const editDraft of [true, false]) {
             page.getByText(/Connected to QA122 Delayed Network/)
           ).toBeVisible();
         }
+        status = 'passed';
       } finally {
         releaseFirst();
-        await wallet?.context.close();
-        await server.close();
-        Object.assign(E2E_CONFIG, before);
+        try {
+          await wallet?.dispose(status);
+        } finally {
+          try {
+            await server.close();
+          } finally {
+            Object.assign(E2E_CONFIG, before);
+          }
+        }
       }
     }
   );
@@ -222,6 +235,7 @@ test('qa122 network-error recovery edit action is reachable by keyboard', async 
     rpcUrl: server.url,
   });
   let wallet: PaliWallet | undefined;
+  let status: 'passed' | 'failed' = 'failed';
   try {
     wallet = await PaliWallet.launch('qa122-recovery-error-keyboard', {
       offlineHttpProxy: server.url,
@@ -291,9 +305,16 @@ test('qa122 network-error recovery edit action is reachable by keyboard', async 
       runtime: extensionEvidence(),
     });
     expect(routes.deniedWrites).toEqual([]);
+    status = 'passed';
   } finally {
-    await wallet?.context.close();
-    await server.close();
-    Object.assign(E2E_CONFIG, before);
+    try {
+      await wallet?.dispose(status);
+    } finally {
+      try {
+        await server.close();
+      } finally {
+        Object.assign(E2E_CONFIG, before);
+      }
+    }
   }
 });
