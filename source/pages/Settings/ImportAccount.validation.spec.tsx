@@ -58,6 +58,8 @@ jest.mock('utils/validatePrivateKey', () => ({
   validatePrivateKeyValue: jest.fn(),
 }));
 jest.mock('components/index', () => ({
+  PageActionFooter: jest.requireActual('components/PageActionFooter')
+    .PageActionFooter,
   Button: ({ children, loading, disabled, onClick, ...props }: any) => {
     mockImport = onClick;
     const { variant, fullWidth, ...buttonProps } = props;

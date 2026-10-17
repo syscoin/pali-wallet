@@ -6,7 +6,7 @@ import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
 import { ArrowDownSvg } from 'components/Icon/Icon';
-import { Button, DefaultModal } from 'components/index';
+import { Button, DefaultModal, PageActionFooter } from 'components/index';
 import { usePrice, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
@@ -399,12 +399,10 @@ const CurrencyView = () => {
         </div>
       </div>
 
-      {saveError && (
-        <p role="alert" className="mt-4 text-sm text-[#ff8f8f]">
-          {t('settings.preferencesSaveFailed')}
-        </p>
-      )}
-      <div className="mt-8 w-full px-4 pb-6">
+      <PageActionFooter
+        className="mt-8 pb-6"
+        error={saveError ? t('settings.preferencesSaveFailed') : undefined}
+      >
         <Button
           variant="neutral"
           className="text-sm text-brand-royalblue"
@@ -416,7 +414,7 @@ const CurrencyView = () => {
         >
           {t('buttons.save')}
         </Button>
-      </div>
+      </PageActionFooter>
     </>
   );
 };

@@ -16,21 +16,61 @@ import {
 const hitTarget = (locator: Locator) =>
   locator.evaluate((element) => {
     const bounds = element.getBoundingClientRect();
-    const hit = document.elementFromPoint(
-      bounds.x + bounds.width / 2,
-      bounds.y + bounds.height / 2
-    );
-    return (
-      bounds.width > 0 &&
-      bounds.height > 0 &&
-      bounds.y >= 0 &&
-      bounds.bottom <= innerHeight &&
-      !!hit &&
-      (hit === element || element.contains(hit))
-    );
+    if (bounds.width <= 0 || bounds.height <= 0) return false;
+    const clip = { left: 0, top: 0, right: innerWidth, bottom: innerHeight };
+    for (
+      let parent: Element | null = element;
+      parent;
+      parent = parent.parentElement
+    ) {
+      const style = getComputedStyle(parent);
+      if (style.visibility === 'hidden' || Number(style.opacity) === 0)
+        return false;
+      if (parent === element) continue;
+      const parentBounds = parent.getBoundingClientRect();
+      if (/auto|scroll|hidden|clip/.test(style.overflowX)) {
+        clip.left = Math.max(clip.left, parentBounds.left + parent.clientLeft);
+        clip.right = Math.min(
+          clip.right,
+          parentBounds.left + parent.clientLeft + parent.clientWidth
+        );
+      }
+      if (/auto|scroll|hidden|clip/.test(style.overflowY)) {
+        clip.top = Math.max(clip.top, parentBounds.top + parent.clientTop);
+        clip.bottom = Math.min(
+          clip.bottom,
+          parentBounds.top + parent.clientTop + parent.clientHeight
+        );
+      }
+    }
+    const tolerance = 0.5; // Subpixel rounding only, not a partial-visibility allowance.
+    if (
+      bounds.left < clip.left - tolerance ||
+      bounds.top < clip.top - tolerance ||
+      bounds.right > clip.right + tolerance ||
+      bounds.bottom > clip.bottom + tolerance
+    )
+      return false;
+    const x = bounds.left + bounds.width / 2;
+    const y = bounds.top + bounds.height / 2;
+    const points = [
+      [x, y],
+      [bounds.left + 2, y],
+      [bounds.right - 2, y],
+      [x, bounds.top + 2],
+      [x, bounds.bottom - 2],
+    ];
+    return points.every(([left, top]) => {
+      const hit = document.elementFromPoint(left, top);
+      return !!hit && (hit === element || element.contains(hit));
+    });
   });
 const revealWithWheel = async (page: Page, locator: Locator) => {
-  await page.mouse.move(200, 350);
+  const viewport = page.viewportSize()!;
+  await page.mouse.move(
+    viewport.width / 2,
+    Math.min(350, viewport.height - 20)
+  );
   await page.mouse.wheel(0, 900);
   await expect.poll(() => hitTarget(locator)).toBe(true);
 };
@@ -247,6 +287,14 @@ test('offline onboarding and preferences remain keyboard accessible with localiz
       de.settings.preferencesSaveFailed
     );
     await assertReadableError(page.getByRole('alert'));
+    expect(
+      await hitTarget(page.getByRole('alert')),
+      'Currency error remains fully visible and unobscured without scrolling'
+    ).toBe(true);
+    expect(
+      await hitTarget(saveCurrency),
+      'Currency Save remains fully visible after its error without scrolling'
+    ).toBe(true);
     await capture(page, 'currency-failure-german-400x480');
 
     await wallet.gotoRoute('#/settings/advanced');
@@ -272,6 +320,14 @@ test('offline onboarding and preferences remain keyboard accessible with localiz
       de.settings.preferencesSaveFailed
     );
     await assertReadableError(page.getByRole('alert'));
+    expect(
+      await hitTarget(page.getByRole('alert')),
+      'Advanced error remains fully visible and unobscured without scrolling'
+    ).toBe(true);
+    expect(
+      await hitTarget(saveAdvanced),
+      'Advanced Save remains fully visible after its error without scrolling'
+    ).toBe(true);
     await capture(page, 'advanced-failure-german-400x480');
     await wallet.gotoRoute('#/settings/networks/trusted-sites');
     const trustedSearch = page.getByRole('textbox', {
@@ -340,6 +396,371 @@ test('offline onboarding and preferences remain keyboard accessible with localiz
       });
     }
     throw error;
+  } finally {
+    await wallet?.context.close().catch(() => undefined);
+    await server.close();
+    Object.assign(E2E_CONFIG, before);
+  }
+});
+
+test('preference visibility rejects clipped or edge-obscured controls', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 400, height: 480 });
+  await page.route('**/*', (route) => route.abort('blockedbyclient'));
+  const fixtures = [
+    { name: 'fully visible', style: 'left:20px;top:20px', visible: true },
+    { name: 'below viewport', style: 'left:20px;top:452px', visible: false },
+    {
+      name: 'outside right edge',
+      style: 'left:300px;top:20px',
+      visible: false,
+    },
+    { name: 'outside left edge', style: 'left:-20px;top:20px', visible: false },
+    {
+      name: 'clipped ancestor',
+      style: 'left:20px;top:20px',
+      parent:
+        'position:absolute;left:0;top:0;width:400px;height:52px;overflow:hidden',
+      visible: false,
+    },
+    {
+      name: 'obscured bottom edge',
+      style: 'left:20px;top:20px',
+      overlay:
+        '<div style="position:absolute;left:20px;top:64px;width:160px;height:8px;z-index:2;background:black"></div>',
+      visible: false,
+    },
+  ];
+  for (const fixture of fixtures) {
+    await page.setContent(
+      `<div style="${fixture.parent || ''}"><button style="position:absolute;${
+        fixture.style
+      };width:160px;height:48px">Save</button></div>${fixture.overlay || ''}`
+    );
+    expect(await hitTarget(page.getByRole('button')), fixture.name).toBe(
+      fixture.visible
+    );
+  }
+});
+
+test('open preference menu options stay clickable above the sticky action at short heights', async ({}, info) => {
+  test.setTimeout(60_000);
+  const before = { ...E2E_CONFIG };
+  const server = await startUtxoFixtureServer();
+  Object.assign(E2E_CONFIG, {
+    ...(process.env.PALI_TEST_DAPP_EXTENSION_PATH
+      ? { extensionPath: process.env.PALI_TEST_DAPP_EXTENSION_PATH }
+      : {}),
+    seedPhrase: UTXO_FIXTURE_SEED,
+    password: 'PreferencesSyntheticOnly!2026',
+    rpcUrl: server.url,
+  });
+  let wallet: PaliWallet | undefined;
+  try {
+    wallet = await PaliWallet.launch('preferences-menu-overlap', {
+      offlineHttpProxy: server.url,
+      viewport: { width: 400, height: 480 },
+    });
+    const page = wallet.page;
+    const routes = await installUtxoFixtureRoutes(
+      wallet.context,
+      createUtxoFixture(),
+      server.url
+    );
+    await wallet.importSeedAndCreatePassword();
+    await wallet.ensureOnHome();
+    for (const height of [480, 360]) {
+      await page.setViewportSize({ width: 400, height });
+      await wallet.gotoRoute('#/home');
+      await wallet.gotoRoute('#/settings/languages');
+      const language = page.getByRole('button', {
+        name: en.settings.setYourPreferredLanguage,
+      });
+      await language.click();
+      await expect(page.getByRole('menu')).toBeVisible();
+      const label = `language-menu-footer-400x${height}`;
+      const file = path.join(E2E_CONFIG.artifactsDir, `${label}.png`);
+      await page.screenshot({ path: file, animations: 'disabled' });
+      await info.attach(label, { path: file, contentType: 'image/png' });
+      // Choose a real option at the geometric intersection, not by scrolling it
+      // above the footer. The click must reach that exact visible overlap.
+      const overlap = await page.getByRole('menuitem').evaluateAll((items) => {
+        const footer = document
+          .querySelector('[data-page-action-footer]')!
+          .getBoundingClientRect();
+        const menu = document
+          .querySelector('[role=menu]')!
+          .getBoundingClientRect();
+        for (const item of items) {
+          const bounds = item.getBoundingClientRect();
+          const left = Math.max(bounds.left, footer.left, menu.left, 0);
+          const right = Math.min(
+            bounds.right,
+            footer.right,
+            menu.right,
+            innerWidth
+          );
+          const top = Math.max(bounds.top, footer.top, menu.top, 0);
+          const bottom = Math.min(
+            bounds.bottom,
+            footer.bottom,
+            menu.bottom,
+            innerHeight
+          );
+          if (right - left < 4 || bottom - top < 4) continue;
+          const x = (left + right) / 2;
+          const y = (top + bottom) / 2;
+          const hit = document.elementFromPoint(x, y);
+          return {
+            label: item.getAttribute('aria-label')!,
+            x,
+            y,
+            reachable: !!hit && (item === hit || item.contains(hit)),
+            bounds: bounds.toJSON(),
+            footer: footer.toJSON(),
+          };
+        }
+        return null;
+      });
+      await info.attach(`${label}-geometry`, {
+        body: JSON.stringify(overlap, null, 2),
+        contentType: 'application/json',
+      });
+      expect(
+        overlap,
+        'a language option must exercise actual footer overlap'
+      ).not.toBeNull();
+      expect.soft(overlap!.reachable, `${label}: ${overlap!.label}`).toBe(true);
+      if (overlap!.reachable) {
+        await page.mouse.click(overlap!.x, overlap!.y);
+        await expect(page.getByRole('menu')).toHaveCount(0);
+        await expect(language).toContainText(overlap!.label.split(' ')[0]);
+        const save = page.getByRole('button', {
+          name: en.buttons.save,
+          exact: true,
+        });
+        if (overlap!.label === 'English English') {
+          await expect(save).toBeDisabled();
+        } else {
+          await expect(save).toBeEnabled();
+        }
+      } else {
+        await page.keyboard.press('Escape');
+      }
+    }
+    expect(routes.deniedWrites).toEqual([]);
+  } finally {
+    await wallet?.context.close().catch(() => undefined);
+    await server.close();
+    Object.assign(E2E_CONFIG, before);
+  }
+});
+
+test('preference Save remains fully visible after errors at supported short heights', async ({}, info) => {
+  test.setTimeout(120_000);
+  const before = { ...E2E_CONFIG };
+  const server = await startUtxoFixtureServer();
+  Object.assign(E2E_CONFIG, {
+    ...(process.env.PALI_TEST_DAPP_EXTENSION_PATH
+      ? { extensionPath: process.env.PALI_TEST_DAPP_EXTENSION_PATH }
+      : {}),
+    seedPhrase: UTXO_FIXTURE_SEED,
+    password: 'PreferencesSyntheticOnly!2026',
+    rpcUrl: server.url,
+  });
+  let wallet: PaliWallet | undefined;
+  try {
+    wallet = await PaliWallet.launch('preferences-short-window', {
+      offlineHttpProxy: server.url,
+      viewport: { width: 400, height: 480 },
+    });
+    const page = wallet.page;
+    const routes = await installUtxoFixtureRoutes(
+      wallet.context,
+      createUtxoFixture(),
+      server.url
+    );
+    await wallet.importSeedAndCreatePassword();
+    await wallet.ensureOnHome();
+    await page.evaluate(() => {
+      const send = chrome.runtime.sendMessage.bind(chrome.runtime);
+      chrome.runtime.sendMessage = ((...args: any[]) => {
+        const [message, callback] = args;
+        if (
+          message?.type === 'CONTROLLER_ACTION' &&
+          message.data?.methods?.[0] === 'wallet' &&
+          message.data.methods[1] === 'setAdvancedSettings'
+        ) {
+          const response = { error: 'Synthetic preference failure' };
+          if (typeof callback === 'function') {
+            queueMicrotask(() => callback(response));
+            return;
+          }
+          return Promise.resolve(response);
+        }
+        return (send as any)(...args);
+      }) as typeof chrome.runtime.sendMessage;
+    });
+    for (const [locale, copy] of [
+      ['en', en],
+      ['de', de],
+    ] as const) {
+      if (locale === 'de') {
+        await wallet.gotoRoute('#/settings/languages');
+        const language = page.getByRole('button', {
+          name: en.settings.setYourPreferredLanguage,
+        });
+        await language.click();
+        await page.keyboard.type('ger');
+        await page.keyboard.press('Enter');
+        await revealWithWheel(
+          page,
+          page.getByRole('button', { name: en.buttons.save, exact: true })
+        );
+        await page
+          .getByRole('button', { name: en.buttons.save, exact: true })
+          .click();
+        await expect(page.getByRole('dialog')).toBeVisible();
+        await page.keyboard.press('Escape');
+      }
+      for (const height of [480, 360, 620, 800]) {
+        await page.setViewportSize({ width: 400, height });
+        await wallet.gotoRoute('#/home');
+        await wallet.gotoRoute('#/settings/advanced');
+        const layout = page.locator('[data-navigation-scroll="wallet-layout"]');
+        await expect
+          .poll(() => layout.evaluate((element) => element.clientHeight))
+          .toBe(Math.min(height, 620));
+        const autolock = page.getByRole('spinbutton', {
+          name: copy.settings.enableAutolock,
+        });
+        await autolock.fill(
+          (await autolock.inputValue()) === '10' ? '11' : '10'
+        );
+        const save = page.getByRole('button', {
+          name: copy.buttons.save,
+          exact: true,
+        });
+        await revealWithWheel(page, save);
+        await save.click();
+        await expect(page.getByRole('alert')).toContainText(
+          copy.settings.preferencesSaveFailed
+        );
+        await expect(save).toBeEnabled();
+        // Do not focus, click or scroll after the error: these would mask the
+        // exact regression where inserted text pushes the Save action away.
+        await page.mouse.move(0, 0);
+        const label = `advanced-${locale}-400x${height}-error`;
+        const file = path.join(E2E_CONFIG.artifactsDir, `${label}.png`);
+        await page.screenshot({ path: file, animations: 'disabled' });
+        await info.attach(label, { path: file, contentType: 'image/png' });
+        const bounds = await save.boundingBox();
+        expect
+          .soft(
+            await hitTarget(save),
+            `${label}: complete Save bounds and edges remain visible; bounds=${JSON.stringify(
+              bounds
+            )}`
+          )
+          .toBe(true);
+        expect
+          .soft(
+            await hitTarget(page.getByRole('alert')),
+            `${label}: complete error remains visible and unobscured without scrolling`
+          )
+          .toBe(true);
+        await assertReadableError(page.getByRole('alert'));
+        // The Save control is disabled during the request, which may return
+        // focus to the document. Traverse normally rather than forcing focus.
+        for (
+          let tab = 0;
+          tab < 8 &&
+          !(await autolock.evaluate(
+            (element) => document.activeElement === element
+          ));
+          tab++
+        ) {
+          await page.keyboard.press('Shift+Tab');
+        }
+        await expect(autolock).toBeFocused();
+        const focusFile = path.join(
+          E2E_CONFIG.artifactsDir,
+          `${label}-focus.png`
+        );
+        await page.screenshot({ path: focusFile, animations: 'disabled' });
+        await info.attach(`${label}-focus`, {
+          path: focusFile,
+          contentType: 'image/png',
+        });
+        const focusGeometry = await page.evaluate(() =>
+          [
+            ...document.querySelectorAll(
+              '[data-navigation-scroll], form, [data-page-action-footer], #advanced-autolock, #advanced-autolock-hint'
+            ),
+          ].map((element) => ({
+            tag: element.tagName,
+            id: element.id,
+            bounds: element.getBoundingClientRect().toJSON(),
+            scrollTop: element.scrollTop,
+            scrollHeight: element.scrollHeight,
+            clientHeight: element.clientHeight,
+          }))
+        );
+        await info.attach(`${label}-focus-geometry`, {
+          body: JSON.stringify(focusGeometry, null, 2),
+          contentType: 'application/json',
+        });
+        expect
+          .soft(
+            await hitTarget(autolock),
+            `${label}: keyboard focus must not remain hidden under the footer`
+          )
+          .toBe(true);
+        const hint = page.locator('#advanced-autolock-hint');
+        for (
+          let attempt = 0;
+          attempt < 5 &&
+          !((await hitTarget(autolock)) && (await hitTarget(hint)));
+          attempt++
+        ) {
+          const inputBounds = await autolock.boundingBox();
+          const hintBounds = await hint.boundingBox();
+          const footerBounds = await page
+            .locator('[data-page-action-footer]')
+            .boundingBox();
+          await page.mouse.move(200, Math.min(180, height / 2));
+          await page.mouse.wheel(
+            0,
+            Math.max(
+              (inputBounds?.y || 0) + (inputBounds?.height || 0),
+              (hintBounds?.y || 0) + (hintBounds?.height || 0)
+            ) > (footerBounds?.y || height)
+              ? 80
+              : -80
+          );
+          // Let the dispatched native wheel scroll reach the next paint before
+          // deciding whether another user scroll is needed.
+          await page.evaluate(
+            () =>
+              new Promise<void>((resolve) =>
+                requestAnimationFrame(() =>
+                  requestAnimationFrame(() => resolve())
+                )
+              )
+          );
+        }
+        expect(
+          await hitTarget(autolock),
+          `${label}: ordinary wheel scrolling can fully reveal the input`
+        ).toBe(true);
+        expect(
+          await hitTarget(hint),
+          `${label}: ordinary wheel scrolling can fully reveal the hint`
+        ).toBe(true);
+      }
+    }
+    expect(routes.deniedWrites).toEqual([]);
   } finally {
     await wallet?.context.close().catch(() => undefined);
     await server.close();

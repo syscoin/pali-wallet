@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 import { ArrowDownSvg } from 'components/Icon/Icon';
-import { Button, DefaultModal } from 'components/index';
+import { Button, DefaultModal, PageActionFooter } from 'components/index';
 import { changeLanguage } from 'utils/i18n';
 import { navigateBack } from 'utils/navigationState';
 import { chromeStorage } from 'utils/storageAPI';
@@ -274,12 +274,9 @@ const Languages = () => {
           </div>
         </div>
 
-        {saveError && (
-          <p role="alert" className="text-sm text-[#ff8f8f]">
-            {t('settings.preferencesSaveFailed')}
-          </p>
-        )}
-        <div className="w-full px-4 pb-6">
+        <PageActionFooter
+          error={saveError ? t('settings.preferencesSaveFailed') : undefined}
+        >
           <Button
             variant="neutral"
             className="text-sm text-brand-royalblue"
@@ -290,7 +287,7 @@ const Languages = () => {
           >
             {t('buttons.save')}
           </Button>
-        </div>
+        </PageActionFooter>
       </Form>
     </>
   );

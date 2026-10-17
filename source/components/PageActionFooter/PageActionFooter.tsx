@@ -1,0 +1,61 @@
+import React, { useLayoutEffect, useRef } from 'react';
+
+interface IPageActionFooterProps {
+  children: React.ReactNode;
+  className?: string;
+  error?: React.ReactNode;
+}
+
+/** Keep a page action and its feedback together when short windows scroll. */
+export const PageActionFooter = ({
+  children,
+  className = 'pb-6',
+  error,
+}: IPageActionFooterProps) => {
+  const footerRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const footer = footerRef.current;
+    const layout = footer?.closest<HTMLElement>(
+      '[data-navigation-scroll="wallet-layout"]'
+    );
+    if (!footer || !layout) return;
+
+    // Native keyboard focus must scroll fields above the sticky action area,
+    // including when translated feedback changes its height.
+    const property = '--wallet-page-action-height';
+    const previous = layout.style.getPropertyValue(property);
+    let assigned = '';
+    const measure = () => {
+      assigned = `${Math.ceil(footer.getBoundingClientRect().height)}px`;
+      layout.style.setProperty(property, assigned);
+    };
+    measure();
+    const observer =
+      typeof ResizeObserver === 'undefined'
+        ? undefined
+        : new ResizeObserver(measure);
+    observer?.observe(footer);
+    return () => {
+      observer?.disconnect();
+      if (layout.style.getPropertyValue(property) === assigned) {
+        if (previous) layout.style.setProperty(property, previous);
+        else layout.style.removeProperty(property);
+      }
+    };
+  }, []);
+
+  return (
+    <div
+      ref={footerRef}
+      data-page-action-footer
+      className={`page-action-footer w-full shrink-0 px-4 ${className}`}
+    >
+      {error && (
+        <p role="alert" className="mb-4 text-sm text-[#ff8f8f]">
+          {error}
+        </p>
+      )}
+      {children}
+    </div>
+  );
+};

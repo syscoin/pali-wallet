@@ -78,6 +78,8 @@ jest.mock('antd', () => ({
 }));
 jest.mock('antd/lib/form/Form', () => ({ useForm: () => [mockForm] }));
 jest.mock('components/index', () => ({
+  PageActionFooter: jest.requireActual('components/PageActionFooter')
+    .PageActionFooter,
   Button: 'button',
   Tooltip: 'span',
   Card: 'div',

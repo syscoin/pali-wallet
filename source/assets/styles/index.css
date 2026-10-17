@@ -11,6 +11,25 @@
 /* Import gradient banner animation */
 @import './gradient-banner-animation.css';
 
+/* Short wallet windows keep page actions and asynchronous feedback together.
+ * The footer remains in flow, so the last field can still be scrolled above it.
+ * Full-height popups retain their existing, non-sticky layout. */
+@media (max-height: 619px) {
+  [data-navigation-scroll='wallet-layout'] {
+    scroll-padding-bottom: calc(var(--wallet-page-action-height, 0px) + 1rem);
+  }
+
+  [data-navigation-scroll='wallet-layout'] .page-action-footer {
+    position: sticky;
+    bottom: 0;
+    z-index: 1;
+    padding-top: 1rem;
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+    background-color: #162742;
+    box-shadow: 0 -8px 12px -12px rgb(0 0 0 / 45%);
+  }
+}
+
 /** ALERTS/TOASTS **/
 
 /* Pali Toast Styles */

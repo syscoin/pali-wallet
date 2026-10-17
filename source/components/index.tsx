@@ -10,6 +10,7 @@ export * from './Icon';
 export * from './IconButton';
 export * from './Modal';
 export * from './PasswordForm';
+export * from './PageActionFooter';
 
 export * from './Tooltip';
 export * from './TransactionOptions';
