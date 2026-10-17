@@ -61,7 +61,7 @@ describe('Syscoin selected asset refresh', () => {
     ).toBeNull();
   });
 
-  it('can refresh a scope-validated legacy draft only from a chain-identified record', () => {
+  it('does not infer a network for an incomplete token selection', () => {
     const selected = { assetGuid: '123', balance: '1' };
     const current = { ...selected, chainId: 5700, balance: '2' };
     expect(
@@ -71,8 +71,8 @@ describe('Syscoin selected asset refresh', () => {
         5700
       )
     ).toBeNull();
-    expect(getRefreshedSyscoinAssetSelection(selected, [current], 5700)).toBe(
-      current
-    );
+    expect(
+      getRefreshedSyscoinAssetSelection(selected, [current], 5700)
+    ).toBeNull();
   });
 });

@@ -5,11 +5,7 @@ export const getRefreshedSyscoinAssetSelection = (
   accountAssets: ITokenSysProps[],
   activeChainId: number
 ): ITokenSysProps | null => {
-  if (
-    selectedAsset.chainId !== undefined &&
-    selectedAsset.chainId !== activeChainId
-  )
-    return null;
+  if (selectedAsset.chainId !== activeChainId) return null;
 
   const refreshedAsset = accountAssets.find(
     (asset) =>

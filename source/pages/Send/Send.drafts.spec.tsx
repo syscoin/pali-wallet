@@ -646,6 +646,7 @@ describe('send forms across wallet navigation', () => {
             ? {
                 selectedAsset: {
                   assetGuid: '123',
+                  chainId: mockState.vault.activeNetwork.chainId,
                   decimals: 8,
                   balance: '10',
                   symbol: 'SYSX',
@@ -913,6 +914,7 @@ describe('send forms across wallet navigation', () => {
             ? {
                 selectedAsset: {
                   assetGuid: '123',
+                  chainId: mockState.vault.activeNetwork.chainId,
                   decimals: 8,
                   balance: '10',
                   symbol: 'SYSX',
@@ -1224,7 +1226,13 @@ describe('send forms across wallet navigation', () => {
       jest.useFakeTimers();
       mockState.vault.isBitcoinBased = true;
       mockState.vault.activeNetwork.kind = INetworkType.Syscoin;
-      const asset = { assetGuid: '123', symbol: 'SPT', decimals, balance };
+      const asset = {
+        assetGuid: '123',
+        chainId: mockState.vault.activeNetwork.chainId,
+        symbol: 'SPT',
+        decimals,
+        balance,
+      };
       mockState.testAssets = { ethereum: [], syscoin: [asset] };
       mockLocation = {
         ...mockLocation,
@@ -1338,6 +1346,7 @@ describe('send forms across wallet navigation', () => {
       mockState.vault.activeNetwork.kind = INetworkType.Syscoin;
       const asset = {
         assetGuid: '123',
+        chainId: mockState.vault.activeNetwork.chainId,
         symbol: 'SPT',
         decimals: 8,
         balance: '10',
@@ -1381,6 +1390,7 @@ describe('send forms across wallet navigation', () => {
       mockState.vault.activeNetwork.currency = 'SYS';
       const asset = {
         assetGuid: '123',
+        chainId: mockState.vault.activeNetwork.chainId,
         symbol: 'SPT',
         decimals: 8,
         balance: '10',
@@ -1502,44 +1512,51 @@ describe('send forms across wallet navigation', () => {
     ).not.toHaveProperty('selectedAsset');
   });
 
-  it('discards a foreign-chain asset draft without reinterpreting its amount or MAX as native', async () => {
-    mockState.vault.isBitcoinBased = true;
-    mockState.vault.activeNetwork.kind = INetworkType.Syscoin;
-    mockState.vault.activeNetwork.chainId = 5700;
-    mockLocation = {
-      ...mockLocation,
-      pathname: '/send/sys',
-      state: {
-        walletScope: getWalletNavigationScope(),
-        formValues: { receiver: 'recipient-a', amount: '900', fee: '0.00001' },
-        selectedAsset: {
-          assetGuid: '123',
-          chainId: 57,
-          symbol: 'FOREIGN',
-          decimals: 8,
-          balance: '900',
+  it.each([57, undefined])(
+    'discards an incompatible token draft (chain %s) without treating its amount/MAX as native',
+    async (chainId) => {
+      mockState.vault.isBitcoinBased = true;
+      mockState.vault.activeNetwork.kind = INetworkType.Syscoin;
+      mockState.vault.activeNetwork.chainId = 5700;
+      mockLocation = {
+        ...mockLocation,
+        pathname: '/send/sys',
+        state: {
+          walletScope: getWalletNavigationScope(),
+          formValues: {
+            receiver: 'recipient-a',
+            amount: '900',
+            fee: '0.00001',
+          },
+          selectedAsset: {
+            assetGuid: '123',
+            chainId,
+            symbol: 'FOREIGN',
+            decimals: 8,
+            balance: '900',
+          },
+          isMaxSend: true,
         },
-        isMaxSend: true,
-      },
-    };
-    render(<SendSys />);
-    await act(async () => undefined);
-    expect(
-      (screen.getByPlaceholderText('send.amount') as HTMLInputElement).value
-    ).toBe('');
-    expect(
-      (screen.getByPlaceholderText('send.receiver') as HTMLInputElement).value
-    ).toBe('');
-    const saved = mockSave.mock.calls
-      .filter(([route]) => route === '/send/sys')
-      .pop()![2];
-    expect(saved).not.toHaveProperty('selectedAsset');
-    expect(saved.isMaxSend).toBe(false);
-    expect(mockEmitter).not.toHaveBeenCalledWith(
-      ['wallet', 'getEstimateSysTransactionFee'],
-      expect.anything()
-    );
-  });
+      };
+      render(<SendSys />);
+      await act(async () => undefined);
+      expect(
+        (screen.getByPlaceholderText('send.amount') as HTMLInputElement).value
+      ).toBe('');
+      expect(
+        (screen.getByPlaceholderText('send.receiver') as HTMLInputElement).value
+      ).toBe('');
+      const saved = mockSave.mock.calls
+        .filter(([route]) => route === '/send/sys')
+        .pop()![2];
+      expect(saved).not.toHaveProperty('selectedAsset');
+      expect(saved.isMaxSend).toBe(false);
+      expect(mockEmitter).not.toHaveBeenCalledWith(
+        ['wallet', 'getEstimateSysTransactionFee'],
+        expect.anything()
+      );
+    }
+  );
 
   it('refreshes a selected SPT only from its current-chain GUID match', async () => {
     mockState.vault.isBitcoinBased = true;
@@ -1600,7 +1617,13 @@ describe('send forms across wallet navigation', () => {
       jest.useFakeTimers();
       mockState.vault.isBitcoinBased = true;
       mockState.vault.activeNetwork.kind = INetworkType.Syscoin;
-      const asset = { assetGuid: '123', symbol: 'SPT', decimals, balance };
+      const asset = {
+        assetGuid: '123',
+        chainId: mockState.vault.activeNetwork.chainId,
+        symbol: 'SPT',
+        decimals,
+        balance,
+      };
       mockState.testAssets = { ethereum: [], syscoin: [asset] };
       mockLocation = {
         ...mockLocation,
@@ -1644,6 +1667,7 @@ describe('send forms across wallet navigation', () => {
       mockState.vault.activeNetwork.kind = INetworkType.Syscoin;
       const asset = {
         assetGuid: '12',
+        chainId: mockState.vault.activeNetwork.chainId,
         symbol: 'PQAS',
         decimals,
         assetType: 'ERC20',
@@ -1726,6 +1750,7 @@ describe('send forms across wallet navigation', () => {
         : INetworkType.Ethereum;
       const asset = {
         assetGuid: '123',
+        chainId: mockState.vault.activeNetwork.chainId,
         symbol: 'SPT',
         decimals: 8,
         balance: '100000000',

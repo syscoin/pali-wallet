@@ -86,11 +86,10 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
     location.state,
     scopeKey
   );
-  // A legacy draft may omit the asset's chain, but its enclosing walletScope
-  // has already been matched above. An explicitly foreign selection invalidates
-  // the complete draft: retaining its amount/MAX would reinterpret it as native.
+  // Incomplete or foreign token drafts are disposable. Drop the entire draft:
+  // retaining its amount/MAX would reinterpret it as a native send.
   const initialDraft = useRef(
-    scopedDraft.selectedAsset?.chainId !== undefined &&
+    scopedDraft.selectedAsset &&
       scopedDraft.selectedAsset.chainId !== activeNetwork.chainId
       ? {}
       : scopedDraft
@@ -99,8 +98,7 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
     typeof initialDraft.RBF === 'boolean' ? initialDraft.RBF : true;
   const [RBF, setRBF] = useState<boolean>(initialRBF);
   const initialSelectedAsset = initialDraft.selectedAsset || null;
-  // Older drafts may contain a rounded, false asset MAX flag. Check the saved
-  // amount before restoring that intent or replacing it with a fresh balance.
+  // Restore asset MAX only when the saved amount exactly matches its balance.
   const initialIsMaxSend =
     initialDraft.isMaxSend === true &&
     (!initialSelectedAsset ||
