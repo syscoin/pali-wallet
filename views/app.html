@@ -77,6 +77,24 @@
       body.app-loaded #app-root {
         opacity: 1;
       }
+
+      /* Keep the normal popup size, but let short windows scroll real content. */
+      @media (max-height: 619px) {
+        body.h-popup {
+          height: 100vh;
+          height: 100dvh;
+        }
+
+        #app-root {
+          min-height: 0;
+        }
+
+        .min-h-popup[data-navigation-scroll='wallet-layout'] {
+          height: 100%;
+          min-height: 0;
+          max-height: 100%;
+        }
+      }
     </style>
   </head>
   <body

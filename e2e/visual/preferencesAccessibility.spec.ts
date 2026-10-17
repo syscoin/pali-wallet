@@ -121,6 +121,16 @@ test('offline onboarding and preferences remain keyboard accessible with localiz
     await wallet.ensureOnHome();
 
     await wallet.gotoRoute('#/settings/languages');
+    const layout = page.locator('[data-navigation-scroll="wallet-layout"]');
+    await page.setViewportSize({ width: 400, height: 800 });
+    await expect
+      .poll(() => layout.evaluate((element) => element.clientHeight))
+      .toBe(620);
+    await capture(page, 'language-normal-400x800');
+    await page.setViewportSize({ width: 400, height: 480 });
+    await expect
+      .poll(() => layout.evaluate((element) => element.clientHeight))
+      .toBe(480);
     await expect(page.getByRole('menu')).toHaveCount(0);
     const language = page.getByRole('button', {
       name: en.settings.setYourPreferredLanguage,
@@ -242,7 +252,31 @@ test('offline onboarding and preferences remain keyboard accessible with localiz
     expect(pageErrors).toEqual([]);
     expect(routes.deniedWrites).toEqual([]);
   } catch (error) {
-    if (wallet) await capture(wallet.page, 'failure').catch(() => undefined);
+    if (wallet) {
+      await capture(wallet.page, 'failure').catch(() => undefined);
+      const geometry = await wallet.page
+        .evaluate(() =>
+          [
+            ...document.querySelectorAll(
+              'body, #app-root, [data-navigation-scroll], form, button'
+            ),
+          ].map((element) => ({
+            tag: element.tagName,
+            id: element.id,
+            text: element.tagName === 'BUTTON' ? element.textContent : '',
+            scrollHeight: element.scrollHeight,
+            clientHeight: element.clientHeight,
+            scrollTop: element.scrollTop,
+            overflow: getComputedStyle(element).overflowY,
+            bounds: element.getBoundingClientRect().toJSON(),
+          }))
+        )
+        .catch(() => []);
+      await info.attach('failure-geometry', {
+        body: JSON.stringify(geometry, null, 2),
+        contentType: 'application/json',
+      });
+    }
     throw error;
   } finally {
     await wallet?.context.close().catch(() => undefined);
