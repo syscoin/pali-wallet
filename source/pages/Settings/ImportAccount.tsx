@@ -140,7 +140,7 @@ const ImportAccountView = () => {
       <div className="flex flex-col items-center justify-center w-full">
         <Form
           validateMessages={{ default: '' }}
-          className="flex flex-col gap-2 text-center w-full mb-10"
+          className="flex flex-col gap-2 text-center w-full"
           name="newaccount"
           autoComplete="off"
           form={form}

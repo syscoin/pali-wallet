@@ -28,6 +28,10 @@ jobs:
       - name: Build extension
         run: yarn build:chrome
       - name: Run visual baselines
+        env:
+          PALI_E2E_RUN_ID: pr-visual-${{ github.run_id }}-${{ github.run_attempt }}
+          PALI_TEST_DAPP_REVISION: ${{ github.sha }}
+          PALI_TEST_DAPP_EXTENSION_PATH: ${{ github.workspace }}/build/chrome
         # Linux baselines are committed under e2e/visual/__screenshots__/linux/.
         # A screen without a committed baseline FAILS the job but writes the
         # generated baseline into the artifact below: download it, commit the

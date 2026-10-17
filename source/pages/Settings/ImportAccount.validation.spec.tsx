@@ -59,21 +59,10 @@ jest.mock('utils/validatePrivateKey', () => ({
 jest.mock('components/index', () => ({
   PageActionFooter: jest.requireActual('components/PageActionFooter')
     .PageActionFooter,
-  Button: ({ children, loading, disabled, onClick, ...props }: any) => {
-    const { variant, fullWidth, ...buttonProps } = props;
-    return (
-      <button
-        {...buttonProps}
-        data-variant={variant}
-        data-full-width={fullWidth}
-        disabled={disabled || loading}
-        aria-busy={loading}
-        onClick={onClick}
-      >
-        {children}
-      </button>
-    );
-  },
+  Button: jest.requireActual('components/Button/Button').Button,
+}));
+jest.mock('components/Icon/Icon', () => ({
+  LoadingSvg: () => <svg aria-hidden="true" />,
 }));
 jest.mock('components/Modal/WarningBaseModal', () => ({
   ImportedWalletSuccessfully: ({ show }: any) =>
@@ -156,6 +145,19 @@ it('associates the watch-only label and gives each import field a unique accessi
   ).toBe('import-account-identifier');
 });
 
+it('keeps the real submit button associated without adding margin below its footer', () => {
+  const { container } = render(<ImportAccount />);
+  const form = container.querySelector('form')!;
+  const button = importButton() as HTMLButtonElement;
+  expect(button.type).toBe('submit');
+  expect(button.form).toBe(form);
+  expect(form.contains(button)).toBe(true);
+  expect(
+    form.contains(container.querySelector('[data-page-action-footer]'))
+  ).toBe(true);
+  expect(form.classList.contains('mb-10')).toBe(false);
+});
+
 it('does not re-enable import or remain busy when an old validation succeeds after the field is cleared', async () => {
   const validation = pendingValidation();
   (validatePrivateKeyValue as jest.Mock).mockImplementation((value) =>
@@ -171,7 +173,7 @@ it('does not re-enable import or remain busy when an old validation succeeds aft
 
   expect(importButton().hasAttribute('disabled')).toBe(true);
   await act(async () => submitForm());
-  expect(importButton().getAttribute('aria-busy')).toBe('false');
+  expect(importButton().getAttribute('aria-busy')).not.toBe('true');
   expect(mockEmitter).not.toHaveBeenCalled();
 });
 
@@ -290,14 +292,14 @@ it('admits only one import while the current request remains pending', async () 
     });
   }
   await waitFor(() =>
-    expect(importButton().getAttribute('aria-busy')).toBe('false')
+    expect(importButton().getAttribute('aria-busy')).not.toBe('true')
   );
 });
 
 it('does not enter a loading state or issue an import for an empty input', async () => {
   render(<ImportAccount />);
   await act(async () => submitForm());
-  expect(importButton().getAttribute('aria-busy')).toBe('false');
+  expect(importButton().getAttribute('aria-busy')).not.toBe('true');
   expect(mockEmitter).not.toHaveBeenCalled();
 });
 
@@ -310,7 +312,7 @@ it('clears a failed import and permits a fresh validated retry', async () => {
   );
   fireEvent.click(importButton());
   await waitFor(() => expect(mockAlert.error).toHaveBeenCalledTimes(1));
-  expect(importButton().getAttribute('aria-busy')).toBe('false');
+  expect(importButton().getAttribute('aria-busy')).not.toBe('true');
   expect(input().getAttribute('disabled')).toBeNull();
   fireEvent.click(importButton());
   expect((await screen.findByRole('status')).textContent).toBe('Imported');
