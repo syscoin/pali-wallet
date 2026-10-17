@@ -162,7 +162,7 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
               }`}
               unmount={false}
             >
-              <div className="remove-scrollbar h-full overflow-y-auto overscroll-contain pb-24">
+              <div className="remove-scrollbar h-full overflow-y-auto overscroll-contain scroll-py-2 pb-24">
                 {open && <AccountMenu />}
                 <div className="flex flex-col justify-start items-start">
                   <span className="disabled text-xs flex justify-start px-5 mt-5 mb-1">
