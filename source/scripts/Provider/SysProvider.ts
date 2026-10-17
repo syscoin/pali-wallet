@@ -133,6 +133,7 @@ export const SysProvider = (host: string) => {
         keySelection: 'wallet-approval',
         result: 'operator-authorized-transaction',
         requiresFeeInputSignatures: true,
+        feeSigning: 'same-origin-authorized-psbt-v1',
       };
     },
     // Connection & Account methods

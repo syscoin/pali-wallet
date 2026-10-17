@@ -11,6 +11,10 @@ import {
   type SentryCollateralAdmission,
 } from 'utils/sentry/collateral';
 import {
+  SentryFeeAuthorizations,
+  type SentryFeeReview,
+} from 'utils/sentry/feeAuthorization';
+import {
   getSentryVaultId,
   listSentryKeys,
   loadSentryKey,
@@ -82,7 +86,7 @@ type Pending = {
 const APPROVAL_TTL_MS = 10 * 60 * 1000;
 const loadSdk = () =>
   import(
-    /* webpackChunkName: "sentry-sdk", webpackExports: ["inspectSentryOperation", "inspectSentryManagementOperation", "validateSentryOperationRequest", "validateSentryManagementRequest", "reviewSentryOperation", "reviewSentryManagementOperation", "sentryKeyId"] */
+    /* webpackChunkName: "sentry-sdk", webpackExports: ["inspectSentryOperation", "inspectSentryManagementOperation", "validateSentryOperationRequest", "validateSentryManagementRequest", "sentryKeyId"] */
     '@sidhujag/sysweb3-sentry'
   );
 
@@ -147,6 +151,7 @@ const inputIds = (
 /** Background-only custodian. Sites receive capabilities or one approved signature, never a key inventory. */
 export class SentryController {
   private readonly mutex = new AsyncMutex();
+  private readonly feeAuthorizations = new SentryFeeAuthorizations();
   private readonly approvals = new Map<string, Pending>();
   private readonly links = new Map<
     string,
@@ -415,6 +420,7 @@ export class SentryController {
       });
       this.assertCurrent(scope);
       this.approvals.clear();
+      this.feeAuthorizations.clear();
       this.votes.clear();
       return this.settings(scope);
     });
@@ -569,6 +575,7 @@ export class SentryController {
         () => this.assertCurrent(scope)
       );
       this.approvals.clear();
+      this.feeAuthorizations.clear();
       this.votes.clear();
       return this.settings(scope);
     });
@@ -699,10 +706,10 @@ export class SentryController {
         ? sdk.validateSentryOperationRequest(rawRequest)
         : sdk.validateSentryManagementRequest(rawRequest);
     const { context, settings } = await this.context(scope, request);
-    const review =
-      request.operation === 'updateService'
-        ? sdk.reviewSentryOperation(request, context as SentryReviewContext)
-        : sdk.reviewSentryManagementOperation(request, context);
+    const review = await runSentryCrypto<SentryFeeReview>(
+      { type: 'reviewOperation', request, context },
+      () => this.assertCurrent(scope)
+    );
     if (
       review.operation === 'updateService' &&
       review.changes.nevmAddress.previous !== review.changes.nevmAddress.next
@@ -815,6 +822,49 @@ export class SentryController {
 
   public cancel(id: string) {
     this.approvals.delete(id);
+  }
+
+  public prepareFeePsbt(transactionHex: string, origin: string): string {
+    return this.feeAuthorizations.find(
+      transactionHex,
+      origin,
+      this.host.captureScope().identity
+    );
+  }
+
+  public beginFeeSigning(id: string, transactionHex: string) {
+    return this.feeAuthorizations.acquire(
+      id,
+      transactionHex,
+      this.host.captureScope().identity
+    );
+  }
+
+  public async reviewFeePsbt(
+    id: string,
+    transactionHex: string
+  ): Promise<SentryFeeReview> {
+    const scope = this.host.captureScope();
+    const entry = this.feeAuthorizations.get(
+      id,
+      transactionHex,
+      scope.identity
+    );
+    const fresh = await this.context(scope, entry.request);
+    if (
+      !isEqual(fresh.context, entry.context) ||
+      fresh.settings.serviceUrl !== entry.serviceUrl
+    )
+      throw new Error(
+        'Sentry state changed after authorization. Authorize the operation again.'
+      );
+    const review = await runSentryCrypto<SentryFeeReview>(
+      { type: 'verifyFee', request: entry.request, context: fresh.context },
+      () => this.assertCurrent(scope)
+    );
+    this.feeAuthorizations.get(id, transactionHex, scope.identity);
+    this.assertCurrent(scope);
+    return review;
   }
 
   public async sign(params: {
@@ -944,6 +994,20 @@ export class SentryController {
         this.assertCurrent(scope);
         if (this.pending(params.id) !== pending)
           throw new Error('Sentry approval was cancelled');
+        if (
+          response.operation === 'updateService' ||
+          ('complete' in response && response.complete)
+        )
+          this.feeAuthorizations.remember({
+            context: pending.context,
+            origin: publicApproval.origin,
+            request: {
+              ...publicApproval.request,
+              transactionHex: response.transactionHex,
+            },
+            scopeIdentity: scope.identity,
+            serviceUrl: publicApproval.serviceUrl,
+          });
         this.approvals.delete(params.id);
         return response;
       });

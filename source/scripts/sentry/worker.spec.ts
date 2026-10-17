@@ -1,6 +1,8 @@
 const mockSign = jest.fn();
 const mockVerify = jest.fn();
 const mockIds = jest.fn();
+const mockFeeVerify = jest.fn();
+const mockFeeReview = jest.fn();
 jest.mock(
   '@sidhujag/sysweb3-sentry',
   () => ({
@@ -10,6 +12,12 @@ jest.mock(
     signSentryGovernanceVote: (...args: unknown[]) => mockSign(...args),
     verifySentryGovernanceVote: (...args: unknown[]) => mockVerify(...args),
     governanceVotingKeyIds: (...args: unknown[]) => mockIds(...args),
+    verifySentryOperation: (...args: unknown[]) => mockFeeVerify(...args),
+    verifySentryManagementOperation: (...args: unknown[]) =>
+      mockFeeVerify(...args),
+    reviewSentryOperation: (...args: unknown[]) => mockFeeReview(...args),
+    reviewSentryManagementOperation: (...args: unknown[]) =>
+      mockFeeReview(...args),
   }),
   { virtual: true }
 );
@@ -26,6 +34,57 @@ beforeEach(() => {
   });
   mockSign.mockResolvedValue({ voteSig: 'canonical-signature' });
   mockVerify.mockResolvedValue(true);
+  mockFeeVerify.mockResolvedValue(true);
+  mockFeeReview.mockReturnValue({
+    operation: 'updateService',
+    feeSatoshis: '1000',
+  });
+});
+
+it.each([
+  'updateService',
+  'register',
+  'updateRegistrar',
+  'revoke',
+  'registerOperator',
+  'rotateOperator',
+])(
+  'requires complete canonical %s authorization before returning a fee review',
+  async (operation) => {
+    const job = {
+      type: 'verifyFee',
+      request: { operation },
+      context: { trusted: true },
+    };
+    await worker.onmessage({ data: { job } });
+    expect(mockFeeVerify).toHaveBeenCalledWith(job.request, job.context);
+    expect(mockFeeReview).toHaveBeenCalledWith(job.request, job.context);
+    expect(worker.postMessage).toHaveBeenLastCalledWith({
+      success: true,
+      result: { operation: 'updateService', feeSatoshis: '1000' },
+    });
+    mockFeeVerify.mockResolvedValue(false);
+    mockFeeReview.mockClear();
+    await worker.onmessage({ data: { job } });
+    expect(mockFeeReview).not.toHaveBeenCalled();
+    expect(worker.postMessage).toHaveBeenLastCalledWith(
+      expect.objectContaining({ success: false })
+    );
+  }
+);
+
+it('keeps unsigned operation review separate from complete fee authorization verification', async () => {
+  await worker.onmessage({
+    data: {
+      job: {
+        type: 'reviewOperation',
+        request: { operation: 'updateService' },
+        context: {},
+      },
+    },
+  });
+  expect(mockFeeVerify).not.toHaveBeenCalled();
+  expect(mockFeeReview).toHaveBeenCalled();
 });
 
 it('expands only bounded public voting identities in the isolated worker', async () => {

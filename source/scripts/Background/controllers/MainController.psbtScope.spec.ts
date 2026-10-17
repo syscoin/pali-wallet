@@ -128,6 +128,92 @@ describe('PSBT approval context', () => {
     });
   });
 
+  it('rejects direct Sentry fee signing without a local authorization token before the signer', async () => {
+    const psbt = syntheticPsbt(BigInt(1000), false);
+    psbt.setVersion(81);
+    wallet.verifySyscoinPsbt.mockResolvedValue({ psbt });
+    await expect(
+      wallet.signSyscoinPsbt({ psbt: { psbt: 'sentry' } })
+    ).rejects.toThrow('SENTRY_FEE_AUTHORIZATION_REQUIRED');
+    expect(keyring.syscoinTransaction.signPSBT).not.toHaveBeenCalled();
+  });
+
+  it('keeps Sentry sign-and-send unsupported while allowing ordinary PSBT routing', async () => {
+    const psbt = syntheticPsbt(BigInt(1000), false);
+    psbt.setVersion(81);
+    (PsbtUtils.fromPali as jest.Mock).mockReturnValue(psbt);
+    await expect(
+      wallet.prepareSentryFeePsbt('sentry', 'https://site.test', false)
+    ).rejects.toThrow('require sys_sign');
+    psbt.setVersion(2);
+    await expect(
+      wallet.prepareSentryFeePsbt('ordinary', 'https://site.test', false)
+    ).resolves.toBeUndefined();
+  });
+
+  it.each(['fresh context', 'returned transaction'])(
+    'does not disclose a fee signature if %s changes after signing',
+    async (failure) => {
+      const psbt = syntheticPsbt(BigInt(1000), false);
+      psbt.setVersion(81);
+      const unsigned = Buffer.from(
+        psbt.data.globalMap.unsignedTx.toBuffer()
+      ).toString('hex');
+      const finish = jest.fn();
+      const review = jest.fn(async (_token, bytes) => {
+        if (bytes !== unsigned) throw new Error('changed transaction');
+        return { operation: 'updateService', feeSatoshis: '1000' };
+      });
+      wallet.getSentryController = jest.fn(async () => ({
+        reviewFeePsbt: review,
+        beginFeeSigning: () => finish,
+      }));
+      wallet.verifySyscoinPsbt.mockResolvedValue({ psbt });
+      const changed = syntheticPsbt(BigInt(1000), false);
+      changed.setVersion(81);
+      if (failure === 'returned transaction') changed.setLocktime(99);
+      (PsbtUtils.fromPali as jest.Mock).mockReturnValue(changed);
+      if (failure === 'fresh context')
+        review
+          .mockResolvedValueOnce({
+            operation: 'updateService',
+            feeSatoshis: '1000',
+          })
+          .mockRejectedValueOnce(new Error('changed node state'));
+      await expect(
+        wallet.signSyscoinPsbt({
+          psbt: { psbt: 'sentry', sentryFeeAuthorization: 'local-token' },
+        })
+      ).rejects.toThrow(/changed/);
+      expect(keyring.syscoinTransaction.signPSBT).toHaveBeenCalledTimes(1);
+      expect(finish).not.toHaveBeenCalledWith(true);
+      expect(finish).toHaveBeenCalledWith();
+    }
+  );
+
+  it('rechecks the complete Sentry authorization and consumes it only at successful disclosure', async () => {
+    const psbt = syntheticPsbt(BigInt(1000), false);
+    psbt.setVersion(81);
+    const finish = jest.fn();
+    const review = jest.fn(async () => ({
+      operation: 'updateService',
+      feeSatoshis: '1000',
+    }));
+    wallet.getSentryController = jest.fn(async () => ({
+      reviewFeePsbt: review,
+      beginFeeSigning: () => finish,
+    }));
+    wallet.verifySyscoinPsbt.mockResolvedValue({ psbt });
+    (PsbtUtils.fromPali as jest.Mock).mockReturnValue(psbt);
+    await expect(
+      wallet.signSyscoinPsbt({
+        psbt: { psbt: 'sentry', sentryFeeAuthorization: 'local-token' },
+      })
+    ).resolves.toBe('signed');
+    expect(review).toHaveBeenCalledTimes(2);
+    expect(finish.mock.calls).toEqual([[true], []]);
+  });
+
   it('rejects protected collateral in a dapp sign-only PSBT before signing', async () => {
     wallet.getProtectedSentryOutpoints.mockResolvedValue([
       { txid: '01'.repeat(32), vout: 0, proTxHash: '02'.repeat(32) },

@@ -3,8 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { Button, DeviceWaitingBanner, ErrorModal } from 'components/index';
+import { PageActionFooter } from 'components/PageActionFooter';
 import { LoadingComponent } from 'components/Loading';
-import { ToastActionFooter } from 'components/ToastActionFooter';
 import { SyscoinTransactionDetailsFromPSBT } from 'components/TransactionDetails';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
@@ -21,7 +21,14 @@ interface ISign {
 
 const Sign: React.FC<ISign> = ({ signOnly = false }) => {
   const { controllerEmitter } = useController();
-  const { host, eventName, ...data } = useQueryData();
+  const queryData = useQueryData();
+  const { host, eventName } = queryData;
+  const data = React.useMemo(() => {
+    const payload = { ...queryData };
+    delete payload.host;
+    delete payload.eventName;
+    return payload;
+  }, [queryData]);
   const { t } = useTranslation();
   const { alert } = useUtils();
   const [loading, setLoading] = useState(false);
@@ -265,9 +272,12 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
           <LoadingComponent />
         </div>
       ) : (
-        <div className="flex flex-col w-full h-screen">
+        <div
+          data-psbt-sign
+          className="flex flex-col w-full flex-1 min-h-0 overflow-hidden"
+        >
           {/* Main scrollable content area */}
-          <div className="flex-1 overflow-y-auto pb-20 remove-scrollbar">
+          <div className="flex-1 min-h-0 overflow-y-auto pb-4 remove-scrollbar">
             {/* Header Section */}
             <div className="flex flex-col w-full items-center justify-center px-6 py-8">
               <div className="w-16 h-16 relative p-4 mb-6 rounded-full bg-gradient-to-r from-[#284F94] from-[25.72%] to-[#FE0077] to-[141.55%]">
@@ -302,7 +312,7 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
           </div>
 
           {/* Fixed button container at bottom */}
-          <ToastActionFooter className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 shadow-lg z-50">
+          <PageActionFooter className="bg-bkg-3 border-t border-brand-gray300 px-4 py-3 shadow-lg z-50">
             <DeviceWaitingBanner account={activeAccount} show={loading} />
             {submissionUnknown && (
               <p
@@ -337,7 +347,7 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
                 {signOnly ? t('send.sign') : t('buttons.confirm')}
               </Button>
             </div>
-          </ToastActionFooter>
+          </PageActionFooter>
         </div>
       )}
     </>
