@@ -41,6 +41,11 @@ trust boundary, not a cryptographic proof of the entire chain.
 These methods are in the Syscoin provider namespace. Ethereum/MetaMask methods
 are unchanged. They require the selected connected Syscoin UTXO account; a
 network/account/session change invalidates an open approval.
+Submitting another transaction from the same wallet and network also requires
+reopening a pending node operation, so a stale approval cannot protect an
+output that is being spent. Collateral reservation and final broadcast checks
+share one admission boundary; an uncertain broadcast does not revive old
+approvals.
 
 ### `sys_getSentryCapabilities`
 

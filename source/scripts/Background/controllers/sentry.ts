@@ -3,10 +3,12 @@ import { utils as syscoinUtils } from 'syscoinjs-lib';
 
 import { AsyncMutex } from 'utils/asyncMutex';
 import {
+  captureSentryCollateralAdmission,
   getSentryCollateralReservations,
   releaseSentryCollateral,
   reserveSentryCollateral,
   type SentryCollateralReservation,
+  type SentryCollateralAdmission,
 } from 'utils/sentry/collateral';
 import {
   getSentryVaultId,
@@ -65,6 +67,7 @@ interface Host {
   ) => Promise<{ scheme: 'ecdsa'; secretKey: string }>;
 }
 type Pending = {
+  admission: SentryCollateralAdmission;
   context: SentryManagementContext;
   expiresAt: number;
   publicApproval: SentryApproval;
@@ -143,6 +146,7 @@ export class SentryController {
   private readonly links = new Map<
     string,
     {
+      admission: SentryCollateralAdmission;
       approval: SentryLinkApproval;
       committing?: boolean;
       expiresAt: number;
@@ -201,6 +205,10 @@ export class SentryController {
 
   public async prepareLink(raw: unknown, origin: string): Promise<string> {
     const scope = this.host.captureScope();
+    const admission = await captureSentryCollateralAdmission({
+      walletIdentity: scope.rootPublicIdentity,
+      genesisHash: SENTRY_NETWORKS[getSentryNetwork(scope.network)].genesisHash,
+    });
     const request = raw as {
       genesisHash?: unknown;
       proTxHash?: unknown;
@@ -261,6 +269,7 @@ export class SentryController {
     if (this.links.size >= 8) throw new Error('Too many pending Sentry links');
     const id = crypto.randomUUID();
     this.links.set(id, {
+      admission,
       scope,
       expiresAt: Date.now() + APPROVAL_TTL_MS,
       approval: {
@@ -343,6 +352,7 @@ export class SentryController {
       link!.committing = true;
       try {
         await reserveSentryCollateral({
+          admission: link!.admission,
           walletIdentity: scope.rootPublicIdentity,
           genesisHash: SENTRY_NETWORKS[approval.network].genesisHash,
           reservation: {
@@ -579,6 +589,10 @@ export class SentryController {
 
   public async prepare(rawRequest: unknown, origin: string): Promise<string> {
     const scope = this.host.captureScope();
+    const admission = await captureSentryCollateralAdmission({
+      walletIdentity: scope.rootPublicIdentity,
+      genesisHash: SENTRY_NETWORKS[getSentryNetwork(scope.network)].genesisHash,
+    });
     const sdk = await loadSdk();
     const request =
       (rawRequest as { operation?: unknown })?.operation === 'updateService'
@@ -665,6 +679,7 @@ export class SentryController {
       throw new Error('Too many pending Sentry approvals');
     const id = crypto.randomUUID();
     this.approvals.set(id, {
+      admission,
       scope,
       context,
       expiresAt: Date.now() + APPROVAL_TTL_MS,
@@ -781,6 +796,7 @@ export class SentryController {
           if (!registration)
             throw new Error('Missing verified registration collateral');
           await reserveSentryCollateral({
+            admission: pending.admission,
             walletIdentity: scope.rootPublicIdentity,
             genesisHash: pending.context.chain.genesisHash,
             reservation: { ...registration, pendingRegistration: true },
@@ -796,6 +812,7 @@ export class SentryController {
         ) {
           this.assertCurrent(scope);
           await reserveSentryCollateral({
+            admission: pending.admission,
             walletIdentity: scope.rootPublicIdentity,
             genesisHash: pending.context.chain.genesisHash,
             reservation: {

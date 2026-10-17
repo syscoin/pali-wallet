@@ -143,7 +143,10 @@ import {
 } from 'utils/nativeBalanceCache';
 import { getNetworkChain } from 'utils/network';
 import { blacklistService } from 'utils/security/blacklistService';
-import { getSentryCollateralReservations } from 'utils/sentry/collateral';
+import {
+  getSentryCollateralReservations,
+  withSentryCollateralBroadcast,
+} from 'utils/sentry/collateral';
 import { getSentryNetwork, SENTRY_NETWORKS } from 'utils/sentry/network';
 import {
   getSLHDSASessionGeneration,
@@ -5366,10 +5369,17 @@ class MainController {
         }
 
         // Step 2: Send the transaction
-        await this.assertNoSentryCollateralInputs(verifiedSignedPsbt);
-        signing.assertCurrent();
-        senderInvoked = true;
-        const txResult = await signing.transactions.sendTransaction(signedPsbt);
+        const sentryScope = this.getSentryCollateralScope();
+        const submit = async (markInvoked: () => void) => {
+          await this.assertNoSentryCollateralInputs(verifiedSignedPsbt);
+          signing.assertCurrent();
+          markInvoked();
+          senderInvoked = true;
+          return signing.transactions.sendTransaction(signedPsbt);
+        };
+        const txResult = sentryScope
+          ? await withSentryCollateralBroadcast(sentryScope, submit)
+          : await submit(() => undefined);
         // Broadcast acknowledgement is authoritative even if the user changes
         // context or local history persistence fails afterward.
         try {
@@ -8032,26 +8042,31 @@ class MainController {
     return { psbt, summary };
   };
 
-  private async getProtectedSentryOutpoints() {
+  private getSentryCollateralScope() {
     const { vault } = store.getState();
     if (
       !vault.isBitcoinBased ||
       vault.activeNetwork.kind !== INetworkType.Syscoin
     )
-      return [];
+      return undefined;
     if (
       !Object.values(SENTRY_NETWORKS).some(
         (network) => network.chainId === vault.activeNetwork.chainId
       )
     )
-      return [];
+      return undefined;
     const rootPublicIdentity = vault.accounts.HDAccount?.[0]?.xpub;
-    if (!rootPublicIdentity) return [];
+    if (!rootPublicIdentity) return undefined;
     const network = getSentryNetwork(vault.activeNetwork);
-    return getSentryCollateralReservations({
+    return {
       walletIdentity: rootPublicIdentity,
       genesisHash: SENTRY_NETWORKS[network].genesisHash,
-    });
+    };
+  }
+
+  private async getProtectedSentryOutpoints() {
+    const scope = this.getSentryCollateralScope();
+    return scope ? getSentryCollateralReservations(scope) : [];
   }
 
   private async assertNoSentryCollateralInputs(

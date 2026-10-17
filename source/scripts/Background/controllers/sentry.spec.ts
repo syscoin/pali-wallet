@@ -1,6 +1,9 @@
 import { webcrypto } from 'crypto';
 
-import { reserveSentryCollateral } from 'utils/sentry/collateral';
+import {
+  captureSentryCollateralAdmission,
+  reserveSentryCollateral,
+} from 'utils/sentry/collateral';
 import {
   listSentryKeys,
   loadSentryKey,
@@ -82,6 +85,7 @@ jest.mock('utils/sentry/keyStore', () => ({
 }));
 jest.mock('utils/sentry/workerClient', () => ({ runSentryCrypto: jest.fn() }));
 jest.mock('utils/sentry/collateral', () => ({
+  captureSentryCollateralAdmission: jest.fn(),
   reserveSentryCollateral: jest.fn(),
   getSentryCollateralReservations: async () => [],
   releaseSentryCollateral: jest.fn(),
@@ -112,6 +116,10 @@ let controller: SentryController;
 let getSeed: jest.Mock;
 beforeEach(() => {
   jest.clearAllMocks();
+  (captureSentryCollateralAdmission as jest.Mock).mockResolvedValue({
+    key: 'fixture',
+    generation: 0,
+  });
   Object.defineProperty(global, 'crypto', {
     value: webcrypto,
     configurable: true,
@@ -372,6 +380,26 @@ it('links verified public node identity without signing or importing collateral'
   );
   expect(runSentryCrypto).not.toHaveBeenCalled();
   expect(getSeed).not.toHaveBeenCalled();
+});
+
+it('retains the initial link admission token through the fresh state read', async () => {
+  const original = { key: 'fixture', generation: 0 };
+  const refreshed = { key: 'fixture', generation: 2 };
+  (captureSentryCollateralAdmission as jest.Mock)
+    .mockResolvedValueOnce(original)
+    .mockResolvedValueOnce(refreshed);
+  const id = await controller.prepareLink(
+    {
+      version: 1,
+      proTxHash: observation.node.proTxHash,
+      genesisHash: request.chain.genesisHash,
+    },
+    'https://dapp.test'
+  );
+  await controller.approveLink(id);
+  expect(reserveSentryCollateral).toHaveBeenCalledWith(
+    expect.objectContaining({ admission: original })
+  );
 });
 
 it('accepts a link refresh with reordered collateral fields', async () => {

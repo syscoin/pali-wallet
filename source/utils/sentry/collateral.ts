@@ -10,6 +10,11 @@ export interface SentryCollateralReservation {
   vout: number;
 }
 const mutex = new AsyncMutex();
+const generations = new Map<string, number>();
+export interface SentryCollateralAdmission {
+  generation: number;
+  key: string;
+}
 const keyFor = async (walletIdentity: string, genesisHash: string) => {
   if (!/^[0-9a-f]{64}$/.test(genesisHash))
     throw new Error('Invalid Sentry network genesis');
@@ -27,6 +32,42 @@ const valid = (item: SentryCollateralReservation) =>
   item.vout >= 0 &&
   item.vout <= 0xffffffff;
 
+export const captureSentryCollateralAdmission = async (params: {
+  genesisHash: string;
+  walletIdentity: string;
+}): Promise<SentryCollateralAdmission> => {
+  const key = await keyFor(params.walletIdentity, params.genesisHash);
+  const generation = generations.get(key) || 0;
+  if (generation % 2)
+    throw new Error(
+      'A wallet transaction is being submitted. Start the Sentry operation again.'
+    );
+  return { key, generation };
+};
+
+/** No prompt or signing belongs inside this short final admission boundary. */
+export const withSentryCollateralBroadcast = async <T>(
+  params: { genesisHash: string; walletIdentity: string },
+  broadcast: (markInvoked: () => void) => Promise<T>
+): Promise<T> => {
+  const key = await keyFor(params.walletIdentity, params.genesisHash);
+  return mutex.runExclusive(async () => {
+    let invoked = false;
+    const generation = generations.get(key) || 0;
+    try {
+      return await broadcast(() => {
+        if (!invoked) {
+          invoked = true;
+          generations.set(key, generation + 1);
+        }
+      });
+    } finally {
+      // Even an ambiguous send invalidates reviews prepared before/during it.
+      if (invoked) generations.set(key, generation + 2);
+    }
+  });
+};
+
 export const getSentryCollateralReservations = async (params: {
   genesisHash: string;
   walletIdentity: string;
@@ -42,12 +83,22 @@ export const getSentryCollateralReservations = async (params: {
 
 /** Registered collateral is not released when a signing key is removed. */
 export const reserveSentryCollateral = async (params: {
+  admission: SentryCollateralAdmission;
   assertCurrent: () => void;
   genesisHash: string;
   reservation: SentryCollateralReservation;
   walletIdentity: string;
 }) =>
   mutex.runExclusive(async () => {
+    const key = await keyFor(params.walletIdentity, params.genesisHash);
+    if (
+      params.admission.key !== key ||
+      params.admission.generation % 2 ||
+      params.admission.generation !== (generations.get(key) || 0)
+    )
+      throw new Error(
+        'A wallet transaction changed the Sentry approval. Start the operation again.'
+      );
     if (!valid(params.reservation))
       throw new Error('Invalid registered Sentry collateral');
     const items = await getSentryCollateralReservations(params);

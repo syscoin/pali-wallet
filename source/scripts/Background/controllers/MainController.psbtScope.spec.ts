@@ -18,10 +18,17 @@ jest.mock('utils/navigationState', () => ({
 }));
 
 import { PsbtUtils } from '@sidhujag/sysweb3-keyring';
+import { webcrypto } from 'crypto';
 import { utils as syscoinUtils } from 'syscoinjs-lib';
 
 import store from 'state/store';
 import { INetworkType, KeyringAccountType } from 'types/network';
+import {
+  captureSentryCollateralAdmission,
+  reserveSentryCollateral,
+} from 'utils/sentry/collateral';
+import { SENTRY_NETWORKS } from 'utils/sentry/network';
+import { chromeStorage } from 'utils/storageAPI';
 import {
   createUtxoAcknowledgedInputs,
   UTXO_NETWORK_CATCHING_UP,
@@ -59,6 +66,10 @@ describe('PSBT approval context', () => {
   let state: any;
   let keyring: any;
   beforeEach(() => {
+    Object.defineProperty(global, 'crypto', {
+      value: webcrypto,
+      configurable: true,
+    });
     state = {
       vault: {
         isBitcoinBased: true,
@@ -325,6 +336,54 @@ describe('PSBT approval context', () => {
       wallet.signSendAndSaveTransaction({ psbt: 'fixture' })
     ).resolves.toEqual({ txid: 'acknowledged-hash' });
     expect(wallet.sendAndSaveTransaction).not.toHaveBeenCalled();
+  });
+
+  it('serializes a concurrent reservation behind the final read and broadcast', async () => {
+    const protectedOutput = {
+      txid: '01'.repeat(32),
+      vout: 0,
+      proTxHash: '02'.repeat(32),
+    };
+    let finishRead!: () => void;
+    let finalRead!: () => void;
+    const reachedFinalRead = new Promise<void>((resolve) => {
+      finalRead = resolve;
+    });
+    wallet.getProtectedSentryOutpoints
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockImplementationOnce(async () => {
+        const staleSnapshot: unknown[] = [];
+        finalRead();
+        await new Promise<void>((resolve) => {
+          finishRead = resolve;
+        });
+        return staleSnapshot;
+      });
+    const reservationScope = {
+      walletIdentity: 'xpub-0',
+      genesisHash: SENTRY_NETWORKS.mainnet.genesisHash,
+    };
+    const admission = await captureSentryCollateralAdmission(reservationScope);
+    const write = jest.spyOn(chromeStorage, 'setItem');
+    const sending = wallet.signSendAndSaveTransaction({ psbt: 'fixture' });
+    await reachedFinalRead;
+    const reserving = reserveSentryCollateral({
+      ...reservationScope,
+      admission,
+      reservation: protectedOutput,
+      assertCurrent: () => undefined,
+    });
+    const refused = expect(reserving).rejects.toThrow(
+      'changed the Sentry approval'
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(write).not.toHaveBeenCalled();
+    finishRead();
+    await expect(sending).resolves.toEqual({ txid: 'hash' });
+    await refused;
+    expect(keyring.syscoinTransaction.sendTransaction).toHaveBeenCalledTimes(1);
+    expect(write).not.toHaveBeenCalled();
   });
 
   it('preserves broadcast acknowledgement when local history saving fails', async () => {
