@@ -69,6 +69,29 @@ async function geometry(locator: Locator) {
 }
 
 async function wheelReveal(page: Page, locator: Locator) {
+  // AntD makes a newly validated error "visible" while its height/transform
+  // are still animating. A transient short box can pass the hit test, then
+  // grow behind a fixed action before observe() runs. Let the target's form
+  // item finish its actual finite motion before deciding whether to scroll;
+  // do not disable animations or relax the full-edge/hit-target assertions.
+  await locator.evaluate(async (element) => {
+    await new Promise(requestAnimationFrame);
+    const boundary = element.closest('.ant-form-item') || element;
+    await Promise.all(
+      boundary
+        .getAnimations({ subtree: true })
+        .filter(
+          (animation) =>
+            animation.playState === 'running' &&
+            Number.isFinite(animation.effect?.getComputedTiming().endTime)
+        )
+        .map((animation) => animation.finished.catch(() => undefined))
+    );
+    // Transition-end handlers can remove temporary collapse styles on the
+    // following React render. Measure that settled layout, not an exit frame.
+    await new Promise(requestAnimationFrame);
+    await new Promise(requestAnimationFrame);
+  });
   for (let attempt = 0; attempt < 24; attempt++) {
     if ((await geometry(locator)).visible) return true;
     const box = await locator.boundingBox();
@@ -122,6 +145,39 @@ const viewports = [
   { width: 400, height: 480 },
   { width: 400, height: 620 },
 ];
+
+test('error reveal waits for finite validation motion before checking fixed-action occlusion', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 320, height: 480 });
+  await page.route('**/*', (route) => route.abort('blockedbyclient'));
+  await page.setContent(`
+    <style>
+      html, body { margin: 0; }
+      #pane { height: 480px; overflow: auto; }
+      .ant-form-item { padding-top: 400px; padding-bottom: 200px; }
+      #error { width: 164px; height: 16px; overflow: hidden; transition: height 2s linear; }
+      #action { position: fixed; left: 16px; right: 16px; bottom: 16px; height: 40px; }
+    </style>
+    <div id="pane"><div class="ant-form-item"><div id="error">Insufficient funds</div></div></div>
+    <button id="action">Next</button>
+  `);
+  const error = page.locator('#error');
+  expect((await geometry(error)).visible).toBe(true);
+  await page.evaluate(() => {
+    requestAnimationFrame(() => {
+      document.getElementById('error')!.style.height = '40px';
+    });
+  });
+  expect(await wheelReveal(page, error)).toBe(true);
+  // Without waiting for actual motion, the helper exits with a transient
+  // ~16px box. Its final 40px box would then overlap the fixed Next action.
+  expect((await error.boundingBox())!.height).toBe(40);
+  expect((await geometry(error)).visible).toBe(true);
+  expect(
+    await page.locator('#pane').evaluate((element) => element.scrollTop)
+  ).toBeGreaterThan(0);
+});
 
 for (const { width, height } of viewports) {
   test(`native and SPT Send, Confirm and Details at ${width}x${height}`, async () => {
