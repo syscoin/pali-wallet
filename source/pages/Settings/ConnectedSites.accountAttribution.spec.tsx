@@ -48,7 +48,6 @@ jest.mock('components/index', () => ({
   ).PageActionFooter,
 }));
 jest.mock('utils/index', () => ({
-  truncate: (value: string) => value,
   ellipsis: (value?: string) => value || '',
 }));
 
@@ -157,6 +156,29 @@ it('uses the account-number fallback when the connected account is missing', () 
 
   expect(screen.getByText('Connected to: Account 1')).toBeVisible();
   expect(screen.queryByText('Connected to: Active HD account')).toBeNull();
+});
+
+it('constrains long inactive-account labels and hosts without dropping their accessible text', () => {
+  const label = 'A'.repeat(80);
+  const longHost = `https://${'long-subdomain'.repeat(12)}.example`;
+  mockState.vault.accounts[KeyringAccountType.Imported][0].label = label;
+  connection().host = longHost;
+  mount();
+
+  const attribution = screen.getByText(`Connected to: ${label}`);
+  const site = screen.getByText(longHost);
+  const content = attribution.parentElement;
+  expect(attribution).toHaveAttribute('title', label);
+  expect(site).toHaveAttribute('title', longHost);
+  expect(attribution).toHaveClass('truncate');
+  expect(site).toHaveClass('truncate');
+  expect(content).toHaveClass('min-w-0', 'flex-1');
+  expect(content?.parentElement).toHaveClass('flex', 'gap-3');
+  expect(screen.getByRole('button', { name: 'Edit connection' })).toHaveClass(
+    'h-10',
+    'w-10',
+    'shrink-0'
+  );
 });
 
 it('keeps the selected account attribution and disconnects the exact host', async () => {

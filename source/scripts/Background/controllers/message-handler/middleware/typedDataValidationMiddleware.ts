@@ -48,16 +48,21 @@ export const typedDataValidationMiddleware: Middleware = async (
         typedData = params[0];
       } else if (typeof params[1] === 'object' && params[1] !== null) {
         typedData = params[1];
-      } else if (typeof params[0] === 'string' && params[0].startsWith('{')) {
+      } else if (typeof params[0] === 'string' && /^\s*[\[{]/.test(params[0])) {
         typedData = JSON.parse(params[0]);
-      } else if (typeof params[1] === 'string' && params[1].startsWith('{')) {
+      } else if (typeof params[1] === 'string' && /^\s*[\[{]/.test(params[1])) {
         typedData = JSON.parse(params[1]);
       }
     }
 
-    if (!typedData) {
-      // No typed data found, let it proceed (will fail later with proper error)
-      return next();
+    if (
+      !typedData ||
+      typeof typedData !== 'object' ||
+      (method !== 'eth_signTypedData' && Array.isArray(typedData))
+    ) {
+      throw ethErrors.rpc.invalidParams(
+        'Invalid typed data: expected an object'
+      );
     }
 
     // Handle v1 format (array of typed values)

@@ -248,16 +248,18 @@ describe.each([false, true])(
     ])('signs exactly the reviewed bytes for %s', async (payload, intended) => {
       await prepare(payload, reversed);
       expect(screen.queryByRole('alert')).toBeNull();
-      const originalParams = { ...mockQuery };
-      delete originalParams.host;
+      const originalRequest = { ...mockQuery };
+      const sdkParams = { ...mockQuery, 0: ADDRESS, 1: payload };
+      delete sdkParams.host;
       fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
       await waitFor(() => expect(window.close).toHaveBeenCalledTimes(1));
       expect(mockEmitter).toHaveBeenCalledTimes(1);
       expect(mockEmitter).toHaveBeenCalledWith(
         ['wallet', 'ethereumTransaction', 'signPersonalMessage'],
-        [originalParams],
+        [sdkParams],
         300000
       );
+      expect(mockQuery).toEqual(originalRequest);
       expect(mockTransport.bytes()).toEqual(Buffer.from(intended, 'utf8'));
       expect(mockTransport.send).toHaveBeenCalled();
       const [[event, signature]] = (dispatchBackgroundEvent as jest.Mock).mock
@@ -333,6 +335,25 @@ describe.each([false, true])(
         expect(mockTransport.send).not.toHaveBeenCalled();
       }
     );
+  }
+);
+
+it.each([`0x${'22'.repeat(20)}`, ADDRESS, ADDRESS.toUpperCase()])(
+  'signs exact canonical 20-byte message %s through the installed Ledger SDK',
+  async (payload) => {
+    await prepare(payload, false);
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getAllByText(payload).length).toBeGreaterThan(0);
+    const originalRequest = { ...mockQuery };
+    fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
+    await waitFor(() => expect(window.close).toHaveBeenCalledTimes(1));
+    const intended = payload.startsWith('0x')
+      ? Buffer.from(payload.slice(2), 'hex')
+      : Buffer.from(payload, 'utf8');
+    expect(mockTransport.bytes()).toEqual(intended);
+    const [[, signature]] = (dispatchBackgroundEvent as jest.Mock).mock.calls;
+    expect(verifyMessage(Uint8Array.from(intended), signature)).toBe(ADDRESS);
+    expect(mockQuery).toEqual(originalRequest);
   }
 );
 

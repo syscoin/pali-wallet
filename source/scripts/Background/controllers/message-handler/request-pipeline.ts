@@ -9,6 +9,7 @@ import {
   getBlacklistTargetsForEvmCallWithContractType,
   IEvmCallBlacklistTarget,
 } from 'utils/evmCallBlacklist';
+import { getPersonalSignParams } from 'utils/personalSignReview';
 import { blacklistService } from 'utils/security/blacklistService';
 
 import { clearProviderCache } from './method-handlers';
@@ -803,11 +804,11 @@ const extractEvmAddressFromParams = (
     return params[0].from;
   }
 
+  if (method === 'personal_sign') return getPersonalSignParams(params)?.address;
+
   // Handle signing methods
   if (
-    (method === 'eth_sign' ||
-      method === 'personal_sign' ||
-      method.startsWith('eth_signTypedData')) &&
+    (method === 'eth_sign' || method.startsWith('eth_signTypedData')) &&
     params?.length >= 2
   ) {
     // Check both parameters for address format

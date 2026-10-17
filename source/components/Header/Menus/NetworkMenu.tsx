@@ -1,5 +1,13 @@
 import { Menu } from '@headlessui/react';
-import React, { memo, useCallback, useId, useMemo, useState } from 'react';
+import React, {
+  memo,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
@@ -63,6 +71,14 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
     [INetworkType.Syscoin]: false,
     [INetworkType.Ethereum]: false,
   });
+  const typeaheadInProgress = useRef(false);
+  const typeaheadTimeout = useRef<ReturnType<typeof setTimeout>>();
+  const pointerPositions = useRef(new WeakMap<HTMLElement, [number, number]>());
+  const resetTypeahead = useCallback(() => {
+    clearTimeout(typeaheadTimeout.current);
+    typeaheadInProgress.current = false;
+  }, []);
+  useEffect(() => resetTypeahead, [resetTypeahead]);
 
   const networks = useSelector(
     (state: RootState) => state.vaultGlobal.networks
@@ -218,7 +234,39 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
   }, [navigate, location]);
 
   const handleGroupKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    // Headless UI 1.x accumulates printable keys for 350ms. Let it consume
+    // spaces within that query; only a standalone Space activates a group.
+    clearTimeout(typeaheadTimeout.current);
+    if (
+      [
+        'ArrowDown',
+        'ArrowUp',
+        'Home',
+        'End',
+        'PageUp',
+        'PageDown',
+        'Escape',
+        'Tab',
+      ].includes(event.key)
+    ) {
+      typeaheadInProgress.current = false;
+      return;
+    }
+    if (
+      event.key.length === 1 &&
+      (event.key !== ' ' || typeaheadInProgress.current)
+    ) {
+      typeaheadInProgress.current = true;
+      // Native Space appends to an existing query without arming a timeout.
+      if (event.key !== ' ') {
+        typeaheadTimeout.current = setTimeout(() => {
+          typeaheadInProgress.current = false;
+        }, 350);
+      }
+      return;
+    }
     if (event.key !== 'Enter' && event.key !== ' ') return;
+    resetTypeahead();
     const activeItem = event.currentTarget.ownerDocument.getElementById(
       event.currentTarget.getAttribute('aria-activedescendant') || ''
     );
@@ -236,6 +284,41 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
     activeItem.click();
   };
 
+  type ItemPointerEvent =
+    | React.PointerEvent<HTMLElement>
+    | React.MouseEvent<HTMLElement>;
+  const rememberItemPointer = (event: ItemPointerEvent) => {
+    pointerPositions.current.set(event.currentTarget, [
+      event.screenX,
+      event.screenY,
+    ]);
+  };
+  const resetPointerTypeahead = (event: ItemPointerEvent, leaving: boolean) => {
+    const item = event.currentTarget;
+    const previous = pointerPositions.current.get(item) || [-1, -1];
+    rememberItemPointer(event);
+    if (previous[0] === event.screenX && previous[1] === event.screenY) return;
+    if (item.getAttribute('aria-disabled') === 'true') return;
+    const activeId = item
+      .closest('[role="menu"]')
+      ?.getAttribute('aria-activedescendant');
+    // Match Menu.Item's tracked-pointer behavior: only a real active-item
+    // change (or leaving the active item) clears the native search query.
+    if (leaving ? activeId === item.id : activeId !== item.id) resetTypeahead();
+  };
+  const itemPointerHandlers = {
+    onPointerEnter: rememberItemPointer,
+    onMouseEnter: rememberItemPointer,
+    onPointerMove: (event: React.PointerEvent<HTMLElement>) =>
+      resetPointerTypeahead(event, false),
+    onMouseMove: (event: React.MouseEvent<HTMLElement>) =>
+      resetPointerTypeahead(event, false),
+    onPointerLeave: (event: React.PointerEvent<HTMLElement>) =>
+      resetPointerTypeahead(event, true),
+    onMouseLeave: (event: React.MouseEvent<HTMLElement>) =>
+      resetPointerTypeahead(event, true),
+  };
+
   const renderNetworkChoice = (
     currentNetwork: INetwork,
     kind: INetworkType,
@@ -248,7 +331,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
         className="mx-4"
         role="none"
       >
-        <Menu.Item disabled={isNetworkChanging}>
+        <Menu.Item disabled={isNetworkChanging} {...itemPointerHandlers}>
           {({ active }) => (
             <button
               type="button"
@@ -313,7 +396,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
 
     return (
       <React.Fragment key={kind}>
-        <Menu.Item>
+        <Menu.Item {...itemPointerHandlers}>
           {({ active }) => (
             <button
               type="button"
@@ -325,10 +408,14 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                 // Prevent Menu.Item's pointer handler from dismissing this
                 // menu; keyboard group activation is handled above as well.
                 event.preventDefault();
+                resetTypeahead();
                 setOpenNetworkGroups((groups) => ({
                   ...groups,
                   [kind]: !groups[kind],
                 }));
+                // The native Menu.Item focus handler clears its search query
+                // too, including when keyboard activation called .click().
+                event.currentTarget.focus({ preventScroll: true });
                 event.currentTarget
                   .closest<HTMLElement>('[role="menu"]')
                   ?.focus({ preventScroll: true });
@@ -436,6 +523,9 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
             <Menu.Items
               as="div"
               onKeyDownCapture={handleGroupKeyDown}
+              onFocusCapture={(event) => {
+                if (event.target !== event.currentTarget) resetTypeahead();
+              }}
               className={`fixed overflow-x-hidden z-50 inset-x-0 top-8 bottom-0 w-full text-center text-brand-white font-poppins bg-brand-blue600 rounded-2xl focus:outline-none shadow-2xl ring-1 ring-black ring-opacity-5
               transform transition-all duration-100 ease-out ${
                 menuprops.open
@@ -445,7 +535,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
               unmount={false}
             >
               <div className="remove-scrollbar h-full overflow-y-auto overscroll-contain pt-5 pb-6">
-                <Menu.Item>
+                <Menu.Item {...itemPointerHandlers}>
                   <li
                     onClick={handleConnectedSitesNavigation}
                     className={`flex items-center justify-start mb-2 mx-3 px-2 py-1  text-base ${currentBgColor} hover:bg-opacity-70 border border-solid border-transparent hover:${currentBdgColor} rounded-full cursor-pointer transition-all duration-200`}
@@ -465,7 +555,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                   </li>
                 </Menu.Item>
 
-                <Menu.Item>
+                <Menu.Item {...itemPointerHandlers}>
                   <li
                     onClick={handleTrustedSitesNavigation}
                     className="flex items-center justify-start mb-4 mx-3 px-2 py-1 text-base bg-brand-blue200 hover:bg-opacity-70 border border-solid border-brand-royalblue rounded-full cursor-pointer transition-all duration-200"
@@ -487,7 +577,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                   {t('networkMenu.networkSettings')}
                 </span>
 
-                <Menu.Item>
+                <Menu.Item {...itemPointerHandlers}>
                   <li
                     onClick={handleCustomRpcNavigation}
                     className="flex px-5 py-2 w-full text-base hover:bg-brand-blue500 hover:bg-opacity-20 cursor-pointer transition-all duration-200"
@@ -500,7 +590,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                   </li>
                 </Menu.Item>
 
-                <Menu.Item>
+                <Menu.Item {...itemPointerHandlers}>
                   <li
                     onClick={handleManageNetworksNavigation}
                     className="flex px-5 py-2 w-full text-base hover:bg-brand-blue500 hover:bg-opacity-20 cursor-pointer transition-all duration-200"

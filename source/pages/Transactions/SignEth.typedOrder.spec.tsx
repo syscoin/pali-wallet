@@ -119,6 +119,94 @@ beforeEach(() => {
 });
 afterEach(() => jest.restoreAllMocks());
 
+describe.each(['eth_signTypedData_v3', 'eth_signTypedData_v4'])(
+  '%s malformed payloads',
+  (method) => {
+    it.each(
+      [
+        'not-json',
+        '',
+        ' \n {',
+        'null',
+        '42',
+        'false',
+        '[]',
+        null,
+        42,
+        [],
+      ].flatMap((payload) => [
+        { payload, reversed: false },
+        { payload, reversed: true },
+      ])
+    )(
+      'keeps Data review usable and blocks signing ($payload, $reversed)',
+      async ({ payload, reversed }) => {
+        mockQuery.eventName = method;
+        await prepare(payload, reversed);
+        expect(screen.getByRole('alert').textContent).toBe(
+          'send.invalidApprovalDetails'
+        );
+        expect(
+          (
+            screen.getByRole('button', {
+              name: 'buttons.confirm',
+            }) as HTMLButtonElement
+          ).disabled
+        ).toBe(true);
+        fireEvent.click(screen.getByText('Data'));
+        expect(screen.getByText('send.rawParameters')).toBeTruthy();
+        expect(screen.getByRole('alert').textContent).toBe(
+          'send.invalidApprovalDetails'
+        );
+        await act(async () => mockConfirm());
+        expect(mockEmitter).not.toHaveBeenCalled();
+        expect(signPaliErc7739TypedDataV4).not.toHaveBeenCalled();
+        expect(window.close).not.toHaveBeenCalled();
+      }
+    );
+
+    it.each([false, true])(
+      'uses the parsed whitespace JSON for display and signing (reversed: %s)',
+      async (reversed) => {
+        mockQuery.eventName = method;
+        const payload = ` \n ${JSON.stringify(fixtures.OrderComponents)}`;
+        await prepare(payload, reversed);
+        fireEvent.click(screen.getByText('Data'));
+        expect(screen.queryByRole('alert')).toBeNull();
+        fireEvent.click(
+          screen.getByRole('button', { name: 'buttons.confirm' })
+        );
+        await waitFor(() => expect(signCalls()).toHaveLength(1));
+        expect(signCalls()[0][1]).toEqual([
+          ADDRESS,
+          fixtures.OrderComponents,
+          method === 'eth_signTypedData_v3' ? 'V3' : 'V4',
+        ]);
+        expect(mockQuery[reversed ? 0 : 1]).toBe(payload);
+      }
+    );
+
+    it('does not crash Data review after the signer account changes', async () => {
+      mockQuery.eventName = method;
+      const view = await prepare(JSON.stringify(fixtures.OrderComponents));
+      fireEvent.click(screen.getByText('Data'));
+      const staleConfirm = mockConfirm;
+      mockState.vault.accounts.HDAccount[0].address = `0x${'22'.repeat(20)}`;
+      view.rerender(<EthSign />);
+      expect(screen.getByRole('alert').textContent).toBe(
+        'send.signingForWrongAddress'
+      );
+      expect(screen.getByText('send.rawParameters')).toBeTruthy();
+      await act(async () => {
+        await staleConfirm();
+        await mockConfirm();
+      });
+      expect(signCalls()).toHaveLength(0);
+      expect(window.close).not.toHaveBeenCalled();
+    });
+  }
+);
+
 it.each(['Ledger', 'Trezor'])(
   'keeps the interactive %s signer path and hardware timeout',
   async (device) => {
