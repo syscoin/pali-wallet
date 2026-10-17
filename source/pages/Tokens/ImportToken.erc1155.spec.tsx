@@ -8,6 +8,7 @@ import { useController } from 'hooks/useController';
 import { ImportToken } from './ImportToken';
 
 let mockLastImport: Promise<void> | undefined;
+const mockPreviewUnmount = jest.fn();
 jest.mock('components/Icon/Icon', () => ({
   FiDownload: 'span',
   LoadingOutlined: 'span',
@@ -15,24 +16,29 @@ jest.mock('components/Icon/Icon', () => ({
   CloseCircleOutlined: 'span',
 }));
 jest.mock('components/index', () => ({
-  ImportableAssetsList: ({ assets, onImport }: any) => (
-    <div>
-      {assets.map((asset: any) => (
-        <div key={asset.id} data-testid="token-row" data-asset-id={asset.id}>
-          <output data-testid="token-balance">{asset.balance}</output>
-          <button
-            type="button"
-            onClick={() => {
-              mockLastImport = onImport(asset);
-              void mockLastImport!.catch(() => undefined);
-            }}
-          >
-            Import {asset.symbol}
-          </button>
-        </div>
-      ))}
-    </div>
-  ),
+  ImportableAssetsList: ({ assets, onImport, isLoading }: any) => {
+    React.useEffect(() => () => mockPreviewUnmount(), []);
+    return isLoading ? (
+      <div data-testid="token-preview-loading">Verifying token ID</div>
+    ) : (
+      <div>
+        {assets.map((asset: any) => (
+          <div key={asset.id} data-testid="token-row" data-asset-id={asset.id}>
+            <output data-testid="token-balance">{asset.balance}</output>
+            <button
+              type="button"
+              onClick={() => {
+                mockLastImport = onImport(asset);
+                void mockLastImport!.catch(() => undefined);
+              }}
+            >
+              Import {asset.symbol}
+            </button>
+          </div>
+        ))}
+      </div>
+    );
+  },
 }));
 const mockAlert = { error: jest.fn(), success: jest.fn() };
 jest.mock('hooks/index', () => ({
@@ -157,6 +163,18 @@ it('does not offer an ERC1155 import before its token ID has been verified', asy
     ['wallet', 'saveTokenInfo'],
     [expect.objectContaining({ tokenId: '0', balance: 0, rawBalance: '0' })]
   );
+});
+
+it('keeps the preview loading region mounted while a changed token ID is unverified', async () => {
+  await load();
+  await changeId('1');
+  await complete('1', 2);
+  expect(screen.getByRole('button', { name: 'Import NFT' })).toBeDefined();
+  mockPreviewUnmount.mockClear();
+  await changeId('2');
+  expect(screen.queryByRole('button', { name: 'Import NFT' })).toBeNull();
+  expect(screen.getByTestId('token-preview-loading')).toBeDefined();
+  expect(mockPreviewUnmount).not.toHaveBeenCalled();
 });
 
 it('does not let an old token ID result overwrite the current verified balance', async () => {

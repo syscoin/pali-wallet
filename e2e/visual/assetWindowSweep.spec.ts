@@ -39,6 +39,82 @@ const reveal = async (page: Page, control: Locator) => {
   }
 };
 
+const importScroll = (page: Page) =>
+  page.evaluate(() =>
+    [
+      ...document.querySelectorAll<HTMLElement>(
+        '[data-navigation-scroll="wallet-layout"],[data-navigation-scroll="token-import"]'
+      ),
+    ].map((element) => ({
+      pane: element.dataset.navigationScroll,
+      top: element.scrollTop,
+    }))
+  );
+
+async function editImportWithoutScrollJump(
+  page: Page,
+  input: Locator,
+  text: string,
+  label: string,
+  info: any,
+  replaceLastDigit = false
+) {
+  // Use ordinary wheel movement to reveal the field once, then type through
+  // the keyboard. Re-revealing per character would hide replace-state jumps.
+  await reveal(page, input);
+  expect(await exposed(input), `${label}: input exposed before typing`).toBe(
+    true
+  );
+  if (replaceLastDigit) {
+    // Move away from the restored snapshot using a normal, small wheel gesture.
+    // A later field-state replace must not replay that older scroll position.
+    const box = (await input.boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.wheel(0, 12);
+    await page.waitForTimeout(200);
+  }
+  await input.click();
+  await page.waitForTimeout(200);
+  const before = await importScroll(page);
+  if (page.viewportSize()!.height === 360)
+    expect(
+      before.some(({ top }) => top > 0),
+      `${label}: genuinely scrolled before editing`
+    ).toBe(true);
+  if (replaceLastDigit) {
+    await page.keyboard.press(
+      process.platform === 'darwin' ? 'Meta+ArrowRight' : 'End'
+    );
+    await page.keyboard.press('Backspace');
+    await page.keyboard.type(text.slice(-1));
+  } else {
+    await page.keyboard.type(text, { delay: 60 });
+  }
+  // Let same-page navigation persistence and token-id validation both settle.
+  await expect(input).toHaveValue(text);
+  await page.waitForTimeout(700);
+  await expect(input).toBeFocused();
+  const after = await importScroll(page);
+  await info.attach(`${label}-edit-scroll`, {
+    body: JSON.stringify(
+      {
+        before,
+        after,
+        saved: await page.evaluate(
+          () => window.history.state?.usr?.scrollPositions || null
+        ),
+      },
+      null,
+      2
+    ),
+    contentType: 'application/json',
+  });
+  expect.soft(after, `${label}: field edits preserve scroll`).toEqual(before);
+  expect
+    .soft(await exposed(input), `${label}: typed field remains exposed`)
+    .toBe(true);
+}
+
 test('long ERC20 and NFT metadata stays readable in lists, details and import previews', async ({}, info) => {
   test.setTimeout(180_000);
   const before = { ...E2E_CONFIG };
@@ -132,7 +208,7 @@ test('long ERC20 and NFT metadata stays readable in lists, details and import pr
         decimals: 0,
         balance: 2,
         tokenId:
-          '123456789012345678901234567890123456789012345678901234567890123456789012345678',
+          '12345678901234567890123456789012345678901234567890123456789012345678901234567',
       };
       const extra = {
         ...nft,
@@ -198,6 +274,39 @@ test('long ERC20 and NFT metadata stays readable in lists, details and import pr
         }
         return (send as any)(...args);
       }) as typeof chrome.runtime.sendMessage;
+      // Keep the same synthetic EVM context on asynchronous controller reads.
+      // The real disposable vault remains UTXO; its polling must not silently
+      // replace these renderer-only metadata fixtures halfway through typing.
+      const add = chrome.runtime.onMessage.addListener.bind(
+        chrome.runtime.onMessage
+      );
+      const remove = chrome.runtime.onMessage.removeListener.bind(
+        chrome.runtime.onMessage
+      );
+      const wrapped = new Map<any, any>();
+      chrome.runtime.onMessage.addListener = (listener: any) => {
+        const wrapper = (message: any, ...rest: any[]) => {
+          if (message?.type === 'CONTROLLER_STATE_CHANGE')
+            return listener(
+              { ...message, data: fixture(message.data) },
+              ...rest
+            );
+          if (
+            [
+              'CONTROLLER_NETWORK_CHANGE',
+              'CONTROLLER_ACCOUNT_BALANCE_CHANGE',
+            ].includes(message?.type)
+          )
+            return false;
+          return listener(message, ...rest);
+        };
+        wrapped.set(listener, wrapper);
+        add(wrapper);
+      };
+      chrome.runtime.onMessage.removeListener = (listener: any) => {
+        remove(wrapped.get(listener) || listener);
+        wrapped.delete(listener);
+      };
     });
     for (const [width, height] of [
       [320, 360],
@@ -269,11 +378,51 @@ test('long ERC20 and NFT metadata stays readable in lists, details and import pr
       await page.locator('#custom-token-contract').fill('0x' + '33'.repeat(20));
       const tokenId = page.locator('#custom-token-id');
       await tokenId.waitFor();
-      await tokenId.fill(
-        '123456789012345678901234567890123456789012345678901234567890123456789012345678'
+      // Both the original and last-digit replacement fit uint256.
+      const initialTokenId =
+        '12345678901234567890123456789012345678901234567890123456789012345678901234567';
+      await editImportWithoutScrollJump(
+        page,
+        tokenId,
+        initialTokenId,
+        `initial-import-${width}x${height}`,
+        info
       );
-      await page.waitForTimeout(700);
       await capture(page, `nft-import-${width}x${height}-top`);
+
+      // Visit the real import preview and use its Back action, so the second
+      // edit carries a captured return-scroll snapshot as normal users do.
+      const preview = page.getByRole('button', {
+        name: en.tokens.viewTokenDetails.replace('{{symbol}}', 'IMPORTNFT'),
+        exact: true,
+      });
+      await reveal(page, preview);
+      await preview.click();
+      await expect(page).toHaveURL(/#\/home\/details/);
+      const back = page.getByRole('button', {
+        name: en.buttons.back,
+        exact: true,
+      });
+      await reveal(page, back);
+      await back.click();
+      await expect(page).toHaveURL(/#\/tokens\/add/);
+      await expect(tokenId).toHaveValue(initialTokenId);
+      expect(
+        await page.evaluate(() =>
+          Object.keys(window.history.state?.usr?.scrollPositions || {})
+        ),
+        'Back restores a real captured import-scroll snapshot'
+      ).toContain('token-import');
+      const editedTokenId = initialTokenId.slice(0, -1) + '9';
+      await editImportWithoutScrollJump(
+        page,
+        tokenId,
+        editedTokenId,
+        `restored-import-${width}x${height}`,
+        info,
+        true
+      );
+      await capture(page, `nft-import-${width}x${height}-restored-edit`);
       await page.mouse.move(width - 8, 180);
       await page.mouse.wheel(0, 4000);
       await page.waitForTimeout(150);

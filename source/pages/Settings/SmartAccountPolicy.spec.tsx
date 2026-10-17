@@ -264,6 +264,7 @@ describe('SmartAccountPolicy guardian approval', () => {
             'wallet-layout': 0,
             'smart-account-policy-recovery': 0,
           },
+          scrollRestorationKey: expect.any(String),
         },
       }
     );
@@ -311,6 +312,7 @@ describe('SmartAccountPolicy guardian approval', () => {
             'smart-account-policy-recovery': 0,
             'smart-account-policy': 173,
           },
+          scrollRestorationKey: expect.any(String),
         },
       }
     );

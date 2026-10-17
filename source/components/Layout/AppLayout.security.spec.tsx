@@ -25,6 +25,7 @@ jest.mock('react-router-dom', () => ({
     },
   }),
   useNavigate: () => mockNavigate,
+  useNavigationType: () => 'POP',
   Outlet: () => <main>Secret view</main>,
 }));
 jest.mock('react-redux', () => ({

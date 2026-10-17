@@ -105,6 +105,13 @@ export const ImportToken: React.FC = () => {
     tokenIdResult?.key === tokenIdKey ? tokenIdResult.balance : null;
   const verifiedTokenRawBalance =
     tokenIdResult?.key === tokenIdKey ? tokenIdResult.rawBalance : null;
+  // Invalidate stale data immediately, but retain the loading region before
+  // deferred verification starts instead of briefly removing the preview.
+  const tokenIdValidationPending =
+    isVerifyingTokenId ||
+    (customTokenDetails?.tokenStandard === 'ERC-1155' &&
+      Boolean(customTokenId.trim()) &&
+      verifiedTokenBalance === null);
 
   // Common state
   const [currentlyImporting, setCurrentlyImporting] = useState<string | null>(
@@ -825,7 +832,7 @@ export const ImportToken: React.FC = () => {
                     }}
                   />
                   <div className="absolute right-5 top-1/2 transform -translate-y-1/2 flex items-center justify-center w-5 h-5">
-                    {isVerifyingTokenId ? (
+                    {tokenIdValidationPending ? (
                       <LoadingOutlined className="text-brand-royalblue animate-spin text-sm" />
                     ) : verifiedTokenBalance !== null && customTokenId ? (
                       verifiedTokenBalance >= 0 ? (
@@ -866,11 +873,11 @@ export const ImportToken: React.FC = () => {
 
             {/* Custom token details */}
             {customTokenDetails &&
-              (customAssetsForList.length > 0 || isVerifyingTokenId) && (
+              (customAssetsForList.length > 0 || tokenIdValidationPending) && (
                 <ImportableAssetsList
                   key={`custom-${currentlyImporting || 'none'}`}
                   assets={customAssetsForList}
-                  isLoading={isVerifyingTokenId}
+                  isLoading={tokenIdValidationPending}
                   onImport={handleImport}
                   onDetailsClick={handleDetailsClick}
                   importedAssetIds={importedAssetIds}

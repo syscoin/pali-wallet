@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
+import { v4 as uuidv4 } from 'uuid';
 
 import { LoadingSvg } from 'components/Icon/Icon';
 import { Button, ConfirmationModal, Icon } from 'components/index';
@@ -385,7 +386,7 @@ const SmartAccountPolicy = () => {
         };
     navigate(`${location.pathname}${location.search}${location.hash}`, {
       replace: true,
-      state,
+      state: { ...state, scrollRestorationKey: uuidv4() },
     });
   };
   const [
