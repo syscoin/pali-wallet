@@ -27,7 +27,13 @@ describe('Pali network switch informational dialog readiness', () => {
     let selected = false;
     let dismissed = false;
     let observations = 0;
-    const visiblePrompt = () => selected && !dismissed && prompt !== 'none';
+    let balanceVisible = true;
+    let contextBusy = false;
+    let postLoading = false;
+    let delayedFaucet = false;
+    let onPoll: (attempt: number) => void = () => undefined;
+    const visiblePrompt = () =>
+      selected && !dismissed && (prompt !== 'none' || delayedFaucet);
     const close = {
       click: jest.fn(async () => {
         dismissed = true;
@@ -81,11 +87,25 @@ describe('Pali network switch informational dialog readiness', () => {
     };
     option.first = () => option;
     const balance = {
+      isVisible: jest.fn(async () => balanceVisible),
+      evaluate: jest.fn(async () => !contextBusy),
       waitFor: jest.fn(async () => {
+        if (!balanceVisible) throw new Error('Balance is still mounting');
         if (visiblePrompt()) throw new Error('Dialog still open');
       }),
     };
     const page = {
+      evaluate: jest.fn(async () => ({
+        network: {
+          chainId: 5700,
+          kind: 'ethereum',
+          label: selected ? selectedLabel : 'Syscoin Testnet',
+          url: 'http://fixture.invalid',
+        },
+        networkStatus: contextBusy ? 'switching' : 'idle',
+        postLoading,
+        switchingAccount: false,
+      })),
       getByRole: jest.fn((role, options) => {
         if (role === 'dialog') {
           expect(options.name.test(title)).toBe(true);
@@ -112,14 +132,37 @@ describe('Pali network switch informational dialog readiness', () => {
       expect(options.timeout).toBe(120000);
       return {
         toBe: async (expected) => {
-          for (let attempt = 0; attempt < 4; attempt++) {
+          for (let attempt = 0; attempt < 8; attempt++) {
+            onPoll(attempt);
             if ((await read()) === expected) return;
           }
           throw new Error('Network not visibly ready');
         },
       };
     });
-    return { wallet, close, goToFaucet, balance, dialog, header };
+    return {
+      wallet,
+      close,
+      goToFaucet,
+      balance,
+      dialog,
+      header,
+      onPoll: (callback: (attempt: number) => void) => {
+        onPoll = callback;
+      },
+      setBalanceVisible: (value: boolean) => {
+        balanceVisible = value;
+      },
+      setContextBusy: (value: boolean) => {
+        contextBusy = value;
+      },
+      setPostLoading: (value: boolean) => {
+        postLoading = value;
+      },
+      showFaucet: () => {
+        delayedFaucet = true;
+      },
+    };
   };
 
   beforeEach(() => jest.clearAllMocks());
@@ -131,10 +174,7 @@ describe('Pali network switch informational dialog readiness', () => {
       await wallet.switchNetwork(target);
       expect(close.click).toHaveBeenCalledTimes(1);
       expect(goToFaucet.click).not.toHaveBeenCalled();
-      expect(balance.waitFor).toHaveBeenCalledWith({
-        state: 'visible',
-        timeout: 120000,
-      });
+      expect(balance.isVisible).toHaveBeenCalled();
     }
   );
 
@@ -155,7 +195,7 @@ describe('Pali network switch informational dialog readiness', () => {
     const { wallet, close, balance } = setup('none');
     await wallet.switchNetwork(target);
     expect(close.click).not.toHaveBeenCalled();
-    expect(balance.waitFor).toHaveBeenCalledTimes(1);
+    expect(balance.isVisible).toHaveBeenCalled();
   });
 
   it.each([
@@ -183,7 +223,7 @@ describe('Pali network switch informational dialog readiness', () => {
     );
     await wallet.switchNetwork('Pali provider edge fixture');
     expect(header.innerText).not.toHaveBeenCalled();
-    expect(balance.waitFor).toHaveBeenCalledTimes(1);
+    expect(balance.isVisible).toHaveBeenCalled();
   });
 
   it('does not mistake decorative text for the selected network label', async () => {
@@ -192,5 +232,56 @@ describe('Pali network switch informational dialog readiness', () => {
       'Network not visibly ready'
     );
     expect(balance.waitFor).not.toHaveBeenCalled();
+  });
+
+  it('waits through header-first switching until the mounted balance and late faucet settle', async () => {
+    const test = setup('none');
+    test.setBalanceVisible(false);
+    test.onPoll((attempt) => {
+      if (attempt === 2) {
+        test.setBalanceVisible(true);
+        test.showFaucet();
+      }
+    });
+    await test.wallet.switchNetwork(target);
+    expect(test.close.click).toHaveBeenCalledTimes(1);
+    expect(test.goToFaucet.click).not.toHaveBeenCalled();
+  });
+
+  it('does not mistake a cached balance during context loading for settled Home', async () => {
+    const test = setup('none');
+    test.setContextBusy(true);
+    test.onPoll((attempt) => {
+      if (attempt === 2) {
+        test.setContextBusy(false);
+        test.showFaucet();
+      }
+    });
+    await test.wallet.switchNetwork(target);
+    expect(test.close.click).toHaveBeenCalledTimes(1);
+    expect(test.balance.isVisible).toHaveBeenCalled();
+  });
+
+  it('rechecks a faucet arriving after the first ready observation', async () => {
+    const test = setup('none');
+    test.onPoll((attempt) => {
+      if (attempt === 1) test.showFaucet();
+    });
+    await test.wallet.switchNetwork(target);
+    expect(test.close.click).toHaveBeenCalledTimes(1);
+  });
+
+  it('waits for post-loading even with a cached nonzero balance before it refreshes to zero', async () => {
+    const test = setup('none');
+    test.setPostLoading(true);
+    test.onPoll((attempt) => {
+      if (attempt === 2) {
+        test.setPostLoading(false);
+        test.showFaucet();
+      }
+    });
+    await test.wallet.switchNetwork(target);
+    expect(test.close.click).toHaveBeenCalledTimes(1);
+    expect(test.goToFaucet.click).not.toHaveBeenCalled();
   });
 });

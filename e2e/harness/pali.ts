@@ -340,12 +340,85 @@ export class PaliWallet {
         '$'
     );
     const faucet = this.page.getByRole('dialog', { name: faucetTitle });
+    const balance = this.page.locator('#home-balance');
+    let previouslyReady = false;
     // The informational prompt can mount after the network selection. Its
     // accessible dialog correctly hides the header until the user closes it.
     // Never dismiss an approval/security dialog or activate the faucet here.
     await expect
       .poll(
         async () => {
+          const resetReadiness = () => {
+            previouslyReady = false;
+            return false;
+          };
+          // Observe the existing read-only state response, projecting only
+          // network readiness. A cached balance can precede post-load finish.
+          const status = await this.page.evaluate(
+            () =>
+              new Promise<{
+                network: {
+                  chainId: number;
+                  kind: string;
+                  label: string;
+                  url: string;
+                };
+                networkStatus: string;
+                postLoading: boolean;
+                switchingAccount: boolean;
+              } | null>((resolve) => {
+                let finished = false;
+                const finish = (value: any) => {
+                  if (finished) return;
+                  finished = true;
+                  clearTimeout(timer);
+                  resolve(value);
+                };
+                const timer = setTimeout(() => finish(null), 1000);
+                try {
+                  chrome.runtime.sendMessage(
+                    { type: 'getCurrentState' },
+                    (state) => {
+                      if (
+                        chrome.runtime.lastError ||
+                        !state?.vault?.activeNetwork ||
+                        !state?.vaultGlobal
+                      ) {
+                        finish(null);
+                        return;
+                      }
+                      const network = state.vault.activeNetwork;
+                      finish({
+                        network: {
+                          chainId: network.chainId,
+                          kind: network.kind,
+                          label: network.label,
+                          url: network.url,
+                        },
+                        networkStatus: state.vaultGlobal.networkStatus,
+                        postLoading:
+                          state.vaultGlobal.isPostNetworkSwitchLoading,
+                        switchingAccount: state.vaultGlobal.isSwitchingAccount,
+                      });
+                    }
+                  );
+                } catch {
+                  finish(null);
+                }
+              })
+          );
+          if (
+            !status ||
+            status.network.label !== label ||
+            status.network.kind !==
+              (group === 'EVM' ? 'ethereum' : 'syscoin') ||
+            !Number.isSafeInteger(status.network.chainId) ||
+            !status.network.url ||
+            status.networkStatus !== 'idle' ||
+            status.postLoading !== false ||
+            status.switchingAccount !== false
+          )
+            return resetReadiness();
           if (
             (await faucet.isVisible()) &&
             (await faucet
@@ -358,22 +431,30 @@ export class PaliWallet {
             await faucet
               .getByRole('button', { name: en.buttons.close, exact: true })
               .click();
+            return resetReadiness();
           }
           const header = this.networkMenuButton();
-          if (!(await header.isVisible())) return '';
+          if (!(await header.isVisible()) || !(await balance.isVisible()))
+            return resetReadiness();
           // A late prompt may hide it between the visibility read and text
           // read. Retry within the same bounded readiness check in that case.
           const text = await this.networkMenuLabel()
             .innerText({ timeout: 1000 })
             .catch(() => '');
-          return text.trim();
+          if (
+            text.trim() !== label ||
+            (await faucet.isVisible()) ||
+            !(await header.isVisible()) ||
+            !(await balance.isVisible())
+          )
+            return resetReadiness();
+          const settled = previouslyReady;
+          previouslyReady = true;
+          return settled;
         },
         { timeout: 120_000 }
       )
-      .toBe(label);
-    await this.page
-      .locator('#home-balance')
-      .waitFor({ state: 'visible', timeout: 120_000 });
+      .toBe(true);
   }
 
   private networkMenuButton() {
