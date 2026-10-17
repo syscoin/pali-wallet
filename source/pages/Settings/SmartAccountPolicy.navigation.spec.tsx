@@ -167,6 +167,7 @@ beforeEach(() => {
     activeNetwork: { chainId: 57057, url: 'https://rpc.test' },
   };
   mockEmitter.mockImplementation(async ([, method]: string[]) => {
+    if (method === 'hydrateSmartAccount') return METADATA;
     if (method === 'getWalletSessionGeneration') return 7;
     if (method === 'getSmartAccountGuardianRecoveryStatus')
       return { exists: true, delay: 60, guardians: [GUARDIAN], threshold: 1 };
@@ -232,7 +233,7 @@ it.each([
       await waitFor(() =>
         expect(screen.getByTestId('pane').textContent).toBe('policy')
       );
-      const options = screen.getByRole('button', {
+      const options = await screen.findByRole('button', {
         name: 'settings.smartAccountGuardianRecoveryShowOptions',
       });
       expect(options.hasAttribute('disabled')).toBe(true);
@@ -344,7 +345,7 @@ it('restarts incomplete hydration for the new entry and rejects the old entry re
   expect(resolves).toHaveLength(2);
 });
 
-it('syncs authoritative recovered owner and modules after same-route Back without stale feedback or another hydration', async () => {
+it('syncs authoritative recovered owner after the fresh same-route entry read without stale feedback', async () => {
   const recoveredOwner = '0x9999999999999999999999999999999999999999';
   const updatedMetadata = {
     ...METADATA,
@@ -384,9 +385,11 @@ it('syncs authoritative recovered owner and modules after same-route Back withou
     settle = resolve;
   });
   const original = mockEmitter.getMockImplementation()!;
+  let finalized = false;
   mockEmitter.mockImplementation((...args: any[]) => {
     if (args[0][1] === 'finalizeSmartAccountGuardianRecovery') return pending;
     if (args[0][1] === 'hydrateSmartAccount') {
+      if (!finalized) return Promise.resolve(METADATA);
       mockVault.accounts[KeyringAccountType.SmartAccount][1].smartAccount =
         updatedMetadata;
       return Promise.resolve(updatedMetadata);
@@ -416,8 +419,11 @@ it('syncs authoritative recovered owner and modules after same-route Back withou
     ).toHaveLength(1)
   );
   fireEvent.click(screen.getByText('Header back'));
-  expect(screen.getByTitle(OWNER)).toBeTruthy();
-  await act(async () => settle());
+  await waitFor(() => expect(screen.getByTitle(OWNER)).toBeTruthy());
+  await act(async () => {
+    finalized = true;
+    settle();
+  });
   await waitFor(() => expect(screen.getByTitle(recoveredOwner)).toBeTruthy());
   expect(screen.queryByTitle(OWNER)).toBeNull();
   const passkeyCard = screen
@@ -435,7 +441,7 @@ it('syncs authoritative recovered owner and modules after same-route Back withou
     mockEmitter.mock.calls.filter(
       ([[, method]]) => method === 'hydrateSmartAccount'
     )
-  ).toHaveLength(1);
+  ).toHaveLength(3);
   expect(mockAlert.success).not.toHaveBeenCalled();
   expect(mockAlert.error).not.toHaveBeenCalled();
   expect(mockNavigate).not.toHaveBeenCalled();

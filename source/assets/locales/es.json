@@ -456,6 +456,8 @@
     "receipts": "Recibos"
   },
   "settings": {
+    "smartAccountMetadataLoadFailed": "No se pudo verificar la configuración actual de esta cuenta. Compruebe su conexión e inténtelo de nuevo.",
+    "smartAccountMetadataRetry": "Reintentar",
     "invalidWatchOnlyIdentifier": "Use una dirección pública, una clave pública extendida o un descriptor que solo contenga información pública. Nunca introduzca una clave privada.",
     "searchTrustedSites": "Buscar sitios de confianza",
     "trustedSiteMatch": "En la lista de confianza",

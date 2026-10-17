@@ -192,6 +192,20 @@ const SmartAccountPolicy = () => {
   }`;
   const latestSelectedAccountRef = useRef(selectedAccountKey);
   const scopeKey = JSON.stringify(getWalletNavigationScope());
+  const metadataEntryKey = JSON.stringify([
+    scopeKey,
+    selectedAccountKey,
+    location.key,
+  ]);
+  const [metadataEntry, setMetadataEntry] = useState<{
+    key: string;
+    status: 'pending' | 'ready' | 'failed';
+  }>({ key: metadataEntryKey, status: 'pending' });
+  const metadataRead = useRef<{ key: string } | null>(null);
+  const isEntryMetadataReady =
+    !account?.isSmartAccount ||
+    (metadataEntry?.key === metadataEntryKey &&
+      metadataEntry.status === 'ready');
   latestLocationRef.current = location;
   latestSelectedAccountRef.current = selectedAccountKey;
   useEffect(() => {
@@ -240,6 +254,8 @@ const SmartAccountPolicy = () => {
     const isCurrentUi = createUiGuard();
     const assertCurrent = () => {
       if (!isCurrentUi()) throw new Error('PALI_TRANSACTION_CONTEXT_CHANGED');
+      if (!isEntryMetadataReady)
+        throw new Error('PALI_TRANSACTION_CONTEXT_CHANGED');
       if (
         requireSelectedPolicy &&
         (activeAccount.id !== selectedAccountId ||
@@ -669,16 +685,46 @@ const SmartAccountPolicy = () => {
     }
   }, [account?.smartAccount, selectedAccountKey, scopeKey]);
 
-  useEffect(() => {
-    const cachedMetadata = account?.smartAccount;
-    if (
-      account?.isSmartAccount &&
-      cachedMetadata?.isDeployed &&
-      !cachedMetadata.installedModules?.length
-    ) {
-      refreshMetadata().catch(() => undefined);
+  const loadEntryMetadata = async () => {
+    if (!account?.isSmartAccount) return;
+    const isCurrentUi = createUiGuard();
+    if (!isCurrentUi() || metadataRead.current?.key === metadataEntryKey)
+      return;
+    const request = { key: metadataEntryKey };
+    metadataRead.current = request;
+    setMetadataEntry({ key: metadataEntryKey, status: 'pending' });
+    try {
+      const hydrated = (await controllerEmitter(
+        ['wallet', 'hydrateSmartAccount'],
+        [account.id],
+        300000
+      )) as ISmartAccountMetadata;
+      if (metadataRead.current !== request || !isCurrentUi()) return;
+      if (
+        !hydrated ||
+        hydrated.chainId !== activeNetwork.chainId ||
+        typeof hydrated.isDeployed !== 'boolean'
+      )
+        throw new Error('Smart account metadata unavailable');
+      setMetadata(hydrated);
+      setMetadataEntry({ key: metadataEntryKey, status: 'ready' });
+    } catch {
+      if (metadataRead.current === request && isCurrentUi())
+        setMetadataEntry({ key: metadataEntryKey, status: 'failed' });
+    } finally {
+      if (metadataRead.current === request) metadataRead.current = null;
     }
-  }, [account?.address, account?.id, location.key, scopeKey]);
+  };
+
+  useEffect(() => {
+    // Recreated accounts and restored caches may contain default deployment
+    // and owner data. Verify once per entry, never use it to authorize changes.
+    void loadEntryMetadata();
+    return () => {
+      if (metadataRead.current?.key === metadataEntryKey)
+        metadataRead.current = null;
+    };
+  }, [metadataEntryKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2040,6 +2086,34 @@ const SmartAccountPolicy = () => {
     copy(address);
     alert.info(t('home.addressCopied'));
   };
+
+  if (!isEntryMetadataReady) {
+    const failed =
+      metadataEntry?.key === metadataEntryKey &&
+      metadataEntry.status === 'failed';
+    return (
+      <div className="flex h-full w-full flex-col items-center gap-4 px-4 py-6 text-center">
+        <p className="text-lg font-semibold text-brand-white">
+          {t('settings.smartAccountAccountPolicy')}
+        </p>
+        <p
+          role={failed ? 'alert' : 'status'}
+          className="text-sm text-brand-graylight"
+        >
+          {t(
+            failed
+              ? 'settings.smartAccountMetadataLoadFailed'
+              : 'common.loading'
+          )}
+        </p>
+        {failed && (
+          <Button onClick={loadEntryMetadata}>
+            {t('settings.smartAccountMetadataRetry')}
+          </Button>
+        )}
+      </div>
+    );
+  }
 
   if (
     isGuardianRecoveryScreenOpen &&

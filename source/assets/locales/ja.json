@@ -456,6 +456,8 @@
     "receipts": "レシート"
   },
   "settings": {
+    "smartAccountMetadataLoadFailed": "このアカウントの現在の設定を確認できませんでした。接続を確認して、もう一度お試しください。",
+    "smartAccountMetadataRetry": "再試行",
     "invalidWatchOnlyIdentifier": "公開アドレス、拡張公開鍵、または公開情報のみを含むディスクリプターを使用してください。秘密鍵は絶対に入力しないでください。",
     "searchTrustedSites": "信頼できるサイトを検索",
     "trustedSiteMatch": "信頼リストに登録済み",

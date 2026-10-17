@@ -456,6 +456,8 @@
     "receipts": "收据"
   },
   "settings": {
+    "smartAccountMetadataLoadFailed": "无法验证此账户的当前设置。请检查网络连接后重试。",
+    "smartAccountMetadataRetry": "重试",
     "invalidWatchOnlyIdentifier": "请使用公开地址、扩展公钥或仅包含公开信息的描述符。切勿输入私钥。",
     "searchTrustedSites": "搜索受信任的网站",
     "trustedSiteMatch": "在信任列表中",

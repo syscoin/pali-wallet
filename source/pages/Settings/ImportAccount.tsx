@@ -168,6 +168,7 @@ const ImportAccountView = () => {
               type="text"
               className="custom-input-normal relative"
               placeholder={`${t('settings.label')} (${t('settings.optional')})`}
+              aria-label={`${t('settings.label')} (${t('settings.optional')})`}
               id="account-name-input"
             />
           </Form.Item>
@@ -211,8 +212,14 @@ const ImportAccountView = () => {
             </div>
           )}
           <div className="flex items-center justify-between mb-2">
-            <label className="text-white text-sm">Watch-only</label>
+            <label
+              className="text-white text-sm"
+              htmlFor="import-account-watch-only"
+            >
+              Watch-only
+            </label>
             <input
+              id="import-account-watch-only"
               type="checkbox"
               checked={watchOnly}
               disabled={isImporting}
@@ -311,7 +318,12 @@ const ImportAccountView = () => {
                   ? 'Address / XPUB / Descriptor'
                   : t('settings.yourPrivateKey')
               }
-              id="account-name-input"
+              aria-label={
+                watchOnly
+                  ? 'Address / XPUB / Descriptor'
+                  : t('settings.yourPrivateKey')
+              }
+              id="import-account-identifier"
             />
           </Form.Item>
         </Form>

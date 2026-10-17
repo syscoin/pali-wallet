@@ -256,8 +256,16 @@ describe('SmartAccountPolicy passkey preservation', () => {
     });
     jest.spyOn(React, 'useState').mockImplementation((initial?: any) => {
       const i = index++;
-      if (!(i in states))
+      if (!(i in states)) {
         states[i] = typeof initial === 'function' ? initial() : initial;
+        // Effects are outside this signing-handler harness. The real entry
+        // verification lifecycle has separate rendered regression coverage.
+        if (
+          states[i]?.status === 'pending' &&
+          typeof states[i]?.key === 'string'
+        )
+          states[i] = { ...states[i], status: 'ready' };
+      }
       return [
         states[i],
         (value: any) => {

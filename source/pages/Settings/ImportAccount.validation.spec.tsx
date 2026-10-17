@@ -127,6 +127,34 @@ beforeEach(() => {
   });
 });
 
+it('associates the watch-only label and gives each import field a unique accessible identity', async () => {
+  const { container } = render(<ImportAccount />);
+  const label = screen.getByRole('textbox', {
+    name: 'settings.label (settings.optional)',
+  });
+  const privateKey = screen.getByRole('textbox', {
+    name: 'settings.yourPrivateKey',
+  });
+  const watchOnly = screen.getByRole('checkbox', {
+    name: 'Watch-only',
+  }) as HTMLInputElement;
+  expect(label.id).toBe('account-name-input');
+  expect(privateKey.id).toBe('import-account-identifier');
+  expect(watchOnly.id).toBe('import-account-watch-only');
+  expect(
+    container.querySelector('label[for="import-account-watch-only"]')
+  ).not.toBeNull();
+  const ids = [...container.querySelectorAll('[id]')].map(
+    (element) => element.id
+  );
+  expect(new Set(ids).size).toBe(ids.length);
+  fireEvent.click(screen.getByText('Watch-only'));
+  expect(watchOnly.checked).toBe(true);
+  expect(
+    screen.getByRole('textbox', { name: 'Address / XPUB / Descriptor' }).id
+  ).toBe('import-account-identifier');
+});
+
 it('does not re-enable import or remain busy when an old validation succeeds after the field is cleared', async () => {
   const validation = pendingValidation();
   (validatePrivateKeyValue as jest.Mock).mockImplementation((value) =>

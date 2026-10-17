@@ -456,6 +456,8 @@
     "receipts": "Reçus"
   },
   "settings": {
+    "smartAccountMetadataLoadFailed": "Impossible de vérifier les paramètres actuels de ce compte. Vérifiez votre connexion et réessayez.",
+    "smartAccountMetadataRetry": "Réessayer",
     "invalidWatchOnlyIdentifier": "Utilisez une adresse publique, une clé publique étendue ou un descripteur contenant uniquement des informations publiques. Ne saisissez jamais de clé privée.",
     "searchTrustedSites": "Rechercher des sites de confiance",
     "trustedSiteMatch": "Sur la liste de confiance",

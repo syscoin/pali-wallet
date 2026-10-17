@@ -456,6 +456,8 @@
     "receipts": "영수증"
   },
   "settings": {
+    "smartAccountMetadataLoadFailed": "이 계정의 현재 설정을 확인할 수 없습니다. 연결을 확인한 후 다시 시도하세요.",
+    "smartAccountMetadataRetry": "다시 시도",
     "invalidWatchOnlyIdentifier": "공개 주소, 확장 공개 키 또는 공개 정보만 포함하는 디스크립터를 사용하세요. 개인 키는 절대 입력하지 마세요.",
     "searchTrustedSites": "신뢰할 수 있는 사이트 검색",
     "trustedSiteMatch": "신뢰 목록에 있음",

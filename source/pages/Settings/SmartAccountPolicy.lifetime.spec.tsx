@@ -186,7 +186,10 @@ describe('SmartAccountPolicy async UI lifetime', () => {
           threshold: 1,
         };
       }
-      if (method === 'hydrateSmartAccount') return metadata();
+      if (method === 'hydrateSmartAccount')
+        return mockVault.accounts[KeyringAccountType.SmartAccount][
+          mockLocation.state?.id ?? mockVault.activeAccount.id
+        ]?.smartAccount;
       if (method === 'getSmartAccountNativeGasStatus')
         return { hasNativeGas: true };
       throw new Error(`Unexpected controller method ${method}`);
@@ -223,7 +226,7 @@ describe('SmartAccountPolicy async UI lifetime', () => {
         : original(path, ...args)
     );
     const view = render(<SmartAccountPolicy />);
-    const button = screen.getByRole('button', {
+    const button = await screen.findByRole('button', {
       name: 'settings.smartAccountGuardianRecoveryFinalize',
     });
     await waitFor(() =>
@@ -286,6 +289,148 @@ describe('SmartAccountPolicy async UI lifetime', () => {
       mockStatus = { ...mockStatus, connectionUnavailable: true };
     }
   };
+
+  describe('entry metadata verification', () => {
+    const mountWithHydration = (pending: ReturnType<typeof deferred<any>>) => {
+      void pending.promise.catch(() => undefined);
+      const original = mockEmitter.getMockImplementation()!;
+      let reads = 0;
+      mockEmitter.mockImplementation((path: string[], ...args: any[]) =>
+        path[1] === 'hydrateSmartAccount'
+          ? ++reads === 1
+            ? pending.promise
+            : new Promise(() => undefined)
+          : original(path, ...args)
+      );
+      return render(<SmartAccountPolicy />);
+    };
+
+    it('verifies recreated metadata before showing the deployed policy or allowing registration', async () => {
+      mockVault.accounts[KeyringAccountType.SmartAccount][1].smartAccount =
+        metadata(false);
+      const pending = deferred<any>();
+      const view = mountWithHydration(pending);
+      expect(
+        screen.queryByRole('button', { name: 'settings.registerSmartAccount' })
+      ).toBeNull();
+      await waitFor(() =>
+        expect(mockEmitter).toHaveBeenCalledWith(
+          ['wallet', 'hydrateSmartAccount'],
+          [1],
+          300000
+        )
+      );
+      await act(async () => pending.resolve(metadata(true)));
+      expect(
+        screen.getByText('settings.smartAccountCurrentApprovalMethod')
+      ).toBeTruthy();
+      expect(screen.getByTitle(OWNER)).toBeTruthy();
+      view.rerender(<SmartAccountPolicy />);
+      expect(
+        mockEmitter.mock.calls.filter(
+          ([path]) => path[1] === 'hydrateSmartAccount'
+        )
+      ).toHaveLength(1);
+      expect(
+        mockEmitter.mock.calls.some(
+          ([path]) => path[1] === 'registerSmartAccountOnChain'
+        )
+      ).toBe(false);
+    });
+
+    it('retains a genuine counterfactual registration after the chain read', async () => {
+      mockVault.accounts[KeyringAccountType.SmartAccount][1].smartAccount =
+        metadata(false);
+      const pending = deferred<any>();
+      mountWithHydration(pending);
+      await act(async () => pending.resolve(metadata(false)));
+      expect(
+        (
+          screen.getByRole('button', {
+            name: 'settings.registerSmartAccount',
+          }) as HTMLButtonElement
+        ).disabled
+      ).toBe(false);
+      expect(
+        mockEmitter.mock.calls.filter(
+          ([path]) => path[1] === 'hydrateSmartAccount'
+        )
+      ).toHaveLength(1);
+    });
+
+    it('refreshes a populated but stale cached owner on every entry', async () => {
+      const pending = deferred<any>();
+      mountWithHydration(pending);
+      expect(screen.queryByTitle(OWNER)).toBeNull();
+      const refreshed = metadata(true);
+      refreshed.installedModules[0].config.owners = [GUARDIAN];
+      await act(async () => pending.resolve(refreshed));
+      expect(screen.getByTitle(GUARDIAN)).toBeTruthy();
+      expect(screen.queryByTitle(OWNER)).toBeNull();
+    });
+
+    it('allows verified read-only browsing of a nonselected smart account', async () => {
+      mockVault.activeAccount = { id: 0, type: KeyringAccountType.HDAccount };
+      const pending = deferred<any>();
+      mountWithHydration(pending);
+      await act(async () => pending.resolve(metadata(true)));
+      expect(screen.getByTitle(OWNER)).toBeTruthy();
+      expect(mockVault.activeAccount).toEqual({
+        id: 0,
+        type: KeyringAccountType.HDAccount,
+      });
+      expect(
+        mockEmitter.mock.calls.some(([path]) =>
+          /register|sign|submit/i.test(path[1])
+        )
+      ).toBe(false);
+    });
+
+    it('keeps failed entry verification closed until an explicit read-only retry', async () => {
+      const pending = deferred<any>();
+      mountWithHydration(pending);
+      await act(async () => pending.reject(new Error('Network unavailable')));
+      expect(
+        screen.queryByText('settings.smartAccountCurrentApprovalMethod')
+      ).toBeNull();
+      const next = deferred<any>();
+      mockEmitter.mockImplementation((path: string[]) =>
+        path[1] === 'hydrateSmartAccount' ? next.promise : Promise.resolve(null)
+      );
+      const retry = screen.getByRole('button', {
+        name: 'settings.smartAccountMetadataRetry',
+      });
+      act(() => {
+        retry.click();
+        retry.click();
+      });
+      expect(
+        mockEmitter.mock.calls.filter(
+          ([path]) => path[1] === 'hydrateSmartAccount'
+        )
+      ).toHaveLength(2);
+      expect(screen.queryByTitle(OWNER)).toBeNull();
+      await act(async () => next.resolve(metadata(true)));
+      expect(screen.getByTitle(OWNER)).toBeTruthy();
+      expect(
+        mockEmitter.mock.calls.some(([path]) =>
+          /register|sign|submit/i.test(path[1])
+        )
+      ).toBe(false);
+    });
+
+    it.each(['unmount', 'native route', 'selected account', 'network'])(
+      'does not apply stale entry metadata after %s',
+      async (reason) => {
+        const pending = deferred<any>();
+        const view = mountWithHydration(pending);
+        depart(reason, view);
+        await act(async () => pending.resolve(metadata(true)));
+        expect(screen.queryByTitle(OWNER)).toBeNull();
+        expect(mockAlert.error).not.toHaveBeenCalled();
+      }
+    );
+  });
 
   it.each([
     'unmount',
@@ -363,15 +508,22 @@ describe('SmartAccountPolicy async UI lifetime', () => {
       metadata(false);
     const pending = deferred<unknown>();
     const original = mockEmitter.getMockImplementation()!;
+    let hydrationReads = 0;
     mockEmitter.mockImplementation((path: string[], ...args: any[]) => {
       if (path[1] === 'registerSmartAccountOnChain') return pending.promise;
-      if (hydrate && path[1] === 'hydrateSmartAccount') return hydrate;
+      if (path[1] === 'hydrateSmartAccount') {
+        if (++hydrationReads === 1) return Promise.resolve(metadata(false));
+        if (hydrate) return hydrate;
+        return Promise.resolve(metadata(true));
+      }
       return original(path, ...args);
     });
     const view = render(<SmartAccountPolicy />);
     await act(async () => undefined);
     fireEvent.click(
-      screen.getByRole('button', { name: 'settings.registerSmartAccount' })
+      await screen.findByRole('button', {
+        name: 'settings.registerSmartAccount',
+      })
     );
     await waitFor(() =>
       expect(
@@ -431,8 +583,8 @@ describe('SmartAccountPolicy async UI lifetime', () => {
     depart('network', pending.view);
     await act(async () => hydration.resolve(metadata(true)));
     expect(
-      screen.getByRole('button', { name: 'settings.registerSmartAccount' })
-    ).toBeDefined();
+      screen.queryByText('settings.smartAccountCurrentApprovalMethod')
+    ).toBeNull();
     expect(mockAlert.success).not.toHaveBeenCalled();
     expect(mockNavigate).not.toHaveBeenCalled();
   });

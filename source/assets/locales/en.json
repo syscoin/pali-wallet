@@ -456,6 +456,8 @@
     "receipts": "Receipts"
   },
   "settings": {
+    "smartAccountMetadataLoadFailed": "Couldn't verify this account's current settings. Check your connection and try again.",
+    "smartAccountMetadataRetry": "Retry",
     "invalidWatchOnlyIdentifier": "Use a public address, public extended key, or public-only descriptor. Never enter a private key.",
     "searchTrustedSites": "Search trusted sites",
     "trustedSiteMatch": "On the trusted list",

@@ -456,6 +456,8 @@
     "receipts": "Belege"
   },
   "settings": {
+    "smartAccountMetadataLoadFailed": "Die aktuellen Einstellungen dieses Kontos konnten nicht überprüft werden. Prüfen Sie Ihre Verbindung und versuchen Sie es erneut.",
+    "smartAccountMetadataRetry": "Erneut versuchen",
     "invalidWatchOnlyIdentifier": "Verwenden Sie eine öffentliche Adresse, einen erweiterten öffentlichen Schlüssel oder einen rein öffentlichen Deskriptor. Geben Sie niemals einen privaten Schlüssel ein.",
     "searchTrustedSites": "Vertrauenswürdige Websites suchen",
     "trustedSiteMatch": "Auf der Vertrauensliste",

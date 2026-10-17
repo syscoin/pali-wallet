@@ -130,6 +130,13 @@ describe('SmartAccountPolicy guardian approval', () => {
       const index = hookIndex++;
       if (!(index in hookStates)) {
         hookStates[index] = typeof initial === 'function' ? initial() : initial;
+        // This handler-only harness suppresses effects; model the successful
+        // entry read. Real pending/failure behavior is tested in lifetime.spec.
+        if (
+          hookStates[index]?.status === 'pending' &&
+          typeof hookStates[index]?.key === 'string'
+        )
+          hookStates[index] = { ...hookStates[index], status: 'ready' };
       }
       return [
         hookStates[index],
