@@ -168,6 +168,7 @@ test('small wallet forms keep complete fields and actions exposed through resize
           const box = (await action.boundingBox())!;
           // All shared page actions now use the same 24px bottom inset.
           expect(height - box.y - box.height).toBeCloseTo(24, 0);
+          expect(box.height).toBeCloseTo(40, 0);
         }
         await capture(page, `${importing ? 'import' : 'forget'}-400x${height}`);
       }
