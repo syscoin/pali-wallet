@@ -63,16 +63,27 @@ test('Pali reviews and signs exact legacy governance votes without disclosing ke
     })),
   };
   const fixture = createUtxoFixture();
+  let walletAddress: string | undefined;
   const server = await startUtxoFixtureServer({
-    readJson: (url) =>
-      url.pathname === '/api/sentry/v1/voting-context'
-        ? observation
-        : fixtureRead(
-            fixture,
-            'https://blockbook-dev.syscoin.org' + url.pathname + url.search,
-            'GET'
-          ),
+    readJson: (url) => {
+      if (url.pathname === '/api/sentry/v1/voting-context') return observation;
+      if (walletAddress && url.pathname === `/api/v2/address/${walletAddress}`)
+        return {
+          address: walletAddress,
+          balance: '0',
+          unconfirmedBalance: '0',
+          txs: 0,
+          tokens: [],
+          transactions: [],
+        };
+      return fixtureRead(
+        fixture,
+        'https://blockbook-dev.syscoin.org' + url.pathname + url.search,
+        'GET'
+      );
+    },
   });
+  let nextSite: Awaited<ReturnType<typeof startUtxoFixtureServer>> | undefined;
   Object.assign(E2E_CONFIG, {
     seedPhrase: UTXO_FIXTURE_SEED,
     password: 'GovernanceSyntheticOnly!2026',
@@ -242,7 +253,7 @@ test('Pali reviews and signs exact legacy governance votes without disclosing ke
       Buffer.from('00'.repeat(31) + '0e', 'hex'),
       { network: utils.syscoinNetworks.testnet, compressed: false }
     );
-    const walletAddress = utils.bitcoinjs.payments.p2pkh({
+    walletAddress = utils.bitcoinjs.payments.p2pkh({
       pubkey: walletPair.publicKey,
       network: utils.syscoinNetworks.testnet,
     }).address;
@@ -261,7 +272,40 @@ test('Pali reviews and signs exact legacy governance votes without disclosing ke
     await page.getByRole('radio', { name: 'Legacy (P2PKH)' }).check();
     await page.getByRole('button', { name: 'Import', exact: true }).click();
     await expect(page.getByText('Account imported successfully')).toBeVisible();
+    // Keep the imported account's background reads on the same deny-proxy
+    // fixture as the original account; never reach a public Blockbook service.
+    await page.evaluate(async (url) => {
+      const call = (method: string, params: unknown[]) =>
+        new Promise<any>((resolve) =>
+          chrome.runtime.sendMessage(
+            {
+              type: 'CONTROLLER_ACTION',
+              data: { methods: ['wallet', method], params },
+            },
+            resolve
+          )
+        );
+      const state = await call('getState', []);
+      await call('setActiveNetwork', [
+        { ...state.vault.activeNetwork, url },
+        true,
+      ]);
+    }, server.url);
     await page.goto(server.url);
+    await page.waitForFunction(() => Boolean((window as any).pali));
+    // Importing another account must not silently grant it to an already
+    // connected site. Request its consent on a fresh isolated dapp origin.
+    expect(await providerRequest(page, 'sys_requestAccounts')).toEqual([
+      fixture.userAddress,
+    ]);
+    nextSite = await startUtxoFixtureServer();
+    // The launch-time proxy intentionally does not forward even loopback
+    // origins. Serve only the same known read-only fixture document here.
+    const dappHtml = await (await fetch(server.url)).text();
+    await wallet.context.route(`${nextSite.url}/`, (route) =>
+      route.fulfill({ status: 200, contentType: 'text/html', body: dappHtml })
+    );
+    await page.goto(nextSite.url);
     await page.waitForFunction(() => Boolean((window as any).pali));
     expect(
       (
@@ -299,6 +343,7 @@ test('Pali reviews and signs exact legacy governance votes without disclosing ke
   } finally {
     await wallet?.context.close();
     Object.assign(E2E_CONFIG, before);
+    await nextSite?.close();
     await server.close();
   }
 });
