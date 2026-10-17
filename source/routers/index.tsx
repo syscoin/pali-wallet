@@ -150,6 +150,7 @@ const SentryOperation = lazy(
   () => import('pages/Transactions/SentryOperation')
 );
 const SentryLink = lazy(() => import('pages/Transactions/SentryLink'));
+const SentryVote = lazy(() => import('pages/Transactions/SentryVote'));
 const SmartAccountHub = lazy(() => import('pages/SmartAccount/Hub'));
 const EditAccount = lazy(() => import('pages/Settings/EditAccount'));
 const Advanced = lazy(() => import('pages/Settings/Advanced'));
@@ -353,6 +354,7 @@ export const Router = () => {
               <Route path="smart-account" element={<PrepareSmartAccount />} />
               <Route path="sentry-operation" element={<SentryOperation />} />
               <Route path="sentry-link" element={<SentryLink />} />
+              <Route path="sentry-vote" element={<SentryVote />} />
               <Route
                 path="smart-account-modules"
                 element={<SmartAccountModuleConsent />}

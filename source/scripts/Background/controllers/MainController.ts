@@ -1639,6 +1639,21 @@ class MainController {
   public async prepareSentryOperation(request: unknown, origin: string) {
     return (await this.getSentryController()).prepare(request, origin);
   }
+  public async prepareSentryVote(request: unknown, origin: string) {
+    return (await this.getSentryController()).votes.prepare(request, origin);
+  }
+  public async getSentryVoteApproval(id: string) {
+    return (await this.getSentryController()).votes.getApproval(id);
+  }
+  public async signSentryVoteApproval(params: {
+    id: string;
+    password: string;
+  }) {
+    return (await this.getSentryController()).votes.sign(params);
+  }
+  public async cancelSentryVoteApproval(id: string) {
+    return (await this.getSentryController()).votes.cancel(id);
+  }
   public async prepareSentryLink(request: unknown, origin: string) {
     return (await this.getSentryController()).prepareLink(request, origin);
   }

@@ -93,6 +93,7 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
       '/external/switch-UtxoEvm',
       '/external/sentry-operation',
       '/external/sentry-link',
+      '/external/sentry-vote',
       // External transaction routes should also be title-only
       '/external/tx/ethSign',
       '/external/tx/sign',
@@ -176,6 +177,8 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
       return t('connections.connectAccount');
     if (path === '/external/sentry-operation') return t('sentry.sentryUpdate');
     if (path === '/external/sentry-link') return t('sentry.linkSentryNode');
+    if (path === '/external/sentry-vote')
+      return t('sentry.authorizeGovernanceVote');
     if (path === '/external/change-account')
       return t('connections.connectedAccount');
     if (path === '/external/change-active-connected-account')

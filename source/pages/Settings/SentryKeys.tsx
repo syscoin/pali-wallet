@@ -420,7 +420,11 @@ const SentryKeys = () => {
             />
           </label>
           <label className="text-sm">
-            {t('sentry.sentryPrivateKeyHex')}
+            {t(
+              scheme === 'secp256k1'
+                ? 'sentry.sentryPrivateKeyHexOrWif'
+                : 'sentry.sentryPrivateKeyHex'
+            )}
             <input
               className={fieldClass}
               type="password"

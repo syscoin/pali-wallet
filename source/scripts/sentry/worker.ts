@@ -2,6 +2,7 @@ import {
   importSentryAuthorityKey,
   signSentryManagementOperation,
   signSentryOperation,
+  signSentryGovernanceVote,
 } from '@sidhujag/sysweb3-sentry';
 
 import type { SentryCryptoJob } from 'utils/sentry/workerClient';
@@ -28,6 +29,13 @@ self.onmessage = async (event: MessageEvent<{ job: SentryCryptoJob }>) => {
             job.context,
             job.key,
             job.authorizationId
+          )
+        : job.type === 'signVote'
+        ? await signSentryGovernanceVote(
+            job.request,
+            job.context,
+            job.proTxHash,
+            job.key
           )
         : undefined;
     if (!result) throw new Error('Unsupported Sentry operation');

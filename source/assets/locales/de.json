@@ -1185,6 +1185,22 @@
     "authorizeRegistration": "Authorize Sentry registration",
     "authorizeRevocation": "Authorize Sentry revocation",
     "authorizeTitle": "Authorize Sentry update",
+    "authorizeGovernanceVote": "Authorize governance vote",
+    "voteSignatureOnly": "Your voting keys stay in Pali. This signs only the votes shown below; no coins are sent.",
+    "unableToAuthorizeVote": "Unable to authorize governance vote",
+    "fundingVote": "Funding vote",
+    "proposalHash": "Proposal hash",
+    "proposalUrl": "Proposal URL",
+    "voteTime": "Vote time (UTC)",
+    "votingNodes": "Nodes selected: {{count}}",
+    "signVotes": "Sign votes",
+    "voteDetails": "Review nodes and vote details",
+    "sentryPrivateKeyHexOrWif": "Sentry private key (hex or WIF)",
+    "voteOutcomes": {
+      "yes": "Yes",
+      "no": "No",
+      "abstain": "Abstain"
+    },
     "roles": {
       "owner": "Owner",
       "operator": "Operator",
