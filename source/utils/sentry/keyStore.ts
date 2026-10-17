@@ -135,52 +135,113 @@ export const saveSentryKey = async (args: {
   seed: string;
   vaultId: string;
 }): Promise<SentryKeySummary> => {
-  const { vaultId, network, key, seed, assertCurrent } = args;
-  const label = args.label.trim();
-  if (!label || label.length > 80)
-    throw new Error('Enter a label of 1 to 80 characters');
+  const summaries = await saveSentryKeys({
+    ...args,
+    entries: [{ label: args.label, key: args.key }],
+  });
+  return summaries[0];
+};
+
+/** All entries are validated and encrypted before the one atomic storage write. */
+export const saveSentryKeys = async (args: {
+  assertCurrent: () => void;
+  entries: Array<{ key: SentryAuthorityKey; label: string }>;
+  network: SentryNetwork;
+  seed: string;
+  vaultId: string;
+}): Promise<SentryKeySummary[]> => {
+  const { vaultId, network, seed, assertCurrent } = args;
+  if (
+    !Array.isArray(args.entries) ||
+    !args.entries.length ||
+    args.entries.length > 20
+  )
+    throw new Error('Import between 1 and 20 Sentry keys at a time');
+  const entries = args.entries.map(({ label, key }, index) => {
+    if (typeof label !== 'string' || !label.trim() || label.trim().length > 80)
+      throw new Error(`Key ${index + 1}: enter a label of 1 to 80 characters`);
+    if (
+      !key ||
+      !['owner', 'operator', 'voting', 'collateral'].includes(key.role) ||
+      !['bls-basic', 'slh-dsa-shake-128s', 'secp256k1'].includes(key.scheme) ||
+      (key.role === 'operator' && key.scheme === 'secp256k1') ||
+      (key.role !== 'operator' && key.scheme === 'bls-basic') ||
+      (key.role === 'collateral' && key.scheme !== 'secp256k1') ||
+      !new RegExp(
+        `^[0-9a-f]{${
+          key.scheme === 'bls-basic' ? 96 : key.scheme === 'secp256k1' ? 66 : 64
+        }}$`
+      ).test(key.publicKey) ||
+      !new RegExp(
+        `^[0-9a-f]{${key.scheme === 'slh-dsa-shake-128s' ? 128 : 64}}$`
+      ).test(key.secretKey)
+    )
+      throw new Error(`Key ${index + 1}: invalid key metadata`);
+    return { label: label.trim(), key };
+  });
+  if (
+    entries.some(({ label }) =>
+      entries.some(({ key }) => label.toLowerCase().includes(key.secretKey))
+    )
+  )
+    throw new Error('Key labels must not contain private keys');
   assertCurrent();
   const store = await getStore(vaultId, network);
   assertCurrent();
-  if (
-    store.keys.some(
-      ({ summary }) =>
-        summary.role === key.role &&
-        summary.scheme === key.scheme &&
-        summary.publicKey === key.publicKey
+  if (store.keys.length + entries.length > 100)
+    throw new Error('Sentry key limit reached');
+  const identities = new Set(
+    store.keys.map(
+      ({ summary }) => `${summary.role}:${summary.scheme}:${summary.publicKey}`
     )
-  )
-    throw new Error('This operator key is already imported on this network');
-  if (store.keys.length >= 100) throw new Error('Sentry key limit reached');
-  const summary: SentryKeySummary = {
-    id: crypto.randomUUID(),
-    label,
-    network,
-    role: key.role,
-    scheme: key.scheme,
-    publicKey: key.publicKey,
-  };
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const plaintext = utf8.encode(JSON.stringify(key));
-  try {
-    const wrappingKey = await deriveWrappingKey(seed, vaultId);
-    const ciphertext = await crypto.subtle.encrypt(
-      { name: 'AES-GCM', iv, additionalData: aad(vaultId, summary) },
-      wrappingKey,
-      plaintext
-    );
-    assertCurrent();
-    store.keys.push({
-      summary,
-      iv: hex(iv),
-      ciphertext: hex(new Uint8Array(ciphertext)),
-    });
-    await chromeStorage.setItem(storageKey(vaultId, network), store);
-    assertCurrent();
-    return summary;
-  } finally {
-    plaintext.fill(0);
+  );
+  for (const [index, { key }] of entries.entries()) {
+    const identity = `${key.role}:${key.scheme}:${key.publicKey}`;
+    if (identities.has(identity))
+      throw new Error(
+        `Key ${
+          index + 1
+        }: this key is already imported on this network or repeated in this batch`
+      );
+    identities.add(identity);
   }
+  const wrappingKey = await deriveWrappingKey(seed, vaultId);
+  assertCurrent();
+  const encrypted: SentryKeyEnvelope[] = [];
+  for (const { label, key } of entries) {
+    const summary: SentryKeySummary = {
+      id: crypto.randomUUID(),
+      label,
+      network,
+      role: key.role,
+      scheme: key.scheme,
+      publicKey: key.publicKey,
+    };
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const plaintext = utf8.encode(JSON.stringify(key));
+    try {
+      const ciphertext = await crypto.subtle.encrypt(
+        { name: 'AES-GCM', iv, additionalData: aad(vaultId, summary) },
+        wrappingKey,
+        plaintext
+      );
+      assertCurrent();
+      encrypted.push({
+        summary,
+        iv: hex(iv),
+        ciphertext: hex(new Uint8Array(ciphertext)),
+      });
+    } finally {
+      plaintext.fill(0);
+    }
+  }
+  assertCurrent();
+  await chromeStorage.setItem(storageKey(vaultId, network), {
+    ...store,
+    keys: [...store.keys, ...encrypted],
+  });
+  assertCurrent();
+  return encrypted.map(({ summary }) => ({ ...summary }));
 };
 
 export const loadSentryKey = async (args: {

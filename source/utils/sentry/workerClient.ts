@@ -11,9 +11,20 @@ import type {
   SentryOperationRequest,
   SentryOperationResponse,
   SentryReviewContext,
+  SentryGovernanceVoteContext,
+  SentryGovernanceVoteRequest,
+  SentryGovernanceVoteResponse,
+  SentryGovernanceVoteReview,
 } from '@sidhujag/sysweb3-sentry';
 
 export type SentryCryptoJob =
+  | { request: unknown; type: 'validateVote' }
+  | {
+      context: SentryGovernanceVoteContext;
+      request: SentryGovernanceVoteRequest;
+      type: 'reviewVote';
+    }
+  | { publicKeys: string[]; type: 'votingIdentities' }
   | {
       role: SentryAuthorityRole;
       scheme: SentryAuthorityScheme;
@@ -32,6 +43,13 @@ export type SentryCryptoJob =
       key: SentryAuthorityKey;
       request: SentryManagementRequest;
       type: 'signManagement';
+    }
+  | {
+      context: SentryGovernanceVoteContext;
+      key: SentryAuthorityKey;
+      proTxHash: string;
+      request: SentryGovernanceVoteRequest;
+      type: 'signVote';
     };
 
 export const runSentryCrypto = async <
@@ -39,6 +57,10 @@ export const runSentryCrypto = async <
     | SentryAuthorityKey
     | SentryOperationResponse
     | SentryManagementResponse
+    | SentryGovernanceVoteResponse
+    | SentryGovernanceVoteRequest
+    | SentryGovernanceVoteReview
+    | Array<{ compressed: string; publicKey: string; uncompressed: string }>
 >(
   job: SentryCryptoJob,
   assertCurrent: () => void

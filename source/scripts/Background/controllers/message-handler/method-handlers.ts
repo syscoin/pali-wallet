@@ -887,7 +887,8 @@ export class SysMethodHandler implements IMethodHandler {
       let sentryApprovalId: string | undefined;
       if (
         methodName === 'signSentryOperation' ||
-        methodName === 'linkSentryNode'
+        methodName === 'linkSentryNode' ||
+        methodName === 'signSentryVote'
       ) {
         const { dapp, wallet } = getController();
         const connection = dapp.get(host);
@@ -911,6 +912,8 @@ export class SysMethodHandler implements IMethodHandler {
         sentryApprovalId =
           methodName === 'linkSentryNode'
             ? await wallet.prepareSentryLink(params[0], host)
+            : methodName === 'signSentryVote'
+            ? await wallet.prepareSentryVote(params[0], host)
             : await wallet.prepareSentryOperation(params[0], host);
         // The site never controls the popup's request, origin, key list or review.
         popupData = { sentryApprovalId };
@@ -968,6 +971,8 @@ export class SysMethodHandler implements IMethodHandler {
           const wallet = getController().wallet;
           await (methodName === 'linkSentryNode'
             ? wallet.cancelSentryLink(sentryApprovalId)
+            : methodName === 'signSentryVote'
+            ? wallet.cancelSentryVoteApproval(sentryApprovalId)
             : wallet.cancelSentryApproval(sentryApprovalId)
           ).catch(() => undefined);
         }

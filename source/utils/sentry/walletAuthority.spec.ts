@@ -141,6 +141,28 @@ it('checks uncompressed WIF account encoding without changing the compressed aut
       uncompressedAccount
     )
   ).toThrow('does not own');
+  expect(
+    deriveSentryWalletAuthority(
+      uncompressedOwner,
+      null,
+      pair.toWIF(),
+      uncompressedAccount,
+      'voting'
+    ).secretKey
+  ).toBe('0b'.repeat(32));
+  const unrelated = bjs.ECPair.fromPrivateKey(Buffer.alloc(32, 12), {
+    network,
+    compressed: false,
+  });
+  expect(() =>
+    deriveSentryWalletAuthority(
+      uncompressedOwner,
+      null,
+      unrelated.toWIF(),
+      uncompressedAccount,
+      'voting'
+    )
+  ).toThrow('does not match the selected account');
 });
 
 it('does not trust a supplied label, address, account index, or derivation path', () => {

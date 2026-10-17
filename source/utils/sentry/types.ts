@@ -7,6 +7,7 @@ import type {
   SentryManagementRequest,
   SentryManagementReview,
   SentryRequiredAuthorization,
+  SentryGovernanceVoteRequest,
 } from '@sidhujag/sysweb3-sentry';
 
 export type SentryNetwork = 'mainnet' | 'testnet';
@@ -52,5 +53,23 @@ export interface SentryApproval {
   origin: string;
   request: SentryOperationRequest | SentryManagementRequest;
   review: SentryOperationReview | SentryManagementReview;
+  serviceUrl: string;
+}
+
+export interface SentryVoteApproval {
+  id: string;
+  missingVotingKeys: string[];
+  network: SentryNetwork;
+  nodes: Array<{
+    collateralOutpoint: { txid: string; vout: number };
+    keyId: string;
+    keyLabel: string;
+    proTxHash: string;
+    publicKey: string;
+    votingKeyId: string;
+  }>;
+  origin: string;
+  proposal?: { name: string; url?: string };
+  request: SentryGovernanceVoteRequest;
   serviceUrl: string;
 }

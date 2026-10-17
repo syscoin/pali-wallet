@@ -8,6 +8,7 @@ import {
   listSentryKeys,
   loadSentryKey,
   saveSentryKey,
+  saveSentryKeys,
 } from 'utils/sentry/keyStore';
 import { SENTRY_NETWORKS } from 'utils/sentry/network';
 import { runSentryCrypto } from 'utils/sentry/workerClient';
@@ -81,6 +82,7 @@ jest.mock('utils/sentry/keyStore', () => ({
   listSentryKeys: jest.fn(),
   loadSentryKey: jest.fn(),
   saveSentryKey: jest.fn(),
+  saveSentryKeys: jest.fn(),
   removeSentryKey: jest.fn(),
 }));
 jest.mock('utils/sentry/workerClient', () => ({ runSentryCrypto: jest.fn() }));
@@ -148,6 +150,7 @@ beforeEach(() => {
   (listSentryKeys as jest.Mock).mockResolvedValue([summary]);
   (loadSentryKey as jest.Mock).mockResolvedValue(imported);
   (saveSentryKey as jest.Mock).mockResolvedValue(summary);
+  (saveSentryKeys as jest.Mock).mockResolvedValue([summary]);
   (runSentryCrypto as jest.Mock).mockResolvedValue({
     version: 1,
     operation: 'updateService',
@@ -354,6 +357,90 @@ it('rejects invalid key sizes before offscreen work and rejects a wrong wallet p
     })
   ).rejects.toThrow('Invalid password');
   expect(runSentryCrypto).not.toHaveBeenCalled();
+});
+
+it('validates every imported key before committing a batch', async () => {
+  const first = { ...imported, role: 'operator' };
+  const second = {
+    ...first,
+    publicKey: 'cc'.repeat(48),
+    secretKey: '22'.repeat(32),
+  };
+  (runSentryCrypto as jest.Mock)
+    .mockResolvedValueOnce(first)
+    .mockResolvedValueOnce(second);
+  await controller.importKeys({
+    scheme: 'bls-basic',
+    role: 'operator',
+    password: 'pw',
+    entries: [
+      { label: 'First', secretKey: first.secretKey },
+      { label: 'Second', secretKey: second.secretKey },
+    ],
+  });
+  expect(getSeed).toHaveBeenCalledTimes(1);
+  expect(saveSentryKeys).toHaveBeenCalledTimes(1);
+  expect(saveSentryKeys).toHaveBeenCalledWith(
+    expect.objectContaining({
+      entries: [
+        { label: 'First', key: first },
+        { label: 'Second', key: second },
+      ],
+    })
+  );
+});
+
+it.each([
+  [{ label: `Node 0x${'AB'.repeat(32)}`, secretKey: 'ab'.repeat(32) }],
+  [
+    { label: 'cd'.repeat(32), secretKey: 'ab'.repeat(32) },
+    { label: 'Second', secretKey: '0x' + 'cd'.repeat(32) },
+  ],
+  [{ label: 'Node ' + 'K'.repeat(52), secretKey: 'K'.repeat(52) }],
+])(
+  'rejects private input copied into any public batch label',
+  async (...entries) => {
+    await expect(
+      controller.importKeys({
+        entries,
+        scheme: 'bls-basic',
+        role: 'operator',
+        password: 'pw',
+      })
+    ).rejects.toThrow('Key labels must not contain private keys');
+    expect(getSeed).not.toHaveBeenCalled();
+    expect(runSentryCrypto).not.toHaveBeenCalled();
+    expect(saveSentryKeys).not.toHaveBeenCalled();
+  }
+);
+
+it('rejects one bad or interrupted import without persisting the earlier valid key', async () => {
+  (runSentryCrypto as jest.Mock)
+    .mockResolvedValueOnce(imported)
+    .mockRejectedValueOnce(new Error('invalid secret contents'));
+  await expect(
+    controller.importKeys({
+      scheme: 'bls-basic',
+      password: 'pw',
+      entries: [
+        { label: 'First', secretKey: '11'.repeat(32) },
+        { label: 'Second', secretKey: '22'.repeat(32) },
+      ],
+    })
+  ).rejects.toThrow('Key 2: invalid key');
+  expect(saveSentryKeys).not.toHaveBeenCalled();
+  (runSentryCrypto as jest.Mock).mockImplementationOnce(async () => {
+    scope = { ...scope, identity: 'changed' };
+    return imported;
+  });
+  await expect(
+    controller.importKeys({
+      scheme: 'bls-basic',
+      password: 'pw',
+      entries: [{ label: 'First', secretKey: '11'.repeat(32) }],
+    })
+  ).rejects.toThrow('changed');
+  expect(saveSentryKeys).not.toHaveBeenCalled();
 });
 
 it('links verified public node identity without signing or importing collateral', async () => {

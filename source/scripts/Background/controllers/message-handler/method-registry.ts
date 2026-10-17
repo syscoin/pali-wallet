@@ -1339,6 +1339,21 @@ export const METHOD_REGISTRY: MethodRegistry = {
     popupEventName: 'sentryNodeLinked',
     isBlocking: true,
   },
+  sys_signSentryVote: {
+    name: 'sys_signSentryVote',
+    handlerType: MethodHandlerType.Sys,
+    requiresTabId: true,
+    requiresAuth: true,
+    requiresConnection: true,
+    requiresActiveAccount: true,
+    allowHardwareWallet: true,
+    networkPreference: NetworkPreference.UTXO,
+    networkEnforcement: NetworkEnforcement.Always,
+    hasPopup: true,
+    popupRoute: MethodRoute.SentryVote,
+    popupEventName: 'sentryVoteSigned',
+    isBlocking: true,
+  },
 
   sys_signAndSend: {
     name: 'sys_signAndSend',

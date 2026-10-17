@@ -15,7 +15,7 @@ import {
   listSentryKeys,
   loadSentryKey,
   removeSentryKey,
-  saveSentryKey,
+  saveSentryKeys,
 } from 'utils/sentry/keyStore';
 import {
   getSentryNetwork,
@@ -32,6 +32,7 @@ import type {
 import { runSentryCrypto } from 'utils/sentry/workerClient';
 import { chromeStorage } from 'utils/storageAPI';
 
+import { SentryVoteController } from './sentryVotes';
 import type {
   SentryOperationRequest,
   SentryReviewContext,
@@ -61,6 +62,10 @@ interface Host {
     outpoint: { txid: string; vout: number },
     scope: SentryWalletScope
   ) => Promise<boolean>;
+  resolveVotingAuthority?: (
+    params: { address: string; password: string },
+    scope: SentryWalletScope
+  ) => Promise<{ scheme: 'ecdsa'; secretKey: string }>;
   resolveWalletAuthority?: (
     params: { address: string; password: string },
     scope: SentryWalletScope
@@ -153,7 +158,16 @@ export class SentryController {
       scope: SentryWalletScope;
     }
   >();
-  constructor(private readonly host: Host) {}
+  public readonly votes: SentryVoteController;
+  constructor(private readonly host: Host) {
+    this.votes = new SentryVoteController({
+      ...host,
+      resolveWalletAuthority: host.resolveVotingAuthority,
+      getSettings: (scope) => this.settings(scope),
+      readJson,
+      runExclusive: (operation) => this.mutex.runExclusive(operation),
+    });
+  }
 
   private assertCurrent(scope: SentryWalletScope) {
     if (this.host.captureScope().identity !== scope.identity)
@@ -401,6 +415,7 @@ export class SentryController {
       });
       this.assertCurrent(scope);
       this.approvals.clear();
+      this.votes.clear();
       return this.settings(scope);
     });
   }
@@ -412,44 +427,128 @@ export class SentryController {
     scheme: SentryAuthorityScheme;
     secretKey: string;
   }) {
+    const results = await this.importKeys({
+      password: params.password,
+      role: params.role,
+      scheme: params.scheme,
+      entries: [{ label: params.label, secretKey: params.secretKey }],
+    });
+    return results[0];
+  }
+
+  public async importKeys(params: {
+    entries: Array<{ label: string; secretKey: string }>;
+    password: string;
+    role?: SentryAuthorityRole;
+    scheme: SentryAuthorityScheme;
+  }) {
     const scope = this.host.captureScope();
     return this.mutex.runExclusive(async () => {
       this.assertCurrent(scope);
+      if (
+        !Array.isArray(params.entries) ||
+        !params.entries.length ||
+        params.entries.length > 20
+      )
+        throw new Error('Import between 1 and 20 Sentry keys at a time');
+      const privateInputs = params.entries
+        .map((entry) =>
+          typeof entry?.secretKey === 'string'
+            ? entry.secretKey.replace(/^0x/i, '').toLowerCase()
+            : ''
+        )
+        .filter((value) => value.length >= 50);
+      if (
+        params.entries.some(
+          (entry) =>
+            typeof entry?.label === 'string' &&
+            privateInputs.some((value) =>
+              entry.label.toLowerCase().includes(value)
+            )
+        )
+      )
+        throw new Error('Key labels must not contain private keys');
       if (
         !['bls-basic', 'slh-dsa-shake-128s', 'secp256k1'].includes(
           params.scheme
         )
       )
         throw new Error('Unsupported Sentry operator key scheme');
-      if (
-        typeof params.secretKey !== 'string' ||
-        !new RegExp(
-          `^(?:0x)?[0-9a-fA-F]{${
-            params.scheme === 'slh-dsa-shake-128s' ? 128 : 64
-          }}$`
-        ).test(params.secretKey)
-      )
-        throw new Error(
-          'Enter a complete hexadecimal Sentry operator private key'
-        );
+      const entries = params.entries.map((entry, index) => {
+        if (
+          !entry ||
+          typeof entry.label !== 'string' ||
+          !entry.label.trim() ||
+          entry.label.trim().length > 80
+        )
+          throw new Error(
+            `Key ${index + 1}: enter a label of 1 to 80 characters`
+          );
+        let secretKey = entry.secretKey;
+        if (
+          params.scheme === 'secp256k1' &&
+          typeof secretKey === 'string' &&
+          !/^(?:0x)?[0-9a-fA-F]{64}$/.test(secretKey)
+        ) {
+          try {
+            const pair = syscoinUtils.bitcoinjs.ECPair.fromWIF(
+              secretKey,
+              syscoinUtils.syscoinNetworks[getSentryNetwork(scope.network)]
+            );
+            if (!pair.privateKey) throw new Error('Unsupported key');
+            secretKey = Buffer.from(pair.privateKey).toString('hex');
+          } catch {
+            throw new Error(
+              `Key ${
+                index + 1
+              }: enter a voting/owner WIF for the selected network, or a 32-byte hexadecimal private key`
+            );
+          }
+        }
+        if (
+          typeof secretKey !== 'string' ||
+          !new RegExp(
+            `^(?:0x)?[0-9a-fA-F]{${
+              params.scheme === 'slh-dsa-shake-128s' ? 128 : 64
+            }}$`
+          ).test(secretKey)
+        )
+          throw new Error(
+            `Key ${
+              index + 1
+            }: enter a complete hexadecimal Sentry operator private key`
+          );
+        return { label: entry.label.trim(), secretKey };
+      });
       const seed = await this.host.getSeed(params.password);
       this.assertCurrent(scope);
-      const key = await runSentryCrypto<SentryAuthorityKey>(
-        {
-          type: 'import',
-          role: params.role || 'operator',
-          scheme: params.scheme,
-          secretKey: params.secretKey,
-        },
-        () => this.assertCurrent(scope)
-      );
-      this.assertCurrent(scope);
+      const keys: Array<{ key: SentryAuthorityKey; label: string }> = [];
+      for (const [index, entry] of entries.entries()) {
+        let key: SentryAuthorityKey;
+        try {
+          key = await runSentryCrypto<SentryAuthorityKey>(
+            {
+              type: 'import',
+              role: params.role || 'operator',
+              scheme: params.scheme,
+              secretKey: entry.secretKey,
+            },
+            () => this.assertCurrent(scope)
+          );
+        } catch {
+          this.assertCurrent(scope);
+          throw new Error(
+            `Key ${index + 1}: invalid key for the selected role and type`
+          );
+        }
+        this.assertCurrent(scope);
+        keys.push({ label: entry.label, key });
+      }
       const vaultId = await getSentryVaultId(scope.rootPublicIdentity);
-      return saveSentryKey({
+      return saveSentryKeys({
         vaultId,
         network: getSentryNetwork(scope.network),
-        label: params.label,
-        key,
+        entries: keys,
         seed,
         assertCurrent: () => this.assertCurrent(scope),
       });
@@ -470,6 +569,7 @@ export class SentryController {
         () => this.assertCurrent(scope)
       );
       this.approvals.clear();
+      this.votes.clear();
       return this.settings(scope);
     });
   }

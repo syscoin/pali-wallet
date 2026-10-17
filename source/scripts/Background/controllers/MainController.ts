@@ -1578,6 +1578,8 @@ class MainController {
                 this.canSignSentryWalletAuthority(address, scope),
               resolveWalletAuthority: (params, scope) =>
                 this.resolveSentryWalletAuthority(params, scope),
+              resolveVotingAuthority: (params, scope) =>
+                this.resolveSentryWalletAuthority(params, scope, 'voting'),
             })
         )
         .catch((error) => {
@@ -1629,6 +1631,14 @@ class MainController {
   public async removeSentryKey(params: { id: string; password: string }) {
     return (await this.getSentryController()).removeKey(params);
   }
+  public async importSentryKeys(params: {
+    entries: Array<{ label: string; secretKey: string }>;
+    password: string;
+    role?: SentryAuthorityRole;
+    scheme: SentryAuthorityScheme;
+  }) {
+    return (await this.getSentryController()).importKeys(params);
+  }
   public async releaseSentryCollateral(params: {
     acknowledgeNodeStops: boolean;
     password: string;
@@ -1638,6 +1648,21 @@ class MainController {
   }
   public async prepareSentryOperation(request: unknown, origin: string) {
     return (await this.getSentryController()).prepare(request, origin);
+  }
+  public async prepareSentryVote(request: unknown, origin: string) {
+    return (await this.getSentryController()).votes.prepare(request, origin);
+  }
+  public async getSentryVoteApproval(id: string) {
+    return (await this.getSentryController()).votes.getApproval(id);
+  }
+  public async signSentryVoteApproval(params: {
+    id: string;
+    password: string;
+  }) {
+    return (await this.getSentryController()).votes.sign(params);
+  }
+  public async cancelSentryVoteApproval(id: string) {
+    return (await this.getSentryController()).votes.cancel(id);
   }
   public async prepareSentryLink(request: unknown, origin: string) {
     return (await this.getSentryController()).prepareLink(request, origin);
@@ -8214,7 +8239,8 @@ class MainController {
 
   private async resolveSentryWalletAuthority(
     params: { address: string; password: string },
-    scope: SentryWalletScope
+    scope: SentryWalletScope,
+    purpose: 'management' | 'voting' = 'management'
   ) {
     const resolved = await this.findSentryWalletAuthority(
       params.address,
@@ -8251,7 +8277,8 @@ class MainController {
       params.address,
       resolved.path ?? null,
       privateKey,
-      resolved.addressScope
+      resolved.addressScope,
+      purpose
     );
   }
 

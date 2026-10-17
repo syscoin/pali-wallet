@@ -122,6 +122,11 @@ export const SysProvider = (host: string) => {
           'revoke',
         ],
         linkNode: true,
+        governanceVote: {
+          scheme: 'secp256k1',
+          signal: 'funding',
+          maxNodes: 20,
+        },
         eras: ['legacy-v3', 'pq-v4'],
         schemes: ['secp256k1', 'bls-basic', 'slh-dsa-shake-128s'],
         roles: ['owner', 'operator', 'collateral', 'voting'],
