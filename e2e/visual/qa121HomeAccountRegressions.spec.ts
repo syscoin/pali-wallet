@@ -154,6 +154,38 @@ test('Enter imports a valid private key and a watch-only address exactly once', 
       );
     const hd = new sys.HDSigner(UTXO_FIXTURE_SEED, '', true);
     const fixture = createUtxoFixture();
+    // The base fixture permits only its sending account. Watch-only import
+    // independently checks this different public address with Blockbook.
+    let watchLookups = 0;
+    for (const origin of [
+      'https://blockbook-dev.syscoin.org',
+      'https://explorer-blockbook-dev.syscoin.org',
+    ]) {
+      await wallet.context.route(
+        `${origin}/api/v2/address/${fixture.recipientAddress}?details=basic`,
+        async (route) => {
+          if (route.request().method() !== 'GET') return route.fallback();
+          watchLookups += 1;
+          return route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            headers: { 'access-control-allow-origin': '*' },
+            body: JSON.stringify({
+              address: fixture.recipientAddress,
+              balance: '0',
+              unconfirmedBalance: '0',
+              totalReceived: '0',
+              totalSent: '0',
+              txs: 0,
+              unconfirmedTxs: 0,
+              usedTokens: 0,
+              tokens: [],
+              tokensAsset: [],
+            }),
+          });
+        }
+      );
+    }
     for (const { width, label, value, watchOnly } of [
       {
         width: 320,
@@ -193,5 +225,6 @@ test('Enter imports a valid private key and a watch-only address exactly once', 
         .click();
       await wallet.ensureOnHome();
     }
+    expect(watchLookups).toBeGreaterThan(0);
   });
 });
