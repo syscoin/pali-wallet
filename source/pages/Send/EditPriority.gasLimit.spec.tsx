@@ -1,6 +1,15 @@
 /** @jest-environment jsdom */
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import React from 'react';
+
+import { ICustomFeeParams } from 'types/transactions';
 
 import { EditPriorityModal } from './EditPriority';
 
@@ -102,6 +111,168 @@ function prepare(
   };
 }
 
+function prepareLifecycle(legacy = false, savedCustom = true) {
+  const saved = jest.fn();
+  let updateMinimum: React.Dispatch<React.SetStateAction<number>>;
+  let updateSaved: React.Dispatch<React.SetStateAction<ICustomFeeParams>>;
+  const initial: ICustomFeeParams = savedCustom
+    ? {
+        isCustom: true,
+        gasLimit: 25200,
+        gasPrice: legacy ? 10 : 0,
+        maxFeePerGas: legacy ? 0 : 10,
+        maxPriorityFeePerGas: legacy ? 0 : 1,
+      }
+    : {
+        isCustom: false,
+        gasLimit: 0,
+        gasPrice: 0,
+        maxFeePerGas: 0,
+        maxPriorityFeePerGas: 0,
+      };
+  const Harness = () => {
+    const [open, setOpen] = React.useState(true);
+    const [custom, setCustom] = React.useState(initial);
+    const [minimum, setMinimum] = React.useState(21000);
+    updateMinimum = setMinimum;
+    updateSaved = setCustom;
+    return (
+      <>
+        <button onClick={() => setOpen(true)}>reopen-editor</button>
+        <output data-testid="saved-fee">{JSON.stringify(custom)}</output>
+        <EditPriorityModal
+          showModal={open}
+          isSendLegacyTransaction={legacy}
+          fee={{
+            gasLimit: 25200,
+            minimumGasLimit: minimum,
+            gasPrice: 3.5,
+            maxFeePerGas: 3.5,
+            maxPriorityFeePerGas: 1,
+            baseFee: 0,
+          }}
+          customFee={custom}
+          defaultGasLimit={25200}
+          setCustomFee={(value) => {
+            saved(value);
+            setCustom(value);
+          }}
+          setHaveError={jest.fn()}
+          setIsOpen={setOpen}
+        />
+      </>
+    );
+  };
+  render(<Harness />);
+  return {
+    initial,
+    saved,
+    setMinimum: (value: number) => act(() => updateMinimum(value)),
+    setSaved: (value: ICustomFeeParams) => act(() => updateSaved(value)),
+    current: () =>
+      JSON.parse(screen.getByTestId('saved-fee').textContent || '{}'),
+    price: () =>
+      screen.getByPlaceholderText(
+        legacy ? 'send.gasPrice (GWEI)' : 'send.maxFee (GWEI)'
+      ) as HTMLInputElement,
+  };
+}
+
+describe.each([false, true])(
+  'transactional fee editor (legacy=%s)',
+  (legacy) => {
+    it.each(['cancel', 'escape', 'close'])(
+      'preserves a previously saved fee on %s without edits',
+      async (dismiss) => {
+        const { initial, saved, current, price } = prepareLifecycle(legacy);
+        await waitFor(() => expect(price().value).toBe('10'));
+        if (dismiss === 'escape') await userEvent.setup().keyboard('{Escape}');
+        else
+          fireEvent.click(
+            screen.getByRole('button', {
+              name: dismiss === 'close' ? 'buttons.close' : 'buttons.cancel',
+            })
+          );
+        await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+        expect(current()).toEqual(initial);
+        expect(saved).not.toHaveBeenCalled();
+        fireEvent.click(screen.getByText('reopen-editor'));
+        await waitFor(() => expect(price().value).toBe('10'));
+      }
+    );
+
+    it('keeps field and preset edits local, discards them on Cancel, and commits only a validated Save', async () => {
+      const { initial, saved, current, price } = prepareLifecycle(legacy);
+      await waitFor(() => expect(price().value).toBe('10'));
+      fireEvent.change(price(), { target: { value: '20' } });
+      expect(current()).toEqual(initial);
+      expect(saved).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole('button', { name: 'higher-price' }));
+      await waitFor(() => expect(price().value).toBe('4.2'));
+      expect(saved).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole('button', { name: 'buttons.cancel' }));
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+      fireEvent.click(screen.getByText('reopen-editor'));
+      await waitFor(() => expect(price().value).toBe('10'));
+      fireEvent.change(price(), { target: { value: '20' } });
+      fireEvent.click(screen.getByRole('button', { name: 'buttons.save' }));
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+      expect(saved).toHaveBeenCalledTimes(1);
+      expect(current()).toEqual({
+        ...initial,
+        [legacy ? 'gasPrice' : 'maxFeePerGas']: 20,
+      });
+      fireEvent.click(screen.getByText('reopen-editor'));
+      await waitFor(() => expect(price().value).toBe('20'));
+    });
+  }
+);
+
+it('does not create a fee override when dismissing a changed default quote', async () => {
+  const { initial, saved, current, price } = prepareLifecycle(false, false);
+  await waitFor(() => expect(price().value).toBe('3.5'));
+  fireEvent.change(price(), { target: { value: '10' } });
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.cancel' }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  expect(current()).toEqual(initial);
+  expect(saved).not.toHaveBeenCalled();
+});
+
+it('revalidates a changed gas minimum without overwriting the open draft', async () => {
+  const { price, setMinimum, saved } = prepareLifecycle();
+  await waitFor(() => expect(price().value).toBe('10'));
+  const gas = screen.getByPlaceholderText('send.gasLimit') as HTMLInputElement;
+  fireEvent.change(gas, { target: { value: '30000' } });
+  const save = screen.getByRole('button', { name: 'buttons.save' });
+  await waitFor(() => expect(save.hasAttribute('disabled')).toBe(false));
+  setMinimum(40000);
+  await waitFor(() => expect(save.hasAttribute('disabled')).toBe(true));
+  expect(gas.value).toBe('30000');
+  expect(price().value).toBe('10');
+  expect(saved).not.toHaveBeenCalled();
+  setMinimum(21000);
+  await waitFor(() => expect(save.hasAttribute('disabled')).toBe(false));
+});
+
+it('reopens from the latest saved parent fee rather than old form fields', async () => {
+  const { price, setSaved } = prepareLifecycle();
+  await waitFor(() => expect(price().value).toBe('10'));
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.save' }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  setSaved({
+    isCustom: true,
+    gasLimit: 35000,
+    maxFeePerGas: 15,
+    maxPriorityFeePerGas: 1,
+    gasPrice: 0,
+  });
+  fireEvent.click(screen.getByText('reopen-editor'));
+  await waitFor(() => expect(price().value).toBe('15'));
+  expect(
+    (screen.getByPlaceholderText('send.gasLimit') as HTMLInputElement).value
+  ).toBe('35000');
+});
+
 it('keeps a successful 21000-gas native quote unchanged when opening the editor and selecting a price preset', async () => {
   const { input } = prepare();
   await waitFor(() => expect(input.value).toBe('21000'));
@@ -119,7 +290,9 @@ it('allows a whole-number successful raw minimum below the buffered quote and pr
   await waitFor(() => expect(input.value).toBe('60000'));
   fireEvent.change(input, { target: { value: '50000' } });
   await waitFor(() => expect(input.value).toBe('50000'));
-  expect(screen.getByText('send.gasLimitBelowEstimate')).toBeTruthy();
+  await waitFor(() =>
+    expect(screen.getByText('send.gasLimitBelowEstimate')).toBeTruthy()
+  );
   fireEvent.click(screen.getByRole('button', { name: 'higher-price' }));
   await waitFor(() => expect(input.value).toBe('50000'));
   fireEvent.click(screen.getByRole('button', { name: 'buttons.save' }));
@@ -178,7 +351,9 @@ it('keeps a valid EIP1559 zero priority visible and saves it with a positive max
   await waitFor(() => expect(input.value).toBe('1'));
   fireEvent.change(input, { target: { value: '0' } });
   await waitFor(() => expect(input.value).toBe('0'));
-  expect(screen.getByText('send.priorityFeeBelowEstimate')).toBeTruthy();
+  await waitFor(() =>
+    expect(screen.getByText('send.priorityFeeBelowEstimate')).toBeTruthy()
+  );
   fireEvent.click(screen.getByRole('button', { name: 'buttons.save' }));
   await waitFor(() =>
     expect(saved).toHaveBeenCalledWith(

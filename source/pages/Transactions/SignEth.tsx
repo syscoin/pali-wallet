@@ -1144,10 +1144,12 @@ const EthSign: React.FC<ISign> = () => {
         typedOrderRequest?.legacyFields?.map((item: any, number: number) => (
           <div
             key={number}
-            className="flex flex-row justify-between w-full font-poppins text-sm text-white"
+            className="flex min-w-0 w-full flex-col gap-1 font-poppins text-sm text-white"
           >
-            <span className="text-gray-300">{item?.name}</span>
-            <span className="font-medium break-all">
+            <span className="min-w-0 max-w-full whitespace-pre-wrap text-gray-300 [overflow-wrap:anywhere]">
+              {item?.name}
+            </span>
+            <span className="min-w-0 max-w-full whitespace-pre-wrap font-medium [overflow-wrap:anywhere]">
               {typeof item.value === 'object'
                 ? JSON.stringify(item.value)
                 : String(item.value)}

@@ -113,6 +113,30 @@ beforeEach(() => {
 });
 afterEach(() => jest.restoreAllMocks());
 
+it('keeps long legacy field labels and values in separate wrapping blocks without changing the signed data', async () => {
+  const fields = [
+    {
+      name: 'Field'.repeat(40),
+      type: 'string',
+      value: 'IMPORTANT_SIGNED_VALUE'.repeat(10),
+    },
+  ];
+  await prepare(fields);
+  const label = screen.getByText(fields[0].name);
+  const value = screen.getByText(fields[0].value);
+  expect(label.parentElement).toBe(value.parentElement);
+  expect(label.parentElement?.className).toContain('flex-col');
+  expect(label.className).toContain('[overflow-wrap:anywhere]');
+  expect(value.className).toContain('[overflow-wrap:anywhere]');
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
+  await waitFor(() => expect(window.close).toHaveBeenCalledTimes(1));
+  expect(mockEmitter).toHaveBeenCalledWith(
+    ['wallet', 'ethereumTransaction', 'signTypedData'],
+    [ADDRESS, fields, 'V1'],
+    10000
+  );
+});
+
 describe.each([true, false])(
   'legacy typed data address-first=%s',
   (addressFirst) => {

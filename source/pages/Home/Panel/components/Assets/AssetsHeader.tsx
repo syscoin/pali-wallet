@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import {
@@ -35,6 +35,42 @@ export const AssetsHeader = ({
     Boolean(searchValue)
   );
   const currentSortBy = sortByValue;
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const searchButtonRef = useRef<HTMLButtonElement>(null);
+  const sortButtonRef = useRef<HTMLButtonElement>(null);
+  const firstSortOptionRef = useRef<HTMLButtonElement>(null);
+  const focusSearch = useRef(false);
+  const restoreSearchFocus = useRef(false);
+  const restoreSortFocus = useRef(false);
+
+  useEffect(() => {
+    if (isSearchOpen && focusSearch.current) {
+      searchInputRef.current?.focus();
+      focusSearch.current = false;
+    } else if (!isSearchOpen && restoreSearchFocus.current) {
+      searchButtonRef.current?.focus();
+      restoreSearchFocus.current = false;
+    }
+  }, [isSearchOpen]);
+
+  useEffect(() => {
+    if (isSortByOpen) firstSortOptionRef.current?.focus();
+    else if (restoreSortFocus.current) {
+      sortButtonRef.current?.focus();
+      restoreSortFocus.current = false;
+    }
+  }, [isSortByOpen]);
+
+  const closeSearch = () => {
+    restoreSearchFocus.current = true;
+    setIsSearchOpen(false);
+    setSearchValue('');
+  };
+
+  const closeSort = () => {
+    restoreSortFocus.current = true;
+    setIsSortByOpen(false);
+  };
 
   const showSortBy = () => {
     if (isSearchOpen) {
@@ -48,7 +84,8 @@ export const AssetsHeader = ({
     if (isSortByOpen) {
       setIsSortByOpen(false);
     }
-    setIsSearchOpen(!isSearchOpen);
+    focusSearch.current = true;
+    setIsSearchOpen(true);
   };
 
   const handleInputChange = (e) => {
@@ -59,11 +96,12 @@ export const AssetsHeader = ({
 
   const handleSortSelection = (sortValue: string) => {
     setSortyByValue(sortValue);
-    setIsSortByOpen(false);
+    closeSort();
   };
 
   const handleClearSort = () => {
     setSortyByValue('');
+    closeSort();
   };
 
   const showDefaultHeader = !isSearchOpen;
@@ -82,8 +120,13 @@ export const AssetsHeader = ({
                   : t('tooltip.sortAssets')
               }
             >
-              <div
-                className={`flex items-center justify-center cursor-pointer p-2 rounded-full transition-colors duration-200 ${
+              <button
+                ref={sortButtonRef}
+                type="button"
+                aria-label={t('tooltip.sortAssets')}
+                aria-expanded={isSortByOpen}
+                aria-controls="asset-sort-options"
+                className={`flex items-center justify-center cursor-pointer p-2 rounded-full transition-colors duration-200 focus-visible:ring-2 focus-visible:ring-brand-royalblue ${
                   currentSortBy
                     ? 'bg-brand-royalblue/30 border border-brand-royalblue/50'
                     : 'bg-bkg-deepBlue'
@@ -98,15 +141,18 @@ export const AssetsHeader = ({
                     color={currentSortBy ? '#4FC3F7' : '#fff'}
                   />
                 )}
-              </div>
+              </button>
             </Tooltip>
             <Tooltip content={t('tooltip.searchAssets')}>
-              <div
-                className="flex items-center justify-center cursor-pointer p-2 rounded-full bg-bkg-deepBlue"
+              <button
+                ref={searchButtonRef}
+                type="button"
+                aria-label={t('tooltip.searchAssets')}
+                className="flex items-center justify-center cursor-pointer p-2 rounded-full bg-bkg-deepBlue focus-visible:ring-2 focus-visible:ring-brand-royalblue"
                 onClick={() => showSearchInput()}
               >
                 <SearchIcon size={14.5} color="#fff" />
-              </div>
+              </button>
             </Tooltip>
           </div>
           <div className="flex items-center justify-center gap-x-2">
@@ -118,9 +164,12 @@ export const AssetsHeader = ({
                 }`}
               />
               <Tooltip content={t('tooltip.viewTokens')}>
-                <span
+                <button
+                  type="button"
+                  aria-label={t('tooltip.viewTokens')}
+                  aria-pressed={isCoinSelected}
                   className={`cursor-pointer w-6 h-6 rounded-full relative z-10 transition-colors duration-200 
-                              flex items-center justify-center ${
+                              flex items-center justify-center focus-visible:ring-2 focus-visible:ring-brand-royalblue ${
                                 isCoinSelected
                                   ? 'text-white'
                                   : 'text-brand-gray200 hover:text-brand-gray100'
@@ -128,12 +177,15 @@ export const AssetsHeader = ({
                   onClick={() => setIsCoinSelected(true)}
                 >
                   <CoinIcon size={14} />
-                </span>
+                </button>
               </Tooltip>
               <Tooltip content={t('tooltip.viewNFTs')}>
-                <span
+                <button
+                  type="button"
+                  aria-label={t('tooltip.viewNFTs')}
+                  aria-pressed={!isCoinSelected}
                   className={`cursor-pointer w-6 h-6 rounded-full relative z-10 transition-colors duration-200 
-                              flex items-center justify-center ${
+                              flex items-center justify-center focus-visible:ring-2 focus-visible:ring-brand-royalblue ${
                                 !isCoinSelected
                                   ? 'text-white'
                                   : 'text-brand-gray200 hover:text-brand-gray100'
@@ -141,7 +193,7 @@ export const AssetsHeader = ({
                   onClick={() => setIsCoinSelected(false)}
                 >
                   <StickyNoteIcon size={14} />
-                </span>
+                </button>
               </Tooltip>
             </div>
           </div>
@@ -149,20 +201,30 @@ export const AssetsHeader = ({
       ) : null}
 
       {isSearchOpen ? (
-        <div className="flex w-full gap-2">
-          <div
-            className="flex items-center justify-center cursor-pointer p-2 rounded-full bg-bkg-deepBlue"
-            onClick={() => {
-              setIsSearchOpen(false);
-              setSearchValue('');
-            }}
+        <div
+          className="flex w-full gap-2"
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') {
+              event.preventDefault();
+              event.stopPropagation();
+              closeSearch();
+            }
+          }}
+        >
+          <button
+            type="button"
+            aria-label={t('buttons.back')}
+            className="flex items-center justify-center cursor-pointer p-2 rounded-full bg-bkg-deepBlue focus-visible:ring-2 focus-visible:ring-brand-royalblue"
+            onClick={closeSearch}
           >
             <GoBackIcon size={16} color="#fff" />
-          </div>
+          </button>
 
           <div className="w-full flex items-center">
             <input
+              ref={searchInputRef}
               type="text"
+              aria-label={t('assetsHeader.tokenOrContractAddress')}
               placeholder={t('assetsHeader.tokenOrContractAddress')}
               className="w-full max-h-8 border bg-brand-blue800 border-bkg-white200 font-poppins 
               text-xs font-normal p-4 text-brand-gray200 outline-none"
@@ -182,42 +244,64 @@ export const AssetsHeader = ({
       ) : null}
 
       {isSortByOpen ? (
-        <div className="flex w-full bg-brand-blue500 p-6 rounded-2xl font-poppins">
-          <ul className="flex flex-col items-start gap-3.5">
+        <div
+          id="asset-sort-options"
+          className="flex w-full bg-brand-blue500 p-6 rounded-2xl font-poppins"
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') {
+              event.preventDefault();
+              event.stopPropagation();
+              closeSort();
+            }
+          }}
+        >
+          <div className="flex flex-col items-start gap-3.5">
             <h3 className="text-sm font-semibold text-brand-gray200">
               {t('assetsHeader.sortBy')}
             </h3>
-            <li
-              data-id="Balance"
-              className="cursor-pointer flex items-center justify-between w-full hover:text-brand-royalblue transition-colors"
-              onClick={(e) => handleSortSelection(e.currentTarget.dataset.id)}
-            >
-              <p className="text-sm">{t('send.balance')}</p>
-              {currentSortBy === 'Balance' && (
-                <CheckIcon size={16} className="text-brand-royalblue" />
-              )}
-            </li>
-            <li
-              data-id="Name"
-              className="cursor-pointer flex items-center justify-between w-full hover:text-brand-royalblue transition-colors"
-              onClick={(e) => handleSortSelection(e.currentTarget.dataset.id)}
-            >
-              <p className="text-sm">{t('assetsHeader.name')}</p>
-              {currentSortBy === 'Name' && (
-                <CheckIcon size={16} className="text-brand-royalblue" />
-              )}
-            </li>
-            {currentSortBy && (
-              <li
-                className="cursor-pointer flex items-center justify-between w-full hover:text-red-400 transition-colors pt-2 border-t border-brand-gray200/20"
-                onClick={handleClearSort}
-              >
-                <p className="text-sm text-brand-gray300">
-                  {t('assetsHeader.clearSort')}
-                </p>
+            <ul className="flex flex-col items-start gap-3.5 w-full">
+              <li className="w-full">
+                <button
+                  ref={firstSortOptionRef}
+                  type="button"
+                  aria-pressed={currentSortBy === 'Balance'}
+                  className="cursor-pointer flex items-center justify-between w-full hover:text-brand-royalblue transition-colors rounded focus-visible:ring-2 focus-visible:ring-brand-royalblue"
+                  onClick={() => handleSortSelection('Balance')}
+                >
+                  <span className="text-sm">{t('send.balance')}</span>
+                  {currentSortBy === 'Balance' && (
+                    <CheckIcon size={16} className="text-brand-royalblue" />
+                  )}
+                </button>
               </li>
-            )}
-          </ul>
+              <li className="w-full">
+                <button
+                  type="button"
+                  aria-pressed={currentSortBy === 'Name'}
+                  className="cursor-pointer flex items-center justify-between w-full hover:text-brand-royalblue transition-colors rounded focus-visible:ring-2 focus-visible:ring-brand-royalblue"
+                  onClick={() => handleSortSelection('Name')}
+                >
+                  <span className="text-sm">{t('assetsHeader.name')}</span>
+                  {currentSortBy === 'Name' && (
+                    <CheckIcon size={16} className="text-brand-royalblue" />
+                  )}
+                </button>
+              </li>
+              {currentSortBy && (
+                <li className="w-full">
+                  <button
+                    type="button"
+                    className="cursor-pointer flex items-center justify-between w-full hover:text-red-400 transition-colors pt-2 border-t border-brand-gray200/20 rounded focus-visible:ring-2 focus-visible:ring-brand-royalblue"
+                    onClick={handleClearSort}
+                  >
+                    <span className="text-sm text-brand-gray300">
+                      {t('assetsHeader.clearSort')}
+                    </span>
+                  </button>
+                </li>
+              )}
+            </ul>
+          </div>
         </div>
       ) : null}
     </>

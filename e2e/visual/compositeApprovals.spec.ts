@@ -593,7 +593,10 @@ test('real extension fee editor uses the shared dialog layout', async ({}, info)
     await expect(next).toBeEnabled({ timeout: 60_000 });
     await next.click();
     await expect(page).toHaveURL(/send\/confirm/);
-    const edit = page.getByAltText('EditTx', { exact: true });
+    const edit = page.getByRole('button', {
+      name: en.send.editFee,
+      exact: true,
+    });
     await expect(edit).toBeVisible({ timeout: 60_000 });
     await edit.click();
     const dialog = page.getByRole('dialog', {

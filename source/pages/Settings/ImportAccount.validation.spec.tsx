@@ -16,7 +16,6 @@ import ImportAccount from './ImportAccount';
 const mockEmitter = jest.fn();
 const mockAlert = { error: jest.fn() };
 const PUBLIC_ADDRESS = '1BoatSLRHtKNngkdXEeobR76b53LETtpyT';
-let mockImport: () => Promise<void>;
 
 // Use AntD's actual CommonJS-exported form hook in this Node test environment.
 jest.mock('antd/es/form/Form', () => ({
@@ -61,7 +60,6 @@ jest.mock('components/index', () => ({
   PageActionFooter: jest.requireActual('components/PageActionFooter')
     .PageActionFooter,
   Button: ({ children, loading, disabled, onClick, ...props }: any) => {
-    mockImport = onClick;
     const { variant, fullWidth, ...buttonProps } = props;
     return (
       <button
@@ -92,6 +90,7 @@ const pendingValidation = () => {
 const input = () => screen.getByPlaceholderText('settings.yourPrivateKey');
 const importButton = () =>
   screen.getByRole('button', { name: 'buttons.import' });
+const submitForm = () => fireEvent.submit(document.querySelector('form')!);
 
 const originalMessageChannel = globalThis.MessageChannel;
 beforeAll(() => {
@@ -171,7 +170,7 @@ it('does not re-enable import or remain busy when an old validation succeeds aft
   await act(async () => validation.resolve(true));
 
   expect(importButton().hasAttribute('disabled')).toBe(true);
-  await act(async () => mockImport());
+  await act(async () => submitForm());
   expect(importButton().getAttribute('aria-busy')).toBe('false');
   expect(mockEmitter).not.toHaveBeenCalled();
 });
@@ -225,6 +224,50 @@ it('imports the validated current private input with its selected address type',
   expect((await screen.findByRole('status')).textContent).toBe('Imported');
 });
 
+it('submits the valid form through the same guarded private-key import action', async () => {
+  const { container } = render(<ImportAccount />);
+  fireEvent.change(input(), { target: { value: 'synthetic-current-input' } });
+  await waitFor(() =>
+    expect(importButton().hasAttribute('disabled')).toBe(false)
+  );
+  fireEvent.submit(container.querySelector('form')!);
+  await waitFor(() =>
+    expect(mockEmitter).toHaveBeenCalledWith(
+      ['wallet', 'importAccountFromPrivateKey'],
+      ['synthetic-current-input', undefined, { utxoAddressType: 'p2wpkh' }]
+    )
+  );
+  expect(mockEmitter).toHaveBeenCalledTimes(1);
+});
+
+it('submits a watch-only form without invoking private-key import', async () => {
+  const { container } = render(<ImportAccount />);
+  fireEvent.click(screen.getByRole('checkbox'));
+  fireEvent.change(screen.getByPlaceholderText('Address / XPUB / Descriptor'), {
+    target: { value: PUBLIC_ADDRESS },
+  });
+  await waitFor(() =>
+    expect(importButton().hasAttribute('disabled')).toBe(false)
+  );
+  fireEvent.submit(container.querySelector('form')!);
+  await waitFor(() =>
+    expect(mockEmitter).toHaveBeenCalledWith(
+      ['wallet', 'importWatchOnlyFromController'],
+      [PUBLIC_ADDRESS, undefined]
+    )
+  );
+  expect(
+    mockEmitter.mock.calls.filter(
+      ([methods]) => methods[1] === 'importWatchOnlyFromController'
+    )
+  ).toHaveLength(1);
+  expect(
+    mockEmitter.mock.calls.some(
+      ([methods]) => methods[1] === 'importAccountFromPrivateKey'
+    )
+  ).toBe(false);
+});
+
 it('admits only one import while the current request remains pending', async () => {
   const finishes: Array<(value: unknown) => void> = [];
   mockEmitter.mockImplementation(
@@ -235,27 +278,25 @@ it('admits only one import while the current request remains pending', async () 
   await waitFor(() =>
     expect(importButton().hasAttribute('disabled')).toBe(false)
   );
-  const submit = mockImport;
-  let first!: Promise<void>;
-  let second!: Promise<void>;
   act(() => {
-    first = submit();
-    second = submit();
+    submitForm();
+    submitForm();
   });
   try {
     await waitFor(() => expect(mockEmitter).toHaveBeenCalledTimes(1));
   } finally {
     await act(async () => {
       finishes.forEach((finish) => finish({ id: 1 }));
-      await Promise.all([first, second]);
     });
   }
-  expect(importButton().getAttribute('aria-busy')).toBe('false');
+  await waitFor(() =>
+    expect(importButton().getAttribute('aria-busy')).toBe('false')
+  );
 });
 
 it('does not enter a loading state or issue an import for an empty input', async () => {
   render(<ImportAccount />);
-  await act(async () => mockImport());
+  await act(async () => submitForm());
   expect(importButton().getAttribute('aria-busy')).toBe('false');
   expect(mockEmitter).not.toHaveBeenCalled();
 });
@@ -299,7 +340,7 @@ it.each([
       await screen.findByText('settings.invalidWatchOnlyIdentifier')
     ).toBeTruthy();
     expect(importButton().hasAttribute('disabled')).toBe(true);
-    await act(async () => mockImport());
+    await act(async () => submitForm());
     expect(mockEmitter).toHaveBeenCalledWith(
       ['wallet', 'validateWatchOnlyIdentifier'],
       [value]
@@ -334,7 +375,7 @@ it('ignores late successful background validation after the public input changes
   fireEvent.change(publicInput, { target: { value: 'invalid-current-value' } });
   await act(async () => old.resolve(true));
   expect(importButton().hasAttribute('disabled')).toBe(true);
-  await act(async () => mockImport());
+  await act(async () => submitForm());
   expect(
     mockEmitter.mock.calls.every(
       ([method]) => method[1] === 'validateWatchOnlyIdentifier'

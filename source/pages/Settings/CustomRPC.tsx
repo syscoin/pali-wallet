@@ -2,7 +2,6 @@
 import { Switch } from '@headlessui/react';
 import { Form, Input } from 'antd';
 import { useForm } from 'antd/lib/form/Form';
-import { debounce } from 'lodash';
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
@@ -70,9 +69,9 @@ const CustomRPCView = () => {
     }
     return Boolean(isSyscoinSelected);
   });
-  const [networkSuggestions, setNetworkSuggestions] = useState<IChainInfo[]>(
-    []
-  );
+  const [networkQuery, setNetworkQuery] = useState('');
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
+  const [activeSuggestion, setActiveSuggestion] = useState(-1);
   const [testingRpcs, setTestingRpcs] = useState(false);
   const [allChains, setAllChains] = useState<IChainInfo[]>([]);
   const [currentRpcTest, setCurrentRpcTest] = useState<{
@@ -131,6 +130,11 @@ const CustomRPCView = () => {
   };
   const urlInputRef = React.useRef<any>(null);
   const dropdownRef = React.useRef<HTMLDivElement>(null);
+  const suggestionsId = 'custom-rpc-network-suggestions';
+  const closeSuggestions = () => {
+    setSuggestionsOpen(false);
+    setActiveSuggestion(-1);
+  };
 
   const switchBallStyle = isSyscoinRpc
     ? 'translate-x-6 bg-brand-deepPink100'
@@ -677,7 +681,7 @@ const CustomRPCView = () => {
         dropdownRef.current &&
         !dropdownRef.current.contains(event.target as Node)
       ) {
-        setNetworkSuggestions([]);
+        closeSuggestions();
       }
     };
 
@@ -687,22 +691,22 @@ const CustomRPCView = () => {
     };
   }, []);
 
-  // Smart network search with instant filtering from preloaded data
-  const searchNetworks = debounce((query: string) => {
+  // Filtering is local and synchronous, so a delayed search cannot reopen the
+  // list after Escape, blur, or a network-type change.
+  const networkSuggestions = React.useMemo(() => {
+    const query = networkQuery;
     if (!query || !query.trim()) {
-      setNetworkSuggestions([]);
-      return;
+      return [];
     }
 
     // Don't search if query is too short
     if (query.trim().length < 2) {
-      setNetworkSuggestions([]);
-      return;
+      return [];
     }
 
     // Early return if no chains loaded yet
     if (allChains.length === 0) {
-      return;
+      return [];
     }
 
     const lowerQuery = query.toLowerCase().trim();
@@ -746,13 +750,35 @@ const CustomRPCView = () => {
       .sort((a, b) => (b.score || 0) - (a.score || 0))
       .slice(0, 6);
 
-    setNetworkSuggestions(sortedResults);
-  }, 10); // Reduced debounce for instant feel
+    return sortedResults;
+  }, [networkQuery, allChains]);
+  const showSuggestions =
+    suggestionsOpen && networkSuggestions.length > 0 && !testingRpcs;
+  const activeSuggestionId =
+    showSuggestions &&
+    activeSuggestion >= 0 &&
+    activeSuggestion < networkSuggestions.length
+      ? `${suggestionsId}-${activeSuggestion}`
+      : undefined;
+
+  useEffect(() => {
+    setNetworkQuery('');
+    closeSuggestions();
+  }, [isSyscoinRpc]);
+
+  useEffect(() => {
+    if (activeSuggestionId) {
+      document
+        .getElementById(activeSuggestionId)
+        ?.scrollIntoView?.({ block: 'nearest' });
+    }
+  }, [activeSuggestionId]);
 
   // Handle network selection from autocomplete
   const handleNetworkSelect = async (chain: IChainInfo) => {
     // Clear suggestions immediately to close dropdown
-    setNetworkSuggestions([]);
+    closeSuggestions();
+    setNetworkQuery(chain.name);
 
     // Fill form fields immediately for instant UX, always updating symbol like chainId
     const formValues: any = {
@@ -926,84 +952,98 @@ const CustomRPCView = () => {
     );
   AutoCompleteIcon.displayName = 'AutoCompleteIcon';
 
-  // Memoize the suggestion item to prevent unnecessary re-renders
-  const NetworkSuggestionItem = React.memo<{
+  // Render keyed option elements directly: declaring a component inside this
+  // view would remount the option when keyboard/pointer selection changes.
+  const renderNetworkSuggestion = ({
+    active,
+    chain,
+    id,
+    onActivate,
+    onSelect,
+  }: {
+    active: boolean;
     chain: IChainInfo;
+    id: string;
+    onActivate: () => void;
     onSelect: () => void;
-  }>(
-    ({ chain, onSelect }) => {
-      // Check if network name is long and might be truncated - more aggressive threshold
-      const isLongName = chain.name.length > 18;
+  }) => {
+    // Check if network name is long and might be truncated - more aggressive threshold
+    const isLongName = chain.name.length > 18;
 
-      return (
-        <div
-          className="group relative flex items-center gap-2 py-2.5 px-4 hover:bg-gradient-to-r hover:from-brand-blue600 hover:to-brand-blue500 cursor-pointer transition-all duration-300 ease-in-out border-b border-dashed border-alpha-whiteAlpha300 last:border-b-0 hover:border-brand-royalblue hover:shadow-lg hover:shadow-brand-blue600/20 active:scale-[0.98] active:bg-brand-blue700"
-          onMouseDown={(e) => {
-            e.preventDefault(); // Prevent blur from firing first
-            onSelect();
-          }}
-        >
-          {/* Background glow effect on hover */}
-          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-brand-blue600/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-lg"></div>
+    return (
+      <div
+        key={id}
+        id={id}
+        role="option"
+        aria-selected={active}
+        className={`group relative flex items-center gap-2 py-2.5 px-4 hover:bg-gradient-to-r hover:from-brand-blue600 hover:to-brand-blue500 cursor-pointer transition-all duration-300 ease-in-out border-b border-dashed border-alpha-whiteAlpha300 last:border-b-0 hover:border-brand-royalblue hover:shadow-lg hover:shadow-brand-blue600/20 active:scale-[0.98] active:bg-brand-blue700 ${
+          active
+            ? 'bg-brand-blue500 ring-1 ring-inset ring-brand-royalblue'
+            : ''
+        }`}
+        onMouseEnter={onActivate}
+        onMouseDown={(e) => {
+          e.preventDefault(); // Keep focus on the combobox input.
+        }}
+        onClick={onSelect}
+      >
+        {/* Background glow effect on hover */}
+        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-brand-blue600/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-lg"></div>
 
-          {/* Icon with enhanced hover styling */}
-          <div className="relative flex-shrink-0 transform group-hover:scale-110 transition-transform duration-300 ease-out group-hover:brightness-125">
-            <div className="relative group-hover:drop-shadow-lg">
-              <AutoCompleteIcon chain={chain} size={24} />
-              {/* More visible ring effect on hover */}
-              <div className="absolute inset-0 rounded-full ring-2 ring-transparent group-hover:ring-brand-white/40 group-hover:ring-4 transition-all duration-300"></div>
-            </div>
-          </div>
-
-          {/* Content with improved responsive layout */}
-          <div className="flex-1 min-w-0 relative z-10">
-            {/* Network name and chain ID - better spacing */}
-            <div className="flex items-center justify-between gap-2 mb-0.5">
-              {/* Network name with proper tooltip logic */}
-              <Tooltip
-                content={isLongName ? chain.name : null}
-                childrenClassName="flex-1 min-w-0"
-                placement="top"
-              >
-                <span className="font-medium text-brand-white group-hover:text-white group-hover:font-semibold truncate text-xs leading-tight text-left block w-full group-hover:drop-shadow-sm transition-all duration-300">
-                  {chain.name}
-                </span>
-              </Tooltip>
-
-              {/* Chain ID badge */}
-              <span className="text-xs px-2 py-0.5 text-white bg-brand-royalblue rounded-full font-medium shadow-sm group-hover:shadow-md group-hover:bg-brand-blue500 transform group-hover:scale-105 transition-all duration-300 flex-shrink-0">
-                {chain.chainId}
-              </span>
-            </div>
-
-            {/* Currency and RPC info - more compact */}
-            <div className="flex items-center justify-start gap-1.5 text-xs text-brand-gray200 group-hover:text-brand-white/90 transition-colors duration-300">
-              <span className="inline-flex items-center gap-1 font-medium text-left">
-                <span className="text-brand-royalblue group-hover:text-white font-semibold text-xs">
-                  ${chain.nativeCurrency.symbol.toUpperCase()}
-                </span>
-                <span className="text-brand-gray200 group-hover:text-brand-white/50 text-xs">
-                  •
-                </span>
-                <span className="font-mono text-xs text-brand-gray300 group-hover:text-brand-white/80">
-                  {chain.rpc?.length || 0} {isSyscoinRpc ? 'Blockbook' : 'RPC'}
-                  {(chain.rpc?.length || 0) !== 1 ? 's' : ''}
-                </span>
-              </span>
-            </div>
-          </div>
-
-          {/* Enhanced arrow indicator */}
-          <div className="flex-shrink-0 opacity-0 group-hover:opacity-100 transform translate-x-1 group-hover:translate-x-0 transition-all duration-300 ease-out">
-            <div className="w-2 h-2 border-r-2 border-t-2 border-brand-white/80 group-hover:border-white rotate-45 group-hover:drop-shadow-sm"></div>
+        {/* Icon with enhanced hover styling */}
+        <div className="relative flex-shrink-0 transform group-hover:scale-110 transition-transform duration-300 ease-out group-hover:brightness-125">
+          <div className="relative group-hover:drop-shadow-lg">
+            <AutoCompleteIcon chain={chain} size={24} />
+            {/* More visible ring effect on hover */}
+            <div className="absolute inset-0 rounded-full ring-2 ring-transparent group-hover:ring-brand-white/40 group-hover:ring-4 transition-all duration-300"></div>
           </div>
         </div>
-      );
-    },
-    (prevProps, nextProps) =>
-      prevProps.chain.chainId === nextProps.chain.chainId
-  );
-  NetworkSuggestionItem.displayName = 'NetworkSuggestionItem';
+
+        {/* Content with improved responsive layout */}
+        <div className="flex-1 min-w-0 relative z-10">
+          {/* Network name and chain ID - better spacing */}
+          <div className="flex items-center justify-between gap-2 mb-0.5">
+            {/* Network name with proper tooltip logic */}
+            <Tooltip
+              content={isLongName ? chain.name : null}
+              childrenClassName="flex-1 min-w-0"
+              placement="top"
+            >
+              <span className="font-medium text-brand-white group-hover:text-white group-hover:font-semibold truncate text-xs leading-tight text-left block w-full group-hover:drop-shadow-sm transition-all duration-300">
+                {chain.name}
+              </span>
+            </Tooltip>
+
+            {/* Chain ID badge */}
+            <span className="text-xs px-2 py-0.5 text-white bg-brand-royalblue rounded-full font-medium shadow-sm group-hover:shadow-md group-hover:bg-brand-blue500 transform group-hover:scale-105 transition-all duration-300 flex-shrink-0">
+              {chain.chainId}
+            </span>
+          </div>
+
+          {/* Currency and RPC info - more compact */}
+          <div className="flex items-center justify-start gap-1.5 text-xs text-brand-gray200 group-hover:text-brand-white/90 transition-colors duration-300">
+            <span className="inline-flex items-center gap-1 font-medium text-left">
+              <span className="text-brand-royalblue group-hover:text-white font-semibold text-xs">
+                ${chain.nativeCurrency.symbol.toUpperCase()}
+              </span>
+              <span className="text-brand-gray200 group-hover:text-brand-white/50 text-xs">
+                •
+              </span>
+              <span className="font-mono text-xs text-brand-gray300 group-hover:text-brand-white/80">
+                {chain.rpc?.length || 0} {isSyscoinRpc ? 'Blockbook' : 'RPC'}
+                {(chain.rpc?.length || 0) !== 1 ? 's' : ''}
+              </span>
+            </span>
+          </div>
+        </div>
+
+        {/* Enhanced arrow indicator */}
+        <div className="flex-shrink-0 opacity-0 group-hover:opacity-100 transform translate-x-1 group-hover:translate-x-0 transition-all duration-300 ease-out">
+          <div className="w-2 h-2 border-r-2 border-t-2 border-brand-white/80 group-hover:border-white rotate-45 group-hover:drop-shadow-sm"></div>
+        </div>
+      </div>
+    );
+  };
 
   if (state?.isEditing && !currentNetwork) return null;
 
@@ -1145,9 +1185,22 @@ const CustomRPCView = () => {
               ]}
             >
               {/* Autocomplete input for both EVM and UTXO networks */}
-              <div className="relative w-full" ref={dropdownRef}>
+              <div
+                className="relative w-full"
+                ref={dropdownRef}
+                onBlur={(event) => {
+                  if (!event.currentTarget.contains(event.relatedTarget))
+                    closeSuggestions();
+                }}
+              >
                 <Input
                   type="text"
+                  role="combobox"
+                  aria-label={t('settings.label')}
+                  aria-autocomplete="list"
+                  aria-expanded={showSuggestions}
+                  aria-controls={suggestionsId}
+                  aria-activedescendant={activeSuggestionId}
                   disabled={isInputDisableByEditMode}
                   placeholder={`${t('settings.label')} - ${t(
                     'settings.searchNetworksPlaceholder',
@@ -1157,13 +1210,60 @@ const CustomRPCView = () => {
                   onChange={(e) => {
                     const value = e.target.value;
                     form.setFieldsValue({ label: value });
-                    searchNetworks(value);
+                    setNetworkQuery(value);
+                    setSuggestionsOpen(true);
+                    setActiveSuggestion(-1);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.nativeEvent.isComposing || testingRpcs) return;
+                    if (event.key === 'Escape') {
+                      if (suggestionsOpen) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        closeSuggestions();
+                      }
+                    } else if (
+                      (event.key === 'ArrowDown' || event.key === 'ArrowUp') &&
+                      networkSuggestions.length > 0
+                    ) {
+                      event.preventDefault();
+                      setSuggestionsOpen(true);
+                      const last = networkSuggestions.length - 1;
+                      setActiveSuggestion((current) =>
+                        event.key === 'ArrowDown'
+                          ? !showSuggestions || current < 0 || current === last
+                            ? 0
+                            : current + 1
+                          : !showSuggestions || current <= 0
+                          ? last
+                          : current - 1
+                      );
+                    } else if (event.key === 'Enter' && showSuggestions) {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      void handleNetworkSelect(
+                        networkSuggestions[
+                          Math.min(
+                            networkSuggestions.length - 1,
+                            Math.max(0, activeSuggestion)
+                          )
+                        ]
+                      );
+                    } else if (event.key === 'Tab') {
+                      closeSuggestions();
+                    }
                   }}
                   value={form.getFieldValue('label')}
                 />
                 <div
+                  id={suggestionsId}
+                  role="listbox"
+                  aria-label={t('settings.searchNetworksPlaceholder', {
+                    networkType: isSyscoinRpc ? 'UTXO' : 'EVM',
+                  })}
+                  aria-hidden={!showSuggestions}
                   className={`absolute top-full left-0 right-0 z-50 mt-2 bg-brand-blue600 border border-brand-royalblue/30 rounded-xl shadow-2xl shadow-brand-blue600/40 max-h-80 overflow-hidden transition-all duration-300 ease-out backdrop-blur-sm ${
-                    networkSuggestions.length > 0 && !testingRpcs
+                    showSuggestions
                       ? 'opacity-100 visible transform scale-100'
                       : 'opacity-0 invisible pointer-events-none transform scale-95'
                   }`}
@@ -1194,16 +1294,17 @@ const CustomRPCView = () => {
                         {t('settings.noMatchingNetworks')}
                       </div>
                     ) : (
-                      networkSuggestions.map((chain) => (
-                        <NetworkSuggestionItem
-                          key={`network-${chain.chainId}`}
-                          chain={chain}
-                          onSelect={() => {
-                            setNetworkSuggestions([]); // Close immediately
-                            handleNetworkSelect(chain);
-                          }}
-                        />
-                      ))
+                      networkSuggestions.map((chain, index) =>
+                        renderNetworkSuggestion({
+                          id: `${suggestionsId}-${index}`,
+                          active: activeSuggestion === index,
+                          chain,
+                          onActivate: () => setActiveSuggestion(index),
+                          onSelect: () => {
+                            void handleNetworkSelect(chain);
+                          },
+                        })
+                      )
                     )}
                   </div>
 

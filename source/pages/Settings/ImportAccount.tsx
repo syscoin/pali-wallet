@@ -145,6 +145,7 @@ const ImportAccountView = () => {
           autoComplete="off"
           form={form}
           disabled={isImporting}
+          onFinish={handleImportAccount}
           onValuesChange={(changed) => {
             if (Object.prototype.hasOwnProperty.call(changed, 'privKey')) {
               validationRevision.current += 1;
@@ -326,21 +327,19 @@ const ImportAccountView = () => {
               id="import-account-identifier"
             />
           </Form.Item>
+          <PageActionFooter>
+            <Button
+              variant="neutral"
+              className="text-sm text-brand-royalblue"
+              type="submit"
+              loading={isImporting}
+              fullWidth={true}
+              disabled={watchOnly ? !validIdentifier : !validPrivateKey}
+            >
+              {t('buttons.import')}
+            </Button>
+          </PageActionFooter>
         </Form>
-
-        <PageActionFooter>
-          <Button
-            variant="neutral"
-            className="text-sm text-brand-royalblue"
-            type="button"
-            loading={isImporting}
-            onClick={handleImportAccount}
-            fullWidth={true}
-            disabled={watchOnly ? !validIdentifier : !validPrivateKey}
-          >
-            {t('buttons.import')}
-          </Button>
-        </PageActionFooter>
       </div>
     </>
   );

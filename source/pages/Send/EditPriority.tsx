@@ -1,6 +1,6 @@
 import { AdjustmentsIcon } from '@heroicons/react/outline';
 import { Form, Input } from 'antd';
-import React, { useId, useState } from 'react';
+import React, { useId, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import {
@@ -59,6 +59,7 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
   const { t } = useTranslation();
   const fieldId = useId();
   const [form] = Form.useForm();
+  const editorWasOpen = useRef(false);
 
   // Validation states for visual feedback
   // Start with null to avoid showing validation errors before user interaction
@@ -239,13 +240,30 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
 
   // Initialize form when modal opens
   React.useEffect(() => {
-    if (!showModal) return;
+    if (!showModal) {
+      editorWasOpen.current = false;
+      return;
+    }
+    // Form edits are a local draft until Save. Do not replace them on a
+    // rerender or publish them to the transaction behind this dialog.
+    if (editorWasOpen.current) return;
+    editorWasOpen.current = true;
+
+    const currentPrice = isSendLegacyTransaction
+      ? customFee.gasPrice
+      : customFee.maxFeePerGas;
+    const quotedPrice = isSendLegacyTransaction ? gasPrice : maxFeePerGas;
+    const ratio =
+      customFee.isCustom && quotedPrice > 0
+        ? (currentPrice ?? 0) / quotedPrice
+        : 1;
+    const openingPriority =
+      Math.abs(ratio - 0.8) < 0.01 ? 0 : Math.abs(ratio - 1.2) < 0.01 ? 2 : 1;
+    setPriority(openingPriority);
 
     // Preserve the quoted/edited gas units; price presets do not change gas.
     const feeGasLimit = fee?.gasLimit ?? defaultGasLimit;
-    const validGasLimit =
-      form.getFieldValue('gasLimit') ??
-      (customFee.isCustom ? customFee.gasLimit : feeGasLimit);
+    const validGasLimit = customFee.isCustom ? customFee.gasLimit : feeGasLimit;
 
     // If we have custom values, use them
     if (customFee.isCustom) {
@@ -285,7 +303,8 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
       }
     } else {
       // Use default values with current priority multiplier
-      const multiplier = priority === 0 ? 0.8 : priority === 2 ? 1.2 : 1;
+      const multiplier =
+        openingPriority === 0 ? 0.8 : openingPriority === 2 ? 1.2 : 1;
 
       if (isSendLegacyTransaction) {
         const validGasPrice = gasPrice ?? 0;
@@ -347,59 +366,11 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
     priority,
   ]);
 
-  // Update form values when priority changes
   React.useEffect(() => {
-    if (!showModal || customFee.isCustom) return;
-
-    const multiplier = priority === 0 ? 0.8 : priority === 2 ? 1.2 : 1;
-    const feeGasLimit = fee?.gasLimit ?? defaultGasLimit;
-    const validGasLimit = form.getFieldValue('gasLimit') ?? feeGasLimit;
-
-    if (isSendLegacyTransaction) {
-      const validGasPrice = gasPrice ?? 0;
-      const calculatedGasPrice = Number(
-        removeScientificNotation(multiplier * validGasPrice)
-      );
-      const finalGasPrice = isNaN(calculatedGasPrice) ? 0 : calculatedGasPrice;
-
-      form.setFieldsValue({
-        gasLimit: validGasLimit, // Always ensure gas limit is set
-        gasPrice: finalGasPrice,
-      });
-      // Validate after setting values with a small delay to ensure form is updated
-      setTimeout(() => {
-        validateGasLimit(validGasLimit);
-        validateGasPrice(finalGasPrice);
-      }, 0);
-    } else {
-      const validMaxPriorityFeePerGas = maxPriorityFeePerGas ?? 0;
-      const validMaxFeePerGas = maxFeePerGas ?? 0;
-
-      const calculatedPriorityFee = Number(
-        removeScientificNotation(multiplier * validMaxPriorityFeePerGas)
-      );
-      const calculatedMaxFee = Number(
-        removeScientificNotation(multiplier * validMaxFeePerGas)
-      );
-
-      const finalPriorityFee = isNaN(calculatedPriorityFee)
-        ? 0
-        : calculatedPriorityFee;
-      const finalMaxFee = isNaN(calculatedMaxFee) ? 0 : calculatedMaxFee;
-
-      form.setFieldsValue({
-        gasLimit: validGasLimit, // Always ensure gas limit is set
-        maxPriorityFeePerGas: finalPriorityFee,
-        maxFeePerGas: finalMaxFee,
-      });
-      // Validate after setting values with a small delay to ensure form is updated
-      setTimeout(() => {
-        validateGasLimit(validGasLimit);
-        validatePriorityFee(finalPriorityFee);
-        validateMaxFee(finalMaxFee);
-      }, 0);
-    }
-  }, [priority]);
+    // Preserve the draft on quote refresh, but never retain a stale valid
+    // indication if the successfully estimated minimum gas requirement moves.
+    if (showModal) validateGasLimit(form.getFieldValue('gasLimit'));
+  }, [showModal, minimumGasLimit]);
 
   // Check if all fields are valid
   // Allow form submission if no field is explicitly invalid (false)
@@ -471,14 +442,6 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
         validateGasLimit(validGasLimit);
         validateGasPrice(validGasPrice);
       }, 0);
-      setCustomFee({
-        isCustom: value !== 1,
-        gasLimit: validGasLimit,
-        gasPrice: validGasPrice,
-        // Clear EIP-1559 fields for legacy transactions
-        maxFeePerGas: 0,
-        maxPriorityFeePerGas: 0,
-      });
     } else {
       const newPriorityFee = Number(
         removeScientificNotation(multiplier * (maxPriorityFeePerGas ?? 0))
@@ -501,15 +464,6 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
         validatePriorityFee(validPriorityFee);
         validateMaxFee(validMaxFee);
       }, 0);
-
-      setCustomFee({
-        isCustom: value !== 1,
-        gasLimit: validGasLimit,
-        maxPriorityFeePerGas: validPriorityFee,
-        maxFeePerGas: validMaxFee,
-        // Clear gasPrice for EIP-1559 transactions
-        gasPrice: 0,
-      });
     }
   };
 
@@ -544,24 +498,10 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
         validateGasPrice(validNumValue);
         break;
     }
-
-    setCustomFee((prev) => ({
-      ...prev,
-      isCustom: true,
-      [field]: validNumValue,
-    }));
   };
 
   const handleClose = () => {
-    // Reset to default values, ensuring all are valid numbers and gas limit is set
-    setCustomFee((prev) => ({
-      ...prev,
-      isCustom: false,
-      maxPriorityFeePerGas: maxPriorityFeePerGas ?? 0,
-      maxFeePerGas: maxFeePerGas ?? 0,
-      gasPrice: gasPrice ?? 0,
-      gasLimit: gasLimit || defaultGasLimit, // Always ensure gas limit is set
-    }));
+    // Discard only this editor's draft; preserve the last saved transaction fee.
     setPriority(1);
     form.resetFields();
     // Reset validation states
