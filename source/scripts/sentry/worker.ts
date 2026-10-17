@@ -7,6 +7,10 @@ import {
   verifySentryGovernanceVote,
   validateSentryGovernanceVoteRequest,
   reviewSentryGovernanceVote,
+  reviewSentryOperation,
+  reviewSentryManagementOperation,
+  verifySentryOperation,
+  verifySentryManagementOperation,
 } from '@sidhujag/sysweb3-sentry';
 
 import type { SentryCryptoJob } from 'utils/sentry/workerClient';
@@ -14,6 +18,23 @@ import type { SentryCryptoJob } from 'utils/sentry/workerClient';
 self.onmessage = async (event: MessageEvent<{ job: SentryCryptoJob }>) => {
   try {
     const { job } = event.data;
+    if (job.type === 'verifyFee' || job.type === 'reviewOperation') {
+      const service = job.request.operation === 'updateService';
+      const valid =
+        job.type === 'reviewOperation' ||
+        (service
+          ? await verifySentryOperation(job.request as any, job.context as any)
+          : await verifySentryManagementOperation(
+              job.request as any,
+              job.context
+            ));
+      if (!valid) throw new Error('Incomplete or invalid Sentry authorization');
+      const result = service
+        ? reviewSentryOperation(job.request as any, job.context as any)
+        : reviewSentryManagementOperation(job.request as any, job.context);
+      self.postMessage({ success: true, result });
+      return;
+    }
     if (job.type === 'validateVote' || job.type === 'reviewVote') {
       const result =
         job.type === 'validateVote'

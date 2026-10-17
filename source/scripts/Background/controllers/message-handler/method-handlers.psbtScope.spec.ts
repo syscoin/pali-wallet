@@ -38,6 +38,7 @@ describe('extension-owned PSBT approval context', () => {
       vaultGlobal: { activeSlip44: 57 },
     });
     mockController.mockReturnValue({
+      wallet: { prepareSentryFeePsbt: jest.fn().mockResolvedValue(undefined) },
       dapp: {
         get: () => ({
           accountId: 0,
@@ -58,6 +59,7 @@ describe('extension-owned PSBT approval context', () => {
             {
               psbt: 'fixture',
               approvedContext: { account: { id: 99 }, rpcUrl: 'attacker-rpc' },
+              sentryFeeAuthorization: 'attacker-token',
             },
           ],
         },
@@ -70,6 +72,7 @@ describe('extension-owned PSBT approval context', () => {
       expect(popupPromise).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
+            sentryFeeAuthorization: undefined,
             approvedContext: {
               account: {
                 id: 0,
@@ -87,6 +90,35 @@ describe('extension-owned PSBT approval context', () => {
       );
     }
   );
+  it('binds a background-only Sentry fee token to the actual request origin', async () => {
+    mockController().wallet.prepareSentryFeePsbt.mockResolvedValue(
+      'trusted-token'
+    );
+    await new SysMethodHandler().handle({
+      originalRequest: {
+        host: 'site.example',
+        method: 'sys_sign',
+        params: [{ psbt: 'fixture' }],
+      },
+      methodConfig: {
+        hasPopup: true,
+        popupRoute: 'sign',
+        popupEventName: 'sign',
+      },
+    } as any);
+    expect(mockController().wallet.prepareSentryFeePsbt).toHaveBeenCalledWith(
+      { psbt: 'fixture' },
+      'site.example',
+      true
+    );
+    expect(popupPromise).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          sentryFeeAuthorization: 'trusted-token',
+        }),
+      })
+    );
+  });
   it('refuses a different globally active account before opening approval', async () => {
     mockState().vault.activeAccount.id = 1;
     await expect(

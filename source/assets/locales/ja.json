@@ -1088,6 +1088,18 @@
     "wrongNetwork": "このスマートアカウントはチェーン {{accountChainId}} に属しています。モジュールを変更する前に、現在のチェーン {{activeChainId}} から切り替えてください。"
   },
   "sentry": {
+    "feeTitle": "Network fee for your authorized Sentry operation",
+    "feeHelp": "Authorizes the network-fee inputs for this operation. The site submits the signed transaction.",
+    "feeChanges": "Authorized changes",
+    "feeType": "Sentry node operation",
+    "feeOperations": {
+      "register": "Register node",
+      "updateService": "Update service / NEVM address",
+      "updateRegistrar": "Update owner settings",
+      "revoke": "Revoke operator",
+      "registerOperator": "Register operator",
+      "rotateOperator": "Rotate operator"
+    },
     "switchToSyscoinMainnetOrSyscoinTestnetUTXO": "Switch to Syscoin mainnet or Syscoin testnet UTXO to manage Sentry operators.",
     "loadingSentrySettings": "Loading Sentry settings…",
     "sentryAuthorityKeys": "Sentry authority keys",
