@@ -19,7 +19,7 @@ import {
   UTXO_SPONSOR_PATH,
 } from '../harness/utxoFixture';
 
-import type { BrowserContext, Page } from '@playwright/test';
+import type { BrowserContext, Page, Request } from '@playwright/test';
 
 type Fault = 'timeout' | 'rate-limit' | 'offline';
 const modes = { quick: 4, standard: 24, soak: 64 } as const;
@@ -109,6 +109,8 @@ test('offline sustained wallet stress: pending MAX, edits, vault switches, read 
   }> = [];
   const pageErrors: string[] = [];
   const readFaults: Array<{ details: string; fault: Fault }> = [];
+  const primarySummaryReads = new Set<Request>();
+  let lastPrimarySummaryCompletedAt = 0;
   const secondaryReads: string[] = [];
   const historyFullTransactionReadDeltas: number[] = [];
   const fixtureObservations: Array<
@@ -127,6 +129,27 @@ test('offline sustained wallet stress: pending MAX, edits, vault switches, read 
     measurements.push({ name, durationMs: Date.now() - start });
   };
   const installRoutes = async (context: BrowserContext) => {
+    const isPrimarySummaryRead = (request: Request) => {
+      const url = new URL(request.url());
+      return (
+        request.method() === 'GET' &&
+        [
+          'https://blockbook-dev.syscoin.org',
+          'https://explorer-blockbook-dev.syscoin.org',
+        ].includes(url.origin) &&
+        url.pathname === `/api/v2/xpub/${chain.fixture.userXpub}` &&
+        url.searchParams.get('details') === 'txsummary'
+      );
+    };
+    context.on('request', (request) => {
+      if (isPrimarySummaryRead(request)) primarySummaryReads.add(request);
+    });
+    const summaryCompleted = (request: Request) => {
+      if (primarySummaryReads.delete(request))
+        lastPrimarySummaryCompletedAt = Date.now();
+    };
+    context.on('requestfinished', summaryCompleted);
+    context.on('requestfailed', summaryCompleted);
     const observation = await installUtxoFixtureRoutes(
       context,
       chain.fixture,
@@ -579,6 +602,18 @@ test('offline sustained wallet stress: pending MAX, edits, vault switches, read 
             .locator('span.truncate')
             .click();
           await ensureHome();
+          // A successful background history read can finish just before the
+          // account switch. The request wrapper intentionally reuses that
+          // result for 100ms. Arm only after all such reads have settled and
+          // the reuse window has expired, so this tests a real network fault
+          // rather than racing an already successful response.
+          await expect
+            .poll(
+              () =>
+                primarySummaryReads.size === 0 &&
+                Date.now() - lastPrimarySummaryCompletedAt >= 250
+            )
+            .toBe(true);
           fault = injected;
           await page.locator('#general-settings-button').click();
           await page
