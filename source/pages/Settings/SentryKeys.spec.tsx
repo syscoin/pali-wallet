@@ -243,10 +243,18 @@ it('clears a committed batch even when the following settings refresh fails', as
   });
   fireEvent.click(screen.getByRole('checkbox'));
   fireEvent.click(screen.getByRole('button', { name: 'buttons.import' }));
-  await screen.findByText('Refresh failed');
-  expect(screen.getByLabelText('Sentry keys (one per line)')).toHaveValue('');
-  expect(screen.getByLabelText('Wallet password')).toHaveValue('');
-  expect(screen.getByRole('checkbox')).not.toBeChecked();
+  await screen.findByText(mockEnglish.sentry.unableToLoadSentrySettings);
+  expect(screen.getByText(mockEnglish.sentry.batchImported)).toBeVisible();
+  expect(screen.queryByLabelText('Sentry keys (one per line)')).toBeNull();
+  expect(screen.queryByLabelText('Wallet password')).toBeNull();
+  expect(
+    screen.getByRole('button', { name: 'Import Sentry key' })
+  ).toBeVisible();
+  expect(
+    mockEmitter.mock.calls.filter(
+      ([method]) => method[1] === 'importSentryKeys'
+    )
+  ).toHaveLength(1);
 });
 
 it('invalidates single-key backup acknowledgement when its label changes', async () => {

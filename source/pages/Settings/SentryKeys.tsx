@@ -234,10 +234,21 @@ const SentryKeys = () => {
         active.current &&
         owner.current === current &&
         inFlight.current === job
-      )
-        setError(
-          reason?.message || t('sentry.unableToCompleteSentryOperation')
-        );
+      ) {
+        if (importCommitted) {
+          setMode('list');
+          setNotice(
+            importMode === 'batch'
+              ? t('sentry.batchImported', { count: batch.entries.length })
+              : t('sentry.operatorKeyImportedSecurely')
+          );
+          setError(t('sentry.unableToLoadSentrySettings'));
+        } else {
+          setError(
+            reason?.message || t('sentry.unableToCompleteSentryOperation')
+          );
+        }
+      }
     } finally {
       if (inFlight.current === job) {
         inFlight.current = null;
