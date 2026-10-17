@@ -224,7 +224,7 @@ const SentryKeys = () => {
             </p>
           </div>
         </div>
-        <p className="mt-3 text-xs text-brand-gray200">
+        <p className="mt-3 break-words text-xs text-brand-gray200">
           {network.label} · {settings?.keys.length || 0}{' '}
           {t('sentry.importedKeys')}
         </p>
