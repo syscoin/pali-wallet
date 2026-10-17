@@ -296,11 +296,11 @@ describe('custom token validation cancellation', () => {
       find(tree, (element) => element.props.id === 'custom-token-id')?.props
         .value
     ).toBe('0');
-    // Restored identifiers are preserved, but an old ownership/balance result
-    // must not make a new token ID immediately importable.
+    // Restored identifiers retain only a loading region, never an old
+    // ownership/balance result or an immediately importable asset.
     expect(
-      find(tree, (element) => element.type === 'asset-list')
-    ).toBeUndefined();
+      find(tree, (element) => element.type === 'asset-list')?.props
+    ).toMatchObject({ assets: [], isLoading: true });
     resolve([{ tokenId: '0', verified: true, balance: 1, rawBalance: '1' }]);
     await jest.advanceTimersByTimeAsync(0);
     const assetList = find(

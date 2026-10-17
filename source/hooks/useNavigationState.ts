@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSelector } from 'react-redux';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { v4 as uuidv4 } from 'uuid';
 
 import {
   clearNavigationState,
@@ -144,6 +145,7 @@ export const useNavigationState = () => {
             returnContext: saved.returnContext,
             scrollPosition: saved.scrollPosition,
             scrollPositions: saved.scrollPositions,
+            scrollRestorationKey: uuidv4(),
             walletScope: saved.walletScope,
           },
         });

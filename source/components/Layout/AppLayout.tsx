@@ -2,6 +2,7 @@ import React, { FC, useMemo, memo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { v4 as uuidv4 } from 'uuid';
 
 import dotsImage from 'assets/all_assets/dotsHeader.png';
 import { Header } from 'components/Header/Header';
@@ -325,6 +326,7 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
             ...policyParentScrollPositions,
             'smart-account-policy': policyParentScroll || 0,
           },
+          scrollRestorationKey: uuidv4(),
         },
       });
       return;

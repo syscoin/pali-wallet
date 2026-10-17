@@ -313,6 +313,23 @@ it('returns to a same-network chooser after selection without restoring the prev
   });
   expect(navigate.mock.calls[0][1].state.formValues).toBeUndefined();
 });
+
+it('marks each explicit Back restoration freshly without persisting its marker', async () => {
+  const context = createBrowsingNavigationContext({ pathname: '/tokens/add' });
+  const navigate = jest.fn();
+  navigateBack(navigate, { state: { returnContext: context } });
+  navigateBack(navigate, { state: { returnContext: context } });
+  const first = navigate.mock.calls[0][1].state.scrollRestorationKey;
+  const second = navigate.mock.calls[1][1].state.scrollRestorationKey;
+  expect(first).toEqual(expect.any(String));
+  expect(second).toEqual(expect.any(String));
+  expect(first).not.toBe(second);
+  await saveNavigationState('/tokens/add', undefined, {
+    scrollRestorationKey: first,
+    customTokenId: '123',
+  });
+  expect(mockStored.state).not.toHaveProperty('scrollRestorationKey');
+});
 it.each([
   null,
   {},

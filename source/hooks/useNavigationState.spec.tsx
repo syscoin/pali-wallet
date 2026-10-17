@@ -125,6 +125,7 @@ it('restores the saved safe leaf immediately after authentication, with context 
     returnContext: saved().returnContext,
     scrollPosition: 20,
     scrollPositions: { 'wallet-page': 180 },
+    scrollRestorationKey: expect.any(String),
     walletScope: mockScope,
   });
   expect(mockLoad).toHaveBeenCalledTimes(1);

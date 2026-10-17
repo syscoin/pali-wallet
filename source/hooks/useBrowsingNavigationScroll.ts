@@ -1,13 +1,31 @@
-import { useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useEffect, useRef } from 'react';
+import { useLocation, useNavigationType } from 'react-router-dom';
 
 /** Restore inner scroll panes after lazy content and bounded history replay render. */
 export const useBrowsingNavigationScroll = (walletScope: string) => {
   const location = useLocation();
-  const positionsKey = JSON.stringify(location.state?.scrollPositions || {});
-  const windowPosition = location.state?.scrollPosition;
-  // Different assets can share a pathname; the history key marks a new view.
+  const navigationType = useNavigationType();
+  const requestKey = JSON.stringify([
+    location.pathname,
+    location.search,
+    location.hash,
+    walletScope,
+    location.state?.walletScope,
+    location.state?.scrollPositions || {},
+    location.state?.scrollPosition,
+    location.state?.scrollRestorationKey,
+  ]);
+  const previousRequest = useRef<string>();
+  const activeRestoreCleanup = useRef<() => void>();
   useEffect(() => {
+    // Field/filter mirrors replace the current entry without opening a view.
+    // Retain any pending lazy-content restoration across these updates too.
+    const mirroredEntry =
+      navigationType === 'REPLACE' && previousRequest.current === requestKey;
+    previousRequest.current = requestKey;
+    if (mirroredEntry) return;
+    activeRestoreCleanup.current?.();
+    activeRestoreCleanup.current = undefined;
     const targets = location.state?.scrollPositions;
     const windowTarget = location.state?.scrollPosition;
     if (
@@ -40,6 +58,8 @@ export const useBrowsingNavigationScroll = (walletScope: string) => {
         .slice(0, 20)
     );
     const cleanup = () => {
+      if (activeRestoreCleanup.current === cleanup)
+        activeRestoreCleanup.current = undefined;
       cancelled = true;
       cancelAnimationFrame(frame);
       observer.disconnect();
@@ -73,6 +93,7 @@ export const useBrowsingNavigationScroll = (walletScope: string) => {
     };
     const observer = new MutationObserver(schedule);
     const timeout = setTimeout(cleanup, 10_000);
+    activeRestoreCleanup.current = cleanup;
     observer.observe(document.body, { childList: true, subtree: true });
     // A deliberate gesture takes precedence over pending restoration.
     document.addEventListener('wheel', cleanup, {
@@ -86,12 +107,13 @@ export const useBrowsingNavigationScroll = (walletScope: string) => {
     document.addEventListener('pointerdown', cleanup, true);
     document.addEventListener('keydown', cleanup, true);
     schedule();
-    return cleanup;
-  }, [
-    location.key,
-    location.pathname,
-    positionsKey,
-    windowPosition,
-    walletScope,
-  ]);
+  }, [location.key, navigationType, requestKey]);
+  useEffect(
+    () => () => {
+      activeRestoreCleanup.current?.();
+      activeRestoreCleanup.current = undefined;
+      previousRequest.current = undefined;
+    },
+    []
+  );
 };
