@@ -15,6 +15,7 @@ import { getChainIdPriority } from 'utils/chainIdPriority';
 import { useNetworkInfo } from './NetworkInfo';
 import {
   getInitialNetworkSelection,
+  isSameNetworkSelection,
   NetworkSelection,
 } from './networkSelection';
 
@@ -162,8 +163,11 @@ export const NetworkList = ({
     <div className="mb-14">
       {/* Always show network type tabs so users can switch between UTXO and EVM */}
       <div className="flex pl-[20px] gap-2">
-        <div
-          className={`bg-brand-blue500 text-base text-white ${seletedUtxoButtonStyle} px-[19px] py-2 rounded-t-[20px] ${
+        <button
+          type="button"
+          aria-pressed={selectedNetwork === INetworkType.Syscoin}
+          disabled={isUtxoDisabled}
+          className={`bg-brand-blue500 text-base text-white ${seletedUtxoButtonStyle} min-h-11 px-[19px] py-2 rounded-t-[20px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-royalblue ${
             isUtxoDisabled
               ? 'opacity-30 cursor-not-allowed'
               : 'cursor-pointer hover:bg-brand-blue800'
@@ -176,9 +180,12 @@ export const NetworkList = ({
           }}
         >
           UTXO {isUtxoDisabled && '(Current)'}
-        </div>
-        <div
-          className={`bg-brand-blue500 text-base text-white ${seletedEvmButtonStyle} px-[19px] py-2 rounded-t-[20px] ${
+        </button>
+        <button
+          type="button"
+          aria-pressed={selectedNetwork === INetworkType.Ethereum}
+          disabled={isEvmDisabled}
+          className={`bg-brand-blue500 text-base text-white ${seletedEvmButtonStyle} min-h-11 px-[19px] py-2 rounded-t-[20px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-royalblue ${
             isEvmDisabled
               ? 'opacity-30 cursor-not-allowed'
               : 'cursor-pointer hover:bg-brand-blue800'
@@ -191,7 +198,7 @@ export const NetworkList = ({
           }}
         >
           EVM {isEvmDisabled && '(Current)'}
-        </div>
+        </button>
       </div>
       <div className="rounded-[20px] bg-brand-blue500 p-5 h-max w-full max-w-[22rem]">
         <div className="relative flex mb-4">
@@ -215,25 +222,33 @@ export const NetworkList = ({
             {selectedNetworkText}
           </p>
           {sortedNetworks.map((currentNetworks: INetwork) => {
-            const isSelected =
-              selectCurrentNetwork?.current?.label === currentNetworks?.label;
-            const isActive =
-              activeNetwork?.chainId === currentNetworks?.chainId &&
-              activeNetwork?.url === currentNetworks?.url;
+            const isSelected = isSameNetworkSelection(
+              selectCurrentNetwork?.current,
+              currentNetworks
+            );
+            const isActive = isSameNetworkSelection(
+              activeNetwork,
+              currentNetworks
+            );
 
             return (
-              <div
+              <button
                 key={`${currentNetworks.chainId}-${currentNetworks.url}`}
+                type="button"
+                aria-pressed={isSelected}
+                title={
+                  currentNetworks.label || `Chain ${currentNetworks.chainId}`
+                }
                 className={`${
                   isSelected ? 'bg-brand-blue800' : 'bg-brand-blue600'
-                } mb-[2px] rounded-[10px] p-2 w-full h-[37px] text-white text-sm font-normal transition-all cursor-pointer hover:bg-brand-blue800 flex items-center justify-between`}
+                } mb-[2px] rounded-[10px] p-2 w-full min-h-11 min-w-0 text-left text-white text-sm font-normal transition-all cursor-pointer hover:bg-brand-blue800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-royalblue flex items-center justify-between gap-2`}
                 onClick={() =>
                   setSelectCurrentNetwork({
                     current: currentNetworks,
                   })
                 }
               >
-                <div className="flex items-center gap-2">
+                <span className="flex items-center gap-2 min-w-0 flex-1">
                   <ChainIcon
                     chainId={currentNetworks.chainId}
                     size={20}
@@ -251,11 +266,11 @@ export const NetworkList = ({
                       </span>
                     )}
                   </span>
-                </div>
+                </span>
                 {isSelected && (
-                  <div className="w-2 h-2 bg-green-400 rounded-full"></div>
+                  <span className="w-2 h-2 bg-green-400 rounded-full shrink-0" />
                 )}
-              </div>
+              </button>
             );
           })}
         </div>

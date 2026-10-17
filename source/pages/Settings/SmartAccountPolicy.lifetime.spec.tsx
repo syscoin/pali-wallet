@@ -290,6 +290,136 @@ describe('SmartAccountPolicy async UI lifetime', () => {
     }
   };
 
+  describe('SLH setup status polling', () => {
+    it('keeps slow status reads single-flight and resumes polling after settlement', async () => {
+      jest.useFakeTimers();
+      const pending = deferred<unknown>();
+      const original = mockEmitter.getMockImplementation()!;
+      mockEmitter.mockImplementation((path: string[], ...args: any[]) =>
+        path[1] === 'getSLHDSASmartAccountSetupStatus'
+          ? pending.promise
+          : original(path, ...args)
+      );
+      const statusCalls = () =>
+        mockEmitter.mock.calls.filter(
+          ([path]) => path[1] === 'getSLHDSASmartAccountSetupStatus'
+        );
+      const view = render(<SmartAccountPolicy />);
+      try {
+        await act(async () => undefined);
+        await act(async () => jest.advanceTimersByTime(9000));
+        expect(statusCalls()).toHaveLength(1);
+        await act(async () => pending.resolve(null));
+        await act(async () => jest.advanceTimersByTime(3000));
+        expect(statusCalls()).toHaveLength(2);
+        view.unmount();
+        await act(async () => jest.advanceTimersByTime(9000));
+        expect(statusCalls()).toHaveLength(2);
+      } finally {
+        view.unmount();
+        jest.useRealTimers();
+      }
+    });
+
+    it('retries a failed status read without waiting for page navigation', async () => {
+      jest.useFakeTimers();
+      const pending = deferred<unknown>();
+      const original = mockEmitter.getMockImplementation()!;
+      let reads = 0;
+      mockEmitter.mockImplementation((path: string[], ...args: any[]) => {
+        if (path[1] !== 'getSLHDSASmartAccountSetupStatus')
+          return original(path, ...args);
+        reads += 1;
+        return reads === 1 ? pending.promise : Promise.resolve(null);
+      });
+      const view = render(<SmartAccountPolicy />);
+      try {
+        await act(async () => undefined);
+        await act(async () => pending.reject(new Error('temporary failure')));
+        await act(async () => jest.advanceTimersByTime(3000));
+        expect(reads).toBe(2);
+      } finally {
+        view.unmount();
+        jest.useRealTimers();
+      }
+    });
+
+    it('restarts read-only setup and recovery status after reconnecting and ignores pre-outage results', async () => {
+      const setupPending = deferred<unknown>();
+      const recoveryPending = deferred<unknown>();
+      const original = mockEmitter.getMockImplementation()!;
+      let setupReads = 0;
+      let recoveryReads = 0;
+      mockEmitter.mockImplementation((path: string[], ...args: any[]) => {
+        if (path[1] === 'getSLHDSASmartAccountSetupStatus') {
+          setupReads += 1;
+          return setupReads === 1
+            ? setupPending.promise
+            : Promise.resolve({
+                accountId: 1,
+                error: 'Fresh setup failure after reconnect',
+                startedAt: Date.now(),
+                status: 'failed',
+                updatedAt: Date.now(),
+              });
+        }
+        if (path[1] === 'getSmartAccountGuardianRecoveryStatus') {
+          recoveryReads += 1;
+          return recoveryReads === 1
+            ? recoveryPending.promise
+            : original(path, ...args);
+        }
+        return original(path, ...args);
+      });
+      const view = render(<SmartAccountPolicy />);
+      await act(async () => undefined);
+      expect(setupReads).toBe(1);
+      expect(recoveryReads).toBe(1);
+      expect(
+        screen
+          .getByRole('button', {
+            name: 'settings.smartAccountGuardianRecoveryShowOptions',
+          })
+          .hasAttribute('disabled')
+      ).toBe(true);
+      mockStatus = { ...mockStatus, connectionUnavailable: true };
+      view.rerender(<SmartAccountPolicy />);
+      await act(async () => undefined);
+      expect(setupReads).toBe(1);
+      expect(recoveryReads).toBe(1);
+      mockStatus = { ...mockStatus, connectionUnavailable: false };
+      view.rerender(<SmartAccountPolicy />);
+      await act(async () => undefined);
+      expect(setupReads).toBe(2);
+      expect(recoveryReads).toBe(2);
+      expect(
+        screen.getByText('Fresh setup failure after reconnect')
+      ).toBeTruthy();
+      expect(
+        screen
+          .getByRole('button', {
+            name: 'settings.smartAccountGuardianRecoveryShowOptions',
+          })
+          .hasAttribute('disabled')
+      ).toBe(false);
+      await act(async () => {
+        setupPending.resolve(null);
+        recoveryPending.resolve(null);
+      });
+      expect(
+        screen.getByText('Fresh setup failure after reconnect')
+      ).toBeTruthy();
+      expect(
+        screen
+          .getByRole('button', {
+            name: 'settings.smartAccountGuardianRecoveryShowOptions',
+          })
+          .hasAttribute('disabled')
+      ).toBe(false);
+      view.unmount();
+    });
+  });
+
   describe('entry metadata verification', () => {
     const mountWithHydration = (pending: ReturnType<typeof deferred<any>>) => {
       void pending.promise.catch(() => undefined);

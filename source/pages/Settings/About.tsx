@@ -28,6 +28,13 @@ const AboutView: FC = () => {
   const { navigate, useCopyClipboard, alert } = useUtils();
   const location = useLocation();
   const [copied, copy] = useCopyClipboard();
+  const copySupportUrl = async () => {
+    try {
+      await copy('https://discord.com/invite/syscoin');
+    } catch {
+      alert.error(t('transactions.copyFailed'));
+    }
+  };
 
   useEffect(() => {
     if (copied) {
@@ -61,28 +68,31 @@ const AboutView: FC = () => {
             {t('settings.userSupport')}
           </p>
 
-          <p
+          <a
             id="user-support-btn"
-            className="flex flex-nowrap text-brand-white text-xs cursor-pointer"
-            onClick={() => handleRedirect('https://discord.com/invite/syscoin')}
+            className="inline-flex text-brand-white text-xs rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue500"
+            href="https://discord.com/invite/syscoin"
+            target="_blank"
+            rel="noopener noreferrer"
           >
             {t('settings.clickHereSupport')}
-          </p>
+          </a>
 
           <div className="flex items-center">
-            <p
-              className="text-xs underline cursor-pointer"
-              onClick={() =>
-                handleRedirect('https://discord.com/invite/syscoin')
-              }
+            <a
+              className="min-w-0 break-all text-xs underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue500"
+              href="https://discord.com/invite/syscoin"
+              target="_blank"
+              rel="noopener noreferrer"
             >
               https://discord.com/invite/syscoin
-            </p>
+            </a>
             <IconButton
-              onClick={() => copy('https://discord.com/invite/syscoin')}
+              aria-label={`${t('buttons.copy')} ${t('settings.userSupport')}`}
+              onClick={copySupportUrl}
               type="primary"
               shape="circle"
-              className="align-center pl-2"
+              className="flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded hover:bg-alpha-whiteAlpha100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue500"
             >
               <CopyIcon />
             </IconButton>

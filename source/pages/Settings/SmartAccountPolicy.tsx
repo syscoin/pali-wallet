@@ -746,13 +746,17 @@ const SmartAccountPolicy = () => {
 
   useEffect(() => {
     let cancelled = false;
+    let pending = false;
     const isCurrentUi = createUiGuard();
-    if (!account?.isSmartAccount) {
+    if (!controllerReady || !account?.isSmartAccount) {
       setSlhDsaSetupStatus(null);
       return () => undefined;
     }
 
     const loadStatus = async () => {
+      // A slow worker must not accumulate probes on every interval tick.
+      if (cancelled || pending) return;
+      pending = true;
       try {
         const status = (await controllerEmitter(
           ['wallet', 'getSLHDSASmartAccountSetupStatus'],
@@ -766,6 +770,8 @@ const SmartAccountPolicy = () => {
         if (!cancelled && isCurrentUi()) {
           setSlhDsaSetupStatus(null);
         }
+      } finally {
+        pending = false;
       }
     };
 
@@ -781,6 +787,7 @@ const SmartAccountPolicy = () => {
   }, [
     account?.id,
     account?.isSmartAccount,
+    controllerReady,
     controllerEmitter,
     location.key,
     scopeKey,
@@ -791,10 +798,12 @@ const SmartAccountPolicy = () => {
     const isCurrentUi = createUiGuard();
     setGuardianStatus(null);
     if (
+      !controllerReady ||
       !account?.isSmartAccount ||
       !smartAccountAddress ||
       !hasGuardianRecovery
     ) {
+      setGuardianStatusLoading(false);
       return () => {
         cancelled = true;
       };
@@ -827,6 +836,7 @@ const SmartAccountPolicy = () => {
     };
   }, [
     account?.isSmartAccount,
+    controllerReady,
     controllerEmitter,
     hasGuardianRecovery,
     location.key,

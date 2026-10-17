@@ -16,6 +16,8 @@ const Languages = () => {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(false);
   const savingRef = useRef(false);
+  const draftEdited = useRef(false);
+  const saveRevision = useRef(0);
   const [savedLang, setSavedLang] = useState<PaliLanguages>(PaliLanguages.EN); // Actually saved language
   const [selectedLang, setSelectedLang] = useState<PaliLanguages>(
     PaliLanguages.EN
@@ -23,16 +25,23 @@ const Languages = () => {
   const { t } = useTranslation();
 
   useEffect(() => {
+    let active = true;
+    const revision = saveRevision.current;
     const fetchLanguage = async () => {
       const storedLang = await chromeStorage
         .getItem('language')
         .then((state) => state);
+      if (!active || saveRevision.current !== revision) return;
       const currentLang = storedLang ?? PaliLanguages.EN;
       setSavedLang(currentLang);
-      setSelectedLang(currentLang); // Initialize preview with saved value
+      // The initial read must not replace a choice already made in this form.
+      if (!draftEdited.current) setSelectedLang(currentLang);
     };
 
-    fetchLanguage().then((lng) => lng);
+    void fetchLanguage().catch(() => undefined);
+    return () => {
+      active = false;
+    };
   }, []);
 
   // Language configuration with static names to avoid t() dependency issues
@@ -115,6 +124,7 @@ const Languages = () => {
     setSaveError(false);
     try {
       await changeLanguage(selectedLang);
+      saveRevision.current += 1;
       setSavedLang(selectedLang);
       setConfirmed(true);
     } catch {
@@ -127,6 +137,7 @@ const Languages = () => {
 
   const handleLanguageChange = (langValue: PaliLanguages) => {
     // Only update preview state - don't save yet
+    draftEdited.current = true;
     setSelectedLang(langValue);
     setSaveError(false);
   };

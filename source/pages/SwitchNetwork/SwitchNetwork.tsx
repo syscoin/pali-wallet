@@ -58,8 +58,11 @@ export const SwitchNetwork = () => {
   );
 
   return (
-    <>
-      <div className="gap-4 mb-7 w-full flex flex-col justify-center items-center remove-scrollbar h-full">
+    <div
+      data-navigation-scroll="network-picker"
+      className="h-full min-h-0 w-full overflow-x-hidden overflow-y-auto remove-scrollbar"
+    >
+      <div className="gap-4 pb-7 w-full flex flex-col justify-center items-center min-h-full">
         {!state || !state?.switchingFromTimeError ? (
           <>
             <div className="w-[65px] h-[65px] rounded-[100px] p-[15px] bg-gradient-to-r from-[#284F94] from-[25.72%] to-[#FE0077] to-[141.55%]'">
@@ -90,6 +93,6 @@ export const SwitchNetwork = () => {
           isTypeSwitch={popupData?.isTypeSwitch}
         />
       </div>
-    </>
+    </div>
   );
 };

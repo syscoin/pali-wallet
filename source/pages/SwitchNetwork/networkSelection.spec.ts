@@ -1,6 +1,9 @@
 import { INetwork, INetworkType } from 'types/network';
 
-import { getInitialNetworkSelection } from './networkSelection';
+import {
+  getInitialNetworkSelection,
+  isSameNetworkSelection,
+} from './networkSelection';
 
 const activeNetwork: INetwork = {
   chainId: 57,
@@ -26,5 +29,38 @@ describe('getInitialNetworkSelection', () => {
 
   it('does not create a selection before the active network is available', () => {
     expect(getInitialNetworkSelection(undefined, false)).toBeNull();
+  });
+});
+
+describe('network selection identity', () => {
+  it('recognizes the same endpoint even when its display label changes', () => {
+    expect(
+      isSameNetworkSelection(activeNetwork, {
+        ...activeNetwork,
+        label: 'Renamed display label',
+      })
+    ).toBe(true);
+  });
+
+  it('does not select another chain or endpoint sharing the display label', () => {
+    expect(
+      isSameNetworkSelection(activeNetwork, { ...activeNetwork, chainId: 5700 })
+    ).toBe(false);
+    expect(
+      isSameNetworkSelection(activeNetwork, {
+        ...activeNetwork,
+        url: 'https://different-rpc.example',
+      })
+    ).toBe(false);
+  });
+
+  it('does not conflate UTXO and EVM networks or a missing selection', () => {
+    expect(
+      isSameNetworkSelection(activeNetwork, {
+        ...activeNetwork,
+        kind: INetworkType.Ethereum,
+      })
+    ).toBe(false);
+    expect(isSameNetworkSelection(undefined, activeNetwork)).toBe(false);
   });
 });

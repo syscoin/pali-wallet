@@ -10,6 +10,7 @@ import userEvent from '@testing-library/user-event';
 import React from 'react';
 
 import { changeLanguage } from 'utils/i18n';
+import { chromeStorage } from 'utils/storageAPI';
 
 import Advanced from './Advanced';
 import Currency from './Currency';
@@ -87,6 +88,7 @@ beforeEach(() => {
   mockState.vaultGlobal.advancedSettings = { refresh: false, autolock: 5 };
   mockEmitter.mockResolvedValue(undefined);
   jest.mocked(changeLanguage).mockResolvedValue(undefined);
+  jest.mocked(chromeStorage.getItem).mockResolvedValue('en');
 });
 
 it('preserves the advanced draft when a later setting fails after an earlier save', async () => {
@@ -240,4 +242,55 @@ it('preserves language typeahead and Enter selection after removing closed optio
   await user.keyboard('ger{Enter}');
   expect(trigger.textContent).toContain('Deutsch');
   expect(screen.queryByRole('menu')).toBeNull();
+});
+
+it('does not replace a language the user selected while the saved preference was loading', async () => {
+  let finishLoading!: (value: string) => void;
+  jest.mocked(chromeStorage.getItem).mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finishLoading = resolve;
+      })
+  );
+  const user = userEvent.setup();
+  render(<Languages />);
+  const trigger = screen.getByRole('button', {
+    name: 'settings.setYourPreferredLanguage',
+  });
+  await user.click(trigger);
+  await user.keyboard('ger{Enter}');
+  expect(trigger.textContent).toContain('Deutsch');
+  await act(async () => finishLoading('en'));
+  expect(trigger.textContent).toContain('Deutsch');
+  expect(
+    screen
+      .getByRole('button', { name: 'buttons.save' })
+      .hasAttribute('disabled')
+  ).toBe(false);
+  await user.click(screen.getByRole('button', { name: 'buttons.save' }));
+  expect(changeLanguage).toHaveBeenCalledWith('de');
+});
+
+it('does not revert a completed language save when the older preference read finishes', async () => {
+  let finishLoading!: (value: string) => void;
+  jest.mocked(chromeStorage.getItem).mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finishLoading = resolve;
+      })
+  );
+  const user = userEvent.setup();
+  render(<Languages />);
+  const trigger = screen.getByRole('button', {
+    name: 'settings.setYourPreferredLanguage',
+  });
+  await user.click(trigger);
+  await user.keyboard('ger{Enter}');
+  const save = screen.getByRole('button', { name: 'buttons.save' });
+  await user.click(save);
+  await screen.findByRole('dialog');
+  await act(async () => finishLoading('en'));
+  expect(trigger.textContent).toContain('Deutsch');
+  expect(save.hasAttribute('disabled')).toBe(true);
+  expect(changeLanguage).toHaveBeenCalledTimes(1);
 });
