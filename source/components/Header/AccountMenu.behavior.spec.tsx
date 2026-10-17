@@ -1,6 +1,6 @@
 /** @jest-environment jsdom */
 import { Menu } from '@headlessui/react';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 
@@ -39,7 +39,25 @@ jest.mock('components/Icon/Icon', () => ({
   LoadingSvg: () => null,
   LockIconSvg: () => null,
 }));
-jest.mock('components/index', () => ({ Icon: () => null }));
+jest.mock('components/index', () => ({
+  Icon: ({
+    name,
+    className,
+    wrapperClassname,
+  }: {
+    className?: string;
+    name: string;
+    wrapperClassname?: string;
+  }) => (
+    <div className={wrapperClassname}>
+      <svg
+        aria-hidden="true"
+        className={className}
+        data-testid={`icon-${name}`}
+      />
+    </div>
+  ),
+}));
 jest.mock('utils/index', () => ({ ellipsis: (value: string) => value }));
 
 const openAccounts = async (
@@ -62,6 +80,70 @@ const openAccounts = async (
 beforeEach(() => {
   jest.clearAllMocks();
   mockState.vaultGlobal.isSwitchingAccount = false;
+});
+
+it('keeps account rows compact without shrinking either touch target', async () => {
+  await openAccounts();
+
+  for (const label of ['Alpha', 'Beta']) {
+    const account = screen.getByRole('menuitem', {
+      name: new RegExp(`${label}.*tsys1q`),
+    });
+    const copy = screen.getByRole('menuitem', {
+      name: `buttons.copy: ${label}`,
+    });
+    const row = account.closest('li');
+
+    expect(row).not.toBeNull();
+    // Vertical row padding would add height outside the 44px controls.
+    expect(row?.className.split(/\s+/)).not.toEqual(
+      expect.arrayContaining([expect.stringMatching(/^(?:p|py|pt|pb)-/)])
+    );
+    expect(account.classList.contains('min-h-[44px]')).toBe(true);
+    expect(copy.classList.contains('min-h-[44px]')).toBe(true);
+    expect(copy.classList.contains('min-w-[44px]')).toBe(true);
+  }
+});
+
+it('centers badge text and the active check inside explicit local boxes', async () => {
+  await openAccounts();
+
+  for (const label of ['Alpha', 'Beta']) {
+    const account = screen.getByRole('menuitem', {
+      name: new RegExp(`${label}.*tsys1q`),
+    });
+    const badgeLabel = within(account).getByText('Pali');
+    const badge = badgeLabel.parentElement;
+
+    expect(badgeLabel.classList.contains('leading-none')).toBe(true);
+    expect(Array.from(badge?.classList || [])).toEqual(
+      expect.arrayContaining([
+        'inline-flex',
+        'h-[20px]',
+        'items-center',
+        'leading-none',
+      ])
+    );
+  }
+
+  const activeAccount = screen.getByRole('menuitem', {
+    name: /Alpha.*tsys1qalpha/,
+  });
+  const check = within(activeAccount).getByTestId('icon-check');
+  const checkBox = check.parentElement;
+  expect(Array.from(checkBox?.classList || [])).toEqual(
+    expect.arrayContaining([
+      'flex',
+      'h-[12px]',
+      'w-[12px]',
+      'items-center',
+      'justify-center',
+      'leading-none',
+    ])
+  );
+  expect(Array.from(check.classList)).toEqual(
+    expect.arrayContaining(['block', 'h-[12px]', 'w-[12px]'])
+  );
 });
 
 it('keeps reopened account controls disabled during a background switch', async () => {

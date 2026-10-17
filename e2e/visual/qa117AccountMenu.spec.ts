@@ -151,6 +151,51 @@ test('account dropdown supports keyboard selection and separate copy actions in 
       );
       await expect.poll(() => isActiveMenuItem(menu, firstAccount)).toBe(true);
       await expect.poll(() => exposed(firstAccount)).toBe(true);
+      const copyOriginal = menu.getByRole('menuitem', {
+        name: `${en.buttons.copy}: ${original.label}`,
+        exact: true,
+      });
+      await expect.poll(() => exposed(copyOriginal)).toBe(true);
+      const activeSelection = menu.locator('button[aria-current="true"]');
+      await expect(activeSelection).toHaveCount(1);
+      const alignment = await activeSelection.evaluate((button) => {
+        const row = button.closest('li')!;
+        const badge = button.querySelector('span.rounded-full')!;
+        const check = badge.querySelector('svg')!;
+        const badgeBounds = badge.getBoundingClientRect();
+        const checkBounds = check.getBoundingClientRect();
+        const textNodes = document.createTreeWalker(
+          badge,
+          NodeFilter.SHOW_TEXT
+        );
+        let label: Node | null = null;
+        while ((label = textNodes.nextNode())) {
+          if (label.textContent?.trim()) break;
+        }
+        if (!label) throw new Error('Account badge has no visible label');
+        const range = document.createRange();
+        range.selectNodeContents(label);
+        const labelBounds = range.getBoundingClientRect();
+        const center = (bounds: DOMRect) => bounds.top + bounds.height / 2;
+        return {
+          rowHeight: row.getBoundingClientRect().height,
+          checkOffset: center(checkBounds) - center(badgeBounds),
+          labelOffset: center(labelBounds) - center(badgeBounds),
+          checkToLabelOffset: center(checkBounds) - center(labelBounds),
+        };
+      });
+      expect.soft(alignment.rowHeight).toBeCloseTo(44, 1);
+      expect.soft(Math.abs(alignment.checkOffset)).toBeLessThanOrEqual(0.25);
+      // Text ink has font-specific ascender/descender metrics; keep it
+      // optically close without imposing a fractional-pixel translation.
+      expect.soft(Math.abs(alignment.labelOffset)).toBeLessThanOrEqual(1);
+      expect
+        .soft(Math.abs(alignment.checkToLabelOffset))
+        .toBeLessThanOrEqual(1);
+      await info.attach(`account-menu-alignment-${width}x360`, {
+        body: JSON.stringify(alignment, null, 2),
+        contentType: 'application/json',
+      });
       await info.attach(`account-menu-keyboard-${width}x360`, {
         body: await page.screenshot({ animations: 'disabled' }),
         contentType: 'image/png',

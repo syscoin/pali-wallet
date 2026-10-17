@@ -231,7 +231,7 @@ const RenderAccountsListByBitcoinBased =
           <li
             id={`account-${accountType}-${index}`}
             role="none"
-            className={`group relative py-1.5 px-5 w-full flex items-center gap-2 text-white text-sm font-medium ${
+            className={`group relative px-5 w-full flex items-center gap-2 text-white text-sm font-medium ${
               isAccountSwitching(account.id, accountType)
                 ? 'bg-brand-blue600/20 ring-1 ring-brand-blue500/30'
                 : ''
@@ -279,12 +279,16 @@ const RenderAccountsListByBitcoinBased =
                     />
                   ) : (
                     <span
-                      className={`flex flex-shrink-0 items-center gap-1 text-xs px-2 py-0.5 text-white ${badgeInfo.bgColor} rounded-full font-medium`}
+                      className={`inline-flex h-[20px] flex-shrink-0 items-center gap-1 px-2 text-xs leading-none text-white ${badgeInfo.bgColor} rounded-full font-medium`}
                     >
                       {isAccountActive(account.id, accountType) && (
-                        <Icon name="check" className="w-3 h-3" />
+                        <Icon
+                          name="check"
+                          wrapperClassname="flex h-[12px] w-[12px] flex-shrink-0 items-center justify-center leading-none"
+                          className="block h-[12px] w-[12px]"
+                        />
                       )}
-                      {badgeInfo.label}
+                      <span className="leading-none">{badgeInfo.label}</span>
                     </span>
                   )}
                 </button>
