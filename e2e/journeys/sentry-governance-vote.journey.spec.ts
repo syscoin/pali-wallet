@@ -232,6 +232,58 @@ test('Pali reviews and signs exact legacy governance votes without disclosing ke
     const missingResult = await settle(page, missingId);
     expect(missingResult.error).toBeTruthy();
     expect(JSON.stringify(missingResult)).not.toContain('missingVotingKeys');
+
+    // Also exercise the selected-wallet fallback without a dedicated Sentry
+    // import: legacy Core voting may register the uncompressed WIF identity.
+    const walletPair = utils.bitcoinjs.ECPair.fromPrivateKey(
+      Buffer.from('00'.repeat(31) + '0e', 'hex'),
+      { network: utils.syscoinNetworks.testnet, compressed: false }
+    );
+    const walletAddress = utils.bitcoinjs.payments.p2pkh({
+      pubkey: walletPair.publicKey,
+      network: utils.syscoinNetworks.testnet,
+    }).address;
+    const walletIdentities = await sdk.governanceVotingKeyIds(
+      Buffer.from(walletPair.publicKey).toString('hex')
+    );
+    observation.nodes.forEach((node) => {
+      node.votingKeyId = walletIdentities.uncompressed;
+    });
+    await wallet.gotoRoute('#/settings/account/import');
+    await page.locator('#import-account-identifier').fill(walletPair.toWIF());
+    await page.getByRole('radio', { name: 'Legacy (P2PKH)' }).check();
+    await page.getByRole('button', { name: 'Import', exact: true }).click();
+    await expect(page.getByText('Account imported successfully')).toBeVisible();
+    await page.goto(server.url);
+    await page.waitForFunction(() => Boolean((window as any).pali));
+    expect(
+      (
+        await approve(
+          wallet.context,
+          page,
+          await startRequest(page, 'sys_requestAccounts')
+        )
+      ).result
+    ).toEqual([walletAddress]);
+    const walletId = await startRequest(page, 'sys_signSentryVote', [request]);
+    const walletPopup = await popupFor(wallet.context, page, walletId);
+    await expect(
+      walletPopup.getByRole('button', { name: 'Sign votes' })
+    ).toBeEnabled();
+    await walletPopup.getByLabel('Wallet password').fill(E2E_CONFIG.password);
+    await walletPopup.getByRole('button', { name: 'Sign votes' }).click();
+    const walletSigned = await settle(page, walletId, 45000);
+    expect(walletSigned.error).toBeUndefined();
+    expect(walletSigned.result.votes).toHaveLength(2);
+    for (const vote of walletSigned.result.votes) {
+      expect(
+        await sdk.verifySentryGovernanceVote(request, observation, vote)
+      ).toBe(true);
+      expect(Buffer.from(vote.voteSig, 'base64')[0]).toBeLessThan(31);
+    }
+    expect(JSON.stringify(walletSigned.result)).not.toContain(
+      walletPair.toWIF()
+    );
     expect(routes.deniedWrites).toEqual([]);
     expect(routes.syntheticBroadcasts).toEqual([]);
   } finally {

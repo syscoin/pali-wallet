@@ -166,7 +166,8 @@ export const deriveSentryWalletAuthority = (
   target: string,
   path: string | null,
   privateAccountKey: string,
-  scope: ISentryAddressScope
+  scope: ISentryAddressScope,
+  purpose: 'management' | 'voting' = 'management'
 ): { scheme: 'ecdsa'; secretKey: string } => {
   let key: any;
   if (path === null) {
@@ -195,12 +196,14 @@ export const deriveSentryWalletAuthority = (
   }
   if (
     !key.privateKey ||
-    // The shared Sentry SDK uses compressed ECDSA identities. Verify that
-    // exact identity, independently of the imported WIF's address encoding.
-    !keyMatchesAddress(
-      bjs.ECPair.fromPrivateKey(key.privateKey, { compressed: true }).publicKey,
-      target,
-      scope.network
+    // Management uses compressed identities; Core governance also accepts
+    // uncompressed voting keys. Both require the authenticated account above.
+    ![true, ...(purpose === 'voting' ? [false] : [])].some((compressed) =>
+      keyMatchesAddress(
+        bjs.ECPair.fromPrivateKey(key.privateKey, { compressed }).publicKey,
+        target,
+        scope.network
+      )
     )
   )
     throw new Error('Wallet does not own this Sentry authority');

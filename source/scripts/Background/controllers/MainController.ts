@@ -1578,6 +1578,8 @@ class MainController {
                 this.canSignSentryWalletAuthority(address, scope),
               resolveWalletAuthority: (params, scope) =>
                 this.resolveSentryWalletAuthority(params, scope),
+              resolveVotingAuthority: (params, scope) =>
+                this.resolveSentryWalletAuthority(params, scope, 'voting'),
             })
         )
         .catch((error) => {
@@ -8237,7 +8239,8 @@ class MainController {
 
   private async resolveSentryWalletAuthority(
     params: { address: string; password: string },
-    scope: SentryWalletScope
+    scope: SentryWalletScope,
+    purpose: 'management' | 'voting' = 'management'
   ) {
     const resolved = await this.findSentryWalletAuthority(
       params.address,
@@ -8274,7 +8277,8 @@ class MainController {
       params.address,
       resolved.path ?? null,
       privateKey,
-      resolved.addressScope
+      resolved.addressScope,
+      purpose
     );
   }
 

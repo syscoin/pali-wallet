@@ -62,6 +62,10 @@ interface Host {
     outpoint: { txid: string; vout: number },
     scope: SentryWalletScope
   ) => Promise<boolean>;
+  resolveVotingAuthority?: (
+    params: { address: string; password: string },
+    scope: SentryWalletScope
+  ) => Promise<{ scheme: 'ecdsa'; secretKey: string }>;
   resolveWalletAuthority?: (
     params: { address: string; password: string },
     scope: SentryWalletScope
@@ -158,6 +162,7 @@ export class SentryController {
   constructor(private readonly host: Host) {
     this.votes = new SentryVoteController({
       ...host,
+      resolveWalletAuthority: host.resolveVotingAuthority,
       getSettings: (scope) => this.settings(scope),
       readJson,
       runExclusive: (operation) => this.mutex.runExclusive(operation),

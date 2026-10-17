@@ -170,6 +170,27 @@ describe('Sentry wallet authority discovery and authenticated resolution', () =>
         scope
       )
     ).resolves.toEqual({ scheme: 'ecdsa', secretKey: '0c'.repeat(32) });
+    await expect(
+      wallet.resolveSentryWalletAuthority(
+        { address, password: 'test-password' },
+        scope
+      )
+    ).rejects.toThrow('does not own');
+    await expect(
+      wallet.resolveSentryWalletAuthority(
+        { address, password: 'test-password' },
+        scope,
+        'voting'
+      )
+    ).resolves.toEqual({ scheme: 'ecdsa', secretKey: '0c'.repeat(32) });
+    wallet.getPrivateKeyByAccountId.mockResolvedValue(other.toWIF());
+    await expect(
+      wallet.resolveSentryWalletAuthority(
+        { address, password: 'test-password' },
+        scope,
+        'voting'
+      )
+    ).rejects.toThrow('does not match the selected account');
   });
 
   it('preserves ordinary HD account discovery and password-gated signing', async () => {
