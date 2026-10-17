@@ -1118,8 +1118,10 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
     <div className="w-full md:max-w-sm">
       <div className="flex flex-col items-center justify-center">
         <Tooltip content={t('home.viewOnExplorer')}>
-          <div
-            className="add-identicon ml-1 mr-2 my-2 cursor-pointer transition-all duration-200 hover:scale-105 hover:opacity-80 rounded-full"
+          <button
+            type="button"
+            aria-label={t('home.viewAccountOnExplorer')}
+            className="add-identicon ml-1 mr-2 my-2 cursor-pointer transition-all duration-200 hover:scale-105 hover:opacity-80 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue"
             onClick={openAccountInExplorer}
             title={t('home.viewAccountOnExplorer')}
           />

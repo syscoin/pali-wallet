@@ -66,6 +66,11 @@ test('Send keeps long account identities readable and copyable in narrow windows
       await expect(page).toHaveURL(new RegExp(`#/send/${network.route}$`));
       await page.evaluate(() => {
         (window as any).__identityCopies = [];
+        (window as any).__explorerUrls = [];
+        window.open = ((url: unknown) => {
+          (window as any).__explorerUrls.push(String(url));
+          return null;
+        }) as typeof window.open;
         Object.defineProperty(navigator, 'clipboard', {
           configurable: true,
           value: {
@@ -117,8 +122,41 @@ test('Send keeps long account identities readable and copyable in narrow windows
           await page.keyboard.press('Tab');
         }
         await expect(copy).toBeFocused();
+        const copyBounds = (await copy.boundingBox())!;
+        expect(copyBounds.height).toBeGreaterThanOrEqual(44);
+        expect(copyBounds.y).toBeGreaterThanOrEqual(0);
+        expect(copyBounds.y + copyBounds.height).toBeLessThanOrEqual(
+          viewport.height
+        );
         await page.keyboard.press('Enter');
+        const explorer = page.getByRole('button', {
+          name: en.home.viewAccountOnExplorer,
+          exact: true,
+        });
+        await expect.soft(explorer).toHaveCount(1);
+        for (let step = 0; step < 24; step++) {
+          if (
+            await explorer.evaluate(
+              (element) => document.activeElement === element
+            )
+          )
+            break;
+          await page.keyboard.press('Shift+Tab');
+        }
+        await expect(explorer).toBeFocused();
+        await page.keyboard.press('Enter');
+        await expect(page).toHaveURL(new RegExp(`#/send/${network.route}$`));
       }
+      const explorerUrls: string[] = await page.evaluate(
+        () => (window as any).__explorerUrls
+      );
+      expect(explorerUrls).toHaveLength(2);
+      for (const url of explorerUrls)
+        expect(new URL(url).pathname).toBe(
+          network.route === 'sys'
+            ? `/xpub/${fixture.utxo.userXpub}`
+            : `/address/${fixture.evmAddresses[0]}`
+        );
       expect(
         await page.evaluate(() => (window as any).__identityCopies)
       ).toEqual([
