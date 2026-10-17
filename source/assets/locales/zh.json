@@ -946,6 +946,7 @@
     "slowConnection": "连接时间比平常长"
   },
   "forgetWalletPage": {
+    "removalFailed": "无法移除钱包。请重试。",
     "importedAccountsWont": "导入的账户不会链接到您初始的Pali账户密钥恢复短语",
     "stillHaveFunds": "您的钱包中仍有资金！",
     "saveProperly": "请妥善保存此助记词，以便将来能够导入此钱包。"

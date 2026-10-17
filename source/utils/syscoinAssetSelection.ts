@@ -2,10 +2,19 @@ import { ITokenSysProps } from 'types/tokens';
 
 export const getRefreshedSyscoinAssetSelection = (
   selectedAsset: ITokenSysProps,
-  accountAssets: ITokenSysProps[]
+  accountAssets: ITokenSysProps[],
+  activeChainId: number
 ): ITokenSysProps | null => {
+  if (
+    selectedAsset.chainId !== undefined &&
+    selectedAsset.chainId !== activeChainId
+  )
+    return null;
+
   const refreshedAsset = accountAssets.find(
-    (asset) => String(asset.assetGuid) === String(selectedAsset.assetGuid)
+    (asset) =>
+      asset.chainId === activeChainId &&
+      String(asset.assetGuid) === String(selectedAsset.assetGuid)
   );
 
   if (!refreshedAsset) return null;

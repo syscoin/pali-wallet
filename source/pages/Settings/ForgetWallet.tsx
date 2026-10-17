@@ -39,6 +39,7 @@ const ForgetWalletView = () => {
 
   // Loading state for submit action
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submissionError, setSubmissionError] = useState('');
 
   // Cached seed for display (view-only)
   const [cachedSeed, setCachedSeed] = useState<string>('');
@@ -84,18 +85,23 @@ const ForgetWalletView = () => {
   const onSubmit = useCallback(
     async ({ password }: { password: string }) => {
       setIsSubmitting(true);
+      setSubmissionError('');
 
       try {
         await controllerEmitter(['wallet', 'forgetWallet'], [password]);
         navigate('/');
       } catch (error) {
         console.error('Failed to forget wallet:', error);
-        // Handle error if needed
+        setSubmissionError(
+          (error instanceof Error && error.message) ||
+            (typeof error === 'string' && error) ||
+            t('forgetWalletPage.removalFailed')
+        );
       } finally {
         setIsSubmitting(false);
       }
     },
-    [navigate]
+    [controllerEmitter, navigate, t]
   );
 
   // Navigation callbacks
@@ -111,8 +117,15 @@ const ForgetWalletView = () => {
     <>
       {/* Loading overlay for submit action */}
       {isSubmitting && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100]">
-          <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-brand-blue500"></div>
+        <div
+          role="status"
+          aria-label={t('buttons.loading')}
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100]"
+        >
+          <div
+            aria-hidden="true"
+            className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-brand-blue500"
+          />
         </div>
       )}
 
@@ -176,7 +189,7 @@ const ForgetWalletView = () => {
       </div>
 
       {/* Buttons container - pushed to bottom */}
-      <PageActionFooter>
+      <PageActionFooter error={submissionError}>
         <div className="flex gap-x-8 justify-between md:gap-x-40">
           <Button
             variant="secondary"

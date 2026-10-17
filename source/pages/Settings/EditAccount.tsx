@@ -139,35 +139,27 @@ const EditAccountView = () => {
           }}
         />
         <div className="flex w-full items-center mb-3 mt-2 justify-between">
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 items-center gap-2">
             <div
-              className={`text-xs ml-2 px-2 py-0.5 rounded-full ${walletTypeBadgeClassName}`}
+              className={`shrink-0 text-xs ml-2 px-2 py-0.5 rounded-full ${walletTypeBadgeClassName}`}
             >
               {getWalletType}
             </div>
-            <p className="text-xs">({ellipsis(state.address, 12, 14)})</p>
+            <p className="truncate text-xs" title={state.address}>
+              ({ellipsis(state.address, 12, 14)})
+            </p>
           </div>
-          <div>
-            <div className="flex w-full flex-col z-20">
-              {copied ? (
-                <div className="flex w-full gap-1 items-center cursor-pointer hover:cursor-pointer">
-                  <Icon isSvg className="w-4" name="greenCheck" />
-
-                  <p className="text-sm text-white">{t('components.copied')}</p>
-                </div>
-              ) : (
-                <div
-                  className="flex w-full gap-1 items-center cursor-pointer hover:cursor-pointer"
-                  onClick={() => {
-                    handleCopyToClipboard();
-                  }}
-                >
-                  <Icon isSvg className="w-4" name="Copy" />
-                  <p className="text-sm text-white">{t('buttons.copy')}</p>
-                </div>
-              )}
-            </div>{' '}
-          </div>
+          <button
+            type="button"
+            aria-label={t('buttons.copy')}
+            onClick={handleCopyToClipboard}
+            className="flex min-h-[44px] shrink-0 items-center gap-1 rounded px-2 text-sm text-white transition-colors hover:bg-alpha-whiteAlpha100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue500"
+          >
+            <Icon isSvg className="w-4" name={copied ? 'greenCheck' : 'Copy'} />
+            <span aria-live="polite">
+              {copied ? t('components.copied') : t('buttons.copy')}
+            </span>
+          </button>
         </div>
         <Form.Item
           name="label"

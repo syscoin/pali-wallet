@@ -946,6 +946,7 @@
     "slowConnection": "연결이 평소보다 오래 걸리고 있습니다"
   },
   "forgetWalletPage": {
+    "removalFailed": "지갑을 삭제할 수 없습니다. 다시 시도해 주세요.",
     "importedAccountsWont": "가져온 계정은 초기 Pali 계정 비밀 복구 구문에 연결되지 않습니다",
     "stillHaveFunds": "지갑에 아직 자금이 있습니다!",
     "saveProperly": "이 시드 구문을 안전하게 저장하여 나중에 이 지갑을 가져올 수 있도록 하세요."

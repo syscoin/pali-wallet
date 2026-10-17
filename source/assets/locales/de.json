@@ -946,6 +946,7 @@
     "slowConnection": "Die Verbindung dauert länger als gewöhnlich"
   },
   "forgetWalletPage": {
+    "removalFailed": "Die Wallet konnte nicht entfernt werden. Bitte versuchen Sie es erneut.",
     "importedAccountsWont": "Importierte Konten werden nicht mit Ihrer ursprünglichen Pali-Konto-Wiederherstellungsphrase verknüpft",
     "stillHaveFunds": "Sie haben noch Guthaben in Ihrer Wallet!",
     "saveProperly": "Speichern Sie diese Seed-Phrase ordnungsgemäß, damit Sie diese Wallet in Zukunft importieren können."

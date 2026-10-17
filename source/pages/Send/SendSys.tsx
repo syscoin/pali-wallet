@@ -81,8 +81,19 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
   );
 
   // Hydrate only the matching account/network draft, once for this mounted form.
+  const scopedDraft = getScopedSendDraft(
+    location.pathname,
+    location.state,
+    scopeKey
+  );
+  // A legacy draft may omit the asset's chain, but its enclosing walletScope
+  // has already been matched above. An explicitly foreign selection invalidates
+  // the complete draft: retaining its amount/MAX would reinterpret it as native.
   const initialDraft = useRef(
-    getScopedSendDraft(location.pathname, location.state, scopeKey)
+    scopedDraft.selectedAsset?.chainId !== undefined &&
+      scopedDraft.selectedAsset.chainId !== activeNetwork.chainId
+      ? {}
+      : scopedDraft
   ).current;
   const initialRBF =
     typeof initialDraft.RBF === 'boolean' ? initialDraft.RBF : true;
@@ -144,13 +155,14 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
 
     const refreshedAsset = getRefreshedSyscoinAssetSelection(
       selectedAsset,
-      accountAssets.syscoin
+      accountAssets.syscoin,
+      activeNetwork.chainId
     );
 
     if (refreshedAsset) {
       setSelectedAsset(refreshedAsset);
     }
-  }, [accountAssets?.syscoin, selectedAsset]);
+  }, [accountAssets?.syscoin, activeNetwork.chainId, selectedAsset]);
 
   const draftState = useMemo(
     () => ({ selectedAsset, RBF, isMaxSend }),
@@ -254,8 +266,11 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
   );
 
   const assets = useMemo(
-    () => (accountAssets.syscoin ? Object.values(accountAssets.syscoin) : []),
-    [accountAssets.syscoin]
+    () =>
+      (accountAssets.syscoin || []).filter(
+        (asset) => asset.chainId === activeNetwork.chainId
+      ),
+    [accountAssets.syscoin, activeNetwork.chainId]
   );
 
   const assetDecimals = useMemo(
@@ -397,10 +412,12 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
   ]);
 
   const handleSelectedAsset = useCallback(
-    (item: number) => {
+    (item: number | string) => {
       maxIntentRevision.current += 1;
       if (assets) {
-        const getAsset = assets.find((asset: any) => asset.assetGuid === item);
+        const getAsset = assets.find(
+          (asset) => String(asset.assetGuid) === String(item)
+        );
 
         if (getAsset) {
           setSelectedAsset(getAsset);
@@ -814,37 +831,28 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
             title={t('home.viewAccountOnExplorer')}
           />
         </Tooltip>
-        <div className="flex gap-1 justify-center items-center">
-          <PaliWhiteSmallIconSvg />
-          <div className="flex text-white gap-1 text-xs font-normal w-max items-center">
-            <p className="font-medium">{activeAccount?.label}</p>
-            <div className="flex items-center gap-1">
-              <Tooltip content={t('buttons.copy')}>
-                <p
-                  className="cursor-pointer hover:text-brand-royalblue transition-colors duration-200 select-none"
-                  onClick={() => {
-                    navigator.clipboard.writeText(activeAccount?.address);
-                    alert.success(t('home.addressCopied'));
-                  }}
-                >
-                  {ellipsis(activeAccount?.address, 4, 4)}
-                </p>
-              </Tooltip>
-              <Tooltip content={t('buttons.copy')}>
-                <div
-                  className="cursor-pointer transition-colors duration-200 ml-1"
-                  onClick={() => {
-                    navigator.clipboard.writeText(activeAccount?.address);
-                    alert.success(t('home.addressCopied'));
-                  }}
-                >
-                  <Icon
-                    name="copy"
-                    className="text-xs hover:text-brand-royalblue"
-                  />
-                </div>
-              </Tooltip>
-            </div>
+        <div className="flex min-w-0 max-w-full flex-wrap gap-1 justify-center items-center">
+          <span className="shrink-0">
+            <PaliWhiteSmallIconSvg />
+          </span>
+          <div className="flex min-w-0 max-w-full flex-wrap justify-center text-white gap-1 text-xs font-normal items-center">
+            <p className="min-w-0 max-w-full font-medium [overflow-wrap:anywhere]">
+              {activeAccount?.label}
+            </p>
+            <Tooltip content={t('buttons.copy')}>
+              <button
+                type="button"
+                aria-label={t('buttons.copy')}
+                className="inline-flex min-h-11 items-center gap-1 rounded-lg px-1 hover:text-brand-royalblue focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue transition-colors duration-200"
+                onClick={() => {
+                  navigator.clipboard.writeText(activeAccount?.address);
+                  alert.success(t('home.addressCopied'));
+                }}
+              >
+                {ellipsis(activeAccount?.address, 4, 4)}
+                <Icon name="copy" className="text-xs" />
+              </button>
+            </Tooltip>
           </div>
           {isAccountImported && (
             <div className="text-brand-blue100 text-xs font-medium bg-alpha-whiteAlpha200 py-[2px] px-[6px] rounded-[100px] w-max h-full">
@@ -980,8 +988,8 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
                           </button>
                         </Menu.Item>
 
-                        {accountAssets.syscoin.length > 0
-                          ? accountAssets.syscoin.map((item: any) =>
+                        {assets.length > 0
+                          ? assets.map((item: any) =>
                               item?.assetGuid ? (
                                 <Menu.Item
                                   as="div"

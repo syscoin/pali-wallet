@@ -737,6 +737,7 @@ describe('send forms across wallet navigation', () => {
       mockState.vault.activeNetwork.kind = INetworkType.Syscoin;
       const asset = {
         assetGuid: '123456',
+        chainId: 1,
         assetType: 'SYSX',
         symbol: 'SYSX',
         decimals: 8,
@@ -823,6 +824,7 @@ describe('send forms across wallet navigation', () => {
       mockState.vault.activeNetwork.kind = INetworkType.Syscoin;
       const asset = {
         assetGuid: '123456',
+        chainId: 1,
         assetType: 'SYSX',
         symbol: 'SYSX',
         decimals: 8,
@@ -893,6 +895,7 @@ describe('send forms across wallet navigation', () => {
         syscoin: [
           {
             assetGuid: '456',
+            chainId: 1,
             symbol: 'ALT',
             decimals: 8,
             balance: '10',
@@ -1450,6 +1453,143 @@ describe('send forms across wallet navigation', () => {
       ).toBeTruthy();
     }
   );
+
+  it('shows and selects only current-chain SPTs when the same GUID exists on another chain', async () => {
+    mockState.vault.isBitcoinBased = true;
+    mockState.vault.activeNetwork.kind = INetworkType.Syscoin;
+    mockState.vault.activeNetwork.chainId = 5700;
+    mockState.vault.activeNetwork.currency = 'TSYS';
+    mockLocation = { ...mockLocation, pathname: '/send/sys' };
+    const current = {
+      assetGuid: '123',
+      chainId: 5700,
+      symbol: 'CURRENT',
+      decimals: 8,
+      balance: '2',
+    };
+    mockState.testAssets = {
+      ethereum: [],
+      syscoin: [
+        { ...current, chainId: 57, symbol: 'FOREIGN', balance: '900' },
+        current,
+        { ...current, assetGuid: '456', chainId: 57, symbol: 'OTHER' },
+        {
+          ...current,
+          assetGuid: '789',
+          chainId: undefined,
+          symbol: 'UNSCOPED',
+        },
+      ],
+    };
+    render(<SendSys />);
+    expect(screen.queryByRole('button', { name: 'FOREIGN SPT' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'OTHER SPT' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'UNSCOPED SPT' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'CURRENT SPT' }));
+    await act(async () => {
+      fireEvent.click(screen.getByText('MAX'));
+    });
+    expect(
+      (screen.getByPlaceholderText('send.amount') as HTMLInputElement).value
+    ).toBe('2');
+    expect(
+      mockSave.mock.calls.filter(([route]) => route === '/send/sys').pop()![2]
+        .selectedAsset
+    ).toEqual(current);
+    fireEvent.click(screen.getByRole('button', { name: 'TSYS send.native' }));
+    expect(
+      mockSave.mock.calls.filter(([route]) => route === '/send/sys').pop()![2]
+    ).not.toHaveProperty('selectedAsset');
+  });
+
+  it('discards a foreign-chain asset draft without reinterpreting its amount or MAX as native', async () => {
+    mockState.vault.isBitcoinBased = true;
+    mockState.vault.activeNetwork.kind = INetworkType.Syscoin;
+    mockState.vault.activeNetwork.chainId = 5700;
+    mockLocation = {
+      ...mockLocation,
+      pathname: '/send/sys',
+      state: {
+        walletScope: getWalletNavigationScope(),
+        formValues: { receiver: 'recipient-a', amount: '900', fee: '0.00001' },
+        selectedAsset: {
+          assetGuid: '123',
+          chainId: 57,
+          symbol: 'FOREIGN',
+          decimals: 8,
+          balance: '900',
+        },
+        isMaxSend: true,
+      },
+    };
+    render(<SendSys />);
+    await act(async () => undefined);
+    expect(
+      (screen.getByPlaceholderText('send.amount') as HTMLInputElement).value
+    ).toBe('');
+    expect(
+      (screen.getByPlaceholderText('send.receiver') as HTMLInputElement).value
+    ).toBe('');
+    const saved = mockSave.mock.calls
+      .filter(([route]) => route === '/send/sys')
+      .pop()![2];
+    expect(saved).not.toHaveProperty('selectedAsset');
+    expect(saved.isMaxSend).toBe(false);
+    expect(mockEmitter).not.toHaveBeenCalledWith(
+      ['wallet', 'getEstimateSysTransactionFee'],
+      expect.anything()
+    );
+  });
+
+  it('refreshes a selected SPT only from its current-chain GUID match', async () => {
+    mockState.vault.isBitcoinBased = true;
+    mockState.vault.activeNetwork.kind = INetworkType.Syscoin;
+    mockState.vault.activeNetwork.chainId = 5700;
+    const current = {
+      assetGuid: '123',
+      chainId: 5700,
+      symbol: 'CURRENT',
+      decimals: 8,
+      balance: '2',
+    };
+    const foreign = {
+      ...current,
+      chainId: 57,
+      symbol: 'FOREIGN',
+      balance: '900',
+    };
+    mockState.testAssets = { ethereum: [], syscoin: [foreign, current] };
+    mockLocation = {
+      ...mockLocation,
+      pathname: '/send/sys',
+      state: {
+        walletScope: getWalletNavigationScope(),
+        selectedAsset: current,
+      },
+    };
+    const view = render(<SendSys />);
+    await act(async () => {
+      fireEvent.click(screen.getByText('MAX'));
+    });
+    expect(
+      (screen.getByPlaceholderText('send.amount') as HTMLInputElement).value
+    ).toBe('2');
+    mockState.testAssets = {
+      ethereum: [],
+      syscoin: [foreign, { ...current, balance: '3' }],
+    };
+    view.rerender(<SendSys />);
+    await act(async () => {
+      fireEvent.click(screen.getByText('MAX'));
+    });
+    expect(
+      (screen.getByPlaceholderText('send.amount') as HTMLInputElement).value
+    ).toBe('3');
+    expect(
+      mockSave.mock.calls.filter(([route]) => route === '/send/sys').pop()![2]
+        .selectedAsset
+    ).toEqual({ ...current, balance: '3' });
+  });
 
   it.each([
     { decimals: 0, amount: '9007199254740992', balance: '9007199254740993' },

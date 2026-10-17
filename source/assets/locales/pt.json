@@ -946,6 +946,7 @@
     "slowConnection": "A conexão está demorando mais que o normal"
   },
   "forgetWalletPage": {
+    "removalFailed": "Não foi possível remover a carteira. Tente novamente.",
     "importedAccountsWont": "As contas importadas não se vincularão à Frase de Recuperação Secreta da sua conta Pali inicial.",
     "stillHaveFunds": "Você ainda tem fundos em sua carteira!",
     "saveProperly": "Guarde esta frase-semente corretamente para que você possa importar esta carteira no futuro."

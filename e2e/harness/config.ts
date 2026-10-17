@@ -17,7 +17,9 @@ process.env.PALI_E2E_RUN_ID = runId;
 export const E2E_CONFIG = {
   artifactsDir: path.join(repoRoot, 'e2e', 'artifacts', runId),
   chainId: Number(process.env.PALI_E2E_CHAIN_ID || 57057),
-  extensionPath: path.join(repoRoot, 'build', 'chrome'),
+  extensionPath:
+    process.env.PALI_TEST_DAPP_EXTENSION_PATH ||
+    path.join(repoRoot, 'build', 'chrome'),
   headless: process.env.PALI_E2E_HEADED !== 'true',
   networkLabel: process.env.PALI_E2E_NETWORK_LABEL || 'zkTanenbaum',
   password:

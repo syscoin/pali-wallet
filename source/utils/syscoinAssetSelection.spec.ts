@@ -4,6 +4,7 @@ describe('Syscoin selected asset refresh', () => {
   it('replaces stale NFT metadata even when the balance is unchanged', () => {
     const selectedAsset = {
       assetGuid: '4294967297',
+      chainId: 5700,
       balance: '1',
       decimals: 8,
     };
@@ -15,20 +16,63 @@ describe('Syscoin selected asset refresh', () => {
     };
 
     expect(
-      getRefreshedSyscoinAssetSelection(selectedAsset, [refreshedAsset])
+      getRefreshedSyscoinAssetSelection(selectedAsset, [refreshedAsset], 5700)
     ).toBe(refreshedAsset);
   });
 
   it('does not replace an unchanged selection with an equivalent Redux copy', () => {
     const selectedAsset = {
       assetGuid: '4294967297',
+      chainId: 5700,
       assetType: 'ERC721' as const,
       balance: '1',
       decimals: 0,
     };
 
     expect(
-      getRefreshedSyscoinAssetSelection(selectedAsset, [{ ...selectedAsset }])
+      getRefreshedSyscoinAssetSelection(
+        selectedAsset,
+        [{ ...selectedAsset }],
+        5700
+      )
     ).toBeNull();
+  });
+
+  it('ignores an earlier same-GUID asset from another network', () => {
+    const selected = { assetGuid: '123', chainId: 5700, balance: '1' };
+    const foreign = { ...selected, chainId: 57, balance: '900' };
+    const current = { ...selected, balance: '2' };
+    expect(
+      getRefreshedSyscoinAssetSelection(selected, [foreign, current], 5700)
+    ).toBe(current);
+    expect(
+      getRefreshedSyscoinAssetSelection(selected, [foreign], 5700)
+    ).toBeNull();
+  });
+
+  it('does not migrate an explicitly foreign selection to the active network', () => {
+    const selected = { assetGuid: '123', chainId: 57, balance: '1' };
+    expect(
+      getRefreshedSyscoinAssetSelection(
+        selected,
+        [{ ...selected, chainId: 5700 }],
+        5700
+      )
+    ).toBeNull();
+  });
+
+  it('can refresh a scope-validated legacy draft only from a chain-identified record', () => {
+    const selected = { assetGuid: '123', balance: '1' };
+    const current = { ...selected, chainId: 5700, balance: '2' };
+    expect(
+      getRefreshedSyscoinAssetSelection(
+        selected,
+        [{ ...selected, balance: '900' }],
+        5700
+      )
+    ).toBeNull();
+    expect(getRefreshedSyscoinAssetSelection(selected, [current], 5700)).toBe(
+      current
+    );
   });
 });
