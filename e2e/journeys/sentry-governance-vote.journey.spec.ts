@@ -186,6 +186,9 @@ test('Pali reviews and signs exact legacy governance votes without disclosing ke
         exact: true,
       })
       .scrollIntoViewIfNeeded();
+    await expect(
+      popup.getByText('No · Funding vote', { exact: true })
+    ).toBeInViewport({ ratio: 1 });
     await popup.screenshot({
       path: info.outputPath('governance-top-320x360.png'),
     });
