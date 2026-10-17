@@ -269,8 +269,11 @@ test('Pali reviews and signs exact legacy governance votes without disclosing ke
     const walletPopup = await popupFor(wallet.context, page, walletId);
     await expect(
       walletPopup.getByRole('button', { name: 'Sign votes' })
-    ).toBeEnabled();
+    ).toBeDisabled();
     await walletPopup.getByLabel('Wallet password').fill(E2E_CONFIG.password);
+    await expect(
+      walletPopup.getByRole('button', { name: 'Sign votes' })
+    ).toBeEnabled();
     await walletPopup.getByRole('button', { name: 'Sign votes' }).click();
     const walletSigned = await settle(page, walletId, 45000);
     expect(walletSigned.error).toBeUndefined();
