@@ -87,7 +87,9 @@ test('shared page actions stay bottom-aligned and reachable across wallet screen
         await page.mouse.wheel(0, 4000);
         // Native wheel delivery/compositor updates finish asynchronously.
         await page.waitForTimeout(300);
-        await expect.poll(() => exposed(action)).toBe(true);
+        for (const button of await footer.getByRole('button').all()) {
+          await expect.poll(() => exposed(button)).toBe(true);
+        }
         const bounds = (await action.boundingBox())!;
         const gap = height - bounds.y - bounds.height;
         records.push({ route, height, gap, bounds });

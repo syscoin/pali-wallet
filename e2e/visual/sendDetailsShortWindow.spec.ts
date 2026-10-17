@@ -304,6 +304,13 @@ for (const height of [360, 480, 620]) {
         await wheelReveal(page, advanced);
         await observe(page, advanced, `${asset}-${height}-advanced`);
         await advanced.click();
+        // Native previews decode lazily when Advanced opens. The collapsed
+        // Confirm button can still be visible for one render before the async
+        // detail body pushes it down. Wait for the completed decoded body;
+        // checking visibility here would incorrectly skip the required scroll.
+        await expect(
+          page.getByText('Lock Time:', { exact: true })
+        ).toBeAttached();
         await wheelReveal(page, confirm);
         await capture(page, `${asset}-${height}-confirm-expanded`);
         await observe(page, confirm, `${asset}-${height}-confirm`);
