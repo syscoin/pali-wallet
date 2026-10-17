@@ -284,7 +284,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                   ? 'opacity-100 scale-100 pointer-events-auto'
                   : 'opacity-0 scale-95 pointer-events-none'
               }`}
-              static
+              unmount={false}
             >
               <div className="remove-scrollbar h-full overflow-y-auto overscroll-contain pt-5 pb-6">
                 <Menu.Item>

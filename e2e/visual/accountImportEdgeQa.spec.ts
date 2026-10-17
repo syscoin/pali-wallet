@@ -142,6 +142,11 @@ test('public XPUB copy is a keyboard control in the private-key view at narrow h
       { width: 320, height: 360 },
       { width: 400, height: 480 },
     ]) {
+      // Each viewport checks a fresh copy action. Let the previous notification
+      // finish naturally so the wallet's intentional toast dedup is not raced.
+      await expect(page.locator('.Toastify__toast')).toHaveCount(0, {
+        timeout: 10_000,
+      });
       await page.setViewportSize(viewport);
       await page.locator('input[type=password]').click();
       for (let step = 0; step < 20; step++) {
@@ -166,7 +171,7 @@ test('public XPUB copy is a keyboard control in the private-key view at narrow h
         `public-xpub-copy-${viewport.width}x${viewport.height}`,
         {
           body: await page.screenshot({
-            animations: 'disabled',
+            animations: 'allow',
             mask: [page.locator('input')],
           }),
           contentType: 'image/png',
@@ -388,6 +393,12 @@ test('About support links and URL copy are named keyboard controls in small wind
       { width: 320, height: 360 },
       { width: 400, height: 480 },
     ]) {
+      // Reusing a still-visible toast can mistake its exit animation for the
+      // new copy's entrance. Preserve every live-toast check below and start
+      // only once the previous viewport's notification has finished.
+      await expect(page.locator('.Toastify__toast')).toHaveCount(0, {
+        timeout: 10_000,
+      });
       await page.setViewportSize(viewport);
       await page
         .getByRole('button', { name: 'Pali API', exact: true })

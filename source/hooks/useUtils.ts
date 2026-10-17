@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
+import i18next from 'i18next';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'react-toastify';
 
 import { useSafeNavigate } from './useSafeNavigate';
@@ -33,25 +34,64 @@ export const useUtils = () => {
 
   const useCopyClipboard = (
     timeout = 1000
-  ): [boolean, (toCopy: string) => void] => {
+  ): [boolean, (toCopy: string) => Promise<void>] => {
     const [isCopied, setIsCopied] = useState<boolean>(false);
+    const active = useRef(true);
+    const copyRevision = useRef(0);
+    const resetTimer = useRef<ReturnType<typeof setTimeout>>();
 
-    const staticCopy = useCallback(async (text) => {
-      await navigator.clipboard.writeText(text);
-      setIsCopied(true);
+    // The indicator and its timer belong to the latest copy, not whichever
+    // browser promise happens to resolve last.
+    useEffect(() => {
+      active.current = true;
+      return () => {
+        active.current = false;
+        copyRevision.current += 1;
+        clearTimeout(resetTimer.current);
+      };
     }, []);
 
-    useEffect(() => {
-      if (isCopied) {
-        const hide = setTimeout(() => {
+    const staticCopy = useCallback(
+      (text: string) => {
+        const revision = ++copyRevision.current;
+        clearTimeout(resetTimer.current);
+        setIsCopied(false);
+        let writing: Promise<void>;
+        try {
+          // Invoke within the user gesture, preserving clipboard activation.
+          writing = Promise.resolve(navigator.clipboard.writeText(text));
+        } catch (error) {
+          writing = Promise.reject(error);
+        }
+        const result = writing.then(() => {
+          if (!active.current || revision !== copyRevision.current) return;
+          setIsCopied(true);
+          resetTimer.current = setTimeout(() => {
+            if (active.current && revision === copyRevision.current)
+              setIsCopied(false);
+          }, timeout);
+        });
+        // Observe the same returned promise, rather than swallowing its error:
+        // fire-and-forget callers are safe, while awaited callers still reject.
+        void result.catch(() => {
+          if (!active.current || revision !== copyRevision.current) return;
           setIsCopied(false);
-        }, timeout);
-
-        return () => {
-          clearTimeout(hide);
-        };
-      }
-    }, [isCopied, setIsCopied, timeout]);
+          const message = i18next.t('transactions.copyFailed', {
+            defaultValue: 'Could not copy to clipboard. Please try again.',
+          });
+          resetTimer.current = setTimeout(() => {
+            if (!active.current || revision !== copyRevision.current) return;
+            if (!shouldShowMessage(message, 'error')) return;
+            // Replace an optimistic legacy notice only after queued notices
+            // have been inserted. Never log or include clipboard contents.
+            toast.dismiss();
+            toast.error(message);
+          }, 0);
+        });
+        return result;
+      },
+      [timeout]
+    );
 
     return [isCopied, staticCopy];
   };

@@ -94,7 +94,8 @@ describe('SmartAccountPolicy guardian approval', () => {
   let hookStates: any[];
   let hookIndex: number;
   let controllerEmitter: jest.Mock;
-  let alert: { error: jest.Mock; success: jest.Mock };
+  let alert: { error: jest.Mock; info: jest.Mock; success: jest.Mock };
+  let copy: jest.Mock;
 
   const render = () => {
     hookIndex = 0;
@@ -155,11 +156,12 @@ describe('SmartAccountPolicy guardian approval', () => {
       configurable: true,
       value: { getItem: jest.fn(), setItem: jest.fn() },
     });
-    alert = { error: jest.fn(), success: jest.fn() };
+    alert = { error: jest.fn(), info: jest.fn(), success: jest.fn() };
+    copy = jest.fn().mockResolvedValue(undefined);
     (useUtils as jest.Mock).mockReturnValue({
       alert,
       navigate: mockNavigate,
-      useCopyClipboard: () => [null, jest.fn()],
+      useCopyClipboard: () => [null, copy],
     });
     controllerEmitter = jest.fn(async ([, method]: string[]) => {
       switch (method) {
@@ -234,6 +236,41 @@ describe('SmartAccountPolicy guardian approval', () => {
     ownerInput!.props.onChange({ target: { value: OWNER } });
     await click('settings.smartAccountGuardianRecoveryStart');
   };
+
+  it('waits for the public owner address copy before announcing success', async () => {
+    let complete!: () => void;
+    copy.mockReturnValueOnce(
+      new Promise<void>((resolve) => (complete = resolve))
+    );
+    const button = findElement(
+      render(),
+      (element) => element.type === 'button' && element.props.title === OWNER
+    )!;
+    expect(button).toBeDefined();
+    const request = button.props.onClick();
+    expect(copy).toHaveBeenCalledWith(OWNER);
+    expect(alert.info).not.toHaveBeenCalled();
+    complete();
+    await request;
+    expect(alert.info).toHaveBeenCalledWith('home.addressCopied');
+    expect(alert.error).not.toHaveBeenCalled();
+    expect(controllerEmitter).not.toHaveBeenCalled();
+  });
+
+  it('handles public owner address copy refusal without success', async () => {
+    const failure = Promise.reject(new Error('Synthetic clipboard refusal'));
+    void failure.catch(() => undefined);
+    copy.mockReturnValueOnce(failure);
+    const button = findElement(
+      render(),
+      (element) => element.type === 'button' && element.props.title === OWNER
+    )!;
+    expect(button).toBeDefined();
+    await button.props.onClick();
+    expect(alert.info).not.toHaveBeenCalled();
+    expect(alert.error).toHaveBeenCalledWith('transactions.copyFailed');
+    expect(controllerEmitter).not.toHaveBeenCalled();
+  });
 
   it('remembers only the recovery pane across reopening and starts its form fresh', async () => {
     await click('settings.smartAccountGuardianRecoveryShowOptions');

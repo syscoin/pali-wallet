@@ -253,4 +253,27 @@ describe('smart-account creation from the hub', () => {
     );
     expect(mockEmitter).toHaveBeenCalledTimes(1);
   });
+
+  it('does not create duplicate ordinary accounts on repeated form submission', async () => {
+    let finish!: (result: { address: string }) => void;
+    mockEmitter.mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve;
+      })
+    );
+    mockLocation.state = { returnContext: { returnRoute: '/home' } };
+    render(<CreateAccount />);
+    fireEvent.change(screen.getByRole('textbox'), {
+      target: { value: 'Ordinary savings' },
+    });
+    submit();
+    submit();
+    expect(mockEmitter).toHaveBeenCalledTimes(1);
+    expect(mockEmitter).toHaveBeenCalledWith(
+      ['wallet', 'createAccount'],
+      ['Ordinary savings']
+    );
+    await act(async () => finish({ address: newAddress }));
+    expect(screen.getByRole('dialog')).toBeDefined();
+  });
 });

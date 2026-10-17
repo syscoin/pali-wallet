@@ -1,6 +1,12 @@
 /* eslint-disable react/prop-types */
 import { Menu } from '@headlessui/react';
-import React, { useState, useCallback, useMemo } from 'react';
+import React, {
+  useState,
+  useCallback,
+  useMemo,
+  useEffect,
+  useRef,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
@@ -21,7 +27,10 @@ import { isAccountCompatibleWithNetwork } from 'utils/accountCompatibility';
 import { ellipsis } from 'utils/index';
 
 type RenderAccountsListByBitcoinBasedProps = {
-  setActiveAccount: (id: number, type: KeyringAccountType) => Promise<void>;
+  setActiveAccount: (
+    id: number,
+    type: KeyringAccountType
+  ) => Promise<void | boolean>;
 };
 
 // Memoized badge info to prevent object recreation
@@ -119,6 +128,10 @@ const RenderAccountsListByBitcoinBased =
       type: KeyringAccountType;
     } | null>(null);
     const [copiedKey, setCopiedKey] = useState<string | null>(null);
+    const switchInFlightRef = useRef(false);
+    const mountedRef = useRef(true);
+    const copySequenceRef = useRef(0);
+    const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const { t } = useTranslation();
     const { alert } = useUtils();
@@ -128,22 +141,40 @@ const RenderAccountsListByBitcoinBased =
       (state: RootState) => state.vault.activeNetwork
     );
     const activeAccount = useSelector(selectActiveAccountRef);
+    const backgroundSwitching = useSelector(
+      (state: RootState) => state.vaultGlobal.isSwitchingAccount
+    );
     // When the accounts list is scrollable, a first click can be swallowed by inertial scrolling
     // (common on trackpads) or by focus/blur interactions. Handle selection on mouse pointer-down
     // so the first interaction reliably switches accounts.
     const lastMouseDownKeyRef = React.useRef<string | null>(null);
 
+    useEffect(() => {
+      mountedRef.current = true;
+      return () => {
+        mountedRef.current = false;
+        if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
+      };
+    }, []);
+
     const handleAccountSwitch = useCallback(
       async (id: number, type: KeyringAccountType, close: () => void) => {
+        // State alone cannot stop two events from the same render.
+        if (backgroundSwitching || switchInFlightRef.current) return;
+        switchInFlightRef.current = true;
         setSwitchingAccount({ id, type });
         try {
-          await setActiveAccount(id, type);
-          close();
+          const switched = await setActiveAccount(id, type);
+          if (mountedRef.current && switched !== false) close();
+        } catch {
+          if (mountedRef.current)
+            alert.error(t('accountMenu.switchAccountError'));
         } finally {
-          setSwitchingAccount(null);
+          switchInFlightRef.current = false;
+          if (mountedRef.current) setSwitchingAccount(null);
         }
       },
-      [setActiveAccount]
+      [setActiveAccount, backgroundSwitching, alert, t]
     );
 
     const isAccountSwitching = useCallback(
@@ -161,13 +192,27 @@ const RenderAccountsListByBitcoinBased =
 
     const handleCopyAddress = useCallback(
       async (key: string, address: string) => {
-        await navigator.clipboard.writeText(address);
-        setCopiedKey(key);
-        alert.info(t('home.addressCopied'));
-        setTimeout(
-          () => setCopiedKey((current) => (current === key ? null : current)),
-          1500
-        );
+        const sequence = ++copySequenceRef.current;
+        if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
+        setCopiedKey(null);
+        try {
+          await navigator.clipboard.writeText(address);
+          if (sequence !== copySequenceRef.current) return;
+          // Keyboard activation closes the menu before clipboard completion.
+          // Keep the action's global outcome message, but never update a
+          // dismissed row or leave it with a pending feedback timer.
+          if (mountedRef.current) {
+            setCopiedKey(key);
+            copyTimeoutRef.current = setTimeout(() => {
+              copyTimeoutRef.current = null;
+              if (mountedRef.current) setCopiedKey(null);
+            }, 1500);
+          }
+          alert.info(t('home.addressCopied'));
+        } catch {
+          if (sequence === copySequenceRef.current)
+            alert.error(t('transactions.copyFailed'));
+        }
       },
       [alert, t]
     );
@@ -178,97 +223,106 @@ const RenderAccountsListByBitcoinBased =
         account: any,
         accountType: KeyringAccountType,
         index: number,
-        close: () => void
+        busy: boolean
       ) => {
         const badgeInfo = BADGE_INFO_MAP[accountType];
         const key = `${accountType}-${account.id}`;
-        const triggerSwitch = () => {
-          if (isAccountSwitching(account.id, accountType)) return;
-          handleAccountSwitch(account.id, accountType, close);
-        };
-
         return (
           <li
-            className={`group relative py-1.5 px-5 w-full backface-visibility-hidden flex items-center justify-between text-white text-sm 
-          font-medium cursor-pointer hover:bg-gradient-to-r hover:from-brand-blue600 hover:to-brand-blue500 active:bg-brand-blue700 active:scale-[0.98] focus:outline-none transform
-           transition-all duration-300 ease-in-out hover:shadow-lg hover:shadow-brand-blue600/20 ${
-             isAccountSwitching(account.id, accountType)
-               ? 'bg-brand-blue600/20 ring-1 ring-brand-blue500/30'
-               : ''
-           }`}
-            onPointerDown={(e) => {
-              // Only do this for mouse clicks to avoid breaking touch scrolling.
-              if ((e as any).pointerType !== 'mouse') return;
-              // Only left button.
-              if ((e as any).button !== 0) return;
-              lastMouseDownKeyRef.current = key;
-              // Prevent focus changes that can cause the Menu to shift/scroll before click fires.
-              e.preventDefault();
-              triggerSwitch();
-            }}
-            onClick={() => {
-              // If we already handled this interaction on pointer-down, ignore the click.
-              if (lastMouseDownKeyRef.current === key) {
-                lastMouseDownKeyRef.current = null;
-                return;
-              }
-              triggerSwitch();
-            }}
             id={`account-${accountType}-${index}`}
+            role="none"
+            className={`group relative px-5 w-full flex items-center gap-2 text-white text-sm font-medium ${
+              isAccountSwitching(account.id, accountType)
+                ? 'bg-brand-blue600/20 ring-1 ring-brand-blue500/30'
+                : ''
+            }`}
             key={key}
           >
-            {/* Background glow effect on hover */}
-            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-brand-blue600/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-lg"></div>
-
-            {/* Left side: Icon + Account name */}
-            <div className="flex items-center gap-2 flex-1 min-w-0 pr-3 relative z-10">
-              <div className="transform group-hover:scale-110 transition-transform duration-300 ease-out">
-                {getAccountIcon(accountType, account)}
-              </div>
-              <span className="group-hover:text-white transition-colors duration-300 truncate">
-                {account.label} ({ellipsis(account.address, 4, 4)})
-              </span>
-              <button
-                type="button"
-                title={t('buttons.copy')}
-                aria-label={t('buttons.copy')}
-                className="flex-shrink-0 p-1 -my-1 -ml-1 text-brand-gray300 hover:text-white opacity-70 hover:opacity-100 transition-all duration-200"
-                onPointerDown={(e) => {
-                  // The row switches accounts on pointer-down; keep copy
-                  // interactions from reaching it.
-                  e.preventDefault();
-                  e.stopPropagation();
-                }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleCopyAddress(key, account.address);
-                }}
-              >
-                {copiedKey === key ? (
-                  <Icon name="check" className="w-3.5 h-3.5" color="#8EC100" />
-                ) : (
-                  <Icon name="copy" className="w-3.5 h-3.5" />
-                )}
-              </button>
-            </div>
-
-            {/* Right side: badge (with inline active check to save space) */}
-            <div className="flex items-center flex-shrink-0 relative z-10">
-              {isAccountSwitching(account.id, accountType) ? (
-                <LoadingSvg
-                  className={`w-4 animate-spin h-4 ${badgeInfo.loadingColor}`}
-                />
-              ) : (
-                <span
-                  className={`flex items-center gap-1 text-xs px-2 py-0.5 text-white ${badgeInfo.bgColor} rounded-full font-medium shadow-sm group-hover:shadow-md ${badgeInfo.hoverColor} transform group-hover:scale-105 transition-all duration-300`}
+            <Menu.Item disabled={busy}>
+              {({ active, close }) => (
+                <button
+                  type="button"
+                  aria-label={`${account.label} (${account.address})`}
+                  aria-current={
+                    isAccountActive(account.id, accountType)
+                      ? 'true'
+                      : undefined
+                  }
+                  disabled={busy}
+                  className={`flex flex-1 items-center gap-2 min-w-0 min-h-[38px] text-left rounded-lg px-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue ${
+                    active ? 'bg-brand-blue500/30' : 'hover:bg-brand-blue500/20'
+                  } disabled:cursor-wait`}
+                  onPointerDown={(e) => {
+                    if (e.pointerType !== 'mouse' || e.button !== 0) return;
+                    lastMouseDownKeyRef.current = key;
+                    e.preventDefault();
+                    void handleAccountSwitch(account.id, accountType, close);
+                  }}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    if (lastMouseDownKeyRef.current === key && e.detail > 0) {
+                      lastMouseDownKeyRef.current = null;
+                      return;
+                    }
+                    void handleAccountSwitch(account.id, accountType, close);
+                  }}
                 >
-                  {isAccountActive(account.id, accountType) && (
-                    <Icon name="check" className="w-3 h-3" />
+                  <span className="flex-shrink-0">
+                    {getAccountIcon(accountType, account)}
+                  </span>
+                  <span className="truncate flex-1 min-w-0">
+                    {account.label} ({ellipsis(account.address, 4, 4)})
+                  </span>
+                  {isAccountSwitching(account.id, accountType) ? (
+                    <LoadingSvg
+                      className={`w-4 animate-spin h-4 flex-shrink-0 ${badgeInfo.loadingColor}`}
+                    />
+                  ) : (
+                    <span
+                      className={`inline-flex h-[20px] flex-shrink-0 items-center gap-1 px-2 text-xs leading-none text-white ${badgeInfo.bgColor} rounded-full font-medium`}
+                    >
+                      {isAccountActive(account.id, accountType) && (
+                        <Icon
+                          name="check"
+                          wrapperClassname="flex h-[12px] w-[12px] flex-shrink-0 items-center justify-center leading-none"
+                          className="block h-[12px] w-[12px]"
+                        />
+                      )}
+                      <span className="leading-none">{badgeInfo.label}</span>
+                    </span>
                   )}
-                  {badgeInfo.label}
-                </span>
+                </button>
               )}
-            </div>
+            </Menu.Item>
+            <Menu.Item disabled={busy}>
+              {({ active }) => (
+                <button
+                  type="button"
+                  disabled={busy}
+                  title={t('buttons.copy')}
+                  aria-label={`${t('buttons.copy')}: ${account.label}`}
+                  className={`flex items-center justify-center flex-shrink-0 min-w-[44px] min-h-[38px] rounded-lg text-brand-gray300 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue ${
+                    active
+                      ? 'bg-brand-blue500/30 text-white'
+                      : 'hover:bg-brand-blue500/20'
+                  }`}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    void handleCopyAddress(key, account.address);
+                  }}
+                >
+                  {copiedKey === key ? (
+                    <Icon
+                      name="check"
+                      className="w-3.5 h-3.5"
+                      color="#8EC100"
+                    />
+                  ) : (
+                    <Icon name="copy" className="w-3.5 h-3.5" />
+                  )}
+                </button>
+              )}
+            </Menu.Item>
           </li>
         );
       },
@@ -303,27 +357,18 @@ const RenderAccountsListByBitcoinBased =
       [accounts, activeNetwork.chainId, activeNetwork.kind]
     );
 
-    const isAnySwitching = switchingAccount !== null;
+    const isAnySwitching = backgroundSwitching || switchingAccount !== null;
 
     return (
-      <Menu.Item>
-        {({ close }) => (
-          <div
-            className={`relative w-full block ${
-              isAnySwitching ? 'pointer-events-none' : ''
-            }`}
-          >
-            {/* Gray overlay when any account is switching */}
-            {isAnySwitching && (
-              <div className="absolute inset-0 bg-gray-500/30 z-20 rounded-lg backdrop-blur-[0.5px]" />
-            )}
-
-            {accountsList.map(({ account, accountType, index }) =>
-              renderAccount(account, accountType, index, close)
-            )}
-          </div>
+      <div
+        className="relative w-full block"
+        role="none"
+        aria-busy={isAnySwitching}
+      >
+        {accountsList.map(({ account, accountType, index }) =>
+          renderAccount(account, accountType, index, isAnySwitching)
         )}
-      </Menu.Item>
+      </div>
     );
   });
 

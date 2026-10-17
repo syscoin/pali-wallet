@@ -54,9 +54,13 @@ export const AddressText: FC<IAddressText> = ({
     preset === 'full' ? value : ellipsis(value, ...PRESETS[preset]);
   const isTruncated = display !== value;
 
-  const handleCopy = useCallback(() => {
-    copy(value);
-    alert.info(t('home.addressCopied'));
+  const handleCopy = useCallback(async () => {
+    try {
+      await copy(value);
+      alert.info(t('home.addressCopied'));
+    } catch {
+      alert.error(t('transactions.copyFailed'));
+    }
   }, [alert, copy, t, value]);
 
   const text = explorerUrl ? (
@@ -87,7 +91,7 @@ export const AddressText: FC<IAddressText> = ({
           type="button"
           aria-label={t('buttons.copy')}
           onClick={handleCopy}
-          className="inline-flex items-center text-brand-gray200 hover:text-brand-white transition-colors duration-200"
+          className="inline-flex items-center rounded text-brand-gray200 hover:text-brand-white transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue"
         >
           <Icon name="copy" size={12} />
         </button>
