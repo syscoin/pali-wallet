@@ -34,6 +34,7 @@ const SECRET_VIEW_ROUTES = new Set([
   '/settings/seed',
   '/settings/account/private-key',
   '/settings/forget-wallet',
+  '/settings/sentry',
 ]);
 
 export const AppLayout: FC<IAppLayout> = ({ children }) => {
@@ -90,6 +91,8 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
       '/external/add-EthChain',
       '/external/switch-EthChain',
       '/external/switch-UtxoEvm',
+      '/external/sentry-operation',
+      '/external/sentry-link',
       // External transaction routes should also be title-only
       '/external/tx/ethSign',
       '/external/tx/sign',
@@ -171,6 +174,8 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
     // External dApp routes
     if (path === '/external/connect-wallet')
       return t('connections.connectAccount');
+    if (path === '/external/sentry-operation') return t('sentry.sentryUpdate');
+    if (path === '/external/sentry-link') return t('sentry.linkSentryNode');
     if (path === '/external/change-account')
       return t('connections.connectedAccount');
     if (path === '/external/change-active-connected-account')
@@ -185,6 +190,7 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
 
     // Settings routes
     if (path.startsWith('/settings')) {
+      if (path === '/settings/sentry') return t('sentry.sentryOperators');
       if (path === '/settings/about')
         return t('generalMenu.infoHelp').toUpperCase();
       if (path === '/settings/advanced') return t('settings.advancedTitle');

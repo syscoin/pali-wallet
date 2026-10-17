@@ -2,6 +2,7 @@
 
 import { getController } from 'scripts/Background';
 import store from 'state/store';
+import { getSentryNetwork } from 'utils/sentry/network';
 
 export const SysProvider = (host: string) => {
   //* ----- Connection & Account Methods -----
@@ -108,6 +109,20 @@ export const SysProvider = (host: string) => {
   };
 
   return {
+    getSentryCapabilities: () => {
+      getSentryNetwork(store.getState().vault.activeNetwork);
+      return {
+        version: 1,
+        operations: ['register', 'updateService', 'updateRegistrar', 'registerOperator', 'rotateOperator', 'revoke'],
+        linkNode: true,
+        eras: ['legacy-v3', 'pq-v4'],
+        schemes: ['secp256k1', 'bls-basic', 'slh-dsa-shake-128s'],
+        roles: ['owner', 'operator', 'collateral', 'voting'],
+        keySelection: 'wallet-approval',
+        result: 'operator-authorized-transaction',
+        requiresFeeInputSignatures: true,
+      };
+    },
     // Connection & Account methods
     getAccount,
     isConnected,

@@ -143,6 +143,8 @@ import {
 } from 'utils/nativeBalanceCache';
 import { getNetworkChain } from 'utils/network';
 import { blacklistService } from 'utils/security/blacklistService';
+import { getSentryCollateralReservations } from 'utils/sentry/collateral';
+import { getSentryNetwork, SENTRY_NETWORKS } from 'utils/sentry/network';
 import {
   getSLHDSASessionGeneration,
   cancelSLHDSAWorkerInOffscreen,
@@ -214,6 +216,8 @@ import {
   PromiseTargets,
 } from './promises/cancellablesPromises';
 import { patchFetchWithPaliHeaders } from './providers/patchFetchWithPaliHeaders';
+import type { SentryWalletScope } from './sentry';
+import type { SentryController } from './sentry';
 import SmartAccountController from './smartAccount';
 import { StorageManager } from './storageManager';
 import TransactionsManager from './transactions';
@@ -224,6 +228,11 @@ import {
   ITransactionsManager,
 } from './transactions/types';
 import { clearFetchBackendAccountCache } from './utils/fetchBackendAccountWrapper';
+import type {
+  SentryAuthorityRole,
+  SentryAuthorityScheme,
+  SentryRequiredAuthorization,
+} from '@sidhujag/sysweb3-sentry';
 
 export type AccountRemovalContext = {
   activeAccount: { address: string; id: number; type: KeyringAccountType };
@@ -272,6 +281,7 @@ class MainController {
   private recoveryJournalPending = false;
   private isResettingWallet = false;
   private authenticationMutex = new AsyncMutex();
+  private sentryController: Promise<SentryController> | undefined;
   private ethPropertyMutex = new AsyncMutex();
 
   // Auto-lock timer management
@@ -484,6 +494,10 @@ class MainController {
             key.match(/^state-vault-\d+$/) ||
             key.startsWith('sysweb3-vault-') ||
             key.startsWith('pali-slh-dsa-state:') ||
+            key.startsWith('sentry-operator-v1:') ||
+            key.startsWith('sentry-settings-v1:') ||
+            key.startsWith('sentry-collateral-v1:') ||
+            key.startsWith('sentry-linked-v1:') ||
             key.startsWith('pali-slh-dsa-precompute:') ||
             key.startsWith('pali-slh-dsa-smart-account-setup:') ||
             key.startsWith('pali-slh-dsa-prepared-smart-account-signer:v1:') ||
@@ -1482,8 +1496,7 @@ class MainController {
     return this.getActiveKeyring().syscoinTransaction;
   }
 
-  // Ordinary wallet Send uses the existing SDK builder unchanged, then rejects
-  // a stale indexer snapshot before presenting another confirmation.
+  // Protect linked collateral during selection as well as at the signing boundary.
   public async getEstimateSysTransactionFee(
     params: Parameters<
       KeyringManager['syscoinTransaction']['getEstimateSysTransactionFee']
@@ -1491,11 +1504,18 @@ class MainController {
   ) {
     const signing = this.captureUtxoSigningContext();
     const activeNetwork = store.getState().vault.activeNetwork;
-    const result = await signing.transactions.getEstimateSysTransactionFee(
-      params
-    );
+    const excludedOutpoints = await this.getProtectedSentryOutpoints();
+    signing.assertCurrent();
+    const result = await signing.transactions.getEstimateSysTransactionFee({
+      ...params,
+      excludedOutpoints,
+    });
     signing.assertCurrent();
     if (result?.psbt) {
+      await this.assertNoSentryCollateralInputs(
+        PsbtUtils.fromPali(result.psbt, activeNetwork)
+      );
+      signing.assertCurrent();
       this.assertOrdinaryUtxoInputsCurrent(
         PsbtUtils.fromPali(result.psbt, activeNetwork),
         signing.context
@@ -1536,6 +1556,111 @@ class MainController {
     return this.authenticationMutex.runExclusive(() =>
       this.getSeedForCurrentSession(pwd, generation)
     );
+  }
+
+  private getSentryController(): Promise<SentryController> {
+    if (!this.sentryController) {
+      this.sentryController = import(
+        /* webpackChunkName: "sentry-controller" */ './sentry'
+      )
+        .then(
+          ({ SentryController: SentryControllerConstructor }) =>
+            new SentryControllerConstructor({
+              captureScope: () => this.captureSentryWalletScope(),
+              getSeed: (password) => this.getSeed(password),
+              ownsCollateral: (outpoint, scope) =>
+                this.ownsSentryCollateral(outpoint, scope),
+              hasWalletAuthority: async (address, scope) =>
+                (await this.findSentryWalletAuthority(address, scope)).path !==
+                undefined,
+              resolveWalletAuthority: (params, scope) =>
+                this.resolveSentryWalletAuthority(params, scope),
+            })
+        )
+        .catch((error) => {
+          this.sentryController = undefined;
+          throw error;
+        });
+    }
+    return this.sentryController;
+  }
+
+  private captureSentryWalletScope(): SentryWalletScope {
+    this.assertWalletReadyForSigning();
+    const { vault, vaultGlobal } = store.getState();
+    const rootPublicIdentity = vault.accounts.HDAccount?.[0]?.xpub;
+    if (!rootPublicIdentity)
+      throw new Error('Unlock a seeded wallet to manage Sentry keys');
+    return {
+      rootPublicIdentity,
+      network: vault.activeNetwork,
+      identity: JSON.stringify({
+        rootPublicIdentity,
+        session: this.walletSessionGeneration,
+        slip44: vaultGlobal.activeSlip44,
+        account: vault.activeAccount,
+        network: vault.activeNetwork,
+      }),
+    };
+  }
+
+  public async getSentrySettings() {
+    return (await this.getSentryController()).getSettings();
+  }
+  public async saveSentrySettings(params: {
+    maxFeeSatoshis: string;
+    password: string;
+    serviceUrl: string;
+  }) {
+    return (await this.getSentryController()).saveSettings(params);
+  }
+  public async importSentryKey(params: {
+    label: string;
+    password: string;
+    role?: SentryAuthorityRole;
+    scheme: SentryAuthorityScheme;
+    secretKey: string;
+  }) {
+    return (await this.getSentryController()).importKey(params);
+  }
+  public async removeSentryKey(params: { id: string; password: string }) {
+    return (await this.getSentryController()).removeKey(params);
+  }
+  public async releaseSentryCollateral(params: {
+    acknowledgeNodeStops: boolean;
+    password: string;
+    reservation: import('utils/sentry/collateral').SentryCollateralReservation;
+  }) {
+    return (await this.getSentryController()).releaseCollateral(params);
+  }
+  public async prepareSentryOperation(request: unknown, origin: string) {
+    return (await this.getSentryController()).prepare(request, origin);
+  }
+  public async prepareSentryLink(request: unknown, origin: string) {
+    return (await this.getSentryController()).prepareLink(request, origin);
+  }
+  public async getSentryLinkApproval(id: string) {
+    return (await this.getSentryController()).getLinkApproval(id);
+  }
+  public async approveSentryLink(id: string) {
+    return (await this.getSentryController()).approveLink(id);
+  }
+  public async cancelSentryLink(id: string) {
+    return (await this.getSentryController()).cancelLink(id);
+  }
+  public async getSentryApproval(id: string) {
+    return (await this.getSentryController()).getApproval(id);
+  }
+  public async cancelSentryApproval(id: string) {
+    return (await this.getSentryController()).cancel(id);
+  }
+  public async signSentryApproval(params: {
+    authorizationId?: SentryRequiredAuthorization['id'];
+    id: string;
+    keyId: string;
+    password: string;
+  }) {
+    return (await this.getSentryController()).sign(params);
   }
 
   private async getSeedForCurrentSession(pwd: string, generation: number) {
@@ -5241,6 +5366,8 @@ class MainController {
         }
 
         // Step 2: Send the transaction
+        await this.assertNoSentryCollateralInputs(verifiedSignedPsbt);
+        signing.assertCurrent();
         senderInvoked = true;
         const txResult = await signing.transactions.sendTransaction(signedPsbt);
         // Broadcast acknowledgement is authoritative even if the user changes
@@ -7905,6 +8032,183 @@ class MainController {
     return { psbt, summary };
   };
 
+  private async getProtectedSentryOutpoints() {
+    const { vault } = store.getState();
+    if (
+      !vault.isBitcoinBased ||
+      vault.activeNetwork.kind !== INetworkType.Syscoin
+    )
+      return [];
+    if (
+      !Object.values(SENTRY_NETWORKS).some(
+        (network) => network.chainId === vault.activeNetwork.chainId
+      )
+    )
+      return [];
+    const rootPublicIdentity = vault.accounts.HDAccount?.[0]?.xpub;
+    if (!rootPublicIdentity) return [];
+    const network = getSentryNetwork(vault.activeNetwork);
+    return getSentryCollateralReservations({
+      walletIdentity: rootPublicIdentity,
+      genesisHash: SENTRY_NETWORKS[network].genesisHash,
+    });
+  }
+
+  private async assertNoSentryCollateralInputs(
+    psbtOrResolve:
+      | { txInputs: { hash: Uint8Array; index: number }[] }
+      | (() => { txInputs: { hash: Uint8Array; index: number }[] })
+  ) {
+    const reservations = await this.getProtectedSentryOutpoints();
+    const protectedIds = new Set(
+      reservations.map(({ txid, vout }) => `${txid}:${vout}`)
+    );
+    if (!protectedIds.size) return;
+    const psbt =
+      typeof psbtOrResolve === 'function' ? psbtOrResolve() : psbtOrResolve;
+    if (
+      psbt.txInputs.some(({ hash, index }) =>
+        protectedIds.has(
+          `${Buffer.from(hash).reverse().toString('hex')}:${index}`
+        )
+      )
+    )
+      throw new Error(
+        'This transaction spends protected Sentry Node collateral. Unlock it explicitly in Sentry settings only if you intend to stop the node.'
+      );
+  }
+
+  private async findSentryWalletAuthority(
+    address: string,
+    scope: SentryWalletScope
+  ) {
+    const signing = this.captureUtxoSigningContext();
+    const assertCurrent = () => {
+      signing.assertCurrent();
+      if (this.captureSentryWalletScope().identity !== scope.identity)
+        throw new Error('Sentry wallet context changed');
+    };
+    assertCurrent();
+    const { vault } = store.getState();
+    const activeNetwork = { ...vault.activeNetwork };
+    const config = getNetworkConfig(
+      activeNetwork.slip44,
+      activeNetwork.currency
+    );
+    const network =
+      activeNetwork.slip44 === 1
+        ? config.networks.testnet
+        : config.networks.mainnet;
+    const imported =
+      signing.context.account.type === KeyringAccountType.Imported;
+    const singleAddress =
+      imported &&
+      signing.context.account.xpub === signing.context.account.address;
+    const response = singleAddress
+      ? undefined
+      : await syscoinjs.utils.fetchBackendAccount(
+          activeNetwork.url,
+          signing.context.account.xpub,
+          'tokens=derived&details=tokens',
+          true
+        );
+    assertCurrent();
+    if (!singleAddress && (!response || !Array.isArray(response.tokens)))
+      throw new Error('Cannot verify the wallet address paths');
+    const addressScope = {
+      account: signing.context.account,
+      accountId: signing.context.account.id,
+      imported,
+      slip44: signing.context.slip44,
+      network,
+    };
+    const { findSentryWalletPath } = await import(
+      /* webpackChunkName: "sentry-wallet-authority" */ 'utils/sentry/walletAuthority'
+    );
+    assertCurrent();
+    const path = findSentryWalletPath(
+      address,
+      response?.tokens?.map((token: any) => token.path) || [],
+      addressScope
+    );
+    return { path, addressScope, signing, assertCurrent };
+  }
+
+  private async ownsSentryCollateral(
+    outpoint: { txid: string; vout: number },
+    scope: SentryWalletScope
+  ) {
+    const activeNetwork = store.getState().vault.activeNetwork;
+    const raw = await this.txUtils.getRawTransaction(
+      activeNetwork.url,
+      outpoint.txid
+    );
+    const transaction = syscoinjs.utils.bitcoinjs.Transaction.fromHex(
+      typeof raw === 'string' ? raw : raw?.hex
+    );
+    if (
+      transaction.getId() !== outpoint.txid ||
+      !transaction.outs[outpoint.vout]
+    )
+      throw new Error('Cannot verify registered collateral transaction');
+    const config = getNetworkConfig(
+      activeNetwork.slip44,
+      activeNetwork.currency
+    );
+    const network =
+      activeNetwork.slip44 === 1
+        ? config.networks.testnet
+        : config.networks.mainnet;
+    let address: string;
+    try {
+      address = syscoinjs.utils.bitcoinjs.address.fromOutputScript(
+        transaction.outs[outpoint.vout].script,
+        network
+      );
+    } catch {
+      return false;
+    }
+    const resolved = await this.findSentryWalletAuthority(address, scope);
+    resolved.assertCurrent();
+    return resolved.path !== undefined;
+  }
+
+  private async resolveSentryWalletAuthority(
+    params: { address: string; password: string },
+    scope: SentryWalletScope
+  ) {
+    const resolved = await this.findSentryWalletAuthority(
+      params.address,
+      scope
+    );
+    if (resolved.path === undefined)
+      throw new Error('Selected wallet does not own this Sentry authority');
+    const account = resolved.signing.context.account;
+    if (
+      ![KeyringAccountType.HDAccount, KeyringAccountType.Imported].includes(
+        account.type
+      )
+    )
+      throw new Error(
+        'Sentry authority signing with hardware accounts is not supported'
+      );
+    const privateKey = await this.getPrivateKeyByAccountId(
+      account.id,
+      account.type,
+      params.password
+    );
+    const { deriveSentryWalletAuthority } = await import(
+      /* webpackChunkName: "sentry-wallet-authority" */ 'utils/sentry/walletAuthority'
+    );
+    resolved.assertCurrent();
+    return deriveSentryWalletAuthority(
+      params.address,
+      resolved.path,
+      privateKey,
+      resolved.addressScope
+    );
+  }
+
   private assertOrdinaryUtxoInputsCurrent(
     psbt: { txInputs: Parameters<typeof createUtxoAcknowledgedInputs>[0] },
     context: IUtxoSigningContext
@@ -7991,10 +8295,16 @@ class MainController {
     const signing = this.captureUtxoSigningContext(params.expectedContext);
     const verified = await this.verifySyscoinPsbt(params.psbt);
     signing.assertCurrent();
+    await this.assertNoSentryCollateralInputs(verified.psbt);
+    signing.assertCurrent();
     const signed = await signing.transactions.signPSBT({
       ...params,
       psbt: PsbtUtils.toPali(verified.psbt),
     });
+    signing.assertCurrent();
+    await this.assertNoSentryCollateralInputs(() =>
+      PsbtUtils.fromPali(signed, store.getState().vault.activeNetwork)
+    );
     signing.assertCurrent();
     return signed;
   }

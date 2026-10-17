@@ -99,6 +99,7 @@ describe('PSBT approval context', () => {
       .fn()
       .mockResolvedValue({ psbt: 'verified-fixture' });
     wallet.sendAndSaveTransaction = jest.fn();
+    wallet.getProtectedSentryOutpoints = jest.fn().mockResolvedValue([]);
     (PsbtUtils.fromPali as jest.Mock)
       .mockReset()
       .mockImplementation(() => syntheticPsbt(BigInt(1000)));
@@ -114,6 +115,76 @@ describe('PSBT approval context', () => {
     expect(keyring.syscoinTransaction.signPSBT).toHaveBeenCalledWith({
       psbt: 'verified-fixture',
     });
+  });
+
+  it('rejects protected collateral in a dapp sign-only PSBT before signing', async () => {
+    wallet.getProtectedSentryOutpoints.mockResolvedValue([
+      { txid: '01'.repeat(32), vout: 0, proTxHash: '02'.repeat(32) },
+    ]);
+    wallet.verifySyscoinPsbt.mockResolvedValue({
+      psbt: syntheticPsbt(BigInt(1000), false),
+    });
+    await expect(wallet.signSyscoinPsbt({ psbt: 'dapp-psbt' })).rejects.toThrow(
+      'protected Sentry Node collateral'
+    );
+    expect(keyring.syscoinTransaction.signPSBT).not.toHaveBeenCalled();
+  });
+
+  it('passes only background-owned exclusions to the builder', async () => {
+    const reservation = {
+      txid: '02'.repeat(32),
+      vout: 3,
+      proTxHash: '03'.repeat(32),
+    };
+    wallet.getProtectedSentryOutpoints.mockResolvedValue([reservation]);
+    await wallet.getEstimateSysTransactionFee({
+      amount: '1',
+      excludedOutpoints: [],
+    });
+    expect(
+      keyring.syscoinTransaction.getEstimateSysTransactionFee
+    ).toHaveBeenCalledWith({
+      amount: '1',
+      excludedOutpoints: [reservation],
+    });
+  });
+
+  it('keeps ordinary transactions on custom Syscoin networks working without Sentry support', async () => {
+    wallet.getProtectedSentryOutpoints = (
+      MainController.prototype as any
+    ).getProtectedSentryOutpoints.bind(wallet);
+    state.vault.activeNetwork.chainId = 98765;
+    await expect(
+      wallet.getEstimateSysTransactionFee({ amount: '1' })
+    ).resolves.toMatchObject({ fee: 0.00001 });
+    await expect(
+      wallet.signSyscoinPsbt({ psbt: 'custom-network-psbt' })
+    ).resolves.toBe('signed');
+    expect(keyring.syscoinTransaction.signPSBT).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not sign after account changes while reading protection records', async () => {
+    wallet.getProtectedSentryOutpoints.mockImplementation(async () => {
+      state.vault.activeAccount = { id: 1, type: KeyringAccountType.HDAccount };
+      return [];
+    });
+    await expect(wallet.signSyscoinPsbt({ psbt: 'dapp-psbt' })).rejects.toThrow(
+      UTXO_SIGNING_CONTEXT_CHANGED
+    );
+    expect(keyring.syscoinTransaction.signPSBT).not.toHaveBeenCalled();
+  });
+
+  it('does not expose a signed PSBT if its collateral becomes protected during signing', async () => {
+    keyring.syscoinTransaction.signPSBT.mockImplementation(async () => {
+      wallet.getProtectedSentryOutpoints.mockResolvedValue([
+        { txid: '01'.repeat(32), vout: 0 },
+      ]);
+      return 'signed';
+    });
+    await expect(wallet.signSyscoinPsbt({ psbt: 'dapp-psbt' })).rejects.toThrow(
+      'protected Sentry Node collateral'
+    );
+    expect(keyring.syscoinTransaction.sendTransaction).not.toHaveBeenCalled();
   });
 
   it.each(['account', 'network', 'lock', 'session', 'xpub'])(

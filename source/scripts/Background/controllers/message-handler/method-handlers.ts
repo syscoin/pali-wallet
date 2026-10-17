@@ -884,6 +884,33 @@ export class SysMethodHandler implements IMethodHandler {
     ) {
       // For sys methods, params are usually in array form already
       let popupData = params?.[0] || params;
+      let sentryApprovalId: string | undefined;
+      if (methodName === 'signSentryOperation' || methodName === 'linkSentryNode') {
+        const { dapp, wallet } = getController();
+        const connection = dapp.get(host);
+        const { vault } = store.getState();
+        if (
+          !connection ||
+          !vault.isBitcoinBased ||
+          vault.activeNetwork.kind !== INetworkType.Syscoin ||
+          connection.accountId !== vault.activeAccount.id ||
+          connection.accountType !== vault.activeAccount.type
+        )
+          throw cleanErrorStack(
+            ethErrors.provider.unauthorized(
+              'The connected account is no longer selected'
+            )
+          );
+        if (!Array.isArray(params) || params.length !== 1)
+          throw cleanErrorStack(
+            ethErrors.rpc.invalidParams('Supply one typed Sentry operation')
+          );
+        sentryApprovalId = methodName === 'linkSentryNode'
+          ? await wallet.prepareSentryLink(params[0], host)
+          : await wallet.prepareSentryOperation(params[0], host);
+        // The site never controls the popup's request, origin, key list or review.
+        popupData = { sentryApprovalId };
+      }
       if (methodName === 'sign' || methodName === 'signAndSend') {
         const { dapp } = getController();
         const connection = dapp.get(host);
@@ -918,19 +945,28 @@ export class SysMethodHandler implements IMethodHandler {
         // Never accept a site's same-named authorization object.
         popupData = { ...popupData, approvedContext };
       }
-      return requestCoordinator.coordinatePopupRequest(
-        context,
-        () =>
-          popupPromise({
-            signal: context.originalRequest.signal,
-            sender: context.originalRequest.sender,
-            host,
-            route: methodConfig.popupRoute,
-            eventName: methodConfig.popupEventName,
-            data: popupData,
-          }),
-        methodConfig.popupRoute! // Explicit route parameter
-      );
+      try {
+        return await requestCoordinator.coordinatePopupRequest(
+          context,
+          () =>
+            popupPromise({
+              signal: context.originalRequest.signal,
+              sender: context.originalRequest.sender,
+              host,
+              route: methodConfig.popupRoute!,
+              eventName: methodConfig.popupEventName!,
+              data: popupData,
+            }),
+          methodConfig.popupRoute!
+        );
+      } finally {
+        if (sentryApprovalId) {
+          const wallet = getController().wallet;
+          await (methodName === 'linkSentryNode'
+            ? wallet.cancelSentryLink(sentryApprovalId)
+            : wallet.cancelSentryApproval(sentryApprovalId)).catch(() => undefined);
+        }
+      }
     }
 
     // Get the provider for non-popup methods

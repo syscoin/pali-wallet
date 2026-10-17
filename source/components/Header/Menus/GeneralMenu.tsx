@@ -215,6 +215,24 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
                   </Menu.Item>
 
                   <Menu.Item>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        navigateWithContext(
+                          navigate,
+                          '/settings/sentry',
+                          {},
+                          createBrowsingNavigationContext(location)
+                        )
+                      }
+                      className="flex min-h-11 w-full items-center gap-2 px-5 text-left text-sm text-white hover:bg-brand-blue500 hover:bg-opacity-20 focus-visible:outline focus-visible:outline-2"
+                    >
+                      <KeySvg className="text-brand-white" />
+                      <span>{t('sentry.sentryOperators')}</span>
+                    </button>
+                  </Menu.Item>
+
+                  <Menu.Item>
                     <li
                       onClick={() => {
                         const returnContext =

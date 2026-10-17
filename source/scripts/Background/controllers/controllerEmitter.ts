@@ -80,16 +80,25 @@ export async function controllerEmitter<
               }
 
               // Check for application-level errors
-              if (response && response.error) {
+              if (response && (response.error || response.success === false)) {
                 // If it's a structured error from syscoinjs-lib, pass it through as-is
                 if (response.error === true && response.code) {
                   return reject(response);
                 }
-                if (typeof response.error === 'object') {
+                if (response.error && typeof response.error === 'object') {
                   return reject(response.error);
                 }
                 // For simple error messages, wrap in Error object
-                return reject(new Error(response.error));
+                return reject(
+                  new Error(
+                    typeof response.error === 'string' && response.error.trim()
+                      ? response.error
+                      : typeof response.message === 'string' &&
+                        response.message.trim()
+                      ? response.message
+                      : 'Wallet operation failed'
+                  )
+                );
               }
 
               resolve(response);

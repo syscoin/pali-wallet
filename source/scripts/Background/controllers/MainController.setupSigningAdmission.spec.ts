@@ -97,6 +97,7 @@ describe('wallet setup signing capability admission', () => {
     wallet.verifySyscoinPsbt = jest.fn(async () => ({
       psbt: 'verified fixture',
     }));
+    wallet.getProtectedSentryOutpoints = jest.fn().mockResolvedValue([]);
     wallet.checkRateLimit = jest.fn(async () => 0);
     wallet.resetRateLimit = jest.fn(async () => undefined);
   });
