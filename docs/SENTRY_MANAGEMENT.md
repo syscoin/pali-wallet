@@ -12,6 +12,12 @@ operator, voting and collateral roles separate. Legacy operator keys use BLS;
 legacy owner/voting/collateral keys use secp256k1. PQ Sentry authorities use the
 protocol's **SLH-DSA SHAKE-128s**, not the smart-account SHA2 parameter set.
 
+Use **Batch import** to add up to 20 keys of the selected role and scheme.
+Each line accepts a private key, or `label | private key`. Pali identifies invalid
+lines before importing; it stores the complete validated batch atomically.
+Private values stay masked by default. Editing a batch clears its backup
+acknowledgement, and a rejected batch can be corrected without retyping it.
+
 An imported key is encrypted in extension-local storage using AES-GCM. Its
 authenticated metadata binds the wallet, Syscoin network, role and public key.
 Import, signing, removal and changing the trusted data source require local
@@ -27,7 +33,8 @@ local key does not revoke a node on-chain and does not release its collateral.
 The wallet pins Syscoin mainnet/testnet genesis hashes and address encodings.
 An extension-local per-network setting selects the trusted Sentry state
 service. Mainnet defaults to `https://sysnode.info`; testnet requires an explicit
-configuration. Custom HTTPS or loopback development origins are supported.
+configuration. Custom HTTPS services and explicitly configured HTTP loopback
+services (`localhost` or `127.0.0.1`) are supported.
 
 Only fixed read-only endpoints are called. No dapp-supplied URL, cookie,
 arbitrary JSON-RPC method or backend credential is forwarded. Node identity,
@@ -130,10 +137,50 @@ Hardware signing for these node authorizations is not implemented. An imported
 software authority or a matching software wallet account is required. Other
 wallet hardware features are unchanged.
 
+### `sys_signSentryVote`
+
+```json
+{
+  "method": "sys_signSentryVote",
+  "params": [{
+    "version": 1,
+    "chain": { "genesisHash": "<hash>", "era": "legacy-v3" },
+    "proposalHash": "<governance object hash>",
+    "signal": "funding",
+    "outcome": "yes",
+    "timestamp": 1792252800,
+    "nodes": [{
+      "proTxHash": "<registered node transaction hash>",
+      "collateralOutpoint": { "txid": "<collateral transaction hash>", "vout": 0 }
+    }]
+  }]
+}
+```
+
+Supported outcomes are `yes`, `no` and `abstain`, with at most 20 nodes per
+approval. The proposal hash is the governance object ID, not its inner data
+hash. Pali fetches the proposal and registered voting identities from its
+configured service, displays the decision, and checks that state again before
+signing. Exact hashes, node identities and the trusted source remain available
+under **Review nodes and vote details**.
+
+Voting uses a matching secp256k1 **voting** key, not a BLS operator key. Legacy
+compressed and uncompressed voting identities are supported, including a
+matching authenticated software wallet account. Missing-key guidance appears
+only inside Pali's approval; the provider does not enumerate stored keys.
+
+After password approval, Pali constructs and signs Core's canonical vote
+message locally. It returns the complete batch of compact signatures and
+vote hashes; it never broadcasts votes or returns partial signing results.
+The dapp verifies and submits the votes through its configured backend.
+Existing encrypted browser-vault voting, including phone voting, remains a
+separate custody option in Sysnode. PQ governance voting is not enabled.
+
 ## Repeatable checks
 
-The PR browser-conformance job runs `sentry-operator.journey.spec.ts` and
-`sentry-wallet-authority.journey.spec.ts` with a disposable synthetic wallet and
+The PR browser-conformance job runs `sentry-operator.journey.spec.ts`,
+`sentry-wallet-authority.journey.spec.ts`, `sentry-batch-import.journey.spec.ts`
+and `sentry-governance-vote.journey.spec.ts` with a disposable synthetic wallet and
 local-only read endpoints. It checks encrypted
 key storage across lock/unlock, small-window controls, real BLS and SHAKE-128s
 authorizations through the public provider, wrong-network rejection, signature
@@ -142,6 +189,10 @@ persistence across reload/lock and ordinary PSBT
 refusal for linked collateral. This does not broadcast or claim a live-chain
 registration. Core/SDK vectors and the Sysnode transaction-admission tests cover
 the protocol side separately.
+
+The batch and governance journeys also cover atomic encrypted imports,
+per-line corrections, independent backup acknowledgements, compact approval
+layouts, per-origin account consent, and both legacy vote-signature encodings.
 
 Unit regressions cover canonical encrypted metadata after Chrome storage
 reorders keys, role isolation, account/session changes, pre-commit cancellation,
