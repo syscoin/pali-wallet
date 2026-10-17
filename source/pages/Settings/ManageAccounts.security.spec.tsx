@@ -163,6 +163,26 @@ describe('account removal confirmation context', () => {
   });
   afterEach(() => jest.restoreAllMocks());
 
+  it('names edit and removal controls for their account and keeps 44px targets', () => {
+    const view = render();
+    for (const label of ['Anchor', 'Selected']) {
+      const edit = findElement(
+        view,
+        (element) => element.props['aria-label'] === `buttons.edit: ${label}`
+      )!;
+      expect(edit).toBeDefined();
+      expect(edit.props.className).toContain('h-11 w-11');
+    }
+    const remove = findElement(
+      view,
+      (element) => element.props['aria-label'] === 'buttons.remove: Selected'
+    )!;
+    expect(remove).toBeDefined();
+    expect(remove.props.className).toContain('h-11 w-11');
+    remove.props.onClick();
+    expect(dialog()!.props.title).toBeDefined();
+  });
+
   it('preserves the caller and the account list position through an edit detour', () => {
     const parent = { returnRoute: '/home/smart-account?tab=modules' };
     mockLocation = {

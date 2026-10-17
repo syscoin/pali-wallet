@@ -230,6 +230,8 @@ describe('settings browsing context', () => {
         'lock',
         'connection',
         'unmount',
+        'draft',
+        'family',
       ].map((change) => ({ stage, change }))
     )
   )(
@@ -285,6 +287,15 @@ describe('settings browsing context', () => {
       if (change === 'lock') mockStatus.isUnlocked = false;
       if (change === 'connection') mockStatus.connectionUnavailable = true;
       if (change === 'unmount') mockEffects[0]()();
+      if (change === 'draft')
+        find(
+          view,
+          (element) => typeof element.props.onFinish === 'function'
+        )!.props.onValuesChange();
+      if (change === 'family')
+        find(view, (element) => element.type === 'switch')!.props.onChange(
+          true
+        );
       finish(
         stage === 'rpc' ? rpc : stage === 'api' ? { success: true } : undefined
       );

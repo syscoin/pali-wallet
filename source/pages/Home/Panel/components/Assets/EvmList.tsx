@@ -41,9 +41,11 @@ import {
   formatFullPrecisionBalance,
 } from 'utils/index';
 
+import { AssetSearchEmptyState } from './AssetSearchEmptyState';
 import { AssetsHeader } from './AssetsHeader';
 
 interface IDefaultEvmAssets {
+  onClearSearch: () => void;
   onVisibleCountChange: (count: number) => void;
   scope: string;
   searchValue: string;
@@ -56,6 +58,7 @@ const DefaultEvmAssets = React.memo(
     searchValue,
     sortByValue,
     state,
+    onClearSearch,
     onVisibleCountChange,
   }: IDefaultEvmAssets) {
     const { navigate } = useUtils();
@@ -90,7 +93,7 @@ const DefaultEvmAssets = React.memo(
 
     const filteredAssets = useMemo(() => {
       const tokens = currentChainAssets || [];
-      const lowercaseSearchValue = searchValue?.toLowerCase() || '';
+      const lowercaseSearchValue = searchValue?.trim().toLowerCase() || '';
       const isHexSearch = lowercaseSearchValue.startsWith('0x');
 
       let working = tokens;
@@ -182,6 +185,14 @@ const DefaultEvmAssets = React.memo(
 
     return (
       <>
+        {filteredAssets.length === 0 &&
+          (currentChainAssets.length > 0 && searchValue.trim() ? (
+            <AssetSearchEmptyState onClearSearch={onClearSearch} />
+          ) : (
+            <p className="py-6 text-sm text-brand-white">
+              {t('home.youHaveNoTokens')}
+            </p>
+          ))}
         {visibleItems.map((token: ITokenEthProps) => (
           <li
             key={token.id}
@@ -294,6 +305,7 @@ export const EvmAssetsList = () => {
     DEFAULT_ASSETS_VIEW
   );
   const { isCoinSelected, searchValue, sortByValue } = state;
+  const searchInputRef = React.useRef<HTMLInputElement>(null);
   const setSearchValue = (update: React.SetStateAction<string>) =>
     setView((previous) => ({
       ...previous,
@@ -310,6 +322,10 @@ export const EvmAssetsList = () => {
       tokensVisibleCount: 50,
       nftsVisibleCount: 50,
     }));
+  const clearSearch = () => {
+    setSearchValue('');
+    searchInputRef.current?.focus();
+  };
 
   // Use deferred value for search to keep input responsive
   const deferredSearchValue = useDeferredValue(searchValue);
@@ -342,6 +358,7 @@ export const EvmAssetsList = () => {
       ) : (
         <>
           <AssetsHeader
+            searchInputRef={searchInputRef}
             isCoinSelected={isCoinSelected}
             searchValue={searchValue}
             setIsCoinSelected={handleTabSwitch}
@@ -357,6 +374,7 @@ export const EvmAssetsList = () => {
           >
             {isCoinSelected ? (
               <DefaultEvmAssets
+                onClearSearch={clearSearch}
                 scope={scope}
                 searchValue={deferredSearchValue}
                 sortByValue={deferredSortByValue}
@@ -370,6 +388,7 @@ export const EvmAssetsList = () => {
               />
             ) : (
               <EvmNftsList
+                onClearSearch={clearSearch}
                 state={state}
                 onVisibleCountChange={(count) =>
                   setView((previous) => ({

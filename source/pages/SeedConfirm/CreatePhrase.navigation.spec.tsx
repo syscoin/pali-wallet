@@ -148,6 +148,62 @@ beforeEach(() => {
     .mockResolvedValue(SECOND_PHRASE);
 });
 
+it('requires a fresh backup acknowledgement for a regenerated phrase', async () => {
+  let finishGeneration!: (phrase: string) => void;
+  mockEmitter
+    .mockReset()
+    .mockResolvedValueOnce(PHRASE)
+    .mockImplementationOnce(
+      () =>
+        new Promise<string>((resolve) => {
+          finishGeneration = resolve;
+        })
+    );
+  mount();
+  fireEvent.click(screen.getByText('Begin wallet setup'));
+  await screen.findByText(PHRASE);
+  const checkbox = screen.getByRole('checkbox') as HTMLInputElement;
+  const next = () =>
+    screen.getByRole('button', { name: 'buttons.next' }) as HTMLButtonElement;
+  expect(next().disabled).toBe(true);
+  fireEvent.click(checkbox);
+  expect(next().disabled).toBe(false);
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.generate' }));
+  expect(checkbox.checked).toBe(false);
+  expect(next().disabled).toBe(true);
+
+  // Even an acknowledgement made while the old phrase is still displayed
+  // cannot transfer to the replacement phrase when its response arrives.
+  fireEvent.click(checkbox);
+  await act(async () => finishGeneration(SECOND_PHRASE));
+  expect(screen.getByTestId('displayed-phrase').textContent).toBe(
+    SECOND_PHRASE
+  );
+  expect(checkbox.checked).toBe(false);
+  expect(next().disabled).toBe(true);
+  fireEvent.click(next());
+  expect(screen.queryByTestId('confirm-phrase')).toBeNull();
+  fireEvent.click(checkbox);
+  fireEvent.click(next());
+  expect(screen.getByTestId('confirm-phrase').textContent).toBe(SECOND_PHRASE);
+});
+
+it('clears backup acknowledgement when selecting another phrase length', async () => {
+  mount();
+  fireEvent.click(screen.getByText('Begin wallet setup'));
+  await screen.findByText(PHRASE);
+  const checkbox = screen.getByRole('checkbox') as HTMLInputElement;
+  fireEvent.click(checkbox);
+  fireEvent.change(screen.getByRole('combobox'), { target: { value: '24' } });
+  expect(checkbox.checked).toBe(false);
+  await screen.findByText(SECOND_PHRASE);
+  expect(checkbox.checked).toBe(false);
+  expect(
+    (screen.getByRole('button', { name: 'buttons.next' }) as HTMLButtonElement)
+      .disabled
+  ).toBe(true);
+});
+
 it.each([12, 24])(
   'native Back and Forward between the live phrase steps keep the %s-word phrase',
   async (wordCount) => {

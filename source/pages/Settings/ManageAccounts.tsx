@@ -350,6 +350,8 @@ const ManageAccountsView = React.memo(() => {
 
           <div className="flex gap-x-2 items-center flex-shrink-0">
             <IconButton
+              aria-label={`${t('buttons.edit')}: ${account.label}`}
+              className="flex h-11 w-11 items-center justify-center rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-royalblue"
               onClick={() => editAccount(account, accountType)}
               type="primary"
               shape="circle"
@@ -363,10 +365,11 @@ const ManageAccountsView = React.memo(() => {
 
             {canRemoveAccount(account, accountType) && (
               <IconButton
+                aria-label={`${t('buttons.remove')}: ${account.label}`}
                 onClick={() => handleRemoveClick(account, accountType)}
                 type="primary"
                 shape="circle"
-                className="hover:bg-red-500 hover:bg-opacity-20"
+                className="flex h-11 w-11 items-center justify-center rounded-full hover:bg-red-500 hover:bg-opacity-20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-royalblue"
               >
                 <Icon
                   name="delete"
@@ -379,7 +382,7 @@ const ManageAccountsView = React.memo(() => {
         </li>
       );
     },
-    [editAccount, isActiveAccount, canRemoveAccount, handleRemoveClick]
+    [editAccount, isActiveAccount, canRemoveAccount, handleRemoveClick, t]
   );
 
   // Memoize the account list computation

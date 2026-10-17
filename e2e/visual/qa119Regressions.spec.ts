@@ -9,6 +9,7 @@ import { recoverAddress, solidityPackedKeccak256 } from 'ethers';
 
 import en from '../../source/assets/locales/en.json';
 import { E2E_CONFIG } from '../harness/config';
+import { dismissRejectedApproval } from '../harness/dismissRejectedApproval';
 import {
   createIsolatedVaultFixture,
   installIsolatedVaultRoutes,
@@ -323,10 +324,17 @@ test('both legacy typed-data parameter orders render and sign the exact reviewed
         fields,
       ]);
       const approval = await popup;
-      await approval
-        .getByRole('button', { name: en.buttons.cancel, exact: true })
-        .click();
-      expect((await settle(dapp, cancelledId)).error).toBeTruthy();
+      const rejected = await dismissRejectedApproval({
+        click: () =>
+          approval
+            .getByRole('button', { name: en.buttons.cancel, exact: true })
+            .click(),
+        isClosed: () => approval.isClosed(),
+        settle: () => settle(dapp, cancelledId),
+      });
+      expect(approval.isClosed()).toBe(true);
+      expect(rejected.error?.code).toBe(4001);
+      expect(rejected.result).toBeUndefined();
       expect(errors).toEqual([]);
     }
   );

@@ -4,6 +4,7 @@ import { useSelector } from 'react-redux';
 import { useSearchParams, useLocation } from 'react-router-dom';
 
 import { getHomeBrowsingScope } from '../../../useHomeBrowsingState';
+import { AssetSearchEmptyState } from '../Assets/AssetSearchEmptyState';
 import {
   HiTrash as DeleteIcon,
   RiShareForward2Line as DetailsIcon,
@@ -27,6 +28,7 @@ import { getNftAssetsFromEthereum } from 'utils/nftToAsset';
 import { getTokenTypeBadgeColor } from 'utils/tokens';
 
 interface IEvmNftsListProps {
+  onClearSearch?: () => void;
   onVisibleCountChange?: (count: number) => void;
   state: {
     isCoinSelected: boolean;
@@ -38,6 +40,7 @@ interface IEvmNftsListProps {
 
 export const EvmNftsList = ({
   state,
+  onClearSearch,
   onVisibleCountChange,
 }: IEvmNftsListProps) => {
   const { controllerEmitter } = useController();
@@ -184,6 +187,8 @@ export const EvmNftsList = ({
   );
 
   if (filteredCollections.length === 0) {
+    if (collections.length > 0 && state.searchValue.trim())
+      return <AssetSearchEmptyState onClearSearch={onClearSearch} />;
     // Parent AssetsPanel renders the Import Token link below this list
     return (
       <div className="flex mt-4 items-center justify-center p-3 text-brand-white text-sm">

@@ -102,6 +102,8 @@
     "viewNFTs": "查看 NFTs"
   },
   "assetsHeader": {
+    "noMatchingAssets": "没有与搜索匹配的资产。",
+    "clearSearch": "清除搜索",
     "sortBy": "排序方式:",
     "name": "名称",
     "tokenOrContractAddress": "代币或合约地址",

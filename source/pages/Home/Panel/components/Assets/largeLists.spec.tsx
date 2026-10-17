@@ -7,6 +7,13 @@ import { EvmAssetsList } from './EvmList';
 import { SyscoinAssetsList } from './SyscoinList';
 
 let mockState: any;
+const mockAssetView = {
+  isCoinSelected: true,
+  searchValue: '',
+  sortByValue: '',
+  tokensVisibleCount: 50,
+  nftsVisibleCount: 50,
+};
 const mockTokenIcon = jest.fn((props: any) => (
   <span data-asset-icon={props.symbol || 'true'} />
 ));
@@ -21,6 +28,10 @@ jest.mock('react-router-dom', () => ({
   useSearchParams: () => [new URLSearchParams(), jest.fn()],
   useLocation: () => ({ state: null }),
   useNavigate: () => jest.fn(),
+}));
+jest.mock('../../../useHomeBrowsingState', () => ({
+  ...jest.requireActual('../../../useHomeBrowsingState'),
+  useHomeBrowsingState: () => [mockAssetView, jest.fn()],
 }));
 jest.mock('state/vault/selectors', () => ({
   selectActiveAccount: (state: any) => state.account,
@@ -80,6 +91,7 @@ const assets = (isNft = false) =>
   }));
 
 beforeEach(() => {
+  mockAssetView.searchValue = '';
   mockTokenIcon.mockClear();
   mockState = {
     account: { type: 'HDAccount', id: 0, address: '0xaccount' },
@@ -116,6 +128,14 @@ describe('large asset list rendering budget', () => {
     const markup = renderToStaticMarkup(
       <EvmNftsList state={{ ...nftState, searchValue: 'Asset 999' }} />
     );
+    expect(mockTokenIcon).toHaveBeenCalledTimes(1);
+    expect(markup).toContain('T999');
+  });
+
+  it('ignores outer whitespace when searching all token assets', () => {
+    mockState.assets.ethereum = assets();
+    mockAssetView.searchValue = ' T999 ';
+    const markup = renderToStaticMarkup(<EvmAssetsList />);
     expect(mockTokenIcon).toHaveBeenCalledTimes(1);
     expect(markup).toContain('T999');
   });

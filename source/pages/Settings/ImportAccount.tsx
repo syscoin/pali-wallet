@@ -26,6 +26,8 @@ const ImportAccountView = () => {
   const [isAccountImported, setIsAccountImported] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [watchOnly, setWatchOnly] = useState(false);
+  const [showPrivateKey, setShowPrivateKey] = useState(false);
+  const [publicDraft, setPublicDraft] = useState(false);
   const [validIdentifier, setValidIdentifier] = useState(false);
   const [selectedUtxoAddressType, setSelectedUtxoAddressType] = useState<
     'p2wpkh' | 'p2pkh' | 'p2tr'
@@ -67,6 +69,15 @@ const ImportAccountView = () => {
     if (form.getFieldValue('privKey'))
       void form.validateFields(['privKey']).catch(() => undefined);
   }, [form, inputScope]);
+
+  useEffect(() => {
+    setShowPrivateKey(false);
+  }, [
+    inputScope,
+    activeAccountMeta.id,
+    activeAccountMeta.type,
+    activeAccount?.address,
+  ]);
 
   if (!activeAccount) throw new Error('No account');
 
@@ -148,6 +159,9 @@ const ImportAccountView = () => {
           onFinish={handleImportAccount}
           onValuesChange={(changed) => {
             if (Object.prototype.hasOwnProperty.call(changed, 'privKey')) {
+              // A draft entered as a secret remains masked on switching modes
+              // until it is cleared, or the user explicitly reveals it.
+              if (!watchOnly || !changed.privKey) setPublicDraft(watchOnly);
               validationRevision.current += 1;
               setValidPrivateKey(false);
               setValidIdentifier(false);
@@ -224,7 +238,13 @@ const ImportAccountView = () => {
               type="checkbox"
               checked={watchOnly}
               disabled={isImporting}
-              onChange={(e) => setWatchOnly(e.target.checked)}
+              onChange={(e) => {
+                setPublicDraft(
+                  e.target.checked && !form.getFieldValue('privKey')
+                );
+                setShowPrivateKey(false);
+                setWatchOnly(e.target.checked);
+              }}
               className="toggle-checkbox"
             />
           </div>
@@ -312,8 +332,39 @@ const ImportAccountView = () => {
             ]}
           >
             <Input
-              type="text"
+              type={
+                (watchOnly && publicDraft) || showPrivateKey
+                  ? 'text'
+                  : 'password'
+              }
               className="custom-input-normal relative"
+              autoComplete="off"
+              suffix={
+                !(watchOnly && publicDraft) && (
+                  <button
+                    type="button"
+                    className="flex h-11 w-11 items-center justify-center rounded focus-visible:outline focus-visible:outline-2"
+                    aria-label={t(
+                      showPrivateKey
+                        ? 'sentry.hidePrivateKeys'
+                        : 'sentry.showPrivateKeys'
+                    )}
+                    aria-pressed={showPrivateKey}
+                    disabled={isImporting}
+                    onClick={() => setShowPrivateKey((current) => !current)}
+                  >
+                    <img
+                      className="h-5 w-5"
+                      alt=""
+                      src={
+                        showPrivateKey
+                          ? '/assets/all_assets/notVisibleEye.svg'
+                          : '/assets/all_assets/visibleEye.svg'
+                      }
+                    />
+                  </button>
+                )
+              }
               placeholder={
                 watchOnly
                   ? 'Address / XPUB / Descriptor'

@@ -122,9 +122,7 @@ it('associates the watch-only label and gives each import field a unique accessi
   const label = screen.getByRole('textbox', {
     name: 'settings.label (settings.optional)',
   });
-  const privateKey = screen.getByRole('textbox', {
-    name: 'settings.yourPrivateKey',
-  });
+  const privateKey = screen.getByLabelText('settings.yourPrivateKey');
   const watchOnly = screen.getByRole('checkbox', {
     name: 'Watch-only',
   }) as HTMLInputElement;
@@ -143,6 +141,71 @@ it('associates the watch-only label and gives each import field a unique accessi
   expect(
     screen.getByRole('textbox', { name: 'Address / XPUB / Descriptor' }).id
   ).toBe('import-account-identifier');
+});
+
+it('masks private input by default and reveals only through its explicit non-submit control', async () => {
+  render(<ImportAccount />);
+  const privateKey = input() as HTMLInputElement;
+  fireEvent.change(privateKey, {
+    target: { value: 'synthetic-private-input' },
+  });
+  await waitFor(() =>
+    expect(importButton().hasAttribute('disabled')).toBe(false)
+  );
+  expect(privateKey.type).toBe('password');
+  expect(privateKey.autocomplete).toBe('off');
+  const show = screen.getByRole('button', {
+    name: 'sentry.showPrivateKeys',
+  }) as HTMLButtonElement;
+  expect(show.type).toBe('button');
+  fireEvent.click(show);
+  expect(privateKey.type).toBe('text');
+  expect(privateKey.value).toBe('synthetic-private-input');
+  expect(
+    screen
+      .getByRole('button', { name: 'sentry.hidePrivateKeys' })
+      .getAttribute('aria-pressed')
+  ).toBe('true');
+  fireEvent.click(
+    screen.getByRole('button', { name: 'sentry.hidePrivateKeys' })
+  );
+  expect(privateKey.type).toBe('password');
+  expect(mockEmitter).not.toHaveBeenCalled();
+});
+
+it('does not expose a private draft when switching modes, including a previously revealed draft', async () => {
+  render(<ImportAccount />);
+  const privateKey = input() as HTMLInputElement;
+  fireEvent.change(privateKey, {
+    target: { value: 'synthetic-private-input' },
+  });
+  await waitFor(() => expect(validatePrivateKeyValue).toHaveBeenCalled());
+  fireEvent.click(
+    screen.getByRole('button', { name: 'sentry.showPrivateKeys' })
+  );
+  fireEvent.click(screen.getByRole('checkbox'));
+  const publicInput = screen.getByLabelText(
+    'Address / XPUB / Descriptor'
+  ) as HTMLInputElement;
+  expect(publicInput.type).toBe('password');
+  expect(publicInput.value).toBe('synthetic-private-input');
+  expect(
+    screen.getByRole('button', { name: 'sentry.showPrivateKeys' })
+  ).toBeTruthy();
+  fireEvent.change(publicInput, {
+    target: { value: 'synthetic-private-input-edited' },
+  });
+  expect(publicInput.type).toBe('password');
+  fireEvent.change(publicInput, { target: { value: '' } });
+  expect(publicInput.type).toBe('text');
+  fireEvent.change(publicInput, { target: { value: PUBLIC_ADDRESS } });
+  expect(publicInput.type).toBe('text');
+  expect(
+    screen.queryByRole('button', { name: 'sentry.showPrivateKeys' })
+  ).toBeNull();
+  fireEvent.click(screen.getByRole('checkbox'));
+  expect(privateKey.type).toBe('password');
+  expect(privateKey.value).toBe(PUBLIC_ADDRESS);
 });
 
 it('keeps the real submit button associated without adding margin below its footer', () => {

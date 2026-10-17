@@ -102,6 +102,8 @@
     "viewNFTs": "NFTを表示"
   },
   "assetsHeader": {
+    "noMatchingAssets": "検索条件に一致する資産がありません。",
+    "clearSearch": "検索をクリア",
     "sortBy": "並び替え:",
     "name": "名前",
     "tokenOrContractAddress": "トークンまたはコントラクトアドレス",

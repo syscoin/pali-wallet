@@ -102,6 +102,8 @@
     "viewNFTs": "NFT 보기"
   },
   "assetsHeader": {
+    "noMatchingAssets": "검색 조건에 맞는 자산이 없습니다.",
+    "clearSearch": "검색 지우기",
     "sortBy": "정렬 기준:",
     "name": "이름",
     "tokenOrContractAddress": "토큰 또는 계약 주소",
