@@ -23,6 +23,7 @@ let mockStatus: {
 const mockNavigate = jest.fn();
 const mockNavigateBack = jest.fn();
 const mockNavigateWithContext = jest.fn();
+const mockCopy = jest.fn();
 const mockEmitter = jest.fn();
 const mockAlert = { error: jest.fn(), success: jest.fn() };
 const mockForm = {
@@ -50,7 +51,7 @@ jest.mock('hooks/index', () => ({
   useUtils: () => ({
     navigate: mockNavigate,
     alert: mockAlert,
-    useCopyClipboard: () => [false, jest.fn()],
+    useCopyClipboard: () => [false, mockCopy],
   }),
 }));
 jest.mock('hooks/useController', () => ({
@@ -156,6 +157,7 @@ describe('settings browsing context', () => {
     mockNavigateWithContext.mockReset();
     mockAlert.success.mockReset();
     mockAlert.error.mockReset();
+    mockCopy.mockReset();
     mockForm.validateFields.mockReset().mockResolvedValue(undefined);
     mockForm.setFields.mockReset();
     mockForm.setFieldsValue.mockReset();
@@ -376,6 +378,83 @@ describe('settings browsing context', () => {
     )!.props.onClick();
     expect(mockNavigateBack).toHaveBeenCalledWith(mockNavigate, mockLocation);
     expect(mockEmitter).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [new Error('Local removal failed'), 'Local removal failed'],
+    ['String removal failure', 'String removal failure'],
+    [{}, 'forgetWalletPage.removalFailed'],
+  ])(
+    'shows a rejected Forget Wallet operation without navigating or retrying',
+    async (error, message) => {
+      const log = jest
+        .spyOn(console, 'error')
+        .mockImplementation(() => undefined);
+      mockEmitter.mockRejectedValueOnce(error);
+      const form = find(
+        render(ForgetWallet),
+        (element) => typeof element.props.onFinish === 'function'
+      )!;
+      await form.props.onFinish({ password: 'synthetic-password' });
+      const view = render(ForgetWallet);
+      expect(
+        find(view, (element) => element.props.error === message)
+      ).toBeDefined();
+      expect(
+        find(view, (element) => element.props.role === 'status')
+      ).toBeUndefined();
+      expect(mockEmitter).toHaveBeenCalledTimes(1);
+      expect(mockNavigate).not.toHaveBeenCalled();
+      log.mockRestore();
+    }
+  );
+
+  it('announces local removal progress and clears a previous failure only on explicit retry', async () => {
+    const log = jest
+      .spyOn(console, 'error')
+      .mockImplementation(() => undefined);
+    mockEmitter.mockRejectedValueOnce(new Error('First removal failed'));
+    const submit = () =>
+      find(
+        render(ForgetWallet),
+        (element) => typeof element.props.onFinish === 'function'
+      )!.props.onFinish({ password: 'synthetic-password' });
+    await submit();
+    let resolve!: () => void;
+    mockEmitter.mockImplementationOnce(
+      () =>
+        new Promise<void>((done) => {
+          resolve = done;
+        })
+    );
+    const retry = submit();
+    const pending = render(ForgetWallet);
+    expect(
+      find(pending, (element) => element.props.role === 'status')?.props[
+        'aria-label'
+      ]
+    ).toBe('buttons.loading');
+    expect(
+      find(pending, (element) => element.props.error === 'First removal failed')
+    ).toBeUndefined();
+    expect(mockEmitter).toHaveBeenCalledTimes(2);
+    expect(mockNavigate).not.toHaveBeenCalled();
+    resolve();
+    await retry;
+    expect(mockNavigate).toHaveBeenCalledWith('/');
+    log.mockRestore();
+  });
+
+  it('uses an ordinary keyboard-operable button for copying the edited account address', () => {
+    mockLocation.state = { id: 0, accountType: KeyringAccountType.HDAccount };
+    const copy = find(
+      render(EditAccount),
+      (element) => element.props['aria-label'] === 'buttons.copy'
+    )!;
+    expect(copy.type).toBe('button');
+    expect(copy.props.type).toBe('button');
+    copy.props.onClick();
+    expect(mockCopy).toHaveBeenCalledWith('current-address');
   });
 
   it('restores a trusted-sites filter and replaces its own entry while keeping the caller', () => {

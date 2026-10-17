@@ -946,6 +946,7 @@
     "slowConnection": "接続に通常より時間がかかっています"
   },
   "forgetWalletPage": {
+    "removalFailed": "ウォレットを削除できませんでした。もう一度お試しください。",
     "importedAccountsWont": "インポートされたアカウントは、初期のPaliアカウントのシークレットリカバリーフレーズにリンクされません",
     "stillHaveFunds": "ウォレットにまだ資金があります！",
     "saveProperly": "このシードフレーズを安全に保管して、将来このウォレットをインポートできるようにしてください。"

@@ -946,6 +946,7 @@
     "slowConnection": "Connection is taking longer than usual"
   },
   "forgetWalletPage": {
+    "removalFailed": "The wallet could not be removed. Please try again.",
     "importedAccountsWont": "Imported accounts won't link to your initial Pali account Secret Recovery Phrase",
     "stillHaveFunds": "You still have funds in you wallet!",
     "saveProperly": "Save this seed phrase properly, so you can import this wallet in the future."

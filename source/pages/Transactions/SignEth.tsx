@@ -926,23 +926,31 @@ const EthSign: React.FC<ISign> = () => {
   }, [data, address, hasCheckedBlacklist]);
 
   const AccountDetailsSignature = () => (
-    <div className="space-y-3">
-      <div className="flex flex-row justify-between w-full font-poppins text-sm text-white">
-        <span className="text-gray-300">{t('transactions.account')}</span>
-        <span className="font-medium">{label}</span>
+    <div className="min-w-0 space-y-3">
+      <div className="flex w-full items-start justify-between gap-3 font-poppins text-sm text-white">
+        <span className="shrink-0 text-gray-300">
+          {t('transactions.account')}
+        </span>
+        <span className="min-w-0 text-right font-medium [overflow-wrap:anywhere]">
+          {label}
+        </span>
       </div>
-      <div className="flex flex-row justify-between w-full font-poppins text-sm text-white">
-        <span className="text-gray-300">{t('send.balance')}</span>
-        <div className="flex gap-1">
-          <span className="font-medium">
+      <div className="flex w-full items-start justify-between gap-3 font-poppins text-sm text-white">
+        <span className="shrink-0 text-gray-300">{t('send.balance')}</span>
+        <div className="flex min-w-0 flex-wrap justify-end gap-1 text-right">
+          <span className="min-w-0 font-medium [overflow-wrap:anywhere]">
             {balances[getNetworkChain(isBitcoinBased)]}
           </span>
           <span className="text-brand-blue200">{currency.toUpperCase()}</span>
         </div>
       </div>
-      <div className="flex flex-row justify-between w-full font-poppins text-sm text-white">
-        <span className="text-gray-300">{t('transactions.origin')}</span>
-        <span className="font-medium break-all">{host}</span>
+      <div className="flex w-full items-start justify-between gap-3 font-poppins text-sm text-white">
+        <span className="shrink-0 text-gray-300">
+          {t('transactions.origin')}
+        </span>
+        <span className="min-w-0 text-right font-medium [overflow-wrap:anywhere]">
+          {host}
+        </span>
       </div>
     </div>
   );
@@ -1194,7 +1202,7 @@ const EthSign: React.FC<ISign> = () => {
               <p className="text-sm text-gray-300 text-center mb-1">
                 {getMessageDescription()}
               </p>
-              <p className="text-xs text-gray-400 text-center">
+              <p className="w-full min-w-0 text-center text-xs text-gray-400 [overflow-wrap:anywhere]">
                 from <span className="font-medium">{host}</span>
               </p>
               {activeAccount.isSmartAccount && (

@@ -946,6 +946,7 @@
     "slowConnection": "La conexión está tardando más de lo habitual"
   },
   "forgetWalletPage": {
+    "removalFailed": "No se pudo eliminar la billetera. Inténtalo de nuevo.",
     "importedAccountsWont": "Las cuentas importadas no se vincularán a la Frase de Recuperación Secreta de tu cuenta Pali inicial.",
     "stillHaveFunds": "¡Todavía tienes fondos en tu billetera!",
     "saveProperly": "Guarda esta frase semilla correctamente para que puedas importar esta billetera en el futuro."

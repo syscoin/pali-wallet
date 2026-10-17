@@ -1,6 +1,12 @@
 import { useEffect, useRef } from 'react';
 import { useLocation, useNavigationType } from 'react-router-dom';
 
+const MAX_HISTORY_SCROLL_ENTRIES = 40;
+type HistoryScroll = {
+  scrollPosition: number;
+  scrollPositions: Record<string, number>;
+};
+
 /** Restore inner scroll panes after lazy content and bounded history replay render. */
 export const useBrowsingNavigationScroll = (walletScope: string) => {
   const location = useLocation();
@@ -16,6 +22,11 @@ export const useBrowsingNavigationScroll = (walletScope: string) => {
     location.state?.scrollRestorationKey,
   ]);
   const previousRequest = useRef<string>();
+  const previousEntry = useRef<string>();
+  // Browser POP does not carry a child's explicit returnContext. Keep only
+  // bounded public viewport positions in this document, never wallet storage.
+  const historyScroll = useRef(new Map<string, HistoryScroll>());
+  const entry = JSON.stringify([walletScope, location.key]);
   const activeRestoreCleanup = useRef<() => void>();
   useEffect(() => {
     // Field/filter mirrors replace the current entry without opening a view.
@@ -23,11 +34,22 @@ export const useBrowsingNavigationScroll = (walletScope: string) => {
     const mirroredEntry =
       navigationType === 'REPLACE' && previousRequest.current === requestKey;
     previousRequest.current = requestKey;
+    if (mirroredEntry && previousEntry.current) {
+      const positions = historyScroll.current.get(previousEntry.current);
+      historyScroll.current.delete(previousEntry.current);
+      if (positions) historyScroll.current.set(entry, positions);
+    }
+    previousEntry.current = entry;
     if (mirroredEntry) return;
     activeRestoreCleanup.current?.();
     activeRestoreCleanup.current = undefined;
-    const targets = location.state?.scrollPositions;
-    const windowTarget = location.state?.scrollPosition;
+    const remembered =
+      navigationType === 'POP' ? historyScroll.current.get(entry) : undefined;
+    const targets =
+      remembered?.scrollPositions || location.state?.scrollPositions;
+    const windowTarget = remembered
+      ? remembered.scrollPosition
+      : location.state?.scrollPosition;
     if (
       location.state?.walletScope &&
       JSON.stringify(location.state.walletScope) !== walletScope
@@ -48,12 +70,12 @@ export const useBrowsingNavigationScroll = (walletScope: string) => {
     const pending = new Map<string, number>(
       Object.entries(targets || {})
         .filter(
-          (entry): entry is [string, number] =>
-            /^[\w-]{1,64}$/.test(entry[0]) &&
-            typeof entry[1] === 'number' &&
-            Number.isFinite(entry[1]) &&
-            entry[1] >= 0 &&
-            entry[1] <= 10_000_000
+          (position): position is [string, number] =>
+            /^[\w-]{1,64}$/.test(position[0]) &&
+            typeof position[1] === 'number' &&
+            Number.isFinite(position[1]) &&
+            position[1] >= 0 &&
+            position[1] <= 10_000_000
         )
         .slice(0, 20)
     );
@@ -107,12 +129,50 @@ export const useBrowsingNavigationScroll = (walletScope: string) => {
     document.addEventListener('pointerdown', cleanup, true);
     document.addEventListener('keydown', cleanup, true);
     schedule();
-  }, [location.key, navigationType, requestKey]);
+  }, [entry, location.key, navigationType, requestKey]);
+  useEffect(() => {
+    const remember = () => {
+      const scrollPositions: Record<string, number> = {};
+      for (const element of document.querySelectorAll<HTMLElement>(
+        '[data-navigation-scroll]'
+      )) {
+        const key = element.dataset.navigationScroll!;
+        const top = element.scrollTop;
+        if (
+          Object.keys(scrollPositions).length < 20 &&
+          /^[\w-]{1,64}$/.test(key) &&
+          Number.isFinite(top) &&
+          top >= 0 &&
+          top <= 10_000_000
+        )
+          scrollPositions[key] = top;
+      }
+      const scrollPosition = window.scrollY;
+      historyScroll.current.delete(entry);
+      historyScroll.current.set(entry, {
+        scrollPositions,
+        scrollPosition:
+          Number.isFinite(scrollPosition) &&
+          scrollPosition >= 0 &&
+          scrollPosition <= 10_000_000
+            ? scrollPosition
+            : 0,
+      });
+      while (historyScroll.current.size > MAX_HISTORY_SCROLL_ENTRIES)
+        historyScroll.current.delete(
+          historyScroll.current.keys().next().value!
+        );
+    };
+    document.addEventListener('scroll', remember, true);
+    return () => document.removeEventListener('scroll', remember, true);
+  }, [entry]);
   useEffect(
     () => () => {
       activeRestoreCleanup.current?.();
       activeRestoreCleanup.current = undefined;
       previousRequest.current = undefined;
+      previousEntry.current = undefined;
+      historyScroll.current.clear();
     },
     []
   );

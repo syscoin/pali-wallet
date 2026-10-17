@@ -53,6 +53,7 @@ e2e/
 | `PALI_E2E_HEADED` | unset (headless) | `true` opens a visible browser |
 | `PALI_E2E_SLOW_ACTION_TIMEOUT_MS` | `240000` | budget for on-chain waits |
 | `PALI_E2E_RUN_ID` | timestamp | pin a run id (set automatically) |
+| `PALI_TEST_DAPP_EXTENSION_PATH` | `build/chrome` | pin an immutable built extension directory for every suite |
 
 ## Artifacts (what an agent should read)
 
