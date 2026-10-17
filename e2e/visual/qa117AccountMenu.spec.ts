@@ -452,6 +452,20 @@ test('a long smart-account menu keeps bottom actions reachable by keyboard and s
       await expect(page).toHaveURL(/#\/settings\/advanced$/);
       await wallet.gotoRoute('#/home');
       await wallet.ensureOnHome();
+      await page.mouse.move(0, 0);
+      await tabTo(page, menuButton);
+      await page.keyboard.press('ArrowDown');
+      await expect.poll(() => isActiveMenuItem(menu, first)).toBe(true);
+      await page.keyboard.type('Import');
+      const importAccount = menu.getByRole('menuitem', {
+        name: en.accountMenu.importAccount,
+        exact: true,
+      });
+      await expect.poll(() => isActiveMenuItem(menu, importAccount)).toBe(true);
+      await page.keyboard.press('Enter');
+      await expect(page).toHaveURL(/#\/settings\/account\/import$/);
+      await wallet.gotoRoute('#/home');
+      await wallet.ensureOnHome();
     }
     expect(
       await page.evaluate(() => (window as any).__qa117MenuMutations)

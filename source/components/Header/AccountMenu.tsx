@@ -149,24 +149,22 @@ export const AccountMenu: React.FC = () => {
       </Menu.Item>
 
       <Menu.Item>
-        <div className="flex flex-col gap-2">
-          <li
-            onClick={() => {
-              const returnContext = createBrowsingNavigationContext(location);
-              navigateWithContext(
-                navigate,
-                '/settings/account/import',
-                { fromMenu: true },
-                returnContext
-              );
-            }}
-            className={`py-1.5 cursor-pointer px-6 w-full backface-visibility-hidden flex items-center justify-start gap-3 text-white text-sm font-medium hover:bg-brand-blue500 hover:bg-opacity-20 active:bg-opacity-40 focus:outline-none transition-colors duration-200`}
-          >
-            <UserImportedIconSvg className="mb-1 text-brand-white" />
+        <li
+          onClick={() => {
+            const returnContext = createBrowsingNavigationContext(location);
+            navigateWithContext(
+              navigate,
+              '/settings/account/import',
+              { fromMenu: true },
+              returnContext
+            );
+          }}
+          className="py-1.5 cursor-pointer px-6 w-full backface-visibility-hidden flex items-center justify-start gap-3 text-white text-sm font-medium hover:bg-brand-blue500 hover:bg-opacity-20 active:bg-opacity-40 focus:outline-none transition-colors duration-200"
+        >
+          <UserImportedIconSvg className="mb-1 text-brand-white" />
 
-            <span>{t('accountMenu.importAccount')}</span>
-          </li>
-        </div>
+          <span>{t('accountMenu.importAccount')}</span>
+        </li>
       </Menu.Item>
     </div>
   );
