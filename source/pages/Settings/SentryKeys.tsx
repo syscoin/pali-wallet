@@ -48,6 +48,7 @@ const SentryKeys = () => {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const selectedRemovalKey = settings?.keys.find((key) => key.id === removeId);
   const owner = useRef(scope);
   const active = useRef(true);
   const inFlight = useRef<symbol | null>(null);
@@ -70,6 +71,7 @@ const SentryKeys = () => {
     setSecret('');
     setPassword('');
     setBackup(false);
+    setRemoveId('');
     setError('');
     setNotice('');
     if (supported)
@@ -95,6 +97,7 @@ const SentryKeys = () => {
     setSecret('');
     setPassword('');
     setBackup(false);
+    setRemoveId('');
     setError('');
     setNotice('');
   };
@@ -125,6 +128,8 @@ const SentryKeys = () => {
           false
         );
       } else if (mode === 'remove') {
+        if (!selectedRemovalKey)
+          throw new Error(t('sentry.unableToLoadSentrySettings'));
         await controllerEmitter(
           ['wallet', 'removeSentryKey'],
           [{ id: removeId, password }],
@@ -151,6 +156,7 @@ const SentryKeys = () => {
         inFlight.current !== job
       )
         return;
+      if (mode === 'import') setBackup(false);
       const value = (await controllerEmitter([
         'wallet',
         'getSentrySettings',
@@ -244,7 +250,12 @@ const SentryKeys = () => {
               type="button"
               onClick={() => {
                 setMode('import');
+                setBackup(false);
+                setLabel('');
+                setSecret('');
+                setPassword('');
                 setError('');
+                setNotice('');
               }}
             >
               {t('sentry.importSentryKey')}
@@ -364,6 +375,7 @@ const SentryKeys = () => {
                 setRole(next);
                 setScheme(next === 'operator' ? 'bls-basic' : 'secp256k1');
                 setSecret('');
+                setBackup(false);
               }}
             >
               <option value="operator">{t('sentry.operator')}</option>
@@ -382,6 +394,7 @@ const SentryKeys = () => {
               onChange={(e) => {
                 setScheme(e.target.value as SentryAuthorityScheme);
                 setSecret('');
+                setBackup(false);
               }}
             >
               {role === 'operator' ? (
@@ -416,7 +429,10 @@ const SentryKeys = () => {
               value={secret}
               maxLength={130}
               disabled={busy}
-              onChange={(e) => setSecret(e.target.value)}
+              onChange={(e) => {
+                setSecret(e.target.value);
+                setBackup(false);
+              }}
             />
           </label>
           <label className="flex items-start gap-3 text-sm">
@@ -463,9 +479,29 @@ const SentryKeys = () => {
         </>
       )}
       {mode === 'remove' && (
-        <p className="text-sm">
-          {t('sentry.removeThisKeyFromTheLocalWalletThis')}
-        </p>
+        <>
+          <p className="text-sm">
+            {t('sentry.removeThisKeyFromTheLocalWalletThis')}
+          </p>
+          {selectedRemovalKey && (
+            <section className="min-w-0 rounded-xl border border-warning-error p-4">
+              <h3 className="break-words font-medium">
+                {selectedRemovalKey.label}
+              </h3>
+              <p className="mt-1 text-xs text-brand-gray200">
+                {selectedRemovalKey.scheme === 'bls-basic'
+                  ? t('sentry.legacyBLS')
+                  : selectedRemovalKey.scheme === 'secp256k1'
+                  ? t('sentry.secp256k1')
+                  : t('sentry.sLHDSASHAKE128s')}{' '}
+                · {t(`sentry.roles.${selectedRemovalKey.role}`)}
+              </p>
+              <p className="mt-3 break-all font-mono text-xs">
+                {selectedRemovalKey.publicKey}
+              </p>
+            </section>
+          )}
+        </>
       )}
       {mode === 'release' && release && (
         <section className="rounded-xl border border-warning-error p-4">
@@ -517,6 +553,7 @@ const SentryKeys = () => {
               disabled={
                 busy ||
                 !password ||
+                (mode === 'remove' && !selectedRemovalKey) ||
                 (mode === 'release' && !releaseAcknowledged) ||
                 (mode === 'import' && (!secret || !label.trim() || !backup))
               }
