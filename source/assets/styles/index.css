@@ -51,6 +51,19 @@
 
 /** ALERTS/TOASTS **/
 
+/* PSBT approvals use one bounded content scroller above their action row. */
+[data-navigation-scroll='wallet-layout'] .page-content:has([data-psbt-sign]),
+[data-navigation-scroll='wallet-layout'] .page-content [data-psbt-sign] {
+  flex: 1 1 0%;
+  min-height: 0;
+}
+
+[data-navigation-scroll='wallet-layout'] [data-psbt-sign] .page-action-footer {
+  position: relative;
+  bottom: auto;
+  margin-top: 0;
+}
+
 /* Pali Toast Styles */
 .pali-toast {
   font-family: 'Poppins', sans-serif !important;

@@ -21,6 +21,25 @@ const decodedTransfer = (assetGuid: string, value: string) => ({
 });
 
 describe('Syscoin PSBT review', () => {
+  it('allows only background-verified Sentry review with the same exact fee and no assets', () => {
+    const decoded: any = {
+      feeSatoshis: '1000',
+      syscoin: { txtype: 'unknown' },
+      vout: [],
+    };
+    expect(getSyscoinPsbtReviewError(decoded, {})).toContain('Unsupported');
+    decoded.sentry = { operation: 'updateService', feeSatoshis: '1000' };
+    expect(getSyscoinPsbtReviewError(decoded, {})).toBeNull();
+    decoded.sentry.feeSatoshis = '1001';
+    expect(getSyscoinPsbtReviewError(decoded, {})).toContain(
+      'Unable to verify'
+    );
+    decoded.sentry.feeSatoshis = '1000';
+    decoded.syscoin.allocations = { assets: [{ assetGuid: '123456' }] };
+    expect(getSyscoinPsbtReviewError(decoded, {})).toContain(
+      'cannot transfer assets'
+    );
+  });
   it('shows zero-decimal NFT and ERC-1155 quantities exactly', () => {
     const decoded = decodedTransfer('4294967297', '2');
     const metadata = {

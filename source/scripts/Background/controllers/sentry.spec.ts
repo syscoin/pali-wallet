@@ -85,7 +85,23 @@ jest.mock('utils/sentry/keyStore', () => ({
   saveSentryKeys: jest.fn(),
   removeSentryKey: jest.fn(),
 }));
-jest.mock('utils/sentry/workerClient', () => ({ runSentryCrypto: jest.fn() }));
+jest.mock('utils/sentry/workerClient', () => ({
+  // Keep the existing signing assertions separate from read-only SDK reviews.
+  runSentryCrypto: new Proxy(jest.fn(), {
+    apply(target, thisArg, args) {
+      const [job, assertCurrent] = args;
+      if (job.type !== 'reviewOperation')
+        return Reflect.apply(target, thisArg, args);
+      assertCurrent();
+      const sdk = jest.requireMock('@sidhujag/sysweb3-sentry');
+      return Promise.resolve(
+        job.request.operation === 'updateService'
+          ? sdk.reviewSentryOperation(job.request, job.context)
+          : sdk.reviewSentryManagementOperation(job.request, job.context)
+      );
+    },
+  }),
+}));
 jest.mock('utils/sentry/collateral', () => ({
   captureSentryCollateralAdmission: jest.fn(),
   reserveSentryCollateral: jest.fn(),
@@ -184,6 +200,105 @@ it('prepares a public-only scoped review using fixed configured service and inde
     expect.any(Object)
   );
 });
+
+it('requires completed local authorization and rechecks its exact context for fee signing', async () => {
+  expect(() =>
+    controller.prepareFeePsbt('signed-public-bytes', 'https://dapp.test')
+  ).toThrow(/exact/);
+  const id = await controller.prepare(request, 'https://dapp.test');
+  await controller.sign({ id, keyId: summary.id, password: 'test' });
+  const token = controller.prepareFeePsbt(
+    'signed-public-bytes',
+    'https://dapp.test'
+  );
+  expect(() =>
+    controller.prepareFeePsbt('changed-fee-output', 'https://dapp.test')
+  ).toThrow(/exact/);
+  expect(() =>
+    controller.prepareFeePsbt('signed-public-bytes', 'https://other.test')
+  ).toThrow(/exact/);
+  (runSentryCrypto as jest.Mock).mockResolvedValueOnce({
+    operation: 'updateService',
+    feeSatoshis: '1000',
+  });
+  await expect(
+    controller.reviewFeePsbt(token, 'signed-public-bytes')
+  ).resolves.toMatchObject({ feeSatoshis: '1000' });
+  expect(runSentryCrypto).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      type: 'verifyFee',
+      request: expect.objectContaining({
+        transactionHex: 'signed-public-bytes',
+      }),
+    }),
+    expect.any(Function)
+  );
+  observation.node.service = '2.3.4.5:8369';
+  await expect(
+    controller.reviewFeePsbt(token, 'signed-public-bytes')
+  ).rejects.toThrow(/state changed/);
+});
+
+it.each(['serviceUrl', 'maxFeeSatoshis'])(
+  'invalidates fee authorization after trusted %s changes',
+  async (field) => {
+    const id = await controller.prepare(request, 'https://dapp.test');
+    await controller.sign({ id, keyId: summary.id, password: 'test' });
+    const token = controller.prepareFeePsbt(
+      'signed-public-bytes',
+      'https://dapp.test'
+    );
+    (chromeStorage.getItem as jest.Mock).mockImplementation(async (key) =>
+      key.startsWith('sentry-settings')
+        ? {
+            serviceUrl:
+              field === 'serviceUrl'
+                ? 'https://changed.test'
+                : 'https://sysnode.info',
+            maxFeeSatoshis: field === 'maxFeeSatoshis' ? '1' : '1000000',
+          }
+        : null
+    );
+    await expect(
+      controller.reviewFeePsbt(token, 'signed-public-bytes')
+    ).rejects.toThrow(/state changed/);
+  }
+);
+
+it('does not admit incomplete multi-role management signatures to fee signing', async () => {
+  const id = await controller.prepare(request, 'https://dapp.test');
+  (runSentryCrypto as jest.Mock).mockResolvedValueOnce({
+    operation: 'register',
+    complete: false,
+    transactionHex: 'partial',
+  });
+  await controller.sign({ id, keyId: summary.id, password: 'test' });
+  expect(() =>
+    controller.prepareFeePsbt('partial', 'https://dapp.test')
+  ).toThrow(/exact/);
+});
+
+it.each(['settings', 'key removal'])(
+  'invalidates retained fee consent permanently after %s',
+  async (change) => {
+    const id = await controller.prepare(request, 'https://dapp.test');
+    await controller.sign({ id, keyId: summary.id, password: 'test' });
+    const token = controller.prepareFeePsbt(
+      'signed-public-bytes',
+      'https://dapp.test'
+    );
+    if (change === 'settings')
+      await controller.saveSettings({
+        serviceUrl: 'https://sysnode.info',
+        maxFeeSatoshis: '1000000',
+        password: 'test',
+      });
+    else await controller.removeKey({ id: summary.id, password: 'test' });
+    await expect(
+      controller.reviewFeePsbt(token, 'signed-public-bytes')
+    ).rejects.toThrow(/expired/);
+  }
+);
 
 it('refuses a mismatched genesis before generating an approval', async () => {
   observation.chain = { ...request.chain, genesisHash: 'ff'.repeat(32) };

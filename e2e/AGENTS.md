@@ -144,6 +144,14 @@ and uncompressed voting identities, exact cryptographic signatures, and the
 `sentry-batch-import.journey.spec.ts` exercises per-line validation, fresh backup
 acknowledgement, atomic multi-key import, encrypted persistence, and recovery
 from a rejected batch using only synthetic keys in the fenced wallet.
+`sentry-management-fees.journey.spec.ts` is a required PR conformance case.
+It uses the pinned Sysnode backend adapter at
+`4312e660cfa9a06a03a398cecf40a87c904bb095` (set `SENTRY_BACKEND_ROOT` to its
+absolute checkout path for a local run), real BLS operation signatures from
+Pali, and real Pali fee-input signatures. It verifies those signatures and
+the final serialized transaction through the backend for NEVM add/update/remove.
+Node metadata and mempool admission are explicitly synthetic; it never
+broadcasts. Disconnected Core lifecycle acceptance is a separate backend test.
 See `UTXO_FIXTURE.md`, `NATIVE_SEND_PREVIEW.md` and
 `SPT_SEND_PREVIEW.md` for the launch-time network fence and simulated/live limits. The job needs no wallet
 secrets and uploads browser evidence. Live testnet journeys stay in the

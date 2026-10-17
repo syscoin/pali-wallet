@@ -919,7 +919,7 @@ export class SysMethodHandler implements IMethodHandler {
         popupData = { sentryApprovalId };
       }
       if (methodName === 'sign' || methodName === 'signAndSend') {
-        const { dapp } = getController();
+        const { dapp, wallet } = getController();
         const connection = dapp.get(host);
         const account = dapp.getAccount(host);
         const { vault, vaultGlobal } = store.getState();
@@ -950,7 +950,12 @@ export class SysMethodHandler implements IMethodHandler {
           slip44: vaultGlobal.activeSlip44,
         };
         // Never accept a site's same-named authorization object.
-        popupData = { ...popupData, approvedContext };
+        const sentryFeeAuthorization = await wallet.prepareSentryFeePsbt(
+          popupData,
+          host,
+          methodName === 'sign'
+        );
+        popupData = { ...popupData, approvedContext, sentryFeeAuthorization };
       }
       try {
         return await requestCoordinator.coordinatePopupRequest(

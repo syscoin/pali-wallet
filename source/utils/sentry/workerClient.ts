@@ -15,9 +15,16 @@ import type {
   SentryGovernanceVoteRequest,
   SentryGovernanceVoteResponse,
   SentryGovernanceVoteReview,
+  SentryOperationReview,
+  SentryManagementReview,
 } from '@sidhujag/sysweb3-sentry';
 
 export type SentryCryptoJob =
+  | {
+      context: SentryManagementContext;
+      request: SentryOperationRequest | SentryManagementRequest;
+      type: 'verifyFee' | 'reviewOperation';
+    }
   | { request: unknown; type: 'validateVote' }
   | {
       context: SentryGovernanceVoteContext;
@@ -60,6 +67,8 @@ export const runSentryCrypto = async <
     | SentryGovernanceVoteResponse
     | SentryGovernanceVoteRequest
     | SentryGovernanceVoteReview
+    | SentryOperationReview
+    | SentryManagementReview
     | Array<{ compressed: string; publicKey: string; uncompressed: string }>
 >(
   job: SentryCryptoJob,

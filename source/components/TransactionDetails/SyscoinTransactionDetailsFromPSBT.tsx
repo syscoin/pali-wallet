@@ -18,6 +18,7 @@ import { selectActiveAccountAssets } from 'state/vault/selectors';
 import { SYSCOIN_PSBT_VERIFICATION_TIMEOUT_MS } from 'utils/constants';
 import { ellipsis } from 'utils/format';
 import { formatSyscoinValue } from 'utils/formatSyscoinValue';
+import type { SentryFeeReview } from 'utils/sentry/feeAuthorization';
 import {
   getAssetReviewRows,
   getSyscoinPsbtReviewError,
@@ -30,6 +31,7 @@ export interface IDecodedTransaction {
   fee?: number;
   feeSatoshis?: string;
   locktime?: number;
+  sentry?: SentryFeeReview;
   size?: number;
   syscoin?: {
     allocations?: {
@@ -502,8 +504,70 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
               Type:
             </Typography.Text>
             <Typography.Text className="text-white text-xs sm:text-sm font-medium text-right">
-              {getTransactionTypeText(decodedTx.syscoin.txtype)}
+              {decodedTx.sentry
+                ? t('sentry.feeType')
+                : getTransactionTypeText(decodedTx.syscoin.txtype)}
             </Typography.Text>
+          </div>
+        )}
+
+        {decodedTx.sentry && (
+          <div
+            className="space-y-3 text-xs text-brand-gray200 min-w-0"
+            data-testid="sentry-fee-review"
+          >
+            <p className="text-white">{t('sentry.feeTitle')}</p>
+            <p className="break-words">{t('sentry.feeHelp')}</p>
+            <p>
+              {t('sentry.feeType')}:{' '}
+              <span className="text-white">
+                {t(`sentry.feeOperations.${decodedTx.sentry.operation}`)}
+              </span>
+            </p>
+            {decodedTx.sentry.proTxHash && (
+              <p className="break-all">
+                {t('sentry.registeredNode')}:{' '}
+                <span className="text-white">{decodedTx.sentry.proTxHash}</span>
+              </p>
+            )}
+            <ExpandableSection title={t('sentry.feeChanges')} defaultExpanded>
+              <div className="space-y-3 min-w-0">
+                {'changes' in decodedTx.sentry
+                  ? Object.entries(decodedTx.sentry.changes).map(
+                      ([name, change]) => (
+                        <div key={name} className="break-all">
+                          <p className="text-white">
+                            {t(
+                              `sentry.${
+                                {
+                                  service: 'service',
+                                  operatorPayoutScript: 'operatorPayoutScript',
+                                  nevmAddress: 'nEVMAddress',
+                                }[name]
+                              }`
+                            )}
+                          </p>
+                          <p>
+                            {t('sentry.current')}:{' '}
+                            {change.previous || t('sentry.notSet')}
+                          </p>
+                          <p>
+                            {t('sentry.proposed')}:{' '}
+                            {change.next || t('sentry.notSet')}
+                          </p>
+                        </div>
+                      )
+                    )
+                  : Object.entries(decodedTx.sentry.fields).map(
+                      ([name, value]) => (
+                        <div key={name} className="break-all">
+                          <p>{name}</p>
+                          <p className="text-white">{value}</p>
+                        </div>
+                      )
+                    )}
+              </div>
+            </ExpandableSection>
           </div>
         )}
 

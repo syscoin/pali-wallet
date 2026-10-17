@@ -148,6 +148,7 @@ import {
   withSentryCollateralBroadcast,
   withSentryCollateralSignatureRelease,
 } from 'utils/sentry/collateral';
+import { isSentryTransactionVersion } from 'utils/sentry/feeAuthorization';
 import { getSentryNetwork, SENTRY_NETWORKS } from 'utils/sentry/network';
 import {
   getSLHDSASessionGeneration,
@@ -8067,6 +8068,44 @@ class MainController {
     return { psbt, summary };
   };
 
+  public async prepareSentryFeePsbt(
+    psbtData: any,
+    origin: string,
+    signOnly = true
+  ) {
+    const psbt = PsbtUtils.fromPali(
+      psbtData,
+      store.getState().vault.activeNetwork
+    );
+    if (!isSentryTransactionVersion(psbt.version)) return undefined;
+    if (!signOnly)
+      throw new Error(
+        'Sentry operations require sys_sign for fee inputs and submission through the node-management service.'
+      );
+    const transactionHex = Buffer.from(
+      psbt.data.globalMap.unsignedTx.toBuffer()
+    ).toString('hex');
+    return (await this.getSentryController()).prepareFeePsbt(
+      transactionHex,
+      origin
+    );
+  }
+
+  private async verifySentryFeePsbt(psbt: any, authorizationId?: string) {
+    if (!isSentryTransactionVersion(psbt.version)) return undefined;
+    if (!authorizationId)
+      throw new Error(
+        'SENTRY_FEE_AUTHORIZATION_REQUIRED: Authorize this Sentry operation in Pali before signing its network fee.'
+      );
+    const transactionHex = Buffer.from(
+      psbt.data.globalMap.unsignedTx.toBuffer()
+    ).toString('hex');
+    return (await this.getSentryController()).reviewFeePsbt(
+      authorizationId,
+      transactionHex
+    );
+  }
+
   private getSentryCollateralScope() {
     const { vault } = store.getState();
     if (
@@ -8368,25 +8407,49 @@ class MainController {
     const signing = this.captureUtxoSigningContext(params.expectedContext);
     const verified = await this.verifySyscoinPsbt(params.psbt);
     signing.assertCurrent();
+    const feeAuthorization = params.psbt?.sentryFeeAuthorization;
+    const sentryFee = await this.verifySentryFeePsbt(
+      verified.psbt,
+      feeAuthorization
+    );
+    signing.assertCurrent();
     await this.assertNoSentryCollateralInputs(verified.psbt);
     signing.assertCurrent();
-    const signed = await signing.transactions.signPSBT({
-      ...params,
-      psbt: PsbtUtils.toPali(verified.psbt),
-    });
-    signing.assertCurrent();
-    const sentryScope = this.getSentryCollateralScope();
-    const release = async (markDisclosed: () => void) => {
-      await this.assertNoSentryCollateralInputs(() =>
-        PsbtUtils.fromPali(signed, store.getState().vault.activeNetwork)
-      );
+    const finishFee = sentryFee
+      ? (await this.getSentryController()).beginFeeSigning(
+          feeAuthorization,
+          Buffer.from(
+            verified.psbt.data.globalMap.unsignedTx.toBuffer()
+          ).toString('hex')
+        )
+      : undefined;
+    try {
+      const signed = await signing.transactions.signPSBT({
+        ...params,
+        psbt: PsbtUtils.toPali(verified.psbt),
+      });
       signing.assertCurrent();
-      markDisclosed();
-      return signed;
-    };
-    return sentryScope
-      ? withSentryCollateralSignatureRelease(sentryScope, release)
-      : release(() => undefined);
+      const sentryScope = this.getSentryCollateralScope();
+      const release = async (markDisclosed: () => void) => {
+        await this.assertNoSentryCollateralInputs(() =>
+          PsbtUtils.fromPali(signed, store.getState().vault.activeNetwork)
+        );
+        if (sentryFee)
+          await this.verifySentryFeePsbt(
+            PsbtUtils.fromPali(signed, store.getState().vault.activeNetwork),
+            feeAuthorization
+          );
+        signing.assertCurrent();
+        finishFee?.(true);
+        markDisclosed();
+        return signed;
+      };
+      return await (sentryScope
+        ? withSentryCollateralSignatureRelease(sentryScope, release)
+        : release(() => undefined));
+    } finally {
+      finishFee?.();
+    }
   }
 
   // Add decodeRawTransaction method for PSBT/transaction details display
@@ -8398,7 +8461,7 @@ class MainController {
       );
 
       if (!isRawHex) {
-        const { summary } = await this.verifySyscoinPsbt(psbtOrHex);
+        const { psbt, summary } = await this.verifySyscoinPsbt(psbtOrHex);
         if (
           !Array.isArray(decoded.vout) ||
           decoded.vout.length !== summary.outputValuesSatoshis.length
@@ -8406,6 +8469,11 @@ class MainController {
           throw new Error('Decoded outputs do not match the PSBT');
         }
         decoded.feeSatoshis = summary.feeSatoshis;
+        const sentry = await this.verifySentryFeePsbt(
+          psbt,
+          psbtOrHex?.sentryFeeAuthorization
+        );
+        if (sentry) decoded.sentry = sentry;
         decoded.vout.forEach((output: any, index: number) => {
           output.valueSatoshis = summary.outputValuesSatoshis[index];
         });

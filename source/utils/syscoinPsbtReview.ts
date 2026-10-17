@@ -1,4 +1,5 @@
 import { formatSyscoinValue } from './formatSyscoinValue';
+import type { SentryFeeReview } from './sentry/feeAuthorization';
 import { normalizeSyscoinTransactionType } from './syscoinTransactionUtils';
 
 interface IAssetMetadata {
@@ -24,6 +25,7 @@ interface IDecodedAsset {
 interface IDecodedReviewTransaction {
   error?: string;
   feeSatoshis?: string;
+  sentry?: SentryFeeReview;
   syscoin?: {
     allocations?: { assets?: IDecodedAsset[] } | null;
     txtype?: string;
@@ -129,7 +131,22 @@ export const getSyscoinPsbtReviewError = (
   if (decodedTx.error) return decodedTx.error;
 
   const txType = decodedTx.syscoin?.txtype;
+  const sentry = decodedTx.sentry;
   if (
+    sentry &&
+    (sentry.feeSatoshis !== decodedTx.feeSatoshis ||
+      ![
+        'register',
+        'updateService',
+        'updateRegistrar',
+        'revoke',
+        'registerOperator',
+        'rotateOperator',
+      ].includes(sentry.operation))
+  )
+    return 'Unable to verify the Sentry operation and network fee';
+  if (
+    !sentry &&
     txType &&
     txType.toLowerCase() !== 'bitcoin' &&
     !normalizeSyscoinTransactionType(txType)
@@ -142,6 +159,8 @@ export const getSyscoinPsbtReviewError = (
   }
 
   const assets = decodedTx.syscoin?.allocations?.assets || [];
+  if (sentry && assets.length)
+    return 'Sentry network fees cannot transfer assets';
   const normalizedType = normalizeSyscoinTransactionType(txType);
   if (normalizedType && normalizedType !== 'nevmdata' && assets.length === 0) {
     return 'Unable to verify Syscoin asset allocations';

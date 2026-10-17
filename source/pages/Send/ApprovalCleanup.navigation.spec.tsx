@@ -30,6 +30,7 @@ const mockGet = jest.fn();
 const mockSet = jest.fn();
 const mockRemove = jest.fn();
 let mockButtonHandlers: Record<string, () => any>;
+const mockPsbtProps: unknown[] = [];
 
 jest.mock('state/store', () => ({
   __esModule: true,
@@ -79,7 +80,8 @@ jest.mock('components/index', () => ({
 }));
 jest.mock('components/Loading', () => ({ LoadingComponent: () => null }));
 jest.mock('components/TransactionDetails', () => ({
-  SyscoinTransactionDetailsFromPSBT: ({ onReviewStateChange }: any) => {
+  SyscoinTransactionDetailsFromPSBT: ({ onReviewStateChange, psbt }: any) => {
+    mockPsbtProps.push(psbt);
     React.useEffect(() => {
       onReviewStateChange(null);
     }, [onReviewStateChange]);
@@ -131,6 +133,7 @@ beforeEach(() => {
   mockSetTimeout = jest.spyOn(global, 'setTimeout');
   mockStorage = {};
   mockButtonHandlers = {};
+  mockPsbtProps.length = 0;
   mockState = {
     vault: {
       activeAccount: { type: 'HDAccount', id: 0 },
@@ -162,6 +165,21 @@ beforeEach(() => {
 afterEach(() => {
   jest.useRealTimers();
   jest.restoreAllMocks();
+});
+
+it('keeps the verified PSBT stable across successful fee signing and response delivery', async () => {
+  mockEmitter.mockResolvedValue('public-signed-psbt');
+  await prepareSign();
+  const initial = mockPsbtProps[0];
+  fireEvent.click(screen.getByRole('button', { name: 'send.sign' }));
+  await act(async () => {
+    await Promise.resolve();
+    jest.advanceTimersByTime(2000);
+    await Promise.resolve();
+  });
+  await waitFor(() => expect(dispatchBackgroundEvent).toHaveBeenCalled());
+  expect(mockPsbtProps.length).toBeGreaterThan(1);
+  expect(mockPsbtProps.every((value) => value === initial)).toBe(true);
 });
 
 it('status popup close preserves an ordinary Policy caller and scroll', async () => {

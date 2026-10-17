@@ -1088,6 +1088,18 @@
     "wrongNetwork": "此智能账户属于链 {{accountChainId}}。更改模块前，请从当前活动链 {{activeChainId}} 切换回对应链。"
   },
   "sentry": {
+    "feeTitle": "Network fee for your authorized Sentry operation",
+    "feeHelp": "Authorizes the network-fee inputs for this operation. The site submits the signed transaction.",
+    "feeChanges": "Authorized changes",
+    "feeType": "Sentry node operation",
+    "feeOperations": {
+      "register": "Register node",
+      "updateService": "Update service / NEVM address",
+      "updateRegistrar": "Update owner settings",
+      "revoke": "Revoke operator",
+      "registerOperator": "Register operator",
+      "rotateOperator": "Rotate operator"
+    },
     "switchToSyscoinMainnetOrSyscoinTestnetUTXO": "Switch to Syscoin mainnet or Syscoin testnet UTXO to manage Sentry operators.",
     "loadingSentrySettings": "Loading Sentry settings…",
     "sentryAuthorityKeys": "Sentry authority keys",
