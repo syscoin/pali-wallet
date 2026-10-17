@@ -186,6 +186,8 @@
     "importWallet": "Import wallet"
   },
   "import": {
+    "showSeedPhrase": "Show recovery phrase",
+    "hideSeedPhrase": "Hide recovery phrase",
     "importModalWordMissing": "Word missing!",
     "importModalSeed": "The seed phrase must be 12, 15, 18, 21 or 24 words and you inserted {{seedLength}}.",
     "importAttention": "ATTENTION: ",
@@ -454,6 +456,17 @@
     "receipts": "Receipts"
   },
   "settings": {
+    "invalidWatchOnlyIdentifier": "Use a public address, public extended key, or public-only descriptor. Never enter a private key.",
+    "searchTrustedSites": "Search trusted sites",
+    "trustedSiteMatch": "On the trusted list",
+    "unlistedSite": "Not on the trusted list",
+    "noTrustedSitesFound": "No trusted sites match your search.",
+    "selectSmartAccountBeforePolicyChange": "Select this smart account before changing its approval or recovery policy.",
+    "currentLanguage": "Current language",
+    "previewLanguage": "Preview: {{language}}",
+    "preferencesSaveFailed": "Could not save your changes. Please try again.",
+    "searchCurrencies": "Search currencies…",
+    "noCurrenciesFound": "No currencies match your search.",
     "walletSetupFailed": "Could not confirm wallet setup. Keep your recovery phrase and check the wallet status.",
     "recoveryTitle": "Recover wallet",
     "recoveryIntro": "Use your Secret Recovery Phrase to restore only the first seed-derived (HD) account and choose a new password. Re-add other accounts derived from the same phrase.",
@@ -711,6 +724,8 @@
     "welcomeTo": "WELCOME TO"
   },
   "tokens": {
+    "viewTokenDetails": "View details for {{symbol}} token",
+    "importNamedToken": "Import {{symbol}} token",
     "tokenNotAdded": "Token not added.",
     "tokenAlreadyImported": "This token has already been imported to your wallet.",
     "deleteToken": "Delete {{symbol}}",

@@ -11,6 +11,9 @@ jest.mock('utils/ethersV6Compat', () => ({
 jest.mock('utils/smartAccount', () => ({
   ...jest.requireActual('utils/smartAccount'),
   estimateSmartAccountUserOpGas: jest.fn(),
+  toPaliSmartAccount: jest.fn(
+    jest.requireActual('utils/smartAccount').toPaliSmartAccount
+  ),
 }));
 
 import store from 'state/store';
@@ -22,6 +25,7 @@ import {
   encodeSmartAccountGasFees,
   encodeSmartAccountGasLimits,
   estimateSmartAccountUserOpGas,
+  toPaliSmartAccount,
 } from 'utils/smartAccount';
 
 import SmartAccountController from './index';
@@ -98,6 +102,11 @@ describe('smart-account execution approval context', () => {
     });
 
   beforeEach(() => {
+    jest
+      .mocked(toPaliSmartAccount)
+      .mockImplementation(
+        jest.requireActual('utils/smartAccount').toPaliSmartAccount
+      );
     generation = 9;
     state = {
       vault: {
@@ -207,6 +216,148 @@ describe('smart-account execution approval context', () => {
     await expect(prepare()).rejects.toMatchObject({
       transactionNotBroadcast: true,
     });
+  });
+
+  it.each(['account', 'RPC', 'session'])(
+    'does not persist hydrated metadata after %s changes during the read',
+    async (axis) => {
+      const gate = deferred<any>();
+      controller.getSmartAccountById = jest.fn(() => ({
+        account: state.vault.accounts.SmartAccount[7],
+        metadata,
+      }));
+      controller.hydrateSmartAccountMetadata = jest.fn(() => gate.promise);
+      controller.persistSmartAccountMetadata = jest.fn();
+      const operation = controller.hydrateSmartAccount(7, expectedContext);
+      const rejected = expect(operation).rejects.toThrow();
+      mutate(axis);
+      gate.resolve(metadata);
+      await rejected;
+      expect(controller.persistSmartAccountMetadata).not.toHaveBeenCalled();
+    }
+  );
+
+  describe('registration admission before execution preparation', () => {
+    const registration = () => {
+      jest
+        .mocked(toPaliSmartAccount)
+        .mockResolvedValue({ address: ADDRESS } as any);
+      jest.mocked(store.dispatch).mockClear();
+      const gate = deferred<string>();
+      provider.getCode = jest.fn(() => gate.promise);
+      const registeredMetadata = {
+        ...metadata,
+        descriptor: { deploymentSalt: `0x${'00'.repeat(32)}` },
+      };
+      controller.getSmartAccountById = jest.fn(() => ({
+        account: state.vault.accounts.SmartAccount[7],
+        metadata: registeredMetadata,
+      }));
+      controller.prepareSmartAccountExecutions = jest.fn(async () => ({
+        actionHash: HASH,
+        executions: calls,
+        executionContextId: 'registration-fixture',
+      }));
+      controller.signActionHashWithLocalEcdsaOwners = jest.fn(
+        async () => '0x1234'
+      );
+      controller.submitSmartAccountExecution = jest.fn(async () => ({
+        hash: HASH,
+      }));
+      controller.hydrateSmartAccountMetadata = jest.fn(
+        async () => registeredMetadata
+      );
+      controller.deps.saveWalletState = jest.fn();
+      return gate;
+    };
+
+    it.each(['account', 'RPC', 'session'])(
+      'does not sign registration after %s changes during the code read',
+      async (axis) => {
+        const gate = registration();
+        const operation = controller.registerSmartAccountOnChain({
+          accountId: 7,
+          expectedContext,
+        });
+        const rejected = expect(operation).rejects.toMatchObject({
+          transactionNotBroadcast: true,
+        });
+        mutate(axis);
+        gate.resolve('0x');
+        await rejected;
+        expect(controller.prepareSmartAccountExecutions).not.toHaveBeenCalled();
+        expect(
+          controller.signActionHashWithLocalEcdsaOwners
+        ).not.toHaveBeenCalled();
+        expect(store.dispatch).not.toHaveBeenCalled();
+      }
+    );
+
+    it('registers the unchanged context and propagates its original approval', async () => {
+      const gate = registration();
+      const operation = controller.registerSmartAccountOnChain({
+        accountId: 7,
+        expectedContext,
+      });
+      gate.resolve('0x');
+      await expect(operation).resolves.toMatchObject({
+        transaction: { hash: HASH },
+      });
+      expect(controller.prepareSmartAccountExecutions).toHaveBeenCalledWith(
+        expect.any(Array),
+        7,
+        { expectedContext }
+      );
+      expect(controller.submitSmartAccountExecution).toHaveBeenCalledWith(
+        expect.objectContaining({ expectedContext })
+      );
+      expect(store.dispatch).toHaveBeenCalledTimes(1);
+    });
+
+    it.each(['account', 'RPC', 'session'])(
+      'preserves registration ACK but skips stale %s metadata',
+      async (axis) => {
+        const code = registration();
+        const entered = deferred<void>();
+        const acknowledged = deferred<{ hash: string }>();
+        controller.submitSmartAccountExecution.mockImplementation(async () => {
+          entered.resolve();
+          return acknowledged.promise;
+        });
+        const operation = controller.registerSmartAccountOnChain({
+          accountId: 7,
+          expectedContext,
+        });
+        code.resolve('0x');
+        await entered.promise;
+        mutate(axis);
+        acknowledged.resolve({ hash: HASH });
+        await expect(operation).resolves.toMatchObject({
+          transaction: { hash: HASH },
+        });
+        expect(controller.hydrateSmartAccountMetadata).not.toHaveBeenCalled();
+        expect(store.dispatch).not.toHaveBeenCalled();
+      }
+    );
+
+    it.each(['hydration', 'persistence'])(
+      'does not erase a registration ACK on %s failure',
+      async (stage) => {
+        const gate = registration();
+        (stage === 'hydration'
+          ? controller.hydrateSmartAccountMetadata
+          : controller.deps.saveWalletState
+        ).mockRejectedValue(new Error('local refresh failed'));
+        const operation = controller.registerSmartAccountOnChain({
+          accountId: 7,
+          expectedContext,
+        });
+        gate.resolve('0x');
+        await expect(operation).resolves.toMatchObject({
+          transaction: { hash: HASH },
+        });
+      }
+    );
   });
 
   it('binds the background signing token to its exact locally derived digest', async () => {

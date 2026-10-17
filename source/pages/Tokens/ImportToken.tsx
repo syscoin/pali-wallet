@@ -90,12 +90,21 @@ export const ImportToken: React.FC = () => {
     customTokenId,
   });
   const [isVerifyingTokenId, setIsVerifyingTokenId] = useState(false);
-  const [verifiedTokenBalance, setVerifiedTokenBalance] = useState<
-    number | null
-  >(null);
-  const [verifiedTokenRawBalance, setVerifiedTokenRawBalance] = useState<
-    string | null
-  >(null);
+  const [tokenIdResult, setTokenIdResult] = useState<{
+    balance: number;
+    key: string;
+    rawBalance: string | null;
+  } | null>(null);
+  const tokenIdRequestRef = useRef(0);
+  const tokenIdKey = `${tokenImportScope}:${
+    customTokenDetails?.contractAddress?.toLowerCase() || ''
+  }:${customTokenId.trim()}`;
+  const tokenIdKeyRef = useRef(tokenIdKey);
+  tokenIdKeyRef.current = tokenIdKey;
+  const verifiedTokenBalance =
+    tokenIdResult?.key === tokenIdKey ? tokenIdResult.balance : null;
+  const verifiedTokenRawBalance =
+    tokenIdResult?.key === tokenIdKey ? tokenIdResult.rawBalance : null;
 
   // Common state
   const [currentlyImporting, setCurrentlyImporting] = useState<string | null>(
@@ -128,6 +137,15 @@ export const ImportToken: React.FC = () => {
   );
   const loadingKeyRef = useRef<string>('');
   const ownedRequestIdRef = useRef(0);
+  const importOperationRef = useRef<object | null>(null);
+  const importViewRef = useRef({ active: true, scope: tokenImportScope });
+  importViewRef.current.scope = tokenImportScope;
+  useEffect(() => {
+    importViewRef.current.active = true;
+    return () => {
+      importViewRef.current.active = false;
+    };
+  }, []);
 
   // Calculate imported asset IDs for efficient lookup - must match the token ID format
   const importedAssetIds = useMemo(() => {
@@ -288,21 +306,30 @@ export const ImportToken: React.FC = () => {
     }
   }, [deferredCustomAddress, activeAccount?.address, activeNetwork.chainId]);
 
-  // Verify ERC1155 token ID balance
-  const verifyERC1155TokenId = useCallback(
-    async (tokenId: string) => {
-      if (!customTokenDetails || !activeAccount.address || !tokenId.trim()) {
-        setVerifiedTokenBalance(null);
-        setVerifiedTokenRawBalance(null);
-        return;
-      }
-
-      if (customTokenDetails.tokenStandard !== 'ERC-1155') {
-        return;
-      }
-
-      setIsVerifyingTokenId(true);
-
+  // A verification belongs to one account, network, collection and token ID.
+  // Neither a deferred input nor an older RPC response may validate a newer ID.
+  useEffect(() => {
+    const requestId = ++tokenIdRequestRef.current;
+    const tokenId = deferredTokenId.trim();
+    const key = tokenIdKey;
+    let active = true;
+    const isCurrent = () =>
+      active &&
+      tokenIdRequestRef.current === requestId &&
+      tokenIdKeyRef.current === key;
+    if (
+      customTokenDetails?.tokenStandard !== 'ERC-1155' ||
+      !activeAccount.address ||
+      !tokenId ||
+      tokenId !== customTokenId.trim()
+    ) {
+      setIsVerifyingTokenId(false);
+      return () => {
+        active = false;
+      };
+    }
+    setIsVerifyingTokenId(true);
+    void (async () => {
       try {
         const result = (await controllerEmitter(
           ['wallet', 'verifyERC1155Ownership'],
@@ -314,40 +341,31 @@ export const ImportToken: React.FC = () => {
           verified: boolean;
         }[];
 
-        if (result && result.length > 0) {
-          const tokenInfo = result[0];
-          if (tokenInfo.verified) {
-            // Token ID format is valid - set balance even if it's 0
-            setVerifiedTokenBalance(tokenInfo.balance);
-            setVerifiedTokenRawBalance(tokenInfo.rawBalance ?? null);
-          } else {
-            // Token ID format is invalid or contract call failed
-            setVerifiedTokenBalance(-1);
-            setVerifiedTokenRawBalance(null);
-          }
-        } else {
-          // No result - set to -1
-          setVerifiedTokenBalance(-1);
-          setVerifiedTokenRawBalance(null);
-        }
+        if (!isCurrent()) return;
+        const tokenInfo = result?.[0];
+        setTokenIdResult({
+          key,
+          balance: tokenInfo?.verified ? tokenInfo.balance : -1,
+          rawBalance: tokenInfo?.verified ? tokenInfo.rawBalance ?? null : null,
+        });
       } catch (error) {
         console.error('Error verifying token ID:', error);
-        // Set to -1 to indicate error/invalid tokenId
-        setVerifiedTokenBalance(-1);
-        setVerifiedTokenRawBalance(null);
+        if (isCurrent())
+          setTokenIdResult({ key, balance: -1, rawBalance: null });
       } finally {
-        setIsVerifyingTokenId(false);
+        if (isCurrent()) setIsVerifyingTokenId(false);
       }
-    },
-    [customTokenDetails, activeAccount.address]
-  );
-
-  // Verify token ID when it changes
-  useEffect(() => {
-    if (customTokenDetails?.tokenStandard === 'ERC-1155' && deferredTokenId) {
-      verifyERC1155TokenId(deferredTokenId);
-    }
-  }, [customTokenDetails, deferredTokenId, verifyERC1155TokenId]);
+    })();
+    return () => {
+      active = false;
+    };
+  }, [
+    customTokenDetails,
+    activeAccount.address,
+    deferredTokenId,
+    customTokenId,
+    tokenIdKey,
+  ]);
 
   // Convert token data to ImportableAsset format
   const convertToImportableAssets = useCallback(
@@ -403,6 +421,18 @@ export const ImportToken: React.FC = () => {
   // Handle import
   const handleImport = useCallback(
     async (asset: any) => {
+      if (importOperationRef.current)
+        throw new Error('A token import is already in progress');
+      const operation = {};
+      importOperationRef.current = operation;
+      const scope = tokenImportScope;
+      const isCurrent = () =>
+        importViewRef.current.active &&
+        importViewRef.current.scope === scope &&
+        importOperationRef.current === operation;
+      const assertCurrent = () => {
+        if (!isCurrent()) throw new Error('Token import context changed');
+      };
       setCurrentlyImporting(asset.id);
 
       try {
@@ -448,33 +478,32 @@ export const ImportToken: React.FC = () => {
             // Continue with default logo
           } finally {
             // Remove from fetching logos set
-            setFetchingLogos((prev) => {
-              const newSet = new Set(prev);
-              newSet.delete(asset.id);
-              return newSet;
-            });
+            if (isCurrent())
+              setFetchingLogos((prev) => {
+                const newSet = new Set(prev);
+                newSet.delete(asset.id);
+                return newSet;
+              });
           }
         }
+        assertCurrent();
 
         // For ERC1155, require tokenId and use verified balance
         // For owned tokens, tokenId comes from asset. For custom tokens, it comes from customTokenId
-        const tokenId = activeTab === 'custom' ? customTokenId : asset.tokenId;
+        const tokenId =
+          activeTab === 'custom' ? customTokenId.trim() : asset.tokenId;
 
         if (asset.tokenStandard === 'ERC-1155' && !tokenId) {
-          alert.error(t('tokens.tokenIdRequired'));
-          setCurrentlyImporting(null);
-          return;
+          throw new Error(t('tokens.tokenIdRequired'));
         }
 
         // For custom ERC-1155 tokens, check if tokenId format is valid
         if (
           asset.tokenStandard === 'ERC-1155' &&
           activeTab === 'custom' &&
-          verifiedTokenBalance === -1
+          (verifiedTokenBalance === null || verifiedTokenBalance < 0)
         ) {
-          alert.error(t('send.invalidTokenId'));
-          setCurrentlyImporting(null);
-          return;
+          throw new Error(t('send.invalidTokenId'));
         }
 
         // Allow adding ERC-1155 tokens even with 0 balance (but not invalid ones)
@@ -505,14 +534,21 @@ export const ImportToken: React.FC = () => {
         await controllerEmitter(['wallet', 'saveTokenInfo'], [tokenToSave]);
 
         // Show success alert
-        alert.success(
-          t('tokens.hasBeenAddedToYourWallet', { token: asset.symbol })
-        );
+        if (isCurrent())
+          alert.success(
+            t('tokens.hasBeenAddedToYourWallet', { token: asset.symbol })
+          );
       } catch (error: any) {
         console.error('Import error:', error);
-        alert.error(error.message || t('tokens.tokenNotAdded'));
+        if (isCurrent())
+          alert.error(error.message || t('tokens.tokenNotAdded'));
+        // The list must not mark a failed import as successfully imported.
+        throw error;
       } finally {
-        setCurrentlyImporting(null);
+        if (importOperationRef.current === operation) {
+          importOperationRef.current = null;
+          if (importViewRef.current.active) setCurrentlyImporting(null);
+        }
       }
     },
     [
@@ -524,6 +560,7 @@ export const ImportToken: React.FC = () => {
       verifiedTokenBalance,
       verifiedTokenRawBalance,
       currentlyImporting,
+      tokenImportScope,
     ]
   );
 
@@ -587,7 +624,7 @@ export const ImportToken: React.FC = () => {
       setCustomContractAddress('');
       setCustomTokenDetails(null);
       setCustomTokenId('');
-      setVerifiedTokenBalance(null);
+      setTokenIdResult(null);
     }
   };
 
@@ -603,7 +640,7 @@ export const ImportToken: React.FC = () => {
     // For ERC-1155, don't show tokens with invalid tokenId formats
     if (
       customTokenDetails.tokenStandard === 'ERC-1155' &&
-      verifiedTokenBalance === -1
+      (verifiedTokenBalance === null || verifiedTokenBalance < 0)
     ) {
       return [];
     }
@@ -615,7 +652,7 @@ export const ImportToken: React.FC = () => {
         ? {
             ...customTokenDetails,
             balance: verifiedTokenBalance,
-            ...(customTokenId && { tokenId: customTokenId }),
+            ...(customTokenId.trim() && { tokenId: customTokenId.trim() }),
           }
         : customTokenDetails;
 
@@ -732,8 +769,8 @@ export const ImportToken: React.FC = () => {
                     setCustomContractAddress(e.target.value);
                     setCustomTokenDetails(null);
                     setCustomTokenId('');
-                    setVerifiedTokenBalance(null);
-                    setVerifiedTokenRawBalance(null);
+                    tokenIdRequestRef.current += 1;
+                    setTokenIdResult(null);
                   }}
                 />
                 <div className="absolute right-4 top-1/2 transform -translate-y-1/2 flex items-center justify-center w-6 h-6">
@@ -781,7 +818,11 @@ export const ImportToken: React.FC = () => {
                               transition-all duration-200"
                     placeholder={t('send.enterTokenId')}
                     value={customTokenId}
-                    onChange={(e) => setCustomTokenId(e.target.value)}
+                    onChange={(e) => {
+                      tokenIdRequestRef.current += 1;
+                      setCustomTokenId(e.target.value);
+                      setTokenIdResult(null);
+                    }}
                   />
                   <div className="absolute right-5 top-1/2 transform -translate-y-1/2 flex items-center justify-center w-5 h-5">
                     {isVerifyingTokenId ? (
@@ -807,7 +848,7 @@ export const ImportToken: React.FC = () => {
                       ) : (
                         <CloseCircleOutlined
                           className="text-warning-error text-sm"
-                          title="Invalid token ID format"
+                          title={t('send.invalidTokenId')}
                         />
                       )
                     ) : null}
@@ -824,19 +865,20 @@ export const ImportToken: React.FC = () => {
               )}
 
             {/* Custom token details */}
-            {customTokenDetails && (
-              <ImportableAssetsList
-                key={`custom-${currentlyImporting || 'none'}`}
-                assets={customAssetsForList}
-                isLoading={false}
-                onImport={handleImport}
-                onDetailsClick={handleDetailsClick}
-                importedAssetIds={importedAssetIds}
-                currentlyImporting={currentlyImporting}
-                fetchingLogos={fetchingLogos}
-                assetType="evm"
-              />
-            )}
+            {customTokenDetails &&
+              (customAssetsForList.length > 0 || isVerifyingTokenId) && (
+                <ImportableAssetsList
+                  key={`custom-${currentlyImporting || 'none'}`}
+                  assets={customAssetsForList}
+                  isLoading={isVerifyingTokenId}
+                  onImport={handleImport}
+                  onDetailsClick={handleDetailsClick}
+                  importedAssetIds={importedAssetIds}
+                  currentlyImporting={currentlyImporting}
+                  fetchingLogos={fetchingLogos}
+                  assetType="evm"
+                />
+              )}
           </div>
         )}
       </div>

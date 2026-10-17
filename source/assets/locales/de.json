@@ -186,6 +186,8 @@
     "importWallet": "WALLET IMPORTIEREN"
   },
   "import": {
+    "showSeedPhrase": "Wiederherstellungsphrase anzeigen",
+    "hideSeedPhrase": "Wiederherstellungsphrase verbergen",
     "importModalWordMissing": "Wort fehlt!",
     "importModalSeed": "Die Seed-Phrase muss 12, 15, 18, 21 oder 24 Wörter enthalten, und Sie haben {{seedLength}} eingegeben.",
     "importAttention": "ACHTUNG: ",
@@ -454,6 +456,17 @@
     "receipts": "Belege"
   },
   "settings": {
+    "invalidWatchOnlyIdentifier": "Verwenden Sie eine öffentliche Adresse, einen erweiterten öffentlichen Schlüssel oder einen rein öffentlichen Deskriptor. Geben Sie niemals einen privaten Schlüssel ein.",
+    "searchTrustedSites": "Vertrauenswürdige Websites suchen",
+    "trustedSiteMatch": "Auf der Vertrauensliste",
+    "unlistedSite": "Nicht auf der Vertrauensliste",
+    "noTrustedSitesFound": "Keine vertrauenswürdige Website entspricht Ihrer Suche.",
+    "selectSmartAccountBeforePolicyChange": "Wählen Sie diesen Smart Account aus, bevor Sie seine Genehmigungs- oder Wiederherstellungsrichtlinie ändern.",
+    "currentLanguage": "Aktuelle Sprache",
+    "previewLanguage": "Vorschau: {{language}}",
+    "preferencesSaveFailed": "Ihre Änderungen konnten nicht gespeichert werden. Bitte versuchen Sie es erneut.",
+    "searchCurrencies": "Währungen suchen…",
+    "noCurrenciesFound": "Keine Währung entspricht Ihrer Suche.",
     "walletSetupFailed": "Die Wallet-Einrichtung konnte nicht bestätigt werden. Bewahre deine Wiederherstellungsphrase auf und prüfe den Status der Wallet.",
     "recoveryTitle": "Wallet wiederherstellen",
     "recoveryIntro": "Verwende deine geheime Wiederherstellungsphrase, um nur das erste vom Seed abgeleitete Konto (HD) wiederherzustellen und ein neues Passwort festzulegen. Füge weitere Konten aus derselben Phrase erneut hinzu.",
@@ -711,6 +724,8 @@
     "welcomeTo": "WILLKOMMEN BEI"
   },
   "tokens": {
+    "viewTokenDetails": "Details zum Token {{symbol}} anzeigen",
+    "importNamedToken": "Token {{symbol}} importieren",
     "tokenNotAdded": "Token nicht hinzugefügt.",
     "tokenAlreadyImported": "Dieser Token ist bereits importiert",
     "deleteToken": "{{symbol}} löschen",

@@ -156,6 +156,8 @@ describe('SmartAccountPolicy guardian approval', () => {
     });
     controllerEmitter = jest.fn(async ([, method]: string[]) => {
       switch (method) {
+        case 'getWalletSessionGeneration':
+          return 7;
         case 'prepareSmartAccountGuardianStartRecovery':
           return { operation: OPERATION, smartGuardian };
         case 'validateSmartAccountGuardianRecoveryOperation':
@@ -172,7 +174,7 @@ describe('SmartAccountPolicy guardian approval', () => {
       controllerEmitter,
       handleWalletLockedError: () => false,
     });
-    (useSelector as jest.Mock).mockReturnValue({
+    const vault = {
       accounts: {
         [KeyringAccountType.HDAccount]: { 0: { address: OWNER, id: 0 } },
         [KeyringAccountType.SmartAccount]: {
@@ -201,8 +203,11 @@ describe('SmartAccountPolicy guardian approval', () => {
         },
       },
       activeAccount: { id: 1, type: KeyringAccountType.SmartAccount },
-      activeNetwork: { chainId: CHAIN_ID },
-    });
+      activeNetwork: { chainId: CHAIN_ID, url: 'https://rpc.test' },
+    };
+    (useSelector as jest.Mock).mockImplementation((select) =>
+      select({ vault, vaultGlobal: { activeSlip44: 60 } })
+    );
   });
 
   afterEach(() => {
@@ -330,6 +335,8 @@ describe('SmartAccountPolicy guardian approval', () => {
       [
         {
           account: ACCOUNT,
+          executionContextId: undefined,
+          expectedContext: expect.objectContaining({ sessionGeneration: 7 }),
           approval: {
             guardian: GUARDIAN,
             signature: hexConcat([VALIDATOR, SIGNATURE]),
@@ -347,15 +354,29 @@ describe('SmartAccountPolicy guardian approval', () => {
 
   it('preserves a prepared EOA approval without invoking smart-account signing', async () => {
     const approval = { guardian: GUARDIAN, signature: SIGNATURE };
-    controllerEmitter.mockResolvedValueOnce({ approval, operation: OPERATION });
+    const original = controllerEmitter.getMockImplementation()!;
+    controllerEmitter.mockImplementation((path, ...args) =>
+      path[1] === 'prepareSmartAccountGuardianStartRecovery'
+        ? Promise.resolve({ approval, operation: OPERATION })
+        : original(path, ...args)
+    );
 
     await startRecovery();
 
-    expect(controllerEmitter.mock.calls.map(([[, method]]) => method)).toEqual([
+    expect(
+      controllerEmitter.mock.calls
+        .map(([[, method]]) => method)
+        .filter((method) => method !== 'getWalletSessionGeneration')
+    ).toEqual([
       'prepareSmartAccountGuardianStartRecovery',
       'submitPreparedSmartAccountGuardianStartRecovery',
     ]);
-    expect(controllerEmitter.mock.calls[1][1][0]).toMatchObject({
+    expect(
+      controllerEmitter.mock.calls.find(
+        ([[, method]]) =>
+          method === 'submitPreparedSmartAccountGuardianStartRecovery'
+      )![1][0]
+    ).toMatchObject({
       approval,
       operation: OPERATION,
     });
@@ -387,7 +408,9 @@ describe('SmartAccountPolicy guardian approval', () => {
           },
         ],
       };
-      const vault = (useSelector as jest.Mock).getMockImplementation()!();
+      const vault = (useSelector as jest.Mock).getMockImplementation()!(
+        (state: any) => state.vault
+      );
       // The recovery Settings entry belongs to account 1, but account 3 is
       // selected and guardian 2 must sign. A cold entry can have stale cached
       // guardian metadata while the controller returns its hydrated policy.
@@ -451,6 +474,8 @@ describe('SmartAccountPolicy guardian approval', () => {
         [
           {
             account: ACCOUNT,
+            executionContextId: undefined,
+            expectedContext: expect.objectContaining({ sessionGeneration: 7 }),
             approval: {
               guardian: GUARDIAN,
               signature: hexConcat([VALIDATOR, pqSignature]),
@@ -467,15 +492,20 @@ describe('SmartAccountPolicy guardian approval', () => {
   );
 
   it('does not sign or submit a smart guardian approval when policy revalidation fails', async () => {
-    controllerEmitter
-      .mockResolvedValueOnce({ operation: OPERATION, smartGuardian })
-      .mockRejectedValueOnce(
-        new Error('PALI_GUARDIAN_RECOVERY_POLICY_CHANGED')
-      );
+    const original = controllerEmitter.getMockImplementation()!;
+    controllerEmitter.mockImplementation((path, ...args) =>
+      path[1] === 'validateSmartAccountGuardianRecoveryOperation'
+        ? Promise.reject(new Error('PALI_GUARDIAN_RECOVERY_POLICY_CHANGED'))
+        : original(path, ...args)
+    );
 
     await startRecovery();
 
-    expect(controllerEmitter.mock.calls.map(([[, method]]) => method)).toEqual([
+    expect(
+      controllerEmitter.mock.calls
+        .map(([[, method]]) => method)
+        .filter((method) => method !== 'getWalletSessionGeneration')
+    ).toEqual([
       'prepareSmartAccountGuardianStartRecovery',
       'validateSmartAccountGuardianRecoveryOperation',
     ]);

@@ -1,6 +1,6 @@
 import { Switch } from '@headlessui/react';
 import { Form } from 'antd';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -29,6 +29,9 @@ const Advanced = () => {
     ...advancedSettings,
   });
   const [loading, setLoading] = useState<boolean>(false);
+  const [saveError, setSaveError] = useState(false);
+  const submitting = useRef(false);
+  const draftEdited = useRef(false);
   const [confirmationMessage, setConfirmationMessage] = useState<string>('');
   const [currentAdvancedProperty, setCurrentAdvancedProperty] =
     useState<string>('');
@@ -53,13 +56,19 @@ const Advanced = () => {
   // Track changes to saved settings from Redux
   useEffect(() => {
     setSavedProperties({ ...advancedSettings });
-    setEnabledProperties({ ...advancedSettings });
+    // Acknowledging one setting must not discard another unsaved change.
+    if (!draftEdited.current) setEnabledProperties({ ...advancedSettings });
   }, [advancedSettings]);
 
   // Check if there are unsaved changes
   const hasUnsavedChanges = ADVANCED_SETTINGS.some(
     (prop) => enabledProperties[prop] !== savedProperties[prop]
   );
+  const autolock = enabledProperties.autolock;
+  const isAutolockValid =
+    typeof autolock === 'number' &&
+    Number.isInteger(autolock) &&
+    (autolock === 0 || (autolock >= 5 && autolock <= 120));
 
   const handleSwitchChange = (checked: boolean, advancedProperty: string) => {
     // Only handle confirmation for boolean settings that have warnings
@@ -72,6 +81,7 @@ const Advanced = () => {
         setIsOpenConfirmationModal(true);
       } else {
         // If disabling, update directly
+        draftEdited.current = true;
         setEnabledProperties((prevState) => ({
           ...prevState,
           [advancedProperty]: checked,
@@ -79,6 +89,7 @@ const Advanced = () => {
       }
     } else {
       // For settings without warnings, update directly
+      draftEdited.current = true;
       setEnabledProperties((prevState) => ({
         ...prevState,
         [advancedProperty]: checked,
@@ -87,6 +98,7 @@ const Advanced = () => {
   };
 
   const handleConfirmEnable = () => {
+    draftEdited.current = true;
     setEnabledProperties((prevState) => ({
       ...prevState,
       [currentAdvancedProperty]: true,
@@ -95,9 +107,11 @@ const Advanced = () => {
   };
 
   const onSubmit = async () => {
-    if (!hasUnsavedChanges) return;
+    if (!hasUnsavedChanges || !isAutolockValid || submitting.current) return;
 
+    submitting.current = true;
     setLoading(true);
+    setSaveError(false);
 
     try {
       // Save all advanced settings together
@@ -109,11 +123,14 @@ const Advanced = () => {
       }
 
       // Update saved state after successful save
+      draftEdited.current = false;
       setSavedProperties({ ...enabledProperties });
       setConfirmed(true);
     } catch (error) {
       console.error('Failed to save advanced settings:', error);
+      setSaveError(true);
     } finally {
+      submitting.current = false;
       setLoading(false);
     }
   };
@@ -154,7 +171,7 @@ const Advanced = () => {
       >
         {ADVANCED_SETTINGS.map((propName: string, index: number) => (
           <Form.Item
-            id="verify-address-switch"
+            id={`advanced-setting-${propName}`}
             name={propName}
             className="!mb-0 flex flex-col w-full text-center"
             rules={[
@@ -166,20 +183,27 @@ const Advanced = () => {
             key={index}
           >
             <div className="align-center flex flex-row flex-wrap gap-2 justify-center w-full text-center items-center">
-              <span className="text-sm">{settingsTitles[propName]}</span>
+              <label className="text-sm" htmlFor={`advanced-${propName}`}>
+                {settingsTitles[propName]}
+              </label>
 
               {propName === 'autolock' ? (
                 // Number input for autolock timer
                 <>
                   <div className="flex items-center gap-3 ml-2">
                     <input
+                      id={`advanced-${propName}`}
                       type="number"
+                      disabled={loading}
+                      aria-invalid={!isAutolockValid}
+                      aria-describedby="advanced-autolock-hint"
                       value={
                         enabledProperties.autolock === undefined
                           ? ''
                           : (enabledProperties.autolock as number)
                       }
                       onChange={(e) => {
+                        draftEdited.current = true;
                         const value = e.target.value;
                         if (value === '') {
                           // Allow empty state
@@ -205,13 +229,14 @@ const Advanced = () => {
                           return;
                         }
                         // Only constrain if there's an actual value
+                        draftEdited.current = true;
                         const numValue = Number(value);
                         // Allow 0 to disable, or 5-120 minutes
                         let constrainedValue = numValue;
                         if (numValue !== 0) {
                           constrainedValue = Math.max(
                             5,
-                            Math.min(120, numValue)
+                            Math.min(120, Math.round(numValue))
                           );
                         }
                         setEnabledProperties((prevState) => ({
@@ -221,6 +246,7 @@ const Advanced = () => {
                       }}
                       min={0}
                       max={120}
+                      step={1}
                       className="text-center text-white outline-none"
                       style={{
                         width: '60px',
@@ -238,7 +264,11 @@ const Advanced = () => {
                     </span>
                   </div>
                   {/* Helper text for autolock */}
-                  <div className="text-xs text-gray-500 mt-1">
+                  <div
+                    id="advanced-autolock-hint"
+                    role={!isAutolockValid ? 'alert' : undefined}
+                    className="text-xs text-content-muted mt-1"
+                  >
                     {enabledProperties.autolock === 0
                       ? t('settings.autolockDisabled')
                       : t('settings.autolockHint')}
@@ -247,6 +277,8 @@ const Advanced = () => {
               ) : (
                 // Toggle switch for other settings
                 <Switch
+                  id={`advanced-${propName}`}
+                  disabled={loading}
                   checked={enabledProperties[propName] as boolean}
                   onChange={(checked) => handleSwitchChange(checked, propName)}
                   className="relative inline-flex items-center w-9 h-5 border border-brand-royalblue rounded-full"
@@ -265,6 +297,11 @@ const Advanced = () => {
           </Form.Item>
         ))}
 
+        {saveError && (
+          <p role="alert" className="text-sm text-warning-error">
+            {t('settings.preferencesSaveFailed')}
+          </p>
+        )}
         <div className="w-full px-4 pb-12">
           <Button
             variant="neutral"
@@ -272,7 +309,7 @@ const Advanced = () => {
             type="submit"
             loading={loading}
             fullWidth
-            disabled={!hasUnsavedChanges}
+            disabled={!hasUnsavedChanges || !isAutolockValid || loading}
           >
             {t('buttons.save')}
           </Button>

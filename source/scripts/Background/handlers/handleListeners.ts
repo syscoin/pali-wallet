@@ -4,6 +4,7 @@ import { handleLogout } from 'scripts/Background/handlers/handleLogout';
 import { startPolling } from 'scripts/Background/utils/startPolling';
 import store from 'state/store';
 import vaultCache from 'state/vaultCache';
+import { persistSLHDSASmartAccountSetupProgress } from 'utils/slhDsa/smartAccountSetup';
 
 import { checkForUpdates } from './handlePaliUpdates';
 import {
@@ -28,37 +29,6 @@ let messageListener:
 // Export for testing
 export const resetListenersFlag = () => {
   listenersInitialized = false;
-};
-
-const getSLHDSASetupStorageKey = (accountId: number) =>
-  `pali-slh-dsa-smart-account-setup:${accountId}`;
-
-const persistSLHDSASetupProgress = async (message: any) => {
-  const accountId = message?.accountId;
-  const progress = message?.progress;
-  if (typeof accountId !== 'number' || !progress) {
-    return;
-  }
-
-  const key = getSLHDSASetupStorageKey(accountId);
-  const current = await chrome.storage.local.get(key);
-  const existing = current[key];
-  if (!existing || existing.status !== 'running') {
-    return;
-  }
-
-  await chrome.storage.local.set({
-    [key]: {
-      ...existing,
-      phase: progress.phase,
-      progress: {
-        completed: progress.completed,
-        level: progress.level,
-        total: progress.total,
-      },
-      updatedAt: Date.now(),
-    },
-  });
 };
 
 export const handleListeners = (masterController: IMasterController) => {
@@ -175,7 +145,7 @@ export const handleListeners = (masterController: IMasterController) => {
     const { hasEthProperty } = store.getState().vaultGlobal;
 
     if (type === 'PALI_SLH_DSA_SETUP_PROGRESS') {
-      persistSLHDSASetupProgress(message)
+      persistSLHDSASmartAccountSetupProgress(message)
         .then(() => sendResponse({ success: true }))
         .catch((error) =>
           sendResponse({

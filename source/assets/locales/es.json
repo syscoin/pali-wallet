@@ -186,6 +186,8 @@
     "importWallet": "Importar monedero"
   },
   "import": {
+    "showSeedPhrase": "Mostrar frase de recuperación",
+    "hideSeedPhrase": "Ocultar frase de recuperación",
     "importModalWordMissing": "Palabra faltante",
     "importModalSeed": "La frase semilla debe tener 12, 15, 18, 21 o 24 palabras y has introducido {{seedLength}}.",
     "importAttention": "Atención:",
@@ -454,6 +456,17 @@
     "receipts": "Recibos"
   },
   "settings": {
+    "invalidWatchOnlyIdentifier": "Use una dirección pública, una clave pública extendida o un descriptor que solo contenga información pública. Nunca introduzca una clave privada.",
+    "searchTrustedSites": "Buscar sitios de confianza",
+    "trustedSiteMatch": "En la lista de confianza",
+    "unlistedSite": "No está en la lista de confianza",
+    "noTrustedSitesFound": "Ningún sitio de confianza coincide con su búsqueda.",
+    "selectSmartAccountBeforePolicyChange": "Seleccione esta cuenta inteligente antes de cambiar su política de aprobación o recuperación.",
+    "currentLanguage": "Idioma actual",
+    "previewLanguage": "Vista previa: {{language}}",
+    "preferencesSaveFailed": "No se pudieron guardar los cambios. Vuelva a intentarlo.",
+    "searchCurrencies": "Buscar monedas…",
+    "noCurrenciesFound": "Ninguna moneda coincide con su búsqueda.",
     "walletSetupFailed": "No se pudo confirmar la configuración de la billetera. Conserva tu frase de recuperación y comprueba el estado de la billetera.",
     "recoveryTitle": "Recuperar billetera",
     "recoveryIntro": "Usa tu Frase Secreta de Recuperación para restaurar solo la primera cuenta derivada de la semilla (HD) y elegir una nueva contraseña. Vuelve a añadir las demás cuentas derivadas de la misma frase.",
@@ -711,6 +724,8 @@
     "welcomeTo": "BIENVENIDO A"
   },
   "tokens": {
+    "viewTokenDetails": "Ver detalles del token {{symbol}}",
+    "importNamedToken": "Importar token {{symbol}}",
     "tokenNotAdded": "Token no agregado.",
     "tokenAlreadyImported": "Este token ya está importado",
     "deleteToken": "Eliminar {{symbol}}",

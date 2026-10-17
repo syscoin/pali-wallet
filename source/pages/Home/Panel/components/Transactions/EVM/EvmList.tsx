@@ -46,9 +46,11 @@ import {
 } from 'utils/evmReplacement';
 import { getKnownTokenLogo } from 'utils/index';
 import {
+  getERC1155TransferValue,
   getSmartAccountDisplayTransaction,
   getTransactionDisplayInfo,
   handleUpdateTransaction,
+  isERC1155Transfer,
 } from 'utils/transactions';
 import { isTransactionInBlock } from 'utils/transactionUtils';
 
@@ -268,13 +270,17 @@ const EvmTransactionItem = React.memo(
           ? displayInfo.tokenId!.substring(0, 6) + '...'
           : displayInfo.tokenId!
         : '';
+      // Token identifiers are not quantities. Decode the ERC-1155 amount as
+      // an integer string so large transfers also keep their exact precision.
+      const nftQuantity =
+        isNftWithId && isERC1155Transfer(displayTx)
+          ? getERC1155TransferValue(displayTx)?.toString() ?? formattedValue
+          : '';
       const amountStr = displayInfo.hasUnknownDecimals
         ? `${finalSymbol} Transfer`
         : isNftWithId
         ? `${
-            Number(finalTxValue) === Number(displayInfo.tokenId)
-              ? ''
-              : `${Number(finalTxValue)} `
+            nftQuantity ? `${nftQuantity} ` : ''
           }${finalSymbol} #${shortTokenId}`
         : `${formattedValue} ${finalSymbol}`;
 

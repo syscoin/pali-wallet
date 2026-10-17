@@ -1,6 +1,6 @@
 import { Input, Form } from 'antd';
 import { useForm } from 'antd/es/form/Form';
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
@@ -30,6 +30,9 @@ const ImportAccountView = () => {
   const [selectedUtxoAddressType, setSelectedUtxoAddressType] = useState<
     'p2wpkh' | 'p2pkh' | 'p2tr'
   >('p2wpkh');
+  const validationRevision = useRef(0);
+  const importInFlight = useRef(false);
+  const mounted = useRef(true);
 
   const {
     accounts,
@@ -39,41 +42,72 @@ const ImportAccountView = () => {
   } = useSelector((state: RootState) => state.vault);
 
   const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
+  const inputScope = JSON.stringify({
+    watchOnly,
+    isBitcoinBased,
+    kind: activeNetwork.kind,
+    chainId: activeNetwork.chainId,
+    url: activeNetwork.url,
+  });
+  const inputScopeRef = useRef(inputScope);
+  inputScopeRef.current = inputScope;
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      validationRevision.current += 1;
+    };
+  }, []);
+
+  useEffect(() => {
+    validationRevision.current += 1;
+    setValidPrivateKey(false);
+    setValidIdentifier(false);
+    if (form.getFieldValue('privKey'))
+      void form.validateFields(['privKey']).catch(() => undefined);
+  }, [form, inputScope]);
 
   if (!activeAccount) throw new Error('No account');
 
   const handleImportAccount = async () => {
+    if (importInFlight.current) return;
+    const inputValue = form.getFieldValue('privKey');
+    if (typeof inputValue !== 'string' || !inputValue.trim()) return;
+    const isCurrent = () =>
+      mounted.current && inputScopeRef.current === inputScope;
+    importInFlight.current = true;
     setIsImporting(true);
-    if (form.getFieldValue('privKey')) {
-      try {
-        const account = await controllerEmitter(
-          watchOnly
-            ? ['wallet', 'importWatchOnlyFromController']
-            : ['wallet', 'importAccountFromPrivateKey'],
-          watchOnly
-            ? [form.getFieldValue('privKey'), form.getFieldValue('label')]
-            : [
-                form.getFieldValue('privKey'),
-                form.getFieldValue('label'),
-                isBitcoinBased
-                  ? { utxoAddressType: selectedUtxoAddressType }
-                  : undefined,
-              ]
-        );
+    try {
+      const values = await form.validateFields(['privKey']);
+      if (!isCurrent() || values.privKey !== inputValue) return;
+      const account = await controllerEmitter(
+        watchOnly
+          ? ['wallet', 'importWatchOnlyFromController']
+          : ['wallet', 'importAccountFromPrivateKey'],
+        watchOnly
+          ? [inputValue, form.getFieldValue('label')]
+          : [
+              inputValue,
+              form.getFieldValue('label'),
+              isBitcoinBased
+                ? { utxoAddressType: selectedUtxoAddressType }
+                : undefined,
+            ]
+      );
 
-        if (account) setIsAccountImported(true);
-
-        setIsImporting(false);
-      } catch (error) {
-        setIsImporting(false);
-
-        // Check if this is a wallet locked error and handle redirect
-        const wasHandled = handleWalletLockedError(error);
-        if (!wasHandled) {
-          // If not a wallet locked error, show the original error message
-          alert.error(extractErrorMessage(error, 'Import failed'));
-        }
+      if (isCurrent() && account) setIsAccountImported(true);
+    } catch (error) {
+      if (!isCurrent() || Array.isArray(error?.errorFields)) return;
+      // Check if this is a wallet locked error and handle redirect
+      const wasHandled = handleWalletLockedError(error);
+      if (!wasHandled) {
+        // If not a wallet locked error, show the original error message
+        alert.error(extractErrorMessage(error, 'Import failed'));
       }
+    } finally {
+      importInFlight.current = false;
+      if (mounted.current) setIsImporting(false);
     }
   };
 
@@ -110,6 +144,14 @@ const ImportAccountView = () => {
           name="newaccount"
           autoComplete="off"
           form={form}
+          disabled={isImporting}
+          onValuesChange={(changed) => {
+            if (Object.prototype.hasOwnProperty.call(changed, 'privKey')) {
+              validationRevision.current += 1;
+              setValidPrivateKey(false);
+              setValidIdentifier(false);
+            }
+          }}
         >
           <Form.Item
             name="label"
@@ -139,6 +181,7 @@ const ImportAccountView = () => {
                   <input
                     type="radio"
                     name="utxoAddressType"
+                    disabled={isImporting}
                     checked={selectedUtxoAddressType === 'p2wpkh'}
                     onChange={() => setSelectedUtxoAddressType('p2wpkh')}
                   />
@@ -148,6 +191,7 @@ const ImportAccountView = () => {
                   <input
                     type="radio"
                     name="utxoAddressType"
+                    disabled={isImporting}
                     checked={selectedUtxoAddressType === 'p2pkh'}
                     onChange={() => setSelectedUtxoAddressType('p2pkh')}
                   />
@@ -157,6 +201,7 @@ const ImportAccountView = () => {
                   <input
                     type="radio"
                     name="utxoAddressType"
+                    disabled={isImporting}
                     checked={selectedUtxoAddressType === 'p2tr'}
                     onChange={() => setSelectedUtxoAddressType('p2tr')}
                   />
@@ -170,6 +215,7 @@ const ImportAccountView = () => {
             <input
               type="checkbox"
               checked={watchOnly}
+              disabled={isImporting}
               onChange={(e) => setWatchOnly(e.target.checked)}
               className="toggle-checkbox"
             />
@@ -182,12 +228,31 @@ const ImportAccountView = () => {
               { required: true, message: '' },
               () => ({
                 async validator(_, value) {
+                  const revision = ++validationRevision.current;
+                  const isCurrent = () =>
+                    mounted.current &&
+                    inputScopeRef.current === inputScope &&
+                    validationRevision.current === revision &&
+                    form.getFieldValue('privKey') === value;
+                  if (typeof value !== 'string' || !value.trim()) {
+                    if (isCurrent()) {
+                      setValidPrivateKey(false);
+                      setValidIdentifier(false);
+                    }
+                    return Promise.reject(
+                      new Error(t('settings.invalidPrivateKeyFormat'))
+                    );
+                  }
                   if (!watchOnly) {
                     const isValid = await validatePrivateKeyValue(
-                      value,
+                      typeof value === 'string' ? value : '',
                       isBitcoinBased,
                       activeNetwork
                     );
+                    if (!isCurrent())
+                      return Promise.reject(
+                        new Error(t('settings.invalidPrivateKeyFormat'))
+                      );
                     if (isValid) {
                       setValidPrivateKey(true);
                       setValidIdentifier(false);
@@ -196,10 +261,12 @@ const ImportAccountView = () => {
                     setValidPrivateKey(false);
                     // Check if it's a network type mismatch
                     const zprvPrefixes = ['zprv', 'vprv', 'xprv', 'tprv'];
-                    const prefix = value.substring(0, 4);
+                    const inputValue = typeof value === 'string' ? value : '';
+                    const prefix = inputValue.substring(0, 4);
                     const looksLikeZprv = zprvPrefixes.includes(prefix);
                     const looksLikeEvm =
-                      value.startsWith('0x') || /^[0-9a-fA-F]{64}$/.test(value);
+                      inputValue.startsWith('0x') ||
+                      /^[0-9a-fA-F]{64}$/.test(inputValue);
                     if (!isBitcoinBased && looksLikeZprv) {
                       return Promise.reject(
                         new Error(t('settings.utxoKeyOnEvmError'))
@@ -214,16 +281,22 @@ const ImportAccountView = () => {
                       new Error(t('settings.invalidPrivateKeyFormat'))
                     );
                   } else {
-                    // Watch-only: accept any non-empty input; validate on submit
-                    const hasValue = !!(
-                      value && String(value).trim().length > 0
-                    );
-                    setValidIdentifier(hasValue);
+                    // Secret-bearing identifiers must never reach Blockbook.
+                    const isPublic =
+                      (await controllerEmitter(
+                        ['wallet', 'validateWatchOnlyIdentifier'],
+                        [value]
+                      )) === true;
+                    if (!isCurrent())
+                      return Promise.reject(
+                        new Error(t('settings.invalidWatchOnlyIdentifier'))
+                      );
+                    setValidIdentifier(isPublic);
                     setValidPrivateKey(false);
-                    return hasValue
+                    return isPublic
                       ? Promise.resolve()
                       : Promise.reject(
-                          new Error(t('settings.invalidPrivateKeyFormat'))
+                          new Error(t('settings.invalidWatchOnlyIdentifier'))
                         );
                   }
                 },

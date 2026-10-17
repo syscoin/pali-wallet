@@ -7,32 +7,27 @@ import { useLocation } from 'react-router-dom';
 import { Icon } from 'components/index';
 import trustedAppsArr from 'constants/trustedApps.json';
 import { useUtils } from 'hooks/index';
+import { isTrustedDappOrigin } from 'utils/dappOrigin';
 import { truncate } from 'utils/index';
 
 const trustedApps = uniq(trustedAppsArr);
 
 const EMPTY_STATE = {
-  name: '',
+  label: '',
   icon: '',
   className: '',
 };
 
-const ATTENTION_STYLE = {
-  name: 'Undefined',
-  icon: 'warning',
-  className: 'bg-warning-info bg-opacity-20 text-warning-info',
-};
-
 const TRUSTED_STYLE = {
-  name: 'Trusted',
+  label: 'settings.trustedSiteMatch',
   icon: 'check',
   className: 'bg-warning-success bg-opacity-20 text-warning-success',
 };
 
 const NOT_TRUSTED_WALLET_STYLE = {
-  name: 'Not trusted',
+  label: 'settings.unlistedSite',
   icon: 'close-circle',
-  className: 'bg-warning-error bg-opacity-20 text-brand-red',
+  className: 'bg-warning-error bg-opacity-20 text-content-primary',
 };
 
 const TrustedSitesView = () => {
@@ -44,19 +39,25 @@ const TrustedSitesView = () => {
       ? location.state.trustedSitesSearch.slice(0, 200)
       : ''
   );
+  const normalizedSearch = search.trim();
+  const candidateUrl = normalizedSearch.includes('://')
+    ? normalizedSearch
+    : `https://${normalizedSearch}`;
+  const searchHost = useMemo(() => {
+    try {
+      return new URL(candidateUrl).hostname.toLowerCase();
+    } catch {
+      return normalizedSearch.toLowerCase();
+    }
+  }, [candidateUrl, normalizedSearch]);
   const filteredSearch = useMemo(
-    () =>
-      trustedApps.filter((url) =>
-        url.toLowerCase().startsWith(search.toLowerCase())
-      ),
-    [search]
+    () => trustedApps.filter((url) => url.toLowerCase().startsWith(searchHost)),
+    [searchHost]
   );
-  const status = !search
+  const status = !normalizedSearch
     ? EMPTY_STATE
-    : trustedApps.some((url) => url.startsWith(search))
+    : isTrustedDappOrigin(candidateUrl, trustedApps)
     ? TRUSTED_STYLE
-    : filteredSearch.length === 0
-    ? ATTENTION_STYLE
     : NOT_TRUSTED_WALLET_STYLE;
 
   const handleSearch = (typed: string) => {
@@ -79,14 +80,15 @@ const TrustedSitesView = () => {
         onChange={(event) => handleSearch(event.target.value)}
         type="text"
         className="w-full"
-        placeholder="Search"
+        aria-label={t('settings.searchTrustedSites')}
+        placeholder={t('settings.searchTrustedSites')}
         suffix={
-          status.name ? (
+          status.label ? (
             <span
               className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-pill text-xs whitespace-nowrap ${status.className}`}
             >
               <Icon size={12} name={status.icon} />
-              {status.name}
+              {t(status.label)}
             </span>
           ) : (
             <span />
@@ -107,6 +109,11 @@ const TrustedSitesView = () => {
                 <p>{truncate(url, 40)}</p>
               </li>
             ))}
+          {filteredSearch.length === 0 && (
+            <li role="status" className="py-3 text-sm text-content-muted">
+              {t('settings.noTrustedSitesFound')}
+            </li>
+          )}
         </ul>
       </div>
     </>

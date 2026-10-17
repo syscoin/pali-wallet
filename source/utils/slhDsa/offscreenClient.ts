@@ -120,9 +120,11 @@ export const signSLHDSAInOffscreen = async (
 export const prepareSLHDSAKeypairInOffscreen = async (
   {
     accountId,
+    setupJobId,
     setupSecretHex,
   }: {
     accountId?: number;
+    setupJobId?: string;
     setupSecretHex: string;
   },
   assertCurrentSession?: () => void
@@ -136,7 +138,11 @@ export const prepareSLHDSAKeypairInOffscreen = async (
   assertCurrentSession?.();
 
   const response = (await chrome.runtime.sendMessage({
-    payload: { accountId, setupSecretHex },
+    payload: {
+      accountId,
+      setupSecretHex,
+      ...(setupJobId ? { setupJobId } : {}),
+    },
     type: 'PALI_SLH_DSA_PREPARE_KEYPAIR',
   })) as SLHDSAOffscreenResponse | undefined;
   assertCurrentSession?.();

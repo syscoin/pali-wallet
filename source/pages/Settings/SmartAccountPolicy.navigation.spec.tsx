@@ -110,7 +110,8 @@ jest.mock('hooks/useUtils', () => ({
   },
 }));
 jest.mock('react-redux', () => ({
-  useSelector: (select: any) => select({ vault: mockVault }),
+  useSelector: (select: any) =>
+    select({ vault: mockVault, vaultGlobal: { activeSlip44: 60 } }),
 }));
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -163,9 +164,10 @@ beforeEach(() => {
       },
     },
     activeAccount: { id: 1, type: KeyringAccountType.SmartAccount },
-    activeNetwork: { chainId: 57057 },
+    activeNetwork: { chainId: 57057, url: 'https://rpc.test' },
   };
   mockEmitter.mockImplementation(async ([, method]: string[]) => {
+    if (method === 'getWalletSessionGeneration') return 7;
     if (method === 'getSmartAccountGuardianRecoveryStatus')
       return { exists: true, delay: 60, guardians: [GUARDIAN], threshold: 1 };
     if (method === 'prepareSmartAccountGuardianStartRecovery')
@@ -406,11 +408,13 @@ it('syncs authoritative recovered owner and modules after same-route Back withou
       name: 'settings.smartAccountGuardianRecoveryFinalize',
     })
   );
-  expect(
-    mockEmitter.mock.calls.filter(
-      ([[, method]]) => method === 'finalizeSmartAccountGuardianRecovery'
-    )
-  ).toHaveLength(1);
+  await waitFor(() =>
+    expect(
+      mockEmitter.mock.calls.filter(
+        ([[, method]]) => method === 'finalizeSmartAccountGuardianRecovery'
+      )
+    ).toHaveLength(1)
+  );
   fireEvent.click(screen.getByText('Header back'));
   expect(screen.getByTitle(OWNER)).toBeTruthy();
   await act(async () => settle());

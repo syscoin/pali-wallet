@@ -32,6 +32,7 @@ import { getTokenLogo } from 'utils/tokens';
 import { isTransactionInBlock } from 'utils/transactionUtils';
 
 import {
+  getCachedUtxoTransactionDetails,
   mergeAccountOwnershipFlags,
   watchUtxoTransactionDetails,
 } from './utxoTransactionDetails';
@@ -104,24 +105,20 @@ const getReceivingAddresses = (transaction: ISysTransaction): string[] => {
 
 const selectFresherStatusTransaction = (
   accountTransaction: ISysTransaction,
-  fullTransaction: ISysTransaction
-) => {
-  const accountConfirmations = Number(accountTransaction.confirmations ?? -1);
-  const fullConfirmations = Number(fullTransaction.confirmations ?? -1);
-
-  return accountConfirmations > fullConfirmations
-    ? accountTransaction
-    : fullTransaction;
-};
+  fullTransaction: ISysTransaction,
+  preferAccountStatus: boolean
+) => (preferAccountStatus ? accountTransaction : fullTransaction);
 
 const mergeAccountSummaryWithFullTransaction = (
   accountTransaction: ISysTransaction | undefined,
-  fullTransaction: ISysTransaction
+  fullTransaction: ISysTransaction,
+  preferAccountStatus: boolean
 ): ISysTransaction => {
   if (!accountTransaction) return fullTransaction;
   const statusTransaction = selectFresherStatusTransaction(
     accountTransaction,
-    fullTransaction
+    fullTransaction,
+    preferAccountStatus
   );
 
   return {
@@ -132,17 +129,12 @@ const mergeAccountSummaryWithFullTransaction = (
     accountAssetTransfers: accountTransaction.accountAssetTransfers,
     addressValueIn: accountTransaction.addressValueIn,
     addressValueOut: accountTransaction.addressValueOut,
-    blockHash: statusTransaction.blockHash ?? fullTransaction.blockHash,
-    blockHeight: statusTransaction.blockHeight ?? fullTransaction.blockHeight,
-    blockTime: statusTransaction.blockTime ?? fullTransaction.blockTime,
-    confirmations:
-      statusTransaction.confirmations ?? fullTransaction.confirmations,
-    confirmationETABlocks:
-      fullTransaction.confirmationETABlocks ??
-      accountTransaction.confirmationETABlocks,
-    confirmationETASeconds:
-      fullTransaction.confirmationETASeconds ??
-      accountTransaction.confirmationETASeconds,
+    blockHash: statusTransaction.blockHash,
+    blockHeight: statusTransaction.blockHeight,
+    blockTime: statusTransaction.blockTime,
+    confirmations: statusTransaction.confirmations,
+    confirmationETABlocks: statusTransaction.confirmationETABlocks,
+    confirmationETASeconds: statusTransaction.confirmationETASeconds,
     direction: accountTransaction.direction,
     vin: mergeAccountOwnershipFlags(
       accountTransaction.vin,
@@ -179,19 +171,29 @@ export const SyscoinTransactionDetails = ({
   const { t, i18n } = useTranslation();
 
   const [enhancedTransaction, setEnhancedTransaction] = useState<{
+    accountSummaryAtRead: ISysTransaction | undefined;
     data: ISysTransaction;
+    fromCache: boolean;
     scope: string;
   } | null>(null);
   const scopeRef = useRef(scope);
   scopeRef.current = scope;
+  const accountSummaryRef = useRef(accountTransaction);
+  accountSummaryRef.current = accountTransaction;
   const [, copy] = useCopyClipboard();
   const matchingEnhancedTransaction =
-    enhancedTransaction?.scope === scope ? enhancedTransaction.data : null;
+    enhancedTransaction?.scope === scope ? enhancedTransaction : null;
   // Cache only chain data; always merge the latest account summary at render time.
   const rawTransaction: any = matchingEnhancedTransaction
     ? mergeAccountSummaryWithFullTransaction(
         accountTransaction,
-        matchingEnhancedTransaction
+        matchingEnhancedTransaction.data,
+        // Confirmations can decrease after a reorg. Reopened cache data is
+        // older than the current summary; a new body is authoritative until
+        // another summary is observed, not until it has a larger count.
+        matchingEnhancedTransaction.fromCache ||
+          accountTransaction !==
+            matchingEnhancedTransaction.accountSummaryAtRead
       )
     : accountTransaction;
   const tokenIntent = getSyscoinOperationAmount(rawTransaction);
@@ -211,6 +213,7 @@ export const SyscoinTransactionDetails = ({
 
     if (!hash || !networkUrl) return;
     setEnhancedTransaction(null);
+    const cachedTransaction = getCachedUtxoTransactionDetails(scope);
     const stop = watchUtxoTransactionDetails(
       scope,
       hash,
@@ -225,7 +228,12 @@ export const SyscoinTransactionDetails = ({
           isCurrent() &&
           fullTransaction?.txid?.toLowerCase() === normalizedHash
         ) {
-          setEnhancedTransaction({ scope, data: fullTransaction });
+          setEnhancedTransaction({
+            scope,
+            data: fullTransaction,
+            fromCache: fullTransaction === cachedTransaction,
+            accountSummaryAtRead: accountSummaryRef.current,
+          });
         }
       },
       (error) => {

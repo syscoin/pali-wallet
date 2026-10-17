@@ -1,4 +1,4 @@
-import { webcrypto } from 'crypto';
+import { createHash, webcrypto } from 'crypto';
 
 import { KeyringAccountType } from 'types/network';
 import { SLH_DSA_SIGNATURE_LENGTH } from 'utils/slhDsa/constants';
@@ -233,6 +233,114 @@ describe('signAndSubmitSmartAccountExecutions', () => {
       results.every((result) => result.expectedContext === expectedContext)
     ).toBe(true);
   });
+
+  it('keeps context-bound internal policy submissions single-flight', async () => {
+    // Real SHA-256 with immediately settled I/O makes admission ordering
+    // deterministic; this test does not exercise WebCrypto scheduling.
+    const digest = jest.spyOn(crypto.subtle, 'digest').mockImplementation(
+      async (_algorithm, data) =>
+        Uint8Array.from(
+          createHash('sha256')
+            .update(Buffer.from(data as ArrayBuffer))
+            .digest()
+        ).buffer
+    );
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const signActionHash = jest.fn(async () => {
+      await gate;
+      return validSlhDsaSignature;
+    });
+    const emitter = jest.fn(async ([, method]: string[], payload: any[]) => {
+      if (method === 'prepareSmartAccountExecutions')
+        return {
+          actionHash: `0x${'12'.repeat(32)}`,
+          executionContextId: 'policy-context',
+          executions: [],
+          smartAccount,
+        };
+      if (method === 'assertSmartAccountExecutionContext') return;
+      if (method === 'submitSmartAccountExecution') return payload[0];
+      throw Error(method);
+    });
+    const params = {
+      accountId: 0,
+      accountAddress: ACCOUNT_ADDRESS,
+      smartAccount,
+      executions: [],
+      expectedContext,
+      trackLocalSubmission: true,
+      controllerEmitter: emitter,
+      authenticatorContexts: { 'slh-dsa': { signActionHash } },
+    };
+    try {
+      const requests = [
+        signAndSubmitSmartAccountExecutions(params),
+        signAndSubmitSmartAccountExecutions(params),
+      ];
+      // Hold the signature until both immediately settled admission paths ran.
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      release();
+      await Promise.all(requests);
+      expect(signActionHash).toHaveBeenCalledTimes(1);
+      expect(
+        emitter.mock.calls.filter(
+          ([[, method]]) => method === 'submitSmartAccountExecution'
+        )
+      ).toHaveLength(1);
+    } finally {
+      release();
+      digest.mockRestore();
+    }
+  });
+
+  it.each(['session', 'RPC'])(
+    'never shares a local policy result across %s contexts',
+    async (axis) => {
+      const signActionHash = jest.fn().mockResolvedValue(validSlhDsaSignature);
+      const emitter = jest.fn(async ([, method]: string[], payload: any[]) => {
+        if (method === 'prepareSmartAccountExecutions')
+          return {
+            actionHash: `0x${'12'.repeat(32)}`,
+            executionContextId: 'policy-context',
+            executions: [],
+            smartAccount,
+          };
+        if (method === 'assertSmartAccountExecutionContext') return;
+        if (method === 'submitSmartAccountExecution') return payload[0];
+        throw Error(method);
+      });
+      const params = {
+        accountId: 0,
+        accountAddress: ACCOUNT_ADDRESS,
+        smartAccount,
+        executions: [],
+        trackLocalSubmission: true,
+        controllerEmitter: emitter,
+        authenticatorContexts: { 'slh-dsa': { signActionHash } },
+      };
+      const other = {
+        ...expectedContext,
+        ...(axis === 'session'
+          ? { sessionGeneration: 8 }
+          : { rpcUrl: 'rpc-b' }),
+      };
+      const results = await Promise.all([
+        signAndSubmitSmartAccountExecutions({ ...params, expectedContext }),
+        signAndSubmitSmartAccountExecutions({
+          ...params,
+          expectedContext: other,
+        }),
+      ]);
+      expect(signActionHash).toHaveBeenCalledTimes(2);
+      expect(results.map((result) => result.expectedContext)).toEqual([
+        expectedContext,
+        other,
+      ]);
+    }
+  );
 
   it.each(['maxFeePerGas', 'gasPrice'])(
     'does not reuse SLH-DSA submit jobs across different %s overrides',

@@ -2,7 +2,22 @@ jest.mock('state/store', () => ({
   __esModule: true,
   default: {
     dispatch: jest.fn(),
-    getState: () => ({ vault: { activeNetwork: { chainId: 57057 } } }),
+    getState: () => ({
+      vault: {
+        activeNetwork: {
+          chainId: 57057,
+          kind: 'ethereum',
+          url: 'https://fixture.invalid',
+        },
+        activeAccount: { id: 1, type: 'HDAccount' },
+        accounts: {
+          HDAccount: {
+            1: { address: '0x4444444444444444444444444444444444444444' },
+          },
+        },
+      },
+      vaultGlobal: { activeSlip44: 60 },
+    }),
   },
 }));
 jest.mock('state/vault', () => ({ setAccountPropertyByIdAndType: jest.fn() }));
@@ -63,8 +78,9 @@ describe('guardian recovery policy freshness', () => {
     }));
     sign = jest.fn().mockResolvedValue('0x1234');
     send = jest.fn().mockResolvedValue({ wait: jest.fn() });
+    const transaction = { web3Provider: {} };
     controller = new SmartAccountController({
-      getEthereumTransaction: () => ({ web3Provider: {} }),
+      getEthereumTransaction: () => transaction,
       sendAndSaveEthTransaction: send,
       signSmartAccountActionDigestInternal: sign,
     } as any);

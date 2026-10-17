@@ -196,21 +196,26 @@ describe('SmartAccountPolicy passkey preservation', () => {
         },
       ],
     };
-    (useSelector as jest.Mock).mockImplementation(() => ({
-      accounts: {
-        [KeyringAccountType.HDAccount]: { 0: { id: 0, address: OWNER } },
-        [KeyringAccountType.SmartAccount]: {
-          1: {
-            id: 1,
-            address: ACCOUNT,
-            isSmartAccount: true,
-            smartAccount: metadata,
+    (useSelector as jest.Mock).mockImplementation((select) =>
+      select({
+        vault: {
+          accounts: {
+            [KeyringAccountType.HDAccount]: { 0: { id: 0, address: OWNER } },
+            [KeyringAccountType.SmartAccount]: {
+              1: {
+                id: 1,
+                address: ACCOUNT,
+                isSmartAccount: true,
+                smartAccount: metadata,
+              },
+            },
           },
+          activeAccount: { id: 1, type: KeyringAccountType.SmartAccount },
+          activeNetwork: { chainId: CHAIN_ID, url: 'https://rpc.test' },
         },
-      },
-      activeAccount: { id: 1, type: KeyringAccountType.SmartAccount },
-      activeNetwork: { chainId: CHAIN_ID },
-    }));
+        vaultGlobal: { activeSlip44: 60 },
+      })
+    );
     (signP256WebAuthnActionHash as jest.Mock).mockRejectedValue(
       new Error('Prompt cancelled')
     );
@@ -222,11 +227,14 @@ describe('SmartAccountPolicy passkey preservation', () => {
       userHandle: 'ZnJlc2g',
     });
     emitter = jest.fn(async ([, method]: string[], params: any[]) => {
+      if (method === 'getWalletSessionGeneration') return 7;
+      if (method === 'assertSmartAccountExecutionContext') return;
       if (method === 'getSmartAccountNativeGasStatus')
         return { hasNativeGas: true };
       if (method === 'prepareSmartAccountExecutions')
         return {
           actionHash: `0x${'77'.repeat(32)}`,
+          executionContextId: 'policy-operation',
           smartAccount: metadata,
           executions: params[0],
         };

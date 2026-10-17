@@ -100,6 +100,11 @@ export const SyscoinImport: React.FC = () => {
     null
   );
   const loadingKeyRef = useRef<string>('');
+  const validationRequestRef = useRef(0);
+  const validationKey = `${tokenImportScope}:${customAssetGuid.trim()}`;
+  const validationKeyRef = useRef(validationKey);
+  validationKeyRef.current = validationKey;
+  const importOperationRef = useRef<object | null>(null);
 
   // Calculate imported asset GUIDs for efficient lookup
   const importedAssetGuids = useMemo(() => {
@@ -171,10 +176,18 @@ export const SyscoinImport: React.FC = () => {
 
   // Create debounced validation function
   useEffect(() => {
+    let current = true;
+    const requestId = ++validationRequestRef.current;
+    const key = validationKey;
+    const isCurrent = () =>
+      current &&
+      validationRequestRef.current === requestId &&
+      validationKeyRef.current === key;
     const validateCustomToken = async (assetGuid: string) => {
       // Validate assetGuid format - must be only digits (same as backend validation)
       if (!assetGuid || !/^\d+$/.test(assetGuid)) {
         setCustomTokenDetails(null);
+        setIsValidatingCustom(false);
         return;
       }
 
@@ -186,6 +199,7 @@ export const SyscoinImport: React.FC = () => {
           [assetGuid, activeAccount.xpub]
         )) as ITokenSysProps | null;
 
+        if (!isCurrent()) return;
         if (details) {
           setCustomTokenDetails(details);
         } else {
@@ -193,9 +207,9 @@ export const SyscoinImport: React.FC = () => {
         }
       } catch (error) {
         console.error('Validation error:', error);
-        setCustomTokenDetails(null);
+        if (isCurrent()) setCustomTokenDetails(null);
       } finally {
-        setIsValidatingCustom(false);
+        if (isCurrent()) setIsValidatingCustom(false);
       }
     };
 
@@ -204,6 +218,7 @@ export const SyscoinImport: React.FC = () => {
 
     // Cleanup function to cancel any pending debounced calls
     return () => {
+      current = false;
       if (debouncedValidationRef.current) {
         debouncedValidationRef.current.cancel();
         debouncedValidationRef.current = null;
@@ -211,9 +226,9 @@ export const SyscoinImport: React.FC = () => {
     };
   }, [
     activeAccount?.xpub,
-    activeAccountAssets,
-    activeNetwork.chainId,
-    recentlyImportedGuids,
+    tokenImportScope,
+    deferredCustomGuid,
+    validationKey,
   ]);
 
   // Handle custom asset input change
@@ -255,6 +270,10 @@ export const SyscoinImport: React.FC = () => {
 
   // Handle import
   const handleImport = async (asset: any) => {
+    if (importOperationRef.current)
+      throw new Error('A token import is already in progress');
+    const operation = {};
+    importOperationRef.current = operation;
     setCurrentlyImporting(asset.id);
 
     try {
@@ -290,8 +309,13 @@ export const SyscoinImport: React.FC = () => {
     } catch (error) {
       console.error('Import error:', error);
       alert.error(error.message || t('tokens.tokenNotAdded'));
+      // Preserve rejection so the shared list does not mark failure as success.
+      throw error;
     } finally {
-      setCurrentlyImporting(null);
+      if (importOperationRef.current === operation) {
+        importOperationRef.current = null;
+        setCurrentlyImporting(null);
+      }
     }
   };
 
@@ -391,14 +415,26 @@ export const SyscoinImport: React.FC = () => {
           <div className="space-y-4">
             {/* Asset GUID Input */}
             <div className="relative max-w-lg mx-auto">
+              <label
+                className="block mb-2 text-sm font-medium text-brand-white"
+                htmlFor="custom-spt-guid"
+              >
+                {t('tokens.assetGuid')}
+              </label>
               <input
+                id="custom-spt-guid"
                 className="w-full h-12 px-6 pr-12 bg-brand-blue800 border border-bkg-white200/30 
                           rounded-full text-brand-white placeholder-brand-gray200/70 text-sm font-poppins
                           focus:border-brand-royalblue/50 focus:outline-none focus:ring-2 focus:ring-brand-royalblue/20
                           transition-all duration-200"
                 placeholder={t('tokens.enterAssetGuid')}
                 value={customAssetGuid}
-                onChange={(e) => setCustomAssetGuid(e.target.value)}
+                onChange={(e) => {
+                  validationRequestRef.current += 1;
+                  setCustomAssetGuid(e.target.value);
+                  setCustomTokenDetails(null);
+                  setIsValidatingCustom(Boolean(e.target.value.trim()));
+                }}
               />
               <div className="absolute right-4 top-1/2 transform -translate-y-1/2 flex items-center justify-center w-6 h-6">
                 {isValidatingCustom ? (

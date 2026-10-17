@@ -40,6 +40,7 @@ import {
   buildSmartAccountGuardianRecoveryOperation,
   getGuardianRecoveryDigestContext,
   getSmartAccountGuardianRecoveryHash,
+  getPaliErc7739PersonalSignHash,
   SmartAccountGuardianRecoveryDigestContext,
   SmartAccountGuardianRecoveryOperation,
   buildSmartAccountUserOperation,
@@ -141,6 +142,7 @@ export interface ISmartAccountControllerDependencies {
   ) => Promise<void>;
   signSLHDSARecoveryTargetActionHash: (params: {
     actionHash: string;
+    executionContextId?: string;
     keyId: string;
     parameterSet: 'SLH-DSA-SHA2-128-24';
     pkRoot: string;
@@ -374,7 +376,7 @@ class SmartAccountController {
       expiresAt: number;
       gasPrice?: string;
       snapshot: ReturnType<SmartAccountController['infrastructureContext']>;
-      userOperation: SmartAccountPackedUserOperation;
+      userOperation?: SmartAccountPackedUserOperation;
     }
   >();
   private readonly infrastructureStatusCache = new Map<
@@ -462,9 +464,10 @@ class SmartAccountController {
       );
   }
 
-  private assertExpectedExecutionContext(
+  public assertExpectedExecutionContext(
     expected: IEvmTransactionContext,
-    accountId?: number
+    accountId?: number,
+    requireSmartAccount = true
   ): void {
     const { vault, vaultGlobal } = store.getState();
     const selected =
@@ -478,7 +481,8 @@ class SmartAccountController {
       this.deps.getWalletSessionGeneration?.() !== expected.sessionGeneration ||
       vault.activeAccount.id !== expected.account.id ||
       vault.activeAccount.type !== expected.account.type ||
-      expected.account.type !== PaliKeyringAccountType.SmartAccount ||
+      (requireSmartAccount &&
+        expected.account.type !== PaliKeyringAccountType.SmartAccount) ||
       selected?.address?.toLowerCase() !==
         expected.account.address.toLowerCase() ||
       (accountId !== undefined && accountId !== expected.account.id)
@@ -508,6 +512,41 @@ class SmartAccountController {
         transactionNotBroadcast: true,
       });
     }
+  }
+
+  private recoveryApprovalContext(expected?: IEvmTransactionContext) {
+    const snapshot = this.infrastructureContext();
+    const assertCurrent = () => {
+      try {
+        this.assertInfrastructureContext(snapshot);
+        if (expected)
+          this.assertExpectedExecutionContext(expected, undefined, false);
+      } catch {
+        throw Object.assign(new Error(EVM_TRANSACTION_CONTEXT_CHANGED), {
+          transactionNotBroadcast: true,
+        });
+      }
+    };
+    assertCurrent();
+    return { snapshot, assertCurrent };
+  }
+
+  private rememberRecoverySigningContext(
+    snapshot: ReturnType<SmartAccountController['infrastructureContext']>,
+    actionHash: string
+  ) {
+    for (const [id, context] of this.executionContexts)
+      if (context.expiresAt <= Date.now()) this.executionContexts.delete(id);
+    while (this.executionContexts.size >= 128)
+      this.executionContexts.delete(this.executionContexts.keys().next().value);
+    const id = uuidv4();
+    this.executionContexts.set(id, {
+      accountId: snapshot.account.id,
+      actionHash,
+      expiresAt: Date.now() + 15 * 60 * 1000,
+      snapshot,
+    });
+    return id;
   }
 
   private async infrastructureDeadline<T>(
@@ -1181,7 +1220,27 @@ class SmartAccountController {
     });
   }
 
-  public async registerSmartAccountOnChain(params: { accountId: number }) {
+  public async registerSmartAccountOnChain(params: {
+    accountId: number;
+    expectedContext?: IEvmTransactionContext;
+  }) {
+    const context = this.infrastructureContext();
+    const assertCurrent = () => {
+      try {
+        this.assertInfrastructureContext(context);
+        if (params.expectedContext) {
+          this.assertExpectedExecutionContext(
+            params.expectedContext,
+            params.accountId
+          );
+        }
+      } catch {
+        throw Object.assign(new Error(EVM_TRANSACTION_CONTEXT_CHANGED), {
+          transactionNotBroadcast: true,
+        });
+      }
+    };
+    assertCurrent();
     const active = this.getSmartAccountById(params.accountId);
     const metadata = active.metadata;
     const accountAddress = getAddress(active.account.address);
@@ -1199,6 +1258,7 @@ class SmartAccountController {
     }
 
     const code = await provider.getCode(accountAddress);
+    assertCurrent();
     const factoryAddress =
       metadata.factoryAddress ||
       getPaliSmartAccountFactoryAddress(metadata.chainId);
@@ -1216,6 +1276,7 @@ class SmartAccountController {
         factoryAddress,
         provider,
       });
+      assertCurrent();
       if (smartAccount.address !== accountAddress) {
         throw new Error(
           'Stored smart account authenticator does not match the deterministic account address.'
@@ -1232,8 +1293,10 @@ class SmartAccountController {
       try {
         const prepared = await this.prepareSmartAccountExecutions(
           [{ data: '0x', target: accountAddress, value: '0x0' }],
-          params.accountId
+          params.accountId,
+          { expectedContext: params.expectedContext }
         );
+        assertCurrent();
         const signature = await this.signActionHashWithLocalEcdsaOwners(
           metadata,
           prepared.actionHash,
@@ -1241,6 +1304,7 @@ class SmartAccountController {
         );
         response = await this.submitSmartAccountExecution({
           accountId: params.accountId,
+          expectedContext: params.expectedContext,
           executionContextId: prepared.executionContextId,
           executions: prepared.executions,
           gasPayer: prepared.gasPayer,
@@ -1253,11 +1317,29 @@ class SmartAccountController {
       } finally {
         this.pendingDeploymentAddresses.delete(accountAddress);
       }
+      // Publication has completed. A new selection/session must not receive
+      // the old account's metadata, but it cannot erase its accepted hash.
+      const acknowledged = {
+        address: accountAddress,
+        metadata,
+        transaction: response,
+      };
+      try {
+        assertCurrent();
+      } catch {
+        return acknowledged;
+      }
       this.invalidateHydratedMetadata(accountAddress);
-      const hydratedMetadata = await this.hydrateSmartAccountMetadata(
-        active.account,
-        { forceRefresh: true }
-      );
+      let hydratedMetadata: ISmartAccountMetadata;
+      try {
+        hydratedMetadata = await this.hydrateSmartAccountMetadata(
+          active.account,
+          { forceRefresh: true }
+        );
+        assertCurrent();
+      } catch {
+        return acknowledged;
+      }
       store.dispatch(
         setAccountPropertyByIdAndType({
           id: active.account.id,
@@ -1266,11 +1348,15 @@ class SmartAccountController {
           value: hydratedMetadata,
         })
       );
-      await this.deps.saveWalletState(
-        'register-smart-account-on-chain',
-        true,
-        true
-      );
+      try {
+        await this.deps.saveWalletState(
+          'register-smart-account-on-chain',
+          true,
+          true
+        );
+      } catch {
+        return { ...acknowledged, metadata: hydratedMetadata };
+      }
 
       return {
         address: accountAddress,
@@ -1282,6 +1368,7 @@ class SmartAccountController {
     const hydratedMetadata = await this.hydrateSmartAccountMetadata(
       active.account
     );
+    assertCurrent();
     store.dispatch(
       setAccountPropertyByIdAndType({
         id: active.account.id,
@@ -1390,14 +1477,21 @@ class SmartAccountController {
   }
 
   public async hydrateSmartAccount(
-    accountId: number
+    accountId: number,
+    expectedContext?: IEvmTransactionContext
   ): Promise<ISmartAccountMetadata> {
+    const context = this.infrastructureContext();
+    if (expectedContext)
+      this.assertExpectedExecutionContext(expectedContext, accountId);
     const active = this.getSmartAccountById(accountId);
     // Explicit hydration requests (UI refresh, post-action flows) bypass the
     // short-lived metadata cache.
     const metadata = await this.hydrateSmartAccountMetadata(active.account, {
       forceRefresh: true,
     });
+    this.assertInfrastructureContext(context);
+    if (expectedContext)
+      this.assertExpectedExecutionContext(expectedContext, accountId);
     await this.persistSmartAccountMetadata(
       active.account.id,
       metadata,
@@ -1950,6 +2044,7 @@ class SmartAccountController {
             (params.accountId !== undefined &&
               params.accountId !== context.accountId) ||
             !params.userOperation ||
+            !context.userOperation ||
             params.gasPrice !== context.gasPrice ||
             Object.entries(context.userOperation).some(
               ([key, value]) => params.userOperation[key] !== value
@@ -2383,6 +2478,7 @@ class SmartAccountController {
 
   public async submitSmartAccountGuardianStartRecovery(params: {
     account: string;
+    expectedContext?: IEvmTransactionContext;
     guardian: string;
     target: PaliRecoveryTarget;
   }) {
@@ -2398,6 +2494,8 @@ class SmartAccountController {
     return this.submitPreparedSmartAccountGuardianStartRecovery({
       account: prepared.account,
       approval: prepared.approval,
+      executionContextId: prepared.executionContextId,
+      expectedContext: params.expectedContext,
       gasPayer: prepared.gasPayer,
       guardian: prepared.guardian,
       operation: prepared.operation,
@@ -2406,32 +2504,51 @@ class SmartAccountController {
 
   public async prepareSmartAccountGuardianStartRecovery(params: {
     account: string;
+    expectedContext?: IEvmTransactionContext;
     guardian: string;
     target: PaliRecoveryTarget;
   }) {
+    const { snapshot, assertCurrent } = this.recoveryApprovalContext(
+      params.expectedContext
+    );
     const account = getAddress(params.account);
     const guardian = getAddress(params.guardian);
     const operation = await this.buildGuardianStartRecoveryOperation(
       account,
       params.target
     );
-    await this.proveRecoveryTargetOwnership(params.target, operation.hash);
+    assertCurrent();
+    const targetContextId = this.rememberRecoverySigningContext(
+      snapshot,
+      operation.hash
+    );
+    await this.proveRecoveryTargetOwnership(
+      params.target,
+      operation.hash,
+      targetContextId
+    );
+    assertCurrent();
     await this.validateSmartAccountGuardianRecoveryOperation({
       account,
       operation,
     });
+    assertCurrent();
 
     const localEoaGuardian = this.findLocalSigningAccount(guardian);
     if (localEoaGuardian) {
+      const signature = await this.deps.signSmartAccountActionDigestInternal(
+        [guardian, operation.hash],
+        localEoaGuardian,
+        targetContextId
+      );
+      assertCurrent();
       return {
         account,
         approval: {
           guardian,
-          signature: await this.deps.signSmartAccountActionDigestInternal(
-            [guardian, operation.hash],
-            localEoaGuardian
-          ),
+          signature,
         },
+        executionContextId: targetContextId,
         gasPayer: { ...localEoaGuardian, address: guardian },
         guardian,
         operation,
@@ -2448,6 +2565,7 @@ class SmartAccountController {
         'This guardian is not available as a local Pali wallet account. Use a local EOA guardian, a local smart-account guardian, or an external recovery flow that can provide the guardian approval signature.'
       );
     }
+    assertCurrent();
     if (!smartGuardian.metadata.isDeployed) {
       throw new Error(
         'Smart-account guardians must be deployed before they can approve recovery.'
@@ -2458,6 +2576,14 @@ class SmartAccountController {
       account,
       guardian,
       operation,
+      executionContextId: this.rememberRecoverySigningContext(
+        snapshot,
+        getPaliErc7739PersonalSignHash({
+          accountAddress: guardian,
+          chainId: operation.chainId,
+          hash: operation.hash,
+        })
+      ),
       smartGuardian: smartGuardian.metadata,
     };
   }
@@ -2465,10 +2591,19 @@ class SmartAccountController {
   public async submitPreparedSmartAccountGuardianStartRecovery(params: {
     account: string;
     approval: { guardian: string; signature: string };
+    executionContextId?: string;
+    expectedContext?: IEvmTransactionContext;
     gasPayer?: { address: string; id: number; type: PaliKeyringAccountType };
     guardian: string;
     operation: SmartAccountGuardianRecoveryOperation;
   }) {
+    const origin = this.recoveryApprovalContext(params.expectedContext);
+    const assertCurrent = () => {
+      origin.assertCurrent();
+      if (params.executionContextId)
+        this.assertSmartAccountExecutionContext(params.executionContextId);
+    };
+    assertCurrent();
     const account = getAddress(params.account);
     const recoveryModule = getAddress(params.operation.recoveryModule);
     const guardian = getAddress(params.guardian);
@@ -2480,6 +2615,7 @@ class SmartAccountController {
       account,
       operation: params.operation,
     });
+    assertCurrent();
     const approvals = [
       {
         guardian,
@@ -2503,6 +2639,7 @@ class SmartAccountController {
         to: recoveryModule,
         value: '0x0',
       });
+      assertCurrent();
       const response = await this.deps.sendAndSaveEthTransaction(
         { data: recoveryCallData, to: recoveryModule, value: '0x0' },
         false,
@@ -2511,7 +2648,11 @@ class SmartAccountController {
           smartAccountGuardianRecovery: true,
           smartAccountRecoveryAccount: account,
         },
-        { clearNavigation: false, persist: true }
+        {
+          clearNavigation: false,
+          persist: true,
+          assertCurrentContext: assertCurrent,
+        }
       );
 
       return {
@@ -2534,16 +2675,21 @@ class SmartAccountController {
       account: string;
       chainId: number;
       executionCalldata: string;
+      expectedContext?: IEvmTransactionContext;
       mode: string;
       recoveryModule?: string;
       salt: string;
     }
   ) {
+    const { assertCurrent } = this.recoveryApprovalContext(
+      params.expectedContext
+    );
     const account = getAddress(params.account);
     const status = params.recoveryModule
       ? null
       : await this.getGuardianRecoveryStatusForAccount(account);
     const recoveryModule = params.recoveryModule || status?.moduleAddress;
+    assertCurrent();
     if (!recoveryModule) {
       throw new Error('Guardian recovery module is not configured');
     }
@@ -2551,6 +2697,7 @@ class SmartAccountController {
       account,
       operation: { ...params, recoveryModule },
     });
+    assertCurrent();
     const callData = paliGuardianRecoveryModuleInterface.encodeFunctionData(
       'executeRecovery',
       [account, params.salt, params.mode, params.executionCalldata]
@@ -2560,6 +2707,7 @@ class SmartAccountController {
       to: recoveryModule,
       value: '0x0',
     });
+    assertCurrent();
 
     try {
       const response = await this.deps.sendAndSaveEthTransaction(
@@ -2570,7 +2718,11 @@ class SmartAccountController {
           smartAccountGuardianRecoveryFinalize: true,
           smartAccountRecoveryAccount: account,
         },
-        { clearNavigation: false, persist: true }
+        {
+          clearNavigation: false,
+          persist: true,
+          assertCurrentContext: assertCurrent,
+        }
       );
       await response.wait();
       // Recovery rotates validators on the target account.
@@ -2734,13 +2886,15 @@ class SmartAccountController {
 
   private async proveRecoveryTargetOwnership(
     target: PaliRecoveryTarget,
-    operationHash: string
+    operationHash: string,
+    executionContextId?: string
   ): Promise<void> {
     switch (target.auth.module) {
       case 'ecdsa':
         await this.proveEcdsaRecoveryTargetOwnership(
           target.auth.data,
-          operationHash
+          operationHash,
+          executionContextId
         );
         return;
       case 'p256-webauthn':
@@ -2749,7 +2903,8 @@ class SmartAccountController {
       case 'slh-dsa':
         await this.proveSLHDSARecoveryTargetOwnership(
           target.auth.data,
-          operationHash
+          operationHash,
+          executionContextId
         );
         return;
       default:
@@ -2759,7 +2914,8 @@ class SmartAccountController {
 
   private async proveEcdsaRecoveryTargetOwnership(
     initData: string,
-    operationHash: string
+    operationHash: string,
+    executionContextId?: string
   ): Promise<void> {
     const [decodedOwners, decodedThreshold] = defaultAbiCoder.decode(
       ['address[]', 'uint64'],
@@ -2776,7 +2932,8 @@ class SmartAccountController {
         const ownerAccount = this.getLocalSigningAccount(owner);
         return this.deps.signSmartAccountActionDigestInternal(
           [owner, operationHash],
-          ownerAccount
+          ownerAccount,
+          executionContextId
         );
       })
     );
@@ -2784,7 +2941,8 @@ class SmartAccountController {
 
   private async proveSLHDSARecoveryTargetOwnership(
     initData: string,
-    operationHash: string
+    operationHash: string,
+    executionContextId?: string
   ): Promise<void> {
     const [authData] = defaultAbiCoder.decode(
       ['tuple(bytes32 pkSeed,bytes32 pkRoot)'],
@@ -2799,6 +2957,7 @@ class SmartAccountController {
 
     await this.deps.signSLHDSARecoveryTargetActionHash({
       actionHash: operationHash,
+      executionContextId,
       keyId: getSLHDSAKeyId({ pkRoot, pkSeed }),
       parameterSet: SLH_DSA_PARAMETER_SET,
       pkRoot,

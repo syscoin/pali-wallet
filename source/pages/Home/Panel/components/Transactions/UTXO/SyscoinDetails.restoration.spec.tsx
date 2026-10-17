@@ -865,6 +865,81 @@ it.each(['null', 'rejected', 'wrong-hash'])(
   }
 );
 
+it('uses a new pending summary over an older confirmed cached body without leaking block fields', async () => {
+  mockEmitter.mockResolvedValue(
+    rawTransaction({
+      confirmations: 6,
+      blockHeight: 123,
+      blockHash: 'old-confirmed-block',
+      blockTime: 123456,
+    })
+  );
+  const first = render(<SyscoinTransactionDetails hash={mockHash} />);
+  await screen.findByText('old-confirmed-block');
+  first.unmount();
+  const summary = rawTransaction({
+    confirmations: 0,
+    blockHeight: null,
+    blockHash: null,
+    blockTime: null,
+  });
+  render(<SyscoinTransactionDetails hash={mockHash} tx={summary} />);
+  await screen.findByText('raw-from');
+  expect(confirmationValue().textContent).toBe('0');
+  expect(screen.queryByText('old-confirmed-block')).toBeNull();
+  expect(detailValue('Block Hash', 'send.pending')).toBeTruthy();
+  expect(detailValue('Block Time', 'send.pending')).toBeTruthy();
+  expect(screen.queryByText('send.confirmed')).toBeNull();
+  expect(mockEmitter).toHaveBeenCalledTimes(1);
+});
+
+it('uses a same-height replacement block from a current summary over the cached block', async () => {
+  const cached = rawTransaction({
+    confirmations: 6,
+    blockHeight: 123,
+    blockHash: 'old-block',
+  });
+  mockEmitter.mockResolvedValue(cached);
+  const first = render(<SyscoinTransactionDetails hash={mockHash} />);
+  await screen.findByText('old-block');
+  first.unmount();
+  render(
+    <SyscoinTransactionDetails
+      hash={mockHash}
+      tx={{ ...cached, blockHash: 'new-block' }}
+    />
+  );
+  expect(await screen.findByText('new-block')).toBeTruthy();
+  expect(screen.queryByText('old-block')).toBeNull();
+  expect(mockEmitter).toHaveBeenCalledTimes(1);
+});
+
+it('uses a newly fetched body until a later summary observation demotes it', async () => {
+  const response = deferred<ISysTransaction>();
+  mockEmitter.mockReturnValue(response.promise);
+  const summary = rawTransaction();
+  const view = render(
+    <SyscoinTransactionDetails hash={mockHash} tx={summary} />
+  );
+  await act(async () =>
+    response.resolve(
+      rawTransaction({
+        confirmations: 6,
+        blockHeight: 123,
+        blockHash: 'fresh-block',
+      })
+    )
+  );
+  expect(await screen.findByText('fresh-block')).toBeTruthy();
+  expect(confirmationValue().textContent).toBe('6');
+  view.rerender(
+    <SyscoinTransactionDetails hash={mockHash} tx={{ ...summary }} />
+  );
+  expect(confirmationValue().textContent).toBe('0');
+  expect(screen.queryByText('fresh-block')).toBeNull();
+  expect(mockEmitter).toHaveBeenCalledTimes(1);
+});
+
 it('uses current summary confirmation and separate native change over pending raw cached metadata', async () => {
   mockEmitter.mockResolvedValue(rawTransaction());
   const first = render(<SyscoinTransactionDetails hash={mockHash} />);

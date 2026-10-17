@@ -18,6 +18,7 @@ import {
   SmartAccountValidatorModule,
 } from 'types/network';
 import { getAddress } from 'utils/ethersV6Compat';
+import { IEvmTransactionContext } from 'utils/evmTransactionContext';
 import {
   captureNavigationScroll,
   getWalletNavigationScope,
@@ -151,6 +152,11 @@ type SLHDSAPreparedSignerRecord = {
   version: 1;
 };
 
+type PolicyApprovalScope = {
+  assertCurrent: () => void;
+  expectedContext: IEvmTransactionContext;
+};
+
 const guardianReplacementAuthenticatorKey = (
   account: string,
   chainId: number
@@ -166,6 +172,9 @@ const SmartAccountPolicy = () => {
   const { controllerEmitter, handleWalletLockedError } = useController();
   const { accounts, activeAccount, activeNetwork } = useSelector(
     (state: RootState) => state.vault
+  );
+  const activeSlip44 = useSelector(
+    (state: RootState) => state.vaultGlobal?.activeSlip44
   );
   const selectedAccountId = Number.isInteger(routeState?.id)
     ? routeState.id
@@ -224,6 +233,61 @@ const SmartAccountPolicy = () => {
             !status.connectionUnavailable))
       );
     };
+  };
+  const capturePolicyApproval = async (
+    requireSelectedPolicy = true
+  ): Promise<PolicyApprovalScope> => {
+    const isCurrentUi = createUiGuard();
+    const assertCurrent = () => {
+      if (!isCurrentUi()) throw new Error('PALI_TRANSACTION_CONTEXT_CHANGED');
+      if (
+        requireSelectedPolicy &&
+        (activeAccount.id !== selectedAccountId ||
+          activeAccount.type !== KeyringAccountType.SmartAccount ||
+          selectedAccountType !== KeyringAccountType.SmartAccount)
+      ) {
+        throw new Error(t('settings.selectSmartAccountBeforePolicyChange'));
+      }
+    };
+    assertCurrent();
+    const sessionGeneration = await controllerEmitter(
+      ['wallet', 'getWalletSessionGeneration'],
+      []
+    );
+    assertCurrent();
+    if (
+      typeof sessionGeneration !== 'number' ||
+      !Number.isSafeInteger(sessionGeneration) ||
+      sessionGeneration < 0 ||
+      typeof activeSlip44 !== 'number'
+    ) {
+      throw new Error('PALI_TRANSACTION_CONTEXT_CHANGED');
+    }
+    return {
+      assertCurrent,
+      expectedContext: {
+        account: {
+          address: accounts[activeAccount.type]?.[activeAccount.id]?.address,
+          id: activeAccount.id,
+          type: activeAccount.type,
+        },
+        chainId: activeNetwork.chainId,
+        rpcUrl: activeNetwork.url,
+        sessionGeneration,
+        slip44: activeSlip44,
+      },
+    };
+  };
+  const assertApprovalSession = async (approval: PolicyApprovalScope) => {
+    approval.assertCurrent();
+    const generation = await controllerEmitter(
+      ['wallet', 'getWalletSessionGeneration'],
+      []
+    );
+    approval.assertCurrent();
+    if (generation !== approval.expectedContext.sessionGeneration) {
+      throw new Error('PALI_TRANSACTION_CONTEXT_CHANGED');
+    }
   };
   const [metadata, setMetadata] = useState<ISmartAccountMetadata | null>(
     account?.smartAccount || null
@@ -312,6 +376,7 @@ const SmartAccountPolicy = () => {
   >();
   const slhDsaFinalizeRef = useRef(false);
   const slhDsaSetupOwnerRef = useRef('');
+  const slhDsaApprovalRef = useRef<PolicyApprovalScope | null>(null);
   const validatorSwitchRef = useRef<{
     key: string;
     promise: Promise<void>;
@@ -330,6 +395,7 @@ const SmartAccountPolicy = () => {
     setReplacementEcdsaOwner('');
     slhDsaFinalizeRef.current = false;
     slhDsaSetupOwnerRef.current = '';
+    slhDsaApprovalRef.current = null;
     validatorSwitchRef.current = null;
   }, [scopeKey, selectedAccountKey]);
   const modules = getAvailablePaliModules(activeNetwork.chainId);
@@ -574,14 +640,18 @@ const SmartAccountPolicy = () => {
     return prepared?.config ? normalizeSLHDSAConfig(prepared.config) : null;
   };
 
-  const refreshMetadata = async () => {
+  const refreshMetadata = async (
+    approval?: PolicyApprovalScope,
+    requireCurrentUi = true
+  ) => {
     if (!account?.isSmartAccount) {
       return null;
     }
     const isCurrentUi = createUiGuard();
+    if (approval && requireCurrentUi) await assertApprovalSession(approval);
     const hydrated = (await controllerEmitter(
       ['wallet', 'hydrateSmartAccount'],
-      [account.id],
+      approval ? [account.id, approval.expectedContext] : [account.id],
       300000
     )) as ISmartAccountMetadata;
     if (isCurrentUi()) setMetadata(hydrated);
@@ -765,6 +835,7 @@ const SmartAccountPolicy = () => {
       return;
     }
     const isCurrentUi = createUiGuard();
+    const approval = await capturePolicyApproval();
     const submit = (
       smartAccount: ISmartAccountMetadata,
       useCachedMetadata?: boolean
@@ -775,6 +846,9 @@ const SmartAccountPolicy = () => {
         authenticatorContexts: getLocalOwnerContexts(),
         controllerEmitter,
         executions,
+        expectedContext: approval.expectedContext,
+        onPrepared: approval.assertCurrent,
+        onBeforeSubmit: () => assertApprovalSession(approval),
         onAuthenticatorSigningResolved: (authenticatorId) => {
           if (authenticatorId === 'slh-dsa' && isCurrentUi()) {
             setIsSLHDSASigning(false);
@@ -786,6 +860,7 @@ const SmartAccountPolicy = () => {
           }
         },
         skipRapidPolling: true,
+        trackLocalSubmission: true,
         smartAccount,
         useCachedMetadata,
         waitForConfirmation: options.waitForConfirmation,
@@ -798,7 +873,7 @@ const SmartAccountPolicy = () => {
         if (!isSmartAccountSignatureError(error)) {
           throw error;
         }
-        const hydrated = await refreshMetadata();
+        const hydrated = await refreshMetadata(approval);
         if (!hydrated) {
           throw error;
         }
@@ -812,7 +887,9 @@ const SmartAccountPolicy = () => {
         }
       }
       if (options.refreshAfterSubmit !== false) {
-        await refreshMetadata();
+        // The operation was accepted; stale or unavailable metadata cannot
+        // turn that outcome into a retryable signing failure.
+        await refreshMetadata(approval, false).catch(() => null);
       }
     } finally {
       if (isCurrentUi(false)) setIsSLHDSASigning(false);
@@ -820,12 +897,14 @@ const SmartAccountPolicy = () => {
   };
 
   const replaceActiveValidator = async (
-    authenticator: SmartAccountAuthenticatorBuildResult
+    authenticator: SmartAccountAuthenticatorBuildResult,
+    approval: PolicyApprovalScope
   ) => {
     if (!account?.isSmartAccount || !metadata) {
       return;
     }
     const isCurrentUi = createUiGuard();
+    await assertApprovalSession(approval);
     const activeValidator = metadata.installedModules?.find(
       (module) =>
         module.type === 'validator' &&
@@ -867,6 +946,9 @@ const SmartAccountPolicy = () => {
         authenticatorContexts: getLocalOwnerContexts(),
         controllerEmitter,
         executions: plan.executions,
+        expectedContext: approval.expectedContext,
+        onPrepared: approval.assertCurrent,
+        onBeforeSubmit: () => assertApprovalSession(approval),
         onAuthenticatorSigningResolved: (authenticatorId) => {
           if (authenticatorId === 'slh-dsa' && isCurrentUi()) {
             setIsSLHDSASigning(false);
@@ -879,10 +961,11 @@ const SmartAccountPolicy = () => {
         },
         smartAccount: metadata,
         skipRapidPolling: true,
+        trackLocalSubmission: true,
         useCachedMetadata: true,
         waitForConfirmation: true,
       });
-      const hydrated = await refreshMetadata();
+      const hydrated = await refreshMetadata(approval, false).catch(() => null);
       if (hydrated) {
         if (
           hydrated.auth?.validator?.toLowerCase() !==
@@ -929,12 +1012,13 @@ const SmartAccountPolicy = () => {
     const isCurrentUi = createUiGuard();
     setLoading(true);
     try {
+      const approval = await capturePolicyApproval();
       await controllerEmitter(
         ['wallet', 'registerSmartAccountOnChain'],
-        [{ accountId: account.id }],
+        [{ accountId: account.id, expectedContext: approval.expectedContext }],
         300000
       );
-      await refreshMetadata();
+      await refreshMetadata(approval, false).catch(() => null);
       if (isCurrentUi()) alert.success(t('settings.smartAccountRegistered'));
     } catch (error: any) {
       if (!isCurrentUi()) return;
@@ -1015,7 +1099,9 @@ const SmartAccountPolicy = () => {
     setLoading(true);
     setModuleActionKey('p256-webauthn:use');
     try {
+      const approval = await capturePolicyApproval();
       await assertSmartAccountHasAuthenticatorGas();
+      await assertApprovalSession(approval);
       const passkeyName = t('settings.paliWalletPasskeyForAccount', {
         address: shortAddress(account.address),
         index: metadata.descriptor?.accountIndex ?? account.id,
@@ -1057,11 +1143,13 @@ const SmartAccountPolicy = () => {
             : {}),
           passkeyName: existingProfile.passkeyName || passkeyName,
         };
+        await assertApprovalSession(approval);
         if (!setPendingPasskeyRecord(account.address, reusedProfile)) {
           throw new Error(t('connections.smartAccountPasskeySaveFailed'));
         }
         await replaceActiveValidator(
-          buildPasskeyAuthenticator(reusedProfile, passkeyName)
+          buildPasskeyAuthenticator(reusedProfile, passkeyName),
+          approval
         );
         if (!setActivePasskeyRecord(account.address, reusedProfile)) {
           throw new Error(t('connections.smartAccountPasskeySaveFailed'));
@@ -1081,13 +1169,15 @@ const SmartAccountPolicy = () => {
         userDisplayName: passkeyName,
       });
       const profile = passkeyRegistrationToProfile(credential, passkeyName);
+      await assertApprovalSession(approval);
       // Persist before the on-chain step: if the rotation fails, the retry
       // reuses this credential instead of creating yet another passkey.
       if (!setPendingPasskeyRecord(account.address, profile)) {
         throw new Error(t('connections.smartAccountPasskeySaveFailed'));
       }
       await replaceActiveValidator(
-        buildPasskeyAuthenticator(profile, passkeyName)
+        buildPasskeyAuthenticator(profile, passkeyName),
+        approval
       );
       if (!setActivePasskeyRecord(account.address, profile)) {
         throw new Error(t('connections.smartAccountPasskeySaveFailed'));
@@ -1134,25 +1224,29 @@ const SmartAccountPolicy = () => {
     setLoading(true);
     setModuleActionKey('ecdsa:use');
     try {
+      const approval = await capturePolicyApproval();
       const data = encodeEcdsaValidatorInitData([walletManagementAddress], 1);
-      await replaceActiveValidator({
-        auth: {
-          data,
-          module: 'ecdsa',
-          validator: ecdsaValidator,
+      await replaceActiveValidator(
+        {
+          auth: {
+            data,
+            module: 'ecdsa',
+            validator: ecdsaValidator,
+          },
+          metadata: {
+            installedModules: [
+              {
+                address: getAddress(ecdsaValidator),
+                config: { owners: [walletManagementAddress], threshold: 1 },
+                data,
+                id: 'ecdsa',
+                type: 'validator',
+              },
+            ],
+          },
         },
-        metadata: {
-          installedModules: [
-            {
-              address: getAddress(ecdsaValidator),
-              config: { owners: [walletManagementAddress], threshold: 1 },
-              data,
-              id: 'ecdsa',
-              type: 'validator',
-            },
-          ],
-        },
-      });
+        approval
+      );
       if (isCurrentUi()) {
         alert.success(t('settings.smartAccountAuthenticatorConfigured'));
       }
@@ -1178,12 +1272,14 @@ const SmartAccountPolicy = () => {
   };
 
   const finalizeSLHDSASetup = async (
-    config: Parameters<typeof buildSLHDSAAuthenticator>[0]['config']
+    config: Parameters<typeof buildSLHDSAAuthenticator>[0]['config'],
+    approval: PolicyApprovalScope
   ) => {
     if (!account?.isSmartAccount || !metadata) {
       return;
     }
     const isCurrentUi = createUiGuard();
+    await assertApprovalSession(approval);
 
     const activeSLHDSAValidator = metadata.installedModules?.find(
       (module) =>
@@ -1213,8 +1309,14 @@ const SmartAccountPolicy = () => {
       buildSLHDSAAuthenticator({
         chainId: activeNetwork.chainId,
         config,
-      })
+      }),
+      approval
     );
+    try {
+      await assertApprovalSession(approval);
+    } catch {
+      return;
+    }
     await controllerEmitter(
       ['wallet', 'clearSLHDSASmartAccountSetupStatus'],
       [{ accountId: account.id }],
@@ -1238,6 +1340,8 @@ const SmartAccountPolicy = () => {
     setModuleActionKey('slh-dsa:use');
     setSlhDsaActionStartedAt(Date.now());
     try {
+      const approval = await capturePolicyApproval();
+      slhDsaApprovalRef.current = approval;
       const forceRegenerate = slhDsaSetupIntent === 'regenerate';
       const isActiveSLHDSAValidator = metadata.installedModules?.some(
         (module) =>
@@ -1248,6 +1352,7 @@ const SmartAccountPolicy = () => {
       );
       if (!isActiveSLHDSAValidator) {
         await assertSmartAccountHasAuthenticatorGas();
+        await assertApprovalSession(approval);
       }
       const hasLocalSLHDSAState = (
         config: NonNullable<SLHDSASetupStatus['config']>
@@ -1267,28 +1372,32 @@ const SmartAccountPolicy = () => {
       const installedSLHDSAConfig = getInstalledSLHDSAValidatorConfig();
       if (!forceRegenerate && installedSLHDSAConfig) {
         if (await hasLocalSLHDSAState(installedSLHDSAConfig)) {
+          await assertApprovalSession(approval);
           if (isCurrentUi()) setShouldFinalizeSLHDSASetup(false);
-          await finalizeSLHDSASetup(installedSLHDSAConfig);
+          await finalizeSLHDSASetup(installedSLHDSAConfig, approval);
           return;
         }
       }
       const preparedSLHDSAConfig = await getPreparedSLHDSAValidatorConfig();
+      await assertApprovalSession(approval);
       if (
         !forceRegenerate &&
         preparedSLHDSAConfig &&
         (await hasLocalSLHDSAState(preparedSLHDSAConfig))
       ) {
         if (isCurrentUi()) setShouldFinalizeSLHDSASetup(false);
-        await finalizeSLHDSASetup(preparedSLHDSAConfig);
+        await finalizeSLHDSASetup(preparedSLHDSAConfig, approval);
         return;
       }
 
       if (isCurrentUi()) setShouldFinalizeSLHDSASetup(true);
+      await assertApprovalSession(approval);
       const status = (await controllerEmitter(
         ['wallet', 'startSLHDSASmartAccountValidatorSetup'],
         [
           {
             accountId: account.id,
+            expectedContext: approval.expectedContext,
             force:
               forceRegenerate ||
               Boolean(installedSLHDSAConfig || preparedSLHDSAConfig),
@@ -1328,6 +1437,7 @@ const SmartAccountPolicy = () => {
       !slhDsaSetupStatus.config ||
       !slhDsaSetupStatus.canFinalize ||
       !shouldFinalizeSLHDSASetup ||
+      !slhDsaApprovalRef.current ||
       slhDsaSetupOwnerRef.current !== `${scopeKey}:${selectedAccountKey}` ||
       slhDsaFinalizeRef.current ||
       !account?.isSmartAccount ||
@@ -1341,7 +1451,7 @@ const SmartAccountPolicy = () => {
     setLoading(true);
     setModuleActionKey('slh-dsa:use');
     setSlhDsaActionStartedAt(Date.now());
-    finalizeSLHDSASetup(slhDsaSetupStatus.config)
+    finalizeSLHDSASetup(slhDsaSetupStatus.config, slhDsaApprovalRef.current)
       .catch((error: any) => {
         if (!isCurrentUi()) return;
         const wasHandled = handleWalletLockedError(error);
@@ -1360,6 +1470,7 @@ const SmartAccountPolicy = () => {
         if (isCurrentUi(false)) {
           slhDsaFinalizeRef.current = false;
           slhDsaSetupOwnerRef.current = '';
+          slhDsaApprovalRef.current = null;
           setShouldFinalizeSLHDSASetup(false);
           setModuleActionKey('');
           setSlhDsaActionStartedAt(undefined);
@@ -1515,6 +1626,7 @@ const SmartAccountPolicy = () => {
     );
     setGuardianLoading(true);
     try {
+      const policyApproval = await capturePolicyApproval(false);
       setGuardianStep(
         t('settings.smartAccountGuardianRecoveryStepAuthenticator')
       );
@@ -1570,6 +1682,7 @@ const SmartAccountPolicy = () => {
           } catch {
             // Failed possession is not proof that a previous attempt never
             // installed this credential. Never delete it from the authenticator.
+            await assertApprovalSession(policyApproval);
             clearGuardianReplacementCredential();
           }
         }
@@ -1586,6 +1699,7 @@ const SmartAccountPolicy = () => {
           });
           replacementCredential = verifiedReplacement;
         } else {
+          await assertApprovalSession(policyApproval);
           const challenge = crypto.getRandomValues(new Uint8Array(32));
           // Intentionally a fresh random user handle: a deterministic handle
           // would overwrite the account's previous passkey in the credential
@@ -1597,6 +1711,7 @@ const SmartAccountPolicy = () => {
             challengeHex: bytesToHex(challenge),
             userDisplayName: replacementAuthenticatorName,
           });
+          await assertApprovalSession(policyApproval);
           const publicKey = {
             originHash: newCredential.originHash,
             originLength: newCredential.originLength,
@@ -1656,11 +1771,20 @@ const SmartAccountPolicy = () => {
             : t('settings.smartAccountGuardianRecoveryStepSubmit')
         );
       }
+      await assertApprovalSession(policyApproval);
       const preparedRecovery = (await controllerEmitter(
         ['wallet', 'prepareSmartAccountGuardianStartRecovery'],
-        [{ account: smartAccountAddress, guardian, target }],
+        [
+          {
+            account: smartAccountAddress,
+            guardian,
+            target,
+            expectedContext: policyApproval.expectedContext,
+          },
+        ],
         300000
       )) as any;
+      await assertApprovalSession(policyApproval);
       if (!preparedRecovery.approval && preparedRecovery.smartGuardian) {
         await controllerEmitter(
           ['wallet', 'validateSmartAccountGuardianRecoveryOperation'],
@@ -1672,6 +1796,7 @@ const SmartAccountPolicy = () => {
           ]
         );
       }
+      await assertApprovalSession(policyApproval);
       const approval =
         preparedRecovery.approval ||
         (preparedRecovery.smartGuardian
@@ -1680,6 +1805,7 @@ const SmartAccountPolicy = () => {
               signature: encodeSmartAccountAuthenticatorSignature(
                 await signSmartAccountActionHash({
                   accountId: getLocalSmartAccountIdByAddress(guardian),
+                  executionContextId: preparedRecovery.executionContextId,
                   actionHash: getPaliErc7739PersonalSignHash({
                     accountAddress: guardian,
                     chainId: preparedRecovery.operation.chainId,
@@ -1694,11 +1820,14 @@ const SmartAccountPolicy = () => {
       if (!approval) {
         throw new Error(t('settings.smartAccountGuardianRecoveryStartFailed'));
       }
+      await assertApprovalSession(policyApproval);
       const recoveryResponse = (await controllerEmitter(
         ['wallet', 'submitPreparedSmartAccountGuardianStartRecovery'],
         [
           {
             account: smartAccountAddress,
+            executionContextId: preparedRecovery.executionContextId,
+            expectedContext: policyApproval.expectedContext,
             approval,
             gasPayer: preparedRecovery.gasPayer,
             guardian,
@@ -1767,6 +1896,7 @@ const SmartAccountPolicy = () => {
     }
     setGuardianLoading(true);
     try {
+      const approval = await capturePolicyApproval(false);
       setGuardianStep(t('settings.smartAccountGuardianRecoveryStepFinalize'));
       const recoveryOperation = activeGuardianReplacement.recoveryOperation;
       if (
@@ -1783,6 +1913,7 @@ const SmartAccountPolicy = () => {
           {
             ...recoveryOperation,
             account: smartAccountAddress,
+            expectedContext: approval.expectedContext,
           },
         ],
         300000
@@ -1811,7 +1942,7 @@ const SmartAccountPolicy = () => {
         }
       }
       clearGuardianReplacementCredential();
-      await refreshMetadata();
+      await refreshMetadata(approval, false).catch(() => null);
       if (!isCurrentUi()) return;
       alert.success(t('settings.smartAccountGuardianRecoveryFinalized'));
       setGuardianRecoveryView(false);
