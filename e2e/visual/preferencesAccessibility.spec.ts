@@ -289,6 +289,28 @@ test('offline onboarding and preferences remain keyboard accessible with localiz
       page.getByText(de.settings.trustedSiteMatch, { exact: true })
     ).toBeVisible();
     await capture(page, 'trusted-exact-german-400x480');
+
+    await wallet.gotoRoute('#/settings/account/import');
+    const watchOnly = page.getByRole('checkbox', {
+      name: 'Watch-only',
+      exact: true,
+    });
+    await expect(watchOnly).toHaveAttribute('id', 'import-account-watch-only');
+    await expect(
+      page.getByRole('textbox', {
+        name: `${de.settings.label} (${de.settings.optional})`,
+      })
+    ).toHaveAttribute('id', 'account-name-input');
+    await expect(
+      page.getByRole('textbox', { name: de.settings.yourPrivateKey })
+    ).toHaveAttribute('id', 'import-account-identifier');
+    expect(await page.locator('#account-name-input').count()).toBe(1);
+    await page.locator('label[for="import-account-watch-only"]').click();
+    await expect(watchOnly).toBeChecked();
+    await expect(
+      page.getByRole('textbox', { name: 'Address / XPUB / Descriptor' })
+    ).toHaveAttribute('id', 'import-account-identifier');
+    await capture(page, 'import-account-named-german-400x480');
     expect(pageErrors).toEqual([]);
     expect(routes.deniedWrites).toEqual([]);
   } catch (error) {

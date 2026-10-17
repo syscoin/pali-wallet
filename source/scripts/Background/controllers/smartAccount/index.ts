@@ -1482,8 +1482,25 @@ class SmartAccountController {
   ): Promise<ISmartAccountMetadata> {
     const context = this.infrastructureContext();
     if (expectedContext)
-      this.assertExpectedExecutionContext(expectedContext, accountId);
+      this.assertExpectedExecutionContext(expectedContext, undefined, false);
     const active = this.getSmartAccountById(accountId);
+    const target = {
+      address: getAddress(active.account.address),
+      chainId: active.metadata.chainId,
+      type: active.account.type,
+    };
+    const assertTarget = () => {
+      const current = this.getSmartAccountById(accountId);
+      if (
+        current.account.id !== accountId ||
+        target.chainId !== context.chainId ||
+        current.metadata.chainId !== target.chainId ||
+        current.account.type !== target.type ||
+        getAddress(current.account.address) !== target.address
+      )
+        throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    };
+    assertTarget();
     // Explicit hydration requests (UI refresh, post-action flows) bypass the
     // short-lived metadata cache.
     const metadata = await this.hydrateSmartAccountMetadata(active.account, {
@@ -1491,9 +1508,10 @@ class SmartAccountController {
     });
     this.assertInfrastructureContext(context);
     if (expectedContext)
-      this.assertExpectedExecutionContext(expectedContext, accountId);
+      this.assertExpectedExecutionContext(expectedContext, undefined, false);
+    assertTarget();
     await this.persistSmartAccountMetadata(
-      active.account.id,
+      accountId,
       metadata,
       'hydrate-smart-account-metadata'
     );
