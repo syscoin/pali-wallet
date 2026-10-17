@@ -11,23 +11,42 @@
 /* Import gradient banner animation */
 @import './gradient-banner-animation.css';
 
-/* Short wallet windows keep page actions and asynchronous feedback together.
- * The footer remains in flow, so the last field can still be scrolled above it.
- * Full-height popups retain their existing, non-sticky layout. */
-@media (max-height: 619px) {
-  [data-navigation-scroll='wallet-layout'] {
-    scroll-padding-bottom: calc(var(--wallet-page-action-height, 0px) + 1rem);
-  }
+/* Fill spare page space before the shared action, including nested forms.
+ * Only footer-bearing wrappers stretch; unrelated rows and form internals do
+ * not change layout. Keep the document's intrinsic toolbar height untouched. */
+[data-navigation-scroll='wallet-layout']:has(.page-action-footer) {
+  display: flex;
+  flex-direction: column;
+  height: min(620px, 100dvh);
+  min-height: 0;
+  overscroll-behavior-y: contain;
+  scroll-padding-bottom: calc(var(--wallet-page-action-height, 0px) + 1rem);
+}
 
-  [data-navigation-scroll='wallet-layout'] .page-action-footer {
-    position: sticky;
-    bottom: 0;
-    z-index: 1;
-    padding-top: 1rem;
-    padding-bottom: max(1rem, env(safe-area-inset-bottom));
-    background-color: #162742;
-    box-shadow: 0 -8px 12px -12px rgb(0 0 0 / 45%);
-  }
+[data-navigation-scroll='wallet-layout']:has(.page-action-footer) > * {
+  flex-shrink: 0;
+}
+
+[data-navigation-scroll='wallet-layout'] .page-content:has(.page-action-footer),
+[data-navigation-scroll='wallet-layout']
+  .page-content
+  :has(.page-action-footer) {
+  display: flex;
+  flex-direction: column;
+  flex: 1 0 auto;
+  align-self: stretch;
+  justify-content: flex-start;
+}
+
+[data-navigation-scroll='wallet-layout'] .page-action-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  margin-top: auto;
+  padding-top: 1rem;
+  padding-bottom: max(1.5rem, env(safe-area-inset-bottom));
+  background-color: #162742;
+  box-shadow: 0 -8px 12px -12px rgb(0 0 0 / 45%);
 }
 
 /** ALERTS/TOASTS **/

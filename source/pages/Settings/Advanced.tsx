@@ -303,7 +303,6 @@ const Advanced = () => {
         ))}
 
         <PageActionFooter
-          className="pb-12"
           error={saveError ? t('settings.preferencesSaveFailed') : undefined}
         >
           <Button

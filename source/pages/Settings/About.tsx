@@ -98,7 +98,7 @@ const AboutView: FC = () => {
           {t('settings.tokenDataProvider', { provider: 'Routescan' })}
         </a>
 
-        <PageActionFooter className="absolute bottom-12 md:static">
+        <PageActionFooter>
           <Button
             className="flex items-center justify-center w-full h-10 bg-white text-brand-blue400 text-base font-medium rounded-[100px]"
             type="button"

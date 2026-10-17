@@ -328,7 +328,7 @@ const ImportAccountView = () => {
           </Form.Item>
         </Form>
 
-        <PageActionFooter className="absolute bottom-12 md:static">
+        <PageActionFooter>
           <Button
             variant="neutral"
             className="text-sm text-brand-royalblue"

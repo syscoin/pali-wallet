@@ -124,7 +124,7 @@ const EditAccountView = () => {
         initialValues={initialValues}
         onFinish={onSubmit}
         autoComplete="off"
-        className="flex flex-col gap-3 items-center justify-center pb-20 text-center md:pb-0 w-full"
+        className="flex flex-col gap-3 items-center justify-center text-center w-full"
       >
         <QRCodeSVG
           value={state.address}
@@ -221,11 +221,7 @@ const EditAccountView = () => {
           </button>
         )}
 
-        <PageActionFooter
-          className={`${
-            isSmartAccount ? 'static' : 'absolute bottom-12 md:static'
-          }`}
-        >
+        <PageActionFooter>
           <Button
             variant="neutral"
             className="text-sm text-brand-royalblue"

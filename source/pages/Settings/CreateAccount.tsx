@@ -170,10 +170,7 @@ const CreateAccount = () => {
             </button>
           )}
 
-          <PageActionFooter
-            className="absolute bottom-12 md:static"
-            error={error}
-          >
+          <PageActionFooter error={error}>
             <Button
               variant="neutral"
               className="text-sm text-brand-royalblue"
