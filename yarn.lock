@@ -3088,10 +3088,10 @@
     eth-chains "^1.0.0"
     ethers "^6.17.0"
 
-"@sidhujag/sysweb3-sentry@0.1.0":
-  version "0.1.0"
-  resolved "https://registry.npmjs.org/@sidhujag/sysweb3-sentry/-/sysweb3-sentry-0.1.0.tgz#bd04d5654ace7cd8e4b90bfdba40e5e27dd2918e"
-  integrity sha512-h9ygZO2EBh5e/VJCeMxWiF8HCj3n8U9sRgdrOX6XMu5XpAitQP/dXp9A79fBAstEcRQBSnYJvViv9AjJDzrvzQ==
+"@sidhujag/sysweb3-sentry@0.1.1":
+  version "0.1.1"
+  resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-sentry/-/sysweb3-sentry-0.1.1.tgz#e2abb214db894b00369510523cc60421a43823bd"
+  integrity sha512-6mqHTT0X10HeZe9szzshNOl84WJza41uuqsH70fInuVnmq3t/CDm3g+ze4P89y1SFK/bzojiEwcEdoc+P7xYyA==
   dependencies:
     "@noble/curves" "2.4.0"
     "@noble/hashes" "2.4.0"

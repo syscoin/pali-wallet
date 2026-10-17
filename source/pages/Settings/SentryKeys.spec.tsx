@@ -1,4 +1,5 @@
 /** @jest-environment jsdom */
+import '@testing-library/jest-dom';
 import {
   act,
   fireEvent,
@@ -107,6 +108,68 @@ it('requires explicit backup acknowledgement and local reauthentication for a ke
   expect(screen.queryByDisplayValue('synthetic-password')).toBeNull();
   expect(screen.queryByDisplayValue('11'.repeat(32))).toBeNull();
 });
+it('requires a fresh backup acknowledgement for each consecutive import', async () => {
+  render(<SentryKeys />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Import Sentry key' })
+  );
+  fireEvent.change(screen.getByLabelText('Key label'), {
+    target: { value: 'First operator' },
+  });
+  fireEvent.change(screen.getByLabelText('Sentry private key (hex)'), {
+    target: { value: '11'.repeat(32) },
+  });
+  fireEvent.change(screen.getByLabelText('Wallet password'), {
+    target: { value: 'synthetic-password' },
+  });
+  fireEvent.click(screen.getByRole('checkbox'));
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.import' }));
+  await screen.findByText('Operator key imported securely.');
+
+  fireEvent.click(screen.getByRole('button', { name: 'Import Sentry key' }));
+  expect((screen.getByRole('checkbox') as HTMLInputElement).checked).toBe(
+    false
+  );
+  fireEvent.change(screen.getByLabelText('Key label'), {
+    target: { value: 'Second operator' },
+  });
+  fireEvent.change(screen.getByLabelText('Sentry private key (hex)'), {
+    target: { value: '22'.repeat(32) },
+  });
+  fireEvent.change(screen.getByLabelText('Wallet password'), {
+    target: { value: 'synthetic-password' },
+  });
+  expect(screen.getByRole('button', { name: 'buttons.import' })).toBeDisabled();
+  expect(
+    mockEmitter.mock.calls.filter(([method]) => method[1] === 'importSentryKey')
+  ).toHaveLength(1);
+  fireEvent.click(screen.getByRole('checkbox'));
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.import' }));
+  await waitFor(() =>
+    expect(
+      mockEmitter.mock.calls.filter(
+        ([method]) => method[1] === 'importSentryKey'
+      )
+    ).toHaveLength(2)
+  );
+});
+
+it('invalidates backup acknowledgement when the private key changes', async () => {
+  render(<SentryKeys />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Import Sentry key' })
+  );
+  fireEvent.change(screen.getByLabelText('Sentry private key (hex)'), {
+    target: { value: '11'.repeat(32) },
+  });
+  fireEvent.click(screen.getByRole('checkbox'));
+  fireEvent.change(screen.getByLabelText('Sentry private key (hex)'), {
+    target: { value: '22'.repeat(32) },
+  });
+  expect((screen.getByRole('checkbox') as HTMLInputElement).checked).toBe(
+    false
+  );
+});
 it('does not leak or reuse secret draft when wallet account/network scope changes', async () => {
   const view = render(<SentryKeys />);
   fireEvent.click(
@@ -155,6 +218,7 @@ it('keeps removal local and shows that registration/collateral are not removed',
       {
         id: 'key-1',
         label: 'Node one',
+        role: 'operator',
         scheme: 'bls-basic',
         publicKey: 'aa'.repeat(48),
       },
@@ -177,6 +241,50 @@ it('keeps removal local and shows that registration/collateral are not removed',
     expect(mockEmitter).toHaveBeenCalledWith(
       ['wallet', 'removeSentryKey'],
       [{ id: 'key-1', password: 'synthetic-password' }],
+      30000,
+      false
+    )
+  );
+});
+it('identifies the exact selected key beside the final removal password', async () => {
+  const firstPublicKey = 'aa'.repeat(48);
+  const secondPublicKey = '02' + 'bb'.repeat(32);
+  mockEmitter.mockResolvedValue({
+    ...settings,
+    keys: [
+      {
+        id: 'key-one',
+        label: 'Other operator',
+        role: 'operator',
+        scheme: 'bls-basic',
+        publicKey: firstPublicKey,
+      },
+      {
+        id: 'key-two',
+        label: 'Voting key to remove',
+        role: 'voting',
+        scheme: 'secp256k1',
+        publicKey: secondPublicKey,
+      },
+    ],
+  });
+  render(<SentryKeys />);
+  fireEvent.click(
+    (await screen.findAllByRole('button', { name: 'Remove local key' }))[1]
+  );
+  expect(screen.getByText('Voting key to remove')).toBeVisible();
+  expect(screen.getByText(/secp256k1.*Voting/)).toBeVisible();
+  expect(screen.getByText(secondPublicKey)).toBeVisible();
+  expect(screen.queryByText(firstPublicKey)).toBeNull();
+  expect(screen.getByLabelText('Wallet password')).toBeVisible();
+  fireEvent.change(screen.getByLabelText('Wallet password'), {
+    target: { value: 'synthetic-password' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.remove' }));
+  await waitFor(() =>
+    expect(mockEmitter).toHaveBeenCalledWith(
+      ['wallet', 'removeSentryKey'],
+      [{ id: 'key-two', password: 'synthetic-password' }],
       30000,
       false
     )
@@ -226,11 +334,20 @@ it('retires a pending old-account import without disabling the new account form'
   expect(
     (screen.getByLabelText('Wallet password') as HTMLInputElement).disabled
   ).toBe(false);
+  fireEvent.change(screen.getByLabelText('Sentry private key (hex)'), {
+    target: { value: '22'.repeat(32) },
+  });
+  fireEvent.click(screen.getByRole('checkbox'));
   await act(async () => finishOld());
   expect(screen.queryByText('Operator key imported securely.')).toBeNull();
   expect(
     (screen.getByLabelText('Wallet password') as HTMLInputElement).value
   ).toBe('');
+  expect((screen.getByRole('checkbox') as HTMLInputElement).checked).toBe(true);
+  expect(
+    (screen.getByLabelText('Sentry private key (hex)') as HTMLInputElement)
+      .value
+  ).toBe('22'.repeat(32));
 });
 
 it('keeps owner and operator key schemes distinct', async () => {

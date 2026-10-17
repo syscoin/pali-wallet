@@ -60,7 +60,7 @@
     "@sidhujag/sysweb3-core": "^1.0.29",
     "@sidhujag/sysweb3-keyring": "1.0.621",
     "@sidhujag/sysweb3-network": "^1.0.109",
-    "@sidhujag/sysweb3-sentry": "0.1.0",
+    "@sidhujag/sysweb3-sentry": "0.1.1",
     "@sidhujag/sysweb3-utils": "^1.1.279",
     "@tippyjs/react": "^4.2.6",
     "@types/chrome": "^0.0.270",
