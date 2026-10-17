@@ -214,8 +214,19 @@ test('offline onboarding and preferences remain keyboard accessible with localiz
     });
     await language.focus();
     await page.keyboard.press('Enter');
-    await expect(page.getByRole('menu')).toBeFocused();
+    const languageMenu = page.getByRole('menu');
+    await expect(languageMenu).toBeFocused();
+    const activeLanguage = () =>
+      languageMenu.evaluate((menu) =>
+        document
+          .getElementById(menu.getAttribute('aria-activedescendant') || '')
+          ?.getAttribute('aria-label')
+      );
+    // Keyboard opening schedules the initial selection after menu focus. Wait
+    // for it before typeahead so it cannot replace the requested language.
+    await expect.poll(activeLanguage).toBe('English English');
     await page.keyboard.type('ger');
+    await expect.poll(activeLanguage).toBe('German Deutsch');
     await page.keyboard.press('Enter');
     await expect(language).toContainText('Deutsch');
     await expect(page.getByRole('menu')).toHaveCount(0);
