@@ -158,7 +158,8 @@ wallet hardware features are unchanged.
 ```
 
 Supported outcomes are `yes`, `no` and `abstain`, with at most 20 nodes per
-approval. The proposal hash is the governance object ID, not its inner data
+approval. Use the current Unix timestamp in seconds; the wallet enforces
+freshness. The proposal hash is the governance object ID, not its inner data
 hash. Pali fetches the proposal and registered voting identities from its
 configured service, displays the decision, and checks that state again before
 signing. Exact hashes, node identities and the trusted source remain available
