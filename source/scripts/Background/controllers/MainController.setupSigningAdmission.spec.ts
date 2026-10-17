@@ -31,6 +31,8 @@ jest.mock('state/store', () => ({
   default: { getState: () => mockState, dispatch: jest.fn() },
 }));
 
+import { webcrypto } from 'crypto';
+
 import { getController } from '..';
 import { AsyncMutex } from 'utils/asyncMutex';
 import { chromeStorage } from 'utils/storageAPI';
@@ -53,6 +55,10 @@ describe('wallet setup signing capability admission', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    Object.defineProperty(global, 'crypto', {
+      value: webcrypto,
+      configurable: true,
+    });
     mockState = {
       vault: {
         isBitcoinBased: true,
