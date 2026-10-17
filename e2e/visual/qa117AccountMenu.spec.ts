@@ -246,6 +246,9 @@ test('account dropdown supports keyboard selection and separate copy actions in 
         body: await page.screenshot({ animations: 'disabled' }),
         contentType: 'image/png',
       });
+      await page.keyboard.press('Home');
+      await expect.poll(() => isActiveMenuItem(menu, firstAccount)).toBe(true);
+      await expect.poll(() => exposed(firstAccount)).toBe(true);
       await page.keyboard.press('Escape');
       if (width !== 320) continue;
       // Copy is an independent menu action, not a click on the account row.
