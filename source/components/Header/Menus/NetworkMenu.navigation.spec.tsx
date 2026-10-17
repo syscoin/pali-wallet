@@ -58,6 +58,17 @@ jest.mock('components/Spinner/Spinner', () => ({
   default: () => null,
 }));
 
+it('hides the closed network menu from the accessibility tree', () => {
+  mockLocation = { pathname: '/home', search: '', hash: '', state: {} };
+  render(<NetworkMenu />);
+  expect(screen.queryByRole('menu')).toBeNull();
+  fireEvent.click(screen.getByRole('button'));
+  const menu = screen.getByRole('menu');
+  expect(menu).toBeTruthy();
+  fireEvent.keyDown(menu, { key: 'Escape' });
+  expect(screen.queryByRole('menu')).toBeNull();
+});
+
 it.each([
   ['networkMenu.noConnected', '/settings/networks/connected-sites'],
   ['networkMenu.trustedSites', '/settings/networks/trusted-sites'],

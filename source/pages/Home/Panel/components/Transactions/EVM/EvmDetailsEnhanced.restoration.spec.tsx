@@ -14,6 +14,10 @@ let mockState: any;
 let mockHistory: any[];
 const mockEmitter = jest.fn();
 const mockDisplay = jest.fn();
+const mockCopy = jest.fn();
+const mockCopyAlert = { info: jest.fn(), warning: jest.fn(), error: jest.fn() };
+const mockAddressCopyRisk = jest.fn();
+let mockCopyHandler: (value: string, label: string) => any;
 const mockStatusIcons = jest.fn<null, [string, boolean]>(() => null);
 const ACCOUNT = '0x1111111111111111111111111111111111111111';
 const OTHER = '0x2222222222222222222222222222222222222222';
@@ -60,8 +64,8 @@ jest.mock('state/vault/selectors', () => ({
 }));
 jest.mock('hooks/index', () => ({
   useUtils: () => ({
-    useCopyClipboard: () => [false, jest.fn()],
-    alert: { info: jest.fn(), warning: jest.fn() },
+    useCopyClipboard: () => [false, mockCopy],
+    alert: mockCopyAlert,
   }),
   useTransactionsListConfig: () => ({
     getTxType: (_tx: any, sent: boolean) => (sent ? 'Sent' : 'Received'),
@@ -79,7 +83,8 @@ jest.mock('utils/index', () => ({
 }));
 jest.mock('utils/addressPoisoning', () => ({
   getTrustedEvmRecipients: () => new Set(),
-  getEvmHistoryAddressCopyRisk: () => null,
+  getEvmHistoryAddressCopyRisk: (...args: any[]) =>
+    mockAddressCopyRisk(...args),
 }));
 jest.mock('utils/transactions', () => {
   const actual = jest.requireActual('utils/transactions');
@@ -96,15 +101,18 @@ jest.mock('components/TransactionDetails', () => ({
       {txType}|{displayInfo?.formattedValue || '-'}|{txStatus}
     </div>
   ),
-  TransactionDetailsList: ({ details }: any) => (
-    <div>
-      {details.map((item: any, index: number) => (
-        <span key={index}>
-          {item.label}:{String(item.value)}|
-        </span>
-      ))}
-    </div>
-  ),
+  TransactionDetailsList: ({ details, onCopy }: any) => {
+    mockCopyHandler = onCopy;
+    return (
+      <div>
+        {details.map((item: any, index: number) => (
+          <span key={index}>
+            {item.label}:{String(item.value)}|
+          </span>
+        ))}
+      </div>
+    );
+  },
   TransactionEventLogs: () => null,
   DecodedTransactionParams: ({ decodedData }: any) => (
     <div data-testid="decoded">{decodedData?.method || '-'}</div>
@@ -179,6 +187,8 @@ const operationLog = (
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockCopy.mockResolvedValue(undefined);
+  mockAddressCopyRisk.mockReturnValue(null);
   mockHistory = [];
   mockState = {
     refType: 'HDAccount',
@@ -201,6 +211,44 @@ beforeEach(() => {
   }));
 });
 afterEach(() => jest.restoreAllMocks());
+
+it('announces a transaction clipboard copy only after it completes and handles rejection', async () => {
+  const hash = 'clipboard-transaction';
+  mockEmitter.mockResolvedValue(fullTx(hash));
+  render(<EvmTransactionDetailsEnhanced hash={hash} />);
+  await screen.findByTestId('header');
+  const pending = deferred();
+  mockCopy.mockReturnValueOnce(pending.promise);
+  const copied = mockCopyHandler(hash, 'Hash');
+  expect(mockCopyAlert.info).not.toHaveBeenCalled();
+  await act(async () => pending.resolve(undefined));
+  await copied;
+  expect(mockCopyAlert.info).toHaveBeenCalledWith('home.hashCopied');
+  mockCopyAlert.info.mockClear();
+  const denied = Promise.reject(new Error('denied'));
+  void denied.catch(() => undefined);
+  mockCopy.mockReturnValueOnce(denied);
+  await act(async () => {
+    await mockCopyHandler(hash, 'Hash');
+  });
+  expect(mockCopyAlert.info).not.toHaveBeenCalled();
+  expect(mockCopyAlert.error).toHaveBeenCalledWith('transactions.copyFailed');
+});
+
+it('keeps the existing risky-history address copy refusal ahead of clipboard writes', async () => {
+  const hash = 'clipboard-refusal';
+  mockEmitter.mockResolvedValue(fullTx(hash));
+  render(<EvmTransactionDetailsEnhanced hash={hash} />);
+  await screen.findByTestId('header');
+  mockAddressCopyRisk.mockReturnValue({ kind: 'untrusted' });
+  await act(async () => {
+    await mockCopyHandler(OTHER, 'To');
+  });
+  expect(mockCopy).not.toHaveBeenCalled();
+  expect(mockCopyAlert.warning).toHaveBeenCalledWith(
+    'send.addressPoisoningHistoryCopyBlocked'
+  );
+});
 
 it('restores a transaction absent from Redux by matching provider hash', async () => {
   const hash = 'evm-hash-only-success';

@@ -99,8 +99,12 @@ const EditAccountView = () => {
     }
   };
 
-  const handleCopyToClipboard = () => {
-    copyText(state.address);
+  const handleCopyToClipboard = async () => {
+    try {
+      await copyText(state.address);
+    } catch {
+      alert.error(t('transactions.copyFailed'));
+    }
   };
 
   const openSmartAccountPolicy = () => {

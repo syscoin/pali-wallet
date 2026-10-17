@@ -27,6 +27,7 @@ let mockSequence = 0;
 const mockEmitter = jest.fn();
 const mockIconFetch = jest.fn();
 const mockCopy = jest.fn();
+const mockCopyAlert = { info: jest.fn(), error: jest.fn() };
 const originalFetch = global.fetch;
 
 jest.mock('react-redux', () => ({
@@ -51,7 +52,7 @@ jest.mock('hooks/index', () => ({
   ).useTransactionsListConfig,
   useUtils: () => ({
     useCopyClipboard: () => [false, mockCopy],
-    alert: { info: jest.fn() },
+    alert: mockCopyAlert,
   }),
 }));
 jest.mock('utils/navigationState', () => ({
@@ -131,6 +132,7 @@ const expectAmountIcon = async (amount: string, logo: string) => {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockCopy.mockResolvedValue(undefined);
   clearTokenIconCache();
   // Exercise the real icon/cache component without making any image request.
   // A synthetic oversized blob keeps the requested URL as the rendered src.
@@ -158,6 +160,28 @@ beforeEach(() => {
 afterEach(() => {
   clearTokenIconCache();
   global.fetch = originalFetch;
+});
+
+it('does not announce a transaction clipboard copy before completion or after refusal', async () => {
+  const transaction = rawTransaction();
+  mockEmitter.mockResolvedValue(transaction);
+  render(<SyscoinTransactionDetails hash={mockHash} tx={transaction} />);
+  const label = await screen.findByText('Txid');
+  const copyButton = within(label.parentElement!).getByRole('button');
+  const pending = deferred<void>();
+  mockCopy.mockReturnValueOnce(pending.promise);
+  fireEvent.click(copyButton);
+  expect(mockCopyAlert.info).not.toHaveBeenCalled();
+  await act(async () => pending.resolve(undefined));
+  expect(mockCopyAlert.info).toHaveBeenCalledWith('home.hashCopied');
+  mockCopyAlert.info.mockClear();
+  const denied = Promise.reject(new Error('denied'));
+  void denied.catch(() => undefined);
+  mockCopy.mockReturnValueOnce(denied);
+  fireEvent.click(copyButton);
+  await act(async () => undefined);
+  expect(mockCopyAlert.info).not.toHaveBeenCalled();
+  expect(mockCopyAlert.error).toHaveBeenCalledWith('transactions.copyFailed');
 });
 
 it.each([

@@ -86,6 +86,7 @@ jest.mock('antd', () => {
 beforeEach(() => {
   jest.clearAllMocks();
   mockState.vaultGlobal.advancedSettings = { refresh: false, autolock: 5 };
+  mockState.price.fiat = { asset: 'usd' };
   mockEmitter.mockResolvedValue(undefined);
   jest.mocked(changeLanguage).mockResolvedValue(undefined);
   jest.mocked(chromeStorage.getItem).mockResolvedValue('en');
@@ -228,6 +229,71 @@ it('supports keyboard currency search, Enter selection and Escape without select
   expect(screen.queryByRole('textbox')).toBeNull();
   expect(trigger.textContent).toContain('EUR');
   expect(document.activeElement).toBe(trigger);
+});
+
+it('preserves a currency draft when a different saved currency arrives', async () => {
+  const user = userEvent.setup();
+  const view = render(<Currency />);
+  const trigger = screen.getByRole('button', {
+    name: 'settings.setYourPreferred',
+  });
+  await user.click(trigger);
+  await user.type(
+    screen.getByRole('textbox', { name: 'settings.searchCurrencies' }),
+    'eur'
+  );
+  await user.click(screen.getByRole('button', { name: /EUR/ }));
+  mockState.price.fiat = { asset: 'gbp' };
+  view.rerender(<Currency />);
+  expect(trigger.textContent).toContain('EUR');
+  const save = screen.getByRole('button', { name: 'buttons.save' });
+  expect(save.hasAttribute('disabled')).toBe(false);
+  await user.click(save);
+  expect(mockEmitter).toHaveBeenCalledWith(['wallet', 'setFiat'], ['eur']);
+});
+
+it('follows saved currency updates until the user edits the draft', () => {
+  const view = render(<Currency />);
+  mockState.price.fiat = { asset: 'cad' };
+  view.rerender(<Currency />);
+  expect(
+    screen.getByRole('button', { name: 'settings.setYourPreferred' })
+      .textContent
+  ).toContain('CAD');
+  expect(
+    screen
+      .getByRole('button', { name: 'buttons.save' })
+      .hasAttribute('disabled')
+  ).toBe(true);
+});
+
+it('keeps the submitted currency selected while its save is waiting on an older price update', async () => {
+  let finishSaving!: () => void;
+  mockEmitter.mockImplementation(
+    () =>
+      new Promise<void>((resolve) => {
+        finishSaving = resolve;
+      })
+  );
+  const user = userEvent.setup();
+  const view = render(<Currency />);
+  const trigger = screen.getByRole('button', {
+    name: 'settings.setYourPreferred',
+  });
+  await user.click(trigger);
+  await user.type(
+    screen.getByRole('textbox', { name: 'settings.searchCurrencies' }),
+    'eur'
+  );
+  await user.click(screen.getByRole('button', { name: /EUR/ }));
+  await user.click(screen.getByRole('button', { name: 'buttons.save' }));
+  mockState.price.fiat = { asset: 'gbp' };
+  view.rerender(<Currency />);
+  expect(trigger.textContent).toContain('EUR');
+  await act(async () => finishSaving());
+  await screen.findByRole('dialog');
+  expect(trigger.textContent).toContain('EUR');
+  expect(mockEmitter).toHaveBeenCalledTimes(1);
 });
 
 it('preserves language typeahead and Enter selection after removing closed options', async () => {

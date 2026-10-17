@@ -37,6 +37,7 @@ export const AccountMenu: React.FC = () => {
   const setActiveAccount = async (id: number, type: KeyringAccountType) => {
     try {
       await controllerEmitter(['wallet', 'setAccount'], [Number(id), type]);
+      return true;
     } catch (error) {
       // Check if this is a wallet locked error and handle redirect
       const wasHandled = handleWalletLockedError(error);
@@ -46,6 +47,7 @@ export const AccountMenu: React.FC = () => {
         console.error('Error switching account:', error);
         alert.error(t('accountMenu.switchAccountError'));
       }
+      return false;
     }
   };
 

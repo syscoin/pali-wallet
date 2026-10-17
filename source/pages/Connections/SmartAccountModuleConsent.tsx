@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
@@ -79,11 +85,9 @@ export const SmartAccountModuleConsent = () => {
       : 'wallet_requestSmartAccountModuleUninstall');
   const request = queryData.module || {};
 
-  const [metadata, setMetadata] = useState<ISmartAccountMetadata | null>(
-    account?.smartAccount || null
-  );
-  const [preflight, setPreflight] =
+  const [preflightResult, setPreflight] =
     useState<CustomValidatorPreflightResult | null>(null);
+  const [checkedScope, setCheckedScope] = useState<string | null>(null);
   const [acknowledged, setAcknowledged] = useState(false);
   const [loading, setLoading] = useState(false);
   const [checking, setChecking] = useState(false);
@@ -96,6 +100,34 @@ export const SmartAccountModuleConsent = () => {
   }, [request.address]);
   const initData = request.initData || '0x';
   const validInitData = isHexString(initData);
+  // Review results and acknowledgment belong to one account, endpoint and
+  // exact request. In particular, an unsuccessful new check must never reuse
+  // a previous request's successful preflight.
+  const scopeKey = JSON.stringify([
+    account?.id,
+    account?.address,
+    account?.smartAccount?.chainId,
+    activeNetwork.kind,
+    activeNetwork.chainId,
+    activeNetwork.url,
+    host,
+    eventName,
+    action,
+    moduleAddress,
+    initData,
+    request.name,
+  ]);
+  const [metadataState, setMetadataState] = useState<{
+    scopeKey: string;
+    value: ISmartAccountMetadata | null;
+  }>({ scopeKey, value: account?.smartAccount || null });
+  const metadata =
+    metadataState.scopeKey === scopeKey
+      ? metadataState.value
+      : account?.smartAccount || null;
+  const preflight = checkedScope === scopeKey ? preflightResult : null;
+  const approvalInFlight = useRef(false);
+  const submissionConfirmed = useRef(false);
 
   const isSmartAccount = Boolean(account?.isSmartAccount);
   const smartAccountMatchesNetwork = Boolean(
@@ -110,9 +142,9 @@ export const SmartAccountModuleConsent = () => {
       [account.id],
       300000
     )) as ISmartAccountMetadata;
-    setMetadata(hydrated);
+    setMetadataState({ scopeKey, value: hydrated });
     return hydrated;
-  }, [account?.id, account?.isSmartAccount, controllerEmitter]);
+  }, [account?.id, account?.isSmartAccount, controllerEmitter, scopeKey]);
 
   const installedModules = metadata?.installedModules || [];
   const targetModule = installedModules.find((module) =>
@@ -166,6 +198,12 @@ export const SmartAccountModuleConsent = () => {
   useEffect(() => {
     let cancelled = false;
     const run = async () => {
+      setCheckedScope(null);
+      setPreflight(null);
+      setAcknowledged(false);
+      setError(null);
+      setMetadataState({ scopeKey, value: account?.smartAccount || null });
+      setChecking(false);
       if (!smartAccountMatchesNetwork || !moduleAddress) return;
       setChecking(true);
       try {
@@ -175,7 +213,7 @@ export const SmartAccountModuleConsent = () => {
             [account.id],
             300000
           )) as ISmartAccountMetadata;
-          if (!cancelled) setMetadata(hydrated);
+          if (!cancelled) setMetadataState({ scopeKey, value: hydrated });
         }
         if (action === 'install') {
           const result = (await controllerEmitter(
@@ -185,6 +223,7 @@ export const SmartAccountModuleConsent = () => {
           )) as CustomValidatorPreflightResult;
           if (!cancelled) setPreflight(result);
         }
+        if (!cancelled) setCheckedScope(scopeKey);
       } catch (err: any) {
         if (!cancelled) {
           setError(
@@ -204,16 +243,7 @@ export const SmartAccountModuleConsent = () => {
     return () => {
       cancelled = true;
     };
-  }, [
-    account?.id,
-    account?.smartAccount?.chainId,
-    action,
-    activeNetwork.chainId,
-    controllerEmitter,
-    moduleAddress,
-    smartAccountMatchesNetwork,
-    t,
-  ]);
+  }, [controllerEmitter, scopeKey, t]);
 
   const preflightFailureMessage = useMemo(() => {
     if (!preflight || preflight.ok) return null;
@@ -227,6 +257,8 @@ export const SmartAccountModuleConsent = () => {
 
   const canConfirm =
     !staticError &&
+    checkedScope === scopeKey &&
+    !submissionConfirmed.current &&
     !checking &&
     !loading &&
     (action === 'uninstall'
@@ -234,7 +266,15 @@ export const SmartAccountModuleConsent = () => {
       : Boolean(preflight?.ok) && acknowledged);
 
   const approve = useCallback(async () => {
-    if (!account?.address || !moduleAddress || !metadata) return;
+    if (
+      !canConfirm ||
+      approvalInFlight.current ||
+      !account?.address ||
+      !moduleAddress ||
+      !metadata
+    )
+      return;
+    approvalInFlight.current = true;
     setLoading(true);
     setError(null);
     try {
@@ -298,6 +338,7 @@ export const SmartAccountModuleConsent = () => {
         useCachedMetadata: true,
         waitForConfirmation: true,
       });
+      submissionConfirmed.current = true;
 
       // Keep the durable custom-module records in sync with on-chain state.
       if (action === 'install') {
@@ -339,15 +380,22 @@ export const SmartAccountModuleConsent = () => {
       const wasHandled = handleWalletLockedError(err);
       if (!wasHandled) {
         setError(
-          getSmartAccountActionErrorMessage(
-            err,
-            t('send.cantCompleteTxs'),
-            t('send.insufficientFundsForGas'),
-            t('settings.slhDsaLocalSignerMissing')
-          )
+          submissionConfirmed.current
+            ? t(
+                action === 'install'
+                  ? 'smartAccountHub.moduleMetadataSaveFailed'
+                  : 'smartAccountHub.moduleMetadataRemoveFailed'
+              )
+            : getSmartAccountActionErrorMessage(
+                err,
+                t('send.cantCompleteTxs'),
+                t('send.insufficientFundsForGas'),
+                t('settings.slhDsaLocalSignerMissing')
+              )
         );
       }
     } finally {
+      approvalInFlight.current = false;
       setLoading(false);
     }
   }, [
@@ -355,6 +403,7 @@ export const SmartAccountModuleConsent = () => {
     account?.id,
     accounts,
     action,
+    canConfirm,
     activeValidator?.address,
     activeValidator?.data,
     activeNetwork.chainId,
@@ -377,21 +426,23 @@ export const SmartAccountModuleConsent = () => {
   ]);
 
   return (
-    <div className="flex h-full w-full flex-col">
-      <div className="remove-scrollbar flex-1 overflow-y-auto">
+    <div className="flex h-full w-full min-w-0 flex-col">
+      <div className="remove-scrollbar min-h-0 flex-1 overflow-y-auto">
         <div className="border-b border-brand-gray300 px-6 py-6 text-center">
           <h3 className="mb-2 text-xs uppercase tracking-wider text-brand-graylight">
             {action === 'install'
               ? t('smartAccountHub.dappInstallTitle')
               : t('smartAccountHub.dappUninstallTitle')}
           </h3>
-          <div className="flex items-center justify-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-brand-royalblue to-brand-deepPurple">
+          <div className="flex min-w-0 items-center justify-center gap-2">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-royalblue to-brand-deepPurple">
               <Icon name="link" className="text-white" size={16} />
             </div>
-            <p className="text-lg font-medium text-brand-white">{host}</p>
+            <p className="min-w-0 break-words text-lg font-medium text-brand-white [overflow-wrap:anywhere]">
+              {host}
+            </p>
           </div>
-          <p className="mt-3 text-xs text-brand-graylight">
+          <p className="mt-3 break-words text-xs text-brand-graylight [overflow-wrap:anywhere]">
             {action === 'install'
               ? t('smartAccountHub.dappInstallPrompt', { host })
               : t('smartAccountHub.dappUninstallPrompt', { host })}
@@ -401,7 +452,9 @@ export const SmartAccountModuleConsent = () => {
         <div className="space-y-3 px-6 py-6">
           <div className="space-y-2 rounded-lg bg-alpha-whiteAlpha100 p-4 text-xs text-brand-graylight">
             {request.name && (
-              <p className="font-medium text-white">{request.name}</p>
+              <p className="break-words font-medium text-white [overflow-wrap:anywhere]">
+                {request.name}
+              </p>
             )}
             <div className="flex items-center justify-between gap-2">
               <span>{t('smartAccountHub.moduleAddress')}</span>

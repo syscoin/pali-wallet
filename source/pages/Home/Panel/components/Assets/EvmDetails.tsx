@@ -1,5 +1,5 @@
 import getSymbolFromCurrency from 'currency-symbol-map';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
@@ -11,7 +11,9 @@ import {
 import { Button, Icon } from 'components/index';
 import { TokenIcon } from 'components/TokenIcon';
 import { useAdjustedExplorer, useUtils } from 'hooks/index';
+import { useContextualState } from 'hooks/useContextualState';
 import { useController } from 'hooks/useController';
+import { getHomeBrowsingScope } from 'pages/Home/useHomeBrowsingState';
 import { RootState } from 'state/store';
 import {
   ellipsis,
@@ -43,16 +45,8 @@ export const EvmAssetDetails = ({
   const accountAssetData = accountAssets?.[activeAccount.type]?.[
     activeAccount.id
   ] || { ethereum: [], syscoin: [], nfts: [] };
-  const { useCopyClipboard, alert, navigate } = useUtils();
+  const { alert, navigate } = useUtils();
   const { t } = useTranslation();
-
-  const [isCopied, copy] = useCopyClipboard();
-  const [isLoadingEnhancedData, setIsLoadingEnhancedData] = useState(false);
-  const [enhancedData, setEnhancedData] = useState<any>(null);
-  const [hasFetchedData, setHasFetchedData] = useState(false);
-
-  // Use a ref to track if a request is in progress to prevent duplicates
-  const fetchingRef = React.useRef(false);
 
   // Get the full account object
   const fullAccount = accounts?.[activeAccount.type]?.[activeAccount.id];
@@ -61,6 +55,18 @@ export const EvmAssetDetails = ({
   const currentAsset = navigationState?.isImportPreview
     ? navigationState
     : accountAssetData.ethereum.find((asset) => asset.id === id);
+  const marketDataScope = `${getHomeBrowsingScope(
+    { ...fullAccount, ...activeAccount },
+    activeNetwork
+  )}:${id}:${currentAsset?.contractAddress}`;
+  const [marketState, setMarketState] = useContextualState<{
+    data: any;
+    isLoading: boolean;
+  }>(marketDataScope, { data: null, isLoading: false });
+  const { data: enhancedData, isLoading: isLoadingEnhancedData } = marketState;
+  const copyContextRef = useRef({ active: true, scope: marketDataScope });
+  copyContextRef.current.scope = marketDataScope;
+  const copySequenceRef = useRef(0);
 
   // All hooks must be called before any early returns
   const adjustedExplorer = useAdjustedExplorer(activeNetwork.explorer);
@@ -69,74 +75,58 @@ export const EvmAssetDetails = ({
   const is1155 = currentAsset?.tokenStandard === 'ERC-1155';
 
   useEffect(() => {
-    if (!isCopied) return;
-
-    alert.info(t('home.contractCopied'));
-  }, [isCopied, alert, t]);
-
-  // Check if we have enhanced data stored, if not try to fetch it
-  useEffect(() => {
-    // Reset fetch state when asset changes
-    if (currentAsset?.contractAddress !== id) {
-      setHasFetchedData(false);
-      setEnhancedData(null);
-      fetchingRef.current = false; // Reset the ref when asset changes
-    }
-  }, [currentAsset?.contractAddress, id]);
-
-  useEffect(() => {
-    const loadEnhancedData = async () => {
-      // Skip if already fetched
-      if (!currentAsset || hasFetchedData) {
-        return;
-      }
-
-      // Check if we already have market data
-      const hasMarketData =
-        currentAsset.market_data?.current_price?.usd !== undefined ||
-        currentAsset.market_data?.market_cap?.usd !== undefined;
-
-      if (hasMarketData) {
-        setEnhancedData(currentAsset);
-        setHasFetchedData(true);
-        return;
-      }
-
-      // Fetch market data if we don't have it
-      if (currentAsset.contractAddress && !fetchingRef.current) {
-        // Set the ref to prevent duplicate calls
-        fetchingRef.current = true;
-        setIsLoadingEnhancedData(true);
-        setHasFetchedData(true);
-
-        try {
-          const marketData = (await controllerEmitter(
-            ['wallet', 'getOnlyMarketData'],
-            [currentAsset.contractAddress]
-          )) as any;
-
-          if (marketData) {
-            setEnhancedData(marketData);
-          }
-        } catch (error) {
-          console.error('Error fetching market data:', error);
-          // Reset on error so it can be retried
-          setHasFetchedData(false);
-        } finally {
-          setIsLoadingEnhancedData(false);
-          // Reset the ref after the request completes
-          fetchingRef.current = false;
-        }
-      }
+    copyContextRef.current.active = true;
+    return () => {
+      copyContextRef.current.active = false;
+      copySequenceRef.current += 1;
     };
+  }, []);
 
-    loadEnhancedData();
-  }, [
-    currentAsset?.contractAddress,
-    is1155,
-    navigationState?.isImportPreview,
-    fullAccount?.address,
-  ]);
+  const copyContract = async () => {
+    const scope = marketDataScope;
+    const sequence = ++copySequenceRef.current;
+    const isCurrent = () =>
+      copyContextRef.current.active &&
+      copyContextRef.current.scope === scope &&
+      copySequenceRef.current === sequence;
+    try {
+      await navigator.clipboard.writeText(currentAsset.contractAddress);
+      if (isCurrent()) alert.info(t('home.contractCopied'));
+    } catch {
+      if (isCurrent()) alert.error(t('transactions.copyFailed'));
+    }
+  };
+
+  // A read belongs to this asset/account/network, never the next details page.
+  useEffect(() => {
+    let current = true;
+    if (!currentAsset) return;
+    const hasMarketData =
+      currentAsset.market_data?.current_price?.usd !== undefined ||
+      currentAsset.market_data?.market_cap?.usd !== undefined;
+    if (hasMarketData) {
+      setMarketState({ data: currentAsset, isLoading: false });
+      return;
+    }
+    if (!currentAsset.contractAddress) return;
+    setMarketState({ data: null, isLoading: true });
+    void (async () => {
+      try {
+        const marketData = await controllerEmitter(
+          ['wallet', 'getOnlyMarketData'],
+          [currentAsset.contractAddress]
+        );
+        if (current)
+          setMarketState({ data: marketData || null, isLoading: false });
+      } catch (error) {
+        console.error('Error fetching market data:', error);
+        if (current) setMarketState({ data: null, isLoading: false });
+      }
+    })();
+    return () => {
+      current = false;
+    };
+  }, [marketDataScope, currentAsset?.market_data]);
 
   // If still no current asset, return null (after all hooks have been called)
   if (!currentAsset) {
@@ -208,7 +198,9 @@ export const EvmAssetDetails = ({
                   6
                 )}
               </span>
-              {tokenData.market_data?.price_change_percentage_24h !== null && (
+              {Number.isFinite(
+                tokenData.market_data?.price_change_percentage_24h
+              ) && (
                 <span
                   className={`text-sm ${
                     tokenData.market_data.price_change_percentage_24h >= 0
@@ -615,12 +607,14 @@ export const EvmAssetDetails = ({
                     {ellipsis(currentAsset.contractAddress)}
                   </span>
 
-                  <CopyIcon
-                    size={15}
-                    className="hover:text-brand-deepPink100 cursor-pointer"
-                    color="text-brand-white"
-                    onClick={() => copy(currentAsset.contractAddress ?? '')}
-                  />
+                  <button
+                    type="button"
+                    aria-label={t('send.copyContractAddress')}
+                    className="inline-flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg text-brand-white hover:text-brand-deepPink100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue"
+                    onClick={() => void copyContract()}
+                  >
+                    <CopyIcon size={15} />
+                  </button>
                 </div>
               </li>
             </div>
@@ -641,12 +635,14 @@ export const EvmAssetDetails = ({
                     {ellipsis(currentAsset.contractAddress)}
                   </span>
 
-                  <CopyIcon
-                    size={15}
-                    className="hover:text-brand-deepPink100 cursor-pointer"
-                    color="text-brand-white"
-                    onClick={() => copy(currentAsset.contractAddress ?? '')}
-                  />
+                  <button
+                    type="button"
+                    aria-label={t('send.copyContractAddress')}
+                    className="inline-flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg text-brand-white hover:text-brand-deepPink100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue"
+                    onClick={() => void copyContract()}
+                  >
+                    <CopyIcon size={15} />
+                  </button>
                 </div>
               </li>
             </div>

@@ -127,8 +127,9 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
           )}
           <Menu.Button
             as="button"
+            aria-label={t('generalMenu.generalOptions')}
             disabled={disabled}
-            className={`mx-1.5 ${
+            className={`mx-1.5 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue ${
               disabled ? 'opacity-50 cursor-not-allowed' : ''
             }`}
           >
@@ -153,13 +154,13 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
           {!disabled && (
             <Menu.Items
               as="div"
-              className={`absolute overflow-x-hidden z-50 top-6 right-[-16px] w-screen h-screen text-center text-brand-white font-poppins bg-brand-blue600 rounded-2xl focus:outline-none shadow-2xl ring-1 ring-black ring-opacity-5 
+              className={`fixed overflow-x-hidden z-50 inset-x-0 top-8 bottom-0 w-full text-center text-brand-white font-poppins bg-brand-blue600 rounded-2xl focus:outline-none shadow-2xl ring-1 ring-black ring-opacity-5
               transform transition-all duration-100 ease-out ${
                 open
                   ? 'opacity-100 scale-100 pointer-events-auto'
                   : 'opacity-0 scale-95 pointer-events-none'
               }`}
-              static
+              unmount={false}
             >
               <div className="remove-scrollbar h-full overflow-y-auto overscroll-contain pb-24">
                 {open && <AccountMenu />}

@@ -2110,9 +2110,13 @@ const SmartAccountPolicy = () => {
   const guardianPolicyUpdateConfirmDescription = hasPendingGuardianRecovery
     ? t('settings.smartAccountGuardianRecoveryUpdatePendingWarning')
     : t('settings.smartAccountGuardianRecoveryPolicyUpdateConfirmDescription');
-  const copyAddress = (address: string) => {
-    copy(address);
-    alert.info(t('home.addressCopied'));
+  const copyAddress = async (address: string) => {
+    try {
+      await copy(address);
+      alert.info(t('home.addressCopied'));
+    } catch {
+      alert.error(t('transactions.copyFailed'));
+    }
   };
 
   if (!isEntryMetadataReady) {

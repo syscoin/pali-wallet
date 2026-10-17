@@ -224,9 +224,13 @@ export const ChangeConnectedAccount = () => {
                       </Tooltip>
                       <div className="inline-flex flex-shrink-0 items-center">
                         <button
-                          onClick={() => {
-                            copy(connectedAccount.address);
-                            alert.info(t('home.addressCopied'));
+                          onClick={async () => {
+                            try {
+                              await copy(connectedAccount.address);
+                              alert.info(t('home.addressCopied'));
+                            } catch {
+                              alert.error(t('transactions.copyFailed'));
+                            }
                           }}
                           className="hover:text-brand-royalblue transition-colors duration-200"
                         >
@@ -285,9 +289,13 @@ export const ChangeConnectedAccount = () => {
                       </Tooltip>
                       <div className="inline-flex flex-shrink-0 items-center">
                         <button
-                          onClick={() => {
-                            copy(activeAccount?.address);
-                            alert.info(t('home.addressCopied'));
+                          onClick={async () => {
+                            try {
+                              await copy(activeAccount?.address);
+                              alert.info(t('home.addressCopied'));
+                            } catch {
+                              alert.error(t('transactions.copyFailed'));
+                            }
                           }}
                           className="hover:text-brand-royalblue transition-colors duration-200"
                         >
