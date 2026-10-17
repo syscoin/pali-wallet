@@ -422,6 +422,7 @@ const SmartAccountHub = () => {
               expectedContext: scope.expectedContext,
               onPrepared: () => assertCurrentScope(scope),
               onBeforeSubmit: async () => assertCurrentScope(scope),
+              trackLocalSubmission: true,
             }
           : {}),
         skipRapidPolling: true,
@@ -1069,7 +1070,7 @@ const SmartAccountHub = () => {
   }
 
   return (
-    <div className="flex flex-col gap-4 pb-8 text-brand-white">
+    <div className="flex w-full min-w-0 flex-col gap-4 pb-8 text-brand-white">
       <SmartAccountEntry pickerOnly />
       {/* Identity */}
       <div className="rounded-card bg-bkg-2 p-4 flex flex-col gap-1 text-left">
@@ -1150,8 +1151,8 @@ const SmartAccountHub = () => {
                 key={`${module.id}:${module.address}`}
                 className="rounded-card bg-bkg-2 p-3 flex items-center justify-between"
               >
-                <div className="flex flex-col text-left">
-                  <span className="text-sm flex items-center gap-2">
+                <div className="flex min-w-0 flex-1 flex-col break-words text-left">
+                  <span className="text-sm flex flex-wrap items-center gap-2">
                     {moduleDisplayName(module, t)}
                     {module.id === 'custom' && (
                       <span className="text-[10px] px-2 py-0.5 rounded-pill bg-warning-error bg-opacity-30 text-warning-error">
@@ -1220,7 +1221,7 @@ const SmartAccountHub = () => {
                   key={module.id}
                   className="rounded-card bg-bkg-2 p-3 flex items-center justify-between"
                 >
-                  <div className="flex flex-col text-left">
+                  <div className="flex min-w-0 flex-1 flex-col break-words text-left">
                     <span className="text-sm">{module.displayName}</span>
                     <span className="text-xs text-brand-gray200">
                       {module.capability === 'p256-precompile'
@@ -1248,7 +1249,7 @@ const SmartAccountHub = () => {
 
           {/* Composite builder */}
           <li className="rounded-card bg-bkg-2 p-3 flex items-center justify-between">
-            <div className="flex flex-col text-left">
+            <div className="flex min-w-0 flex-1 flex-col break-words text-left">
               <span className="text-sm">
                 {t('settings.compositeAuthenticator')}
               </span>
@@ -1274,7 +1275,7 @@ const SmartAccountHub = () => {
 
           {/* Bring your own validator */}
           <li className="rounded-card border border-dashed border-brand-whiteAlpaBlue p-3 flex items-center justify-between">
-            <div className="flex flex-col text-left">
+            <div className="flex min-w-0 flex-1 flex-col break-words text-left">
               <span className="text-sm">
                 {t('smartAccountHub.customModule')}
               </span>

@@ -93,6 +93,13 @@
         opacity: 1;
       }
 
+      @media (max-width: 399px) {
+        #external-root .min-w-popup {
+          min-width: 0;
+          width: 100%;
+        }
+      }
+
       /* Short approval windows must not center a 620px layout beyond the
        * viewport. Keep the normal popup geometry at 620px and above. */
       @media (max-height: 619px) {

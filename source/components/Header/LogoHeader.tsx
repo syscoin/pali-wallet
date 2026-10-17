@@ -8,7 +8,7 @@ export const LogoHeader: React.FC = () => {
   const { navigate } = useUtils();
 
   return (
-    <div className="relative">
+    <div className="relative w-full max-w-[25rem]">
       <img
         src={favicon128}
         className="max-w-40 mt-4 mx-auto w-40 h-40"
@@ -16,7 +16,7 @@ export const LogoHeader: React.FC = () => {
       />
 
       <IconButton
-        className="absolute -right-24 top-0"
+        className="absolute right-6 top-0"
         onClick={() => navigate('/', { replace: true })}
       >
         <Icon name="home" className="text-brand-royalblue opacity-60" />

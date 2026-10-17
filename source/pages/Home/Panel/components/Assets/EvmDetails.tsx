@@ -514,9 +514,9 @@ export const EvmAssetDetails = ({
                 ></div>
               </div>
             )}
-            <div className="flex flex-col items-center justify-center gap-y-0.5">
-              <div className="flex items-center space-x-2">
-                <span className="text-xs font-light text-brand-gray200">
+            <div className="flex min-w-0 w-full flex-col items-center justify-center gap-y-0.5">
+              <div className="flex max-w-full flex-wrap items-center justify-center gap-2">
+                <span className="min-w-0 break-all text-xs font-light text-brand-gray200">
                   {currentAsset.tokenSymbol || currentAsset.symbol}
                 </span>
                 {(isNft || tokenStandard !== 'ERC-20') && (
@@ -556,7 +556,7 @@ export const EvmAssetDetails = ({
                   name.length > 0; // Name has actual content
 
                 return isSignificantlyDifferent ? (
-                  <span className="font-normal text-base text-brand-white">
+                  <span className="max-w-full break-words text-center font-normal text-base text-brand-white">
                     {currentName} ({activeNetwork.label})
                   </span>
                 ) : null;

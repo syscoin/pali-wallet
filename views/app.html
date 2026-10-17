@@ -78,6 +78,16 @@
         opacity: 1;
       }
 
+      /* A standalone window may be narrower than the toolbar's intrinsic
+       * 400px width. Do not feed a viewport width back into toolbar sizing. */
+      @media (max-width: 399px) {
+        html[data-pali-view='standalone'] #app-root,
+        html[data-pali-view='standalone'] #app-root .min-w-popup {
+          min-width: 0;
+          width: 100%;
+        }
+      }
+
       /* Only externally sized views may follow the viewport. A toolbar popup
        * gets its viewport from this document's intrinsic size: using 100dvh
        * there feeds its initially tiny height back into Chrome's sizing. */

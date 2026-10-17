@@ -665,12 +665,12 @@ export const ImportToken: React.FC = () => {
   ]);
 
   return (
-    <div className="flex flex-col h-full bg-bkg-3 text-brand-white font-poppins">
+    <div className="flex min-w-0 w-full flex-col h-full bg-bkg-3 text-brand-white font-poppins">
       {/* Tab Navigation */}
       {activeNetwork.apiUrl && (
-        <div className="h-10 relative flex items-end justify-center w-full bg-bkg-1 -mt-2">
+        <div className="min-h-10 shrink-0 relative flex items-stretch justify-center w-full bg-bkg-1 -mt-2">
           <button
-            className={`w-[12.5rem] h-full px-4 font-medium text-base transition-all duration-300 ${
+            className={`w-1/2 min-w-0 min-h-10 px-2 py-1 break-words font-medium text-base leading-5 transition-all duration-300 ${
               activeTab === 'owned'
                 ? 'bg-bkg-3 text-brand-white rounded-tr-[2rem]'
                 : 'bg-bkg-1 text-brand-gray200 hover:text-brand-white'
@@ -682,7 +682,7 @@ export const ImportToken: React.FC = () => {
             {t('tokens.yourTokens')}
           </button>
           <button
-            className={`w-[12.5rem] h-full px-4 font-medium text-base transition-all duration-300 ${
+            className={`w-1/2 min-w-0 min-h-10 px-2 py-1 break-words font-medium text-base leading-5 transition-all duration-300 ${
               activeTab === 'custom'
                 ? 'bg-bkg-3 text-brand-white rounded-tl-[2rem]'
                 : 'bg-bkg-1 text-brand-gray200 hover:text-brand-white'

@@ -69,18 +69,15 @@ async function geometry(locator: Locator) {
 }
 
 async function wheelReveal(page: Page, locator: Locator) {
-  for (let attempt = 0; attempt < 12; attempt++) {
+  for (let attempt = 0; attempt < 24; attempt++) {
     if ((await geometry(locator)).visible) return true;
     const box = await locator.boundingBox();
     const viewport = page.viewportSize()!;
     await page.mouse.move(viewport.width - 8, viewport.height / 2);
     await page.mouse.wheel(0, box && box.y < 0 ? -180 : 180);
-    await page.evaluate(
-      () =>
-        new Promise<void>((resolve) =>
-          requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
-        )
-    );
+    // Wheel dispatch returns before composited scrolling settles. Avoid
+    // sending a burst of events that is still moving when geometry is read.
+    await page.waitForTimeout(100);
   }
   return (await geometry(locator)).visible;
 }
@@ -111,14 +108,23 @@ async function observe(page: Page, locator: Locator, label: string) {
 }
 
 async function capture(page: Page, label: string) {
-  const file = path.join(E2E_CONFIG.artifactsDir, `${label}.png`);
+  const caseName = test.info().title.replace(/[^a-zA-Z0-9-]+/g, '-');
+  const file = path.join(E2E_CONFIG.artifactsDir, `${caseName}-${label}.png`);
   await page.mouse.move(0, 0);
   await page.screenshot({ path: file, animations: 'disabled' });
   await test.info().attach(label, { path: file, contentType: 'image/png' });
 }
 
-for (const height of [360, 480, 620]) {
-  test(`native and SPT Send, Confirm and Details at 400x${height}`, async () => {
+const viewports = [
+  { width: 320, height: 360 },
+  { width: 320, height: 480 },
+  { width: 400, height: 360 },
+  { width: 400, height: 480 },
+  { width: 400, height: 620 },
+];
+
+for (const { width, height } of viewports) {
+  test(`native and SPT Send, Confirm and Details at ${width}x${height}`, async () => {
     test.setTimeout(120_000);
     const previous = { ...E2E_CONFIG };
     const server = await startUtxoFixtureServer();
@@ -164,9 +170,9 @@ for (const height of [360, 480, 620]) {
     });
     let wallet: PaliWallet | undefined;
     try {
-      wallet = await PaliWallet.launch(`short-send-utxo-${height}`, {
+      wallet = await PaliWallet.launch(`short-send-utxo-${width}-${height}`, {
         offlineHttpProxy: server.url,
-        viewport: { width: 400, height },
+        viewport: { width, height },
       });
       const routes = await installSptFixtureRoutes(
         wallet.context,
@@ -319,6 +325,11 @@ for (const height of [360, 480, 620]) {
           exact: true,
         });
         await observe(page, cancel, `${asset}-${height}-cancel`);
+        const cancelBox = (await cancel.boundingBox())!;
+        const confirmBox = (await confirm.boundingBox())!;
+        expect(
+          confirmBox.x - cancelBox.x - cancelBox.width
+        ).toBeGreaterThanOrEqual(8);
         await keyboardReach(page, cancel);
         await observe(page, cancel, `${asset}-${height}-cancel-keyboard`);
         await page.keyboard.press('Enter');
@@ -382,10 +393,13 @@ for (const height of [360, 480, 620]) {
       }
       expect(routes.deniedWrites).toEqual([]);
       fs.writeFileSync(
-        path.join(E2E_CONFIG.artifactsDir, `send-short-${height}.json`),
+        path.join(
+          E2E_CONFIG.artifactsDir,
+          `send-short-${width}-${height}.json`
+        ),
         JSON.stringify(
           {
-            viewport: { width: 400, height },
+            viewport: { width, height },
             simulated: true,
             confirmed: false,
             deniedWrites: routes.deniedWrites,
@@ -402,8 +416,8 @@ for (const height of [360, 480, 620]) {
   });
 }
 
-for (const height of [360, 480, 620]) {
-  test(`EVM Send, Confirm and Details at 400x${height}`, async () => {
+for (const { width, height } of viewports) {
+  test(`EVM Send, Confirm and Details at ${width}x${height}`, async () => {
     test.setTimeout(90_000);
     const previous = { ...E2E_CONFIG };
     const server = await startUtxoFixtureServer();
@@ -439,9 +453,9 @@ for (const height of [360, 480, 620]) {
     const extraReads: string[] = [];
     const deniedWrites: string[] = [];
     try {
-      wallet = await PaliWallet.launch(`short-send-evm-${height}`, {
+      wallet = await PaliWallet.launch(`short-send-evm-${width}-${height}`, {
         offlineHttpProxy: server.url,
-        viewport: { width: 400, height },
+        viewport: { width, height },
       });
       const routes = await installIsolatedVaultRoutes(
         wallet.context,
@@ -612,10 +626,13 @@ for (const height of [360, 480, 620]) {
       expect(deniedWrites).toEqual([]);
       expect(routes.deniedWrites).toEqual([]);
       fs.writeFileSync(
-        path.join(E2E_CONFIG.artifactsDir, `send-evm-short-${height}.json`),
+        path.join(
+          E2E_CONFIG.artifactsDir,
+          `send-evm-short-${width}-${height}.json`
+        ),
         JSON.stringify(
           {
-            viewport: { width: 400, height },
+            viewport: { width, height },
             simulated: true,
             confirmed: false,
             deniedWrites,

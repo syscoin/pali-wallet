@@ -83,15 +83,15 @@ export const CallsStatus: React.FC = () => {
   }
 
   return (
-    <div className="h-screen flex flex-col">
-      <div className="bg-brand-blue600 p-4">
+    <div className="h-screen w-full min-w-0 flex flex-col">
+      <div className="bg-brand-blue600 p-4 shrink-0">
         <h1 className="text-brand-white text-base font-medium">
           {t('send.batchStatus')}
         </h1>
-        <p className="text-brand-gray200 text-xs mt-1">{host}</p>
+        <p className="text-brand-gray200 text-xs mt-1 break-all">{host}</p>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
         <div className="bg-bkg-3 rounded-lg p-4 space-y-2">
           <div className="flex justify-between text-sm">
             <span className="text-brand-gray200">{t('send.status')}</span>
@@ -168,7 +168,7 @@ export const CallsStatus: React.FC = () => {
         )}
       </div>
 
-      <div className="p-4">
+      <div className="p-4 shrink-0">
         <Button
           variant="secondary"
           type="button"

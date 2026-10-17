@@ -44,11 +44,30 @@ const setupJobs = new Map<
   {
     assertCurrent: () => void;
     promise: Promise<SLHDSASmartAccountSetupStatus>;
+    retire: () => void;
     sessionGeneration: number;
     setupJobId: string;
   }
 >();
 const setupStorageQueues = new Map<number, Promise<void>>();
+
+const getCurrentSetupJob = (accountId: number, sessionGeneration: number) => {
+  const owner = setupJobs.get(accountId);
+  if (!owner) return undefined;
+  try {
+    assertSLHDSASessionGeneration(sessionGeneration);
+    if (owner.sessionGeneration !== sessionGeneration)
+      throw new Error('SLH-DSA setup session changed');
+    owner.assertCurrent();
+    return owner;
+  } catch {
+    // Account context can change without a new wallet session. Retire that
+    // owner now; its late completion must not remove a replacement job.
+    owner.retire();
+    if (setupJobs.get(accountId) === owner) setupJobs.delete(accountId);
+    return undefined;
+  }
+};
 
 // A dispatched storage write cannot be cancelled. Retain its ordering barrier
 // across wallet sessions so the new owner always writes after it settles.
@@ -214,9 +233,10 @@ export const getSLHDSASmartAccountSetupStatus = async ({
       getSLHDSASetupStorageKey(accountId)
     )) as SLHDSASmartAccountSetupStatus | null;
     assertSLHDSASessionGeneration(generation);
+    const owner = getCurrentSetupJob(accountId, generation);
     if (
       status?.status === 'running' &&
-      setupJobs.get(accountId)?.sessionGeneration !== generation
+      (!owner || owner.setupJobId !== status.setupJobId)
     ) {
       await chromeStorage.removeItem(getSLHDSASetupStorageKey(accountId));
       assertSLHDSASessionGeneration(generation);
@@ -256,19 +276,21 @@ export const startSLHDSASmartAccountValidatorSetup = async ({
   }>;
 }): Promise<SLHDSASmartAccountSetupStatus> => {
   const sessionGeneration = getSLHDSASessionGeneration();
+  let retired = false;
   const assertSetupCurrent = () => {
+    if (retired) throw new Error('SLH-DSA setup owner retired');
     assertSLHDSASessionGeneration(sessionGeneration);
     assertCurrent?.();
   };
   assertSetupCurrent();
   return withSetupStorage(accountId, async () => {
     assertSetupCurrent();
-    const existingJob = setupJobs.get(accountId);
     const existingStatus = (await chromeStorage.getItem(
       getSLHDSASetupStorageKey(accountId)
     )) as SLHDSASmartAccountSetupStatus | null;
     assertSetupCurrent();
-    if (existingJob?.sessionGeneration === sessionGeneration) {
+    const existingJob = getCurrentSetupJob(accountId, sessionGeneration);
+    if (existingJob) {
       return (
         existingStatus || {
           accountId,
@@ -370,6 +392,9 @@ export const startSLHDSASmartAccountValidatorSetup = async ({
     setupJobs.set(accountId, {
       assertCurrent: assertSetupCurrent,
       promise: job,
+      retire: () => {
+        retired = true;
+      },
       sessionGeneration,
       setupJobId,
     });

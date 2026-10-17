@@ -244,6 +244,8 @@ export const DialogCloseButton = ({
   );
 };
 
+// Narrow windows need room for wrapped titles and stacked footer actions.
+// Compact padding leaves the body scrollable without shrinking hit targets.
 export const DialogHeader = ({
   title,
   icon,
@@ -256,25 +258,44 @@ export const DialogHeader = ({
   icon?: ReactNode;
   onClose?: () => void;
   title: ReactNode;
-}) => (
-  <header
-    className={`flex w-full min-w-0 shrink-0 items-center gap-3 border-b border-alpha-whiteAlpha300 px-5 py-4 text-left ${className}`}
-  >
-    <span
-      aria-hidden="true"
-      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-surface-overlay text-content-primary [&>svg]:h-6 [&>svg]:w-6"
+}) => {
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  const [scrollable, setScrollable] = useState(false);
+  useLayoutEffect(() => {
+    const element = titleRef.current;
+    if (!element) return;
+    const measure = () =>
+      setScrollable(element.scrollHeight > element.clientHeight + 1);
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [title]);
+
+  return (
+    <header
+      className={`flex w-full min-w-0 shrink-0 items-center gap-3 border-b border-alpha-whiteAlpha300 px-5 py-4 text-left [@media(max-width:360px)]:gap-2 [@media(max-width:360px)]:px-4 [@media(max-width:360px)]:py-3 ${className}`}
     >
-      {icon || <InformationCircleIcon />}
-    </span>
-    <HeadlessDialog.Title
-      as="h2"
-      className="min-w-0 flex-1 break-words text-lg font-medium leading-6 text-content-primary"
-    >
-      {title}
-    </HeadlessDialog.Title>
-    {onClose && <DialogCloseButton onClick={onClose} disabled={disabled} />}
-  </header>
-);
+      <span
+        aria-hidden="true"
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-surface-overlay text-content-primary [&>svg]:h-6 [&>svg]:w-6"
+      >
+        {icon || <InformationCircleIcon />}
+      </span>
+      <HeadlessDialog.Title
+        as="h2"
+        ref={titleRef}
+        tabIndex={scrollable ? 0 : undefined}
+        className="min-w-0 flex-1 overflow-y-auto overscroll-contain break-words text-lg font-medium leading-6 text-content-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-content-primary [@media(max-width:360px)]:text-base"
+        style={{ maxHeight: 'min(8rem, 25dvh)' }}
+      >
+        {title}
+      </HeadlessDialog.Title>
+      {onClose && <DialogCloseButton onClick={onClose} disabled={disabled} />}
+    </header>
+  );
+};
 
 export const DialogBody = ({
   children,
@@ -300,7 +321,7 @@ export const DialogBody = ({
     <div
       ref={bodyRef}
       tabIndex={scrollable ? 0 : undefined}
-      className={`min-h-0 overflow-y-auto overscroll-contain px-5 py-5 text-left text-sm leading-relaxed text-content-secondary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-content-primary ${className}`}
+      className={`min-h-0 overflow-y-auto overscroll-contain px-5 py-5 text-left text-sm leading-relaxed text-content-secondary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-content-primary [@media(max-width:360px)]:px-4 [@media(max-width:360px)]:py-3 ${className}`}
     >
       {children}
     </div>
@@ -315,7 +336,7 @@ export const DialogFooter = ({
   className?: string;
 }) => (
   <footer
-    className={`shrink-0 space-y-4 border-t border-alpha-whiteAlpha300 px-5 py-4 ${className}`}
+    className={`shrink-0 space-y-4 border-t border-alpha-whiteAlpha300 px-5 py-4 [@media(max-width:360px)]:px-4 [@media(max-width:360px)]:py-3 ${className}`}
   >
     {children}
   </footer>
