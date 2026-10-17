@@ -21,6 +21,16 @@ import {
 
 // Public deterministic fixture only. Never import a real operator key here.
 const OPERATOR_SECRET = '00'.repeat(31) + '01';
+const reverseObjectKeys = (value: unknown): unknown => {
+  if (Array.isArray(value)) return value.map(reverseObjectKeys);
+  if (value !== null && typeof value === 'object')
+    return Object.fromEntries(
+      Object.entries(value)
+        .reverse()
+        .map(([key, entry]) => [key, reverseObjectKeys(entry)])
+    );
+  return value;
+};
 
 test('Sentry operator custody stays local, survives locking, and fits short windows', async ({}, info) => {
   test.setTimeout(180000);
@@ -295,7 +305,7 @@ for (const scheme of ['bls-basic', 'slh-dsa-shake-128s'] as const) {
             status: 200,
             contentType: 'application/json',
             headers: { 'access-control-allow-origin': '*' },
-            body: JSON.stringify({ chain, node }),
+            body: JSON.stringify(trustedContext.value),
           })
       );
       await wallet.importSeedAndCreatePassword();
@@ -419,6 +429,9 @@ for (const scheme of ['bls-basic', 'slh-dsa-shake-128s'] as const) {
       await popup.screenshot({
         path: info.outputPath('sentry-authorize-320x360.png'),
       });
+      // A service may serialize the same JSON object in a different key order.
+      // The actual reviewed values remain identical, including nested PQ data.
+      trustedContext.value = reverseObjectKeys({ chain, node });
       await popup.getByRole('button', { name: 'Authorize update' }).click();
       await expect
         .poll(
@@ -485,6 +498,7 @@ for (const scheme of ['bls-basic', 'slh-dsa-shake-128s'] as const) {
       await linkPopup.screenshot({
         path: info.outputPath('sentry-link-320x360.png'),
       });
+      trustedContext.value = { chain, node };
       await linkPopup
         .getByRole('button', { name: 'Link node', exact: true })
         .click();

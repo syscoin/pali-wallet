@@ -1,3 +1,4 @@
+import isEqual from 'lodash/isEqual';
 import { utils as syscoinUtils } from 'syscoinjs-lib';
 
 import { AsyncMutex } from 'utils/asyncMutex';
@@ -322,7 +323,7 @@ export class SentryController {
         this.links.delete(freshId);
       }
       if (
-        JSON.stringify(fresh.node) !== JSON.stringify(approval.node) ||
+        !isEqual(fresh.node, approval.node) ||
         fresh.serviceUrl !== approval.serviceUrl
       )
         throw new Error(
@@ -720,7 +721,7 @@ export class SentryController {
         this.assertCurrent(scope);
         const fresh = await this.context(scope, publicApproval.request);
         if (
-          JSON.stringify(fresh.context) !== JSON.stringify(pending.context) ||
+          !isEqual(fresh.context, pending.context) ||
           fresh.settings.serviceUrl !== publicApproval.serviceUrl
         )
           throw new Error(

@@ -249,6 +249,74 @@ it('never signs after registered state changes while the review is open', async 
   expect(runSentryCrypto).not.toHaveBeenCalled();
 });
 
+it('accepts identical refreshed JSON with reordered nested object keys', async () => {
+  observation.registration = {
+    collateralVout: 1,
+    requiredCollateralSatoshis: '100000',
+    metadata: { active: true, values: ['first', 'second'] },
+  };
+  const id = await controller.prepare(request, 'https://dapp.test');
+  const reorder = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(reorder);
+    if (value !== null && typeof value === 'object')
+      return Object.fromEntries(
+        Object.entries(value)
+          .reverse()
+          .map(([key, entry]) => [key, reorder(entry)])
+      );
+    return value;
+  };
+  observation = reorder(observation);
+  await expect(
+    controller.sign({ id, keyId: summary.id, password: 'pw' })
+  ).resolves.toMatchObject({ transactionHex: 'signed-public-bytes' });
+  expect(runSentryCrypto).toHaveBeenCalledTimes(1);
+});
+
+it.each(['collateral', 'registration', 'array order'])(
+  'rejects changed refreshed %s data despite stable object keys',
+  async (change) => {
+    observation.registration = {
+      collateralVout: 1,
+      requiredCollateralSatoshis: '100000',
+      metadata: { active: true, values: ['first', 'second'] },
+    };
+    const id = await controller.prepare(request, 'https://dapp.test');
+    if (change === 'collateral') observation.node.collateralOutpoint.vout = 2;
+    else if (change === 'registration')
+      observation.registration.requiredCollateralSatoshis = '100001';
+    else observation.registration.metadata.values.reverse();
+    await expect(
+      controller.sign({ id, keyId: summary.id, password: 'pw' })
+    ).rejects.toThrow('state changed');
+    expect(runSentryCrypto).not.toHaveBeenCalled();
+  }
+);
+
+it.each(['network', 'fee policy', 'operator key'])(
+  'never signs after the reviewed %s changes',
+  async (change) => {
+    const id = await controller.prepare(request, 'https://dapp.test');
+    if (change === 'network')
+      observation.chain = {
+        ...observation.chain,
+        genesisHash: 'ff'.repeat(32),
+      };
+    else if (change === 'operator key')
+      observation.node.operatorPublicKey = 'cc'.repeat(48);
+    else
+      (chromeStorage.getItem as jest.Mock).mockImplementation(async (name) =>
+        name.startsWith('sentry-settings-v1:')
+          ? { maxFeeSatoshis: '100001' }
+          : null
+      );
+    await expect(
+      controller.sign({ id, keyId: summary.id, password: 'pw' })
+    ).rejects.toThrow();
+    expect(runSentryCrypto).not.toHaveBeenCalled();
+  }
+);
+
 it('drops a cancelled approval and requires a matching registered local key', async () => {
   const id = await controller.prepare(request, 'https://dapp.test');
   await expect(
@@ -304,6 +372,25 @@ it('links verified public node identity without signing or importing collateral'
   );
   expect(runSentryCrypto).not.toHaveBeenCalled();
   expect(getSeed).not.toHaveBeenCalled();
+});
+
+it('accepts a link refresh with reordered collateral fields', async () => {
+  const id = await controller.prepareLink(
+    {
+      version: 1,
+      proTxHash: observation.node.proTxHash,
+      genesisHash: request.chain.genesisHash,
+    },
+    'https://dapp.test'
+  );
+  observation.node.collateralOutpoint = {
+    vout: observation.node.collateralOutpoint.vout,
+    txid: observation.node.collateralOutpoint.txid,
+  };
+  await expect(controller.approveLink(id)).resolves.toMatchObject({
+    linked: true,
+    proTxHash: observation.node.proTxHash,
+  });
 });
 
 it('rejects wrong-network link intent before touching the service', async () => {
