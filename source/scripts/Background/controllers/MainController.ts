@@ -1574,8 +1574,7 @@ class MainController {
               ownsCollateral: (outpoint, scope) =>
                 this.ownsSentryCollateral(outpoint, scope),
               hasWalletAuthority: async (address, scope) =>
-                (await this.findSentryWalletAuthority(address, scope)).path !==
-                undefined,
+                this.canSignSentryWalletAuthority(address, scope),
               resolveWalletAuthority: (params, scope) =>
                 this.resolveSentryWalletAuthority(params, scope),
             })
@@ -8105,6 +8104,16 @@ class MainController {
     };
     assertCurrent();
     const { vault } = store.getState();
+    const selectedAccount =
+      vault.accounts[signing.context.account.type]?.[
+        signing.context.account.id
+      ];
+    const hasPrivateMaterial =
+      [KeyringAccountType.HDAccount, KeyringAccountType.Imported].includes(
+        signing.context.account.type
+      ) &&
+      typeof selectedAccount?.xprv === 'string' &&
+      selectedAccount.xprv.length > 0;
     const activeNetwork = { ...vault.activeNetwork };
     const config = getNetworkConfig(
       activeNetwork.slip44,
@@ -8146,7 +8155,21 @@ class MainController {
       response?.tokens?.map((token: any) => token.path) || [],
       addressScope
     );
-    return { path, addressScope, signing, assertCurrent };
+    return { path, addressScope, signing, assertCurrent, hasPrivateMaterial };
+  }
+
+  private async canSignSentryWalletAuthority(
+    address: string,
+    scope: SentryWalletScope
+  ) {
+    const resolved = await this.findSentryWalletAuthority(address, scope);
+    if (!resolved.hasPrivateMaterial) return false;
+    if (resolved.path !== undefined) return true;
+    const { canDeferSentryWifMatch } = await import(
+      /* webpackChunkName: "sentry-wallet-authority" */ 'utils/sentry/walletAuthority'
+    );
+    resolved.assertCurrent();
+    return canDeferSentryWifMatch(address, resolved.addressScope);
   }
 
   private async ownsSentryCollateral(
@@ -8196,7 +8219,17 @@ class MainController {
       params.address,
       scope
     );
-    if (resolved.path === undefined)
+    const { canDeferSentryWifMatch, deriveSentryWalletAuthority } =
+      await import(
+        /* webpackChunkName: "sentry-wallet-authority" */ 'utils/sentry/walletAuthority'
+      );
+    resolved.assertCurrent();
+    if (!resolved.hasPrivateMaterial)
+      throw new Error('Selected wallet has no private Sentry authority key');
+    if (
+      resolved.path === undefined &&
+      !canDeferSentryWifMatch(params.address, resolved.addressScope)
+    )
       throw new Error('Selected wallet does not own this Sentry authority');
     const account = resolved.signing.context.account;
     if (
@@ -8212,13 +8245,10 @@ class MainController {
       account.type,
       params.password
     );
-    const { deriveSentryWalletAuthority } = await import(
-      /* webpackChunkName: "sentry-wallet-authority" */ 'utils/sentry/walletAuthority'
-    );
     resolved.assertCurrent();
     return deriveSentryWalletAuthority(
       params.address,
-      resolved.path,
+      resolved.path ?? null,
       privateKey,
       resolved.addressScope
     );

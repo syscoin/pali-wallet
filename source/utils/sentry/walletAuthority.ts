@@ -31,12 +31,41 @@ const keyMatchesAddress = (
   address: string,
   network: any
 ) => {
-  const witness = bjs.payments.p2wpkh({ pubkey: publicKey, network });
-  return [
-    witness.address,
-    bjs.payments.p2pkh({ pubkey: publicKey, network }).address,
-    bjs.payments.p2sh({ redeem: witness, network }).address,
-  ].includes(address);
+  // A valid P2PKH WIF may be uncompressed; unsupported encodings must not
+  // prevent checking the encoding that the account actually uses.
+  try {
+    const output = bjs.address.toOutputScript(address, network);
+    if (output.length === 25 && output[0] === 0x76)
+      return (
+        bjs.payments.p2pkh({ pubkey: publicKey, network }).address === address
+      );
+    if (output.length === 22 && output[0] === 0)
+      return (
+        bjs.payments.p2wpkh({ pubkey: publicKey, network }).address === address
+      );
+    if (output.length === 23 && output[0] === 0xa9)
+      return (
+        bjs.payments.p2sh({
+          redeem: bjs.payments.p2wpkh({ pubkey: publicKey, network }),
+          network,
+        }).address === address
+      );
+    if (output.length === 34 && output[0] === 0x51)
+      return (
+        bjs.payments.p2tr({
+          internalPubkey:
+            publicKey.length === 33
+              ? publicKey.slice(1)
+              : bjs.ECPair.fromPublicKey(publicKey, {
+                  compressed: true,
+                }).publicKey.slice(1),
+          network,
+        }).address === address
+      );
+    return false;
+  } catch {
+    return false;
+  }
 };
 
 const addressKeyHash = (address: string, network: any): Buffer | undefined => {
@@ -49,6 +78,35 @@ const addressKeyHash = (address: string, network: any): Buffer | undefined => {
     return Buffer.from(bjs.payments.p2pkh({ address, network }).hash);
   } catch {
     return undefined;
+  }
+};
+
+/** Eligibility to try an authenticated WIF match, never evidence of ownership. */
+export const canDeferSentryWifMatch = (
+  target: string,
+  scope: ISentryAddressScope
+): boolean => {
+  if (!scope.imported || scope.account.xpub !== scope.account.address)
+    return false;
+  try {
+    bjs.payments.p2pkh({ address: target, network: scope.network });
+    try {
+      // A tweaked Taproot output hides the internal key's P2PKH identity.
+      bjs.payments.p2tr({
+        address: scope.account.address,
+        network: scope.network,
+      });
+    } catch {
+      // P2PKH may instead encode an uncompressed WIF key. Neither case
+      // establishes ownership until both addresses match the unlocked WIF.
+      bjs.payments.p2pkh({
+        address: scope.account.address,
+        network: scope.network,
+      });
+    }
+    return true;
+  } catch {
+    return false;
   }
 };
 
@@ -113,6 +171,12 @@ export const deriveSentryWalletAuthority = (
   let key: any;
   if (path === null) {
     key = bjs.ECPair.fromWIF(privateAccountKey, scope.network);
+    if (
+      !scope.imported ||
+      scope.account.xpub !== scope.account.address ||
+      !keyMatchesAddress(key.publicKey, scope.account.address, scope.network)
+    )
+      throw new Error('Wallet key does not match the selected account');
   } else {
     if (!/^[01]\/(0|[1-9]\d*)$/.test(path))
       throw new Error('Invalid Sentry wallet path');
@@ -131,7 +195,13 @@ export const deriveSentryWalletAuthority = (
   }
   if (
     !key.privateKey ||
-    !keyMatchesAddress(key.publicKey, target, scope.network)
+    // The shared Sentry SDK uses compressed ECDSA identities. Verify that
+    // exact identity, independently of the imported WIF's address encoding.
+    !keyMatchesAddress(
+      bjs.ECPair.fromPrivateKey(key.privateKey, { compressed: true }).publicKey,
+      target,
+      scope.network
+    )
   )
     throw new Error('Wallet does not own this Sentry authority');
   return {

@@ -3,6 +3,7 @@ jest.unmock('syscoinjs-lib');
 import { utils } from 'syscoinjs-lib';
 
 import {
+  canDeferSentryWifMatch,
   deriveSentryWalletAuthority,
   findSentryWalletPath,
 } from './walletAuthority';
@@ -32,6 +33,114 @@ it('derives the authority only when a wallet path matches the actual address key
     scheme: 'ecdsa',
     secretKey: Buffer.from(key.privateKey).toString('hex'),
   });
+});
+
+it('authenticates a Taproot WIF against both its selected address and compressed Sentry identity', () => {
+  const pair = bjs.ECPair.fromPrivateKey(Buffer.alloc(32, 9), { network });
+  const taproot = bjs.payments.p2tr({
+    internalPubkey: pair.publicKey.slice(1),
+    network,
+  }).address;
+  const owner = bjs.payments.p2pkh({ pubkey: pair.publicKey, network }).address;
+  const imported = {
+    ...scope,
+    imported: true,
+    account: { xpub: taproot, address: taproot },
+  };
+  expect(findSentryWalletPath(owner, [], imported)).toBeUndefined();
+  expect(canDeferSentryWifMatch(owner, imported)).toBe(true);
+  expect(findSentryWalletPath(taproot, [], imported)).toBeNull();
+  expect(
+    deriveSentryWalletAuthority(owner, null, pair.toWIF(), imported).secretKey
+  ).toBe('09'.repeat(32));
+  expect(
+    deriveSentryWalletAuthority(taproot, null, pair.toWIF(), imported).secretKey
+  ).toBe('09'.repeat(32));
+  const other = bjs.ECPair.fromPrivateKey(Buffer.alloc(32, 10), { network });
+  const otherOwner = bjs.payments.p2pkh({
+    pubkey: other.publicKey,
+    network,
+  }).address;
+  expect(() =>
+    deriveSentryWalletAuthority(otherOwner, null, pair.toWIF(), imported)
+  ).toThrow('does not own');
+  expect(() =>
+    deriveSentryWalletAuthority(otherOwner, null, other.toWIF(), imported)
+  ).toThrow('does not match the selected account');
+  expect(canDeferSentryWifMatch(owner, scope)).toBe(false);
+  expect(canDeferSentryWifMatch(taproot, imported)).toBe(false);
+  expect(
+    canDeferSentryWifMatch(
+      bjs.payments.p2pkh({
+        pubkey: pair.publicKey,
+        network: utils.syscoinNetworks.mainnet,
+      }).address,
+      imported
+    )
+  ).toBe(false);
+});
+
+it('discovers a derived Taproot collateral address from the actual public key', () => {
+  const taproot = bjs.payments.p2tr({
+    internalPubkey: key.publicKey.slice(1),
+    network,
+  }).address;
+  expect(findSentryWalletPath(taproot, ["m/84'/1'/2'/0/21"], scope)).toBe(
+    '0/21'
+  );
+});
+
+it('checks uncompressed WIF account encoding without changing the compressed authority identity', () => {
+  const pair = bjs.ECPair.fromPrivateKey(Buffer.alloc(32, 11), {
+    network,
+    compressed: false,
+  });
+  const taproot = bjs.payments.p2tr({
+    internalPubkey: bjs.ECPair.fromPrivateKey(pair.privateKey).publicKey.slice(
+      1
+    ),
+    network,
+  }).address;
+  const compressedOwner = bjs.payments.p2pkh({
+    pubkey: bjs.ECPair.fromPrivateKey(pair.privateKey).publicKey,
+    network,
+  }).address;
+  const imported = {
+    ...scope,
+    imported: true,
+    account: { xpub: taproot, address: taproot },
+  };
+  expect(
+    deriveSentryWalletAuthority(compressedOwner, null, pair.toWIF(), imported)
+      .secretKey
+  ).toBe('0b'.repeat(32));
+  const uncompressedOwner = bjs.payments.p2pkh({
+    pubkey: pair.publicKey,
+    network,
+  }).address;
+  const uncompressedAccount = {
+    ...imported,
+    account: { xpub: uncompressedOwner, address: uncompressedOwner },
+  };
+  expect(canDeferSentryWifMatch(compressedOwner, uncompressedAccount)).toBe(
+    true
+  );
+  expect(
+    deriveSentryWalletAuthority(
+      compressedOwner,
+      null,
+      pair.toWIF(),
+      uncompressedAccount
+    ).secretKey
+  ).toBe('0b'.repeat(32));
+  expect(() =>
+    deriveSentryWalletAuthority(
+      uncompressedOwner,
+      null,
+      pair.toWIF(),
+      uncompressedAccount
+    )
+  ).toThrow('does not own');
 });
 
 it('does not trust a supplied label, address, account index, or derivation path', () => {
