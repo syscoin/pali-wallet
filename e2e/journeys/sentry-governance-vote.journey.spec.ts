@@ -244,7 +244,11 @@ test('Pali reviews and signs exact legacy governance votes without disclosing ke
       network: utils.syscoinNetworks.testnet,
     }).address;
     const walletIdentities = await sdk.governanceVotingKeyIds(
-      Buffer.from(walletPair.publicKey).toString('hex')
+      Buffer.from(
+        utils.bitcoinjs.ECPair.fromPrivateKey(walletPair.privateKey, {
+          compressed: true,
+        }).publicKey
+      ).toString('hex')
     );
     observation.nodes.forEach((node) => {
       node.votingKeyId = walletIdentities.uncompressed;
