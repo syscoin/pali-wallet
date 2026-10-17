@@ -45,7 +45,7 @@ const isOffscreenAlreadyExistsError = (error: unknown) => {
   );
 };
 
-const ensureOffscreenDocument = async () => {
+export const ensureOffscreenDocument = async () => {
   const contexts = await getExistingOffscreenContexts();
   if (contexts.length > 0) {
     return;
@@ -167,4 +167,5 @@ export const clearSLHDSAXmssCacheInOffscreen = async (): Promise<void> => {
 
 export const cancelSLHDSAWorkerInOffscreen = async (): Promise<void> => {
   await sendBestEffortOffscreenCleanupMessage('PALI_SLH_DSA_CANCEL_WORKER');
+  await sendBestEffortOffscreenCleanupMessage('PALI_SENTRY_CANCEL_WORKER');
 };

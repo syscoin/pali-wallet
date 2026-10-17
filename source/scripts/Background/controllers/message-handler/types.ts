@@ -44,6 +44,8 @@ export enum MethodRoute {
   SignTx = 'tx/sign',
   SmartAccount = 'smart-account',
   SmartAccountModules = 'smart-account-modules',
+  SentryOperation = 'sentry-operation',
+  SentryLink = 'sentry-link',
   SwitchEthChain = 'switch-EthChain',
   SwitchNetwork = 'switch-network',
   SwitchUtxoEvm = 'switch-UtxoEvm',

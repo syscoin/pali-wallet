@@ -145,6 +145,11 @@ const ManageAccounts = lazy(() => import('pages/Settings/ManageAccounts'));
 const SmartAccountPolicy = lazy(
   () => import('pages/Settings/SmartAccountPolicy')
 );
+const SentryKeys = lazy(() => import('pages/Settings/SentryKeys'));
+const SentryOperation = lazy(
+  () => import('pages/Transactions/SentryOperation')
+);
+const SentryLink = lazy(() => import('pages/Transactions/SentryLink'));
 const SmartAccountHub = lazy(() => import('pages/SmartAccount/Hub'));
 const EditAccount = lazy(() => import('pages/Settings/EditAccount'));
 const Advanced = lazy(() => import('pages/Settings/Advanced'));
@@ -300,6 +305,7 @@ export const Router = () => {
             <Route path="/settings/currency" element={<Currency />} />
             <Route path="/settings/forget-wallet" element={<ForgetWallet />} />
             <Route path="/settings/seed" element={<Phrase />} />
+            <Route path="/settings/sentry" element={<SentryKeys />} />
             <Route
               path="/settings/manage-accounts"
               element={<ManageAccounts />}
@@ -345,6 +351,8 @@ export const Router = () => {
               <Route path="connect-wallet" element={<ConnectWallet />} />
               <Route path="change-account" element={<ChangeAccount />} />
               <Route path="smart-account" element={<PrepareSmartAccount />} />
+              <Route path="sentry-operation" element={<SentryOperation />} />
+              <Route path="sentry-link" element={<SentryLink />} />
               <Route
                 path="smart-account-modules"
                 element={<SmartAccountModuleConsent />}

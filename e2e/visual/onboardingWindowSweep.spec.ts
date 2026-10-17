@@ -288,6 +288,39 @@ test('locked wallet and recovery warning remain readable and operable', async ({
       await page.locator('#unlock-btn').click();
       const error = page.getByText(errorText, { exact: true });
       await expect(error).toBeVisible();
+      // The first Form.Item error expands with a finite height animation. A
+      // visible message can still move the recovery link after an exposure
+      // probe, so scroll only once the real validation layout has settled.
+      await expect
+        .poll(
+          () =>
+            page.locator('#login').evaluate((form) => {
+              const pendingValidationMotion = Array.from(
+                form.querySelectorAll('[class]')
+              ).some((element) =>
+                Array.from(element.classList).some((name) =>
+                  /^ant-form-show-help(?:-item)?-(?:appear|enter|leave)(?:-|$)/.test(
+                    name
+                  )
+                )
+              );
+              return (
+                !pendingValidationMotion &&
+                form
+                  .getAnimations({ subtree: true })
+                  .filter(
+                    (animation) =>
+                      animation.effect?.getTiming().iterations !== Infinity
+                  )
+                  .every(
+                    (animation) =>
+                      !animation.pending && animation.playState !== 'running'
+                  )
+              );
+            }),
+          { timeout: 3000 }
+        )
+        .toBe(true);
       await wheelTo(page, error);
       expect
         .soft(await exposed(error), `unlock error readable ${suffix}`)
@@ -300,6 +333,9 @@ test('locked wallet and recovery warning remain readable and operable', async ({
         )
         .toBe(true);
       await capture(page, `locked-error-${suffix}`, info);
+      await page.locator('#import-wallet-link').click();
+      await expect(page.locator('#cancel-import-btn')).toBeVisible();
+      await page.locator('#cancel-import-btn').click();
       await page.evaluate(() => (window as any).__restoreOnboardingMessage());
     }
 

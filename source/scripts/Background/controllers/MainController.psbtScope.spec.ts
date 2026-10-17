@@ -18,10 +18,17 @@ jest.mock('utils/navigationState', () => ({
 }));
 
 import { PsbtUtils } from '@sidhujag/sysweb3-keyring';
+import { webcrypto } from 'crypto';
 import { utils as syscoinUtils } from 'syscoinjs-lib';
 
 import store from 'state/store';
 import { INetworkType, KeyringAccountType } from 'types/network';
+import {
+  captureSentryCollateralAdmission,
+  reserveSentryCollateral,
+} from 'utils/sentry/collateral';
+import { SENTRY_NETWORKS } from 'utils/sentry/network';
+import { chromeStorage } from 'utils/storageAPI';
 import {
   createUtxoAcknowledgedInputs,
   UTXO_NETWORK_CATCHING_UP,
@@ -59,6 +66,10 @@ describe('PSBT approval context', () => {
   let state: any;
   let keyring: any;
   beforeEach(() => {
+    Object.defineProperty(global, 'crypto', {
+      value: webcrypto,
+      configurable: true,
+    });
     state = {
       vault: {
         isBitcoinBased: true,
@@ -99,6 +110,7 @@ describe('PSBT approval context', () => {
       .fn()
       .mockResolvedValue({ psbt: 'verified-fixture' });
     wallet.sendAndSaveTransaction = jest.fn();
+    wallet.getProtectedSentryOutpoints = jest.fn().mockResolvedValue([]);
     (PsbtUtils.fromPali as jest.Mock)
       .mockReset()
       .mockImplementation(() => syntheticPsbt(BigInt(1000)));
@@ -114,6 +126,76 @@ describe('PSBT approval context', () => {
     expect(keyring.syscoinTransaction.signPSBT).toHaveBeenCalledWith({
       psbt: 'verified-fixture',
     });
+  });
+
+  it('rejects protected collateral in a dapp sign-only PSBT before signing', async () => {
+    wallet.getProtectedSentryOutpoints.mockResolvedValue([
+      { txid: '01'.repeat(32), vout: 0, proTxHash: '02'.repeat(32) },
+    ]);
+    wallet.verifySyscoinPsbt.mockResolvedValue({
+      psbt: syntheticPsbt(BigInt(1000), false),
+    });
+    await expect(wallet.signSyscoinPsbt({ psbt: 'dapp-psbt' })).rejects.toThrow(
+      'protected Sentry Node collateral'
+    );
+    expect(keyring.syscoinTransaction.signPSBT).not.toHaveBeenCalled();
+  });
+
+  it('passes only background-owned exclusions to the builder', async () => {
+    const reservation = {
+      txid: '02'.repeat(32),
+      vout: 3,
+      proTxHash: '03'.repeat(32),
+    };
+    wallet.getProtectedSentryOutpoints.mockResolvedValue([reservation]);
+    await wallet.getEstimateSysTransactionFee({
+      amount: '1',
+      excludedOutpoints: [],
+    });
+    expect(
+      keyring.syscoinTransaction.getEstimateSysTransactionFee
+    ).toHaveBeenCalledWith({
+      amount: '1',
+      excludedOutpoints: [reservation],
+    });
+  });
+
+  it('keeps ordinary transactions on custom Syscoin networks working without Sentry support', async () => {
+    wallet.getProtectedSentryOutpoints = (
+      MainController.prototype as any
+    ).getProtectedSentryOutpoints.bind(wallet);
+    state.vault.activeNetwork.chainId = 98765;
+    await expect(
+      wallet.getEstimateSysTransactionFee({ amount: '1' })
+    ).resolves.toMatchObject({ fee: 0.00001 });
+    await expect(
+      wallet.signSyscoinPsbt({ psbt: 'custom-network-psbt' })
+    ).resolves.toBe('signed');
+    expect(keyring.syscoinTransaction.signPSBT).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not sign after account changes while reading protection records', async () => {
+    wallet.getProtectedSentryOutpoints.mockImplementation(async () => {
+      state.vault.activeAccount = { id: 1, type: KeyringAccountType.HDAccount };
+      return [];
+    });
+    await expect(wallet.signSyscoinPsbt({ psbt: 'dapp-psbt' })).rejects.toThrow(
+      UTXO_SIGNING_CONTEXT_CHANGED
+    );
+    expect(keyring.syscoinTransaction.signPSBT).not.toHaveBeenCalled();
+  });
+
+  it('does not expose a signed PSBT if its collateral becomes protected during signing', async () => {
+    keyring.syscoinTransaction.signPSBT.mockImplementation(async () => {
+      wallet.getProtectedSentryOutpoints.mockResolvedValue([
+        { txid: '01'.repeat(32), vout: 0 },
+      ]);
+      return 'signed';
+    });
+    await expect(wallet.signSyscoinPsbt({ psbt: 'dapp-psbt' })).rejects.toThrow(
+      'protected Sentry Node collateral'
+    );
+    expect(keyring.syscoinTransaction.sendTransaction).not.toHaveBeenCalled();
   });
 
   it.each(['account', 'network', 'lock', 'session', 'xpub'])(
@@ -254,6 +336,189 @@ describe('PSBT approval context', () => {
       wallet.signSendAndSaveTransaction({ psbt: 'fixture' })
     ).resolves.toEqual({ txid: 'acknowledged-hash' });
     expect(wallet.sendAndSaveTransaction).not.toHaveBeenCalled();
+  });
+
+  it('serializes a concurrent reservation behind the final read and broadcast', async () => {
+    const protectedOutput = {
+      txid: '01'.repeat(32),
+      vout: 0,
+      proTxHash: '02'.repeat(32),
+    };
+    let finishRead!: () => void;
+    let finalRead!: () => void;
+    const reachedFinalRead = new Promise<void>((resolve) => {
+      finalRead = resolve;
+    });
+    wallet.getProtectedSentryOutpoints
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockImplementationOnce(async () => {
+        const staleSnapshot: unknown[] = [];
+        finalRead();
+        await new Promise<void>((resolve) => {
+          finishRead = resolve;
+        });
+        return staleSnapshot;
+      });
+    const reservationScope = {
+      walletIdentity: 'xpub-0',
+      genesisHash: SENTRY_NETWORKS.mainnet.genesisHash,
+    };
+    const admission = await captureSentryCollateralAdmission(reservationScope);
+    const write = jest.spyOn(chromeStorage, 'setItem');
+    const sending = wallet.signSendAndSaveTransaction({ psbt: 'fixture' });
+    await reachedFinalRead;
+    const reserving = reserveSentryCollateral({
+      ...reservationScope,
+      admission,
+      reservation: protectedOutput,
+      assertCurrent: () => undefined,
+    });
+    const refused = expect(reserving).rejects.toThrow(
+      'changed the Sentry approval'
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(write).not.toHaveBeenCalled();
+    finishRead();
+    await expect(sending).resolves.toEqual({ txid: 'hash' });
+    await refused;
+    expect(keyring.syscoinTransaction.sendTransaction).toHaveBeenCalledTimes(1);
+    expect(write).not.toHaveBeenCalled();
+  });
+
+  it('serializes signed PSBT disclosure with a concurrent collateral reservation', async () => {
+    jest.spyOn(chromeStorage, 'getItem').mockResolvedValue(undefined);
+    state.vault.accounts.HDAccount[0].xpub = 'signature-release-first';
+    const reservationScope = {
+      walletIdentity: 'signature-release-first',
+      genesisHash: SENTRY_NETWORKS.mainnet.genesisHash,
+    };
+    const admission = await captureSentryCollateralAdmission(reservationScope);
+    let finishRead!: () => void;
+    let reachedRead!: () => void;
+    const finalRead = new Promise<void>((resolve) => {
+      reachedRead = resolve;
+    });
+    wallet.getProtectedSentryOutpoints
+      .mockResolvedValueOnce([])
+      .mockImplementationOnce(async () => {
+        reachedRead();
+        await new Promise<void>((resolve) => {
+          finishRead = resolve;
+        });
+        return [];
+      });
+    const write = jest
+      .spyOn(chromeStorage, 'setItem')
+      .mockResolvedValue(undefined);
+    const signing = wallet.signSyscoinPsbt({ psbt: 'fixture' });
+    await Promise.race([
+      finalRead,
+      signing.then(() => {
+        throw new Error('Signature escaped before the final read');
+      }),
+    ]);
+    const reserving = reserveSentryCollateral({
+      ...reservationScope,
+      admission,
+      reservation: {
+        txid: '01'.repeat(32),
+        vout: 0,
+        proTxHash: '03'.repeat(32),
+      },
+      assertCurrent: () => undefined,
+    });
+    const outcome = reserving.then(
+      () => 'reserved',
+      (error: Error) => error.message
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const writesBeforeDisclosure = write.mock.calls.length;
+    finishRead();
+    await expect(signing).resolves.toBe('signed');
+    expect(await outcome).toContain('changed the Sentry approval');
+    expect(writesBeforeDisclosure).toBe(0);
+    expect(write).not.toHaveBeenCalled();
+  });
+
+  it('refuses signed PSBT disclosure when collateral was reserved while the signer ran', async () => {
+    jest.spyOn(chromeStorage, 'getItem').mockResolvedValue(undefined);
+    jest.spyOn(chromeStorage, 'setItem').mockResolvedValue(undefined);
+    state.vault.accounts.HDAccount[0].xpub = 'signature-reservation-first';
+    const reservationScope = {
+      walletIdentity: 'signature-reservation-first',
+      genesisHash: SENTRY_NETWORKS.mainnet.genesisHash,
+    };
+    const admission = await captureSentryCollateralAdmission(reservationScope);
+    let finishSigning!: () => void;
+    let signerStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      signerStarted = resolve;
+    });
+    keyring.syscoinTransaction.signPSBT.mockImplementation(async () => {
+      signerStarted();
+      await new Promise<void>((resolve) => {
+        finishSigning = resolve;
+      });
+      return 'signed';
+    });
+    const signing = wallet.signSyscoinPsbt({ psbt: 'fixture' });
+    const result = expect(signing).rejects.toThrow('protected Sentry');
+    await Promise.race([
+      started,
+      signing.then(() => {
+        throw new Error('Signature escaped before the signer barrier');
+      }),
+    ]);
+    const reservation = {
+      txid: '01'.repeat(32),
+      vout: 0,
+      proTxHash: '04'.repeat(32),
+    };
+    await reserveSentryCollateral({
+      ...reservationScope,
+      admission,
+      reservation,
+      assertCurrent: () => undefined,
+    });
+    wallet.getProtectedSentryOutpoints.mockResolvedValue([reservation]);
+    finishSigning();
+    await result;
+    expect(
+      (await captureSentryCollateralAdmission(reservationScope)).generation
+    ).toBe(admission.generation);
+  });
+
+  it('does not release a signature or invalidate approvals when the final protection read fails', async () => {
+    jest.spyOn(chromeStorage, 'getItem').mockResolvedValue(undefined);
+    jest.spyOn(chromeStorage, 'setItem').mockResolvedValue(undefined);
+    state.vault.accounts.HDAccount[0].xpub = 'signature-protection-read-failed';
+    const reservationScope = {
+      walletIdentity: 'signature-protection-read-failed',
+      genesisHash: SENTRY_NETWORKS.mainnet.genesisHash,
+    };
+    const admission = await captureSentryCollateralAdmission(reservationScope);
+    wallet.getProtectedSentryOutpoints
+      .mockResolvedValueOnce([])
+      .mockRejectedValueOnce(new Error('protection storage unavailable'));
+    await expect(wallet.signSyscoinPsbt({ psbt: 'fixture' })).rejects.toThrow(
+      'protection storage unavailable'
+    );
+    expect(
+      (await captureSentryCollateralAdmission(reservationScope)).generation
+    ).toBe(admission.generation);
+    await expect(
+      reserveSentryCollateral({
+        ...reservationScope,
+        admission,
+        reservation: {
+          txid: '01'.repeat(32),
+          vout: 0,
+          proTxHash: '05'.repeat(32),
+        },
+        assertCurrent: () => undefined,
+      })
+    ).resolves.toBeUndefined();
   });
 
   it('preserves broadcast acknowledgement when local history saving fails', async () => {

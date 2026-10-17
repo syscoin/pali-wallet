@@ -31,7 +31,18 @@ describe('Trezor Suite Desktop manifest policy', () => {
       "'self'",
       'https:',
       'wss:',
+      'http://localhost:*',
+      'http://127.0.0.1:*',
       'ws://127.0.0.1:21335/connect-ws',
+    ]);
+  });
+
+  it('permits configured HTTP development services only on loopback', () => {
+    const sources = directives.get('connect-src')!;
+    expect(sources).not.toContain('http:');
+    expect(sources.filter((source) => source.startsWith('http://'))).toEqual([
+      'http://localhost:*',
+      'http://127.0.0.1:*',
     ]);
   });
 

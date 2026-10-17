@@ -79,17 +79,33 @@ export async function controllerEmitter<
                 return reject(error);
               }
 
-              // Check for application-level errors
-              if (response && response.error) {
+              // Controller failures include an error field, even when its
+              // message is empty. A domain result can legitimately report
+              // success:false (for example, a reverted transaction receipt).
+              if (
+                response &&
+                (response.error ||
+                  (response.success === false &&
+                    Object.prototype.hasOwnProperty.call(response, 'error')))
+              ) {
                 // If it's a structured error from syscoinjs-lib, pass it through as-is
                 if (response.error === true && response.code) {
                   return reject(response);
                 }
-                if (typeof response.error === 'object') {
+                if (response.error && typeof response.error === 'object') {
                   return reject(response.error);
                 }
                 // For simple error messages, wrap in Error object
-                return reject(new Error(response.error));
+                return reject(
+                  new Error(
+                    typeof response.error === 'string' && response.error.trim()
+                      ? response.error
+                      : typeof response.message === 'string' &&
+                        response.message.trim()
+                      ? response.message
+                      : 'Wallet operation failed'
+                  )
+                );
               }
 
               resolve(response);

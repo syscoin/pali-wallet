@@ -349,11 +349,26 @@ window.__paliConformanceProvider={request:async args=>{
 }};</script>`;
 
 // This server never forwards traffic: it also acts as the launch-time deny proxy.
-export async function startUtxoFixtureServer() {
+export async function startUtxoFixtureServer(
+  options: {
+    readJson?: (url: URL) => unknown;
+  } = {}
+) {
   const blocked: string[] = [];
   let origin = '';
   const server = http.createServer((req, res) => {
-    if (req.method === 'GET' && (req.url === '/' || req.url === origin + '/')) {
+    const url = new URL(req.url || '/', origin || 'http://127.0.0.1');
+    const json = req.method === 'GET' ? options.readJson?.(url) : undefined;
+    if (json !== undefined) {
+      res.writeHead(200, {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+      });
+      res.end(JSON.stringify(json));
+    } else if (
+      req.method === 'GET' &&
+      (req.url === '/' || req.url === origin + '/')
+    ) {
       res.writeHead(200, { 'Content-Type': 'text/html' });
       res.end(DAPP);
     } else {
