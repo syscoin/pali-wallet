@@ -451,7 +451,7 @@ test('long network labels and populated menus stay bounded and keyboard reachabl
       const menu = page.locator('[role="menu"][data-headlessui-state="open"]');
       await expect(menu).toBeVisible();
       await menu
-        .getByRole('button', { name: en.networkMenu.utxoNetworks })
+        .getByRole('menuitem', { name: en.networkMenu.utxoNetworks })
         .click();
       await menu.hover({ position: { x: 100, y: 100 } });
       await page.mouse.wheel(0, 4000);

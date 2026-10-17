@@ -86,6 +86,17 @@ describe('Pali network switch informational dialog readiness', () => {
       }),
     };
     option.first = () => option;
+    const menu = {
+      getByRole: jest.fn((role, options) => {
+        expect(role).toBe('menuitem');
+        if (options.name instanceof RegExp) {
+          expect(options.name.test('EVM Networks')).toBe(true);
+          return group;
+        }
+        expect(options).toEqual({ name: targetLabel, exact: true });
+        return option;
+      }),
+    };
     const balance = {
       isVisible: jest.fn(async () => balanceVisible),
       evaluate: jest.fn(async () => !contextBusy),
@@ -107,6 +118,7 @@ describe('Pali network switch informational dialog readiness', () => {
         switchingAccount: false,
       })),
       getByRole: jest.fn((role, options) => {
+        if (role === 'menu') return menu;
         if (role === 'dialog') {
           expect(options.name.test(title)).toBe(true);
           expect(options.name.test('Approve transaction')).toBe(false);

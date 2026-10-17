@@ -40,6 +40,28 @@ jest.mock('components/index', () => ({
   ).PageActionFooter,
 }));
 
+it.each([true, false])(
+  'keeps the default-wallet choice with Close in the responsive action footer (enabled=%s)',
+  (enabled) => {
+    mockHasEthProperty = enabled;
+    render(<RemoveEth />);
+    const action = screen.getByRole('button', {
+      name: enabled
+        ? 'Set Metamask as default wallet'
+        : 'Set Pali as default wallet',
+    });
+    expect(action.closest('[data-page-action-footer]')).not.toBeNull();
+    expect(action).toHaveClass('w-full', 'min-w-0', 'min-h-[44px]');
+    expect(action).not.toHaveClass('w-[352px]');
+    expect(action).toHaveAttribute('type', 'button');
+    expect(
+      screen
+        .getByRole('button', { name: 'buttons.close' })
+        .closest('[data-page-action-footer]')
+    ).toBe(action.closest('[data-page-action-footer]'));
+  }
+);
+
 it('blocks overlapping settings choices while normal property delivery is pending', async () => {
   mockHasEthProperty = true;
   let complete: () => void;
