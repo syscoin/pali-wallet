@@ -100,7 +100,7 @@ const PhraseView = () => {
         </Card>
       </div>
 
-      <PageActionFooter className="absolute bottom-12 md:static">
+      <PageActionFooter>
         <Button
           type="button"
           onClick={handleClose}

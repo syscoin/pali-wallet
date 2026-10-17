@@ -6,10 +6,10 @@ interface IPageActionFooterProps {
   error?: React.ReactNode;
 }
 
-/** Keep a page action and its feedback together when short windows scroll. */
+/** Bottom-aligned page action and feedback, with in-flow space when scrolling. */
 export const PageActionFooter = ({
   children,
-  className = 'pb-6',
+  className = '',
   error,
 }: IPageActionFooterProps) => {
   const footerRef = useRef<HTMLDivElement>(null);

@@ -400,7 +400,6 @@ const CurrencyView = () => {
       </div>
 
       <PageActionFooter
-        className="mt-8 pb-6"
         error={saveError ? t('settings.preferencesSaveFailed') : undefined}
       >
         <Button
