@@ -8,7 +8,8 @@ backend.
 ## Keys and roles
 
 Open **Sentry operators** in the wallet menu. The key-import form keeps owner,
-operator, voting and collateral roles separate. Legacy operator keys use BLS;
+operator, voting and collateral roles separate. Pre-PQ operator keys use standard
+BLS Basic, not the obsolete BLS legacy scheme;
 legacy owner/voting/collateral keys use secp256k1. PQ Sentry authorities use the
 protocol's **SLH-DSA SHAKE-128s**, not the smart-account SHA2 parameter set.
 

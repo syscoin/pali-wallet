@@ -85,7 +85,7 @@ test('each Sentry import needs its own backup acknowledgement and removal identi
           exact: true,
         })
         .locator('..');
-      await expect(identity).toContainText(/Legacy BLS\s*·\s*Operator/);
+      await expect(identity).toContainText(/BLS \(Basic\)\s*·\s*Operator/);
       await expect(identity).toContainText(publicKey);
       await identity.scrollIntoViewIfNeeded();
       await info.attach(

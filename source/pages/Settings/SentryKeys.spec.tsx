@@ -572,7 +572,7 @@ it('keeps owner and operator key schemes distinct', async () => {
     'secp256k1'
   );
   expect(
-    screen.queryByRole('option', { name: 'Legacy BLS (basic)' })
+    screen.queryByRole('option', { name: 'BLS (Basic scheme)' })
   ).toBeNull();
   fireEvent.change(screen.getByLabelText('Key role'), {
     target: { value: 'operator' },
