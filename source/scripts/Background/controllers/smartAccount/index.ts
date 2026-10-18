@@ -210,6 +210,14 @@ const AA21_PREFUND_REASON_HEX =
   '41413231206469646e2774207061792070726566756e64';
 const HYDRATED_METADATA_TTL_MS = 30_000;
 const PROVIDER_UNAVAILABLE_ERROR = 'Web3 provider not available';
+const INFRASTRUCTURE_TIMEOUT_ERROR =
+  'Infrastructure RPC timed out. Refresh status before retrying.';
+const INFRASTRUCTURE_CODE_ERROR =
+  'Invalid infrastructure code response. Refresh status before deploying.';
+const DEPLOYMENT_RECEIPT_ERROR =
+  'Invalid deployment receipt. Refresh status before retrying.';
+const RECOVERY_MANAGEMENT_ADDRESS_ERROR =
+  'A wallet management address is required for smart-account recovery lookup';
 const ZKSYS_GAS_TANK_ABI = [
   'function creditOf(address account) view returns (uint256)',
 ] as const;
@@ -560,12 +568,7 @@ class SmartAccountController {
         operation,
         new Promise<never>((_, reject) => {
           timer = setTimeout(
-            () =>
-              reject(
-                new Error(
-                  'Infrastructure RPC timed out. Refresh status before retrying.'
-                )
-              ),
+            () => reject(new Error(INFRASTRUCTURE_TIMEOUT_ERROR)),
             timeoutMs
           );
         }),
@@ -629,10 +632,7 @@ class SmartAccountController {
       maximumWait = 8000
     ): Promise<T> => {
       const remaining = deadline - Date.now();
-      if (remaining <= 0)
-        throw new Error(
-          'Infrastructure RPC timed out. Refresh status before retrying.'
-        );
+      if (remaining <= 0) throw new Error(INFRASTRUCTURE_TIMEOUT_ERROR);
       return this.infrastructureDeadline(
         operation(),
         Math.min(maximumWait, remaining)
@@ -680,10 +680,7 @@ class SmartAccountController {
           addresses.map((address) => context.provider.getCode(address))
         )
       );
-      if (!validCodes(individual))
-        throw new Error(
-          'Invalid infrastructure code response. Refresh status before deploying.'
-        );
+      if (!validCodes(individual)) throw new Error(INFRASTRUCTURE_CODE_ERROR);
       codes = individual;
     }
     const contracts = infrastructureContracts.map((contract, index) => ({
@@ -754,9 +751,7 @@ class SmartAccountController {
           receipt &&
           !this.validInfrastructureReceipt(receipt, candidate.transactionHash)
         )
-          throw new Error(
-            'Invalid deployment receipt. Refresh status before retrying.'
-          );
+          throw new Error(DEPLOYMENT_RECEIPT_ERROR);
         settled = Boolean(receipt);
       }
       if (!settled && candidate.payerAddress && candidate.nonce !== undefined) {
@@ -881,9 +876,7 @@ class SmartAccountController {
         );
         this.assertInfrastructureContext(context);
         if (typeof code !== 'string' || !/^0x(?:[0-9a-fA-F]{2})*$/.test(code))
-          throw new Error(
-            'Invalid infrastructure code response. Refresh status before deploying.'
-          );
+          throw new Error(INFRASTRUCTURE_CODE_ERROR);
         if (code !== '0x') {
           skipped.push(contract.id);
           continue;
@@ -1072,9 +1065,7 @@ class SmartAccountController {
             receipt &&
             !this.validInfrastructureReceipt(receipt, response.hash)
           )
-            throw new Error(
-              'Invalid deployment receipt. Refresh status before retrying.'
-            );
+            throw new Error(DEPLOYMENT_RECEIPT_ERROR);
           if (receipt) break;
           if (Date.now() >= deadline) return { deployed, skipped, pending };
           await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -3668,9 +3659,7 @@ class SmartAccountController {
     const managementAddress = this.getWalletManagementAddress();
 
     if (!managementAddress) {
-      throw new Error(
-        'A wallet management address is required for smart-account recovery lookup'
-      );
+      throw new Error(RECOVERY_MANAGEMENT_ADDRESS_ERROR);
     }
 
     return `pali:eip155:${chainId}:${getAddress(
@@ -3691,9 +3680,7 @@ class SmartAccountController {
         ?.address;
 
     if (!managementAddress) {
-      throw new Error(
-        'A wallet management address is required for smart-account recovery lookup'
-      );
+      throw new Error(RECOVERY_MANAGEMENT_ADDRESS_ERROR);
     }
 
     return getAddress(managementAddress);
