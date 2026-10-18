@@ -37,6 +37,7 @@ export const EditApprovedAllowanceValueModal = (
   const [currentRadioChecked, setCurrentRadioChecked] =
     useState('proposed_limit');
   const wasOpen = useRef(false);
+  const editorGeneration = useRef(0);
   const restoreSavedAllowance = () => {
     const radio = customApprovedAllowanceAmount.isCustom
       ? 'custom_limit'
@@ -50,26 +51,50 @@ export const EditApprovedAllowanceValueModal = (
   };
   useEffect(() => {
     if (!showModal) {
+      if (wasOpen.current) editorGeneration.current += 1;
       wasOpen.current = false;
       return;
     }
     if (wasOpen.current) return;
     wasOpen.current = true;
+    editorGeneration.current += 1;
     restoreSavedAllowance();
   }, [showModal, customApprovedAllowanceAmount, formControlEditedFee]);
+  useEffect(
+    () => () => {
+      wasOpen.current = false;
+      editorGeneration.current += 1;
+    },
+    []
+  );
 
   const close = () => {
+    wasOpen.current = false;
+    editorGeneration.current += 1;
     restoreSavedAllowance();
     setOpenEditFeeModal(false);
   };
 
-  const onSubmitForm = (data: any) => {
+  const onSubmitForm = async () => {
+    if (!showModal || !wasOpen.current) return;
+    const generation = editorGeneration.current;
+    let data;
+    try {
+      data = await formControlEditedFee.validateFields();
+    } catch {
+      // The form renders validation errors inline.
+      return;
+    }
+    // Validation can settle after dismissal or a newer editor session.
+    if (!wasOpen.current || generation !== editorGeneration.current) return;
+    wasOpen.current = false;
+    editorGeneration.current += 1;
     setCustomApprovedAllowanceAmount(
       (prevState: ICustomApprovedAllowanceAmount) => ({
         ...prevState,
-        isCustom: currentRadioChecked === 'custom_limit',
+        isCustom: data.radio_group === 'custom_limit',
         customAllowanceValue:
-          currentRadioChecked === 'custom_limit'
+          data.radio_group === 'custom_limit'
             ? data.custom_limit_input_value
             : '',
       })
@@ -100,7 +125,14 @@ export const EditApprovedAllowanceValueModal = (
                   {`${t('send.allow')} ${host} ${t('send.toWithdraw')}`}:
                 </Dialog.Description>
               </div>
-              <Form form={formControlEditedFee} onFinish={onSubmitForm}>
+              <Form
+                form={formControlEditedFee}
+                onSubmitCapture={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  void onSubmitForm();
+                }}
+              >
                 <Form.Item
                   id="radio_group"
                   name="radio_group"
@@ -210,7 +242,7 @@ export const EditApprovedAllowanceValueModal = (
               tone="primary"
               type="button"
               id="confirm_btn"
-              onClick={() => formControlEditedFee.submit()}
+              onClick={onSubmitForm}
             >
               {t('buttons.save')}
             </DialogActionButton>

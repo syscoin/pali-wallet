@@ -205,6 +205,7 @@ it('keeps the selected account attribution and disconnects the exact host', asyn
   await waitFor(() => expect(screen.queryByText(host)).toBeNull());
   expect(mockEmitter).toHaveBeenCalledTimes(1);
   expect(mockEmitter).toHaveBeenCalledWith(['dapp', 'disconnect'], [host]);
+  expect(screen.queryByRole('alert')).toBeNull();
 });
 
 it('shows a newly approved connection after disconnecting the same host without leaving the page', async () => {
@@ -273,6 +274,68 @@ it('restores access after a rejected disconnect without hiding the still-connect
       screen.getByRole('button', { name: 'Delete connected site' })
     );
     await act(async () => reject(new Error('Controller unavailable')));
+    expect(screen.getByText(host)).toBeVisible();
+    expect(
+      screen.getByRole('button', { name: 'Edit connection' })
+    ).toBeEnabled();
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Controller unavailable'
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Edit connection' }));
+    mockEmitter.mockImplementationOnce(async () => {
+      mockState.dapp.dapps = {};
+    });
+    await user.click(
+      screen.getByRole('button', { name: 'Delete connected site' })
+    );
+    await waitFor(() => expect(screen.queryByText(host)).toBeNull());
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(mockEmitter).toHaveBeenCalledTimes(2);
+    expect(mockEmitter).toHaveBeenLastCalledWith(
+      ['dapp', 'disconnect'],
+      [host]
+    );
+  } finally {
+    errors.mockRestore();
+  }
+});
+
+it('uses translated fallback feedback when a disconnect error has no message', async () => {
+  const user = userEvent.setup();
+  mockEmitter.mockRejectedValueOnce({ code: 'DISCONNECT_UNAVAILABLE' });
+  const errors = jest.spyOn(console, 'error').mockImplementation();
+  try {
+    mount();
+    await user.click(screen.getByRole('button', { name: 'Edit connection' }));
+    await user.click(
+      screen.getByRole('button', { name: 'Delete connected site' })
+    );
+    expect(await screen.findByRole('alert')).toHaveTextContent('Failed');
+    expect(screen.getByText(host)).toBeVisible();
+    expect(
+      screen.getByRole('button', { name: 'Edit connection' })
+    ).toBeEnabled();
+  } finally {
+    errors.mockRestore();
+  }
+});
+
+it('does not carry a late disconnect error into a reopened settings page', async () => {
+  const user = userEvent.setup();
+  let reject!: (error: Error) => void;
+  mockEmitter.mockReturnValueOnce(new Promise((_, fail) => (reject = fail)));
+  const errors = jest.spyOn(console, 'error').mockImplementation();
+  try {
+    const view = mount();
+    await user.click(screen.getByRole('button', { name: 'Edit connection' }));
+    await user.click(
+      screen.getByRole('button', { name: 'Delete connected site' })
+    );
+    view.unmount();
+    mount();
+    await act(async () => reject(new Error('Earlier disconnect failed')));
+    expect(screen.queryByRole('alert')).toBeNull();
     expect(screen.getByText(host)).toBeVisible();
     expect(
       screen.getByRole('button', { name: 'Edit connection' })

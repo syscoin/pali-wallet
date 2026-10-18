@@ -1,5 +1,11 @@
 /** @jest-environment jsdom */
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React, { useState } from 'react';
 
@@ -132,6 +138,51 @@ it.each(['Cancel', 'Escape', 'Close'])(
   }
 );
 
+it('submits a valid allowance through the native form submit path', async () => {
+  render(<Harness />);
+  open();
+  selectCustom();
+  fireEvent.change(input(), { target: { value: '7' } });
+  fireEvent.submit(input().closest('form')!);
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  expect(committed().customAllowanceValue).toBe('7');
+});
+
+it.each(['hide', 'unmount'])(
+  'does not commit pending validation after an external %s',
+  async (exit) => {
+    const saved = jest.fn();
+    const props = {
+      approvedTokenInfos: { tokenDecimals: 6, tokenSymbol: 'UNIT' },
+      customApprovedAllowanceAmount: {
+        isCustom: false,
+        defaultAllowanceValue: '100',
+        customAllowanceValue: null,
+      },
+      host: 'https://dapp.example',
+      setCustomApprovedAllowanceAmount: saved,
+      setOpenEditFeeModal: jest.fn(),
+    };
+    const view = render(
+      <EditApprovedAllowanceValueModal {...props} showModal />
+    );
+    selectCustom();
+    fireEvent.change(input(), { target: { value: '20' } });
+    act(() => {
+      save();
+      if (exit === 'unmount') view.unmount();
+      else
+        view.rerender(
+          <EditApprovedAllowanceValueModal {...props} showModal={false} />
+        );
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(saved).not.toHaveBeenCalled();
+  }
+);
+
 it('restores committed radio choice, reads newer saved props on reopening and supports proposed limits', async () => {
   render(<Harness />);
   open();
@@ -190,3 +241,40 @@ it('allows an explicit zero approval for revocation', async () => {
   expect(committed().customAllowanceValue).toBe('0');
   expect(committed().isCustom).toBe(true);
 });
+
+it.each(['Cancel', 'Escape', 'Close'])(
+  'does not commit a pending Save after the allowance editor is dismissed with %s',
+  async (dismissal) => {
+    render(<Harness />);
+    open();
+    selectCustom();
+    fireEvent.change(input(), { target: { value: '20' } });
+    act(() => {
+      save();
+      if (dismissal === 'Escape') {
+        fireEvent.keyDown(window, { key: 'Escape', code: 'Escape' });
+      } else {
+        fireEvent.click(
+          screen.getByRole('button', {
+            name: dismissal === 'Cancel' ? 'buttons.cancel' : 'buttons.close',
+          })
+        );
+      }
+    });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(committed()).toEqual({
+      isCustom: false,
+      defaultAllowanceValue: '100',
+      customAllowanceValue: null,
+    });
+    open();
+    selectCustom();
+    fireEvent.change(input(), { target: { value: '3' } });
+    save();
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(committed().customAllowanceValue).toBe('3');
+  }
+);

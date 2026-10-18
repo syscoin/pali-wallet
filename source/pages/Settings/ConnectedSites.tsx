@@ -36,6 +36,7 @@ const ConnectedSites = () => {
   const [disconnectingHost, setDisconnectingHost] = useState<string | null>(
     null
   );
+  const [disconnectError, setDisconnectError] = useState('');
 
   // Show all dapps since they're connected globally (one account per dapp)
   // Redux owns membership: an old optimistic removal must not hide a later
@@ -51,6 +52,7 @@ const ConnectedSites = () => {
     if (!selected) return;
 
     const host = selected.host;
+    setDisconnectError('');
     setDisconnectingHost(host);
     setSelectedHost(undefined);
 
@@ -58,6 +60,7 @@ const ConnectedSites = () => {
       // The controller will dispatch removeDApp action internally
       await controllerEmitter(['dapp', 'disconnect'], [host]);
     } catch (error) {
+      setDisconnectError(error?.message || t('send.failed'));
       console.error('Error disconnecting dapp:', error);
     } finally {
       setDisconnectingHost((current) => (current === host ? null : current));
@@ -189,7 +192,7 @@ const ConnectedSites = () => {
           </DialogPrimitive>
         )}
 
-        <PageActionFooter>
+        <PageActionFooter error={disconnectError}>
           <Button
             variant="neutral"
             className="text-sm text-brand-royalblue"
