@@ -401,3 +401,48 @@ test('synthetic guardian recovery enables at its deadline without remounting', a
   });
   expect(await page.evaluate(() => (window as any).__forbidden)).toEqual([]);
 });
+
+test('synthetic recovery rechecks forward and backward wall-clock changes', async ({
+  page,
+}, info) => {
+  await page.route('**/*', (route) =>
+    new URL(route.request().url()).origin === origin
+      ? route.continue()
+      : route.abort('blockedbyclient')
+  );
+  const now = new Date('2026-10-18T22:30:00Z');
+  const readyAt = now.getTime() / 1000 + 7 * 86400;
+  await page.clock.install({ time: new Date(now.getTime() - 60000) });
+  await page.setViewportSize({ width: 400, height: 620 });
+  await page.goto(`${origin}/?mode=recovery-deadline&readyAt=${readyAt}`);
+  const finalize = page.getByRole('button', {
+    name: en.settings.smartAccountGuardianRecoveryFinalize,
+    exact: true,
+  });
+  await expect(finalize).toBeVisible();
+  await expect(finalize).toBeDisabled();
+  await finalize.scrollIntoViewIfNeeded();
+  const originalButton = await finalize.elementHandle();
+  await page.clock.pauseAt(now);
+
+  await page.clock.setSystemTime(new Date(now.getTime() - 2 * 86400000));
+  await page.clock.fastForward(1000);
+  await expect(finalize).toBeDisabled();
+  await info.attach('recovery-backward-clock', {
+    body: await page.screenshot(),
+    contentType: 'image/png',
+  });
+
+  await page.clock.setSystemTime(new Date(now.getTime() + 8 * 86400000));
+  await page.clock.fastForward(1000);
+  await expect(finalize).toBeEnabled();
+  expect(await originalButton!.evaluate((button) => button.isConnected)).toBe(
+    true
+  );
+  await info.attach('recovery-forward-clock', {
+    body: await page.screenshot(),
+    contentType: 'image/png',
+  });
+  // UI readiness only; chain validation is authoritative and remains uncalled.
+  expect(await page.evaluate(() => (window as any).__forbidden)).toEqual([]);
+});

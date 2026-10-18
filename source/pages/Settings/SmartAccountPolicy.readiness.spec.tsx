@@ -227,17 +227,44 @@ it('enables an already-ready recovery immediately without retaining a deadline t
   expect(jest.getTimerCount()).toBe(0);
 });
 
-it('chunks a deadline beyond the browser timer limit without enabling early or spinning', async () => {
+it('bounds distant deadline checks without enabling early or overflowing timers', async () => {
   suppressStatusPolling();
   const delay = MAX_TIMER_DELAY + 6353;
   storeRecovery((NOW.getTime() + delay) / 1000);
   render(<SmartAccountPolicy />);
   await settle();
   expect(jest.getTimerCount()).toBe(1);
-  await advance(MAX_TIMER_DELAY);
+  await advance(1000);
   expect(finalize().disabled).toBe(true);
   expect(jest.getTimerCount()).toBe(1);
-  await advance(6352);
+  jest.setSystemTime(NOW.getTime() + delay - 1000);
+  await advance(999);
+  expect(finalize().disabled).toBe(true);
+  await advance(1);
+  expect(finalize().disabled).toBe(false);
+  expect(jest.getTimerCount()).toBe(0);
+});
+
+it('notices a forward wall-clock adjustment within one second without an unrelated render', async () => {
+  suppressStatusPolling();
+  storeRecovery(NOW.getTime() / 1000 + 7 * 86400);
+  render(<SmartAccountPolicy />);
+  await settle();
+  expect(finalize().disabled).toBe(true);
+  jest.setSystemTime(NOW.getTime() + 8 * 86400000);
+  await advance(1000);
+  expect(finalize().disabled).toBe(false);
+  expect(jest.getTimerCount()).toBe(0);
+});
+
+it('keeps recovery disabled until the deadline after a backward wall-clock adjustment', async () => {
+  suppressStatusPolling();
+  render(<SmartAccountPolicy />);
+  await settle();
+  jest.setSystemTime(NOW.getTime() - 120000);
+  await advance(60000);
+  expect(finalize().disabled).toBe(true);
+  await advance(119999);
   expect(finalize().disabled).toBe(true);
   await advance(1);
   expect(finalize().disabled).toBe(false);

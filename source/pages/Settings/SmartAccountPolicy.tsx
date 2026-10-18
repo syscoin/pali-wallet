@@ -517,9 +517,9 @@ const SmartAccountPolicy = () => {
     const wake = () => {
       const remaining = recoveryReadyAt * 1000 - Date.now();
       if (remaining > 0) {
-        // Browser timers overflow above roughly 24.8 days. Recheck long
-        // delays in bounded chunks, including after a wall-clock change.
-        timer = setTimeout(wake, Math.min(remaining, 2147483647));
+        // Timers are monotonic; recheck wall time without rendering so a
+        // system clock adjustment cannot strand a ready recovery.
+        timer = setTimeout(wake, Math.min(remaining, 1000));
       } else {
         wakeRecoveryDeadline((version) => version + 1);
       }
