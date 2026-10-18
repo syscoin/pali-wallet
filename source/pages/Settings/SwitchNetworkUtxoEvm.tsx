@@ -11,30 +11,22 @@ import { INetworkType } from 'types/network';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { waitForNetworkSwitch } from 'utils/stateWaitUtils';
 
+import { NetworkTypeBadge } from './NetworkTypeBadge';
+
 const SwitchNeworkUtxoEvm: React.FC = () => {
   const { controllerEmitter } = useController();
   const { host, ...data } = useQueryData();
   const { newNetwork, newChainValue } = data;
   const [loading, setLoading] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
+  const [switchError, setSwitchError] = useState('');
   const { t } = useTranslation();
   const { activeNetwork } = useSelector((state: RootState) => state.vault);
-  const prevNetworkRef = useRef(activeNetwork);
-  const prevChainIdRef = useRef(activeNetwork?.chainId);
-  const prevKindRef = useRef(activeNetwork?.kind);
-
-  const getTypeBadge = (kind?: INetworkType) => {
-    const isUtxo = kind === INetworkType.Syscoin;
-    const text = isUtxo ? 'UTXO' : 'EVM';
-    const colorClass = isUtxo ? 'bg-brand-pink' : 'bg-brand-blue';
-    return (
-      <span
-        className={`px-1.5 py-0.5 text-[10px] font-medium text-white rounded-full ${colorClass}`}
-      >
-        {text}
-      </span>
-    );
-  };
+  const previousNetwork = useRef([
+    activeNetwork?.chainId,
+    activeNetwork?.kind,
+    activeNetwork?.label,
+  ] as const).current;
 
   // Safety check: if required data is missing, show error or redirect
   if (!newNetwork || !newChainValue) {
@@ -61,10 +53,11 @@ const SwitchNeworkUtxoEvm: React.FC = () => {
     );
   }
 
-  const previousNetworkName = prevNetworkRef.current?.label || 'N/A';
+  const previousNetworkName = previousNetwork[2] || 'N/A';
 
   const onSubmit = async () => {
     setLoading(true);
+    setSwitchError('');
     try {
       // Perform the network switch and wait for state update
       await controllerEmitter(
@@ -87,6 +80,7 @@ const SwitchNeworkUtxoEvm: React.FC = () => {
       window.close();
     } catch (networkError) {
       console.error('Network switch failed:', networkError);
+      setSwitchError(networkError?.message || t('send.failed'));
       setLoading(false);
       // Don't throw here - just reset the loading state so user can try again
     }
@@ -108,12 +102,12 @@ const SwitchNeworkUtxoEvm: React.FC = () => {
                 {t('settings.previousChain')}
                 <span className="flex items-center gap-2 text-brand-royalblue text-xs transition-opacity hover:opacity-90">
                   <ChainIcon
-                    chainId={prevChainIdRef.current}
+                    chainId={previousNetwork[0]}
                     size={18}
-                    networkKind={prevKindRef.current}
+                    networkKind={previousNetwork[1]}
                   />
                   {previousNetworkName}
-                  {getTypeBadge(prevKindRef.current)}
+                  <NetworkTypeBadge kind={previousNetwork[1]} />
                 </span>
               </div>
 
@@ -126,7 +120,9 @@ const SwitchNeworkUtxoEvm: React.FC = () => {
                     networkKind={INetworkType.Syscoin}
                   />
                   {newNetwork?.label || newChainValue}
-                  {getTypeBadge(newNetwork?.kind ?? INetworkType.Syscoin)}
+                  <NetworkTypeBadge
+                    kind={newNetwork?.kind ?? INetworkType.Syscoin}
+                  />
                 </span>
               </div>
 
@@ -147,7 +143,19 @@ const SwitchNeworkUtxoEvm: React.FC = () => {
           </div>
         </div>
 
-        <div className="w-full px-4 absolute bottom-12 md:static flex items-center justify-between">
+        <div
+          className={`w-full px-4 flex flex-wrap items-center justify-between ${
+            switchError ? 'mt-8' : 'absolute bottom-12 md:static'
+          }`}
+        >
+          {switchError && (
+            <p
+              role="alert"
+              className="mb-3 w-full break-words text-sm text-warning-error"
+            >
+              {switchError}
+            </p>
+          )}
           <Button
             variant="secondary"
             type="button"

@@ -12,16 +12,20 @@ import { INetworkType } from 'types/network';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { waitForNetworkSwitch } from 'utils/stateWaitUtils';
 
+import { NetworkTypeBadge } from './NetworkTypeBadge';
+
 const SwitchChain: React.FC = () => {
-  const { host, ...data } = useQueryData();
-  const { chainId } = data;
+  const { host, chainId, eventName } = useQueryData();
   const [loading, setLoading] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
+  const [switchError, setSwitchError] = useState('');
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
-  const prevChainIdRef = useRef(activeNetwork.chainId);
-  const prevKindRef = useRef(activeNetwork.kind);
+  const previousNetwork = useRef([
+    activeNetwork.chainId,
+    activeNetwork.kind,
+  ] as const).current;
   const networks = useSelector(
     (state: RootState) => state.vaultGlobal.networks
   );
@@ -29,20 +33,9 @@ const SwitchChain: React.FC = () => {
   const { controllerEmitter } = useController();
   const { t } = useTranslation();
 
-  const getTypeBadge = (kind?: INetworkType) => {
-    const isUtxo = kind === INetworkType.Syscoin;
-    const text = isUtxo ? 'UTXO' : 'EVM';
-    const colorClass = isUtxo ? 'bg-brand-pink' : 'bg-brand-blue';
-    return (
-      <span
-        className={`px-1.5 py-0.5 text-[10px] font-medium text-white rounded-full ${colorClass}`}
-      >
-        {text}
-      </span>
-    );
-  };
   const onSubmit = async () => {
     setLoading(true);
+    setSwitchError('');
     try {
       // Perform the network switch and wait for state update
       await controllerEmitter(
@@ -58,43 +51,34 @@ const SwitchChain: React.FC = () => {
       setConfirmed(true);
       setLoading(false);
       // Dispatch MUST be right before window.close for subsequent popups timing
-      const type = data.eventName;
-      dispatchBackgroundEvent(`${type}.${host}`, null);
+      dispatchBackgroundEvent(`${eventName}.${host}`, null);
       window.close();
     } catch (networkError) {
       console.error('Network switch failed:', networkError);
+      setSwitchError(networkError?.message || t('send.failed'));
       setLoading(false);
       // Don't throw here - just reset the loading state so user can try again
     }
   };
 
-  const CurrentChains = () => {
-    const fromChain = (
+  const CurrentChains = () => (
+    <div className="w-4/5 gap-4 flex items-center align-center flex-row">
       <ChainIcon
-        chainId={prevChainIdRef.current}
+        chainId={previousNetwork[0]}
         size={100}
-        className=""
-        networkKind={prevKindRef.current}
+        networkKind={previousNetwork[1]}
         fallbackClassName="rounded-full flex items-center justify-center text-white text-sm bg-brand-blue200 p-5"
-      />
-    );
-
-    const toChain = (
+      />{' '}
+      <Icon name="arrowright" isSvg size={50} />{' '}
       <ChainIcon
         chainId={network.chainId}
         size={100}
-        className=""
         networkKind={INetworkType.Ethereum}
         fallbackClassName="rounded-full flex items-center justify-center text-brand-blue200 bg-white text-sm"
       />
-    );
+    </div>
+  );
 
-    return (
-      <div className="w-4/5 gap-4 flex items-center align-center flex-row">
-        {fromChain} <Icon name="arrowright" isSvg size={50} /> {toChain}
-      </div>
-    );
-  };
   return (
     <>
       <div className="flex flex-col items-center justify-center w-full gap-6 pb-6">
@@ -109,17 +93,25 @@ const SwitchChain: React.FC = () => {
             <CurrentChains />
             <div className="mt-2 flex items-center gap-2 text-brand-royalblue text-xs">
               <span className="flex items-center gap-1">
-                {getTypeBadge(prevKindRef.current)}
+                <NetworkTypeBadge kind={previousNetwork[1]} />
               </span>
               <Icon name="arrowright" isSvg size={16} />
               <span className="flex items-center gap-1">
-                {getTypeBadge(INetworkType.Ethereum)}
+                <NetworkTypeBadge kind={INetworkType.Ethereum} />
               </span>
             </div>
           </div>
         </div>
 
-        <div className="w-full px-4 flex items-center justify-between">
+        <div className="w-full px-4 flex flex-wrap items-center justify-between">
+          {switchError && (
+            <p
+              role="alert"
+              className="mb-3 w-full break-words text-sm text-warning-error"
+            >
+              {switchError}
+            </p>
+          )}
           <Button
             variant="ghost"
             type="button"

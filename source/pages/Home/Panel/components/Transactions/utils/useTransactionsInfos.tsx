@@ -130,13 +130,16 @@ export const useTransactionsListConfig = (
 
   const formatTimeStamp = useCallback(
     (timestamp: number) => {
-      // Validate timestamp - should be in seconds, not too far in past or future
+      // Old history remains valid; only missing, invalid or future dates fall back.
       const currentTime = Math.floor(Date.now() / 1000);
       const oneYearFromNow = currentTime + 365 * 24 * 60 * 60;
-      const tenYearsAgo = currentTime - 10 * 365 * 24 * 60 * 60;
 
       // If timestamp is invalid, use current time
-      if (!timestamp || timestamp < tenYearsAgo || timestamp > oneYearFromNow) {
+      if (
+        !Number.isFinite(timestamp) ||
+        timestamp <= 0 ||
+        timestamp > oneYearFromNow
+      ) {
         console.warn(
           `Invalid timestamp detected: ${timestamp}, using current time`
         );
@@ -175,7 +178,6 @@ export const useTransactionsListConfig = (
     // Validate timestamp for UTXO as well
     const currentTime = Math.floor(Date.now() / 1000);
     const oneYearFromNow = currentTime + 365 * 24 * 60 * 60;
-    const tenYearsAgo = currentTime - 10 * 365 * 24 * 60 * 60;
 
     // For UTXO, timestamp might already be in milliseconds
     let timestampMs = timestamp;
@@ -187,8 +189,8 @@ export const useTransactionsListConfig = (
     // Validate the millisecond timestamp
     const timestampSec = Math.floor(timestampMs / 1000);
     if (
-      !timestampSec ||
-      timestampSec < tenYearsAgo ||
+      !Number.isFinite(timestampSec) ||
+      timestampSec <= 0 ||
       timestampSec > oneYearFromNow
     ) {
       console.warn(
