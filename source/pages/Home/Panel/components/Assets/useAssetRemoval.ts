@@ -16,38 +16,35 @@ export const useAssetRemoval = <T>(
   const busy = useRef(false);
   const begin = useRequestScope(scope);
 
-  useEffect(() => {
+  const reset = () => {
     busy.current = false;
     setPending(false);
     setItem(null);
-  }, [scope]);
+  };
+  useEffect(reset, [scope]);
 
-  const open = (value: T) => {
+  const open = (value: T | null) => {
     if (!busy.current) setItem(value);
   };
-  const close = () => {
-    if (!busy.current) setItem(null);
-  };
-  const remove = async (params: unknown[]) => {
+  const close = () => open(null);
+  const remove = (params: unknown[]) => {
     if (!item || busy.current) return;
     busy.current = true;
     const current = begin();
     const reportError = onStart?.();
     setPending(true);
-    try {
-      await controllerEmitter(['wallet', 'deleteTokenInfo'], params);
-    } catch (error) {
-      console.error('Error deleting asset:', error);
-      // The stable parent remains mounted when local last-row removal has
-      // unmounted this list before the persistence promise settles.
-      reportError?.(error);
-    } finally {
-      if (current()) {
-        busy.current = false;
-        setPending(false);
-        setItem(null);
-      }
-    }
+    return controllerEmitter(['wallet', 'deleteTokenInfo'], params)
+      .then(
+        () => undefined,
+        (error) => {
+          console.error('Error deleting asset:', error);
+          // The stable parent still owns feedback after local last-row removal.
+          reportError?.(error);
+        }
+      )
+      .finally(() => {
+        if (current()) reset();
+      });
   };
 
   return { item, pending, open, close, remove };
