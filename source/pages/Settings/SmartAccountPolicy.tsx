@@ -510,9 +510,18 @@ const SmartAccountPolicy = () => {
   const recoveryReadyAt = Number(
     activeGuardianReplacement?.recoveryOperation?.readyAt
   );
+  const guardianRecoveryReady =
+    Number.isFinite(recoveryReadyAt) &&
+    recoveryReadyAt > 0 &&
+    recoveryReadyAt <= Math.floor(Date.now() / 1000);
   const [, wakeRecoveryDeadline] = useState(0);
   useEffect(() => {
-    if (!Number.isFinite(recoveryReadyAt) || recoveryReadyAt <= 0) return;
+    if (
+      !Number.isFinite(recoveryReadyAt) ||
+      recoveryReadyAt <= 0 ||
+      guardianRecoveryReady
+    )
+      return;
     let timer: ReturnType<typeof setTimeout>;
     const wake = () => {
       const remaining = recoveryReadyAt * 1000 - Date.now();
@@ -526,11 +535,13 @@ const SmartAccountPolicy = () => {
     };
     wake();
     return () => clearTimeout(timer);
-  }, [recoveryReadyAt, smartAccountAddress, activeNetwork.chainId, scopeKey]);
-  const guardianRecoveryReady =
-    Number.isFinite(recoveryReadyAt) &&
-    recoveryReadyAt > 0 &&
-    recoveryReadyAt <= Math.floor(Date.now() / 1000);
+  }, [
+    recoveryReadyAt,
+    guardianRecoveryReady,
+    smartAccountAddress,
+    activeNetwork.chainId,
+    scopeKey,
+  ]);
   const replacementAuthenticatorLabel = (kind?: RecoveryAuthenticatorId) => {
     switch (kind) {
       case 'ecdsa':

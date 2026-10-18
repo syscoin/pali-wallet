@@ -292,6 +292,7 @@ class MainController {
   private isNetworkSwitching = false;
   private isRemovingNetwork = false;
   private walletSessionGeneration = 0;
+  private fiatQuoteGeneration = 0;
   // Session changes cancel in-flight work; only reset invalidates valid queued
   // source-vault saves across ordinary network changes and locks.
   private walletStateGeneration = 0;
@@ -411,6 +412,7 @@ class MainController {
   private async resetWalletStateExclusive(options?: {
     resetNetworks?: boolean;
   }) {
+    this.fiatQuoteGeneration += 1;
     this.walletSessionGeneration += 1;
     this.walletStateGeneration += 1;
     this.networkRequestGeneration += 1;
@@ -2052,9 +2054,11 @@ class MainController {
   // Fiat price fetching functionality moved from ControllerUtils
 
   public async setFiat(currency?: string): Promise<void> {
+    const generation = this.fiatQuoteGeneration;
     // Use AsyncMutex for cross-context synchronization
     // This ensures only one price update runs at a time across all contexts
     return fiatPriceMutex.runExclusive(async () => {
+      if (generation !== this.fiatQuoteGeneration) return;
       if (!currency) {
         const storeCurrency = store.getState().price.fiat.asset;
         currency = storeCurrency || 'usd';
@@ -2065,7 +2069,6 @@ class MainController {
 
       const { activeNetwork, isBitcoinBased } = store.getState().vault;
       const id = getNetworkChain(isBitcoinBased);
-      const session = this.walletSessionGeneration;
       const networkKey = fiatNetworkKey(activeNetwork);
       const priceSource = () =>
         isBitcoinBased
@@ -2075,7 +2078,7 @@ class MainController {
             ]?.coingeckoId;
       const sourceId = priceSource();
       const isCurrent = () =>
-        session === this.walletSessionGeneration &&
+        generation === this.fiatQuoteGeneration &&
         networkKey === fiatNetworkKey(store.getState().vault.activeNetwork) &&
         sourceId === priceSource();
 
@@ -2883,6 +2886,7 @@ class MainController {
   }
 
   public lock() {
+    this.fiatQuoteGeneration += 1;
     this.walletSessionGeneration += 1;
     this.networkRequestGeneration += 1;
     this.isNetworkSwitching = false;
@@ -3749,7 +3753,18 @@ class MainController {
       })
       .catch((error) => {
         // Handle the error
-        if (isCurrent()) this.handleNetworkChangeError(error);
+        if (isCurrent()) {
+          this.handleNetworkChangeError(error);
+          // Target hydration can retire a quote before a failed switch restores
+          // the source vault. Refresh that current context without hiding the error.
+          if (isCurrent())
+            void this.setFiat().catch((priceError) =>
+              console.error(
+                '[MainController] Failed to refresh fiat:',
+                priceError
+              )
+            );
+        }
 
         // Cancellation is not a successful switch to the requested chain.
         throw error;

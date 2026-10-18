@@ -94,6 +94,7 @@ test.beforeAll(async () => {
       recoveryOperation:{account:ACCOUNT,chainId:57057,executionCalldata:'0x1234',mode:'0x'+'00'.repeat(32),readyAt:Number(query.get('readyAt')),salt:'0x'+'66'.repeat(32)}
     }));
     i18next.init({lng:locale,initImmediate:false,resources:{en:{translation:en},de:{translation:de}},interpolation:{escapeValue:false}});
+    (window as any).__changeLocale=(lng:string)=>i18next.changeLanguage(lng);
     createRoot(document.getElementById('root')!).render(<I18nextProvider i18n={i18next}><MemoryRouter initialEntries={[{pathname:'/settings/account/smart-account-policy',state:{id:1,accountType:'SmartAccount',smartAccountPolicyView:'recovery'}}]}><main className="h-screen w-full overflow-y-auto bg-bkg-3 text-white">{mode==='prepare'?<PrepareSmartAccount/>:<Policy/>}</main></MemoryRouter></I18nextProvider>);
   `
   );
@@ -440,6 +441,26 @@ test('synthetic recovery rechecks forward and backward wall-clock changes', asyn
     true
   );
   await info.attach('recovery-forward-clock', {
+    body: await page.screenshot(),
+    contentType: 'image/png',
+  });
+
+  // A locale context change is a read-only fixture rerender. It exercises
+  // ready -> pending timer re-arming without invoking wallet mutations.
+  await page.clock.setSystemTime(now);
+  await page.evaluate(() => (window as any).__changeLocale('de'));
+  const localizedFinalize = page.getByRole('button', {
+    name: de.settings.smartAccountGuardianRecoveryFinalize,
+    exact: true,
+  });
+  await expect(localizedFinalize).toBeDisabled();
+  await page.clock.setSystemTime(new Date(now.getTime() + 8 * 86400000));
+  await page.clock.fastForward(1000);
+  await expect(localizedFinalize).toBeEnabled();
+  expect(await originalButton!.evaluate((button) => button.isConnected)).toBe(
+    true
+  );
+  await info.attach('recovery-rearmed-clock', {
     body: await page.screenshot(),
     contentType: 'image/png',
   });

@@ -271,6 +271,61 @@ it('keeps recovery disabled until the deadline after a backward wall-clock adjus
   expect(jest.getTimerCount()).toBe(0);
 });
 
+const readyThenRejectedAfterClockCorrection = async () => {
+  suppressStatusPolling();
+  const original = mockEmitter.getMockImplementation()!;
+  mockEmitter.mockImplementation((path: string[], ...args: any[]) =>
+    path[1] === 'finalizeSmartAccountGuardianRecovery'
+      ? Promise.reject(new Error('PALI_GUARDIAN_RECOVERY_NOT_READY'))
+      : original(path, ...args)
+  );
+  const view = render(<SmartAccountPolicy />);
+  await settle();
+  expect(finalize().disabled).toBe(true);
+  jest.setSystemTime(NOW.getTime() + 61000);
+  await advance(1000);
+  expect(finalize().disabled).toBe(false);
+  expect(jest.getTimerCount()).toBe(0);
+
+  // The chain did not advance with the incorrect local clock. The real
+  // NotReady error path keeps the pending operation after clock correction.
+  jest.setSystemTime(NOW);
+  fireEvent.click(finalize());
+  await settle();
+  await settle();
+  expect(
+    mockEmitter.mock.calls.filter(
+      ([[, name]]) => name === 'finalizeSmartAccountGuardianRecovery'
+    )
+  ).toHaveLength(1);
+  expect(finalize().disabled).toBe(true);
+  expect(
+    JSON.parse(localStorage.getItem(STORAGE_KEY)!).recoveryOperation
+  ).toBeDefined();
+  return view;
+};
+
+it('re-arms the timer when a NotReady response makes the displayed recovery pending again', async () => {
+  await readyThenRejectedAfterClockCorrection();
+  expect(jest.getTimerCount()).toBe(1);
+  await advance(59999);
+  expect(finalize().disabled).toBe(true);
+  await advance(1);
+  expect(finalize().disabled).toBe(false);
+  expect(jest.getTimerCount()).toBe(0);
+});
+
+it('cleans a re-armed timer and enables the same recovery when reopened at its real deadline', async () => {
+  const view = await readyThenRejectedAfterClockCorrection();
+  view.unmount();
+  expect(jest.getTimerCount()).toBe(0);
+  jest.setSystemTime(NOW.getTime() + 60000);
+  render(<SmartAccountPolicy />);
+  await settle();
+  expect(finalize().disabled).toBe(false);
+  expect(jest.getTimerCount()).toBe(0);
+});
+
 it.each([null, '', -1, 'Infinity', 'NaN'])(
   'keeps invalid recovery deadline %s disabled without a timer',
   async (readyAt) => {

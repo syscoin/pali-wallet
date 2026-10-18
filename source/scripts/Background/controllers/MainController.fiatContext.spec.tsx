@@ -186,6 +186,7 @@ const initialize = (kind: keyof typeof networks = 'ethereum') => {
   Object.assign(controller, {
     networkRequestGeneration: 0,
     walletSessionGeneration: 0,
+    fiatQuoteGeneration: 0,
     walletStateGeneration: 0,
     assetUpdateRequestId: 0,
     nativeBalanceRevision: 0,
@@ -498,14 +499,14 @@ it('retains a valid in-flight quote and explicit currency when a different-netwo
   expect(mockStore.getState().price.fiat).toEqual({ asset: 'eur', price: 4 });
 });
 
-it('does not commit an in-flight quote after the wallet session is invalidated', async () => {
+it('does not commit an in-flight quote after the quote lifecycle is invalidated', async () => {
   initialize();
   const pending = deferred<{ price: number }>();
   quote.mockReturnValueOnce(pending.promise);
   const updating = controller.setFiat();
   await flush();
-  // Lock/reset both invalidate this existing epoch before their asynchronous I/O.
-  controller.walletSessionGeneration += 1;
+  // Lock/reset invalidate this quote-specific epoch before asynchronous I/O.
+  controller.fiatQuoteGeneration += 1;
   pending.resolve({ price: 99 });
   await updating;
   expect(mockStore.getState().price.fiat.price).toBe(0);
