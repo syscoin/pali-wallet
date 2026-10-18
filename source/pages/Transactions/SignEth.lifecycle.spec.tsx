@@ -13,6 +13,7 @@ const mockTranslate = (key: string) => key;
 let mockConfirm: () => Promise<any>;
 let mockCancel: () => void;
 let mockTimers: jest.SpyInstance;
+let mockLedger = false;
 const mockQuery = {
   host: 'https://synthetic.invalid',
   eventName: 'personal_sign',
@@ -31,6 +32,7 @@ jest.mock('react-redux', () => ({
               address: ADDRESS,
               balances: { ethereum: '1' },
               label: 'Synthetic account',
+              isLedgerWallet: mockLedger,
             },
           },
         },
@@ -87,6 +89,7 @@ jest.mock('components/index', () => ({
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockLedger = false;
   jest.useFakeTimers();
   mockTimers = jest.spyOn(global, 'setTimeout');
   mockEmitter.mockRejectedValueOnce(
@@ -221,4 +224,67 @@ it('keeps a failed retry on its own error deadline rather than the previous alar
   expect(window.close).toHaveBeenCalledTimes(1);
   expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
   view.unmount();
+});
+
+it.each([false, true])(
+  'settles an admitted signature without closing a replacement page after departure (Ledger=%s)',
+  async (ledger) => {
+    mockLedger = ledger;
+    let finish!: (value: string) => void;
+    mockEmitter
+      .mockReset()
+      .mockReturnValueOnce(
+        new Promise<string>((resolve) => (finish = resolve))
+      );
+    const view = await prepare();
+    fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
+    expect(mockEmitter).toHaveBeenCalledTimes(1);
+    expect(mockEmitter).toHaveBeenCalledWith(
+      ['wallet', 'ethereumTransaction', 'signPersonalMessage'],
+      [
+        {
+          eventName: 'personal_sign',
+          0: ADDRESS,
+          1: 'Synthetic public signing fixture',
+        },
+      ],
+      ledger ? 300000 : 10000
+    );
+    view.unmount();
+    render(<div>Replacement wallet page</div>);
+
+    await act(async () => finish('public-synthetic-signature'));
+
+    expect(dispatchBackgroundEvent).toHaveBeenCalledWith(
+      'personal_sign.https://synthetic.invalid',
+      'public-synthetic-signature'
+    );
+    expect(dispatchBackgroundEvent).toHaveBeenCalledTimes(1);
+    expect(screen.getByText('Replacement wallet page')).toBeDefined();
+    expect(window.close).not.toHaveBeenCalled();
+    expect(mockEmitter).toHaveBeenCalledTimes(1);
+  }
+);
+
+it('does not show an obsolete signing failure after departure', async () => {
+  let reject!: (error: Error) => void;
+  mockEmitter
+    .mockReset()
+    .mockReturnValueOnce(new Promise<string>((_, fail) => (reject = fail)));
+  const view = await prepare();
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
+  expect(mockEmitter).toHaveBeenCalledTimes(1);
+  view.unmount();
+  render(<div>Replacement wallet page</div>);
+  mockTimers.mockClear();
+  await act(async () =>
+    reject(
+      Object.assign(new Error('User rejected the request.'), { code: 4001 })
+    )
+  );
+  expect(mockAlert.info).not.toHaveBeenCalled();
+  expect(mockAlert.error).not.toHaveBeenCalled();
+  expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
+  expect(window.close).not.toHaveBeenCalled();
+  expect(mockTimers).not.toHaveBeenCalled();
 });

@@ -102,6 +102,80 @@ const loadPreview = async () => {
   return view;
 };
 
+const loadMarketPreview = async (change?: number | null) => {
+  mockEmitter.mockImplementation(async ([, method]) => {
+    if (method === 'getAssetInfo')
+      return {
+        ...preview,
+        // eslint-disable-next-line camelcase
+        market_data: {
+          // eslint-disable-next-line camelcase
+          current_price: { usd: 55 },
+          ...(change === undefined
+            ? {}
+            : // eslint-disable-next-line camelcase
+              { price_change_percentage_24h: change }),
+        },
+      };
+    if (method === 'handleWatchAsset') return true;
+    throw new Error(`Unexpected method ${method}`);
+  });
+  return loadPreview();
+};
+
+it.each([undefined, null, NaN, Infinity, -Infinity])(
+  'keeps token approval usable when the price exists with unavailable 24-hour change %s',
+  async (change) => {
+    await loadMarketPreview(change);
+    expect(screen.getByText('$55')).toBeVisible();
+    expect(screen.queryByText(/%$/)).toBeNull();
+    expect(
+      screen.getByRole('button', { name: 'buttons.addToken' })
+    ).toBeEnabled();
+    expect(
+      screen.getByRole('button', { name: 'buttons.cancel' })
+    ).toBeEnabled();
+  }
+);
+
+it.each([
+  [0, '+0.00%'],
+  [1.235, '+1.24%'],
+  [-1.235, '-1.24%'],
+])(
+  'preserves the finite 24-hour change %s as %s',
+  async (change, formatted) => {
+    await loadMarketPreview(change as number);
+    expect(screen.getByText('$55')).toBeVisible();
+    expect(screen.getByText(formatted as string)).toBeVisible();
+  }
+);
+
+it('allows ordinary Add from a price-only token review', async () => {
+  await loadMarketPreview();
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.addToken' }));
+  await act(async () => undefined);
+  expect(mockEmitter).toHaveBeenCalledWith(
+    ['wallet', 'handleWatchAsset'],
+    [expect.objectContaining({ ...preview }), mockScope]
+  );
+  expect(mockDispatch).toHaveBeenCalledWith(
+    'wallet_watchAsset.synthetic.test',
+    true
+  );
+  expect(window.close).toHaveBeenCalledTimes(1);
+});
+
+it('allows ordinary Cancel from a price-only token review without adding the token', async () => {
+  await loadMarketPreview();
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.cancel' }));
+  expect(window.close).toHaveBeenCalledTimes(1);
+  expect(
+    mockEmitter.mock.calls.some(([[, method]]) => method === 'handleWatchAsset')
+  ).toBe(false);
+  expect(mockDispatch).not.toHaveBeenCalled();
+});
+
 it.each(['account', 'network'])(
   'discards the previous token approval after a completed %s change',
   async (change) => {

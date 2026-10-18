@@ -106,12 +106,14 @@ const EncryptPubKey: React.FC<ISign> = () => {
         'ethereumTransaction',
         'getEncryptedPubKey',
       ]);
+      dispatchBackgroundEvent(`${type}.${host}`, response);
+      if (!copyContext.current.active) return;
       setConfirmed(true);
 
       setLoading(false);
-      dispatchBackgroundEvent(`${type}.${host}`, response);
       window.close();
     } catch (error: any) {
+      if (!copyContext.current.active) return;
       setErrorMsg(error.message || 'Failed to get encryption key');
       setLoading(false);
     }
