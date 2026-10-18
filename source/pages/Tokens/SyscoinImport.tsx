@@ -305,6 +305,11 @@ export const SyscoinImport: React.FC = () => {
       throw new Error('A token import is already in progress');
     const operation = {};
     importOperationRef.current = operation;
+    const scope = tokenImportScope;
+    const isCurrent = () =>
+      ownedViewRef.current.active &&
+      ownedViewRef.current.scope === scope &&
+      importOperationRef.current === operation;
     setCurrentlyImporting(asset.id);
 
     try {
@@ -330,22 +335,21 @@ export const SyscoinImport: React.FC = () => {
 
       await controllerEmitter(['wallet', 'saveTokenInfo'], [tokenToSave]);
 
-      // Add to recently imported for immediate UI feedback
-      setRecentlyImportedGuids((prev) => new Set(prev).add(asset.assetGuid));
-
-      // Show success alert
-      alert.success(
-        t('tokens.hasBeenAddedToYourWallet', { token: asset.symbol })
-      );
+      if (isCurrent()) {
+        setRecentlyImportedGuids((prev) => new Set(prev).add(asset.assetGuid));
+        alert.success(
+          t('tokens.hasBeenAddedToYourWallet', { token: asset.symbol })
+        );
+      }
     } catch (error) {
       console.error('Import error:', error);
-      alert.error(error.message || t('tokens.tokenNotAdded'));
+      if (isCurrent()) alert.error(error.message || t('tokens.tokenNotAdded'));
       // Preserve rejection so the shared list does not mark failure as success.
       throw error;
     } finally {
       if (importOperationRef.current === operation) {
+        if (isCurrent()) setCurrentlyImporting(null);
         importOperationRef.current = null;
-        setCurrentlyImporting(null);
       }
     }
   };
