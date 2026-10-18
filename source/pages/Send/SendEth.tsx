@@ -710,7 +710,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
     ]
   );
 
-  const finalBalance = useCallback(() => {
+  const finalBalance = () => {
     if (selectedAsset) {
       // For ERC-20 tokens, prefer verified balance if available
       if (!selectedAsset.isNft && verifiedERC20Balance !== null) {
@@ -737,9 +737,9 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
     const displayBalance = formatFullPrecisionBalance(fullBalance, 4);
 
     return `${displayBalance} ${activeNetwork.currency.toUpperCase()}`;
-  }, [selectedAsset, activeAccount, activeNetwork, verifiedERC20Balance]);
+  };
 
-  const getLabel = useCallback(() => {
+  const getLabel = () => {
     if (selectedAsset?.isNft) {
       // For NFTs, prefer tokenSymbol over name
       return (
@@ -751,7 +751,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
     return selectedAsset?.tokenSymbol
       ? selectedAsset?.tokenSymbol.toUpperCase()
       : activeNetwork.currency.toUpperCase();
-  }, [selectedAsset, activeNetwork.currency, t]);
+  };
 
   const openAccountInExplorer = useCallback(() => {
     const accountAddress = activeAccount?.address;
@@ -810,7 +810,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
     }
   }, [selectedAsset, isCalculatingGas]);
 
-  const calculateMaxAmount = useCallback((): string => {
+  const calculateMaxAmount = (): string => {
     if (selectedAsset) {
       // For tokens, use full balance as fees are paid in native token
       return String(selectedAsset.balance);
@@ -820,7 +820,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
     // The backend will handle gas deduction for MAX sends
     const balanceEth = activeAccount?.balances?.ethereum || 0;
     return String(balanceEth);
-  }, [selectedAsset, activeAccount?.balances?.ethereum]);
+  };
 
   const handleMaxButton = () => {
     // Only work with verified balances - no fallbacks
