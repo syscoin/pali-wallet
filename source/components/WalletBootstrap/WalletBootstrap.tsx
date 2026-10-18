@@ -1,6 +1,7 @@
 import React, { PropsWithChildren, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { useControllerStateSync } from 'hooks/useControllerStateSync';
 import { rehydrateStore } from 'state/rehydrate';
 import store from 'state/store';
 import {
@@ -19,6 +20,15 @@ export const WalletBootstrap = ({ children }: PropsWithChildren) => {
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>(
     'loading'
   );
+  useControllerStateSync(status === 'ready');
+
+  useEffect(() => {
+    if (status !== 'ready') return;
+    // The layout subscription is attached before polling can publish updates.
+    chrome.runtime.sendMessage({ type: 'startPolling' }, () => {
+      void chrome.runtime.lastError;
+    });
+  }, [status]);
 
   useEffect(() => {
     // React now owns a visible loading/recovery screen, even if boot fails.
@@ -44,11 +54,6 @@ export const WalletBootstrap = ({ children }: PropsWithChildren) => {
         if (!active) return;
         clearTimeout(feedbackTimer);
         setStatus('ready');
-        // Schedule updates only after a successful connection. This does not
-        // block first paint and a disconnected worker can be retried later.
-        chrome.runtime.sendMessage({ type: 'startPolling' }, () => {
-          void chrome.runtime.lastError;
-        });
       } catch (error) {
         if (active) {
           setRecoveryRequired(error?.message === WALLET_RECOVERY_REQUIRED);

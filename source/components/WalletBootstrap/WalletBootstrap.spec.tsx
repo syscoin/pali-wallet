@@ -49,7 +49,12 @@ describe('authoritative wallet bootstrap recovery boundary', () => {
     jest.mocked(rehydrateStore).mockReset().mockResolvedValue(undefined);
     childMounted.mockClear();
     sendMessage = jest.fn((_message, callback) => callback?.());
-    global.chrome = { runtime: { sendMessage } } as unknown as typeof chrome;
+    global.chrome = {
+      runtime: {
+        sendMessage,
+        onMessage: { addListener: jest.fn(), removeListener: jest.fn() },
+      },
+    } as unknown as typeof chrome;
   });
 
   afterEach(() => {

@@ -1,16 +1,30 @@
 import { Form, Input } from 'antd';
 import { useForm } from 'antd/lib/form/Form';
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { Button } from 'components/index';
 import { ToastActionFooter } from 'components/ToastActionFooter';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
+import type { RootState } from 'state/store';
 import { INetwork } from 'types/network';
 import { ICustomRpcParams } from 'types/transactions';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { extractErrorMessage } from 'utils/index';
+
+const networkKey = (network?: INetwork) =>
+  network &&
+  JSON.stringify([
+    network.kind,
+    network.chainId,
+    network.slip44,
+    network.url,
+    network.label,
+    network.currency,
+    network.explorer,
+    network.apiUrl,
+  ]);
 
 const CustomRPCExternal = () => {
   const { host, ...data } = useQueryData();
@@ -18,6 +32,8 @@ const CustomRPCExternal = () => {
   const [loading, setLoading] = useState(false);
   const [switchingNetwork, setSwitchingNetwork] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
+  const addedNetwork = useRef<string>();
+  const submitting = useRef(false);
   const { alert } = useUtils();
   const { controllerEmitter } = useController();
   const [form] = useForm();
@@ -233,6 +249,8 @@ const CustomRPCExternal = () => {
   };
 
   const onSubmit = async (values: ICustomRpcParams) => {
+    if (submitting.current || confirmed) return;
+    submitting.current = true;
     setLoading(true);
 
     try {
@@ -256,7 +274,27 @@ const CustomRPCExternal = () => {
       }
 
       // Add the network
-      await controllerEmitter(['wallet', 'addCustomRpc'], [network]);
+      const fingerprint = networkKey(network);
+      const key = JSON.stringify([host, fingerprint]);
+      let needsAdd = addedNetwork.current !== key;
+      if (!needsAdd) {
+        // Popup state broadcasts can lag the successful add response.
+        const state = (await controllerEmitter(
+          ['wallet', 'getState'],
+          []
+        )) as RootState;
+        if (!state?.vaultGlobal?.networks?.ethereum)
+          throw new Error(t('settings.failedValidateRpc'));
+        needsAdd =
+          networkKey(state.vaultGlobal.networks.ethereum[network.chainId]) !==
+          fingerprint;
+      }
+      // A switch can fail after the add is already saved. Retry that switch,
+      // but never reuse a successful add for a changed network proposal.
+      if (needsAdd) {
+        await controllerEmitter(['wallet', 'addCustomRpc'], [network]);
+        addedNetwork.current = key;
+      }
 
       // Switch to network switching state
       setLoading(false);
@@ -300,6 +338,8 @@ const CustomRPCExternal = () => {
         chainId: values.chainId,
         host,
       });
+    } finally {
+      submitting.current = false;
     }
   };
 
