@@ -52,6 +52,7 @@ jest.mock('components/TokenIcon', () => ({ TokenIcon: 'token-icon' }));
 jest.mock('components/index', () => ({
   Button: 'button',
   Icon: 'icon',
+  PageActionFooter: 'footer',
   Tooltip: 'tooltip',
 }));
 jest.mock('utils/browser', () => ({ dispatchBackgroundEvent: jest.fn() }));

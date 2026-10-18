@@ -768,48 +768,6 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
     adjustedExplorer,
   ]);
 
-  const calculateGasFees = useCallback(async () => {
-    // Only calculate for native ETH transactions
-    if (selectedAsset) {
-      return;
-    }
-
-    // Don't recalculate if already calculating
-    if (isCalculatingGas) {
-      return;
-    }
-
-    setIsCalculatingGas(true);
-
-    try {
-      // Get fee data for EIP-1559 transaction
-      const feeData = (await controllerEmitter([
-        'wallet',
-        'ethereumTransaction',
-        'getFeeDataWithDynamicMaxPriorityFeePerGas',
-      ])) as any;
-
-      // Only cache if we got valid fee data
-      if (feeData && feeData.maxFeePerGas && feeData.maxPriorityFeePerGas) {
-        const { maxFeePerGas, maxPriorityFeePerGas } = feeData;
-
-        // Cache only the fee rates - gas limit will be handled by backend
-        // IMPORTANT: Convert BigNumbers to hex strings for proper serialization through navigation
-        setCachedFeeData({
-          maxFeePerGas: BigNumber.from(maxFeePerGas || '0').toHexString(),
-          maxPriorityFeePerGas: BigNumber.from(
-            maxPriorityFeePerGas || '0'
-          ).toHexString(),
-        });
-      }
-    } catch (error) {
-      console.error('Error calculating gas fees:', error);
-      // Don't cache on error, but don't block the UI either
-    } finally {
-      setIsCalculatingGas(false);
-    }
-  }, [selectedAsset, isCalculatingGas]);
-
   const calculateMaxAmount = (): string => {
     if (selectedAsset) {
       // For tokens, use full balance as fees are paid in native token
@@ -1052,11 +1010,39 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
 
   // Calculate gas fees when component mounts or asset changes
   useEffect(() => {
-    // Only calculate for native ETH (not tokens)
-    if (!selectedAsset && activeAccount?.address && !cachedFeeData) {
-      calculateGasFees();
-    }
-  }, [selectedAsset, activeAccount?.address, cachedFeeData, calculateGasFees]);
+    if (selectedAsset || !activeAccount?.address || cachedFeeData) return;
+    let current = true;
+    setIsCalculatingGas(true);
+
+    const calculateGasFees = async () => {
+      try {
+        const feeData = (await controllerEmitter([
+          'wallet',
+          'ethereumTransaction',
+          'getFeeDataWithDynamicMaxPriorityFeePerGas',
+        ])) as any;
+
+        if (current && feeData?.maxFeePerGas && feeData.maxPriorityFeePerGas) {
+          // Cache serializable fee rates; the backend handles the gas limit.
+          setCachedFeeData({
+            maxFeePerGas: BigNumber.from(feeData.maxFeePerGas).toHexString(),
+            maxPriorityFeePerGas: BigNumber.from(
+              feeData.maxPriorityFeePerGas
+            ).toHexString(),
+          });
+        }
+      } catch (error) {
+        console.error('Error calculating gas fees:', error);
+        // Leave failed prefetches uncached; confirmation still validates fees.
+      } finally {
+        if (current) setIsCalculatingGas(false);
+      }
+    };
+    void calculateGasFees();
+    return () => {
+      current = false;
+    };
+  }, [selectedAsset, activeAccount?.address, cachedFeeData]);
 
   // Close suggestions when clicking outside form
   useEffect(() => {

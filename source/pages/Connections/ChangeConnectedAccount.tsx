@@ -4,8 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { LazyAccountBalance } from 'components/AccountBalance';
-import { Button, Icon, Tooltip } from 'components/index';
-import { ToastActionFooter } from 'components/ToastActionFooter';
+import { Button, Icon, PageActionFooter, Tooltip } from 'components/index';
 import { TokenIcon } from 'components/TokenIcon';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
@@ -128,6 +127,7 @@ export const ChangeConnectedAccount = () => {
   const [, copy] = useCopyClipboard();
   const { host, eventName, connectedAccount, accountType } = useQueryData();
   const [isChanging, setIsChanging] = useState(false);
+  const [switchError, setSwitchError] = useState('');
 
   // Helper function to get tokens for an account
   const getAccountTokens = useCallback(
@@ -147,6 +147,7 @@ export const ChangeConnectedAccount = () => {
   );
 
   const handleAccept = async () => {
+    setSwitchError('');
     setIsChanging(true);
     try {
       await controllerEmitter(
@@ -158,6 +159,7 @@ export const ChangeConnectedAccount = () => {
       window.close();
     } catch (error) {
       console.error('Failed to change account:', error);
+      setSwitchError(error?.message || t('send.failed'));
       setIsChanging(false);
     }
   };
@@ -330,13 +332,12 @@ export const ChangeConnectedAccount = () => {
             </div>
           </div>
         </div>
-
-        {/* Add bottom padding to account for fixed buttons */}
-        <div className="pb-20"></div>
       </div>
 
-      {/* Fixed button container at bottom */}
-      <ToastActionFooter className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 shadow-lg z-50">
+      <PageActionFooter
+        error={switchError}
+        className="break-words border-t border-brand-gray300"
+      >
         <div className="flex gap-3 justify-center">
           <Button
             variant="secondary"
@@ -357,7 +358,7 @@ export const ChangeConnectedAccount = () => {
             {t('connections.switchAccount')}
           </Button>
         </div>
-      </ToastActionFooter>
+      </PageActionFooter>
     </div>
   );
 };
