@@ -281,6 +281,68 @@ it('keeps Load more replacement settlement when opening real details without add
   expect(mockRows).toEqual([original]);
 });
 
+it('recovers the truncated mixed first window before advancing to later explorer pages', async () => {
+  const rows = ['1', '2', '3', '4'].map((digit, nonce) =>
+    transaction(digit, { blockNumber: 42, confirmations: 3, nonce })
+  );
+  mockRows = [rows[0]];
+  mockApiUrl = 'https://explorer.example/api';
+  mockEmitter.mockImplementation(async (_method: string[], args: any[]) => ({
+    transactions: args[3] === 1 ? rows.slice(0, 2) : [rows[args[3]]],
+    hasMore: args[3] < 3,
+  }));
+  render(<EvmTransactionsList userTransactions={mockRows} />);
+  await screen.findByRole('button', { name: 'Details' });
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.loadMore' }));
+  await waitFor(() =>
+    expect(screen.getAllByRole('button', { name: 'Details' })).toHaveLength(3)
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.loadMore' }));
+  await waitFor(() =>
+    expect(screen.getAllByRole('button', { name: 'Details' })).toHaveLength(4)
+  );
+  expect(mockEmitter.mock.calls.map(([, args]) => args[3])).toEqual([1, 2, 3]);
+  expect(mockRows).toEqual([rows[0]]);
+});
+
+it('keeps the same Load More position when the first explorer window cannot be recovered', async () => {
+  const initial = transaction('1', {
+    nonce: 1,
+    blockNumber: 42,
+    confirmations: 3,
+  });
+  const recovered = transaction('2', {
+    nonce: 2,
+    blockNumber: 41,
+    confirmations: 4,
+  });
+  mockRows = [initial];
+  mockApiUrl = 'https://explorer.example/api';
+  let failFirstWindow = true;
+  mockEmitter.mockImplementation(async (_method: string[], args: any[]) =>
+    args[3] === 1 && failFirstWindow
+      ? { error: 'First history window unavailable', transactions: null }
+      : { transactions: [recovered], hasMore: false }
+  );
+  render(<EvmTransactionsList userTransactions={mockRows} />);
+  await screen.findByRole('button', { name: 'Details' });
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.loadMore' }));
+  await waitFor(() =>
+    expect(mockAlert.warning).toHaveBeenCalledWith(
+      'First history window unavailable'
+    )
+  );
+  expect(screen.getAllByRole('button', { name: 'Details' })).toHaveLength(1);
+  failFirstWindow = false;
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.loadMore' }));
+  await waitFor(() =>
+    expect(screen.getAllByRole('button', { name: 'Details' })).toHaveLength(2)
+  );
+  expect(mockEmitter.mock.calls.map(([, args]) => args[3])).toEqual([
+    1, 2, 1, 2,
+  ]);
+});
+
 it('rerenders an unchanged original when another hash mines', async () => {
   const original = transaction('c', { isReplaced: true });
   mockRows = [original];

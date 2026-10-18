@@ -608,19 +608,43 @@ export const EvmTransactionsList = ({
   );
   const beginPageRequest = useRequestScope(paginationContext);
 
+  const fetchPageResponse = useCallback(
+    async (page: number) => {
+      // Polling retains only 30 rows from the two independent explorer feeds.
+      // Recover their complete first windows before advancing past page one.
+      const responses = await Promise.all(
+        (page === 2 ? [1, 2] : [page]).map(
+          (requestedPage) =>
+            controllerEmitter(
+              ['wallet', 'getEvmTransactionsPage'],
+              [currentAccount?.address, chainId, apiUrl, requestedPage, 30]
+            ) as Promise<EvmPageResponse>
+        )
+      );
+      for (const response of responses)
+        if (
+          !response ||
+          response.error ||
+          !Array.isArray(response.transactions)
+        )
+          return response;
+      return {
+        ...responses[responses.length - 1],
+        transactions: responses.flatMap((response) => response.transactions!),
+      };
+    },
+    [paginationContext]
+  );
   const fetchHistoryPage = useCallback(
     async (page: number) => {
-      const response = (await controllerEmitter(
-        ['wallet', 'getEvmTransactionsPage'],
-        [currentAccount?.address, chainId, apiUrl, page, 30]
-      )) as EvmPageResponse;
+      const response = await fetchPageResponse(page);
       if (response.error) throw new Error(response.error);
       const rows = Array.isArray(response.transactions)
         ? response.transactions
         : [];
       return { rows, hasMore: response.hasMore !== false && rows.length > 0 };
     },
-    [paginationContext]
+    [fetchPageResponse]
   );
 
   // Combine base transactions with any paged transactions we load from API
@@ -924,10 +948,7 @@ export const EvmTransactionsList = ({
                   const isCurrentRequest = beginPageRequest();
                   try {
                     setIsLoadingMore(true);
-                    const res = (await controllerEmitter(
-                      ['wallet', 'getEvmTransactionsPage'],
-                      [currentAccount?.address, chainId, apiUrl, nextPage, 30]
-                    )) as EvmPageResponse;
+                    const res = await fetchPageResponse(nextPage);
                     if (!isCurrentRequest()) return;
                     if (res?.error) {
                       alert.warning(res.error);

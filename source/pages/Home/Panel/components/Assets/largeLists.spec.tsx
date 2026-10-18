@@ -111,11 +111,11 @@ describe('large asset list rendering budget', () => {
       };
       const view =
         kind === 'nft' ? (
-          <EvmNftsList state={nftState} />
+          <EvmNftsList scope="synthetic-test-scope" state={nftState} />
         ) : kind === 'spt' ? (
           <SyscoinAssetsList />
         ) : (
-          <EvmAssetsList />
+          <EvmAssetsList scope="synthetic-test-scope" />
         );
       const markup = renderToStaticMarkup(view);
       expect(mockTokenIcon).toHaveBeenCalledTimes(50);
@@ -126,7 +126,10 @@ describe('large asset list rendering budget', () => {
   it('searches all NFT assets before limiting displayed results', () => {
     mockState.assets.ethereum = assets(true);
     const markup = renderToStaticMarkup(
-      <EvmNftsList state={{ ...nftState, searchValue: 'Asset 999' }} />
+      <EvmNftsList
+        scope="synthetic-test-scope"
+        state={{ ...nftState, searchValue: 'Asset 999' }}
+      />
     );
     expect(mockTokenIcon).toHaveBeenCalledTimes(1);
     expect(markup).toContain('T999');
@@ -135,7 +138,9 @@ describe('large asset list rendering budget', () => {
   it('ignores outer whitespace when searching all token assets', () => {
     mockState.assets.ethereum = assets();
     mockAssetView.searchValue = ' T999 ';
-    const markup = renderToStaticMarkup(<EvmAssetsList />);
+    const markup = renderToStaticMarkup(
+      <EvmAssetsList scope="synthetic-test-scope" />
+    );
     expect(mockTokenIcon).toHaveBeenCalledTimes(1);
     expect(markup).toContain('T999');
   });

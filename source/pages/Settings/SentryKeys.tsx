@@ -32,6 +32,7 @@ const SentryKeys = () => {
   );
   const network = useSelector((state: RootState) => state.vault.activeNetwork);
   const [settings, setSettings] = useState<SentrySettings>();
+  const [readAttempt, setReadAttempt] = useState(0);
   const [mode, setMode] = useState<
     'list' | 'import' | 'service' | 'remove' | 'release'
   >('list');
@@ -107,7 +108,7 @@ const SentryKeys = () => {
       cancelled = true;
       active.current = false;
     };
-  }, [controllerEmitter, scope, supported]);
+  }, [controllerEmitter, scope, supported, readAttempt]);
 
   const back = () => {
     setMode('list');
@@ -271,11 +272,21 @@ const SentryKeys = () => {
         {t('sentry.switchToSyscoinMainnetOrSyscoinTestnetUTXO')}
       </p>
     );
-  if (!settings && !error)
+  if (!settings)
     return (
-      <p role="status" className="p-4 text-sm">
-        {t('sentry.loadingSentrySettings')}
-      </p>
+      <div className="p-4 text-sm">
+        <p role={error ? 'alert' : 'status'}>
+          {error || t('sentry.loadingSentrySettings')}
+        </p>
+        {error && (
+          <Button
+            type="button"
+            onClick={() => setReadAttempt((value) => value + 1)}
+          >
+            {t('receive.retry')}
+          </Button>
+        )}
+      </div>
     );
 
   return (
@@ -330,6 +341,8 @@ const SentryKeys = () => {
             <Button
               type="button"
               onClick={() => {
+                setServiceUrl(settings.serviceUrl);
+                setFeeLimit(settings.maxFeeSatoshis);
                 setMode('service');
                 setError('');
               }}

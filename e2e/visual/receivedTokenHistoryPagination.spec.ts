@@ -17,9 +17,13 @@ import {
   UTXO_FIXTURE_SEED,
 } from '../harness/utxoFixture';
 
-for (const loadMore of [false, true]) {
+for (const mode of ['reload', 'received', 'mixed'] as const) {
+  const loadMore = mode !== 'reload';
+  const mixed = mode === 'mixed';
   test(
-    loadMore
+    mixed
+      ? 'mixed native and received-token history retains both initial explorer windows when loading more'
+      : loadMore
       ? 'received-only token history loads the older page through the real explorer controller'
       : 'received-only token history keeps its first thirty rows after ordinary reload',
     async ({}, info) => {
@@ -62,6 +66,16 @@ for (const loadMore of [false, true]) {
         // eslint-disable-next-line camelcase -- Explorer wire field.
         txreceipt_status: '1',
       }));
+      const nativeRows = mixed
+        ? events.slice(0, 30).map((row) => ({
+            ...row,
+            from: recipient,
+            to: sender,
+            contractAddress: undefined,
+            input: '0x',
+          }))
+        : [];
+      const tokenRows = mixed ? events.slice(30) : events;
       const explorerReads: Array<{
         action: string | null;
         offset: string | null;
@@ -81,8 +95,8 @@ for (const loadMore of [false, true]) {
         controllerStateReplaced: false,
         controllerResultsReplaced: false,
         signingOrBroadcastRequested: false,
-        ordinaryTransactionCount: 0,
-        explorerTokenEvents: 60,
+        ordinaryTransactionCount: nativeRows.length,
+        explorerTokenEvents: tokenRows.length,
       };
       Object.assign(E2E_CONFIG, {
         seedPhrase: UTXO_FIXTURE_SEED,
@@ -93,7 +107,9 @@ for (const loadMore of [false, true]) {
       });
       try {
         wallet = await PaliWallet.launch(
-          loadMore
+          mixed
+            ? 'mixed-native-token-history-paging'
+            : loadMore
             ? 'received-token-history-paging'
             : 'received-token-history-initial',
           {
@@ -126,7 +142,9 @@ for (const loadMore of [false, true]) {
             const replies = calls.map((call: any) => {
               const result =
                 call.method === 'eth_getTransactionCount'
-                  ? '0x0'
+                  ? mixed
+                    ? '0x1e'
+                    : '0x0'
                   : call.method === 'eth_blockNumber'
                   ? '0x64'
                   : undefined;
@@ -164,13 +182,14 @@ for (const loadMore of [false, true]) {
             const txhash = url.searchParams.get('txhash');
             let result: unknown = [];
             if (
-              action === 'tokentx' &&
+              ['tokentx', 'txlist'].includes(action || '') &&
               url.searchParams.get('address')?.toLowerCase() ===
                 recipient.toLowerCase()
             ) {
-              const size = Number(offset || events.length);
+              const rows = action === 'tokentx' ? tokenRows : nativeRows;
+              const size = Number(offset || Math.max(1, rows.length));
               const pageNumber = Number(page || 1);
-              result = events.slice((pageNumber - 1) * size, pageNumber * size);
+              result = rows.slice((pageNumber - 1) * size, pageNumber * size);
             } else if (action === 'gettxinfo') {
               result = events.find((event) => event.hash === txhash) || null;
             } else if (
@@ -208,7 +227,7 @@ for (const loadMore of [false, true]) {
             exact: true,
           });
         await wallet.step(
-          'poll the first thirty received-only token rows through normal wallet UI',
+          `${mode}: poll the first thirty history rows through normal wallet UI`,
           async (capture) => {
             try {
               await wallet!.importSeedAndCreatePassword();
@@ -218,13 +237,14 @@ for (const loadMore of [false, true]) {
               await expect(details).toHaveCount(30);
               expect(
                 explorerReads.some(
-                  (read) => read.action === 'tokentx' && read.rows === 60
+                  (read) =>
+                    read.action === 'tokentx' && read.rows === tokenRows.length
                 )
               ).toBe(true);
               expect(
                 explorerReads
                   .filter((read) => read.action === 'txlist')
-                  .every((read) => read.rows === 0)
+                  .every((read) => read.rows === nativeRows.length)
               ).toBe(true);
               observations.initialRows = await details.count();
             } finally {
@@ -234,7 +254,7 @@ for (const loadMore of [false, true]) {
         );
         if (loadMore) {
           await wallet.step(
-            'load the second received-token page and open its oldest actual row',
+            `${mode}: load more history and open its oldest actual row`,
             async (capture) => {
               try {
                 const start = explorerReads.length;
@@ -277,6 +297,24 @@ for (const loadMore of [false, true]) {
               }
             }
           );
+          if (mixed) {
+            await wallet.step(
+              'mixed: retain both explorer windows through browser Back and ordinary document reload',
+              async (capture) => {
+                try {
+                  await page.goBack();
+                  await expect(details).toHaveCount(60);
+                  await page.reload();
+                  await wallet!.ensureOnHome();
+                  await page.locator('#activity-btn').click();
+                  await expect(details).toHaveCount(60);
+                  observations.afterMixedReloadRows = await details.count();
+                } finally {
+                  if (!page.isClosed()) await capture(page);
+                }
+              }
+            );
+          }
         } else {
           await wallet.step(
             'reload the normal document without changing received-token history',

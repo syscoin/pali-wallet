@@ -30,7 +30,12 @@ jest.mock('hooks/useUtils', () => ({
   useUtils: () => ({ navigate: mockNavigate }),
 }));
 jest.mock('state/vault/selectors', () => ({
-  selectActiveAccountAssets: (state: any) => state.assets,
+  selectActiveAccountAndVaultData: (state: any) => ({
+    assets: state.assets,
+    activeNetwork: state.vault.activeNetwork,
+    isBitcoinBased: state.vault.isBitcoinBased,
+  }),
+  selectActiveAccountRef: () => undefined,
 }));
 jest.mock('components/Icon/Icon', () => ({
   CgImport: () => <svg aria-hidden="true" />,

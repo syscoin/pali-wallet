@@ -11,7 +11,6 @@ import { useSearchParams, useLocation } from 'react-router-dom';
 
 import {
   DEFAULT_ASSETS_VIEW,
-  getHomeBrowsingScope,
   IHomeAssetsView,
   useHomeBrowsingState,
 } from '../../../useHomeBrowsingState';
@@ -291,14 +290,13 @@ const DefaultEvmAssets = React.memo(
 );
 
 // todo: create a loading state
-export const EvmAssetsList = () => {
-  const accountRef = useSelector(selectActiveAccountRef);
-  const currentAccount = useSelector(selectActiveAccount);
-  const account = { ...currentAccount, ...accountRef };
-  const activeNetwork = useSelector(
-    (rootState: RootState) => rootState.vault.activeNetwork
-  );
-  const scope = getHomeBrowsingScope(account, activeNetwork);
+export const EvmAssetsList = ({
+  scope,
+  onNftDeleteStart,
+}: {
+  onNftDeleteStart?: () => (error: unknown) => void;
+  scope: string;
+}) => {
   const [state, setView] = useHomeBrowsingState(
     'homeAssets',
     scope,
@@ -388,7 +386,9 @@ export const EvmAssetsList = () => {
               />
             ) : (
               <EvmNftsList
+                scope={scope}
                 onClearSearch={clearSearch}
+                onDeleteStart={onNftDeleteStart}
                 state={state}
                 onVisibleCountChange={(count) =>
                   setView((previous) => ({

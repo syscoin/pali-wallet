@@ -1,9 +1,8 @@
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useSearchParams, useLocation } from 'react-router-dom';
 
-import { getHomeBrowsingScope } from '../../../useHomeBrowsingState';
 import { AssetSearchEmptyState } from '../Assets/AssetSearchEmptyState';
 import {
   HiTrash as DeleteIcon,
@@ -16,8 +15,9 @@ import { Tooltip } from 'components/Tooltip';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { useIncrementalList } from 'hooks/useIncrementalList';
+import { useRequestScope } from 'hooks/useRequestScope';
 import { RootState } from 'state/store';
-import { selectActiveAccountWithAssets } from 'state/vault/selectors';
+import { selectActiveAccountAssets } from 'state/vault/selectors';
 import {
   truncate,
   createBrowsingNavigationContext,
@@ -29,7 +29,9 @@ import { getTokenTypeBadgeColor } from 'utils/tokens';
 
 interface IEvmNftsListProps {
   onClearSearch?: () => void;
+  onDeleteStart?: () => (error: unknown) => void;
   onVisibleCountChange?: (count: number) => void;
+  scope: string;
   state: {
     isCoinSelected: boolean;
     nftsVisibleCount?: number;
@@ -41,7 +43,9 @@ interface IEvmNftsListProps {
 export const EvmNftsList = ({
   state,
   onClearSearch,
+  onDeleteStart,
   onVisibleCountChange,
+  scope,
 }: IEvmNftsListProps) => {
   const { controllerEmitter } = useController();
   const { navigate } = useUtils();
@@ -49,45 +53,51 @@ export const EvmNftsList = ({
   const [searchParams] = useSearchParams();
   const location = useLocation();
 
-  const { account, assets: accountAssets } = useSelector(
-    selectActiveAccountWithAssets
+  const accountAssets = useSelector(selectActiveAccountAssets);
+  const chainId = useSelector(
+    (rootState: RootState) => rootState.vault.activeNetwork.chainId
   );
-  const { activeNetwork } = useSelector(
-    (rootState: RootState) => rootState.vault
-  );
-  const { chainId } = activeNetwork;
 
   const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const deletePendingRef = useRef(false);
+  const beginDelete = useRequestScope(scope);
   const [itemToDelete, setItemToDelete] = useState<{
     contractAddress: string;
     name?: string;
     tokenId?: string;
-    type: 'collection' | 'nft';
   } | null>(null);
 
   useEffect(() => {
+    deletePendingRef.current = false;
+    setIsDeleting(false);
     setShowDeleteConfirmation(false);
     setItemToDelete(null);
-  }, [account?.address, chainId]);
+  }, [scope]);
 
   // NFTs now come through regular asset updates, no need for separate fetching
 
   // Handle delete clicks
-  const handleDeleteCollection = useCallback(
-    (contractAddress: string, symbol: string, tokenId?: string) => {
-      setItemToDelete({
-        type: 'collection',
-        contractAddress,
-        name: symbol, // Using symbol but keeping 'name' field for consistency with modal
-        tokenId,
-      });
-      setShowDeleteConfirmation(true);
-    },
-    []
-  );
+  const handleDeleteCollection = (
+    contractAddress: string,
+    symbol: string,
+    tokenId?: string
+  ) => {
+    if (deletePendingRef.current) return;
+    setItemToDelete({
+      contractAddress,
+      name: symbol, // Using symbol but keeping 'name' field for consistency with modal
+      tokenId,
+    });
+    setShowDeleteConfirmation(true);
+  };
 
-  const handleConfirmDelete = useCallback(async () => {
-    if (!itemToDelete) return;
+  const handleConfirmDelete = async () => {
+    if (!itemToDelete || deletePendingRef.current) return;
+    deletePendingRef.current = true;
+    const isCurrent = beginDelete();
+    const reportError = onDeleteStart?.();
+    setIsDeleting(true);
 
     try {
       // Always delete the entire collection entry
@@ -97,16 +107,24 @@ export const EvmNftsList = ({
       );
     } catch (error) {
       console.error('Error deleting NFT:', error);
+      // The stable AssetsPanel owns feedback even if deleting its last asset
+      // has already unmounted this list before durable persistence settles.
+      reportError?.(error);
+    } finally {
+      if (isCurrent()) {
+        deletePendingRef.current = false;
+        setIsDeleting(false);
+        setShowDeleteConfirmation(false);
+        setItemToDelete(null);
+      }
     }
+  };
 
+  const handleCancelDelete = () => {
+    if (deletePendingRef.current) return;
     setShowDeleteConfirmation(false);
     setItemToDelete(null);
-  }, [itemToDelete]);
-
-  const handleCancelDelete = useCallback(() => {
-    setShowDeleteConfirmation(false);
-    setItemToDelete(null);
-  }, []);
+  };
 
   // Group NFTs by collection
   const nftAssets = useMemo(
@@ -159,32 +177,25 @@ export const EvmNftsList = ({
   }, [collections, state.searchValue, state.sortByValue]);
   const { visibleItems, visibleCount, hasMore, showMore } = useIncrementalList(
     filteredCollections,
-    JSON.stringify([
-      getHomeBrowsingScope(account, activeNetwork),
-      state.searchValue,
-      state.sortByValue,
-    ]),
+    JSON.stringify([scope, state.searchValue, state.sortByValue]),
     state.nftsVisibleCount
   );
 
   // NFTs are automatically updated through regular asset polling
 
-  const handleNftClick = useCallback(
-    (collection: any) => {
-      const returnContext = createBrowsingNavigationContext(location, {
-        tab: searchParams.get('tab') || 'assets',
-        homeAssets: { ...location.state?.homeAssets, value: state },
-      });
+  const handleNftClick = (collection: any) => {
+    const returnContext = createBrowsingNavigationContext(location, {
+      tab: searchParams.get('tab') || 'assets',
+      homeAssets: { ...location.state?.homeAssets, value: state },
+    });
 
-      navigateWithContext(
-        navigate,
-        '/home/details',
-        { id: collection.id, hash: null },
-        returnContext
-      );
-    },
-    [navigate, searchParams, state, location.state]
-  );
+    navigateWithContext(
+      navigate,
+      '/home/details',
+      { id: collection.id, hash: null },
+      returnContext
+    );
+  };
 
   if (filteredCollections.length === 0) {
     if (collections.length > 0 && state.searchValue.trim())
@@ -327,6 +338,7 @@ export const EvmNftsList = ({
           name: itemToDelete?.name,
         })}
         buttonText="Delete"
+        isButtonLoading={isDeleting}
       />
     </>
   );
