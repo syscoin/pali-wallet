@@ -607,3 +607,169 @@ describe('SysTransactionController rapid polling', () => {
     expect(result.map((tx: any) => tx.txid)).toEqual(['tx1']);
   });
 });
+
+describe('SysTransactionController validated history responses', () => {
+  let fixtureId = 0;
+  let controller: ReturnType<typeof SysTransactionController>;
+  let networkUrl: string;
+  beforeEach(() => {
+    fetchBackendAccountCachedMock.mockReset();
+    vaultState = buildVaultState([]);
+    controller = SysTransactionController();
+    networkUrl = `${URL}validated-${++fixtureId}/`;
+    jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  it.each([
+    { txs: 0, unconfirmedTxs: 0, transactions: [] },
+    { txs: 0, unconfirmedTxs: 0 },
+    { txs: '0', unconfirmedTxs: '0' },
+  ])(
+    'accepts authoritative zero history, including Blockbook omitted arrays: %p',
+    async (response) => {
+      fetchBackendAccountCachedMock.mockResolvedValue(response);
+      expect(
+        await controller.pollingSysTransactions('zpub-empty', networkUrl)
+      ).toEqual([]);
+      expect(fetchBackendAccountCachedMock).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  it.each([
+    null,
+    {},
+    { txs: 0 },
+    { error: 'offline', txs: 0, unconfirmedTxs: 0 },
+    { error: 'offline', txs: 1, unconfirmedTxs: 0 },
+    { txs: 1, unconfirmedTxs: 0, transactions: [] },
+    { txs: 0, unconfirmedTxs: 1, transactions: [] },
+    { txs: 0, unconfirmedTxs: 0, transactions: null },
+    { txs: 0, unconfirmedTxs: 0, transactions: {} },
+    { txs: 0, unconfirmedTxs: 0, transactions: [null] },
+    { txs: -1, unconfirmedTxs: 0, transactions: [] },
+    { txs: 'invalid', unconfirmedTxs: 0, transactions: [] },
+    { txs: 0, unconfirmedTxs: 0, txids: ['missing-history'] },
+  ])(
+    'rejects invalid history without poisoning later txsummary capability: %p',
+    async (response) => {
+      fetchBackendAccountCachedMock.mockResolvedValue(response);
+      await expect(
+        controller.getInitialUserTransactionsByXpub('zpub-invalid', networkUrl)
+      ).rejects.toThrow(/Blockbook history response/);
+      expect(fetchBackendAccountCachedMock).toHaveBeenCalledTimes(2);
+      fetchBackendAccountCachedMock.mockClear();
+      fetchBackendAccountCachedMock.mockResolvedValue(txsResponse());
+      const healthy = await controller.getInitialUserTransactionsByXpub(
+        'zpub-recovered',
+        networkUrl
+      );
+      expect(healthy.map((tx) => tx.txid)).toEqual(['tx1']);
+      expect(fetchBackendAccountCachedMock).toHaveBeenCalledWith(
+        networkUrl,
+        'zpub-recovered',
+        'details=txsummary&pageSize=30',
+        true
+      );
+    }
+  );
+
+  it('keeps the last validated activity snapshot after a malformed response', async () => {
+    const xpub = 'zpub-snapshot';
+    fetchBackendAccountCachedMock.mockResolvedValue(txsResponse());
+    await controller.getInitialUserTransactionsByXpub(xpub, networkUrl);
+    fetchBackendAccountCachedMock.mockResolvedValue({ error: 'offline' });
+    await expect(
+      controller.getInitialUserTransactionsByXpub(xpub, networkUrl)
+    ).rejects.toThrow(/Blockbook history response/);
+    const local = [{ txid: 'tx1', confirmations: 10 }];
+    vaultState = buildVaultState(local);
+    fetchBackendAccountCachedMock.mockClear();
+    fetchBackendAccountCachedMock.mockResolvedValue({
+      balance: '100000000',
+      unconfirmedBalance: '0',
+      txs: 1,
+      unconfirmedTxs: 0,
+    });
+    expect(
+      await controller.pollingSysTransactions(xpub, networkUrl, true)
+    ).toEqual(local);
+    expect(fetchBackendAccountCachedMock).toHaveBeenCalledTimes(1);
+    expect(fetchBackendAccountCachedMock).toHaveBeenCalledWith(
+      networkUrl,
+      xpub,
+      'details=basic&pageSize=0',
+      true
+    );
+  });
+
+  it('propagates failed history reads and retries txsummary successfully afterward', async () => {
+    fetchBackendAccountCachedMock.mockRejectedValue(new Error('offline'));
+    await expect(
+      controller.getInitialUserTransactionsByXpub('zpub-offline', networkUrl)
+    ).rejects.toThrow('offline');
+    fetchBackendAccountCachedMock.mockClear();
+    fetchBackendAccountCachedMock.mockResolvedValue(txsResponse());
+    expect(
+      (
+        await controller.getInitialUserTransactionsByXpub(
+          'zpub-offline',
+          networkUrl
+        )
+      ).map((tx) => tx.txid)
+    ).toEqual(['tx1']);
+    expect(fetchBackendAccountCachedMock).toHaveBeenCalledWith(
+      networkUrl,
+      'zpub-offline',
+      'details=txsummary&pageSize=30',
+      true
+    );
+  });
+
+  it('recovers an inconsistent empty txsummary through txslight without caching incompatibility', async () => {
+    fetchBackendAccountCachedMock
+      .mockResolvedValueOnce({ txs: 1, unconfirmedTxs: 0, transactions: [] })
+      .mockResolvedValueOnce(txsResponse());
+    expect(
+      (
+        await controller.getInitialUserTransactionsByXpub(
+          'zpub-fallback',
+          networkUrl
+        )
+      ).map((tx) => tx.txid)
+    ).toEqual(['tx1']);
+    expect(fetchBackendAccountCachedMock).toHaveBeenNthCalledWith(
+      2,
+      networkUrl,
+      'zpub-fallback',
+      'details=txslight&pageSize=30',
+      true
+    );
+    fetchBackendAccountCachedMock.mockClear();
+    fetchBackendAccountCachedMock.mockResolvedValue(txsResponse());
+    await controller.getInitialUserTransactionsByXpub('zpub-next', networkUrl);
+    expect(fetchBackendAccountCachedMock).toHaveBeenCalledWith(
+      networkUrl,
+      'zpub-next',
+      'details=txsummary&pageSize=30',
+      true
+    );
+  });
+
+  it('retains empty later-page behavior without treating it as empty first-page history', async () => {
+    fetchBackendAccountCachedMock.mockResolvedValue({
+      txs: 30,
+      unconfirmedTxs: 0,
+      transactions: [],
+    });
+    expect(
+      await controller.fetchTransactionsPageFromBlockbook(
+        'zpub-page',
+        networkUrl,
+        2,
+        30
+      )
+    ).toEqual([]);
+    expect(fetchBackendAccountCachedMock).toHaveBeenCalledTimes(1);
+  });
+});

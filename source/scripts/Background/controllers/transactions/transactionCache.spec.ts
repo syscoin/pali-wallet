@@ -29,7 +29,13 @@ const originalApi = 'https://old-explorer.example/api';
 const updatedApi = 'https://new-explorer.example/api';
 let manager: ReturnType<typeof TransactionsManager>;
 const read = (
-  options: { force?: boolean; pending?: boolean; utxo?: boolean } = {}
+  options: {
+    force?: boolean;
+    pending?: boolean;
+    rapid?: boolean;
+    scope?: string;
+    utxo?: boolean;
+  } = {}
 ) =>
   manager.utils.updateTransactionsFromCurrentAccount(
     account as any,
@@ -41,8 +47,9 @@ const read = (
       },
     } as any,
     true,
-    false,
-    Boolean(options.force)
+    Boolean(options.rapid),
+    Boolean(options.force),
+    options.scope
   );
 
 beforeEach(() => {
@@ -129,5 +136,195 @@ it('refetches through RPC when the active explorer API is removed', async () => 
   expect(await read()).toEqual([
     { hash: 'observed-undefined', blockNumber: 1 },
   ]);
+  expect(mockEvmPolling).toHaveBeenCalledTimes(2);
+});
+
+const deferred = () => {
+  let resolve!: (value: any[]) => void;
+  let reject!: (error: Error) => void;
+  const promise = new Promise<any[]>((done, fail) => {
+    resolve = done;
+    reject = fail;
+  });
+  return { promise, resolve, reject };
+};
+
+it.each([false, true])(
+  'caches only the newest overlapping network result (utxo=%s)',
+  async (utxo) => {
+    const poll = utxo ? mockUtxoPolling : mockEvmPolling;
+    const old = deferred();
+    const fresh = [{ hash: 'fresh', txid: 'fresh', blockNumber: 2 }];
+    poll.mockReturnValueOnce(old.promise).mockResolvedValueOnce(fresh);
+    const older = read({ utxo, force: true });
+    expect(await read({ utxo, force: true })).toBe(fresh);
+    old.resolve([{ hash: 'old', txid: 'old', blockNumber: 1 }]);
+    await older;
+    expect(await read({ utxo })).toBe(fresh);
+    expect(poll).toHaveBeenCalledTimes(2);
+  }
+);
+
+it.each([false, true])(
+  'retries instead of reviving an old cache after overlapping fresh reads fail (utxo=%s)',
+  async (utxo) => {
+    const poll = utxo ? mockUtxoPolling : mockEvmPolling;
+    await read({ utxo });
+    const old = deferred();
+    const newer = deferred();
+    poll.mockReturnValueOnce(old.promise).mockReturnValueOnce(newer.promise);
+    const olderRead = read({ utxo, force: true });
+    const newerRead = read({ utxo, force: true });
+    const rejected = expect(newerRead).rejects.toThrow('offline');
+    newer.reject(new Error('offline'));
+    await rejected;
+    old.resolve([{ hash: 'old', txid: 'old', blockNumber: 1 }]);
+    await olderRead;
+    const recovered = [
+      { hash: 'recovered', txid: 'recovered', blockNumber: 2 },
+    ];
+    poll.mockResolvedValueOnce(recovered);
+    expect(await read({ utxo })).toBe(recovered);
+    expect(poll).toHaveBeenCalledTimes(4);
+  }
+);
+
+it.each([false, true])(
+  'does not serve old completed cache while a forced refresh is in flight (utxo=%s)',
+  async (utxo) => {
+    const poll = utxo ? mockUtxoPolling : mockEvmPolling;
+    await read({ utxo });
+    const old = deferred();
+    const fresh = [{ hash: 'fresh', txid: 'fresh', blockNumber: 2 }];
+    poll.mockReturnValueOnce(old.promise);
+    const forced = read({ utxo, force: true });
+    const ordinary = read({ utxo });
+    expect(poll).toHaveBeenCalledTimes(2);
+    old.resolve(fresh);
+    expect(await forced).toBe(fresh);
+    expect(await ordinary).toBe(fresh);
+    expect(await read({ utxo })).toBe(fresh);
+    expect(poll).toHaveBeenCalledTimes(2);
+  }
+);
+
+it.each([false, true])(
+  'retries an expired forced read with full history instead of rapid local state (utxo=%s)',
+  async (utxo) => {
+    const now = jest.spyOn(Date, 'now').mockReturnValue(1000);
+    const poll = utxo ? mockUtxoPolling : mockEvmPolling;
+    const old = deferred();
+    const fresh = [{ hash: 'fresh', txid: 'fresh', blockNumber: 2 }];
+    poll.mockReturnValueOnce(old.promise).mockResolvedValueOnce(fresh);
+    const forced = read({ utxo, force: true, scope: '1:1' });
+    now.mockReturnValue(6000);
+    const joined = read({ utxo, rapid: true, scope: '1:1' });
+    expect(poll).toHaveBeenCalledTimes(1);
+    now.mockReturnValue(6001);
+    expect(await read({ utxo, rapid: true, scope: '1:1' })).toBe(fresh);
+    expect(poll).toHaveBeenCalledTimes(2);
+    expect(poll.mock.calls[1][2]).toBe(false);
+    old.resolve([{ hash: 'old', txid: 'old', blockNumber: 1 }]);
+    await Promise.all([forced, joined]);
+    expect(await read({ utxo })).toBe(fresh);
+  }
+);
+
+it.each([false, true])(
+  'does not join a forced read from an earlier wallet or network scope (utxo=%s)',
+  async (utxo) => {
+    const poll = utxo ? mockUtxoPolling : mockEvmPolling;
+    const old = deferred();
+    const fresh = [{ hash: 'fresh', txid: 'fresh', blockNumber: 2 }];
+    poll.mockReturnValueOnce(old.promise).mockResolvedValueOnce(fresh);
+    const forced = read({ utxo, force: true, scope: '1:1' });
+    expect(await read({ utxo, scope: '2:1' })).toBe(fresh);
+    expect(poll).toHaveBeenCalledTimes(2);
+    old.resolve([{ hash: 'old', txid: 'old', blockNumber: 1 }]);
+    await forced;
+    expect(await read({ utxo, scope: '2:1' })).toBe(fresh);
+  }
+);
+
+it('does not join a cleared in-flight forced request', async () => {
+  const old = deferred();
+  const fresh = [{ hash: 'fresh', blockNumber: 2 }];
+  mockEvmPolling.mockReturnValueOnce(old.promise).mockResolvedValueOnce(fresh);
+  const forced = read({ force: true });
+  manager.utils.clearCache();
+  expect(await read()).toBe(fresh);
+  expect(mockEvmPolling).toHaveBeenCalledTimes(2);
+  old.resolve([{ hash: 'old', blockNumber: 1 }]);
+  await forced;
+  expect(await read()).toBe(fresh);
+});
+
+it.each([false, true])(
+  'coalesces ordinary full reads for the same account and endpoint (utxo=%s)',
+  async (utxo) => {
+    const poll = utxo ? mockUtxoPolling : mockEvmPolling;
+    const response = deferred();
+    const fresh = [{ hash: 'fresh', txid: 'fresh', blockNumber: 2 }];
+    poll.mockReturnValueOnce(response.promise);
+    const first = read({ utxo });
+    const second = read({ utxo });
+    expect(poll).toHaveBeenCalledTimes(1);
+    response.resolve(fresh);
+    expect(await first).toBe(fresh);
+    expect(await second).toBe(fresh);
+  }
+);
+
+it.each([false, true])(
+  'does not let a full read join an earlier rapid local snapshot (utxo=%s)',
+  async (utxo) => {
+    const poll = utxo ? mockUtxoPolling : mockEvmPolling;
+    const response = deferred();
+    const fresh = [{ hash: 'fresh', txid: 'fresh', blockNumber: 2 }];
+    poll.mockReturnValueOnce(response.promise).mockResolvedValueOnce(fresh);
+    const rapid = read({ utxo, rapid: true });
+    expect(await read({ utxo })).toBe(fresh);
+    expect(poll).toHaveBeenCalledTimes(2);
+    expect(poll.mock.calls.map((args: any[]) => args[2])).toEqual([
+      true,
+      false,
+    ]);
+    response.resolve([{ hash: 'old', txid: 'old', blockNumber: 1 }]);
+    await rapid;
+    expect(await read({ utxo })).toBe(fresh);
+  }
+);
+
+it.each([false, true])(
+  'does not repopulate a cleared cache from an older in-flight read (utxo=%s)',
+  async (utxo) => {
+    const poll = utxo ? mockUtxoPolling : mockEvmPolling;
+    const old = deferred();
+    const fresh = [{ hash: 'fresh', txid: 'fresh', blockNumber: 2 }];
+    poll.mockReturnValueOnce(old.promise).mockResolvedValueOnce(fresh);
+    const pending = read({ utxo, force: true });
+    manager.utils.clearCache();
+    old.resolve([{ hash: 'old', txid: 'old', blockNumber: 1 }]);
+    await pending;
+    expect(await read({ utxo })).toBe(fresh);
+    expect(poll).toHaveBeenCalledTimes(2);
+  }
+);
+
+it('keeps independent endpoint cache writers independent', async () => {
+  const old = deferred();
+  const firstEndpoint = [{ hash: 'first-endpoint', blockNumber: 1 }];
+  const secondEndpoint = [{ hash: 'second-endpoint', blockNumber: 2 }];
+  mockEvmPolling
+    .mockReturnValueOnce(old.promise)
+    .mockResolvedValueOnce(secondEndpoint);
+  const first = read({ force: true });
+  mockVault.activeNetwork.apiUrl = updatedApi;
+  expect(await read({ force: true })).toBe(secondEndpoint);
+  old.resolve(firstEndpoint);
+  await first;
+  expect(await read()).toBe(secondEndpoint);
+  mockVault.activeNetwork.apiUrl = originalApi;
+  expect(await read()).toBe(firstEndpoint);
   expect(mockEvmPolling).toHaveBeenCalledTimes(2);
 });

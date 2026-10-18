@@ -75,15 +75,73 @@ const storeActivitySnapshot = (
   accountActivitySnapshots.set(key, snapshot);
 };
 
+const readHistoryCount = (value: unknown): number | null => {
+  if (
+    (typeof value !== 'number' && typeof value !== 'string') ||
+    !/^\d+$/.test(String(value))
+  )
+    return null;
+  const count = Number(value);
+  return Number.isSafeInteger(count) ? count : null;
+};
+
+const isHistoryResponseObject = (data: any) =>
+  data !== null &&
+  typeof data === 'object' &&
+  !Array.isArray(data) &&
+  data.error === undefined;
+
 const isUnsupportedTxSummaryResponse = (
   accountData: any,
   requestOptions: string
 ) =>
   requestOptions.includes('details=txsummary') &&
-  accountData &&
-  !Array.isArray(accountData.transactions) &&
-  (Number(accountData.txs ?? 0) > 0 ||
-    Number(accountData.unconfirmedTxs ?? 0) > 0);
+  isHistoryResponseObject(accountData) &&
+  ['txs', 'unconfirmedTxs'].every(
+    (key) =>
+      accountData[key] === undefined ||
+      readHistoryCount(accountData[key]) !== null
+  ) &&
+  accountData.transactions === undefined &&
+  ((readHistoryCount(accountData.txs) ?? 0) > 0 ||
+    (readHistoryCount(accountData.unconfirmedTxs) ?? 0) > 0);
+
+// Blockbook omits empty transaction arrays. Only explicit zero counts can
+// distinguish that normal response from a malformed or basic-only payload.
+const validateAccountHistory = (data: any, allowEmptyPage: boolean) => {
+  if (
+    !isHistoryResponseObject(data) ||
+    ['txs', 'unconfirmedTxs'].some(
+      (key) => data[key] !== undefined && readHistoryCount(data[key]) === null
+    )
+  )
+    throw new Error('Invalid Blockbook history response');
+
+  const zeroCounts =
+    readHistoryCount(data.txs) === 0 &&
+    readHistoryCount(data.unconfirmedTxs) === 0;
+  const transactions = data.transactions;
+  if (Array.isArray(transactions)) {
+    if (
+      transactions.some(
+        (tx: any) => !tx || typeof tx.txid !== 'string' || tx.txid.length === 0
+      ) ||
+      (!transactions.length && !allowEmptyPage && !zeroCounts)
+    )
+      throw new Error('Incomplete Blockbook history response');
+    return normalizeAccountHistory(data);
+  }
+  if (
+    transactions === undefined &&
+    (zeroCounts ||
+      (allowEmptyPage &&
+        readHistoryCount(data.txs) !== null &&
+        readHistoryCount(data.unconfirmedTxs) !== null)) &&
+    (!Array.isArray(data.txids) || data.txids.length === 0)
+  )
+    return { ...data, transactions: [] };
+  throw new Error('Incomplete Blockbook history response');
+};
 
 // Only account-history responses carry queried-account ownership flags. A raw
 // /tx read or txslight's transaction-wide value/valueIn aliases cannot supply
@@ -142,7 +200,8 @@ const normalizeAccountHistory = (accountData: any) => {
 const fetchAccountHistory = async (
   networkUrl: string,
   xpubOrAddress: string,
-  requestOptions: string
+  requestOptions: string,
+  allowEmptyPage = false
 ) => {
   let accountData: any = null;
 
@@ -153,6 +212,9 @@ const fetchAccountHistory = async (
       requestOptions,
       true
     );
+    if (!isUnsupportedTxSummaryResponse(accountData, requestOptions)) {
+      return validateAccountHistory(accountData, allowEmptyPage);
+    }
   } catch (error) {
     if (!requestOptions.includes('details=txsummary')) {
       throw error;
@@ -164,32 +226,22 @@ const fetchAccountHistory = async (
     );
   }
 
-  if (
-    accountData &&
-    !isUnsupportedTxSummaryResponse(accountData, requestOptions)
-  ) {
-    return normalizeAccountHistory(accountData);
-  }
-  if (!requestOptions.includes('details=txsummary')) return accountData;
-
-  // A transient/account-specific failure or null body says nothing about
-  // backend capabilities. Only a successful basic-only response proves that
-  // this reader ignored txsummary despite reporting account history.
+  // Only a successful basic-only response proves missing txsummary support.
+  // Transient, inconsistent and malformed responses do not change capability.
   if (isUnsupportedTxSummaryResponse(accountData, requestOptions))
     txSummaryUnsupportedBackends.add(networkUrl);
   const fallbackOptions = requestOptions.replace(
     'details=txsummary',
     'details=txslight'
   );
-  if (fallbackOptions === requestOptions) return accountData;
-
-  return normalizeAccountHistory(
+  return validateAccountHistory(
     await fetchBackendAccountCached(
       networkUrl,
       xpubOrAddress,
       fallbackOptions,
       true
-    )
+    ),
+    allowEmptyPage
   );
 };
 
@@ -328,7 +380,8 @@ const SysTransactionController = (): ISysTransactionsController => {
     const accountData = await fetchAccountHistory(
       networkUrl,
       xpubOrAddress,
-      requestOptions
+      requestOptions,
+      page > 1
     );
     const transactions = (accountData as any)?.transactions as
       | ISysTransaction[]

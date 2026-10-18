@@ -4,8 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { LazyAccountBalance } from 'components/AccountBalance';
-import { Button, Icon, Tooltip } from 'components/index';
-import { ToastActionFooter } from 'components/ToastActionFooter';
+import { Button, Icon, PageActionFooter, Tooltip } from 'components/index';
 import { TokenIcon } from 'components/TokenIcon';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
@@ -128,6 +127,7 @@ export const ChangeConnectedAccount = () => {
   const [, copy] = useCopyClipboard();
   const { host, eventName, connectedAccount, accountType } = useQueryData();
   const [isChanging, setIsChanging] = useState(false);
+  const [switchError, setSwitchError] = useState('');
 
   // Helper function to get tokens for an account
   const getAccountTokens = useCallback(
@@ -147,17 +147,19 @@ export const ChangeConnectedAccount = () => {
   );
 
   const handleAccept = async () => {
+    setSwitchError('');
     setIsChanging(true);
     try {
       await controllerEmitter(
         ['wallet', 'setAccount'],
-        [connectedAccount.id, accountType, true]
+        [connectedAccount.id, accountType, true, connectedAccount.address]
       );
       // Dispatch event right before closing
       dispatchBackgroundEvent(`${eventName}.${host}`, null);
       window.close();
     } catch (error) {
       console.error('Failed to change account:', error);
+      setSwitchError(error?.message || t('send.failed'));
       setIsChanging(false);
     }
   };
@@ -175,6 +177,88 @@ export const ChangeConnectedAccount = () => {
     activeAccount,
     activeAccountRef.type
   );
+
+  const renderAccountCard = (
+    account: any,
+    type: string,
+    tokens: any[],
+    required = false
+  ) => {
+    const label = required ? account.label : account?.label;
+    const address = required ? account.address : account?.address;
+    return (
+      <div className="space-y-3">
+        <h4 className="text-xs font-medium text-brand-graylight uppercase tracking-wider">
+          {required
+            ? t('connections.requiredAccount')
+            : 'Current Active Account'}
+        </h4>
+        <div
+          className={`w-full p-4 rounded-lg border ${
+            required ? 'border-brand-orange' : 'border-brand-royalblue'
+          } bg-bkg-2`}
+        >
+          <div className="flex items-center justify-between gap-2 w-full">
+            <div className="flex items-center gap-3 flex-1 min-w-0">
+              <div className="relative">
+                <AccountIcon account={account} size={40} />
+              </div>
+              <div className="flex-1 min-w-0 pr-2">
+                <p className="font-medium text-sm text-brand-white mb-1 truncate">
+                  {label}
+                </p>
+                <div className="flex items-center gap-1">
+                  <Tooltip content={address} placement="top">
+                    <p className="text-xs text-brand-graylight">
+                      {ellipsis(address, 8, 4)}
+                    </p>
+                  </Tooltip>
+                  <div className="inline-flex flex-shrink-0 items-center">
+                    <button
+                      onClick={async () => {
+                        try {
+                          await copy(
+                            required ? account.address : account?.address
+                          );
+                          alert.info(t('home.addressCopied'));
+                        } catch {
+                          alert.error(t('transactions.copyFailed'));
+                        }
+                      }}
+                      className="hover:text-brand-royalblue transition-colors duration-200"
+                    >
+                      <Icon
+                        name="copy"
+                        className="text-xs"
+                        size={10}
+                        wrapperClassname="h-[1em] flex items-center"
+                      />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 flex-shrink-0">
+              <div className="text-right">
+                <LazyAccountBalance
+                  account={account}
+                  accountType={type}
+                  showFiat={true}
+                  showSkeleton={true}
+                  precision={8}
+                />
+                {tokens && tokens.length > 0 && (
+                  <div className="mt-0.5 flex justify-end">
+                    <TokenIconStack tokens={tokens} />
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="flex flex-col w-full h-full">
@@ -198,145 +282,24 @@ export const ChangeConnectedAccount = () => {
 
         {/* Account comparison */}
         <div className="px-6 py-6 space-y-4">
-          {/* Connected Account */}
-          <div className="space-y-3">
-            <h4 className="text-xs font-medium text-brand-graylight uppercase tracking-wider">
-              {t('connections.requiredAccount')}
-            </h4>
-            <div className="w-full p-4 rounded-lg border border-brand-orange bg-bkg-2">
-              <div className="flex items-center justify-between gap-2 w-full">
-                <div className="flex items-center gap-3 flex-1 min-w-0">
-                  <div className="relative">
-                    <AccountIcon account={connectedAccount} size={40} />
-                  </div>
-                  <div className="flex-1 min-w-0 pr-2">
-                    <p className="font-medium text-sm text-brand-white mb-1 truncate">
-                      {connectedAccount.label}
-                    </p>
-                    <div className="flex items-center gap-1">
-                      <Tooltip
-                        content={connectedAccount.address}
-                        placement="top"
-                      >
-                        <p className="text-xs text-brand-graylight">
-                          {ellipsis(connectedAccount.address, 8, 4)}
-                        </p>
-                      </Tooltip>
-                      <div className="inline-flex flex-shrink-0 items-center">
-                        <button
-                          onClick={async () => {
-                            try {
-                              await copy(connectedAccount.address);
-                              alert.info(t('home.addressCopied'));
-                            } catch {
-                              alert.error(t('transactions.copyFailed'));
-                            }
-                          }}
-                          className="hover:text-brand-royalblue transition-colors duration-200"
-                        >
-                          <Icon
-                            name="copy"
-                            className="text-xs"
-                            size={10}
-                            wrapperClassname="h-[1em] flex items-center"
-                          />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3 flex-shrink-0">
-                  <div className="text-right">
-                    <LazyAccountBalance
-                      account={connectedAccount}
-                      accountType={accountType}
-                      showFiat={true}
-                      showSkeleton={true}
-                      precision={8}
-                    />
-                    {connectedAccountTokens &&
-                      connectedAccountTokens.length > 0 && (
-                        <div className="mt-0.5 flex justify-end">
-                          <TokenIconStack tokens={connectedAccountTokens} />
-                        </div>
-                      )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Active Account */}
-          <div className="space-y-3">
-            <h4 className="text-xs font-medium text-brand-graylight uppercase tracking-wider">
-              Current Active Account
-            </h4>
-            <div className="w-full p-4 rounded-lg border border-brand-royalblue bg-bkg-2">
-              <div className="flex items-center justify-between gap-2 w-full">
-                <div className="flex items-center gap-3 flex-1 min-w-0">
-                  <div className="relative">
-                    <AccountIcon account={activeAccount} size={40} />
-                  </div>
-                  <div className="flex-1 min-w-0 pr-2">
-                    <p className="font-medium text-sm text-brand-white mb-1 truncate">
-                      {activeAccount?.label}
-                    </p>
-                    <div className="flex items-center gap-1">
-                      <Tooltip content={activeAccount?.address} placement="top">
-                        <p className="text-xs text-brand-graylight">
-                          {ellipsis(activeAccount?.address, 8, 4)}
-                        </p>
-                      </Tooltip>
-                      <div className="inline-flex flex-shrink-0 items-center">
-                        <button
-                          onClick={async () => {
-                            try {
-                              await copy(activeAccount?.address);
-                              alert.info(t('home.addressCopied'));
-                            } catch {
-                              alert.error(t('transactions.copyFailed'));
-                            }
-                          }}
-                          className="hover:text-brand-royalblue transition-colors duration-200"
-                        >
-                          <Icon
-                            name="copy"
-                            className="text-xs"
-                            size={10}
-                            wrapperClassname="h-[1em] flex items-center"
-                          />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3 flex-shrink-0">
-                  <div className="text-right">
-                    <LazyAccountBalance
-                      account={activeAccount}
-                      accountType={activeAccountRef.type}
-                      showFiat={true}
-                      showSkeleton={true}
-                      precision={8}
-                    />
-                    {activeAccountTokens && activeAccountTokens.length > 0 && (
-                      <div className="mt-0.5 flex justify-end">
-                        <TokenIconStack tokens={activeAccountTokens} />
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+          {renderAccountCard(
+            connectedAccount,
+            accountType,
+            connectedAccountTokens,
+            true
+          )}
+          {renderAccountCard(
+            activeAccount,
+            activeAccountRef.type,
+            activeAccountTokens
+          )}
         </div>
-
-        {/* Add bottom padding to account for fixed buttons */}
-        <div className="pb-20"></div>
       </div>
 
-      {/* Fixed button container at bottom */}
-      <ToastActionFooter className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 shadow-lg z-50">
+      <PageActionFooter
+        error={switchError}
+        className="break-words border-t border-brand-gray300"
+      >
         <div className="flex gap-3 justify-center">
           <Button
             variant="secondary"
@@ -357,7 +320,7 @@ export const ChangeConnectedAccount = () => {
             {t('connections.switchAccount')}
           </Button>
         </div>
-      </ToastActionFooter>
+      </PageActionFooter>
     </div>
   );
 };

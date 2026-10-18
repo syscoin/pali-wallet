@@ -1887,6 +1887,28 @@ export const SendConfirm = () => {
   // The overlay handles loading display, so we just check for confirmed state
   const shouldShowMainContent = !confirmed;
 
+  const renderFeeError = () => (
+    <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1 px-2 py-1 bg-warning-error bg-opacity-10 rounded">
+        <Icon name="warning" className="w-3 h-3 text-warning-error" />
+        <span className="text-warning-error text-xs">
+          {t('send.unableToLoad')}
+        </span>
+      </div>
+      <Tooltip content={feeCalculationError}>
+        <IconButton
+          onClick={retryFeeCalculation}
+          className="p-1 hover:bg-brand-blue600 rounded-full transition-all duration-200"
+        >
+          <Icon
+            name="reload"
+            className="w-3.5 h-3.5 text-brand-gray200 hover:text-white cursor-pointer transition-colors"
+          />
+        </IconButton>
+      </Tooltip>
+    </div>
+  );
+
   return (
     <>
       <EditPriorityModal
@@ -2188,30 +2210,7 @@ export const SendConfirm = () => {
                   <span className="text-white text-xs">
                     {(() => {
                       if (feeCalculationError) {
-                        return (
-                          <div className="flex items-center gap-2">
-                            <div className="flex items-center gap-1 px-2 py-1 bg-warning-error bg-opacity-10 rounded">
-                              <Icon
-                                name="warning"
-                                className="w-3 h-3 text-warning-error"
-                              />
-                              <span className="text-warning-error text-xs">
-                                {t('send.unableToLoad')}
-                              </span>
-                            </div>
-                            <Tooltip content={feeCalculationError}>
-                              <IconButton
-                                onClick={retryFeeCalculation}
-                                className="p-1 hover:bg-brand-blue600 rounded-full transition-all duration-200"
-                              >
-                                <Icon
-                                  name="reload"
-                                  className="w-3.5 h-3.5 text-brand-gray200 hover:text-white cursor-pointer transition-colors"
-                                />
-                              </IconButton>
-                            </Tooltip>
-                          </div>
-                        );
+                        return renderFeeError();
                       }
 
                       let feeAmount;
@@ -2255,7 +2254,12 @@ export const SendConfirm = () => {
                       type="button"
                       id="edit-fee-button"
                       aria-label={t('send.editFee')}
-                      disabled={loading || submission.pending}
+                      disabled={
+                        loading ||
+                        submission.pending ||
+                        isCalculatingFees ||
+                        (!customFee.isCustom && !(fee.maxFeePerGas > 0))
+                      }
                       className="flex h-11 w-11 shrink-0 items-center justify-center rounded hover:text-fields-input-borderfocus focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue500 disabled:cursor-not-allowed"
                       onClick={() => setIsOpenEditFeeModal(true)}
                     >
@@ -2466,30 +2470,7 @@ export const SendConfirm = () => {
                   <span className="text-white text-xs">
                     {(() => {
                       if (feeCalculationError) {
-                        return (
-                          <div className="flex items-center gap-2">
-                            <div className="flex items-center gap-1 px-2 py-1 bg-warning-error bg-opacity-10 rounded">
-                              <Icon
-                                name="warning"
-                                className="w-3 h-3 text-warning-error"
-                              />
-                              <span className="text-warning-error text-xs">
-                                {t('send.unableToLoad')}
-                              </span>
-                            </div>
-                            <Tooltip content={feeCalculationError}>
-                              <IconButton
-                                onClick={retryFeeCalculation}
-                                className="p-1 hover:bg-brand-blue600 rounded-full transition-all duration-200"
-                              >
-                                <Icon
-                                  name="reload"
-                                  className="w-3.5 h-3.5 text-brand-gray200 hover:text-white cursor-pointer transition-colors"
-                                />
-                              </IconButton>
-                            </Tooltip>
-                          </div>
-                        );
+                        return renderFeeError();
                       }
 
                       let feeAmount;

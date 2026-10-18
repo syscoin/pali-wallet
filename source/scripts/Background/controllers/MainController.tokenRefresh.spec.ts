@@ -144,6 +144,8 @@ beforeEach(() => {
     targetedBalanceVersions: new Map(),
     targetedBalanceEvictions: 0,
     assetUpdateRequestId: 0,
+    transactionUpdateRequestId: 0,
+    transactionUpdateCommitId: 0,
     nativeBalanceRevision: 0,
     activeRapidPolls: new Map(),
     cancellablePromises: new CancellablePromises(),

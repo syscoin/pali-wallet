@@ -241,8 +241,6 @@ export const EvmTransactionDetailsEnhanced = ({
     scope,
     false
   );
-  const [decodedTxData, setDecodedTxData] =
-    useContextualState<IDecodedTx | null>(scope, null);
 
   // State for transaction display info - moved up to be available for useEffect dependencies
   const [transactionDisplayInfo, setTransactionDisplayInfo] =
@@ -347,6 +345,10 @@ export const EvmTransactionDetailsEnhanced = ({
   ]);
   const displayTransaction = displayContext.transaction;
   let transactionTx: IEvmTransactionResponse | undefined = mergedTransaction;
+  const decodeInput = transactionTx?.data || transactionTx?.input;
+  const decodeScope = JSON.stringify([scope, transactionTx?.to, decodeInput]);
+  const [decodedTxData, setDecodedTxData] =
+    useContextualState<IDecodedTx | null>(decodeScope, null);
   const candidate = winnerLookup.settled
     ? winnerLookup.candidate
     : replacementWinner;
@@ -500,7 +502,7 @@ export const EvmTransactionDetailsEnhanced = ({
     const isCurrent = () => !cancelled && scopeRef.current === scope;
     const processTransactionDecoding = async () => {
       // Check cache first
-      const cached = decodedTxCache.get(scope);
+      const cached = decodedTxCache.get(decodeScope);
       const now = Date.now();
 
       if (cached && now - cached.timestamp < CACHE_TTL) {
@@ -518,7 +520,7 @@ export const EvmTransactionDetailsEnhanced = ({
 
           // Always decode transactions with input data to get full parameter details
           // This ensures we show decoded data even if transactionDisplayInfo isn't ready yet
-          if (!mergedTx.input || mergedTx.input === '0x') {
+          if (!decodeInput || decodeInput === '0x') {
             // Simple ETH transfers with no input data
             decodedData = {
               method: 'Send',
@@ -551,7 +553,7 @@ export const EvmTransactionDetailsEnhanced = ({
 
           if (!isCurrent()) return;
           // Cache the result
-          decodedTxCache.set(scope, {
+          decodedTxCache.set(decodeScope, {
             data: decodedData,
             timestamp: now,
           });
@@ -575,6 +577,7 @@ export const EvmTransactionDetailsEnhanced = ({
   }, [
     hash,
     scope,
+    decodeScope,
     matchingTx,
     enhancedDetails,
     transactionDisplayInfo,
