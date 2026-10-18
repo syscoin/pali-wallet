@@ -64,9 +64,10 @@ const ConnectHardwareWalletView: FC = () => {
           const LEDGER_USB_VENDOR_ID = 0x2c97;
 
           if ((navigator as any).hid?.requestDevice) {
-            await (navigator as any).hid.requestDevice({
+            const devices = await (navigator as any).hid.requestDevice({
               filters: [{ vendorId: LEDGER_USB_VENDOR_ID }],
             });
+            if (!devices.length) return;
           }
 
           // Ledger connection is handled internally by ensureConnection

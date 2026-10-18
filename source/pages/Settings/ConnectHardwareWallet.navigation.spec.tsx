@@ -240,4 +240,107 @@ describe('hardware setup navigation', () => {
       else delete (navigator as any).hid;
     }
   });
+
+  it('leaves a cancelled Ledger chooser idle without starting an account import', async () => {
+    const originalHid = Object.getOwnPropertyDescriptor(navigator, 'hid');
+    let cancelChooser!: () => void;
+    const requestDevice = jest
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<unknown[]>((resolve) => {
+            cancelChooser = () => resolve([]);
+          })
+      )
+      .mockResolvedValueOnce([{ vendorId: 0x2c97 }]);
+    Object.defineProperty(navigator, 'hid', {
+      configurable: true,
+      value: { requestDevice },
+    });
+
+    try {
+      render(<ConnectHardwareWallet />);
+      fireEvent.click(screen.getByRole('button', { name: 'Ledger' }));
+      let pending!: Promise<void>;
+      act(() => {
+        pending = mockConnect();
+      });
+      await act(async () => {
+        await mockConnect();
+      });
+      expect(requestDevice).toHaveBeenCalledTimes(1);
+      expect(mockEmitter).not.toHaveBeenCalled();
+      expect(
+        screen
+          .getByRole('button', { name: 'buttons.cancel' })
+          .hasAttribute('disabled')
+      ).toBe(true);
+
+      await act(async () => {
+        cancelChooser();
+        await pending;
+      });
+      expect(mockEmitter).not.toHaveBeenCalled();
+      expect(screen.queryByRole('button', { name: 'Finish setup' })).toBeNull();
+      expect(
+        screen
+          .getByRole('button', { name: 'buttons.connect' })
+          .hasAttribute('disabled')
+      ).toBe(false);
+      expect(
+        screen
+          .getByRole('button', { name: 'buttons.cancel' })
+          .hasAttribute('disabled')
+      ).toBe(false);
+
+      await act(async () => {
+        await mockConnect();
+      });
+      expect(requestDevice).toHaveBeenCalledTimes(2);
+      expect(mockEmitter).toHaveBeenCalledTimes(1);
+      expect(mockEmitter).toHaveBeenCalledWith(
+        ['wallet', 'importLedgerAccountFromController'],
+        [],
+        300000
+      );
+      expect(
+        screen.getByRole('button', { name: 'Finish setup' })
+      ).toBeDefined();
+    } finally {
+      if (originalHid) Object.defineProperty(navigator, 'hid', originalHid);
+      else delete (navigator as any).hid;
+    }
+  });
+
+  it.each([
+    ['Trezor', 'importTrezorAccountFromController'],
+    ['Ledger', 'importLedgerAccountFromController'],
+  ])('preserves a healthy %s import without WebHID', async (name, method) => {
+    const originalHid = Object.getOwnPropertyDescriptor(navigator, 'hid');
+    Object.defineProperty(navigator, 'hid', {
+      configurable: true,
+      value: undefined,
+    });
+    try {
+      render(<ConnectHardwareWallet />);
+      fireEvent.click(screen.getByRole('button', { name }));
+      await act(async () => {
+        await mockConnect();
+      });
+
+      expect(mockEmitter).toHaveBeenCalledTimes(1);
+      expect(mockEmitter).toHaveBeenCalledWith(['wallet', method], [], 300000);
+      expect(
+        screen.getByRole('button', { name: 'Finish setup' })
+      ).toBeDefined();
+      expect(
+        screen
+          .getByRole('button', { name: 'buttons.cancel' })
+          .hasAttribute('disabled')
+      ).toBe(false);
+    } finally {
+      if (originalHid) Object.defineProperty(navigator, 'hid', originalHid);
+      else delete (navigator as any).hid;
+    }
+  });
 });

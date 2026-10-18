@@ -2,6 +2,8 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import React from 'react';
 
+import { dispatchBackgroundEvent } from 'utils/browser';
+
 import EncryptPubKey from './EncryptPubKey';
 
 const mockCopy = jest.fn();
@@ -47,6 +49,7 @@ jest.mock('utils/index', () => ({ ellipsis: (value: string) => value }));
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockEmitter.mockReset().mockResolvedValue('public-synthetic-encryption-key');
   mockCopy.mockResolvedValue(undefined);
   Object.defineProperty(navigator, 'clipboard', {
     configurable: true,
@@ -76,6 +79,7 @@ beforeEach(() => {
   };
 });
 afterEach(() => {
+  jest.restoreAllMocks();
   if (originalClipboard)
     Object.defineProperty(navigator, 'clipboard', originalClipboard);
   else delete (navigator as any).clipboard;
@@ -156,3 +160,72 @@ it.each(['success', 'failure'])(
     expect(mockEmitter).not.toHaveBeenCalled();
   }
 );
+
+it('settles an approved public-key request without closing a replacement page after departure', async () => {
+  let finish!: (value: string) => void;
+  mockEmitter.mockReturnValueOnce(
+    new Promise<string>((resolve) => (finish = resolve))
+  );
+  jest.spyOn(window, 'close').mockImplementation(() => undefined);
+  const view = render(<EncryptPubKey />);
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
+  expect(mockEmitter).toHaveBeenCalledTimes(1);
+  expect(mockEmitter).toHaveBeenCalledWith([
+    'wallet',
+    'ethereumTransaction',
+    'getEncryptedPubKey',
+  ]);
+  expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
+  view.unmount();
+  render(<div>Replacement wallet page</div>);
+
+  await act(async () => finish('public-synthetic-encryption-key'));
+
+  expect(dispatchBackgroundEvent).toHaveBeenCalledWith(
+    'eth_getEncryptionPublicKey.https://synthetic.invalid',
+    'public-synthetic-encryption-key'
+  );
+  expect(dispatchBackgroundEvent).toHaveBeenCalledTimes(1);
+  expect(screen.getByText('Replacement wallet page')).toBeDefined();
+  expect(window.close).not.toHaveBeenCalled();
+  expect(mockEmitter).toHaveBeenCalledTimes(1);
+});
+
+it('settles and closes a current public-key approval normally', async () => {
+  jest.spyOn(window, 'close').mockImplementation(() => undefined);
+  render(<EncryptPubKey />);
+  await act(async () =>
+    fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }))
+  );
+  expect(dispatchBackgroundEvent).toHaveBeenCalledWith(
+    'eth_getEncryptionPublicKey.https://synthetic.invalid',
+    'public-synthetic-encryption-key'
+  );
+  expect(dispatchBackgroundEvent).toHaveBeenCalledTimes(1);
+  expect(window.close).toHaveBeenCalledTimes(1);
+});
+
+it('keeps a failed current public-key request retryable', async () => {
+  mockEmitter.mockRejectedValueOnce(
+    new Error('Synthetic key retrieval failure')
+  );
+  jest.spyOn(window, 'close').mockImplementation(() => undefined);
+  render(<EncryptPubKey />);
+  await act(async () =>
+    fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }))
+  );
+  expect(screen.getByText('Synthetic key retrieval failure')).toBeDefined();
+  expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
+  expect(window.close).not.toHaveBeenCalled();
+
+  await act(async () =>
+    fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }))
+  );
+  expect(mockEmitter).toHaveBeenCalledTimes(2);
+  expect(dispatchBackgroundEvent).toHaveBeenCalledWith(
+    'eth_getEncryptionPublicKey.https://synthetic.invalid',
+    'public-synthetic-encryption-key'
+  );
+  expect(dispatchBackgroundEvent).toHaveBeenCalledTimes(1);
+  expect(window.close).toHaveBeenCalledTimes(1);
+});

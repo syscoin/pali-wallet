@@ -489,15 +489,16 @@ const EthSign: React.FC<ISign> = () => {
           )) as string;
         }
       }
+      dispatchBackgroundEvent(`${type}.${host}`, response);
+      if (!mountedRef.current) return;
       setConfirmed(true);
       signingRef.current = 'completed';
       errorCloseRevisionRef.current += 1;
       setLoading(false);
 
-      // Dispatch event right before closing
-      dispatchBackgroundEvent(`${type}.${host}`, response);
       window.close();
     } catch (error: any) {
+      if (!mountedRef.current) return;
       // Create custom alert object that routes to appropriate display method
       const customAlert = {
         error: (msg: string) => setErrorMsg(msg),

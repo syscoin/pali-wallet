@@ -374,8 +374,9 @@ const ExternalWatchAsset = () => {
                           ].toString(),
                           6
                         )}
-                        {assetInfo.market_data?.price_change_percentage_24h !==
-                          null && (
+                        {Number.isFinite(
+                          assetInfo.market_data?.price_change_percentage_24h
+                        ) && (
                           <span
                             className={`ml-2 ${
                               assetInfo.market_data

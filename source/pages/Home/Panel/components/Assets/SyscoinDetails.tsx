@@ -42,10 +42,6 @@ export const SyscoinAssetDetails = ({
     assetGuid: string;
     data: any;
   } | null>(null);
-  const [hasFetchedData, setHasFetchedData] = useState(false);
-
-  // Use a ref to track if a request is in progress to prevent duplicates
-  const fetchingRef = React.useRef(false);
 
   const { activeAccount, accountAssets, activeNetwork } = useSelector(
     (state: RootState) => state.vault
@@ -78,6 +74,7 @@ export const SyscoinAssetDetails = ({
   }
 
   const currentAssetGuid = String(asset?.assetGuid || id);
+  const hasAsset = Boolean(asset);
   const marketData =
     marketDataState?.assetGuid === currentAssetGuid
       ? marketDataState.data
@@ -112,14 +109,6 @@ export const SyscoinAssetDetails = ({
     const symbol = formatted.find((item) => item.key === 'Symbol');
     return { formattedAsset: formatted, assetSymbol: symbol };
   }, [asset]);
-
-  // Reset fetch state when asset identity changes. Market data is also tagged
-  // with this GUID so a late response for the previous asset never renders.
-  useEffect(() => {
-    setHasFetchedData(false);
-    setMarketDataState(null);
-    fetchingRef.current = false;
-  }, [currentAssetGuid]);
 
   // Trigger fresh data fetch for newly imported assets
   useEffect(() => {
@@ -169,69 +158,43 @@ export const SyscoinAssetDetails = ({
 
   // Try to fetch CoinGecko data for known Syscoin assets
   useEffect(() => {
+    let cancelled = false;
+    setMarketDataState(null);
+    const knownAsset = hasAsset ? getKnownSyscoinAsset(currentAssetGuid) : null;
+    setIsLoadingMarketData(Boolean(knownAsset));
     const fetchMarketData = async () => {
-      if (!asset || hasFetchedData || fetchingRef.current) return;
-
-      // Set the ref to prevent duplicate calls
-      fetchingRef.current = true;
-      setHasFetchedData(true);
-      setIsLoadingMarketData(true);
+      if (!knownAsset) return;
 
       try {
         // Asset symbols are issuer-controlled. Only immutable GUID identity can
         // attach official market data or verification to an SPT.
-        const knownAsset = getKnownSyscoinAsset(currentAssetGuid);
-        const coinGeckoId = knownAsset?.coinGeckoId;
-
-        if (coinGeckoId) {
-          console.log(
-            `[SyscoinAssetDetails] Fetching CoinGecko data for ${coinGeckoId}`
-          );
-
-          // Fetch token details from CoinGecko
-          const response = await retryableFetch(
-            `https://api.coingecko.com/api/v3/coins/${coinGeckoId}?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false`
-          );
-
-          if (response.ok) {
-            const data = await response.json();
-            setMarketDataState({
-              assetGuid: currentAssetGuid,
-              data: {
-                ...data,
-                isVerified: knownAsset.isVerified,
-              },
-            });
-
-            console.log(
-              `[SyscoinAssetDetails] Successfully fetched data for ${coinGeckoId}`
-            );
-          } else {
-            console.warn(
-              `[SyscoinAssetDetails] Failed to fetch data for ${coinGeckoId}: ${response.status}`
-            );
-          }
-        } else {
-          console.log(
-            `[SyscoinAssetDetails] No CoinGecko mapping found for asset GUID: ${currentAssetGuid}`
-          );
-        }
+        const { coinGeckoId } = knownAsset;
+        const response = await retryableFetch(
+          `https://api.coingecko.com/api/v3/coins/${coinGeckoId}?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false`
+        );
+        const data = await response.json();
+        if (cancelled) return;
+        setMarketDataState({
+          assetGuid: currentAssetGuid,
+          data: { ...data, isVerified: knownAsset.isVerified },
+        });
       } catch (error) {
         console.error(
           '[SyscoinAssetDetails] Error fetching market data:',
           error
         );
-        // Reset on error so it can be retried
-        setHasFetchedData(false);
       } finally {
-        setIsLoadingMarketData(false);
-        // Reset the ref after the request completes
-        fetchingRef.current = false;
+        if (!cancelled) setIsLoadingMarketData(false);
       }
     };
 
     fetchMarketData();
-  }, [asset, currentAssetGuid, hasFetchedData]);
+    // One bounded attempt per asset visit; retryableFetch owns backoff. A new
+    // visit may retry, but a failed read or balance refresh must not loop.
+    return () => {
+      cancelled = true;
+    };
+  }, [currentAssetGuid, hasAsset]);
 
   useEffect(() => {
     if (!isCopied) return;
@@ -299,7 +262,9 @@ export const SyscoinAssetDetails = ({
                   6
                 )}
               </span>
-              {marketData.market_data?.price_change_percentage_24h !== null && (
+              {Number.isFinite(
+                marketData.market_data?.price_change_percentage_24h
+              ) && (
                 <span
                   className={`text-sm ${
                     marketData.market_data.price_change_percentage_24h >= 0
