@@ -9,6 +9,9 @@ import { ImportToken } from './ImportToken';
 
 let mockLastImport: Promise<void> | undefined;
 const mockPreviewUnmount = jest.fn();
+const mockTranslate = jest.fn((key: string, values?: { balance?: unknown }) =>
+  values?.balance === undefined ? key : `${key}:${values.balance}`
+);
 jest.mock('components/Icon/Icon', () => ({
   FiDownload: 'span',
   LoadingOutlined: 'span',
@@ -24,7 +27,11 @@ jest.mock('components/index', () => ({
       <div>
         {assets.map((asset: any) => (
           <div key={asset.id} data-testid="token-row" data-asset-id={asset.id}>
-            <output data-testid="token-balance">{asset.balance}</output>
+            <output data-testid="token-balance">
+              {jest
+                .requireActual('utils/format')
+                .formatFullPrecisionBalance(asset.balance, asset.decimals)}
+            </output>
             <button
               type="button"
               onClick={() => {
@@ -58,7 +65,7 @@ jest.mock('react-router-dom', () => ({
 }));
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string) => key,
+    t: mockTranslate,
     i18n: { resolvedLanguage: 'en', language: 'en' },
   }),
 }));
@@ -100,14 +107,13 @@ const changeId = async (value: string) => {
 const complete = async (
   tokenId: string,
   balance: number,
-  contract = CONTRACT
+  contract = CONTRACT,
+  rawBalance = String(balance)
 ) => {
   const request = pending.get(`${contract}:${tokenId}`);
   expect(request).toBeDefined();
   await act(async () => {
-    request!.resolve([
-      { tokenId, balance, rawBalance: String(balance), verified: true },
-    ]);
+    request!.resolve([{ tokenId, balance, rawBalance, verified: true }]);
   });
 };
 const load = async () => {
@@ -157,6 +163,9 @@ it('does not offer an ERC1155 import before its token ID has been verified', asy
   await changeId('0');
   expect(screen.queryByRole('button', { name: 'Import NFT' })).toBeNull();
   await complete('0', 0);
+  expect(
+    screen.getByTitle('tokens.balanceForTokenId:0 tokens.verifyTokenExists')
+  ).toBeDefined();
   fireEvent.click(screen.getByRole('button', { name: 'Import NFT' }));
   await act(async () => undefined);
   expect(emitter).toHaveBeenCalledWith(
@@ -286,4 +295,70 @@ it('uses the same trimmed token ID for the preview identity and saved import', a
     ['wallet', 'saveTokenInfo'],
     [expect.objectContaining({ tokenId: '0' })]
   );
+});
+
+it.each([
+  {
+    quantity: '1000000000000000000000000000000',
+    displayed: '1.00e30',
+  },
+  {
+    quantity:
+      '115792089237316195423570985008687907853269984665640564039457584007913129639935',
+    displayed: '1.16e77',
+  },
+])(
+  'previews ERC1155 quantity $quantity rather than its capped numeric balance',
+  async ({ quantity, displayed }) => {
+    await load();
+    await changeId('7');
+    // The real ownership helper caps its legacy numeric balance but also returns
+    // rawBalance specifically to retain quantities above Number.MAX_SAFE_INTEGER.
+    await complete('7', Number.MAX_SAFE_INTEGER, CONTRACT, quantity);
+    expect(screen.getByTestId('token-balance').textContent).toBe(displayed);
+    expect(
+      screen.getByTitle(`tokens.balanceForTokenId:${quantity}`)
+    ).toBeDefined();
+    expect(mockTranslate).toHaveBeenCalledWith('tokens.balanceForTokenId', {
+      balance: quantity,
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Import NFT' }));
+      await mockLastImport;
+    });
+    expect(emitter).toHaveBeenCalledWith(
+      ['wallet', 'saveTokenInfo'],
+      [
+        expect.objectContaining({
+          tokenId: '7',
+          balance: Number.MAX_SAFE_INTEGER,
+          rawBalance: quantity,
+        }),
+      ]
+    );
+  }
+);
+
+it('keeps the numeric preview and save compatible when ownership omits rawBalance', async () => {
+  await load();
+  await changeId('7');
+  await act(async () =>
+    pending
+      .get(`${CONTRACT}:7`)!
+      .resolve([{ tokenId: '7', balance: 3, verified: true }])
+  );
+  expect(screen.getByTestId('token-balance').textContent).toBe('3');
+  expect(screen.getByTitle('tokens.balanceForTokenId:3')).toBeDefined();
+  expect(mockTranslate).toHaveBeenCalledWith('tokens.balanceForTokenId', {
+    balance: 3,
+  });
+  await act(async () => {
+    fireEvent.click(screen.getByRole('button', { name: 'Import NFT' }));
+    await mockLastImport;
+  });
+  const saved = emitter.mock.calls.find(
+    ([path]) => path[1] === 'saveTokenInfo'
+  )![1][0];
+  expect(saved).toMatchObject({ tokenId: '7', balance: 3 });
+  expect(saved).not.toHaveProperty('rawBalance');
 });

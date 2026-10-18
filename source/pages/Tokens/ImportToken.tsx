@@ -663,11 +663,17 @@ export const ImportToken: React.FC = () => {
           }
         : customTokenDetails;
 
-    return convertToImportableAssets([tokenWithCorrectBalance]);
+    const assets = convertToImportableAssets([tokenWithCorrectBalance]);
+    return customTokenDetails.tokenStandard === 'ERC-1155' &&
+      verifiedTokenRawBalance !== null &&
+      verifiedTokenRawBalance !== String(verifiedTokenBalance)
+      ? assets.map((asset) => ({ ...asset, balance: verifiedTokenRawBalance }))
+      : assets;
   }, [
     customTokenDetails,
     convertToImportableAssets,
     verifiedTokenBalance,
+    verifiedTokenRawBalance,
     customTokenId,
   ]);
 
@@ -848,7 +854,9 @@ export const ImportToken: React.FC = () => {
                                   balance: 0,
                                 })} ${t('tokens.verifyTokenExists')}`
                               : t('tokens.balanceForTokenId', {
-                                  balance: verifiedTokenBalance,
+                                  balance:
+                                    verifiedTokenRawBalance ??
+                                    verifiedTokenBalance,
                                 })
                           }
                         />

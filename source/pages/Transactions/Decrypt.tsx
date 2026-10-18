@@ -48,8 +48,7 @@ const Decrypt: React.FC<ISign> = () => {
   const { controllerEmitter } = useController();
   const { host, ...data } = useQueryData();
   const { t } = useTranslation();
-  const { useCopyClipboard, alert } = useUtils();
-  const [, copyText] = useCopyClipboard();
+  const { alert } = useUtils();
   const [loading, setLoading] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -82,16 +81,19 @@ const Decrypt: React.FC<ISign> = () => {
   const currentPreviewScope = useRef(previewScope);
   currentPreviewScope.current = previewScope;
   const previewRequest = useRef(0);
+  const copyRequest = useRef(0);
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
     return () => {
       mounted.current = false;
       previewRequest.current += 1;
+      copyRequest.current += 1;
     };
   }, []);
   useEffect(() => {
     previewRequest.current += 1;
+    copyRequest.current += 1;
     setPreview(null);
     setErrorMsg(null);
     setIsDecrypting(false);
@@ -101,11 +103,18 @@ const Decrypt: React.FC<ISign> = () => {
     preview?.scope === previewScope ? preview.message : null;
 
   const copyValue = async (value: string, message: string) => {
+    if (!mounted.current || currentPreviewScope.current !== previewScope)
+      return;
+    const request = ++copyRequest.current;
+    const isCurrent = () =>
+      mounted.current &&
+      currentPreviewScope.current === previewScope &&
+      copyRequest.current === request;
     try {
-      await copyText(value);
-      alert.info(t(message));
+      await navigator.clipboard.writeText(value);
+      if (isCurrent()) alert.info(t(message));
     } catch {
-      alert.error(t('transactions.copyFailed'));
+      if (isCurrent()) alert.error(t('transactions.copyFailed'));
     }
   };
 
@@ -182,12 +191,14 @@ const Decrypt: React.FC<ISign> = () => {
         [decryptParams]
       );
 
+      dispatchBackgroundEvent(`${type}.${host}`, response);
+      if (!mounted.current) return;
       setConfirmed(true);
 
       setLoading(false);
-      dispatchBackgroundEvent(`${type}.${host}`, response);
       window.close();
     } catch (error: any) {
+      if (!mounted.current) return;
       setErrorMsg(error.message || 'Failed to decrypt message');
       setLoading(false);
     }
