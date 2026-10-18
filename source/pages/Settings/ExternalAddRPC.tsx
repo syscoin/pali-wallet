@@ -375,6 +375,7 @@ const CustomRPCExternal = () => {
         name="rpc"
         initialValues={initialValues}
         onFinish={onSubmit}
+        disabled={loading || switchingNetwork || confirmed}
         autoComplete="off"
         className="flex flex-col gap-3 items-center justify-center text-center w-full px-4 py-4"
       >

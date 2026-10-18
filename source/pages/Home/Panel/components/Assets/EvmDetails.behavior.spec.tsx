@@ -202,3 +202,71 @@ it('does not announce a delayed contract copy after navigating to another asset'
   expect(mockAlert.error).not.toHaveBeenCalled();
   write.mockRestore();
 });
+
+it.each(['market_cap', 'total_volume', 'circulating_supply'])(
+  'keeps the details usable when optional %s is null',
+  async (field) => {
+    const data: any = market(55);
+    data.market_data[field] =
+      field === 'circulating_supply' ? null : { usd: null };
+    const error = jest
+      .spyOn(console, 'error')
+      .mockImplementation(() => undefined);
+    try {
+      render(<EvmAssetDetails id={tokens[0].id} />);
+      await act(async () => pending.get(tokens[0].contractAddress)!(data));
+      expect(screen.getByText('$55')).toBeTruthy();
+      expect(
+        screen.getByRole('button', { name: 'send.copyContractAddress' })
+      ).toBeTruthy();
+    } finally {
+      error.mockRestore();
+    }
+  }
+);
+
+it('does not present an unavailable rank as an empty rank', async () => {
+  const data: any = market(55);
+  data['market_cap_rank'] = null;
+  render(<EvmAssetDetails id={tokens[0].id} />);
+  await act(async () => pending.get(tokens[0].contractAddress)!(data));
+  expect(screen.getByText('$55')).toBeTruthy();
+  expect(screen.queryByText('tokens.rank')).toBeNull();
+});
+
+it('displays a reported zero price instead of hiding available market data', async () => {
+  render(<EvmAssetDetails id={tokens[0].id} />);
+  await finish(0, 0);
+  expect(screen.getByText('tokens.currentPrice')).toBeTruthy();
+  expect(screen.getByText('$0')).toBeTruthy();
+});
+
+it.each([undefined, null, NaN, Infinity])(
+  'omits unavailable optional market values without hiding the price (%s)',
+  async (value) => {
+    const data: any = market(55);
+    data['market_cap_rank'] = value;
+    data.market_data['market_cap'] = { usd: value };
+    data.market_data['total_volume'] = { usd: value };
+    data.market_data['circulating_supply'] = value;
+    render(<EvmAssetDetails id={tokens[0].id} />);
+    await act(async () => pending.get(tokens[0].contractAddress)!(data));
+    expect(screen.getByText('$55')).toBeTruthy();
+    for (const label of ['rank', 'marketCap', 'volume24h', 'circulatingSupply'])
+      expect(screen.queryByText(`tokens.${label}`)).toBeNull();
+  }
+);
+
+it('preserves reported zero market cap, volume and circulating supply', async () => {
+  const data: any = market(55);
+  data.market_data['market_cap'] = { usd: 0 };
+  data.market_data['total_volume'] = { usd: 0 };
+  data.market_data['circulating_supply'] = 0;
+  render(<EvmAssetDetails id={tokens[0].id} />);
+  await act(async () => pending.get(tokens[0].contractAddress)!(data));
+  expect(screen.getByText('$55')).toBeTruthy();
+  expect(screen.getAllByText('$0')).toHaveLength(2);
+  expect(screen.getByText('0')).toBeTruthy();
+  for (const label of ['marketCap', 'volume24h', 'circulatingSupply'])
+    expect(screen.getByText(`tokens.${label}`)).toBeTruthy();
+});

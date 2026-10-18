@@ -29,6 +29,8 @@ import { getTokenTypeBadgeColor } from 'utils/tokens';
 
 import { AssetMarketLinks } from './AssetMarketLinks';
 
+const hasMarketValue = Number.isFinite;
+
 interface IEvmAssetDetailsProps {
   id: string;
   navigationState?: any;
@@ -104,8 +106,8 @@ export const EvmAssetDetails = ({
     let current = true;
     if (!currentAsset) return;
     const hasMarketData =
-      currentAsset.market_data?.current_price?.usd !== undefined ||
-      currentAsset.market_data?.market_cap?.usd !== undefined;
+      hasMarketValue(currentAsset.market_data?.current_price?.usd) ||
+      hasMarketValue(currentAsset.market_data?.market_cap?.usd);
     if (hasMarketData) {
       setMarketState({ data: currentAsset, isLoading: false });
       return;
@@ -156,8 +158,9 @@ export const EvmAssetDetails = ({
   const userCurrency = (fiat.asset || 'usd').toLowerCase();
   const currencySymbol = getSymbolFromCurrency(userCurrency.toUpperCase());
 
-  const hasEnhancedData =
-    !!tokenData?.market_data?.current_price?.[userCurrency];
+  const hasEnhancedData = hasMarketValue(
+    tokenData?.market_data?.current_price?.[userCurrency]
+  );
 
   const renderEnhancedMarketData = () => {
     if (!hasEnhancedData || isNft) return null;
@@ -187,7 +190,9 @@ export const EvmAssetDetails = ({
         </h4>
 
         {/* Price and Change - Full Width */}
-        {tokenData.market_data?.current_price?.[userCurrency] !== undefined && (
+        {hasMarketValue(
+          tokenData.market_data?.current_price?.[userCurrency]
+        ) && (
           <div className="mb-4">
             <span className="text-gray-400 text-xs block mb-1">
               {t('tokens.currentPrice')}
@@ -223,7 +228,7 @@ export const EvmAssetDetails = ({
 
         {/* Market Cap and Rank - Grid */}
         <div className="grid grid-cols-2 gap-4 mb-4">
-          {tokenData.market_cap_rank !== undefined && (
+          {hasMarketValue(tokenData.market_cap_rank) && (
             <div>
               <span className="text-gray-400 text-xs block mb-1">
                 {t('tokens.rank')}
@@ -245,7 +250,9 @@ export const EvmAssetDetails = ({
               )}
             </div>
           )}
-          {tokenData.market_data?.market_cap?.[userCurrency] !== undefined && (
+          {hasMarketValue(
+            tokenData.market_data?.market_cap?.[userCurrency]
+          ) && (
             <div className="text-right">
               <span className="text-gray-400 text-xs block mb-1">
                 {t('tokens.marketCap')}
@@ -263,8 +270,9 @@ export const EvmAssetDetails = ({
 
         {/* Volume and Supply - Grid */}
         <div className="grid grid-cols-2 gap-4 mb-4">
-          {tokenData.market_data?.total_volume?.[userCurrency] !==
-            undefined && (
+          {hasMarketValue(
+            tokenData.market_data?.total_volume?.[userCurrency]
+          ) && (
             <div>
               <span className="text-gray-400 text-xs block mb-1">
                 {t('tokens.volume24h')}
@@ -278,7 +286,7 @@ export const EvmAssetDetails = ({
               </span>
             </div>
           )}
-          {tokenData.market_data?.circulating_supply !== undefined && (
+          {hasMarketValue(tokenData.market_data?.circulating_supply) && (
             <div className="text-right">
               <span className="text-gray-400 text-xs block mb-1">
                 {t('tokens.circulatingSupply')}
