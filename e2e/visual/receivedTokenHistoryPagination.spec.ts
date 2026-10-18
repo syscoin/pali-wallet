@@ -17,9 +17,16 @@ import {
   UTXO_FIXTURE_SEED,
 } from '../harness/utxoFixture';
 
-for (const loadMore of [false, true]) {
+for (const mode of ['reload', 'received', 'mixed', 'partial'] as const) {
+  const loadMore = mode !== 'reload';
+  const mixed = mode === 'mixed';
+  const partial = mode === 'partial';
   test(
-    loadMore
+    partial
+      ? 'incomplete received-token history keeps the same older page retryable until both explorer feeds recover'
+      : mixed
+      ? 'mixed native and received-token history retains both initial explorer windows when loading more'
+      : loadMore
       ? 'received-only token history loads the older page through the real explorer controller'
       : 'received-only token history keeps its first thirty rows after ordinary reload',
     async ({}, info) => {
@@ -41,7 +48,7 @@ for (const loadMore of [false, true]) {
         'function transfer(address to, uint256 value)',
       ]);
       const now = Math.floor(Date.now() / 1000);
-      const events = Array.from({ length: 60 }, (_, index) => ({
+      const events = Array.from({ length: partial ? 120 : 60 }, (_, index) => ({
         hash: `0x${(index + 1).toString(16).padStart(64, '0')}`,
         from: sender,
         to: recipient,
@@ -49,8 +56,10 @@ for (const loadMore of [false, true]) {
         value: String(index + 1),
         input: transfer.encodeFunctionData('transfer', [recipient, index + 1]),
         nonce: String(index),
-        blockNumber: String(100 - index),
-        blockHash: `0x${(100 - index).toString(16).padStart(64, '0')}`,
+        blockNumber: String((partial ? 200 : 100) - index),
+        blockHash: `0x${((partial ? 200 : 100) - index)
+          .toString(16)
+          .padStart(64, '0')}`,
         timeStamp: String(now - index),
         confirmations: String(index + 1),
         chainId: 5700,
@@ -62,12 +71,29 @@ for (const loadMore of [false, true]) {
         // eslint-disable-next-line camelcase -- Explorer wire field.
         txreceipt_status: '1',
       }));
+      const nativeRows =
+        mixed || partial
+          ? events.slice(0, partial ? 31 : 30).map((row) => ({
+              ...row,
+              from: recipient,
+              to: sender,
+              contractAddress: undefined,
+              input: '0x',
+            }))
+          : [];
+      const tokenRows = partial
+        ? events.slice(60)
+        : mixed
+        ? events.slice(30)
+        : events;
+      let failOlderTokenPage = false;
       const explorerReads: Array<{
         action: string | null;
         offset: string | null;
         page: string | null;
         rows: number;
         txhash: string | null;
+        unavailable?: boolean;
       }> = [];
       const rpcReads: string[] = [];
       const attemptedWrites: string[] = [];
@@ -81,8 +107,8 @@ for (const loadMore of [false, true]) {
         controllerStateReplaced: false,
         controllerResultsReplaced: false,
         signingOrBroadcastRequested: false,
-        ordinaryTransactionCount: 0,
-        explorerTokenEvents: 60,
+        ordinaryTransactionCount: nativeRows.length,
+        explorerTokenEvents: tokenRows.length,
       };
       Object.assign(E2E_CONFIG, {
         seedPhrase: UTXO_FIXTURE_SEED,
@@ -93,7 +119,11 @@ for (const loadMore of [false, true]) {
       });
       try {
         wallet = await PaliWallet.launch(
-          loadMore
+          partial
+            ? 'partial-token-history-retry'
+            : mixed
+            ? 'mixed-native-token-history-paging'
+            : loadMore
             ? 'received-token-history-paging'
             : 'received-token-history-initial',
           {
@@ -126,9 +156,11 @@ for (const loadMore of [false, true]) {
             const replies = calls.map((call: any) => {
               const result =
                 call.method === 'eth_getTransactionCount'
-                  ? '0x0'
+                  ? `0x${nativeRows.length.toString(16)}`
                   : call.method === 'eth_blockNumber'
-                  ? '0x64'
+                  ? partial
+                    ? '0xc8'
+                    : '0x64'
                   : undefined;
               return result === undefined
                 ? undefined
@@ -162,40 +194,53 @@ for (const loadMore of [false, true]) {
             const page = url.searchParams.get('page');
             const offset = url.searchParams.get('offset');
             const txhash = url.searchParams.get('txhash');
+            const unavailable =
+              failOlderTokenPage &&
+              action === 'tokentx' &&
+              page === '2' &&
+              offset === '30';
             let result: unknown = [];
             if (
-              action === 'tokentx' &&
+              ['tokentx', 'txlist'].includes(action || '') &&
               url.searchParams.get('address')?.toLowerCase() ===
                 recipient.toLowerCase()
             ) {
-              const size = Number(offset || events.length);
+              const rows = action === 'tokentx' ? tokenRows : nativeRows;
+              const size = Number(offset || Math.max(1, rows.length));
               const pageNumber = Number(page || 1);
-              result = events.slice((pageNumber - 1) * size, pageNumber * size);
+              result = rows.slice((pageNumber - 1) * size, pageNumber * size);
             } else if (action === 'gettxinfo') {
               result = events.find((event) => event.hash === txhash) || null;
             } else if (
               ['eth_block_number', 'eth_blockNumber'].includes(action || '')
             ) {
-              result = '0x64';
+              result = partial ? '0xc8' : '0x64';
             }
             explorerReads.push({
               action,
               page,
               offset,
               txhash,
-              rows: Array.isArray(result) ? result.length : 0,
+              rows: unavailable ? 0 : Array.isArray(result) ? result.length : 0,
+              ...(unavailable ? { unavailable: true } : {}),
             });
             return route.fulfill({
               status: 200,
               contentType: 'application/json',
               headers: { 'access-control-allow-origin': '*' },
               body: JSON.stringify({
-                status: Array.isArray(result) && !result.length ? '0' : '1',
-                message:
-                  Array.isArray(result) && !result.length
-                    ? 'No transactions found'
-                    : 'OK',
-                result,
+                status:
+                  unavailable || (Array.isArray(result) && !result.length)
+                    ? '0'
+                    : '1',
+                message: unavailable
+                  ? 'NOTOK'
+                  : Array.isArray(result) && !result.length
+                  ? 'No transactions found'
+                  : 'OK',
+                result: unavailable
+                  ? 'Synthetic history endpoint unavailable'
+                  : result,
               }),
             });
           }
@@ -208,7 +253,7 @@ for (const loadMore of [false, true]) {
             exact: true,
           });
         await wallet.step(
-          'poll the first thirty received-only token rows through normal wallet UI',
+          `${mode}: poll the first thirty history rows through normal wallet UI`,
           async (capture) => {
             try {
               await wallet!.importSeedAndCreatePassword();
@@ -218,13 +263,17 @@ for (const loadMore of [false, true]) {
               await expect(details).toHaveCount(30);
               expect(
                 explorerReads.some(
-                  (read) => read.action === 'tokentx' && read.rows === 60
+                  (read) =>
+                    read.action === 'tokentx' &&
+                    read.rows === (partial ? 30 : tokenRows.length)
                 )
               ).toBe(true);
               expect(
                 explorerReads
                   .filter((read) => read.action === 'txlist')
-                  .every((read) => read.rows === 0)
+                  .every(
+                    (read) => read.rows === (partial ? 30 : nativeRows.length)
+                  )
               ).toBe(true);
               observations.initialRows = await details.count();
             } finally {
@@ -232,9 +281,121 @@ for (const loadMore of [false, true]) {
             }
           }
         );
-        if (loadMore) {
+        if (partial) {
           await wallet.step(
-            'load the second received-token page and open its oldest actual row',
+            'keep the original rows and same page retryable after one nonempty explorer feed fails',
+            async (capture) => {
+              try {
+                const start = explorerReads.length;
+                failOlderTokenPage = true;
+                const more = page.getByRole('button', {
+                  name: en.buttons.loadMore,
+                  exact: true,
+                });
+                await more.scrollIntoViewIfNeeded();
+                await more.click();
+                await expect
+                  .poll(() =>
+                    explorerReads
+                      .slice(start)
+                      .some(
+                        (read) =>
+                          read.action === 'tokentx' &&
+                          read.page === '2' &&
+                          read.unavailable
+                      )
+                  )
+                  .toBe(true);
+                await expect(
+                  page.getByText('Synthetic history endpoint unavailable', {
+                    exact: true,
+                  })
+                ).toBeVisible();
+                await expect(more).toBeEnabled();
+                await expect(details).toHaveCount(30);
+                expect(explorerReads.slice(start)).toEqual(
+                  expect.arrayContaining([
+                    expect.objectContaining({
+                      action: 'txlist',
+                      page: '2',
+                      offset: '30',
+                      rows: 1,
+                    }),
+                    expect.objectContaining({
+                      action: 'tokentx',
+                      page: '2',
+                      offset: '30',
+                      unavailable: true,
+                    }),
+                  ])
+                );
+                observations.afterIncompletePageRows = await details.count();
+                observations.failedPageReads = explorerReads.slice(start);
+              } finally {
+                observations.incompletePageSnapshot = {
+                  renderedRows: await details.count(),
+                  loadMoreButtons: await page
+                    .getByRole('button', {
+                      name: en.buttons.loadMore,
+                      exact: true,
+                    })
+                    .count(),
+                  visibleWarning: await page
+                    .getByText('Synthetic history endpoint unavailable', {
+                      exact: true,
+                    })
+                    .isVisible(),
+                };
+                if (!page.isClosed()) await capture(page);
+              }
+            }
+          );
+          await wallet.step(
+            'retry the unchanged older page after the HTTP endpoint recovers and show every missing row',
+            async (capture) => {
+              try {
+                const start = explorerReads.length;
+                failOlderTokenPage = false;
+                await page
+                  .getByRole('button', {
+                    name: en.buttons.loadMore,
+                    exact: true,
+                  })
+                  .click();
+                await expect(details).toHaveCount(91);
+                const recovered = explorerReads.slice(start);
+                for (const action of ['txlist', 'tokentx'])
+                  expect(recovered).toEqual(
+                    expect.arrayContaining([
+                      expect.objectContaining({
+                        action,
+                        page: '2',
+                        offset: '30',
+                      }),
+                    ])
+                  );
+                expect(recovered.some((read) => read.page === '3')).toBe(false);
+                observations.recoveredRows = await details.count();
+                observations.recoveredPageReads = recovered;
+                await details.last().click();
+                const oldest = events[119].hash;
+                await expect
+                  .poll(() =>
+                    explorerReads.some(
+                      (read) =>
+                        read.action === 'gettxinfo' && read.txhash === oldest
+                    )
+                  )
+                  .toBe(true);
+                observations.openedRecoveredHash = oldest;
+              } finally {
+                if (!page.isClosed()) await capture(page);
+              }
+            }
+          );
+        } else if (loadMore) {
+          await wallet.step(
+            `${mode}: load more history and open its oldest actual row`,
             async (capture) => {
               try {
                 const start = explorerReads.length;
@@ -277,6 +438,24 @@ for (const loadMore of [false, true]) {
               }
             }
           );
+          if (mixed) {
+            await wallet.step(
+              'mixed: retain both explorer windows through browser Back and ordinary document reload',
+              async (capture) => {
+                try {
+                  await page.goBack();
+                  await expect(details).toHaveCount(60);
+                  await page.reload();
+                  await wallet!.ensureOnHome();
+                  await page.locator('#activity-btn').click();
+                  await expect(details).toHaveCount(60);
+                  observations.afterMixedReloadRows = await details.count();
+                } finally {
+                  if (!page.isClosed()) await capture(page);
+                }
+              }
+            );
+          }
         } else {
           await wallet.step(
             'reload the normal document without changing received-token history',

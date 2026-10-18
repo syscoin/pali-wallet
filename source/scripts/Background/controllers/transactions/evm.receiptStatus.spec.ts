@@ -136,13 +136,15 @@ describe.each([
     }
   );
 
-  it('normalizes token-only fallback while retaining token-event provenance and nonce fields', async () => {
+  it(`normalizes token-only ${
+    paged ? 'history with a healthy empty txlist' : 'initial HTTP fallback'
+  } while retaining token-event provenance and nonce fields`, async () => {
     jest.mocked(retryableFetch).mockImplementation(async (endpoint) => {
       const token =
         new URL(String(endpoint)).searchParams.get('action') === 'tokentx';
       return response(
         token ? [transaction({ contractAddress: TOKEN, isError: '0' })] : [],
-        token
+        token || paged
       );
     });
     const result = await fetchRows();

@@ -104,7 +104,7 @@ it.each([false, true])(
       isNft ? 'collection' : 'token'
     }`;
     const user = userEvent.setup();
-    render(<EvmAssetsList />);
+    render(<EvmAssetsList scope="synthetic-test-scope" />);
     await user.click(
       screen.getByRole('button', { name: 'tooltip.searchAssets' })
     );
@@ -138,7 +138,7 @@ it.each([false, true])(
       searchValue: 'missing',
     };
     mockAssets = [token(!isNft)];
-    render(<EvmAssetsList />);
+    render(<EvmAssetsList scope="synthetic-test-scope" />);
     expect(
       screen.getByText(isNft ? 'home.youHaveNoNfts' : 'home.youHaveNoTokens')
     ).toBeInTheDocument();

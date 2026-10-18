@@ -3,10 +3,14 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useSearchParams, useLocation } from 'react-router-dom';
 
+import { getHomeBrowsingScope } from '../useHomeBrowsingState';
 import { CgImport as ImportIcon } from 'components/Icon/Icon';
+import { useRequestScope } from 'hooks/useRequestScope';
 import { useUtils } from 'hooks/useUtils';
-import { RootState } from 'state/store';
-import { selectActiveAccountAssets } from 'state/vault/selectors';
+import {
+  selectActiveAccountAndVaultData,
+  selectActiveAccountRef,
+} from 'state/vault/selectors';
 import {
   createBrowsingNavigationContext,
   navigateWithContext,
@@ -16,13 +20,11 @@ import { EvmAssetsList, SyscoinAssetsList } from './components/Assets';
 
 export const AssetsPanel = () => {
   const { t } = useTranslation();
-  const assets = useSelector(selectActiveAccountAssets);
-  const isBitcoinBased = useSelector(
-    (state: RootState) => state.vault.isBitcoinBased
+  const { account, assets, activeNetwork, isBitcoinBased } = useSelector(
+    selectActiveAccountAndVaultData
   );
-  const chainId = useSelector(
-    (state: RootState) => state.vault.activeNetwork.chainId
-  );
+  const accountRef = useSelector(selectActiveAccountRef);
+  const { chainId } = activeNetwork;
   const [searchParams] = useSearchParams();
   const location = useLocation();
 
@@ -41,7 +43,26 @@ export const AssetsPanel = () => {
     ? syscoinAssets.length === 0 || sysAssetsValidation
     : ethereumAssets.length === 0 || ethTokensValidation;
 
-  const { navigate } = useUtils();
+  const { navigate, alert } = useUtils();
+  const scope = getHomeBrowsingScope(
+    { ...account, ...accountRef },
+    activeNetwork,
+    isBitcoinBased
+  );
+  const beginRemoval = useRequestScope(
+    JSON.stringify([scope, location.pathname, location.search, location.hash])
+  );
+  const beginNftDelete = () => {
+    const isCurrent = beginRemoval();
+    return (error: any) => {
+      if (isCurrent())
+        alert.error(
+          typeof error?.message === 'string'
+            ? error.message
+            : t('buttons.error')
+        );
+    };
+  };
 
   const handleImportTokenClick = () => {
     // Create navigation context to preserve home page state
@@ -64,7 +85,11 @@ export const AssetsPanel = () => {
         <NoAssetsComponent />
       ) : (
         <ul className="pt-4 mt-6 px-4 w-full text-center text-white text-base bg-bkg-3">
-          {isBitcoinBased ? <SyscoinAssetsList /> : <EvmAssetsList />}
+          {isBitcoinBased ? (
+            <SyscoinAssetsList />
+          ) : (
+            <EvmAssetsList scope={scope} onNftDeleteStart={beginNftDelete} />
+          )}
         </ul>
       )}
       <button

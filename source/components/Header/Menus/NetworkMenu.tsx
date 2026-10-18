@@ -57,6 +57,19 @@ const customSort = (a: INetwork, b: INetwork) => {
   return (order[b.chainId] || 0) - (order[a.chainId] || 0);
 };
 
+const networkConfigurationFields: Array<keyof INetwork> = [
+  'kind',
+  'chainId',
+  'slip44',
+  'url',
+  'apiUrl',
+  'explorer',
+  'label',
+  'currency',
+  'coingeckoId',
+  'coingeckoPlatformId',
+];
+
 export const NetworkMenu: React.FC<INetworkComponent> = (
   props: INetworkComponent
 ) => {
@@ -123,12 +136,11 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
   // ✅ MEMOIZED: Network validation function
   const activeNetworkValidator = useCallback(
     (currentNetwork: INetwork): boolean =>
-      Boolean(
-        activeNetwork.chainId === currentNetwork.chainId &&
-          activeNetwork.url === currentNetwork.url &&
-          activeNetwork.label === currentNetwork.label
+      networkConfigurationFields.every(
+        (field) =>
+          (activeNetwork[field] ?? '') === (currentNetwork[field] ?? '')
       ),
-    [activeNetwork.chainId, activeNetwork.url, activeNetwork.label]
+    [activeNetwork]
   );
 
   // ✅ MEMOIZED: Dapp connection status

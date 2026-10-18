@@ -160,20 +160,75 @@ it('accepts both explicit no-transactions responses as a genuine empty page', as
   });
 });
 
-it('retains token-only HTTP fallback and its continuation count', async () => {
-  replies(response(null, {}, 503), response([event('a'), event('b')]));
-  const result = await fetchPage();
-  expect(result.transactions).toHaveLength(2);
-  expect(result.hasMore).toBe(true);
-  expect(result.error).toBeUndefined();
-});
+// Explicit pages are atomic across both explorer feeds: accepting a partial
+// page would either mark history exhausted or advance past its missing rows.
+it.each(
+  (['txlist', 'tokentx'] as const).flatMap((endpoint) =>
+    (['http', 'api'] as const).flatMap((failure) =>
+      ([1, 2] as const).map((survivingCount) => ({
+        endpoint,
+        failure,
+        survivingCount,
+      }))
+    )
+  )
+)(
+  'rejects a $endpoint $failure failure despite $survivingCount surviving rows, then recovers the same page',
+  async ({ endpoint, failure, survivingCount }) => {
+    const failed =
+      failure === 'http'
+        ? response(null, {}, 503)
+        : response('Rate limit exceeded', { status: '0', message: 'NOTOK' });
+    const surviving = Array.from({ length: survivingCount }, (_, index) =>
+      event(index ? 'b' : 'a')
+    );
+    replies(
+      endpoint === 'txlist' ? failed : response(surviving),
+      endpoint === 'tokentx' ? failed : response(surviving)
+    );
 
-it('retains nonempty base history when the token endpoint is unavailable', async () => {
-  replies(response([event('a')]), response(null, {}, 503));
-  const result = await fetchPage();
-  expect(result.transactions).toHaveLength(1);
-  expect(result.error).toBeUndefined();
-});
+    const incomplete = await fetchPage();
+    expect(incomplete.transactions).toBeNull();
+    expect(incomplete.error).toContain(
+      failure === 'http' ? '503' : 'Rate limit exceeded'
+    );
+    expect(incomplete.hasMore).toBeUndefined();
+
+    const recovered = [event('c'), event('d')];
+    replies(
+      response(endpoint === 'txlist' ? recovered : surviving),
+      response(endpoint === 'tokentx' ? recovered : surviving)
+    );
+    const complete = await fetchPage();
+    expect(complete.error).toBeUndefined();
+    expect(complete.hasMore).toBe(true);
+    expect(complete.transactions?.map((row) => row.hash).sort()).toEqual(
+      [...surviving, ...recovered].map((row) => row.hash).sort()
+    );
+    expect(retryableFetch).toHaveBeenCalledTimes(4);
+    for (const [requestedEndpoint] of jest.mocked(retryableFetch).mock.calls) {
+      const url = new URL(String(requestedEndpoint));
+      expect(url.searchParams.get('page')).toBe('2');
+      expect(url.searchParams.get('offset')).toBe('2');
+    }
+  }
+);
+
+it.each([1, 2])(
+  'keeps a healthy base-only page of %s rows and derives its continuation from the complete feeds',
+  async (count) => {
+    replies(
+      response(
+        Array.from({ length: count }, (_, index) => event(index ? 'b' : 'a'))
+      ),
+      response([])
+    );
+    const result = await fetchPage();
+    expect(result.error).toBeUndefined();
+    expect(result.transactions).toHaveLength(count);
+    expect(result.hasMore).toBe(count === 2);
+  }
+);
 
 it.each(['http', 'api'])(
   'does not call an empty txlist plus a token %s error an exhausted token page',

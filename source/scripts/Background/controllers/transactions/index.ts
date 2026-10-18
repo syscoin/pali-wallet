@@ -22,8 +22,8 @@ const TransactionsManager = (): ITransactionsManager => {
     }
   };
 
-  const getCacheKey = (account: string, networkUrl: string) =>
-    `${account}:${networkUrl}`;
+  const getCacheKey = (account: string, networkUrl: string, apiUrl?: string) =>
+    `${account}:${networkUrl}${apiUrl ? `:${apiUrl}` : ''}`;
 
   // Helper function to check if account has pending transactions based on passed transaction data
   const hasPendingTransactions = (
@@ -62,7 +62,8 @@ const TransactionsManager = (): ITransactionsManager => {
     // Generate cache key
     const cacheKey = getCacheKey(
       isBitcoinBased ? currentAccount.xpub : currentAccount.address,
-      activeNetworkUrl
+      activeNetworkUrl,
+      isBitcoinBased ? undefined : activeNetwork.apiUrl
     );
 
     // Only use cache if there are no pending transactions
