@@ -87,6 +87,7 @@ beforeEach(() => {
         HDAccount: { 0: { label: 'Synthetic account', address: ADDRESS } },
       },
       activeAccount: { id: 0, type: 'HDAccount' },
+      activeNetwork: { chainId: 5700, url: 'https://first.invalid' },
       isBitcoinBased: false,
     },
   };
@@ -246,4 +247,121 @@ it('preserves the approved decrypt request and dispatch payload', async () => {
     PLAINTEXT
   );
   expect(mockCopy).not.toHaveBeenCalled();
+});
+
+it('clears a failed preview diagnostic after a successful decryption retry', async () => {
+  mockEmitter.mockRejectedValueOnce(new Error('Synthetic preview failure'));
+  render(<Decrypt />);
+  const preview = () =>
+    screen.getByRole('button', { name: 'transactions.decryptMessage' });
+  fireEvent.click(preview());
+  await screen.findByText('Synthetic preview failure');
+  fireEvent.click(preview());
+  await screen.findByText(PLAINTEXT);
+  expect(screen.queryByText('Synthetic preview failure')).toBeNull();
+  expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
+});
+
+it('drops an already revealed preview when the displayed account changes', async () => {
+  const view = render(<Decrypt />);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'transactions.decryptMessage' })
+  );
+  await screen.findByText(PLAINTEXT);
+  mockState.vault.accounts.HDAccount[1] = {
+    label: 'Other synthetic account',
+    address: `0x${'22'.repeat(20)}`,
+  };
+  mockState.vault.activeAccount = { id: 1, type: 'HDAccount' };
+  view.rerender(<Decrypt />);
+  expect(screen.getByText('Other synthetic account')).toBeDefined();
+  expect(screen.queryByText(PLAINTEXT)).toBeNull();
+  expect(
+    screen.getByRole('button', { name: 'transactions.decryptMessage' })
+  ).toBeDefined();
+  expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
+});
+
+it.each(['ciphertext', 'network', 'host'])(
+  'ignores a delayed preview result from a previous %s',
+  async (change) => {
+    let finish!: (value: string) => void;
+    mockEmitter.mockImplementationOnce(
+      () => new Promise<string>((resolve) => (finish = resolve))
+    );
+    const view = render(<Decrypt />);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'transactions.decryptMessage' })
+    );
+    if (change === 'ciphertext')
+      mockQuery = { ...mockQuery, 0: 'new-synthetic-ciphertext' };
+    if (change === 'network')
+      mockState.vault.activeNetwork = {
+        chainId: 5701,
+        url: 'https://second.invalid',
+      };
+    if (change === 'host')
+      mockQuery = { ...mockQuery, host: 'other-synthetic.invalid' };
+    view.rerender(<Decrypt />);
+    await act(async () => finish(PLAINTEXT));
+    expect(screen.getByText(mockQuery[0])).toBeDefined();
+    expect(screen.queryByText(PLAINTEXT)).toBeNull();
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'transactions.decryptMessage',
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(false);
+    expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
+  }
+);
+
+it('an old preview rejection cannot clear a newer request busy state or add its error', async () => {
+  let rejectOld!: (error: Error) => void;
+  let finishNew!: (value: string) => void;
+  mockEmitter.mockImplementationOnce(
+    () => new Promise<string>((_, reject) => (rejectOld = reject))
+  );
+  const view = render(<Decrypt />);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'transactions.decryptMessage' })
+  );
+  mockQuery = { ...mockQuery, 0: 'new-synthetic-ciphertext' };
+  view.rerender(<Decrypt />);
+  mockEmitter.mockImplementationOnce(
+    () => new Promise<string>((resolve) => (finishNew = resolve))
+  );
+  fireEvent.click(
+    screen.getByRole('button', { name: 'transactions.decryptMessage' })
+  );
+  await act(async () => rejectOld(new Error('Old preview diagnostic')));
+  expect(screen.queryByText('Old preview diagnostic')).toBeNull();
+  expect(
+    (
+      screen.getByRole('button', {
+        name: 'transactions.decryptMessage',
+      }) as HTMLButtonElement
+    ).disabled
+  ).toBe(true);
+  await act(async () => finishNew('New synthetic plaintext'));
+  await screen.findByText('New synthetic plaintext');
+  expect(screen.queryByText(PLAINTEXT)).toBeNull();
+  expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
+});
+
+it('ignores a preview completion after its review unmounts', async () => {
+  let finish!: (value: string) => void;
+  mockEmitter.mockImplementationOnce(
+    () => new Promise<string>((resolve) => (finish = resolve))
+  );
+  const view = render(<Decrypt />);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'transactions.decryptMessage' })
+  );
+  view.unmount();
+  await act(async () => finish(PLAINTEXT));
+  expect(screen.queryByText(PLAINTEXT)).toBeNull();
+  expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
+  expect(window.close).not.toHaveBeenCalled();
 });
