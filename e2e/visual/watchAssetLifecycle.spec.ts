@@ -34,7 +34,8 @@ for (const changedContext of ['account', 'network'] as const) {
     });
     let wallet: PaliWallet | undefined;
     let status: 'passed' | 'failed' = 'failed';
-    const tokenName = 'Synthetic reviewed-chain token';
+    // The basic metadata path uses the on-chain symbol as its display name.
+    const tokenName = 'REVIEW';
     const contract = '0x000000000000000000000000000000000000ed6e';
     const metadataReads: string[] = [];
     const deniedWrites: string[] = [];
@@ -142,7 +143,15 @@ for (const changedContext of ['account', 'network'] as const) {
               )}`
             );
             await expect(
-              review.getByText(tokenName, { exact: true })
+              review.getByText(tokenName, { exact: true }).first()
+            ).toBeVisible();
+            await expect(
+              review.getByRole('button', { name: contract, exact: true })
+            ).toBeVisible();
+            await expect(
+              review.locator('p').filter({
+                hasText: new RegExp(`^${en.settings.decimals}\\s*6$`),
+              })
             ).toBeVisible();
             await expect(
               review.getByRole('button', {
@@ -218,7 +227,8 @@ for (const changedContext of ['account', 'network'] as const) {
           }
         }
       );
-      expect(metadataReads).toContain(id('name()').slice(0, 10));
+      expect(metadataReads).toContain(id('symbol()').slice(0, 10));
+      expect(metadataReads).toContain(id('decimals()').slice(0, 10));
       expect(deniedWrites).toEqual([]);
       expect(routes.deniedWrites).toEqual([]);
       await info.attach('watch-asset-lifecycle-evidence', {
