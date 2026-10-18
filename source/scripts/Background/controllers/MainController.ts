@@ -32,6 +32,7 @@ import {
   clearNavigationState,
   clearTransactionNavigationState,
   getWalletNavigationScope,
+  IWalletNavigationScope,
 } from '../../../utils/navigationState';
 import { checkForUpdates } from '../handlers/handlePaliUpdates';
 import {
@@ -3820,12 +3821,21 @@ class MainController {
     }
   }
 
-  public async handleWatchAsset(assetPreview: ITokenDetails): Promise<boolean> {
+  public async handleWatchAsset(
+    assetPreview: ITokenDetails,
+    expectedScope: IWalletNavigationScope
+  ): Promise<boolean> {
     const { isBitcoinBased } = store.getState().vault;
 
     if (isBitcoinBased) {
       throw new Error('Watch asset is not supported on Bitcoin networks');
     }
+    const scope = getWalletNavigationScope();
+    if (
+      expectedScope?.account !== scope.account ||
+      expectedScope?.network !== scope.network
+    )
+      throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
 
     try {
       // Use the provided asset details (already fetched by getAssetInfo) and convert to vault format
@@ -3848,6 +3858,8 @@ class MainController {
         `[MainController] Using provided asset details for ${assetPreview.symbol}`
       );
 
+      // EVM insertion runs synchronously before persistence awaits. A later
+      // context change must not turn this committed import into a rejection.
       await this.saveTokenInfo(assetToAdd);
 
       console.log(

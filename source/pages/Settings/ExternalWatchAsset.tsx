@@ -31,12 +31,11 @@ const ExternalWatchAsset = () => {
   const contextChanged = useRef(false);
   if (scope !== approvalScope) contextChanged.current = true;
   const mounted = useRef(true);
-  const completionTimer = useRef<ReturnType<typeof setTimeout>>();
+  const submitted = useRef(false);
   useEffect(() => {
     mounted.current = true;
     return () => {
       mounted.current = false;
-      clearTimeout(completionTimer.current);
     };
   }, []);
   const isCurrent = () =>
@@ -120,26 +119,39 @@ const ExternalWatchAsset = () => {
   };
 
   const onSubmit = async () => {
-    if (!assetInfo || loading || confirmed || !canApprove()) return;
+    if (
+      !assetInfo ||
+      submitted.current ||
+      loading ||
+      confirmed ||
+      !canApprove()
+    )
+      return;
+    submitted.current = true;
+    const responseEvent = `${data.eventName}.${host}`;
     setLoading(true);
 
     try {
       // Pass the already-fetched assetInfo to avoid duplicate API calls
-      await controllerEmitter(['wallet', 'handleWatchAsset'], [assetInfo]);
-      if (!isCurrent()) return;
-
-      const type = data.eventName;
+      await controllerEmitter(
+        ['wallet', 'handleWatchAsset'],
+        [assetInfo, JSON.parse(approvalScope)]
+      );
+      // The controller checks the reviewed context before its synchronous
+      // mutation. Once persisted, settle that originating request even if the
+      // account changed while persistence was pending; only UI feedback is stale.
+      dispatchBackgroundEvent(responseEvent, true);
+      if (!mounted.current) return;
 
       setConfirmed(true);
 
       setLoading(false);
-      alert.info(t('settings.tokenSuccessfullyAdded'));
-      completionTimer.current = setTimeout(() => {
-        if (!isCurrent()) return;
-        dispatchBackgroundEvent(`${type}.${host}`, true);
-        window.close();
-      }, 2000);
+      if (isCurrent()) alert.info(t('settings.tokenSuccessfullyAdded'));
+      // Keep settlement and close together: releasing the request coordinator
+      // while this external window stays open would block its next approval.
+      window.close();
     } catch (error: any) {
+      submitted.current = false;
       if (!isCurrent()) return;
       alert.error(error.message);
 

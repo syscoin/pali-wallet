@@ -5,7 +5,7 @@ import React from 'react';
 
 import ExternalWatchAsset from './ExternalWatchAsset';
 
-let mockScope: string;
+let mockScope: { account: string; network: string };
 let mockNetwork: any;
 let mockStatus: any;
 let mockAdd: () => void;
@@ -76,7 +76,7 @@ jest.mock('utils/index', () => ({ formatCurrency: (value: string) => value }));
 beforeEach(() => {
   jest.useFakeTimers();
   jest.clearAllMocks();
-  mockScope = 'first-account-and-network';
+  mockScope = { account: 'first-account', network: 'first-network' };
   mockNetwork = { chainId: 1, explorer: 'https://first.invalid/' };
   mockStatus = {
     isUnlocked: true,
@@ -107,7 +107,7 @@ it.each(['account', 'network'])(
   async (change) => {
     const view = await loadPreview();
     const oldAdd = mockAdd;
-    mockScope = `changed-${change}`;
+    mockScope = { ...mockScope, [change]: `changed-${change}` };
     if (change === 'network')
       mockNetwork = { chainId: 2, explorer: 'https://second.invalid/' };
     view.rerender(<ExternalWatchAsset />);
@@ -130,7 +130,7 @@ it.each(['account', 'network'])(
 
 it('rejects a retained Add handler if the live scope changes before rerender', async () => {
   await loadPreview();
-  mockScope = 'changed-without-a-render';
+  mockScope = { ...mockScope, account: 'changed-without-a-render' };
   await act(async () => mockAdd());
   expect(
     mockEmitter.mock.calls.some(([[, method]]) => method === 'handleWatchAsset')
@@ -141,7 +141,7 @@ it('does not display delayed metadata fetched before an account/network change',
   let finish!: (value: unknown) => void;
   mockEmitter.mockReturnValueOnce(new Promise((resolve) => (finish = resolve)));
   const view = render(<ExternalWatchAsset />);
-  mockScope = 'changed-while-loading';
+  mockScope = { ...mockScope, account: 'changed-while-loading' };
   view.rerender(<ExternalWatchAsset />);
   await act(async () => finish(preview));
   expect(screen.queryByText(preview.name)).toBeNull();
@@ -166,13 +166,13 @@ it('preserves ordinary Add completion for the reviewed account and network', asy
   await act(async () => undefined);
   expect(mockEmitter).toHaveBeenCalledWith(
     ['wallet', 'handleWatchAsset'],
-    [preview]
+    [preview, mockScope]
   );
-  await act(async () => jest.advanceTimersByTimeAsync(2000));
   expect(mockDispatch).toHaveBeenCalledWith(
     'wallet_watchAsset.synthetic.test',
     true
   );
+  expect(mockDispatch).toHaveBeenCalledTimes(1);
   expect(window.close).toHaveBeenCalledTimes(1);
 });
 
@@ -190,15 +190,69 @@ it('reports an already successful Add even if the controller becomes unavailable
 });
 
 it.each(['scope change', 'unmount'])(
-  'does not complete a stale Add after %s',
+  'settles an already committed Add without stale feedback after %s during persistence',
   async (departure) => {
+    let finish!: () => void;
+    const saved = new Promise<void>((resolve) => (finish = resolve));
     const view = await loadPreview();
+    mockEmitter.mockReturnValueOnce(saved);
     fireEvent.click(screen.getByRole('button', { name: 'buttons.addToken' }));
-    await act(async () => undefined);
-    if (departure === 'unmount') view.unmount();
-    else mockScope = 'changed-after-save';
-    await act(async () => jest.advanceTimersByTimeAsync(2000));
     expect(mockDispatch).not.toHaveBeenCalled();
-    expect(window.close).not.toHaveBeenCalled();
+    if (departure === 'unmount') view.unmount();
+    else {
+      mockScope = { ...mockScope, network: 'changed-during-persistence' };
+      view.rerender(<ExternalWatchAsset />);
+    }
+    await act(async () => finish());
+    expect(mockDispatch).toHaveBeenCalledTimes(1);
+    expect(mockDispatch).toHaveBeenCalledWith(
+      'wallet_watchAsset.synthetic.test',
+      true
+    );
+    expect(mockAlert.info).not.toHaveBeenCalled();
+    expect(mockAlert.error).not.toHaveBeenCalled();
+    expect(window.close).toHaveBeenCalledTimes(departure === 'unmount' ? 0 : 1);
   }
 );
+
+it('submits and settles only once for retained Add callbacks', async () => {
+  let finish!: () => void;
+  const saved = new Promise<void>((resolve) => (finish = resolve));
+  await loadPreview();
+  mockEmitter.mockReturnValueOnce(saved);
+  const oldAdd = mockAdd;
+  await act(async () => {
+    oldAdd();
+    oldAdd();
+  });
+  expect(
+    mockEmitter.mock.calls.filter(
+      ([[, method]]) => method === 'handleWatchAsset'
+    )
+  ).toHaveLength(1);
+  await act(async () => finish());
+  await act(async () => oldAdd());
+  expect(
+    mockEmitter.mock.calls.filter(
+      ([[, method]]) => method === 'handleWatchAsset'
+    )
+  ).toHaveLength(1);
+  expect(mockDispatch).toHaveBeenCalledTimes(1);
+  expect(window.close).toHaveBeenCalledTimes(1);
+});
+
+it('does not report acceptance when the controller rejects stale-context admission', async () => {
+  let reject!: (error: Error) => void;
+  const rejected = new Promise((_, fail) => (reject = fail));
+  const view = await loadPreview();
+  mockEmitter.mockReturnValueOnce(rejected);
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.addToken' }));
+  mockScope = { ...mockScope, account: 'changed-before-controller-entry' };
+  view.rerender(<ExternalWatchAsset />);
+  await act(async () => reject(new Error('Wallet context changed')));
+  await act(async () => jest.advanceTimersByTimeAsync(2000));
+  expect(mockDispatch).not.toHaveBeenCalled();
+  expect(mockAlert.info).not.toHaveBeenCalled();
+  expect(mockAlert.error).not.toHaveBeenCalled();
+  expect(window.close).not.toHaveBeenCalled();
+});
