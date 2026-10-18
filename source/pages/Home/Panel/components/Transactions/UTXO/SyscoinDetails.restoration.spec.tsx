@@ -135,10 +135,37 @@ const expectAmountIcon = async (amount: string, logo: string) => {
   expect(screen.getByText(amount).parentElement!.contains(icon)).toBe(true);
   return icon;
 };
+const mountHydratedDetails = async (transaction: ISysTransaction) => {
+  const hydration = deferred<ISysTransaction>();
+  mockEmitter
+    .mockResolvedValue(transaction)
+    .mockReturnValueOnce(hydration.promise);
+  const view = render(
+    <SyscoinTransactionDetails hash={mockHash} tx={transaction} />
+  );
+  await waitFor(() =>
+    expect(mockEmitter).toHaveBeenCalledWith(
+      ['wallet', 'getSysTransactionFromBlockbook'],
+      [mockHash, mockState.vault.activeNetwork.url]
+    )
+  );
+  // Hydration replaces the rendered details subtree. Finish that controlled
+  // read before querying a button, rather than clicking a detached summary row.
+  await act(async () => hydration.resolve(transaction));
+  return view;
+};
+const currentHashCopyButton = () => {
+  const button = within(screen.getByText('Txid').parentElement!).getByRole(
+    'button'
+  );
+  expect(button.isConnected).toBe(true);
+  return button;
+};
 
 beforeEach(() => {
   jest.clearAllMocks();
-  mockCopy.mockResolvedValue(undefined);
+  mockEmitter.mockReset();
+  mockCopy.mockReset().mockResolvedValue(undefined);
   Object.defineProperty(navigator, 'clipboard', {
     configurable: true,
     value: { writeText: mockCopy },
@@ -179,13 +206,12 @@ afterAll(() => {
 
 it('does not announce a transaction clipboard copy before completion or after refusal', async () => {
   const transaction = rawTransaction();
-  mockEmitter.mockResolvedValue(transaction);
-  render(<SyscoinTransactionDetails hash={mockHash} tx={transaction} />);
-  const label = await screen.findByText('Txid');
-  const copyButton = within(label.parentElement!).getByRole('button');
+  await mountHydratedDetails(transaction);
   const pending = deferred<void>();
   mockCopy.mockReturnValueOnce(pending.promise);
-  fireEvent.click(copyButton);
+  fireEvent.click(currentHashCopyButton());
+  expect(mockCopy).toHaveBeenCalledTimes(1);
+  expect(mockCopy).toHaveBeenLastCalledWith(mockHash);
   expect(mockCopyAlert.info).not.toHaveBeenCalled();
   await act(async () => pending.resolve(undefined));
   expect(mockCopyAlert.info).toHaveBeenCalledWith('home.hashCopied');
@@ -195,12 +221,9 @@ it('does not announce a transaction clipboard copy before completion or after re
   mockCopy.mockReturnValueOnce(denied);
   // Hydration can replace the rendered details tree while copying. Interact
   // with the current row, not the detached button from the previous render.
-  const currentCopyButton = within(
-    screen.getByText('Txid').parentElement!
-  ).getByRole('button');
-  expect(currentCopyButton.isConnected).toBe(true);
-  fireEvent.click(currentCopyButton);
+  fireEvent.click(currentHashCopyButton());
   expect(mockCopy).toHaveBeenCalledTimes(2);
+  expect(mockCopy).toHaveBeenLastCalledWith(mockHash);
   await act(async () => undefined);
   expect(mockCopyAlert.info).not.toHaveBeenCalled();
   expect(mockCopyAlert.error).toHaveBeenCalledWith('transactions.copyFailed');
@@ -214,14 +237,12 @@ it.each(
   'ignores delayed transaction clipboard $outcome after $change changes',
   async ({ change, outcome }) => {
     const transaction = rawTransaction();
-    mockEmitter.mockResolvedValue(transaction);
-    const view = render(
-      <SyscoinTransactionDetails hash={mockHash} tx={transaction} />
-    );
-    const label = await screen.findByText('Txid');
+    const view = await mountHydratedDetails(transaction);
     const pending = deferred<void>();
     mockCopy.mockReturnValueOnce(pending.promise);
-    fireEvent.click(within(label.parentElement!).getByRole('button'));
+    fireEvent.click(currentHashCopyButton());
+    expect(mockCopy).toHaveBeenCalledTimes(1);
+    expect(mockCopy).toHaveBeenLastCalledWith(mockHash);
     if (change === 'unmount') view.unmount();
     else {
       if (change === 'transaction') mockHash = 'def' + mockHash.slice(3);
@@ -254,16 +275,16 @@ it.each(
 
 it('keeps feedback bound to the latest transaction clipboard action', async () => {
   const transaction = rawTransaction();
-  mockEmitter.mockResolvedValue(transaction);
-  render(<SyscoinTransactionDetails hash={mockHash} tx={transaction} />);
+  await mountHydratedDetails(transaction);
   const pending = deferred<void>();
   mockCopy.mockReturnValueOnce(pending.promise);
-  const copyHash = () =>
-    fireEvent.click(
-      within(screen.getByText('Txid').parentElement!).getByRole('button')
-    );
+  const copyHash = () => fireEvent.click(currentHashCopyButton());
   copyHash();
+  expect(mockCopy).toHaveBeenCalledTimes(1);
+  expect(mockCopy).toHaveBeenLastCalledWith(mockHash);
   await act(async () => copyHash());
+  expect(mockCopy).toHaveBeenCalledTimes(2);
+  expect(mockCopy).toHaveBeenLastCalledWith(mockHash);
   expect(mockCopyAlert.info).toHaveBeenCalledTimes(1);
   await act(async () => pending.resolve(undefined));
   expect(mockCopyAlert.info).toHaveBeenCalledTimes(1);
@@ -434,8 +455,7 @@ it.each([
       vin: [],
       vout: vout as any,
     });
-    mockEmitter.mockResolvedValue(transaction);
-    render(<SyscoinTransactionDetails hash={mockHash} tx={transaction} />);
+    await mountHydratedDetails(transaction);
 
     const canCopy =
       expected !== 'settings.unavailable' && expected.length >= 20;
@@ -446,7 +466,10 @@ it.each([
     await waitFor(() => expect(row().textContent).toBe(`To${displayed}`));
     expect(row().querySelector('button') !== null).toBe(canCopy);
     if (canCopy) {
-      fireEvent.click(row().querySelector('button')!);
+      const button = row().querySelector('button')!;
+      expect(button.isConnected).toBe(true);
+      fireEvent.click(button);
+      expect(mockCopy).toHaveBeenCalledTimes(1);
       expect(mockCopy).toHaveBeenCalledWith(expected);
     }
   }
