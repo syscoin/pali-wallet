@@ -66,6 +66,36 @@ const reset = () => {
 };
 beforeEach(reset);
 
+it('keeps only a transient RPC draft handle for detours and never stores it or endpoint text', async () => {
+  const id = '12345678-1234-1234-1234-123456789abc';
+  const input = {
+    customRpcDraftId: id,
+    url: 'https://rpc.test/api-key',
+    customRpcDraft: { label: 'Draft', url: 'private' },
+  };
+  const context = createBrowsingNavigationContext({
+    pathname: '/settings/networks/custom-rpc',
+    state: input,
+  });
+  expect(context.state).toEqual({ customRpcDraftId: id });
+  expect(sanitizeBrowsingState('/home', input)).not.toHaveProperty(
+    'customRpcDraftId'
+  );
+  await saveNavigationState(
+    '/settings/networks/connected-sites',
+    undefined,
+    {},
+    context
+  );
+  expect(JSON.stringify(mockStored)).not.toMatch(
+    /customRpcDraft|api-key|private/
+  );
+  await saveNavigationState('/settings/networks/custom-rpc', undefined, input);
+  expect(JSON.stringify(mockStored)).not.toMatch(
+    /customRpcDraft|api-key|private/
+  );
+});
+
 it.each([true, false, 123])(
   'drops non-string transaction hash %s from a stored details snapshot',
   async (hash) => {

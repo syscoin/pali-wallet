@@ -13,11 +13,16 @@ import React from 'react';
 import { INetworkType } from 'types/network';
 
 import CustomRPC from './CustomRPC';
+import { clearCustomRpcDrafts } from './customRpcDraft';
 
 const mockEmitter = jest.fn();
 const mockNavigate = jest.fn();
 const mockAlert = { error: jest.fn(), success: jest.fn() };
-const mockLocation = { pathname: '/settings/networks/custom-rpc', state: {} };
+const mockLocation = {
+  pathname: '/settings/networks/custom-rpc',
+  state: {} as any,
+};
+let mockScope = { account: 'account-a', network: 'network-a' };
 const originalMessageChannel = globalThis.MessageChannel;
 const chains = [
   {
@@ -55,9 +60,14 @@ jest.mock('hooks/useController', () => ({
 }));
 jest.mock('hooks/controllerStatus', () => ({
   getControllerStatus: () => ({ isUnlocked: true }),
+  subscribeControllerStatus: () => () => undefined,
+}));
+jest.mock('state/store', () => ({
+  __esModule: true,
+  default: { subscribe: () => () => undefined },
 }));
 jest.mock('utils/navigationState', () => ({
-  getWalletNavigationScope: () => ({}),
+  getWalletNavigationScope: () => mockScope,
   navigateBack: jest.fn(),
 }));
 jest.mock('components/ChainIcon', () => ({ ChainIcon: () => null }));
@@ -76,6 +86,10 @@ jest.mock('components/index', () => ({
 }));
 
 beforeEach(() => {
+  clearCustomRpcDrafts();
+  mockLocation.state = {};
+  mockScope = { account: 'account-a', network: 'network-a' };
+  mockNavigate.mockReset();
   mockAlert.error.mockReset();
   mockAlert.success.mockReset();
   // AntD's real Form batches field watchers using this browser API.
@@ -99,6 +113,63 @@ beforeEach(() => {
     })),
   });
 });
+
+it('restores only values and family after a same-scope detour, without resuming old RPC work', async () => {
+  const pending = deferred();
+  mockEmitter.mockImplementation(async ([, method]) => {
+    if (method === 'getChainData') return chains;
+    if (method === 'testRpcConnection') return pending.promise;
+    return undefined;
+  });
+  const { user, unmount } = await openSuggestions();
+  await user.click(screen.getByRole('option', { name: /Keyboard Alpha/ }));
+  await waitFor(() =>
+    expect(
+      mockEmitter.mock.calls.some(
+        ([[, method]]) => method === 'testRpcConnection'
+      )
+    ).toBe(true)
+  );
+  const draftId = mockNavigate.mock.calls.find(
+    ([, options]) => options?.state?.customRpcDraftId
+  )?.[1].state.customRpcDraftId;
+  expect(draftId).toMatch(/^[a-f0-9-]{36}$/);
+  unmount();
+  mockLocation.state = { customRpcDraftId: draftId };
+  render(<CustomRPC />);
+  expect(screen.getByRole('combobox')).toHaveValue('Keyboard Alpha');
+  expect(screen.getByPlaceholderText('settings.chainIdCustomEvm')).toHaveValue(
+    '71'
+  );
+  expect(screen.getByRole('button', { name: 'buttons.save' })).toBeEnabled();
+  await act(async () => pending.resolve({ success: true, chainId: 9999 }));
+  expect(screen.getByPlaceholderText('settings.chainIdCustomEvm')).toHaveValue(
+    '71'
+  );
+  expect(
+    mockEmitter.mock.calls.filter(
+      ([[, method]]) => method === 'testRpcConnection'
+    )
+  ).toHaveLength(1);
+  expect(mockAlert.success).not.toHaveBeenCalled();
+});
+
+it.each(['account', 'network'])(
+  'does not restore a network draft after the %s context changes',
+  async (field) => {
+    const user = userEvent.setup();
+    const first = render(<CustomRPC />);
+    await user.type(screen.getByRole('combobox'), 'Private endpoint draft');
+    const draftId = mockNavigate.mock.calls.find(
+      ([, options]) => options?.state?.customRpcDraftId
+    )?.[1].state.customRpcDraftId;
+    first.unmount();
+    mockScope = { ...mockScope, [field]: 'changed-context' };
+    mockLocation.state = { customRpcDraftId: draftId };
+    render(<CustomRPC />);
+    expect(screen.getByRole('combobox')).toHaveValue('');
+  }
+);
 
 afterEach(() => {
   globalThis.MessageChannel = originalMessageChannel;

@@ -95,6 +95,10 @@ try {
 
 Conventions:
 
+- Name permanent regression suites after the feature or behavior they cover,
+  including companion unit tests. Do not use audit-pass labels such as `qa123`
+  in spec filenames or suite titles. Keep temporary exploratory probes out of
+  commits; promote useful coverage into an appropriately named permanent suite.
 - Always verify UI claims on-chain via `harness/chain.ts` (`getCode`,
   `getInfrastructureState`, `getNativeBalance`).
 - One worker only (configured): journeys share the test seed and must not race

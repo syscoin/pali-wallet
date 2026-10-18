@@ -329,6 +329,13 @@ export const sanitizeBrowsingState = (
   const state = DRAFT_ROUTES.has(pathname)
     ? {}
     : boundedPick(input, SCALAR_KEYS);
+  // A live-document handle, never RPC endpoint text or validation results.
+  if (
+    pathname === '/settings/networks/custom-rpc' &&
+    typeof input?.customRpcDraftId === 'string' &&
+    /^[a-f0-9-]{36}$/.test(input.customRpcDraftId)
+  )
+    state.customRpcDraftId = input.customRpcDraftId;
   if (pathname === '/home/details' && input?.isImportPreview === true)
     Object.assign(
       state,
@@ -544,9 +551,16 @@ const createSavedNavigationState = (
   };
 };
 const saveNavigationStateUnlocked = async (snapshot: ISavedNavigationState) => {
-  if (JSON.stringify(snapshot).length > MAX_BYTES)
+  // Transient RPC drafts cannot survive this document. Omit even their handles
+  // from durable snapshots, including handles nested in return contexts.
+  const persistent = JSON.parse(
+    JSON.stringify(snapshot, (key, value) =>
+      key === 'customRpcDraftId' ? undefined : value
+    )
+  );
+  if (JSON.stringify(persistent).length > MAX_BYTES)
     throw new Error('Navigation snapshot exceeds its storage limit');
-  await chromeStorage.setItem(NAVIGATION_STATE_KEY, snapshot);
+  await chromeStorage.setItem(NAVIGATION_STATE_KEY, persistent);
 };
 const clearNavigationStateUnlocked = async () => {
   await chromeStorage.removeItem(NAVIGATION_STATE_KEY);

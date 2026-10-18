@@ -219,17 +219,18 @@ const CurrencyView = () => {
   const hasUnsavedChanges = selectedCoin !== savedCoin;
 
   const fiatPriceValue = useMemo(() => {
-    // For preview, we need to calculate with the selected currency
+    // The quote belongs to the saved currency until Save returns a new quote.
+    // An unsaved selection must not relabel that amount with different units.
     const getAmount = getFiatAmount(
       actualBalance > 0 ? actualBalance : 0,
       4,
-      String(selectedCoin).toUpperCase(),
+      initialCurrency.toUpperCase(),
       true,
       true
     );
 
     return getAmount;
-  }, [actualBalance, selectedCoin, getFiatAmount]);
+  }, [actualBalance, initialCurrency, getFiatAmount]);
 
   return (
     <>
@@ -354,14 +355,14 @@ const CurrencyView = () => {
 
         <div
           className="flex w-full max-w-[352px] flex-col items-center justify-center text-center bg-brand-blue800 rounded-lg p-6 border border-brand-blue600 hover:border-brand-blue500 transition-all duration-200 group mx-auto"
-          key={`balance-${selectedCoin}`}
+          key={`balance-${initialCurrency}`}
         >
           <p className="text-brand-gray200 text-xs mb-4">
             {t('components.currentBalance')}
           </p>
           <div className="flex items-center gap-4 w-full">
             <span className="text-4xl transform transition-transform duration-200 group-hover:scale-110">
-              {currencyFlags[selectedCoin.toLowerCase()] || '💰'}
+              {currencyFlags[initialCurrency] || '💰'}
             </span>
             {activeNetwork.chainId === 5700 ? (
               <div className="flex flex-col items-start min-w-0 w-full">

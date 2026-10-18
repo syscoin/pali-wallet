@@ -6,6 +6,7 @@ import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
+import { v4 as uuidv4 } from 'uuid';
 
 import { ChainIcon } from 'components/ChainIcon';
 import { Icon } from 'components/Icon';
@@ -19,6 +20,12 @@ import { RootState } from 'state/store';
 import { INetworkType, INetwork } from 'types/network';
 import { ICustomRpcParams } from 'types/transactions';
 import { getWalletNavigationScope, navigateBack } from 'utils/navigationState';
+
+import {
+  discardCustomRpcDraft,
+  readCustomRpcDraft,
+  writeCustomRpcDraft,
+} from './customRpcDraft';
 
 interface IChainInfo {
   chain: INetworkType;
@@ -57,6 +64,25 @@ const CustomRPCView = () => {
   const networks = useSelector(
     (reduxState: RootState) => reduxState.vaultGlobal.networks
   );
+  const draftScope = useSelector(() =>
+    JSON.stringify(getWalletNavigationScope())
+  );
+  const draftEditor = JSON.stringify([
+    Boolean(state?.isEditing),
+    state?.selected?.kind,
+    state?.selected?.key,
+    state?.selected?.chainId,
+    Boolean(state?.isDefault),
+  ]);
+  const [draftId] = useState(() =>
+    typeof state?.customRpcDraftId === 'string' &&
+    /^[a-f0-9-]{36}$/.test(state.customRpcDraftId)
+      ? state.customRpcDraftId
+      : uuidv4()
+  );
+  const [restoredDraft] = useState(() =>
+    readCustomRpcDraft(draftId, draftScope, draftEditor)
+  );
   const isSyscoinSelected = state && state.chain && state.chain === 'syscoin';
   // When editing, determine network type from the selected network
   const [loading, setLoading] = useState(false);
@@ -67,7 +93,7 @@ const CustomRPCView = () => {
     if (state?.isEditing && state?.selected) {
       return state.selected.kind === INetworkType.Syscoin;
     }
-    return Boolean(isSyscoinSelected);
+    return restoredDraft?.isSyscoinRpc ?? Boolean(isSyscoinSelected);
   });
   const [networkQuery, setNetworkQuery] = useState('');
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
@@ -85,6 +111,16 @@ const CustomRPCView = () => {
   const { alert, navigate } = useUtils();
 
   const [form] = useForm();
+  const draftFamilyRef = React.useRef(isSyscoinRpc);
+  draftFamilyRef.current = isSyscoinRpc;
+  const draftContext = JSON.stringify([draftScope, draftEditor]);
+  const initialDraftContext = React.useRef(draftContext);
+  const currentDraftContext = React.useRef(draftContext);
+  const draftDiscarded = React.useRef(false);
+  const discardDraft = () => {
+    draftDiscarded.current = true;
+    discardCustomRpcDraft(draftId);
+  };
   const mountedRef = React.useRef(true);
   const draftRevisionRef = React.useRef(0);
   const latestLocationRef = React.useRef(location);
@@ -573,6 +609,7 @@ const CustomRPCView = () => {
 
         alert.success(t('settings.rpcSuccessfullyEdited'));
 
+        discardDraft();
         navigateBack(navigate, location);
       } else {
         // In add mode, network shouldn't exist
@@ -588,6 +625,7 @@ const CustomRPCView = () => {
         setLoading(false);
 
         alert.success(t('settings.rpcSuccessfullyAdded'));
+        discardDraft();
         navigateBack(navigate, location);
       }
     } catch (error: any) {
@@ -627,7 +665,49 @@ const CustomRPCView = () => {
       currentNetwork?.url ||
       '',
     apiUrl: isSyscoinRpc ? '' : currentNetwork?.apiUrl ?? '',
+    ...(initialDraftContext.current === draftContext
+      ? restoredDraft?.values
+      : {}),
   };
+
+  // Only an opaque handle enters history. Endpoint text remains in this
+  // document's scoped cache, and no validation result or pending work resumes.
+  useEffect(() => {
+    if (state?.customRpcDraftId === draftId) return;
+    navigate(
+      `${location.pathname}${location.search || ''}${location.hash || ''}`,
+      {
+        replace: true,
+        state: { ...state, customRpcDraftId: draftId },
+      }
+    );
+  }, [draftId, location, navigate, state]);
+
+  React.useLayoutEffect(
+    () => () => {
+      if (draftDiscarded.current) return;
+      writeCustomRpcDraft(draftId, draftScope, draftEditor, {
+        isSyscoinRpc: draftFamilyRef.current,
+        values: form.getFieldsValue(true),
+      });
+    },
+    [draftId, draftScope, draftEditor, form]
+  );
+
+  useEffect(() => {
+    if (currentDraftContext.current === draftContext) return;
+    currentDraftContext.current = draftContext;
+    draftDiscarded.current = false;
+    discardCustomRpcDraft(draftId);
+    invalidatePendingChecks();
+    form.resetFields();
+    form.setFieldsValue(initialValues);
+    setIsSyscoinRpc(
+      state?.isEditing
+        ? state?.selected?.kind === INetworkType.Syscoin
+        : Boolean(isSyscoinSelected)
+    );
+  }, [draftContext]);
 
   // Simplified - no conditional save logic
 
@@ -667,7 +747,9 @@ const CustomRPCView = () => {
   }, [isSyscoinRpc]); // Reload when network type changes
 
   // Track if we've already initialized the form to prevent overriding user changes
-  const [formInitialized, setFormInitialized] = useState(false);
+  const [formInitialized, setFormInitialized] = useState(
+    Boolean(restoredDraft)
+  );
 
   // Update form when Redux state changes (for editing mode) - only once on initial load
   useEffect(() => {
@@ -1167,7 +1249,13 @@ const CustomRPCView = () => {
         name="rpc"
         initialValues={initialValues}
         onFinish={onSubmit}
-        onValuesChange={invalidatePendingChecks}
+        onValuesChange={(_changed, values) => {
+          invalidatePendingChecks();
+          writeCustomRpcDraft(draftId, draftScope, draftEditor, {
+            isSyscoinRpc,
+            values,
+          });
+        }}
         autoComplete="off"
         className="flex flex-col gap-3 items-center justify-center text-center w-full"
       >
@@ -1563,7 +1651,10 @@ const CustomRPCView = () => {
               <Button
                 variant="secondary"
                 type="button"
-                onClick={() => navigateBack(navigate, location)}
+                onClick={() => {
+                  discardDraft();
+                  navigateBack(navigate, location);
+                }}
               >
                 {t('buttons.cancel')}
               </Button>

@@ -41,8 +41,8 @@ async function snapshot(
 for (const editDraft of [true, false]) {
   test(
     editDraft
-      ? 'qa122 in-flight suggested RPC test does not overwrite a newer manual network draft'
-      : 'qa122 current unedited suggestion retains its working RPC fallback',
+      ? 'in-flight suggested RPC test does not overwrite a newer manual network draft'
+      : 'current unedited suggestion retains its working RPC fallback',
     async ({}, info) => {
       test.setTimeout(120000);
       const before = { ...E2E_CONFIG };
@@ -225,7 +225,7 @@ for (const editDraft of [true, false]) {
   );
 }
 
-test('qa122 network-error recovery edit action is reachable by keyboard', async ({}, info) => {
+test('network-error recovery edit action is reachable by keyboard', async ({}, info) => {
   test.setTimeout(120000);
   const before = { ...E2E_CONFIG };
   const server = await startUtxoFixtureServer();

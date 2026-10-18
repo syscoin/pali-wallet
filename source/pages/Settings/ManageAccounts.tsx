@@ -327,7 +327,7 @@ const ManageAccountsView = React.memo(() => {
       return (
         <li
           key={`${accountType}-${account.id}`}
-          className="group my-3 py-2 w-full flex justify-between items-center gap-2 transition-all duration-300 border-b border-dashed border-dashed-light cursor-default"
+          className="group my-0.5 py-0.5 w-full flex justify-between items-center gap-2 transition-all duration-300 border-b border-dashed border-dashed-light cursor-default"
         >
           <div className="flex items-center gap-2 min-w-0 flex-1">
             <div className="flex items-center gap-1 min-w-0 flex-1">

@@ -126,9 +126,73 @@ export const encodeCustomApprovalData = ({
     return null;
   }
 
-  const parsedAmount = parseUnits(humanAmount, decimals);
-  return new Interface(abi).encodeFunctionData(method, [
-    spender,
-    toEthersBigNumberish(parsedAmount),
-  ]);
+  const parsedAmount = parseApprovalAmount(humanAmount, decimals);
+  if (parsedAmount === null) return null;
+  return new Interface(abi).encodeFunctionData(method, [spender, parsedAmount]);
+};
+
+export const parseApprovalAmount = (
+  humanAmount: string,
+  decimals: number
+): bigint | null => {
+  if (!Number.isInteger(decimals) || decimals < 0 || decimals > 255) {
+    return null;
+  }
+  try {
+    const amount = toEthersBigNumberish(parseUnits(humanAmount, decimals));
+    return amount >= BigInt(0) && amount < BigInt(1) << BigInt(256)
+      ? amount
+      : null;
+  } catch {
+    return null;
+  }
+};
+
+const ERC20_APPROVE_ABI = ['function approve(address spender,uint256 amount)'];
+
+// Review, fee estimation and submission must consume this same transaction
+// intent. Decode the encoded bytes for Data instead of formatting a second,
+// potentially different copy of the edited amount.
+export const getEffectiveApprovalData = ({
+  approvalType,
+  customAmount,
+  data,
+  decimals,
+  decodedTx,
+  isCustom,
+}: {
+  approvalType?: ApprovalType;
+  customAmount?: string | null;
+  data: string;
+  decimals?: number;
+  decodedTx: IDecodedTx;
+  isCustom: boolean;
+}): { data: string; decodedTx: IDecodedTx } | null => {
+  if (!isCustom) return { data, decodedTx };
+  if (
+    decimals === undefined ||
+    customAmount === null ||
+    customAmount === undefined
+  )
+    return null;
+  const encoded = encodeCustomApprovalData({
+    abi: ERC20_APPROVE_ABI,
+    approvalType,
+    decimals,
+    humanAmount: customAmount,
+    method: decodedTx?.method,
+    spender: String(decodedTx?.inputs?.[0] || ''),
+  });
+  if (!encoded) return null;
+  const values = new Interface(ERC20_APPROVE_ABI).decodeFunctionData(
+    'approve',
+    encoded
+  );
+  return {
+    data: encoded,
+    decodedTx: {
+      ...decodedTx,
+      inputs: [decodedTx.inputs[0], values[1].toString()],
+    },
+  };
 };

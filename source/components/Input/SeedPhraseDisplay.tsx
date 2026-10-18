@@ -1,5 +1,5 @@
 import { isEmpty } from 'lodash';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 interface ISeedPhraseDisplayProps {
@@ -43,7 +43,13 @@ export const SeedPhraseDisplay: React.FC<ISeedPhraseDisplayProps> = ({
   displayMode = 'words',
 }) => {
   const { t } = useTranslation();
-  const [visible, setVisible] = useState<boolean>(false);
+  const [revealedPhrase, setRevealedPhrase] = useState<string>();
+  const visible =
+    isEnabled && Boolean(seedPhrase) && revealedPhrase === seedPhrase;
+
+  useEffect(() => {
+    setRevealedPhrase(undefined);
+  }, [seedPhrase, isEnabled]);
 
   const mockedPhrase =
     '**** ******* ****** ****** ****** ******** *** ***** ****** ***** *****';
@@ -52,7 +58,7 @@ export const SeedPhraseDisplay: React.FC<ISeedPhraseDisplayProps> = ({
     : seedPhrase;
 
   const toggleVisible = () => {
-    setVisible((prev) => !prev);
+    setRevealedPhrase(visible ? undefined : seedPhrase);
   };
 
   if (displayMode === 'textarea') {
@@ -79,6 +85,7 @@ export const SeedPhraseDisplay: React.FC<ISeedPhraseDisplayProps> = ({
             {showEyeToggle && seedPhrase && (
               <button
                 type="button"
+                disabled={!isEnabled}
                 onClick={toggleVisible}
                 className="p-1 rounded hover:bg-gray-700 transition-colors duration-200"
                 title={visible ? 'Hide' : 'Show'}
@@ -127,6 +134,7 @@ export const SeedPhraseDisplay: React.FC<ISeedPhraseDisplayProps> = ({
           {showEyeToggle && seedPhrase && (
             <button
               type="button"
+              disabled={!isEnabled}
               onClick={toggleVisible}
               className="p-1 rounded hover:bg-gray-700 transition-colors duration-200"
               title={visible ? 'Hide' : 'Show'}

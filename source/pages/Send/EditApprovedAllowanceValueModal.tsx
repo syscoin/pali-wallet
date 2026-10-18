@@ -1,7 +1,7 @@
 import { Dialog } from '@headlessui/react';
 import { AdjustmentsIcon } from '@heroicons/react/outline';
 import { Form, Input, Radio, RadioChangeEvent } from 'antd';
-import React, { useId, useState } from 'react';
+import React, { useEffect, useId, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import {
@@ -18,6 +18,8 @@ import {
   IIsEditedAllowanceModalProps,
 } from 'types/transactions';
 
+import { parseApprovalAmount } from './approval';
+
 export const EditApprovedAllowanceValueModal = (
   props: IIsEditedAllowanceModalProps
 ) => {
@@ -32,10 +34,34 @@ export const EditApprovedAllowanceValueModal = (
   const { t } = useTranslation();
   const [formControlEditedFee] = Form.useForm();
   const inputId = useId();
-  const close = () => setOpenEditFeeModal(false);
-
   const [currentRadioChecked, setCurrentRadioChecked] =
     useState('proposed_limit');
+  const wasOpen = useRef(false);
+  const restoreSavedAllowance = () => {
+    const radio = customApprovedAllowanceAmount.isCustom
+      ? 'custom_limit'
+      : 'proposed_limit';
+    setCurrentRadioChecked(radio);
+    formControlEditedFee.setFieldsValue({
+      radio_group: radio,
+      custom_limit_input_value:
+        customApprovedAllowanceAmount.customAllowanceValue ?? '',
+    });
+  };
+  useEffect(() => {
+    if (!showModal) {
+      wasOpen.current = false;
+      return;
+    }
+    if (wasOpen.current) return;
+    wasOpen.current = true;
+    restoreSavedAllowance();
+  }, [showModal, customApprovedAllowanceAmount, formControlEditedFee]);
+
+  const close = () => {
+    restoreSavedAllowance();
+    setOpenEditFeeModal(false);
+  };
 
   const onSubmitForm = (data: any) => {
     setCustomApprovedAllowanceAmount(
@@ -138,6 +164,18 @@ export const EditApprovedAllowanceValueModal = (
                           rules={[
                             {
                               required: currentRadioChecked === 'custom_limit',
+                            },
+                            {
+                              validator: (_, value) =>
+                                currentRadioChecked !== 'custom_limit' ||
+                                parseApprovalAmount(
+                                  String(value ?? ''),
+                                  approvedTokenInfos?.tokenDecimals
+                                ) !== null
+                                  ? Promise.resolve()
+                                  : Promise.reject(
+                                      new Error(t('send.invalidAmount'))
+                                    ),
                             },
                           ]}
                         >

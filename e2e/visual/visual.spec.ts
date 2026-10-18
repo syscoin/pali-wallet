@@ -347,6 +347,18 @@ test.describe('visual baselines', () => {
       timeout: 30_000,
     });
     await settle(600);
+    const currentCapture = test
+      .info()
+      .outputPath('manage-accounts-current.png');
+    await wallet.page.screenshot({
+      animations: 'disabled',
+      mask: commonMasks(),
+      path: currentCapture,
+    });
+    await test.info().attach('manage-accounts-current', {
+      contentType: 'image/png',
+      path: currentCapture,
+    });
     await expect(wallet.page).toHaveScreenshot(['manage-accounts.png'], {
       mask: commonMasks(),
     });

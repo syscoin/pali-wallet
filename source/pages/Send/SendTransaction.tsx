@@ -46,15 +46,14 @@ import {
 } from 'utils/smartAccount';
 import { omitTransactionObjectData } from 'utils/transactions';
 import { validateTransactionDataValue } from 'utils/validateTransactionDataValue';
-import { getErc20Abi } from 'utils/validations';
 
 import {
   ApprovalType,
   canEditApprovalAmount,
-  encodeCustomApprovalData,
   formatApprovalTokenAmount,
   getApprovalAmountDisplay,
   getApprovalAddressValues,
+  getEffectiveApprovalData,
 } from './approval';
 import {
   ApprovalDetails,
@@ -208,6 +207,7 @@ export const SendTransaction = () => {
   const [feeQuoteRevision, setFeeQuoteRevision] = useState(0);
   const [feeQuoteNeedsRefresh, setFeeQuoteNeedsRefresh] = useState(false);
   const feeQuoteKeyRef = React.useRef('');
+  const quotedApprovalDataRef = React.useRef<string>();
 
   // Approval-specific state
   const [approvedTokenInfos, setApprovedTokenInfos] =
@@ -233,6 +233,25 @@ export const SendTransaction = () => {
     useState<boolean>(false);
   const [isCheckingContract, setIsCheckingContract] = useState<boolean>(false);
   const [hasCheckedContract, setHasCheckedContract] = useState<boolean>(false);
+
+  const editingDisabled = loading || closing || confirmed || submissionUnknown;
+  const editingDisabledRef = React.useRef(editingDisabled);
+  editingDisabledRef.current = editingDisabled;
+  // A previously rendered editor can still finish validation after Confirm.
+  // Check the live action as well as disabling controls in the next render.
+  const canEditTransaction = () =>
+    mountedRef.current &&
+    approvalActionRef.current === 'ready' &&
+    !editingDisabledRef.current;
+  const updateCustomFee: typeof setCustomFee = (value) => {
+    if (canEditTransaction()) setCustomFee(value);
+  };
+  const updateCustomNonce: typeof setCustomNonce = (value) => {
+    if (canEditTransaction()) setCustomNonce(value);
+  };
+  const updateFeeEditorOpen: typeof setIsOpen = (value) => {
+    if (canEditTransaction()) setIsOpen(value);
+  };
 
   const formattedValueAndCurrency = useMemo(() => {
     if (!tx?.value) return `0 ${activeNetwork.currency?.toUpperCase()}`;
@@ -298,7 +317,7 @@ export const SendTransaction = () => {
   }, [customFee, fee, isLegacyTransaction]);
 
   const handleUseDappFeeRequest = () => {
-    if (!fee) return;
+    if (!canEditTransaction() || !fee) return;
 
     if (isLegacyTransaction) {
       setCustomFee({
@@ -331,7 +350,7 @@ export const SendTransaction = () => {
   };
 
   const handleUseNetworkFeeSuggestion = () => {
-    if (!fee) return;
+    if (!canEditTransaction() || !fee) return;
     setCustomFee({
       isCustom: true,
       gasLimit: feeSafetyAdjustment.gasLimit?.recommended ?? fee.gasLimit,
@@ -390,14 +409,41 @@ export const SendTransaction = () => {
     [toRaw, resolvedTo]
   );
 
+  const effectiveApprovalData = useMemo(
+    () =>
+      getEffectiveApprovalData({
+        approvalType,
+        customAmount: customApprovedAllowanceAmount.customAllowanceValue,
+        data: validatedDataTxWithoutType.data,
+        decimals: approvedTokenInfos?.tokenDecimals,
+        decodedTx: decodedTxData,
+        isCustom: isApproval && customApprovedAllowanceAmount.isCustom,
+      }),
+    [
+      approvalType,
+      customApprovedAllowanceAmount.customAllowanceValue,
+      customApprovedAllowanceAmount.isCustom,
+      validatedDataTxWithoutType.data,
+      approvedTokenInfos?.tokenDecimals,
+      decodedTxData,
+      isApproval,
+    ]
+  );
+  const hasInvalidCustomAllowance = !effectiveApprovalData;
+  const hasCurrentApprovalDataQuote =
+    !isApproval ||
+    (Boolean(effectiveApprovalData) &&
+      quotedApprovalDataRef.current === effectiveApprovalData?.data);
+
   // Clone tx for estimation with resolved address
   const txForEstimation = useMemo(
     () =>
       ({
         ...validatedDataTxWithoutType,
+        data: effectiveApprovalData?.data,
         to: toAddressForProvider || undefined,
       } as ITransactionParams),
-    [validatedDataTxWithoutType, toAddressForProvider]
+    [validatedDataTxWithoutType, toAddressForProvider, effectiveApprovalData]
   );
   const isSmartAccountApproval = Boolean(activeAccount.isSmartAccount);
   const smartAccountFeeOverrides = useMemo<
@@ -607,6 +653,7 @@ export const SendTransaction = () => {
   }, []);
 
   const submitTransaction = async (generation: number) => {
+    if (!hasCurrentApprovalDataQuote) return;
     if (!hasCurrentSmartAccountFeeQuote) {
       alert.error(t('send.smartAccountFeeQuoteChanged'));
       return;
@@ -628,7 +675,7 @@ export const SendTransaction = () => {
     ) {
       throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
     }
-    if (hasInvalidApprovalDetails) {
+    if (hasInvalidApprovalDetails || hasInvalidCustomAllowance) {
       alert.error(t('send.invalidApprovalDetails'));
       return;
     }
@@ -677,58 +724,12 @@ export const SendTransaction = () => {
       activeAccount?.isSmartAccount && requestedValue.isZero();
 
     if (activeAccount && (balance > 0 || canUsePasskeyGasPayer)) {
-      let txToSend = tx;
-
-      // Handle approval-specific data encoding
-      if (isApproval && customApprovedAllowanceAmount.isCustom) {
-        if (!canEditCurrentApproval) {
-          alert.error(t('send.invalidApprovalDetails'));
-          setLoading(false);
-          return;
-        }
-
-        // Ensure we have token info
-        if (
-          !approvedTokenInfos ||
-          approvedTokenInfos.tokenDecimals === undefined
-        ) {
-          alert.error(
-            'Token information not loaded. Please wait and try again.'
-          );
-          setLoading(false);
-          return;
-        }
-
-        const abi = await getErc20Abi();
-
-        try {
-          const customValue = String(
-            customApprovedAllowanceAmount.customAllowanceValue
-          );
-          const encodedDataWithCustomValue = encodeCustomApprovalData({
-            abi,
-            approvalType,
-            decimals: approvedTokenInfos.tokenDecimals,
-            humanAmount: customValue,
-            method: decodedTxData?.method,
-            spender: String(decodedTxData?.inputs?.[0] || ''),
-          });
-
-          if (!encodedDataWithCustomValue) {
-            alert.error(t('send.invalidApprovalDetails'));
-            setLoading(false);
-            return;
-          }
-
-          txToSend = { ...tx, data: encodedDataWithCustomValue };
-        } catch (parseError) {
-          console.error('Error parsing amount:', parseError);
-          alert.error('Invalid amount format. Please enter a valid number.');
-          setLoading(false);
-          return;
-        }
-      }
-      // For NFT approvals, the transaction data remains unchanged
+      // Use the same bytes already shown in Data/Hex and used for the fee
+      // quote. NFT approvals and unedited transactions retain their input.
+      const txToSend =
+        isApproval && customApprovedAllowanceAmount.isCustom
+          ? { ...tx, data: effectiveApprovalData.data }
+          : tx;
 
       let submissionRequested = false;
       try {
@@ -1087,6 +1088,8 @@ export const SendTransaction = () => {
     invalidatePendingClose();
     const generation = closeGenerationRef.current;
     approvalActionRef.current = 'submitting';
+    setIsOpen(false);
+    setOpenEditAllowanceModal(false);
     try {
       return await submitTransaction(generation);
     } catch (error: any) {
@@ -1143,6 +1146,10 @@ export const SendTransaction = () => {
 
     const getGasAndFunction = async () => {
       try {
+        if (hasInvalidCustomAllowance) {
+          if (isMounted) setInitialLoading(false);
+          return;
+        }
         if (isSmartAccountApproval) setInitialLoading(true);
         // If ENS input and not resolved yet, don't call provider
         if (!toAddressForProvider && toRaw.toLowerCase().endsWith('.eth')) {
@@ -1157,31 +1164,6 @@ export const SendTransaction = () => {
             },
           ]
         );
-        let quoteTransaction = txForEstimation;
-        if (
-          isSmartAccountApproval &&
-          isApproval &&
-          customApprovedAllowanceAmount.isCustom
-        ) {
-          if (
-            !canEditCurrentApproval ||
-            approvedTokenInfos?.tokenDecimals === undefined
-          )
-            throw new Error('Invalid approval details for fee quote');
-          const encodedData = encodeCustomApprovalData({
-            abi: await getErc20Abi(),
-            approvalType,
-            decimals: approvedTokenInfos.tokenDecimals,
-            humanAmount: String(
-              customApprovedAllowanceAmount.customAllowanceValue
-            ),
-            method: decodedTxData?.method,
-            spender: String(decodedTxData?.inputs?.[0] || ''),
-          });
-          if (!encodedData)
-            throw new Error('Invalid approval details for fee quote');
-          quoteTransaction = { ...txForEstimation, data: encodedData };
-        }
         if (
           isSmartAccountApproval &&
           customFee.isCustom &&
@@ -1197,7 +1179,7 @@ export const SendTransaction = () => {
           gasLimitError,
           recommendationOnly,
         } = await fetchGasAndDecodeFunction(
-          quoteTransaction,
+          txForEstimation,
           activeNetwork,
           approvedContext,
           smartAccountFeeOverrides
@@ -1208,6 +1190,7 @@ export const SendTransaction = () => {
           setHasGasError(gasLimitError);
           setHasTxDataError(isInvalidTxData);
           setFee(feeDetails);
+          quotedApprovalDataRef.current = txForEstimation.data;
           feeQuoteKeyRef.current = smartAccountQuoteKey;
           setFeeQuoteNeedsRefresh(false);
           setFeeSafetyAdjustment(feeSafety || {});
@@ -1262,6 +1245,7 @@ export const SendTransaction = () => {
     };
   }, [
     txForEstimation,
+    hasInvalidCustomAllowance,
     toAddressForProvider,
     toRaw,
     activeNetwork.chainId,
@@ -1505,9 +1489,9 @@ export const SendTransaction = () => {
     <>
       <EditPriorityModal
         showModal={isOpen}
-        setIsOpen={setIsOpen}
+        setIsOpen={updateFeeEditorOpen}
         customFee={customFee}
-        setCustomFee={setCustomFee}
+        setCustomFee={updateCustomFee}
         setHaveError={() => {
           // No-op function since haveError is not used
         }}
@@ -1628,7 +1612,17 @@ export const SendTransaction = () => {
                           <button
                             type="button"
                             className="text-blue-300 text-sm"
-                            onClick={() => setOpenEditAllowanceModal(true)}
+                            disabled={loading || closing || confirmed}
+                            onClick={() => {
+                              if (
+                                loading ||
+                                closing ||
+                                confirmed ||
+                                approvalActionRef.current !== 'ready'
+                              )
+                                return;
+                              setOpenEditAllowanceModal(true);
+                            }}
                           >
                             {t('send.editPermission')}
                           </button>
@@ -1716,6 +1710,7 @@ export const SendTransaction = () => {
                     <button
                       type="button"
                       className="mt-2 text-xs text-brand-royalblue hover:opacity-80"
+                      disabled={editingDisabled}
                       onClick={handleUseDappFeeRequest}
                     >
                       {t('send.useDappFeeRequest')}
@@ -1724,6 +1719,7 @@ export const SendTransaction = () => {
                       <button
                         type="button"
                         className="mt-2 ml-3 text-xs text-brand-royalblue hover:opacity-80"
+                        disabled={editingDisabled}
                         onClick={handleUseNetworkFeeSuggestion}
                       >
                         {t('send.useNetworkFeeSuggestion')}
@@ -1784,22 +1780,26 @@ export const SendTransaction = () => {
                     <TransactionDetailsComponent
                       tx={tx}
                       decodedTx={decodedTxData}
-                      setCustomNonce={setCustomNonce}
-                      setCustomFee={setCustomFee}
+                      editingDisabled={editingDisabled}
+                      setCustomNonce={updateCustomNonce}
+                      setCustomFee={updateCustomFee}
                       setHaveError={() => {
                         // No-op function since haveError is not used
                       }}
                       setFee={setFee}
                       fee={fee}
-                      setIsOpen={setIsOpen}
+                      setIsOpen={updateFeeEditorOpen}
                       customFee={customFee}
                     />
-                  ) : component.component === 'data' ? (
-                    <TransactionDataComponent decodedTx={decodedTxData} />
-                  ) : component.component === 'hex' ? (
+                  ) : component.component === 'data' &&
+                    effectiveApprovalData ? (
+                    <TransactionDataComponent
+                      decodedTx={effectiveApprovalData?.decodedTx}
+                    />
+                  ) : component.component === 'hex' && effectiveApprovalData ? (
                     <TransactionHexComponent
                       methodName={decodedTxData.method}
-                      dataHex={validatedDataTxWithoutType.data}
+                      dataHex={effectiveApprovalData?.data}
                     />
                   ) : null}
                 </div>
@@ -1822,9 +1822,14 @@ export const SendTransaction = () => {
                 {t('send.contractEstimateError')}
               </p>
             )}
-            {hasInvalidApprovalDetails && (
+            {(hasInvalidApprovalDetails || hasInvalidCustomAllowance) && (
               <p className="text-center text-warning-error text-xs mb-2">
                 {t('send.invalidApprovalDetails')}
+              </p>
+            )}
+            {!hasInvalidCustomAllowance && !hasCurrentApprovalDataQuote && (
+              <p className="text-center text-xs mb-2">
+                {t('send.calculating')}
               </p>
             )}
             {feeQuoteNeedsRefresh && (
@@ -1861,8 +1866,10 @@ export const SendTransaction = () => {
                   confirmed ||
                   submissionUnknown ||
                   !hasCurrentSmartAccountFeeQuote ||
+                  !hasCurrentApprovalDataQuote ||
                   hasTxDataError ||
-                  hasInvalidApprovalDetails
+                  hasInvalidApprovalDetails ||
+                  hasInvalidCustomAllowance
                 }
                 onClick={handleConfirm}
               >
@@ -1873,15 +1880,27 @@ export const SendTransaction = () => {
         </div>
       ) : // Render a clear error state when ENS couldn't be resolved
       ensResolutionFailed ? (
-        <div className="flex items-center justify-center min-h-[400px] px-6 text-center">
-          <div className="bg-bkg-2 border border-bkg-4 rounded-2xl p-4 max-w-md w-full">
-            <p className="text-white text-sm mb-2">
-              {t('send.unableToResolveEns')}
-            </p>
-            <p className="text-brand-gray200 text-xs">
-              {t('send.verifyEnsOrUseAddress')}
-            </p>
+        <div className="flex w-full flex-col pb-24">
+          <div className="flex flex-1 items-center justify-center px-6 py-6 text-center">
+            <div className="bg-bkg-2 border border-bkg-4 rounded-2xl p-4 max-w-md w-full">
+              <p className="text-white text-sm mb-2">
+                {t('send.unableToResolveEns')}
+              </p>
+              <p className="text-brand-gray200 text-xs">
+                {t('send.verifyEnsOrUseAddress')}
+              </p>
+            </div>
           </div>
+          <ToastActionFooter className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 z-50">
+            <Button
+              variant="secondary"
+              type="button"
+              disabled={closing}
+              onClick={handleCancel}
+            >
+              {t('buttons.cancel')}
+            </Button>
+          </ToastActionFooter>
         </div>
       ) : null}
     </>

@@ -30,6 +30,15 @@ let mockQuery: any;
 let mockState: any;
 let mockLocation: any;
 let mockShowSmartFeeEditor = false;
+let mockAllowanceValue = '2';
+let mockAllowanceIsCustom = true;
+let mockAllowanceOpen = false;
+let mockFeeOpen = false;
+let mockEditHandlers: {
+  fee?: (value: any) => void;
+  nonce?: (value: number) => void;
+  open?: (value: boolean) => void;
+};
 
 jest.mock('state/store', () => ({
   __esModule: true,
@@ -107,30 +116,62 @@ jest.mock('components/Loading', () => ({
 }));
 jest.mock('./components', () => ({
   ApprovalDetails: () => null,
-  TransactionDetailsComponent: () => null,
-  TransactionDataComponent: () => null,
-  TransactionHexComponent: () => null,
+  TransactionDetailsComponent: ({
+    customFee,
+    editingDisabled,
+    setCustomNonce,
+    setIsOpen,
+  }: any) => {
+    mockEditHandlers.nonce = setCustomNonce;
+    mockEditHandlers.open = setIsOpen;
+    return (
+      <>
+        <pre data-testid="reviewed-custom-fee">{JSON.stringify(customFee)}</pre>
+        <input
+          aria-label="reviewed-nonce"
+          disabled={editingDisabled}
+          defaultValue="0"
+          onChange={(event) => setCustomNonce(Number(event.target.value))}
+        />
+        <button disabled={editingDisabled} onClick={() => setIsOpen(true)}>
+          open-synthetic-fee
+        </button>
+      </>
+    );
+  },
+  TransactionDataComponent: ({ decodedTx }: any) => (
+    <pre data-testid="transaction-data">{JSON.stringify(decodedTx)}</pre>
+  ),
+  TransactionHexComponent: ({ dataHex }: any) => (
+    <pre data-testid="transaction-hex">{dataHex}</pre>
+  ),
 }));
 jest.mock('./EditApprovedAllowanceValueModal', () => ({
   EditApprovedAllowanceValueModal: ({
     setCustomApprovedAllowanceAmount,
-  }: any) => (
-    <button
-      onClick={() =>
-        setCustomApprovedAllowanceAmount({
-          isCustom: true,
-          defaultAllowanceValue: '1',
-          customAllowanceValue: '2',
-        })
-      }
-    >
-      edit-synthetic-allowance
-    </button>
-  ),
+    showModal,
+  }: any) => {
+    mockAllowanceOpen = showModal;
+    return (
+      <button
+        onClick={() =>
+          setCustomApprovedAllowanceAmount({
+            isCustom: mockAllowanceIsCustom,
+            defaultAllowanceValue: '1',
+            customAllowanceValue: mockAllowanceValue,
+          })
+        }
+      >
+        edit-synthetic-allowance
+      </button>
+    );
+  },
 }));
 jest.mock('./EditPriority', () => ({
-  EditPriorityModal: ({ setCustomFee }: any) =>
-    mockShowSmartFeeEditor ? (
+  EditPriorityModal: ({ setCustomFee, showModal }: any) => {
+    mockEditHandlers.fee = setCustomFee;
+    mockFeeOpen = showModal;
+    return mockShowSmartFeeEditor ? (
       <button
         onClick={() =>
           setCustomFee({
@@ -144,7 +185,8 @@ jest.mock('./EditPriority', () => ({
       >
         edit-synthetic-fee
       </button>
-    ) : null,
+    ) : null;
+  },
 }));
 jest.mock('utils/validations', () => ({
   getErc20Abi: async () => ['function approve(address,uint256)'],
@@ -179,6 +221,11 @@ beforeEach(() => {
   mockStorage = {};
   mockButtonHandlers = {};
   mockShowSmartFeeEditor = false;
+  mockAllowanceValue = '2';
+  mockAllowanceIsCustom = true;
+  mockAllowanceOpen = false;
+  mockFeeOpen = false;
+  mockEditHandlers = {};
   mockState = {
     vault: {
       activeAccount: { type: 'HDAccount', id: 0 },
@@ -245,6 +292,157 @@ beforeEach(() => {
   mockHandleTransactionError.mockReturnValue(false);
 });
 afterEach(() => jest.restoreAllMocks());
+
+it('locks fee and nonce edits while an EOA confirmation waits for its balance refresh', async () => {
+  mockShowSmartFeeEditor = true;
+  const quote = mockFee.getMockImplementation()!;
+  mockFee.mockImplementation(async (...args) => ({
+    ...(await quote(...args)),
+    feeSafety: { maxFeePerGas: { requested: 1, recommended: 2 } },
+    recommendationOnly: true,
+  }));
+  const view = await prepare();
+  const staleEditors = { ...mockEditHandlers };
+  act(() => staleEditors.open!(true));
+  expect(mockFeeOpen).toBe(true);
+  let finishBalance!: (value: any) => void;
+  mockEmitter.mockImplementationOnce(
+    () => new Promise((resolve) => (finishBalance = resolve))
+  );
+  let pending!: Promise<any>;
+  act(() => {
+    pending = mockButtonHandlers['buttons.confirm']();
+    // These old DOM handlers run before the disabled render is committed.
+    fireEvent.click(
+      screen.getByRole('button', { name: 'send.useDappFeeRequest' })
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'send.useNetworkFeeSuggestion' })
+    );
+  });
+  act(() => {
+    staleEditors.nonce!(7);
+    staleEditors.fee!({
+      isCustom: true,
+      gasLimit: 30000,
+      gasPrice: 0,
+      maxFeePerGas: 7,
+      maxPriorityFeePerGas: 1,
+    });
+    staleEditors.open!(true);
+  });
+  expect(
+    JSON.parse(screen.getByTestId('reviewed-custom-fee').textContent!)
+  ).toMatchObject({ isCustom: false });
+  expect(mockFeeOpen).toBe(false);
+  expect(
+    (
+      screen.getByRole('button', {
+        name: 'send.useDappFeeRequest',
+      }) as HTMLButtonElement
+    ).disabled
+  ).toBe(true);
+  expect(
+    (screen.getByLabelText('reviewed-nonce') as HTMLInputElement).disabled
+  ).toBe(true);
+  expect(
+    (
+      screen.getByRole('button', {
+        name: 'open-synthetic-fee',
+      }) as HTMLButtonElement
+    ).disabled
+  ).toBe(true);
+  fireEvent.click(screen.getByText('send.data'));
+  expect(
+    screen.getByTestId('transaction-data').parentElement!.className
+  ).not.toContain('hidden');
+  fireEvent.click(screen.getByText('send.hex'));
+  expect(
+    screen.getByTestId('transaction-hex').parentElement!.className
+  ).not.toContain('hidden');
+
+  await act(async () => {
+    finishBalance({ nativeBalance: '1' });
+    await pending;
+  });
+  const submitted = mockEmitter.mock.calls.find(
+    ([path]) => path[1] === 'sendAndSaveEthTransaction'
+  )![1][0];
+  expect(submitted.nonce).toBe(0);
+  expect(BigNumber.from(submitted.maxFeePerGas).toString()).toBe('2000000000');
+  view.unmount();
+});
+
+it.each(['dismissed', 'completed', 'outcome-unknown'])(
+  'ignores stale fee and nonce editor callbacks after an approval is %s',
+  async (outcome) => {
+    mockShowSmartFeeEditor = true;
+    const view = await prepare();
+    const staleEditors = { ...mockEditHandlers };
+    if (outcome === 'dismissed') {
+      await act(async () => mockButtonHandlers['buttons.cancel']());
+    } else {
+      if (outcome === 'outcome-unknown') {
+        mockHandleTransactionError.mockReturnValueOnce(true);
+        mockEmitter
+          .mockResolvedValueOnce({ nativeBalance: '1' })
+          .mockRejectedValueOnce(Error('Network request timed out'));
+      }
+      await act(async () => mockButtonHandlers['buttons.confirm']());
+    }
+    act(() => {
+      staleEditors.nonce!(7);
+      staleEditors.fee!({
+        isCustom: true,
+        gasLimit: 30000,
+        gasPrice: 0,
+        maxFeePerGas: 7,
+        maxPriorityFeePerGas: 1,
+      });
+      staleEditors.open!(true);
+    });
+    expect(
+      JSON.parse(screen.getByTestId('reviewed-custom-fee').textContent!)
+    ).toMatchObject({ isCustom: false });
+    expect(mockFeeOpen).toBe(false);
+    expect(
+      (screen.getByLabelText('reviewed-nonce') as HTMLInputElement).disabled
+    ).toBe(true);
+    view.unmount();
+  }
+);
+
+it('unlocks fee and nonce edits for a retry after a known pre-submit failure', async () => {
+  mockShowSmartFeeEditor = true;
+  const view = await prepare();
+  const staleEditors = { ...mockEditHandlers };
+  mockEmitter.mockResolvedValueOnce({ nativeBalance: '0' });
+  await act(async () => mockButtonHandlers['buttons.confirm']());
+  expect(mockAlert.error).toHaveBeenCalledWith('send.enoughFunds');
+  expect(
+    (screen.getByLabelText('reviewed-nonce') as HTMLInputElement).disabled
+  ).toBe(false);
+  act(() => {
+    staleEditors.nonce!(7);
+    staleEditors.fee!({
+      isCustom: true,
+      gasLimit: 30000,
+      gasPrice: 0,
+      maxFeePerGas: 7,
+      maxPriorityFeePerGas: 1,
+    });
+  });
+  expect(
+    JSON.parse(screen.getByTestId('reviewed-custom-fee').textContent!)
+  ).toMatchObject({ isCustom: true, maxFeePerGas: 7 });
+  await act(async () => mockButtonHandlers['buttons.confirm']());
+  const submitted = mockEmitter.mock.calls.find(
+    ([path]) => path[1] === 'sendAndSaveEthTransaction'
+  )![1][0];
+  expect(submitted.nonce).toBe(7);
+  expect(BigNumber.from(submitted.maxFeePerGas).toString()).toBe('7000000000');
+  view.unmount();
+});
 
 it.each([false, true])(
   'preserves the app fee by default and uses the network suggestion only after a click (%s)',
@@ -379,7 +577,7 @@ it.each([undefined, false, true])(
   }
 );
 
-it('rejects a changed fee quote after preparation and before any authenticator signing', async () => {
+it('rejects a changed quote context after preparation and before any authenticator signing', async () => {
   mockShowSmartFeeEditor = true;
   mockState.vault.accounts.HDAccount[0].isSmartAccount = true;
   mockState.vault.accounts.HDAccount[0].smartAccount = {};
@@ -393,19 +591,26 @@ it('rejects a changed fee quote after preparation and before any authenticator s
     authenticator();
     return { hash: 'synthetic-sa-hash' };
   });
-  await prepare();
+  const view = await prepare();
   let pending!: Promise<any>;
   await act(async () => {
     pending = mockButtonHandlers['buttons.confirm']();
   });
   await waitFor(() => expect(finishPreparation).toBeDefined());
-  fireEvent.click(screen.getByRole('button', { name: 'edit-synthetic-fee' }));
+  // Editing is locked once Confirm starts. A network switch can still
+  // invalidate the approved quote independently of those controls.
+  mockState.vault.activeNetwork = {
+    ...mockState.vault.activeNetwork,
+    chainId: 2,
+  };
+  view.rerender(<SendTransaction />);
   await act(async () => {
     finishPreparation();
     await pending;
   });
   expect(authenticator).not.toHaveBeenCalled();
   expect(mockClose).not.toHaveBeenCalled();
+  view.unmount();
 });
 
 it('refreshes the AA quote for edited fee caps while retaining the original dapp fields', async () => {
@@ -443,45 +648,234 @@ it('refreshes the AA quote for edited fee caps while retaining the original dapp
   );
 });
 
-it('quotes the same edited approval calldata that the smart-account signer will execute', async () => {
-  mockState.vault.accounts.HDAccount[0].isSmartAccount = true;
-  mockState.vault.accounts.HDAccount[0].smartAccount = {};
-  const spender = `0x${'22'.repeat(20)}`;
+it.each([false, true])(
+  'reviews and quotes the same edited approval calldata that the signer will execute (smart: %s)',
+  async (smart) => {
+    mockState.vault.accounts.HDAccount[0].isSmartAccount = smart;
+    if (smart) mockState.vault.accounts.HDAccount[0].smartAccount = {};
+    const spender = `0x${'33'.repeat(20)}`;
+    const abi = new Interface(['function approve(address,uint256)']);
+    mockQuery.tx.data = abi.encodeFunctionData('approve', [
+      spender,
+      '1000000000000000000',
+    ]);
+    mockQuery.decodedTx = {
+      method: 'approve',
+      inputs: [spender, '1000000000000000000'],
+      names: ['spender', 'value'],
+      types: ['address', 'uint256'],
+    };
+    mockQuery.txMetadata = {
+      isApproval: true,
+      approvalType: 'erc20-amount',
+      tokenStandard: 'ERC-20',
+    };
+    const tokenInfo = {
+      name: 'Synthetic',
+      symbol: 'UNIT',
+      decimals: 18,
+      balance: '10',
+    };
+    let finishTokenInfo!: (value: typeof tokenInfo) => void;
+    const pendingTokenInfo = new Promise<typeof tokenInfo>((resolve) => {
+      finishTokenInfo = resolve;
+    });
+    let holdFollowUpQuote = false;
+    const pendingQuotes: (() => void)[] = [];
+    const quote = mockFee.getMockImplementation()!;
+    mockFee.mockImplementation(async (...args) => {
+      const result = await quote(...args);
+      if (holdFollowUpQuote) {
+        await new Promise<void>((resolve) => pendingQuotes.push(resolve));
+      }
+      return result;
+    });
+    const invoke = mockEmitter.getMockImplementation()!;
+    mockEmitter.mockImplementation(async (path, args) =>
+      path[1] === 'getERC20TokenInfo'
+        ? smart
+          ? pendingTokenInfo
+          : tokenInfo
+        : path[1] === 'isContractAddress'
+        ? true
+        : invoke(path, args)
+    );
+    await prepare();
+    if (smart) {
+      // Metadata seeds the proposed limit and invalidates the first AA quote.
+      // Hold its replacement so this test cannot accidentally use prepare's
+      // earlier, transient Confirm button as proof the review is ready.
+      holdFollowUpQuote = true;
+      await act(async () => finishTokenInfo(tokenInfo));
+      await waitFor(() => expect(pendingQuotes.length).toBeGreaterThan(0));
+      expect(screen.queryByTestId('transaction-hex')).toBeNull();
+    }
+    const initialReviewReady = waitFor(() => {
+      expect(screen.getByTestId('transaction-hex').textContent).toBe(
+        mockQuery.tx.data
+      );
+      expect(
+        JSON.parse(screen.getByTestId('transaction-data').textContent!).inputs
+      ).toEqual(mockQuery.decodedTx.inputs);
+      expect(
+        (
+          screen.getByRole('button', {
+            name: 'buttons.confirm',
+          }) as HTMLButtonElement
+        ).disabled
+      ).toBe(false);
+    });
+    if (smart) {
+      await act(async () => {
+        holdFollowUpQuote = false;
+        pendingQuotes.splice(0).forEach((finish) => finish());
+      });
+    }
+    await initialReviewReady;
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'edit-synthetic-allowance' })
+    );
+    const expectedData = abi.encodeFunctionData('approve', [
+      spender,
+      '2000000000000000000',
+    ]);
+    await waitFor(() => {
+      expect(mockFee.mock.calls.at(-1)![0].data).toBe(expectedData);
+      expect(screen.getByTestId('transaction-hex').textContent).toBe(
+        expectedData
+      );
+      expect(
+        JSON.parse(screen.getByTestId('transaction-data').textContent!).inputs
+      ).toEqual([spender, '2000000000000000000']);
+      expect(
+        (
+          screen.getByRole('button', {
+            name: 'buttons.confirm',
+          }) as HTMLButtonElement
+        ).disabled
+      ).toBe(false);
+    });
+    await act(async () => mockButtonHandlers['buttons.confirm']());
+    if (smart)
+      expect(mockSmartSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          executions: [
+            expect.objectContaining({
+              target: mockQuery.tx.to,
+              data: expectedData,
+            }),
+          ],
+        })
+      );
+    else
+      expect(mockEmitter).toHaveBeenCalledWith(
+        ['wallet', 'sendAndSaveEthTransaction'],
+        [
+          expect.objectContaining({
+            from: mockQuery.tx.from,
+            to: mockQuery.tx.to,
+            data: expectedData,
+          }),
+          false,
+          undefined,
+          undefined,
+          { expectedContext: approvedContextForTest() },
+        ],
+        10000
+      );
+  }
+);
+
+function approvedContextForTest() {
+  return {
+    account: { type: 'HDAccount', id: 0, address: mockQuery.tx.from },
+    chainId: 1,
+    rpcUrl: 'https://rpc.example',
+    slip44: 60,
+  };
+}
+
+it('binds EOA quotes to custom and restored proposed approvals and ignores superseded quotes', async () => {
+  const spender = `0x${'33'.repeat(20)}`;
   const abi = new Interface(['function approve(address,uint256)']);
-  mockQuery.tx.data = abi.encodeFunctionData('approve', [
-    spender,
-    '1000000000000000000',
-  ]);
+  mockQuery.tx.data = abi.encodeFunctionData('approve', [spender, '1000000']);
   mockQuery.decodedTx = {
     method: 'approve',
-    inputs: [spender, '1000000000000000000'],
-    names: ['spender', 'value'],
+    inputs: [spender, '1000000'],
+    names: ['spender', 'amount'],
     types: ['address', 'uint256'],
   };
-  mockQuery.txMetadata = {
-    isApproval: true,
-    approvalType: 'erc20-amount',
-    tokenStandard: 'ERC-20',
-  };
+  mockQuery.txMetadata = { isApproval: true, approvalType: 'erc20-amount' };
   const invoke = mockEmitter.getMockImplementation()!;
   mockEmitter.mockImplementation(async (path, args) =>
     path[1] === 'getERC20TokenInfo'
-      ? { name: 'Synthetic', symbol: 'UNIT', decimals: 18, balance: '10' }
+      ? { name: 'Synthetic', symbol: 'UNIT', decimals: 6, balance: '10' }
       : path[1] === 'isContractAddress'
       ? true
       : invoke(path, args)
   );
   await prepare();
+  const pending: { data: string; resolve: (result: any) => void }[] = [];
+  mockFee.mockImplementation(
+    (transaction) =>
+      new Promise((resolve) =>
+        pending.push({ data: transaction.data, resolve })
+      )
+  );
   fireEvent.click(
-    await screen.findByRole('button', { name: 'edit-synthetic-allowance' })
+    screen.getByRole('button', { name: 'edit-synthetic-allowance' })
   );
-  const expectedData = abi.encodeFunctionData('approve', [
-    spender,
-    '2000000000000000000',
-  ]);
-  await waitFor(() =>
-    expect(mockFee.mock.calls.at(-1)![0].data).toBe(expectedData)
+  await waitFor(() => expect(pending).toHaveLength(1));
+  expect(
+    (
+      screen.getByRole('button', {
+        name: 'buttons.confirm',
+      }) as HTMLButtonElement
+    ).disabled
+  ).toBe(true);
+  expect(
+    (
+      screen.getByRole('button', {
+        name: 'buttons.cancel',
+      }) as HTMLButtonElement
+    ).disabled
+  ).toBe(false);
+  await act(async () => mockButtonHandlers['buttons.confirm']());
+  expect(
+    mockEmitter.mock.calls.some(
+      ([path]) => path[1] === 'sendAndSaveEthTransaction'
+    )
+  ).toBe(false);
+
+  mockAllowanceValue = '3';
+  fireEvent.click(
+    screen.getByRole('button', { name: 'edit-synthetic-allowance' })
   );
+  await waitFor(() => expect(pending).toHaveLength(2));
+  const result = (data: string) => ({
+    feeDetails: { gasLimit: 21000, maxFeePerGas: 2, maxPriorityFeePerGas: 1 },
+    formTx: { ...mockQuery.tx, data, gasLimit: BigNumber.from(21000) },
+    nonce: 0,
+    isInvalidTxData: false,
+    gasLimitError: false,
+  });
+  await act(async () => pending[0].resolve(result(pending[0].data)));
+  expect(
+    (
+      screen.getByRole('button', {
+        name: 'buttons.confirm',
+      }) as HTMLButtonElement
+    ).disabled
+  ).toBe(true);
+  await act(async () => mockButtonHandlers['buttons.confirm']());
+  expect(
+    mockEmitter.mock.calls.some(
+      ([path]) => path[1] === 'sendAndSaveEthTransaction'
+    )
+  ).toBe(false);
+  const expectedData = abi.encodeFunctionData('approve', [spender, '3000000']);
+  expect(screen.getByTestId('transaction-hex').textContent).toBe(expectedData);
+  await act(async () => pending[1].resolve(result(pending[1].data)));
   await waitFor(() =>
     expect(
       (
@@ -491,13 +885,142 @@ it('quotes the same edited approval calldata that the smart-account signer will 
       ).disabled
     ).toBe(false)
   );
-  await act(async () => mockButtonHandlers['buttons.confirm']());
-  expect(mockSmartSubmit).toHaveBeenCalledWith(
-    expect.objectContaining({
-      executions: [expect.objectContaining({ data: expectedData })],
-    })
+  mockAllowanceIsCustom = false;
+  fireEvent.click(
+    screen.getByRole('button', { name: 'edit-synthetic-allowance' })
   );
+  await waitFor(() => expect(pending).toHaveLength(3));
+  expect(screen.getByTestId('transaction-hex').textContent).toBe(
+    mockQuery.tx.data
+  );
+  expect(
+    (
+      screen.getByRole('button', {
+        name: 'buttons.confirm',
+      }) as HTMLButtonElement
+    ).disabled
+  ).toBe(true);
+  await act(async () => mockButtonHandlers['buttons.confirm']());
+  expect(
+    mockEmitter.mock.calls.some(
+      ([path]) => path[1] === 'sendAndSaveEthTransaction'
+    )
+  ).toBe(false);
+  await act(async () => pending[2].resolve(result(pending[2].data)));
+  await waitFor(() =>
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'buttons.confirm',
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(false)
+  );
+  let resolveBalance!: (result: any) => void;
+  mockEmitter.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        resolveBalance = resolve;
+      })
+  );
+  let submitting!: Promise<unknown>;
+  act(() => {
+    submitting = mockButtonHandlers['buttons.confirm']();
+  });
+  const edit = screen.getByRole('button', { name: 'send.editPermission' });
+  expect((edit as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(edit);
+  expect(mockAllowanceOpen).toBe(false);
+  await act(async () => {
+    resolveBalance({ nativeBalance: '1' });
+    await submitting;
+  });
+  expect(
+    mockEmitter.mock.calls.find(
+      ([path]) => path[1] === 'sendAndSaveEthTransaction'
+    )?.[1][0].data
+  ).toBe(mockQuery.tx.data);
 });
+
+it('keeps malformed edited allowances out of review, estimation and submission', async () => {
+  const spender = `0x${'22'.repeat(20)}`;
+  mockQuery.tx.data = new Interface([
+    'function approve(address,uint256)',
+  ]).encodeFunctionData('approve', [spender, '1000000']);
+  mockQuery.decodedTx = {
+    method: 'approve',
+    inputs: [spender, '1000000'],
+    names: ['spender', 'amount'],
+    types: ['address', 'uint256'],
+  };
+  mockQuery.txMetadata = { isApproval: true, approvalType: 'erc20-amount' };
+  const invoke = mockEmitter.getMockImplementation()!;
+  mockEmitter.mockImplementation(async (path, args) =>
+    path[1] === 'getERC20TokenInfo'
+      ? { name: 'Synthetic', symbol: 'UNIT', decimals: 6, balance: '10' }
+      : path[1] === 'isContractAddress'
+      ? true
+      : invoke(path, args)
+  );
+  await prepare();
+  const quotes = mockFee.mock.calls.length;
+  mockAllowanceValue = '-1';
+  fireEvent.click(
+    screen.getByRole('button', { name: 'edit-synthetic-allowance' })
+  );
+  await waitFor(() =>
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'buttons.confirm',
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(true)
+  );
+  expect(screen.queryByTestId('transaction-data')).toBeNull();
+  expect(screen.queryByTestId('transaction-hex')).toBeNull();
+  expect(mockFee).toHaveBeenCalledTimes(quotes);
+  await act(async () => mockButtonHandlers['buttons.confirm']());
+  expect(
+    mockEmitter.mock.calls.some(
+      ([path]) => path[1] === 'sendAndSaveEthTransaction'
+    )
+  ).toBe(false);
+  expect(mockSmartSubmit).not.toHaveBeenCalled();
+});
+
+it.each([false, true])(
+  'retains cancellation after failed ENS resolution (external: %s)',
+  async (external) => {
+    mockQuery.external = external;
+    mockQuery.tx.to = 'unregistered-name.eth';
+    mockEmitter.mockImplementation(async ([, method]) => {
+      if (method === 'resolveEns') return null;
+      if (method === 'refreshActiveAccountBalances')
+        return { nativeBalance: '1' };
+      throw Error(`Unexpected method: ${method}`);
+    });
+    await saveNavigationState('/send/eth', undefined, {
+      formValues: { receiver: mockQuery.tx.to },
+    });
+    render(<SendTransaction />);
+    await screen.findByText('send.unableToResolveEns');
+    expect(
+      screen.queryByRole('button', { name: 'buttons.confirm' })
+    ).toBeNull();
+    await act(async () =>
+      fireEvent.click(screen.getByRole('button', { name: 'buttons.cancel' }))
+    );
+    await waitFor(() =>
+      external
+        ? expect(mockClose).toHaveBeenCalledTimes(1)
+        : expect(mockNavigate).toHaveBeenCalledWith('/home')
+    );
+    expect(mockStorage[KEY]).toBeUndefined();
+    expect(mockFee).not.toHaveBeenCalled();
+    expect(mockSmartSubmit).not.toHaveBeenCalled();
+  }
+);
 
 it.each([
   { legacy: true, typed: true },

@@ -36,6 +36,7 @@ CopyIcon.displayName = 'CopyIcon';
 interface ITransactionDetailsProps {
   customFee: ICustomFeeParams;
   decodedTx: IDecodedTx;
+  editingDisabled?: boolean;
   fee: IFeeState;
   setCustomFee: React.Dispatch<React.SetStateAction<ICustomFeeParams>>;
   setCustomNonce: React.Dispatch<React.SetStateAction<number>>;
@@ -48,7 +49,14 @@ interface ITransactionDetailsProps {
 export const TransactionDetailsComponent = (
   props: ITransactionDetailsProps
 ) => {
-  const { tx, setCustomNonce, fee, customFee, setIsOpen } = props;
+  const {
+    tx,
+    setCustomNonce,
+    fee,
+    customFee,
+    setIsOpen,
+    editingDisabled = false,
+  } = props;
   const { alert, useCopyClipboard } = useUtils();
   const { controllerEmitter } = useController();
   const [, copy] = useCopyClipboard();
@@ -242,16 +250,21 @@ export const TransactionDetailsComponent = (
         {t(feeLabelKey)}
         <div className="flex text-white text-xs">
           {formattedFinalFee} {activeNetwork.currency?.toUpperCase()}
-          <div
+          <button
+            type="button"
+            aria-label={t('send.editFee')}
             className="hover:text-fields-input-borderfocus"
-            onClick={() => setIsOpen(true)}
+            disabled={editingDisabled}
+            onClick={() => {
+              if (!editingDisabled) setIsOpen(true);
+            }}
           >
             <Icon
               name="EditTx"
               isSvg
               className="px-2 text-brand-white hover:text-fields-input-borderfocus"
             />{' '}
-          </div>
+          </button>
         </div>
       </div>
 
@@ -261,12 +274,14 @@ export const TransactionDetailsComponent = (
           <Input
             type="number"
             inputMode="numeric"
+            disabled={editingDisabled}
             min={0}
             step={1}
             className="input-medium outline-0 w-16 bg-bkg-2 rounded-sm focus:outline-none focus-visible:outline-none"
             placeholder={String(tx.nonce)}
             defaultValue={tx.nonce}
             onChange={(e) => {
+              if (editingDisabled) return;
               const value = e.target.value;
               const parsed = Number(value);
               if (!Number.isFinite(parsed)) return;
