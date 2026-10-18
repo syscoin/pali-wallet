@@ -584,7 +584,7 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
         !tokenError && Array.isArray(token20Data?.result)
           ? token20Data.result
           : [];
-      if ((baseError && !tokenRows.length) || (tokenError && !baseRows.length))
+      if (baseError || tokenError)
         return { transactions: null, error: baseError || tokenError };
       const baseTxs = baseRows.map((tx: any) => mapApiTx(tx, chainId));
 
