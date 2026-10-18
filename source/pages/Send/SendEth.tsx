@@ -544,9 +544,8 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                   // Also set it in the form
                   form.setFieldValue('nftTokenId', result[0].tokenId);
                 }
-              } catch (error) {
+              } catch {
                 if (!current()) return;
-                console.error('Error loading NFT token IDs:', error);
                 setNftTokenIds([]);
                 alert.error(t('send.errorLoadingNfts'));
               } finally {
@@ -939,9 +938,8 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
           setVerifiedTokenBalance(0);
           setVerificationError(t('send.tokenNotFound'));
         }
-      } catch (error) {
+      } catch {
         if (!current()) return;
-        console.error('Error verifying token ID:', error);
         setVerifiedTokenBalance(0);
         setVerificationError(t('send.verificationFailed'));
       } finally {

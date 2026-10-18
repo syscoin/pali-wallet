@@ -6873,8 +6873,6 @@ class MainController {
       accountTransactions,
     } = store.getState().vault;
 
-    const { isSwitchingAccount } = store.getState().vaultGlobal;
-
     const activeAccountValues =
       accounts[activeAccount.type]?.[activeAccount.id];
     if (!activeAccountValues) {
@@ -7054,19 +7052,9 @@ class MainController {
 
     const hasChanges = initialStateSnapshot !== finalStateSnapshot;
 
-    // Reduce logging during account switching to avoid noise
-    if (!isSwitchingAccount) {
-      console.log(
-        `[MainController] Update detection: ${
-          hasChanges ? 'CHANGES FOUND' : 'No changes'
-        }`
-      );
-    }
-
     // Clear caches if changes were detected (balance/transaction activity)
     // This ensures fresh data on next call after activity occurs
     if (hasChanges && !isPolling) {
-      console.log('[MainController] Clearing caches due to detected changes');
       if (this.transactionsManager) {
         this.transactionsManager.utils.clearCache();
         clearRpcCaches();
