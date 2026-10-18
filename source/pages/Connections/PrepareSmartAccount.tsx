@@ -1,4 +1,10 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
@@ -11,6 +17,7 @@ import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import {
   IKeyringAccountState,
+  ISmartAccountMetadata,
   KeyringAccountType,
   SmartAccountValidatorModule,
 } from 'types/network';
@@ -69,6 +76,17 @@ type PreparedAuthenticator = {
   passkeyProfile?: IPasskeyCredentialProfile;
 };
 
+type PreparationProgress = {
+  account?: IKeyringAccountState;
+  busy?: boolean;
+  completed?: boolean;
+  outerConfirmed?: boolean;
+  registered?: boolean;
+  requested?: PreparedAuthenticator;
+  scope: string;
+  submitting?: boolean;
+};
+
 const displayNameForAuthenticator = (
   id: string | undefined,
   t: (key: string) => string
@@ -108,6 +126,53 @@ const sameAddress = (left?: string, right?: string) => {
   } catch {
     return false;
   }
+};
+
+const hasRequestedValidator = (
+  metadata: ISmartAccountMetadata,
+  requested: PreparedAuthenticator,
+  bootstrap: IKeyringAccountState['smartAccount'],
+  chainId: number
+) => {
+  const installed = metadata?.installedModules?.find(
+    (module) =>
+      module.type === 'validator' &&
+      module.id === requested.module.id &&
+      sameAddress(module.address, requested.auth.validator)
+  );
+  const bootstrapValidator = bootstrap?.installedModules?.find(
+    (module) => module.type === 'validator' && module.id === 'ecdsa'
+  );
+  if (
+    !metadata?.isDeployed ||
+    metadata.chainId !== chainId ||
+    (metadata.auth?.module || metadata.auth?.scheme) !== requested.module.id ||
+    !sameAddress(metadata.auth?.validator, requested.auth.validator) ||
+    !installed?.data ||
+    metadata.auth?.data?.toLowerCase() !== installed.data.toLowerCase() ||
+    (bootstrapValidator &&
+      !sameAddress(bootstrapValidator.address, requested.auth.validator) &&
+      metadata.installedModules?.some(
+        (module) =>
+          module.type === 'validator' &&
+          sameAddress(module.address, bootstrapValidator.address)
+      ))
+  )
+    return false;
+  if (installed.id === 'ecdsa' && requested.module.id === 'ecdsa') {
+    const owners = (values: string[]) =>
+      values
+        .map((owner) => getAddress(owner).toLowerCase())
+        .sort()
+        .join(',');
+    return (
+      installed.config.threshold === requested.module.config.threshold &&
+      owners(installed.config.owners) === owners(requested.module.config.owners)
+    );
+  }
+  return (
+    metadata.auth?.data?.toLowerCase() === requested.auth.data.toLowerCase()
+  );
 };
 
 const isNativeGasRequiredError = (error: unknown) =>
@@ -299,6 +364,7 @@ export const PrepareSmartAccount = () => {
   const { t } = useTranslation();
   const { controllerEmitter, handleWalletLockedError } = useController();
   const queryData = useQueryData() as {
+    approvalId?: string;
     eventName?: string;
     host?: string;
     request?: PrepareSmartAccountRequest;
@@ -318,6 +384,29 @@ export const PrepareSmartAccount = () => {
   const host = queryData.host || '';
   const eventName = queryData.eventName || 'wallet_prepareSmartAccount';
   const request = queryData.request || {};
+  const scope = JSON.stringify([
+    host,
+    eventName,
+    queryData.approvalId,
+    request,
+    activeNetwork.kind,
+    activeNetwork.chainId,
+    activeNetwork.url,
+    activeNetwork.apiUrl,
+    accounts.HDAccount?.[0]?.xpub || accounts.HDAccount?.[0]?.address,
+  ]);
+  const progressRef = useRef<PreparationProgress>();
+  if (progressRef.current?.scope !== scope) progressRef.current = { scope };
+  useEffect(() => {
+    const progress = (progressRef.current ||= { scope });
+    setLoading(false);
+    setCreationStep('idle');
+    setError(null);
+    setExternalEcdsaAcknowledged(false);
+    return () => {
+      if (progressRef.current === progress) progressRef.current = undefined;
+    };
+  }, [scope]);
   const label = request.label || `${host || 'Pali'} Smart Account`;
   const requestedAuthenticator = useMemo(
     () => getRequestedAuthenticator(request),
@@ -374,10 +463,12 @@ export const PrepareSmartAccount = () => {
     async ({
       account,
       bootstrapMetadata,
+      onBeforeSubmit,
       requested,
     }: {
       account: IKeyringAccountState;
       bootstrapMetadata: any;
+      onBeforeSubmit: () => Promise<void>;
       requested: PreparedAuthenticator;
     }) => {
       const bootstrapValidator = bootstrapMetadata.installedModules?.find(
@@ -445,6 +536,7 @@ export const PrepareSmartAccount = () => {
           },
         },
         controllerEmitter,
+        onBeforeSubmit,
         executions: replacesSameValidatorModule
           ? [rotateExecution]
           : [installExecution, uninstallBootstrapExecution],
@@ -457,6 +549,17 @@ export const PrepareSmartAccount = () => {
   );
 
   const approve = useCallback(async () => {
+    const progress = progressRef.current;
+    if (
+      !progress ||
+      progress.scope !== scope ||
+      progress.busy ||
+      progress.completed ||
+      progress.submitting
+    )
+      return;
+    const isCurrent = () => progressRef.current === progress;
+    progress.busy = true;
     setLoading(true);
     setError(null);
 
@@ -480,32 +583,43 @@ export const PrepareSmartAccount = () => {
         throw new Error(t('connections.smartAccountPrepareFailed'));
       }
 
-      let requested =
-        requestedAuthenticator.id === 'p256-webauthn'
-          ? await normalizeP256Authenticator({
-              chainId: activeNetwork.chainId,
-              label,
-              persistenceError: t('connections.smartAccountPasskeySaveFailed'),
-            })
-          : requestedAuthenticator.id === 'ecdsa'
-          ? normalizeEcdsaAuthenticator({
-              chainId: activeNetwork.chainId,
-              requested: requestedAuthenticator,
-            })
-          : undefined;
+      let { account, requested } = progress;
+      // A successful allocation is durable. A later read/gas failure must not
+      // move the user's retry (or newly supplied gas) to another address.
+      if (!account) {
+        requested =
+          requestedAuthenticator.id === 'p256-webauthn'
+            ? await normalizeP256Authenticator({
+                chainId: activeNetwork.chainId,
+                label,
+                persistenceError: t(
+                  'connections.smartAccountPasskeySaveFailed'
+                ),
+              })
+            : requestedAuthenticator.id === 'ecdsa'
+            ? normalizeEcdsaAuthenticator({
+                chainId: activeNetwork.chainId,
+                requested: requestedAuthenticator,
+              })
+            : undefined;
 
-      if (hasExternalEcdsaOwners && !externalEcdsaAcknowledged) {
-        throw new Error(
-          t('connections.prepareSmartAccountExternalEcdsaRequired')
-        );
+        if (hasExternalEcdsaOwners && !externalEcdsaAcknowledged) {
+          throw new Error(
+            t('connections.prepareSmartAccountExternalEcdsaRequired')
+          );
+        }
+
+        if (!isCurrent()) return;
+        setCreationStep('deploying');
+        account = (await controllerEmitter(
+          ['wallet', 'createSmartAccount'],
+          [{ label }],
+          300000
+        )) as IKeyringAccountState;
+        if (!isCurrent()) return;
+        progress.account = account;
+        progress.requested = requested;
       }
-
-      setCreationStep('deploying');
-      const account = (await controllerEmitter(
-        ['wallet', 'createSmartAccount'],
-        [{ label }],
-        300000
-      )) as IKeyringAccountState;
       const bootstrapMetadata = account.smartAccount;
       if (!bootstrapMetadata) {
         throw new Error(t('connections.smartAccountPrepareFailed'));
@@ -514,6 +628,7 @@ export const PrepareSmartAccount = () => {
       // Save the public credential under its account before any installation.
       // An ambiguous submission or failed hydration must remain recoverable.
       if (
+        !progress.outerConfirmed &&
         requested?.passkeyProfile &&
         !setPendingPasskeyRecord(account.address, requested.passkeyProfile)
       ) {
@@ -524,18 +639,21 @@ export const PrepareSmartAccount = () => {
         ['wallet', 'setAccount'],
         [account.id, KeyringAccountType.SmartAccount, true]
       );
+      if (!isCurrent()) return;
 
-      if (requestedAuthenticator.id === 'slh-dsa') {
+      if (requestedAuthenticator.id === 'slh-dsa' && !requested) {
         setCreationStep('credential');
         const config = (await controllerEmitter(
           ['wallet', 'provisionSLHDSASmartAccountValidator'],
           [{ accountId: account.id }],
           600000
         )) as Parameters<typeof normalizeSLHDSAAuthenticator>[0]['config'];
+        if (!isCurrent()) return;
         requested = normalizeSLHDSAAuthenticator({
           chainId: activeNetwork.chainId,
           config,
         });
+        progress.requested = requested;
       }
 
       if (!requested) {
@@ -552,7 +670,9 @@ export const PrepareSmartAccount = () => {
             },
           ]
         );
+        if (!isCurrent()) return;
 
+        progress.completed = true;
         dispatchBackgroundEvent(`${eventName}.${host}`, {
           address: account.address,
           chainId: `0x${activeNetwork.chainId.toString(16)}`,
@@ -561,30 +681,71 @@ export const PrepareSmartAccount = () => {
         return;
       }
 
-      setCreationStep('deploying');
-      await controllerEmitter(
-        ['wallet', 'registerSmartAccountOnChain'],
-        [{ accountId: account.id }],
-        300000
-      );
-      const gasStatus = (await controllerEmitter(
-        ['wallet', 'getSmartAccountNativeGasStatus'],
-        [{ accountId: account.id }],
-        300000
-      )) as { hasNativeGas: boolean; hasZkSysGasTankGas?: boolean };
-      if (!gasStatus.hasNativeGas && !gasStatus.hasZkSysGasTankGas) {
-        throw new Error('PALI_NATIVE_GAS_REQUIRED');
-      }
+      if (!progress.outerConfirmed) {
+        setCreationStep('deploying');
+        if (!progress.registered) {
+          // Registration may submit a deployment operation before returning.
+          // Only an explicit not-broadcast error makes its failure retryable.
+          progress.submitting = true;
+          await controllerEmitter(
+            ['wallet', 'registerSmartAccountOnChain'],
+            [{ accountId: account.id }],
+            300000
+          );
+          progress.registered = true;
+          progress.submitting = false;
+          if (!isCurrent()) return;
+        }
+        const gasStatus = (await controllerEmitter(
+          ['wallet', 'getSmartAccountNativeGasStatus'],
+          [{ accountId: account.id }],
+          300000
+        )) as { hasNativeGas: boolean; hasZkSysGasTankGas?: boolean };
+        if (!isCurrent()) return;
+        if (!gasStatus.hasNativeGas && !gasStatus.hasZkSysGasTankGas) {
+          throw new Error('PALI_NATIVE_GAS_REQUIRED');
+        }
 
-      setCreationStep('installing');
-      await replaceRequestedValidator({
-        account,
-        bootstrapMetadata,
-        requested,
-      });
+        setCreationStep('installing');
+        await replaceRequestedValidator({
+          account,
+          bootstrapMetadata,
+          requested,
+          onBeforeSubmit: async () => {
+            if (!isCurrent())
+              throw Object.assign(
+                new Error(t('connections.smartAccountPrepareFailed')),
+                {
+                  transactionNotBroadcast: true,
+                }
+              );
+            progress.submitting = true;
+          },
+        });
+        // An outer receipt prevents resubmission, but cannot prove that its
+        // inner validator change succeeded. Retries below only read adoption.
+        progress.outerConfirmed = true;
+        progress.submitting = false;
+        if (!isCurrent()) return;
+      }
+      setCreationStep('saving');
+      const hydrated = (await controllerEmitter(
+        ['wallet', 'hydrateSmartAccount'],
+        [account.id],
+        300000
+      )) as ISmartAccountMetadata;
+      if (!isCurrent()) return;
+      if (
+        !hasRequestedValidator(
+          hydrated,
+          requested,
+          bootstrapMetadata,
+          activeNetwork.chainId
+        )
+      )
+        throw new Error(t('connections.smartAccountPrepareFailed'));
       if (requested.passkeyProfile) {
-        // Confirmation succeeded. Record adoption before the next async read;
-        // if this write fails, keep both pending records for recovery.
+        // Fresh chain metadata proves adoption before the credential is active.
         if (
           !setActivePasskeyRecord(account.address, requested.passkeyProfile)
         ) {
@@ -592,12 +753,6 @@ export const PrepareSmartAccount = () => {
         }
         clearPendingCreationPasskey(requested.passkeyProfile.credentialId);
       }
-      setCreationStep('saving');
-      await controllerEmitter(
-        ['wallet', 'hydrateSmartAccount'],
-        [account.id],
-        300000
-      );
       await controllerEmitter(
         ['dapp', 'connect'],
         [
@@ -611,7 +766,9 @@ export const PrepareSmartAccount = () => {
           },
         ]
       );
+      if (!isCurrent()) return;
 
+      progress.completed = true;
       dispatchBackgroundEvent(`${eventName}.${host}`, {
         address: account.address,
         chainId: `0x${activeNetwork.chainId.toString(16)}`,
@@ -619,17 +776,24 @@ export const PrepareSmartAccount = () => {
       });
       window.close();
     } catch (err: any) {
+      if (!isCurrent()) return;
+      if (err?.transactionNotBroadcast === true) progress.submitting = false;
       const wasHandled = handleWalletLockedError(err);
       if (!wasHandled) {
         setError(
-          isNativeGasRequiredError(err)
+          progress.submitting
+            ? t('send.submissionStatusUnknown')
+            : isNativeGasRequiredError(err)
             ? t('send.insufficientFundsForGas')
             : err?.message || t('connections.smartAccountPrepareFailed')
         );
       }
     } finally {
-      setLoading(false);
-      setCreationStep('idle');
+      progress.busy = false;
+      if (isCurrent()) {
+        setLoading(false);
+        setCreationStep('idle');
+      }
     }
   }, [
     activeNetwork.chainId,
@@ -643,6 +807,7 @@ export const PrepareSmartAccount = () => {
     label,
     replaceRequestedValidator,
     requestedAuthenticator,
+    scope,
     t,
   ]);
 
@@ -799,6 +964,8 @@ export const PrepareSmartAccount = () => {
             onClick={approve}
             disabled={
               loading ||
+              progressRef.current?.completed ||
+              progressRef.current?.submitting ||
               hasExternalPasskey ||
               (hasExternalEcdsaOwners && !externalEcdsaAcknowledged)
             }

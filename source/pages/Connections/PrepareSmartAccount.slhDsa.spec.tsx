@@ -133,8 +133,24 @@ describe('wallet-managed SLH-DSA creation boundary', () => {
           case 'signSmartAccountActionDigestInternal':
             return `0x${'66'.repeat(65)}`;
           case 'submitSmartAccountExecution':
-          case 'hydrateSmartAccount':
             return { hash: `0x${'77'.repeat(32)}` };
+          case 'hydrateSmartAccount': {
+            const data = encodeSLHDSAValidatorInitData(CONFIG);
+            return {
+              ...BOOTSTRAP,
+              isDeployed: true,
+              auth: { module: 'slh-dsa', validator: SLH_DSA, data },
+              installedModules: [
+                {
+                  id: 'slh-dsa',
+                  type: 'validator',
+                  address: SLH_DSA,
+                  data,
+                  config: { ...CONFIG, keyId: getSLHDSAKeyId(CONFIG) },
+                },
+              ],
+            };
+          }
           default:
             throw new Error(`Unexpected controller method ${method}`);
         }
@@ -249,5 +265,43 @@ describe('wallet-managed SLH-DSA creation boundary', () => {
     ]);
     expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
     expect(mockClose).not.toHaveBeenCalled();
+  });
+
+  it('requires the requested SLH public root after outer confirmation and retries only fresh adoption reads', async () => {
+    const original = mockEmitter.getMockImplementation()!;
+    let hydrationReads = 0;
+    mockEmitter.mockImplementation(async (path: string[], params: any[]) => {
+      const result = await original(path, params);
+      if (path[1] === 'hydrateSmartAccount' && ++hydrationReads === 1) {
+        const config = { ...CONFIG, pkRoot: `0x${'88'.repeat(32)}` };
+        const data = encodeSLHDSAValidatorInitData(config);
+        return {
+          ...result,
+          auth: { ...result.auth, data },
+          installedModules: [{ ...result.installedModules[0], config, data }],
+        };
+      }
+      return result;
+    });
+    render(<PrepareSmartAccount />);
+    fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
+    await screen.findByText('connections.smartAccountPrepareFailed');
+    expect(
+      methods().filter((method) => method === 'submitSmartAccountExecution')
+    ).toHaveLength(1);
+    expect(methods()).not.toContain('connect');
+    expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
+    expect(mockClose).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
+    await waitFor(() => expect(mockClose).toHaveBeenCalledTimes(1));
+    expect(hydrationReads).toBe(2);
+    for (const method of [
+      'createSmartAccount',
+      'registerSmartAccountOnChain',
+      'provisionSLHDSASmartAccountValidator',
+      'submitSmartAccountExecution',
+    ])
+      expect(methods().filter((value) => value === method)).toHaveLength(1);
+    expect(dispatchBackgroundEvent).toHaveBeenCalledTimes(1);
   });
 });

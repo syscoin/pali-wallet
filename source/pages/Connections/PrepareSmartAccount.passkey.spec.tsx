@@ -16,6 +16,8 @@ import {
   signalUnknownPasskeyCredential,
   signP256WebAuthnActionHash,
 } from 'utils/passkey';
+import { encodeP256WebAuthnAuthData } from 'utils/passkey/account';
+import { encodeEcdsaValidatorInitData } from 'utils/smartAccount';
 import { getPaliModuleAddress } from 'utils/smartAccount/contracts';
 
 import { PrepareSmartAccount } from './PrepareSmartAccount';
@@ -85,6 +87,7 @@ describe('smart-account creation passkey ownership and retention', () => {
   let failWrite: (key: string) => boolean;
   let createdAccount: string;
   let walletPasskeyFlow: boolean;
+  let hydratedOverride: any;
   const render = () => {
     cursor = 0;
     return PrepareSmartAccount();
@@ -117,6 +120,7 @@ describe('smart-account creation passkey ownership and retention', () => {
     failWrite = () => false;
     createdAccount = ACCOUNT;
     walletPasskeyFlow = true;
+    hydratedOverride = undefined;
     Object.defineProperty(globalThis, 'crypto', {
       configurable: true,
       value: webcrypto,
@@ -185,6 +189,29 @@ describe('smart-account creation passkey ownership and retention', () => {
       }
       if (method === 'hydrateSmartAccount' && failHydration)
         throw new Error('Hydration unavailable');
+      if (method === 'hydrateSmartAccount') {
+        if (hydratedOverride) return hydratedOverride;
+        const module = walletPasskeyFlow ? 'p256-webauthn' : 'ecdsa';
+        const validator = getPaliModuleAddress(CHAIN_ID, module);
+        const data = walletPasskeyFlow
+          ? encodeP256WebAuthnAuthData(PUBLIC_KEY)
+          : encodeEcdsaValidatorInitData([OWNER], 1);
+        return {
+          ...bootstrap,
+          auth: { module, validator, data },
+          installedModules: [
+            {
+              id: module,
+              type: 'validator',
+              address: validator,
+              config: walletPasskeyFlow
+                ? { publicKey: PUBLIC_KEY, passkeyName: 'P-256 / WebAuthn' }
+                : { owners: [OWNER], threshold: 1 },
+              data,
+            },
+          ],
+        };
+      }
       return { hash: `0x${'99'.repeat(32)}` };
     });
     (useController as jest.Mock).mockReturnValue({
@@ -205,6 +232,11 @@ describe('smart-account creation passkey ownership and retention', () => {
     });
     jest.spyOn(React, 'useMemo').mockImplementation((factory) => factory());
     jest.spyOn(React, 'useCallback').mockImplementation((callback) => callback);
+    jest.spyOn(React, 'useRef').mockImplementation((initial?: any) => {
+      const [cell] = React.useState(() => ({ current: initial }));
+      return cell;
+    });
+    jest.spyOn(React, 'useEffect').mockImplementation(() => undefined);
     (createPasskeyCredential as jest.Mock).mockResolvedValue(CREDENTIAL);
     (signP256WebAuthnActionHash as jest.Mock).mockResolvedValue({
       credentialId: CREDENTIAL.credentialId,
@@ -260,6 +292,34 @@ describe('smart-account creation passkey ownership and retention', () => {
     expect(signalAcceptedPasskeyCredentials).not.toHaveBeenCalled();
   });
 
+  it('retains the admitted account and prepared credential while retrying a known gas failure', async () => {
+    const original = emitter.getMockImplementation()!;
+    let gasChecks = 0;
+    emitter.mockImplementation(async (path: string[], params: any[]) => {
+      if (path[1] === 'getSmartAccountNativeGasStatus' && ++gasChecks === 1)
+        return { hasNativeGas: false, hasZkSysGasTankGas: false };
+      return original(path, params);
+    });
+    await confirm().props.onClick();
+    expect(window.close).not.toHaveBeenCalled();
+    expect(getPendingCreationPasskey()?.profile.credentialId).toBe(
+      CREDENTIAL.credentialId
+    );
+    await confirm().props.onClick();
+    expect(
+      emitter.mock.calls.filter(
+        ([[, method]]) => method === 'createSmartAccount'
+      )
+    ).toHaveLength(1);
+    expect(createPasskeyCredential).toHaveBeenCalledTimes(1);
+    expect(signP256WebAuthnActionHash).not.toHaveBeenCalled();
+    expect(getPasskeyAccountRecords(ACCOUNT).active?.credentialId).toBe(
+      CREDENTIAL.credentialId
+    );
+    expect(getPendingCreationPasskey()).toBeNull();
+    expect(window.close).toHaveBeenCalledTimes(1);
+  });
+
   it.each([
     KeyringAccountType.HDAccount,
     KeyringAccountType.Ledger,
@@ -290,13 +350,16 @@ describe('smart-account creation passkey ownership and retention', () => {
     expect(createPasskeyCredential).not.toHaveBeenCalled();
   });
 
-  it('preserves the installed credential before failed hydration and a new flow after restart', async () => {
+  it('keeps the credential pending before verified hydration and preserves it through a different flow after restart', async () => {
     failHydration = true;
     await confirm().props.onClick();
-    expect(getPasskeyAccountRecords(ACCOUNT).active?.credentialId).toBe(
+    expect(getPasskeyAccountRecords(ACCOUNT).active).toBeUndefined();
+    expect(
+      getPasskeyAccountRecords(ACCOUNT).pending?.profile.credentialId
+    ).toBe(CREDENTIAL.credentialId);
+    expect(getPendingCreationPasskey()?.profile.credentialId).toBe(
       CREDENTIAL.credentialId
     );
-    expect(getPendingCreationPasskey()).toBeNull();
     states = []; // A new page reads the same durable records.
     failHydration = false;
     request('A different account');
@@ -308,9 +371,9 @@ describe('smart-account creation passkey ownership and retention', () => {
       userHandle: 'ZnJlc2g',
     });
     await confirm().props.onClick();
-    expect(getPasskeyAccountRecords(ACCOUNT).active?.credentialId).toBe(
-      CREDENTIAL.credentialId
-    );
+    expect(
+      getPasskeyAccountRecords(ACCOUNT).pending?.profile.credentialId
+    ).toBe(CREDENTIAL.credentialId);
     expect(getPasskeyAccountRecords(secondAccount).active?.credentialId).toBe(
       'bmV3'
     );
@@ -318,6 +381,84 @@ describe('smart-account creation passkey ownership and retention', () => {
     expect(signalUnknownPasskeyCredential).not.toHaveBeenCalled();
     expect(signalAcceptedPasskeyCredentials).not.toHaveBeenCalled();
   });
+
+  it.each(['public-key', 'bootstrap-still-installed', 'inactive-validator'])(
+    'does not promote a passkey or connect until fresh metadata proves adoption (%s)',
+    async (mismatch) => {
+      const validator = getPaliModuleAddress(CHAIN_ID, 'p256-webauthn');
+      const data = encodeP256WebAuthnAuthData(
+        mismatch === 'public-key'
+          ? { ...PUBLIC_KEY, originLength: PUBLIC_KEY.originLength + 1 }
+          : PUBLIC_KEY
+      );
+      hydratedOverride = {
+        chainId: CHAIN_ID,
+        isDeployed: true,
+        auth: {
+          module: mismatch === 'inactive-validator' ? 'ecdsa' : 'p256-webauthn',
+          validator:
+            mismatch === 'inactive-validator'
+              ? getPaliModuleAddress(CHAIN_ID, 'ecdsa')
+              : validator,
+          data,
+        },
+        installedModules: [
+          {
+            id: 'p256-webauthn',
+            type: 'validator',
+            address: validator,
+            data,
+            config: { publicKey: PUBLIC_KEY },
+          },
+          ...(mismatch === 'bootstrap-still-installed'
+            ? [
+                {
+                  id: 'ecdsa',
+                  type: 'validator',
+                  address: getPaliModuleAddress(CHAIN_ID, 'ecdsa'),
+                  config: { owners: [OWNER], threshold: 1 },
+                },
+              ]
+            : []),
+        ],
+      };
+      await confirm().props.onClick();
+      expect(getPasskeyAccountRecords(ACCOUNT).active).toBeUndefined();
+      expect(
+        getPasskeyAccountRecords(ACCOUNT).pending?.profile.credentialId
+      ).toBe(CREDENTIAL.credentialId);
+      expect(getPendingCreationPasskey()?.profile.credentialId).toBe(
+        CREDENTIAL.credentialId
+      );
+      expect(
+        emitter.mock.calls.filter(([[, method]]) => method === 'connect')
+      ).toHaveLength(0);
+      expect(window.close).not.toHaveBeenCalled();
+      expect(
+        find(
+          render(),
+          (element) =>
+            element.props.children === 'connections.smartAccountPrepareFailed'
+        )
+      ).toBeDefined();
+      hydratedOverride = undefined;
+      await confirm().props.onClick();
+      expect(
+        emitter.mock.calls.filter(
+          ([[, method]]) => method === 'submitSmartAccountExecution'
+        )
+      ).toHaveLength(1);
+      expect(
+        emitter.mock.calls.filter(
+          ([[, method]]) => method === 'hydrateSmartAccount'
+        )
+      ).toHaveLength(2);
+      expect(getPasskeyAccountRecords(ACCOUNT).active?.credentialId).toBe(
+        CREDENTIAL.credentialId
+      );
+      expect(window.close).toHaveBeenCalledTimes(1);
+    }
+  );
 
   it('retains ambiguous installed credentials across restart, another label and cancelled possession', async () => {
     failSubmission = true;

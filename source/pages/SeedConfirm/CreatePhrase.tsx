@@ -19,32 +19,75 @@ export const CreatePhrase = () => {
     livePhrase.trim().split(/\s+/).length === 24 ? 24 : 12
   );
   const generatedWordCount = useRef<number | null>(seed ? wordCount : null);
+  const selectedWordCount = useRef(wordCount);
+  selectedWordCount.current = wordCount;
+  const generationRequest = useRef(0);
+  const generationPending = useRef(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generationFailed, setGenerationFailed] = useState(false);
   const { t } = useTranslation();
 
   const [acknowledgedSeed, setAcknowledgedSeed] = useState<string>();
-  const isTermsConfirmed = Boolean(seed) && acknowledgedSeed === seed;
+  const hasCurrentSeed =
+    generatedWordCount.current === wordCount &&
+    !isGenerating &&
+    !generationFailed;
+  const isTermsConfirmed =
+    hasCurrentSeed && Boolean(seed) && acknowledgedSeed === seed;
 
   const navigate = useNavigate();
 
-  useEffect(() => {
-    if (generatedWordCount.current === wordCount) return;
-    setAcknowledgedSeed(undefined);
-    let current = true;
-    controllerEmitter(['wallet', 'createNewSeed'], [wordCount]).then(
-      (response: string) => {
-        if (current) {
-          generatedWordCount.current = wordCount;
-          setSeed(response);
+  const generatePhrase = useCallback(
+    (count: number) => {
+      const request = ++generationRequest.current;
+      generationPending.current = true;
+      setIsGenerating(true);
+      setGenerationFailed(false);
+      setAcknowledgedSeed(undefined);
+      const isCurrent = () =>
+        request === generationRequest.current &&
+        count === selectedWordCount.current;
+      void controllerEmitter(['wallet', 'createNewSeed'], [count]).then(
+        (response: string) => {
+          if (isCurrent()) {
+            generatedWordCount.current = count;
+            generationPending.current = false;
+            setSeed(response);
+            setIsGenerating(false);
+          }
+        },
+        () => {
+          if (isCurrent()) {
+            generatedWordCount.current = null;
+            generationPending.current = false;
+            setIsGenerating(false);
+            setGenerationFailed(true);
+          }
         }
-      }
-    );
+      );
+    },
+    [controllerEmitter]
+  );
+
+  useEffect(() => {
+    if (generatedWordCount.current !== wordCount) generatePhrase(wordCount);
+    else {
+      generationPending.current = false;
+      setIsGenerating(false);
+      setGenerationFailed(false);
+    }
     return () => {
-      current = false;
+      generationRequest.current += 1;
+      generationPending.current = false;
     };
-  }, [controllerEmitter, wordCount]);
+  }, [generatePhrase, wordCount]);
 
   const handleNext = useCallback(() => {
-    if (isTermsConfirmed) {
+    if (
+      isTermsConfirmed &&
+      !generationPending.current &&
+      generatedWordCount.current === selectedWordCount.current
+    ) {
       setCreatedPhrase(seed);
       navigate('/phrase', {
         state: { next: true },
@@ -67,13 +110,7 @@ export const CreatePhrase = () => {
           </select>
           <Button
             type="button"
-            onClick={() => {
-              setAcknowledgedSeed(undefined);
-              void controllerEmitter(
-                ['wallet', 'createNewSeed'],
-                [wordCount]
-              ).then((response: string) => setSeed(response));
-            }}
+            onClick={() => generatePhrase(wordCount)}
             className="bg-brand-blue px-3 py-1 h-8 text-xs rounded-md"
           >
             {t('buttons.generate')}
@@ -86,12 +123,17 @@ export const CreatePhrase = () => {
           displayMode="words"
           className="w-[17.5rem] max-w-[17.5rem]"
         />
+        {isGenerating && <p role="status">{t('buttons.loading')}</p>}
+        {generationFailed && (
+          <p role="alert">{t('settings.walletSetupFailed')}</p>
+        )}
 
         <div className="flex w-full flex-col space-y-6 mt-2 gap-2 z-20">
           <label className="flex items-start gap-2">
             <input
               type="checkbox"
               className="custom-checkbox"
+              disabled={!hasCurrentSeed}
               checked={isTermsConfirmed}
               onChange={(event) =>
                 setAcknowledgedSeed(event.target.checked ? seed : undefined)
