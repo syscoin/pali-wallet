@@ -40,7 +40,10 @@ jest.mock('hooks/useController', () => ({
   useController: () => ({ controllerEmitter: jest.fn() }),
 }));
 jest.mock('qrcode.react', () => ({ QRCodeSVG: () => <svg /> }));
-jest.mock('utils/navigationState', () => ({ navigateBack: jest.fn() }));
+jest.mock('utils/navigationState', () => ({
+  getWalletNavigationScope: () => ({ account: 'account', network: 'network' }),
+  navigateBack: jest.fn(),
+}));
 jest.mock('utils/format', () => ({ ellipsis: (value: string) => value }));
 jest.mock('antd/lib/form/Form', () => ({ useForm: () => [{}] }));
 jest.mock('antd', () => {

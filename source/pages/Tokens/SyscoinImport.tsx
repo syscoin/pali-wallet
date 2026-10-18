@@ -71,6 +71,7 @@ export const SyscoinImport: React.FC = () => {
   // PATH 1: Your Tokens state
   const [ownedTokens, setOwnedTokens] = useState<ISysTokensAssetReponse[]>([]);
   const [isLoadingOwned, setIsLoadingOwned] = useState(false);
+  const [ownedTokensUnavailable, setOwnedTokensUnavailable] = useState(false);
 
   // PATH 2: Custom Token state - restore from navigation state if available
   const [customAssetGuid, setCustomAssetGuid] = useState(
@@ -100,6 +101,16 @@ export const SyscoinImport: React.FC = () => {
     null
   );
   const loadingKeyRef = useRef<string>('');
+  const ownedRequestRef = useRef(0);
+  const ownedViewRef = useRef({ active: true, scope: tokenImportScope });
+  ownedViewRef.current.scope = tokenImportScope;
+  useEffect(() => {
+    ownedViewRef.current.active = true;
+    return () => {
+      ownedViewRef.current.active = false;
+      ownedRequestRef.current += 1;
+    };
+  }, []);
   const validationRequestRef = useRef(0);
   const validationKey = `${tokenImportScope}:${customAssetGuid.trim()}`;
   const validationKeyRef = useRef(validationKey);
@@ -129,9 +140,21 @@ export const SyscoinImport: React.FC = () => {
 
   // PATH 1: Load tokens user actually owns
   const loadOwnedTokens = useCallback(async () => {
-    if (!activeAccount?.xpub) return;
+    const scope = tokenImportScope;
+    if (
+      !activeAccount?.xpub ||
+      !ownedViewRef.current.active ||
+      ownedViewRef.current.scope !== scope
+    )
+      return;
+    const request = ++ownedRequestRef.current;
+    const isCurrent = () =>
+      ownedViewRef.current.active &&
+      ownedViewRef.current.scope === scope &&
+      ownedRequestRef.current === request;
 
     setIsLoadingOwned(true);
+    setOwnedTokensUnavailable(false);
     try {
       const results = (await controllerEmitter(
         ['wallet', 'getUserOwnedTokens'],
@@ -146,18 +169,22 @@ export const SyscoinImport: React.FC = () => {
             recentlyImportedGuids.has(token.assetGuid)
         ) || [];
 
-      setOwnedTokens(filteredResults);
+      if (isCurrent()) setOwnedTokens(filteredResults);
     } catch (error) {
       console.error('Error loading owned tokens:', error);
-      setOwnedTokens([]);
+      if (isCurrent()) {
+        setOwnedTokens([]);
+        setOwnedTokensUnavailable(true);
+      }
     } finally {
-      setIsLoadingOwned(false);
+      if (isCurrent()) setIsLoadingOwned(false);
     }
   }, [
     activeAccount?.address,
     activeAccount?.xpub,
     importedAssetGuids,
     recentlyImportedGuids,
+    tokenImportScope,
   ]);
 
   // Load user's owned tokens - only once per account/network combination
@@ -165,14 +192,18 @@ export const SyscoinImport: React.FC = () => {
     if (!activeAccount?.xpub) return;
 
     // Create a unique key for this account/network combination
-    const currentKey = `${activeAccount.xpub}-${activeNetwork.chainId}`;
+    const currentKey = tokenImportScope;
 
     // Only load if we haven't loaded for this specific combination
     if (loadingKeyRef.current !== currentKey) {
       loadingKeyRef.current = currentKey;
       loadOwnedTokens();
     }
-  }, [activeAccount?.xpub, activeNetwork.chainId]);
+    return () => {
+      ownedRequestRef.current += 1;
+      loadingKeyRef.current = '';
+    };
+  }, [activeAccount?.xpub, tokenImportScope]);
 
   // Create debounced validation function
   useEffect(() => {
@@ -401,7 +432,19 @@ export const SyscoinImport: React.FC = () => {
         data-navigation-scroll="token-import"
         className="flex-1 overflow-y-auto remove-scrollbar px-4 py-4"
       >
-        {activeTab === 'owned' ? (
+        {activeTab === 'owned' && ownedTokensUnavailable ? (
+          <div role="alert">
+            <p>{t('settings.apiConnectionError')}</p>
+            <button
+              type="button"
+              className="mt-2 min-h-11 px-2 text-brand-royalblue underline"
+              disabled={isLoadingOwned}
+              onClick={loadOwnedTokens}
+            >
+              {t('receive.retry')}
+            </button>
+          </div>
+        ) : activeTab === 'owned' ? (
           <ImportableAssetsList
             assets={ownedAssetsForList}
             isLoading={isLoadingOwned}
