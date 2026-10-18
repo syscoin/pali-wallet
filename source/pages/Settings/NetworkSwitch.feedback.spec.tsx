@@ -17,6 +17,7 @@ import SwitchUtxoEvm from './SwitchNetworkUtxoEvm';
 const mockEmitter = jest.fn();
 const mockDispatch = jest.fn();
 const mockWaitForSwitch = jest.fn();
+let mockActiveNetwork: any;
 const target = {
   chainId: 5700,
   kind: INetworkType.Ethereum,
@@ -39,11 +40,7 @@ jest.mock('react-redux', () => ({
   useSelector: (select: any) =>
     select({
       vault: {
-        activeNetwork: {
-          chainId: 57,
-          kind: INetworkType.Syscoin,
-          label: 'Original network',
-        },
+        activeNetwork: mockActiveNetwork,
       },
       vaultGlobal: { networks: { ethereum: { 5700: target } } },
     }),
@@ -59,7 +56,16 @@ jest.mock('react-i18next', () => ({
     },
   }),
 }));
-jest.mock('components/ChainIcon', () => ({ ChainIcon: () => null }));
+jest.mock('components/ChainIcon', () => ({
+  ChainIcon: ({ chainId, networkKind, size }: any) => (
+    <svg
+      data-testid="network-icon"
+      data-chain-id={chainId}
+      data-network-kind={networkKind}
+      data-size={size}
+    />
+  ),
+}));
 jest.mock('components/Icon/Icon', () => ({
   Icon: () => null,
   LoadingSvg: () => null,
@@ -88,6 +94,11 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockEmitter.mockReset().mockResolvedValue(undefined);
   mockWaitForSwitch.mockReset().mockResolvedValue(undefined);
+  mockActiveNetwork = {
+    chainId: 57,
+    kind: INetworkType.Syscoin,
+    label: 'Original network',
+  };
   jest.spyOn(window, 'close').mockImplementation();
   jest.spyOn(console, 'error').mockImplementation();
 });
@@ -108,9 +119,76 @@ describe.each([
   },
 ])(
   '$label switch approval feedback',
-  ({ Component, confirmLabel, rejectLabel }) => {
+  ({ label, Component, confirmLabel, rejectLabel }) => {
     const confirm = () =>
       fireEvent.click(screen.getByRole('button', { name: confirmLabel }));
+
+    it('preserves the exact network badge markup and icon inputs', () => {
+      render(<Component />);
+      const badge =
+        'px-1.5 py-0.5 text-[10px] font-medium text-white rounded-full';
+      expect(screen.getByText('UTXO').outerHTML).toBe(
+        `<span class="${badge} bg-brand-pink">UTXO</span>`
+      );
+      expect(screen.getByText('EVM').outerHTML).toBe(
+        `<span class="${badge} bg-brand-blue">EVM</span>`
+      );
+      const icons = screen.getAllByTestId('network-icon');
+      expect(icons[0]).toHaveAttribute('data-chain-id', '57');
+      expect(icons[0]).toHaveAttribute(
+        'data-network-kind',
+        INetworkType.Syscoin
+      );
+      expect(icons[1]).toHaveAttribute('data-chain-id', '5700');
+      expect(icons[1]).toHaveAttribute(
+        'data-network-kind',
+        label === 'Ethereum' ? INetworkType.Ethereum : INetworkType.Syscoin
+      );
+      for (const icon of icons)
+        expect(icon).toHaveAttribute(
+          'data-size',
+          label === 'Ethereum' ? '100' : '18'
+        );
+    });
+
+    it('keeps the original network snapshot after Redux replaces the active network', () => {
+      const view = render(<Component />);
+      mockActiveNetwork = {
+        chainId: 1337,
+        kind: INetworkType.Ethereum,
+        label: 'Different network',
+      };
+      view.rerender(<Component />);
+      const previousIcon = screen.getAllByTestId('network-icon')[0];
+      expect(previousIcon).toHaveAttribute('data-chain-id', '57');
+      expect(previousIcon).toHaveAttribute(
+        'data-network-kind',
+        INetworkType.Syscoin
+      );
+      expect(screen.getByText('UTXO')).toHaveClass('bg-brand-pink');
+      if (label === 'UTXO/EVM') {
+        expect(
+          screen.getByText('Original network', { exact: false })
+        ).toBeVisible();
+        expect(
+          screen.queryByText('Different network', { exact: false })
+        ).toBeNull();
+      }
+    });
+
+    it('retains primitive chain identity even if a stale network object is mutated', () => {
+      const view = render(<Component />);
+      mockActiveNetwork.chainId = 1337;
+      mockActiveNetwork.kind = INetworkType.Ethereum;
+      view.rerender(<Component />);
+      const previousIcon = screen.getAllByTestId('network-icon')[0];
+      expect(previousIcon).toHaveAttribute('data-chain-id', '57');
+      expect(previousIcon).toHaveAttribute(
+        'data-network-kind',
+        INetworkType.Syscoin
+      );
+      expect(screen.getByText('UTXO')).toHaveClass('bg-brand-pink');
+    });
 
     it('reports a rejected switch, clears the error on retry and closes only after success', async () => {
       const retry = deferred();

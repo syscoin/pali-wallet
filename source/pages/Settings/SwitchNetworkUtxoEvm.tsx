@@ -11,6 +11,8 @@ import { INetworkType } from 'types/network';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { waitForNetworkSwitch } from 'utils/stateWaitUtils';
 
+import { NetworkTypeBadge } from './NetworkTypeBadge';
+
 const SwitchNeworkUtxoEvm: React.FC = () => {
   const { controllerEmitter } = useController();
   const { host, ...data } = useQueryData();
@@ -20,22 +22,11 @@ const SwitchNeworkUtxoEvm: React.FC = () => {
   const [switchError, setSwitchError] = useState('');
   const { t } = useTranslation();
   const { activeNetwork } = useSelector((state: RootState) => state.vault);
-  const prevNetworkRef = useRef(activeNetwork);
-  const prevChainIdRef = useRef(activeNetwork?.chainId);
-  const prevKindRef = useRef(activeNetwork?.kind);
-
-  const getTypeBadge = (kind?: INetworkType) => {
-    const isUtxo = kind === INetworkType.Syscoin;
-    const text = isUtxo ? 'UTXO' : 'EVM';
-    const colorClass = isUtxo ? 'bg-brand-pink' : 'bg-brand-blue';
-    return (
-      <span
-        className={`px-1.5 py-0.5 text-[10px] font-medium text-white rounded-full ${colorClass}`}
-      >
-        {text}
-      </span>
-    );
-  };
+  const previousNetwork = useRef([
+    activeNetwork?.chainId,
+    activeNetwork?.kind,
+    activeNetwork?.label,
+  ] as const).current;
 
   // Safety check: if required data is missing, show error or redirect
   if (!newNetwork || !newChainValue) {
@@ -62,7 +53,7 @@ const SwitchNeworkUtxoEvm: React.FC = () => {
     );
   }
 
-  const previousNetworkName = prevNetworkRef.current?.label || 'N/A';
+  const previousNetworkName = previousNetwork[2] || 'N/A';
 
   const onSubmit = async () => {
     setLoading(true);
@@ -111,12 +102,12 @@ const SwitchNeworkUtxoEvm: React.FC = () => {
                 {t('settings.previousChain')}
                 <span className="flex items-center gap-2 text-brand-royalblue text-xs transition-opacity hover:opacity-90">
                   <ChainIcon
-                    chainId={prevChainIdRef.current}
+                    chainId={previousNetwork[0]}
                     size={18}
-                    networkKind={prevKindRef.current}
+                    networkKind={previousNetwork[1]}
                   />
                   {previousNetworkName}
-                  {getTypeBadge(prevKindRef.current)}
+                  <NetworkTypeBadge kind={previousNetwork[1]} />
                 </span>
               </div>
 
@@ -129,7 +120,9 @@ const SwitchNeworkUtxoEvm: React.FC = () => {
                     networkKind={INetworkType.Syscoin}
                   />
                   {newNetwork?.label || newChainValue}
-                  {getTypeBadge(newNetwork?.kind ?? INetworkType.Syscoin)}
+                  <NetworkTypeBadge
+                    kind={newNetwork?.kind ?? INetworkType.Syscoin}
+                  />
                 </span>
               </div>
 
