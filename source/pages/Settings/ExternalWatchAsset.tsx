@@ -1,11 +1,12 @@
 import getSymbolFromCurrency from 'currency-symbol-map';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { Button, LoadingComponent } from 'components/index';
 import { ToastActionFooter } from 'components/ToastActionFooter';
 import { TokenIcon } from 'components/TokenIcon';
+import { getControllerStatus } from 'hooks/controllerStatus';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useAdjustedExplorer } from 'hooks/useAdjustedExplorer';
 import { useController } from 'hooks/useController';
@@ -13,6 +14,7 @@ import { RootState } from 'state/store';
 import { ITokenDetails } from 'types/tokens';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { formatCurrency } from 'utils/index';
+import { getWalletNavigationScope } from 'utils/navigationState';
 
 const ExternalWatchAsset = () => {
   const { host, ...data } = useQueryData();
@@ -24,6 +26,31 @@ const ExternalWatchAsset = () => {
   const { alert } = useUtils();
   const { controllerEmitter } = useController();
   const { t } = useTranslation();
+  const scope = useSelector(() => JSON.stringify(getWalletNavigationScope()));
+  const [approvalScope] = useState(scope);
+  const contextChanged = useRef(false);
+  if (scope !== approvalScope) contextChanged.current = true;
+  const mounted = useRef(true);
+  const submitted = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const isCurrent = () =>
+    mounted.current &&
+    !contextChanged.current &&
+    JSON.stringify(getWalletNavigationScope()) === approvalScope;
+  const canApprove = () => {
+    const status = getControllerStatus();
+    return (
+      isCurrent() &&
+      status.isUnlocked &&
+      !status.isLoading &&
+      !status.connectionUnavailable
+    );
+  };
 
   // Get user's preferred currency and active network
   const { fiat } = useSelector((state: RootState) => state.price);
@@ -92,23 +119,40 @@ const ExternalWatchAsset = () => {
   };
 
   const onSubmit = async () => {
+    if (
+      !assetInfo ||
+      submitted.current ||
+      loading ||
+      confirmed ||
+      !canApprove()
+    )
+      return;
+    submitted.current = true;
+    const responseEvent = `${data.eventName}.${host}`;
     setLoading(true);
 
     try {
       // Pass the already-fetched assetInfo to avoid duplicate API calls
-      await controllerEmitter(['wallet', 'handleWatchAsset'], [assetInfo]);
-
-      const type = data.eventName;
+      await controllerEmitter(
+        ['wallet', 'handleWatchAsset'],
+        [assetInfo, JSON.parse(approvalScope)]
+      );
+      // The controller checks the reviewed context before its synchronous
+      // mutation. Once persisted, settle that originating request even if the
+      // account changed while persistence was pending; only UI feedback is stale.
+      dispatchBackgroundEvent(responseEvent, true);
+      if (!mounted.current) return;
 
       setConfirmed(true);
 
       setLoading(false);
-      alert.info(t('settings.tokenSuccessfullyAdded'));
-      setTimeout(() => {
-        dispatchBackgroundEvent(`${type}.${host}`, true);
-        window.close();
-      }, 2000);
+      if (isCurrent()) alert.info(t('settings.tokenSuccessfullyAdded'));
+      // Keep settlement and close together: releasing the request coordinator
+      // while this external window stays open would block its next approval.
+      window.close();
     } catch (error: any) {
+      submitted.current = false;
+      if (!isCurrent()) return;
       alert.error(error.message);
 
       setLoading(false);
@@ -117,6 +161,8 @@ const ExternalWatchAsset = () => {
 
   useEffect(() => {
     if (!receivedAsset) return;
+    let current = true;
+    setAssetInfo(undefined);
 
     const getAssetData = async () => {
       try {
@@ -126,8 +172,9 @@ const ExternalWatchAsset = () => {
           [assetOptions]
         )) as ITokenDetails;
 
-        setAssetInfo(currentAsset);
+        if (current && isCurrent()) setAssetInfo(currentAsset);
       } catch (error) {
+        if (!current || !isCurrent()) return;
         // If asset info fetching fails, show asset error instead of loading forever
         setAssetError(error.message || 'Failed to fetch asset information');
         setAssetInfo(null);
@@ -136,13 +183,16 @@ const ExternalWatchAsset = () => {
     };
 
     getAssetData();
+    return () => {
+      current = false;
+    };
   }, [receivedAsset]);
 
   return (
     <div className="flex flex-col w-full h-full">
       {/* Main scrollable content area */}
       <div className="flex-1 overflow-y-auto pb-20 remove-scrollbar">
-        {formatError ? (
+        {!contextChanged.current && formatError ? (
           <div className="flex flex-col items-center justify-start w-full p-6 pt-8">
             <div className="flex flex-col items-center justify-center max-w-md mx-auto text-center">
               <div className="w-16 h-16 mb-4 rounded-full bg-red-500/20 flex items-center justify-center">
@@ -180,7 +230,7 @@ const ExternalWatchAsset = () => {
               </div>
             </div>
           </div>
-        ) : assetError ? (
+        ) : contextChanged.current || assetError ? (
           <div className="flex flex-col items-center justify-start w-full p-6 pt-8">
             <div className="flex flex-col items-center justify-center max-w-md mx-auto text-center">
               <div className="w-16 h-16 mb-4 rounded-full bg-red-500/20 flex items-center justify-center">
@@ -191,7 +241,11 @@ const ExternalWatchAsset = () => {
                 Asset Not Found
               </h2>
 
-              <p className="text-sm text-gray-400 mb-6">{assetError}</p>
+              <p className="text-sm text-gray-400 mb-6">
+                {contextChanged.current
+                  ? t('transactions.psbtSigningContextChanged')
+                  : assetError}
+              </p>
 
               <div className="text-xs text-gray-500 mb-6 p-4 bg-gray-800/50 rounded-lg">
                 <p>{t('components.pleaseVerifyThat')}</p>
@@ -372,7 +426,7 @@ const ExternalWatchAsset = () => {
       {/* Fixed button container at bottom of viewport */}
       <ToastActionFooter className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 shadow-lg z-50 min-h-[76px]">
         <div className="max-w-md mx-auto">
-          {formatError || assetError ? (
+          {contextChanged.current || formatError || assetError ? (
             <div className="flex justify-center">
               <Button
                 variant="neutral"
@@ -397,7 +451,7 @@ const ExternalWatchAsset = () => {
               <Button
                 variant="primary"
                 type="submit"
-                disabled={confirmed}
+                disabled={confirmed || loading || !canApprove()}
                 loading={loading}
                 onClick={() => onSubmit()}
               >

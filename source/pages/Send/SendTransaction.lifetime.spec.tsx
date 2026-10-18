@@ -117,7 +117,9 @@ jest.mock('components/Loading', () => ({
 jest.mock('./components', () => ({
   ApprovalDetails: () => null,
   TransactionDetailsComponent: ({
+    tx,
     customFee,
+    customNonce,
     editingDisabled,
     setCustomNonce,
     setIsOpen,
@@ -130,7 +132,7 @@ jest.mock('./components', () => ({
         <input
           aria-label="reviewed-nonce"
           disabled={editingDisabled}
-          defaultValue="0"
+          value={customNonce ?? tx.nonce}
           onChange={(event) => setCustomNonce(Number(event.target.value))}
         />
         <button disabled={editingDisabled} onClick={() => setIsOpen(true)}>
@@ -282,7 +284,7 @@ beforeEach(() => {
       maxFeePerGas: 2,
       maxPriorityFeePerGas: 1,
     },
-    formTx: { ...mockQuery.tx, gasLimit: BigNumber.from(21000) },
+    formTx: { ...mockQuery.tx, gasLimit: BigNumber.from(21000), nonce: 0 },
     nonce: 0,
     isInvalidTxData: false,
     gasLimitError: false,
@@ -292,6 +294,85 @@ beforeEach(() => {
   mockHandleTransactionError.mockReturnValue(false);
 });
 afterEach(() => jest.restoreAllMocks());
+
+it.each(
+  [undefined, 0, 7].flatMap((editedNonce) =>
+    [false, true].map((external) => ({ editedNonce, external }))
+  )
+)(
+  'keeps displayed and submitted EOA nonce aligned through an allowance re-quote %p',
+  async ({ editedNonce, external }) => {
+    const spender = `0x${'33'.repeat(20)}`;
+    const abi = new Interface(['function approve(address,uint256)']);
+    mockQuery.tx.data = abi.encodeFunctionData('approve', [spender, '1000000']);
+    mockQuery.decodedTx = {
+      method: 'approve',
+      inputs: [spender, '1000000'],
+      names: ['spender', 'amount'],
+      types: ['address', 'uint256'],
+    };
+    mockQuery.txMetadata = { isApproval: true, approvalType: 'erc20-amount' };
+    mockLocation.state = {
+      tx: mockQuery.tx,
+      decodedTx: mockQuery.decodedTx,
+      txMetadata: mockQuery.txMetadata,
+    };
+    const initialQuote = mockFee.getMockImplementation()!;
+    mockFee.mockImplementation(async (...args) => {
+      const result = await initialQuote(...args);
+      return { ...result, nonce: 1, formTx: { ...result.formTx, nonce: 1 } };
+    });
+    const invoke = mockEmitter.getMockImplementation()!;
+    mockEmitter.mockImplementation(async (path, args) =>
+      path[1] === 'getERC20TokenInfo'
+        ? { name: 'Synthetic', symbol: 'UNIT', decimals: 6, balance: '10' }
+        : path[1] === 'isContractAddress'
+        ? true
+        : invoke(path, args)
+    );
+    const view = await prepare(external);
+    await screen.findByRole('button', { name: 'edit-synthetic-allowance' });
+    if (editedNonce !== undefined) {
+      fireEvent.change(screen.getByLabelText('reviewed-nonce'), {
+        target: { value: String(editedNonce) },
+      });
+    }
+    const quote = mockFee.getMockImplementation()!;
+    mockFee.mockImplementation(async (...args) => {
+      const result = await quote(...args);
+      return { ...result, nonce: 2, formTx: { ...result.formTx, nonce: 2 } };
+    });
+    const quotesBeforeEdit = mockFee.mock.calls.length;
+    fireEvent.click(
+      screen.getByRole('button', { name: 'edit-synthetic-allowance' })
+    );
+    const expectedData = abi.encodeFunctionData('approve', [
+      spender,
+      '2000000',
+    ]);
+    await waitFor(() => {
+      expect(mockFee.mock.calls.length).toBeGreaterThan(quotesBeforeEdit);
+      expect(mockFee.mock.calls.at(-1)![0].data).toBe(expectedData);
+      expect(
+        (
+          screen.getByRole('button', {
+            name: 'buttons.confirm',
+          }) as HTMLButtonElement
+        ).disabled
+      ).toBe(false);
+    });
+    expect(
+      (screen.getByLabelText('reviewed-nonce') as HTMLInputElement).value
+    ).toBe(String(editedNonce ?? 2));
+    await act(async () => mockButtonHandlers['buttons.confirm']());
+    const submitted = mockEmitter.mock.calls.find(
+      ([path]) => path[1] === 'sendAndSaveEthTransaction'
+    )![1][0];
+    expect(submitted.nonce).toBe(editedNonce ?? 2);
+    expect(submitted.data).toBe(expectedData);
+    view.unmount();
+  }
+);
 
 it('locks fee and nonce edits while an EOA confirmation waits for its balance refresh', async () => {
   mockShowSmartFeeEditor = true;
@@ -459,6 +540,7 @@ it.each([false, true])(
       recommendationOnly: true,
       formTx: {
         ...mockQuery.tx,
+        nonce: 0,
         gasPrice: '1000000000',
         gasLimit: BigNumber.from(21000),
       },
@@ -854,7 +936,12 @@ it('binds EOA quotes to custom and restored proposed approvals and ignores super
   await waitFor(() => expect(pending).toHaveLength(2));
   const result = (data: string) => ({
     feeDetails: { gasLimit: 21000, maxFeePerGas: 2, maxPriorityFeePerGas: 1 },
-    formTx: { ...mockQuery.tx, data, gasLimit: BigNumber.from(21000) },
+    formTx: {
+      ...mockQuery.tx,
+      data,
+      gasLimit: BigNumber.from(21000),
+      nonce: 0,
+    },
     nonce: 0,
     isInvalidTxData: false,
     gasLimitError: false,
@@ -1051,7 +1138,7 @@ it.each([
               : { requested: 0, recommended: 2 },
             maxPriorityFeePerGas: { requested: 0, recommended: 1 },
           },
-      formTx: { ...mockQuery.tx, gasLimit: BigNumber.from(21000) },
+      formTx: { ...mockQuery.tx, gasLimit: BigNumber.from(21000), nonce: 0 },
       nonce: 0,
       isInvalidTxData: false,
       gasLimitError: false,
@@ -1132,6 +1219,7 @@ it.each([false, true])(
       },
       formTx: {
         ...mockQuery.tx,
+        nonce: 0,
         gasPrice: price,
         gasLimit: BigNumber.from(21000),
       },

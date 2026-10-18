@@ -126,6 +126,14 @@ export const EvmTransactionDetailsEnhanced = ({
   const scope = `${walletScope.account}:${walletScope.network}:${normalizedHash}`;
   const scopeRef = useRef(scope);
   scopeRef.current = scope;
+  const copyContextRef = useRef({ active: true, sequence: 0 });
+  useEffect(() => {
+    copyContextRef.current.active = true;
+    return () => {
+      copyContextRef.current.active = false;
+      copyContextRef.current.sequence += 1;
+    };
+  }, [scope]);
   const matchesChain = (data: any) =>
     data?.chainId === undefined || parseEvmInteger(data.chainId) === chainId;
   const matchingTx =
@@ -173,12 +181,11 @@ export const EvmTransactionDetailsEnhanced = ({
     [activeAccountTransactions, chainId, currentAccount?.address]
   );
 
-  const { useCopyClipboard, alert } = useUtils();
+  const { alert } = useUtils();
   const { t } = useTranslation();
 
   const { getTxStatusIcons, getTxType } = useTransactionsListConfig();
 
-  const [, copy] = useCopyClipboard();
   const [enhancedDetails, setEnhancedDetails] = useContextualState<any>(
     scope,
     null
@@ -696,6 +703,12 @@ export const EvmTransactionDetailsEnhanced = ({
 
   // Handle copy actions with appropriate messages
   const handleCopy = async (value: string, label: string) => {
+    if (!copyContextRef.current.active || scopeRef.current !== scope) return;
+    const sequence = ++copyContextRef.current.sequence;
+    const isCurrent = () =>
+      copyContextRef.current.active &&
+      scopeRef.current === scope &&
+      copyContextRef.current.sequence === sequence;
     const copyRisk = getEvmHistoryAddressCopyRisk({
       accountAddress: currentAccount?.address || '',
       address: value,
@@ -715,10 +728,10 @@ export const EvmTransactionDetailsEnhanced = ({
     }
 
     try {
-      await copy(value ?? '');
-      alert.info(getCopyMessage(label));
+      await navigator.clipboard.writeText(value ?? '');
+      if (isCurrent()) alert.info(getCopyMessage(label));
     } catch {
-      alert.error(t('transactions.copyFailed'));
+      if (isCurrent()) alert.error(t('transactions.copyFailed'));
     }
   };
 

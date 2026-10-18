@@ -185,6 +185,8 @@ export const SendTransaction = () => {
   const [tx, setTx] = useState<ITxState>();
   const [fee, setFee] = useState<IFeeState>();
   const [txResponse, setTxResponse] = useState<string | null>(null);
+  // An unset override follows the latest quote; re-estimation must never
+  // replace a nonce the user explicitly selected (including zero).
   const [customNonce, setCustomNonce] = useState<number>();
   const [tabSelected, setTabSelected] = useState<string>(tabElements[0].id);
   // Removed unused haveError state
@@ -898,7 +900,7 @@ export const SendTransaction = () => {
                   'transaction value'
                 ).toHexString()
               : '0x0', // Convert value to hex string using safe conversion
-            nonce: customNonce,
+            nonce: customNonce ?? tx.nonce,
             gasPrice: getLegacyGasFee.toHexString(), // Use BigNumber.toHexString() for precision
             gasLimit: BigNumber.from(
               Boolean(
@@ -944,7 +946,7 @@ export const SendTransaction = () => {
                   'transaction value'
                 ).toHexString()
               : '0x0', // Convert value to hex string using safe conversion
-            nonce: customNonce,
+            nonce: customNonce ?? tx.nonce,
             maxPriorityFeePerGas: Boolean(
               customFee.isCustom && customFee.maxPriorityFeePerGas >= 0
             )
@@ -1174,7 +1176,6 @@ export const SendTransaction = () => {
           feeDetails,
           feeSafety,
           formTx,
-          nonce,
           isInvalidTxData,
           gasLimitError,
           recommendationOnly,
@@ -1197,7 +1198,6 @@ export const SendTransaction = () => {
           setAcceptedDappFeeRequest(false);
           setFeeRecommendationOnly(Boolean(recommendationOnly));
           setTx(formTx);
-          setCustomNonce(nonce);
           setInitialLoading(false);
         }
       } catch (e) {
@@ -1780,6 +1780,7 @@ export const SendTransaction = () => {
                     <TransactionDetailsComponent
                       tx={tx}
                       decodedTx={decodedTxData}
+                      customNonce={customNonce}
                       editingDisabled={editingDisabled}
                       setCustomNonce={updateCustomNonce}
                       setCustomFee={updateCustomFee}

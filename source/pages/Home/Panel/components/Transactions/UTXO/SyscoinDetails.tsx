@@ -167,7 +167,7 @@ export const SyscoinTransactionDetails = ({
   const { controllerEmitter } = useController();
   const { getTxType, getTxStatus } = useTransactionsListConfig();
 
-  const { useCopyClipboard, alert } = useUtils();
+  const { alert } = useUtils();
   const { t, i18n } = useTranslation();
 
   const [enhancedTransaction, setEnhancedTransaction] = useState<{
@@ -178,9 +178,16 @@ export const SyscoinTransactionDetails = ({
   } | null>(null);
   const scopeRef = useRef(scope);
   scopeRef.current = scope;
+  const copyContextRef = useRef({ active: true, sequence: 0 });
+  useEffect(() => {
+    copyContextRef.current.active = true;
+    return () => {
+      copyContextRef.current.active = false;
+      copyContextRef.current.sequence += 1;
+    };
+  }, [scope]);
   const accountSummaryRef = useRef(accountTransaction);
   accountSummaryRef.current = accountTransaction;
-  const [, copy] = useCopyClipboard();
   const matchingEnhancedTransaction =
     enhancedTransaction?.scope === scope ? enhancedTransaction : null;
   // Cache only chain data; always merge the latest account summary at render time.
@@ -276,11 +283,17 @@ export const SyscoinTransactionDetails = ({
   };
 
   const handleCopyWithMessage = async (value: string, label: string) => {
+    if (!copyContextRef.current.active || scopeRef.current !== scope) return;
+    const sequence = ++copyContextRef.current.sequence;
+    const isCurrent = () =>
+      copyContextRef.current.active &&
+      scopeRef.current === scope &&
+      copyContextRef.current.sequence === sequence;
     try {
-      await copy(value);
-      alert.info(getCopyMessage(label));
+      await navigator.clipboard.writeText(value);
+      if (isCurrent()) alert.info(getCopyMessage(label));
     } catch {
-      alert.error(t('transactions.copyFailed'));
+      if (isCurrent()) alert.error(t('transactions.copyFailed'));
     }
   };
 

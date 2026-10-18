@@ -1,5 +1,5 @@
 import { toSvg } from 'jdenticon';
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
@@ -53,7 +53,10 @@ const Decrypt: React.FC<ISign> = () => {
   const [loading, setLoading] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [decryptedMessage, setDecryptedMessage] = useState<string | null>(null);
+  const [preview, setPreview] = useState<{
+    message: string;
+    scope: string;
+  } | null>(null);
   const [isDecrypting, setIsDecrypting] = useState(false);
 
   const { accounts, activeAccount: activeAccountMeta } = useSelector(
@@ -62,6 +65,40 @@ const Decrypt: React.FC<ISign> = () => {
   const activeAccount =
     accounts[activeAccountMeta.type]?.[activeAccountMeta.id];
   const { isBitcoinBased } = useSelector((state: RootState) => state.vault);
+  const activeNetwork = useSelector(
+    (state: RootState) => state.vault.activeNetwork
+  );
+  const previewScope = JSON.stringify([
+    activeAccountMeta.type,
+    activeAccountMeta.id,
+    activeAccount?.address,
+    isBitcoinBased,
+    activeNetwork?.chainId,
+    activeNetwork?.url,
+    host,
+    data.eventName,
+    data[0],
+  ]);
+  const currentPreviewScope = useRef(previewScope);
+  currentPreviewScope.current = previewScope;
+  const previewRequest = useRef(0);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      previewRequest.current += 1;
+    };
+  }, []);
+  useEffect(() => {
+    previewRequest.current += 1;
+    setPreview(null);
+    setErrorMsg(null);
+    setIsDecrypting(false);
+  }, [previewScope]);
+  // Do not show the old plaintext even during the render before effect cleanup.
+  const decryptedMessage =
+    preview?.scope === previewScope ? preview.message : null;
 
   const copyValue = async (value: string, message: string) => {
     try {
@@ -85,6 +122,12 @@ const Decrypt: React.FC<ISign> = () => {
   const { label, address } = activeAccount;
 
   const handleDecrypt = async () => {
+    const request = ++previewRequest.current;
+    const isCurrent = () =>
+      mounted.current &&
+      currentPreviewScope.current === previewScope &&
+      previewRequest.current === request;
+    setErrorMsg(null);
     if (isBitcoinBased) {
       setErrorMsg('Message decryption is not available on UTXO networks');
       return;
@@ -105,11 +148,13 @@ const Decrypt: React.FC<ISign> = () => {
         ['wallet', 'ethereumTransaction', 'decryptMessage'],
         [decryptParams]
       );
-      setDecryptedMessage(decrypted as string);
+      if (isCurrent())
+        setPreview({ message: decrypted as string, scope: previewScope });
     } catch (error: any) {
-      setErrorMsg(error.message || 'Failed to decrypt message');
+      if (isCurrent())
+        setErrorMsg(error.message || 'Failed to decrypt message');
     } finally {
-      setIsDecrypting(false);
+      if (isCurrent()) setIsDecrypting(false);
     }
   };
 

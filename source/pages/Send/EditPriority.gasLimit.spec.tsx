@@ -238,6 +238,37 @@ it('does not create a fee override when dismissing a changed default quote', asy
   expect(saved).not.toHaveBeenCalled();
 });
 
+it.each(['cancel', 'close', 'escape'])(
+  'does not commit a pending Save after the editor is dismissed through %s',
+  async (dismiss) => {
+    const { initial, saved, current, price } = prepareLifecycle();
+    await waitFor(() => expect(price().value).toBe('10'));
+    fireEvent.change(price(), { target: { value: '20' } });
+    act(() => {
+      fireEvent.click(screen.getByRole('button', { name: 'buttons.save' }));
+      if (dismiss === 'escape') {
+        fireEvent.keyDown(window, { key: 'Escape', code: 'Escape' });
+      } else {
+        fireEvent.click(
+          screen.getByRole('button', {
+            name: dismiss === 'close' ? 'buttons.close' : 'buttons.cancel',
+          })
+        );
+      }
+    });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(saved).not.toHaveBeenCalled();
+    expect(current()).toEqual(initial);
+    fireEvent.click(screen.getByText('reopen-editor'));
+    await waitFor(() => expect(price().value).toBe('10'));
+    fireEvent.change(price(), { target: { value: '15' } });
+    fireEvent.click(screen.getByRole('button', { name: 'buttons.save' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(saved).toHaveBeenCalledTimes(1);
+    expect(current()).toEqual({ ...initial, maxFeePerGas: 15 });
+  }
+);
+
 it('revalidates a changed gas minimum without overwriting the open draft', async () => {
   const { price, setMinimum, saved } = prepareLifecycle();
   await waitFor(() => expect(price().value).toBe('10'));

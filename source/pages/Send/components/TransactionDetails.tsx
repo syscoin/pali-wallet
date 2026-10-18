@@ -35,6 +35,7 @@ CopyIcon.displayName = 'CopyIcon';
 
 interface ITransactionDetailsProps {
   customFee: ICustomFeeParams;
+  customNonce?: number;
   decodedTx: IDecodedTx;
   editingDisabled?: boolean;
   fee: IFeeState;
@@ -54,6 +55,7 @@ export const TransactionDetailsComponent = (
     setCustomNonce,
     fee,
     customFee,
+    customNonce,
     setIsOpen,
     editingDisabled = false,
   } = props;
@@ -279,7 +281,7 @@ export const TransactionDetailsComponent = (
             step={1}
             className="input-medium outline-0 w-16 bg-bkg-2 rounded-sm focus:outline-none focus-visible:outline-none"
             placeholder={String(tx.nonce)}
-            defaultValue={tx.nonce}
+            value={customNonce ?? tx.nonce}
             onChange={(e) => {
               if (editingDisabled) return;
               const value = e.target.value;
