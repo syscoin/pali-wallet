@@ -86,19 +86,17 @@ const CustomRPCExternal = () => {
     }
   }, [chainConfig, initialValues, form]);
 
+  const setFieldErrors = (name: 'url' | 'apiUrl', errors: string[] = []) => {
+    form.setFields([{ name, errors, validating: false }]);
+  };
+
   const validateRpcUrlAndShowError = async (
     rpcUrl?: string,
     formData?: ICustomRpcParams
   ): Promise<INetwork | null> => {
     if (!rpcUrl || !rpcUrl.trim()) {
       // Clear any existing RPC URL field errors
-      form.setFields([
-        {
-          name: 'url',
-          errors: [],
-          validating: false,
-        },
-      ]);
+      setFieldErrors('url');
       return null;
     }
 
@@ -131,13 +129,7 @@ const CustomRPCExternal = () => {
       }
 
       // Set success state
-      form.setFields([
-        {
-          name: 'url',
-          errors: [],
-          validating: false,
-        },
-      ]);
+      setFieldErrors('url');
 
       // Auto-fill chainId from RPC validation if not already set
       if (network.chainId && !formData?.chainId) {
@@ -162,13 +154,7 @@ const CustomRPCExternal = () => {
       );
 
       // Set error state
-      form.setFields([
-        {
-          name: 'url',
-          errors: [errorMessage],
-          validating: false,
-        },
-      ]);
+      setFieldErrors('url', [errorMessage]);
 
       return null;
     }
@@ -177,13 +163,7 @@ const CustomRPCExternal = () => {
   const validateApiUrlAndShowError = async (apiUrl?: string) => {
     if (!apiUrl || !apiUrl.trim()) {
       // Clear any existing API URL field errors
-      form.setFields([
-        {
-          name: 'apiUrl',
-          errors: [],
-          validating: false,
-        },
-      ]);
+      setFieldErrors('apiUrl');
       return true; // Optional field
     }
 
@@ -208,25 +188,13 @@ const CustomRPCExternal = () => {
         const apiError = typedApiResult?.error || 'Failed to validate API URL';
 
         // Set error state
-        form.setFields([
-          {
-            name: 'apiUrl',
-            errors: [apiError],
-            validating: false,
-          },
-        ]);
+        setFieldErrors('apiUrl', [apiError]);
 
         return false;
       }
 
       // Set success state
-      form.setFields([
-        {
-          name: 'apiUrl',
-          errors: [],
-          validating: false,
-        },
-      ]);
+      setFieldErrors('apiUrl');
 
       return true;
     } catch (error) {
@@ -236,13 +204,7 @@ const CustomRPCExternal = () => {
       );
 
       // Set error state
-      form.setFields([
-        {
-          name: 'apiUrl',
-          errors: [errorMessage],
-          validating: false,
-        },
-      ]);
+      setFieldErrors('apiUrl', [errorMessage]);
 
       return false;
     }
