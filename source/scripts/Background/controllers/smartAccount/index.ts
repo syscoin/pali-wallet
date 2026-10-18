@@ -1224,122 +1224,155 @@ class SmartAccountController {
     accountId: number;
     expectedContext?: IEvmTransactionContext;
   }) {
-    const context = this.infrastructureContext();
-    const assertCurrent = () => {
-      try {
-        this.assertInfrastructureContext(context);
-        if (params.expectedContext) {
-          this.assertExpectedExecutionContext(
-            params.expectedContext,
-            params.accountId
+    let mayHaveSubmitted = false;
+    try {
+      const context = this.infrastructureContext();
+      const assertCurrent = () => {
+        try {
+          this.assertInfrastructureContext(context);
+          if (params.expectedContext) {
+            this.assertExpectedExecutionContext(
+              params.expectedContext,
+              params.accountId
+            );
+          }
+        } catch {
+          throw Object.assign(new Error(EVM_TRANSACTION_CONTEXT_CHANGED), {
+            transactionNotBroadcast: true,
+          });
+        }
+      };
+      assertCurrent();
+      const active = this.getSmartAccountById(params.accountId);
+      const metadata = active.metadata;
+      const accountAddress = getAddress(active.account.address);
+      if (this.pendingDeploymentAddresses.has(accountAddress)) {
+        mayHaveSubmitted = true;
+        throw new Error('Smart account registration is already pending.');
+      }
+      if (!metadata.descriptor) {
+        throw new Error(
+          'Smart account descriptor is required for deterministic deployment'
+        );
+      }
+      const provider = this.ethereumTransaction?.web3Provider;
+      if (!provider) {
+        throw new Error('Web3 provider not available');
+      }
+
+      const code = await provider.getCode(accountAddress);
+      assertCurrent();
+      const factoryAddress =
+        metadata.factoryAddress ||
+        getPaliSmartAccountFactoryAddress(metadata.chainId);
+      if (code === '0x') {
+        if (!metadata.auth) {
+          throw new Error(
+            'Smart account initial authenticator metadata is required for deployment'
           );
         }
-      } catch {
-        throw Object.assign(new Error(EVM_TRANSACTION_CONTEXT_CHANGED), {
-          transactionNotBroadcast: true,
+        const auth = this.requireAuthenticator(metadata);
+        const smartAccount = await toPaliSmartAccount({
+          auth,
+          chainId: metadata.chainId,
+          deploySalt: metadata.descriptor.deploymentSalt,
+          factoryAddress,
+          provider,
         });
-      }
-    };
-    assertCurrent();
-    const active = this.getSmartAccountById(params.accountId);
-    const metadata = active.metadata;
-    const accountAddress = getAddress(active.account.address);
-    if (this.pendingDeploymentAddresses.has(accountAddress)) {
-      throw new Error('Smart account registration is already pending.');
-    }
-    if (!metadata.descriptor) {
-      throw new Error(
-        'Smart account descriptor is required for deterministic deployment'
-      );
-    }
-    const provider = this.ethereumTransaction?.web3Provider;
-    if (!provider) {
-      throw new Error('Web3 provider not available');
-    }
-
-    const code = await provider.getCode(accountAddress);
-    assertCurrent();
-    const factoryAddress =
-      metadata.factoryAddress ||
-      getPaliSmartAccountFactoryAddress(metadata.chainId);
-    if (code === '0x') {
-      if (!metadata.auth) {
-        throw new Error(
-          'Smart account initial authenticator metadata is required for deployment'
-        );
-      }
-      const auth = this.requireAuthenticator(metadata);
-      const smartAccount = await toPaliSmartAccount({
-        auth,
-        chainId: metadata.chainId,
-        deploySalt: metadata.descriptor.deploymentSalt,
-        factoryAddress,
-        provider,
-      });
-      assertCurrent();
-      if (smartAccount.address !== accountAddress) {
-        throw new Error(
-          'Stored smart account authenticator does not match the deterministic account address.'
-        );
-      }
-      // The factory gates createAccount on EntryPoint.senderCreator(), so
-      // explicit registration is a no-op UserOp whose initCode deploys the
-      // account through the canonical ERC-4337 path. The op is signed in the
-      // background with the account's local ECDSA owners (fresh accounts
-      // always carry the ECDSA bootstrap validator); other validator kinds
-      // deploy lazily with their first UI-signed execution.
-      this.pendingDeploymentAddresses.add(accountAddress);
-      let response: IEvmTransactionResponse;
-      try {
-        const prepared = await this.prepareSmartAccountExecutions(
-          [{ data: '0x', target: accountAddress, value: '0x0' }],
-          params.accountId,
-          { expectedContext: params.expectedContext }
-        );
         assertCurrent();
-        const signature = await this.signActionHashWithLocalEcdsaOwners(
+        if (smartAccount.address !== accountAddress) {
+          throw new Error(
+            'Stored smart account authenticator does not match the deterministic account address.'
+          );
+        }
+        // The factory gates createAccount on EntryPoint.senderCreator(), so
+        // explicit registration is a no-op UserOp whose initCode deploys the
+        // account through the canonical ERC-4337 path. The op is signed in the
+        // background with the account's local ECDSA owners (fresh accounts
+        // always carry the ECDSA bootstrap validator); other validator kinds
+        // deploy lazily with their first UI-signed execution.
+        this.pendingDeploymentAddresses.add(accountAddress);
+        let response: IEvmTransactionResponse;
+        try {
+          const prepared = await this.prepareSmartAccountExecutions(
+            [{ data: '0x', target: accountAddress, value: '0x0' }],
+            params.accountId,
+            { expectedContext: params.expectedContext }
+          );
+          assertCurrent();
+          const signature = await this.signActionHashWithLocalEcdsaOwners(
+            metadata,
+            prepared.actionHash,
+            prepared.executionContextId
+          );
+          mayHaveSubmitted = true;
+          response = await this.submitSmartAccountExecution({
+            accountId: params.accountId,
+            expectedContext: params.expectedContext,
+            executionContextId: prepared.executionContextId,
+            executions: prepared.executions,
+            gasPayer: prepared.gasPayer,
+            maxFeePerGas: prepared.maxFeePerGas,
+            signature,
+            skipRapidPolling: true,
+            userOperation: prepared.userOperation,
+            waitForConfirmation: true,
+          });
+        } finally {
+          this.pendingDeploymentAddresses.delete(accountAddress);
+        }
+        // Publication has completed. A new selection/session must not receive
+        // the old account's metadata, but it cannot erase its accepted hash.
+        const acknowledged = {
+          address: accountAddress,
           metadata,
-          prepared.actionHash,
-          prepared.executionContextId
+          transaction: response,
+        };
+        try {
+          assertCurrent();
+        } catch {
+          return acknowledged;
+        }
+        this.invalidateHydratedMetadata(accountAddress);
+        let hydratedMetadata: ISmartAccountMetadata;
+        try {
+          hydratedMetadata = await this.hydrateSmartAccountMetadata(
+            active.account,
+            { forceRefresh: true }
+          );
+          assertCurrent();
+        } catch {
+          return acknowledged;
+        }
+        store.dispatch(
+          setAccountPropertyByIdAndType({
+            id: active.account.id,
+            property: 'smartAccount',
+            type: PaliKeyringAccountType.SmartAccount,
+            value: hydratedMetadata,
+          })
         );
-        response = await this.submitSmartAccountExecution({
-          accountId: params.accountId,
-          expectedContext: params.expectedContext,
-          executionContextId: prepared.executionContextId,
-          executions: prepared.executions,
-          gasPayer: prepared.gasPayer,
-          maxFeePerGas: prepared.maxFeePerGas,
-          signature,
-          skipRapidPolling: true,
-          userOperation: prepared.userOperation,
-          waitForConfirmation: true,
-        });
-      } finally {
-        this.pendingDeploymentAddresses.delete(accountAddress);
+        try {
+          await this.deps.saveWalletState(
+            'register-smart-account-on-chain',
+            true,
+            true
+          );
+        } catch {
+          return { ...acknowledged, metadata: hydratedMetadata };
+        }
+
+        return {
+          address: accountAddress,
+          metadata: hydratedMetadata,
+          transaction: response,
+        };
       }
-      // Publication has completed. A new selection/session must not receive
-      // the old account's metadata, but it cannot erase its accepted hash.
-      const acknowledged = {
-        address: accountAddress,
-        metadata,
-        transaction: response,
-      };
-      try {
-        assertCurrent();
-      } catch {
-        return acknowledged;
-      }
-      this.invalidateHydratedMetadata(accountAddress);
-      let hydratedMetadata: ISmartAccountMetadata;
-      try {
-        hydratedMetadata = await this.hydrateSmartAccountMetadata(
-          active.account,
-          { forceRefresh: true }
-        );
-        assertCurrent();
-      } catch {
-        return acknowledged;
-      }
+
+      const hydratedMetadata = await this.hydrateSmartAccountMetadata(
+        active.account
+      );
+      assertCurrent();
       store.dispatch(
         setAccountPropertyByIdAndType({
           id: active.account.id,
@@ -1348,46 +1381,30 @@ class SmartAccountController {
           value: hydratedMetadata,
         })
       );
-      try {
-        await this.deps.saveWalletState(
-          'register-smart-account-on-chain',
-          true,
-          true
-        );
-      } catch {
-        return { ...acknowledged, metadata: hydratedMetadata };
-      }
+      await this.deps.saveWalletState(
+        'refresh-already-registered-smart-account',
+        true,
+        true
+      );
 
       return {
         address: accountAddress,
         metadata: hydratedMetadata,
-        transaction: response,
+        transaction: null,
       };
+    } catch (error) {
+      // The submission helper can prefund before handleOps. After entering it
+      // (or finding another live registration), retain its outcome unchanged.
+      if (mayHaveSubmitted) throw error;
+      const preflightError = new Error(
+        typeof error?.message === 'string'
+          ? error.message
+          : 'Smart account registration preflight failed'
+      );
+      if (typeof error?.code === 'number')
+        Object.assign(preflightError, { code: error.code });
+      throw Object.assign(preflightError, { transactionNotBroadcast: true });
     }
-
-    const hydratedMetadata = await this.hydrateSmartAccountMetadata(
-      active.account
-    );
-    assertCurrent();
-    store.dispatch(
-      setAccountPropertyByIdAndType({
-        id: active.account.id,
-        property: 'smartAccount',
-        type: PaliKeyringAccountType.SmartAccount,
-        value: hydratedMetadata,
-      })
-    );
-    await this.deps.saveWalletState(
-      'refresh-already-registered-smart-account',
-      true,
-      true
-    );
-
-    return {
-      address: accountAddress,
-      metadata: hydratedMetadata,
-      transaction: null,
-    };
   }
 
   private buildAuthenticatorForCreation(

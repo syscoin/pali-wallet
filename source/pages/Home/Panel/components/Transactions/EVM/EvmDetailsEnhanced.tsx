@@ -55,20 +55,48 @@ import {
   ReplacementWinner,
 } from './replacementWinner';
 
+type DetailsRead = { data: any; summaryAtRead?: string };
 // Transaction details cache with TTL (5 minutes)
-const txDetailsCache = new Map<string, { data: any; timestamp: number }>();
+const txDetailsCache = new Map<string, DetailsRead & { timestamp: number }>();
 const decodedTxCache = new Map<
   string,
   { data: IDecodedTx | null; timestamp: number }
 >();
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const BLOCK_FIELDS = ['blockNumber', 'blockHash', 'confirmations', 'timestamp'];
+const STATUS_FIELDS = ['status', 'success', 'isError', 'txreceipt_status'];
+const settlementSnapshot = (
+  summary: any,
+  fields = [...BLOCK_FIELDS, ...STATUS_FIELDS]
+) =>
+  JSON.stringify(
+    fields.map((field) => {
+      const value = summary?.[field];
+      if (field === 'blockHash') return String(value || '').toLowerCase();
+      const numeric = parseEvmInteger(value);
+      if (field === 'blockNumber') return numeric || null;
+      return value === null || value === undefined
+        ? null
+        : numeric ?? String(value).toLowerCase();
+    })
+  );
 
-// A cached pending lookup must not overwrite newer authoritative activity status.
-const mergeTransactionDetails = (summary: any, enhanced: any) => {
+const mergeTransactionDetails = (
+  summary: any,
+  enhanced: any,
+  preferSummaryStatus: boolean
+) => {
   const merged = { ...summary, ...enhanced };
+  const freshReorg =
+    isTransactionInBlock(enhanced) &&
+    summary?.blockHash &&
+    enhanced?.blockHash &&
+    String(summary.blockHash).toLowerCase() !==
+      String(enhanced.blockHash).toLowerCase();
   // Intent and replacement links are wallet annotations, not RPC fields.
   for (const field of [
     'isCancel',
+    'isCanceled',
     'isSpeedUp',
     'isReplaced',
     'replacesHash',
@@ -80,23 +108,37 @@ const mergeTransactionDetails = (summary: any, enhanced: any) => {
   if (
     summary &&
     enhanced &&
-    (Number(summary.confirmations ?? -1) >
-      Number(enhanced.confirmations ?? -1) ||
+    (preferSummaryStatus ||
+      (!freshReorg &&
+        Number(summary.confirmations ?? -1) >
+          Number(enhanced.confirmations ?? -1)) ||
       (isTransactionInBlock(summary) && !isTransactionInBlock(enhanced)))
   ) {
-    for (const field of [
-      'blockNumber',
-      'blockHash',
-      'confirmations',
-      'timestamp',
-      'status',
-      'success',
-      'isError',
-      'txreceipt_status',
-      'isCanceled',
-      'isCancel',
-    ]) {
+    const changedBlock =
+      isTransactionInBlock(enhanced) &&
+      settlementSnapshot(summary, BLOCK_FIELDS.slice(0, 2)) !==
+        settlementSnapshot(enhanced, BLOCK_FIELDS.slice(0, 2));
+    for (const field of BLOCK_FIELDS) {
       if (summary[field] !== undefined) merged[field] = summary[field];
+      else delete merged[field];
+    }
+    for (const field of [
+      ...STATUS_FIELDS,
+      'logs',
+      'gasUsed',
+      'cumulativeGasUsed',
+      'effectiveGasPrice',
+      'transactionIndex',
+      'revertReason',
+      'contractAddress',
+      'l1Fee',
+      'l1GasPrice',
+      'l1GasUsed',
+      'l1FeeScalar',
+    ]) {
+      if (summary[field] !== null && summary[field] !== undefined)
+        merged[field] = summary[field];
+      else if (changedBlock) delete merged[field];
     }
   }
   return merged;
@@ -154,6 +196,10 @@ export const EvmTransactionDetailsEnhanced = ({
     selectActiveAccountTransactions
   );
   const history = activeAccountTransactions?.ethereum?.[chainId] || [];
+  const liveSummary =
+    matchingTx && history.includes(matchingTx)
+      ? settlementSnapshot(matchingTx)
+      : undefined;
   const minedNonceIndex = useMemo(
     () => buildEvmMinedNonceIndex(history, chainId),
     [activeAccountTransactions, chainId]
@@ -186,10 +232,11 @@ export const EvmTransactionDetailsEnhanced = ({
 
   const { getTxStatusIcons, getTxType } = useTransactionsListConfig();
 
-  const [enhancedDetails, setEnhancedDetails] = useContextualState<any>(
+  const [detailsRead, setDetailsRead] = useContextualState<DetailsRead | null>(
     scope,
     null
   );
+  const enhancedDetails = detailsRead?.data ?? null;
   const [isLoadingDetails, setIsLoadingDetails] = useContextualState(
     scope,
     false
@@ -212,9 +259,21 @@ export const EvmTransactionDetailsEnhanced = ({
   const mergedTransaction = useMemo(
     () =>
       matchingTx || enhancedDetails
-        ? mergeTransactionDetails(matchingTx, enhancedDetails)
+        ? mergeTransactionDetails(
+            matchingTx,
+            enhancedDetails,
+            // Only newly observed live settlement data supersedes the read;
+            // cloned unchanged history and old route snapshots do not.
+            Boolean(
+              liveSummary !== undefined &&
+                liveSummary !== detailsRead?.summaryAtRead &&
+                (detailsRead?.summaryAtRead !== undefined ||
+                  isTransactionInBlock(matchingTx) ||
+                  !isTransactionInBlock(enhancedDetails))
+            )
+          )
         : undefined,
-    [matchingTx, enhancedDetails]
+    [matchingTx, enhancedDetails, detailsRead, liveSummary]
   );
   // An EntryPoint bundle may contain many accounts. Never fall back to its first
   // operation when restoring this account's details from an outer hash alone.
@@ -378,11 +437,12 @@ export const EvmTransactionDetailsEnhanced = ({
   useEffect(() => {
     let cancelled = false;
     const isCurrent = () => !cancelled && scopeRef.current === scope;
+    const summaryAtRead = liveSummary;
     const fetchEnhancedDetails = async () => {
       if (!hash) return;
       const cached = txDetailsCache.get(scope);
       if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
-        setEnhancedDetails(cached.data);
+        setDetailsRead(cached);
         return;
       }
 
@@ -407,18 +467,22 @@ export const EvmTransactionDetailsEnhanced = ({
         if (usableLookup(enhancedData)) {
           txDetailsCache.set(scope, {
             data: enhancedData,
+            summaryAtRead,
             timestamp: Date.now(),
           });
           if (txDetailsCache.size > 100)
             txDetailsCache.delete(txDetailsCache.keys().next().value);
-          setEnhancedDetails(enhancedData);
+          setDetailsRead({
+            data: enhancedData,
+            summaryAtRead,
+          });
         } else {
-          setEnhancedDetails(null);
+          setDetailsRead(null);
         }
       } catch (error) {
         if (isCurrent()) {
           console.error('Failed to fetch enhanced transaction details:', error);
-          setEnhancedDetails(null);
+          setDetailsRead(null);
         }
       } finally {
         if (isCurrent()) setIsLoadingDetails(false);
@@ -810,7 +874,9 @@ export const EvmTransactionDetailsEnhanced = ({
 
       {/* Display event logs */}
       <TransactionEventLogs
-        logs={Array.isArray(enhancedDetails?.logs) ? enhancedDetails.logs : []}
+        logs={
+          Array.isArray(mergedTransaction?.logs) ? mergedTransaction.logs : []
+        }
       />
     </>
   );

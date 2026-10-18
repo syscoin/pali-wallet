@@ -148,6 +148,54 @@ it('does not fetch market data for an unknown asset or ordinary balance refresh'
   expect(screen.getByText('$12')).toBeTruthy();
 });
 
+it('preserves keyboard focus and the details pane when its pending market read finishes', async () => {
+  let finish!: (response: any) => void;
+  mockFetch.mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      })
+  );
+  const view = render(<SyscoinAssetDetails id={asset.assetGuid} />);
+  const pane = view.container.querySelector(
+    '[data-navigation-scroll="asset-details"]'
+  );
+  const close = screen.getByRole('button', { name: 'buttons.close' });
+  close.focus();
+  expect(document.activeElement).toBe(close);
+  await act(async () => finish({ ok: true, json: async () => market(12) }));
+  expect(screen.getByText('$12')).toBeTruthy();
+  expect(document.activeElement).toBe(close);
+  expect(
+    view.container.querySelector('[data-navigation-scroll="asset-details"]')
+  ).toBe(pane);
+});
+
+it('keeps the focused close action usable when the market read fails', async () => {
+  let rejectRead!: (error: Error) => void;
+  mockFetch.mockImplementation(
+    () =>
+      new Promise((_, reject) => {
+        rejectRead = reject;
+      })
+  );
+  const error = jest
+    .spyOn(console, 'error')
+    .mockImplementation(() => undefined);
+  try {
+    render(<SyscoinAssetDetails id={asset.assetGuid} />);
+    const close = screen.getByRole('button', { name: 'buttons.close' });
+    close.focus();
+    await act(async () =>
+      rejectRead(new Error('Synthetic market read unavailable'))
+    );
+    expect(document.activeElement).toBe(close);
+    expect(close.isConnected).toBe(true);
+  } finally {
+    error.mockRestore();
+  }
+});
+
 it.each([undefined, null, NaN, Infinity])(
   'keeps a valid price readable with unavailable daily change %s',
   async (change) => {

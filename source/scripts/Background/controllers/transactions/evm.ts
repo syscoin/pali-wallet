@@ -23,6 +23,28 @@ const fetchExplorerApi = (url: string, options?: RequestInit) =>
     ? fetchRoutescan(url, options)
     : retryableFetch(url, options);
 
+const accountApiUrl = (
+  apiUrl: string,
+  address: string,
+  action: string,
+  page?: number,
+  offset = 30
+) => {
+  const url = new URL(apiUrl);
+  const apiKey =
+    url.searchParams.get('apikey') || url.searchParams.get('apiKey');
+  url.searchParams.set('module', 'account');
+  url.searchParams.set('action', action);
+  url.searchParams.set('address', address);
+  if (action !== 'pendingtxlist') url.searchParams.set('sort', 'desc');
+  if (page !== undefined) {
+    url.searchParams.set('page', String(page));
+    url.searchParams.set('offset', String(offset));
+  }
+  if (apiKey) url.searchParams.set('apikey', apiKey);
+  return url;
+};
+
 const mapExplorerReceiptStatus = (item: any) => {
   const binaryStatus = (value: unknown): '0' | '1' | null => {
     if (
@@ -53,6 +75,70 @@ const mapExplorerReceiptStatus = (item: any) => {
     isError: status === null ? null : status === '0' ? '1' : '0',
   };
 };
+
+// Initial and paginated explorer reads use exactly the same normalization.
+const mapApiTx = (
+  item: any,
+  chainIdForMap: number,
+  overrideTo?: string,
+  historySource: EvmTransactionHistorySource = EVM_TRANSACTION_HISTORY_SOURCE.ExplorerTransaction
+) => {
+  let timestamp = parseInt(item.timeStamp, 10);
+  const now = Math.floor(Date.now() / 1000);
+  const oneYearFromNow = now + 365 * 24 * 60 * 60;
+  const tenYearsAgo = now - 10 * 365 * 24 * 60 * 60;
+  if (
+    !timestamp ||
+    isNaN(timestamp) ||
+    timestamp < tenYearsAgo ||
+    timestamp > oneYearFromNow
+  ) {
+    timestamp = now;
+  }
+  const blockNumberParsed =
+    item.blockNumber !== undefined && item.blockNumber !== null
+      ? parseInt(item.blockNumber)
+      : undefined;
+  const confirmationsParsed =
+    item.confirmations !== undefined && item.confirmations !== null
+      ? parseInt(item.confirmations)
+      : 0;
+  const nonceParsed =
+    item.nonce !== undefined && item.nonce !== null
+      ? parseInt(item.nonce)
+      : undefined;
+  return {
+    hash: item.hash,
+    from: item.from,
+    to: overrideTo ?? item.to,
+    value: item.value,
+    blockNumber: blockNumberParsed,
+    blockHash: item.blockHash,
+    timestamp,
+    confirmations: confirmationsParsed,
+    chainId: chainIdForMap,
+    input: item.input,
+    gasPrice: item.gasPrice,
+    gas: item.gas || item.gasLimit,
+    nonce: nonceParsed,
+    type: parseEvmInteger(item.type),
+    r: item.r,
+    s: item.s,
+    v: parseEvmInteger(item.v),
+    historySource,
+    ...mapExplorerReceiptStatus(item),
+  } as any;
+};
+
+const mapTokenTransfer = (event: any, chainId: number) => ({
+  ...mapApiTx(
+    event,
+    chainId,
+    event.contractAddress,
+    EVM_TRANSACTION_HISTORY_SOURCE.ExplorerTokenTransfer
+  ),
+  tokenRecipient: event.to,
+});
 
 const EvmTransactionsController = (): IEvmTransactionsController => {
   const getUserTransactionByDefaultProvider = async (
@@ -188,75 +274,11 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
   }> => {
     // Routescan does not implement Blockscout's pendingtxlist action.
     const fetchPending = includePending && !isRoutescanApiUrl(apiUrl, chainId);
-    // Shared mapper for API items (txlist or tokentx) to internal shape
-    const mapApiTx = (
-      item: any,
-      chainIdForMap: number,
-      overrideTo?: string,
-      historySource: EvmTransactionHistorySource = EVM_TRANSACTION_HISTORY_SOURCE.ExplorerTransaction
-    ) => {
-      // Validate timestamp into a sane range
-      let timestamp = parseInt(item.timeStamp, 10);
-      const now = Math.floor(Date.now() / 1000);
-      const oneYearFromNow = now + 365 * 24 * 60 * 60;
-      const tenYearsAgo = now - 10 * 365 * 24 * 60 * 60;
-      if (
-        !timestamp ||
-        isNaN(timestamp) ||
-        timestamp < tenYearsAgo ||
-        timestamp > oneYearFromNow
-      ) {
-        timestamp = now;
-      }
-      const blockNumberParsed =
-        item.blockNumber !== undefined && item.blockNumber !== null
-          ? parseInt(item.blockNumber)
-          : undefined;
-      const confirmationsParsed =
-        item.confirmations !== undefined && item.confirmations !== null
-          ? parseInt(item.confirmations)
-          : 0;
-      const nonceParsed =
-        item.nonce !== undefined && item.nonce !== null
-          ? parseInt(item.nonce)
-          : undefined;
-      return {
-        hash: item.hash,
-        from: item.from,
-        to: overrideTo ?? item.to,
-        value: item.value,
-        blockNumber: blockNumberParsed,
-        blockHash: item.blockHash,
-        timestamp,
-        confirmations: confirmationsParsed,
-        chainId: chainIdForMap,
-        input: item.input,
-        gasPrice: item.gasPrice,
-        gas: item.gas || item.gasLimit,
-        nonce: nonceParsed,
-        type: parseEvmInteger(item.type),
-        r: item.r,
-        s: item.s,
-        v: parseEvmInteger(item.v),
-        historySource,
-        ...mapExplorerReceiptStatus(item),
-      } as any;
-    };
     if (!apiUrl) return { transactions: null, error: 'No API URL provided' };
 
     // Most block explorers (Etherscan, Polygonscan, Blockscout, etc.) use this same API format
     // Reference: https://docs.blockscout.com/devs/apis/rpc/account
-    const url = new URL(apiUrl);
-
-    // Extract API key if it's already in the URL
-    const existingApiKey =
-      url.searchParams.get('apikey') || url.searchParams.get('apiKey');
-
-    // Build the API request
-    url.searchParams.set('module', 'account');
-    url.searchParams.set('action', 'txlist');
-    url.searchParams.set('address', address);
-    url.searchParams.set('sort', 'desc');
+    const url = accountApiUrl(apiUrl, address, 'txlist');
 
     // Decide whether to include paging using persisted or probed tx count
     let evmTxCount: number | undefined;
@@ -299,12 +321,6 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
       url.searchParams.set('offset', '30');
     }
 
-    // Preserve the API key if it was in the original URL
-    // Reference: https://docs.blockscout.com/using-blockscout/my-account/api-keys
-    if (existingApiKey) {
-      url.searchParams.set('apikey', existingApiKey);
-    }
-
     // Prepare fetch promises for parallel execution
     const fetchPromises: Promise<Response>[] = [
       fetchExplorerApi(url.toString()),
@@ -313,29 +329,17 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
     // Add pending transactions fetch if requested
     let pendingUrl: URL | null = null;
     if (fetchPending) {
-      pendingUrl = new URL(apiUrl);
-      pendingUrl.searchParams.set('module', 'account');
-      pendingUrl.searchParams.set('action', 'pendingtxlist');
-      pendingUrl.searchParams.set('address', address);
-
-      if (existingApiKey) {
-        pendingUrl.searchParams.set('apikey', existingApiKey);
-      }
-
+      pendingUrl = accountApiUrl(apiUrl, address, 'pendingtxlist');
       fetchPromises.push(fetchExplorerApi(pendingUrl.toString()));
     }
 
     // Token transfer endpoint (use tokentx only for Blockscout compatibility)
-    const token20Url = new URL(apiUrl);
-    token20Url.searchParams.set('module', 'account');
-    token20Url.searchParams.set('action', 'tokentx');
-    token20Url.searchParams.set('address', address);
-    token20Url.searchParams.set('sort', 'desc');
-    if (shouldIncludeOffset) {
-      token20Url.searchParams.set('page', '1');
-      token20Url.searchParams.set('offset', '30');
-    }
-    if (existingApiKey) token20Url.searchParams.set('apikey', existingApiKey);
+    const token20Url = accountApiUrl(
+      apiUrl,
+      address,
+      'tokentx',
+      shouldIncludeOffset ? 1 : undefined
+    );
 
     fetchPromises.push(fetchExplorerApi(token20Url.toString()));
 
@@ -370,13 +374,7 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
           const token20Data = await token20Response.json();
           if (Array.isArray(token20Data?.result)) {
             for (const ev of token20Data.result) {
-              const base = mapApiTx(
-                ev,
-                chainId,
-                ev.contractAddress,
-                EVM_TRANSACTION_HISTORY_SOURCE.ExplorerTokenTransfer
-              );
-              tokenOnly.push({ ...base, tokenRecipient: ev.to } as any);
+              tokenOnly.push(mapTokenTransfer(ev, chainId));
             }
           }
         }
@@ -452,34 +450,22 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
         // Check for pending API errors too
         if (pendingData.status !== '0' && Array.isArray(pendingData.result)) {
           const pendingTxs = pendingData.result.map((tx: any) => ({
-            hash: tx.hash,
-            from: tx.from,
-            to: tx.to,
-            value: tx.value,
+            ...mapApiTx(
+              tx,
+              chainId,
+              undefined,
+              EVM_TRANSACTION_HISTORY_SOURCE.ExplorerPending
+            ),
             blockNumber: null, // Pending transactions don't have a block number
             blockHash: null,
             timestamp: tx.timeStamp
               ? parseInt(tx.timeStamp, 10)
               : Math.floor(Date.now() / 1000),
             confirmations: 0,
-            chainId: chainId,
-            input: tx.input,
-            gasPrice: tx.gasPrice,
-            gas: tx.gas || tx.gasLimit,
-            nonce:
-              tx.nonce !== undefined && tx.nonce !== null
-                ? parseInt(tx.nonce)
-                : undefined,
-            type: parseEvmInteger(tx.type),
-            r: tx.r,
-            s: tx.s,
-            v: parseEvmInteger(tx.v),
-            historySource: EVM_TRANSACTION_HISTORY_SOURCE.ExplorerPending,
             // Add any other fields your UI expects as null/default
             contractAddress: tx.contractAddress || null,
             cumulativeGasUsed: tx.cumulativeGasUsed || null,
             gasUsed: tx.gasUsed || null,
-            ...mapExplorerReceiptStatus(tx),
             transactionIndex:
               tx.transactionIndex !== undefined ? tx.transactionIndex : null,
           }));
@@ -500,15 +486,9 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
         tokenEventResults.push(...token20Data.result);
     } catch {}
 
-    const tokenTransactions = tokenEventResults.map((ev: any) => {
-      const base = mapApiTx(
-        ev,
-        chainId,
-        ev.contractAddress,
-        EVM_TRANSACTION_HISTORY_SOURCE.ExplorerTokenTransfer
-      );
-      return { ...base, tokenRecipient: ev.to } as any;
-    });
+    const tokenTransactions = tokenEventResults.map((ev: any) =>
+      mapTokenTransfer(ev, chainId)
+    );
 
     // Merge and deduplicate by hash (prefer base txlist entries when present)
     const seenHashes = new Set(allTransactions.map((t) => t.hash));
@@ -567,152 +547,52 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
     transactions: IEvmTransactionResponse[] | null;
   }> => {
     try {
-      const url = new URL(apiUrl);
-      const existingApiKey =
-        url.searchParams.get('apikey') || url.searchParams.get('apiKey');
-      url.searchParams.set('module', 'account');
-      url.searchParams.set('action', 'txlist');
-      url.searchParams.set('address', address);
-      url.searchParams.set('sort', 'desc');
-
-      // Only include page/offset when vault hint says this chain has tx history
-      let shouldIncludeOffset = false;
-      try {
-        const { accounts, activeAccount } = store.getState().vault;
-        const acc = accounts[activeAccount.type]?.[activeAccount.id] as any;
-        const byChain = acc?.evmTxCountByChainId || {};
-        shouldIncludeOffset = Number(byChain[chainId] || 0) > 0;
-      } catch {}
-
-      if (shouldIncludeOffset) {
-        url.searchParams.set('page', String(page));
-        url.searchParams.set('offset', String(offset));
-      }
-
-      if (existingApiKey) url.searchParams.set('apikey', existingApiKey);
+      // Explicit Load More also applies to accounts with only received tokens.
+      const url = accountApiUrl(apiUrl, address, 'txlist', page, offset);
       // Token endpoint for the same page (tokentx only)
-      const token20Url = new URL(apiUrl);
-      token20Url.searchParams.set('module', 'account');
-      token20Url.searchParams.set('action', 'tokentx');
-      token20Url.searchParams.set('address', address);
-      token20Url.searchParams.set('sort', 'desc');
-      if (shouldIncludeOffset) {
-        token20Url.searchParams.set('page', String(page));
-        token20Url.searchParams.set('offset', String(offset));
-      }
-
-      if (existingApiKey) token20Url.searchParams.set('apikey', existingApiKey);
+      const token20Url = accountApiUrl(
+        apiUrl,
+        address,
+        'tokentx',
+        page,
+        offset
+      );
 
       const [response, token20Resp] = await Promise.all([
         fetchExplorerApi(url.toString()),
         fetchExplorerApi(token20Url.toString()),
       ]);
 
-      if (!response.ok) {
-        // Graceful degradation: if token20 succeeded, return those events
-        if (token20Resp && token20Resp.ok) {
-          try {
-            const token20Data = await token20Resp.json();
-            const tokenEvents: any[] = [];
-            if (Array.isArray(token20Data?.result))
-              tokenEvents.push(...token20Data.result);
-            const tokenTxs = tokenEvents.map((ev: any) => {
-              const base = mapApiTx(
-                ev,
-                chainId,
-                ev.contractAddress,
-                EVM_TRANSACTION_HISTORY_SOURCE.ExplorerTokenTransfer
-              );
-              return { ...base, tokenRecipient: ev.to } as any;
-            });
-            return { transactions: tokenTxs };
-          } catch (err) {
-            return {
-              transactions: null,
-              error: `Explorer API status ${response.status}`,
-            };
-          }
-        }
-        return {
-          transactions: null,
-          error: `Explorer API status ${response.status}`,
-        };
-      }
       const [data, token20Data] = await Promise.all([
-        response.json(),
+        response.ok ? response.json() : Promise.resolve(null),
         token20Resp.ok ? token20Resp.json() : Promise.resolve(null),
       ]);
 
-      // Shared mapper for API items (txlist or tokentx) to internal shape
-      function mapApiTx(
-        item: any,
-        chainIdForMap: number,
-        overrideTo?: string,
-        historySource: EvmTransactionHistorySource = EVM_TRANSACTION_HISTORY_SOURCE.ExplorerTransaction
-      ) {
-        let timestamp = parseInt(item.timeStamp, 10);
-        const now = Math.floor(Date.now() / 1000);
-        const oneYearFromNow = now + 365 * 24 * 60 * 60;
-        const tenYearsAgo = now - 10 * 365 * 24 * 60 * 60;
-        if (
-          !timestamp ||
-          isNaN(timestamp) ||
-          timestamp < tenYearsAgo ||
-          timestamp > oneYearFromNow
-        ) {
-          timestamp = now;
-        }
-        const blockNumberParsed =
-          item.blockNumber !== undefined && item.blockNumber !== null
-            ? parseInt(item.blockNumber)
-            : undefined;
-        const confirmationsParsed =
-          item.confirmations !== undefined && item.confirmations !== null
-            ? parseInt(item.confirmations)
-            : 0;
-        const nonceParsed =
-          item.nonce !== undefined && item.nonce !== null
-            ? parseInt(item.nonce)
-            : undefined;
-        return {
-          hash: item.hash,
-          from: item.from,
-          to: overrideTo ?? item.to,
-          value: item.value,
-          blockNumber: blockNumberParsed,
-          blockHash: item.blockHash,
-          timestamp,
-          confirmations: confirmationsParsed,
-          chainId: chainIdForMap,
-          input: item.input,
-          gasPrice: item.gasPrice,
-          gas: item.gas || item.gasLimit,
-          nonce: nonceParsed,
-          type: parseEvmInteger(item.type),
-          r: item.r,
-          s: item.s,
-          v: parseEvmInteger(item.v),
-          historySource,
-          ...mapExplorerReceiptStatus(item),
-        } as any;
-      }
-
-      let baseTxs: IEvmTransactionResponse[] = [];
-      let baseCount = 0;
-      if (
-        (data.status === '1' ||
-          (data.status === '0' && Array.isArray(data.result))) &&
-        Array.isArray(data.result)
-      ) {
-        baseTxs = data.result.map((tx: any) => mapApiTx(tx, chainId));
-        baseCount = data.result.length;
-      }
+      const apiError = (reply: any, status: number) =>
+        !reply
+          ? `Explorer API status ${status}`
+          : (reply.status === '0' || reply.message === 'NOTOK') &&
+            !Array.isArray(reply.result) &&
+            reply.message !== 'No transactions found'
+          ? String(reply.result || reply.message || 'Explorer API error')
+          : undefined;
+      const baseError = apiError(data, response.status);
+      const tokenError = apiError(token20Data, token20Resp.status);
+      const baseRows =
+        !baseError && Array.isArray(data?.result) ? data.result : [];
+      const tokenRows =
+        !tokenError && Array.isArray(token20Data?.result)
+          ? token20Data.result
+          : [];
+      if ((baseError && !tokenRows.length) || (tokenError && !baseRows.length))
+        return { transactions: null, error: baseError || tokenError };
+      const baseTxs = baseRows.map((tx: any) => mapApiTx(tx, chainId));
 
       // Build quick lookup of token transfers by tx hash to annotate base txs
       const tokenEventsByHash = new Map<string, any[]>();
       try {
-        if (token20Data && Array.isArray(token20Data.result)) {
-          for (const ev of token20Data.result) {
+        if (tokenRows.length) {
+          for (const ev of tokenRows) {
             const h = String(ev.hash || '').toLowerCase();
             if (!h) continue;
             const arr = tokenEventsByHash.get(h) || [];
@@ -729,9 +609,17 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
         if (!ev) return tx;
         return { ...tx, tokenRecipient: ev.to };
       });
+      const seen = new Set(
+        baseTxs.map((tx: any) => String(tx.hash).toLowerCase())
+      );
+      for (const [hash, events] of tokenEventsByHash) {
+        if (seen.has(hash)) continue;
+        const ev = events[0];
+        annotated.push(mapTokenTransfer(ev, chainId));
+      }
 
       annotated.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-      const hasMore = baseCount >= offset;
+      const hasMore = baseRows.length >= offset || tokenRows.length >= offset;
       return { transactions: annotated, hasMore };
     } catch (err: any) {
       return { transactions: null, error: String(err?.message || err) };

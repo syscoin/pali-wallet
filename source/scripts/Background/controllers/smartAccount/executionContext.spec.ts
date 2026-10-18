@@ -314,6 +314,154 @@ describe('smart-account execution approval context', () => {
       expect(store.dispatch).toHaveBeenCalledTimes(1);
     });
 
+    it('classifies a genuine failed code read as unsent without mutating or forwarding arbitrary RPC fields', async () => {
+      registration();
+      const failure = Object.freeze(
+        Object.assign(new Error('Code read unavailable'), {
+          code: -32002,
+          data: { privateProviderDetail: true },
+          transactionNotBroadcast: false,
+          transactionHash: HASH,
+        })
+      );
+      provider.getCode.mockRejectedValueOnce(failure).mockResolvedValue('0x');
+      const error = await controller
+        .registerSmartAccountOnChain({ accountId: 7, expectedContext })
+        .catch((reason: unknown) => reason);
+      expect(error).toBeInstanceOf(Error);
+      expect(error).not.toBe(failure);
+      expect(error).toMatchObject({
+        message: 'Code read unavailable',
+        code: -32002,
+        transactionNotBroadcast: true,
+      });
+      expect(error).not.toHaveProperty('data');
+      expect(error).not.toHaveProperty('transactionHash');
+      expect(failure.transactionNotBroadcast).toBe(false);
+      expect(controller.prepareSmartAccountExecutions).not.toHaveBeenCalled();
+      expect(controller.submitSmartAccountExecution).not.toHaveBeenCalled();
+      await expect(
+        controller.registerSmartAccountOnChain({
+          accountId: 7,
+          expectedContext,
+        })
+      ).resolves.toMatchObject({ transaction: { hash: HASH } });
+      expect(controller.getSmartAccountById).toHaveBeenCalledWith(7);
+      expect(controller.submitSmartAccountExecution).toHaveBeenCalledTimes(1);
+    });
+
+    it('classifies an unavailable provider before registration as definitely unsent', async () => {
+      registration();
+      transaction.web3Provider = undefined;
+      await expect(
+        controller.registerSmartAccountOnChain({
+          accountId: 7,
+          expectedContext,
+        })
+      ).rejects.toMatchObject({
+        message: 'Web3 provider not available',
+        transactionNotBroadcast: true,
+      });
+      expect(controller.submitSmartAccountExecution).not.toHaveBeenCalled();
+    });
+
+    it.each(['prepare', 'sign'])(
+      'classifies a failed %s before submit and releases only its unsent reservation',
+      async (stage) => {
+        registration();
+        provider.getCode.mockResolvedValue('0x');
+        const method =
+          stage === 'prepare'
+            ? controller.prepareSmartAccountExecutions
+            : controller.signActionHashWithLocalEcdsaOwners;
+        method.mockRejectedValueOnce(
+          Object.freeze(new Error('Preflight unavailable'))
+        );
+        await expect(
+          controller.registerSmartAccountOnChain({
+            accountId: 7,
+            expectedContext,
+          })
+        ).rejects.toMatchObject({
+          message: 'Preflight unavailable',
+          transactionNotBroadcast: true,
+        });
+        expect(controller.submitSmartAccountExecution).not.toHaveBeenCalled();
+        expect(controller.pendingDeploymentAddresses.has(ADDRESS)).toBe(false);
+        await expect(
+          controller.registerSmartAccountOnChain({
+            accountId: 7,
+            expectedContext,
+          })
+        ).resolves.toMatchObject({ transaction: { hash: HASH } });
+        expect(controller.submitSmartAccountExecution).toHaveBeenCalledTimes(1);
+      }
+    );
+
+    it.each(['hydration', 'persistence'])(
+      'classifies an already-deployed %s failure as unsent when no submit was entered',
+      async (stage) => {
+        registration();
+        provider.getCode.mockResolvedValue('0x6000');
+        (stage === 'hydration'
+          ? controller.hydrateSmartAccountMetadata
+          : controller.deps.saveWalletState
+        ).mockRejectedValueOnce(new Error('Refresh unavailable'));
+        await expect(
+          controller.registerSmartAccountOnChain({
+            accountId: 7,
+            expectedContext,
+          })
+        ).rejects.toMatchObject({
+          message: 'Refresh unavailable',
+          transactionNotBroadcast: true,
+        });
+        expect(controller.submitSmartAccountExecution).not.toHaveBeenCalled();
+      }
+    );
+
+    it.each([undefined, false, true, 'hash'])(
+      'preserves the exact downstream submission error and its outcome (%s)',
+      async (outcome) => {
+        registration();
+        provider.getCode.mockResolvedValue('0x');
+        const failure = Object.freeze(
+          Object.assign(
+            new Error('Submission result'),
+            outcome === 'hash'
+              ? { transactionHash: HASH }
+              : outcome === undefined
+              ? {}
+              : { transactionNotBroadcast: outcome }
+          )
+        );
+        controller.submitSmartAccountExecution.mockRejectedValueOnce(failure);
+        await expect(
+          controller.registerSmartAccountOnChain({
+            accountId: 7,
+            expectedContext,
+          })
+        ).rejects.toBe(failure);
+        expect(controller.pendingDeploymentAddresses.has(ADDRESS)).toBe(false);
+        expect(controller.hydrateSmartAccountMetadata).not.toHaveBeenCalled();
+      }
+    );
+
+    it('does not classify a pre-existing pending registration as safely unsent or remove its reservation', async () => {
+      registration();
+      controller.pendingDeploymentAddresses.add(ADDRESS);
+      const error = await controller
+        .registerSmartAccountOnChain({ accountId: 7, expectedContext })
+        .catch((reason: unknown) => reason);
+      expect(error.message).toBe(
+        'Smart account registration is already pending.'
+      );
+      expect(error).not.toHaveProperty('transactionNotBroadcast');
+      expect(controller.pendingDeploymentAddresses.has(ADDRESS)).toBe(true);
+      expect(provider.getCode).not.toHaveBeenCalled();
+      expect(controller.submitSmartAccountExecution).not.toHaveBeenCalled();
+    });
+
     it.each(['account', 'RPC', 'session'])(
       'preserves registration ACK but skips stale %s metadata',
       async (axis) => {

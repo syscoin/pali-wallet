@@ -104,6 +104,49 @@ it('loads the next asset after the previous asset already completed its market r
   expect(screen.getByText('$222')).toBeTruthy();
 });
 
+it('preserves keyboard focus and the details pane when its pending market read finishes', async () => {
+  const view = render(<EvmAssetDetails id={tokens[0].id} />);
+  const pane = view.container.querySelector(
+    '[data-navigation-scroll="asset-details"]'
+  );
+  const copy = screen.getByRole('button', { name: 'send.copyContractAddress' });
+  copy.focus();
+  expect(document.activeElement).toBe(copy);
+  await finish(0, 111);
+  expect(screen.getByText('$111')).toBeTruthy();
+  expect(document.activeElement).toBe(copy);
+  expect(
+    view.container.querySelector('[data-navigation-scroll="asset-details"]')
+  ).toBe(pane);
+});
+
+it('keeps the focused control usable when the market read fails', async () => {
+  let rejectRead!: (error: Error) => void;
+  mockEmitter.mockImplementation(
+    () =>
+      new Promise((_, reject) => {
+        rejectRead = reject;
+      })
+  );
+  const error = jest
+    .spyOn(console, 'error')
+    .mockImplementation(() => undefined);
+  try {
+    render(<EvmAssetDetails id={tokens[0].id} />);
+    const copy = screen.getByRole('button', {
+      name: 'send.copyContractAddress',
+    });
+    copy.focus();
+    await act(async () =>
+      rejectRead(new Error('Synthetic market read unavailable'))
+    );
+    expect(document.activeElement).toBe(copy);
+    expect(copy.isConnected).toBe(true);
+  } finally {
+    error.mockRestore();
+  }
+});
+
 it('does not put an earlier asset market reply on a later asset', async () => {
   const view = render(<EvmAssetDetails id={tokens[0].id} />);
   view.rerender(<EvmAssetDetails id={tokens[1].id} />);
