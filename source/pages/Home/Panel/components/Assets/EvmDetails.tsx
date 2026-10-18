@@ -153,13 +153,14 @@ export const EvmAssetDetails = ({
 
   // Use enhanced data from token or fetched data
   const tokenData = enhancedData;
+  const marketData = tokenData?.market_data;
 
   // Get user's preferred currency
   const userCurrency = (fiat.asset || 'usd').toLowerCase();
   const currencySymbol = getSymbolFromCurrency(userCurrency.toUpperCase());
 
   const hasEnhancedData = hasMarketValue(
-    tokenData?.market_data?.current_price?.[userCurrency]
+    marketData?.current_price?.[userCurrency]
   );
 
   const renderEnhancedMarketData = () => {
@@ -190,41 +191,32 @@ export const EvmAssetDetails = ({
         </h4>
 
         {/* Price and Change - Full Width */}
-        {hasMarketValue(
-          tokenData.market_data?.current_price?.[userCurrency]
-        ) && (
-          <div className="mb-4">
-            <span className="text-gray-400 text-xs block mb-1">
-              {t('tokens.currentPrice')}
-            </span>
-            <div className="flex items-baseline gap-2">
-              <span className="text-white font-medium text-lg">
-                {currencySymbol || ''}
-                {formatCurrency(
-                  tokenData.market_data.current_price[userCurrency].toString(),
-                  6
-                )}
-              </span>
-              {Number.isFinite(
-                tokenData.market_data?.price_change_percentage_24h
-              ) && (
-                <span
-                  className={`text-sm ${
-                    tokenData.market_data.price_change_percentage_24h >= 0
-                      ? 'text-green-500'
-                      : 'text-red-500'
-                  }`}
-                >
-                  {tokenData.market_data.price_change_percentage_24h >= 0
-                    ? '+'
-                    : ''}
-                  {tokenData.market_data.price_change_percentage_24h.toFixed(2)}
-                  % (24h)
-                </span>
+        <div className="mb-4">
+          <span className="text-gray-400 text-xs block mb-1">
+            {t('tokens.currentPrice')}
+          </span>
+          <div className="flex items-baseline gap-2">
+            <span className="text-white font-medium text-lg">
+              {currencySymbol || ''}
+              {formatCurrency(
+                marketData.current_price[userCurrency].toString(),
+                6
               )}
-            </div>
+            </span>
+            {Number.isFinite(marketData?.price_change_percentage_24h) && (
+              <span
+                className={`text-sm ${
+                  marketData.price_change_percentage_24h >= 0
+                    ? 'text-green-500'
+                    : 'text-red-500'
+                }`}
+              >
+                {marketData.price_change_percentage_24h >= 0 ? '+' : ''}
+                {marketData.price_change_percentage_24h.toFixed(2)}% (24h)
+              </span>
+            )}
           </div>
-        )}
+        </div>
 
         {/* Market Cap and Rank - Grid */}
         <div className="grid grid-cols-2 gap-4 mb-4">
@@ -250,9 +242,7 @@ export const EvmAssetDetails = ({
               )}
             </div>
           )}
-          {hasMarketValue(
-            tokenData.market_data?.market_cap?.[userCurrency]
-          ) && (
+          {hasMarketValue(marketData?.market_cap?.[userCurrency]) && (
             <div className="text-right">
               <span className="text-gray-400 text-xs block mb-1">
                 {t('tokens.marketCap')}
@@ -260,7 +250,7 @@ export const EvmAssetDetails = ({
               <span className="text-white font-medium">
                 {currencySymbol || ''}
                 {formatCurrency(
-                  tokenData.market_data.market_cap[userCurrency].toString(),
+                  marketData.market_cap[userCurrency].toString(),
                   0
                 )}
               </span>
@@ -270,9 +260,7 @@ export const EvmAssetDetails = ({
 
         {/* Volume and Supply - Grid */}
         <div className="grid grid-cols-2 gap-4 mb-4">
-          {hasMarketValue(
-            tokenData.market_data?.total_volume?.[userCurrency]
-          ) && (
+          {hasMarketValue(marketData?.total_volume?.[userCurrency]) && (
             <div>
               <span className="text-gray-400 text-xs block mb-1">
                 {t('tokens.volume24h')}
@@ -280,22 +268,19 @@ export const EvmAssetDetails = ({
               <span className="text-white font-medium">
                 {currencySymbol || ''}
                 {formatCurrency(
-                  tokenData.market_data.total_volume[userCurrency].toString(),
+                  marketData.total_volume[userCurrency].toString(),
                   0
                 )}
               </span>
             </div>
           )}
-          {hasMarketValue(tokenData.market_data?.circulating_supply) && (
+          {hasMarketValue(marketData?.circulating_supply) && (
             <div className="text-right">
               <span className="text-gray-400 text-xs block mb-1">
                 {t('tokens.circulatingSupply')}
               </span>
               <span className="text-white font-medium">
-                {formatCurrency(
-                  tokenData.market_data.circulating_supply.toString(),
-                  0
-                )}
+                {formatCurrency(marketData.circulating_supply.toString(), 0)}
               </span>
             </div>
           )}
@@ -379,35 +364,31 @@ export const EvmAssetDetails = ({
           </div>
 
           {/* View Collection Button for NFTs */}
-          {isNft && (
-            <div className="pt-3">
-              <button
-                onClick={() => {
-                  // Create recursive return context
-                  const returnContext = createBrowsingNavigationContext(
-                    location,
-                    navigationState || { id }
-                  );
+          <div className="pt-3">
+            <button
+              onClick={() => {
+                // Create recursive return context
+                const returnContext = createBrowsingNavigationContext(
+                  location,
+                  navigationState || { id }
+                );
 
-                  navigateWithContext(
-                    navigate,
-                    '/home/details',
-                    {
-                      nftCollection: true,
-                      nftData: currentAsset, // Just pass the full asset data
-                    },
-                    returnContext
-                  );
-                }}
-                className="w-full py-2 px-4 bg-brand-royalblue bg-opacity-20 text-brand-royalblue 
-                          text-sm font-medium rounded-lg hover:bg-opacity-30 transition-all duration-200
-                          flex items-center justify-center gap-2"
-              >
-                <Icon name="eye" size={16} />
-                {t('send.viewCollectionItems')}
-              </button>
-            </div>
-          )}
+                navigateWithContext(
+                  navigate,
+                  '/home/details',
+                  {
+                    nftCollection: true,
+                    nftData: currentAsset, // Just pass the full asset data
+                  },
+                  returnContext
+                );
+              }}
+              className="w-full py-2 px-4 bg-brand-royalblue bg-opacity-20 text-brand-royalblue text-sm font-medium rounded-lg hover:bg-opacity-30 transition-all duration-200 flex items-center justify-center gap-2"
+            >
+              <Icon name="eye" size={16} />
+              {t('send.viewCollectionItems')}
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -552,7 +533,7 @@ export const EvmAssetDetails = ({
                     type="button"
                     aria-label={t('send.copyContractAddress')}
                     className="inline-flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg text-brand-white hover:text-brand-deepPink100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue"
-                    onClick={() => void copyContract()}
+                    onClick={copyContract}
                   >
                     <CopyIcon size={15} />
                   </button>
@@ -580,7 +561,7 @@ export const EvmAssetDetails = ({
                     type="button"
                     aria-label={t('send.copyContractAddress')}
                     className="inline-flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg text-brand-white hover:text-brand-deepPink100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue"
-                    onClick={() => void copyContract()}
+                    onClick={copyContract}
                   >
                     <CopyIcon size={15} />
                   </button>
