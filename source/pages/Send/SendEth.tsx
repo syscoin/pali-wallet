@@ -988,47 +988,38 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
     [verifyTokenId, form]
   );
 
-  // Verify ERC-20 token balance
-  const verifyERC20Balance = useCallback(async () => {
-    if (!selectedAsset || selectedAsset.isNft || !activeAccount.address) {
-      setVerifiedERC20Balance(null);
-      return;
-    }
-
-    setIsVerifyingERC20(true);
-
-    try {
-      const result = (await controllerEmitter(
-        ['wallet', 'getERC20TokenInfo'],
-        [selectedAsset.contractAddress, activeAccount.address]
-      )) as { balance: string; decimals: number; name: string; symbol: string };
-
-      if (result) {
-        // Use formatUnits to avoid precision loss with large token balances
-        const balance = formatUnits(result.balance, result.decimals);
-        setVerifiedERC20Balance(Number(balance)); // Safe to convert after formatting
-      }
-    } catch (error) {
-      console.error('Error verifying ERC-20 balance:', error);
-      setVerifiedERC20Balance(null);
-    } finally {
-      setIsVerifyingERC20(false);
-    }
-  }, [selectedAsset, activeAccount.address]);
-
-  // Verify ERC-20 balance when asset changes
+  // A verified balance belongs only to this selection and request lifetime.
   useEffect(() => {
-    if (selectedAsset && !selectedAsset.isNft) {
-      // Debounce ERC-20 verification to avoid spam
-      const timeoutId = setTimeout(() => {
-        verifyERC20Balance();
-      }, 1000);
+    let current = true;
+    setVerifiedERC20Balance(null);
+    setIsVerifyingERC20(false);
+    if (!selectedAsset || selectedAsset.isNft || !activeAccount.address) return;
 
-      return () => clearTimeout(timeoutId);
-    } else {
-      setVerifiedERC20Balance(null);
-    }
-  }, [selectedAsset, verifyERC20Balance]);
+    const timeoutId = setTimeout(async () => {
+      setIsVerifyingERC20(true);
+      try {
+        const result = (await controllerEmitter(
+          ['wallet', 'getERC20TokenInfo'],
+          [selectedAsset.contractAddress, activeAccount.address]
+        )) as { balance: string; decimals: number };
+        if (current && result) {
+          setVerifiedERC20Balance(
+            Number(formatUnits(result.balance, result.decimals))
+          );
+        }
+      } catch (error) {
+        if (current) {
+          console.error('Error verifying ERC-20 balance:', error);
+        }
+      } finally {
+        if (current) setIsVerifyingERC20(false);
+      }
+    }, 1000);
+    return () => {
+      current = false;
+      clearTimeout(timeoutId);
+    };
+  }, [selectedAsset, activeAccount.address]);
 
   // Sync form field with component state for NFT token ID
   useEffect(() => {

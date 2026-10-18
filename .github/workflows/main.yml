@@ -16,7 +16,8 @@ jobs:
   visual:
     name: visual regression suite
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # The full suite plus its retained browser evidence can exceed 30 minutes.
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -41,7 +42,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: visual-artifacts-${{ github.run_id }}
+          name: visual-artifacts-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             e2e/visual/__screenshots__/
             e2e/artifacts/

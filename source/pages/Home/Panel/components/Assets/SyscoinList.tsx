@@ -1,12 +1,9 @@
-import React, { useMemo, useCallback, useState, useEffect } from 'react';
+import React, { useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useSearchParams, useLocation } from 'react-router-dom';
 
-import {
-  getHomeBrowsingScope,
-  useHomeBrowsingState,
-} from '../../../useHomeBrowsingState';
+import { useHomeBrowsingState } from '../../../useHomeBrowsingState';
 import {
   HiTrash as DeleteIcon,
   RiShareForward2Line as ShareIcon,
@@ -17,13 +14,10 @@ import { ListLoadMore } from 'components/Loading/ListLoadMore';
 import { ConfirmationModal } from 'components/Modal';
 import { Tooltip } from 'components/Tooltip';
 import { useUtils } from 'hooks/index';
-import { useController } from 'hooks/useController';
 import { useIncrementalList } from 'hooks/useIncrementalList';
 import { RootState } from 'state/store';
 import {
-  selectActiveAccount,
   selectActiveAccountAssets,
-  selectActiveAccountRef,
   selectActiveAccountTransactions,
 } from 'state/vault/selectors';
 import { formatCurrency, truncate, getTokenLogo } from 'utils/index';
@@ -33,33 +27,34 @@ import {
 } from 'utils/navigationState';
 import { hasNonZeroAssetDelta } from 'utils/syscoinAssetAmount';
 
+import { AssetRemovalStart, useAssetRemoval } from './useAssetRemoval';
+
 //todo: create a loading state
-export const SyscoinAssetsList = () => {
+export const SyscoinAssetsList = ({
+  scope,
+  onDeleteStart,
+}: {
+  onDeleteStart?: AssetRemovalStart;
+  scope: string;
+}) => {
   const assets = useSelector(selectActiveAccountAssets);
-  const accountRef = useSelector(selectActiveAccountRef);
-  const currentAccount = useSelector(selectActiveAccount);
-  const account = { ...currentAccount, ...accountRef };
-  const activeNetwork = useSelector(
-    (state: RootState) => state.vault.activeNetwork
+  const chainId = useSelector(
+    (state: RootState) => state.vault.activeNetwork.chainId
   );
-  const { chainId } = activeNetwork;
   const networkStatus = useSelector(
     (state: RootState) => state.vaultGlobal.networkStatus
   );
   const accountTransactions = useSelector(selectActiveAccountTransactions);
   const { navigate } = useUtils();
-  const { controllerEmitter } = useController();
   const { t } = useTranslation();
   const [searchParams] = useSearchParams();
   const location = useLocation();
 
-  // Confirmation modal state
-  const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
-  const [assetToDelete, setAssetToDelete] = useState<any>(null);
+  const removal = useAssetRemoval<any>(scope, onDeleteStart);
+  const assetToDelete = removal.item;
 
   const isNetworkChanging = networkStatus === 'switching';
 
-  const scope = getHomeBrowsingScope(account, activeNetwork, true);
   const [view, setView] = useHomeBrowsingState('homeAssets', scope, {
     sptVisibleCount: 50,
   });
@@ -75,11 +70,6 @@ export const SyscoinAssetsList = () => {
     scope,
     view.sptVisibleCount
   );
-
-  useEffect(() => {
-    setShowDeleteConfirmation(false);
-    setAssetToDelete(null);
-  }, [account.type, account.id, chainId]);
 
   // Build a set of assetGuids that have at least one unconfirmed SPT transfer in tx list
   const pendingAssetGuids = useMemo(() => {
@@ -98,12 +88,6 @@ export const SyscoinAssetsList = () => {
     }
     return set;
   }, [accountTransactions, chainId]);
-
-  // Memoize delete handlers
-  const handleDeleteClickMemo = useCallback((asset: any) => {
-    setAssetToDelete(asset);
-    setShowDeleteConfirmation(true);
-  }, []);
 
   // Handle asset click
   const handleAssetClick = useCallback(
@@ -125,138 +109,121 @@ export const SyscoinAssetsList = () => {
 
   // Delete confirmation handlers
   const handleConfirmDelete = () => {
-    if (assetToDelete) {
-      controllerEmitter(
-        ['wallet', 'deleteTokenInfo'],
-        [assetToDelete.assetGuid, chainId]
-      );
-    }
-    setShowDeleteConfirmation(false);
-    setAssetToDelete(null);
+    if (assetToDelete)
+      return removal.remove([assetToDelete.assetGuid, chainId]);
   };
 
-  const handleCancelDelete = () => {
-    setShowDeleteConfirmation(false);
-    setAssetToDelete(null);
-  };
+  const renderAsset = (asset: any) => (
+    <li
+      key={String(asset.assetGuid)}
+      className="flex items-center py-2 text-xs border-b border-dashed border-bkg-white200 hover:bg-alpha-whiteAlpha50 transition-colors duration-200 rounded-lg"
+    >
+      <table className="table-auto w-full">
+        <tbody>
+          <tr className="flex items-center justify-between font-poppins font-normal">
+            <td className="flex items-center gap-3">
+              {/* Token Logo */}
+              <Tooltip content={asset.name || asset.symbol}>
+                <span className="inline-flex items-center justify-center">
+                  <TokenIcon
+                    logo={
+                      asset.image ||
+                      getTokenLogo(asset.symbol, true, asset.assetGuid)
+                    }
+                    assetGuid={String(asset.assetGuid)}
+                    symbol={asset.symbol}
+                    size={24}
+                    className="hover:shadow-md hover:scale-110 transition-all duration-200"
+                  />
+                </span>
+              </Tooltip>
 
-  // Memoize asset rendering for better performance
-  const renderAsset = useMemo(() => {
-    const AssetRenderer = (asset: any) => (
-      <li
-        key={String(asset.assetGuid)}
-        className="flex items-center py-2 text-xs border-b border-dashed border-bkg-white200 hover:bg-alpha-whiteAlpha50 transition-colors duration-200 rounded-lg"
-      >
-        <table className="table-auto w-full">
-          <tbody>
-            <tr className="flex items-center justify-between font-poppins font-normal">
-              <td className="flex items-center gap-3">
-                {/* Token Logo */}
-                <Tooltip content={asset.name || asset.symbol}>
-                  <span className="inline-flex items-center justify-center">
-                    <TokenIcon
-                      logo={
-                        asset.image ||
-                        getTokenLogo(asset.symbol, true, asset.assetGuid)
-                      }
-                      assetGuid={String(asset.assetGuid)}
-                      symbol={asset.symbol}
-                      size={24}
-                      className="hover:shadow-md hover:scale-110 transition-all duration-200"
-                    />
+              <div className="flex flex-col">
+                <div className="flex items-center gap-x-2">
+                  <span className="text-brand-white font-semibold">
+                    {truncate(
+                      formatCurrency(
+                        String(asset.balance),
+                        Math.min(asset.decimals, 4) // Limit displayed decimals for UI
+                      ),
+                      8,
+                      false
+                    )}
                   </span>
-                </Tooltip>
 
-                <div className="flex flex-col">
-                  <div className="flex items-center gap-x-2">
-                    <span className="text-brand-white font-semibold">
-                      {truncate(
-                        formatCurrency(
-                          String(asset.balance),
-                          Math.min(asset.decimals, 4) // Limit displayed decimals for UI
-                        ),
-                        8,
-                        false
-                      )}
-                    </span>
+                  <span
+                    className="text-brand-royalbluemedium font-medium hover:text-brand-deepPink100 cursor-pointer underline transition-colors duration-200"
+                    onClick={() => handleAssetClick(asset)}
+                  >
+                    {truncate(asset.symbol, 12).toUpperCase()}
+                  </span>
 
+                  {/* Pending if token has non-zero unconfirmed delta or an unconfirmed transfer exists */}
+                  {(hasNonZeroAssetDelta(asset.unconfirmedBalance) ||
+                    pendingAssetGuids.has(String(asset.assetGuid))) && (
                     <span
-                      className="text-brand-royalbluemedium font-medium hover:text-brand-deepPink100 cursor-pointer underline transition-colors duration-200"
-                      onClick={() => handleAssetClick(asset)}
+                      className="px-2 py-0.5 text-[9px] bg-yellow-500/20 text-yellow-500 rounded-full border border-yellow-500/20 font-medium animate-pulse"
+                      title={t('send.pending')}
                     >
-                      {truncate(asset.symbol, 12).toUpperCase()}
+                      {t('send.pending')}
                     </span>
+                  )}
 
-                    {/* Pending if token has non-zero unconfirmed delta or an unconfirmed transfer exists */}
-                    {(hasNonZeroAssetDelta(asset.unconfirmedBalance) ||
-                      pendingAssetGuids.has(String(asset.assetGuid))) && (
+                  {asset.contract &&
+                    asset.contract !==
+                      '0x0000000000000000000000000000000000000000' && (
                       <span
-                        className="px-2 py-0.5 text-[9px] bg-yellow-500/20 text-yellow-500 rounded-full border border-yellow-500/20 font-medium animate-pulse"
-                        title={t('send.pending')}
+                        className="px-2 py-1 text-[10px] bg-gradient-to-r from-brand-royalbluemedium/20 to-brand-royalbluemedium/30 text-brand-royalbluemedium rounded-full border border-brand-royalbluemedium/20 font-medium"
+                        title={t('send.crossChainSptWithNevm')}
                       >
-                        {t('send.pending')}
+                        NEVM
                       </span>
                     )}
-
-                    {asset.contract &&
-                      asset.contract !==
-                        '0x0000000000000000000000000000000000000000' && (
-                        <span
-                          className="px-2 py-1 text-[10px] bg-gradient-to-r from-brand-royalbluemedium/20 to-brand-royalbluemedium/30 text-brand-royalbluemedium rounded-full border border-brand-royalbluemedium/20 font-medium"
-                          title={t('send.crossChainSptWithNevm')}
-                        >
-                          NEVM
-                        </span>
-                      )}
-                  </div>
-
-                  <div className="flex items-center gap-x-1 mt-1">
-                    <span className="text-brand-gray300 font-poppins text-[10px] font-normal">
-                      {t('send.assetGuid')}
-                    </span>
-                    <span className="text-brand-gray400 font-mono text-[10px] break-all">
-                      {asset.assetGuid}
-                    </span>
-                  </div>
                 </div>
-              </td>
 
-              <td className="flex items-center justify-between overflow-hidden overflow-ellipsis">
-                <Tooltip content={t('tooltip.assetDetails')}>
-                  <IconButton
-                    onClick={() => handleAssetClick(asset)}
-                    className="p-2 hover:bg-brand-royalbluemedium/20 rounded-full transition-colors duration-200"
-                    aria-label={`View details for ${asset.symbol} token`}
-                  >
-                    <ShareIcon
-                      size={16}
-                      className="text-brand-white hover:text-brand-royalbluemedium transition-colors"
-                    />
-                  </IconButton>
-                </Tooltip>
+                <div className="flex items-center gap-x-1 mt-1">
+                  <span className="text-brand-gray300 font-poppins text-[10px] font-normal">
+                    {t('send.assetGuid')}
+                  </span>
+                  <span className="text-brand-gray400 font-mono text-[10px] break-all">
+                    {asset.assetGuid}
+                  </span>
+                </div>
+              </div>
+            </td>
 
-                <Tooltip content={t('tooltip.deleteAsset')}>
-                  <IconButton
-                    onClick={() => handleDeleteClickMemo(asset)}
-                    className="p-2 hover:bg-red-500/20 rounded-full transition-colors duration-200"
-                    aria-label={`Delete ${asset.symbol} token`}
-                  >
-                    <DeleteIcon
-                      size={16}
-                      className="text-brand-white hover:text-red-500 transition-colors"
-                    />
-                  </IconButton>
-                </Tooltip>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </li>
-    );
+            <td className="flex items-center justify-between overflow-hidden overflow-ellipsis">
+              <Tooltip content={t('tooltip.assetDetails')}>
+                <IconButton
+                  onClick={() => handleAssetClick(asset)}
+                  className="p-2 hover:bg-brand-royalbluemedium/20 rounded-full transition-colors duration-200"
+                  aria-label={`View details for ${asset.symbol} token`}
+                >
+                  <ShareIcon
+                    size={16}
+                    className="text-brand-white hover:text-brand-royalbluemedium transition-colors"
+                  />
+                </IconButton>
+              </Tooltip>
 
-    AssetRenderer.displayName = 'AssetRenderer';
-    return AssetRenderer;
-  }, [navigate, t, handleDeleteClickMemo, handleAssetClick, pendingAssetGuids]);
+              <Tooltip content={t('tooltip.deleteAsset')}>
+                <IconButton
+                  onClick={() => removal.open(asset)}
+                  className="p-2 hover:bg-red-500/20 rounded-full transition-colors duration-200"
+                  aria-label={`Delete ${asset.symbol} token`}
+                >
+                  <DeleteIcon
+                    size={16}
+                    className="text-brand-white hover:text-red-500 transition-colors"
+                  />
+                </IconButton>
+              </Tooltip>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </li>
+  );
 
   return (
     <>
@@ -299,9 +266,9 @@ export const SyscoinAssetsList = () => {
       )}
 
       <ConfirmationModal
-        show={showDeleteConfirmation}
+        show={Boolean(assetToDelete)}
         onClick={handleConfirmDelete}
-        onClose={handleCancelDelete}
+        onClose={removal.close}
         title={t('tokens.deleteToken', {
           symbol: assetToDelete?.symbol || 'SPT Asset',
         })}
@@ -309,6 +276,7 @@ export const SyscoinAssetsList = () => {
           symbol: assetToDelete?.symbol || 'this SPT asset',
         })}
         buttonText={t('buttons.delete')}
+        isButtonLoading={removal.pending}
       />
     </>
   );

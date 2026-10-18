@@ -1,10 +1,4 @@
-import React, {
-  useMemo,
-  useState,
-  useDeferredValue,
-  startTransition,
-  useEffect,
-} from 'react';
+import React, { useMemo, useDeferredValue, startTransition } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useSearchParams, useLocation } from 'react-router-dom';
@@ -24,14 +18,9 @@ import { ListLoadMore } from 'components/Loading/ListLoadMore';
 import { ConfirmationModal } from 'components/Modal';
 import { Tooltip } from 'components/Tooltip';
 import { useUtils } from 'hooks/index';
-import { useController } from 'hooks/useController';
 import { useIncrementalList } from 'hooks/useIncrementalList';
 import { RootState } from 'state/store';
-import {
-  selectActiveAccount,
-  selectActiveAccountAssets,
-  selectActiveAccountRef,
-} from 'state/vault/selectors';
+import { selectActiveAccountAssets } from 'state/vault/selectors';
 import { ITokenEthProps } from 'types/tokens';
 import {
   createBrowsingNavigationContext,
@@ -42,9 +31,11 @@ import {
 
 import { AssetSearchEmptyState } from './AssetSearchEmptyState';
 import { AssetsHeader } from './AssetsHeader';
+import { AssetRemovalStart, useAssetRemoval } from './useAssetRemoval';
 
 interface IDefaultEvmAssets {
   onClearSearch: () => void;
+  onDeleteStart?: AssetRemovalStart;
   onVisibleCountChange: (count: number) => void;
   scope: string;
   searchValue: string;
@@ -58,28 +49,22 @@ const DefaultEvmAssets = React.memo(
     sortByValue,
     state,
     onClearSearch,
+    onDeleteStart,
     onVisibleCountChange,
+    scope,
   }: IDefaultEvmAssets) {
     const { navigate } = useUtils();
-    const { controllerEmitter } = useController();
     const { t } = useTranslation();
     const [searchParams] = useSearchParams();
     const location = useLocation();
 
-    // Confirmation modal state
-    const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
-    const [tokenToDelete, setTokenToDelete] = useState<ITokenEthProps | null>(
-      null
-    );
+    const removal = useAssetRemoval<ITokenEthProps>(scope, onDeleteStart);
+    const tokenToDelete = removal.item;
 
     const assets = useSelector(selectActiveAccountAssets);
-    const accountRef = useSelector(selectActiveAccountRef);
-    const currentAccount = useSelector(selectActiveAccount);
-    const account = { ...currentAccount, ...accountRef };
-    const activeNetwork = useSelector(
-      (rootState: RootState) => rootState.vault.activeNetwork
+    const chainId = useSelector(
+      (rootState: RootState) => rootState.vault.activeNetwork.chainId
     );
-    const { chainId } = activeNetwork;
 
     // Separate regular tokens from NFTs as requested
     const currentChainAssets = useMemo(
@@ -131,41 +116,17 @@ const DefaultEvmAssets = React.memo(
     const { visibleItems, visibleCount, hasMore, showMore } =
       useIncrementalList(
         filteredAssets,
-        JSON.stringify([
-          account.type,
-          account.id,
-          chainId,
-          searchValue,
-          sortByValue,
-        ]),
+        JSON.stringify([scope, searchValue, sortByValue]),
         state.tokensVisibleCount
       );
 
-    useEffect(() => {
-      setShowDeleteConfirmation(false);
-      setTokenToDelete(null);
-    }, [account.type, account.id, chainId]);
-
-    // Delete confirmation handlers
-    const handleDeleteClick = (token: ITokenEthProps) => {
-      setTokenToDelete(token);
-      setShowDeleteConfirmation(true);
-    };
-
     const handleConfirmDelete = () => {
-      if (tokenToDelete) {
-        controllerEmitter(
-          ['wallet', 'deleteTokenInfo'],
-          [tokenToDelete.contractAddress, chainId, tokenToDelete.tokenId]
-        );
-      }
-      setShowDeleteConfirmation(false);
-      setTokenToDelete(null);
-    };
-
-    const handleCancelDelete = () => {
-      setShowDeleteConfirmation(false);
-      setTokenToDelete(null);
+      if (tokenToDelete)
+        return removal.remove([
+          tokenToDelete.contractAddress,
+          chainId,
+          tokenToDelete.tokenId,
+        ]);
     };
 
     const handleAssetClick = (token: ITokenEthProps) => {
@@ -240,7 +201,7 @@ const DefaultEvmAssets = React.memo(
 
               <Tooltip content={t('tooltip.deleteAsset')}>
                 <IconButton
-                  onClick={() => handleDeleteClick(token)}
+                  onClick={() => removal.open(token)}
                   className="p-2 hover:bg-red-500/20 rounded-full transition-colors duration-200"
                   aria-label={`Delete ${token.tokenSymbol} token`}
                 >
@@ -265,9 +226,9 @@ const DefaultEvmAssets = React.memo(
           />
         )}
         <ConfirmationModal
-          show={showDeleteConfirmation}
+          show={Boolean(tokenToDelete)}
           onClick={handleConfirmDelete}
-          onClose={handleCancelDelete}
+          onClose={removal.close}
           title={t('tokens.deleteToken', {
             symbol: tokenToDelete?.tokenSymbol || 'Token',
           })}
@@ -275,6 +236,7 @@ const DefaultEvmAssets = React.memo(
             symbol: tokenToDelete?.tokenSymbol || 'this token',
           })}
           buttonText={t('buttons.delete')}
+          isButtonLoading={removal.pending}
         />
       </>
     );
@@ -292,9 +254,9 @@ const DefaultEvmAssets = React.memo(
 // todo: create a loading state
 export const EvmAssetsList = ({
   scope,
-  onNftDeleteStart,
+  onDeleteStart,
 }: {
-  onNftDeleteStart?: () => (error: unknown) => void;
+  onDeleteStart?: AssetRemovalStart;
   scope: string;
 }) => {
   const [state, setView] = useHomeBrowsingState(
@@ -372,6 +334,7 @@ export const EvmAssetsList = ({
           >
             {isCoinSelected ? (
               <DefaultEvmAssets
+                onDeleteStart={onDeleteStart}
                 onClearSearch={clearSearch}
                 scope={scope}
                 searchValue={deferredSearchValue}
@@ -388,7 +351,7 @@ export const EvmAssetsList = ({
               <EvmNftsList
                 scope={scope}
                 onClearSearch={clearSearch}
-                onDeleteStart={onNftDeleteStart}
+                onDeleteStart={onDeleteStart}
                 state={state}
                 onVisibleCountChange={(count) =>
                   setView((previous) => ({

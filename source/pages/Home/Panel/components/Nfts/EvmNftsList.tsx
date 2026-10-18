@@ -1,9 +1,10 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useSearchParams, useLocation } from 'react-router-dom';
 
 import { AssetSearchEmptyState } from '../Assets/AssetSearchEmptyState';
+import { AssetRemovalStart, useAssetRemoval } from '../Assets/useAssetRemoval';
 import {
   HiTrash as DeleteIcon,
   RiShareForward2Line as DetailsIcon,
@@ -13,9 +14,7 @@ import { ListLoadMore } from 'components/Loading/ListLoadMore';
 import { ConfirmationModal } from 'components/Modal';
 import { Tooltip } from 'components/Tooltip';
 import { useUtils } from 'hooks/index';
-import { useController } from 'hooks/useController';
 import { useIncrementalList } from 'hooks/useIncrementalList';
-import { useRequestScope } from 'hooks/useRequestScope';
 import { RootState } from 'state/store';
 import { selectActiveAccountAssets } from 'state/vault/selectors';
 import {
@@ -29,7 +28,7 @@ import { getTokenTypeBadgeColor } from 'utils/tokens';
 
 interface IEvmNftsListProps {
   onClearSearch?: () => void;
-  onDeleteStart?: () => (error: unknown) => void;
+  onDeleteStart?: AssetRemovalStart;
   onVisibleCountChange?: (count: number) => void;
   scope: string;
   state: {
@@ -47,7 +46,6 @@ export const EvmNftsList = ({
   onVisibleCountChange,
   scope,
 }: IEvmNftsListProps) => {
-  const { controllerEmitter } = useController();
   const { navigate } = useUtils();
   const { t } = useTranslation();
   const [searchParams] = useSearchParams();
@@ -58,22 +56,12 @@ export const EvmNftsList = ({
     (rootState: RootState) => rootState.vault.activeNetwork.chainId
   );
 
-  const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const deletePendingRef = useRef(false);
-  const beginDelete = useRequestScope(scope);
-  const [itemToDelete, setItemToDelete] = useState<{
+  const removal = useAssetRemoval<{
     contractAddress: string;
     name?: string;
     tokenId?: string;
-  } | null>(null);
-
-  useEffect(() => {
-    deletePendingRef.current = false;
-    setIsDeleting(false);
-    setShowDeleteConfirmation(false);
-    setItemToDelete(null);
-  }, [scope]);
+  }>(scope, onDeleteStart);
+  const itemToDelete = removal.item;
 
   // NFTs now come through regular asset updates, no need for separate fetching
 
@@ -83,47 +71,20 @@ export const EvmNftsList = ({
     symbol: string,
     tokenId?: string
   ) => {
-    if (deletePendingRef.current) return;
-    setItemToDelete({
+    removal.open({
       contractAddress,
       name: symbol, // Using symbol but keeping 'name' field for consistency with modal
       tokenId,
     });
-    setShowDeleteConfirmation(true);
   };
 
-  const handleConfirmDelete = async () => {
-    if (!itemToDelete || deletePendingRef.current) return;
-    deletePendingRef.current = true;
-    const isCurrent = beginDelete();
-    const reportError = onDeleteStart?.();
-    setIsDeleting(true);
-
-    try {
-      // Always delete the entire collection entry
-      await controllerEmitter(
-        ['wallet', 'deleteTokenInfo'],
-        [itemToDelete.contractAddress, chainId, itemToDelete.tokenId]
-      );
-    } catch (error) {
-      console.error('Error deleting NFT:', error);
-      // The stable AssetsPanel owns feedback even if deleting its last asset
-      // has already unmounted this list before durable persistence settles.
-      reportError?.(error);
-    } finally {
-      if (isCurrent()) {
-        deletePendingRef.current = false;
-        setIsDeleting(false);
-        setShowDeleteConfirmation(false);
-        setItemToDelete(null);
-      }
-    }
-  };
-
-  const handleCancelDelete = () => {
-    if (deletePendingRef.current) return;
-    setShowDeleteConfirmation(false);
-    setItemToDelete(null);
+  const handleConfirmDelete = () => {
+    if (itemToDelete)
+      return removal.remove([
+        itemToDelete.contractAddress,
+        chainId,
+        itemToDelete.tokenId,
+      ]);
   };
 
   // Group NFTs by collection
@@ -330,15 +291,15 @@ export const EvmNftsList = ({
         />
       )}
       <ConfirmationModal
-        show={showDeleteConfirmation}
+        show={Boolean(itemToDelete)}
         onClick={handleConfirmDelete}
-        onClose={handleCancelDelete}
+        onClose={removal.close}
         title={t('send.deleteCollection')}
         description={t('send.deleteCollectionConfirm', {
           name: itemToDelete?.name,
         })}
         buttonText="Delete"
-        isButtonLoading={isDeleting}
+        isButtonLoading={removal.pending}
       />
     </>
   );

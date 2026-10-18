@@ -52,7 +52,7 @@ export const AssetsPanel = () => {
   const beginRemoval = useRequestScope(
     JSON.stringify([scope, location.pathname, location.search, location.hash])
   );
-  const beginNftDelete = () => {
+  const beginAssetDelete = () => {
     const isCurrent = beginRemoval();
     return (error: any) => {
       if (isCurrent())
@@ -86,9 +86,9 @@ export const AssetsPanel = () => {
       ) : (
         <ul className="pt-4 mt-6 px-4 w-full text-center text-white text-base bg-bkg-3">
           {isBitcoinBased ? (
-            <SyscoinAssetsList />
+            <SyscoinAssetsList scope={scope} onDeleteStart={beginAssetDelete} />
           ) : (
-            <EvmAssetsList scope={scope} onNftDeleteStart={beginNftDelete} />
+            <EvmAssetsList scope={scope} onDeleteStart={beginAssetDelete} />
           )}
         </ul>
       )}

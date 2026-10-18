@@ -4946,6 +4946,7 @@ class MainController {
     const currentAccount = accounts[activeAccount.type]?.[activeAccount.id];
     const currentAccountTxs =
       accountTransactions[activeAccount.type]?.[activeAccount.id];
+    let cancelled = false;
     const { currentPromise: transactionPromise, cancel } =
       this.cancellablePromises.createCancellablePromise<void>(
         async (resolve, reject) => {
@@ -4965,11 +4966,14 @@ class MainController {
 
             const latestVault = store.getState().vault;
             if (
+              cancelled ||
               latestVault.activeAccount.id !== activeAccount.id ||
               latestVault.activeAccount.type !== activeAccount.type ||
               latestVault.activeNetwork.chainId !== activeNetwork.chainId ||
               latestVault.activeNetwork.kind !== activeNetwork.kind ||
-              latestVault.activeNetwork.url !== activeNetwork.url
+              latestVault.activeNetwork.url !== activeNetwork.url ||
+              (!isBitcoinBased &&
+                latestVault.activeNetwork.apiUrl !== activeNetwork.apiUrl)
             ) {
               console.log(
                 '[MainController] Skipping stale transaction update after account/network change'
@@ -5100,7 +5104,10 @@ class MainController {
 
     this.cancellablePromises.setPromise(PromiseTargets.TRANSACTION, {
       transactionPromise,
-      cancel,
+      cancel: () => {
+        cancelled = true;
+        cancel();
+      },
     });
 
     this.cancellablePromises.runPromise(PromiseTargets.TRANSACTION);
