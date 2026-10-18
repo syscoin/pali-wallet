@@ -439,12 +439,16 @@ test('transaction review freezes fee and nonce edits during a delayed balance re
     const { request, popup } = await wallet.step(
       'open a synthetic transaction review',
       async (captureApproval) => {
-        const request = await startRequest(dapp, 'eth_sendTransaction', [
+        const pendingRequest = await startRequest(dapp, 'eth_sendTransaction', [
           { from: address, to: spender, value: '0x0', data: '0x' },
         ]);
-        const popup = await popupFor(wallet.context, dapp, request);
-        await captureApproval(popup);
-        return { request, popup };
+        const approvalPopup = await popupFor(
+          wallet.context,
+          dapp,
+          pendingRequest
+        );
+        await captureApproval(approvalPopup);
+        return { request: pendingRequest, popup: approvalPopup };
       }
     );
     const edit = popup.getByRole('button', {
