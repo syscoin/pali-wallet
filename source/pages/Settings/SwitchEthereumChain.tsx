@@ -66,7 +66,6 @@ const SwitchChain: React.FC = () => {
       <ChainIcon
         chainId={previousNetwork[0]}
         size={100}
-        className=""
         networkKind={previousNetwork[1]}
         fallbackClassName="rounded-full flex items-center justify-center text-white text-sm bg-brand-blue200 p-5"
       />{' '}
@@ -74,7 +73,6 @@ const SwitchChain: React.FC = () => {
       <ChainIcon
         chainId={network.chainId}
         size={100}
-        className=""
         networkKind={INetworkType.Ethereum}
         fallbackClassName="rounded-full flex items-center justify-center text-brand-blue200 bg-white text-sm"
       />
