@@ -507,10 +507,41 @@ const SmartAccountPolicy = () => {
       guardianStatus?.guardians?.[0] ||
         installedGuardianRecovery?.config.guardians?.[0]
     );
+  const recoveryReadyAt = Number(
+    activeGuardianReplacement?.recoveryOperation?.readyAt
+  );
   const guardianRecoveryReady =
-    Boolean(activeGuardianReplacement?.recoveryOperation?.readyAt) &&
-    Number(activeGuardianReplacement?.recoveryOperation?.readyAt) <=
-      Math.floor(Date.now() / 1000);
+    Number.isFinite(recoveryReadyAt) &&
+    recoveryReadyAt > 0 &&
+    recoveryReadyAt <= Math.floor(Date.now() / 1000);
+  const [, wakeRecoveryDeadline] = useState(0);
+  useEffect(() => {
+    if (
+      !Number.isFinite(recoveryReadyAt) ||
+      recoveryReadyAt <= 0 ||
+      guardianRecoveryReady
+    )
+      return;
+    let timer: ReturnType<typeof setTimeout>;
+    const wake = () => {
+      const remaining = recoveryReadyAt * 1000 - Date.now();
+      if (remaining > 0) {
+        // Timers are monotonic; recheck wall time without rendering so a
+        // system clock adjustment cannot strand a ready recovery.
+        timer = setTimeout(wake, Math.min(remaining, 1000));
+      } else {
+        wakeRecoveryDeadline((version) => version + 1);
+      }
+    };
+    wake();
+    return () => clearTimeout(timer);
+  }, [
+    recoveryReadyAt,
+    guardianRecoveryReady,
+    smartAccountAddress,
+    activeNetwork.chainId,
+    scopeKey,
+  ]);
   const replacementAuthenticatorLabel = (kind?: RecoveryAuthenticatorId) => {
     switch (kind) {
       case 'ecdsa':
@@ -2093,6 +2124,22 @@ const SmartAccountPolicy = () => {
   const activeModuleKey = moduleDisplayKey(
     metadata?.auth?.module || metadata?.auth?.scheme || ''
   );
+  const renderModuleAction = (
+    onClick: () => void,
+    disabled: boolean,
+    busy: boolean,
+    children: React.ReactNode
+  ) => (
+    <button
+      type="button"
+      className="flex items-center justify-center gap-2 rounded-full border border-brand-blue500 bg-brand-blue500 bg-opacity-20 px-3 py-2 text-xs font-medium text-brand-blue100 transition-all duration-200 hover:border-brand-blue100 hover:bg-brand-blue500 hover:bg-opacity-40 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+      disabled={disabled}
+      onClick={onClick}
+    >
+      {busy && <LoadingSvg className="h-4 w-4 animate-spin" />}
+      {children}
+    </button>
+  );
   const activeModuleLabel =
     metadata?.auth && activeModuleKey
       ? t(activeModuleKey)
@@ -2522,32 +2569,20 @@ const SmartAccountPolicy = () => {
                             : t('settings.unavailable')}
                         </span>
                       </div>
-                      {canInstallPasskey && (
-                        <button
-                          type="button"
-                          className="flex items-center justify-center gap-2 rounded-full border border-brand-blue500 bg-brand-blue500 bg-opacity-20 px-3 py-2 text-xs font-medium text-brand-blue100 transition-all duration-200 hover:border-brand-blue100 hover:bg-brand-blue500 hover:bg-opacity-40 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
-                          disabled={loading}
-                          onClick={() => setupPasskeyAuthenticator()}
-                        >
-                          {moduleActionKey === `${module.id}:use` && (
-                            <LoadingSvg className="h-4 w-4 animate-spin" />
-                          )}
-                          {t('settings.useSmartAccountValidator')}
-                        </button>
-                      )}
-                      {canInstallPaliWallet && (
-                        <button
-                          type="button"
-                          className="flex items-center justify-center gap-2 rounded-full border border-brand-blue500 bg-brand-blue500 bg-opacity-20 px-3 py-2 text-xs font-medium text-brand-blue100 transition-all duration-200 hover:border-brand-blue100 hover:bg-brand-blue500 hover:bg-opacity-40 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
-                          disabled={loading}
-                          onClick={setupPaliWalletAuthenticator}
-                        >
-                          {moduleActionKey === `${module.id}:use` && (
-                            <LoadingSvg className="h-4 w-4 animate-spin" />
-                          )}
-                          {t('settings.useSmartAccountValidator')}
-                        </button>
-                      )}
+                      {canInstallPasskey &&
+                        renderModuleAction(
+                          () => setupPasskeyAuthenticator(),
+                          loading,
+                          moduleActionKey === `${module.id}:use`,
+                          t('settings.useSmartAccountValidator')
+                        )}
+                      {canInstallPaliWallet &&
+                        renderModuleAction(
+                          setupPaliWalletAuthenticator,
+                          loading,
+                          moduleActionKey === `${module.id}:use`,
+                          t('settings.useSmartAccountValidator')
+                        )}
                       {canInstallSLHDSA && (
                         <div className="space-y-3">
                           <PqOperationStatus
@@ -2579,21 +2614,16 @@ const SmartAccountPolicy = () => {
                                 {slhDsaSetupStatus.error}
                               </p>
                             )}
-                          <button
-                            type="button"
-                            className="flex items-center justify-center gap-2 rounded-full border border-brand-blue500 bg-brand-blue500 bg-opacity-20 px-3 py-2 text-xs font-medium text-brand-blue100 transition-all duration-200 hover:border-brand-blue100 hover:bg-brand-blue500 hover:bg-opacity-40 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
-                            disabled={loading || isCurrentSLHDSASetupRunning}
-                            onClick={() => {
+                          {renderModuleAction(
+                            () => {
                               setSlhDsaSetupIntent('use');
                               setIsSLHDSASetupConfirmOpen(true);
-                            }}
-                          >
-                            {(moduleActionKey === `${module.id}:use` ||
-                              isCurrentSLHDSASetupRunning) && (
-                              <LoadingSvg className="h-4 w-4 animate-spin" />
-                            )}
-                            {t('settings.useSmartAccountValidator')}
-                          </button>
+                            },
+                            loading || isCurrentSLHDSASetupRunning,
+                            moduleActionKey === `${module.id}:use` ||
+                              isCurrentSLHDSASetupRunning,
+                            t('settings.useSmartAccountValidator')
+                          )}
                         </div>
                       )}
                       {canManageGuardianRecovery && (
@@ -2653,19 +2683,12 @@ const SmartAccountPolicy = () => {
                               </button>
                             ))}
                           </div>
-                          <button
-                            type="button"
-                            className="flex items-center justify-center gap-2 rounded-full border border-brand-blue500 bg-brand-blue500 bg-opacity-20 px-3 py-2 text-xs font-medium text-brand-blue100 transition-all duration-200 hover:border-brand-blue100 hover:bg-brand-blue500 hover:bg-opacity-40 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
-                            disabled={
-                              loading ||
+                          {renderModuleAction(
+                            requestGuardianPolicyUpdate,
+                            loading ||
                               !normalizedGuardianAddress ||
-                              (installed && !guardianPolicyChanged)
-                            }
-                            onClick={requestGuardianPolicyUpdate}
-                          >
-                            {moduleActionKey === 'guardian-recovery:update' && (
-                              <LoadingSvg className="h-4 w-4 animate-spin" />
-                            )}
+                              (installed && !guardianPolicyChanged),
+                            moduleActionKey === 'guardian-recovery:update',
                             <span>
                               {installed
                                 ? t(
@@ -2675,7 +2698,7 @@ const SmartAccountPolicy = () => {
                                     'settings.smartAccountGuardianRecoveryConnect'
                                   )}
                             </span>
-                          </button>
+                          )}
                           {installed && (
                             <div className="rounded-2xl bg-alpha-whiteAlpha100 p-3 text-xs text-brand-graylight">
                               <div className="flex items-center justify-between gap-3">
