@@ -59,6 +59,38 @@ const EthSign: React.FC<ISign> = () => {
   const signingRef = React.useRef<'ready' | 'submitting' | 'completed'>(
     'ready'
   );
+  const mountedRef = React.useRef(true);
+  const errorCloseRevisionRef = React.useRef(0);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      errorCloseRevisionRef.current += 1;
+    };
+  }, []);
+  const scheduleErrorClose = () => {
+    if (!mountedRef.current) return;
+    const revision = ++errorCloseRevisionRef.current;
+    createTemporaryAlarm({
+      delayInSeconds: 40,
+      callback: () => {
+        if (
+          !mountedRef.current ||
+          errorCloseRevisionRef.current !== revision ||
+          signingRef.current !== 'ready'
+        )
+          return;
+        signingRef.current = 'completed';
+        window.close();
+      },
+    });
+  };
+  const handleClose = () => {
+    if (!mountedRef.current || signingRef.current !== 'ready') return;
+    signingRef.current = 'completed';
+    errorCloseRevisionRef.current += 1;
+    window.close();
+  };
   const [blacklistWarning, setBlacklistWarning] = useState<{
     address?: string;
     fieldName?: string;
@@ -338,7 +370,8 @@ const EthSign: React.FC<ISign> = () => {
   };
 
   const onSubmit = async () => {
-    if (signingRef.current !== 'ready' || confirmed) return;
+    if (!mountedRef.current || signingRef.current !== 'ready' || confirmed)
+      return;
     if (typedOrderRequest !== currentTypedOrderRequestRef.current) return;
     if (typedOrderRequest?.error) {
       setErrorMsg(typedOrderRequest.error);
@@ -354,6 +387,10 @@ const EthSign: React.FC<ISign> = () => {
         return;
       }
     }
+    // An error deadline belongs only to the failed attempt that created it.
+    // The alarm may already be queued when a retry starts, so invalidate it
+    // synchronously before allowing another signer invocation.
+    errorCloseRevisionRef.current += 1;
     signingRef.current = 'submitting';
     setLoading(true);
 
@@ -362,10 +399,7 @@ const EthSign: React.FC<ISign> = () => {
       signingRef.current = 'ready';
       setLoading(false);
       setErrorMsg(t('send.messageSigningNotAvailable'));
-      createTemporaryAlarm({
-        delayInSeconds: 40,
-        callback: () => window.close(),
-      });
+      scheduleErrorClose();
       return;
     }
 
@@ -457,6 +491,7 @@ const EthSign: React.FC<ISign> = () => {
       }
       setConfirmed(true);
       signingRef.current = 'completed';
+      errorCloseRevisionRef.current += 1;
       setLoading(false);
 
       // Dispatch event right before closing
@@ -489,10 +524,7 @@ const EthSign: React.FC<ISign> = () => {
       }
 
       setLoading(false);
-      createTemporaryAlarm({
-        delayInSeconds: 40,
-        callback: () => window.close(),
-      });
+      scheduleErrorClose();
     } finally {
       if (signingRef.current === 'submitting') signingRef.current = 'ready';
     }
@@ -1163,7 +1195,7 @@ const EthSign: React.FC<ISign> = () => {
     <>
       <ErrorModal
         show={Boolean(errorMsg || typedOrderRequest?.error)}
-        onClose={window.close}
+        onClose={handleClose}
         title={t('transactions.signatureFailed')}
         description={t('transactions.sorryWeCould')}
         log={errorMsg || typedOrderRequest?.error || '...'}
@@ -1471,7 +1503,7 @@ const EthSign: React.FC<ISign> = () => {
                 variant="secondary"
                 type="button"
                 disabled={loading}
-                onClick={window.close}
+                onClick={handleClose}
               >
                 {t('buttons.cancel')}
               </Button>

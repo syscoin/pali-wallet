@@ -1,7 +1,7 @@
 import { Form, Input } from 'antd';
 import { useForm } from 'antd/lib/form/Form';
 import { QRCodeSVG } from 'qrcode.react';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
@@ -16,6 +16,7 @@ import { KeyringAccountType } from 'types/network';
 import { ellipsis } from 'utils/format';
 import {
   createBrowsingNavigationContext,
+  getWalletNavigationScope,
   navigateBack,
   navigateWithContext,
 } from 'utils/navigationState';
@@ -40,7 +41,28 @@ const EditAccountView = () => {
   );
   const state = { ...account, accountType };
   const { t } = useTranslation();
-  const [loading, setLoading] = useState(false);
+  const walletScope = useSelector(() =>
+    JSON.stringify(getWalletNavigationScope())
+  );
+  const entryKey = JSON.stringify([
+    location.key,
+    location.pathname,
+    location.search,
+    location.hash,
+    accountType,
+    routeState.id,
+    account?.address,
+    account?.xpub,
+    walletScope,
+  ]);
+  const entry = useRef({ key: entryKey });
+  if (entry.current.key !== entryKey) entry.current = { key: entryKey };
+  const currentEntry = entry.current;
+  const mounted = useRef(true);
+  const saveRequest = useRef<{ entry: typeof entry.current } | null>(null);
+  const [pendingSave, setPendingSave] =
+    useState<typeof saveRequest.current>(null);
+  const loading = pendingSave?.entry === currentEntry;
 
   const { alert, navigate, useCopyClipboard } = useUtils();
   const [copied, copyText] = useCopyClipboard();
@@ -48,6 +70,14 @@ const EditAccountView = () => {
   const { controllerEmitter } = useController();
 
   const [form] = useForm();
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      saveRequest.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     if (!account) navigateBack(navigate, location);
@@ -79,10 +109,24 @@ const EditAccountView = () => {
   };
 
   const onSubmit = async (data: { label: string }) => {
-    setLoading(true);
+    if (
+      !mounted.current ||
+      !account ||
+      entry.current !== currentEntry ||
+      saveRequest.current?.entry === currentEntry ||
+      JSON.stringify(getWalletNavigationScope()) !== walletScope
+    )
+      return;
+    const request = { entry: currentEntry };
+    saveRequest.current = request;
+    setPendingSave(request);
+    const isCurrent = () =>
+      mounted.current &&
+      entry.current === request.entry &&
+      saveRequest.current === request &&
+      JSON.stringify(getWalletNavigationScope()) === walletScope;
 
     try {
-      if (!account) return;
       const accountId = state.id;
 
       await controllerEmitter(
@@ -90,12 +134,17 @@ const EditAccountView = () => {
         [data.label, accountId, accountType]
       );
 
-      alert.success(t('settings.accountLabelEditedSuccessfully'));
-      navigateBack(navigate, location);
+      if (isCurrent()) {
+        alert.success(t('settings.accountLabelEditedSuccessfully'));
+        navigateBack(navigate, location);
+      }
     } catch (error) {
-      alert.error(error.message);
+      if (isCurrent()) alert.error(error.message);
     } finally {
-      setLoading(false);
+      if (isCurrent()) {
+        saveRequest.current = null;
+        setPendingSave(null);
+      }
     }
   };
 

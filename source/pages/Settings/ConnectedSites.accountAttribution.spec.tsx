@@ -1,6 +1,6 @@
 /** @jest-environment jsdom */
 import '@testing-library/jest-dom';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { MemoryRouter } from 'react-router-dom';
@@ -117,6 +117,12 @@ const mount = () =>
     </MemoryRouter>
   );
 const connection = () => mockState.dapp.dapps.connected;
+const rerenderPage = (view: ReturnType<typeof mount>) =>
+  view.rerender(
+    <MemoryRouter>
+      <ConnectedSites />
+    </MemoryRouter>
+  );
 
 it.each([
   [KeyringAccountType.Imported, 'Imported signer'],
@@ -183,6 +189,9 @@ it('constrains long inactive-account labels and hosts without dropping their acc
 
 it('keeps the selected account attribution and disconnects the exact host', async () => {
   const user = userEvent.setup();
+  mockEmitter.mockImplementationOnce(async () => {
+    mockState.dapp.dapps = {};
+  });
   mount();
   await user.click(screen.getByRole('button', { name: 'Edit connection' }));
   const dialog = screen.getByRole('dialog', { name: 'Edit connection' });
@@ -196,4 +205,79 @@ it('keeps the selected account attribution and disconnects the exact host', asyn
   await waitFor(() => expect(screen.queryByText(host)).toBeNull());
   expect(mockEmitter).toHaveBeenCalledTimes(1);
   expect(mockEmitter).toHaveBeenCalledWith(['dapp', 'disconnect'], [host]);
+});
+
+it('shows a newly approved connection after disconnecting the same host without leaving the page', async () => {
+  const user = userEvent.setup();
+  const previous = connection();
+  mockEmitter.mockImplementationOnce(async () => {
+    mockState.dapp.dapps = {};
+  });
+  const view = mount();
+  await user.click(screen.getByRole('button', { name: 'Edit connection' }));
+  await user.click(
+    screen.getByRole('button', { name: 'Delete connected site' })
+  );
+  await waitFor(() => expect(screen.queryByText(host)).toBeNull());
+  mockState.dapp.dapps = {
+    connected: { ...previous, accountType: KeyringAccountType.Ledger, date: 2 },
+  };
+  rerenderPage(view);
+  expect(screen.getByText(host)).toBeVisible();
+  expect(screen.getByText('Connected to: Ledger signer')).toBeVisible();
+  expect(screen.getByText('1 site is connected to Pali Wallet')).toBeVisible();
+  expect(screen.getByRole('button', { name: 'Edit connection' })).toBeEnabled();
+});
+
+it('keeps an open connection review attributed to the live connected account', async () => {
+  const user = userEvent.setup();
+  const view = mount();
+  await user.click(screen.getByRole('button', { name: 'Edit connection' }));
+  mockState.dapp.dapps = {
+    connected: {
+      ...connection(),
+      accountType: KeyringAccountType.Ledger,
+      date: 2,
+    },
+  };
+  rerenderPage(view);
+  const dialog = screen.getByRole('dialog', { name: 'Edit connection' });
+  expect(within(dialog).getByText('Ledger signer')).toBeVisible();
+  expect(within(dialog).getByText('ledger-address')).toBeVisible();
+  expect(within(dialog).queryByText('Imported signer')).toBeNull();
+});
+
+it('closes an externally removed connection review and does not reopen it on reconnection', async () => {
+  const user = userEvent.setup();
+  const previous = connection();
+  const view = mount();
+  await user.click(screen.getByRole('button', { name: 'Edit connection' }));
+  mockState.dapp.dapps = {};
+  rerenderPage(view);
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  mockState.dapp.dapps = { connected: previous };
+  rerenderPage(view);
+  expect(screen.getByText(host)).toBeVisible();
+  expect(screen.queryByRole('dialog')).toBeNull();
+});
+
+it('restores access after a rejected disconnect without hiding the still-connected host', async () => {
+  const user = userEvent.setup();
+  let reject!: (error: Error) => void;
+  mockEmitter.mockReturnValueOnce(new Promise((_, fail) => (reject = fail)));
+  const errors = jest.spyOn(console, 'error').mockImplementation();
+  try {
+    mount();
+    await user.click(screen.getByRole('button', { name: 'Edit connection' }));
+    await user.click(
+      screen.getByRole('button', { name: 'Delete connected site' })
+    );
+    await act(async () => reject(new Error('Controller unavailable')));
+    expect(screen.getByText(host)).toBeVisible();
+    expect(
+      screen.getByRole('button', { name: 'Edit connection' })
+    ).toBeEnabled();
+  } finally {
+    errors.mockRestore();
+  }
 });

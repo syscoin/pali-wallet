@@ -1,6 +1,6 @@
 import { Dialog } from '@headlessui/react';
 import { GlobeAltIcon } from '@heroicons/react/outline';
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
@@ -18,7 +18,6 @@ import { EditIconSvg } from 'components/Icon/Icon';
 import { Button, Icon, IconButton, PageActionFooter } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
-import { IDApp } from 'state/dapp/types';
 import { RootState } from 'state/store';
 import { ellipsis } from 'utils/index';
 import { navigateBack } from 'utils/navigationState';
@@ -34,39 +33,34 @@ const ConnectedSites = () => {
 
   // Get dapps directly from Redux state
   const dapps = useSelector((state: RootState) => state.dapp.dapps);
-  const [hiddenHosts, setHiddenHosts] = useState<Set<string>>(() => new Set());
   const [disconnectingHost, setDisconnectingHost] = useState<string | null>(
     null
   );
 
   // Show all dapps since they're connected globally (one account per dapp)
-  const dappsList = useMemo(
-    () => Object.values(dapps).filter((dapp) => !hiddenHosts.has(dapp.host)),
-    [dapps, hiddenHosts]
-  );
-
-  const [selected, setSelected] = useState<IDApp>();
+  // Redux owns membership: an old optimistic removal must not hide a later
+  // connection to the same host. Review the current permission, not a snapshot.
+  const dappsList = Object.values(dapps);
+  const [selectedHost, setSelectedHost] = useState<string>();
+  const selected = dappsList.find((dapp) => dapp.host === selectedHost);
+  useEffect(() => {
+    if (selectedHost && !selected) setSelectedHost(undefined);
+  }, [selectedHost, selected]);
 
   const disconnectSelected = async () => {
     if (!selected) return;
 
     const host = selected.host;
     setDisconnectingHost(host);
-    setHiddenHosts((hosts) => new Set(hosts).add(host));
-    setSelected(undefined);
+    setSelectedHost(undefined);
 
     try {
       // The controller will dispatch removeDApp action internally
       await controllerEmitter(['dapp', 'disconnect'], [host]);
     } catch (error) {
       console.error('Error disconnecting dapp:', error);
-      setHiddenHosts((hosts) => {
-        const nextHosts = new Set(hosts);
-        nextHosts.delete(host);
-        return nextHosts;
-      });
     } finally {
-      setDisconnectingHost(null);
+      setDisconnectingHost((current) => (current === host ? null : current));
     }
   };
 
@@ -115,7 +109,7 @@ const ConnectedSites = () => {
                 aria-label={t('settings.editConnection')}
                 className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full hover:bg-alpha-whiteAlpha200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
                 disabled={disconnectingHost === _dapp.host}
-                onClick={() => setSelected(_dapp)}
+                onClick={() => setSelectedHost(_dapp.host)}
               >
                 <EditIconSvg className="w-4" />
               </IconButton>
@@ -124,7 +118,7 @@ const ConnectedSites = () => {
         </ul>
 
         {selected && (
-          <DialogPrimitive show onClose={() => setSelected(undefined)}>
+          <DialogPrimitive show onClose={() => setSelectedHost(undefined)}>
             <CenterPanel
               padded={false}
               scroll={false}
@@ -133,7 +127,7 @@ const ConnectedSites = () => {
               <DialogHeader
                 title={t('settings.editConnection')}
                 icon={<GlobeAltIcon />}
-                onClose={() => setSelected(undefined)}
+                onClose={() => setSelectedHost(undefined)}
               />
               <DialogBody>
                 <Dialog.Description className="mb-3 text-content-secondary text-sm">
@@ -185,7 +179,7 @@ const ConnectedSites = () => {
                   <DialogActionButton
                     type="button"
                     tone="secondary"
-                    onClick={() => setSelected(undefined)}
+                    onClick={() => setSelectedHost(undefined)}
                   >
                     {t('buttons.close')}
                   </DialogActionButton>

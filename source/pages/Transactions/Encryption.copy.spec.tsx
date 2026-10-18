@@ -19,6 +19,10 @@ const PLAINTEXT = 'Synthetic decrypted fixture message';
 const mockCopy = jest.fn();
 const mockEmitter = jest.fn();
 const mockAlert = { info: jest.fn(), error: jest.fn() };
+const originalClipboard = Object.getOwnPropertyDescriptor(
+  navigator,
+  'clipboard'
+);
 let mockState: any;
 let mockQuery: any;
 jest.mock('react-redux', () => ({
@@ -75,6 +79,10 @@ jest.mock('utils/index', () => ({ ellipsis: (value: string) => value }));
 beforeEach(() => {
   jest.clearAllMocks();
   mockCopy.mockResolvedValue(undefined);
+  Object.defineProperty(navigator, 'clipboard', {
+    configurable: true,
+    value: { writeText: mockCopy },
+  });
   mockEmitter.mockResolvedValue(PLAINTEXT);
   mockQuery = {
     host: 'synthetic.example.invalid',
@@ -93,7 +101,12 @@ beforeEach(() => {
   };
   jest.spyOn(window, 'close').mockImplementation(() => undefined);
 });
-afterEach(() => jest.restoreAllMocks());
+afterEach(() => {
+  jest.restoreAllMocks();
+  if (originalClipboard)
+    Object.defineProperty(navigator, 'clipboard', originalClipboard);
+  else delete (navigator as any).clipboard;
+});
 
 const addressCopy = () =>
   // Before the accessibility fix this is the only unnamed button.

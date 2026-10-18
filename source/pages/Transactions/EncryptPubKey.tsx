@@ -1,5 +1,5 @@
 import { toSvg } from 'jdenticon';
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
@@ -46,8 +46,7 @@ const EncryptPubKey: React.FC<ISign> = () => {
   const { controllerEmitter } = useController();
   const { host, ...data } = useQueryData();
   const { t } = useTranslation();
-  const { useCopyClipboard, alert } = useUtils();
-  const [, copyText] = useCopyClipboard();
+  const { alert } = useUtils();
   const [loading, setLoading] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -57,13 +56,44 @@ const EncryptPubKey: React.FC<ISign> = () => {
   );
   const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
   const { label, address } = activeAccount;
+  const activeNetwork = useSelector(
+    (state: RootState) => state.vault.activeNetwork
+  );
+  const copyScope = JSON.stringify([
+    activeAccountMeta,
+    address,
+    activeNetwork.kind,
+    activeNetwork.chainId,
+    activeNetwork.url,
+    activeNetwork.apiUrl,
+    host,
+    data.eventName,
+    data[0],
+  ]);
+  const copyScopeRef = useRef(copyScope);
+  copyScopeRef.current = copyScope;
+  const copyContext = useRef({ active: true, sequence: 0 });
+  useEffect(() => {
+    copyContext.current.active = true;
+    return () => {
+      copyContext.current.active = false;
+      copyContext.current.sequence += 1;
+    };
+  }, [copyScope]);
 
   const copyAddress = async () => {
+    if (!copyContext.current.active || copyScopeRef.current !== copyScope)
+      return;
+    const sequence = ++copyContext.current.sequence;
+    const isCurrent = () =>
+      copyContext.current.active &&
+      copyScopeRef.current === copyScope &&
+      copyContext.current.sequence === sequence;
     try {
-      await copyText(address);
-      alert.info(t('home.addressCopied'));
+      await navigator.clipboard.writeText(address);
+      if (isCurrent()) alert.info(t('home.addressCopied'));
     } catch {
-      alert.error(t('transactions.copyFailed'));
+      if (isCurrent()) alert.error(t('transactions.copyFailed'));
     }
   };
 
