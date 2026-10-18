@@ -4,6 +4,7 @@ import path from 'path';
 
 import en from '../../source/assets/locales/en.json';
 import { E2E_CONFIG } from '../harness/config';
+import { clickClosingPopup } from '../harness/dismissRejectedApproval';
 import {
   createIsolatedVaultFixture,
   installIsolatedVaultRoutes,
@@ -221,7 +222,14 @@ for (const changedContext of ['account', 'network'] as const) {
             expect(bounds!.y).toBeGreaterThanOrEqual(0);
             expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(620);
             await capture(review);
-            await Promise.all([review.waitForEvent('close'), close.click()]);
+            await Promise.all([
+              review.waitForEvent('close'),
+              clickClosingPopup({
+                click: () => close.click(),
+                isClosed: () => review.isClosed(),
+              }),
+            ]);
+            expect(wallet!.page.isClosed()).toBe(false);
           } finally {
             if (!review.isClosed()) await capture(review);
           }
