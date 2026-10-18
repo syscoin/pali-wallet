@@ -670,21 +670,68 @@ it.each([false, true])(
       approvalType: 'erc20-amount',
       tokenStandard: 'ERC-20',
     };
+    const tokenInfo = {
+      name: 'Synthetic',
+      symbol: 'UNIT',
+      decimals: 18,
+      balance: '10',
+    };
+    let finishTokenInfo!: (value: typeof tokenInfo) => void;
+    const pendingTokenInfo = new Promise<typeof tokenInfo>((resolve) => {
+      finishTokenInfo = resolve;
+    });
+    let holdFollowUpQuote = false;
+    const pendingQuotes: (() => void)[] = [];
+    const quote = mockFee.getMockImplementation()!;
+    mockFee.mockImplementation(async (...args) => {
+      const result = await quote(...args);
+      if (holdFollowUpQuote) {
+        await new Promise<void>((resolve) => pendingQuotes.push(resolve));
+      }
+      return result;
+    });
     const invoke = mockEmitter.getMockImplementation()!;
     mockEmitter.mockImplementation(async (path, args) =>
       path[1] === 'getERC20TokenInfo'
-        ? { name: 'Synthetic', symbol: 'UNIT', decimals: 18, balance: '10' }
+        ? smart
+          ? pendingTokenInfo
+          : tokenInfo
         : path[1] === 'isContractAddress'
         ? true
         : invoke(path, args)
     );
     await prepare();
-    expect(screen.getByTestId('transaction-hex').textContent).toBe(
-      mockQuery.tx.data
-    );
-    expect(
-      JSON.parse(screen.getByTestId('transaction-data').textContent!).inputs
-    ).toEqual(mockQuery.decodedTx.inputs);
+    if (smart) {
+      // Metadata seeds the proposed limit and invalidates the first AA quote.
+      // Hold its replacement so this test cannot accidentally use prepare's
+      // earlier, transient Confirm button as proof the review is ready.
+      holdFollowUpQuote = true;
+      await act(async () => finishTokenInfo(tokenInfo));
+      await waitFor(() => expect(pendingQuotes.length).toBeGreaterThan(0));
+      expect(screen.queryByTestId('transaction-hex')).toBeNull();
+    }
+    const initialReviewReady = waitFor(() => {
+      expect(screen.getByTestId('transaction-hex').textContent).toBe(
+        mockQuery.tx.data
+      );
+      expect(
+        JSON.parse(screen.getByTestId('transaction-data').textContent!).inputs
+      ).toEqual(mockQuery.decodedTx.inputs);
+      expect(
+        (
+          screen.getByRole('button', {
+            name: 'buttons.confirm',
+          }) as HTMLButtonElement
+        ).disabled
+      ).toBe(false);
+    });
+    if (smart) {
+      await act(async () => {
+        holdFollowUpQuote = false;
+        pendingQuotes.splice(0).forEach((finish) => finish());
+      });
+    }
+    await initialReviewReady;
     fireEvent.click(
       await screen.findByRole('button', { name: 'edit-synthetic-allowance' })
     );
@@ -692,24 +739,22 @@ it.each([false, true])(
       spender,
       '2000000000000000000',
     ]);
-    await waitFor(() =>
-      expect(mockFee.mock.calls.at(-1)![0].data).toBe(expectedData)
-    );
-    expect(screen.getByTestId('transaction-hex').textContent).toBe(
-      expectedData
-    );
-    expect(
-      JSON.parse(screen.getByTestId('transaction-data').textContent!).inputs
-    ).toEqual([spender, '2000000000000000000']);
-    await waitFor(() =>
+    await waitFor(() => {
+      expect(mockFee.mock.calls.at(-1)![0].data).toBe(expectedData);
+      expect(screen.getByTestId('transaction-hex').textContent).toBe(
+        expectedData
+      );
+      expect(
+        JSON.parse(screen.getByTestId('transaction-data').textContent!).inputs
+      ).toEqual([spender, '2000000000000000000']);
       expect(
         (
           screen.getByRole('button', {
             name: 'buttons.confirm',
           }) as HTMLButtonElement
         ).disabled
-      ).toBe(false)
-    );
+      ).toBe(false);
+    });
     await act(async () => mockButtonHandlers['buttons.confirm']());
     if (smart)
       expect(mockSmartSubmit).toHaveBeenCalledWith(
