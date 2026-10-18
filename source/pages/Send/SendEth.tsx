@@ -223,6 +223,16 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
   // Track form value changes using a ref to avoid dependency issues
   const formValuesRef = useRef<any>(initialDraft.formValues || {});
   const tokenIdVerificationTimeoutRef = useRef<NodeJS.Timeout>();
+  const nftRequest = useRef(0);
+  const beginNftLookup = useCallback(() => {
+    const request = ++nftRequest.current;
+    clearTimeout(tokenIdVerificationTimeoutRef.current);
+    setIsLoadingNftTokenIds(false);
+    setIsVerifyingTokenId(false);
+    setVerifiedTokenBalance(null);
+    setVerificationError(null);
+    return () => request === nftRequest.current && isCurrentForm();
+  }, [isCurrentForm]);
 
   useEffect(() => {
     const refreshBalances = async () => {
@@ -470,11 +480,12 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
   // ✅ MEMOIZED: Handlers
   const handleSelectedAsset = useCallback(
     async (value: string) => {
+      const current = beginNftLookup();
+      setNftTokenIds([]);
+      setSelectedNftTokenId(null);
       try {
         if (value === '-1') {
           setSelectedAsset(null);
-          setNftTokenIds([]);
-          setSelectedNftTokenId(null);
           // Don't clear cached fee data - gas prices don't change based on asset
           setIsMaxSend(false);
           return;
@@ -504,8 +515,6 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
               form.setFieldValue('amount', '1');
               // Set the balance from the stored token (already specific to this tokenId)
               setVerifiedTokenBalance(getAsset.balance);
-              setNftTokenIds([]); // No need to fetch token IDs
-              setIsLoadingNftTokenIds(false);
             } else {
               // ERC-721 flow - enumerate token IDs
               setIsLoadingNftTokenIds(true);
@@ -526,6 +535,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                   requiresManualEntry?: boolean;
                 };
 
+                if (!current()) return;
                 setNftTokenIds(result || []);
 
                 // Auto-select first token if only one
@@ -535,29 +545,26 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                   form.setFieldValue('nftTokenId', result[0].tokenId);
                 }
               } catch (error) {
+                if (!current()) return;
                 console.error('Error loading NFT token IDs:', error);
                 setNftTokenIds([]);
                 alert.error(t('send.errorLoadingNfts'));
               } finally {
-                setIsLoadingNftTokenIds(false);
+                if (current()) setIsLoadingNftTokenIds(false);
               }
             }
           } else {
-            setNftTokenIds([]);
-            setSelectedNftTokenId(null);
             // Clear the NFT token ID field when switching away from NFT
             form.setFieldValue('nftTokenId', undefined);
           }
         } else {
           setSelectedAsset(null);
-          setNftTokenIds([]);
-          setSelectedNftTokenId(null);
         }
       } catch (error) {
         console.error(error);
       }
     },
-    [activeAccount.address, activeAccountAssets, alert, t, form]
+    [activeAccount.address, activeAccountAssets, alert, t, form, beginNftLookup]
   );
 
   const finalSymbolToNextStep = useMemo(() => {
@@ -896,14 +903,12 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
   // Verify manually entered NFT token ID
   const verifyTokenId = useCallback(
     async (tokenId: string) => {
+      const current = beginNftLookup();
       if (!selectedAsset || !activeAccount.address || !tokenId.trim()) {
-        setVerifiedTokenBalance(null);
-        setVerificationError(null);
         return;
       }
 
       setIsVerifyingTokenId(true);
-      setVerificationError(null);
 
       try {
         const result = (await controllerEmitter(
@@ -916,6 +921,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
           [selectedAsset.contractAddress, activeAccount.address, [tokenId]]
         )) as { balance: number; tokenId: string; verified: boolean }[];
 
+        if (!current()) return;
         if (result && result.length > 0) {
           const tokenInfo = result[0];
           if (tokenInfo.verified && tokenInfo.balance > 0) {
@@ -934,14 +940,15 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
           setVerificationError(t('send.tokenNotFound'));
         }
       } catch (error) {
+        if (!current()) return;
         console.error('Error verifying token ID:', error);
         setVerifiedTokenBalance(0);
         setVerificationError(t('send.verificationFailed'));
       } finally {
-        setIsVerifyingTokenId(false);
+        if (current()) setIsVerifyingTokenId(false);
       }
     },
-    [selectedAsset, activeAccount.address]
+    [selectedAsset, activeAccount.address, beginNftLookup]
   );
 
   const hasCheckedRestoredNft = useRef(false);
@@ -961,31 +968,19 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
   // Handle manual token ID input with debounced verification
   const handleManualTokenIdChange = useCallback(
     (value: string) => {
+      beginNftLookup();
       setSelectedNftTokenId(value);
       // Also update the form field to keep them in sync
       form.setFieldValue('nftTokenId', value);
 
-      // Clear any existing timeout to prevent verification calls for outdated values
-      if (tokenIdVerificationTimeoutRef.current) {
-        clearTimeout(tokenIdVerificationTimeoutRef.current);
-        tokenIdVerificationTimeoutRef.current = undefined;
-      }
-
       if (value) {
-        // Clear previous verification
-        setVerifiedTokenBalance(null);
-        setVerificationError(null);
-
         // Debounce verification to avoid too many calls
         tokenIdVerificationTimeoutRef.current = setTimeout(() => {
           verifyTokenId(value);
         }, 500);
-      } else {
-        setVerifiedTokenBalance(null);
-        setVerificationError(null);
       }
     },
-    [verifyTokenId, form]
+    [verifyTokenId, form, beginNftLookup]
   );
 
   // A verified balance belongs only to this selection and request lifetime.
@@ -1873,6 +1868,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                       key={nft.tokenId}
                       type="button"
                       onClick={() => {
+                        beginNftLookup();
                         setSelectedNftTokenId(nft.tokenId);
                         form.setFieldValue('nftTokenId', nft.tokenId);
                         setVerifiedTokenBalance(nft.balance); // Already verified from enumeration

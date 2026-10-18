@@ -749,7 +749,6 @@ export const ImportToken: React.FC = () => {
           </div>
         ) : activeTab === 'owned' ? (
           <ImportableAssetsList
-            key={`owned-${currentlyImporting || 'none'}`}
             assets={ownedAssetsForList}
             isLoading={isLoadingOwned}
             onImport={handleImport}
@@ -883,7 +882,6 @@ export const ImportToken: React.FC = () => {
             {customTokenDetails &&
               (customAssetsForList.length > 0 || tokenIdValidationPending) && (
                 <ImportableAssetsList
-                  key={`custom-${currentlyImporting || 'none'}`}
                   assets={customAssetsForList}
                   isLoading={tokenIdValidationPending}
                   onImport={handleImport}

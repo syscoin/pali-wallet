@@ -6636,6 +6636,7 @@ class MainController {
     const { accounts } = store.getState().vault;
     const currentAccount = accounts[activeAccount.type]?.[activeAccount.id];
     const nativeRevision = this.nativeBalanceRevision;
+    const networkRequest = this.networkRequestGeneration;
 
     // Check if account exists before proceeding
     if (!currentAccount) {
@@ -6659,6 +6660,17 @@ class MainController {
     const nativeReadIsCurrent = isBitcoinBased
       ? this.beginTargetedBalanceRead(nativeKey)
       : this.captureBalanceReadVersion(nativeKey);
+    const isCurrent = () => {
+      const latestNetwork = store.getState().vault.activeNetwork;
+      return (
+        nativeRevision === this.nativeBalanceRevision &&
+        networkRequest === this.networkRequestGeneration &&
+        nativeReadIsCurrent() &&
+        latestNetwork.chainId === activeNetwork.chainId &&
+        latestNetwork.kind === activeNetwork.kind &&
+        latestNetwork.url === activeNetwork.url
+      );
+    };
 
     // No need to create a new provider - let the BalancesManager use its own provider
     // The BalancesManager already handles EVM vs UTXO networks correctly
@@ -6677,17 +6689,7 @@ class MainController {
                 activeNetwork.url
               );
 
-            const latestNetwork = store.getState().vault.activeNetwork;
-            if (
-              nativeRevision !== this.nativeBalanceRevision ||
-              !nativeReadIsCurrent() ||
-              latestNetwork.chainId !== activeNetwork.chainId ||
-              latestNetwork.kind !== activeNetwork.kind ||
-              latestNetwork.url !== activeNetwork.url
-            ) {
-              console.log(
-                '[MainController] Skipping superseded balance or changed wallet context'
-              );
+            if (!isCurrent()) {
               clearBalanceLoadingIfOwned();
               resolve();
               return;
@@ -6705,20 +6707,6 @@ class MainController {
                 criticalThreshold: 10000,
               })
             );
-
-            if (latency > 1000) {
-              console.warn(
-                `[MainController] Balance update took ${latency}ms - network quality is poor`
-              );
-            } else if (latency > 500) {
-              console.log(
-                `[MainController] Balance update took ${latency}ms - exceeds minimum quality threshold`
-              );
-            } else {
-              console.log(
-                `[MainController] Balance update took ${latency}ms - network quality is good`
-              );
-            }
 
             // Record successful reads even when the numeric value did not
             // change, so the per-network cache freshness reflects this RPC.
@@ -6738,6 +6726,11 @@ class MainController {
             clearBalanceLoadingIfOwned();
             resolve();
           } catch (error) {
+            if (!isCurrent()) {
+              clearBalanceLoadingIfOwned();
+              reject(error);
+              return;
+            }
             // Mark network quality as slow/poor on error
             const latency = Date.now() - startTime;
             store.dispatch(
@@ -6854,6 +6847,8 @@ class MainController {
     isRapidPolling = false, // Skip expensive operations for rapid polling
     skipHeavyUpdates = false
   ): Promise<boolean> {
+    const session = this.walletSessionGeneration;
+    const networkRequest = this.networkRequestGeneration;
     // Set polling state early so getActiveKeyring knows it's a polling call
     store.dispatch(setIsPollingUpdate(isPolling));
 
@@ -7007,6 +7002,17 @@ class MainController {
     } catch (_err) {
       balanceFailed = true;
     }
+
+    const latest = store.getState().vault;
+    if (
+      session !== this.walletSessionGeneration ||
+      networkRequest !== this.networkRequestGeneration ||
+      latest.activeAccount.id !== activeAccount.id ||
+      latest.activeAccount.type !== activeAccount.type ||
+      latest.accounts[activeAccount.type]?.[activeAccount.id]?.address !==
+        activeAccountValues.address
+    )
+      return false;
 
     // If a user-blocking balance load fails, surface the network error. Polling
     // and startup/background refreshes should not push the UI to the slow network
