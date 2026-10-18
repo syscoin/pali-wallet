@@ -86,11 +86,10 @@ const mapApiTx = (
   let timestamp = parseInt(item.timeStamp, 10);
   const now = Math.floor(Date.now() / 1000);
   const oneYearFromNow = now + 365 * 24 * 60 * 60;
-  const tenYearsAgo = now - 10 * 365 * 24 * 60 * 60;
   if (
     !timestamp ||
     isNaN(timestamp) ||
-    timestamp < tenYearsAgo ||
+    timestamp < 0 ||
     timestamp > oneYearFromNow
   ) {
     timestamp = now;

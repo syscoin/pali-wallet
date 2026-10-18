@@ -569,12 +569,10 @@ export const UtxoTransactionsList = ({
                         ...uniqueNewTxs,
                       ]);
                       setVisibleCount((count) => count + uniqueNewTxs.length);
-                      setNextPage((p) => p + 1);
-                      if (newTxs.length < SERVER_PAGE_SIZE)
-                        setHasMoreServer(false);
-                    } else {
-                      setHasMoreServer(false);
                     }
+                    setNextPage((p) => p + 1);
+                    if (newTxs.length < SERVER_PAGE_SIZE)
+                      setHasMoreServer(false);
                   } catch (e: any) {
                     if (isCurrentRequest())
                       alert.error(String(e?.message || e));

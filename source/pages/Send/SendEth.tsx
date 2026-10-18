@@ -1208,7 +1208,10 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                     value.toLowerCase().endsWith('.eth')
                   ) {
                     const resolved = await tryResolveEns(value);
-                    if (!isCurrentForm())
+                    if (
+                      !isCurrentForm() ||
+                      form.getFieldValue('receiver') !== value
+                    )
                       return Promise.reject(
                         new Error('Send form is no longer active.')
                       );

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
@@ -58,6 +58,13 @@ export const NetworkList = ({
     return isBitcoinBased ? INetworkType.Syscoin : INetworkType.Ethereum;
   });
   const [isLoading, setIsLoading] = useState(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   const {
     networkThatNeedsChanging,
@@ -89,6 +96,7 @@ export const NetworkList = ({
         // state; balance refreshes continue independently in the background.
         [network, false]
       );
+      if (!mounted.current) return;
 
       // Reset loading state on success
       setIsLoading(false);
@@ -104,6 +112,7 @@ export const NetworkList = ({
       // Navigate only after successful network change for regular navigation
       navigate('/home');
     } catch (networkError) {
+      if (!mounted.current) return;
       console.error('Network change failed:', networkError);
       setIsLoading(false);
 

@@ -17,6 +17,7 @@ const SwitchChain: React.FC = () => {
   const { chainId } = data;
   const [loading, setLoading] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
+  const [switchError, setSwitchError] = useState('');
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
@@ -43,6 +44,7 @@ const SwitchChain: React.FC = () => {
   };
   const onSubmit = async () => {
     setLoading(true);
+    setSwitchError('');
     try {
       // Perform the network switch and wait for state update
       await controllerEmitter(
@@ -63,6 +65,7 @@ const SwitchChain: React.FC = () => {
       window.close();
     } catch (networkError) {
       console.error('Network switch failed:', networkError);
+      setSwitchError(networkError?.message || t('send.failed'));
       setLoading(false);
       // Don't throw here - just reset the loading state so user can try again
     }
@@ -119,7 +122,15 @@ const SwitchChain: React.FC = () => {
           </div>
         </div>
 
-        <div className="w-full px-4 flex items-center justify-between">
+        <div className="w-full px-4 flex flex-wrap items-center justify-between">
+          {switchError && (
+            <p
+              role="alert"
+              className="mb-3 w-full break-words text-sm text-warning-error"
+            >
+              {switchError}
+            </p>
+          )}
           <Button
             variant="ghost"
             type="button"

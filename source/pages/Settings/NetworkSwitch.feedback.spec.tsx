@@ -1,0 +1,215 @@
+/** @jest-environment jsdom */
+import '@testing-library/jest-dom';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
+import React from 'react';
+
+import { INetworkType } from 'types/network';
+
+import SwitchChain from './SwitchEthereumChain';
+import SwitchUtxoEvm from './SwitchNetworkUtxoEvm';
+
+const mockEmitter = jest.fn();
+const mockDispatch = jest.fn();
+const mockWaitForSwitch = jest.fn();
+const target = {
+  chainId: 5700,
+  kind: INetworkType.Ethereum,
+  label: 'Target network',
+  url: 'https://target.invalid',
+};
+const mockQuery = {
+  host: 'https://requesting.invalid',
+  chainId: target.chainId,
+  newNetwork: target,
+  newChainValue: INetworkType.Ethereum,
+  eventName: 'switch',
+};
+
+jest.mock('hooks/index', () => ({ useQueryData: () => mockQuery }));
+jest.mock('hooks/useController', () => ({
+  useController: () => ({ controllerEmitter: mockEmitter }),
+}));
+jest.mock('react-redux', () => ({
+  useSelector: (select: any) =>
+    select({
+      vault: {
+        activeNetwork: {
+          chainId: 57,
+          kind: INetworkType.Syscoin,
+          label: 'Original network',
+        },
+      },
+      vaultGlobal: { networks: { ethereum: { 5700: target } } },
+    }),
+}));
+jest.mock('react-i18next', () => ({
+  useTranslation: () => ({
+    t: (key: string) => {
+      const messages = jest.requireActual('../../assets/locales/en.json');
+      return (
+        key.split('.').reduce((entry: any, part) => entry?.[part], messages) ||
+        key
+      );
+    },
+  }),
+}));
+jest.mock('components/ChainIcon', () => ({ ChainIcon: () => null }));
+jest.mock('components/Icon/Icon', () => ({
+  Icon: () => null,
+  LoadingSvg: () => null,
+}));
+jest.mock('components/index', () => ({
+  Button: jest.requireActual('components/Button/Button').Button,
+}));
+jest.mock('utils/browser', () => ({
+  dispatchBackgroundEvent: (...args: any[]) => mockDispatch(...args),
+}));
+jest.mock('utils/stateWaitUtils', () => ({
+  waitForNetworkSwitch: (...args: any[]) => mockWaitForSwitch(...args),
+}));
+
+const deferred = () => {
+  let resolve!: () => void;
+  let reject!: (reason: Error) => void;
+  const promise = new Promise<void>((done, fail) => {
+    resolve = done;
+    reject = fail;
+  });
+  return { promise, resolve, reject };
+};
+
+beforeEach(() => {
+  jest.clearAllMocks();
+  mockEmitter.mockReset().mockResolvedValue(undefined);
+  mockWaitForSwitch.mockReset().mockResolvedValue(undefined);
+  jest.spyOn(window, 'close').mockImplementation();
+  jest.spyOn(console, 'error').mockImplementation();
+});
+afterEach(() => jest.restoreAllMocks());
+
+describe.each([
+  {
+    label: 'Ethereum',
+    Component: SwitchChain,
+    confirmLabel: 'Confirm',
+    rejectLabel: 'Reject',
+  },
+  {
+    label: 'UTXO/EVM',
+    Component: SwitchUtxoEvm,
+    confirmLabel: 'Change',
+    rejectLabel: 'Cancel',
+  },
+])(
+  '$label switch approval feedback',
+  ({ Component, confirmLabel, rejectLabel }) => {
+    const confirm = () =>
+      fireEvent.click(screen.getByRole('button', { name: confirmLabel }));
+
+    it('reports a rejected switch, clears the error on retry and closes only after success', async () => {
+      const retry = deferred();
+      mockEmitter
+        .mockRejectedValueOnce(new Error('Target endpoint is unavailable'))
+        .mockReturnValueOnce(retry.promise);
+      render(<Component />);
+      confirm();
+      const error = await screen.findByRole('alert');
+      expect(error).toHaveTextContent('Target endpoint is unavailable');
+      expect(error.parentElement).not.toHaveClass('absolute');
+      expect(mockDispatch).not.toHaveBeenCalled();
+      expect(window.close).not.toHaveBeenCalled();
+      expect(screen.getByRole('button', { name: rejectLabel })).toBeEnabled();
+
+      confirm();
+      expect(screen.queryByRole('alert')).toBeNull();
+      expect(screen.getByRole('button', { name: confirmLabel })).toBeDisabled();
+      expect(screen.getByRole('button', { name: rejectLabel })).toBeDisabled();
+      await act(async () => retry.resolve());
+      await waitFor(() => expect(window.close).toHaveBeenCalledTimes(1));
+      expect(mockEmitter).toHaveBeenCalledTimes(2);
+      expect(mockDispatch).toHaveBeenCalledTimes(1);
+    });
+
+    it('uses a translated fallback for a rejected controller result without a message', async () => {
+      mockEmitter.mockRejectedValueOnce({ code: 'RPC_UNAVAILABLE' });
+      render(<Component />);
+      confirm();
+      expect(await screen.findByRole('alert')).toHaveTextContent('Failed');
+      expect(screen.getByRole('button', { name: confirmLabel })).toBeEnabled();
+      expect(screen.getByRole('button', { name: rejectLabel })).toBeEnabled();
+      expect(mockDispatch).not.toHaveBeenCalled();
+      expect(window.close).not.toHaveBeenCalled();
+    });
+
+    it('keeps Cancel or Reject available after a transport timeout without confirming', async () => {
+      mockEmitter.mockRejectedValueOnce(new Error('Network request timed out'));
+      render(<Component />);
+      confirm();
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        'Network request timed out'
+      );
+      fireEvent.click(screen.getByRole('button', { name: rejectLabel }));
+      expect(window.close).toHaveBeenCalledTimes(1);
+      expect(mockEmitter).toHaveBeenCalledTimes(1);
+      expect(mockDispatch).not.toHaveBeenCalled();
+      expect(mockWaitForSwitch).not.toHaveBeenCalled();
+    });
+
+    it('preserves the successful switch acknowledgement and close sequence', async () => {
+      render(<Component />);
+      confirm();
+      await waitFor(() => expect(window.close).toHaveBeenCalledTimes(1));
+      expect(mockEmitter).toHaveBeenCalledWith(
+        ['wallet', 'setActiveNetwork'],
+        [target, false]
+      );
+      expect(mockWaitForSwitch).toHaveBeenCalledWith(target.chainId, 5000);
+      expect(mockDispatch).toHaveBeenCalledWith(
+        'switch.https://requesting.invalid',
+        null
+      );
+      expect(mockDispatch.mock.invocationCallOrder[0]).toBeLessThan(
+        (window.close as jest.Mock).mock.invocationCallOrder[0]
+      );
+      expect(screen.queryByRole('alert')).toBeNull();
+    });
+
+    it('preserves best-effort view synchronization after the network mutation succeeds', async () => {
+      mockWaitForSwitch.mockRejectedValueOnce(new Error('View update delayed'));
+      render(<Component />);
+      confirm();
+      await waitFor(() => expect(window.close).toHaveBeenCalledTimes(1));
+      expect(mockDispatch).toHaveBeenCalledTimes(1);
+      expect(screen.queryByRole('alert')).toBeNull();
+    });
+
+    it('does not apply an old popup rejection to a newly opened approval', async () => {
+      const old = deferred();
+      mockEmitter.mockReturnValueOnce(old.promise);
+      const previous = render(<Component />);
+      confirm();
+      previous.unmount();
+      render(<Component />);
+      await act(async () => old.reject(new Error('Earlier popup failed')));
+      expect(screen.queryByRole('alert')).toBeNull();
+      expect(screen.getByRole('button', { name: confirmLabel })).toBeEnabled();
+      expect(screen.getByRole('button', { name: rejectLabel })).toBeEnabled();
+      expect(mockDispatch).not.toHaveBeenCalled();
+      expect(window.close).not.toHaveBeenCalled();
+    });
+
+    it('rejects an untouched approval without starting a switch', () => {
+      render(<Component />);
+      fireEvent.click(screen.getByRole('button', { name: rejectLabel }));
+      expect(window.close).toHaveBeenCalledTimes(1);
+      expect(mockEmitter).not.toHaveBeenCalled();
+      expect(mockDispatch).not.toHaveBeenCalled();
+    });
+  }
+);
