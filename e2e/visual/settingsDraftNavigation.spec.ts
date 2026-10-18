@@ -107,7 +107,16 @@ test('currency quotes keep their denomination and custom RPC drafts survive head
           })
         ).toBeVisible();
         await page.keyboard.press('Escape');
+        // Closing the success dialog returns to Home in a React transition.
+        // Let that navigation finish before starting a new document/route.
+        await expect(page).toHaveURL(/#\/home(?:\?.*)?$/);
+        await expect(
+          page.getByText(en.settings.fiatCurrencySetSuccessfully, {
+            exact: true,
+          })
+        ).toBeHidden();
         await wallet!.gotoRoute('#/settings/currency');
+        await expect(page).toHaveURL(/#\/settings\/currency$/);
         await expect(trigger).toContainText('EUR');
         await expect(balanceCard).toContainText('€20');
         await expect(balanceCard).toContainText('🇪🇺');
