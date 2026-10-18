@@ -264,6 +264,7 @@ class MainController {
   private balancesManager: IBalancesManager;
   private balanceLoadingRequestId = 0;
   private assetUpdateRequestId = 0;
+  private latestUpdate?: object;
   private isNetworkSwitchMainStateDirty = false;
   private smartAccount: SmartAccountController;
   private cancellablePromises: CancellablePromises;
@@ -6849,6 +6850,11 @@ class MainController {
   ): Promise<boolean> {
     const session = this.walletSessionGeneration;
     const networkRequest = this.networkRequestGeneration;
+    const update = (this.latestUpdate = {});
+    const finishPolling = () => {
+      if (this.latestUpdate === update)
+        store.dispatch(setIsPollingUpdate(false));
+    };
     // Set polling state early so getActiveKeyring knows it's a polling call
     store.dispatch(setIsPollingUpdate(isPolling));
 
@@ -6860,7 +6866,7 @@ class MainController {
         console.log(
           '[MainController] Wallet is locked, skipping non-polling account updates'
         );
-        store.dispatch(setIsPollingUpdate(false)); // Clear polling state
+        finishPolling();
         return false;
       }
     }
@@ -6880,7 +6886,7 @@ class MainController {
         '[getLatestUpdateForCurrentAccount] Active account not found in accounts map',
         activeAccount
       );
-      store.dispatch(setIsPollingUpdate(false)); // Clear polling state
+      finishPolling();
       return false;
     }
     const currentAccountTransactions =
@@ -6892,7 +6898,7 @@ class MainController {
       console.log(
         '[MainController] Skipping non-polling update right after unlock - polling will handle it'
       );
-      store.dispatch(setIsPollingUpdate(false)); // Clear polling state
+      finishPolling();
       return false;
     }
 
@@ -6910,7 +6916,7 @@ class MainController {
           console.log(
             '[MainController] Skipping EVM update - web3Provider not ready (keyring may be switching)'
           );
-          store.dispatch(setIsPollingUpdate(false)); // Clear polling state
+          finishPolling();
           return false;
         }
       }
@@ -6921,7 +6927,7 @@ class MainController {
           '[MainController] Cannot access ethereumTransaction - wallet may be locked or keyring switching'
         );
       }
-      store.dispatch(setIsPollingUpdate(false)); // Clear polling state
+      finishPolling();
       return false;
     }
 
@@ -7009,8 +7015,10 @@ class MainController {
       latest.activeAccount.type !== activeAccount.type ||
       latest.accounts[activeAccount.type]?.[activeAccount.id]?.address !==
         activeAccountValues.address
-    )
+    ) {
+      finishPolling();
       return false;
+    }
 
     // If a user-blocking balance load fails, surface the network error. Polling
     // and startup/background refreshes should not push the UI to the slow network
@@ -7036,7 +7044,7 @@ class MainController {
     store.dispatch(setPostNetworkSwitchLoading(false));
 
     // Always clear polling state when done
-    store.dispatch(setIsPollingUpdate(false));
+    finishPolling();
 
     // Check if anything changed by comparing initial and final state
     const {
