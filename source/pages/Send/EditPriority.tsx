@@ -60,6 +60,16 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
   const fieldId = useId();
   const [form] = Form.useForm();
   const editorWasOpen = useRef(false);
+  const editorGeneration = useRef(0);
+  const showModalRef = useRef(showModal);
+  showModalRef.current = showModal;
+  React.useEffect(
+    () => () => {
+      editorWasOpen.current = false;
+      editorGeneration.current += 1;
+    },
+    []
+  );
 
   // Validation states for visual feedback
   // Start with null to avoid showing validation errors before user interaction
@@ -241,6 +251,7 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
   // Initialize form when modal opens
   React.useEffect(() => {
     if (!showModal) {
+      if (editorWasOpen.current) editorGeneration.current += 1;
       editorWasOpen.current = false;
       return;
     }
@@ -248,6 +259,7 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
     // rerender or publish them to the transaction behind this dialog.
     if (editorWasOpen.current) return;
     editorWasOpen.current = true;
+    editorGeneration.current += 1;
 
     const currentPrice = isSendLegacyTransaction
       ? customFee.gasPrice
@@ -386,8 +398,18 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
   };
 
   const handleSubmit = async () => {
+    if (!showModalRef.current || !editorWasOpen.current) return;
+    const generation = editorGeneration.current;
     try {
       const values = await form.validateFields();
+      // Validation is asynchronous. A dismissal or a newer editor session
+      // must not publish this session's discarded draft into the transaction.
+      if (
+        !showModalRef.current ||
+        !editorWasOpen.current ||
+        generation !== editorGeneration.current
+      )
+        return;
       const finalGasLimit = Number(values.gasLimit);
 
       // Update custom fee with final values based on transaction type
@@ -410,9 +432,17 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
           gasPrice: 0,
         });
       }
+      editorWasOpen.current = false;
+      editorGeneration.current += 1;
       setHaveError(false);
       setIsOpen(false);
     } catch (error) {
+      if (
+        !showModalRef.current ||
+        !editorWasOpen.current ||
+        generation !== editorGeneration.current
+      )
+        return;
       // Validation errors are shown inline
       setHaveError(true);
     }
@@ -501,6 +531,8 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
   };
 
   const handleClose = () => {
+    editorWasOpen.current = false;
+    editorGeneration.current += 1;
     // Discard only this editor's draft; preserve the last saved transaction fee.
     setPriority(1);
     form.resetFields();

@@ -19,6 +19,10 @@ const mockCopyAlert = { info: jest.fn(), warning: jest.fn(), error: jest.fn() };
 const mockAddressCopyRisk = jest.fn();
 let mockCopyHandler: (value: string, label: string) => any;
 const mockStatusIcons = jest.fn<null, [string, boolean]>(() => null);
+const originalClipboard = Object.getOwnPropertyDescriptor(
+  navigator,
+  'clipboard'
+);
 const ACCOUNT = '0x1111111111111111111111111111111111111111';
 const OTHER = '0x2222222222222222222222222222222222222222';
 const TARGET = '0x3333333333333333333333333333333333333333';
@@ -121,10 +125,12 @@ jest.mock('components/TransactionDetails', () => ({
 
 const deferred = () => {
   let resolve!: (value: any) => void;
-  const promise = new Promise<any>((done) => {
+  let reject!: (error: Error) => void;
+  const promise = new Promise<any>((done, fail) => {
     resolve = done;
+    reject = fail;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 };
 const fullTx = (hash: string, fields: any = {}) => ({
   hash,
@@ -188,6 +194,10 @@ const operationLog = (
 beforeEach(() => {
   jest.clearAllMocks();
   mockCopy.mockResolvedValue(undefined);
+  Object.defineProperty(navigator, 'clipboard', {
+    configurable: true,
+    value: { writeText: mockCopy },
+  });
   mockAddressCopyRisk.mockReturnValue(null);
   mockHistory = [];
   mockState = {
@@ -211,6 +221,11 @@ beforeEach(() => {
   }));
 });
 afterEach(() => jest.restoreAllMocks());
+afterAll(() => {
+  if (originalClipboard)
+    Object.defineProperty(navigator, 'clipboard', originalClipboard);
+  else delete (navigator as any).clipboard;
+});
 
 it('announces a transaction clipboard copy only after it completes and handles rejection', async () => {
   const hash = 'clipboard-transaction';
@@ -248,6 +263,100 @@ it('keeps the existing risky-history address copy refusal ahead of clipboard wri
   expect(mockCopyAlert.warning).toHaveBeenCalledWith(
     'send.addressPoisoningHistoryCopyBlocked'
   );
+});
+
+it.each(
+  ['transaction', 'account', 'network', 'unmount', 'round-trip'].flatMap(
+    (change) => ['success', 'failure'].map((outcome) => ({ change, outcome }))
+  )
+)(
+  'ignores delayed transaction clipboard $outcome after $change changes',
+  async ({ change, outcome }) => {
+    const hash = 'clipboard-scope-original';
+    mockEmitter.mockResolvedValue(fullTx(hash));
+    const view = render(
+      <EvmTransactionDetailsEnhanced hash={hash} tx={fullTx(hash)} />
+    );
+    const pending = deferred();
+    mockCopy.mockReturnValueOnce(pending.promise);
+    const copying = mockCopyHandler(hash, 'Hash');
+    if (change === 'unmount') view.unmount();
+    else {
+      if (change === 'account')
+        mockState.account = { ...mockState.account, id: 1, address: OTHER };
+      if (change === 'network')
+        mockState.vault.activeNetwork = {
+          ...mockState.vault.activeNetwork,
+          url: 'https://rpc-b.example',
+        };
+      const nextHash = change === 'transaction' ? 'clipboard-scope-next' : hash;
+      view.rerender(
+        <EvmTransactionDetailsEnhanced hash={nextHash} tx={fullTx(nextHash)} />
+      );
+      if (change === 'round-trip') {
+        view.rerender(
+          <EvmTransactionDetailsEnhanced
+            hash="other-details"
+            tx={fullTx('other-details')}
+          />
+        );
+        view.rerender(
+          <EvmTransactionDetailsEnhanced hash={hash} tx={fullTx(hash)} />
+        );
+      }
+    }
+    await act(async () => {
+      if (outcome === 'failure') pending.reject(new Error('clipboard denied'));
+      else pending.resolve(undefined);
+      await copying;
+    });
+    expect(mockCopyAlert.info).not.toHaveBeenCalled();
+    expect(mockCopyAlert.error).not.toHaveBeenCalled();
+  }
+);
+
+it('does not let an older clipboard result supersede the latest action feedback', async () => {
+  const hash = 'clipboard-sequence';
+  mockEmitter.mockResolvedValue(fullTx(hash));
+  render(<EvmTransactionDetailsEnhanced hash={hash} tx={fullTx(hash)} />);
+  const pending = deferred();
+  mockCopy.mockReturnValueOnce(pending.promise);
+  const older = mockCopyHandler(hash, 'Hash');
+  await act(async () => mockCopyHandler(ACCOUNT, 'From'));
+  expect(mockCopyAlert.info).toHaveBeenCalledTimes(1);
+  expect(mockCopyAlert.info).toHaveBeenCalledWith('home.addressCopied');
+  await act(async () => {
+    pending.resolve(undefined);
+    await older;
+  });
+  expect(mockCopyAlert.info).toHaveBeenCalledTimes(1);
+});
+
+it('does not write through a stale copy callback from a previous transaction', async () => {
+  const hash = 'clipboard-old-callback';
+  mockEmitter.mockResolvedValue(fullTx(hash));
+  const view = render(
+    <EvmTransactionDetailsEnhanced hash={hash} tx={fullTx(hash)} />
+  );
+  const staleCopy = mockCopyHandler;
+  view.rerender(
+    <EvmTransactionDetailsEnhanced
+      hash="clipboard-new-details"
+      tx={fullTx('clipboard-new-details')}
+    />
+  );
+  const pending = deferred();
+  mockCopy.mockReturnValueOnce(pending.promise);
+  const currentCopy = mockCopyHandler('clipboard-new-details', 'Hash');
+  await act(async () => staleCopy(hash, 'Hash'));
+  expect(mockCopy).toHaveBeenCalledTimes(1);
+  expect(mockCopy).toHaveBeenCalledWith('clipboard-new-details');
+  expect(mockCopyAlert.info).not.toHaveBeenCalled();
+  await act(async () => {
+    pending.resolve(undefined);
+    await currentCopy;
+  });
+  expect(mockCopyAlert.info).toHaveBeenCalledTimes(1);
 });
 
 it('restores a transaction absent from Redux by matching provider hash', async () => {

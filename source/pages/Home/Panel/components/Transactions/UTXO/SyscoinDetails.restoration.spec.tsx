@@ -29,6 +29,10 @@ const mockIconFetch = jest.fn();
 const mockCopy = jest.fn();
 const mockCopyAlert = { info: jest.fn(), error: jest.fn() };
 const originalFetch = global.fetch;
+const originalClipboard = Object.getOwnPropertyDescriptor(
+  navigator,
+  'clipboard'
+);
 
 jest.mock('react-redux', () => ({
   useSelector: (select: any) => select(mockState),
@@ -69,10 +73,12 @@ jest.mock('utils/index', () => {
 
 const deferred = <T,>() => {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((done) => {
+  let reject!: (error: Error) => void;
+  const promise = new Promise<T>((done, fail) => {
     resolve = done;
+    reject = fail;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 };
 const rawTransaction = (changes: Partial<ISysTransaction> = {}) =>
   ({
@@ -133,6 +139,10 @@ const expectAmountIcon = async (amount: string, logo: string) => {
 beforeEach(() => {
   jest.clearAllMocks();
   mockCopy.mockResolvedValue(undefined);
+  Object.defineProperty(navigator, 'clipboard', {
+    configurable: true,
+    value: { writeText: mockCopy },
+  });
   clearTokenIconCache();
   // Exercise the real icon/cache component without making any image request.
   // A synthetic oversized blob keeps the requested URL as the rendered src.
@@ -160,6 +170,11 @@ beforeEach(() => {
 afterEach(() => {
   clearTokenIconCache();
   global.fetch = originalFetch;
+});
+afterAll(() => {
+  if (originalClipboard)
+    Object.defineProperty(navigator, 'clipboard', originalClipboard);
+  else delete (navigator as any).clipboard;
 });
 
 it('does not announce a transaction clipboard copy before completion or after refusal', async () => {
@@ -189,6 +204,69 @@ it('does not announce a transaction clipboard copy before completion or after re
   await act(async () => undefined);
   expect(mockCopyAlert.info).not.toHaveBeenCalled();
   expect(mockCopyAlert.error).toHaveBeenCalledWith('transactions.copyFailed');
+});
+
+it.each(
+  ['transaction', 'account', 'network', 'unmount', 'round-trip'].flatMap(
+    (change) => ['success', 'failure'].map((outcome) => ({ change, outcome }))
+  )
+)(
+  'ignores delayed transaction clipboard $outcome after $change changes',
+  async ({ change, outcome }) => {
+    const transaction = rawTransaction();
+    mockEmitter.mockResolvedValue(transaction);
+    const view = render(
+      <SyscoinTransactionDetails hash={mockHash} tx={transaction} />
+    );
+    const label = await screen.findByText('Txid');
+    const pending = deferred<void>();
+    mockCopy.mockReturnValueOnce(pending.promise);
+    fireEvent.click(within(label.parentElement!).getByRole('button'));
+    if (change === 'unmount') view.unmount();
+    else {
+      if (change === 'transaction') mockHash = 'def' + mockHash.slice(3);
+      if (change === 'account')
+        mockState.scope = { ...mockState.scope, account: 'account-b' };
+      if (change === 'network')
+        mockState.scope = { ...mockState.scope, network: 'network-b' };
+      view.rerender(
+        <SyscoinTransactionDetails hash={mockHash} tx={rawTransaction()} />
+      );
+      if (change === 'round-trip') {
+        mockState.scope = { ...mockState.scope, account: 'account-b' };
+        view.rerender(
+          <SyscoinTransactionDetails hash={mockHash} tx={rawTransaction()} />
+        );
+        mockState.scope = { ...mockState.scope, account: 'account-a' };
+        view.rerender(
+          <SyscoinTransactionDetails hash={mockHash} tx={rawTransaction()} />
+        );
+      }
+    }
+    await act(async () => {
+      if (outcome === 'failure') pending.reject(new Error('clipboard denied'));
+      else pending.resolve(undefined);
+    });
+    expect(mockCopyAlert.info).not.toHaveBeenCalled();
+    expect(mockCopyAlert.error).not.toHaveBeenCalled();
+  }
+);
+
+it('keeps feedback bound to the latest transaction clipboard action', async () => {
+  const transaction = rawTransaction();
+  mockEmitter.mockResolvedValue(transaction);
+  render(<SyscoinTransactionDetails hash={mockHash} tx={transaction} />);
+  const pending = deferred<void>();
+  mockCopy.mockReturnValueOnce(pending.promise);
+  const copyHash = () =>
+    fireEvent.click(
+      within(screen.getByText('Txid').parentElement!).getByRole('button')
+    );
+  copyHash();
+  await act(async () => copyHash());
+  expect(mockCopyAlert.info).toHaveBeenCalledTimes(1);
+  await act(async () => pending.resolve(undefined));
+  expect(mockCopyAlert.info).toHaveBeenCalledTimes(1);
 });
 
 it.each([

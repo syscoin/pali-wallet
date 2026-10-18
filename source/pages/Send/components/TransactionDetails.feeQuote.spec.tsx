@@ -36,7 +36,8 @@ jest.mock('antd', () => ({ Input: (props: any) => <input {...props} /> }));
 const show = (
   quote?: { gasUnits: string; maximumFeeWei: string },
   legacy = false,
-  editingDisabled = false
+  editingDisabled = false,
+  customNonce?: number
 ) =>
   render(
     <TransactionDetailsComponent
@@ -50,6 +51,7 @@ const show = (
       }
       decodedTx={{} as any}
       editingDisabled={editingDisabled}
+      customNonce={customNonce}
       fee={{
         baseFee: 20,
         gasLimit: 25398,
@@ -110,3 +112,13 @@ it('disables the real fee and nonce controls while transaction editing is locked
   expect(mockSetIsOpen).not.toHaveBeenCalled();
   expect(mockSetCustomNonce).not.toHaveBeenCalled();
 });
+
+it.each([undefined, 0, 7])(
+  'shows the selected nonce %s, falling back to the quote only when not edited',
+  (customNonce) => {
+    show(undefined, false, false, customNonce);
+    expect((screen.getByRole('spinbutton') as HTMLInputElement).value).toBe(
+      String(customNonce ?? 0)
+    );
+  }
+);
