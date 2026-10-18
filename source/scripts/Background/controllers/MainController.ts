@@ -265,6 +265,7 @@ class MainController {
   private balanceLoadingRequestId = 0;
   private assetUpdateRequestId = 0;
   private transactionUpdateRequestId = 0;
+  private transactionUpdateCommitId = 0;
   private latestUpdate?: object;
   private isNetworkSwitchMainStateDirty = false;
   private smartAccount: SmartAccountController;
@@ -4962,6 +4963,8 @@ class MainController {
     }
 
     const requestId = ++this.transactionUpdateRequestId;
+    const session = this.walletSessionGeneration;
+    const networkRequest = this.networkRequestGeneration;
     const { accounts, activeAccount, accountTransactions } =
       store.getState().vault;
     const currentAccount = accounts[activeAccount.type]?.[activeAccount.id];
@@ -4982,13 +4985,16 @@ class MainController {
                 currentAccountTxs,
                 isPolling,
                 isRapidPolling,
-                forceRefresh
+                forceRefresh,
+                `${session}:${networkRequest}`
               );
 
             const latestVault = store.getState().vault;
             if (
               cancelled ||
-              requestId !== this.transactionUpdateRequestId ||
+              requestId < this.transactionUpdateCommitId ||
+              session !== this.walletSessionGeneration ||
+              networkRequest !== this.networkRequestGeneration ||
               latestVault.activeAccount.id !== activeAccount.id ||
               latestVault.activeAccount.type !== activeAccount.type ||
               latestVault.activeNetwork.chainId !== activeNetwork.chainId ||
@@ -4997,9 +5003,7 @@ class MainController {
               (!isBitcoinBased &&
                 latestVault.activeNetwork.apiUrl !== activeNetwork.apiUrl)
             ) {
-              console.log(
-                '[MainController] Skipping stale transaction update after account/network change'
-              );
+              console.log('[MainController] Skipping stale transaction update');
               resolve();
               return;
             }
@@ -5012,7 +5016,9 @@ class MainController {
 
               // Get previous transactions for comparison
               const previousTxs =
-                currentAccountTxs?.[isBitcoinBased ? 'syscoin' : 'ethereum']?.[
+                latestVault.accountTransactions[activeAccount.type]?.[
+                  activeAccount.id
+                ]?.[isBitcoinBased ? 'syscoin' : 'ethereum']?.[
                   activeNetwork.chainId
                 ] || [];
 
@@ -5104,6 +5110,7 @@ class MainController {
                   transactions: updatedTxs,
                 })
               );
+              this.transactionUpdateCommitId = requestId;
 
               // Update pending transaction badge
               notificationManager.updatePendingTransactionBadge(updatedTxs);

@@ -112,6 +112,9 @@ beforeEach(() => {
   controller = Object.create(MainController.prototype);
   Object.assign(controller, {
     transactionUpdateRequestId: 0,
+    transactionUpdateCommitId: 0,
+    walletSessionGeneration: 0,
+    networkRequestGeneration: 0,
     cancellablePromises: new CancellablePromises(),
     transactionsManager: {
       utils: { updateTransactionsFromCurrentAccount: fetchHistory },
@@ -181,6 +184,48 @@ it('retires a superseded same-context response before history and notifications 
     noticeCount
   );
 });
+
+it.each([{ unusable: [] }, { unusable: undefined }])(
+  'does not discard a successful EVM read behind a later unusable result: %p',
+  async ({ unusable }) => {
+    const old = deferred();
+    fetchHistory
+      .mockReturnValueOnce(old.promise)
+      .mockResolvedValueOnce(unusable);
+    const first = refresh();
+    await refresh();
+    old.resolve([existing, recent]);
+    await first;
+    expect(rows().map(({ hash }: any) => hash)).toContain(recent.hash);
+    expect(notificationManager.notifyTransaction).toHaveBeenCalledTimes(1);
+  }
+);
+
+it.each(['walletSessionGeneration', 'networkRequestGeneration'])(
+  'cannot revive an orphaned read after a failed round-trip refresh changes %s',
+  async (generation) => {
+    const old = deferred();
+    fetchHistory
+      .mockReturnValueOnce(old.promise)
+      .mockRejectedValueOnce(new Error('offline'));
+    const first = refresh();
+    controller[generation] += 1;
+    mockStore.dispatch(
+      setActiveNetwork({ ...network, url: 'https://temporary.example' } as any)
+    );
+    await expect(refresh()).rejects.toThrow('offline');
+    // The cancellable slot now belongs to the failed second read, not first.
+    controller[generation] += 1;
+    mockStore.dispatch(setActiveNetwork(network as any));
+    old.resolve([existing, recent]);
+    await first;
+    expect(rows()).toEqual([existing]);
+    expect(notificationManager.notifyTransaction).not.toHaveBeenCalled();
+    expect(
+      notificationManager.updatePendingTransactionBadge
+    ).not.toHaveBeenCalled();
+  }
+);
 
 it('retires a cancelled old explorer reply after an API-only switch without overwriting current history', async () => {
   const old = deferred();

@@ -10,8 +10,15 @@ import SysTransactionController from './syscoin';
 import { ITransactionsManager } from './types';
 // Cache for transaction results
 const transactionCache = new Map();
-const transactionCacheOwners = new Map<string, symbol>();
+interface ITransactionRead {
+  full: boolean;
+  promise: Promise<any>;
+  scope?: string;
+  startedAt: number;
+}
+const transactionCacheOwners = new Map<string, ITransactionRead>();
 const CACHE_TTL = 60000; // 1 minute TTL
+const IN_FLIGHT_TTL = 5000; // Match the transport deduplication window.
 
 const TransactionsManager = (): ITransactionsManager => {
   const clearExpiredCache = () => {
@@ -46,7 +53,8 @@ const TransactionsManager = (): ITransactionsManager => {
     accountTransactions?: IAccountTransactions,
     isPolling?: boolean,
     isRapidPolling?: boolean,
-    forceRefresh?: boolean
+    forceRefresh?: boolean,
+    requestScope?: string
   ) => {
     // Clear expired cache entries
     clearExpiredCache();
@@ -67,6 +75,18 @@ const TransactionsManager = (): ITransactionsManager => {
       isBitcoinBased ? undefined : activeNetwork.apiUrl
     );
 
+    const pendingRead = transactionCacheOwners.get(cacheKey);
+    if (
+      !forceRefresh &&
+      pendingRead?.full &&
+      pendingRead.scope === requestScope
+    ) {
+      if (Date.now() - pendingRead.startedAt <= IN_FLIGHT_TTL)
+        return pendingRead.promise;
+      // A stuck full read must not block retry or become a rapid local no-op.
+      forceRefresh = true;
+    }
+
     // Only use cache if there are no pending transactions
     // This ensures we always get fresh data when confirmations might have changed
     if (!forceRefresh && !hasUnconfirmedTxs) {
@@ -75,43 +95,52 @@ const TransactionsManager = (): ITransactionsManager => {
         return cachedResult.data;
       }
     }
-    const cacheOwner = Symbol();
+    // Once a fresh read starts, older completed data must not overtake it.
+    transactionCache.delete(cacheKey);
+    const cacheOwner = {
+      full: !isRapidPolling || Boolean(forceRefresh),
+      scope: requestScope,
+      startedAt: Date.now(),
+    } as ITransactionRead;
     transactionCacheOwners.set(cacheKey, cacheOwner);
-    try {
-      let result;
-      if (isBitcoinBased) {
-        result = await SysTransactionController().pollingSysTransactions(
-          currentAccount.xpub,
-          activeNetworkUrl,
-          isRapidPolling
-        );
-      } else {
-        // Always pull the latest provider at call time (prevents stale references across network switches)
-        const web3Provider =
-          getController().wallet.ethereumTransaction.web3Provider;
-        result = await EvmTransactionsController().pollingEvmTransactions(
-          web3Provider,
-          isPolling,
-          isRapidPolling
-        );
-      }
-      // Cache the result only if no pending transactions
-      // This prevents caching stale confirmation data
-      if (
-        !hasUnconfirmedTxs &&
-        transactionCacheOwners.get(cacheKey) === cacheOwner
-      ) {
-        transactionCache.set(cacheKey, {
-          data: result,
-          timestamp: Date.now(),
-        });
-      }
+    cacheOwner.promise = (async () => {
+      try {
+        let result;
+        if (isBitcoinBased) {
+          result = await SysTransactionController().pollingSysTransactions(
+            currentAccount.xpub,
+            activeNetworkUrl,
+            isRapidPolling && !forceRefresh
+          );
+        } else {
+          // Always pull the latest provider at call time (prevents stale references across network switches)
+          const web3Provider =
+            getController().wallet.ethereumTransaction.web3Provider;
+          result = await EvmTransactionsController().pollingEvmTransactions(
+            web3Provider,
+            isPolling,
+            isRapidPolling && !forceRefresh
+          );
+        }
+        // Cache the result only if no pending transactions
+        // This prevents caching stale confirmation data
+        if (
+          !hasUnconfirmedTxs &&
+          transactionCacheOwners.get(cacheKey) === cacheOwner
+        ) {
+          transactionCache.set(cacheKey, {
+            data: result,
+            timestamp: Date.now(),
+          });
+        }
 
-      return result;
-    } finally {
-      if (transactionCacheOwners.get(cacheKey) === cacheOwner)
-        transactionCacheOwners.delete(cacheKey);
-    }
+        return result;
+      } finally {
+        if (transactionCacheOwners.get(cacheKey) === cacheOwner)
+          transactionCacheOwners.delete(cacheKey);
+      }
+    })();
+    return cacheOwner.promise;
   };
   const clearCache = () => {
     transactionCache.clear();

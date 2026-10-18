@@ -129,6 +129,9 @@ beforeEach(() => {
   manager.utils.clearCache();
   Object.assign(controller, {
     transactionUpdateRequestId: 0,
+    transactionUpdateCommitId: 0,
+    walletSessionGeneration: 0,
+    networkRequestGeneration: 0,
     cancellablePromises: new CancellablePromises(),
     transactionsManager: manager,
     updateAssetsFromCurrentAccount: jest.fn().mockResolvedValue(undefined),
@@ -180,6 +183,177 @@ it('keeps a newer confirmation when a request beyond the transport window finish
     notificationManager.updatePendingTransactionBadge
   ).toHaveBeenCalledTimes(badgeCount);
 });
+
+it.each([false, true])(
+  'keeps a forced account-switch refresh when an ordinary cached poll intervenes: %s',
+  async (intervene) => {
+    setHistory([confirmed]);
+    const now = jest.spyOn(Date, 'now').mockReturnValue(1000);
+    mockTransport.mockResolvedValueOnce(body([confirmed]));
+    await refresh();
+    clearFetchBackendAccountCache();
+    const response = deferred();
+    mockTransport.mockReturnValue(response.promise);
+    now.mockReturnValue(1100);
+    controller.refreshActiveAccountLightweight('account switch');
+    const forced =
+      controller.cancellablePromises.transactionPromise.transactionPromise;
+    let ordinary: Promise<void> | undefined;
+    if (intervene) {
+      now.mockReturnValue(1200);
+      await controller.getLatestUpdateForCurrentAccount(true, true);
+      ordinary =
+        controller.cancellablePromises.transactionPromise.transactionPromise;
+    }
+    expect(mockTransport).toHaveBeenCalledTimes(2);
+    now.mockReturnValue(1300);
+    response.resolve(body([{ ...confirmed, confirmations: 2 }]));
+    await Promise.all([forced, ordinary]);
+    expect(rows()[0].confirmations).toBe(2);
+  }
+);
+
+it.each([false, true])(
+  'accepts an older successful refresh after a newer forced read fails: %s',
+  async (intervene) => {
+    const now = jest.spyOn(Date, 'now').mockReturnValue(1000);
+    const response = deferred();
+    mockTransport.mockReturnValueOnce(response.promise);
+    controller.refreshActiveAccountLightweight('account switch');
+    const forced =
+      controller.cancellablePromises.transactionPromise.transactionPromise;
+    if (intervene) {
+      jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+      jest.spyOn(console, 'error').mockImplementation(() => undefined);
+      now.mockReturnValue(7000);
+      mockTransport.mockResolvedValue({ error: 'offline' });
+      await expect(refresh()).rejects.toThrow(/Blockbook history response/);
+    }
+    now.mockReturnValue(7100);
+    response.resolve(body([confirmed]));
+    await forced;
+    expect(rows()[0].confirmations).toBe(1);
+    expect(notificationManager.notifyTransaction).toHaveBeenCalledTimes(1);
+    clearFetchBackendAccountCache();
+    mockTransport.mockResolvedValue(body([{ ...confirmed, confirmations: 2 }]));
+    await refresh();
+    expect(rows()[0].confirmations).toBe(2);
+    expect(notificationManager.notifyTransaction).toHaveBeenCalledTimes(1);
+  }
+);
+
+it('shares a forced refresh failure with its ordinary follower and retries successfully', async () => {
+  jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+  const response = deferred();
+  mockTransport.mockReturnValue(response.promise);
+  const forced = refresh();
+  const ordinary = controller.updateUserTransactionsState({
+    isBitcoinBased: true,
+    activeNetwork: network,
+    isPolling: true,
+    isRapidPolling: true,
+  });
+  const rejected = Promise.allSettled([forced, ordinary]);
+  response.resolve({ error: 'offline' });
+  expect((await rejected).map(({ status }) => status)).toEqual([
+    'rejected',
+    'rejected',
+  ]);
+  expect(rows()).toEqual([pending]);
+  clearFetchBackendAccountCache();
+  mockTransport.mockResolvedValue(body([confirmed]));
+  await refresh();
+  expect(rows()[0].confirmations).toBe(1);
+});
+
+it.each([false, true])(
+  'joins a full history read instead of a later rapid local snapshot (forced=%s)',
+  async (forceRefresh) => {
+    mockTransport.mockResolvedValueOnce(body([pending]));
+    await refresh();
+    clearFetchBackendAccountCache();
+    const response = deferred();
+    mockTransport.mockImplementation(
+      (_url: string, _xpub: string, options: string) =>
+        options.includes('details=basic')
+          ? Promise.resolve(body([pending]))
+          : response.promise
+    );
+    const forced = controller.updateUserTransactionsState({
+      isBitcoinBased: true,
+      activeNetwork: network,
+      isPolling: true,
+      forceRefresh,
+    });
+    const rapid = controller.updateUserTransactionsState({
+      isBitcoinBased: true,
+      activeNetwork: network,
+      isPolling: true,
+      isRapidPolling: true,
+    });
+    await Promise.resolve();
+    expect(mockTransport).toHaveBeenCalledTimes(2);
+    expect(mockTransport.mock.calls.map(([, , options]) => options)).toEqual([
+      'details=txsummary&pageSize=30',
+      'details=txsummary&pageSize=30',
+    ]);
+    response.resolve(body([confirmed]));
+    await Promise.all([forced, rapid]);
+    expect(rows()[0].confirmations).toBe(1);
+    expect(notificationManager.notifyTransaction).toHaveBeenCalledTimes(1);
+  }
+);
+
+it('fetches full history for an explicit forced rapid read despite an unchanged basic snapshot', async () => {
+  mockTransport.mockResolvedValueOnce(body([pending]));
+  await refresh();
+  clearFetchBackendAccountCache();
+  mockTransport.mockImplementation(
+    (_url: string, _xpub: string, options: string) =>
+      Promise.resolve(
+        body(options.includes('details=basic') ? [pending] : [confirmed])
+      )
+  );
+  await controller.updateUserTransactionsState({
+    isBitcoinBased: true,
+    activeNetwork: network,
+    isPolling: true,
+    isRapidPolling: true,
+    forceRefresh: true,
+  });
+  expect(mockTransport).toHaveBeenCalledTimes(2);
+  expect(mockTransport.mock.calls[1][2]).toBe('details=txsummary&pageSize=30');
+  expect(rows()[0].confirmations).toBe(1);
+});
+
+it.each(['older-first', 'newer-first'])(
+  'keeps the newest successful history without duplicate notifications: %s',
+  async (order) => {
+    const now = jest.spyOn(Date, 'now').mockReturnValue(1000);
+    const old = deferred();
+    const newer = deferred();
+    mockTransport
+      .mockReturnValueOnce(old.promise)
+      .mockReturnValueOnce(newer.promise);
+    const first = refresh();
+    now.mockReturnValue(7000);
+    const second = refresh();
+    if (order === 'older-first') {
+      old.resolve(body([confirmed]));
+      await first;
+      expect(rows()[0].confirmations).toBe(1);
+      newer.resolve(body([{ ...confirmed, confirmations: 2 }]));
+      await second;
+    } else {
+      newer.resolve(body([{ ...confirmed, confirmations: 2 }]));
+      await second;
+      old.resolve(body([confirmed]));
+      await first;
+    }
+    expect(rows()[0].confirmations).toBe(2);
+    expect(notificationManager.notifyTransaction).toHaveBeenCalledTimes(1);
+  }
+);
 
 it.each([false, true])(
   'clears confirmed history for validated empty history (omitted=%s)',

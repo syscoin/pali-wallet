@@ -243,7 +243,8 @@ export interface ITransactionsManagerUtils {
     accountTransactions?: IAccountTransactions,
     isPolling?: boolean,
     isRapidPolling?: boolean,
-    forceRefresh?: boolean
+    forceRefresh?: boolean,
+    requestScope?: string
   ) => Promise<IEvmTransaction[] | ISysTransaction[]>;
 }
 export interface ITransactionsManager {

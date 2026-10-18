@@ -29,7 +29,13 @@ const originalApi = 'https://old-explorer.example/api';
 const updatedApi = 'https://new-explorer.example/api';
 let manager: ReturnType<typeof TransactionsManager>;
 const read = (
-  options: { force?: boolean; pending?: boolean; utxo?: boolean } = {}
+  options: {
+    force?: boolean;
+    pending?: boolean;
+    rapid?: boolean;
+    scope?: string;
+    utxo?: boolean;
+  } = {}
 ) =>
   manager.utils.updateTransactionsFromCurrentAccount(
     account as any,
@@ -41,8 +47,9 @@ const read = (
       },
     } as any,
     true,
-    false,
-    Boolean(options.force)
+    Boolean(options.rapid),
+    Boolean(options.force),
+    options.scope
   );
 
 beforeEach(() => {
@@ -159,10 +166,10 @@ it.each([false, true])(
 );
 
 it.each([false, true])(
-  'keeps the previous valid cache when a newer overlapping read rejects (utxo=%s)',
+  'retries instead of reviving an old cache after overlapping fresh reads fail (utxo=%s)',
   async (utxo) => {
     const poll = utxo ? mockUtxoPolling : mockEvmPolling;
-    const baseline = await read({ utxo });
+    await read({ utxo });
     const old = deferred();
     const newer = deferred();
     poll.mockReturnValueOnce(old.promise).mockReturnValueOnce(newer.promise);
@@ -173,8 +180,118 @@ it.each([false, true])(
     await rejected;
     old.resolve([{ hash: 'old', txid: 'old', blockNumber: 1 }]);
     await olderRead;
-    expect(await read({ utxo })).toBe(baseline);
-    expect(poll).toHaveBeenCalledTimes(3);
+    const recovered = [
+      { hash: 'recovered', txid: 'recovered', blockNumber: 2 },
+    ];
+    poll.mockResolvedValueOnce(recovered);
+    expect(await read({ utxo })).toBe(recovered);
+    expect(poll).toHaveBeenCalledTimes(4);
+  }
+);
+
+it.each([false, true])(
+  'does not serve old completed cache while a forced refresh is in flight (utxo=%s)',
+  async (utxo) => {
+    const poll = utxo ? mockUtxoPolling : mockEvmPolling;
+    await read({ utxo });
+    const old = deferred();
+    const fresh = [{ hash: 'fresh', txid: 'fresh', blockNumber: 2 }];
+    poll.mockReturnValueOnce(old.promise);
+    const forced = read({ utxo, force: true });
+    const ordinary = read({ utxo });
+    expect(poll).toHaveBeenCalledTimes(2);
+    old.resolve(fresh);
+    expect(await forced).toBe(fresh);
+    expect(await ordinary).toBe(fresh);
+    expect(await read({ utxo })).toBe(fresh);
+    expect(poll).toHaveBeenCalledTimes(2);
+  }
+);
+
+it.each([false, true])(
+  'retries an expired forced read with full history instead of rapid local state (utxo=%s)',
+  async (utxo) => {
+    const now = jest.spyOn(Date, 'now').mockReturnValue(1000);
+    const poll = utxo ? mockUtxoPolling : mockEvmPolling;
+    const old = deferred();
+    const fresh = [{ hash: 'fresh', txid: 'fresh', blockNumber: 2 }];
+    poll.mockReturnValueOnce(old.promise).mockResolvedValueOnce(fresh);
+    const forced = read({ utxo, force: true, scope: '1:1' });
+    now.mockReturnValue(6000);
+    const joined = read({ utxo, rapid: true, scope: '1:1' });
+    expect(poll).toHaveBeenCalledTimes(1);
+    now.mockReturnValue(6001);
+    expect(await read({ utxo, rapid: true, scope: '1:1' })).toBe(fresh);
+    expect(poll).toHaveBeenCalledTimes(2);
+    expect(poll.mock.calls[1][2]).toBe(false);
+    old.resolve([{ hash: 'old', txid: 'old', blockNumber: 1 }]);
+    await Promise.all([forced, joined]);
+    expect(await read({ utxo })).toBe(fresh);
+  }
+);
+
+it.each([false, true])(
+  'does not join a forced read from an earlier wallet or network scope (utxo=%s)',
+  async (utxo) => {
+    const poll = utxo ? mockUtxoPolling : mockEvmPolling;
+    const old = deferred();
+    const fresh = [{ hash: 'fresh', txid: 'fresh', blockNumber: 2 }];
+    poll.mockReturnValueOnce(old.promise).mockResolvedValueOnce(fresh);
+    const forced = read({ utxo, force: true, scope: '1:1' });
+    expect(await read({ utxo, scope: '2:1' })).toBe(fresh);
+    expect(poll).toHaveBeenCalledTimes(2);
+    old.resolve([{ hash: 'old', txid: 'old', blockNumber: 1 }]);
+    await forced;
+    expect(await read({ utxo, scope: '2:1' })).toBe(fresh);
+  }
+);
+
+it('does not join a cleared in-flight forced request', async () => {
+  const old = deferred();
+  const fresh = [{ hash: 'fresh', blockNumber: 2 }];
+  mockEvmPolling.mockReturnValueOnce(old.promise).mockResolvedValueOnce(fresh);
+  const forced = read({ force: true });
+  manager.utils.clearCache();
+  expect(await read()).toBe(fresh);
+  expect(mockEvmPolling).toHaveBeenCalledTimes(2);
+  old.resolve([{ hash: 'old', blockNumber: 1 }]);
+  await forced;
+  expect(await read()).toBe(fresh);
+});
+
+it.each([false, true])(
+  'coalesces ordinary full reads for the same account and endpoint (utxo=%s)',
+  async (utxo) => {
+    const poll = utxo ? mockUtxoPolling : mockEvmPolling;
+    const response = deferred();
+    const fresh = [{ hash: 'fresh', txid: 'fresh', blockNumber: 2 }];
+    poll.mockReturnValueOnce(response.promise);
+    const first = read({ utxo });
+    const second = read({ utxo });
+    expect(poll).toHaveBeenCalledTimes(1);
+    response.resolve(fresh);
+    expect(await first).toBe(fresh);
+    expect(await second).toBe(fresh);
+  }
+);
+
+it.each([false, true])(
+  'does not let a full read join an earlier rapid local snapshot (utxo=%s)',
+  async (utxo) => {
+    const poll = utxo ? mockUtxoPolling : mockEvmPolling;
+    const response = deferred();
+    const fresh = [{ hash: 'fresh', txid: 'fresh', blockNumber: 2 }];
+    poll.mockReturnValueOnce(response.promise).mockResolvedValueOnce(fresh);
+    const rapid = read({ utxo, rapid: true });
+    expect(await read({ utxo })).toBe(fresh);
+    expect(poll).toHaveBeenCalledTimes(2);
+    expect(poll.mock.calls.map((args: any[]) => args[2])).toEqual([
+      true,
+      false,
+    ]);
+    response.resolve([{ hash: 'old', txid: 'old', blockNumber: 1 }]);
+    await rapid;
+    expect(await read({ utxo })).toBe(fresh);
   }
 );
 
