@@ -143,7 +143,17 @@ test('offline wallet lifecycle: lock, backup reauthentication and seed recovery'
         expect(await backupMatchesFixture()).toBe(false);
         await password.fill(originalPassword);
         await confirm.click();
+        const show = page.getByRole('button', { name: 'Show', exact: true });
+        await expect(show).toBeEnabled();
+        // Authentication permits an explicit reveal; it does not reveal the
+        // phrase into the DOM until the user chooses Show.
+        expect(await backupMatchesFixture()).toBe(false);
+        await show.click();
         // Read only a digest comparison; never return the phrase into the report.
+        await expect.poll(backupMatchesFixture).toBe(true);
+        await page.getByRole('button', { name: 'Hide', exact: true }).click();
+        await expect.poll(backupMatchesFixture).toBe(false);
+        await show.click();
         await expect.poll(backupMatchesFixture).toBe(true);
         await password.fill('');
         await expect.poll(backupMatchesFixture).toBe(false);

@@ -13,6 +13,7 @@ let mockState: any;
 let mockQuery: any;
 const mockEmitter = jest.fn();
 let mockConfirm: () => Promise<void>;
+let mockCancel: () => void;
 let mockBeforeGrant: (() => void) | undefined;
 const mockCopy = jest.fn();
 const mockAlert = { info: jest.fn(), error: jest.fn() };
@@ -39,7 +40,9 @@ jest.mock('components/AccountBalance', () => ({
 jest.mock('components/Icon/Icon', () => ({ LoadingSvg: 'loading' }));
 jest.mock('components/index', () => ({
   Button: ({ children, onClick, disabled }: any) => {
-    if (children === 'buttons.confirm') mockConfirm = onClick;
+    if (children === 'buttons.confirm' || children === 'buttons.change')
+      mockConfirm = onClick;
+    if (children === 'buttons.cancel') mockCancel = onClick;
     return (
       <button onClick={onClick} disabled={disabled}>
         {children}
@@ -135,6 +138,121 @@ beforeEach(() => {
   jest.spyOn(console, 'error').mockImplementation(() => undefined);
 });
 afterEach(() => jest.restoreAllMocks());
+
+const holdPermissionResponse = () => {
+  let finish!: () => void;
+  const pending = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  const original = mockEmitter.getMockImplementation()!;
+  mockEmitter.mockImplementation((path, args) => {
+    const result = original(path, args);
+    return path[0] === 'dapp' ? pending.then(() => result) : result;
+  });
+  return finish;
+};
+
+it('freezes account cards while the committed permission response is pending', async () => {
+  const finish = holdPermissionResponse();
+  render(<ChangeAccount />);
+  await act(async () => {
+    fireEvent.click(screen.getByText('buttons.confirm'));
+  });
+  expect(mockState.dapp.dapps[host].accountId).toBe(1);
+  const other = screen.getByText('Account 0').closest('[role="button"]')!;
+  const disabledDuringSubmission = other.getAttribute('aria-disabled');
+  const tabIndexDuringSubmission = other.getAttribute('tabindex');
+  fireEvent.click(other);
+  fireEvent.keyDown(other, { key: 'Enter' });
+  fireEvent.keyDown(other, { key: ' ' });
+  await act(async () => finish());
+  expect(mockEmitter.mock.calls.map(([path]) => path)).toEqual([
+    ['dapp', 'requestPermissions'],
+    ['wallet', 'setAccount'],
+  ]);
+  expect(mockEmitter).toHaveBeenLastCalledWith(
+    ['wallet', 'setAccount'],
+    [1, KeyringAccountType.HDAccount, true, makeAccount(1).address]
+  );
+  expect(dispatchBackgroundEvent).toHaveBeenCalledWith(
+    `requestPermissions.${host}`,
+    expect.arrayContaining([
+      expect.objectContaining({
+        caveats: [
+          { type: 'restrictReturnedAccounts', value: [makeAccount(1).address] },
+        ],
+      }),
+    ])
+  );
+  expect(window.close).toHaveBeenCalledTimes(1);
+  expect(disabledDuringSubmission).toBe('true');
+  expect(tabIndexDuringSubmission).toBe('-1');
+});
+
+it('blocks retained confirm and card callbacks synchronously and after success', async () => {
+  const finish = holdPermissionResponse();
+  render(<ChangeAccount />);
+  const retainedConfirm = mockConfirm;
+  const retainedCancel = mockCancel;
+  const other = screen.getByText('Account 0').closest('[role="button"]')!;
+  let first!: Promise<void>;
+  act(() => {
+    first = retainedConfirm();
+    fireEvent.click(other);
+    retainedCancel();
+    void retainedConfirm();
+  });
+  expect(mockEmitter).toHaveBeenCalledTimes(1);
+  expect(window.close).not.toHaveBeenCalled();
+  await act(async () => {
+    finish();
+    await first;
+  });
+  await act(async () => retainedConfirm());
+  retainedCancel();
+  fireEvent.click(other);
+  await act(async () => mockConfirm());
+  expect(mockEmitter).toHaveBeenCalledTimes(2);
+  expect(dispatchBackgroundEvent).toHaveBeenCalledTimes(1);
+  expect(window.close).toHaveBeenCalledTimes(1);
+});
+
+it('allows another selection and retry after a rejected permission attempt', async () => {
+  mockBeforeGrant = () => {
+    mockState.vault.accounts.HDAccount[1] = {
+      ...makeAccount(1),
+      address: `0x${'3'.repeat(40)}`,
+    };
+  };
+  render(<ChangeAccount />);
+  await act(async () => mockConfirm());
+  expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
+  expect(window.close).not.toHaveBeenCalled();
+  expect(mockState.dapp.dapps[host]).toBeUndefined();
+  const other = screen.getByText('Account 0').closest('[role="button"]')!;
+  expect(other.getAttribute('aria-disabled')).not.toBe('true');
+  fireEvent.click(other);
+  mockBeforeGrant = undefined;
+  await act(async () => mockConfirm());
+  expect(mockState.dapp.dapps[host].accountId).toBe(0);
+  expect(window.close).toHaveBeenCalledTimes(1);
+});
+
+it('settles an unchanged account selection once without controller work', async () => {
+  mockQuery.eventName = 'changeAccount';
+  render(<ChangeAccount />);
+  const retainedConfirm = mockConfirm;
+  await act(async () => retainedConfirm());
+  await act(async () => retainedConfirm());
+  expect(mockEmitter).not.toHaveBeenCalled();
+  expect(dispatchBackgroundEvent).toHaveBeenCalledTimes(1);
+  expect(dispatchBackgroundEvent).toHaveBeenCalledWith(
+    `changeAccount.${host}`,
+    null
+  );
+  expect(window.close).toHaveBeenCalledTimes(1);
+});
+
 it('healthy permission selection emits its actual controller response', async () => {
   render(<ChangeAccount />);
   await act(async () => fireEvent.click(screen.getByText('buttons.confirm')));

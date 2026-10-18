@@ -209,6 +209,7 @@ const ENTRYPOINT_FAILED_OP_SELECTOR = '0x220266b6';
 const AA21_PREFUND_REASON_HEX =
   '41413231206469646e2774207061792070726566756e64';
 const HYDRATED_METADATA_TTL_MS = 30_000;
+const PROVIDER_UNAVAILABLE_ERROR = 'Web3 provider not available';
 const ZKSYS_GAS_TANK_ABI = [
   'function creditOf(address account) view returns (uint256)',
 ] as const;
@@ -430,7 +431,7 @@ class SmartAccountController {
     }
     const transaction = this.ethereumTransaction;
     const provider = transaction?.web3Provider;
-    if (!provider) throw new Error('Web3 provider not available');
+    if (!provider) throw new Error(PROVIDER_UNAVAILABLE_ERROR);
     const payer = accounts?.[activeAccount.type]?.[activeAccount.id];
     return {
       chainId: activeNetwork.chainId,
@@ -1111,7 +1112,7 @@ class SmartAccountController {
     const { activeNetwork } = store.getState().vault;
     const provider = this.ethereumTransaction?.web3Provider;
     if (!provider) {
-      throw new Error('Web3 provider not available');
+      throw new Error(PROVIDER_UNAVAILABLE_ERROR);
     }
     const authenticator = this.buildAuthenticatorForCreation(
       activeNetwork.chainId,
@@ -1165,7 +1166,7 @@ class SmartAccountController {
     const { activeNetwork } = store.getState().vault;
     const provider = this.ethereumTransaction?.web3Provider;
     if (!provider) {
-      throw new Error('Web3 provider not available');
+      throw new Error(PROVIDER_UNAVAILABLE_ERROR);
     }
     const descriptor = this.deriveSmartAccountDescriptor(
       accountIndex ?? this.getNextRecoverableAccountIndex(activeNetwork.chainId)
@@ -1257,7 +1258,7 @@ class SmartAccountController {
       }
       const provider = this.ethereumTransaction?.web3Provider;
       if (!provider) {
-        throw new Error('Web3 provider not available');
+        throw new Error(PROVIDER_UNAVAILABLE_ERROR);
       }
 
       const code = await provider.getCode(accountAddress);
@@ -1545,7 +1546,7 @@ class SmartAccountController {
   }): Promise<CustomValidatorPreflightResult> {
     const provider = this.ethereumTransaction?.web3Provider;
     if (!provider) {
-      throw new Error('Web3 provider not available');
+      throw new Error(PROVIDER_UNAVAILABLE_ERROR);
     }
     const metadata = await this.hydrateSmartAccount(params.accountId);
     return preflightCustomValidatorInstall(provider, {
@@ -1646,7 +1647,7 @@ class SmartAccountController {
     const active = this.getSmartAccountById(params.accountId);
     const provider = this.ethereumTransaction?.web3Provider;
     if (!provider) {
-      throw new Error('Web3 provider not available');
+      throw new Error(PROVIDER_UNAVAILABLE_ERROR);
     }
 
     const entryPointAddress = getPaliEntryPointAddress(active.metadata.chainId);
@@ -1768,7 +1769,7 @@ class SmartAccountController {
       });
     const provider = this.ethereumTransaction?.web3Provider;
     if (!provider) {
-      throw new Error('Web3 provider not available');
+      throw new Error(PROVIDER_UNAVAILABLE_ERROR);
     }
     const useDeployedCachedMetadata =
       useCachedMetadata &&
@@ -2180,7 +2181,7 @@ class SmartAccountController {
       if (!outerGasLimit) {
         const provider = this.ethereumTransaction?.web3Provider;
         if (!provider) {
-          throw new Error('Web3 provider not available');
+          throw new Error(PROVIDER_UNAVAILABLE_ERROR);
         }
         outerGasLimit = toCompatBigNumber(
           await provider.estimateGas({
@@ -2400,7 +2401,7 @@ class SmartAccountController {
     assertCurrentContext?.();
     const provider = this.ethereumTransaction?.web3Provider;
     if (!provider) {
-      throw new Error('Web3 provider not available');
+      throw new Error(PROVIDER_UNAVAILABLE_ERROR);
     }
     const entryPoint = new Contract(
       entryPointAddress,
@@ -2789,7 +2790,7 @@ class SmartAccountController {
     }
     const provider = this.ethereumTransaction?.web3Provider;
     if (!provider) {
-      throw new Error('Web3 provider not available');
+      throw new Error(PROVIDER_UNAVAILABLE_ERROR);
     }
     const accountContract = new Contract(
       account,
@@ -2837,7 +2838,7 @@ class SmartAccountController {
   ): Promise<SmartAccountGuardianRecoveryDigestContext> {
     const provider = this.ethereumTransaction?.web3Provider;
     if (!provider) {
-      throw new Error('Web3 provider not available');
+      throw new Error(PROVIDER_UNAVAILABLE_ERROR);
     }
     const module = new Contract(
       recoveryModule,
@@ -2899,7 +2900,7 @@ class SmartAccountController {
     }
     const provider = this.ethereumTransaction?.web3Provider;
     if (!provider) {
-      throw new Error('Web3 provider not available');
+      throw new Error(PROVIDER_UNAVAILABLE_ERROR);
     }
     const module = new Contract(
       recoveryModule,
@@ -3209,7 +3210,7 @@ class SmartAccountController {
     const metadata = account.smartAccount as ISmartAccountMetadata;
     const provider = this.ethereumTransaction?.web3Provider;
     if (!provider) {
-      throw new Error('Web3 provider not available');
+      throw new Error(PROVIDER_UNAVAILABLE_ERROR);
     }
     const chainId = metadata.chainId;
 
@@ -3533,7 +3534,7 @@ class SmartAccountController {
   ): Promise<GuardianRecoveryStatusForAccount | null> {
     const provider = this.ethereumTransaction?.web3Provider;
     if (!provider) {
-      throw new Error('Web3 provider not available');
+      throw new Error(PROVIDER_UNAVAILABLE_ERROR);
     }
     const moduleAddress = getConfiguredAuthenticatorAddress(
       chainId,

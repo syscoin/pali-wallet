@@ -450,6 +450,8 @@ test('new-wallet 24-word backup and confirmation have no inaccessible controls',
     await page.locator('#create-password-action').click();
     await expect(page).toHaveURL(/#\/phrase$/);
     await page.getByRole('combobox').selectOption('24');
+    await expect(page.locator('input[type="checkbox"]')).toBeEnabled();
+    await page.getByRole('button', { name: 'Show', exact: true }).click();
     await expect(page.locator('div.select-none p')).toHaveCount(24);
     for (const size of sizes) {
       await page.setViewportSize(size);

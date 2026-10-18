@@ -286,9 +286,11 @@ const normalizeP256Authenticator = async ({
 const normalizeEcdsaAuthenticator = ({
   chainId,
   requested,
+  validationError,
 }: {
   chainId: number;
   requested: { config?: any; id: string };
+  validationError: string;
 }): PreparedAuthenticator | undefined => {
   const owners = requested.config?.owners;
   if (!Array.isArray(owners) || owners.length === 0) {
@@ -296,7 +298,14 @@ const normalizeEcdsaAuthenticator = ({
   }
 
   const normalizedOwners = owners.map((owner: string) => getAddress(owner));
-  const threshold = requested.config?.threshold ?? 1;
+  const { threshold = 1 } = requested.config;
+  if (
+    !Number.isInteger(threshold) ||
+    threshold < 1 ||
+    threshold > normalizedOwners.length ||
+    new Set(normalizedOwners).size !== normalizedOwners.length
+  )
+    throw new Error(validationError);
   const validator = getPaliModuleAddress(chainId, 'ecdsa');
   const data = encodeEcdsaValidatorInitData(normalizedOwners, threshold);
 
@@ -612,6 +621,7 @@ export const PrepareSmartAccount = () => {
             ? normalizeEcdsaAuthenticator({
                 chainId: activeNetwork.chainId,
                 requested: requestedAuthenticator,
+                validationError: t('connections.smartAccountPrepareFailed'),
               })
             : undefined;
 

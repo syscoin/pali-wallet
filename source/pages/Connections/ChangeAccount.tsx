@@ -223,6 +223,7 @@ export const ChangeAccount = () => {
     );
   };
   const selectionIsCurrent = isSelectionCurrent(selection);
+  const submissionState = useRef<'ready' | 'submitting' | 'completed'>('ready');
   const [isChanging, setIsChanging] = useState<boolean>(false);
   const [selectionError, setSelectionError] = useState('');
   const [search, setSearch] = useState('');
@@ -306,13 +307,29 @@ export const ChangeAccount = () => {
   ]);
 
   const handleSetAccountId = (id: number, type: KeyringAccountType) => {
+    if (!mountedRef.current || submissionState.current !== 'ready') return;
     setSelection(captureSelection(id, type));
     setSelectionError('');
   };
 
+  const handleClose = () => {
+    if (!mountedRef.current || submissionState.current !== 'ready') return;
+    submissionState.current = 'completed';
+    window.close();
+  };
+
   const handleChangeAccount = async () => {
     // Safety check - ensure we have valid account selection
-    if (!selection || !isSelectionCurrent(selection)) return;
+    if (
+      submissionState.current !== 'ready' ||
+      !selection ||
+      !isSelectionCurrent(selection)
+    )
+      return;
+    // Claim the attempt synchronously: React state alone cannot guard retained
+    // callbacks or rapid clicks before the disabled state has rendered.
+    submissionState.current = 'submitting';
+    setIsChanging(true);
 
     if (
       accountId === currentAccountId &&
@@ -320,12 +337,11 @@ export const ChangeAccount = () => {
       eventName !== 'requestPermissions'
     ) {
       // Dispatch event right before closing
+      submissionState.current = 'completed';
       dispatchBackgroundEvent(`${eventName}.${host}`, null);
       window.close();
       return;
     }
-
-    setIsChanging(true);
 
     try {
       let response: any = null;
@@ -354,6 +370,7 @@ export const ChangeAccount = () => {
 
       // Settle the admitted operation for its original approval document. A
       // replacement view must not be closed by this operation's completion.
+      submissionState.current = 'completed';
       dispatchBackgroundEvent(`${eventName}.${host}`, response);
       if (isSelectionCurrent(selection)) window.close();
     } catch (error) {
@@ -361,7 +378,10 @@ export const ChangeAccount = () => {
       if (isSelectionCurrent(selection))
         setSelectionError(error?.message || t('send.failed'));
     } finally {
-      setIsChanging(false);
+      if (submissionState.current === 'submitting') {
+        submissionState.current = 'ready';
+        if (mountedRef.current) setIsChanging(false);
+      }
     }
   };
 
@@ -440,14 +460,19 @@ export const ChangeAccount = () => {
                         return (
                           <div
                             key={`${acc.id}-${keyringType}`}
-                            className={`w-full p-4 rounded-lg border transition-all duration-200 text-left group cursor-pointer
+                            className={`w-full p-4 rounded-lg border transition-all duration-200 text-left group ${
+                              isChanging
+                                ? 'cursor-wait opacity-70'
+                                : 'cursor-pointer'
+                            }
                               ${
                                 isSelected
                                   ? 'border-brand-royalblue bg-bkg-4 shadow-md'
                                   : 'border-brand-gray300 bg-bkg-2 hover:bg-bkg-3 hover:border-brand-gray200'
                               }`}
                             role="button"
-                            tabIndex={0}
+                            aria-disabled={isChanging}
+                            tabIndex={isChanging ? -1 : 0}
                             onClick={() =>
                               handleSetAccountId(
                                 acc.id,
@@ -612,7 +637,7 @@ export const ChangeAccount = () => {
           <Button
             variant="secondary"
             type="button"
-            onClick={() => window.close()}
+            onClick={handleClose}
             disabled={isChanging}
           >
             {t('buttons.cancel')}
