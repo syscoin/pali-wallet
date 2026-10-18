@@ -108,7 +108,7 @@ it('awaits the account acknowledgement before returning success and closing', as
   fireEvent.click(switchButton());
   expect(mockEmitter).toHaveBeenCalledWith(
     ['wallet', 'setAccount'],
-    [0, 'HDAccount', true]
+    [0, 'HDAccount', true, addressA]
   );
   expect(close).not.toHaveBeenCalled();
   expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
@@ -180,6 +180,26 @@ it('keeps Cancel usable after failure without acknowledging the failed switch', 
   fireEvent.click(cancelButton());
   expect(close).toHaveBeenCalledTimes(1);
   expect(mockEmitter).toHaveBeenCalledTimes(1);
+  expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
+});
+
+it('shows stale account context without acknowledging success and allows cancellation', async () => {
+  const message =
+    'Account context changed. Please cancel and retry the request.';
+  mockEmitter.mockRejectedValueOnce(new Error(message));
+  render(<ChangeConnectedAccount />);
+  fireEvent.click(switchButton());
+  expect(await screen.findByRole('alert')).toHaveTextContent(message);
+  expect(mockEmitter).toHaveBeenCalledWith(
+    ['wallet', 'setAccount'],
+    [0, 'HDAccount', true, addressA]
+  );
+  expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
+  expect(close).not.toHaveBeenCalled();
+  expect(switchButton()).toBeEnabled();
+  expect(cancelButton()).toBeEnabled();
+  fireEvent.click(cancelButton());
+  expect(close).toHaveBeenCalledTimes(1);
   expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
 });
 

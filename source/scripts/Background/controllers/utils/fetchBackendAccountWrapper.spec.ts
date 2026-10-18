@@ -142,4 +142,44 @@ describe('fetchBackendAccountCached', () => {
 
     expect(fetchBackendAccountMock).toHaveBeenCalledTimes(2);
   });
+
+  it('does not let an expired request remove its in-flight replacement', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(1000);
+    const old = deferred();
+    const current = deferred();
+    fetchBackendAccountMock.mockReset();
+    fetchBackendAccountMock
+      .mockReturnValueOnce(old.promise)
+      .mockReturnValue(current.promise);
+    try {
+      const first = fetchBackendAccountCached(URL, XPUB, 'details=txs', true);
+      jest.setSystemTime(7000);
+      const second = fetchBackendAccountCached(URL, XPUB, 'details=txs', true);
+      old.resolve({ balance: 'old' });
+      await first;
+      await jest.advanceTimersByTimeAsync(100);
+      const shared = fetchBackendAccountCached(URL, XPUB, 'details=txs', true);
+      const callsWhileCurrentIsPending =
+        fetchBackendAccountMock.mock.calls.length;
+      current.resolve({ balance: 'current' });
+      expect(await Promise.all([second, shared])).toEqual([
+        { balance: 'current' },
+        { balance: 'current' },
+      ]);
+      expect(callsWhileCurrentIsPending).toBe(2);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('propagates a transport rejection without a second unhandled cleanup rejection', async () => {
+    const failure = new Error('transport offline');
+    fetchBackendAccountMock.mockRejectedValueOnce(failure);
+    const request = fetchBackendAccountCached(URL, XPUB, 'details=txs', true);
+    await expect(request).rejects.toBe(failure);
+    // Jest treats any separate unhandled rejection as failure. Give the event
+    // loop a turn without intercepting or suppressing process-level errors.
+    await new Promise((resolve) => setImmediate(resolve));
+  });
 });

@@ -264,6 +264,7 @@ class MainController {
   private balancesManager: IBalancesManager;
   private balanceLoadingRequestId = 0;
   private assetUpdateRequestId = 0;
+  private transactionUpdateRequestId = 0;
   private latestUpdate?: object;
   private isNetworkSwitchMainStateDirty = false;
   private smartAccount: SmartAccountController;
@@ -3398,7 +3399,8 @@ class MainController {
   public async setAccount(
     id: number,
     type: KeyringAccountType,
-    sync = false
+    sync = false,
+    expectedAddress?: string
   ): Promise<void> {
     // Use AsyncMutex for cross-context synchronization
     // This prevents concurrent account switches across all contexts
@@ -3410,6 +3412,23 @@ class MainController {
         const account = accounts[type]?.[id];
         if (!account) {
           throw new Error('Account not found');
+        }
+        if (expectedAddress !== undefined) {
+          // Approval windows can outlive a vault change and account ids are
+          // reused across vaults. Bind consent to the displayed address while
+          // holding the switch mutex, before changing any wallet state.
+          const matchesAddress =
+            typeof expectedAddress === 'string' &&
+            expectedAddress.length > 0 &&
+            typeof account.address === 'string' &&
+            (activeNetwork.kind === INetworkType.Ethereum
+              ? account.address.toLowerCase() === expectedAddress.toLowerCase()
+              : account.address === expectedAddress);
+          if (!matchesAddress) {
+            throw new Error(
+              'Account context changed. Please cancel and retry the request.'
+            );
+          }
         }
         if (!isAccountCompatibleWithNetwork(account, type, activeNetwork)) {
           throw new Error('Account is not available on the active network');
@@ -4942,6 +4961,7 @@ class MainController {
       }
     }
 
+    const requestId = ++this.transactionUpdateRequestId;
     const { accounts, activeAccount, accountTransactions } =
       store.getState().vault;
     const currentAccount = accounts[activeAccount.type]?.[activeAccount.id];
@@ -4968,6 +4988,7 @@ class MainController {
             const latestVault = store.getState().vault;
             if (
               cancelled ||
+              requestId !== this.transactionUpdateRequestId ||
               latestVault.activeAccount.id !== activeAccount.id ||
               latestVault.activeAccount.type !== activeAccount.type ||
               latestVault.activeNetwork.chainId !== activeNetwork.chainId ||
@@ -4983,8 +5004,9 @@ class MainController {
               return;
             }
 
-            // Dispatch transactions for both UTXO and EVM
-            if (txs && !isEmpty(txs)) {
+            // UTXO history distinguishes a valid empty result from read errors.
+            // Preserve the existing EVM empty/partial-result behavior.
+            if (Array.isArray(txs) && (isBitcoinBased || txs.length > 0)) {
               // Get the current account for notifications
               const account = accounts[activeAccount.type]?.[activeAccount.id];
 
@@ -6988,7 +7010,12 @@ class MainController {
           activeNetwork,
           isPolling: true, // background
           isRapidPolling,
-        });
+        }).catch((error) =>
+          console.error(
+            '[MainController] Background transaction refresh failed:',
+            error
+          )
+        );
       } catch {}
     }
 

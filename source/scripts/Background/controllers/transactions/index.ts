@@ -10,6 +10,7 @@ import SysTransactionController from './syscoin';
 import { ITransactionsManager } from './types';
 // Cache for transaction results
 const transactionCache = new Map();
+const transactionCacheOwners = new Map<string, symbol>();
 const CACHE_TTL = 60000; // 1 minute TTL
 
 const TransactionsManager = (): ITransactionsManager => {
@@ -74,36 +75,47 @@ const TransactionsManager = (): ITransactionsManager => {
         return cachedResult.data;
       }
     }
-    let result;
-    if (isBitcoinBased) {
-      result = await SysTransactionController().pollingSysTransactions(
-        currentAccount.xpub,
-        activeNetworkUrl,
-        isRapidPolling
-      );
-    } else {
-      // Always pull the latest provider at call time (prevents stale references across network switches)
-      const web3Provider =
-        getController().wallet.ethereumTransaction.web3Provider;
-      result = await EvmTransactionsController().pollingEvmTransactions(
-        web3Provider,
-        isPolling,
-        isRapidPolling
-      );
-    }
-    // Cache the result only if no pending transactions
-    // This prevents caching stale confirmation data
-    if (!hasUnconfirmedTxs) {
-      transactionCache.set(cacheKey, {
-        data: result,
-        timestamp: Date.now(),
-      });
-    }
+    const cacheOwner = Symbol();
+    transactionCacheOwners.set(cacheKey, cacheOwner);
+    try {
+      let result;
+      if (isBitcoinBased) {
+        result = await SysTransactionController().pollingSysTransactions(
+          currentAccount.xpub,
+          activeNetworkUrl,
+          isRapidPolling
+        );
+      } else {
+        // Always pull the latest provider at call time (prevents stale references across network switches)
+        const web3Provider =
+          getController().wallet.ethereumTransaction.web3Provider;
+        result = await EvmTransactionsController().pollingEvmTransactions(
+          web3Provider,
+          isPolling,
+          isRapidPolling
+        );
+      }
+      // Cache the result only if no pending transactions
+      // This prevents caching stale confirmation data
+      if (
+        !hasUnconfirmedTxs &&
+        transactionCacheOwners.get(cacheKey) === cacheOwner
+      ) {
+        transactionCache.set(cacheKey, {
+          data: result,
+          timestamp: Date.now(),
+        });
+      }
 
-    return result;
+      return result;
+    } finally {
+      if (transactionCacheOwners.get(cacheKey) === cacheOwner)
+        transactionCacheOwners.delete(cacheKey);
+    }
   };
   const clearCache = () => {
     transactionCache.clear();
+    transactionCacheOwners.clear();
   };
 
   return {

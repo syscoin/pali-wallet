@@ -111,6 +111,7 @@ beforeEach(() => {
   fetchHistory = jest.fn();
   controller = Object.create(MainController.prototype);
   Object.assign(controller, {
+    transactionUpdateRequestId: 0,
     cancellablePromises: new CancellablePromises(),
     transactionsManager: {
       utils: { updateTransactionsFromCurrentAccount: fetchHistory },
@@ -131,6 +132,53 @@ it('commits a healthy current explorer response through the real vault reducer',
     notificationManager.updatePendingTransactionBadge
   ).toHaveBeenCalledWith(
     expect.arrayContaining([expect.objectContaining({ hash: recent.hash })])
+  );
+});
+
+it('keeps cached EVM history when its reader returns an empty result', async () => {
+  fetchHistory.mockResolvedValue([]);
+  await refresh();
+  expect(rows()).toEqual([existing]);
+  expect(mockDispatch).not.toHaveBeenCalled();
+  expect(
+    notificationManager.updatePendingTransactionBadge
+  ).not.toHaveBeenCalled();
+});
+
+it('retains history after a rejected read and accepts the next current response', async () => {
+  fetchHistory.mockRejectedValueOnce(new Error('offline'));
+  await expect(refresh()).rejects.toThrow('offline');
+  expect(rows()).toEqual([existing]);
+  expect(
+    notificationManager.updatePendingTransactionBadge
+  ).not.toHaveBeenCalled();
+  fetchHistory.mockResolvedValueOnce([existing, recent]);
+  await refresh();
+  expect(rows().map(({ hash }: any) => hash)).toContain(recent.hash);
+});
+
+it('retires a superseded same-context response before history and notifications change', async () => {
+  const old = deferred();
+  fetchHistory
+    .mockReturnValueOnce(old.promise)
+    .mockResolvedValueOnce([existing, recent]);
+  const older = refresh();
+  await refresh();
+  const dispatchCount = mockDispatch.mock.calls.length;
+  const badgeCount = jest.mocked(
+    notificationManager.updatePendingTransactionBadge
+  ).mock.calls.length;
+  const noticeCount = jest.mocked(notificationManager.notifyTransaction).mock
+    .calls.length;
+  old.resolve([existing]);
+  await older;
+  expect(rows().map(({ hash }: any) => hash)).toContain(recent.hash);
+  expect(mockDispatch).toHaveBeenCalledTimes(dispatchCount);
+  expect(
+    notificationManager.updatePendingTransactionBadge
+  ).toHaveBeenCalledTimes(badgeCount);
+  expect(notificationManager.notifyTransaction).toHaveBeenCalledTimes(
+    noticeCount
   );
 });
 

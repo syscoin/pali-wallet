@@ -158,12 +158,18 @@ export const fetchBackendAccountCached = async (
   });
 
   // Clean up cache entry after request completes
-  requestPromise.finally(() => {
-    // Small delay to handle rapid successive calls
-    setTimeout(() => {
-      requestCache.delete(cacheKey);
-    }, 100);
-  });
+  void requestPromise
+    .finally(() => {
+      // An expired request must not remove the replacement using its key.
+      setTimeout(() => {
+        if (requestCache.get(cacheKey)?.promise === requestPromise)
+          requestCache.delete(cacheKey);
+      }, 100);
+    })
+    .catch(() => {
+      // The original promise still rejects to its caller; consume only the
+      // derived cleanup chain so it cannot produce another unhandled rejection.
+    });
 
   return requestPromise;
 };

@@ -2255,7 +2255,12 @@ export const SendConfirm = () => {
                       type="button"
                       id="edit-fee-button"
                       aria-label={t('send.editFee')}
-                      disabled={loading || submission.pending}
+                      disabled={
+                        loading ||
+                        submission.pending ||
+                        isCalculatingFees ||
+                        (!customFee.isCustom && !(fee.maxFeePerGas > 0))
+                      }
                       className="flex h-11 w-11 shrink-0 items-center justify-center rounded hover:text-fields-input-borderfocus focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue500 disabled:cursor-not-allowed"
                       onClick={() => setIsOpenEditFeeModal(true)}
                     >

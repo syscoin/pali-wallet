@@ -131,3 +131,83 @@ it('refetches through RPC when the active explorer API is removed', async () => 
   ]);
   expect(mockEvmPolling).toHaveBeenCalledTimes(2);
 });
+
+const deferred = () => {
+  let resolve!: (value: any[]) => void;
+  let reject!: (error: Error) => void;
+  const promise = new Promise<any[]>((done, fail) => {
+    resolve = done;
+    reject = fail;
+  });
+  return { promise, resolve, reject };
+};
+
+it.each([false, true])(
+  'caches only the newest overlapping network result (utxo=%s)',
+  async (utxo) => {
+    const poll = utxo ? mockUtxoPolling : mockEvmPolling;
+    const old = deferred();
+    const fresh = [{ hash: 'fresh', txid: 'fresh', blockNumber: 2 }];
+    poll.mockReturnValueOnce(old.promise).mockResolvedValueOnce(fresh);
+    const older = read({ utxo, force: true });
+    expect(await read({ utxo, force: true })).toBe(fresh);
+    old.resolve([{ hash: 'old', txid: 'old', blockNumber: 1 }]);
+    await older;
+    expect(await read({ utxo })).toBe(fresh);
+    expect(poll).toHaveBeenCalledTimes(2);
+  }
+);
+
+it.each([false, true])(
+  'keeps the previous valid cache when a newer overlapping read rejects (utxo=%s)',
+  async (utxo) => {
+    const poll = utxo ? mockUtxoPolling : mockEvmPolling;
+    const baseline = await read({ utxo });
+    const old = deferred();
+    const newer = deferred();
+    poll.mockReturnValueOnce(old.promise).mockReturnValueOnce(newer.promise);
+    const olderRead = read({ utxo, force: true });
+    const newerRead = read({ utxo, force: true });
+    const rejected = expect(newerRead).rejects.toThrow('offline');
+    newer.reject(new Error('offline'));
+    await rejected;
+    old.resolve([{ hash: 'old', txid: 'old', blockNumber: 1 }]);
+    await olderRead;
+    expect(await read({ utxo })).toBe(baseline);
+    expect(poll).toHaveBeenCalledTimes(3);
+  }
+);
+
+it.each([false, true])(
+  'does not repopulate a cleared cache from an older in-flight read (utxo=%s)',
+  async (utxo) => {
+    const poll = utxo ? mockUtxoPolling : mockEvmPolling;
+    const old = deferred();
+    const fresh = [{ hash: 'fresh', txid: 'fresh', blockNumber: 2 }];
+    poll.mockReturnValueOnce(old.promise).mockResolvedValueOnce(fresh);
+    const pending = read({ utxo, force: true });
+    manager.utils.clearCache();
+    old.resolve([{ hash: 'old', txid: 'old', blockNumber: 1 }]);
+    await pending;
+    expect(await read({ utxo })).toBe(fresh);
+    expect(poll).toHaveBeenCalledTimes(2);
+  }
+);
+
+it('keeps independent endpoint cache writers independent', async () => {
+  const old = deferred();
+  const firstEndpoint = [{ hash: 'first-endpoint', blockNumber: 1 }];
+  const secondEndpoint = [{ hash: 'second-endpoint', blockNumber: 2 }];
+  mockEvmPolling
+    .mockReturnValueOnce(old.promise)
+    .mockResolvedValueOnce(secondEndpoint);
+  const first = read({ force: true });
+  mockVault.activeNetwork.apiUrl = updatedApi;
+  expect(await read({ force: true })).toBe(secondEndpoint);
+  old.resolve(firstEndpoint);
+  await first;
+  expect(await read()).toBe(secondEndpoint);
+  mockVault.activeNetwork.apiUrl = originalApi;
+  expect(await read()).toBe(firstEndpoint);
+  expect(mockEvmPolling).toHaveBeenCalledTimes(2);
+});
