@@ -103,6 +103,16 @@ async function authenticate(page: Page) {
     .click();
 }
 
+async function isBackupPhraseMasked(page: Page) {
+  // Evaluate in the page so evidence and assertion failures contain only a
+  // Boolean, never the authenticated recovery phrase.
+  return page
+    .locator('textarea')
+    .evaluate((element: HTMLTextAreaElement) =>
+      /^\*+(?:\s+\*+)*$/.test(element.value)
+    );
+}
+
 test('backup and private key require fresh reveal after reauthentication', async ({}, info) => {
   test.setTimeout(120000);
   await withWallet(
@@ -119,6 +129,19 @@ test('backup and private key require fresh reveal after reauthentication', async
               'textarea,p.font-mono{-webkit-text-security:disc!important}',
           });
           await authenticate(page);
+          await expect(
+            page.getByRole('button', { name: 'Show', exact: true })
+          ).toBeVisible();
+          await expect.poll(() => isBackupPhraseMasked(page)).toBe(true);
+          observations.backupMaskedAfterAuthentication =
+            await isBackupPhraseMasked(page);
+          await page.getByRole('button', { name: 'Show', exact: true }).click();
+          await expect(
+            page.getByRole('button', { name: 'Hide', exact: true })
+          ).toBeVisible();
+          await page.getByRole('button', { name: 'Hide', exact: true }).click();
+          await expect.poll(() => isBackupPhraseMasked(page)).toBe(true);
+          observations.backupMaskedAfterHide = await isBackupPhraseMasked(page);
           await page.getByRole('button', { name: 'Show', exact: true }).click();
           await expect(
             page.getByRole('button', { name: 'Hide', exact: true })
@@ -135,6 +158,9 @@ test('backup and private key require fresh reveal after reauthentication', async
             page.getByRole('button', { name: 'Hide', exact: true })
           ).toHaveCount(0);
           await expect(page.locator('textarea')).toHaveClass(/blur-sm/);
+          await expect.poll(() => isBackupPhraseMasked(page)).toBe(true);
+          observations.backupMaskedAfterReauthentication =
+            await isBackupPhraseMasked(page);
           observations.backupHiddenAfterReauthentication =
             (await page
               .getByRole('button', { name: 'Show', exact: true })

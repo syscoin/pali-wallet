@@ -53,9 +53,12 @@ export const SeedPhraseDisplay: React.FC<ISeedPhraseDisplayProps> = ({
 
   const mockedPhrase =
     '**** ******* ****** ****** ****** ******** *** ***** ****** ***** *****';
-  const displayPhrase = isEmpty(seedPhrase)
-    ? placeholder || mockedPhrase
-    : seedPhrase;
+  // Conceal the rendered content as well as its appearance. CSS blur alone
+  // leaves the phrase available as the textarea value or word text.
+  const displayPhrase =
+    !isEmpty(seedPhrase) && isEnabled && (visible || !showEyeToggle)
+      ? seedPhrase
+      : placeholder || mockedPhrase;
 
   const toggleVisible = () => {
     setRevealedPhrase(visible ? undefined : seedPhrase);

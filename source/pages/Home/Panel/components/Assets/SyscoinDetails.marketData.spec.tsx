@@ -50,6 +50,7 @@ jest.mock('utils/navigationState', () => ({ navigateBack: jest.fn() }));
 
 const asset = {
   assetGuid: '123456',
+  chainId: 57,
   symbol: 'SYSX',
   decimals: 8,
   balance: 1,

@@ -20,9 +20,10 @@ import { useController } from 'hooks/useController';
 import { useIncrementalList } from 'hooks/useIncrementalList';
 import { RootState } from 'state/store';
 import { selectAccountAssets } from 'state/vault/selectors';
+import { IDAppAccountSelectionContext } from 'types/controllers';
 import { KeyringAccountType } from 'types/network';
+import { isAccountCompatibleWithNetwork } from 'utils/accountCompatibility';
 import { dispatchBackgroundEvent } from 'utils/browser';
-import { isHexString } from 'utils/ethersV6Compat';
 import { ellipsis } from 'utils/index';
 
 // Component to render account icon matching the app's pattern - moved outside to prevent recreation
@@ -186,6 +187,27 @@ export const ChangeAccount = () => {
   const queryData = useQueryData();
   const { host, eventName } = queryData;
   const { t } = useTranslation();
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+  const liveContext = useRef({
+    accounts,
+    activeNetwork,
+    isBitcoinBased,
+    host,
+    eventName,
+  });
+  liveContext.current = {
+    accounts,
+    activeNetwork,
+    isBitcoinBased,
+    host,
+    eventName,
+  };
 
   const isBridgeHost = React.useMemo(() => {
     const safeHost = (host || '').toLowerCase();
@@ -197,20 +219,13 @@ export const ChangeAccount = () => {
 
   // Helper to check if account is valid for current network type
   const isAccountValidForNetwork = useCallback(
-    (account: any, keyringAccountType?: KeyringAccountType | string) => {
-      if (!account) return false;
-      if (keyringAccountType === KeyringAccountType.SmartAccount) {
-        return (
-          !isBitcoinBased &&
-          Number(account?.smartAccount?.chainId) ===
-            Number(activeNetwork.chainId)
-        );
-      }
-      return isBitcoinBased
-        ? !isHexString(account.address)
-        : isHexString(account.address);
-    },
-    [activeNetwork.chainId, isBitcoinBased]
+    (account: any, keyringAccountType?: KeyringAccountType | string) =>
+      isAccountCompatibleWithNetwork(
+        account,
+        keyringAccountType || '',
+        activeNetwork
+      ),
+    [activeNetwork]
   );
 
   // Get current account from query data (passed from popup), fallback to dapp state, then active account
@@ -249,15 +264,55 @@ export const ChangeAccount = () => {
     }
   }
 
-  // Initialize state with null to properly track if user has made a selection
-  const [accountId, setAccountId] = useState<number | null>(
-    currentAccountId !== undefined ? currentAccountId : null
+  const captureSelection = (id: number, type: KeyringAccountType) => {
+    const account = accounts?.[type]?.[id];
+    if (!isAccountValidForNetwork(account, type)) return null;
+    const context: IDAppAccountSelectionContext = {
+      address: account.address,
+      xpub: account.xpub,
+      network: {
+        kind: activeNetwork.kind,
+        chainId: activeNetwork.chainId,
+        url: activeNetwork.url,
+        slip44: activeNetwork.slip44,
+      },
+    };
+    return { id, type, context, host, eventName, isBitcoinBased };
+  };
+  // Keep the reviewed identity, not only its reusable numeric account id.
+  const [selection, setSelection] = useState(() =>
+    captureSelection(currentAccountId, currentAccountType)
   );
-  const [accountType, setCurrentAccountType] =
-    useState<KeyringAccountType | null>(
-      currentAccountType !== undefined ? currentAccountType : null
+  const selectionRef = useRef(selection);
+  selectionRef.current = selection;
+  const accountId = selection?.id ?? null;
+  const accountType = selection?.type ?? null;
+  const isSelectionCurrent = (candidate: typeof selection) => {
+    if (!mountedRef.current || !candidate || candidate !== selectionRef.current)
+      return false;
+    const current = liveContext.current;
+    const account = current.accounts?.[candidate.type]?.[candidate.id];
+    const expected = candidate.context;
+    return (
+      current.host === candidate.host &&
+      current.eventName === candidate.eventName &&
+      current.isBitcoinBased === candidate.isBitcoinBased &&
+      isAccountCompatibleWithNetwork(
+        account,
+        candidate.type,
+        current.activeNetwork
+      ) &&
+      account.address === expected.address &&
+      account.xpub === expected.xpub &&
+      current.activeNetwork.kind === expected.network.kind &&
+      current.activeNetwork.chainId === expected.network.chainId &&
+      current.activeNetwork.url === expected.network.url &&
+      current.activeNetwork.slip44 === expected.network.slip44
     );
+  };
+  const selectionIsCurrent = isSelectionCurrent(selection);
   const [isChanging, setIsChanging] = useState<boolean>(false);
+  const [selectionError, setSelectionError] = useState('');
   const [search, setSearch] = useState('');
 
   const showTrezorUtxoDisclaimer = React.useMemo(
@@ -339,16 +394,13 @@ export const ChangeAccount = () => {
   ]);
 
   const handleSetAccountId = (id: number, type: KeyringAccountType) => {
-    setAccountId(id);
-    setCurrentAccountType(type);
+    setSelection(captureSelection(id, type));
+    setSelectionError('');
   };
 
   const handleChangeAccount = async () => {
     // Safety check - ensure we have valid account selection
-    if (accountId === null || accountType === null) {
-      console.error('[ChangeAccount] No account selected');
-      return;
-    }
+    if (!selection || !isSelectionCurrent(selection)) return;
 
     if (
       accountId === currentAccountId &&
@@ -370,28 +422,32 @@ export const ChangeAccount = () => {
       if (eventName === 'requestPermissions') {
         const permissions = await controllerEmitter(
           ['dapp', 'requestPermissions'],
-          [host, accountId, accountType]
+          [host, accountId, accountType, selection.context]
         );
         response = permissions || [];
       } else {
         await controllerEmitter(
           ['dapp', 'changeAccount'],
-          [host, accountId, accountType]
+          [host, accountId, accountType, selection.context]
         );
         // For changeAccount, response is null to indicate completion
         response = null;
       }
 
-      await controllerEmitter(
-        ['wallet', 'setAccount'],
-        [accountId, accountType, true]
-      );
+      if (isSelectionCurrent(selection))
+        await controllerEmitter(
+          ['wallet', 'setAccount'],
+          [accountId, accountType, true, selection.context.address]
+        );
 
-      // Dispatch event right before closing
+      // Settle the admitted operation for its original approval document. A
+      // replacement view must not be closed by this operation's completion.
       dispatchBackgroundEvent(`${eventName}.${host}`, response);
-      window.close();
+      if (isSelectionCurrent(selection)) window.close();
     } catch (error) {
       console.error('Failed to change account:', error);
+      if (isSelectionCurrent(selection))
+        setSelectionError(error?.message || t('send.failed'));
     } finally {
       setIsChanging(false);
     }
@@ -461,7 +517,9 @@ export const ChangeAccount = () => {
                     <div className="space-y-2">
                       {keyringAccounts.map((acc) => {
                         const isSelected =
-                          acc.id === accountId && accountType === keyringType;
+                          selectionIsCurrent &&
+                          acc.id === accountId &&
+                          accountType === keyringType;
                         const isCurrent =
                           acc.id === currentAccountId &&
                           currentAccountType === keyringType;
@@ -633,6 +691,11 @@ export const ChangeAccount = () => {
 
       {/* Fixed button container at bottom */}
       <ToastActionFooter className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 shadow-lg z-50">
+        {selectionError && (
+          <p role="alert" className="text-xs text-brand-red mb-2">
+            {selectionError}
+          </p>
+        )}
         <div className="flex gap-3 justify-center">
           <Button
             variant="secondary"
@@ -648,7 +711,7 @@ export const ChangeAccount = () => {
             type="button"
             onClick={handleChangeAccount}
             loading={isChanging}
-            disabled={isChanging || accountId === null || accountType === null}
+            disabled={isChanging || !selectionIsCurrent}
           >
             {eventName === 'requestPermissions'
               ? t('buttons.confirm')

@@ -481,6 +481,11 @@ describe('DAppController account changes', () => {
         accounts: {
           [KeyringAccountType.HDAccount]: { 1: account },
         },
+        activeNetwork: {
+          kind: INetworkType.Ethereum,
+          chainId: 1,
+          url: 'https://rpc.invalid',
+        },
         isBitcoinBased: false,
       },
     });
@@ -519,7 +524,9 @@ describe('DAppController account changes', () => {
     const controller = DAppController();
     const errorSpy = jest.spyOn(console, 'error').mockImplementation();
 
-    await controller.changeAccount(host, 99, KeyringAccountType.HDAccount);
+    await expect(
+      controller.changeAccount(host, 99, KeyringAccountType.HDAccount)
+    ).rejects.toThrow('Account is not available');
 
     expect(dispatchMock).not.toHaveBeenCalled();
     expect(clearProviderCache).not.toHaveBeenCalled();

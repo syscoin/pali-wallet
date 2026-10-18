@@ -566,6 +566,18 @@ export const PrepareSmartAccount = () => {
     try {
       setCreationStep('credential');
 
+      if (
+        !['ecdsa', 'p256-webauthn', 'slh-dsa', 'composite'].includes(
+          requestedAuthenticator.id
+        ) ||
+        (requestedAuthenticator.id === 'ecdsa' &&
+          requestedAuthenticator.config !== undefined &&
+          (!Array.isArray(requestedAuthenticator.config?.owners) ||
+            requestedAuthenticator.config.owners.length === 0))
+      ) {
+        throw new Error(t('connections.smartAccountPrepareFailed'));
+      }
+
       if (requestedAuthenticator.id === 'composite') {
         throw new Error(t('connections.smartAccountCompositeUnsupported'));
       }

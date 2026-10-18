@@ -5,7 +5,11 @@ import { addDApp, removeDApp, updateDAppAccount } from 'state/dapp';
 import { IDApp } from 'state/dapp/types';
 import store, { persistMainStateStrict, saveMainState } from 'state/store';
 import { IOmittedVault } from 'state/vault/types';
-import { IDAppController, IDAppDisconnectOptions } from 'types/controllers';
+import {
+  IDAppAccountSelectionContext,
+  IDAppController,
+  IDAppDisconnectOptions,
+} from 'types/controllers';
 import { KeyringAccountType } from 'types/network';
 import { removeSensitiveDataFromVault, removeXprv } from 'utils/account';
 import { isAccountCompatibleWithNetwork } from 'utils/accountCompatibility';
@@ -157,13 +161,58 @@ const DAppController = (
     );
   };
 
+  const validateAccountSelection = (
+    accountId: number,
+    accountType: KeyringAccountType,
+    expectedContext?: IDAppAccountSelectionContext
+  ) => {
+    const {
+      accounts,
+      activeNetwork: network,
+      isBitcoinBased,
+    } = store.getState().vault;
+    const account = accounts[accountType]?.[accountId];
+    if (
+      !account ||
+      !isAccountCompatibleWithNetwork(account, accountType, network)
+    )
+      throw new Error('Account is not available on the active network');
+    if (expectedContext !== undefined) {
+      const sameAddress =
+        typeof expectedContext?.address === 'string' &&
+        (isBitcoinBased
+          ? account.address === expectedContext.address
+          : account.address.toLowerCase() ===
+            expectedContext.address.toLowerCase());
+      if (
+        !sameAddress ||
+        account.xpub !== expectedContext?.xpub ||
+        network.kind !== expectedContext?.network?.kind ||
+        network.chainId !== expectedContext?.network?.chainId ||
+        network.url !== expectedContext?.network?.url ||
+        network.slip44 !== expectedContext?.network?.slip44
+      )
+        throw new Error(
+          'Account context changed. Please select an account again.'
+        );
+    }
+    return { account, network, isBitcoinBased };
+  };
+
   const requestPermissions = (
     host: string,
     accountId: number,
-    accountType: KeyringAccountType
+    accountType: KeyringAccountType,
+    expectedContext?: IDAppAccountSelectionContext
   ) => {
+    // Validate before touching the grant or session, including identities that
+    // changed while the approval message was travelling to the worker.
+    const { account, network, isBitcoinBased } = validateAccountSelection(
+      accountId,
+      accountType,
+      expectedContext
+    );
     const date = Date.now();
-    const network = getNetwork();
 
     // Check if dapp exists, if not create it first
     const state = store.getState();
@@ -184,16 +233,6 @@ const DAppController = (
     } else {
       // Update existing dapp
       store.dispatch(updateDAppAccount({ host, accountId, accountType, date }));
-    }
-
-    const { accounts, isBitcoinBased } = store.getState().vault;
-
-    const account = accounts[accountType]?.[accountId];
-
-    if (!account) {
-      // Return empty permissions array instead of null
-      // Don't dispatch here - the popup will handle it
-      return [];
     }
 
     // Ensure dapp session exists
@@ -265,25 +304,19 @@ const DAppController = (
   const changeAccount = async (
     host: string,
     accountId: number,
-    accountType: KeyringAccountType
+    accountType: KeyringAccountType,
+    expectedContext?: IDAppAccountSelectionContext
   ) => {
+    const { account, isBitcoinBased } = validateAccountSelection(
+      accountId,
+      accountType,
+      expectedContext
+    );
     if (!_dapps[host]) {
       _dapps[host] = { activeAddress: '', hasWindow: false };
     }
 
     const date = Date.now();
-    const { accounts, isBitcoinBased } = store.getState().vault;
-
-    const account = accounts[accountType]?.[accountId];
-    if (!account) {
-      console.error(
-        '[DAppController] Account not found:',
-        accountType,
-        accountId
-      );
-      return;
-    }
-
     store.dispatch(updateDAppAccount({ host, accountId, date, accountType }));
     // The connection is already changed in Redux at this point. Invalidate
     // eth_accounts/provider-state responses before persistence or event

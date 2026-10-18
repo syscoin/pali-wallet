@@ -1,6 +1,5 @@
 import { getAsset } from '@sidhujag/sysweb3-utils';
 import { cleanTokenSymbol } from '@sidhujag/sysweb3-utils';
-import { isNil } from 'lodash';
 
 import { fetchBackendAccountCached } from '../utils/fetchBackendAccountWrapper';
 import store from 'state/store';
@@ -335,30 +334,73 @@ const SysAssetsControler = (): ISysAssetsController => {
       requestOptions,
       true
     );
-    const tokensAsset = accountData?.tokensAsset;
-
+    const invalidInventory = () =>
+      new Error('SPT token inventory is unavailable or invalid');
+    const readInteger = (
+      value: unknown,
+      fallback?: number,
+      signed = false
+    ): bigint => {
+      if (value === undefined && fallback !== undefined) value = fallback;
+      if (
+        !['string', 'number'].includes(typeof value) ||
+        !(signed ? /^-?\d+$/ : /^\d+$/).test(String(value)) ||
+        (typeof value === 'number' && !Number.isSafeInteger(value))
+      )
+        throw invalidInventory();
+      return BigInt(String(value));
+    };
+    const readCount = (value: unknown, fallback?: number): number => {
+      const count = Number(readInteger(value, fallback));
+      if (!Number.isSafeInteger(count)) throw invalidInventory();
+      return count;
+    };
+    // The SDK resolves failed reads as null. Only a valid account response
+    // can establish that an imported token has no remaining balance.
+    if (
+      !accountData ||
+      typeof accountData !== 'object' ||
+      Array.isArray(accountData) ||
+      'error' in accountData ||
+      (accountData.tokensAsset !== undefined &&
+        !Array.isArray(accountData.tokensAsset))
+    ) {
+      throw invalidInventory();
+    }
+    if (accountData.tokensAsset === undefined) {
+      const identifier = accountData.addressOrXpub ?? accountData.address;
+      // Blockbook omits empty token arrays. A complete account summary is
+      // still required to distinguish that case from an unknown response.
+      if (typeof identifier !== 'string' || !identifier.trim())
+        throw invalidInventory();
+      readInteger(accountData.balance);
+      readInteger(accountData.unconfirmedBalance, undefined, true);
+      readCount(accountData.txs);
+      readCount(accountData.unconfirmedTxs);
+    }
     // IMPORTANT: For SPT tokens, we should ONLY use tokensAsset array
     // tokens array contains regular UTXO addresses without assetGuid
     // tokensAsset array contains actual SPT tokens with assetGuid
-    const validTokens = tokensAsset || [];
-
-    const preventUndefined =
-      typeof validTokens === 'undefined' || validTokens === undefined
-        ? []
-        : validTokens;
-
+    const tokensAsset = accountData.tokensAsset || [];
     // Group tokens by assetGuid to aggregate multiple UTXOs
     const tokensByAssetGuid = new Map<string, any[]>();
 
-    preventUndefined
-      .filter((token: any) => !isNil(token.assetGuid))
-      .forEach((tokenAsset: any) => {
-        const guid = String(tokenAsset.assetGuid);
-        if (!tokensByAssetGuid.has(guid)) {
-          tokensByAssetGuid.set(guid, []);
-        }
-        tokensByAssetGuid.get(guid)!.push(tokenAsset);
-      });
+    tokensAsset.forEach((tokenAsset: any) => {
+      // Never skip malformed rows: that would turn a partial response into
+      // apparent proof that an imported asset has a zero balance.
+      if (
+        !tokenAsset ||
+        typeof tokenAsset !== 'object' ||
+        Array.isArray(tokenAsset)
+      )
+        throw invalidInventory();
+      readInteger(tokenAsset.assetGuid);
+      const guid = String(tokenAsset.assetGuid);
+      if (!tokensByAssetGuid.has(guid)) {
+        tokensByAssetGuid.set(guid, []);
+      }
+      tokensByAssetGuid.get(guid)!.push(tokenAsset);
+    });
 
     // Aggregate balances for each unique asset
     const aggregatedTokensMap = new Map<string, ISysTokensAssetReponse>();
@@ -366,7 +408,9 @@ const SysAssetsControler = (): ISysAssetsController => {
     tokensByAssetGuid.forEach((tokens, assetGuid) => {
       // Take the first token as the base (for metadata)
       const firstToken = tokens[0];
-      const decimals = firstToken.decimals ?? 8;
+      const decimals = firstToken.decimals;
+      if (!Number.isSafeInteger(decimals) || decimals < 0)
+        throw invalidInventory();
 
       // Sum up balances from all UTXOs for this asset
       let totalConfirmedBalance = BigInt(0);
@@ -376,18 +420,18 @@ const SysAssetsControler = (): ISysAssetsController => {
       let totalTransfers = 0;
 
       tokens.forEach((token: any) => {
-        // Add confirmed balance
-        totalConfirmedBalance += BigInt(String(token.balance || 0));
-
-        // Add unconfirmed delta (positive for receiver, negative for sender)
-        const unconfirmedRaw =
-          token.unconfirmedBalance !== undefined ? token.unconfirmedBalance : 0;
-        totalUnconfirmedBalance += BigInt(String(unconfirmedRaw || 0));
-
-        // Sum up totals (using BigInt to avoid precision issues)
-        totalSent += BigInt(token.totalSent || 0);
-        totalReceived += BigInt(token.totalReceived || 0);
-        totalTransfers += token.transfers || 0;
+        if (token.decimals !== decimals) throw invalidInventory();
+        totalConfirmedBalance += readInteger(token.balance);
+        // Optional deltas are signed; every present amount must remain exact.
+        totalUnconfirmedBalance += readInteger(
+          token.unconfirmedBalance,
+          0,
+          true
+        );
+        totalSent += readInteger(token.totalSent, 0);
+        totalReceived += readInteger(token.totalReceived, 0);
+        totalTransfers += readCount(token.transfers, 0);
+        if (!Number.isSafeInteger(totalTransfers)) throw invalidInventory();
       });
 
       // Real-time balance is confirmed + unconfirmed delta
