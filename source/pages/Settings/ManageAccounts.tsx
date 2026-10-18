@@ -268,7 +268,7 @@ const ManageAccountsView = React.memo(() => {
     [isContextChanging, connectionUnavailable, context, removalContext]
   );
 
-  const handleConfirmRemove = useCallback(async () => {
+  const handleConfirmRemove = async () => {
     if (!accountToRemove) return;
 
     const state = store.getState();
@@ -322,18 +322,9 @@ const ManageAccountsView = React.memo(() => {
     } finally {
       if (isCurrent()) setIsRemoving(false);
     }
-  }, [
-    accountToRemove,
-    canConfirmRemoval,
-    alert,
-    controllerEmitter,
-    t,
-    beginRemoval,
-  ]);
+  };
 
-  const handleCancelRemove = useCallback(() => {
-    setAccountToRemove(null);
-  }, []);
+  const handleCancelRemove = () => setAccountToRemove(null);
 
   const removeAccountDescription = useMemo(() => {
     if (!accountToRemove) return '';

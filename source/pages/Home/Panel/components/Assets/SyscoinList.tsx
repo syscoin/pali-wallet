@@ -113,123 +113,117 @@ export const SyscoinAssetsList = ({
       return removal.remove([assetToDelete.assetGuid, chainId]);
   };
 
-  // Memoize asset rendering for better performance
-  const renderAsset = useMemo(() => {
-    const AssetRenderer = (asset: any) => (
-      <li
-        key={String(asset.assetGuid)}
-        className="flex items-center py-2 text-xs border-b border-dashed border-bkg-white200 hover:bg-alpha-whiteAlpha50 transition-colors duration-200 rounded-lg"
-      >
-        <table className="table-auto w-full">
-          <tbody>
-            <tr className="flex items-center justify-between font-poppins font-normal">
-              <td className="flex items-center gap-3">
-                {/* Token Logo */}
-                <Tooltip content={asset.name || asset.symbol}>
-                  <span className="inline-flex items-center justify-center">
-                    <TokenIcon
-                      logo={
-                        asset.image ||
-                        getTokenLogo(asset.symbol, true, asset.assetGuid)
-                      }
-                      assetGuid={String(asset.assetGuid)}
-                      symbol={asset.symbol}
-                      size={24}
-                      className="hover:shadow-md hover:scale-110 transition-all duration-200"
-                    />
+  const renderAsset = (asset: any) => (
+    <li
+      key={String(asset.assetGuid)}
+      className="flex items-center py-2 text-xs border-b border-dashed border-bkg-white200 hover:bg-alpha-whiteAlpha50 transition-colors duration-200 rounded-lg"
+    >
+      <table className="table-auto w-full">
+        <tbody>
+          <tr className="flex items-center justify-between font-poppins font-normal">
+            <td className="flex items-center gap-3">
+              {/* Token Logo */}
+              <Tooltip content={asset.name || asset.symbol}>
+                <span className="inline-flex items-center justify-center">
+                  <TokenIcon
+                    logo={
+                      asset.image ||
+                      getTokenLogo(asset.symbol, true, asset.assetGuid)
+                    }
+                    assetGuid={String(asset.assetGuid)}
+                    symbol={asset.symbol}
+                    size={24}
+                    className="hover:shadow-md hover:scale-110 transition-all duration-200"
+                  />
+                </span>
+              </Tooltip>
+
+              <div className="flex flex-col">
+                <div className="flex items-center gap-x-2">
+                  <span className="text-brand-white font-semibold">
+                    {truncate(
+                      formatCurrency(
+                        String(asset.balance),
+                        Math.min(asset.decimals, 4) // Limit displayed decimals for UI
+                      ),
+                      8,
+                      false
+                    )}
                   </span>
-                </Tooltip>
 
-                <div className="flex flex-col">
-                  <div className="flex items-center gap-x-2">
-                    <span className="text-brand-white font-semibold">
-                      {truncate(
-                        formatCurrency(
-                          String(asset.balance),
-                          Math.min(asset.decimals, 4) // Limit displayed decimals for UI
-                        ),
-                        8,
-                        false
-                      )}
-                    </span>
+                  <span
+                    className="text-brand-royalbluemedium font-medium hover:text-brand-deepPink100 cursor-pointer underline transition-colors duration-200"
+                    onClick={() => handleAssetClick(asset)}
+                  >
+                    {truncate(asset.symbol, 12).toUpperCase()}
+                  </span>
 
+                  {/* Pending if token has non-zero unconfirmed delta or an unconfirmed transfer exists */}
+                  {(hasNonZeroAssetDelta(asset.unconfirmedBalance) ||
+                    pendingAssetGuids.has(String(asset.assetGuid))) && (
                     <span
-                      className="text-brand-royalbluemedium font-medium hover:text-brand-deepPink100 cursor-pointer underline transition-colors duration-200"
-                      onClick={() => handleAssetClick(asset)}
+                      className="px-2 py-0.5 text-[9px] bg-yellow-500/20 text-yellow-500 rounded-full border border-yellow-500/20 font-medium animate-pulse"
+                      title={t('send.pending')}
                     >
-                      {truncate(asset.symbol, 12).toUpperCase()}
+                      {t('send.pending')}
                     </span>
+                  )}
 
-                    {/* Pending if token has non-zero unconfirmed delta or an unconfirmed transfer exists */}
-                    {(hasNonZeroAssetDelta(asset.unconfirmedBalance) ||
-                      pendingAssetGuids.has(String(asset.assetGuid))) && (
+                  {asset.contract &&
+                    asset.contract !==
+                      '0x0000000000000000000000000000000000000000' && (
                       <span
-                        className="px-2 py-0.5 text-[9px] bg-yellow-500/20 text-yellow-500 rounded-full border border-yellow-500/20 font-medium animate-pulse"
-                        title={t('send.pending')}
+                        className="px-2 py-1 text-[10px] bg-gradient-to-r from-brand-royalbluemedium/20 to-brand-royalbluemedium/30 text-brand-royalbluemedium rounded-full border border-brand-royalbluemedium/20 font-medium"
+                        title={t('send.crossChainSptWithNevm')}
                       >
-                        {t('send.pending')}
+                        NEVM
                       </span>
                     )}
-
-                    {asset.contract &&
-                      asset.contract !==
-                        '0x0000000000000000000000000000000000000000' && (
-                        <span
-                          className="px-2 py-1 text-[10px] bg-gradient-to-r from-brand-royalbluemedium/20 to-brand-royalbluemedium/30 text-brand-royalbluemedium rounded-full border border-brand-royalbluemedium/20 font-medium"
-                          title={t('send.crossChainSptWithNevm')}
-                        >
-                          NEVM
-                        </span>
-                      )}
-                  </div>
-
-                  <div className="flex items-center gap-x-1 mt-1">
-                    <span className="text-brand-gray300 font-poppins text-[10px] font-normal">
-                      {t('send.assetGuid')}
-                    </span>
-                    <span className="text-brand-gray400 font-mono text-[10px] break-all">
-                      {asset.assetGuid}
-                    </span>
-                  </div>
                 </div>
-              </td>
 
-              <td className="flex items-center justify-between overflow-hidden overflow-ellipsis">
-                <Tooltip content={t('tooltip.assetDetails')}>
-                  <IconButton
-                    onClick={() => handleAssetClick(asset)}
-                    className="p-2 hover:bg-brand-royalbluemedium/20 rounded-full transition-colors duration-200"
-                    aria-label={`View details for ${asset.symbol} token`}
-                  >
-                    <ShareIcon
-                      size={16}
-                      className="text-brand-white hover:text-brand-royalbluemedium transition-colors"
-                    />
-                  </IconButton>
-                </Tooltip>
+                <div className="flex items-center gap-x-1 mt-1">
+                  <span className="text-brand-gray300 font-poppins text-[10px] font-normal">
+                    {t('send.assetGuid')}
+                  </span>
+                  <span className="text-brand-gray400 font-mono text-[10px] break-all">
+                    {asset.assetGuid}
+                  </span>
+                </div>
+              </div>
+            </td>
 
-                <Tooltip content={t('tooltip.deleteAsset')}>
-                  <IconButton
-                    onClick={() => removal.open(asset)}
-                    className="p-2 hover:bg-red-500/20 rounded-full transition-colors duration-200"
-                    aria-label={`Delete ${asset.symbol} token`}
-                  >
-                    <DeleteIcon
-                      size={16}
-                      className="text-brand-white hover:text-red-500 transition-colors"
-                    />
-                  </IconButton>
-                </Tooltip>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </li>
-    );
+            <td className="flex items-center justify-between overflow-hidden overflow-ellipsis">
+              <Tooltip content={t('tooltip.assetDetails')}>
+                <IconButton
+                  onClick={() => handleAssetClick(asset)}
+                  className="p-2 hover:bg-brand-royalbluemedium/20 rounded-full transition-colors duration-200"
+                  aria-label={`View details for ${asset.symbol} token`}
+                >
+                  <ShareIcon
+                    size={16}
+                    className="text-brand-white hover:text-brand-royalbluemedium transition-colors"
+                  />
+                </IconButton>
+              </Tooltip>
 
-    AssetRenderer.displayName = 'AssetRenderer';
-    return AssetRenderer;
-  }, [navigate, t, removal.open, handleAssetClick, pendingAssetGuids]);
+              <Tooltip content={t('tooltip.deleteAsset')}>
+                <IconButton
+                  onClick={() => removal.open(asset)}
+                  className="p-2 hover:bg-red-500/20 rounded-full transition-colors duration-200"
+                  aria-label={`Delete ${asset.symbol} token`}
+                >
+                  <DeleteIcon
+                    size={16}
+                    className="text-brand-white hover:text-red-500 transition-colors"
+                  />
+                </IconButton>
+              </Tooltip>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </li>
+  );
 
   return (
     <>
