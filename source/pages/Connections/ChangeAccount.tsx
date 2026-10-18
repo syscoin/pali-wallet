@@ -14,7 +14,7 @@ import { LoadingSvg } from 'components/Icon/Icon';
 import { Button, Icon, IconButton, Tooltip } from 'components/index';
 import { ListLoadMore } from 'components/Loading/ListLoadMore';
 import { ToastActionFooter } from 'components/ToastActionFooter';
-import { TokenIcon } from 'components/TokenIcon';
+import { TokenIconStack } from 'components/TokenIcon';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { useIncrementalList } from 'hooks/useIncrementalList';
@@ -79,94 +79,6 @@ const AccountIcon = React.memo(
   }
 );
 AccountIcon.displayName = 'AccountIcon';
-
-// Component to render overlapping token icons like MetaMask
-const TokenIconStack = React.memo(
-  ({ tokens, maxVisible = 3 }: { maxVisible?: number; tokens: any[] }) => {
-    // Create a function to generate a unique key for visual deduplication
-    const getVisualKey = (token: any) => {
-      // If token has a logo, use that as the key
-      if (token.logo) return `logo:${token.logo}`;
-      // If token has a symbol, use that (since fallback will show symbol initial)
-      if (token.symbol) return `symbol:${token.symbol.charAt(0).toUpperCase()}`;
-      // Fallback to contract address or asset guid
-      return `address:${token.contractAddress || token.assetGuid}`;
-    };
-
-    // Memoize token deduplication and sorting
-    const { visibleTokens, remainingCount } = useMemo(() => {
-      // Handle empty tokens case
-      if (!tokens || tokens.length === 0) {
-        return { visibleTokens: [], remainingCount: 0 };
-      }
-
-      // Deduplicate tokens by their visual appearance
-      const uniqueTokens = tokens.reduce((acc: any[], token: any) => {
-        const visualKey = getVisualKey(token);
-        const exists = acc.some((t) => getVisualKey(t) === visualKey);
-        if (!exists) {
-          acc.push(token);
-        }
-        return acc;
-      }, []);
-
-      // Prioritize tokens with actual logos
-      const sortedTokens = uniqueTokens.sort((a, b) => {
-        const aHasLogo = !!a.logo;
-        const bHasLogo = !!b.logo;
-        if (aHasLogo && !bHasLogo) return -1;
-        if (!aHasLogo && bHasLogo) return 1;
-        return 0;
-      });
-
-      const visible = sortedTokens.slice(0, maxVisible);
-      const remaining = uniqueTokens.length - visible.length;
-
-      return { visibleTokens: visible, remainingCount: remaining };
-    }, [tokens, maxVisible]);
-
-    // Early return after hooks
-    if (!tokens || tokens.length === 0) return null;
-
-    return (
-      <div className="flex items-center">
-        <div className="flex">
-          {visibleTokens.map((token, index) => (
-            <Tooltip
-              key={
-                token.id || token.contractAddress || token.assetGuid || index
-              }
-              content={token.name || token.symbol}
-            >
-              <div
-                className="relative hover:scale-110 hover:shadow-md transition-transform duration-200"
-                style={{
-                  marginLeft: index > 0 ? '-8px' : '0',
-                  zIndex: visibleTokens.length - index,
-                }}
-              >
-                <TokenIcon
-                  logo={token.logo}
-                  contractAddress={token.contractAddress}
-                  assetGuid={token.assetGuid}
-                  symbol={token.symbol}
-                  size={16}
-                  className="border border-bkg-3 rounded-full"
-                />
-              </div>
-            </Tooltip>
-          ))}
-        </div>
-        {remainingCount > 0 && (
-          <span className="ml-1 text-[10px] text-brand-royalblue">
-            +{remainingCount}
-          </span>
-        )}
-      </div>
-    );
-  }
-);
-TokenIconStack.displayName = 'TokenIconStack';
 
 export const ChangeAccount = () => {
   const { controllerEmitter } = useController();

@@ -40,7 +40,10 @@ jest.mock('components/index', () => ({
 jest.mock('components/Loading/ListLoadMore', () => ({
   ListLoadMore: 'load-more',
 }));
-jest.mock('components/TokenIcon', () => ({ TokenIcon: 'token-icon' }));
+jest.mock('components/TokenIcon', () => ({
+  ...jest.requireActual('components/TokenIcon'),
+  TokenIcon: 'token-icon',
+}));
 jest.mock('utils/browser', () => ({ dispatchBackgroundEvent: jest.fn() }));
 jest.mock('utils/index', () => ({ ellipsis: (value: string) => value }));
 
