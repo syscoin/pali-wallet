@@ -1,10 +1,12 @@
 /** @jest-environment jsdom */
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import React from 'react';
 
 import { TransactionDetailsComponent } from './TransactionDetails';
 
 const mockEmitter = jest.fn(async () => ({ isBlacklisted: false }));
+const mockSetCustomNonce = jest.fn();
+const mockSetIsOpen = jest.fn();
 jest.mock('react-redux', () => ({
   useSelector: (select: any) =>
     select({ vault: { activeNetwork: { currency: 'TSYS' } } }),
@@ -33,7 +35,8 @@ jest.mock('antd', () => ({ Input: (props: any) => <input {...props} /> }));
 
 const show = (
   quote?: { gasUnits: string; maximumFeeWei: string },
-  legacy = false
+  legacy = false,
+  editingDisabled = false
 ) =>
   render(
     <TransactionDetailsComponent
@@ -46,6 +49,7 @@ const show = (
         } as any
       }
       decodedTx={{} as any}
+      editingDisabled={editingDisabled}
       fee={{
         baseFee: 20,
         gasLimit: 25398,
@@ -62,10 +66,10 @@ const show = (
         maxPriorityFeePerGas: 0,
       }}
       setCustomFee={jest.fn()}
-      setCustomNonce={jest.fn()}
+      setCustomNonce={mockSetCustomNonce}
       setFee={jest.fn()}
       setHaveError={jest.fn()}
-      setIsOpen={jest.fn()}
+      setIsOpen={mockSetIsOpen}
     />
   );
 
@@ -93,4 +97,16 @@ it('retains the ordinary EOA fee calculation without any AA account-charge label
   expect(screen.getByText('send.maxFee')).toBeTruthy();
   expect(screen.getByText('0.0012699 TSYS')).toBeTruthy();
   expect(screen.queryByText('send.smartAccountFeeDetails')).toBeNull();
+});
+
+it('disables the real fee and nonce controls while transaction editing is locked', () => {
+  show(undefined, false, true);
+  const feeEditor = screen.getByRole('button', { name: 'send.editFee' });
+  const nonce = screen.getByRole('spinbutton');
+  expect((feeEditor as HTMLButtonElement).disabled).toBe(true);
+  expect((nonce as HTMLInputElement).disabled).toBe(true);
+  fireEvent.click(feeEditor);
+  fireEvent.change(nonce, { target: { value: '7' } });
+  expect(mockSetIsOpen).not.toHaveBeenCalled();
+  expect(mockSetCustomNonce).not.toHaveBeenCalled();
 });

@@ -33,6 +33,12 @@ let mockShowSmartFeeEditor = false;
 let mockAllowanceValue = '2';
 let mockAllowanceIsCustom = true;
 let mockAllowanceOpen = false;
+let mockFeeOpen = false;
+let mockEditHandlers: {
+  fee?: (value: any) => void;
+  nonce?: (value: number) => void;
+  open?: (value: boolean) => void;
+};
 
 jest.mock('state/store', () => ({
   __esModule: true,
@@ -110,7 +116,29 @@ jest.mock('components/Loading', () => ({
 }));
 jest.mock('./components', () => ({
   ApprovalDetails: () => null,
-  TransactionDetailsComponent: () => null,
+  TransactionDetailsComponent: ({
+    customFee,
+    editingDisabled,
+    setCustomNonce,
+    setIsOpen,
+  }: any) => {
+    mockEditHandlers.nonce = setCustomNonce;
+    mockEditHandlers.open = setIsOpen;
+    return (
+      <>
+        <pre data-testid="reviewed-custom-fee">{JSON.stringify(customFee)}</pre>
+        <input
+          aria-label="reviewed-nonce"
+          disabled={editingDisabled}
+          defaultValue="0"
+          onChange={(event) => setCustomNonce(Number(event.target.value))}
+        />
+        <button disabled={editingDisabled} onClick={() => setIsOpen(true)}>
+          open-synthetic-fee
+        </button>
+      </>
+    );
+  },
   TransactionDataComponent: ({ decodedTx }: any) => (
     <pre data-testid="transaction-data">{JSON.stringify(decodedTx)}</pre>
   ),
@@ -140,8 +168,10 @@ jest.mock('./EditApprovedAllowanceValueModal', () => ({
   },
 }));
 jest.mock('./EditPriority', () => ({
-  EditPriorityModal: ({ setCustomFee }: any) =>
-    mockShowSmartFeeEditor ? (
+  EditPriorityModal: ({ setCustomFee, showModal }: any) => {
+    mockEditHandlers.fee = setCustomFee;
+    mockFeeOpen = showModal;
+    return mockShowSmartFeeEditor ? (
       <button
         onClick={() =>
           setCustomFee({
@@ -155,7 +185,8 @@ jest.mock('./EditPriority', () => ({
       >
         edit-synthetic-fee
       </button>
-    ) : null,
+    ) : null;
+  },
 }));
 jest.mock('utils/validations', () => ({
   getErc20Abi: async () => ['function approve(address,uint256)'],
@@ -193,6 +224,8 @@ beforeEach(() => {
   mockAllowanceValue = '2';
   mockAllowanceIsCustom = true;
   mockAllowanceOpen = false;
+  mockFeeOpen = false;
+  mockEditHandlers = {};
   mockState = {
     vault: {
       activeAccount: { type: 'HDAccount', id: 0 },
@@ -259,6 +292,157 @@ beforeEach(() => {
   mockHandleTransactionError.mockReturnValue(false);
 });
 afterEach(() => jest.restoreAllMocks());
+
+it('locks fee and nonce edits while an EOA confirmation waits for its balance refresh', async () => {
+  mockShowSmartFeeEditor = true;
+  const quote = mockFee.getMockImplementation()!;
+  mockFee.mockImplementation(async (...args) => ({
+    ...(await quote(...args)),
+    feeSafety: { maxFeePerGas: { requested: 1, recommended: 2 } },
+    recommendationOnly: true,
+  }));
+  const view = await prepare();
+  const staleEditors = { ...mockEditHandlers };
+  act(() => staleEditors.open!(true));
+  expect(mockFeeOpen).toBe(true);
+  let finishBalance!: (value: any) => void;
+  mockEmitter.mockImplementationOnce(
+    () => new Promise((resolve) => (finishBalance = resolve))
+  );
+  let pending!: Promise<any>;
+  act(() => {
+    pending = mockButtonHandlers['buttons.confirm']();
+    // These old DOM handlers run before the disabled render is committed.
+    fireEvent.click(
+      screen.getByRole('button', { name: 'send.useDappFeeRequest' })
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'send.useNetworkFeeSuggestion' })
+    );
+  });
+  act(() => {
+    staleEditors.nonce!(7);
+    staleEditors.fee!({
+      isCustom: true,
+      gasLimit: 30000,
+      gasPrice: 0,
+      maxFeePerGas: 7,
+      maxPriorityFeePerGas: 1,
+    });
+    staleEditors.open!(true);
+  });
+  expect(
+    JSON.parse(screen.getByTestId('reviewed-custom-fee').textContent!)
+  ).toMatchObject({ isCustom: false });
+  expect(mockFeeOpen).toBe(false);
+  expect(
+    (
+      screen.getByRole('button', {
+        name: 'send.useDappFeeRequest',
+      }) as HTMLButtonElement
+    ).disabled
+  ).toBe(true);
+  expect(
+    (screen.getByLabelText('reviewed-nonce') as HTMLInputElement).disabled
+  ).toBe(true);
+  expect(
+    (
+      screen.getByRole('button', {
+        name: 'open-synthetic-fee',
+      }) as HTMLButtonElement
+    ).disabled
+  ).toBe(true);
+  fireEvent.click(screen.getByText('send.data'));
+  expect(
+    screen.getByTestId('transaction-data').parentElement!.className
+  ).not.toContain('hidden');
+  fireEvent.click(screen.getByText('send.hex'));
+  expect(
+    screen.getByTestId('transaction-hex').parentElement!.className
+  ).not.toContain('hidden');
+
+  await act(async () => {
+    finishBalance({ nativeBalance: '1' });
+    await pending;
+  });
+  const submitted = mockEmitter.mock.calls.find(
+    ([path]) => path[1] === 'sendAndSaveEthTransaction'
+  )![1][0];
+  expect(submitted.nonce).toBe(0);
+  expect(BigNumber.from(submitted.maxFeePerGas).toString()).toBe('2000000000');
+  view.unmount();
+});
+
+it.each(['dismissed', 'completed', 'outcome-unknown'])(
+  'ignores stale fee and nonce editor callbacks after an approval is %s',
+  async (outcome) => {
+    mockShowSmartFeeEditor = true;
+    const view = await prepare();
+    const staleEditors = { ...mockEditHandlers };
+    if (outcome === 'dismissed') {
+      await act(async () => mockButtonHandlers['buttons.cancel']());
+    } else {
+      if (outcome === 'outcome-unknown') {
+        mockHandleTransactionError.mockReturnValueOnce(true);
+        mockEmitter
+          .mockResolvedValueOnce({ nativeBalance: '1' })
+          .mockRejectedValueOnce(Error('Network request timed out'));
+      }
+      await act(async () => mockButtonHandlers['buttons.confirm']());
+    }
+    act(() => {
+      staleEditors.nonce!(7);
+      staleEditors.fee!({
+        isCustom: true,
+        gasLimit: 30000,
+        gasPrice: 0,
+        maxFeePerGas: 7,
+        maxPriorityFeePerGas: 1,
+      });
+      staleEditors.open!(true);
+    });
+    expect(
+      JSON.parse(screen.getByTestId('reviewed-custom-fee').textContent!)
+    ).toMatchObject({ isCustom: false });
+    expect(mockFeeOpen).toBe(false);
+    expect(
+      (screen.getByLabelText('reviewed-nonce') as HTMLInputElement).disabled
+    ).toBe(true);
+    view.unmount();
+  }
+);
+
+it('unlocks fee and nonce edits for a retry after a known pre-submit failure', async () => {
+  mockShowSmartFeeEditor = true;
+  const view = await prepare();
+  const staleEditors = { ...mockEditHandlers };
+  mockEmitter.mockResolvedValueOnce({ nativeBalance: '0' });
+  await act(async () => mockButtonHandlers['buttons.confirm']());
+  expect(mockAlert.error).toHaveBeenCalledWith('send.enoughFunds');
+  expect(
+    (screen.getByLabelText('reviewed-nonce') as HTMLInputElement).disabled
+  ).toBe(false);
+  act(() => {
+    staleEditors.nonce!(7);
+    staleEditors.fee!({
+      isCustom: true,
+      gasLimit: 30000,
+      gasPrice: 0,
+      maxFeePerGas: 7,
+      maxPriorityFeePerGas: 1,
+    });
+  });
+  expect(
+    JSON.parse(screen.getByTestId('reviewed-custom-fee').textContent!)
+  ).toMatchObject({ isCustom: true, maxFeePerGas: 7 });
+  await act(async () => mockButtonHandlers['buttons.confirm']());
+  const submitted = mockEmitter.mock.calls.find(
+    ([path]) => path[1] === 'sendAndSaveEthTransaction'
+  )![1][0];
+  expect(submitted.nonce).toBe(7);
+  expect(BigNumber.from(submitted.maxFeePerGas).toString()).toBe('7000000000');
+  view.unmount();
+});
 
 it.each([false, true])(
   'preserves the app fee by default and uses the network suggestion only after a click (%s)',
@@ -393,7 +577,7 @@ it.each([undefined, false, true])(
   }
 );
 
-it('rejects a changed fee quote after preparation and before any authenticator signing', async () => {
+it('rejects a changed quote context after preparation and before any authenticator signing', async () => {
   mockShowSmartFeeEditor = true;
   mockState.vault.accounts.HDAccount[0].isSmartAccount = true;
   mockState.vault.accounts.HDAccount[0].smartAccount = {};
@@ -407,19 +591,26 @@ it('rejects a changed fee quote after preparation and before any authenticator s
     authenticator();
     return { hash: 'synthetic-sa-hash' };
   });
-  await prepare();
+  const view = await prepare();
   let pending!: Promise<any>;
   await act(async () => {
     pending = mockButtonHandlers['buttons.confirm']();
   });
   await waitFor(() => expect(finishPreparation).toBeDefined());
-  fireEvent.click(screen.getByRole('button', { name: 'edit-synthetic-fee' }));
+  // Editing is locked once Confirm starts. A network switch can still
+  // invalidate the approved quote independently of those controls.
+  mockState.vault.activeNetwork = {
+    ...mockState.vault.activeNetwork,
+    chainId: 2,
+  };
+  view.rerender(<SendTransaction />);
   await act(async () => {
     finishPreparation();
     await pending;
   });
   expect(authenticator).not.toHaveBeenCalled();
   expect(mockClose).not.toHaveBeenCalled();
+  view.unmount();
 });
 
 it('refreshes the AA quote for edited fee caps while retaining the original dapp fields', async () => {

@@ -234,6 +234,25 @@ export const SendTransaction = () => {
   const [isCheckingContract, setIsCheckingContract] = useState<boolean>(false);
   const [hasCheckedContract, setHasCheckedContract] = useState<boolean>(false);
 
+  const editingDisabled = loading || closing || confirmed || submissionUnknown;
+  const editingDisabledRef = React.useRef(editingDisabled);
+  editingDisabledRef.current = editingDisabled;
+  // A previously rendered editor can still finish validation after Confirm.
+  // Check the live action as well as disabling controls in the next render.
+  const canEditTransaction = () =>
+    mountedRef.current &&
+    approvalActionRef.current === 'ready' &&
+    !editingDisabledRef.current;
+  const updateCustomFee: typeof setCustomFee = (value) => {
+    if (canEditTransaction()) setCustomFee(value);
+  };
+  const updateCustomNonce: typeof setCustomNonce = (value) => {
+    if (canEditTransaction()) setCustomNonce(value);
+  };
+  const updateFeeEditorOpen: typeof setIsOpen = (value) => {
+    if (canEditTransaction()) setIsOpen(value);
+  };
+
   const formattedValueAndCurrency = useMemo(() => {
     if (!tx?.value) return `0 ${activeNetwork.currency?.toUpperCase()}`;
 
@@ -298,7 +317,7 @@ export const SendTransaction = () => {
   }, [customFee, fee, isLegacyTransaction]);
 
   const handleUseDappFeeRequest = () => {
-    if (!fee) return;
+    if (!canEditTransaction() || !fee) return;
 
     if (isLegacyTransaction) {
       setCustomFee({
@@ -331,7 +350,7 @@ export const SendTransaction = () => {
   };
 
   const handleUseNetworkFeeSuggestion = () => {
-    if (!fee) return;
+    if (!canEditTransaction() || !fee) return;
     setCustomFee({
       isCustom: true,
       gasLimit: feeSafetyAdjustment.gasLimit?.recommended ?? fee.gasLimit,
@@ -1069,6 +1088,8 @@ export const SendTransaction = () => {
     invalidatePendingClose();
     const generation = closeGenerationRef.current;
     approvalActionRef.current = 'submitting';
+    setIsOpen(false);
+    setOpenEditAllowanceModal(false);
     try {
       return await submitTransaction(generation);
     } catch (error: any) {
@@ -1468,9 +1489,9 @@ export const SendTransaction = () => {
     <>
       <EditPriorityModal
         showModal={isOpen}
-        setIsOpen={setIsOpen}
+        setIsOpen={updateFeeEditorOpen}
         customFee={customFee}
-        setCustomFee={setCustomFee}
+        setCustomFee={updateCustomFee}
         setHaveError={() => {
           // No-op function since haveError is not used
         }}
@@ -1689,6 +1710,7 @@ export const SendTransaction = () => {
                     <button
                       type="button"
                       className="mt-2 text-xs text-brand-royalblue hover:opacity-80"
+                      disabled={editingDisabled}
                       onClick={handleUseDappFeeRequest}
                     >
                       {t('send.useDappFeeRequest')}
@@ -1697,6 +1719,7 @@ export const SendTransaction = () => {
                       <button
                         type="button"
                         className="mt-2 ml-3 text-xs text-brand-royalblue hover:opacity-80"
+                        disabled={editingDisabled}
                         onClick={handleUseNetworkFeeSuggestion}
                       >
                         {t('send.useNetworkFeeSuggestion')}
@@ -1757,14 +1780,15 @@ export const SendTransaction = () => {
                     <TransactionDetailsComponent
                       tx={tx}
                       decodedTx={decodedTxData}
-                      setCustomNonce={setCustomNonce}
-                      setCustomFee={setCustomFee}
+                      editingDisabled={editingDisabled}
+                      setCustomNonce={updateCustomNonce}
+                      setCustomFee={updateCustomFee}
                       setHaveError={() => {
                         // No-op function since haveError is not used
                       }}
                       setFee={setFee}
                       fee={fee}
-                      setIsOpen={setIsOpen}
+                      setIsOpen={updateFeeEditorOpen}
                       customFee={customFee}
                     />
                   ) : component.component === 'data' &&
