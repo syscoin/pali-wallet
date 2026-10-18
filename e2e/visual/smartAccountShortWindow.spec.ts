@@ -84,10 +84,15 @@ test.beforeAll(async () => {
     import Policy from ${JSON.stringify(
       path.join(root, 'source/pages/Settings/SmartAccountPolicy')
     )};
+    import {ACCOUNT} from ${JSON.stringify(support)};
     import ${JSON.stringify(path.join(root, 'source/assets/styles/index.css'))};
     import ${JSON.stringify(path.join(root, 'source/assets/fonts/index.css'))};
     (window as any).__forbidden=[];
     const query=new URLSearchParams(location.search), mode=query.get('mode'), locale=query.get('locale')||'en';
+    if(mode==='recovery-deadline')localStorage.setItem('pali-smart-account-recovery-replacement:57057:'+ACCOUNT,JSON.stringify({
+      authenticator:{id:'ecdsa',config:{owners:['0x2222222222222222222222222222222222222222'],threshold:1}},kind:'ecdsa',
+      recoveryOperation:{account:ACCOUNT,chainId:57057,executionCalldata:'0x1234',mode:'0x'+'00'.repeat(32),readyAt:Number(query.get('readyAt')),salt:'0x'+'66'.repeat(32)}
+    }));
     i18next.init({lng:locale,initImmediate:false,resources:{en:{translation:en},de:{translation:de}},interpolation:{escapeValue:false}});
     createRoot(document.getElementById('root')!).render(<I18nextProvider i18n={i18next}><MemoryRouter initialEntries={[{pathname:'/settings/account/smart-account-policy',state:{id:1,accountType:'SmartAccount',smartAccountPolicyView:'recovery'}}]}><main className="h-screen w-full overflow-y-auto bg-bkg-3 text-white">{mode==='prepare'?<PrepareSmartAccount/>:<Policy/>}</main></MemoryRouter></I18nextProvider>);
   `
@@ -338,4 +343,61 @@ test('synthetic smart-account creation error and recovery controls fit short win
         []
       );
     }
+});
+
+test('synthetic guardian recovery enables at its deadline without remounting', async ({
+  page,
+}, info) => {
+  await page.route('**/*', (route) =>
+    new URL(route.request().url()).origin === origin
+      ? route.continue()
+      : route.abort('blockedbyclient')
+  );
+  const now = new Date('2026-10-18T22:30:00Z');
+  const readyAt = now.getTime() / 1000 + 60;
+  await page.clock.install({ time: new Date(now.getTime() - 60000) });
+  await page.setViewportSize({ width: 400, height: 620 });
+  const url = `${origin}/?mode=recovery-deadline&readyAt=${readyAt}`;
+  await page.goto(url);
+  const finalize = page.getByRole('button', {
+    name: en.settings.smartAccountGuardianRecoveryFinalize,
+    exact: true,
+  });
+  await expect(finalize).toBeVisible();
+  await expect(finalize).toBeDisabled();
+  await finalize.scrollIntoViewIfNeeded();
+  const originalButton = await finalize.elementHandle();
+  await page.clock.pauseAt(now);
+  await page.clock.fastForward(59999);
+  await expect(finalize).toBeDisabled();
+  await info.attach('recovery-before-deadline', {
+    body: await page.screenshot(),
+    contentType: 'image/png',
+  });
+  await page.clock.fastForward(1);
+  await expect(finalize).toBeEnabled();
+  expect(await originalButton!.evaluate((button) => button.isConnected)).toBe(
+    true
+  );
+  await expect(page).toHaveURL(url);
+  expect(await page.evaluate(() => Date.now())).toBe(readyAt * 1000);
+  await info.attach('recovery-at-deadline', {
+    body: await page.screenshot(),
+    contentType: 'image/png',
+  });
+  expect(await page.evaluate(() => (window as any).__forbidden)).toEqual([]);
+
+  // A fresh entry with an already-ready operation is the healthy control.
+  // Never click Finalize: every mutation adapter remains forbidden.
+  await page.clock.resume();
+  await page.goto(
+    `${origin}/?mode=recovery-deadline&readyAt=${now.getTime() / 1000 - 60}`
+  );
+  await expect(finalize).toBeEnabled();
+  await finalize.scrollIntoViewIfNeeded();
+  await info.attach('recovery-already-ready-entry', {
+    body: await page.screenshot(),
+    contentType: 'image/png',
+  });
+  expect(await page.evaluate(() => (window as any).__forbidden)).toEqual([]);
 });

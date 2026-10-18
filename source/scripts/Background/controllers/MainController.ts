@@ -249,6 +249,16 @@ export type AccountRemovalContext = {
 
 // Default slip44 values for fallback cases
 
+const fiatNetworkKey = (network: INetwork) =>
+  JSON.stringify([
+    network.kind,
+    network.chainId,
+    network.url,
+    network.apiUrl,
+    network.slip44,
+    network.coingeckoId,
+  ]);
+
 class MainController {
   // Map of keyrings indexed by slip44
   private keyrings: Map<number, KeyringManager> = new Map();
@@ -2048,10 +2058,26 @@ class MainController {
       if (!currency) {
         const storeCurrency = store.getState().price.fiat.asset;
         currency = storeCurrency || 'usd';
+      } else if (currency !== store.getState().price.fiat.asset) {
+        // Currency is a global preference; never relabel the previous quote.
+        store.dispatch(setPrices({ asset: currency, price: 0 }));
       }
 
       const { activeNetwork, isBitcoinBased } = store.getState().vault;
       const id = getNetworkChain(isBitcoinBased);
+      const session = this.walletSessionGeneration;
+      const networkKey = fiatNetworkKey(activeNetwork);
+      const priceSource = () =>
+        isBitcoinBased
+          ? undefined
+          : store.getState().vaultGlobal?.networks?.ethereum?.[
+              activeNetwork.chainId
+            ]?.coingeckoId;
+      const sourceId = priceSource();
+      const isCurrent = () =>
+        session === this.walletSessionGeneration &&
+        networkKey === fiatNetworkKey(store.getState().vault.activeNetwork) &&
+        sourceId === priceSource();
 
       // Use optimized price fetching instead of large coinsList
       console.log(
@@ -2059,51 +2085,33 @@ class MainController {
         activeNetwork.chainId
       );
 
-      switch (id) {
-        case INetworkType.Syscoin:
-          try {
-            // Use cached UTXO price fetching (same pattern as EVM)
-            const priceData = await this.getUtxoPriceData(
-              activeNetwork.url,
-              currency
-            );
-
-            store.dispatch(
-              setPrices({
-                asset: currency,
-                price: priceData.price,
-                priceChange24h: priceData.priceChange24h,
-              })
-            );
-            return;
-          } catch (error) {
-            // If price API is not available (e.g., on testnets), just set price to 0
-            store.dispatch(setPrices({ asset: currency, price: 0 }));
-          }
-          break;
-
-        case INetworkType.Ethereum:
-          try {
-            // Use optimized price fetching for EVM networks
-            const priceData = await this.getTokenPriceData(
-              activeNetwork.chainId,
-              currency
-            );
-
-            store.dispatch(
-              setPrices({
-                asset: currency,
-                price: priceData.price,
-                priceChange24h: priceData.priceChange24h,
-              })
-            );
-            return;
-          } catch (error) {
-            logError('Failed to retrieve asset price - EVM', '', error);
-            store.dispatch(setPrices({ asset: currency, price: 0 }));
-          }
-          break;
+      let priceData: { price: number; priceChange24h?: number };
+      try {
+        if (id === INetworkType.Syscoin) {
+          priceData = await this.getUtxoPriceData(activeNetwork.url, currency);
+        } else if (id === INetworkType.Ethereum) {
+          priceData = await this.getTokenPriceData(
+            activeNetwork.chainId,
+            currency
+          );
+        } else {
+          return;
+        }
+      } catch (error) {
+        if (!isCurrent()) return;
+        if (id === INetworkType.Ethereum)
+          logError('Failed to retrieve asset price - EVM', '', error);
+        priceData = { price: 0 };
       }
+      // An unabortable quote must not price another network or wallet session.
+      if (!isCurrent()) return;
+      store.dispatch(
+        setPrices({
+          asset: currency,
+          price: priceData.price,
+          priceChange24h: priceData.priceChange24h,
+        })
+      );
     });
   }
 
@@ -3665,6 +3673,7 @@ class MainController {
       if (!isCurrent()) throw new Error('Network change cancelled');
     };
     const previousSlip44 = store.getState().vaultGlobal.activeSlip44;
+    const previousNetwork = store.getState().vault.activeNetwork;
     // Cancel the current promise if it exists
     if (this.currentPromise) {
       this.currentPromise.cancel();
@@ -3711,6 +3720,16 @@ class MainController {
     return promiseWrapper.promise
       .then(async () => {
         assertCurrent();
+        if (
+          fiatNetworkKey(previousNetwork) !== fiatNetworkKey(completeNetwork)
+        ) {
+          store.dispatch(
+            setPrices({
+              asset: store.getState().price?.fiat?.asset || 'usd',
+              price: 0,
+            })
+          );
+        }
         await this.handleNetworkChangeSuccess(
           completeNetwork,
           syncUpdates,
@@ -4037,6 +4056,10 @@ class MainController {
       throw new Error(
         'Network removal is in progress. Retry after it completes.'
       );
+    }
+    // A different request may have registered this chain during discovery.
+    if (store.getState().vaultGlobal.networks[networkType][network.chainId]) {
+      throw new Error('network already exists, remove or edit it');
     }
     store.dispatch(setNetwork({ network: networkWithCustomParams }));
 

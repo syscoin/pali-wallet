@@ -507,10 +507,30 @@ const SmartAccountPolicy = () => {
       guardianStatus?.guardians?.[0] ||
         installedGuardianRecovery?.config.guardians?.[0]
     );
+  const recoveryReadyAt = Number(
+    activeGuardianReplacement?.recoveryOperation?.readyAt
+  );
+  const [, wakeRecoveryDeadline] = useState(0);
+  useEffect(() => {
+    if (!Number.isFinite(recoveryReadyAt) || recoveryReadyAt <= 0) return;
+    let timer: ReturnType<typeof setTimeout>;
+    const wake = () => {
+      const remaining = recoveryReadyAt * 1000 - Date.now();
+      if (remaining > 0) {
+        // Browser timers overflow above roughly 24.8 days. Recheck long
+        // delays in bounded chunks, including after a wall-clock change.
+        timer = setTimeout(wake, Math.min(remaining, 2147483647));
+      } else {
+        wakeRecoveryDeadline((version) => version + 1);
+      }
+    };
+    wake();
+    return () => clearTimeout(timer);
+  }, [recoveryReadyAt, smartAccountAddress, activeNetwork.chainId, scopeKey]);
   const guardianRecoveryReady =
-    Boolean(activeGuardianReplacement?.recoveryOperation?.readyAt) &&
-    Number(activeGuardianReplacement?.recoveryOperation?.readyAt) <=
-      Math.floor(Date.now() / 1000);
+    Number.isFinite(recoveryReadyAt) &&
+    recoveryReadyAt > 0 &&
+    recoveryReadyAt <= Math.floor(Date.now() / 1000);
   const replacementAuthenticatorLabel = (kind?: RecoveryAuthenticatorId) => {
     switch (kind) {
       case 'ecdsa':
