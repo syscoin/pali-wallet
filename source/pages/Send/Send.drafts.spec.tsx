@@ -2492,6 +2492,132 @@ describe('send forms across wallet navigation', () => {
     }
   );
 
+  it('clears verified ERC20 balance immediately when selecting another token', async () => {
+    jest.useFakeTimers();
+    const first = {
+      id: 'token-a',
+      contractAddress: '0x3333333333333333333333333333333333333333',
+      chainId: 1,
+      tokenSymbol: 'TOKA',
+      tokenStandard: 'ERC-20',
+      isNft: false,
+      balance: 5,
+      decimals: 18,
+    };
+    const second = {
+      ...first,
+      id: 'token-b',
+      contractAddress: '0x4444444444444444444444444444444444444444',
+      tokenSymbol: 'TOKB',
+      balance: 2,
+    };
+    mockState.testAssets = { ethereum: [first, second], syscoin: [] };
+    mockEmitter.mockImplementation((path: string[], args?: string[]) => {
+      if (path[path.length - 1] === 'getERC20TokenInfo') {
+        return args?.[0] === first.contractAddress
+          ? Promise.resolve({ balance: '5000000000000000000', decimals: 18 })
+          : new Promise(() => undefined);
+      }
+      return new Promise(() => undefined);
+    });
+    const view = render(<SendEth />);
+    try {
+      fireEvent.click(screen.getByRole('button', { name: /TOKA.*ERC-20/ }));
+      await act(async () => {
+        jest.advanceTimersByTime(1000);
+      });
+      expect(
+        (screen.getByRole('button', { name: 'MAX' }) as HTMLButtonElement)
+          .disabled
+      ).toBe(false);
+      fireEvent.click(screen.getByRole('button', { name: /TOKB.*ERC-20/ }));
+      expect(
+        (screen.getByRole('button', { name: 'MAX' }) as HTMLButtonElement)
+          .disabled
+      ).toBe(true);
+      expect(screen.queryByTitle('send.balanceVerified')).toBeNull();
+    } finally {
+      view.unmount();
+      jest.useRealTimers();
+    }
+  });
+
+  it.each([false, true])(
+    'does not apply an older ERC20 result to the newly selected token (reject=%s)',
+    async (rejectFirst) => {
+      jest.useFakeTimers();
+      const first = {
+        id: 'token-a',
+        contractAddress: '0x3333333333333333333333333333333333333333',
+        chainId: 1,
+        tokenSymbol: 'TOKA',
+        tokenStandard: 'ERC-20',
+        isNft: false,
+        balance: 5,
+        decimals: 18,
+      };
+      const second = {
+        ...first,
+        id: 'token-b',
+        contractAddress: '0x4444444444444444444444444444444444444444',
+        tokenSymbol: 'TOKB',
+        balance: 2,
+      };
+      mockState.testAssets = { ethereum: [first, second], syscoin: [] };
+      let finishFirst!: (value: any) => void;
+      let finishSecond!: (value: any) => void;
+      let failFirst!: (reason: Error) => void;
+      const firstRequest = new Promise((resolve, reject) => {
+        finishFirst = resolve;
+        failFirst = reject;
+      });
+      const secondRequest = new Promise((resolve) => {
+        finishSecond = resolve;
+      });
+      mockEmitter.mockImplementation((path: string[], args?: string[]) => {
+        if (path[path.length - 1] === 'getERC20TokenInfo') {
+          return args?.[0] === first.contractAddress
+            ? firstRequest
+            : secondRequest;
+        }
+        return new Promise(() => undefined);
+      });
+      const view = render(<SendEth />);
+      try {
+        fireEvent.click(screen.getByRole('button', { name: /TOKA.*ERC-20/ }));
+        await act(async () => {
+          jest.advanceTimersByTime(1000);
+        });
+        fireEvent.click(screen.getByRole('button', { name: /TOKB.*ERC-20/ }));
+        await act(async () => {
+          jest.advanceTimersByTime(1000);
+        });
+        await act(async () => {
+          finishSecond({ balance: '2000000000000000000', decimals: 18 });
+        });
+        fireEvent.click(screen.getByRole('button', { name: 'MAX' }));
+        expect(
+          (screen.getByPlaceholderText('send.amount') as HTMLInputElement).value
+        ).toBe('2');
+        await act(async () => {
+          if (rejectFirst) failFirst(new Error('obsolete token lookup failed'));
+          else finishFirst({ balance: '5000000000000000000', decimals: 18 });
+        });
+        expect(
+          (screen.getByRole('button', { name: 'MAX' }) as HTMLButtonElement)
+            .disabled
+        ).toBe(false);
+        fireEvent.click(screen.getByRole('button', { name: 'MAX' }));
+        expect(
+          (screen.getByPlaceholderText('send.amount') as HTMLInputElement).value
+        ).toBe('2');
+      } finally {
+        view.unmount();
+        jest.useRealTimers();
+      }
+    }
+  );
+
   it('rechecks restored NFT ownership and drops the NFT selection on network change', () => {
     mockLocation.state = {
       walletScope: getWalletNavigationScope(),

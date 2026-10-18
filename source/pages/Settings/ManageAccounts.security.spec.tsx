@@ -59,6 +59,8 @@ jest.mock('components/index', () => ({
 }));
 jest.mock('utils/index', () => ({ ellipsis: (value: string) => value }));
 jest.mock('utils/navigationState', () => ({
+  getWalletNavigationScope: () =>
+    jest.requireActual('utils/navigationState').getWalletNavigationScope(),
   createBrowsingNavigationContext: (...args: any[]) =>
     jest
       .requireActual('utils/navigationState')

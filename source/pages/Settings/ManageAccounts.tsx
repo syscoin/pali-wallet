@@ -24,6 +24,7 @@ import { getControllerStatus } from 'hooks/controllerStatus';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { usePageLoadingState } from 'hooks/usePageLoadingState';
+import { useRequestScope } from 'hooks/useRequestScope';
 import type { AccountRemovalContext } from 'scripts/Background/controllers/MainController';
 import store, { RootState } from 'state/store';
 import { IKeyringAccountState, KeyringAccountType } from 'types/network';
@@ -31,6 +32,7 @@ import { isAccountCompatibleWithNetwork } from 'utils/accountCompatibility';
 import { ellipsis } from 'utils/index';
 import {
   createBrowsingNavigationContext,
+  getWalletNavigationScope,
   navigateBack,
   navigateWithContext,
 } from 'utils/navigationState';
@@ -165,6 +167,19 @@ const ManageAccountsView = React.memo(() => {
     [activeAccountRef, accounts, activeNetwork, activeSlip44]
   );
   const context = JSON.stringify(removalContext);
+  const completionContext = JSON.stringify([
+    getWalletNavigationScope(),
+    accounts.HDAccount?.[0]?.xpub,
+    location.key,
+    location.pathname,
+    location.search,
+    location.hash,
+  ]);
+  const beginRemoval = useRequestScope(completionContext);
+  useEffect(() => {
+    setAccountToRemove(null);
+    setIsRemoving(false);
+  }, [completionContext]);
   const canConfirmRemoval =
     !isContextChanging &&
     !connectionUnavailable &&
@@ -285,6 +300,7 @@ const ManageAccountsView = React.memo(() => {
       return;
     }
 
+    const isCurrent = beginRemoval();
     setIsRemoving(true);
     try {
       await controllerEmitter(
@@ -296,14 +312,24 @@ const ManageAccountsView = React.memo(() => {
         ]
       );
 
-      alert.success(t('settings.accountRemovedSuccessfully'));
-      setAccountToRemove(null);
+      if (isCurrent()) {
+        alert.success(t('settings.accountRemovedSuccessfully'));
+        setAccountToRemove(null);
+      }
     } catch (error: any) {
-      alert.error(error.message || t('settings.failedToRemoveAccount'));
+      if (isCurrent())
+        alert.error(error.message || t('settings.failedToRemoveAccount'));
     } finally {
-      setIsRemoving(false);
+      if (isCurrent()) setIsRemoving(false);
     }
-  }, [accountToRemove, canConfirmRemoval, alert, controllerEmitter, t]);
+  }, [
+    accountToRemove,
+    canConfirmRemoval,
+    alert,
+    controllerEmitter,
+    t,
+    beginRemoval,
+  ]);
 
   const handleCancelRemove = useCallback(() => {
     setAccountToRemove(null);

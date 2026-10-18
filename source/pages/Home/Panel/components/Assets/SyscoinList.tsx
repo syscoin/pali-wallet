@@ -1,12 +1,9 @@
-import React, { useMemo, useCallback, useState, useEffect } from 'react';
+import React, { useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useSearchParams, useLocation } from 'react-router-dom';
 
-import {
-  getHomeBrowsingScope,
-  useHomeBrowsingState,
-} from '../../../useHomeBrowsingState';
+import { useHomeBrowsingState } from '../../../useHomeBrowsingState';
 import {
   HiTrash as DeleteIcon,
   RiShareForward2Line as ShareIcon,
@@ -17,13 +14,10 @@ import { ListLoadMore } from 'components/Loading/ListLoadMore';
 import { ConfirmationModal } from 'components/Modal';
 import { Tooltip } from 'components/Tooltip';
 import { useUtils } from 'hooks/index';
-import { useController } from 'hooks/useController';
 import { useIncrementalList } from 'hooks/useIncrementalList';
 import { RootState } from 'state/store';
 import {
-  selectActiveAccount,
   selectActiveAccountAssets,
-  selectActiveAccountRef,
   selectActiveAccountTransactions,
 } from 'state/vault/selectors';
 import { formatCurrency, truncate, getTokenLogo } from 'utils/index';
@@ -33,33 +27,34 @@ import {
 } from 'utils/navigationState';
 import { hasNonZeroAssetDelta } from 'utils/syscoinAssetAmount';
 
+import { AssetRemovalStart, useAssetRemoval } from './useAssetRemoval';
+
 //todo: create a loading state
-export const SyscoinAssetsList = () => {
+export const SyscoinAssetsList = ({
+  scope,
+  onDeleteStart,
+}: {
+  onDeleteStart?: AssetRemovalStart;
+  scope: string;
+}) => {
   const assets = useSelector(selectActiveAccountAssets);
-  const accountRef = useSelector(selectActiveAccountRef);
-  const currentAccount = useSelector(selectActiveAccount);
-  const account = { ...currentAccount, ...accountRef };
-  const activeNetwork = useSelector(
-    (state: RootState) => state.vault.activeNetwork
+  const chainId = useSelector(
+    (state: RootState) => state.vault.activeNetwork.chainId
   );
-  const { chainId } = activeNetwork;
   const networkStatus = useSelector(
     (state: RootState) => state.vaultGlobal.networkStatus
   );
   const accountTransactions = useSelector(selectActiveAccountTransactions);
   const { navigate } = useUtils();
-  const { controllerEmitter } = useController();
   const { t } = useTranslation();
   const [searchParams] = useSearchParams();
   const location = useLocation();
 
-  // Confirmation modal state
-  const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
-  const [assetToDelete, setAssetToDelete] = useState<any>(null);
+  const removal = useAssetRemoval<any>(scope, onDeleteStart);
+  const assetToDelete = removal.item;
 
   const isNetworkChanging = networkStatus === 'switching';
 
-  const scope = getHomeBrowsingScope(account, activeNetwork, true);
   const [view, setView] = useHomeBrowsingState('homeAssets', scope, {
     sptVisibleCount: 50,
   });
@@ -75,11 +70,6 @@ export const SyscoinAssetsList = () => {
     scope,
     view.sptVisibleCount
   );
-
-  useEffect(() => {
-    setShowDeleteConfirmation(false);
-    setAssetToDelete(null);
-  }, [account.type, account.id, chainId]);
 
   // Build a set of assetGuids that have at least one unconfirmed SPT transfer in tx list
   const pendingAssetGuids = useMemo(() => {
@@ -98,12 +88,6 @@ export const SyscoinAssetsList = () => {
     }
     return set;
   }, [accountTransactions, chainId]);
-
-  // Memoize delete handlers
-  const handleDeleteClickMemo = useCallback((asset: any) => {
-    setAssetToDelete(asset);
-    setShowDeleteConfirmation(true);
-  }, []);
 
   // Handle asset click
   const handleAssetClick = useCallback(
@@ -125,19 +109,8 @@ export const SyscoinAssetsList = () => {
 
   // Delete confirmation handlers
   const handleConfirmDelete = () => {
-    if (assetToDelete) {
-      controllerEmitter(
-        ['wallet', 'deleteTokenInfo'],
-        [assetToDelete.assetGuid, chainId]
-      );
-    }
-    setShowDeleteConfirmation(false);
-    setAssetToDelete(null);
-  };
-
-  const handleCancelDelete = () => {
-    setShowDeleteConfirmation(false);
-    setAssetToDelete(null);
+    if (assetToDelete)
+      return removal.remove([assetToDelete.assetGuid, chainId]);
   };
 
   // Memoize asset rendering for better performance
@@ -237,7 +210,7 @@ export const SyscoinAssetsList = () => {
 
                 <Tooltip content={t('tooltip.deleteAsset')}>
                   <IconButton
-                    onClick={() => handleDeleteClickMemo(asset)}
+                    onClick={() => removal.open(asset)}
                     className="p-2 hover:bg-red-500/20 rounded-full transition-colors duration-200"
                     aria-label={`Delete ${asset.symbol} token`}
                   >
@@ -256,7 +229,7 @@ export const SyscoinAssetsList = () => {
 
     AssetRenderer.displayName = 'AssetRenderer';
     return AssetRenderer;
-  }, [navigate, t, handleDeleteClickMemo, handleAssetClick, pendingAssetGuids]);
+  }, [navigate, t, removal.open, handleAssetClick, pendingAssetGuids]);
 
   return (
     <>
@@ -299,9 +272,9 @@ export const SyscoinAssetsList = () => {
       )}
 
       <ConfirmationModal
-        show={showDeleteConfirmation}
+        show={Boolean(assetToDelete)}
         onClick={handleConfirmDelete}
-        onClose={handleCancelDelete}
+        onClose={removal.close}
         title={t('tokens.deleteToken', {
           symbol: assetToDelete?.symbol || 'SPT Asset',
         })}
@@ -309,6 +282,7 @@ export const SyscoinAssetsList = () => {
           symbol: assetToDelete?.symbol || 'this SPT asset',
         })}
         buttonText={t('buttons.delete')}
+        isButtonLoading={removal.pending}
       />
     </>
   );

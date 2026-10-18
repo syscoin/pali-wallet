@@ -113,7 +113,7 @@ describe('large asset list rendering budget', () => {
         kind === 'nft' ? (
           <EvmNftsList scope="synthetic-test-scope" state={nftState} />
         ) : kind === 'spt' ? (
-          <SyscoinAssetsList />
+          <SyscoinAssetsList scope="synthetic-test-scope" />
         ) : (
           <EvmAssetsList scope="synthetic-test-scope" />
         );
