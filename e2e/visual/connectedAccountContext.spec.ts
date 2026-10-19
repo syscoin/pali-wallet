@@ -24,6 +24,8 @@ import {
   UTXO_FIXTURE_SEED,
 } from '../harness/utxoFixture';
 
+import type { INetwork } from '../../source/types/network';
+
 test('a connected-account approval cannot select an account id reused by a different vault', async ({}, info) => {
   test.setTimeout(120_000);
   expect(process.env.PALI_TEST_DAPP_REVISION).toMatch(/^[a-f0-9]{40}$/);
@@ -126,17 +128,27 @@ test('a connected-account approval cannot select an account id reused by a diffe
       createIsolatedVaultFixture(),
       server.url
     );
-    await wallet.step(
+    const utxo = await wallet.step(
       'create distinct accounts in both synthetic vaults',
       async () => {
         await wallet!.importSeedAndCreatePassword();
         await wallet!.ensureOnHome();
         await wallet!.switchNetwork('Syscoin Testnet', 'UTXO');
         await createSecond('Synthetic UTXO second');
-        observation.utxo = await selection();
+        const context = await selection();
+        observation.utxo = context;
+        const network = await wallet!.page.evaluate(
+          async (): Promise<INetwork> => {
+            const state = await chrome.runtime.sendMessage({
+              type: 'getCurrentState',
+            });
+            return state.vault.activeNetwork;
+          }
+        );
         await wallet!.switchNetwork('Syscoin NEVM Testnet', 'EVM');
         await createSecond('Synthetic EVM second');
         await select(0);
+        return { active: context.active, network };
       }
     );
     const evm = await selection();
@@ -217,6 +229,7 @@ test('a connected-account approval cannot select an account id reused by a diffe
       'a vault change rejects the stale displayed address without selecting or acknowledging it',
       async () => {
         await select(1);
+        const source = await selection();
         const id = await startRequest(dapp, 'personal_sign', [
           '0x73746174652d716132',
           target,
@@ -227,10 +240,62 @@ test('a connected-account approval cannot select an account id reused by a diffe
           exact: true,
         });
         await expect(switchAccount).toBeEnabled();
-        await wallet!.switchNetwork('Syscoin Testnet', 'UTXO');
+        // Deliberately reopen the main document so startup admission checks
+        // the live approval, independent of tab/storage event delivery.
+        await wallet!.page.reload();
+        await wallet!.waitAppReady();
+        observation.documentReopenedForGuard = true;
+        await expect(
+          wallet!.page.getByRole('heading', {
+            name: 'Pali is Currently Active',
+            exact: true,
+          })
+        ).toBeVisible();
+        expect(wallet!.page.url()).toBe(wallet!.appUrl('#/home'));
+        expect(popup.isClosed()).toBe(false);
+        expect((await rpcObservation(dapp, id)).settled).not.toBe(true);
+        // The main UI intentionally blocks while an approval is open. This
+        // controlled real-controller stimulus uses the network menu's exact
+        // operation, not state/result replacement or simultaneous-menu UX.
+        const response = await wallet!.page.evaluate(async (network) => {
+          const result = await chrome.runtime.sendMessage({
+            type: 'CONTROLLER_ACTION',
+            data: {
+              methods: ['wallet', 'setActiveNetwork'],
+              params: [network],
+            },
+          });
+          if (!result || result.error || result.success === false) {
+            throw new Error(`Network switch failed: ${JSON.stringify(result)}`);
+          }
+          return result;
+        }, utxo.network);
+        expect(response).toMatchObject({
+          chainId: `0x${utxo.network.chainId.toString(16)}`,
+          networkVersion: utxo.network.chainId,
+          isBitcoinBased: true,
+          network: utxo.network,
+        });
+        observation.controlledVaultChange = {
+          operation: 'wallet.setActiveNetwork',
+          sourceDocumentUrl: wallet!.page.url(),
+          source,
+          target: utxo.network,
+          response,
+        };
         const before = await selection();
+        expect(before.network).toEqual({
+          kind: utxo.network.kind,
+          chainId: utxo.network.chainId,
+        });
         expect(before.network.kind).toBe('syscoin');
+        expect(before.active).toEqual(utxo.active);
         expect(before.active.id).toBe(1);
+        expect(before.active.address).not.toBe(target);
+        expect(before.switching).toBe(false);
+        expect(popup.isClosed()).toBe(false);
+        await expect(switchAccount).toBeEnabled();
+        expect((await rpcObservation(dapp, id)).settled).not.toBe(true);
         observation.beforeRejectedApproval = before;
         await capture('stale-displayed-account', popup);
         for (let attempt = 0; attempt < 2; attempt++) {

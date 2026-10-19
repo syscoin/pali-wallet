@@ -16,11 +16,13 @@ import { RootState } from 'state/store';
 import { selectActiveAccount } from 'state/vault/selectors';
 import {
   ISmartAccountMetadata,
+  KeyringAccountType,
   SmartAccountInstalledModule,
 } from 'types/network';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { isHexString } from 'utils/ethersV6Compat';
 import { getAddress, isAddress } from 'utils/ethersV6Compat';
+import { IEvmTransactionContext } from 'utils/evmTransactionContext';
 import {
   encodeInstallValidatorModuleCall,
   encodeRotateValidatorModuleCall,
@@ -58,6 +60,12 @@ export const SmartAccountModuleConsent = () => {
     module?: ModuleConsentRequest;
   };
   const activeAccount = useSelector(selectActiveAccount);
+  const activeAccountMeta = useSelector(
+    (state: RootState) => state.vault.activeAccount
+  );
+  const activeSlip44 = useSelector(
+    (state: RootState) => state.vaultGlobal.activeSlip44
+  );
   const accounts = useSelector((state: RootState) => state.vault.accounts);
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
@@ -89,7 +97,7 @@ export const SmartAccountModuleConsent = () => {
     useState<CustomValidatorPreflightResult | null>(null);
   const [checkedScope, setCheckedScope] = useState<string | null>(null);
   const [acknowledged, setAcknowledged] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [loadingScope, setLoadingScope] = useState<object | null>(null);
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -107,6 +115,10 @@ export const SmartAccountModuleConsent = () => {
     account?.id,
     account?.address,
     account?.smartAccount?.chainId,
+    activeAccountMeta.id,
+    activeAccountMeta.type,
+    activeAccount?.address,
+    activeSlip44,
     activeNetwork.kind,
     activeNetwork.chainId,
     activeNetwork.url,
@@ -117,6 +129,23 @@ export const SmartAccountModuleConsent = () => {
     initData,
     request.name,
   ]);
+  // Returning to the same selection must not revive an older approval callback.
+  const scope = useMemo(() => ({ key: scopeKey }), [scopeKey]);
+  const currentScope = useRef(scope);
+  currentScope.current = scope;
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const isCurrentScope = useCallback(
+    (candidate: object) =>
+      mounted.current && currentScope.current === candidate,
+    []
+  );
+  const loading = loadingScope === scope;
   const [metadataState, setMetadataState] = useState<{
     scopeKey: string;
     value: ISmartAccountMetadata | null;
@@ -135,16 +164,27 @@ export const SmartAccountModuleConsent = () => {
       account.smartAccount?.chainId === activeNetwork.chainId
   );
 
-  const refreshMetadata = useCallback(async () => {
-    if (!account?.isSmartAccount) return null;
-    const hydrated = (await controllerEmitter(
-      ['wallet', 'hydrateSmartAccount'],
-      [account.id],
-      300000
-    )) as ISmartAccountMetadata;
-    setMetadataState({ scopeKey, value: hydrated });
-    return hydrated;
-  }, [account?.id, account?.isSmartAccount, controllerEmitter, scopeKey]);
+  const refreshMetadata = useCallback(
+    async (expectedContext: IEvmTransactionContext) => {
+      if (!account?.isSmartAccount || !isCurrentScope(scope)) return null;
+      const hydrated = (await controllerEmitter(
+        ['wallet', 'hydrateSmartAccount'],
+        [account.id, expectedContext],
+        300000
+      )) as ISmartAccountMetadata;
+      if (!isCurrentScope(scope)) return null;
+      setMetadataState({ scopeKey, value: hydrated });
+      return hydrated;
+    },
+    [
+      account?.id,
+      account?.isSmartAccount,
+      controllerEmitter,
+      isCurrentScope,
+      scope,
+      scopeKey,
+    ]
+  );
 
   const installedModules = metadata?.installedModules || [];
   const targetModule = installedModules.find((module) =>
@@ -259,6 +299,7 @@ export const SmartAccountModuleConsent = () => {
     !staticError &&
     checkedScope === scopeKey &&
     !submissionConfirmed.current &&
+    !approvalInFlight.current &&
     !checking &&
     !loading &&
     (action === 'uninstall'
@@ -269,15 +310,54 @@ export const SmartAccountModuleConsent = () => {
     if (
       !canConfirm ||
       approvalInFlight.current ||
+      !isCurrentScope(scope) ||
       !account?.address ||
       !moduleAddress ||
       !metadata
     )
       return;
     approvalInFlight.current = true;
-    setLoading(true);
+    setLoadingScope(scope);
     setError(null);
+    let acknowledgedSubmission = false;
+    const finishSuccess = (close: boolean) => {
+      dispatchBackgroundEvent(`${eventName}.${host}`, {
+        action,
+        address: moduleAddress,
+        success: true,
+      });
+      if (close && isCurrentScope(scope)) window.close();
+    };
     try {
+      const sessionGeneration = await controllerEmitter(
+        ['wallet', 'getWalletSessionGeneration'],
+        []
+      );
+      const assertCurrent = () => {
+        if (!isCurrentScope(scope))
+          throw new Error('PALI_TRANSACTION_CONTEXT_CHANGED');
+      };
+      assertCurrent();
+      if (
+        activeAccountMeta.id !== account.id ||
+        activeAccountMeta.type !== KeyringAccountType.SmartAccount ||
+        typeof sessionGeneration !== 'number' ||
+        !Number.isSafeInteger(sessionGeneration) ||
+        sessionGeneration < 0 ||
+        typeof activeSlip44 !== 'number'
+      )
+        throw new Error('PALI_TRANSACTION_CONTEXT_CHANGED');
+      const expectedContext: IEvmTransactionContext = {
+        account: {
+          address: account.address,
+          id: account.id,
+          type: KeyringAccountType.SmartAccount,
+        },
+        chainId: activeNetwork.chainId,
+        rpcUrl: activeNetwork.url,
+        slip44: activeSlip44,
+        sessionGeneration,
+      };
       if (!smartAccountMatchesNetwork) {
         setError(
           t('smartAccountHub.wrongNetwork', {
@@ -311,6 +391,9 @@ export const SmartAccountModuleConsent = () => {
         accountId: account.id,
         authenticatorContexts,
         controllerEmitter,
+        expectedContext,
+        onBeforeSubmit: async () => assertCurrent(),
+        onPrepared: assertCurrent,
         executions: [
           {
             data:
@@ -335,10 +418,26 @@ export const SmartAccountModuleConsent = () => {
         ],
         skipRapidPolling: true,
         smartAccount: metadata,
+        trackLocalSubmission: true,
         useCachedMetadata: true,
         waitForConfirmation: true,
       });
+      acknowledgedSubmission = true;
       submissionConfirmed.current = true;
+      // Keep the acknowledged result, but never apply its metadata to another
+      // identity or close a replacement view after an account/session change.
+      if (!isCurrentScope(scope)) {
+        finishSuccess(false);
+        return;
+      }
+      const currentGeneration = await controllerEmitter(
+        ['wallet', 'getWalletSessionGeneration'],
+        []
+      );
+      if (!isCurrentScope(scope) || currentGeneration !== sessionGeneration) {
+        finishSuccess(false);
+        return;
+      }
 
       // Keep the durable custom-module records in sync with on-chain state.
       if (action === 'install') {
@@ -347,6 +446,7 @@ export const SmartAccountModuleConsent = () => {
           [
             {
               accountId: account.id,
+              expectedContext,
               record: {
                 address: moduleAddress,
                 compositeCompatible: preflight?.compositeCompatible === true,
@@ -363,20 +463,23 @@ export const SmartAccountModuleConsent = () => {
       } else if (targetModule?.id === 'custom') {
         await controllerEmitter(
           ['wallet', 'removeSmartAccountCustomModule'],
-          [{ accountId: account.id, address: moduleAddress }],
+          [{ accountId: account.id, address: moduleAddress, expectedContext }],
           30000
         );
       }
 
-      await refreshMetadata();
-
-      dispatchBackgroundEvent(`${eventName}.${host}`, {
-        action,
-        address: moduleAddress,
-        success: true,
-      });
-      window.close();
+      await refreshMetadata(expectedContext);
+      finishSuccess(true);
     } catch (err: any) {
+      if (
+        acknowledgedSubmission &&
+        (!isCurrentScope(scope) ||
+          err?.message === 'PALI_TRANSACTION_CONTEXT_CHANGED')
+      ) {
+        finishSuccess(false);
+        return;
+      }
+      if (!isCurrentScope(scope)) return;
       const wasHandled = handleWalletLockedError(err);
       if (!wasHandled) {
         setError(
@@ -396,7 +499,8 @@ export const SmartAccountModuleConsent = () => {
       }
     } finally {
       approvalInFlight.current = false;
-      setLoading(false);
+      if (mounted.current)
+        setLoadingScope((current) => (current === scope ? null : current));
     }
   }, [
     account?.address,
@@ -407,11 +511,15 @@ export const SmartAccountModuleConsent = () => {
     activeValidator?.address,
     activeValidator?.data,
     activeNetwork.chainId,
+    activeNetwork.url,
+    activeAccountMeta,
+    activeSlip44,
     controllerEmitter,
     eventName,
     handleWalletLockedError,
     host,
     initData,
+    isCurrentScope,
     isActiveValidator,
     isActiveCompositeChild,
     metadata,
@@ -419,6 +527,7 @@ export const SmartAccountModuleConsent = () => {
     preflight,
     refreshMetadata,
     request.name,
+    scope,
     t,
     targetModule?.id,
     targetModuleIsValidator,

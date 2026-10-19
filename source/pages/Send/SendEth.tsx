@@ -53,6 +53,21 @@ import {
   useSendPreparationGuard,
 } from './useSendDraftWriter';
 
+const getExactNftBalance = (token: {
+  balance: number;
+  rawBalance?: string;
+}): string | null => {
+  if (
+    (token.rawBalance === undefined || token.rawBalance === null) &&
+    (!Number.isSafeInteger(token.balance) || token.balance < 0)
+  )
+    return null;
+  const value = token.rawBalance ?? String(token.balance);
+  return typeof value === 'string' && /^\d+$/.test(value)
+    ? BigNumber.from(value).toString()
+    : null;
+};
+
 export const SendEth = () => {
   const scopeKey = useSelector(() =>
     JSON.stringify(getWalletNavigationScope())
@@ -111,7 +126,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
 
   // NFT-related state
   const [nftTokenIds, setNftTokenIds] = useState<
-    { balance: number; tokenId: string }[]
+    { balance: number; rawBalance?: string; tokenId: string }[]
   >([]);
   const [isLoadingNftTokenIds, setIsLoadingNftTokenIds] = useState(false);
   const [selectedNftTokenId, setSelectedNftTokenId] = useState<string | null>(
@@ -119,7 +134,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
   );
   const [isVerifyingTokenId, setIsVerifyingTokenId] = useState(false);
   const [verifiedTokenBalance, setVerifiedTokenBalance] = useState<
-    number | null
+    string | null
   >(null);
   const [verificationError, setVerificationError] = useState<string | null>(
     null
@@ -273,17 +288,25 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
 
     if (
       refreshedAsset &&
-      Number(refreshedAsset.balance) !== Number(selectedAsset.balance)
+      (String(refreshedAsset.balance) !== String(selectedAsset.balance) ||
+        refreshedAsset.rawBalance !== selectedAsset.rawBalance)
     ) {
       setSelectedAsset(refreshedAsset);
+      if (refreshedAsset.isNft && refreshedAsset.tokenStandard === 'ERC-1155') {
+        // A newer balance read supersedes any in-flight ownership lookup.
+        beginNftLookup();
+        setVerifiedTokenBalance(getExactNftBalance(refreshedAsset));
+      }
     }
   }, [
     activeAccountAssets?.ethereum,
     selectedAsset?.balance,
+    selectedAsset?.rawBalance,
     selectedAsset?.chainId,
     selectedAsset?.contractAddress,
     selectedAsset?.tokenId,
     activeNetwork.chainId,
+    beginNftLookup,
   ]);
 
   const draftState = useMemo(
@@ -511,7 +534,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
             form.setFieldValue('nftTokenId', getAsset.tokenId);
             form.setFieldValue('amount', '1');
             // Set the balance from the stored token (already specific to this tokenId)
-            setVerifiedTokenBalance(getAsset.balance);
+            setVerifiedTokenBalance(getExactNftBalance(getAsset));
           } else {
             // ERC-721 flow - enumerate token IDs
             setIsLoadingNftTokenIds(true);
@@ -732,6 +755,15 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
         }`;
       }
 
+      if (selectedAsset.tokenStandard === 'ERC-1155') {
+        const balance =
+          verifiedTokenBalance ?? getExactNftBalance(selectedAsset);
+        if (balance !== null)
+          return `${formatFullPrecisionBalance(balance, 4)} ${
+            selectedAsset.tokenSymbol
+          }`;
+      }
+
       // For NFTs and unverified tokens, use stored balance
       return getAssetBalance(selectedAsset, false);
     }
@@ -847,29 +879,35 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
             : 'verifyERC1155Ownership',
         ],
         [selectedAsset.contractAddress, activeAccount.address, [tokenId]]
-      )) as { balance: number; tokenId: string; verified: boolean }[];
+      )) as {
+        balance: number;
+        rawBalance?: string;
+        tokenId: string;
+        verified: boolean;
+      }[];
 
       if (!current()) return;
       if (result && result.length > 0) {
         const tokenInfo = result[0];
-        if (tokenInfo.verified && tokenInfo.balance > 0) {
-          setVerifiedTokenBalance(tokenInfo.balance);
+        const balance = getExactNftBalance(tokenInfo);
+        if (tokenInfo.verified && balance !== null && balance !== '0') {
+          setVerifiedTokenBalance(balance);
           setVerificationError(null);
         } else {
-          setVerifiedTokenBalance(0);
+          setVerifiedTokenBalance('0');
           setVerificationError(
-            tokenInfo.balance === 0
+            balance === '0'
               ? t('send.youDontOwnThisToken')
               : t('send.tokenVerificationFailed')
           );
         }
       } else {
-        setVerifiedTokenBalance(0);
+        setVerifiedTokenBalance('0');
         setVerificationError(t('send.tokenNotFound'));
       }
     } catch {
       if (!current()) return;
-      setVerifiedTokenBalance(0);
+      setVerifiedTokenBalance('0');
       setVerificationError(t('send.verificationFailed'));
     } finally {
       if (current()) setIsVerifyingTokenId(false);
@@ -1115,7 +1153,12 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
           <p className="text-brand-gray200 text-xs">
             {t('components.yourBalance')}
           </p>
-          <p className="text-white text-xs font-semibold">{finalBalance()}</p>
+          <p
+            className="text-white text-xs font-semibold"
+            title={verifiedTokenBalance || undefined}
+          >
+            {finalBalance()}
+          </p>
           {/* ERC-20 verification indicators */}
           {selectedAsset && !selectedAsset.isNft && isVerifyingERC20 && (
             <span className="text-brand-royalblue text-xs ml-1">🔄</span>
@@ -1522,31 +1565,17 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                           return Promise.resolve();
                         }
 
-                        // Convert to BigNumber for precise validation
-                        let valueBN: BigNumber;
-                        try {
-                          // Parse the input value to wei for comparison
-                          valueBN = parseEther(String(value));
-                        } catch (e) {
-                          // Invalid number format
-                          return Promise.reject('');
-                        }
-
-                        // Check if it's positive
-                        if (valueBN.lte(0)) {
-                          return Promise.reject('');
-                        }
-
                         const isERC1155 =
                           selectedAsset?.isNft &&
                           selectedAsset?.tokenStandard === 'ERC-1155';
 
                         // For ERC-1155 NFTs, validate against verified balance
                         if (isERC1155) {
-                          const numValue = parseFloat(value);
-
-                          // Must be a positive integer (check the original float value)
-                          if (!Number.isInteger(numValue) || numValue <= 0) {
+                          const quantity = String(value);
+                          if (
+                            !/^\d+$/.test(quantity) ||
+                            BigNumber.from(quantity).lte(0)
+                          ) {
                             return Promise.reject(
                               t('send.amountMustBePositiveInteger')
                             );
@@ -1559,7 +1588,9 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                             );
                           }
 
-                          if (numValue > verifiedTokenBalance) {
+                          if (
+                            BigNumber.from(quantity).gt(verifiedTokenBalance)
+                          ) {
                             return Promise.reject(
                               t('send.youOnlyOwn', {
                                 amount: verifiedTokenBalance,
@@ -1569,6 +1600,15 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
 
                           return Promise.resolve();
                         }
+
+                        // Native currency uses its 18-decimal denomination.
+                        let valueBN: BigNumber;
+                        try {
+                          valueBN = parseEther(String(value));
+                        } catch {
+                          return Promise.reject('');
+                        }
+                        if (valueBN.lte(0)) return Promise.reject('');
 
                         // For native currency, use BigNumber comparison
                         try {
@@ -1687,7 +1727,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                       selectedAsset?.isNft &&
                       selectedAsset?.tokenStandard === 'ERC-1155'
                         ? verifiedTokenBalance !== null &&
-                          verifiedTokenBalance > 1
+                          BigNumber.from(verifiedTokenBalance).gt(1)
                           ? `Amount (1-${verifiedTokenBalance})`
                           : t('send.amount')
                         : t('send.amount')
@@ -1793,7 +1833,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                         beginNftLookup();
                         setSelectedNftTokenId(nft.tokenId);
                         form.setFieldValue('nftTokenId', nft.tokenId);
-                        setVerifiedTokenBalance(nft.balance); // Already verified from enumeration
+                        setVerifiedTokenBalance(getExactNftBalance(nft));
                         setVerificationError(null);
                       }}
                       className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
@@ -1887,7 +1927,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                         ❌ {verificationError}
                       </p>
                     ) : verifiedTokenBalance !== null ? (
-                      verifiedTokenBalance > 0 ? (
+                      verifiedTokenBalance !== '0' ? (
                         <p className="text-xs text-green-400 text-center">
                           ✅ {t('send.youOwnThisToken')}
                         </p>

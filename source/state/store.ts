@@ -24,7 +24,7 @@ import {
   savePasskeyCredentialProfileState,
   walletPersistenceGate,
 } from './paliStorage';
-import price from './price';
+import price, { setPrices } from './price';
 import { IPriceState } from './price/types';
 import spamFilter from './spamFilter';
 import { IPersistState } from './types';
@@ -268,6 +268,39 @@ export function persistAdvancedSetting(
     // A queued background save must observe the committed value; unrelated
     // Redux updates received during the write must also remain intact.
     store.dispatch(setAdvancedSettings({ advancedProperty, value }));
+  });
+}
+
+/** Keep an explicitly saved currency private until its main-state write commits. */
+export function persistFiatCurrency(
+  currency: string,
+  isCurrent: () => boolean
+): Promise<void> {
+  return walletPersistenceMutex.runExclusive(async () => {
+    const assertCurrent = () => {
+      assertWalletPersistenceAllowed();
+      if (!isCurrent())
+        throw new Error('Wallet state changed before saving currency');
+    };
+    assertCurrent();
+    const state = store.getState();
+    const action = setPrices({ asset: currency, price: 0 });
+    const mainState = {
+      ...getMainStateForStorage(state),
+      price: price(state.price, action),
+    };
+    await chromeStorage.setItem('state', mainState);
+    lastPersistedState = mainState;
+    try {
+      assertCurrent();
+    } catch (error) {
+      assertWalletPersistenceAllowed();
+      const currentState = getMainStateForStorage(store.getState());
+      await chromeStorage.setItem('state', currentState);
+      lastPersistedState = currentState;
+      throw error;
+    }
+    store.dispatch(action);
   });
 }
 

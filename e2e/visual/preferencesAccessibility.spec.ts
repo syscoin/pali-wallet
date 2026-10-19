@@ -256,7 +256,9 @@ test('offline onboarding and preferences remain keyboard accessible with localiz
         if (
           message?.type === 'CONTROLLER_ACTION' &&
           message.data?.methods?.[0] === 'wallet' &&
-          ['setFiat', 'setAdvancedSettings'].includes(message.data.methods[1])
+          ['saveFiatCurrency', 'setAdvancedSettings'].includes(
+            message.data.methods[1]
+          )
         ) {
           const response = { error: 'Synthetic preference failure' };
           if (typeof callback === 'function') {
@@ -544,7 +546,37 @@ test('open preference menu options stay clickable above the sticky action at sho
       ).not.toBeNull();
       expect.soft(overlap!.reachable, `${label}: ${overlap!.label}`).toBe(true);
       if (overlap!.reachable) {
-        await page.mouse.click(overlap!.x, overlap!.y);
+        await page.mouse.move(overlap!.x, overlap!.y);
+        await page.mouse.down();
+        const heldClick = await page.evaluate(
+          async ({ x, y }) => {
+            await new Promise<void>((resolve) =>
+              requestAnimationFrame(() =>
+                requestAnimationFrame(() => resolve())
+              )
+            );
+            return {
+              target: document
+                .elementFromPoint(x, y)
+                ?.closest('[role=menuitem]')
+                ?.getAttribute('aria-label'),
+              focusRole: document.activeElement?.getAttribute('role'),
+              scrollTop: document.querySelector(
+                '[data-navigation-scroll="wallet-layout"]'
+              )?.scrollTop,
+            };
+          },
+          { x: overlap!.x, y: overlap!.y }
+        );
+        await page.mouse.up();
+        await info.attach(`${label}-held-click`, {
+          body: JSON.stringify(heldClick, null, 2),
+          contentType: 'application/json',
+        });
+        expect(heldClick.target, 'focus must not move the pointer target').toBe(
+          overlap!.label
+        );
+        expect(heldClick.focusRole).toBe('menu');
         await expect(page.getByRole('menu')).toHaveCount(0);
         await expect(language).toContainText(overlap!.label.split(' ')[0]);
         const save = page.getByRole('button', {

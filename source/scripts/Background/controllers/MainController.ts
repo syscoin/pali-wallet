@@ -52,6 +52,7 @@ import {
   persistAccountLabel,
   persistAdvancedSetting,
   persistCommittedWalletState,
+  persistFiatCurrency,
   persistHasEthProperty,
   restoreSourceVaultAfterUncommittedSwitch,
   saveMainState,
@@ -2068,17 +2069,31 @@ class MainController {
 
   // Fiat price fetching functionality moved from ControllerUtils
 
-  public async setFiat(currency?: string): Promise<void> {
+  public saveFiatCurrency(currency: string): Promise<void> {
+    return this.setFiat(currency, true);
+  }
+
+  public async setFiat(
+    currency?: string,
+    savePreference = false
+  ): Promise<void> {
     const generation = this.fiatQuoteGeneration;
+    const walletGeneration = this.walletStateGeneration;
     // Use AsyncMutex for cross-context synchronization
     // This ensures only one price update runs at a time across all contexts
     return fiatPriceMutex.runExclusive(async () => {
+      if (savePreference && currency) {
+        await persistFiatCurrency(
+          currency,
+          () => walletGeneration === this.walletStateGeneration
+        );
+      }
       if (generation !== this.fiatQuoteGeneration) return;
       if (!currency) {
         const storeCurrency = store.getState().price.fiat.asset;
         currency = storeCurrency || 'usd';
       } else if (currency !== store.getState().price.fiat.asset) {
-        // Currency is a global preference; never relabel the previous quote.
+        // Quote-only callers still clear any amount in the previous units.
         store.dispatch(setPrices({ asset: currency, price: 0 }));
       }
 
@@ -4030,6 +4045,7 @@ class MainController {
   }
 
   public async addCustomRpc(network: INetwork): Promise<INetwork> {
+    const generation = this.walletStateGeneration;
     if (this.isRemovingNetwork) {
       throw new Error(NETWORK_REMOVAL_IN_PROGRESS_ERROR);
     }
@@ -4100,6 +4116,9 @@ class MainController {
       }
     }
 
+    if (generation !== this.walletStateGeneration) {
+      throw new Error('Wallet state changed before adding network');
+    }
     // CoinGecko discovery may have yielded while a removal acquired ownership.
     if (this.isRemovingNetwork) {
       throw new Error(NETWORK_REMOVAL_IN_PROGRESS_ERROR);

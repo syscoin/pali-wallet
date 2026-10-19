@@ -87,7 +87,10 @@ it('keeps the quoted amount and flag in their actual currency until a matching s
   expect(card).toHaveTextContent('settings.saveToUpdateRate');
   await user.click(screen.getByRole('button', { name: 'buttons.save' }));
   expect(card).toHaveTextContent('$10 USD');
-  expect(mockEmitter).toHaveBeenCalledWith(['wallet', 'setFiat'], ['eur']);
+  expect(mockEmitter).toHaveBeenCalledWith(
+    ['wallet', 'saveFiatCurrency'],
+    ['eur']
+  );
   mockState.price.fiat = { asset: 'eur', price: 2 };
   view.rerender(<Currency />);
   const updatedCard = screen.getByText('components.currentBalance')

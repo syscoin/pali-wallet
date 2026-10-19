@@ -56,6 +56,7 @@ describe('custom-network registration concurrency', () => {
       return action;
     });
     wallet = Object.create(MainController.prototype);
+    wallet.walletStateGeneration = 0;
     wallet.isRemovingNetwork = false;
     wallet.saveWalletState = jest.fn().mockResolvedValue(undefined);
     wallet.evmAssetsController = {
@@ -64,6 +65,36 @@ describe('custom-network registration concurrency', () => {
   });
 
   afterEach(() => jest.restoreAllMocks());
+
+  it.each(['success', 'failure'])(
+    'rejects pre-reset metadata discovery after %s without modifying the new wallet',
+    async (result) => {
+      const pending = deferred();
+      wallet.evmAssetsController.detectCoinGeckoIds.mockReturnValueOnce(
+        pending.promise
+      );
+      const adding = wallet.addCustomRpc(network);
+      const rejected = expect(adding).rejects.toThrow('Wallet state changed');
+      wallet.walletStateGeneration += 1;
+      const replacement = {
+        ...network,
+        chainId: 31338,
+        label: 'Replacement wallet network',
+      };
+      state.vaultGlobal.networks = {
+        ethereum: { [replacement.chainId]: replacement },
+        syscoin: {},
+      };
+      if (result === 'success') pending.resolve({ coingeckoId: 'obsolete' });
+      else pending.reject(new Error('Metadata unavailable'));
+      await rejected;
+      expect(state.vaultGlobal.networks.ethereum).toEqual({
+        [replacement.chainId]: replacement,
+      });
+      expect(store.dispatch).not.toHaveBeenCalled();
+      expect(wallet.saveWalletState).not.toHaveBeenCalled();
+    }
+  );
 
   it('saves a healthy add and rejects a later duplicate before discovery', async () => {
     await expect(wallet.addCustomRpc(network)).resolves.toMatchObject(network);

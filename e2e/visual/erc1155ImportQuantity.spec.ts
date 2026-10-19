@@ -23,7 +23,7 @@ const TOKEN_ID = '7';
 const QUANTITY =
   '115792089237316195423570985008687907853269984665640564039457584007913129639935';
 
-test('manual ERC1155 import previews the verified quantity instead of its capped numeric balance', async ({}, info) => {
+test('manual ERC1155 import and Send MAX retain the exact verified quantity', async ({}, info) => {
   test.setTimeout(120_000);
   expect(process.env.PALI_TEST_DAPP_REVISION).toMatch(/^[a-f0-9]{40}$/);
   expect(path.isAbsolute(process.env.PALI_TEST_DAPP_EXTENSION_PATH || '')).toBe(
@@ -227,6 +227,63 @@ test('manual ERC1155 import previews the verified quantity instead of its capped
             tokenIds: [TOKEN_ID],
             balances: [QUANTITY],
           });
+          expect([...deniedWrites, ...routes!.deniedWrites]).toEqual([]);
+        } finally {
+          if (!page.isClosed()) await capture(page);
+        }
+      }
+    );
+    await wallet.step(
+      'import the verified token and preserve its exact quantity in Send MAX',
+      async (capture) => {
+        try {
+          const importToken = page.getByRole('button', {
+            name: `Import ${SYMBOL} token`,
+            exact: true,
+          });
+          await importToken.click();
+          await expect(importToken).toBeDisabled();
+          await wallet!.gotoRoute('#/send/eth');
+          await page.getByRole('button', { name: 'TSYS', exact: true }).click();
+          await page
+            .locator('button[role="menuitem"]')
+            .filter({ hasText: SYMBOL })
+            .click();
+          await expect(
+            page.getByRole('button', { name: SYMBOL, exact: true })
+          ).toBeVisible();
+          await page.getByRole('button', { name: 'MAX', exact: true }).click();
+          await expect(page.locator('#with-max-button')).toHaveValue(QUANTITY);
+          await expect(page.locator('#with-max-button')).toBeVisible();
+          for (const viewport of [
+            { width: 400, height: 620 },
+            { width: 320, height: 360 },
+          ]) {
+            await page.setViewportSize(viewport);
+            const balanceRow = page
+              .getByText(en.components.yourBalance, { exact: true })
+              .locator('..');
+            await expect
+              .poll(() =>
+                balanceRow.evaluate((row) =>
+                  [...row.querySelectorAll('p')].every((element) => {
+                    const bounds = element.getBoundingClientRect();
+                    return bounds.left >= 0 && bounds.right <= innerWidth;
+                  })
+                )
+              )
+              .toBe(true);
+            await expect(page.locator('#with-max-button')).toHaveValue(
+              QUANTITY
+            );
+            await info.attach(
+              `exact-max-${viewport.width}x${viewport.height}`,
+              {
+                body: await page.screenshot({ animations: 'disabled' }),
+                contentType: 'image/png',
+              }
+            );
+          }
           expect([...deniedWrites, ...routes!.deniedWrites]).toEqual([]);
         } finally {
           if (!page.isClosed()) await capture(page);

@@ -220,6 +220,7 @@ const Languages = () => {
                       <button
                         type="button"
                         aria-label={`${lang.name} ${lang.nativeName}`}
+                        onMouseDown={(event) => event.preventDefault()}
                         onClick={() => handleLanguageChange(lang.value)}
                         className={`group flex gap-x-3 items-center justify-start px-4 py-3 w-full hover:text-brand-royalbluemedium text-brand-white font-poppins text-sm border-0 border-b border-dashed border-border-default transition-all duration-200 hover:bg-brand-blue500 hover:bg-opacity-20 rounded-lg ${
                           selectedLang === lang.value

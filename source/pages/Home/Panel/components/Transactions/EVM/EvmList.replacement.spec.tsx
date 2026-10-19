@@ -165,6 +165,32 @@ beforeEach(() => {
   mockEmitter.mockReset();
 });
 
+it.each([
+  // eslint-disable-next-line camelcase
+  { result: { txreceipt_status: '0', isError: '1' }, success: false },
+  { result: { success: false }, success: false },
+  // eslint-disable-next-line camelcase
+  { result: { txreceipt_status: '1', isError: '0' }, success: true },
+])('only reports a successful settlement as successful: %p', async (test) => {
+  const pending = transaction('7');
+  mockRows = [pending];
+  const view = render(<EvmTransactionsList userTransactions={mockRows} />);
+  expect(await screen.findByText('Pending')).toBeTruthy();
+  expect(mockAlert.success).not.toHaveBeenCalled();
+  mockRows = [
+    { ...pending, blockNumber: 42, confirmations: 1, ...test.result },
+  ];
+  view.rerender(<EvmTransactionsList userTransactions={mockRows} />);
+  expect(
+    await screen.findByText(test.success ? 'Confirmed' : 'Failed')
+  ).toBeTruthy();
+  if (test.success)
+    expect(mockAlert.success).toHaveBeenCalledWith('send.txSuccessfull', {
+      autoClose: 5000,
+    });
+  else expect(mockAlert.success).not.toHaveBeenCalled();
+});
+
 it.each(['{Enter}', ' '])(
   'opens confirmed EVM details with the real keyboard action %s',
   async (key) => {
