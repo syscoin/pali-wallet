@@ -3,7 +3,10 @@ import path from 'path';
 
 import en from '../../source/assets/locales/en.json';
 import { E2E_CONFIG } from '../harness/config';
-import { dismissRejectedApproval } from '../harness/dismissRejectedApproval';
+import {
+  clickClosingPopup,
+  dismissRejectedApproval,
+} from '../harness/dismissRejectedApproval';
 import {
   createIsolatedVaultFixture,
   installIsolatedVaultRoutes,
@@ -152,7 +155,10 @@ test('a connected-account approval cannot select an account id reused by a diffe
           })
           .last();
         await expect(confirm).toBeEnabled();
-        await confirm.click();
+        await clickClosingPopup({
+          click: () => confirm.click(),
+          isClosed: () => popup.isClosed(),
+        });
         await expect
           .poll(
             async () =>
@@ -178,12 +184,16 @@ test('a connected-account approval cannot select an account id reused by a diffe
           target,
         ]);
         const popup = await popupFor(wallet!.context, dapp, id);
-        await popup
-          .getByRole('button', {
-            name: en.connections.switchAccount,
-            exact: true,
-          })
-          .click();
+        await clickClosingPopup({
+          click: () =>
+            popup
+              .getByRole('button', {
+                name: en.connections.switchAccount,
+                exact: true,
+              })
+              .click(),
+          isClosed: () => popup.isClosed(),
+        });
         await expect.poll(() => popup.isClosed()).toBe(true);
         await expect
           .poll(selection)
