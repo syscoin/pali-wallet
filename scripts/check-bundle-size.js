@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /* eslint-disable @typescript-eslint/no-var-requires */
-// Run after a production build: node scripts/check-bundle-size.js [build/chrome]
+// Run against an unpacked production ZIP: node scripts/check-bundle-size.js <directory>
 const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
