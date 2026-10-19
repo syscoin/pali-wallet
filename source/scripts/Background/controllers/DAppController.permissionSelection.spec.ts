@@ -85,15 +85,21 @@ it('grants a live selected identity and tolerates unrelated balance updates', as
 
 it.each(['missing', 'wrong-family', 'wrong-smart-chain', 'wrong-utxo-slip44'])(
   'refuses %s before changing an existing permission',
-  (change) => {
-    controller.connect({
-      host,
-      accountId: 0,
-      accountType: KeyringAccountType.HDAccount,
-      chain: INetworkType.Ethereum,
-      chainId: 1,
-      date: 1,
-    });
+  async (change) => {
+    await controller.connect(
+      {
+        host,
+        accountId: 0,
+        accountType: KeyringAccountType.HDAccount,
+        chain: INetworkType.Ethereum,
+        chainId: 1,
+        date: 1,
+      },
+      {
+        address: mockState.vault.accounts.HDAccount[0].address,
+        network: mockState.vault.activeNetwork,
+      }
+    );
     const previous = controller.get(host);
     if (change === 'missing') delete mockState.vault.accounts.HDAccount[1];
     if (change === 'wrong-family')
@@ -205,14 +211,20 @@ it('waits for strict persistence when revoking an unpublished grant', async () =
 });
 
 it('queues canceled-grant revocation after an older revocation in flight', async () => {
-  controller.connect({
-    host,
-    accountId: 0,
-    accountType: KeyringAccountType.HDAccount,
-    chain: INetworkType.Ethereum,
-    chainId: 1,
-    date: 1,
-  });
+  await controller.connect(
+    {
+      host,
+      accountId: 0,
+      accountType: KeyringAccountType.HDAccount,
+      chain: INetworkType.Ethereum,
+      chainId: 1,
+      date: 1,
+    },
+    {
+      address: mockState.vault.accounts.HDAccount[0].address,
+      network: mockState.vault.activeNetwork,
+    }
+  );
   const options = { allowAlreadyDisconnected: true, propagateErrors: true };
   const finishFirst = holdRevocation();
   const first = controller.disconnect(host, true, options);

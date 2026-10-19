@@ -43,7 +43,6 @@ import {
   getTokenTypeBadgeColor,
   navigateWithContext,
   getWalletNavigationScope,
-  truncateToDecimals,
 } from 'utils/index';
 import { getDefaultGasLimit } from 'utils/transactionUtils';
 import { isValidEthereumAddress } from 'utils/validations';
@@ -128,9 +127,13 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
 
   // ERC-20 verification state
   const [isVerifyingERC20, setIsVerifyingERC20] = useState(false);
-  const [verifiedERC20Balance, setVerifiedERC20Balance] = useState<
-    number | null
-  >(null);
+  const [verifiedERC20Balance, setVerifiedERC20Balance] = useState<{
+    atomic: string;
+    decimals: number;
+    formatted: string;
+  } | null>(null);
+  const selectedTokenDecimals =
+    verifiedERC20Balance?.decimals ?? selectedAsset?.decimals ?? 18;
 
   const [form] = Form.useForm();
   // Receiver suggestions / ENS state
@@ -669,6 +672,9 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
               token: selectedAsset
                 ? {
                     ...selectedAsset,
+                    ...(!selectedAsset.isNft && verifiedERC20Balance
+                      ? { decimals: verifiedERC20Balance.decimals }
+                      : {}),
                     symbol: finalSymbolToNextStep,
                     tokenId:
                       selectedAsset.tokenStandard === 'ERC-1155'
@@ -709,6 +715,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
       isCurrentForm,
       incompatibleSmartAddresses,
       ensNameToAddress,
+      verifiedERC20Balance,
     ]
   );
 
@@ -717,7 +724,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
       // For ERC-20 tokens, prefer verified balance if available
       if (!selectedAsset.isNft && verifiedERC20Balance !== null) {
         const displayBalance = formatFullPrecisionBalance(
-          verifiedERC20Balance,
+          verifiedERC20Balance.formatted,
           4
         );
         return `${displayBalance} ${
@@ -795,22 +802,9 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
         // For ERC-20 tokens, REQUIRE verified balance
         if (verifiedERC20Balance === null) return; // Don't proceed if not verified
 
-        // Format to avoid scientific notation for very small numbers
-        const balance = verifiedERC20Balance;
-        // Use a high precision toFixed to avoid scientific notation
-        // Then use parseFloat and toString to remove trailing zeros
-        // But if the result would be in scientific notation, keep the fixed format
-        const fixedString = balance.toFixed(18);
-        const parsed = parseFloat(fixedString);
-        const parsedString = parsed.toString();
-
-        // If parsing resulted in scientific notation, use the fixed string
-        if (parsedString.includes('e') || parsedString.includes('E')) {
-          // Remove only trailing zeros after the last non-zero digit
-          fullBalance = fixedString.replace(/0+$/, '').replace(/\.$/, '');
-        } else {
-          fullBalance = parsedString;
-        }
+        // Keep the verified atomic balance exact, including dust and uint256s
+        // beyond JavaScript's integer precision. Fees use the native currency.
+        fullBalance = verifiedERC20Balance.formatted;
       } else {
         // For ERC-721, this shouldn't be called (amount field is hidden)
         return;
@@ -832,7 +826,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
     formValuesRef.current = { ...formValuesRef.current, amount: fullBalance };
 
     // Force validation to run after setting the value
-    form.validateFields(['amount']);
+    void form.validateFields(['amount']).catch(() => undefined);
 
     // Save state immediately after MAX is set
     setTimeout(() => {
@@ -931,9 +925,20 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
           [selectedAsset.contractAddress, activeAccount.address]
         )) as { balance: string; decimals: number };
         if (current && result) {
-          setVerifiedERC20Balance(
-            Number(formatUnits(result.balance, result.decimals))
-          );
+          if (
+            typeof result.balance !== 'string' ||
+            !/^\d+$/.test(result.balance) ||
+            !Number.isInteger(result.decimals) ||
+            result.decimals < 0 ||
+            result.decimals > 255
+          )
+            throw new Error('Invalid ERC-20 balance');
+          const atomic = BigNumber.from(result.balance).toString();
+          setVerifiedERC20Balance({
+            atomic,
+            decimals: result.decimals,
+            formatted: formatUnits(atomic, result.decimals).replace(/\.0$/, ''),
+          });
         }
       } catch (error) {
         if (current) {
@@ -1484,6 +1489,44 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                           return Promise.reject('');
                         }
 
+                        // Fungible amounts use the token's verified decimal
+                        // scale, never native ETH's 18-decimal parser or floats.
+                        if (selectedAsset && !selectedAsset.isNft) {
+                          if (verifiedERC20Balance === null) {
+                            return Promise.reject(
+                              t('send.pleaseWaitForBalanceVerification')
+                            );
+                          }
+                          const { atomic, decimals, formatted } =
+                            verifiedERC20Balance;
+                          const valueString = String(value);
+                          const fractional = valueString.split('.')[1] || '';
+                          if (fractional.length > decimals) {
+                            return Promise.reject(
+                              t(
+                                decimals === 0
+                                  ? 'send.amountMustBePositiveInteger'
+                                  : 'send.invalidAmount'
+                              )
+                            );
+                          }
+                          let tokenValue: BigNumber;
+                          try {
+                            tokenValue = parseUnits(valueString, decimals);
+                          } catch {
+                            return Promise.reject(t('send.invalidAmount'));
+                          }
+                          if (tokenValue.lte(0)) return Promise.reject('');
+                          if (tokenValue.gt(atomic)) {
+                            return Promise.reject(
+                              t('send.insufficientFundsVerified', {
+                                balance: formatted,
+                              })
+                            );
+                          }
+                          return Promise.resolve();
+                        }
+
                         // Convert to BigNumber for precise validation
                         let valueBN: BigNumber;
                         try {
@@ -1499,7 +1542,6 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                           return Promise.reject('');
                         }
 
-                        const isToken = !!selectedAsset;
                         const isERC1155 =
                           selectedAsset?.isNft &&
                           selectedAsset?.tokenStandard === 'ERC-1155';
@@ -1528,69 +1570,6 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                                 amount: verifiedTokenBalance,
                               })
                             );
-                          }
-
-                          return Promise.resolve();
-                        }
-
-                        // For regular tokens
-                        if (isToken) {
-                          // Enforce token decimal precision on the raw string input
-                          const decimalsAllowed = Number(
-                            selectedAsset?.decimals ?? 18
-                          );
-                          const valueString = String(value);
-                          if (valueString.includes('.')) {
-                            const fractional = valueString.split('.')[1] || '';
-                            if (
-                              decimalsAllowed === 0 &&
-                              fractional.length > 0
-                            ) {
-                              return Promise.reject(
-                                t('send.amountMustBePositiveInteger')
-                              );
-                            }
-                            if (
-                              decimalsAllowed > 0 &&
-                              fractional.length > decimalsAllowed
-                            ) {
-                              return Promise.reject(t('send.invalidAmount'));
-                            }
-                          }
-                          // REQUIRE verified balance for ERC-20 tokens
-                          if (verifiedERC20Balance === null) {
-                            return Promise.reject(
-                              t('send.pleaseWaitForBalanceVerification')
-                            );
-                          }
-
-                          try {
-                            const tokenBalanceBN = parseUnits(
-                              String(verifiedERC20Balance),
-                              Number(selectedAsset.decimals ?? 18)
-                            );
-                            const tokenValueBN = parseUnits(
-                              String(value),
-                              Number(selectedAsset.decimals ?? 18)
-                            );
-
-                            if (tokenValueBN.gt(tokenBalanceBN)) {
-                              return Promise.reject(
-                                t('send.insufficientFundsVerified', {
-                                  balance: verifiedERC20Balance,
-                                })
-                              );
-                            }
-                          } catch (e) {
-                            // Fallback to simple comparison using verified balance
-                            const numValue = parseFloat(value);
-                            if (numValue > verifiedERC20Balance) {
-                              return Promise.reject(
-                                t('send.insufficientFundsVerified', {
-                                  balance: verifiedERC20Balance,
-                                })
-                              );
-                            }
                           }
 
                           return Promise.resolve();
@@ -1686,7 +1665,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                         ? '1'
                         : selectedAsset &&
                           !selectedAsset.isNft &&
-                          Number(selectedAsset.decimals) === 0
+                          Number(selectedTokenDecimals) === 0
                         ? '1'
                         : 'any'
                     }
@@ -1743,35 +1722,11 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                         setIsMaxSend(false);
                       }
                     }}
-                    onBlur={(e) => {
-                      try {
-                        const raw = String(e?.target?.value ?? '');
-                        if (!raw) {
-                          handleFieldBlur();
-                          return;
-                        }
-                        // Auto-truncate on blur for fungible tokens (ERC-20 only)
-                        if (selectedAsset && !selectedAsset.isNft) {
-                          const decimalsAllowed = Number(
-                            selectedAsset.decimals ?? 18
-                          );
-                          const nextValue: string = truncateToDecimals(
-                            raw,
-                            Math.max(0, decimalsAllowed)
-                          );
-                          if (nextValue !== raw) {
-                            form.setFieldValue('amount', nextValue);
-                            formValuesRef.current = {
-                              ...formValuesRef.current,
-                              amount: nextValue,
-                            };
-                          }
-                        }
-                      } finally {
-                        // Re-run validation and persist blur handling
-                        form.validateFields(['amount']).catch(() => null);
-                        handleFieldBlur();
-                      }
+                    onBlur={() => {
+                      // Keep invalid input visible for correction, rather than
+                      // silently changing the amount the user requested.
+                      form.validateFields(['amount']).catch(() => null);
+                      handleFieldBlur();
                     }}
                   />
                 </Form.Item>

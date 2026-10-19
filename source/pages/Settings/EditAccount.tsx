@@ -10,6 +10,7 @@ import { LockIconSvg } from 'components/Icon/Icon';
 import { Button, Icon, PageActionFooter } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
+import type { AccountLabelEditContext } from 'scripts/Background/controllers/MainController';
 import { HardWallets } from 'scripts/Background/controllers/message-handler/types';
 import { RootState } from 'state/store';
 import { KeyringAccountType } from 'types/network';
@@ -128,10 +129,14 @@ const EditAccountView = () => {
 
     try {
       const accountId = state.id;
+      const expectedContext: AccountLabelEditContext = {
+        account: { address: account.address, xpub: account.xpub },
+        walletScope: JSON.parse(walletScope),
+      };
 
       await controllerEmitter(
         ['wallet', 'editAccountLabel'],
-        [data.label, accountId, accountType]
+        [data.label, accountId, accountType, expectedContext]
       );
 
       if (isCurrent()) {

@@ -247,6 +247,11 @@ export type AccountRemovalContext = {
   slip44: number | null;
 };
 
+export type AccountLabelEditContext = {
+  account: { address: string; xpub?: string };
+  walletScope: IWalletNavigationScope;
+};
+
 // Default slip44 values for fallback cases
 
 const NETWORK_CHANGE_CANCELLED_ERROR = 'Network change cancelled';
@@ -322,6 +327,7 @@ class MainController {
   private authenticationMutex = new AsyncMutex();
   private sentryController: Promise<SentryController> | undefined;
   private ethPropertyMutex = new AsyncMutex();
+  private accountLabelMutex = new AsyncMutex();
 
   // Auto-lock timer management
   private autoLockAlarmName = 'pali_auto_lock_timer';
@@ -4095,21 +4101,66 @@ class MainController {
     return network;
   }
 
-  public editAccountLabel(
+  public async editAccountLabel(
     label: string,
     accountId: number,
-    accountType: KeyringAccountType
+    accountType: KeyringAccountType,
+    expectedContext: AccountLabelEditContext
   ) {
-    store.dispatch(
-      setAccountLabel({
-        label,
-        accountId,
-        accountType,
-      })
-    );
+    const generation = this.walletSessionGeneration;
+    const matchesContext = () => {
+      const { vault } = store.getState();
+      const account = vault.accounts[accountType]?.[accountId];
+      const scope = getWalletNavigationScope();
+      return (
+        generation === this.walletSessionGeneration &&
+        Boolean(expectedContext?.account?.address) &&
+        account?.address === expectedContext.account.address &&
+        account?.xpub === expectedContext.account.xpub &&
+        scope.account === expectedContext.walletScope?.account &&
+        scope.network === expectedContext.walletScope?.network
+      );
+    };
+    const assertCurrent = () => {
+      const { vaultGlobal } = store.getState();
+      if (
+        this.getWalletSetupStatus() ||
+        !this.isUnlocked() ||
+        vaultGlobal.isSwitchingAccount ||
+        vaultGlobal.networkStatus === 'switching' ||
+        vaultGlobal.networkStatus === 'connecting' ||
+        !matchesContext()
+      )
+        throw new Error(
+          'Account context changed. Please save the label again.'
+        );
+    };
+    assertCurrent();
 
-    // Save wallet state after editing account label
-    this.saveWalletState('edit-account-label', true);
+    // Keep rollback ordered with later label edits, including other windows.
+    // A queued edit must revalidate its UI-captured identity at admission.
+    return this.accountLabelMutex.runExclusive(async () => {
+      assertCurrent();
+      const previousLabel =
+        store.getState().vault.accounts[accountType][accountId].label;
+      store.dispatch(setAccountLabel({ label, accountId, accountType }));
+
+      try {
+        await this.saveWalletState('edit-account-label', true, true);
+      } catch (error) {
+        // Failed saves remain retryable without reverting another identity or
+        // a label changed outside this operation while persistence awaited.
+        if (
+          matchesContext() &&
+          store.getState().vault.accounts[accountType]?.[accountId]?.label ===
+            label
+        )
+          store.dispatch(
+            setAccountLabel({ label: previousLabel, accountId, accountType })
+          );
+        throw error;
+      }
+    });
   }
 
   public async removeAccount(

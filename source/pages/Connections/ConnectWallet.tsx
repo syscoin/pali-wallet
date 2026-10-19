@@ -178,17 +178,31 @@ export const ConnectWallet = () => {
       console.error('[ConnectWallet] Selected account is invalid for network');
       return;
     }
+    // Keep the reviewed identity across account selection and its storage work.
+    const expectedContext = {
+      address: selectedAccount.address,
+      xpub: selectedAccount.xpub,
+      network: {
+        kind: activeNetwork.kind,
+        chainId: activeNetwork.chainId,
+        url: activeNetwork.url,
+        slip44: activeNetwork.slip44,
+      },
+    };
 
     setIsConnecting(true);
     try {
       await controllerEmitter(
         ['wallet', 'setAccount'],
-        [accountId, accountType, true]
+        [accountId, accountType, true, expectedContext.address]
       );
 
       await controllerEmitter(
         ['dapp', 'connect'],
-        [{ host, chain, chainId, accountId, accountType, date }]
+        [
+          { host, chain, chainId, accountId, accountType, date },
+          expectedContext,
+        ]
       );
 
       // Return null - the method handler will return the actual address
@@ -197,6 +211,7 @@ export const ConnectWallet = () => {
       window.close();
     } catch (error) {
       console.error('Failed to connect wallet:', error);
+      alert.error(error?.message || t('send.failed'));
       setIsConnecting(false);
     }
   }, [
@@ -207,8 +222,11 @@ export const ConnectWallet = () => {
     accountType,
     date,
     accounts,
+    activeNetwork,
     eventName,
     isAccountValidForNetwork,
+    alert,
+    t,
   ]);
 
   const onConfirm = () => {

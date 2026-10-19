@@ -1,4 +1,4 @@
-/** A popup may close itself before Playwright acknowledges its successful click. */
+/** A popup may close before Playwright acknowledges its click or Enter key-up. */
 export async function clickClosingPopup(options: {
   click: () => Promise<unknown>;
   isClosed: () => boolean;
@@ -7,11 +7,11 @@ export async function clickClosingPopup(options: {
     await options.click();
   } catch (error) {
     // window.close() can destroy the target before Playwright acknowledges
-    // the successful click. Never suppress other click failures, or a
+    // the successful click or keyboard press. Never suppress other failures, or a
     // purported close while the original popup is still open.
     if (
       !(error instanceof Error) ||
-      !/^(?:locator\.click: )?Target page, context or browser has been closed(?:\r?\n|$)/.test(
+      !/^(?:(?:locator\.click|keyboard\.press): )?Target page, context or browser has been closed(?:\r?\n|$)/.test(
         error.message
       ) ||
       !options.isClosed()

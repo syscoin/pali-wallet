@@ -12,7 +12,7 @@ import React from 'react';
 
 import { INetworkType } from 'types/network';
 import { TransactionType } from 'types/transactions';
-import { BigNumber } from 'utils/ethersV6Compat';
+import { BigNumber, Interface } from 'utils/ethersV6Compat';
 import {
   prepareSmartAccountFeeQuote,
   signAndSubmitSmartAccountExecutions,
@@ -354,6 +354,135 @@ const prepareSmartAccountConfirmation = (isMax = false) => {
     return prior(path, args);
   });
 };
+
+it.each(
+  [TransactionType.ERC721, TransactionType.ERC1155].flatMap((type) =>
+    [
+      '1',
+      '9007199254740993',
+      '115792089237316195423570985008687907853269984665640564039457584007913129639935',
+    ].map((tokenId) => ({ type, tokenId }))
+  )
+)(
+  'submits the reviewed $type identifier without numeric rounding: $tokenId',
+  async ({ type, tokenId }) => {
+    prepareEvmRecipientConfirmation(
+      '0x2222222222222222222222222222222222222222'
+    );
+    mockLocation.state.tx.transactionType = type;
+    mockLocation.state.tx.token = {
+      contractAddress: '0x5555555555555555555555555555555555555555',
+      tokenId,
+      decimals: 0,
+      name: 'Synthetic NFT',
+      symbol: 'NFT',
+      isNft: true,
+    };
+    const prior = mockControllerEmitter.getMockImplementation()!;
+    mockControllerEmitter.mockImplementation(
+      async (path: string[], args: any[]) => {
+        if (path.at(-1) === 'checkAddressBlacklist')
+          return { isBlacklisted: false };
+        if (path.at(-1) === 'sendAndSaveTokenTransaction')
+          return { hash: 'synthetic-hash' };
+        return prior(path, args);
+      }
+    );
+    render(<SendConfirm />);
+    const confirm = () =>
+      screen.getByRole('button', { name: 'buttons.confirm' });
+    await waitFor(() => expect(confirm()).toBeEnabled());
+    fireEvent.click(confirm());
+    await waitFor(() =>
+      expect(
+        mockControllerEmitter.mock.calls.some(
+          ([path]) => path.at(-1) === 'sendAndSaveTokenTransaction'
+        )
+      ).toBe(true)
+    );
+    const submitted = mockControllerEmitter.mock.calls.find(
+      ([path]) => path.at(-1) === 'sendAndSaveTokenTransaction'
+    )!;
+    expect(submitted[1][1].tokenId).toBe(tokenId);
+  }
+);
+
+it.each([TransactionType.ERC721, TransactionType.ERC1155])(
+  'retains the full uint256 identifier in smart-account %s calldata',
+  async (type) => {
+    prepareSmartAccountConfirmation();
+    const tokenId =
+      '115792089237316195423570985008687907853269984665640564039457584007913129639935';
+    mockLocation.state.tx.transactionType = type;
+    mockLocation.state.tx.token = {
+      contractAddress: '0x5555555555555555555555555555555555555555',
+      tokenId,
+      decimals: 0,
+      name: 'Synthetic NFT',
+      symbol: 'NFT',
+      isNft: true,
+    };
+    render(<SendConfirm />);
+    const confirm = () =>
+      screen.getByRole('button', { name: 'buttons.confirm' });
+    await waitFor(() => expect(confirm()).toBeEnabled());
+    fireEvent.click(confirm());
+    await waitFor(() =>
+      expect(signAndSubmitSmartAccountExecutions).toHaveBeenCalledTimes(1)
+    );
+    const sent = (signAndSubmitSmartAccountExecutions as jest.Mock).mock
+      .calls[0][0];
+    const abi = new Interface([
+      type === TransactionType.ERC721
+        ? 'function safeTransferFrom(address,address,uint256)'
+        : 'function safeTransferFrom(address,address,uint256,uint256,bytes)',
+    ]);
+    expect(
+      abi.parseTransaction({ data: sent.executions[0].data }).args[2].toString()
+    ).toBe(tokenId);
+  }
+);
+
+it('forwards a sub-wei ERC20 amount unchanged to SDK token-unit serialization', async () => {
+  prepareEvmRecipientConfirmation('0x2222222222222222222222222222222222222222');
+  mockLocation.state.tx.transactionType = TransactionType.ERC20;
+  mockLocation.state.tx.amount = '0.000000000000000000000001';
+  mockLocation.state.tx.token = {
+    contractAddress: '0x5555555555555555555555555555555555555555',
+    decimals: 24,
+    name: 'Synthetic token',
+    symbol: 'TOKEN',
+    isNft: false,
+  };
+  const prior = mockControllerEmitter.getMockImplementation()!;
+  mockControllerEmitter.mockImplementation(
+    async (path: string[], args: any[]) => {
+      if (path.at(-1) === 'checkAddressBlacklist')
+        return { isBlacklisted: false };
+      if (path.at(-1) === 'sendAndSaveTokenTransaction')
+        return { hash: 'synthetic-hash' };
+      return prior(path, args);
+    }
+  );
+  render(<SendConfirm />);
+  const confirm = () => screen.getByRole('button', { name: 'buttons.confirm' });
+  await waitFor(() => expect(confirm()).toBeEnabled());
+  fireEvent.click(confirm());
+  await waitFor(() =>
+    expect(
+      mockControllerEmitter.mock.calls.some(
+        ([path]) => path.at(-1) === 'sendAndSaveTokenTransaction'
+      )
+    ).toBe(true)
+  );
+  const submitted = mockControllerEmitter.mock.calls.find(
+    ([path]) => path.at(-1) === 'sendAndSaveTokenTransaction'
+  )!;
+  expect(submitted[1][1]).toMatchObject({
+    tokenAmount: '0.000000000000000000000001',
+    decimals: 24,
+  });
+});
 
 it.each([
   TransactionType.NATIVE_ETH,

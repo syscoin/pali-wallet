@@ -4,6 +4,10 @@ import path from 'path';
 import en from '../../source/assets/locales/en.json';
 import { E2E_CONFIG } from '../harness/config';
 import {
+  clickClosingPopup,
+  dismissRejectedApproval,
+} from '../harness/dismissRejectedApproval';
+import {
   createIsolatedVaultFixture,
   installIsolatedVaultRoutes,
 } from '../harness/isolatedVaultFixture';
@@ -151,7 +155,10 @@ test('a connected-account approval cannot select an account id reused by a diffe
           })
           .last();
         await expect(confirm).toBeEnabled();
-        await confirm.click();
+        await clickClosingPopup({
+          click: () => confirm.click(),
+          isClosed: () => popup.isClosed(),
+        });
         await expect
           .poll(
             async () =>
@@ -177,22 +184,30 @@ test('a connected-account approval cannot select an account id reused by a diffe
           target,
         ]);
         const popup = await popupFor(wallet!.context, dapp, id);
-        await popup
-          .getByRole('button', {
-            name: en.connections.switchAccount,
-            exact: true,
-          })
-          .click();
+        await clickClosingPopup({
+          click: () =>
+            popup
+              .getByRole('button', {
+                name: en.connections.switchAccount,
+                exact: true,
+              })
+              .click(),
+          isClosed: () => popup.isClosed(),
+        });
         await expect.poll(() => popup.isClosed()).toBe(true);
         await expect
           .poll(selection)
           .toMatchObject({ active: { id: 0, address: target } });
         const signing = await popupFor(wallet!.context, dapp, id);
         await capture('healthy-signing-review', signing);
-        await signing
-          .getByRole('button', { name: en.buttons.cancel, exact: true })
-          .click();
-        const result = await settle(dapp, id);
+        const result = await dismissRejectedApproval({
+          click: () =>
+            signing
+              .getByRole('button', { name: en.buttons.cancel, exact: true })
+              .click(),
+          isClosed: () => signing.isClosed(),
+          settle: () => settle(dapp, id),
+        });
         expect(result.error?.code).toBe(4001);
         expect(result.result).toBeUndefined();
         await expect.poll(() => signing.isClosed()).toBe(true);
@@ -229,10 +244,14 @@ test('a connected-account approval cannot select an account id reused by a diffe
           expect((await rpcObservation(dapp, id)).settled).not.toBe(true);
         }
         await capture('stale-context-rejection', popup);
-        await popup
-          .getByRole('button', { name: en.buttons.cancel, exact: true })
-          .click();
-        const result = await settle(dapp, id);
+        const result = await dismissRejectedApproval({
+          click: () =>
+            popup
+              .getByRole('button', { name: en.buttons.cancel, exact: true })
+              .click(),
+          isClosed: () => popup.isClosed(),
+          settle: () => settle(dapp, id),
+        });
         expect(result.error?.code).toBe(4100);
         expect(result.result).toBeUndefined();
         expect(await selection()).toEqual(before);
