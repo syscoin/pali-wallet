@@ -241,6 +241,87 @@ it('makes a successful card read supersede an older normal poll of the same acco
   expectBalance('2.0');
 });
 
+it.each([false, true])(
+  'keeps a newer card authoritative when an older poll completes first=%s',
+  async (olderFirst) => {
+    const old = deferred<bigint>();
+    const latest = deferred<bigint>();
+    provider.getBalance
+      .mockReturnValueOnce(old.promise)
+      .mockReturnValueOnce(latest.promise);
+    const oldPoll = poll();
+    const currentCard = cardRead();
+    if (olderFirst) {
+      old.resolve(BigInt('1000000000000000000'));
+      await oldPoll;
+      latest.resolve(BigInt('2000000000000000000'));
+    } else {
+      latest.resolve(BigInt('2000000000000000000'));
+      await currentCard;
+      old.resolve(BigInt('1000000000000000000'));
+    }
+    await oldPoll;
+    await expect(currentCard).resolves.toBe('2.0');
+    expectBalance('2.0');
+  }
+);
+
+it.each([false, true])(
+  'keeps a newer poll authoritative when an older card completes first=%s',
+  async (olderFirst) => {
+    const old = deferred<bigint>();
+    const latest = deferred<bigint>();
+    provider.getBalance
+      .mockReturnValueOnce(old.promise)
+      .mockReturnValueOnce(latest.promise);
+    const oldCard = cardRead();
+    const currentPoll = poll();
+    if (olderFirst) {
+      old.resolve(BigInt('1000000000000000000'));
+      await oldCard;
+      latest.resolve(BigInt('2000000000000000000'));
+    } else {
+      latest.resolve(BigInt('2000000000000000000'));
+      await currentPoll;
+      old.resolve(BigInt('1000000000000000000'));
+    }
+    await oldCard;
+    await currentPoll;
+    expectBalance('2.0');
+  }
+);
+
+it.each([false, true])(
+  'keeps a newer card authoritative when an older card completes first=%s',
+  async (olderFirst) => {
+    const old = deferred<bigint>();
+    const latest = deferred<bigint>();
+    provider.getBalance
+      .mockReturnValueOnce(old.promise)
+      .mockReturnValueOnce(latest.promise);
+    const oldOutcome = cardRead().then(
+      (value: string) => ({ value, error: null as Error | null }),
+      (error: Error) => ({ value: undefined, error })
+    );
+    const currentCard = cardRead();
+    if (olderFirst) {
+      old.resolve(BigInt('1000000000000000000'));
+      await oldOutcome;
+      latest.resolve(BigInt('2000000000000000000'));
+    } else {
+      latest.resolve(BigInt('2000000000000000000'));
+      await currentCard;
+      old.resolve(BigInt('1000000000000000000'));
+    }
+    await expect(currentCard).resolves.toBe('2.0');
+    const previous = await oldOutcome;
+    if (olderFirst)
+      expect(previous.error?.message).toBe('Balance request was superseded');
+    else expect(previous.value).toBe('2.0');
+    expectBalance('2.0');
+  }
+);
+
 it('refuses a superseded card when the newer receipt read has no result yet', async () => {
   const old = deferred<bigint>();
   const receipt = deferred<bigint>();

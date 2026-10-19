@@ -9868,7 +9868,8 @@ class MainController {
         ? storedAccount.xpub || storedAccount.address
         : storedAccount.address
     )}native`;
-    const readIsCurrent = this.captureBalanceReadVersion(nativeKey);
+    // A card read is newer work, not an observer of whichever poll finishes first.
+    const readIsCurrent = this.beginTargetedBalanceRead(nativeKey);
     const balance =
       await this.balancesManager.utils.getBalanceUpdatedForAccount(
         storedAccount,
@@ -9904,7 +9905,6 @@ class MainController {
       if (latestBalance) return String(latestBalance.balance);
       throw new Error('Balance request was superseded');
     }
-    this.beginTargetedBalanceRead(nativeKey);
     store.dispatch(
       setAccountBalanceForNetwork({
         balance,
