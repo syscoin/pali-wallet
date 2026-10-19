@@ -65,31 +65,6 @@ test('token transfers retain exact verified MAX amounts and large NFT identifier
       fixture,
       server.url
     );
-    // Stop at the controller send boundary, before background signing. Keep
-    // the real import, ownership, amount, review and submission UI paths.
-    await wallet.context.addInitScript(() => {
-      const original = chrome.runtime.sendMessage;
-      (window as any).__precisionSubmissions = [];
-      (chrome.runtime.sendMessage as any) = (...args: any[]) => {
-        const [message, callback] = args;
-        if (
-          message?.type === 'CONTROLLER_ACTION' &&
-          JSON.stringify(message.data?.methods) ===
-            JSON.stringify(['wallet', 'sendAndSaveTokenTransaction']) &&
-          typeof callback === 'function'
-        ) {
-          (window as any).__precisionSubmissions.push(message.data.params);
-          queueMicrotask(() =>
-            callback({
-              success: false,
-              error: 'Synthetic test stopped before signing or broadcasting',
-            })
-          );
-          return;
-        }
-        return (original as any).apply(chrome.runtime, args);
-      };
-    });
     const abi = AbiCoder.defaultAbiCoder();
     const selector = (signature: string) => id(signature).slice(0, 10);
     await wallet.context.route('https://rpc.tanenbaum.io/', async (route) => {
@@ -196,6 +171,42 @@ test('token transfers retain exact verified MAX amounts and large NFT identifier
         `review and capture exact ${asset.symbol} transfer without signing`,
         async () => {
           await wallet!.gotoRoute('#/send/eth');
+          // Install in the ready document: hash-only navigation need not run
+          // init scripts. Next must retain this verified controller boundary
+          // so nothing reaches signing or broadcasting.
+          await page.evaluate(() => {
+            const original = chrome.runtime.sendMessage;
+            (window as any).__precisionSubmissions = [];
+            (chrome.runtime.sendMessage as any) = (...args: any[]) => {
+              const [message, callback] = args;
+              if (
+                message?.type === 'CONTROLLER_ACTION' &&
+                JSON.stringify(message.data?.methods) ===
+                  JSON.stringify(['wallet', 'sendAndSaveTokenTransaction']) &&
+                typeof callback === 'function'
+              ) {
+                (window as any).__precisionSubmissions.push(
+                  message.data.params
+                );
+                queueMicrotask(() =>
+                  callback({
+                    success: false,
+                    error:
+                      'Synthetic test stopped before signing or broadcasting',
+                  })
+                );
+                return;
+              }
+              return (original as any).apply(chrome.runtime, args);
+            };
+            (window as any).__precisionSendBoundary =
+              chrome.runtime.sendMessage;
+          });
+          expect(
+            await page.evaluate(() =>
+              Array.isArray((window as any).__precisionSubmissions)
+            )
+          ).toBe(true);
           await page.getByRole('button', { name: 'TSYS', exact: true }).click();
           await page
             .locator('button[role="menuitem"]')
@@ -229,6 +240,15 @@ test('token transfers retain exact verified MAX amounts and large NFT identifier
             exact: true,
           });
           await expect(confirm).toBeEnabled();
+          expect(
+            await page.evaluate(
+              () =>
+                chrome.runtime.sendMessage ===
+                  (window as any).__precisionSendBoundary &&
+                Array.isArray((window as any).__precisionSubmissions) &&
+                (window as any).__precisionSubmissions.length === 0
+            )
+          ).toBe(true);
           await confirm.click();
           await expect
             .poll(() =>

@@ -95,6 +95,9 @@ test('a delayed label request cannot rename an account in another vault and a cu
           (window as any).__labelPending = true;
           (window as any).__releaseLabel = () =>
             new Promise<boolean>((resolve) => {
+              // Delay only the stale request; ordinary edits must use the
+              // original transport after it has been released.
+              chrome.runtime.sendMessage = send;
               send(request, (response: any) => {
                 callback(response);
                 resolve(Boolean(response?.error));
