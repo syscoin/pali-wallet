@@ -49,7 +49,7 @@ module.exports = merge(common, {
           },
           compress: {
             ecma: 5,
-            passes: 2,
+            passes: 3,
             warnings: false,
             comparisons: false,
             inline: 2,
