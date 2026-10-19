@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { keccak256, toUtf8Bytes } from 'ethers';
 
 import { PaliWallet } from '../harness/pali';
 
@@ -64,6 +65,50 @@ const controllerAction = async (
   return response;
 };
 
+const importFixtureToken = async (wallet: PaliWallet, token: object) => {
+  const context = await wallet.page.evaluate(
+    () =>
+      new Promise<{
+        accountIdentity: string;
+        chainId: number;
+        networkIdentity: string;
+      }>((resolve) => {
+        chrome.runtime.sendMessage({ type: 'getCurrentState' }, (state) => {
+          const { activeAccount, activeNetwork, accounts } = state.vault;
+          const account = accounts[activeAccount.type][activeAccount.id];
+          resolve({
+            chainId: activeNetwork.chainId,
+            accountIdentity: JSON.stringify([
+              activeAccount.type,
+              activeAccount.id,
+              account.address,
+              account.xpub,
+            ]),
+            networkIdentity: JSON.stringify([
+              activeNetwork.kind,
+              activeNetwork.chainId,
+              activeNetwork.slip44,
+              state.vaultGlobal.activeSlip44,
+              activeNetwork.url,
+              activeNetwork.apiUrl,
+            ]),
+          });
+        });
+      })
+  );
+  return controllerAction(
+    wallet,
+    ['wallet', 'saveTokenInfo'],
+    [
+      { ...token, chainId: context.chainId },
+      {
+        account: keccak256(toUtf8Bytes(context.accountIdentity)),
+        network: keccak256(toUtf8Bytes(context.networkIdentity)),
+      },
+    ]
+  );
+};
+
 const createHdAccount = async (wallet: PaliWallet) => {
   await wallet.gotoRoute('#/settings/account/new');
   await wallet.page.locator('#create-btn').click();
@@ -92,19 +137,13 @@ test('vaults keep UTXO and EVM accounts isolated while alternating networks', as
     );
 
     await wallet.step('import an SPT into the Syscoin vault', () =>
-      controllerAction(
-        wallet,
-        ['wallet', 'saveTokenInfo'],
-        [
-          {
-            assetGuid: '123456789',
-            balance: 0,
-            decimals: 8,
-            description: '',
-            symbol: 'E2ESPT',
-          },
-        ]
-      )
+      importFixtureToken(wallet, {
+        assetGuid: '123456789',
+        balance: 0,
+        decimals: 8,
+        description: '',
+        symbol: 'E2ESPT',
+      })
     );
 
     await wallet.step(
@@ -112,20 +151,14 @@ test('vaults keep UTXO and EVM accounts isolated while alternating networks', as
       async () => {
         await wallet.switchNetwork('zkTanenbaum', 'EVM');
         await createHdAccount(wallet);
-        await controllerAction(
-          wallet,
-          ['wallet', 'saveTokenInfo'],
-          [
-            {
-              balance: 0,
-              contractAddress: '0x00000000000000000000000000000000000000a1',
-              decimals: 18,
-              isNft: false,
-              name: 'E2E Token',
-              tokenSymbol: 'E2E',
-            },
-          ]
-        );
+        await importFixtureToken(wallet, {
+          balance: 0,
+          contractAddress: '0x00000000000000000000000000000000000000a1',
+          decimals: 18,
+          isNft: false,
+          name: 'E2E Token',
+          tokenSymbol: 'E2E',
+        });
       }
     );
 

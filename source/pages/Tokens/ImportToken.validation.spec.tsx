@@ -38,6 +38,7 @@ jest.mock('react-i18next', () => ({
   useTranslation: jest.fn(),
 }));
 jest.mock('utils/navigationState', () => ({
+  getWalletNavigationScope: () => ({ account: 'account', network: 'network' }),
   getCurrentTab: jest.fn(() => 'custom'),
   createBrowsingNavigationContext: (location: any, extra: any) => ({
     returnRoute: `${location.pathname}${location.search}${location.hash}`,

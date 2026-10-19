@@ -290,7 +290,9 @@ for (const kind of ['ERC20', 'SPT'] as const) {
       await act(async () => pending.resolve());
       expect(mockEmitter).toHaveBeenCalledWith(
         ['wallet', 'deleteTokenInfo'],
-        kind === 'SPT' ? ['12345', 5700] : [CONTRACT, 5700, undefined]
+        kind === 'SPT'
+          ? ['12345', 5700, undefined, expect.any(Object)]
+          : [CONTRACT, 5700, undefined, expect.any(Object)]
       );
       expect(screen.getByText('home.youHaveNoTokens')).toBeTruthy();
       expect(mockAlert.error).not.toHaveBeenCalled();

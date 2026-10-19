@@ -149,7 +149,7 @@ it('reports a current removal rejection instead of silently closing and leaving 
   await act(async () => undefined);
   expect(mockEmitter).toHaveBeenCalledWith(
     ['wallet', 'deleteTokenInfo'],
-    [CONTRACT, 5700, undefined]
+    [CONTRACT, 5700, undefined, expect.any(Object)]
   );
   expect(mockAlert.error).toHaveBeenCalledWith('Token removal unavailable');
   expect(

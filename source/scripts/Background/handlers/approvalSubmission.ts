@@ -32,6 +32,7 @@ export const beginApprovalSubmission = (
     ![
       'sendAndSaveEthTransaction',
       'submitSmartAccountExecution',
+      'registerSmartAccountOnChain',
       'signSendAndSaveTransaction',
     ].includes(methods[1])
   )

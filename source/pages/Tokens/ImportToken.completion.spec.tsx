@@ -50,6 +50,7 @@ jest.mock('utils/index', () => ({
     jest.requireActual('utils/format').formatFullPrecisionBalance,
 }));
 jest.mock('utils/navigationState', () => ({
+  getWalletNavigationScope: () => ({ account: 'account', network: 'network' }),
   getCurrentTab: (params: URLSearchParams, _state: unknown, fallback: string) =>
     params.get('tab') || fallback,
   createBrowsingNavigationContext: jest.fn(),
@@ -218,7 +219,10 @@ it('keeps the custom tab and a different NFT contract independent from an import
   await act(async () => fireEvent.click(other));
   expect(mockEmitter).toHaveBeenCalledWith(
     ['wallet', 'saveTokenInfo'],
-    [expect.objectContaining({ contractAddress: otherContract, isNft: true })]
+    [
+      expect.objectContaining({ contractAddress: otherContract, isNft: true }),
+      expect.any(Object),
+    ]
   );
 });
 

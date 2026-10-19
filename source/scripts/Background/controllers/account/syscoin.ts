@@ -16,7 +16,10 @@ const config = {
 
 export interface ISysAccountController {
   deleteTokenInfo: (assetGuid: string) => void;
-  saveTokenInfo: (token: ITokenSysProps) => Promise<void>;
+  saveTokenInfo: (
+    token: ITokenSysProps,
+    assertCurrent?: () => void
+  ) => Promise<void>;
   setAddress: () => Promise<string>;
 }
 
@@ -40,7 +43,10 @@ const SysAccountController = (
     return address;
   };
 
-  const saveTokenInfo = async (token: ITokenSysProps) => {
+  const saveTokenInfo = async (
+    token: ITokenSysProps,
+    assertCurrent?: () => void
+  ) => {
     const { activeAccount, activeNetwork, accountAssets } =
       store.getState().vault;
     // Validate accountAssets exists
@@ -68,15 +74,6 @@ const SysAccountController = (
       throw new Error('Syscoin assets array not initialized');
     }
 
-    // Check for duplicate considering both assetGuid AND chainId (network-specific)
-    const tokenExists = activeAccountAssets.syscoin.find(
-      (asset: ITokenSysProps) =>
-        asset.assetGuid === token.assetGuid &&
-        asset.chainId === activeNetwork.chainId
-    );
-
-    if (tokenExists) throw new Error('Token already exists');
-
     // Syscoin 5 no longer uses pubData field
     const description = token.description || '';
     const ipfsUrl = description.startsWith('https://ipfs.io/ipfs/')
@@ -95,12 +92,28 @@ const SysAccountController = (
       assetInfos.image = data && data.image ? data.image : '';
     }
 
+    assertCurrent?.();
+    // Metadata can arrive after another import/removal. Merge into the latest
+    // target list and recheck duplicates immediately before publishing.
+    const currentAssets =
+      store.getState().vault.accountAssets?.[activeAccount.type]?.[
+        activeAccount.id
+      ]?.syscoin;
+    if (!currentAssets) throw new Error('Syscoin assets array not initialized');
+    if (
+      currentAssets.some(
+        (asset: ITokenSysProps) =>
+          asset.assetGuid === token.assetGuid &&
+          asset.chainId === activeNetwork.chainId
+      )
+    )
+      throw new Error('Token already exists');
     store.dispatch(
       setAccountAssets({
         accountId: activeAccount.id,
         accountType: activeAccount.type,
         property: 'syscoin',
-        value: [...activeAccountAssets.syscoin, assetInfos],
+        value: [...currentAssets, assetInfos],
       })
     );
   };

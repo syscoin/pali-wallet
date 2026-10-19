@@ -29,6 +29,7 @@ import {
   navigateWithContext,
   getCurrentTab,
 } from 'utils/index';
+import { getWalletNavigationScope } from 'utils/navigationState';
 import { getTokenLogo } from 'utils/tokens';
 
 import { useTokenImportNavigation } from './useTokenImportNavigation';
@@ -47,6 +48,7 @@ export const SyscoinImport: React.FC = () => {
     accountAssets,
   } = useSelector((state: RootState) => state.vault);
   const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
+  const assetMutationScope = getWalletNavigationScope();
   const tokenImportScope = getHomeBrowsingScope(
     { ...activeAccount, ...activeAccountMeta },
     activeNetwork,
@@ -333,7 +335,10 @@ export const SyscoinImport: React.FC = () => {
         ...(tokenLogo && { image: tokenLogo }),
       };
 
-      await controllerEmitter(['wallet', 'saveTokenInfo'], [tokenToSave]);
+      await controllerEmitter(
+        ['wallet', 'saveTokenInfo'],
+        [tokenToSave, assetMutationScope]
+      );
 
       if (isCurrent()) {
         setRecentlyImportedGuids((prev) => new Set(prev).add(asset.assetGuid));

@@ -30,6 +30,7 @@ import {
 } from 'types/tokens';
 import {
   getCurrentTab,
+  getWalletNavigationScope,
   createBrowsingNavigationContext,
   navigateWithContext,
 } from 'utils/navigationState';
@@ -50,6 +51,7 @@ export const ImportToken: React.FC = () => {
     accountAssets,
   } = useSelector((state: RootState) => state.vault);
   const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
+  const assetMutationScope = getWalletNavigationScope();
   const tokenImportScope = getHomeBrowsingScope(
     { ...activeAccount, ...activeAccountMeta },
     activeNetwork,
@@ -538,7 +540,10 @@ export const ImportToken: React.FC = () => {
             : {}),
         };
 
-        await controllerEmitter(['wallet', 'saveTokenInfo'], [tokenToSave]);
+        await controllerEmitter(
+          ['wallet', 'saveTokenInfo'],
+          [tokenToSave, assetMutationScope]
+        );
 
         // Show success alert
         if (isCurrent())
@@ -568,6 +573,7 @@ export const ImportToken: React.FC = () => {
       verifiedTokenRawBalance,
       currentlyImporting,
       tokenImportScope,
+      assetMutationScope,
     ]
   );
 

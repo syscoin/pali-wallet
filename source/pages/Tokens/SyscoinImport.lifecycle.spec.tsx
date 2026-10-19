@@ -143,6 +143,10 @@ it('does not announce an old SPT import after the actual keyed parent switches a
         assetGuid: fixtureToken.assetGuid,
         chainId: 5700,
       }),
+      expect.objectContaining({
+        account: expect.any(String),
+        network: expect.any(String),
+      }),
     ]
   );
   mockState.vault.activeAccount = { type: 'HDAccount', id: 1 };

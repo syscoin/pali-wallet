@@ -153,6 +153,7 @@ const EvmTransactionItem = React.memo(
       hasUnknownDecimals?: boolean;
       isErc20Transfer: boolean;
       isNft: boolean;
+      nftQuantity?: string;
       tokenId?: string;
     }>({
       displayValue: 0,
@@ -272,10 +273,12 @@ const EvmTransactionItem = React.memo(
         : '';
       // Token identifiers are not quantities. Decode the ERC-1155 amount as
       // an integer string so large transfers also keep their exact precision.
-      const nftQuantity =
-        isNftWithId && isERC1155Transfer(displayTx)
-          ? getERC1155TransferValue(displayTx)?.toString() ?? formattedValue
-          : '';
+      const nftQuantity = isNftWithId
+        ? displayInfo.nftQuantity ??
+          (isERC1155Transfer(displayTx)
+            ? getERC1155TransferValue(displayTx)?.toString() ?? formattedValue
+            : '')
+        : '';
       const amountStr = displayInfo.hasUnknownDecimals
         ? `${finalSymbol} Transfer`
         : isNftWithId

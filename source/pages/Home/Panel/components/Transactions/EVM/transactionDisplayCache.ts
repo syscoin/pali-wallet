@@ -19,8 +19,12 @@ export const getTransactionDisplayCacheKey = ({
     transaction.value,
     transaction.to,
     transaction.input,
+    transaction.historySource,
+    transaction.tokenRecipient,
+    transaction.tokenTransfer,
     tokenMeta?.contractAddress,
     tokenMeta?.decimals,
     tokenMeta?.tokenSymbol ?? tokenMeta?.symbol,
     tokenMeta?.isNft,
+    tokenMeta?.tokenStandard,
   ]);

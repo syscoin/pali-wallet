@@ -103,6 +103,7 @@ beforeEach(() => {
     return action;
   });
   wallet = Object.create(MainController.prototype);
+  wallet.isUnlocked = jest.fn(() => true);
   wallet.account = {
     eth: EthAccountController(),
     sys: { saveTokenInfo: jest.fn() } as any,

@@ -42,4 +42,45 @@ describe('transaction display cache isolation', () => {
       })
     ).not.toBe(key);
   });
+
+  it('invalidates every event field consumed by token-only display', () => {
+    const transaction = {
+      ...base.transaction,
+      historySource: 'explorer-tokentx',
+      tokenRecipient: '0xrecipient',
+      tokenTransfer: {
+        chainId: 1,
+        contractAddress: '0xcontract',
+        recipient: '0xrecipient',
+        value: '1000000',
+        decimals: '6',
+        symbol: 'USDC',
+        tokenId: '0',
+        tokenStandard: 'ERC-1155',
+      },
+    };
+    const key = getTransactionDisplayCacheKey({ ...base, transaction });
+    for (const [field, value] of Object.entries(transaction.tokenTransfer)) {
+      expect(
+        getTransactionDisplayCacheKey({
+          ...base,
+          transaction: {
+            ...transaction,
+            tokenTransfer: {
+              ...transaction.tokenTransfer,
+              [field]: `${value}-changed`,
+            },
+          },
+        })
+      ).not.toBe(key);
+    }
+    for (const field of ['historySource', 'tokenRecipient']) {
+      expect(
+        getTransactionDisplayCacheKey({
+          ...base,
+          transaction: { ...transaction, [field]: 'changed' },
+        })
+      ).not.toBe(key);
+    }
+  });
 });
