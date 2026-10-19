@@ -310,10 +310,18 @@ describe('wallet setup signing capability admission', () => {
     });
     let returned = false;
     const reset = wallet.resetWalletState();
-    const rollback = reset.then(async () => {
-      returned = true;
-      await chromeStorage.setItem('state', original);
-    });
+    const rollback = reset.then(
+      () => {
+        throw new Error('Failed reset deletion must reject before rollback');
+      },
+      async (error: unknown) => {
+        expect(error).toEqual(
+          expect.objectContaining({ message: 'native deletion failed' })
+        );
+        returned = true;
+        await chromeStorage.setItem('state', original);
+      }
+    );
     try {
       await batchStarted.promise;
       for (let step = 0; step < 10; step += 1) await Promise.resolve();
@@ -321,6 +329,7 @@ describe('wallet setup signing capability admission', () => {
       expect(wallet.isResettingWallet).toBe(true);
       finishDeletion();
       await rollback;
+      expect(returned).toBe(true);
       expect(records.state).toEqual(original);
       expect(wallet.isResettingWallet).toBe(false);
       expect(log).toHaveBeenCalledWith(
