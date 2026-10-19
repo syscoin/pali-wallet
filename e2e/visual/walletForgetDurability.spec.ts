@@ -258,32 +258,81 @@ test.describe('authenticated wallet forgetting durability', () => {
             .poll(() =>
               wallet!.page.evaluate(
                 () =>
-                  new Promise<{ accountCount: number; encrypted: boolean }>(
-                    (resolve, reject) => {
-                      chrome.runtime.sendMessage(
-                        { type: 'getCurrentState' },
-                        (state) => {
-                          if (chrome.runtime.lastError || !state?.vault) {
-                            reject(new Error('Live wallet state unavailable'));
-                            return;
-                          }
-                          resolve({
-                            accountCount: Object.values(
-                              state.vault.accounts || {}
-                            ).reduce(
-                              (total: number, entries: any) =>
-                                total + Object.keys(entries || {}).length,
-                              0
-                            ) as number,
-                            encrypted: state.vaultGlobal.hasEncryptedVault,
-                          });
+                  new Promise<{
+                    accounts: {
+                      emptyAddress: boolean;
+                      emptyPrivateKey: boolean;
+                      emptyPublicKey: boolean;
+                      id: number;
+                      imported: boolean;
+                      label: string;
+                      ledger: boolean;
+                      slot: string;
+                      smart: boolean;
+                      trezor: boolean;
+                      type: string;
+                    }[];
+                    activeAccount: { id: number; type: string };
+                    encrypted: boolean;
+                  }>((resolve, reject) => {
+                    chrome.runtime.sendMessage(
+                      { type: 'getCurrentState' },
+                      (state) => {
+                        if (chrome.runtime.lastError || !state?.vault) {
+                          reject(new Error('Live wallet state unavailable'));
+                          return;
                         }
-                      );
-                    }
-                  )
+                        resolve({
+                          accounts: Object.entries(
+                            state.vault.accounts || {}
+                          ).flatMap(([type, entries]) =>
+                            Object.entries(entries || {}).map(
+                              ([slot, account]: [string, any]) => ({
+                                type,
+                                slot,
+                                id: account.id,
+                                label: account.label,
+                                emptyAddress: account.address === '',
+                                emptyPublicKey: account.xpub === '',
+                                emptyPrivateKey: account.xprv === '',
+                                imported: Boolean(account.isImported),
+                                ledger: Boolean(account.isLedgerWallet),
+                                trezor: Boolean(account.isTrezorWallet),
+                                smart: Boolean(account.isSmartAccount),
+                              })
+                            )
+                          ),
+                          activeAccount: state.vault.activeAccount,
+                          encrypted: state.vaultGlobal.hasEncryptedVault,
+                        });
+                      }
+                    );
+                  })
               )
             )
-            .toEqual({ accountCount: 0, encrypted: false });
+            // forgetWallet intentionally restores the initial HD0 placeholder,
+            // not an empty account map. Permit only that exact non-signing
+            // identity; no address, public/private key or imported/hardware/
+            // smart account may survive. No key material leaves the document.
+            .toEqual({
+              accounts: [
+                {
+                  type: 'HDAccount',
+                  slot: '0',
+                  id: 0,
+                  label: 'Account 1',
+                  emptyAddress: true,
+                  emptyPublicKey: true,
+                  emptyPrivateKey: true,
+                  imported: false,
+                  ledger: false,
+                  trezor: false,
+                  smart: false,
+                },
+              ],
+              activeAccount: { id: 0, type: 'HDAccount' },
+              encrypted: false,
+            });
           await wallet.gotoRoute('#/');
           await expect(
             wallet.page.locator('#import-wallet-link')
