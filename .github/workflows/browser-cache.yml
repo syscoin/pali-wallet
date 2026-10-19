@@ -1,0 +1,37 @@
+name: Warm Playwright browser cache
+
+# Pull-request caches are isolated to their merge refs. Populate the default
+# branch cache so later PRs can reuse the same browser download.
+on:
+  push:
+    branches: [master]
+    paths:
+      - package.json
+      - yarn.lock
+      - .github/workflows/browser-cache.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  warm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '23.11.1'
+          check-latest: true
+      - run: yarn install --frozen-lockfile
+      - name: Resolve Playwright browser version
+        id: playwright-version
+        run: echo "version=$(node -p "require('playwright-core/package.json').version")" >> "$GITHUB_OUTPUT"
+      - name: Cache Playwright browsers
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright-version.outputs.version }}
+      # This job only downloads binaries; it never launches a wallet/browser.
+      - run: npx playwright install chromium
