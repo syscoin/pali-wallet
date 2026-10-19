@@ -256,6 +256,7 @@ it('reads exactly one balanceOf at the requested block without metadata', async 
     {} as any,
     A,
     {
+      chainId: 1,
       contractAddress: T,
       decimals: 2,
       balance: 9,

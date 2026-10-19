@@ -569,6 +569,7 @@ const EvmTransactionItem = React.memo(
     prevProps.currentAccount?.address === nextProps.currentAccount?.address &&
     prevProps.currency === nextProps.currency &&
     prevProps.t === nextProps.t &&
+    prevProps.tokenMeta?.name === nextProps.tokenMeta?.name &&
     (prevProps.tokenMeta?.logo ?? '') === (nextProps.tokenMeta?.logo ?? '') &&
     (prevProps.tokenMeta?.tokenSymbol ?? prevProps.tokenMeta?.symbol ?? '') ===
       (nextProps.tokenMeta?.tokenSymbol ?? nextProps.tokenMeta?.symbol ?? '') &&
@@ -849,12 +850,11 @@ export const EvmTransactionsList = ({
     const map = new Map<string, any>();
     const list = activeAssets?.ethereum || [];
     for (const a of list) {
-      if (a?.contractAddress) {
+      if (a?.contractAddress && a.chainId === chainId)
         map.set(String(a.contractAddress).toLowerCase(), a);
-      }
     }
     return map;
-  }, [activeAssets?.ethereum]);
+  }, [activeAssets?.ethereum, chainId]);
 
   // Smart-account executions wrap the real target inside an EntryPoint
   // handleOps call; resolve the decoded inner target once per tx so token

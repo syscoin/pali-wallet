@@ -183,3 +183,78 @@ test('a delayed label request cannot rename an account in another vault and a cu
     }
   }
 });
+
+test('an unsaved label draft does not follow a replacement account in another vault', async ({}, info) => {
+  test.setTimeout(120_000);
+  const previous = { ...E2E_CONFIG };
+  const server = await startUtxoFixtureServer();
+  Object.assign(E2E_CONFIG, {
+    seedPhrase: UTXO_FIXTURE_SEED,
+    password: 'AccountDraftSyntheticOnly!2026',
+    rpcUrl: server.url,
+  });
+  let wallet: PaliWallet | undefined;
+  let status: 'passed' | 'failed' = 'failed';
+  try {
+    wallet = await PaliWallet.launch('account-label-draft-target', {
+      offlineHttpProxy: server.url,
+      viewport: { width: 400, height: 620 },
+    });
+    const routes = await installIsolatedVaultRoutes(
+      wallet.context,
+      createIsolatedVaultFixture(),
+      server.url
+    );
+    await wallet.importSeedAndCreatePassword();
+    await wallet.switchNetwork('Syscoin NEVM Testnet');
+    const original = await accountState(wallet.page);
+    await wallet.gotoRoute('#/settings/manage-accounts');
+    await wallet.page
+      .locator('[data-navigation-scroll="settings-manage-accounts"] li')
+      .first()
+      .getByRole('button')
+      .first()
+      .click();
+    await expect(wallet.page).toHaveURL(/settings\/edit-account/);
+    const label = wallet.page.getByPlaceholder(en.settings.accountLabel, {
+      exact: true,
+    });
+    await label.fill('Unsaved EVM-only draft');
+    const control = await wallet.context.newPage();
+    await control.goto(wallet.appUrl('#/home'));
+    await expect(control.locator('#home-balance')).toBeVisible();
+    await selectNetwork(control, 'Syscoin Testnet', 'UTXO');
+    const target = await accountState(control);
+    expect(target.address).not.toBe(original.address);
+    await expect
+      .poll(async () => (await accountState(wallet!.page)).address)
+      .toBe(target.address);
+    await expect(wallet.page).toHaveURL(/settings\/edit-account/);
+    await info.attach('account-draft-vault-switch', {
+      body: await wallet.page.screenshot({ animations: 'disabled' }),
+      contentType: 'image/png',
+    });
+    await expect(label).toHaveValue(target.label);
+    await label.fill('Explicit new UTXO label');
+    await wallet.page
+      .getByRole('button', { name: en.buttons.save, exact: true })
+      .click();
+    await expect
+      .poll(async () => (await accountState(control)).label)
+      .toBe('Explicit new UTXO label');
+    await expect(wallet.page).not.toHaveURL(/settings\/edit-account/);
+    await selectNetwork(control, 'Syscoin NEVM Testnet', 'EVM');
+    expect((await accountState(control)).label).toBe(original.label);
+    await selectNetwork(control, 'Syscoin Testnet', 'UTXO');
+    expect((await accountState(control)).label).toBe('Explicit new UTXO label');
+    expect(routes.deniedWrites).toEqual([]);
+    status = 'passed';
+  } finally {
+    try {
+      await wallet?.dispose(status);
+    } finally {
+      await server.close();
+      Object.assign(E2E_CONFIG, previous);
+    }
+  }
+});

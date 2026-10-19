@@ -436,6 +436,66 @@ it.each([
   }
 );
 
+it.each([undefined, null])(
+  'does not refresh a selected NFT from a stored record with chainId %s',
+  async (chainId) => {
+    const view = await prepareERC1155('42', 42);
+    mockAssets = [{ ...mockAssets[0], chainId, balance: 41, rawBalance: '41' }];
+    view.rerender(<SendEth />);
+    await act(async () => void (await Promise.resolve()));
+    fireEvent.click(screen.getByRole('button', { name: 'MAX' }));
+    expect(nftAmount().value).toBe('42');
+    expect(screen.getByText('42 QTY')).toBeInTheDocument();
+  }
+);
+
+it.each([undefined, null])(
+  'does not assign an active-chain refresh to a selected NFT with chainId %s',
+  async (chainId) => {
+    const selectedAsset = {
+      id: 'quantity-token',
+      contractAddress: '0x3333333333333333333333333333333333333333',
+      chainId,
+      tokenSymbol: 'QTY',
+      tokenStandard: 'ERC-1155',
+      isNft: true,
+      tokenId: '7',
+      balance: 42,
+      rawBalance: '42',
+      decimals: 0,
+    };
+    mockAssets = [
+      {
+        ...selectedAsset,
+        chainId: 1,
+        balance: 41,
+        rawBalance: '41',
+        tokenSymbol: 'REFRESHED',
+      },
+    ];
+    mockLocation.state = {
+      walletScope: jest
+        .requireActual('utils/navigationState')
+        .getWalletNavigationScope(),
+      selectedAsset,
+      selectedNftTokenId: '7',
+      formValues: { amount: '1', nftTokenId: '7' },
+    };
+    mockEmitter.mockImplementation((path: string[]) =>
+      path.at(-1) === 'verifyERC1155Ownership'
+        ? Promise.resolve([
+            { tokenId: '7', balance: 42, rawBalance: '42', verified: true },
+          ])
+        : Promise.resolve(undefined)
+    );
+    render(<SendEth />);
+    await act(async () => void (await Promise.resolve()));
+    expect(screen.getByText('42 QTY')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'MAX' }));
+    expect(nftAmount().value).toBe('42');
+  }
+);
+
 it('supports safe legacy ERC1155 balances without raw metadata', async () => {
   await prepareERC1155(undefined, 42);
   expect(screen.getByText('42 QTY')).toBeInTheDocument();

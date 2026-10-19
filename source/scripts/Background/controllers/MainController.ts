@@ -8843,7 +8843,7 @@ class MainController {
       (asset) =>
         !asset.isNft &&
         asset.contractAddress?.toLowerCase() === contractLower &&
-        (!asset.chainId || asset.chainId === activeNetwork.chainId)
+        asset.chainId === activeNetwork.chainId
     );
 
     if (!existingAsset) {
@@ -8907,7 +8907,7 @@ class MainController {
     ).map((asset) =>
       !asset.isNft &&
       asset.contractAddress?.toLowerCase() === contractLower &&
-      (!asset.chainId || asset.chainId === activeNetwork.chainId)
+      asset.chainId === activeNetwork.chainId
         ? { ...asset, ...balance }
         : asset
     );

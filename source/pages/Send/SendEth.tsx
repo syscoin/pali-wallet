@@ -285,9 +285,8 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
       const sameTokenId =
         String(asset.tokenId || '') === String(selectedAsset.tokenId || '');
       const sameChain =
-        (asset.chainId || activeNetwork.chainId) === activeNetwork.chainId &&
-        (selectedAsset.chainId || activeNetwork.chainId) ===
-          activeNetwork.chainId;
+        asset.chainId === activeNetwork.chainId &&
+        selectedAsset.chainId === activeNetwork.chainId;
 
       return sameContract && sameTokenId && sameChain;
     });

@@ -13,6 +13,7 @@ import { BatchBalanceController } from './BatchBalanceController';
 
 const tokens = (count: number) =>
   Array.from({ length: count }, (_, i) => ({
+    chainId: 1,
     contractAddress: `0x${(i + 1).toString(16).padStart(40, '0')}`,
     decimals: 0,
     balance: 5,

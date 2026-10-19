@@ -71,6 +71,24 @@ const EditAccountView = () => {
   const { controllerEmitter } = useController();
 
   const [form] = useForm();
+  const slip44 = useSelector(
+    (reduxState: RootState) => reduxState.vaultGlobal?.activeSlip44
+  );
+  const draftScope = JSON.stringify([
+    slip44,
+    accountType,
+    routeState.id,
+    account?.xpub || account?.address,
+    accountType === KeyringAccountType.SmartAccount && account?.address,
+  ]);
+  const previousDraftScope = useRef(draftScope);
+
+  useEffect(() => {
+    if (previousDraftScope.current === draftScope) return;
+    previousDraftScope.current = draftScope;
+    // Preserve drafts through receiving-address updates, not vault/identity reuse.
+    form.setFieldsValue({ label: account?.label || '' });
+  }, [draftScope, account?.label, form]);
 
   useEffect(() => {
     mounted.current = true;

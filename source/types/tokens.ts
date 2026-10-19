@@ -1,6 +1,7 @@
+/** A saved account asset is always scoped to its EVM chain. */
 export interface ITokenEthProps {
   balance: number;
-  chainId?: number;
+  chainId: number;
   contractAddress: string;
   decimals: string | number;
   id?: string;

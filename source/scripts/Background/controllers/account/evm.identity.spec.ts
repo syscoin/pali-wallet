@@ -48,6 +48,17 @@ it('imports the same address on a different chain, but rejects a same-chain dupl
   );
 });
 
+it('stamps the active chain when the token input omits its chain ID', async () => {
+  const token = { ...asset(2) };
+  delete (token as Partial<typeof token>).chainId;
+
+  await EthAccountController().saveTokenInfo(token as any);
+
+  const saved = state.vault.accountAssets.HD[0].ethereum[1];
+  expect(saved).toMatchObject({ chainId: 2, id: `${TOKEN}-2` });
+  expect(token).not.toHaveProperty('chainId');
+});
+
 it('keeps ERC1155 IDs distinct per chain and within one contract', async () => {
   const controller = EthAccountController();
   state.vault.accountAssets.HD[0].ethereum = [asset(1, '1')];

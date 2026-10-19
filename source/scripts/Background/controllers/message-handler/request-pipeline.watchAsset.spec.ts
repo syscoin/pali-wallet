@@ -155,10 +155,10 @@ it('retains a no-op when another-chain token and current-chain token both exist'
   expect(popupPromise).not.toHaveBeenCalled();
 });
 
-it.each([undefined, null])(
-  'preserves the current-chain fallback for a restored legacy token with chainId %s',
+it.each([undefined, null, 0, 1])(
+  'does not treat a stored token with chainId %s as already watched on the current chain',
   async (chainId) => {
-    const legacyToken = {
+    const otherToken = {
       contractAddress: TOKEN,
       tokenSymbol: 'SYN',
       tokenStandard: 'ERC-20',
@@ -166,11 +166,11 @@ it.each([undefined, null])(
       balance: 1,
       chainId,
     };
-    // Exercise the real vault restoration path. JSON omits undefined, while
-    // explicit null is retained; neither is normalized into a chain ID.
+    // Explicitly construct a malformed or other-chain stored record; normal
+    // token saves stamp the active chain before this restoration boundary.
     const persisted = JSON.parse(JSON.stringify(mockState.vault));
     persisted.accountAssets[TYPE][0].ethereum = JSON.parse(
-      JSON.stringify([legacyToken])
+      JSON.stringify([otherToken])
     );
     mockState = {
       ...mockState,
@@ -179,7 +179,32 @@ it.each([undefined, null])(
     const restored = mockState.vault.accountAssets[TYPE][0].ethereum;
     expect(restored[0].chainId).toBe(chainId);
     expect(await request()).toBe(true);
-    expect(popupPromise).not.toHaveBeenCalled();
+    expect(popupPromise).toHaveBeenCalledTimes(1);
     expect(mockState.vault.accountAssets[TYPE][0].ethereum).toBe(restored);
+  }
+);
+
+it.each([undefined, null, 0, 1])(
+  'keeps the current-chain no-op beside a same-address chainId %s record',
+  async (chainId) => {
+    await seedToken(5700);
+    const current = mockState.vault.accountAssets[TYPE][0].ethereum[0];
+    const other = { ...current, chainId };
+    const records = [other, current];
+    mockState = {
+      ...mockState,
+      vault: {
+        ...mockState.vault,
+        accountAssets: {
+          ...mockState.vault.accountAssets,
+          [TYPE]: { 0: { ethereum: records, syscoin: [] } },
+        },
+      },
+    };
+
+    expect(await request()).toBe(true);
+    expect(popupPromise).not.toHaveBeenCalled();
+    expect(mockState.vault.accountAssets[TYPE][0].ethereum).toBe(records);
+    expect(records).toEqual([other, current]);
   }
 );
