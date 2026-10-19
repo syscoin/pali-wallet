@@ -207,7 +207,11 @@ it('names connection actions and retains the exact disconnect operation', async 
   );
   expect(mockEmitter).toHaveBeenCalledWith(
     ['dapp', 'disconnect'],
-    ['https://untrusted.example']
+    [
+      'https://untrusted.example',
+      true,
+      { allowAlreadyDisconnected: true, propagateErrors: true },
+    ]
   );
 });
 
