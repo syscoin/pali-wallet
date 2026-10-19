@@ -356,12 +356,18 @@ it('does not carry a label draft into the same account slot in another UTXO vaul
   };
   view.rerender(<Tree accountType={KeyringAccountType.HDAccount} />);
   expect(screen.getByTitle('bitcoin-public-receiving-address')).toBeVisible();
+  expect(screen.getByPlaceholderText('settings.accountLabel')).toHaveValue(
+    'Bitcoin savings'
+  );
+  fireEvent.change(screen.getByPlaceholderText('settings.accountLabel'), {
+    target: { value: 'New Bitcoin label' },
+  });
   fireEvent.click(screen.getByRole('button', { name: 'buttons.save' }));
   await waitFor(() => expect(mockEmitter).toHaveBeenCalledTimes(1));
   expect(mockEmitter).toHaveBeenCalledWith(
     ['wallet', 'editAccountLabel'],
     [
-      'Bitcoin savings',
+      'New Bitcoin label',
       1,
       KeyringAccountType.HDAccount,
       {
