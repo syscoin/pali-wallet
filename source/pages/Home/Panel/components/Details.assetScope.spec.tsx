@@ -32,7 +32,14 @@ jest.mock('state/store', () => ({
   __esModule: true,
   default: { getState: () => mockStore.getState() },
 }));
-jest.mock('components/Header/Header', () => ({ Header: () => null }));
+jest.mock('components/Header/Header', () => ({
+  Header: () => {
+    const { GeneralMenu } = jest.requireActual(
+      'components/Header/Menus/GeneralMenu'
+    );
+    return <GeneralMenu />;
+  },
+}));
 jest.mock('hooks/useAppReady', () => ({ useAppReady: jest.fn() }));
 jest.mock('hooks/useBrowsingNavigationScroll', () => ({
   useBrowsingNavigationScroll: jest.fn(),
@@ -64,11 +71,20 @@ jest.mock('components/index', () => ({
     <button onClick={onClick}>{children}</button>
   ),
   Icon: () => null,
+  Tooltip: ({ children }: any) => <>{children}</>,
+  AccountMenu: () => null,
   IconButton: ({ children, ...props }: any) => (
     <button {...props}>{children}</button>
   ),
 }));
 jest.mock('components/Icon/Icon', () => ({
+  KeySvg: () => null,
+  PaliWhiteSmallIconSvg: () => null,
+  TrashIconSvg: () => null,
+  LanguageIconSvg: () => null,
+  DollarSignIconSvg: () => null,
+  HelpIconSvg: () => null,
+  LockIconSvg: () => null,
   FiExternalLink: () => null,
   RiFileCopyLine: () => null,
   ExternalLinkSvg: () => null,
@@ -78,6 +94,7 @@ jest.mock('components/Icon/Icon', () => ({
 jest.mock('components/ChainIcon', () => ({ ChainIcon: () => null }));
 jest.mock('utils/index', () => ({
   adjustUrl: (value: string) => value,
+  truncate: (value: string) => value,
   ellipsis: (value: string) => value,
   formatCurrency: (value: string) => value,
   formatFullPrecisionBalance: (value: string) => String(value),
@@ -131,9 +148,11 @@ const mount = (routePatch = {}, scoped = true) => {
     reducer: {
       vault: vaultReducer,
       price: (state = { fiat: { asset: 'usd' } }) => state,
+      dapp: (state = { dapps: {} }) => state,
       vaultGlobal: (
         state = {
           networkStatus: 'connected',
+          advancedSettings: {},
           isSwitchingAccount: false,
           loadingStates: { isLoadingBalances: false },
           isPollingUpdate: false,
@@ -200,6 +219,10 @@ const mount = (routePatch = {}, scoped = true) => {
               }
             />
             <Route path="/home" element={<h1>Home</h1>} />
+            <Route
+              path="/settings/networks/connected-sites"
+              element={<h1>Connected sites</h1>}
+            />
           </Route>
         </Routes>
       </MemoryRouter>
@@ -219,6 +242,7 @@ const switchAccount = (store: ReturnType<typeof mount>) =>
 
 beforeEach(() => {
   jest.clearAllMocks();
+  chrome.tabs = { query: jest.fn().mockResolvedValue([]) } as any;
   mockEmitter.mockResolvedValue(undefined);
 });
 
@@ -339,3 +363,147 @@ it('accepts a fresh preview in the new context and ignores an old pending market
   expect(screen.getByText('Next preview (New chain)')).toBeVisible();
   expect(screen.queryByText('$555')).not.toBeInTheDocument();
 });
+
+const collection = {
+  ...token,
+  isNft: true,
+  tokenStandard: 'ERC-721' as const,
+};
+const collectionPreview = {
+  ...collection,
+  name: 'Imported collection preview',
+  isImportPreview: true,
+};
+const enterCollection = async (name: string) => {
+  fireEvent.click(
+    screen.getByRole('button', { name: 'send.viewCollectionItems' })
+  );
+  await act(async () => undefined);
+  expect(screen.getAllByText(name).length).toBeGreaterThan(0);
+};
+const returnFromDetour = () =>
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.back' }));
+const changeCollectionScope = (
+  store: ReturnType<typeof mount>,
+  change: 'account' | 'network'
+) => {
+  act(() =>
+    store.dispatch(
+      setAccountAssets({
+        accountId: change === 'account' ? 1 : 0,
+        accountType: KeyringAccountType.HDAccount,
+        assets: {
+          syscoin: [],
+          ethereum: [
+            {
+              ...collection,
+              chainId:
+                change === 'network' ? nextNetwork.chainId : network.chainId,
+              name: 'Current collection',
+              balance: 5,
+            },
+          ],
+        },
+      })
+    )
+  );
+  if (change === 'account') switchAccount(store);
+  else switchNetwork(store);
+  return `Current collection (${
+    change === 'account' ? 'Original chain' : 'New chain'
+  })`;
+};
+
+it.each([true, false])(
+  'preserves an accepted preview on a same-context collection return (scoped=%s)',
+  async (scoped) => {
+    mount(collectionPreview, scoped);
+    expect(
+      screen.getByText('Imported collection preview (Original chain)')
+    ).toBeVisible();
+    await enterCollection(collectionPreview.name);
+    returnFromDetour();
+    expect(
+      screen.getByText('Imported collection preview (Original chain)')
+    ).toBeVisible();
+    expect(screen.getByText('99 NFTs')).toBeVisible();
+  }
+);
+
+it('preserves a current scoped preview through a component-only GeneralMenu detour', () => {
+  mount(collectionPreview);
+  expect(
+    screen.getByText('Imported collection preview (Original chain)')
+  ).toBeVisible();
+  fireEvent.click(
+    screen.getByRole('button', { name: 'settings.connectedSites' })
+  );
+  expect(
+    screen.getByRole('heading', { name: 'Connected sites' })
+  ).toBeVisible();
+  returnFromDetour();
+  expect(
+    screen.getByText('Imported collection preview (Original chain)')
+  ).toBeVisible();
+});
+
+it('preserves current stored collection data through a cross-account round trip', async () => {
+  const store = mount();
+  const label = changeCollectionScope(store, 'account');
+  await enterCollection('Current collection');
+  returnFromDetour();
+  expect(screen.getByText(label)).toBeVisible();
+  expect(screen.getByText('5 NFTs')).toBeVisible();
+});
+
+it.each([
+  ['account', true],
+  ['account', false],
+  ['network', true],
+  ['network', false],
+] as const)(
+  'does not re-admit a preview through collection and component-only GeneralMenu detours after changing %s (scoped=%s)',
+  async (change, scoped) => {
+    const store = mount(collectionPreview, scoped);
+    const label = changeCollectionScope(store, change);
+    expect(screen.getByText(label)).toBeVisible();
+    expect(
+      screen.queryByText(/Imported collection preview/)
+    ).not.toBeInTheDocument();
+    await enterCollection('Current collection');
+    returnFromDetour();
+    expect(screen.getByText(label)).toBeVisible();
+    expect(screen.getByText('5 NFTs')).toBeVisible();
+    expect(screen.queryByText('99 NFTs')).not.toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'settings.connectedSites' })
+    );
+    expect(
+      screen.getByRole('heading', { name: 'Connected sites' })
+    ).toBeVisible();
+    returnFromDetour();
+    expect(screen.getByText(label)).toBeVisible();
+    expect(
+      screen.queryByText(/Imported collection preview/)
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText('99 NFTs')).not.toBeInTheDocument();
+  }
+);
+
+it.each([true, false])(
+  'does not re-admit a raw prior-account preview through a component-only GeneralMenu detour (scoped=%s)',
+  (scoped) => {
+    const store = mount(collectionPreview, scoped);
+    const label = changeCollectionScope(store, 'account');
+    fireEvent.click(
+      screen.getByRole('button', { name: 'settings.connectedSites' })
+    );
+    returnFromDetour();
+    expect(screen.getByText(label)).toBeVisible();
+    expect(screen.getByText('5 NFTs')).toBeVisible();
+    expect(
+      screen.queryByText(/Imported collection preview/)
+    ).not.toBeInTheDocument();
+  }
+);
