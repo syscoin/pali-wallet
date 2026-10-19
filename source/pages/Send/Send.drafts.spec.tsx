@@ -585,9 +585,9 @@ describe('send forms across wallet navigation', () => {
       await mockSubmitForm();
     });
     expect(navigateWithContext).not.toHaveBeenCalled();
-    expect(mockAlert.error).toHaveBeenCalledWith(
-      'send.smartAccountWrongNetwork'
-    );
+    // A rejected ENS validation no longer admits its resolved address into
+    // the submission fallback. Direct onFinish therefore fails unresolved.
+    expect(mockAlert.error).toHaveBeenCalledWith('send.unableToResolveEns');
     expect(
       mockEmitter.mock.calls.filter(([[, method]]) => method !== 'resolveEns')
     ).toHaveLength(0);

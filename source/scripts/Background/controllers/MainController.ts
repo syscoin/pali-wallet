@@ -331,6 +331,7 @@ class MainController {
   private ethPropertyMutex = new AsyncMutex();
   private accountLabelMutex = new AsyncMutex();
   private advancedSettingsMutex = new AsyncMutex();
+  private ensResolutionRequests = new Map<string, object>();
 
   // Auto-lock timer management
   private autoLockAlarmName = 'pali_auto_lock_timer';
@@ -9591,25 +9592,39 @@ class MainController {
       );
     }
 
-    // Call resolver via ethers-style method if available
-    let resolved: string | null = null;
+    const key = name.toLowerCase();
+    const request = {};
+    const generation = this.walletStateGeneration;
+    this.ensResolutionRequests.set(key, request);
     try {
-      // ethers.js Web3Provider/JsonRpcProvider implements resolveName
-      // CustomJsonRpcProvider extends JsonRpcProvider so resolveName is available
-      // However, to keep types simple here, use (provider as any)
-      resolved = await (provider as any).resolveName(name);
-    } catch (e) {
-      // Best-effort; fall through to null
-      resolved = null;
-    }
+      let resolved: string | null = null;
+      try {
+        resolved = await (provider as any).resolveName(name);
+      } catch (e) {
+        // Best-effort; fall through to null.
+      }
 
-    if (resolved && typeof resolved === 'string' && resolved.startsWith('0x')) {
-      // Persist in vaultGlobal ENS cache so UI can render ENS consistently
-      const addressLower = resolved.toLowerCase();
-      store.dispatch(setEnsName({ address: addressLower, name }));
-      return resolved;
+      // A late lookup must not replace a newer same-name result or refill the
+      // cache after reset, even if its originating form ignores the response.
+      if (
+        generation !== this.walletStateGeneration ||
+        this.ensResolutionRequests.get(key) !== request
+      )
+        return null;
+      if (
+        resolved &&
+        typeof resolved === 'string' &&
+        resolved.startsWith('0x')
+      ) {
+        const addressLower = resolved.toLowerCase();
+        store.dispatch(setEnsName({ address: addressLower, name }));
+        return resolved;
+      }
+      return null;
+    } finally {
+      if (this.ensResolutionRequests.get(key) === request)
+        this.ensResolutionRequests.delete(key);
     }
-    return null;
   }
 
   /**
@@ -9628,6 +9643,7 @@ class MainController {
       );
     }
 
+    const generation = this.walletStateGeneration;
     let name: string | null = null;
     try {
       name = await (provider as any).lookupAddress(address);
@@ -9635,12 +9651,25 @@ class MainController {
       name = null;
     }
 
-    if (name && typeof name === 'string') {
-      const addressLower = address.toLowerCase();
-      store.dispatch(setEnsName({ address: addressLower, name }));
-      return name;
+    if (
+      !name ||
+      typeof name !== 'string' ||
+      generation !== this.walletStateGeneration
+    )
+      return null;
+
+    // A reverse result may have been verified by the provider before a newer
+    // forward lookup completed. Publish only through a fresh guarded forward
+    // resolution; reverse metadata must never overwrite a name's destination.
+    try {
+      const resolved = await this.resolveEns(name);
+      return generation === this.walletStateGeneration &&
+        resolved?.toLowerCase() === address.toLowerCase()
+        ? name
+        : null;
+    } catch (_e) {
+      return null;
     }
-    return null;
   }
 
   /**

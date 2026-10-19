@@ -1,19 +1,30 @@
 /** @jest-environment jsdom */
 import '@testing-library/jest-dom';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import React from 'react';
 
 import { ENS_CACHE_TTL_MS } from 'state/vaultGlobal';
+import { getWalletNavigationScope } from 'utils/navigationState';
 
 import { SendEth } from './SendEth';
 
 const ACCOUNT = '0x1111111111111111111111111111111111111111';
 const CACHED = '0x2222222222222222222222222222222222222222';
 const CURRENT = '0x3333333333333333333333333333333333333333';
+const MANUAL = '0x4444444444444444444444444444444444444444';
 const NAME = 'receiver.eth';
 const mockEmitter = jest.fn();
 const mockSave = jest.fn();
 const mockNavigateWithContext = jest.fn();
+const mockAlert = { error: jest.fn(), info: jest.fn() };
+let mockReceiverValidator: (_: unknown, value: string) => Promise<void>;
+let mockFinish: (values: any) => Promise<void>;
 const mockStatus = {
   isUnlocked: true,
   isLoading: false,
@@ -21,7 +32,11 @@ const mockStatus = {
 };
 let mockState: any;
 let now: number;
-const mockLocation = { key: 'send', pathname: '/send/eth', state: undefined };
+const mockLocation = {
+  key: 'send',
+  pathname: '/send/eth',
+  state: undefined as any,
+};
 const originalResizeObserver = globalThis.ResizeObserver;
 const originalMessageChannel = globalThis.MessageChannel;
 const originalMatchMedia = window.matchMedia;
@@ -46,9 +61,33 @@ jest.mock('hooks/useController', () => ({
 jest.mock('hooks/index', () => ({
   useUtils: () => ({
     navigate: jest.fn(),
-    alert: { error: jest.fn(), info: jest.fn() },
+    alert: mockAlert,
   }),
 }));
+jest.mock('antd', () => {
+  const actual = jest.requireActual('antd');
+  // Keep the real Form/UI, but expose the exact validated/onFinish boundary
+  // to model another field delaying the final completion deterministically.
+  const Form = Object.assign(
+    (props: any) => {
+      mockFinish = props.onFinish;
+      return <actual.Form {...props} />;
+    },
+    actual.Form,
+    {
+      Item: (props: any) => {
+        if (props.name === 'receiver') {
+          const rule = props.rules.find(
+            (entry: any) => typeof entry === 'function'
+          );
+          mockReceiverValidator = rule().validator;
+        }
+        return <actual.Form.Item {...props} />;
+      },
+    }
+  );
+  return { ...actual, Form };
+});
 jest.mock('hooks/useAdjustedExplorer', () => ({
   useAdjustedExplorer: () => 'https://explorer.invalid',
 }));
@@ -136,6 +175,7 @@ afterAll(() => {
 beforeEach(() => {
   jest.clearAllMocks();
   now = 1_000_000;
+  mockLocation.state = undefined;
   jest.spyOn(Date, 'now').mockImplementation(() => now);
   window.history.replaceState(null, '', '/app.html');
   mockState = {
@@ -206,23 +246,17 @@ describe.each(['typed', 'suggestion', 'held-suggestion'] as const)(
         if (expiresAfterRender && entry === 'held-suggestion')
           now += ENS_CACHE_TTL_MS + 1;
         if (entry !== 'typed')
-          fireEvent.click(
-            screen.getByRole('button', { name: `${NAME} (ENS) ens` })
-          );
-        else fireEvent.click(next);
-        // Resolving the name changes the Form field. Wait for that normal
-        // validation transition before submitting its displayed address.
-        await waitFor(() =>
-          expect(
-            (screen.getByPlaceholderText('send.receiver') as HTMLInputElement)
-              .value
-          ).toMatch(/^0x[0-9a-f]{40}$/i)
-        );
+          await act(async () => {
+            fireEvent.click(
+              screen.getByRole('button', { name: `${NAME} (ENS) ens` })
+            );
+          });
         fireEvent.click(next);
         await waitFor(() => expect(mockNavigateWithContext).toHaveBeenCalled());
         const navigation = mockNavigateWithContext.mock.calls[0];
         expect(navigation[1]).toBe('/send/confirm');
         expect(navigation[2].tx.receivingAddress).toBe(expected);
+        expect(screen.getByPlaceholderText('send.receiver')).toHaveValue(NAME);
         expect(mockState.vaultGlobal.ensCache).toBe(originalCache);
         if (expected === CURRENT)
           expect(mockEmitter).toHaveBeenCalledWith(
@@ -242,3 +276,160 @@ describe.each(['typed', 'suggestion', 'held-suggestion'] as const)(
     );
   }
 );
+
+describe.each(['next', 'suggestion'] as const)(
+  'previous ENS validation by %s',
+  (entry) => {
+    it.each([
+      ['fresh derived address', false, false, CACHED],
+      ['expired derived address', true, false, CURRENT],
+      ['manual hex edit after expiry', true, true, MANUAL],
+    ] as const)(
+      'submits the correct target for %s',
+      async (_label, expires, manualEdit, expected) => {
+        render(<SendEth />);
+        const next = screen.getByRole('button', { name: 'buttons.next' });
+        const receiver = screen.getByPlaceholderText('send.receiver');
+        const amount = screen.getByPlaceholderText('send.amount');
+        await waitFor(() => expect(next).toBeEnabled());
+        fireEvent.change(receiver, { target: { value: NAME } });
+        await act(async () => {
+          if (entry === 'next') fireEvent.click(next);
+          else
+            fireEvent.click(
+              screen.getByRole('button', { name: `${NAME} (ENS) ens` })
+            );
+        });
+        expect(receiver).toHaveValue(NAME);
+        fireEvent.blur(receiver, { relatedTarget: amount });
+        expect(mockNavigateWithContext).not.toHaveBeenCalled();
+        if (expires) now += ENS_CACHE_TTL_MS + 1;
+        if (manualEdit)
+          fireEvent.change(receiver, { target: { value: MANUAL } });
+        fireEvent.change(amount, { target: { value: '0.01' } });
+        fireEvent.click(next);
+        await waitFor(() => expect(mockNavigateWithContext).toHaveBeenCalled());
+        const navigation = mockNavigateWithContext.mock.calls[0];
+        expect(navigation[2].tx.receivingAddress).toBe(expected);
+        if (expected === CURRENT)
+          expect(mockEmitter).toHaveBeenCalledWith(
+            ['wallet', 'resolveEns'],
+            [NAME]
+          );
+        else
+          expect(
+            mockEmitter.mock.calls.some(([path]) => path[1] === 'resolveEns')
+          ).toBe(false);
+      }
+    );
+  }
+);
+
+it('preserves the ENS name in a saved draft and resolves it again after reopening past expiry', async () => {
+  const view = render(<SendEth />);
+  const receiver = screen.getByPlaceholderText('send.receiver');
+  fireEvent.change(receiver, { target: { value: NAME } });
+  await act(async () => {
+    fireEvent.click(screen.getByRole('button', { name: `${NAME} (ENS) ens` }));
+  });
+  fireEvent.blur(receiver);
+  await waitFor(() =>
+    expect(
+      mockSave.mock.calls.some(
+        ([, , state]) => state.formValues.receiver === NAME
+      )
+    ).toBe(true)
+  );
+  const saved = [...mockSave.mock.calls]
+    .reverse()
+    .find(([, , state]) => state.formValues.receiver === NAME)![2];
+  view.unmount();
+  now += ENS_CACHE_TTL_MS + 1;
+  mockLocation.state = { ...saved, walletScope: getWalletNavigationScope() };
+  render(<SendEth />);
+  expect(screen.getByPlaceholderText('send.receiver')).toHaveValue(NAME);
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: 'buttons.next' })).toBeEnabled()
+  );
+  fireEvent.change(screen.getByPlaceholderText('send.amount'), {
+    target: { value: '0.01' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.next' }));
+  await waitFor(() =>
+    expect(mockEmitter).toHaveBeenCalledWith(['wallet', 'resolveEns'], [NAME])
+  );
+  await waitFor(() => expect(mockNavigateWithContext).toHaveBeenCalled());
+  expect(mockNavigateWithContext.mock.calls[0][2].tx.receivingAddress).toBe(
+    CURRENT
+  );
+  expect(mockEmitter).toHaveBeenCalledWith(['wallet', 'resolveEns'], [NAME]);
+});
+
+describe('validated ENS destination at the onFinish boundary', () => {
+  const prepare = async () => {
+    const view = render(<SendEth />);
+    const receiver = screen.getByPlaceholderText('send.receiver');
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'buttons.next' })).toBeEnabled()
+    );
+    await act(async () => {
+      fireEvent.change(receiver, { target: { value: NAME } });
+      fireEvent.change(screen.getByPlaceholderText('send.amount'), {
+        target: { value: '0.01' },
+      });
+    });
+    await act(async () => {
+      await mockReceiverValidator(undefined, NAME);
+    });
+    expect(receiver).toHaveValue(NAME);
+    expect(mockNavigateWithContext).not.toHaveBeenCalled();
+    return view;
+  };
+
+  it.each([false, true])(
+    'keeps the validated destination when cache publication changes=%s',
+    async (changeCache) => {
+      const view = await prepare();
+      if (changeCache) {
+        mockState = {
+          ...mockState,
+          vaultGlobal: {
+            ...mockState.vaultGlobal,
+            ensCache: { [MANUAL]: { name: NAME, timestamp: now } },
+          },
+        };
+        view.rerender(<SendEth />);
+      }
+      await act(async () => {
+        await mockFinish({ receiver: NAME, amount: '0.01' });
+      });
+      expect(mockNavigateWithContext).toHaveBeenCalledTimes(1);
+      expect(mockNavigateWithContext.mock.calls[0][2].tx.receivingAddress).toBe(
+        CACHED
+      );
+    }
+  );
+
+  it('fails closed if its validated resolution expires before onFinish', async () => {
+    await prepare();
+    now += ENS_CACHE_TTL_MS + 1;
+    await act(async () => {
+      await mockFinish({ receiver: NAME, amount: '0.01' });
+    });
+    expect(mockNavigateWithContext).not.toHaveBeenCalled();
+    expect(mockAlert.error).toHaveBeenCalledWith('send.unableToResolveEns');
+  });
+
+  it('does not override an explicit manual hex edit with an earlier ENS resolution', async () => {
+    await prepare();
+    fireEvent.change(screen.getByPlaceholderText('send.receiver'), {
+      target: { value: MANUAL },
+    });
+    await act(async () => {
+      await mockFinish({ receiver: MANUAL, amount: '0.01' });
+    });
+    expect(mockNavigateWithContext.mock.calls[0][2].tx.receivingAddress).toBe(
+      MANUAL
+    );
+  });
+});

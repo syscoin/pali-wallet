@@ -165,9 +165,13 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
   const ensNameToAddress = useSelector(selectEnsNameToAddress);
   const resolvedEnsRecipient = useRef<{
     address: string;
+    editRevision: number;
     expiresAt: number;
     input: string;
+    lookupRevision: number;
   } | null>(null);
+  const receiverEditRevision = useRef(0);
+  const ensLookupRevision = useRef(0);
   const vaultActiveAccount = useSelector(
     (state: RootState) => state.vault.activeAccount
   );
@@ -625,12 +629,17 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
       if (!isCurrentForm()) return;
       try {
         const receiver = String(values.receiver || '');
+        // Only submit the result this validation admitted. A concurrent cache
+        // publication must not substitute an unchecked destination at onFinish.
         const destination = receiver.toLowerCase().endsWith('.eth')
-          ? getCachedEnsRecipient(receiver)?.address ||
-            (resolvedEnsRecipient.current?.input === receiver.toLowerCase() &&
+          ? resolvedEnsRecipient.current?.input === receiver.toLowerCase() &&
+            resolvedEnsRecipient.current.editRevision ===
+              receiverEditRevision.current &&
+            resolvedEnsRecipient.current.lookupRevision ===
+              ensLookupRevision.current &&
             Date.now() < resolvedEnsRecipient.current.expiresAt
-              ? resolvedEnsRecipient.current.address
-              : null)
+            ? resolvedEnsRecipient.current.address
+            : null
           : receiver;
         if (!destination) {
           alert.error(t('send.unableToResolveEns'));
@@ -760,7 +769,6 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
       location.state?.returnContext,
       isCurrentForm,
       incompatibleSmartAddresses,
-      getCachedEnsRecipient,
       verifiedERC20Balance,
     ]
   );
@@ -1269,23 +1277,28 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                     typeof value === 'string' &&
                     value.toLowerCase().endsWith('.eth')
                   ) {
+                    const editRevision = receiverEditRevision.current;
+                    const lookupRevision = ++ensLookupRevision.current;
                     const resolved = await tryResolveEns(value);
                     if (
                       !isCurrentForm() ||
+                      receiverEditRevision.current !== editRevision ||
+                      ensLookupRevision.current !== lookupRevision ||
                       form.getFieldValue('receiver') !== value
                     )
                       return Promise.reject(
                         new Error('Send form is no longer active.')
                       );
                     if (resolved) {
+                      assertNotPoisoned(resolved.address);
                       resolvedEnsRecipient.current = {
                         input: String(value).toLowerCase(),
+                        editRevision,
+                        lookupRevision,
                         ...resolved,
                       };
-                      assertNotPoisoned(resolved.address);
-                      // Replace input with resolved address for submission
-                      form.setFieldValue('receiver', resolved.address);
-                      setReceiverInput(resolved.address);
+                      // Preserve ENS intent in the input and draft so a later
+                      // Next revalidates the name instead of trusting derived hex.
                       void saveCurrentState();
                       return Promise.resolve();
                     }
@@ -1317,6 +1330,8 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                 value={receiverInput}
                 onChange={(e) => {
                   const v = e.target.value || '';
+                  receiverEditRevision.current += 1;
+                  resolvedEnsRecipient.current = null;
                   setReceiverInput(v);
                   // Keep Form state in sync so validation can react to typing
                   form.setFieldValue('receiver', v);
@@ -1339,6 +1354,8 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                       className="w-full text-left px-3 py-2 text-xs text-white hover:bg-alpha-whiteAlpha100 flex items-center justify-between"
                       onMouseDown={(e) => e.preventDefault()}
                       onClick={() => {
+                        receiverEditRevision.current += 1;
+                        resolvedEnsRecipient.current = null;
                         // Set the selected suggestion (ENS name or address). The validator will resolve ENS if needed.
                         form.setFieldValue('receiver', sug.address);
                         setReceiverInput(sug.address);
