@@ -1,9 +1,9 @@
-import { toSvg } from 'jdenticon';
-import React, { useRef, useEffect, useCallback, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { LazyAccountBalance } from 'components/AccountBalance';
+import { AccountIdenticon } from 'components/AccountIdenticon';
 import { Button, Icon, PageActionFooter, Tooltip } from 'components/index';
 import { TokenIconStack } from 'components/TokenIcon';
 import { useQueryData, useUtils } from 'hooks/index';
@@ -16,34 +16,6 @@ import {
 } from 'state/vault/selectors';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { ellipsis } from 'utils/index';
-
-// Component to render account icon matching the app's pattern
-const AccountIcon = React.memo(
-  ({ account, size = 40 }: { account: any; size?: number }) => {
-    const iconRef = useRef<HTMLDivElement>(null);
-
-    // Extract identifier to avoid object reference issues
-    const identifier = account?.xpub || account?.address || '';
-
-    useEffect(() => {
-      if (!iconRef.current || !identifier) return;
-
-      iconRef.current.innerHTML = toSvg(identifier, size, {
-        backColor: '#07152B',
-        padding: 1,
-      });
-    }, [identifier, size]);
-
-    return (
-      <div
-        ref={iconRef}
-        className="add-identicon rounded-full overflow-hidden"
-        style={{ width: size, height: size }}
-      />
-    );
-  }
-);
-AccountIcon.displayName = 'AccountIcon';
 
 export const ChangeConnectedAccount = () => {
   const { controllerEmitter } = useController();
@@ -130,7 +102,11 @@ export const ChangeConnectedAccount = () => {
           <div className="flex items-center justify-between gap-2 w-full">
             <div className="flex items-center gap-3 flex-1 min-w-0">
               <div className="relative">
-                <AccountIcon account={account} size={40} />
+                <AccountIdenticon
+                  account={account}
+                  size={40}
+                  className="add-identicon rounded-full overflow-hidden"
+                />
               </div>
               <div className="flex-1 min-w-0 pr-2">
                 <p className="font-medium text-sm text-brand-white mb-1 truncate">
