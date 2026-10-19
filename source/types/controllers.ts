@@ -88,7 +88,7 @@ export interface IDAppController {
     accountId: number,
     accountType: KeyringAccountType,
     expectedContext?: IDAppAccountSelectionContext
-  ) => void;
+  ) => Promise<any[]>;
   /**
    * Sets whether a DApp has an open popup
    */

@@ -249,6 +249,25 @@ export type AccountRemovalContext = {
 
 // Default slip44 values for fallback cases
 
+const NETWORK_CHANGE_CANCELLED_ERROR = 'Network change cancelled';
+const WALLET_SESSION_CHANGED_ERROR =
+  'Wallet session changed. Unlock the wallet and try again.';
+const NETWORK_REMOVAL_IN_PROGRESS_ERROR =
+  'Network removal is in progress. Retry after it completes.';
+const NETWORK_SWITCH_REMOVAL_ERROR =
+  'Network removal is in progress. Retry the network change after it completes.';
+const NETWORK_SWITCH_RESET_ERROR =
+  'Wallet reset is in progress. Retry the network change after it completes.';
+const SIGNER_SESSION_UNAVAILABLE = 'not available in this unlocked session';
+const INVALID_PASSWORD_ERROR = 'Invalid password';
+const PROVIDER_UNAVAILABLE_ERROR = 'Web3 provider not available';
+const NETWORK_ALREADY_EXISTS_ERROR =
+  'network already exists, remove or edit it';
+const TOKEN_BALANCE_CONTEXT_CHANGED_ERROR =
+  'Token balance refresh context changed';
+const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
+const NETWORK_SWITCH_AFTER_UPDATES = 'network-switch-after-updates';
+
 const fiatNetworkKey = (network: INetwork) =>
   JSON.stringify([
     network.kind,
@@ -652,8 +671,7 @@ class MainController {
 
     // Decode resolver addresses
     const resolverAddresses = resolverResults.map((r) => {
-      if (!r.success || r.returnData === '0x')
-        return '0x0000000000000000000000000000000000000000';
+      if (!r.success || r.returnData === '0x') return ZERO_ADDRESS;
       try {
         const [addr] = registry.interface.decodeFunctionResult(
           'resolver',
@@ -661,7 +679,7 @@ class MainController {
         );
         return addr as string;
       } catch {
-        return '0x0000000000000000000000000000000000000000';
+        return ZERO_ADDRESS;
       }
     });
 
@@ -973,14 +991,10 @@ class MainController {
     isCurrent: () => boolean = () => true
   ): Promise<void> {
     if (this.isRemovingNetwork) {
-      throw new Error(
-        'Network removal is in progress. Retry the network change after it completes.'
-      );
+      throw new Error(NETWORK_SWITCH_REMOVAL_ERROR);
     }
     if (this.isResettingWallet) {
-      throw new Error(
-        'Wallet reset is in progress. Retry the network change after it completes.'
-      );
+      throw new Error(NETWORK_SWITCH_RESET_ERROR);
     }
     if (this.isCreatingWallet) {
       throw new Error(
@@ -995,10 +1009,7 @@ class MainController {
       switchGeneration === this.walletSessionGeneration && isCurrent();
     const assertCurrentSwitch = () => {
       this.assertCurrentWalletSession(switchGeneration);
-      if (!isCurrent())
-        throw new Error(
-          'Wallet session changed. Unlock the wallet and try again.'
-        );
+      if (!isCurrent()) throw new Error(WALLET_SESSION_CHANGED_ERROR);
     };
     assertCurrentSwitch();
     const slip44 = getSlip44ForNetwork(network);
@@ -1730,7 +1741,7 @@ class MainController {
       return seed;
     } catch (error) {
       // Record failed attempt if it's a password error
-      if (error.message === 'Invalid password') {
+      if (error.message === INVALID_PASSWORD_ERROR) {
         await this.recordFailedAttempt();
       }
       throw error;
@@ -1778,7 +1789,7 @@ class MainController {
       return privateKey;
     } catch (error) {
       // Record failed attempt if it's a password error
-      if (error.message === 'Invalid password') {
+      if (error.message === INVALID_PASSWORD_ERROR) {
         await this.recordFailedAttempt();
       }
       throw error;
@@ -1919,9 +1930,7 @@ class MainController {
       (keyring &&
         (keyring !== this.getActiveKeyring() || !keyring.isUnlocked()))
     ) {
-      throw new Error(
-        'Wallet session changed. Unlock the wallet and try again.'
-      );
+      throw new Error(WALLET_SESSION_CHANGED_ERROR);
     }
   }
 
@@ -1938,9 +1947,7 @@ class MainController {
       // KDF/decryption cannot be aborted. Drop the session it created if a
       // lock/reset/network change happened while it was running.
       await keyring.lockWallet();
-      throw new Error(
-        'Wallet session changed. Unlock the wallet and try again.'
-      );
+      throw new Error(WALLET_SESSION_CHANGED_ERROR);
     }
     return result;
   }
@@ -2032,7 +2039,7 @@ class MainController {
     // Use AsyncMutex for cross-context synchronization
     // This prevents concurrent network switches across all contexts
     return networkSwitchMutex.runExclusive(async () => {
-      if (!isCurrent()) throw new Error('Network change cancelled');
+      if (!isCurrent()) throw new Error(NETWORK_CHANGE_CANCELLED_ERROR);
       // Set network switching flag for UI/logging purposes
       this.isNetworkSwitching = true;
 
@@ -2401,7 +2408,7 @@ class MainController {
       await this.resetRateLimit();
     } catch (error) {
       // Record failed attempt if it's a password error
-      if (error.message === 'Invalid password') {
+      if (error.message === INVALID_PASSWORD_ERROR) {
         await this.recordFailedAttempt();
       }
       throw error;
@@ -2503,7 +2510,7 @@ class MainController {
       if (!canLogin) {
         invalidPassword = true;
         console.error('[MainController] Unlock failed - invalid password');
-        throw new Error('Invalid password');
+        throw new Error(INVALID_PASSWORD_ERROR);
       }
       authenticated = true;
       this.assertCurrentWalletSession(generation, keyring);
@@ -2961,9 +2968,7 @@ class MainController {
         this.assertWalletReadyForSigning();
         this.assertCurrentWalletSession(generation);
         if (keyring !== this.getActiveKeyring())
-          throw new Error(
-            'Wallet session changed. Unlock the wallet and try again.'
-          );
+          throw new Error(WALLET_SESSION_CHANGED_ERROR);
       },
     };
   }
@@ -3661,20 +3666,16 @@ class MainController {
     syncUpdates = false
   ): Promise<{ chainId: string; networkVersion: number }> {
     if (this.isRemovingNetwork) {
-      throw new Error(
-        'Network removal is in progress. Retry the network change after it completes.'
-      );
+      throw new Error(NETWORK_SWITCH_REMOVAL_ERROR);
     }
     if (this.isResettingWallet) {
-      throw new Error(
-        'Wallet reset is in progress. Retry the network change after it completes.'
-      );
+      throw new Error(NETWORK_SWITCH_RESET_ERROR);
     }
     this.assertWalletReadyForSigning();
     const requestGeneration = ++this.networkRequestGeneration;
     const isCurrent = () => requestGeneration === this.networkRequestGeneration;
     const assertCurrent = () => {
-      if (!isCurrent()) throw new Error('Network change cancelled');
+      if (!isCurrent()) throw new Error(NETWORK_CHANGE_CANCELLED_ERROR);
     };
     const previousSlip44 = store.getState().vaultGlobal.activeSlip44;
     const previousNetwork = store.getState().vault.activeNetwork;
@@ -3996,9 +3997,7 @@ class MainController {
 
   public async addCustomRpc(network: INetwork): Promise<INetwork> {
     if (this.isRemovingNetwork) {
-      throw new Error(
-        'Network removal is in progress. Retry after it completes.'
-      );
+      throw new Error(NETWORK_REMOVAL_IN_PROGRESS_ERROR);
     }
     const { networks } = store.getState().vaultGlobal;
 
@@ -4016,7 +4015,7 @@ class MainController {
     const networkType =
       network.kind === INetworkType.Syscoin ? 'syscoin' : 'ethereum';
     if (networks[networkType][network.chainId]) {
-      throw new Error('network already exists, remove or edit it');
+      throw new Error(NETWORK_ALREADY_EXISTS_ERROR);
     }
 
     let networkWithCustomParams = {
@@ -4068,13 +4067,11 @@ class MainController {
 
     // CoinGecko discovery may have yielded while a removal acquired ownership.
     if (this.isRemovingNetwork) {
-      throw new Error(
-        'Network removal is in progress. Retry after it completes.'
-      );
+      throw new Error(NETWORK_REMOVAL_IN_PROGRESS_ERROR);
     }
     // A different request may have registered this chain during discovery.
     if (store.getState().vaultGlobal.networks[networkType][network.chainId]) {
-      throw new Error('network already exists, remove or edit it');
+      throw new Error(NETWORK_ALREADY_EXISTS_ERROR);
     }
     store.dispatch(setNetwork({ network: networkWithCustomParams }));
 
@@ -4087,9 +4084,7 @@ class MainController {
 
   public async editCustomRpc(network: INetwork): Promise<INetwork> {
     if (this.isRemovingNetwork) {
-      throw new Error(
-        'Network removal is in progress. Retry after it completes.'
-      );
+      throw new Error(NETWORK_REMOVAL_IN_PROGRESS_ERROR);
     }
     // Update the network in the global networks store
     // The setNetwork reducer will automatically preserve CoinGecko IDs and other metadata
@@ -6082,7 +6077,7 @@ class MainController {
       return signature;
     } catch (error: any) {
       const message = error?.message || String(error);
-      if (!message.includes('not available in this unlocked session')) {
+      if (!message.includes(SIGNER_SESSION_UNAVAILABLE)) {
         throw error;
       }
       await this.hydrateActiveSLHDSAStateForSigning(params, sessionGeneration);
@@ -6097,7 +6092,7 @@ class MainController {
       } catch (retryError: any) {
         if (
           String(retryError?.message || retryError).includes(
-            'not available in this unlocked session'
+            SIGNER_SESSION_UNAVAILABLE
           )
         ) {
           throw new Error(
@@ -6134,7 +6129,7 @@ class MainController {
       return signature;
     } catch (error: any) {
       const message = error?.message || String(error);
-      if (!message.includes('not available in this unlocked session')) {
+      if (!message.includes(SIGNER_SESSION_UNAVAILABLE)) {
         throw error;
       }
       const state = await loadEncryptedSLHDSAState({
@@ -6160,7 +6155,7 @@ class MainController {
       } catch (retryError: any) {
         if (
           String(retryError?.message || retryError).includes(
-            'not available in this unlocked session'
+            SIGNER_SESSION_UNAVAILABLE
           )
         ) {
           throw new Error(
@@ -6176,7 +6171,7 @@ class MainController {
     try {
       const provider = this.ethereumTransaction?.web3Provider;
       if (!provider) {
-        throw new Error('Web3 provider not available');
+        throw new Error(PROVIDER_UNAVAILABLE_ERROR);
       }
 
       const latestNonce = await provider.getTransactionCount(address, 'latest');
@@ -7741,8 +7736,8 @@ class MainController {
 
     // Check if this is a cancellation error - if so, ignore it
     if (
-      reason === 'Network change cancelled' ||
-      (reason && reason.message === 'Network change cancelled') ||
+      reason === NETWORK_CHANGE_CANCELLED_ERROR ||
+      (reason && reason.message === NETWORK_CHANGE_CANCELLED_ERROR) ||
       (reason && typeof reason === 'string' && reason.includes('cancelled')) ||
       (reason &&
         reason.message &&
@@ -7823,7 +7818,7 @@ class MainController {
     try {
       // setSignerNetwork will validate the network when setting up the provider
       const { success } = await this.setSignerNetwork(network, isCurrent);
-      if (!isCurrent()) throw new Error('Network change cancelled');
+      if (!isCurrent()) throw new Error(NETWORK_CHANGE_CANCELLED_ERROR);
 
       if (success) {
         return { success, error: null };
@@ -7896,7 +7891,7 @@ class MainController {
     };
     const promise: Promise<T> = new Promise((resolve, reject) => {
       cancel = () => {
-        reject('Network change cancelled');
+        reject(NETWORK_CHANGE_CANCELLED_ERROR);
       };
       executor(resolve, reject);
     });
@@ -7915,7 +7910,7 @@ class MainController {
     isCurrent: () => boolean = () => true
   ) => {
     if (!isCurrent()) {
-      reject(new Error('Network change cancelled'));
+      reject(new Error(NETWORK_CHANGE_CANCELLED_ERROR));
       return;
     }
     // Always dispatch startSwitchNetwork to ensure we're in the correct state
@@ -7937,7 +7932,7 @@ class MainController {
         network,
         isCurrent
       );
-      if (!isCurrent()) throw new Error('Network change cancelled');
+      if (!isCurrent()) throw new Error(NETWORK_CHANGE_CANCELLED_ERROR);
       const chainId = network.chainId.toString(16);
       const networkVersion = network.chainId;
 
@@ -7969,7 +7964,7 @@ class MainController {
     isCurrent: () => boolean = () => true
   ) {
     const assertCurrent = () => {
-      if (!isCurrent()) throw new Error('Network change cancelled');
+      if (!isCurrent()) throw new Error(NETWORK_CHANGE_CANCELLED_ERROR);
     };
     assertCurrent();
     const isBitcoinBased = network.kind === INetworkType.Syscoin;
@@ -8051,11 +8046,7 @@ class MainController {
         assertCurrent();
       } finally {
         if (isCurrent())
-          await this.saveWalletState(
-            'network-switch-after-updates',
-            false,
-            true
-          );
+          await this.saveWalletState(NETWORK_SWITCH_AFTER_UPDATES, false, true);
       }
       // Don't throw error here - let the UI handle the network status
     } else {
@@ -8074,7 +8065,7 @@ class MainController {
           // Don't change network status here - it's already set to success
           // The error is just for balance updates, not the network switch itself
         } finally {
-          if (isCurrent()) this.saveWalletState('network-switch-after-updates');
+          if (isCurrent()) this.saveWalletState(NETWORK_SWITCH_AFTER_UPDATES);
         }
       });
     }
@@ -8630,7 +8621,7 @@ class MainController {
     }
 
     if (!this.ethereumTransaction?.web3Provider) {
-      throw new Error('Web3 provider not available');
+      throw new Error(PROVIDER_UNAVAILABLE_ERROR);
     }
 
     return await this.ethereumTransaction.web3Provider.send(
@@ -8702,7 +8693,7 @@ class MainController {
         latest.accounts[activeAccount.type]?.[activeAccount.id]?.address !==
           currentAccount.address
       ) {
-        throw new Error('Token balance refresh context changed');
+        throw new Error(TOKEN_BALANCE_CONTEXT_CHANGED_ERROR);
       }
       return {
         chainId: activeNetwork.chainId,
@@ -8739,7 +8730,7 @@ class MainController {
         currentAccount.address ||
       !latestRead()
     )
-      throw new Error('Token balance refresh context changed');
+      throw new Error(TOKEN_BALANCE_CONTEXT_CHANGED_ERROR);
     const refreshedAsset = { ...existingAsset, ...balance };
     const ethereumAssets = (
       latest.accountAssets[activeAccount.type]?.[activeAccount.id]?.ethereum ||
@@ -9541,7 +9532,7 @@ class MainController {
       // Get the web3Provider from ethereumTransaction
       const web3Provider = this.ethereumTransaction?.web3Provider;
       if (!web3Provider) {
-        throw new Error('Web3 provider not available');
+        throw new Error(PROVIDER_UNAVAILABLE_ERROR);
       }
 
       // Check if the address has code

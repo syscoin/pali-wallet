@@ -210,6 +210,8 @@ const AA21_PREFUND_REASON_HEX =
   '41413231206469646e2774207061792070726566756e64';
 const HYDRATED_METADATA_TTL_MS = 30_000;
 const PROVIDER_UNAVAILABLE_ERROR = 'Web3 provider not available';
+const INVALID_LEGACY_GAS_PRICE_ERROR = 'Invalid smart-account legacy gas price';
+const ZKSYS_GAS_TANK_REQUIRED_ERROR = 'PALI_ZKSYS_GAS_TANK_REQUIRED';
 const INFRASTRUCTURE_TIMEOUT_ERROR =
   'Infrastructure RPC timed out. Refresh status before retrying.';
 const INFRASTRUCTURE_CODE_ERROR =
@@ -366,13 +368,13 @@ const getExplicitSmartAccountGasPrice = (fees?: {
       throw new Error('Legacy gasPrice cannot be combined with EIP-1559 fees');
     const price = BigNumber.from(fees.gasPrice);
     if (price.lt(0) || price.gte(BigNumber.from(2).pow(128)))
-      throw new Error('Invalid smart-account legacy gas price');
+      throw new Error(INVALID_LEGACY_GAS_PRICE_ERROR);
     return price.toString();
   } catch (error) {
     throw Object.assign(
       error instanceof Error
         ? error
-        : new Error('Invalid smart-account legacy gas price'),
+        : new Error(INVALID_LEGACY_GAS_PRICE_ERROR),
       {
         transactionNotBroadcast: true,
       }
@@ -2348,7 +2350,7 @@ class SmartAccountController {
     const provider = this.ethereumTransaction?.web3Provider;
     const tankAddress = getZkSysGasTankAddress(chainId);
     if (!provider || !tankAddress) {
-      throw new Error('PALI_ZKSYS_GAS_TANK_REQUIRED');
+      throw new Error(ZKSYS_GAS_TANK_REQUIRED_ERROR);
     }
     const [gasLimit, rawCredit, feeData] = await Promise.all([
       provider.estimateGas({
@@ -2372,7 +2374,7 @@ class SmartAccountController {
       .add(SMART_ACCOUNT_GAS_TANK_OUTER_GAS_BUFFER)
       .mul(resolvedMaxFeePerGas);
     if (credit.lt(requiredCredit)) {
-      throw new Error('PALI_ZKSYS_GAS_TANK_REQUIRED');
+      throw new Error(ZKSYS_GAS_TANK_REQUIRED_ERROR);
     }
     return estimatedGasLimit;
   }

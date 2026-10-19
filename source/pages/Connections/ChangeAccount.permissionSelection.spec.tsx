@@ -72,6 +72,11 @@ jest.mock('state/store', () => ({
   },
   saveMainState: jest.fn(async () => true),
   persistMainStateStrict: jest.fn(async () => undefined),
+  persistDappPermissionGrant: jest.fn(async (grant, previous, isCurrent) => {
+    if (!isCurrent() || mockState.dapp.dapps[grant.host] !== previous)
+      throw new Error('Permission grant context changed');
+    mockDispatch({ type: 'dapp/addDApp', payload: grant });
+  }),
 }));
 jest.mock('scripts/Background/notification-manager', () => ({
   notificationManager: { notifyDappConnection: jest.fn() },
