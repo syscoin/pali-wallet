@@ -1,9 +1,7 @@
-import { toSvg } from 'jdenticon';
 import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
-import { LazyAccountBalance } from 'components/AccountBalance';
 import { LockFilled } from 'components/Icon/Icon';
 import { LoadingSvg, LockIconSvg } from 'components/Icon/Icon';
 import { Button, Icon, IconButton, Tooltip } from 'components/index';
@@ -13,36 +11,12 @@ import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { createTemporaryAlarm } from 'utils/alarmUtils';
 import { dispatchBackgroundEvent } from 'utils/browser';
-import { ellipsis } from 'utils/index';
+
+import { EncryptionAccountHeader } from './EncryptionAccountHeader';
 
 interface ISign {
   send?: boolean;
 }
-
-// Account icon component
-const AccountIcon = React.memo(
-  ({ account, size = 48 }: { account: any; size?: number }) => {
-    const iconRef = React.useRef<HTMLDivElement>(null);
-    const identifier = account?.xpub || account?.address || '';
-
-    React.useEffect(() => {
-      if (!iconRef.current || !identifier) return;
-      iconRef.current.innerHTML = toSvg(identifier, size, {
-        backColor: '#07152B',
-        padding: 1,
-      });
-    }, [identifier, size]);
-
-    return (
-      <div
-        ref={iconRef}
-        className="rounded-full shrink-0 overflow-hidden transition-all duration-200 hover:scale-105 hover:opacity-80"
-        style={{ width: size, height: size }}
-      />
-    );
-  }
-);
-AccountIcon.displayName = 'AccountIcon';
 
 const Decrypt: React.FC<ISign> = () => {
   const { controllerEmitter } = useController();
@@ -129,7 +103,7 @@ const Decrypt: React.FC<ISign> = () => {
     );
   }
 
-  const { label, address } = activeAccount;
+  const { address } = activeAccount;
 
   const getDecryptParams = () => {
     if (
@@ -217,46 +191,10 @@ const Decrypt: React.FC<ISign> = () => {
       {/* Scrollable content area */}
       <div className="flex-1 overflow-y-auto remove-scrollbar">
         {/* Account section */}
-        <div className="bg-bkg-2 p-4 mb-4">
-          <div className="flex flex-wrap items-center gap-3">
-            <AccountIcon account={activeAccount} size={48} />
-            <div className="min-w-0 flex-1 basis-40">
-              <div className="flex items-center gap-2">
-                <p className="min-w-0 break-words [overflow-wrap:anywhere] text-lg font-medium text-brand-white">
-                  {label}
-                </p>
-              </div>
-              <div className="flex items-center gap-1 mt-1">
-                <Tooltip content={address} placement="top">
-                  <p className="text-sm text-brand-graylight">
-                    {ellipsis(address, 8, 6)}
-                  </p>
-                </Tooltip>
-                <button
-                  type="button"
-                  aria-label={t('transactions.copyAddress')}
-                  onClick={() => void copyValue(address, 'home.addressCopied')}
-                  className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full hover:bg-brand-blue800 hover:text-brand-royalblue focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-royalblue transition-colors duration-200"
-                >
-                  <Icon
-                    name="copy"
-                    className="text-xs"
-                    size={10}
-                    wrapperClassname="h-[1em] flex items-center"
-                  />
-                </button>
-              </div>
-            </div>
-            <div className="ml-auto min-w-0 max-w-full text-right">
-              <LazyAccountBalance
-                account={activeAccount}
-                showFiat={true}
-                showSkeleton={true}
-                precision={8}
-              />
-            </div>
-          </div>
-        </div>
+        <EncryptionAccountHeader
+          account={activeAccount}
+          onCopy={() => void copyValue(address, 'home.addressCopied')}
+        />
 
         {/* Request info section */}
         <div className="px-6 pb-24">
