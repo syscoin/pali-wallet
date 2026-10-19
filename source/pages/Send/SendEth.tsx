@@ -19,6 +19,7 @@ import { ToastActionFooter } from 'components/ToastActionFooter';
 import { useUtils } from 'hooks/index';
 import { useAdjustedExplorer } from 'hooks/useAdjustedExplorer';
 import { useController } from 'hooks/useController';
+import { useRequestScope } from 'hooks/useRequestScope';
 import { RootState } from 'state/store';
 import {
   selectEnsNameToAddress,
@@ -71,6 +72,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
   } = useController();
   const location = useLocation();
   const isCurrentForm = useSendPreparationGuard(scopeKey, location.pathname);
+  const beginAddressCopy = useRequestScope(scopeKey);
 
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
@@ -1085,9 +1087,17 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                 type="button"
                 aria-label={t('buttons.copy')}
                 className="inline-flex min-h-11 items-center gap-1 rounded-lg px-1 hover:text-brand-royalblue focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue transition-colors duration-200"
-                onClick={() => {
-                  navigator.clipboard.writeText(activeAccount?.address);
-                  alert.success(t('home.addressCopied'));
+                onClick={async () => {
+                  if (!isCurrentForm(false)) return;
+                  const current = beginAddressCopy();
+                  try {
+                    await navigator.clipboard.writeText(activeAccount?.address);
+                    if (current() && isCurrentForm(false))
+                      alert.success(t('home.addressCopied'));
+                  } catch {
+                    if (current() && isCurrentForm(false))
+                      alert.error(t('transactions.copyFailed'));
+                  }
                 }}
               >
                 {ellipsis(activeAccount?.address, 4, 4)}

@@ -201,6 +201,18 @@ test('header network families and choices are keyboard-operable in a small windo
       await trigger.focus();
       await page.keyboard.press('Enter');
       const menu = page.getByRole('menu');
+      // Menu.Button schedules its initial selection on the next frame. Home
+      // must not race that still-pending initialization and mask readiness.
+      const firstItem = menu.getByRole('menuitem').first();
+      await expect
+        .poll(async () => {
+          const firstId = await firstItem.getAttribute('id');
+          return (
+            !!firstId &&
+            (await menu.getAttribute('aria-activedescendant')) === firstId
+          );
+        })
+        .toBe(true);
       const family = await keyboardItem(menu, group);
       if ((await family.getAttribute('aria-expanded')) !== 'true')
         await menu.press('Enter');

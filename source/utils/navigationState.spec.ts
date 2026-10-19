@@ -861,3 +861,127 @@ it('strict cleanup without an ownership callback rejects a newer generation duri
   await rejected;
   expect(mockStored.currentPath).toBe('/receive');
 });
+
+const previewState = () => ({
+  id: 'same-asset',
+  name: 'Original preview',
+  balance: 99,
+  chainId: 1,
+  contractAddress: `0x${'11'.repeat(20)}`,
+  isNft: true,
+  tokenStandard: 'ERC-721',
+  isImportPreview: true,
+  walletScope: getWalletNavigationScope(),
+});
+
+it.each([
+  ['account', 'preview'],
+  ['network', 'preview'],
+  ['legacy', 'preview'],
+  ['account', 'collection'],
+  ['network', 'collection'],
+  ['legacy', 'collection'],
+])(
+  'does not relabel %s-scoped %s data at context or persistence boundaries',
+  async (change, kind) => {
+    const asset = previewState();
+    const state: Record<string, any> =
+      kind === 'preview'
+        ? { ...asset, searchValue: 'query' }
+        : {
+            id: asset.id,
+            nftCollection: true,
+            nftData: asset,
+            searchValue: 'query',
+            walletScope: asset.walletScope,
+          };
+    const parent = createBrowsingNavigationContext({
+      pathname: '/settings/about',
+    });
+    if (change === 'account') mockState.vault.activeAccount.id = 1;
+    if (change === 'network') mockState.vault.activeNetwork.chainId = 2;
+    if (change === 'legacy') delete state.walletScope;
+
+    const context = createBrowsingNavigationContext({
+      pathname: '/home/details',
+      state: { ...state, returnContext: parent },
+    });
+    expect(context.state).toEqual({ id: 'same-asset', searchValue: 'query' });
+    expect(context.returnContext).toBe(parent);
+
+    await saveNavigationState('/home/details', undefined, state, parent);
+    const saved = await loadNavigationState();
+    expect(saved?.state).toEqual({ id: 'same-asset', searchValue: 'query' });
+    expect(saved?.returnContext?.returnRoute).toBe('/settings/about');
+    expect(JSON.stringify(saved)).not.toMatch(
+      /Original preview|balance|nftData/
+    );
+  }
+);
+
+it('preserves a current scoped preview and collection at both boundaries', async () => {
+  const asset = previewState();
+  for (const state of [
+    asset,
+    {
+      id: asset.id,
+      nftCollection: true,
+      nftData: asset,
+      walletScope: asset.walletScope,
+    },
+  ]) {
+    const expected = sanitizeBrowsingState('/home/details', state);
+    expect(
+      createBrowsingNavigationContext({ pathname: '/home/details', state })
+        .state
+    ).toEqual(expected);
+    await saveNavigationState('/home/details', undefined, state);
+    expect((await loadNavigationState())?.state).toEqual(expected);
+  }
+});
+
+it('accepts explicit current preview data separately from the unscoped raw route', () => {
+  const legacy: Record<string, any> = previewState();
+  delete legacy.walletScope;
+  const context = createBrowsingNavigationContext(
+    { pathname: '/home/details', state: legacy },
+    legacy
+  );
+  expect(context.state?.name).toBe('Original preview');
+  expect(context.walletScope).toEqual(getWalletNavigationScope());
+});
+
+it('preserves a validated preview caller when saving a confirmation return', async () => {
+  const context = createBrowsingNavigationContext({
+    pathname: '/home/details',
+    state: previewState(),
+  });
+  expect(context.state).not.toHaveProperty('walletScope');
+  await saveConfirmationReturnState({
+    ...reviewState(true),
+    returnContext: context,
+  });
+  const saved = await loadNavigationState();
+  expect(saved?.currentPath).toBe('/home/details');
+  expect(saved?.state?.name).toBe('Original preview');
+  expect(saved?.state?.balance).toBe(99);
+});
+
+it('preserves a validated preview parent when transaction cleanup removes its draft', async () => {
+  const context = createBrowsingNavigationContext({
+    pathname: '/home/details',
+    state: previewState(),
+  });
+  await saveNavigationState(
+    '/send/eth',
+    undefined,
+    { formValues: { receiver: 'synthetic-recipient', amount: '1' } },
+    context
+  );
+  await clearTransactionNavigationState();
+  const saved = await loadNavigationState();
+  expect(saved?.currentPath).toBe('/home/details');
+  expect(saved?.state?.name).toBe('Original preview');
+  expect(saved?.state?.balance).toBe(99);
+  expect(JSON.stringify(saved)).not.toContain('synthetic-recipient');
+});

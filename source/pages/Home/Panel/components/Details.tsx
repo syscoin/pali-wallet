@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { shallowEqual, useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
@@ -42,6 +42,17 @@ export const DetailsView = () => {
   const isCurrentRoute =
     routeScope?.account === walletScope.account &&
     routeScope?.network === walletScope.network;
+  // Older public previews did not carry a wallet scope. Bind those snapshots
+  // to their first route context, not whichever account/network opens later.
+  const publicEntry = useRef({ key: location.key, scope: walletScope });
+  if (publicEntry.current.key !== location.key)
+    publicEntry.current = { key: location.key, scope: walletScope };
+  const publicScope = routeScope || publicEntry.current.scope;
+  const payloadChain = (nftData || location.state)?.chainId;
+  const isCurrentPublicPayload =
+    publicScope.account === walletScope.account &&
+    publicScope.network === walletScope.network &&
+    (payloadChain === undefined || payloadChain === activeNetwork.chainId);
   const routeTransaction = isCurrentRoute ? tx : undefined;
   const winnerHash =
     isCurrentRoute && !isBitcoinBased
@@ -56,7 +67,9 @@ export const DetailsView = () => {
       : {};
 
   const isAsset = id && !hash;
-  const isNft = Boolean(nftCollection && nftData?.contractAddress);
+  const isNft = Boolean(
+    nftCollection && nftData?.contractAddress && isCurrentPublicPayload
+  );
   const hasDetails = Boolean(isAsset || isNft || hash);
   const transactions =
     accountTransactions[
@@ -102,7 +115,10 @@ export const DetailsView = () => {
       {isNft ? (
         <NftsDetails nftData={nftData} />
       ) : isAsset ? (
-        <AssetDetails id={id} />
+        <AssetDetails
+          id={id}
+          navigationState={isCurrentPublicPayload ? location.state : undefined}
+        />
       ) : (
         <TransactionDetails
           hash={hash}

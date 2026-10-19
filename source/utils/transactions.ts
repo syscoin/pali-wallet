@@ -17,6 +17,14 @@ import {
   IWalletNavigationScope,
 } from './navigationState';
 
+const ERC721_SAFE_TRANSFER_SIGNATURE =
+  'safeTransferFrom(address,address,uint256)';
+const ERC721_SAFE_TRANSFER_DATA_SIGNATURE =
+  'safeTransferFrom(address,address,uint256,bytes)';
+const TOKEN_TRANSFER_FROM_SIGNATURE = 'transferFrom(address,address,uint256)';
+const ERC1155_SAFE_TRANSFER_SIGNATURE =
+  'safeTransferFrom(address,address,uint256,uint256,bytes)';
+
 /**
  * Get proper display information for a transaction (value, symbol, recipient, and type)
  * Uses the same logic as notification manager for consistent display
@@ -224,14 +232,15 @@ export const getTransactionDisplayInfo = async (
 
         // ERC-721: handle both safeTransferFrom and transferFrom signatures
         const safeTransferFrom3Selector = id(
-          'safeTransferFrom(address,address,uint256)'
+          ERC721_SAFE_TRANSFER_SIGNATURE
         ).slice(0, 10);
         const safeTransferFrom4Selector = id(
-          'safeTransferFrom(address,address,uint256,bytes)'
+          ERC721_SAFE_TRANSFER_DATA_SIGNATURE
         ).slice(0, 10);
-        const transferFromSelector = id(
-          'transferFrom(address,address,uint256)'
-        ).slice(0, 10);
+        const transferFromSelector = id(TOKEN_TRANSFER_FROM_SIGNATURE).slice(
+          0,
+          10
+        );
 
         const isErc721Candidate =
           !!tx?.input &&
@@ -565,8 +574,9 @@ const cancelTransaction = async (
   chainId: number,
   alert: any,
   t: (key: string, options?: { hash: string }) => string,
-  fallbackNonce?: number,
-  signerAddress?: string
+  fallbackNonce: number | undefined,
+  signerAddress: string | undefined,
+  walletScope: IWalletNavigationScope
 ) => {
   // Safety check: this function is only for EVM networks
   const { isBitcoinBased } = store.getState().vault;
@@ -576,9 +586,17 @@ const cancelTransaction = async (
   }
 
   try {
+    const current = getWalletNavigationScope();
+    if (
+      !walletScope ||
+      current.account !== walletScope.account ||
+      current.network !== walletScope.network ||
+      Number(store.getState().vault.activeNetwork?.chainId) !== chainId
+    )
+      throw new Error('Transaction context changed');
     const response = await controllerEmitter(
       ['wallet', 'cancelEvmTransaction'],
-      [txHash, isLegacy, fallbackNonce, signerAddress]
+      [txHash, isLegacy, fallbackNonce, signerAddress, { chainId, walletScope }]
     );
 
     if (!response) {
@@ -790,9 +808,13 @@ export const handleUpdateTransaction = async ({
     nonce?: number;
     signerAddress?: string;
     txHash: string;
-    updateType: UpdateTxAction;
-    walletScope?: IWalletNavigationScope;
-  };
+  } & (
+    | { updateType: UpdateTxAction.Cancel; walletScope: IWalletNavigationScope }
+    | {
+        updateType: UpdateTxAction.SpeedUp;
+        walletScope?: IWalletNavigationScope;
+      }
+  );
 }) => {
   const {
     alert,
@@ -815,7 +837,8 @@ export const handleUpdateTransaction = async ({
         alert,
         t,
         nonce,
-        signerAddress
+        signerAddress,
+        walletScope
       );
     case UpdateTxAction.SpeedUp:
       return await speedUpTransaction(
@@ -833,9 +856,10 @@ export const handleUpdateTransaction = async ({
 
 export const isERC1155Transfer = (tx: IEvmTransactionResponse) => {
   // ERC1155 uses safeTransferFrom with 5 parameters: from, to, id, amount, data
-  const safeTransferFromSelector = id(
-    'safeTransferFrom(address,address,uint256,uint256,bytes)'
-  ).slice(0, 10);
+  const safeTransferFromSelector = id(ERC1155_SAFE_TRANSFER_SIGNATURE).slice(
+    0,
+    10
+  );
 
   if (tx?.input) {
     return tx.input.startsWith(safeTransferFromSelector);
@@ -847,15 +871,14 @@ export const isERC1155Transfer = (tx: IEvmTransactionResponse) => {
 export const isERC20Transfer = (tx: IEvmTransactionResponse) => {
   // This detects ERC20 and ERC721 transfers (they use the same method signatures)
   const transferSelector = id('transfer(address,uint256)').slice(0, 10);
-  const transferFromSelector = id(
-    'transferFrom(address,address,uint256)'
-  ).slice(0, 10);
+  const transferFromSelector = id(TOKEN_TRANSFER_FROM_SIGNATURE).slice(0, 10);
   // ERC721 also has safeTransferFrom methods
-  const safeTransferFrom3Selector = id(
-    'safeTransferFrom(address,address,uint256)'
-  ).slice(0, 10);
+  const safeTransferFrom3Selector = id(ERC721_SAFE_TRANSFER_SIGNATURE).slice(
+    0,
+    10
+  );
   const safeTransferFrom4Selector = id(
-    'safeTransferFrom(address,address,uint256,bytes)'
+    ERC721_SAFE_TRANSFER_DATA_SIGNATURE
   ).slice(0, 10);
 
   if (tx?.input) {
@@ -875,14 +898,16 @@ export const isTokenTransfer = (tx: IEvmTransactionResponse) =>
 
 export const getERC20TransferValue = (tx: IEvmTransactionResponse) => {
   const transferMethodSignature = id('transfer(address,uint256)').slice(0, 10);
-  const transferFromMethodSignature = id(
-    'transferFrom(address,address,uint256)'
-  ).slice(0, 10);
-  const safeTransferFrom3Selector = id(
-    'safeTransferFrom(address,address,uint256)'
-  ).slice(0, 10);
+  const transferFromMethodSignature = id(TOKEN_TRANSFER_FROM_SIGNATURE).slice(
+    0,
+    10
+  );
+  const safeTransferFrom3Selector = id(ERC721_SAFE_TRANSFER_SIGNATURE).slice(
+    0,
+    10
+  );
   const safeTransferFrom4Selector = id(
-    'safeTransferFrom(address,address,uint256,bytes)'
+    ERC721_SAFE_TRANSFER_DATA_SIGNATURE
   ).slice(0, 10);
 
   if (tx?.input) {
@@ -920,14 +945,16 @@ export const getERC721TokenId = (
   tx: IEvmTransactionResponse
 ): string | null => {
   const transferMethodSignature = id('transfer(address,uint256)').slice(0, 10);
-  const transferFromMethodSignature = id(
-    'transferFrom(address,address,uint256)'
-  ).slice(0, 10);
-  const safeTransferFrom3Selector = id(
-    'safeTransferFrom(address,address,uint256)'
-  ).slice(0, 10);
+  const transferFromMethodSignature = id(TOKEN_TRANSFER_FROM_SIGNATURE).slice(
+    0,
+    10
+  );
+  const safeTransferFrom3Selector = id(ERC721_SAFE_TRANSFER_SIGNATURE).slice(
+    0,
+    10
+  );
   const safeTransferFrom4Selector = id(
-    'safeTransferFrom(address,address,uint256,bytes)'
+    ERC721_SAFE_TRANSFER_DATA_SIGNATURE
   ).slice(0, 10);
 
   if (tx?.input) {
@@ -969,14 +996,16 @@ export const getERC20Recipient = (
   tx: IEvmTransactionResponse
 ): string | null => {
   const transferMethodSignature = id('transfer(address,uint256)').slice(0, 10);
-  const transferFromMethodSignature = id(
-    'transferFrom(address,address,uint256)'
-  ).slice(0, 10);
-  const safeTransferFrom3Selector = id(
-    'safeTransferFrom(address,address,uint256)'
-  ).slice(0, 10);
+  const transferFromMethodSignature = id(TOKEN_TRANSFER_FROM_SIGNATURE).slice(
+    0,
+    10
+  );
+  const safeTransferFrom3Selector = id(ERC721_SAFE_TRANSFER_SIGNATURE).slice(
+    0,
+    10
+  );
   const safeTransferFrom4Selector = id(
-    'safeTransferFrom(address,address,uint256,bytes)'
+    ERC721_SAFE_TRANSFER_DATA_SIGNATURE
   ).slice(0, 10);
 
   if (tx?.input) {
@@ -1015,9 +1044,10 @@ export const getERC20Recipient = (
 };
 
 export const getERC1155TransferValue = (tx: IEvmTransactionResponse) => {
-  const safeTransferFromSelector = id(
-    'safeTransferFrom(address,address,uint256,uint256,bytes)'
-  ).slice(0, 10);
+  const safeTransferFromSelector = id(ERC1155_SAFE_TRANSFER_SIGNATURE).slice(
+    0,
+    10
+  );
 
   if (tx?.input && tx.input.startsWith(safeTransferFromSelector)) {
     try {
@@ -1037,9 +1067,10 @@ export const getERC1155TransferValue = (tx: IEvmTransactionResponse) => {
 export const getERC1155TokenId = (
   tx: IEvmTransactionResponse
 ): string | null => {
-  const safeTransferFromSelector = id(
-    'safeTransferFrom(address,address,uint256,uint256,bytes)'
-  ).slice(0, 10);
+  const safeTransferFromSelector = id(ERC1155_SAFE_TRANSFER_SIGNATURE).slice(
+    0,
+    10
+  );
 
   if (tx?.input && tx.input.startsWith(safeTransferFromSelector)) {
     try {
@@ -1059,9 +1090,10 @@ export const getERC1155TokenId = (
 export const getERC1155Recipient = (
   tx: IEvmTransactionResponse
 ): string | null => {
-  const safeTransferFromSelector = id(
-    'safeTransferFrom(address,address,uint256,uint256,bytes)'
-  ).slice(0, 10);
+  const safeTransferFromSelector = id(ERC1155_SAFE_TRANSFER_SIGNATURE).slice(
+    0,
+    10
+  );
 
   if (tx?.input && tx.input.startsWith(safeTransferFromSelector)) {
     try {

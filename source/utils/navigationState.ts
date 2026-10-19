@@ -407,6 +407,27 @@ const sameScope = (saved: any, current: IWalletNavigationScope) =>
   record(saved) &&
   saved.account === current.account &&
   saved.network === current.network;
+/** Raw route previews must prove their original scope before being retagged. */
+const admitBrowsingState = (
+  path: string,
+  input: any,
+  current: IWalletNavigationScope
+) => {
+  const state = sanitizeBrowsingState(path, input);
+  if (
+    path.split(/[?#]/)[0] === '/home/details' &&
+    !sameScope(input?.walletScope, current)
+  ) {
+    if (state.isImportPreview) {
+      for (const key of PUBLIC_ASSET_FIELDS)
+        if (key !== 'id') delete state[key];
+      delete state.isImportPreview;
+    }
+    delete state.nftData;
+    delete state.nftCollection;
+  }
+  return state;
+};
 const ACCOUNT_INDEPENDENT = new Set([
   '/settings/about',
   '/settings/advanced',
@@ -515,13 +536,20 @@ export const createNavigationContext = (
 export const createBrowsingNavigationContext = (
   location: { hash?: string; pathname: string; search?: string; state?: any },
   extra?: Record<string, any>
-) =>
-  createNavigationContext(
-    `${location.pathname}${location.search || ''}${location.hash || ''}`,
+) => {
+  const path = `${location.pathname}${location.search || ''}${
+    location.hash || ''
+  }`;
+  return createNavigationContext(
+    path,
     undefined,
-    { ...location.state, ...extra },
+    {
+      ...admitBrowsingState(path, location.state, getWalletNavigationScope()),
+      ...extra,
+    },
     location.state?.returnContext
   );
+};
 
 const createSavedNavigationState = (
   path: string,
@@ -533,7 +561,7 @@ const createSavedNavigationState = (
   const scope = getWalletNavigationScope();
   return {
     currentPath: withNavigationTab(safeWalletPath(path)!, tab),
-    state: sanitizeBrowsingState(path, state),
+    state: admitBrowsingState(path, state, scope),
     returnContext: sanitizedContext(returnContext, scope),
     scrollPosition: scroll
       ? scrollNumber(scroll.scrollPosition)
@@ -618,7 +646,7 @@ export const saveConfirmationReturnState = async (
   await saveNavigationState(
     context.returnRoute,
     context.tab,
-    context.state,
+    { ...context.state, walletScope: context.walletScope },
     context.returnContext,
     context
   );
@@ -694,7 +722,7 @@ export const clearTransactionNavigationState = async (
         createSavedNavigationState(
           context.returnRoute,
           context.tab,
-          context.state,
+          { ...context.state, walletScope: context.walletScope },
           context.returnContext,
           context
         )

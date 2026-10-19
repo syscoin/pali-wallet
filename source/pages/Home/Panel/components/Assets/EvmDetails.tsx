@@ -58,7 +58,9 @@ export const EvmAssetDetails = ({
   // Use navigation state directly for import preview, otherwise find in store
   const currentAsset = navigationState?.isImportPreview
     ? navigationState
-    : accountAssetData.ethereum.find((asset) => asset.id === id);
+    : accountAssetData.ethereum.find(
+        (asset) => asset.id === id && asset.chainId === activeNetwork.chainId
+      );
   const marketDataScope = `${getHomeBrowsingScope(
     { ...fullAccount, ...activeAccount },
     activeNetwork

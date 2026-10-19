@@ -89,7 +89,7 @@ async function capture(page: Page, info: TestInfo, name: string) {
     animations: 'disabled',
     mask: [
       page.locator(
-        'input[type=password],textarea,p.font-mono,#import-account-identifier'
+        'input[type=password],textarea,p.font-mono,.select-none.filter.blur-sm p,#import-account-identifier'
       ),
     ],
   });
@@ -111,6 +111,23 @@ async function isBackupPhraseMasked(page: Page) {
     .evaluate((element: HTMLTextAreaElement) =>
       /^\*+(?:\s+\*+)*$/.test(element.value)
     );
+}
+
+async function privateKeyPresentation(page: Page) {
+  // Keep all key inspection inside the disposable page. Returning only these
+  // Booleans prevents Playwright assertion output from including key material.
+  return page
+    .getByText(en.settings.yourPrivateKey, { exact: true })
+    .locator('../..')
+    .locator('p')
+    .last()
+    .evaluate((element) => {
+      const text = element.textContent || '';
+      return {
+        masked: /^[*.]+$/.test(text) && !/[a-z\d]/i.test(text),
+        revealed: /^[a-z\d]{32,}$/i.test(text),
+      };
+    });
 }
 
 test('backup and private key require fresh reveal after reauthentication', async ({}, info) => {
@@ -173,13 +190,52 @@ test('backup and private key require fresh reveal after reauthentication', async
         async () => {
           await wallet.gotoRoute('#/settings/account/private-key');
           await page.addStyleTag({
-            content: 'p.font-mono{-webkit-text-security:disc!important}',
+            content:
+              'p.font-mono,.select-none.filter.blur-sm p{-webkit-text-security:disc!important}',
           });
+          await expect
+            .poll(() => privateKeyPresentation(page))
+            .toEqual({
+              masked: true,
+              revealed: false,
+            });
           await authenticate(page);
+          await expect(
+            page.getByRole('button', { name: 'Show', exact: true })
+          ).toBeVisible();
+          await expect
+            .poll(() => privateKeyPresentation(page))
+            .toEqual({
+              masked: true,
+              revealed: false,
+            });
+          observations.privateKeyMaskedAfterAuthentication = true;
           await page.getByRole('button', { name: 'Show', exact: true }).click();
           await expect(
             page.getByRole('button', { name: 'Hide', exact: true })
           ).toBeVisible();
+          await expect
+            .poll(() => privateKeyPresentation(page))
+            .toEqual({
+              masked: false,
+              revealed: true,
+            });
+          observations.privateKeyRevealedOnlyAfterShow = true;
+          await page.getByRole('button', { name: 'Hide', exact: true }).click();
+          await expect
+            .poll(() => privateKeyPresentation(page))
+            .toEqual({
+              masked: true,
+              revealed: false,
+            });
+          observations.privateKeyMaskedAfterHide = true;
+          await page.getByRole('button', { name: 'Show', exact: true }).click();
+          await expect
+            .poll(() => privateKeyPresentation(page))
+            .toEqual({
+              masked: false,
+              revealed: true,
+            });
           await page.locator('#phraseview_password').fill('');
           await expect(
             page.getByRole('button', { name: 'Hide', exact: true })
@@ -192,6 +248,13 @@ test('backup and private key require fresh reveal after reauthentication', async
             page.getByRole('button', { name: 'Hide', exact: true })
           ).toHaveCount(0);
           await expect(page.locator('p.font-mono')).toHaveCount(0);
+          await expect
+            .poll(() => privateKeyPresentation(page))
+            .toEqual({
+              masked: true,
+              revealed: false,
+            });
+          observations.privateKeyMaskedAfterReauthentication = true;
           observations.privateKeyHiddenAfterReauthentication =
             (await page
               .getByRole('button', { name: 'Show', exact: true })

@@ -4693,15 +4693,39 @@ class MainController {
 
   public async cancelEvmTransaction(
     txHash: string,
-    isLegacy?: boolean,
-    fallbackNonce?: number,
-    signerAddress?: string
+    isLegacy: boolean | undefined,
+    fallbackNonce: number | undefined,
+    signerAddress: string,
+    expectedContext: {
+      chainId: number;
+      walletScope: IWalletNavigationScope;
+    }
   ) {
     this.assertWalletReadyForSigning();
-    const { accounts, activeAccount } = store.getState().vault;
-    const normalizedSignerAddress = signerAddress?.toLowerCase();
+    const { accounts, activeAccount, activeNetwork, isBitcoinBased } =
+      store.getState().vault;
+    const scope = getWalletNavigationScope();
+    if (
+      isBitcoinBased ||
+      !expectedContext ||
+      expectedContext.chainId !== activeNetwork.chainId ||
+      expectedContext.walletScope?.account !== scope.account ||
+      expectedContext.walletScope?.network !== scope.network ||
+      typeof signerAddress !== 'string' ||
+      !signerAddress.trim()
+    )
+      throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    const normalizedSignerAddress = signerAddress.toLowerCase();
     const canUseSignerOverride =
       activeAccount.type === KeyringAccountType.SmartAccount;
+    if (
+      !canUseSignerOverride &&
+      normalizedSignerAddress &&
+      accounts[activeAccount.type]?.[
+        activeAccount.id
+      ]?.address?.toLowerCase() !== normalizedSignerAddress
+    )
+      throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
 
     let targetAccount: { id: number; type: KeyringAccountType } | undefined;
     if (canUseSignerOverride && normalizedSignerAddress) {
@@ -4744,6 +4768,23 @@ class MainController {
       (targetAccount.id !== activeAccount.id ||
         targetAccount.type !== activeAccount.type);
     const keyring = this.getActiveKeyring();
+    const transactionController = keyring.ethereumTransaction;
+    const provider = transactionController.web3Provider;
+    const generation = this.walletSessionGeneration;
+    const assertCurrentContext = () => {
+      this.assertWalletReadyForSigning();
+      const currentScope = getWalletNavigationScope();
+      if (
+        this.walletSessionGeneration !== generation ||
+        currentScope.account !== scope.account ||
+        currentScope.network !== scope.network ||
+        this.getActiveKeyring() !== keyring ||
+        keyring.ethereumTransaction !== transactionController ||
+        transactionController.web3Provider !== provider
+      )
+        throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    };
+    assertCurrentContext();
     try {
       if (shouldUseTargetAccount) {
         keyring.setVaultStateGetter(() => ({
@@ -4752,10 +4793,11 @@ class MainController {
         }));
       }
 
-      return await getController().wallet.ethereumTransaction.cancelSentTransaction(
+      return await transactionController.cancelSentTransaction(
         txHash,
         isLegacy,
-        fallbackNonce
+        fallbackNonce,
+        { assertCurrentContext }
       );
     } finally {
       if (shouldUseTargetAccount) {
