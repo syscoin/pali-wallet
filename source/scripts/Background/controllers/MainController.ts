@@ -1570,6 +1570,21 @@ class MainController {
     return this.getActiveKeyring().ethereumTransaction;
   }
 
+  public getEncryptionPublicKeyForAccount(requestedAddress: string): string {
+    const { accounts, activeAccount, isBitcoinBased } = store.getState().vault;
+    const account = accounts[activeAccount.type]?.[activeAccount.id];
+    if (
+      isBitcoinBased ||
+      typeof requestedAddress !== 'string' ||
+      !/^0x[\da-f]{40}$/i.test(requestedAddress) ||
+      account?.address?.toLowerCase() !== requestedAddress.toLowerCase()
+    )
+      throw new Error('Requested account is not active');
+    // Keep validation and the SDK's synchronous private-key read in one turn.
+    // UI validation cannot bind the account across asynchronous messaging.
+    return this.ethereumTransaction.getEncryptedPubKey();
+  }
+
   // Additional public methods for UX access (used by controllerEmitter)
   public validateZprv(zprv: string, targetNetwork?: any) {
     return this.getActiveKeyring().validateZprv(zprv, targetNetwork);
@@ -4383,8 +4398,7 @@ class MainController {
       // Clear the vault state from storage
       const storageKey = `state-vault-${slip44}`;
       const passkeyProfileStorageKey = `state-vault-${slip44}-passkey-profile`;
-      await chromeStorage.removeItem(storageKey);
-      await chromeStorage.removeItem(passkeyProfileStorageKey);
+      await chromeStorage.removeItem([storageKey, passkeyProfileStorageKey]);
 
       // Clear from vault cache as well
       vaultCache.clearSlip44FromCache(slip44);
@@ -4422,6 +4436,21 @@ class MainController {
     }
   }
 
+  private storeImportedAccount(account: IKeyringAccountState) {
+    // SDK allocation can race across extension documents. Never replace an
+    // account already admitted while this import was being derived.
+    if (store.getState().vault.accounts.Imported?.[account.id])
+      throw new Error(
+        'Account import conflicted with another import. Please retry.'
+      );
+    store.dispatch(
+      createAccount({ account, accountType: KeyringAccountType.Imported })
+    );
+    store.dispatch(
+      setActiveAccount({ id: account.id, type: KeyringAccountType.Imported })
+    );
+  }
+
   public async importAccountFromPrivateKey(
     privKey: string,
     label?: string,
@@ -4434,18 +4463,7 @@ class MainController {
       options
     );
     assertCurrent();
-    store.dispatch(
-      createAccount({
-        account: importedAccount,
-        accountType: KeyringAccountType.Imported,
-      })
-    );
-    store.dispatch(
-      setActiveAccount({
-        id: importedAccount.id,
-        type: KeyringAccountType.Imported,
-      })
-    );
+    this.storeImportedAccount(importedAccount);
 
     // Save wallet state after importing account from private key
     // Use sync=true to ensure save completes before continuing
@@ -4478,18 +4496,7 @@ class MainController {
       label
     );
     assertCurrent();
-    store.dispatch(
-      createAccount({
-        account: importedAccount,
-        accountType: KeyringAccountType.Imported,
-      })
-    );
-    store.dispatch(
-      setActiveAccount({
-        id: importedAccount.id,
-        type: KeyringAccountType.Imported,
-      })
-    );
+    this.storeImportedAccount(importedAccount);
     await this.saveWalletState('import-account-watch-only', true, true);
     setTimeout(() => {
       this.getLatestUpdateForCurrentAccount(false, true).catch((err) => {

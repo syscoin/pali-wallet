@@ -88,6 +88,7 @@ beforeEach(() => {
     host: 'synthetic.example.invalid',
     eventName: 'synthetic-encryption-request',
     0: CIPHERTEXT,
+    1: ADDRESS,
   };
   mockState = {
     vault: {
@@ -191,16 +192,16 @@ it('handles rejected decrypted-message copy without exposing an internal error',
 });
 
 it('preserves the approved encryption-key request and dispatch payload', async () => {
+  mockQuery[0] = ADDRESS;
   mockEmitter.mockResolvedValueOnce('synthetic-public-encryption-key');
   render(<EncryptPubKey />);
   fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
   await waitFor(() => expect(window.close).toHaveBeenCalledTimes(1));
   expect(mockEmitter).toHaveBeenCalledTimes(1);
-  expect(mockEmitter).toHaveBeenCalledWith([
-    'wallet',
-    'ethereumTransaction',
-    'getEncryptedPubKey',
-  ]);
+  expect(mockEmitter).toHaveBeenCalledWith(
+    ['wallet', 'getEncryptionPublicKeyForAccount'],
+    [ADDRESS]
+  );
   expect(dispatchBackgroundEvent).toHaveBeenCalledWith(
     'synthetic-encryption-request.synthetic.example.invalid',
     'synthetic-public-encryption-key'

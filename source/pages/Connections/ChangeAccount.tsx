@@ -1,4 +1,3 @@
-import { toSvg } from 'jdenticon';
 import React, {
   useState,
   useRef,
@@ -10,6 +9,7 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { LazyAccountBalance } from 'components/AccountBalance';
+import { AccountIdenticon } from 'components/AccountIdenticon';
 import { LoadingSvg } from 'components/Icon/Icon';
 import { Button, Icon, IconButton, Tooltip } from 'components/index';
 import { ListLoadMore } from 'components/Loading/ListLoadMore';
@@ -39,27 +39,9 @@ const AccountIcon = React.memo(
     isConnected?: boolean;
     size?: number;
   }) => {
-    const iconRef = useRef<HTMLDivElement>(null);
-
-    // Extract identifier to avoid object reference issues
-    const identifier = account?.xpub || account?.address || '';
-
-    useEffect(() => {
-      if (!iconRef.current || !identifier) return;
-
-      iconRef.current.innerHTML = toSvg(identifier, size, {
-        backColor: '#07152B',
-        padding: 1,
-      });
-    }, [identifier, size]); // Depend on the extracted identifier string
-
     const iconElement = (
       <div className="relative">
-        <div
-          ref={iconRef}
-          className="add-identicon rounded-full overflow-hidden cursor-pointer transition-all duration-200 hover:scale-105 hover:opacity-80"
-          style={{ width: size, height: size }}
-        />
+        <AccountIdenticon account={account} size={size} />
         {isConnected && (
           <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-bkg-2"></div>
         )}

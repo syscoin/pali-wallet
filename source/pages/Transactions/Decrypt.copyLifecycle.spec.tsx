@@ -73,6 +73,7 @@ beforeEach(() => {
     host: 'https://synthetic.invalid',
     eventName: 'eth_decrypt',
     0: 'public-synthetic-ciphertext',
+    1: ADDRESS,
   };
   mockState = {
     vault: {

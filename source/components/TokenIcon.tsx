@@ -128,38 +128,41 @@ export const TokenIcon: React.FC<ITokenIconProps> = React.memo(
     };
 
     const initial = getInitialState();
-    const [iconUrl, setIconUrl] = useState<string | null>(initial.url);
-    const [error, setError] = useState(initial.error);
-    const [isLoading, setIsLoading] = useState(initial.loading);
+    const [iconState, setIconState] = useState({ ...initial, key: cacheKey });
+    // Props may change before effects run; never render another token's state.
+    const {
+      url: iconUrl,
+      error,
+      loading: isLoading,
+    } = iconState.key === cacheKey ? iconState : initial;
 
     useEffect(() => {
+      let current = true;
+      const cleanup = () => {
+        current = false;
+      };
+      const applyResult = (url: string | null) => {
+        if (current)
+          setIconState({ key: cacheKey, url, error: !url, loading: false });
+      };
+      setIconState({ ...getInitialState(), key: cacheKey });
       // Skip if no logo URL or already cached
       if (!resolvedLogo || tokenImageCache.has(cacheKey)) {
-        return;
+        return cleanup;
       }
 
       // Skip if it's a Pali logo (already local)
       if (resolvedLogo === PaliLogo || resolvedLogo === NFT_FALLBACK_IMAGE) {
-        setIconUrl(resolvedLogo);
-        setError(false);
-        setIsLoading(false);
+        applyResult(resolvedLogo);
         // Don't cache local assets
-        return;
+        return cleanup;
       }
 
       // Check if there's already a pending request
       const existingRequest = pendingTokenRequests.get(cacheKey);
       if (existingRequest) {
-        existingRequest.then((dataUrl) => {
-          if (dataUrl) {
-            setIconUrl(dataUrl);
-            setError(false);
-          } else {
-            setError(true);
-          }
-          setIsLoading(false);
-        });
-        return;
+        existingRequest.then(applyResult, () => applyResult(null));
+        return cleanup;
       }
 
       // Create fetch promise for deduplication
@@ -227,20 +230,14 @@ export const TokenIcon: React.FC<ITokenIconProps> = React.memo(
 
       promise
         .then((dataUrl) => {
-          if (dataUrl) {
-            setIconUrl(dataUrl);
-            setError(false);
-          } else {
-            setError(true);
-          }
-          setIsLoading(false);
+          applyResult(dataUrl);
           pendingTokenRequests.delete(cacheKey); // Clean up
         })
         .catch(() => {
-          setError(true);
-          setIsLoading(false);
+          applyResult(null);
           pendingTokenRequests.delete(cacheKey); // Clean up
         });
+      return cleanup;
     }, [resolvedLogo, cacheKey]);
 
     // Check if we have a cached image to use immediately
@@ -258,7 +255,7 @@ export const TokenIcon: React.FC<ITokenIconProps> = React.memo(
     }
 
     // Use appropriate fallback
-    if ((error || !imageToRender) && cachedImage !== null) {
+    if (error || !imageToRender) {
       if (isNft) {
         return (
           <NftFallbackSvg

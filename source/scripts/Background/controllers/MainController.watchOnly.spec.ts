@@ -29,6 +29,9 @@ describe('watch-only import public-material admission', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     jest.useFakeTimers();
+    (store.getState as jest.Mock).mockReturnValue({
+      vault: { accounts: { Imported: {} } },
+    });
     importWatchOnly = jest.fn(async () => ({
       id: 1,
       address: 'public-address',

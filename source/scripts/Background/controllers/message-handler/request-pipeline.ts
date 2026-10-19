@@ -794,6 +794,24 @@ const extractEvmAddressFromParams = (
   method: string,
   params: any[]
 ): string | undefined => {
+  if (method === 'eth_getEncryptionPublicKey' || method === 'eth_decrypt') {
+    const decrypt = method === 'eth_decrypt';
+    const address = params?.[decrypt ? 1 : 0];
+    if (
+      !Array.isArray(params) ||
+      params.length !== (decrypt ? 2 : 1) ||
+      typeof address !== 'string' ||
+      !/^0x[\da-f]{40}$/i.test(address) ||
+      (decrypt &&
+        (typeof params[0] !== 'string' ||
+          !/^0x(?:[\da-f]{2})+$/i.test(params[0])))
+    )
+      throw cleanErrorStack(
+        ethErrors.rpc.invalidParams('Invalid encryption request')
+      );
+    return address;
+  }
+
   // Handle eth_sendTransaction
   if (method === 'eth_sendTransaction' && params?.[0]?.from) {
     return params[0].from;

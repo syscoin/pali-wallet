@@ -125,12 +125,14 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
             </button>
           </Tooltip>
           {advancedSettings['refresh'] && (
-            <div
+            <button
+              type="button"
+              aria-label={t('header.refresh')}
               onClick={() => controllerEmitter(['refresh'], [])}
-              className="mx-1.5 hover:text-brand-royalblue text-brand-white cursor-pointer"
+              className="mx-1.5 hover:text-brand-royalblue text-brand-white cursor-pointer rounded focus-visible:ring-2 focus-visible:ring-brand-royalblue"
             >
               <Icon name="reload" />
-            </div>
+            </button>
           )}
           <Menu.Button
             as="button"

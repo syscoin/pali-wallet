@@ -266,7 +266,8 @@ describe('advanced settings durable completion and auto-lock timers', () => {
     wallet.cleanupPersistentProviders = jest.fn();
     wallet.cancelActiveBalanceUpdate = jest.fn();
     jest.spyOn(chromeStorage, 'removeItem').mockImplementation(async (key) => {
-      delete persisted[key];
+      for (const item of Array.isArray(key) ? key : [key])
+        delete persisted[item];
     });
     (chrome.storage.local.get as jest.Mock).mockImplementation((_keys, done) =>
       done(persisted)
@@ -314,7 +315,8 @@ describe('advanced settings durable completion and auto-lock timers', () => {
     wallet.cleanupPersistentProviders = jest.fn();
     wallet.cancelActiveBalanceUpdate = jest.fn();
     jest.spyOn(chromeStorage, 'removeItem').mockImplementation(async (key) => {
-      delete persisted[key];
+      for (const item of Array.isArray(key) ? key : [key])
+        delete persisted[item];
     });
     (chrome.storage.local.get as jest.Mock).mockImplementation((_keys, done) =>
       done(persisted)

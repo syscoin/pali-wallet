@@ -1,6 +1,5 @@
 import { Dialog } from '@headlessui/react';
 import { ShieldExclamationIcon } from '@heroicons/react/outline';
-import { toSvg } from 'jdenticon';
 import React, {
   useCallback,
   useEffect,
@@ -12,6 +11,7 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { LazyAccountBalance } from 'components/AccountBalance';
+import { AccountIdenticon as AccountIcon } from 'components/AccountIdenticon';
 import {
   CenterPanel,
   DialogActionButton,
@@ -37,34 +37,6 @@ import { dispatchBackgroundEvent } from 'utils/browser';
 import { isTrustedDappOrigin } from 'utils/dappOrigin';
 import { isHexString } from 'utils/ethersV6Compat';
 import { ellipsis } from 'utils/index';
-
-// Component to render account icon matching the app's pattern - moved outside to prevent recreation
-const AccountIcon = React.memo(
-  ({ account, size = 40 }: { account: any; size?: number }) => {
-    const iconRef = useRef<HTMLDivElement>(null);
-
-    // Extract identifier to avoid object reference issues
-    const identifier = account?.xpub || account?.address || '';
-
-    useEffect(() => {
-      if (!iconRef.current || !identifier) return;
-
-      iconRef.current.innerHTML = toSvg(identifier, size, {
-        backColor: '#07152B',
-        padding: 1,
-      });
-    }, [identifier, size]); // Depend on the extracted identifier string
-
-    return (
-      <div
-        ref={iconRef}
-        className="add-identicon rounded-full overflow-hidden cursor-pointer transition-all duration-200 hover:scale-105 hover:opacity-80"
-        style={{ width: size, height: size }}
-      />
-    );
-  }
-);
-AccountIcon.displayName = 'AccountIcon';
 
 export const ConnectWallet = () => {
   const { controllerEmitter } = useController();

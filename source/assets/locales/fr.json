@@ -111,6 +111,7 @@
     "sortedBy": "Trié par"
   },
   "header": {
+    "refresh": "Actualiser le portefeuille",
     "importAccount": "Importer un compte",
     "thereWasAnError": "Il y a eu une erreur lors de la tentative de changement de réseau. Réessayez plus tard.",
     "errorSwitching": "Erreur lors du changement de réseaux",

@@ -38,16 +38,19 @@ export const chromeStorage = {
         }
       });
     }),
-  removeItem: (key: string): Promise<void> =>
+  removeItem: (key: string | string[]): Promise<void> =>
     new Promise((resolve, reject) => {
       // Use Chrome Storage API
-      chrome.storage.local.remove([key], function () {
-        if (chrome.runtime.lastError) {
-          reject(chrome.runtime.lastError);
-        } else {
-          resolve();
+      chrome.storage.local.remove(
+        Array.isArray(key) ? key : [key],
+        function () {
+          if (chrome.runtime.lastError) {
+            reject(chrome.runtime.lastError);
+          } else {
+            resolve();
+          }
         }
-      });
+      );
     }),
 };
 
