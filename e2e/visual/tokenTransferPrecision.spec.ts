@@ -268,7 +268,9 @@ test('token transfers retain exact verified MAX amounts and large NFT identifier
           expect(routes.deniedWrites).toEqual([]);
           console.log(
             'token-transfer-precision',
-            JSON.stringify({ runtime, captured })
+            JSON.stringify({ runtime, captured }, (_key, value) =>
+              typeof value === 'bigint' ? value.toString() : value
+            )
           );
         }
       );
