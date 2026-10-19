@@ -53,6 +53,9 @@ for (const malformedStatus of [404, 200]) {
       ...native,
       hash: hash('b'),
       contractAddress: contract,
+      // These are two distinct mined transactions from the same sender, not
+      // competing replacements. The real sorter keys them by sender + nonce.
+      nonce: '9',
       value: '2',
       tokenDecimal: '0',
       tokenSymbol: 'HISTORY',
@@ -208,27 +211,40 @@ for (const malformedStatus of [404, 200]) {
           return rows.map((row: any) => ({
             hash: row.hash,
             blockNumber: row.blockNumber,
+            from: row.from,
+            nonce: row.nonce,
+            historySource: row.historySource,
           }));
         });
       await wallet.step(
         'malformed optional pending response retains native and token Activity rows',
         async (capture) => {
-          await wallet!.importSeedAndCreatePassword();
-          await wallet!.switchNetwork('Syscoin NEVM Testnet', 'EVM');
-          await wallet!.ensureOnHome();
-          await page.locator('#activity-btn').click();
-          await expect(confirmed).toHaveCount(2);
-          await expect(pendingLabel).toHaveCount(0);
-          await expect(activity).toContainText('2 HISTORY');
-          expect(explorerReads.some((read) => read.malformed)).toBe(true);
-          observations.beforeRecovery = await storedHistory();
-          expect(observations.beforeRecovery).toEqual(
-            expect.arrayContaining([
-              expect.objectContaining({ hash: native.hash, blockNumber: 100 }),
-              expect.objectContaining({ hash: token.hash, blockNumber: 100 }),
-            ])
-          );
-          await capture(page);
+          try {
+            await wallet!.importSeedAndCreatePassword();
+            await wallet!.switchNetwork('Syscoin NEVM Testnet', 'EVM');
+            await wallet!.ensureOnHome();
+            await page.locator('#activity-btn').click();
+            observations.beforeInitialUiAssertion = await storedHistory();
+            await expect(confirmed).toHaveCount(2);
+            await expect(pendingLabel).toHaveCount(0);
+            await expect(activity).toContainText('2 HISTORY');
+            expect(explorerReads.some((read) => read.malformed)).toBe(true);
+            observations.beforeRecovery = await storedHistory();
+            expect(observations.beforeRecovery).toEqual(
+              expect.arrayContaining([
+                expect.objectContaining({
+                  hash: native.hash,
+                  blockNumber: 100,
+                }),
+                expect.objectContaining({ hash: token.hash, blockNumber: 100 }),
+              ])
+            );
+          } finally {
+            if (!page.isClosed()) {
+              observations.initialStepFinalHistory = await storedHistory();
+              await capture(page);
+            }
+          }
         }
       );
       await wallet.step(
