@@ -13,9 +13,9 @@ const budget = {
   // Count every mandatory MV3 warm chunk below, including the optional feature.
   background: 4400000,
   contentScript: 16000,
-  // Shared lazy UI reduced the measured package to 9,278,327 bytes.
+  // Shared lazy UI and Typography reduced the package to 9,244,055 bytes.
   // Round up to the next 10 KB so future changes retain these savings.
-  package: 9280000,
+  package: 9250000,
 };
 const allFiles = (root) =>
   fs.readdirSync(root, { withFileTypes: true }).flatMap((entry) => {
