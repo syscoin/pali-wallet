@@ -464,6 +464,115 @@ it('retains the existing Cancel flow without requesting a speed-up quote', async
   await act(async () => fireEvent.click(screen.getByText('Confirm')));
   expect(mockEmitter).toHaveBeenCalledWith(
     ['wallet', 'cancelEvmTransaction'],
-    [ORIGINAL, false, 0, ACCOUNT]
+    [
+      ORIGINAL,
+      false,
+      0,
+      ACCOUNT,
+      { chainId: 1, walletScope: getWalletNavigationScope() },
+    ]
+  );
+});
+
+it.each(['account', 'network', 'transaction', 'removed'])(
+  'closes a cancellation confirmation when its %s context changes',
+  async (change) => {
+    mockEmitter.mockResolvedValue({ isCanceled: false });
+    const view = render(<Harness />);
+    fireEvent.click(screen.getByText('Cancel'));
+    const oldConfirm = mockModal.onClick;
+    if (change === 'account')
+      mockVault.accounts.HDAccount[0].address = NEXT_ACCOUNT;
+    if (change === 'network')
+      mockVault.activeNetwork.url = 'https://other-rpc.invalid';
+    if (change === 'account' || change === 'network')
+      act(() => {
+        mockRevision++;
+        mockSubscribers.forEach((subscriber) => subscriber());
+      });
+    if (change === 'transaction')
+      view.rerender(<Harness tx={{ ...transaction, hash: REPLACEMENT }} />);
+    if (change === 'removed') view.rerender(<Harness showOptions={false} />);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    await act(async () => oldConfirm());
+    expect(mockUpdate).not.toHaveBeenCalled();
+  }
+);
+
+it('rechecks a retained cancellation callback before React updates the view', async () => {
+  mockEmitter.mockResolvedValue({ isCanceled: false });
+  render(<Harness />);
+  fireEvent.click(screen.getByText('Cancel'));
+  const confirm = mockModal.onClick;
+  mockVault.activeNetwork.url = 'https://other-rpc.invalid';
+  await act(async () => confirm());
+  expect(mockEmitter).not.toHaveBeenCalled();
+});
+
+it('admits cancellation once even when its callback is retained', async () => {
+  mockEmitter.mockResolvedValue({ isCanceled: false });
+  render(<Harness />);
+  fireEvent.click(screen.getByText('Cancel'));
+  const confirm = mockModal.onClick;
+  await act(async () => {
+    confirm();
+    confirm();
+  });
+  expect(mockUpdate).toHaveBeenCalledTimes(1);
+});
+
+it('does not let an old cancellation callback close a newer confirmation', async () => {
+  mockEmitter.mockResolvedValue({ isCanceled: false });
+  render(<Harness />);
+  fireEvent.click(screen.getByText('Cancel'));
+  const oldClose = mockModal.onClose;
+  const oldConfirm = mockModal.onClick;
+  act(() => oldClose());
+  fireEvent.click(screen.getByText('Cancel'));
+  await act(async () => {
+    oldClose();
+    oldConfirm();
+  });
+  expect(screen.getByRole('dialog')).toBeTruthy();
+  expect(mockUpdate).not.toHaveBeenCalled();
+  await act(async () => fireEvent.click(screen.getByText('Confirm')));
+  expect(mockUpdate).toHaveBeenCalledTimes(1);
+});
+
+it('rejects cancellation dispatch when the approved scope has changed', async () => {
+  const walletScope = getWalletNavigationScope();
+  mockVault.activeNetwork.url = 'https://other-rpc.invalid';
+  await handleUpdateTransaction({
+    t: mockT,
+    updateData: {
+      alert: mockAlert,
+      chainId: 1,
+      isLegacy: false,
+      txHash: ORIGINAL,
+      updateType: UpdateTxAction.Cancel,
+      walletScope,
+    },
+  });
+  expect(mockEmitter).not.toHaveBeenCalled();
+  expect(mockAlert.error).toHaveBeenCalledWith(
+    'transactions.transactionCancelFailed'
+  );
+});
+
+it('rejects cancellation without an approved scope instead of adopting the current wallet', async () => {
+  await handleUpdateTransaction({
+    t: mockT,
+    // @ts-expect-error Exercise an obsolete caller at the runtime boundary.
+    updateData: {
+      alert: mockAlert,
+      chainId: 1,
+      isLegacy: false,
+      txHash: ORIGINAL,
+      updateType: UpdateTxAction.Cancel,
+    },
+  });
+  expect(mockEmitter).not.toHaveBeenCalled();
+  expect(mockAlert.error).toHaveBeenCalledWith(
+    'transactions.transactionCancelFailed'
   );
 });

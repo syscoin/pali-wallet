@@ -1,5 +1,6 @@
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 
+import { getWalletNavigationScope } from './navigationState';
 import { handleUpdateTransaction, UpdateTxAction } from './transactions';
 
 jest.mock('scripts/Background/controllers/controllerEmitter', () => ({
@@ -7,7 +8,19 @@ jest.mock('scripts/Background/controllers/controllerEmitter', () => ({
 }));
 jest.mock('state/store', () => ({
   __esModule: true,
-  default: { getState: () => ({ vault: { isBitcoinBased: false } }) },
+  default: {
+    getState: () => ({
+      vault: {
+        isBitcoinBased: false,
+        activeAccount: { id: 0, type: 'HDAccount' },
+        accounts: {
+          HDAccount: { 0: { address: `0x${'33'.repeat(20)}` } },
+        },
+        activeNetwork: { chainId: 5700, url: 'https://rpc.example' },
+      },
+      global: { slip44: 60 },
+    }),
+  },
 }));
 
 const ORIGINAL = `0x${'11'.repeat(32)}`;
@@ -48,6 +61,8 @@ describe.each(cases)('$action submission metadata handoff', (testCase) => {
         isLegacy: false,
         updateType: testCase.action,
         alert,
+        signerAddress: `0x${'33'.repeat(20)}`,
+        walletScope: getWalletNavigationScope(),
       },
     });
 

@@ -42,7 +42,9 @@ jest.mock('components/index', () => ({
     'components/Input/ValidatedPasswordInput'
   ).ValidatedPasswordInput,
 }));
-jest.mock('utils/index', () => ({ ellipsis: (value: string) => value }));
+jest.mock('utils/index', () => ({
+  ellipsis: jest.requireActual('utils/format').ellipsis,
+}));
 
 const originalMessageChannel = globalThis.MessageChannel;
 const originalMatchMedia = window.matchMedia;
@@ -107,6 +109,27 @@ it('resets private-key reveal on password change and requires a fresh reveal aft
   expect(await screen.findByRole('button', { name: 'Show' })).toBeVisible();
   expect(screen.queryByRole('button', { name: 'Hide' })).toBeNull();
   expect(mockEmitter).toHaveBeenCalledTimes(2);
+});
+
+it.each([
+  `0x${'1234567890abcdef'.repeat(4)}`,
+  `K${'syntheticprivatekey'.repeat(3)}`,
+])('conceals private-key fragments until Show and after Hide', async (key) => {
+  mockEmitter.mockResolvedValueOnce(key);
+  const view = render(<PrivateKey />);
+  const password = screen.getByPlaceholderText('settings.enterYourPassword');
+  const tail = key.slice(-16);
+  expect(view.container.textContent).not.toContain(tail);
+  fireEvent.change(password, { target: { value: 'correct' } });
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
+  const show = await screen.findByRole('button', { name: 'Show' });
+  expect(view.container.textContent).not.toContain(tail);
+  expect(view.container.textContent).not.toContain(key);
+  fireEvent.click(show);
+  expect(screen.getByText(key)).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: 'Hide' }));
+  expect(view.container.textContent).not.toContain(tail);
+  expect(view.container.textContent).not.toContain(key);
 });
 
 it('keeps a signing import with an address-shaped public identifier exportable', () => {

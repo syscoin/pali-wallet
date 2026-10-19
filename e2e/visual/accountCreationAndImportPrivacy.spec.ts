@@ -252,7 +252,19 @@ test('account actions are distinct and reachable; private import stays masked ac
             'Spending account',
           ]) {
             await wallet.gotoRoute('#/settings/account/new');
-            await page.locator('#account-name-input').fill(label);
+            const accountName = page.getByRole('textbox', {
+              name: `${en.settings.nameYourNewAccount} (${en.settings.optional})`,
+              exact: true,
+            });
+            await expect(accountName).toHaveAttribute(
+              'id',
+              'account-name-input'
+            );
+            await accountName.fill(label);
+            await expect(accountName).toHaveAccessibleName(
+              `${en.settings.nameYourNewAccount} (${en.settings.optional})`
+            );
+            observations.accountNameRemainsLabeledAfterEntry = true;
             await page.locator('#create-btn').click();
             await expect(page.getByRole('dialog')).toBeVisible();
             await page

@@ -565,8 +565,9 @@ const cancelTransaction = async (
   chainId: number,
   alert: any,
   t: (key: string, options?: { hash: string }) => string,
-  fallbackNonce?: number,
-  signerAddress?: string
+  fallbackNonce: number | undefined,
+  signerAddress: string | undefined,
+  walletScope: IWalletNavigationScope
 ) => {
   // Safety check: this function is only for EVM networks
   const { isBitcoinBased } = store.getState().vault;
@@ -576,9 +577,17 @@ const cancelTransaction = async (
   }
 
   try {
+    const current = getWalletNavigationScope();
+    if (
+      !walletScope ||
+      current.account !== walletScope.account ||
+      current.network !== walletScope.network ||
+      Number(store.getState().vault.activeNetwork?.chainId) !== chainId
+    )
+      throw new Error('Transaction context changed');
     const response = await controllerEmitter(
       ['wallet', 'cancelEvmTransaction'],
-      [txHash, isLegacy, fallbackNonce, signerAddress]
+      [txHash, isLegacy, fallbackNonce, signerAddress, { chainId, walletScope }]
     );
 
     if (!response) {
@@ -790,9 +799,13 @@ export const handleUpdateTransaction = async ({
     nonce?: number;
     signerAddress?: string;
     txHash: string;
-    updateType: UpdateTxAction;
-    walletScope?: IWalletNavigationScope;
-  };
+  } & (
+    | { updateType: UpdateTxAction.Cancel; walletScope: IWalletNavigationScope }
+    | {
+        updateType: UpdateTxAction.SpeedUp;
+        walletScope?: IWalletNavigationScope;
+      }
+  );
 }) => {
   const {
     alert,
@@ -815,7 +828,8 @@ export const handleUpdateTransaction = async ({
         alert,
         t,
         nonce,
-        signerAddress
+        signerAddress,
+        walletScope
       );
     case UpdateTxAction.SpeedUp:
       return await speedUpTransaction(

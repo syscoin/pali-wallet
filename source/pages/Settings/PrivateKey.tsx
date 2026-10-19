@@ -225,10 +225,8 @@ const PrivateKeyView = () => {
                     : ''
                 }`}
               >
-                {isCurrentKeyValid && currentXprv
-                  ? isPrivateKeyVisible
-                    ? currentXprv
-                    : ellipsis(currentXprv, 4, 16)
+                {isCurrentKeyValid && currentXprv && isPrivateKeyVisible
+                  ? currentXprv
                   : '********...************'}
               </p>
             </div>

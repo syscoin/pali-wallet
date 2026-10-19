@@ -34,6 +34,10 @@ const CancelIcon = React.memo(() => (
 ));
 CancelIcon.displayName = 'CancelIcon';
 
+const MENU_ITEM_CLASS_NAME =
+  'flex items-center justify-start text-brand-white mb-2 w-full p-2 rounded-md transition-all duration-150 cursor-pointer hover:bg-brand-blue400 hover:bg-opacity-30';
+const CANCEL_ITEM_CLASS_NAME = MENU_ITEM_CLASS_NAME.replace('mb-2 ', '');
+
 const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
   handleUpdateTransaction,
   transaction,
@@ -156,7 +160,18 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
       return;
     }
     preview.current?.cancel();
-    preview.current = undefined;
+    const startingScope = getWalletNavigationScope();
+    let cancelled = false;
+    const cancel = () => {
+      cancelled = true;
+    };
+    const close = () => {
+      cancel();
+      if (preview.current?.close !== close) return;
+      preview.current = undefined;
+      setIsOpenModal(false);
+    };
+    preview.current = { cancel, close };
     setIsOpenModal(true);
 
     switch (actionType) {
@@ -165,9 +180,19 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
           buttonText: t('buttons.confirm'),
           title: t('header.cancelTx'),
           description: t('header.cancelTxMessage'),
-          onClose: () => setIsOpenModal(false),
+          onClose: close,
           onClick: () => {
-            handleUpdateTransaction({
+            const current = getWalletNavigationScope();
+            if (
+              cancelled ||
+              current.account !== startingScope.account ||
+              current.network !== startingScope.network
+            ) {
+              close();
+              return;
+            }
+            close();
+            void handleUpdateTransaction({
               updateData: {
                 alert,
                 chainId,
@@ -176,10 +201,10 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
                 updateType: UpdateTxAction.Cancel,
                 nonce: transaction.nonce,
                 signerAddress: transaction.from,
+                walletScope: startingScope,
               },
               t,
             });
-            setIsOpenModal(false);
           },
         });
         break;
@@ -233,8 +258,7 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
                       <li
                         className={`
                     ${active ? 'bg-brand-blue400 bg-opacity-50' : ''}
-                    flex items-center justify-start text-brand-white mb-2 w-full p-2 rounded-md
-                    transition-all duration-150 cursor-pointer hover:bg-brand-blue400 hover:bg-opacity-30
+                    ${MENU_ITEM_CLASS_NAME}
                     `}
                         onClick={handleGoTxDetails}
                       >
@@ -252,8 +276,7 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
                       <li
                         className={`
                     ${active ? 'bg-brand-blue400 bg-opacity-50' : ''}
-                    flex items-center justify-start text-brand-white mb-2 w-full p-2 rounded-md
-                    transition-all duration-150 cursor-pointer hover:bg-brand-blue400 hover:bg-opacity-30
+                    ${MENU_ITEM_CLASS_NAME}
                     `}
                         onClick={openTransactionOnExplorer}
                       >
@@ -271,8 +294,7 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
                       <li
                         className={`
                     ${active ? 'bg-brand-blue400 bg-opacity-50' : ''}
-                    flex items-center justify-start text-brand-white mb-2 w-full p-2 rounded-md
-                    transition-all duration-150 cursor-pointer hover:bg-brand-blue400 hover:bg-opacity-30
+                    ${MENU_ITEM_CLASS_NAME}
                     `}
                         onClick={() => handleOnClick(UpdateTxAction.SpeedUp)}
                       >
@@ -290,8 +312,7 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
                       <li
                         className={`
                   ${active ? 'bg-brand-blue400 bg-opacity-50' : ''}
-                  flex items-center justify-start text-brand-white w-full p-2 rounded-md
-                  transition-all duration-150 cursor-pointer hover:bg-brand-blue400 hover:bg-opacity-30
+                  ${CANCEL_ITEM_CLASS_NAME}
                   `}
                         onClick={() => handleOnClick(UpdateTxAction.Cancel)}
                       >
