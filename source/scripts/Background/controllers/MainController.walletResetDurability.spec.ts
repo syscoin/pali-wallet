@@ -405,6 +405,13 @@ describe('wallet reset durable cleanup', () => {
     return { dapp, host, address, reset: jest.spyOn(dapp, 'resetSessions') };
   };
 
+  const injectedNotices = () =>
+    jest
+      .mocked(chrome.scripting.executeScript)
+      .mock.calls.map(([options]) =>
+        'args' in options ? options.args?.[0] : undefined
+      );
+
   it('clears live sessions only after a successful public forget', async () => {
     const { dapp, host, reset } = installLiveDapp();
     await wallet.forgetWallet('synthetic password');
@@ -412,9 +419,7 @@ describe('wallet reset durable cleanup', () => {
     expect(reset).toHaveBeenCalledWith([host]);
     expect(dapp.getAll()).toEqual({});
     expect(() => dapp.hasWindow(host)).toThrow();
-    const notifications = jest
-      .mocked(chrome.scripting.executeScript)
-      .mock.calls.map(([options]) => options.args?.[0]);
+    const notifications = injectedNotices();
     expect(notifications).toHaveLength(3);
     expect(notifications[0]).toEqual({
       id: PaliEvents.lockStateChanged,
@@ -456,7 +461,7 @@ describe('wallet reset durable cleanup', () => {
     expect(dapp.hasWindow(host)).toBe(true);
     expect(dapp.getAccount(host)?.address).toBe(address);
     const inject = jest.mocked(chrome.scripting.executeScript);
-    expect(inject.mock.calls[0][0].args?.[0]).toEqual({
+    expect(injectedNotices()[0]).toEqual({
       id: PaliEvents.lockStateChanged,
       data: {
         method: PaliEvents.lockStateChanged,
@@ -470,7 +475,7 @@ describe('wallet reset durable cleanup', () => {
       params: { isUnlocked: true },
     });
     await new Promise(setImmediate);
-    expect(inject.mock.calls[0][0].args?.[0]).toEqual({
+    expect(injectedNotices()[0]).toEqual({
       id: PaliEvents.lockStateChanged,
       data: {
         method: PaliEvents.lockStateChanged,
