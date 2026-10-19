@@ -331,6 +331,7 @@ class MainController {
   private ethPropertyMutex = new AsyncMutex();
   private accountLabelMutex = new AsyncMutex();
   private advancedSettingsMutex = new AsyncMutex();
+  private ensResolutionRequests = new Map<string, object>();
 
   // Auto-lock timer management
   private autoLockAlarmName = 'pali_auto_lock_timer';
@@ -2183,6 +2184,37 @@ class MainController {
     return this.advancedSettingsMutex.runExclusive(() =>
       this.setAdvancedSettingsExclusive(advancedProperty, value, generation)
     );
+  }
+
+  public async saveAdvancedSettings(
+    settings: { autolock: number; refresh: boolean },
+    expectedScope: IWalletNavigationScope
+  ): Promise<void> {
+    if (
+      !settings ||
+      typeof settings.refresh !== 'boolean' ||
+      !Number.isInteger(settings.autolock) ||
+      (settings.autolock !== 0 &&
+        (settings.autolock < 5 || settings.autolock > 120))
+    ) {
+      throw new Error('Invalid advanced settings');
+    }
+    const scope = getWalletNavigationScope();
+    if (
+      this.getWalletSetupStatus() ||
+      expectedScope?.account !== scope.account ||
+      expectedScope?.network !== scope.network
+    ) {
+      throw new Error('Wallet state changed before saving settings');
+    }
+    const { refresh, autolock } = settings;
+    const generation = this.walletStateGeneration;
+    // A Save owns one generation even between its individual durable writes.
+    // A late reply must not let the UI submit the rest into a replacement wallet.
+    return this.advancedSettingsMutex.runExclusive(async () => {
+      await this.setAdvancedSettingsExclusive('refresh', refresh, generation);
+      await this.setAdvancedSettingsExclusive('autolock', autolock, generation);
+    });
   }
 
   private async setAdvancedSettingsExclusive(
@@ -9560,25 +9592,38 @@ class MainController {
       );
     }
 
-    // Call resolver via ethers-style method if available
-    let resolved: string | null = null;
+    const key = name.toLowerCase();
+    const request = {};
+    const generation = this.walletStateGeneration;
+    this.ensResolutionRequests.set(key, request);
     try {
-      // ethers.js Web3Provider/JsonRpcProvider implements resolveName
-      // CustomJsonRpcProvider extends JsonRpcProvider so resolveName is available
-      // However, to keep types simple here, use (provider as any)
-      resolved = await (provider as any).resolveName(name);
-    } catch (e) {
-      // Best-effort; fall through to null
-      resolved = null;
-    }
+      let resolved: string | null = null;
+      try {
+        resolved = await (provider as any).resolveName(name);
+      } catch (e) {
+        // Best-effort; fall through to null.
+      }
 
-    if (resolved && typeof resolved === 'string' && resolved.startsWith('0x')) {
-      // Persist in vaultGlobal ENS cache so UI can render ENS consistently
-      const addressLower = resolved.toLowerCase();
-      store.dispatch(setEnsName({ address: addressLower, name }));
-      return resolved;
+      // Reset invalidates the caller as well as cache publication. Independent
+      // same-wallet callers still receive their own successful RPC results.
+      if (generation !== this.walletStateGeneration) return null;
+      if (
+        resolved &&
+        typeof resolved === 'string' &&
+        resolved.startsWith('0x')
+      ) {
+        // Only the newest same-name request may update the shared cache.
+        if (this.ensResolutionRequests.get(key) === request) {
+          const addressLower = resolved.toLowerCase();
+          store.dispatch(setEnsName({ address: addressLower, name }));
+        }
+        return resolved;
+      }
+      return null;
+    } finally {
+      if (this.ensResolutionRequests.get(key) === request)
+        this.ensResolutionRequests.delete(key);
     }
-    return null;
   }
 
   /**
@@ -9597,6 +9642,7 @@ class MainController {
       );
     }
 
+    const generation = this.walletStateGeneration;
     let name: string | null = null;
     try {
       name = await (provider as any).lookupAddress(address);
@@ -9604,12 +9650,25 @@ class MainController {
       name = null;
     }
 
-    if (name && typeof name === 'string') {
-      const addressLower = address.toLowerCase();
-      store.dispatch(setEnsName({ address: addressLower, name }));
-      return name;
+    if (
+      !name ||
+      typeof name !== 'string' ||
+      generation !== this.walletStateGeneration
+    )
+      return null;
+
+    // A reverse result may have been verified by the provider before a newer
+    // forward lookup completed. Publish only through a fresh guarded forward
+    // resolution; reverse metadata must never overwrite a name's destination.
+    try {
+      const resolved = await this.resolveEns(name);
+      return generation === this.walletStateGeneration &&
+        resolved?.toLowerCase() === address.toLowerCase()
+        ? name
+        : null;
+    } catch (_e) {
+      return null;
     }
-    return null;
   }
 
   /**

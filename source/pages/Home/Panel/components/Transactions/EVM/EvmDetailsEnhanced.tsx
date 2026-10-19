@@ -754,6 +754,7 @@ export const EvmTransactionDetailsEnhanced = ({
           return {
             ...item,
             value: short,
+            copyValue: item.value,
             tooltip: item.value,
           };
         }

@@ -26,6 +26,7 @@ import {
   selectActiveAccountWithAssets,
   selectValidEnsCache,
 } from 'state/vault/selectors';
+import { ENS_CACHE_TTL_MS } from 'state/vaultGlobal';
 import { ITokenEthProps } from 'types/tokens';
 import {
   findEvmAddressPoisoningCollision,
@@ -164,8 +165,13 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
   const ensNameToAddress = useSelector(selectEnsNameToAddress);
   const resolvedEnsRecipient = useRef<{
     address: string;
+    editRevision: number;
+    expiresAt: number;
     input: string;
+    lookupRevision: number;
   } | null>(null);
+  const receiverEditRevision = useRef(0);
+  const ensLookupRevision = useRef(0);
   const vaultActiveAccount = useSelector(
     (state: RootState) => state.vault.activeAccount
   );
@@ -342,14 +348,31 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
     }
   }, [form]);
 
+  // A memoized selector (or this callback's closure) can outlive an entry's
+  // TTL. Check its backing name and timestamp at the actual use boundary.
+  const getCachedEnsRecipient = useCallback(
+    (name: string) => {
+      const address = ensNameToAddress[name.toLowerCase()];
+      const entry = address && ensCache[address.toLowerCase()];
+      const expiresAt = entry ? entry.timestamp + ENS_CACHE_TTL_MS : 0;
+      return entry &&
+        entry.name.toLowerCase() === name.toLowerCase() &&
+        Date.now() < expiresAt
+        ? { address, expiresAt }
+        : null;
+    },
+    [ensNameToAddress, ensCache]
+  );
+
   // Minimal ENS resolver via background method
   const tryResolveEns = useCallback(
-    async (maybeEns: string): Promise<string | null> => {
+    async (
+      maybeEns: string
+    ): Promise<{ address: string; expiresAt: number } | null> => {
       if (!maybeEns || !maybeEns.toLowerCase().endsWith('.eth')) return null;
-      const key = maybeEns.toLowerCase();
       // 1) Try cache first
-      const cached = ensNameToAddress[key];
-      if (cached && cached.startsWith('0x')) return cached;
+      const cached = getCachedEnsRecipient(maybeEns);
+      if (cached && cached.address.startsWith('0x')) return cached;
       // 2) Fallback to background resolver on mainnet
       try {
         const resolved = (await controllerEmitter(
@@ -362,14 +385,17 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
           typeof resolved === 'string' &&
           resolved.startsWith('0x')
         ) {
-          return resolved;
+          return {
+            address: resolved,
+            expiresAt: Date.now() + ENS_CACHE_TTL_MS,
+          };
         }
         return null;
       } catch (_e) {
         return null;
       }
     },
-    [ensNameToAddress, isCurrentForm]
+    [getCachedEnsRecipient, isCurrentForm]
   );
 
   // Build suggestions from local accounts and recent recipients
@@ -603,11 +629,17 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
       if (!isCurrentForm()) return;
       try {
         const receiver = String(values.receiver || '');
+        // Only submit the result this validation admitted. A concurrent cache
+        // publication must not substitute an unchecked destination at onFinish.
         const destination = receiver.toLowerCase().endsWith('.eth')
-          ? ensNameToAddress[receiver.toLowerCase()] ||
-            (resolvedEnsRecipient.current?.input === receiver.toLowerCase()
-              ? resolvedEnsRecipient.current.address
-              : null)
+          ? resolvedEnsRecipient.current?.input === receiver.toLowerCase() &&
+            resolvedEnsRecipient.current.editRevision ===
+              receiverEditRevision.current &&
+            resolvedEnsRecipient.current.lookupRevision ===
+              ensLookupRevision.current &&
+            Date.now() < resolvedEnsRecipient.current.expiresAt
+            ? resolvedEnsRecipient.current.address
+            : null
           : receiver;
         if (!destination) {
           alert.error(t('send.unableToResolveEns'));
@@ -737,7 +769,6 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
       location.state?.returnContext,
       isCurrentForm,
       incompatibleSmartAddresses,
-      ensNameToAddress,
       verifiedERC20Balance,
     ]
   );
@@ -1246,23 +1277,28 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                     typeof value === 'string' &&
                     value.toLowerCase().endsWith('.eth')
                   ) {
+                    const editRevision = receiverEditRevision.current;
+                    const lookupRevision = ++ensLookupRevision.current;
                     const resolved = await tryResolveEns(value);
                     if (
                       !isCurrentForm() ||
+                      receiverEditRevision.current !== editRevision ||
+                      ensLookupRevision.current !== lookupRevision ||
                       form.getFieldValue('receiver') !== value
                     )
                       return Promise.reject(
                         new Error('Send form is no longer active.')
                       );
                     if (resolved) {
+                      assertNotPoisoned(resolved.address);
                       resolvedEnsRecipient.current = {
                         input: String(value).toLowerCase(),
-                        address: resolved,
+                        editRevision,
+                        lookupRevision,
+                        ...resolved,
                       };
-                      assertNotPoisoned(resolved);
-                      // Replace input with resolved address for submission
-                      form.setFieldValue('receiver', resolved);
-                      setReceiverInput(resolved);
+                      // Preserve ENS intent in the input and draft so a later
+                      // Next revalidates the name instead of trusting derived hex.
                       void saveCurrentState();
                       return Promise.resolve();
                     }
@@ -1294,6 +1330,8 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                 value={receiverInput}
                 onChange={(e) => {
                   const v = e.target.value || '';
+                  receiverEditRevision.current += 1;
+                  resolvedEnsRecipient.current = null;
                   setReceiverInput(v);
                   // Keep Form state in sync so validation can react to typing
                   form.setFieldValue('receiver', v);
@@ -1316,6 +1354,8 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                       className="w-full text-left px-3 py-2 text-xs text-white hover:bg-alpha-whiteAlpha100 flex items-center justify-between"
                       onMouseDown={(e) => e.preventDefault()}
                       onClick={() => {
+                        receiverEditRevision.current += 1;
+                        resolvedEnsRecipient.current = null;
                         // Set the selected suggestion (ENS name or address). The validator will resolve ENS if needed.
                         form.setFieldValue('receiver', sug.address);
                         setReceiverInput(sug.address);

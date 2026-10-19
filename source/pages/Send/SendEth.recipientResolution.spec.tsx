@@ -14,6 +14,7 @@ import { SendEth } from './SendEth';
 const mockEmitter = jest.fn();
 const mockSave = jest.fn();
 const mockNavigate = jest.fn();
+const mockNavigateWithContext = jest.fn();
 const mockStatus = {
   isUnlocked: true,
   isLoading: false,
@@ -68,7 +69,7 @@ jest.mock('utils/index', () => ({
   adjustUrl: (value: string) => value,
   formatFullPrecisionBalance: (value: any) => String(value),
   createNavigationContext: jest.fn(),
-  navigateWithContext: jest.fn(),
+  navigateWithContext: (...args: any[]) => mockNavigateWithContext(...args),
   getTokenTypeBadgeColor: () => '',
   truncateToDecimals: (value: string) => value,
 }));
@@ -211,6 +212,17 @@ const begin = async () => {
   );
 };
 
+const submitCurrentRecipient = async (expected: string) => {
+  fireEvent.change(screen.getByPlaceholderText('send.amount'), {
+    target: { value: '0.01' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.next' }));
+  await waitFor(() => expect(mockNavigateWithContext).toHaveBeenCalled());
+  expect(mockNavigateWithContext.mock.calls[0][2].tx.receivingAddress).toBe(
+    expected
+  );
+};
+
 it('does not replace a newer hex recipient with an older ENS response', async () => {
   const pending = deferred();
   setResolver(pending);
@@ -219,6 +231,7 @@ it('does not replace a newer hex recipient with an older ENS response', async ()
   expect(receiver()).toHaveValue(RECIPIENT);
   await act(async () => pending.resolve(RESOLVED));
   expect(receiver()).toHaveValue(RECIPIENT);
+  await submitCurrentRecipient(RECIPIENT);
 });
 
 it('still resolves the current ENS recipient', async () => {
@@ -226,7 +239,8 @@ it('still resolves the current ENS recipient', async () => {
   setResolver(pending);
   await begin();
   await act(async () => pending.resolve(RESOLVED));
-  expect(receiver()).toHaveValue(RESOLVED);
+  expect(receiver()).toHaveValue('earlier.eth');
+  await submitCurrentRecipient(RESOLVED);
 });
 
 it('does not refill a cleared recipient from an older ENS response', async () => {
@@ -265,10 +279,52 @@ it.each(['earlier-first', 'later-first'])(
       await act(async () => later.resolve(LATER_RESOLVED));
     } else {
       await act(async () => later.resolve(LATER_RESOLVED));
-      expect(receiver()).toHaveValue(LATER_RESOLVED);
+      expect(receiver()).toHaveValue('later.eth');
       await act(async () => earlier.resolve(RESOLVED));
     }
-    expect(receiver()).toHaveValue(LATER_RESOLVED);
+    expect(receiver()).toHaveValue('later.eth');
+    await submitCurrentRecipient(LATER_RESOLVED);
+  }
+);
+
+it.each(['older-first', 'newer-first'])(
+  'keeps the newest same-name request after an intervening edit (%s)',
+  async (order) => {
+    const earlier = deferred();
+    const later = deferred();
+    setResolver(earlier);
+    const normal = mockEmitter.getMockImplementation()!;
+    let reads = 0;
+    mockEmitter.mockImplementation((path, args) =>
+      path[1] === 'resolveEns'
+        ? ++reads === 1
+          ? earlier.promise
+          : later.promise
+        : normal(path, args)
+    );
+    await begin();
+    fireEvent.change(receiver(), { target: { value: RECIPIENT } });
+    fireEvent.change(receiver(), { target: { value: 'earlier.eth' } });
+    fireEvent.change(screen.getByPlaceholderText('send.amount'), {
+      target: { value: '0.01' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'buttons.next' }));
+    await waitFor(() => expect(reads).toBe(2));
+    if (order === 'older-first') {
+      await act(async () => earlier.resolve(RESOLVED));
+      expect(mockNavigateWithContext).not.toHaveBeenCalled();
+      await act(async () => later.resolve(LATER_RESOLVED));
+    } else {
+      await act(async () => later.resolve(LATER_RESOLVED));
+      await act(async () => earlier.resolve(RESOLVED));
+    }
+    await waitFor(() =>
+      expect(mockNavigateWithContext).toHaveBeenCalledTimes(1)
+    );
+    expect(mockNavigateWithContext.mock.calls[0][2].tx.receivingAddress).toBe(
+      LATER_RESOLVED
+    );
+    expect(receiver()).toHaveValue('earlier.eth');
   }
 );
 

@@ -183,12 +183,18 @@ const vaultGlobalSlice = createSlice({
     ) {
       if (!state.ensCache) state.ensCache = {};
       const addressLower = action.payload.address.toLowerCase();
+      const nameLower = action.payload.name.toLowerCase();
       const now = Date.now();
 
       // Clean up expired entries while adding new one (opportunistic cleanup)
       const cleanedCache: typeof state.ensCache = {};
       for (const [addr, entry] of Object.entries(state.ensCache)) {
-        if (now - entry.timestamp < ENS_CACHE_TTL_MS) {
+        if (
+          entry &&
+          typeof entry.name === 'string' &&
+          now - entry.timestamp < ENS_CACHE_TTL_MS &&
+          entry.name.toLowerCase() !== nameLower
+        ) {
           cleanedCache[addr] = entry;
         }
       }

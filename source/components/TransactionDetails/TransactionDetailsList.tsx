@@ -9,6 +9,7 @@ interface ITransactionDetailsListProps {
   details: Array<{
     canCopy?: boolean;
     className?: string;
+    copyValue?: string;
     label: string;
     tooltip?: string;
     value: any; // optional tooltip content for short values (e.g., ENS -> address)
@@ -32,14 +33,17 @@ export const TransactionDetailsList: React.FC<ITransactionDetailsListProps> = ({
 }) => (
   <>
     {details.map(
-      ({ label, value, canCopy, className, tooltip }: any, index: number) => (
+      (
+        { label, value, canCopy, className, tooltip, copyValue }: any,
+        index: number
+      ) => (
         <Fragment key={`detail-${index}`}>
           {label.length > 0 && value !== undefined && (
             <div className="flex items-center justify-between my-1 pl-0 pr-3 py-2 w-full text-xs border-b border-dashed border-[#FFFFFF29] cursor-default transition-all duration-300">
               <p className="text-xs font-normal text-white">{label}</p>
               <span className={className || ''}>
                 {String(value).length >= 20 ? (
-                  <Tooltip content={value} childrenClassName="flex">
+                  <Tooltip content={tooltip ?? value} childrenClassName="flex">
                     <p
                       className={`text-xs font-normal ${
                         className || 'text-white'
@@ -48,7 +52,9 @@ export const TransactionDetailsList: React.FC<ITransactionDetailsListProps> = ({
                       {ellipsis(String(value), 2, 4)}
                     </p>
                     {canCopy && (
-                      <IconButton onClick={() => onCopy(value ?? '', label)}>
+                      <IconButton
+                        onClick={() => onCopy(copyValue ?? value ?? '', label)}
+                      >
                         <CopyIcon />
                       </IconButton>
                     )}
@@ -63,7 +69,9 @@ export const TransactionDetailsList: React.FC<ITransactionDetailsListProps> = ({
                       {value}
                     </p>
                     {canCopy && (
-                      <IconButton onClick={() => onCopy(tooltip ?? '', label)}>
+                      <IconButton
+                        onClick={() => onCopy(copyValue ?? value ?? '', label)}
+                      >
                         <CopyIcon />
                       </IconButton>
                     )}
