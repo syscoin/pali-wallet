@@ -86,9 +86,11 @@ test('forgetting a wallet removes site permissions before a different wallet reu
     await wallet.step(
       'grant access to the original synthetic wallet',
       async () => {
-        expect((await connect()).result).toEqual([original.active.address]);
+        expect((await connect()).result).toEqual([
+          original.active.address.toLowerCase(),
+        ]);
         expect(await providerRequest(dapp, 'eth_accounts')).toEqual([
-          original.active.address,
+          original.active.address.toLowerCase(),
         ]);
         expect(await snapshot()).toMatchObject({
           grants: [origin],
@@ -116,7 +118,7 @@ test('forgetting a wallet removes site permissions before a different wallet reu
     await wallet.step(
       'restore a different public fixture without inheriting access',
       async () => {
-        E2E_CONFIG.seedPhrase = REPLACEMENT_SEED;
+        Object.assign(E2E_CONFIG, { seedPhrase: REPLACEMENT_SEED });
         await wallet!.importSeedAndCreatePassword();
         await wallet!.switchNetwork('Syscoin NEVM Testnet', 'EVM');
         await wallet!.ensureOnHome();
@@ -133,9 +135,11 @@ test('forgetting a wallet removes site permissions before a different wallet reu
         await wallet!.ensureOnHome();
         expect(await providerRequest(dapp, 'eth_accounts')).toEqual([]);
         expect(await snapshot()).toEqual(replacement);
-        expect((await connect()).result).toEqual([replacement.active.address]);
+        expect((await connect()).result).toEqual([
+          replacement.active.address.toLowerCase(),
+        ]);
         expect(await providerRequest(dapp, 'eth_accounts')).toEqual([
-          replacement.active.address,
+          replacement.active.address.toLowerCase(),
         ]);
         expect(await snapshot()).toMatchObject({
           grants: [origin],
@@ -150,12 +154,21 @@ test('forgetting a wallet removes site permissions before a different wallet reu
     expect(routes.deniedWrites).toEqual([]);
     status = 'passed';
   } finally {
-    await info.attach('permission-reset-observations', {
-      body: JSON.stringify(observations, null, 2),
-      contentType: 'application/json',
-    });
-    if (wallet) await wallet.dispose(status);
-    await server.close();
-    Object.assign(E2E_CONFIG, previous);
+    try {
+      await info.attach('permission-reset-observations', {
+        body: JSON.stringify(observations, null, 2),
+        contentType: 'application/json',
+      });
+    } finally {
+      try {
+        if (wallet) await wallet.dispose(status);
+      } finally {
+        try {
+          await server.close();
+        } finally {
+          Object.assign(E2E_CONFIG, previous);
+        }
+      }
+    }
   }
 });
