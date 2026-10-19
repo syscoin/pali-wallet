@@ -13,8 +13,9 @@ const budget = {
   // Count every mandatory MV3 warm chunk below, including the optional feature.
   background: 4400000,
   contentScript: 16000,
-  // Legacy/PQ crypto and localized Sentry UI add ~368 KB to 8,940,628 bytes.
-  package: 9400000,
+  // Shared lazy UI reduced the measured package to 9,278,327 bytes.
+  // Round up to the next 10 KB so future changes retain these savings.
+  package: 9280000,
 };
 const allFiles = (root) =>
   fs.readdirSync(root, { withFileTypes: true }).flatMap((entry) => {
