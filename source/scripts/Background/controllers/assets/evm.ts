@@ -152,6 +152,15 @@ const EvmAssetsController = (): IEvmAssetsController => {
             // Check if it's an NFT based on type
             const tokenType = token.type || 'ERC-20';
             const isNft = ['ERC-721', 'ERC-1155'].includes(tokenType);
+            // Preserve exact owned quantities for import/MAX, without claiming
+            // precision that an unsafe numeric API response already lost.
+            const rawBalance =
+              tokenType === 'ERC-1155' &&
+              ((typeof token.balance === 'string' &&
+                /^\d+$/.test(token.balance)) ||
+                (Number.isSafeInteger(token.balance) && token.balance >= 0))
+                ? String(token.balance)
+                : undefined;
 
             // For ERC-1155, include tokenId in the ID if available (Blockscout uses 'id' field)
             const tokenId =
@@ -193,6 +202,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
               decimals: isNft ? 0 : safeDecimals, // NFTs always have 0 decimals
               tokenStandard: tokenType,
               ...(tokenId && { tokenId }), // Include tokenId for ERC-1155
+              ...(rawBalance !== undefined && { rawBalance }),
             };
           } catch {
             // SYSCOIN: One malformed/malicious token must not hide the valid list.

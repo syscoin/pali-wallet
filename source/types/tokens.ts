@@ -77,6 +77,7 @@ export interface ITokenSearchResult {
   marketCapRank?: number;
   name: string;
   priceChange24h?: number;
+  rawBalance?: string;
   symbol: string;
   tokenId?: string; // For ERC-1155 tokens
   tokenStandard?:

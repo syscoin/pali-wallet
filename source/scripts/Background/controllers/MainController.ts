@@ -3061,6 +3061,11 @@ class MainController {
       );
     }
 
+    if (store.getState().vault.accounts.HDAccount[newAccount.id])
+      throw new Error(
+        'Account creation conflicted with another request. Please retry.'
+      );
+
     store.dispatch(
       createAccount({
         account: newAccount,
