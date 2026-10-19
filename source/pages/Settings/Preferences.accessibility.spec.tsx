@@ -45,7 +45,13 @@ jest.mock('hooks/index', () => ({
 jest.mock('hooks/useController', () => ({
   useController: () => ({ controllerEmitter: mockEmitter }),
 }));
-jest.mock('utils/navigationState', () => ({ navigateBack: jest.fn() }));
+jest.mock('utils/navigationState', () => ({
+  navigateBack: jest.fn(),
+  getWalletNavigationScope: () => ({
+    account: 'account-a',
+    network: 'network-a',
+  }),
+}));
 jest.mock('utils/i18n', () => ({ changeLanguage: jest.fn() }));
 jest.mock('utils/storageAPI', () => ({
   chromeStorage: { getItem: jest.fn().mockResolvedValue('en') },
@@ -100,14 +106,13 @@ it('preserves the advanced draft when a later setting fails after an earlier sav
   fireEvent.change(screen.getByLabelText('settings.enableAutolock'), {
     target: { value: '10' },
   });
-  mockEmitter.mockImplementation(async (_path, [property, value]) => {
-    if (property === 'autolock')
-      throw new Error('synthetic second save failure');
+  mockEmitter.mockImplementation(async (_path, [settings]) => {
     mockState.vaultGlobal.advancedSettings = {
       ...mockState.vaultGlobal.advancedSettings,
-      [property]: value,
+      refresh: settings.refresh,
     };
     view.rerender(<Advanced />);
+    throw new Error('synthetic second save failure');
   });
   fireEvent.click(screen.getByRole('button', { name: 'buttons.save' }));
   await screen.findByRole('alert');
@@ -172,14 +177,14 @@ it('keeps an advanced draft retryable when its staged write fails before publica
     target: { value: '10' },
   });
   let rejectFirstAutolock = true;
-  mockEmitter.mockImplementation(async (_path, [property, value]) => {
-    if (property === 'autolock' && rejectFirstAutolock) {
+  mockEmitter.mockImplementation(async (_path, [settings]) => {
+    if (rejectFirstAutolock) {
       rejectFirstAutolock = false;
       throw new Error('Storage unavailable');
     }
     mockState.vaultGlobal.advancedSettings = {
       ...mockState.vaultGlobal.advancedSettings,
-      [property]: value,
+      ...settings,
     };
     view.rerender(<Advanced />);
   });

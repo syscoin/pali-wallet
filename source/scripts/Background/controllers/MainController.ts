@@ -2185,6 +2185,37 @@ class MainController {
     );
   }
 
+  public async saveAdvancedSettings(
+    settings: { autolock: number; refresh: boolean },
+    expectedScope: IWalletNavigationScope
+  ): Promise<void> {
+    if (
+      !settings ||
+      typeof settings.refresh !== 'boolean' ||
+      !Number.isInteger(settings.autolock) ||
+      (settings.autolock !== 0 &&
+        (settings.autolock < 5 || settings.autolock > 120))
+    ) {
+      throw new Error('Invalid advanced settings');
+    }
+    const scope = getWalletNavigationScope();
+    if (
+      this.getWalletSetupStatus() ||
+      expectedScope?.account !== scope.account ||
+      expectedScope?.network !== scope.network
+    ) {
+      throw new Error('Wallet state changed before saving settings');
+    }
+    const { refresh, autolock } = settings;
+    const generation = this.walletStateGeneration;
+    // A Save owns one generation even between its individual durable writes.
+    // A late reply must not let the UI submit the rest into a replacement wallet.
+    return this.advancedSettingsMutex.runExclusive(async () => {
+      await this.setAdvancedSettingsExclusive('refresh', refresh, generation);
+      await this.setAdvancedSettingsExclusive('autolock', autolock, generation);
+    });
+  }
+
   private async setAdvancedSettingsExclusive(
     advancedProperty: string,
     value: boolean | number,

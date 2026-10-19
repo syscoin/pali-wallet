@@ -26,6 +26,7 @@ import {
   selectActiveAccountWithAssets,
   selectValidEnsCache,
 } from 'state/vault/selectors';
+import { ENS_CACHE_TTL_MS } from 'state/vaultGlobal';
 import { ITokenEthProps } from 'types/tokens';
 import {
   findEvmAddressPoisoningCollision,
@@ -164,6 +165,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
   const ensNameToAddress = useSelector(selectEnsNameToAddress);
   const resolvedEnsRecipient = useRef<{
     address: string;
+    expiresAt: number;
     input: string;
   } | null>(null);
   const vaultActiveAccount = useSelector(
@@ -342,14 +344,31 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
     }
   }, [form]);
 
+  // A memoized selector (or this callback's closure) can outlive an entry's
+  // TTL. Check its backing name and timestamp at the actual use boundary.
+  const getCachedEnsRecipient = useCallback(
+    (name: string) => {
+      const address = ensNameToAddress[name.toLowerCase()];
+      const entry = address && ensCache[address.toLowerCase()];
+      const expiresAt = entry ? entry.timestamp + ENS_CACHE_TTL_MS : 0;
+      return entry &&
+        entry.name.toLowerCase() === name.toLowerCase() &&
+        Date.now() < expiresAt
+        ? { address, expiresAt }
+        : null;
+    },
+    [ensNameToAddress, ensCache]
+  );
+
   // Minimal ENS resolver via background method
   const tryResolveEns = useCallback(
-    async (maybeEns: string): Promise<string | null> => {
+    async (
+      maybeEns: string
+    ): Promise<{ address: string; expiresAt: number } | null> => {
       if (!maybeEns || !maybeEns.toLowerCase().endsWith('.eth')) return null;
-      const key = maybeEns.toLowerCase();
       // 1) Try cache first
-      const cached = ensNameToAddress[key];
-      if (cached && cached.startsWith('0x')) return cached;
+      const cached = getCachedEnsRecipient(maybeEns);
+      if (cached && cached.address.startsWith('0x')) return cached;
       // 2) Fallback to background resolver on mainnet
       try {
         const resolved = (await controllerEmitter(
@@ -362,14 +381,17 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
           typeof resolved === 'string' &&
           resolved.startsWith('0x')
         ) {
-          return resolved;
+          return {
+            address: resolved,
+            expiresAt: Date.now() + ENS_CACHE_TTL_MS,
+          };
         }
         return null;
       } catch (_e) {
         return null;
       }
     },
-    [ensNameToAddress, isCurrentForm]
+    [getCachedEnsRecipient, isCurrentForm]
   );
 
   // Build suggestions from local accounts and recent recipients
@@ -604,8 +626,9 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
       try {
         const receiver = String(values.receiver || '');
         const destination = receiver.toLowerCase().endsWith('.eth')
-          ? ensNameToAddress[receiver.toLowerCase()] ||
-            (resolvedEnsRecipient.current?.input === receiver.toLowerCase()
+          ? getCachedEnsRecipient(receiver)?.address ||
+            (resolvedEnsRecipient.current?.input === receiver.toLowerCase() &&
+            Date.now() < resolvedEnsRecipient.current.expiresAt
               ? resolvedEnsRecipient.current.address
               : null)
           : receiver;
@@ -737,7 +760,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
       location.state?.returnContext,
       isCurrentForm,
       incompatibleSmartAddresses,
-      ensNameToAddress,
+      getCachedEnsRecipient,
       verifiedERC20Balance,
     ]
   );
@@ -1257,12 +1280,12 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                     if (resolved) {
                       resolvedEnsRecipient.current = {
                         input: String(value).toLowerCase(),
-                        address: resolved,
+                        ...resolved,
                       };
-                      assertNotPoisoned(resolved);
+                      assertNotPoisoned(resolved.address);
                       // Replace input with resolved address for submission
-                      form.setFieldValue('receiver', resolved);
-                      setReceiverInput(resolved);
+                      form.setFieldValue('receiver', resolved.address);
+                      setReceiverInput(resolved.address);
                       void saveCurrentState();
                       return Promise.resolve();
                     }

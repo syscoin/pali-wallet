@@ -1239,8 +1239,9 @@ export const popupOptimizationMiddleware: Middleware = async (
           if (accountAsset && accountAsset.ethereum) {
             const assetExists = accountAsset.ethereum.some(
               (asset: any) =>
+                asset.chainId === vault.activeNetwork.chainId &&
                 asset.contractAddress?.toLowerCase() ===
-                assetParams.options.address.toLowerCase()
+                  assetParams.options.address.toLowerCase()
             );
 
             if (assetExists) {

@@ -13,7 +13,7 @@ import {
 } from 'components/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
-import { navigateBack } from 'utils/navigationState';
+import { getWalletNavigationScope, navigateBack } from 'utils/navigationState';
 
 import { SmartAccountInfrastructure } from './SmartAccountInfrastructure';
 
@@ -36,6 +36,8 @@ const Advanced = () => {
   const [loading, setLoading] = useState<boolean>(false);
   const [saveError, setSaveError] = useState(false);
   const submitting = useRef(false);
+  const mounted = useRef(true);
+  const submissionId = useRef(0);
   const draftEdited = useRef(false);
   const [confirmationMessage, setConfirmationMessage] = useState<string>('');
   const [currentAdvancedProperty, setCurrentAdvancedProperty] =
@@ -45,6 +47,23 @@ const Advanced = () => {
   const { controllerEmitter } = useController();
   const navigate = useNavigate();
   const location = useLocation();
+  const walletScope = useSelector(() => getWalletNavigationScope());
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      submissionId.current += 1;
+    };
+  }, []);
+
+  useEffect(() => {
+    submissionId.current += 1;
+    submitting.current = false;
+    setLoading(false);
+    setConfirmed(false);
+    setSaveError(false);
+  }, [walletScope.account, walletScope.network]);
 
   const ADVANCED_SETTINGS = ['refresh', 'autolock'];
 
@@ -115,28 +134,40 @@ const Advanced = () => {
     if (!hasUnsavedChanges || !isAutolockValid || submitting.current) return;
 
     submitting.current = true;
+    const id = ++submissionId.current;
+    const scope = getWalletNavigationScope();
+    const isCurrent = () => {
+      const currentScope = getWalletNavigationScope();
+      return (
+        mounted.current &&
+        id === submissionId.current &&
+        currentScope.account === scope.account &&
+        currentScope.network === scope.network
+      );
+    };
     setLoading(true);
     setSaveError(false);
 
     try {
-      // Save all advanced settings together
-      for (const property of ADVANCED_SETTINGS) {
-        await controllerEmitter(
-          ['wallet', 'setAdvancedSettings'],
-          [property, enabledProperties[property]]
-        );
-      }
+      await controllerEmitter(
+        ['wallet', 'saveAdvancedSettings'],
+        [{ refresh: enabledProperties.refresh, autolock }, scope]
+      );
+      if (!isCurrent()) return;
 
       // Update saved state after successful save
       draftEdited.current = false;
       setSavedProperties({ ...enabledProperties });
       setConfirmed(true);
     } catch (error) {
+      if (!isCurrent()) return;
       console.error('Failed to save advanced settings:', error);
       setSaveError(true);
     } finally {
-      submitting.current = false;
-      setLoading(false);
+      if (isCurrent()) {
+        submitting.current = false;
+        setLoading(false);
+      }
     }
   };
 
