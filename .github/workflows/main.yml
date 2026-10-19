@@ -14,10 +14,14 @@ jobs:
       - run: yarn install
       - run: yarn test-all
   visual:
-    name: visual regression suite
+    name: visual regression shard ${{ matrix.shard }}/2
     runs-on: ubuntu-latest
-    # The full suite plus its retained browser evidence can exceed 30 minutes.
+    # Isolated runners retain one worker and all evidence without raising the limit.
     timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -37,23 +41,32 @@ jobs:
           node scripts/check-bundle-size.js "$PACKAGE_DIR"
       - name: Run visual baselines
         env:
-          PALI_E2E_RUN_ID: pr-visual-${{ github.run_id }}-${{ github.run_attempt }}
+          PALI_E2E_RUN_ID: pr-visual-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard }}
           PALI_TEST_DAPP_REVISION: ${{ github.sha }}
           PALI_TEST_DAPP_EXTENSION_PATH: ${{ github.workspace }}/build/chrome
         # Linux baselines are committed under e2e/visual/__screenshots__/linux/.
         # A screen without a committed baseline FAILS the job but writes the
         # generated baseline into the artifact below: download it, commit the
         # new linux png(s), and re-run. Changed screens fail with a diff.
-        run: yarn e2e:visual --update-snapshots=missing
+        run: yarn e2e:visual --update-snapshots=missing --shard=${{ matrix.shard }}/2 --workers=1
       - name: Upload visual artifacts (diffs + new baselines)
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: visual-artifacts-${{ github.run_id }}-${{ github.run_attempt }}
+          name: visual-artifacts-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard }}
           path: |
             e2e/visual/__screenshots__/
             e2e/artifacts/
           retention-days: 14
+  visual-result:
+    name: visual regression suite
+    if: always()
+    needs: visual
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - name: Require every visual shard to succeed
+        run: test '${{ needs.visual.result }}' = 'success'
   conformance:
     name: test dapp conformance
     runs-on: ubuntu-latest
