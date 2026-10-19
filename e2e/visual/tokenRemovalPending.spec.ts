@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { createHash } from 'crypto';
-import { AbiCoder, id } from 'ethers';
+import { AbiCoder, id, keccak256, toUtf8Bytes } from 'ethers';
 import fs from 'fs';
 import path from 'path';
 
@@ -239,6 +239,36 @@ test('ERC20 removal waits for one genuine callback and preserves the other token
         }
       }
     );
+    const scopeInput = await page.evaluate(
+      () =>
+        new Promise<{ account: string; network: string }>((resolve) => {
+          chrome.runtime.sendMessage({ type: 'getCurrentState' }, (state) => {
+            const { activeAccount, activeNetwork, accounts } = state.vault;
+            const account = accounts[activeAccount.type][activeAccount.id];
+            // Return only the public identity inputs used by navigation scope.
+            resolve({
+              account: JSON.stringify([
+                activeAccount.type,
+                activeAccount.id,
+                account.address,
+                account.xpub,
+              ]),
+              network: JSON.stringify([
+                activeNetwork.kind,
+                activeNetwork.chainId,
+                activeNetwork.slip44,
+                state.vaultGlobal.activeSlip44,
+                activeNetwork.url,
+                activeNetwork.apiUrl,
+              ]),
+            });
+          });
+        })
+    );
+    const removalScope = {
+      account: keccak256(toUtf8Bytes(scopeInput.account)),
+      network: keccak256(toUtf8Bytes(scopeInput.network)),
+    };
     await wallet.step(
       'hold only the genuine completed removal callback and keep its confirmation pending',
       async (capture) => {
@@ -326,7 +356,7 @@ test('ERC20 removal waits for one genuine callback and preserves the other token
               controllerErrors: [false],
               transportErrors: [null],
               released: false,
-              requestParams: [[CONTRACT, 5700, undefined]],
+              requestParams: [[CONTRACT, 5700, undefined, removalScope]],
             });
           observations.pending = await page.evaluate(() =>
             (window as any).__tokenDeleteDelivery.snapshot()
@@ -388,8 +418,8 @@ test('ERC20 removal waits for one genuine callback and preserves the other token
               controllerErrors: [false, false],
               transportErrors: [null, null],
               requestParams: [
-                [CONTRACT, 5700, undefined],
-                [KEEP_CONTRACT, 5700, undefined],
+                [CONTRACT, 5700, undefined, removalScope],
+                [KEEP_CONTRACT, 5700, undefined, removalScope],
               ],
             });
           observations.completed = await page.evaluate(() =>
