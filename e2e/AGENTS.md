@@ -1,7 +1,8 @@
 # Pali e2e agent harness
 
-Playwright harness that drives the real Pali extension against the live
-zkTanenbaum testnet with a dedicated test seed. It is built for agent loops:
+Playwright harness that drives the real Pali extension. Scheduled journeys use
+the live zkTanenbaum testnet with a dedicated test seed; PR checks use disposable
+local chains or fenced synthetic network responses. It is built for agent loops:
 every run produces machine-readable summaries, screenshots, videos, and
 Playwright traces so an agent (or human) can iterate on UX, find quirks/bugs,
 and verify features end to end without manual setup.
@@ -125,6 +126,19 @@ Conventions:
 Three workflows:
 
 ### `main.yml` — PR conformance check
+
+The visual job runs all 13 committed core-screen golden comparisons against
+`harness/visualFixture.ts`, behind the launch-time deny proxy. It preserves the
+original QA account identity and funded-state layouts, including a confirmed
+synthetic activity row, ordinary UI smart-account creation, fee estimation and
+both infrastructure-readiness states. It never needs a funded public account or
+a healthy public RPC. Network and market values are synthetic; these comparisons
+are not evidence of live-chain balances, deployed infrastructure or confirmations.
+The existing masks, screenshot thresholds and baseline PNGs remain the visual
+contract. Unknown requests fail closed, writes are refused and asserted absent,
+and the run attaches its network-read audit. `visualNetworkFixture.spec.ts`
+checks the fixture's account/contract allowlists and rejected requests separately.
+Do not repair a network outage by skipping a golden or increasing its tolerance.
 
 The `test dapp conformance` job runs
 `test-dapp-conformance.journey.spec.ts` and `provider-property-toggle.journey.spec.ts`

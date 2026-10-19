@@ -1,13 +1,16 @@
 import { type Locator, type Page, expect, test } from '@playwright/test';
 
 import { type InfrastructureStatus } from '../../source/pages/Settings/SmartAccountInfrastructure';
-import {
-  getChainId,
-  getInfrastructureState,
-  getNativeBalance,
-} from '../harness/chain';
 import { E2E_CONFIG } from '../harness/config';
 import { PaliWallet } from '../harness/pali';
+import { startUtxoFixtureServer } from '../harness/utxoFixture';
+import {
+  createVisualFixture,
+  installVisualFixtureRoutes,
+  VISUAL_FIXTURE_ADDRESS,
+  VISUAL_FIXTURE_CHAIN_ID,
+  VISUAL_FIXTURE_SEED,
+} from '../harness/visualFixture';
 
 import { resetVisualScroll } from './scrollReset';
 import { registerVisualSummaryHooks, visualJourneyName } from './summaryHooks';
@@ -15,15 +18,20 @@ import { registerVisualSummaryHooks, visualJourneyName } from './summaryHooks';
 // Pixel-baseline walk of the core screens. One onboarding, then every test
 // navigates and asserts a masked screenshot against the committed baseline.
 //
-// Masking policy: anything sourced from live chain/market data is masked --
+// Network reads come from a deterministic, launch-time fenced fixture. This
+// covers the same funded-account layouts without depending on a public RPC.
+// Masking policy: anything sourced from chain/market data is masked --
 // balances, fiat values, fee estimates, tx history rows. Addresses and QR
 // codes are deterministic for the fixed test seed and stay unmasked so
 // regressions in address rendering are caught.
 
-const SELF_ADDRESS = '0xfFC854565ff83a49d3302821c0AD23822ca1A50C';
+const SELF_ADDRESS = VISUAL_FIXTURE_ADDRESS;
 
 let wallet: PaliWallet;
 let smartAccountCreated = false;
+let server: Awaited<ReturnType<typeof startUtxoFixtureServer>> | undefined;
+let routes: Awaited<ReturnType<typeof installVisualFixtureRoutes>> | undefined;
+let previousConfig: typeof E2E_CONFIG;
 
 // Matches any "money-looking" number (balances, fiat, fees) anywhere on the
 // page. The text engine resolves to the innermost matching elements.
@@ -48,79 +56,29 @@ const settle = async (ms = 1200, page = wallet.page) => {
   await page.waitForTimeout(150);
 };
 
-// Retry only this read-only preflight; never repeat account creation or a
-// submitted action because of a transport timeout.
-const refreshFixtureInfrastructure = async (page: Page) => {
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      const response: any = await page.evaluate(async () => {
-        let timer: number | undefined;
-        try {
-          return await Promise.race([
-            chrome.runtime.sendMessage({
-              type: 'CONTROLLER_ACTION',
-              data: {
-                methods: ['wallet', 'getSmartAccountInfrastructureStatus'],
-                params: [true],
-              },
-            }),
-            new Promise((_, reject) => {
-              timer = window.setTimeout(
-                () => reject(new Error('Infrastructure status read timed out')),
-                22000
-              );
-            }),
-          ]);
-        } finally {
-          window.clearTimeout(timer);
-        }
-      });
-      if (response?.error) {
-        throw new Error(
-          typeof response.error === 'string'
-            ? response.error
-            : response.error.message ||
-              response.message ||
-              'Infrastructure status read failed'
-        );
-      }
-      expect(
-        response?.chainId,
-        'Preflight must match the visual fixture network'
-      ).toBe(E2E_CONFIG.chainId);
-      return;
-    } catch (error: any) {
-      if (!error?.message?.includes('Infrastructure RPC timed out.'))
-        throw error;
-      if (attempt === 2) {
-        throw new Error(
-          'Visual fixture infrastructure RPC timed out after three read-only preflight attempts'
-        );
-      }
-      await page.waitForTimeout(1000 * (attempt + 1));
-    }
-  }
-};
-
 test.describe('visual baselines', () => {
   test.beforeAll(async ({}, workerInfo) => {
-    // SYSCOIN: These goldens describe the funded public QA fixture, not an
-    // empty replacement chain. Fail with the actual missing prerequisite
-    // before comparing different account/history states or skipping coverage.
-    expect(await getChainId()).toBe(E2E_CONFIG.chainId);
-    expect(
-      BigInt(await getNativeBalance(SELF_ADDRESS)),
-      'Fund the public QA fixture before running funded-state visual baselines'
-    ).toBeGreaterThan(BigInt('100000000000000'));
-    const missingInfrastructure = (await getInfrastructureState())
-      .filter(({ contract, deployed }) => !contract.optional && !deployed)
-      .map(({ contract }) => contract.id);
-    expect(
-      missingInfrastructure,
-      'Deploy the normal Pali smart-account infrastructure before visual QA'
-    ).toEqual([]);
-
-    wallet = await PaliWallet.launch(visualJourneyName(workerInfo.workerIndex));
+    previousConfig = { ...E2E_CONFIG };
+    server = await startUtxoFixtureServer();
+    const fixture = createVisualFixture();
+    Object.assign(E2E_CONFIG, {
+      chainId: VISUAL_FIXTURE_CHAIN_ID,
+      networkLabel: 'zkTanenbaum',
+      password: 'VisualFixture!2026',
+      rpcUrl: server.url,
+      seedPhrase: VISUAL_FIXTURE_SEED,
+    });
+    wallet = await PaliWallet.launch(
+      visualJourneyName(workerInfo.workerIndex),
+      {
+        offlineHttpProxy: server.url,
+      }
+    );
+    routes = await installVisualFixtureRoutes(
+      wallet.context,
+      fixture,
+      server.url
+    );
     await wallet.importSeedAndCreatePassword();
     await wallet.switchNetwork(E2E_CONFIG.networkLabel);
 
@@ -149,7 +107,6 @@ test.describe('visual baselines', () => {
       const okButton = wallet.page
         .getByRole('button', { name: /^ok$/i })
         .first();
-      await refreshFixtureInfrastructure(wallet.page);
       await createSmartAccount.click();
       const outcome = await Promise.race([
         unavailableMessage
@@ -203,15 +160,49 @@ test.describe('visual baselines', () => {
     ).toBe(true);
     await expect(
       wallet.page.getByText('0xfFC8...AD23822ca1A50C', { exact: true }),
-      'Visual baselines require the same public QA account identity'
+      'Visual baselines require the same deterministic QA account identity'
     ).toBeVisible();
     await expect(
       wallet.page.locator('#activity-panel-list'),
-      'Funded-state goldens require real confirmed fixture history'
+      'Funded-state goldens require a confirmed synthetic history row'
     ).toBeVisible({ timeout: 60_000 });
   });
 
+  test.afterEach(() => {
+    expect(routes?.deniedWrites ?? []).toEqual([]);
+    expect(
+      routes?.deniedUnknown.filter((request) => request.startsWith('rpc:')) ??
+        [],
+      'Every requested fixture RPC must have an explicit supported response'
+    ).toEqual([]);
+  });
+
   registerVisualSummaryHooks(test, () => wallet);
+
+  test.afterAll(async ({}, info) => {
+    try {
+      await info.attach('offline-visual-network-evidence', {
+        contentType: 'application/json',
+        body: Buffer.from(
+          JSON.stringify(
+            {
+              scope:
+                'Synthetic network reads; no public-chain acceptance claimed',
+              reads: routes?.reads,
+              deniedWrites: routes?.deniedWrites,
+              deniedUnknown: routes?.deniedUnknown,
+              blockedByLaunchProxy: server?.blocked,
+            },
+            null,
+            2
+          )
+        ),
+      });
+    } finally {
+      await server?.close();
+      if (previousConfig) Object.assign(E2E_CONFIG, previousConfig);
+    }
+  });
 
   test('home', async () => {
     await wallet.ensureOnHome();
@@ -283,7 +274,7 @@ test.describe('visual baselines', () => {
     await wallet.page.waitForTimeout(2000);
     await expect(
       wallet.page.getByText(/insufficient funds/i),
-      'The public fixture must cover the send amount and the current fee'
+      'The synthetic fixture must cover the send amount and the current fee'
     ).toHaveCount(0);
     await wallet.page.getByRole('button', { name: /next/i }).first().click();
     await expect(wallet.page).toHaveURL(/send\/confirm/, { timeout: 30_000 });
@@ -325,7 +316,7 @@ test.describe('visual baselines', () => {
       .first();
     await expect(
       detailArrow,
-      'Transaction-details golden requires a real confirmed history row'
+      'Transaction-details golden requires a confirmed synthetic history row'
     ).toBeVisible({ timeout: 30_000 });
     await detailArrow.click();
     await expect(wallet.page).toHaveURL(/home\/details/, { timeout: 30_000 });
@@ -390,8 +381,8 @@ test.describe('visual baselines', () => {
     await expect(wallet.page).toHaveURL(/settings\/edit-account/, {
       timeout: 30_000,
     });
-    // This golden describes the undeployed local-account state. The shared QA
-    // address may later be deployed, so pin only this read-only hydration result.
+    // This golden describes the undeployed local-account state. Pin only this
+    // read-only UI input; account creation still uses the real wallet controller.
     await wallet.page.evaluate(async () => {
       const sendMessage = chrome.runtime.sendMessage.bind(chrome.runtime);
       const state = await sendMessage({ type: 'getCurrentState' });
@@ -466,8 +457,8 @@ test.describe('visual baselines', () => {
 
   for (const ready of [true, false]) {
     test(`advanced settings (${ready ? 'ready' : 'not ready'})`, async () => {
-      // A new canonical module is absent from the live testnet until rollout.
-      // Pin this read-only UI input and cover both layouts without deploying it.
+      // Pin this read-only UI input and cover both layouts without deploying
+      // infrastructure or changing the underlying wallet account.
       const page = await wallet.context.newPage();
       const infrastructureFixture = {
         chainId: E2E_CONFIG.chainId,
