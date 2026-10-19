@@ -49,6 +49,8 @@ import { rehydrateStore } from 'state/rehydrate';
 import store from 'state/store';
 import {
   loadAndActivateSlip44Vault,
+  persistAccountLabel,
+  persistAdvancedSetting,
   persistCommittedWalletState,
   persistHasEthProperty,
   restoreSourceVaultAfterUncommittedSwitch,
@@ -59,7 +61,6 @@ import {
   initializeCleanVaultForSlip44,
   forgetWallet,
   removeAccount,
-  setAccountLabel,
   setAccountBalanceForNetwork,
   setAccountPropertyByIdAndType,
   setActiveAccount,
@@ -328,6 +329,7 @@ class MainController {
   private sentryController: Promise<SentryController> | undefined;
   private ethPropertyMutex = new AsyncMutex();
   private accountLabelMutex = new AsyncMutex();
+  private advancedSettingsMutex = new AsyncMutex();
 
   // Auto-lock timer management
   private autoLockAlarmName = 'pali_auto_lock_timer';
@@ -2147,6 +2149,22 @@ class MainController {
     advancedProperty: string,
     value: boolean | number
   ) {
+    const generation = this.walletStateGeneration;
+    return this.advancedSettingsMutex.runExclusive(() =>
+      this.setAdvancedSettingsExclusive(advancedProperty, value, generation)
+    );
+  }
+
+  private async setAdvancedSettingsExclusive(
+    advancedProperty: string,
+    value: boolean | number,
+    generation: number
+  ) {
+    const assertCurrent = () => {
+      if (generation !== this.walletStateGeneration)
+        throw new Error('Wallet state changed before saving settings');
+    };
+    assertCurrent();
     // Normalize and validate autolock value before storing/acting
     let normalizedValue: boolean | number = value;
     if (advancedProperty === 'autolock') {
@@ -2162,13 +2180,13 @@ class MainController {
       normalizedValue = minutes;
     }
 
-    // Update Redux state with normalized value
-    store.dispatch(
-      setAdvancedSettings({ advancedProperty, value: normalizedValue })
+    this.resetAutoLockTimer();
+    await persistAdvancedSetting(
+      advancedProperty,
+      normalizedValue,
+      () => generation === this.walletStateGeneration
     );
-
-    // Save wallet state after changing settings - this is user activity
-    this.saveWalletState('update-settings', true);
+    assertCurrent();
 
     // If this is the autolock setting, handle timer using normalized value
     if (advancedProperty === 'autolock') {
@@ -2225,12 +2243,6 @@ class MainController {
     if (this.autoLockResetTimeout) {
       clearTimeout(this.autoLockResetTimeout);
       this.autoLockResetTimeout = null;
-    }
-
-    // Clear any pending save timeout
-    if (this.saveTimeout) {
-      clearTimeout(this.saveTimeout);
-      this.saveTimeout = null;
     }
 
     console.log('[MainController] Auto-lock timer stopped');
@@ -4156,29 +4168,12 @@ class MainController {
     };
     assertCurrent();
 
-    // Keep rollback ordered with later label edits, including other windows.
+    // Keep label edits ordered across windows.
     // A queued edit must revalidate its UI-captured identity at admission.
     return this.accountLabelMutex.runExclusive(async () => {
       assertCurrent();
-      const previousLabel =
-        store.getState().vault.accounts[accountType][accountId].label;
-      store.dispatch(setAccountLabel({ label, accountId, accountType }));
-
-      try {
-        await this.saveWalletState('edit-account-label', true, true);
-      } catch (error) {
-        // Failed saves remain retryable without reverting another identity or
-        // a label changed outside this operation while persistence awaited.
-        if (
-          matchesContext() &&
-          store.getState().vault.accounts[accountType]?.[accountId]?.label ===
-            label
-        )
-          store.dispatch(
-            setAccountLabel({ label: previousLabel, accountId, accountType })
-          );
-        throw error;
-      }
+      this.resetAutoLockTimer();
+      await persistAccountLabel(accountId, accountType, label, assertCurrent);
     });
   }
 

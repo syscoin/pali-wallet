@@ -8,7 +8,7 @@ import isEqual from 'lodash/isEqual';
 // Assuming redux-thunk v3+, which exports 'thunk' and ThunkMiddleware type
 import { thunk, ThunkMiddleware } from 'redux-thunk';
 
-import { INetwork } from 'types/network';
+import { INetwork, KeyringAccountType } from 'types/network';
 import { ISpamFilterState } from 'types/security';
 import { walletPersistenceMutex } from 'utils/asyncMutex';
 import { chromeStorage } from 'utils/storageAPI';
@@ -32,10 +32,15 @@ import vault, {
   rehydrate as vaultRehydrate,
   initializeCleanVaultForSlip44,
   restoreVaultSnapshot,
+  setAccountLabel,
 } from './vault';
 import { IVaultState, IGlobalState } from './vault/types';
-import vaultCache from './vaultCache';
-import vaultGlobal, { setActiveSlip44, setHasEthProperty } from './vaultGlobal';
+import vaultCache, { getSlip44ForNetwork } from './vaultCache';
+import vaultGlobal, {
+  setActiveSlip44,
+  setAdvancedSettings,
+  setHasEthProperty,
+} from './vaultGlobal';
 
 // Define RootState earlier if possible, or use a more generic type for ThunkMiddleware initially
 // For now, let's assume RootState will be defined later and use 'any' for the thunk state type.
@@ -220,6 +225,108 @@ export async function persistHasEthProperty(enabled: boolean): Promise<void> {
     assertWalletPersistenceAllowed();
     // Preserve other Redux changes that occurred while storage was pending.
     store.dispatch(setHasEthProperty(enabled));
+  });
+}
+
+/** Publish a preference only after its staged main-state write is durable. */
+export function persistAdvancedSetting(
+  advancedProperty: string,
+  value: boolean | number,
+  isCurrent: () => boolean
+): Promise<void> {
+  return walletPersistenceMutex.runExclusive(async () => {
+    const assertCurrent = () => {
+      assertWalletPersistenceAllowed();
+      if (!isCurrent())
+        throw new Error('Wallet state changed before saving settings');
+    };
+    assertCurrent();
+    const state = store.getState();
+    const mainState = {
+      ...getMainStateForStorage(state),
+      vaultGlobal: {
+        ...state.vaultGlobal,
+        advancedSettings: {
+          ...state.vaultGlobal.advancedSettings,
+          [advancedProperty]: value,
+        },
+      },
+    };
+    await chromeStorage.setItem('state', mainState);
+    lastPersistedState = mainState;
+    try {
+      assertCurrent();
+    } catch (error) {
+      // A reset can invalidate the write while it is pending. Keep the staged
+      // preference unpublished and remove it from disk before releasing the lock.
+      assertWalletPersistenceAllowed();
+      const currentState = getMainStateForStorage(store.getState());
+      await chromeStorage.setItem('state', currentState);
+      lastPersistedState = currentState;
+      throw error;
+    }
+    // A queued background save must observe the committed value; unrelated
+    // Redux updates received during the write must also remain intact.
+    store.dispatch(setAdvancedSettings({ advancedProperty, value }));
+  });
+}
+
+/** Stage a label without exposing it to ordinary or emergency vault saves. */
+export function persistAccountLabel(
+  accountId: number,
+  accountType: KeyringAccountType,
+  label: string,
+  assertCurrent: () => void
+): Promise<void> {
+  return walletPersistenceMutex.runExclusive(async () => {
+    assertWalletPersistenceAllowed();
+    assertCurrent();
+    const state = store.getState();
+    const sourceSlip44 = state.vaultGlobal.activeSlip44;
+    if (sourceSlip44 === null)
+      throw new Error(
+        'Cannot persist an account label without an active slip44'
+      );
+    const labelAction = setAccountLabel({ accountId, accountType, label });
+    const sourceVault = vaultCache.prepareSlip44Vault(
+      sourceSlip44,
+      state.vault,
+      false
+    );
+    const stagedVault = vaultCache.prepareSlip44Vault(
+      sourceSlip44,
+      vault(state.vault, labelAction),
+      false
+    );
+    const mainState = isMainStateUnchanged(state)
+      ? undefined
+      : getMainStateForStorage(state);
+    await saveCommittedWalletState(sourceSlip44, stagedVault, mainState);
+    if (mainState) lastPersistedState = mainState;
+    try {
+      assertWalletPersistenceAllowed();
+      assertCurrent();
+    } catch (error) {
+      assertWalletPersistenceAllowed();
+      const current = store.getState();
+      const repairVault =
+        current.vaultGlobal.activeSlip44 === sourceSlip44 &&
+        getSlip44ForNetwork(current.vault.activeNetwork) === sourceSlip44
+          ? vaultCache.prepareSlip44Vault(sourceSlip44, current.vault, false)
+          : sourceVault;
+      const repairMainState = getMainStateForStorage(current);
+      // Repair the source slot, never the newly active vault. Do not repopulate
+      // a cache that lock/reset may have cleared while storage was pending.
+      await saveCommittedWalletState(
+        sourceSlip44,
+        repairVault,
+        repairMainState
+      );
+      lastPersistedState = repairMainState;
+      throw error;
+    }
+    store.dispatch(labelAction);
+    vaultCache.prepareSlip44Vault(sourceSlip44, store.getState().vault);
   });
 }
 

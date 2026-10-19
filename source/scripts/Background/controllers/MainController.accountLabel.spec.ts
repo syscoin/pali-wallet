@@ -13,9 +13,11 @@ jest.mock('@sidhujag/sysweb3-keyring', () => ({
 
 import store from 'state/store';
 import vaultReducer, { setAccountLabel } from 'state/vault';
+import vaultCache from 'state/vaultCache';
 import { KeyringAccountType } from 'types/network';
 import { AsyncMutex } from 'utils/asyncMutex';
 import { getWalletNavigationScope } from 'utils/navigationState';
+import { chromeStorage } from 'utils/storageAPI';
 
 import MainController, { AccountLabelEditContext } from './MainController';
 
@@ -33,6 +35,7 @@ describe('account label identity and durable completion', () => {
   let state: any;
   let wallet: any;
   let expected: AccountLabelEditContext;
+  let writes: jest.SpyInstance;
   const change = (kind: string) => {
     // Match a separate Redux update rather than mutating Immer-frozen records.
     state = JSON.parse(JSON.stringify(state));
@@ -59,10 +62,11 @@ describe('account label identity and durable completion', () => {
     wallet.editAccountLabel(label, 1, KeyringAccountType.HDAccount, context);
   const label = () => state.vault.accounts.HDAccount[1]?.label;
   const flush = async () => {
-    for (let turn = 0; turn < 5; turn += 1) await Promise.resolve();
+    for (let turn = 0; turn < 10; turn += 1) await Promise.resolve();
   };
 
   beforeEach(() => {
+    vaultCache.clearCache();
     const initial = vaultReducer(undefined, { type: '@@init' });
     state = {
       vault: {
@@ -107,32 +111,33 @@ describe('account label identity and durable completion', () => {
     wallet.walletSessionGeneration = 0;
     wallet.isUnlocked = jest.fn().mockReturnValue(true);
     wallet.accountLabelMutex = new AsyncMutex();
-    wallet.saveWalletState = jest.fn().mockResolvedValue(undefined);
+    wallet.resetAutoLockTimer = jest.fn();
+    writes = jest.spyOn(chromeStorage, 'setItems').mockResolvedValue(undefined);
     expected = {
       account: { address: 'first-address', xpub: 'first-xpub' },
       walletScope: getWalletNavigationScope(),
     };
   });
-  afterEach(() => jest.restoreAllMocks());
+  afterEach(() => {
+    jest.restoreAllMocks();
+    vaultCache.clearCache();
+  });
 
   it('keeps completion pending until strict synchronous persistence succeeds', async () => {
     const storage = deferred();
-    wallet.saveWalletState.mockReturnValue(storage.promise);
+    writes.mockReturnValue(storage.promise);
     let completed = false;
     const pending = edit().then(() => {
       completed = true;
     });
     await flush();
-    expect(label()).toBe('Updated label');
-    expect(wallet.saveWalletState).toHaveBeenCalledWith(
-      'edit-account-label',
-      true,
-      true
-    );
+    expect(label()).toBe('Original label');
+    expect(writes).toHaveBeenCalledTimes(1);
     expect(completed).toBe(false);
     storage.resolve();
     await pending;
     expect(completed).toBe(true);
+    expect(label()).toBe('Updated label');
   });
 
   it.each([
@@ -157,7 +162,7 @@ describe('account label identity and durable completion', () => {
       await expect(edit()).rejects.toThrow('Account context changed');
       expect(JSON.stringify(state)).toBe(before);
       expect(store.dispatch).not.toHaveBeenCalled();
-      expect(wallet.saveWalletState).not.toHaveBeenCalled();
+      expect(writes).not.toHaveBeenCalled();
     }
   );
 
@@ -178,53 +183,47 @@ describe('account label identity and durable completion', () => {
         )
       ).rejects.toThrow('Account context changed');
       expect(label()).toBe('Original label');
-      expect(wallet.saveWalletState).not.toHaveBeenCalled();
+      expect(writes).not.toHaveBeenCalled();
     }
   );
 
-  it('rolls back a failed current save and permits the exact label to be retried', async () => {
-    wallet.saveWalletState.mockRejectedValueOnce(
-      new Error('Storage unavailable')
-    );
+  it('keeps a failed current save unpublished and permits the exact label to be retried', async () => {
+    writes.mockRejectedValueOnce(new Error('Storage unavailable'));
     await expect(edit()).rejects.toThrow('Storage unavailable');
     expect(label()).toBe('Original label');
     await expect(edit()).resolves.toBeUndefined();
     expect(label()).toBe('Updated label');
-    expect(wallet.saveWalletState).toHaveBeenCalledTimes(2);
+    expect(writes).toHaveBeenCalledTimes(2);
   });
 
   it('propagates the real synchronous save failure instead of the debounced success path', async () => {
-    delete wallet.saveWalletState;
-    wallet.resetAutoLockTimer = jest.fn();
-    wallet.performSave = jest
-      .fn()
-      .mockRejectedValue(new Error('Synthetic storage refusal'));
+    writes.mockRejectedValue(new Error('Synthetic storage refusal'));
     jest.spyOn(console, 'error').mockImplementation(() => undefined);
     await expect(edit()).rejects.toThrow('Synthetic storage refusal');
-    expect(wallet.performSave).toHaveBeenCalledTimes(1);
+    expect(writes).toHaveBeenCalledTimes(1);
     expect(label()).toBe('Original label');
     expect(wallet.saveTimeout).toBeUndefined();
   });
 
   it('orders a newer label after a failed pending save without reverting its result', async () => {
     const first = deferred();
-    wallet.saveWalletState.mockReturnValueOnce(first.promise);
+    writes.mockReturnValueOnce(first.promise);
     const earlier = edit('Earlier label');
     const rejected = expect(earlier).rejects.toThrow('Earlier save failed');
     await flush();
     const later = edit('Later label');
     await flush();
-    expect(label()).toBe('Earlier label');
-    expect(wallet.saveWalletState).toHaveBeenCalledTimes(1);
+    expect(label()).toBe('Original label');
+    expect(writes).toHaveBeenCalledTimes(1);
     first.reject(new Error('Earlier save failed'));
     await rejected;
     await later;
     expect(label()).toBe('Later label');
-    expect(wallet.saveWalletState).toHaveBeenCalledTimes(2);
+    expect(writes).toHaveBeenCalledTimes(2);
   });
 
   it('restores the original label when both overlapping edits fail', async () => {
-    wallet.saveWalletState.mockRejectedValue(new Error('Storage unavailable'));
+    writes.mockRejectedValue(new Error('Storage unavailable'));
     const first = edit('First label');
     const second = edit('Second label');
     await expect(first).rejects.toThrow('Storage unavailable');
@@ -236,7 +235,7 @@ describe('account label identity and durable completion', () => {
     'does not roll back a different %s context when persistence rejects',
     async (kind) => {
       const storage = deferred();
-      wallet.saveWalletState.mockReturnValue(storage.promise);
+      writes.mockReturnValue(storage.promise);
       const pending = edit();
       const rejected = expect(pending).rejects.toThrow('Storage unavailable');
       await flush();
@@ -256,17 +255,20 @@ describe('account label identity and durable completion', () => {
 
   it('rechecks a queued edit before it can mutate a replacement vault', async () => {
     const storage = deferred();
-    wallet.saveWalletState.mockReturnValueOnce(storage.promise);
+    writes.mockReturnValueOnce(storage.promise);
     const first = edit('First label');
+    const firstRejected = expect(first).rejects.toThrow(
+      'Account context changed'
+    );
     await flush();
     const queued = edit('Queued label');
     const rejected = expect(queued).rejects.toThrow('Account context changed');
     change('slip44');
     change('address');
     storage.resolve();
-    await first;
+    await firstRejected;
     await rejected;
-    expect(wallet.saveWalletState).toHaveBeenCalledTimes(1);
-    expect(label()).toBe('First label');
+    expect(writes).toHaveBeenCalledTimes(2);
+    expect(label()).toBe('Original label');
   });
 });

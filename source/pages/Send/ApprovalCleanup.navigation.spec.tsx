@@ -211,6 +211,37 @@ it('status popup close preserves an ordinary Policy caller and scroll', async ()
   expect(JSON.stringify(saved)).not.toContain('never-copy-this');
 });
 
+it.each(['before opening status', 'while status is open'])(
+  'status popup close preserves a separate send draft saved %s',
+  async (when) => {
+    mockQuery = {
+      host: 'https://dapp.example',
+      eventName: 'showCallsStatus',
+      callsStatus: {
+        id: 'public-bundle',
+        status: 200,
+        chainId: '0x1',
+        atomic: true,
+        version: '2.0.0',
+      },
+    };
+    if (when === 'before opening status') await draft();
+    render(<CallsStatus />);
+    if (when === 'while status is open') await draft();
+    const before = JSON.stringify(mockStorage[KEY]);
+    mockSet.mockClear();
+    mockRemove.mockClear();
+
+    fireEvent.click(screen.getByRole('button', { name: 'buttons.close' }));
+    await waitFor(() => expect(mockClose).toHaveBeenCalledTimes(1));
+
+    expect(JSON.stringify(mockStorage[KEY])).toBe(before);
+    expect((await loadNavigationState())?.state.formValues.amount).toBe('3');
+    expect(mockSet).not.toHaveBeenCalled();
+    expect(mockRemove).not.toHaveBeenCalled();
+  }
+);
+
 it.each(['cancel', 'error-close', 'success'])(
   'sign approval %s discards an unsigned Send draft and retains its validated public caller',
   async (mode) => {

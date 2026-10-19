@@ -60,7 +60,8 @@ jest.mock('utils/index', () => ({
     jest
       .requireActual('utils/navigationState')
       .getWalletNavigationScope(...args),
-  getAssetBalance: () => '10',
+  getAssetBalance: (...args: any[]) =>
+    jest.requireActual('utils/transactions').getAssetBalance(...args),
   ellipsis: (v: string) => v,
   adjustUrl: (v: string) => v,
   formatFullPrecisionBalance: (v: any) => String(v),
@@ -132,6 +133,7 @@ afterAll(() => {
 });
 beforeEach(() => {
   jest.clearAllMocks();
+  mockAssets = [];
   window.history.replaceState(null, '', '/app.html');
   mockState = {
     vault: {
@@ -260,4 +262,61 @@ it('keeps excessive precision visible on blur and blocks submission without roun
   fireEvent.click(next());
   await screen.findByText('send.invalidAmount');
   expect(mockNavigate).not.toHaveBeenCalled();
+});
+
+it.each([
+  { isNft: false, standard: 'ERC-20' },
+  { isNft: true, standard: 'ERC-1155' },
+])(
+  'shows the stored balance for a $standard asset sharing the native symbol',
+  async ({ isNft, standard }) => {
+    mockAssets = [
+      {
+        id: 'same-symbol-token',
+        contractAddress: '0x3333333333333333333333333333333333333333',
+        chainId: 1,
+        tokenSymbol: 'ETH',
+        tokenStandard: standard,
+        isNft,
+        balance: 42,
+        decimals: isNft ? 0 : 18,
+        tokenId: isNft ? '5' : undefined,
+      },
+    ];
+    mockEmitter.mockImplementation((path: string[]) => {
+      if (path.at(-1) === 'getERC20TokenInfo')
+        return Promise.reject(new Error('Token metadata unavailable'));
+      return Promise.resolve(undefined);
+    });
+    const consoleError = jest.spyOn(console, 'error').mockImplementation();
+    try {
+      render(<SendEth />);
+      fireEvent.click(
+        screen.getByRole('button', { name: new RegExp(`ETH.*${standard}`) })
+      );
+      expect(await screen.findByText('42 ETH')).toBeInTheDocument();
+      expect(screen.queryByText('10 ETH')).not.toBeInTheDocument();
+      if (!isNft) {
+        await waitFor(
+          () =>
+            expect(consoleError).toHaveBeenCalledWith(
+              'Error verifying ERC-20 balance:',
+              expect.any(Error)
+            ),
+          { timeout: 2500 }
+        );
+        expect(screen.getByText('42 ETH')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'MAX' })).toBeDisabled();
+      }
+    } finally {
+      consoleError.mockRestore();
+    }
+  }
+);
+
+it('shows the native balance when no token is selected', async () => {
+  mockEmitter.mockResolvedValue(undefined);
+  render(<SendEth />);
+  await act(async () => void (await Promise.resolve()));
+  expect(screen.getByText('10 ETH')).toBeInTheDocument();
 });

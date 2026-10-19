@@ -128,6 +128,18 @@ it('preserves the exact ERC1155 quantity beyond Number precision', async () => {
   expect(await screen.findByText('9007199254740993 NFT #5')).toBeTruthy();
 });
 
+it('keeps an unknown ERC20 transferFrom generic instead of displaying its amount as an NFT id', async () => {
+  show(
+    id('transferFrom(address,address,uint256)').slice(0, 10) +
+      defaultAbiCoder
+        .encode(['address', 'address', 'uint256'], [ACCOUNT, TARGET, '1000000'])
+        .slice(2),
+    '8'
+  );
+  expect(await screen.findByText('0x3333...3333 Transfer')).toBeTruthy();
+  expect(screen.queryByText('NFT #1000000')).toBeNull();
+});
+
 it.each(['1', '5'])(
   'shows ERC721 token ID %s without a quantity prefix',
   async (tokenId) => {

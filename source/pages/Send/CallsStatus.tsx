@@ -5,7 +5,6 @@ import { Button } from 'components/index';
 import { useQueryData } from 'hooks/index';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { ellipsis } from 'utils/format';
-import { clearTransactionNavigationState } from 'utils/navigationState';
 import {
   CALLS_STATUS_CONFIRMED,
   CALLS_STATUS_PARTIALLY_REVERTED,
@@ -73,8 +72,8 @@ export const CallsStatus: React.FC = () => {
       ? 'text-brand-yellowAccent'
       : 'text-brand-red';
 
-  const handleClose = async () => {
-    await clearTransactionNavigationState();
+  const handleClose = () => {
+    // This read-only popup owns no Send draft; another window may have one.
     window.close();
   };
 

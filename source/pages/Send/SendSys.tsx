@@ -877,12 +877,7 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
           </p>
           <p className="text-white text-xs font-semibold">
             {selectedAsset
-              ? getAssetBalance(
-                  selectedAsset,
-                  activeAccount,
-                  true,
-                  activeNetwork
-                )
+              ? getAssetBalance(selectedAsset, true)
               : `${activeAccount.balances[INetworkType.Syscoin]} ${
                   activeNetwork.currency
                 }`}

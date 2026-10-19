@@ -733,12 +733,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
       }
 
       // For NFTs and unverified tokens, use stored balance
-      return getAssetBalance(
-        selectedAsset,
-        activeAccount,
-        false,
-        activeNetwork
-      );
+      return getAssetBalance(selectedAsset, false);
     }
 
     // For native currency, format the balance for display (4 decimals)
