@@ -4279,6 +4279,10 @@ class MainController {
     const walletStateGeneration = this.walletStateGeneration;
     const originalNetwork =
       store.getState().vaultGlobal.networks[chain]?.[chainId];
+    const hasOtherOwner = (slip44: number) =>
+      Object.values(store.getState().vaultGlobal.networks.syscoin).some(
+        (network) => network.chainId !== chainId && network.slip44 === slip44
+      );
     const assertCanRemove = () => {
       const { vault, vaultGlobal } = store.getState();
       if (
@@ -4314,7 +4318,8 @@ class MainController {
           vault.activeNetwork.chainId === chainId) ||
         (chain === INetworkType.Syscoin &&
           network?.slip44 !== undefined &&
-          network.slip44 === vaultGlobal.activeSlip44)
+          network.slip44 === vaultGlobal.activeSlip44 &&
+          !hasOtherOwner(network.slip44))
       ) {
         throw new Error('Cannot remove the currently active network.');
       }
@@ -4339,15 +4344,9 @@ class MainController {
           networkToRemove?.slip44 !== undefined
         ) {
           const slip44ToRemove = networkToRemove.slip44;
-          const hasOtherOwner = Object.values(
-            store.getState().vaultGlobal.networks.syscoin
-          ).some(
-            (network) =>
-              network.chainId !== chainId && network.slip44 === slip44ToRemove
-          );
           // Legacy registrations can share a vault. Removing one registration
           // must retain the surviving network's account records and keyring.
-          if (!hasOtherOwner) {
+          if (!hasOtherOwner(slip44ToRemove)) {
             await walletPersistenceMutex.runExclusive(async () => {
               assertCanRemove();
               await this.clearSlip44VaultState(slip44ToRemove);

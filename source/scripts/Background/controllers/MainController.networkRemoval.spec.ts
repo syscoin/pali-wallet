@@ -165,16 +165,17 @@ describe('network removal cannot delete a switching or active vault', () => {
   it.each([
     'exact active network',
     'active network with stale URL',
-    'same active slip44',
+    'last owner of active slip44',
   ])(
     'rejects deleting %s even when delivered directly to the backend',
     async (condition) => {
       let network = source;
       if (condition === 'active network with stale URL')
         network = { ...source, url: 'https://stale.example' };
-      if (condition === 'same active slip44') {
+      if (condition === 'last owner of active slip44') {
         network = { ...target, slip44: 57 };
         state.vaultGlobal.networks.syscoin[999] = network;
+        delete state.vaultGlobal.networks.syscoin[57];
       }
       const before = JSON.stringify(state);
       await expect(

@@ -155,3 +155,71 @@ it('preserves a legacy shared vault for the surviving network and cleans it only
   expect(vaultCache.clearSlip44FromCache).toHaveBeenCalledWith(1);
   expect(wallet.keyrings.has(1)).toBe(false);
 });
+
+it('removes an inactive legacy co-owner while preserving its active shared vault', async () => {
+  state.vaultGlobal.networks.syscoin = { 999: network, 998: other };
+  state.vault.activeNetwork = network;
+  state.vaultGlobal.activeSlip44 = network.slip44;
+  const sharedKeyring = wallet.keyrings.get(1);
+
+  await wallet.removeKeyringNetwork(
+    other.kind,
+    other.chainId,
+    other.url,
+    other.label
+  );
+
+  expect(state.vaultGlobal.networks.syscoin[998]).toBeUndefined();
+  expect(state.vaultGlobal.networks.syscoin[999]).toEqual(network);
+  expect(state.vault.activeNetwork).toBe(network);
+  expect(state.vaultGlobal.activeSlip44).toBe(network.slip44);
+  expect(chromeStorage.removeItem).not.toHaveBeenCalled();
+  expect(vaultCache.clearSlip44FromCache).not.toHaveBeenCalled();
+  expect(wallet.keyrings.get(1)).toBe(sharedKeyring);
+  expect(wallet.saveWalletState).toHaveBeenCalledWith(
+    'remove-network',
+    true,
+    true
+  );
+});
+
+it('rejects the exact active network even when a legacy co-owner survives', async () => {
+  state.vaultGlobal.networks.syscoin = { 999: network, 998: other };
+  state.vault.activeNetwork = network;
+  state.vaultGlobal.activeSlip44 = network.slip44;
+
+  await expect(
+    wallet.removeKeyringNetwork(
+      network.kind,
+      network.chainId,
+      network.url,
+      network.label
+    )
+  ).rejects.toThrow('currently active network');
+
+  expect(state.vaultGlobal.networks.syscoin[999]).toEqual(network);
+  expect(chromeStorage.removeItem).not.toHaveBeenCalled();
+  expect(store.dispatch).not.toHaveBeenCalled();
+  expect(wallet.saveWalletState).not.toHaveBeenCalled();
+});
+
+it('rejects the last owner of the active vault even if the displayed chain differs', async () => {
+  state.vaultGlobal.networks.syscoin = { 999: network };
+  state.vault.activeNetwork = other;
+  state.vaultGlobal.activeSlip44 = network.slip44;
+
+  await expect(
+    wallet.removeKeyringNetwork(
+      network.kind,
+      network.chainId,
+      network.url,
+      network.label
+    )
+  ).rejects.toThrow('currently active network');
+
+  expect(state.vaultGlobal.networks.syscoin[999]).toEqual(network);
+  expect(chromeStorage.removeItem).not.toHaveBeenCalled();
+  expect(vaultCache.clearSlip44FromCache).not.toHaveBeenCalled();
+  expect(wallet.keyrings.has(1)).toBe(true);
+  expect(store.dispatch).not.toHaveBeenCalled();
+});
