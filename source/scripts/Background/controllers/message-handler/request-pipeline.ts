@@ -334,8 +334,8 @@ export class RequestPipeline {
       !methodConfig.isBlocking &&
       !methodConfig.requiresAuth &&
       !methodConfig.requiresConnection;
-    if (canBypassQueue && this.isProcessing)
-      return this.runMiddlewares(context);
+    // A stalled public RPC must not acquire the slot used to serialize approvals.
+    if (canBypassQueue) return this.runMiddlewares(context);
 
     if (this.isProcessing) {
       return new Promise((resolve, reject) => {
