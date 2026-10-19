@@ -1570,6 +1570,21 @@ class MainController {
     return this.getActiveKeyring().ethereumTransaction;
   }
 
+  public getEncryptionPublicKeyForAccount(requestedAddress: string): string {
+    const { accounts, activeAccount, isBitcoinBased } = store.getState().vault;
+    const account = accounts[activeAccount.type]?.[activeAccount.id];
+    if (
+      isBitcoinBased ||
+      typeof requestedAddress !== 'string' ||
+      !/^0x[\da-f]{40}$/i.test(requestedAddress) ||
+      account?.address?.toLowerCase() !== requestedAddress.toLowerCase()
+    )
+      throw new Error('Requested account is not active');
+    // Keep validation and the SDK's synchronous private-key read in one turn.
+    // UI validation cannot bind the account across asynchronous messaging.
+    return this.ethereumTransaction.getEncryptedPubKey();
+  }
+
   // Additional public methods for UX access (used by controllerEmitter)
   public validateZprv(zprv: string, targetNetwork?: any) {
     return this.getActiveKeyring().validateZprv(zprv, targetNetwork);

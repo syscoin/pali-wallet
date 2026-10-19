@@ -198,11 +198,10 @@ it('preserves the approved encryption-key request and dispatch payload', async (
   fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
   await waitFor(() => expect(window.close).toHaveBeenCalledTimes(1));
   expect(mockEmitter).toHaveBeenCalledTimes(1);
-  expect(mockEmitter).toHaveBeenCalledWith([
-    'wallet',
-    'ethereumTransaction',
-    'getEncryptedPubKey',
-  ]);
+  expect(mockEmitter).toHaveBeenCalledWith(
+    ['wallet', 'getEncryptionPublicKeyForAccount'],
+    [ADDRESS]
+  );
   expect(dispatchBackgroundEvent).toHaveBeenCalledWith(
     'synthetic-encryption-request.synthetic.example.invalid',
     'synthetic-public-encryption-key'

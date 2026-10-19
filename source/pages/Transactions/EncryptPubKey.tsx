@@ -79,11 +79,10 @@ const EncryptPubKey: React.FC<ISign> = () => {
         data[0].toLowerCase() !== address.toLowerCase()
       )
         throw new Error('Requested account is not active');
-      const response = await controllerEmitter([
-        'wallet',
-        'ethereumTransaction',
-        'getEncryptedPubKey',
-      ]);
+      const response = await controllerEmitter(
+        ['wallet', 'getEncryptionPublicKeyForAccount'],
+        [data[0]]
+      );
       dispatchBackgroundEvent(`${type}.${host}`, response);
       if (!copyContext.current.active) return;
       setConfirmed(true);

@@ -237,6 +237,9 @@ beforeEach(() => {
     getWalletSetupStatus: () => false,
   });
   Object.defineProperty(wallet, 'ethereumTransaction', { value: sdk });
+  // The real constructor binds public methods before message dispatch.
+  wallet.getEncryptionPublicKeyForAccount =
+    wallet.getEncryptionPublicKeyForAccount.bind(wallet);
   mockController = { wallet, dapp: DAppController(() => true) };
   Object.assign(chrome.runtime, {
     id: 'synthetic-pali',
@@ -318,6 +321,51 @@ it('healthy: the actual SDK decrypts A ciphertext when A is requested', async ()
   );
   expect(popupPromise).toHaveBeenCalledTimes(1);
 });
+
+it.each([false, true])(
+  'binds delayed public-key retrieval to its requested account (switch=%s)',
+  async (switchAccount) => {
+    mockQuery = {
+      host: HOST,
+      eventName: 'eth_getEncryptionPublicKey',
+      0: ADDRESS,
+    };
+    mockPopupResolve = jest.fn();
+    const execute = mockEmitter.getMockImplementation();
+    const getKey = jest.spyOn(sdk, 'getEncryptedPubKey');
+    let release!: () => void;
+    const heldMessage = new Promise<void>((resolve) => (release = resolve));
+    mockEmitter.mockImplementation((...args: any[]) =>
+      heldMessage.then(() => execute(...args))
+    );
+    render(<EncryptPubKey />);
+    fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
+    expect(mockEmitter).toHaveBeenCalledTimes(1);
+    expect(getKey).not.toHaveBeenCalled();
+    if (switchAccount)
+      await act(async () => {
+        await mockController.wallet.setAccount(
+          1,
+          KeyringAccountType.HDAccount,
+          true,
+          OTHER_OWNED
+        );
+      });
+    await act(async () => release());
+    if (switchAccount) {
+      await screen.findByText('Requested account is not active');
+      expect(getKey).not.toHaveBeenCalled();
+      expect(mockEvents).toEqual([]);
+    } else {
+      await waitFor(() =>
+        expect(mockEvents).toEqual([
+          { name: `eth_getEncryptionPublicKey.${HOST}`, value: publicKey },
+        ])
+      );
+      expect(getKey).toHaveBeenCalledTimes(1);
+    }
+  }
+);
 
 describe.each(['eth_getEncryptionPublicKey', 'eth_decrypt'])(
   '%s requested-account admission',

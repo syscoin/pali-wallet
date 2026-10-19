@@ -171,11 +171,10 @@ it('settles an approved public-key request without closing a replacement page af
   const view = render(<EncryptPubKey />);
   fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
   expect(mockEmitter).toHaveBeenCalledTimes(1);
-  expect(mockEmitter).toHaveBeenCalledWith([
-    'wallet',
-    'ethereumTransaction',
-    'getEncryptedPubKey',
-  ]);
+  expect(mockEmitter).toHaveBeenCalledWith(
+    ['wallet', 'getEncryptionPublicKeyForAccount'],
+    [`0x${'11'.repeat(20)}`]
+  );
   expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
   view.unmount();
   render(<div>Replacement wallet page</div>);
