@@ -3043,8 +3043,10 @@ class MainController {
       return this.createSmartAccountRecord({ label });
     }
 
+    assertCompleteHDAccountData(store.getState().vault.accounts.HDAccount);
     const newAccount = await keyring.addNewAccount(label);
     assertCurrent();
+    assertCompleteHDAccountData(store.getState().vault.accounts.HDAccount);
 
     // Validate account creation was successful before storing in Redux
     if (!newAccount.address || !newAccount.xpub) {

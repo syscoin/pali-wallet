@@ -17,9 +17,10 @@ import { KeyringManager } from '@sidhujag/sysweb3-keyring';
 import http from 'http';
 import https from 'https';
 
+import { AccountRecoveryRequiredError } from '../utils/assertCompleteHDAccountData';
 import { loadSlip44State, walletPersistenceGate } from 'state/paliStorage';
 import store from 'state/store';
-import { restoreVaultSnapshot } from 'state/vault';
+import { removeAccount, restoreVaultSnapshot } from 'state/vault';
 import vaultCache from 'state/vaultCache';
 import { setActiveSlip44 } from 'state/vaultGlobal';
 import { INetworkType, KeyringAccountType } from 'types/network';
@@ -140,10 +141,59 @@ it('does not acknowledge two HD creations for one allocated slot and permits a s
   );
 });
 
-it('does not replace an incomplete HD record selected again by SDK allocation', async () => {
+it('fills a deleted HD gap without replacing the next complete account', async () => {
+  const deleted = await wallet.createAccount('Deleted');
+  const retained = await wallet.createAccount('Retained');
+  store.dispatch(
+    removeAccount({ id: deleted.id, type: KeyringAccountType.HDAccount })
+  );
+  const replacement = await wallet.createAccount('Gap replacement');
+  expect(replacement.id).toBe(deleted.id);
+  expect(replacement.address).toBe(deleted.address);
+  expect(replacement.address).not.toBe(retained.address);
+  const saved = await loadSlip44State(60);
+  expect(saved.accounts.HDAccount[deleted.id].label).toBe('Gap replacement');
+  expect(saved.accounts.HDAccount[retained.id].label).toBe('Retained');
+});
+
+it.each(['address', 'xpub'] as const)(
+  'reports recovery on every attempt for an HD record missing %s without deriving or changing it',
+  async (missing) => {
+    const current = store.getState().vault;
+    const existing = {
+      id: 1,
+      address: 'saved-address',
+      xpub: 'saved-public-key',
+      label: 'Recoverable record',
+      [missing]: '',
+    };
+    store.dispatch(
+      restoreVaultSnapshot({
+        ...current,
+        accounts: {
+          ...current.accounts,
+          HDAccount: { ...current.accounts.HDAccount, 1: existing },
+        },
+      } as any)
+    );
+    const snapshot = store.getState().vault;
+    const derive = jest.spyOn(wallet.getActiveKeyring(), 'addNewAccount');
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await expect(wallet.createAccount('Replacement')).rejects.toBeInstanceOf(
+        AccountRecoveryRequiredError
+      );
+      expect(store.getState().vault).toBe(snapshot);
+      expect(records).toEqual({});
+    }
+    expect(derive).not.toHaveBeenCalled();
+  }
+);
+
+it('preserves an incomplete record arriving while real SDK derivation is pending', async () => {
+  const creating = wallet.createAccount('Pending');
   const current = store.getState().vault;
   const existing = {
-    id: 1,
+    id: 7,
     address: '',
     xpub: 'partial-public-key',
     label: 'Recoverable record',
@@ -153,13 +203,13 @@ it('does not replace an incomplete HD record selected again by SDK allocation', 
       ...current,
       accounts: {
         ...current.accounts,
-        HDAccount: { ...current.accounts.HDAccount, 1: existing },
+        HDAccount: { ...current.accounts.HDAccount, 7: existing },
       },
     } as any)
   );
-  await expect(wallet.createAccount('Replacement')).rejects.toThrow(
-    'Please retry'
-  );
-  expect(store.getState().vault.accounts.HDAccount[1]).toEqual(existing);
+  const snapshot = store.getState().vault;
+  await expect(creating).rejects.toBeInstanceOf(AccountRecoveryRequiredError);
+  expect(store.getState().vault).toBe(snapshot);
+  expect(store.getState().vault.accounts.HDAccount[1]).toBeUndefined();
   expect(records).toEqual({});
 });
