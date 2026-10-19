@@ -4250,43 +4250,42 @@ class MainController {
       const state = store.getState();
       const { accounts, activeAccount, activeNetwork } = state.vault;
       const currentTarget = accounts[accountType]?.[accountId];
+      const matchesSelection = (
+        slip44: number | null | undefined,
+        network: AccountRemovalContext['network'] | undefined,
+        account:
+          | Pick<AccountRemovalContext['activeAccount'], 'id' | 'type'>
+          | undefined
+      ) =>
+        slip44 === state.vaultGlobal.activeSlip44 &&
+        network?.kind === activeNetwork.kind &&
+        network?.chainId === activeNetwork.chainId &&
+        network?.url === activeNetwork.url &&
+        account?.id === activeAccount.id &&
+        account?.type === activeAccount.type;
       if (
         !target ||
         walletGeneration !== this.walletStateGeneration ||
         sessionGeneration !== this.walletSessionGeneration ||
-        sourceSlip44 !== state.vaultGlobal.activeSlip44 ||
-        sourceNetwork.kind !== activeNetwork.kind ||
-        sourceNetwork.chainId !== activeNetwork.chainId ||
-        sourceNetwork.url !== activeNetwork.url ||
-        sourceAccount.id !== activeAccount.id ||
-        sourceAccount.type !== activeAccount.type ||
+        !matchesSelection(sourceSlip44, sourceNetwork, sourceAccount) ||
         target.address !== currentTarget?.address ||
-        target.xpub !== currentTarget?.xpub
-      )
-        throw new Error(
-          'Account context changed. Please confirm removal again.'
-        );
-
-      // A confirmation from another window/context must never remove an account
-      // that happens to reuse the same id/type in the newly active vault.
-      // Recheck before staging and after storage, before publication or events.
-      if (
-        expectedContext !== undefined &&
-        (this.isResettingWallet ||
-          state.vaultGlobal.isSwitchingAccount ||
-          state.vaultGlobal.networkStatus === 'switching' ||
-          state.vaultGlobal.networkStatus === 'connecting' ||
-          expectedContext?.slip44 !== state.vaultGlobal.activeSlip44 ||
-          expectedContext?.network?.kind !== activeNetwork.kind ||
-          expectedContext?.network?.chainId !== activeNetwork.chainId ||
-          expectedContext?.network?.url !== activeNetwork.url ||
-          expectedContext?.activeAccount?.id !== activeAccount.id ||
-          expectedContext?.activeAccount?.type !== activeAccount.type ||
-          expectedContext?.activeAccount?.address !==
-            accounts[activeAccount.type]?.[activeAccount.id]?.address ||
-          !expectedContext?.address ||
-          expectedContext.address !==
-            accounts[accountType]?.[accountId]?.address)
+        target.xpub !== currentTarget?.xpub ||
+        // A confirmation from another window must not target a reused id/type.
+        // Recheck before staging and after storage, before publication/events.
+        (expectedContext !== undefined &&
+          (this.isResettingWallet ||
+            state.vaultGlobal.isSwitchingAccount ||
+            state.vaultGlobal.networkStatus === 'switching' ||
+            state.vaultGlobal.networkStatus === 'connecting' ||
+            !matchesSelection(
+              expectedContext?.slip44,
+              expectedContext?.network,
+              expectedContext?.activeAccount
+            ) ||
+            expectedContext?.activeAccount?.address !==
+              accounts[activeAccount.type]?.[activeAccount.id]?.address ||
+            !expectedContext?.address ||
+            expectedContext.address !== currentTarget?.address))
       ) {
         throw new Error(
           'Account context changed. Please confirm removal again.'

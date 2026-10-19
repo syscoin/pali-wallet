@@ -32,6 +32,9 @@ let mockAuth: {
 };
 let mockPublishedAuth: typeof mockAuth | undefined;
 const mockAlert = { error: jest.fn(), success: jest.fn(), info: jest.fn() };
+const mockHandleTransactionError = jest.fn();
+const mockLogError = jest.fn();
+const mockCopy = jest.fn();
 let mockLocation: any;
 let mockEntry = 0;
 let mockConfirmClick: () => void;
@@ -76,7 +79,7 @@ jest.mock('hooks/index', () => ({
   useUtils: () => ({
     alert: mockAlert,
     navigate: mockNavigate,
-    useCopyClipboard: () => [false, jest.fn()],
+    useCopyClipboard: () => [false, mockCopy],
   }),
   usePrice: () => ({ getFiatAmount: () => null }),
 }));
@@ -156,7 +159,7 @@ jest.mock('utils/index', () => ({
   saveNavigationState: (...args: any[]) => mockSaveNavigationState(...args),
   ellipsis: (value: string) => value,
   truncate: (value: string) => value,
-  logError: jest.fn(),
+  logError: (...args: any[]) => mockLogError(...args),
   removeScientificNotation: (value: string | number) =>
     jest
       .requireActual('utils/removeScientificNotation')
@@ -176,7 +179,8 @@ jest.mock('utils/navigationState', () => {
   };
 });
 jest.mock('utils/errorHandling', () => ({
-  handleTransactionError: () => false,
+  handleTransactionError: (...args: any[]) =>
+    mockHandleTransactionError(...args),
 }));
 jest.mock('utils/smartAccount', () => ({
   getSmartAccountLocalOwnerContexts: () => [],
@@ -195,6 +199,7 @@ jest.mock('utils/validations', () => ({
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockHandleTransactionError.mockReturnValue(false);
   (prepareSmartAccountFeeQuote as jest.Mock).mockImplementation(
     async ({ feeOverrides }: any) => ({
       gasUnits: '650000',
@@ -354,6 +359,137 @@ const prepareSmartAccountConfirmation = (isMax = false) => {
     return prior(path, args);
   });
 };
+
+it.each(
+  [
+    TransactionType.ERC20,
+    TransactionType.ERC721,
+    TransactionType.ERC1155,
+  ].flatMap((type) => [false, true].map((handled) => ({ type, handled })))
+)(
+  'preserves $type rejection handling and clears loading when handled=$handled',
+  async ({ type, handled }) => {
+    prepareEvmRecipientConfirmation(
+      '0x2222222222222222222222222222222222222222'
+    );
+    mockLocation.state.tx.transactionType = type;
+    mockLocation.state.tx.token = {
+      contractAddress: '0x5555555555555555555555555555555555555555',
+      tokenId: '1',
+      decimals: 18,
+      symbol: 'TEST',
+      isNft: type !== TransactionType.ERC20,
+    };
+    const error = new Error('Synthetic token rejection');
+    const prior = mockControllerEmitter.getMockImplementation()!;
+    mockControllerEmitter.mockImplementation((path: string[], args: any[]) => {
+      if (path.at(-1) === 'sendAndSaveTokenTransaction')
+        return Promise.reject(error);
+      return prior(path, args);
+    });
+    mockHandleTransactionError.mockReturnValue(handled);
+    render(<SendConfirm />);
+    const confirm = screen.getByRole('button', { name: 'buttons.confirm' });
+    await waitFor(() => expect(confirm).toBeEnabled());
+    fireEvent.click(confirm);
+    await waitFor(() =>
+      expect(mockHandleTransactionError).toHaveBeenCalledWith(
+        error,
+        mockAlert,
+        expect.any(Function),
+        mockState.vault.accounts.HDAccount[0],
+        mockState.vault.activeNetwork,
+        mockLocation.state.tx
+      )
+    );
+    expect(mockHandleTransactionError).toHaveBeenCalledTimes(1);
+    expect(
+      screen.getByRole('button', { name: 'buttons.cancel' })
+    ).toBeEnabled();
+    if (handled) {
+      expect(mockLogError).not.toHaveBeenCalled();
+      expect(mockAlert.error).not.toHaveBeenCalled();
+    } else {
+      expect(mockLogError).toHaveBeenCalledWith(
+        `error send ${type}`,
+        'Transaction',
+        error
+      );
+      expect(mockAlert.error).toHaveBeenCalledWith('send.cantCompleteTxs');
+      expect(mockLogError.mock.invocationCallOrder[0]).toBeLessThan(
+        mockAlert.error.mock.invocationCallOrder[0]
+      );
+    }
+  }
+);
+
+it('copies full sender and recipient addresses from the unchanged review rows', async () => {
+  prepareEvmRecipientConfirmation('0x2222222222222222222222222222222222222222');
+  await act(async () => {
+    render(<SendConfirm />);
+  });
+  for (const [label, address] of [
+    ['send.from', mockLocation.state.tx.sender],
+    ['send.to', mockLocation.state.tx.receivingAddress],
+  ]) {
+    const row = screen.getByText(label);
+    expect(row).toHaveClass(
+      'flex flex-col w-full text-xs text-brand-gray200 font-poppins font-normal'
+    );
+    fireEvent.click(row.querySelector('button')!);
+    expect(mockCopy).toHaveBeenLastCalledWith(address);
+  }
+});
+
+it.each([
+  {
+    kind: 'ERC-721',
+    name: 'Reviewed NFT',
+    symbol: 'NFT',
+    title: 'Reviewed NFT',
+  },
+  { kind: 'ERC-1155', name: '', symbol: '', title: 'NFT' },
+  {
+    kind: 'ERC-20',
+    name: 'Reviewed token',
+    symbol: 'TOK',
+    title: 'Reviewed token',
+  },
+  { kind: 'ERC-20', name: '', symbol: 'TOK', title: 'TOK' },
+  { kind: 'SPT', name: '', symbol: 'SPT', title: 'SPT' },
+])(
+  'preserves $kind heading fallback $title and full contract/GUID copying',
+  async ({ kind, name, symbol, title }) => {
+    const identifier =
+      kind === 'SPT'
+        ? '1234567890'
+        : '0x5555555555555555555555555555555555555555';
+    if (kind !== 'SPT')
+      prepareEvmRecipientConfirmation(
+        '0x2222222222222222222222222222222222222222'
+      );
+    mockLocation.state.tx.token = {
+      name,
+      symbol,
+      isNft: kind === 'ERC-721' || kind === 'ERC-1155',
+      tokenStandard: kind,
+      tokenId: '1',
+      contractAddress: kind === 'SPT' ? undefined : identifier,
+      assetGuid: kind === 'SPT' ? identifier : undefined,
+    };
+    await act(async () => {
+      render(<SendConfirm />);
+    });
+    const heading = screen.getByRole('heading', { name: title });
+    expect(heading).toHaveClass('text-white font-medium text-base');
+    const type = heading.parentElement!.querySelector('span');
+    expect(type).toHaveTextContent(kind);
+    expect(type).toHaveClass('text-xs px-2 py-1 rounded-full');
+    const card = heading.closest('.bg-bkg-2')!;
+    fireEvent.click(card.querySelector('button')!);
+    expect(mockCopy).toHaveBeenLastCalledWith(identifier);
+  }
+);
 
 it.each(
   [TransactionType.ERC721, TransactionType.ERC1155].flatMap((type) =>

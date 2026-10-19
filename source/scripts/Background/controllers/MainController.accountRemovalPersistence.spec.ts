@@ -364,6 +364,49 @@ it('preserves a new permission grant for another account queued after removal st
   });
 });
 
+it('retires a grant restored after failed revoke without cancelling its queued replacement', async () => {
+  await configureTarget('watch import', true);
+  const previous = dapp.get(HOST);
+  const set = chrome.storage.local.set as any;
+  const refusedWrite = jest
+    .spyOn(chrome.storage.local, 'set')
+    .mockImplementationOnce((_items, callback: any) => {
+      (chrome.runtime as any).lastError = {
+        message: 'Permission storage unavailable',
+      };
+      callback();
+      delete (chrome.runtime as any).lastError;
+    })
+    .mockImplementation(set);
+  await expect(
+    dapp.disconnect(HOST, true, {
+      allowAlreadyDisconnected: true,
+      propagateErrors: true,
+    })
+  ).rejects.toMatchObject({ message: 'Permission storage unavailable' });
+  expect(dapp.get(HOST)).toBe(previous);
+  expect(dapp.getAccount(HOST)?.address).toBe(TARGET);
+  refusedWrite.mockRestore();
+
+  const write = holdNextVaultWrite();
+  const removing = wallet.removeAccount(1, targetType, expected);
+  await write.entered;
+  const granting = grantAnchor();
+  write.release();
+  await removing;
+  await expect(granting).resolves.toEqual(expect.any(Array));
+  expect(dapp.getAccount(HOST)?.address).toBe(ANCHOR);
+  expect(records.state.dapp.dapps[HOST]).toMatchObject({
+    accountId: 0,
+    accountType: KeyringAccountType.HDAccount,
+  });
+  expect(targetSnapshot(await loadSlip44State(60))).toEqual({
+    account: null,
+    assets: null,
+    transactions: null,
+  });
+});
+
 it('preserves a newer unrelated label and its queued save while publishing only target removal', async () => {
   await configureTarget('watch import');
   const write = holdNextVaultWrite();
