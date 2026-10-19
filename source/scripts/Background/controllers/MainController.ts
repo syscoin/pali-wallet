@@ -55,6 +55,7 @@ import {
   persistCommittedWalletState,
   persistFiatCurrency,
   persistHasEthProperty,
+  persistImportedAccount,
   restoreSourceVaultAfterUncommittedSwitch,
   saveMainState,
 } from 'state/store';
@@ -4485,18 +4486,25 @@ class MainController {
     }
   }
 
-  private storeImportedAccount(account: IKeyringAccountState) {
+  private storeImportedAccount(
+    account: IKeyringAccountState,
+    assertCurrent: () => void
+  ) {
+    const generation = this.walletStateGeneration;
     // SDK allocation can race across extension documents. Never replace an
     // account already admitted while this import was being derived.
-    if (store.getState().vault.accounts.Imported?.[account.id])
-      throw new Error(
-        'Account import conflicted with another import. Please retry.'
-      );
-    store.dispatch(
-      createAccount({ account, accountType: KeyringAccountType.Imported })
-    );
-    store.dispatch(
-      setActiveAccount({ id: account.id, type: KeyringAccountType.Imported })
+    const assertImportCurrent = () => {
+      assertCurrent();
+      if (store.getState().vault.accounts.Imported?.[account.id])
+        throw new Error(
+          'Account import conflicted with another import. Please retry.'
+        );
+    };
+    this.resetAutoLockTimer();
+    return persistImportedAccount(
+      account,
+      assertImportCurrent,
+      () => generation === this.walletStateGeneration
     );
   }
 
@@ -4512,11 +4520,7 @@ class MainController {
       options
     );
     assertCurrent();
-    this.storeImportedAccount(importedAccount);
-
-    // Save wallet state after importing account from private key
-    // Use sync=true to ensure save completes before continuing
-    await this.saveWalletState('import-account-private-key', true, true);
+    await this.storeImportedAccount(importedAccount, assertCurrent);
 
     setTimeout(() => {
       this.getLatestUpdateForCurrentAccount(false, true).catch((error) =>
@@ -4545,8 +4549,7 @@ class MainController {
       label
     );
     assertCurrent();
-    this.storeImportedAccount(importedAccount);
-    await this.saveWalletState('import-account-watch-only', true, true);
+    await this.storeImportedAccount(importedAccount, assertCurrent);
     setTimeout(() => {
       this.getLatestUpdateForCurrentAccount(false, true).catch((err) => {
         console.warn(

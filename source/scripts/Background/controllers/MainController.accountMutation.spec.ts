@@ -24,9 +24,13 @@ jest.mock('state/store', () => ({
     }),
     getState: () => mockState,
   },
+  persistImportedAccount: jest.fn(async (account, assertCurrent) => {
+    assertCurrent();
+    mockState.vault.accounts.Imported[account.id] = account;
+  }),
 }));
 
-import store from 'state/store';
+import store, { persistImportedAccount } from 'state/store';
 import { KeyringAccountType } from 'types/network';
 
 import MainController from './MainController';
@@ -107,7 +111,12 @@ describe('account mutation wallet setup reservation', () => {
       wallet.isCreatingWallet = false;
       await expect(wallet[method](...args)).resolves.toEqual(account);
       expect(keyring[sdkMethod]).toHaveBeenCalledTimes(1);
-      expect(wallet.saveWalletState).toHaveBeenCalledTimes(1);
+      if (sdkMethod === 'importAccount' || sdkMethod === 'importWatchOnly') {
+        expect(persistImportedAccount).toHaveBeenCalledTimes(1);
+        expect(wallet.saveWalletState).not.toHaveBeenCalled();
+      } else {
+        expect(wallet.saveWalletState).toHaveBeenCalledTimes(1);
+      }
     }
   );
 

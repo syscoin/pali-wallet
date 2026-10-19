@@ -81,6 +81,9 @@ export const ImportToken: React.FC = () => {
   const [customContractAddress, setCustomContractAddress] = useState(
     restoredState?.customContractAddress || ''
   );
+  const contractValidationRevision = useRef(0);
+  const customContractRef = useRef(customContractAddress);
+  customContractRef.current = customContractAddress;
   const [customTokenDetails, setCustomTokenDetails] =
     useState<ITokenDetails | null>(restoredState?.customTokenDetails || null);
   const [isValidatingCustom, setIsValidatingCustom] = useState(false);
@@ -243,6 +246,13 @@ export const ImportToken: React.FC = () => {
   useEffect(() => {
     let current = true;
     const validateCustomToken = async (contractAddress: string) => {
+      const revision = ++contractValidationRevision.current;
+      const isCurrent = () =>
+        current &&
+        revision === contractValidationRevision.current &&
+        contractAddress.toLowerCase() ===
+          customContractRef.current.trim().toLowerCase();
+      if (!isCurrent()) return;
       if (!contractAddress || contractAddress.length < 42) {
         // SYSCOIN: A cancelled validation cannot clear this input's spinner.
         setIsValidatingCustom(false);
@@ -260,7 +270,7 @@ export const ImportToken: React.FC = () => {
         ).catch(() => null);
 
         // If enhanced validation fails, try NFT validation
-        if (!current) return;
+        if (!isCurrent()) return;
         if (!details) {
           details = await controllerEmitter(
             ['wallet', 'validateNftContract'],
@@ -269,7 +279,7 @@ export const ImportToken: React.FC = () => {
         }
 
         // If NFT validation fails, try basic ERC-20
-        if (!current) return;
+        if (!isCurrent()) return;
         if (!details) {
           details = await controllerEmitter(
             ['wallet', 'validateERC20Only'],
@@ -277,7 +287,7 @@ export const ImportToken: React.FC = () => {
           );
         }
 
-        if (!current) return;
+        if (!isCurrent()) return;
         if (details) {
           setCustomTokenDetails(details as ITokenDetails);
         } else {
@@ -285,9 +295,9 @@ export const ImportToken: React.FC = () => {
         }
       } catch (error) {
         console.error('Validation error:', error);
-        if (current) setCustomTokenDetails(null);
+        if (isCurrent()) setCustomTokenDetails(null);
       } finally {
-        if (current) setIsValidatingCustom(false);
+        if (isCurrent()) setIsValidatingCustom(false);
       }
     };
 
@@ -443,13 +453,17 @@ export const ImportToken: React.FC = () => {
       const isCurrent = () =>
         importViewRef.current.active &&
         importViewRef.current.scope === scope &&
-        importOperationRef.current === operation;
+        importOperationRef.current === operation &&
+        (activeTab !== 'custom' ||
+          asset.contractAddress.toLowerCase() ===
+            customContractRef.current.trim().toLowerCase());
       const assertCurrent = () => {
         if (!isCurrent()) throw new Error('Token import context changed');
       };
       setCurrentlyImporting(asset.id);
 
       try {
+        assertCurrent();
         let tokenLogo = asset.logo || PaliLogo;
 
         // If token doesn't have a logo or is using default Pali logo, try to fetch from CoinGecko
@@ -639,6 +653,8 @@ export const ImportToken: React.FC = () => {
     setRequestedTab(tab);
     updateTabInUrl(tab);
     if (tab === 'custom') {
+      contractValidationRevision.current += 1;
+      customContractRef.current = '';
       setCustomContractAddress('');
       setCustomTokenDetails(null);
       setCustomTokenId('');
@@ -789,6 +805,11 @@ export const ImportToken: React.FC = () => {
                   placeholder={t('tokens.enterContractAddress')}
                   value={customContractAddress}
                   onChange={(e) => {
+                    contractValidationRevision.current += 1;
+                    customContractRef.current = e.target.value;
+                    // Restart even when urgent A -> B -> A edits leave the
+                    // deferred address unchanged.
+                    debouncedValidationRef.current?.(e.target.value.trim());
                     setCustomContractAddress(e.target.value);
                     setCustomTokenDetails(null);
                     setCustomTokenId('');
