@@ -11,6 +11,7 @@ import React from 'react';
 import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
 
 import { KeyringAccountType } from 'types/network';
+import { getWalletNavigationScope } from 'utils/navigationState';
 
 import EditAccount from './EditAccount';
 
@@ -159,7 +160,18 @@ it('preserves the exact account label mutation and returns to Accounts after a c
   await save();
   expect(mockEmitter).toHaveBeenCalledWith(
     ['wallet', 'editAccountLabel'],
-    ['Updated savings', 1, KeyringAccountType.SmartAccount]
+    [
+      'Updated savings',
+      1,
+      KeyringAccountType.SmartAccount,
+      {
+        account: {
+          address: mockState.vault.accounts.SmartAccount[1].address,
+          xpub: undefined,
+        },
+        walletScope: getWalletNavigationScope(),
+      },
+    ]
   );
   expect(
     await screen.findByRole('heading', { name: 'Accounts' })

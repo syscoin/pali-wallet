@@ -659,7 +659,7 @@ export const PrepareSmartAccount = () => {
 
       await controllerEmitter(
         ['wallet', 'setAccount'],
-        [account.id, KeyringAccountType.SmartAccount, true]
+        [account.id, KeyringAccountType.SmartAccount, true, account.address]
       );
       if (!isCurrent()) return;
 
@@ -689,6 +689,16 @@ export const PrepareSmartAccount = () => {
               chainId: activeNetwork.chainId,
               date: Date.now(),
               host,
+            },
+            {
+              address: account.address,
+              xpub: account.xpub,
+              network: {
+                kind: activeNetwork.kind,
+                chainId: activeNetwork.chainId,
+                url: activeNetwork.url,
+                slip44: activeNetwork.slip44,
+              },
             },
           ]
         );
@@ -785,6 +795,16 @@ export const PrepareSmartAccount = () => {
             chainId: activeNetwork.chainId,
             date: Date.now(),
             host,
+          },
+          {
+            address: account.address,
+            xpub: account.xpub,
+            network: {
+              kind: activeNetwork.kind,
+              chainId: activeNetwork.chainId,
+              url: activeNetwork.url,
+              slip44: activeNetwork.slip44,
+            },
           },
         ]
       );

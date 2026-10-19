@@ -12,6 +12,11 @@ jest.mock('state/store', () => ({
   saveMainState: (...args: any[]) => saveMainStateMock(...args),
   persistMainStateStrict: (...args: any[]) =>
     persistMainStateStrictMock(...args),
+  persistDappPermissionGrant: async (grant, previous, isCurrent) => {
+    if (!isCurrent() || getStateMock().dapp.dapps[grant.host] !== previous)
+      throw new Error('Permission grant context changed');
+    dispatchMock({ type: 'dapp/addDApp', payload: grant });
+  },
 }));
 
 jest.mock('../notification-manager', () => ({
@@ -32,6 +37,24 @@ import { INetworkType, KeyringAccountType } from 'types/network';
 import DAppController from './DAppController';
 import { clearProviderCache } from './message-handler/provider-cache';
 import { PaliEvents, PaliSyscoinEvents } from './message-handler/types';
+
+// Legacy event/revocation fixtures use the same explicit approval contract as
+// current callers. Their disk-boundary behavior is covered in the real-store
+// connectionPersistence suite.
+const connect = (controller: ReturnType<typeof DAppController>, dapp: any) => {
+  const state = getStateMock();
+  state.dapp ||= { dapps: {} };
+  state.vault.activeNetwork ||= {
+    kind: INetworkType.Ethereum,
+    chainId: 57057,
+  };
+  const network = state.vault.activeNetwork;
+  const account = state.vault.accounts[dapp.accountType][dapp.accountId];
+  return controller.connect(
+    { ...dapp, chain: network.kind, chainId: network.chainId },
+    { address: account.address, xpub: account.xpub, network }
+  );
+};
 
 describe('DAppController idempotent permission revocation', () => {
   const host = 'https://revoking.example';
@@ -117,7 +140,7 @@ describe('DAppController idempotent permission revocation', () => {
 
   it('removes and persists an active connection', async () => {
     const controller = DAppController();
-    controller.connect({
+    await connect(controller, {
       host,
       accountId: 0,
       accountType: KeyringAccountType.HDAccount,
@@ -237,7 +260,7 @@ describe('DAppController idempotent permission revocation', () => {
     await controller.disconnect(host, true, options);
     expect(callbacks).toHaveLength(2);
 
-    controller.connect({
+    await connect(controller, {
       host,
       accountId: 0,
       accountType: KeyringAccountType.HDAccount,
@@ -297,7 +320,7 @@ describe('DAppController idempotent permission revocation', () => {
       };
       const controller = DAppController();
       if (active) {
-        controller.connect({
+        await connect(controller, {
           host,
           accountId: 0,
           accountType: KeyringAccountType.HDAccount,
@@ -399,7 +422,7 @@ describe('DAppController idempotent permission revocation', () => {
       const firstResult = first.catch(() => undefined);
       await Promise.resolve();
       expect(state.dapp.dapps[host]).toBeUndefined();
-      controller.connect({
+      await connect(controller, {
         host,
         accountId: 0,
         accountType: KeyringAccountType.HDAccount,
@@ -552,7 +575,7 @@ describe('legacy dapp permission isolation', () => {
     );
   });
 
-  it('queries event recipients using the exact approved origin', () => {
+  it('queries event recipients using the exact approved origin', async () => {
     const account = { address: '0x1234', xpub: 'xpub' };
     getStateMock.mockReturnValue({
       vault: { accounts: { HDAccount: { 0: account } }, isBitcoinBased: false },
@@ -563,7 +586,10 @@ describe('legacy dapp permission isolation', () => {
     };
     (chrome as any).scripting = { executeScript: jest.fn() };
     const controller = DAppController();
-    controller.connect({
+    dispatchMock.mockImplementation((action) => {
+      getStateMock().dapp.dapps[action.payload.host] = action.payload;
+    });
+    await connect(controller, {
       host: 'https://example.com',
       accountId: 0,
       accountType: KeyringAccountType.HDAccount,
@@ -589,7 +615,7 @@ describe('legacy dapp permission isolation', () => {
     (chrome as any).scripting = {
       executeScript: jest.fn().mockResolvedValue([]),
     };
-    DAppController().connect({
+    await connect(DAppController(), {
       host: 'https://example.com',
       accountId: 0,
       accountType: KeyringAccountType.HDAccount,

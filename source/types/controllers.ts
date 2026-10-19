@@ -33,7 +33,10 @@ export interface IDAppController {
    * Completes a connection with a DApp
    * @emits connect
    */
-  connect: (dapp: IDApp, isDappConnected?: boolean) => void;
+  connect: (
+    dapp: IDApp,
+    expectedContext: IDAppAccountSelectionContext
+  ) => Promise<void>;
   /**
    * Removes a connection with a DApp
    * @emits disconnect

@@ -213,7 +213,7 @@ describe('wallet-managed SLH-DSA creation boundary', () => {
     ]);
     expect(mockEmitter).toHaveBeenCalledWith(
       ['wallet', 'setAccount'],
-      [ACCOUNT_ID, KeyringAccountType.SmartAccount, true]
+      [ACCOUNT_ID, KeyringAccountType.SmartAccount, true, ACCOUNT]
     );
     expect(mockEmitter).toHaveBeenCalledWith(
       ['wallet', 'provisionSLHDSASmartAccountValidator'],

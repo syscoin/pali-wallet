@@ -1,6 +1,7 @@
 import React from 'react';
 
 import { KeyringAccountType } from 'types/network';
+import { dispatchBackgroundEvent } from 'utils/browser';
 
 import { ConnectWallet } from './ConnectWallet';
 
@@ -280,5 +281,98 @@ describe('large connection approval account selection', () => {
     await copyButton.props.onClick();
     expect(mockAlert.info).not.toHaveBeenCalled();
     expect(mockAlert.error).toHaveBeenCalledWith('transactions.copyFailed');
+  });
+
+  it('captures the reviewed identity before selection and waits for the durable connection before success', async () => {
+    mockQuery.host = 'https://bridge.syscoin.org';
+    await initialize();
+    const close = jest.fn();
+    const originalWindow = global.window;
+    (global as any).window = { close };
+    let select!: () => void;
+    let connect!: () => void;
+    const reviewed = mockState.vault.accounts.HDAccount[499];
+    const reviewedNetwork = { ...mockState.vault.activeNetwork };
+    mockEmitter.mockClear();
+    jest.mocked(dispatchBackgroundEvent).mockClear();
+    mockEmitter.mockImplementation(async ([, method]) => {
+      if (method === 'setAccount')
+        await new Promise<void>((resolve) => (select = resolve));
+      if (method === 'connect')
+        await new Promise<void>((resolve) => (connect = resolve));
+    });
+    try {
+      allElements(render())
+        .find(
+          (element) =>
+            element.type === 'button' &&
+            element.props.children === 'buttons.confirm'
+        )!
+        .props.onClick();
+      expect(mockEmitter).toHaveBeenCalledWith(
+        ['wallet', 'setAccount'],
+        [499, KeyringAccountType.HDAccount, true, reviewed.address]
+      );
+      select();
+      await settle();
+      expect(mockEmitter).toHaveBeenCalledWith(
+        ['dapp', 'connect'],
+        [
+          expect.objectContaining({ accountId: 499, host: mockQuery.host }),
+          {
+            address: reviewed.address,
+            xpub: reviewed.xpub,
+            network: reviewedNetwork,
+          },
+        ]
+      );
+      expect(close).not.toHaveBeenCalled();
+      expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
+      connect();
+      await settle();
+      expect(dispatchBackgroundEvent).toHaveBeenCalledWith(
+        `connect.${mockQuery.host}`,
+        null
+      );
+      expect(close).toHaveBeenCalledTimes(1);
+    } finally {
+      (global as any).window = originalWindow;
+    }
+  });
+
+  it('shows durable connection failure and stays open for retry instead of acknowledging success', async () => {
+    mockQuery.host = 'https://bridge.syscoin.org';
+    await initialize();
+    const close = jest.fn();
+    const originalWindow = global.window;
+    (global as any).window = { close };
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation();
+    jest.mocked(dispatchBackgroundEvent).mockClear();
+    mockEmitter.mockClear();
+    mockEmitter.mockImplementation(async ([, method]) => {
+      if (method === 'connect') throw new Error('Storage unavailable');
+    });
+    try {
+      const confirm = () =>
+        allElements(render()).find(
+          (element) =>
+            element.type === 'button' &&
+            element.props.children === 'buttons.confirm'
+        )!;
+      confirm().props.onClick();
+      await settle();
+      expect(close).not.toHaveBeenCalled();
+      expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
+      expect(mockAlert.error).toHaveBeenCalledWith('Storage unavailable');
+      expect(confirm().props.disabled).toBe(false);
+      mockEmitter.mockResolvedValue(undefined);
+      confirm().props.onClick();
+      await settle();
+      expect(dispatchBackgroundEvent).toHaveBeenCalledTimes(1);
+      expect(close).toHaveBeenCalledTimes(1);
+    } finally {
+      errorSpy.mockRestore();
+      (global as any).window = originalWindow;
+    }
   });
 });

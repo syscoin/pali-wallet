@@ -74,6 +74,7 @@ import { getTokenTypeBadgeColor } from 'utils/tokens';
 import { getErc20Abi, getErc721Abi, getErc1155Abi } from 'utils/validations';
 
 import { EditPriorityModal } from './EditPriority';
+import { normalizeNftTokenId } from './nftTokenId';
 import { useConfirmSubmission } from './useConfirmSubmission';
 const SMART_ACCOUNT_MAX_SEND_BUFFER_WEI = parseUnits('0.000001', 'ether');
 const NATIVE_EVM_MAX_SEND_BUFFER_WEI = parseUnits('0.000001', 'ether');
@@ -495,14 +496,7 @@ export const SendConfirm = () => {
             ),
           ]);
         } else {
-          const tokenId = basicTxValues.token.tokenId;
-          if (
-            tokenId === undefined ||
-            tokenId === null ||
-            tokenId === '' ||
-            BigNumber.from(tokenId).lt(0)
-          )
-            throw new Error('Invalid token id');
+          const tokenId = normalizeNftTokenId(basicTxValues.token.tokenId);
           const abi = new Interface(
             transactionType === TransactionType.ERC721
               ? await getErc721Abi()
@@ -1316,19 +1310,10 @@ export const SendConfirm = () => {
             case TransactionType.ERC721:
               try {
                 // Validate tokenId before conversion
-                const tokenId = basicTxValues.token.tokenId;
-                if (
-                  tokenId === undefined ||
-                  tokenId === null ||
-                  tokenId === ''
-                ) {
-                  alert.error(t('send.invalidTokenId'));
-                  setLoading(false);
-                  return;
-                }
-
-                const numericTokenId = Number(tokenId);
-                if (isNaN(numericTokenId) || numericTokenId < 0) {
+                let tokenId: string;
+                try {
+                  tokenId = normalizeNftTokenId(basicTxValues.token.tokenId);
+                } catch {
                   alert.error(t('send.invalidTokenId'));
                   setLoading(false);
                   return;
@@ -1342,7 +1327,7 @@ export const SendConfirm = () => {
                       networkUrl: activeNetwork.url,
                       receiver: destinationTo,
                       tokenAddress: basicTxValues.token.contractAddress,
-                      tokenId: numericTokenId,
+                      tokenId,
                       isLegacy: !isEIP1559Compatible,
                       gasPrice: BigNumber.from(gasPrice).toHexString(),
                       maxPriorityFeePerGas: parseUnits(
@@ -1405,19 +1390,10 @@ export const SendConfirm = () => {
             case TransactionType.ERC1155:
               try {
                 // Validate tokenId before conversion
-                const tokenId = basicTxValues.token.tokenId;
-                if (
-                  tokenId === undefined ||
-                  tokenId === null ||
-                  tokenId === ''
-                ) {
-                  alert.error(t('send.invalidTokenId'));
-                  setLoading(false);
-                  return;
-                }
-
-                const numericTokenId = Number(tokenId);
-                if (isNaN(numericTokenId) || numericTokenId < 0) {
+                let tokenId: string;
+                try {
+                  tokenId = normalizeNftTokenId(basicTxValues.token.tokenId);
+                } catch {
                   alert.error(t('send.invalidTokenId'));
                   setLoading(false);
                   return;
@@ -1431,7 +1407,7 @@ export const SendConfirm = () => {
                       networkUrl: activeNetwork.url,
                       receiver: destinationTo,
                       tokenAddress: basicTxValues.token.contractAddress,
-                      tokenId: numericTokenId,
+                      tokenId,
                       tokenAmount: String(basicTxValues.amount),
                       isLegacy: !isEIP1559Compatible,
                       maxPriorityFeePerGas: parseUnits(
