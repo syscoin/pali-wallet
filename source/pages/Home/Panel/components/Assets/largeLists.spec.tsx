@@ -68,7 +68,13 @@ jest.mock('utils/index', () => ({
   formatFullPrecisionBalance: (value: any) => String(value),
   getTokenLogo: () => '',
 }));
-jest.mock('utils/navigationState', () => ({ navigateWithContext: jest.fn() }));
+jest.mock('utils/navigationState', () => ({
+  navigateWithContext: jest.fn(),
+  getWalletNavigationScope: () => ({
+    account: 'large-list-account',
+    network: 'large-list-network',
+  }),
+}));
 jest.mock('utils/tokens', () => ({ getTokenTypeBadgeColor: () => '' }));
 jest.mock('utils/syscoinAssetAmount', () => ({
   hasNonZeroAssetDelta: () => false,

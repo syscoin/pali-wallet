@@ -191,7 +191,11 @@ export const popupPromise = async ({
       if (available) {
         approvalClientId = source.id;
         if (
-          (route === MethodRoute.SendEthTx || route === MethodRoute.SignTx) &&
+          (route === MethodRoute.SendEthTx ||
+            route === MethodRoute.SendCalls ||
+            route === MethodRoute.SmartAccount ||
+            route === MethodRoute.SmartAccountModules ||
+            route === MethodRoute.SignTx) &&
           approvalDocumentId &&
           !stopWatchingSubmission
         )

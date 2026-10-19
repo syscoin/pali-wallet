@@ -32,9 +32,9 @@ export const DecodedTransactionParams: React.FC<
   // Don't show decoded data section if there are no parameters and it's not a special case
   const isApproval = [
     'approve',
-    'increaseAllowance',
-    'decreaseAllowance',
-    'setApprovalForAll',
+    'increaseallowance',
+    'decreaseallowance',
+    'setapprovalforall',
   ].includes(decodedData.method.toLowerCase());
 
   if (decodedData.inputs.length === 0 && !isApproval) {

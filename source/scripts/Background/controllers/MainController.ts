@@ -3922,7 +3922,7 @@ class MainController {
 
       // EVM insertion runs synchronously before persistence awaits. A later
       // context change must not turn this committed import into a rejection.
-      await this.saveTokenInfo(assetToAdd);
+      await this.saveTokenInfo(assetToAdd, expectedScope);
 
       console.log(
         `[MainController] Successfully added token ${assetToAdd.tokenSymbol} via dApp request`
@@ -4001,6 +4001,22 @@ class MainController {
     }
   }
 
+  private assertUniqueUtxoNetworkVault(network: INetwork) {
+    if (network.kind !== INetworkType.Syscoin || network.slip44 === undefined)
+      return;
+    const conflict = Object.values(
+      store.getState().vaultGlobal.networks.syscoin
+    ).some(
+      (existing) =>
+        existing.chainId !== network.chainId &&
+        existing.slip44 === network.slip44
+    );
+    if (conflict)
+      throw new Error(
+        'A UTXO network already uses this coin type. Remove or edit it first.'
+      );
+  }
+
   public async addCustomRpc(network: INetwork): Promise<INetwork> {
     if (this.isRemovingNetwork) {
       throw new Error(NETWORK_REMOVAL_IN_PROGRESS_ERROR);
@@ -4023,6 +4039,7 @@ class MainController {
     if (networks[networkType][network.chainId]) {
       throw new Error(NETWORK_ALREADY_EXISTS_ERROR);
     }
+    this.assertUniqueUtxoNetworkVault(network);
 
     let networkWithCustomParams = {
       ...network,
@@ -4079,6 +4096,7 @@ class MainController {
     if (store.getState().vaultGlobal.networks[networkType][network.chainId]) {
       throw new Error(NETWORK_ALREADY_EXISTS_ERROR);
     }
+    this.assertUniqueUtxoNetworkVault(network);
     store.dispatch(setNetwork({ network: networkWithCustomParams }));
 
     // Save wallet state after adding custom network
@@ -4092,6 +4110,7 @@ class MainController {
     if (this.isRemovingNetwork) {
       throw new Error(NETWORK_REMOVAL_IN_PROGRESS_ERROR);
     }
+    this.assertUniqueUtxoNetworkVault(network);
     // Update the network in the global networks store
     // The setNetwork reducer will automatically preserve CoinGecko IDs and other metadata
     store.dispatch(setNetwork({ network, isEdit: true }));
@@ -4260,6 +4279,10 @@ class MainController {
     const walletStateGeneration = this.walletStateGeneration;
     const originalNetwork =
       store.getState().vaultGlobal.networks[chain]?.[chainId];
+    const hasOtherOwner = (slip44: number) =>
+      Object.values(store.getState().vaultGlobal.networks.syscoin).some(
+        (network) => network.chainId !== chainId && network.slip44 === slip44
+      );
     const assertCanRemove = () => {
       const { vault, vaultGlobal } = store.getState();
       if (
@@ -4295,7 +4318,8 @@ class MainController {
           vault.activeNetwork.chainId === chainId) ||
         (chain === INetworkType.Syscoin &&
           network?.slip44 !== undefined &&
-          network.slip44 === vaultGlobal.activeSlip44)
+          network.slip44 === vaultGlobal.activeSlip44 &&
+          !hasOtherOwner(network.slip44))
       ) {
         throw new Error('Cannot remove the currently active network.');
       }
@@ -4320,12 +4344,16 @@ class MainController {
           networkToRemove?.slip44 !== undefined
         ) {
           const slip44ToRemove = networkToRemove.slip44;
-          await walletPersistenceMutex.runExclusive(async () => {
+          // Legacy registrations can share a vault. Removing one registration
+          // must retain the surviving network's account records and keyring.
+          if (!hasOtherOwner(slip44ToRemove)) {
+            await walletPersistenceMutex.runExclusive(async () => {
+              assertCanRemove();
+              await this.clearSlip44VaultState(slip44ToRemove);
+            });
             assertCanRemove();
-            await this.clearSlip44VaultState(slip44ToRemove);
-          });
-          assertCanRemove();
-          this.keyrings.delete(slip44ToRemove);
+            this.keyrings.delete(slip44ToRemove);
+          }
         }
 
         store.dispatch(removeNetwork({ chain, chainId, rpcUrl, label, key }));
@@ -9102,8 +9130,32 @@ class MainController {
     return this.assetsManager.sys.getAssetCached(networkUrl, assetGuid);
   }
 
-  public async saveTokenInfo(token: any) {
-    const { isBitcoinBased } = store.getState().vault;
+  private assertAssetMutationContext(expectedScope: IWalletNavigationScope) {
+    const scope = getWalletNavigationScope();
+    const { vaultGlobal } = store.getState();
+    if (
+      !expectedScope?.account ||
+      !expectedScope?.network ||
+      expectedScope.account !== scope.account ||
+      expectedScope.network !== scope.network ||
+      this.getWalletSetupStatus() ||
+      !this.isUnlocked() ||
+      vaultGlobal.isSwitchingAccount ||
+      vaultGlobal.networkStatus === 'switching' ||
+      vaultGlobal.networkStatus === 'connecting'
+    )
+      throw new Error('Asset context changed. Please try again.');
+  }
+
+  public async saveTokenInfo(
+    token: any,
+    expectedScope: IWalletNavigationScope
+  ) {
+    this.assertAssetMutationContext(expectedScope);
+    const { isBitcoinBased, activeNetwork } = store.getState().vault;
+    if (token?.chainId !== activeNetwork.chainId)
+      throw new Error('Asset network changed. Please try again.');
+    const generation = this.walletSessionGeneration;
     let result;
 
     // Handle Ethereum tokens
@@ -9111,7 +9163,11 @@ class MainController {
       result = await this.account.eth.saveTokenInfo(token);
     } else {
       // Handle Syscoin tokens
-      result = await this.account.sys.saveTokenInfo(token);
+      result = await this.account.sys.saveTokenInfo(token, () => {
+        if (generation !== this.walletSessionGeneration)
+          throw new Error('Asset context changed. Please try again.');
+        this.assertAssetMutationContext(expectedScope);
+      });
     }
 
     // Token import is user-authored durable state. Do not report success until
@@ -9124,11 +9180,14 @@ class MainController {
 
   public async deleteTokenInfo(
     tokenToDelete: any,
-    chainId?: number,
-    tokenId?: string
+    chainId: number,
+    tokenId: string | undefined,
+    expectedScope: IWalletNavigationScope
   ) {
+    this.assertAssetMutationContext(expectedScope);
     const { isBitcoinBased, activeNetwork } = store.getState().vault;
-    const currentChainId = chainId ?? activeNetwork.chainId;
+    if (chainId !== activeNetwork.chainId)
+      throw new Error('Asset network changed. Please try again.');
     let result;
 
     // Handle Ethereum tokens (tokenToDelete is contractAddress string)
@@ -9138,7 +9197,7 @@ class MainController {
     ) {
       result = await this.account.eth.deleteTokenInfo(
         tokenToDelete,
-        currentChainId,
+        chainId,
         tokenId
       );
     } else {

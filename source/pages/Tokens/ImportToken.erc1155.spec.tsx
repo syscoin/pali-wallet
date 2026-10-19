@@ -70,6 +70,7 @@ jest.mock('react-i18next', () => ({
   }),
 }));
 jest.mock('utils/navigationState', () => ({
+  getWalletNavigationScope: () => ({ account: 'account', network: 'network' }),
   getCurrentTab: () => 'custom',
   createBrowsingNavigationContext: jest.fn(),
   navigateWithContext: jest.fn(),
@@ -170,7 +171,10 @@ it('does not offer an ERC1155 import before its token ID has been verified', asy
   await act(async () => undefined);
   expect(emitter).toHaveBeenCalledWith(
     ['wallet', 'saveTokenInfo'],
-    [expect.objectContaining({ tokenId: '0', balance: 0, rawBalance: '0' })]
+    [
+      expect.objectContaining({ tokenId: '0', balance: 0, rawBalance: '0' }),
+      expect.any(Object),
+    ]
   );
 });
 
@@ -198,7 +202,10 @@ it('does not let an old token ID result overwrite the current verified balance',
   await act(async () => undefined);
   expect(emitter).toHaveBeenCalledWith(
     ['wallet', 'saveTokenInfo'],
-    [expect.objectContaining({ tokenId: '2', balance: 2, rawBalance: '2' })]
+    [
+      expect.objectContaining({ tokenId: '2', balance: 2, rawBalance: '2' }),
+      expect.any(Object),
+    ]
   );
 });
 
@@ -293,7 +300,7 @@ it('uses the same trimmed token ID for the preview identity and saved import', a
   });
   expect(emitter).toHaveBeenCalledWith(
     ['wallet', 'saveTokenInfo'],
-    [expect.objectContaining({ tokenId: '0' })]
+    [expect.objectContaining({ tokenId: '0' }), expect.any(Object)]
   );
 });
 
@@ -334,6 +341,7 @@ it.each([
           balance: Number.MAX_SAFE_INTEGER,
           rawBalance: quantity,
         }),
+        expect.any(Object),
       ]
     );
   }

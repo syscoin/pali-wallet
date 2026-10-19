@@ -153,6 +153,14 @@ describe('approval popup boundary', () => {
   const submissionRoutes = [
     { method: 'sendAndSaveEthTransaction', route: MethodRoute.SendEthTx },
     { method: 'submitSmartAccountExecution', route: MethodRoute.SendEthTx },
+    { method: 'sendAndSaveEthTransaction', route: MethodRoute.SendCalls },
+    { method: 'submitSmartAccountExecution', route: MethodRoute.SendCalls },
+    { method: 'registerSmartAccountOnChain', route: MethodRoute.SmartAccount },
+    { method: 'submitSmartAccountExecution', route: MethodRoute.SmartAccount },
+    {
+      method: 'submitSmartAccountExecution',
+      route: MethodRoute.SmartAccountModules,
+    },
     { method: 'signSendAndSaveTransaction', route: MethodRoute.SignTx },
   ];
 

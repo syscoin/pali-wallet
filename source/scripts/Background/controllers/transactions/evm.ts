@@ -137,6 +137,16 @@ const mapTokenTransfer = (event: any, chainId: number) => ({
     EVM_TRANSACTION_HISTORY_SOURCE.ExplorerTokenTransfer
   ),
   tokenRecipient: event.to,
+  tokenTransfer: {
+    chainId,
+    contractAddress: event.contractAddress,
+    recipient: event.to,
+    value: event.tokenValue ?? event.value,
+    decimals: event.tokenDecimal,
+    symbol: event.tokenSymbol,
+    tokenId: event.tokenID ?? event.tokenId,
+    tokenStandard: event.tokenType ?? event.tokenStandard,
+  },
 });
 
 const EvmTransactionsController = (): IEvmTransactionsController => {
@@ -490,11 +500,14 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
     );
 
     // Merge and deduplicate by hash (prefer base txlist entries when present)
-    const seenHashes = new Set(allTransactions.map((t) => t.hash));
+    const seenHashes = new Set(
+      allTransactions.map((t) => String(t.hash).toLowerCase())
+    );
     for (const t of tokenTransactions) {
-      if (!seenHashes.has(t.hash)) {
+      const hash = String(t.hash).toLowerCase();
+      if (!seenHashes.has(hash)) {
         allTransactions.push(t);
-        seenHashes.add(t.hash);
+        seenHashes.add(hash);
       }
     }
 

@@ -11,6 +11,7 @@ import { id } from 'utils/ethersV6Compat';
 import { getAddress } from 'utils/ethersV6Compat';
 import { defaultAbiCoder } from 'utils/ethersV6Compat';
 
+import { EVM_TRANSACTION_HISTORY_SOURCE } from './evmNonce';
 import { formatCurrency, truncate, formatFullPrecisionBalance } from './format';
 import {
   getWalletNavigationScope,
@@ -47,6 +48,7 @@ export const getTransactionDisplayInfo = async (
   hasUnknownDecimals?: boolean;
   isErc20Transfer: boolean; // Note: This includes all token transfers (ERC20/721/1155), not just ERC20
   isNft: boolean;
+  nftQuantity?: string;
   tokenId?: string; // Token ID for NFTs
 }> => {
   const smartAccountInnerTx = getSmartAccountDisplayTransaction(tx);
@@ -57,6 +59,90 @@ export const getTransactionDisplayInfo = async (
       skipUnknownTokenFetch,
       controller
     );
+  }
+
+  // A token endpoint returns event amounts and recipients. Its `value` is not
+  // the outer transaction's native payment and its input may be unavailable.
+  if (
+    tx?.historySource === EVM_TRANSACTION_HISTORY_SOURCE.ExplorerTokenTransfer
+  ) {
+    const { activeAccount, accountAssets, activeNetwork } =
+      store.getState().vault;
+    const chainId = Number(tx.chainId ?? activeNetwork.chainId);
+    const event = tx.tokenTransfer || {
+      chainId,
+      contractAddress: tx.to,
+      recipient: tx.tokenRecipient,
+      value: tx.value,
+    };
+    const validAddress = (value: unknown): value is string =>
+      typeof value === 'string' && /^0x[0-9a-f]{40}$/i.test(value);
+    const uint = (value: unknown): string | undefined => {
+      const text = typeof value === 'string' ? value : String(value ?? '');
+      return /^\d{1,78}$/.test(text) &&
+        BigInt(text) <=
+          BigInt(
+            '0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'
+          )
+        ? text
+        : undefined;
+    };
+    if (
+      Number(event.chainId) === chainId &&
+      validAddress(event.contractAddress) &&
+      validAddress(event.recipient)
+    ) {
+      const asset = accountAssets[activeAccount.type]?.[
+        activeAccount.id
+      ]?.ethereum?.find(
+        (candidate) =>
+          Number(candidate.chainId) === chainId &&
+          candidate.contractAddress?.toLowerCase() ===
+            event.contractAddress.toLowerCase()
+      );
+      const tokenId = uint(event.tokenId);
+      const isNft = tokenId !== undefined || asset?.isNft === true;
+      const isErc1155 =
+        (event.tokenStandard || asset?.tokenStandard) === 'ERC-1155';
+      const amount = isNft && !isErc1155 ? '1' : uint(event.value);
+      const rawDecimals = asset?.decimals ?? event.decimals;
+      const decimals = Number(rawDecimals);
+      const hasDecimals =
+        rawDecimals !== undefined &&
+        rawDecimals !== null &&
+        rawDecimals !== '' &&
+        Number.isInteger(decimals) &&
+        decimals >= 0 &&
+        decimals <= 255;
+      const symbol = asset?.tokenSymbol || event.symbol;
+      const displaySymbol =
+        typeof symbol === 'string' && symbol.trim()
+          ? symbol.toUpperCase()
+          : isNft
+          ? 'NFT'
+          : `${event.contractAddress.slice(
+              0,
+              6
+            )}...${event.contractAddress.slice(-4)}`;
+      const knownAmount = amount !== undefined && (isNft || hasDecimals);
+      const formattedValue =
+        amount === undefined
+          ? '?'
+          : isNft || !hasDecimals
+          ? amount
+          : formatUnits(amount, decimals);
+      return {
+        actualRecipient: event.recipient,
+        displaySymbol,
+        displayValue: formattedValue,
+        formattedValue,
+        isErc20Transfer: true,
+        isNft,
+        ...(isErc1155 && amount !== undefined ? { nftQuantity: amount } : {}),
+        ...(tokenId !== undefined ? { tokenId } : {}),
+        ...(!knownAmount ? { hasUnknownDecimals: true } : {}),
+      };
+    }
   }
 
   const isTokenTx = isTokenTransfer(tx);
@@ -288,32 +374,6 @@ export const getTransactionDisplayInfo = async (
         hasUnknownDecimals: true, // Flag that we don't know the decimals
       };
     }
-  }
-
-  // If no input/decoding but the `to` matches a known NFT in user's assets,
-  // infer an NFT transfer to avoid showing misleading native 0 values in lists.
-  try {
-    if (!isTokenTx && tx?.to) {
-      const { accounts, activeAccount, accountAssets } = store.getState().vault;
-      const currentAccount = accounts[activeAccount.type]?.[activeAccount.id];
-      const userAssets = accountAssets[activeAccount.type]?.[activeAccount.id];
-      const token = userAssets?.ethereum?.find(
-        (asset: any) =>
-          asset.contractAddress?.toLowerCase() === String(tx.to).toLowerCase()
-      );
-      if (token?.isNft) {
-        return {
-          displayValue: 1,
-          formattedValue: '1',
-          displaySymbol: String(token.tokenSymbol || 'NFT').toUpperCase(),
-          isErc20Transfer: true,
-          actualRecipient: tx.to || currentAccount?.address || '',
-          isNft: true,
-        };
-      }
-    }
-  } catch {
-    // Ignore heuristic failure and continue to native currency handling
   }
 
   // Native currency transaction

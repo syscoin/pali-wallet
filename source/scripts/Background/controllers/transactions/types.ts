@@ -103,6 +103,18 @@ export interface IEvmTransactionResponse extends IEvmTransaction {
 
   timestamp?: number;
 
+  // Token-only explorer rows are transfer events, not outer transaction bodies.
+  tokenTransfer?: {
+    chainId: number;
+    contractAddress: string;
+    decimals?: string;
+    recipient: string;
+    symbol?: string;
+    tokenId?: string;
+    tokenStandard?: string;
+    value: string;
+  };
+
   // This function waits until the transaction has been mined
   wait: (confirmations?: number) => Promise<ITransactionReceipt>;
 }
