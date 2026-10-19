@@ -1454,8 +1454,13 @@ export const SendConfirm = () => {
   }, [isBitcoinBased, basicTxValues?.fee]);
 
   useEffect(() => {
-    if (!basicTxValues || isBitcoinBased || recipientWrongNetwork) return;
-    const eipModeUnknown = isEIP1559Compatible === undefined;
+    if (
+      !basicTxValues ||
+      isBitcoinBased ||
+      recipientWrongNetwork ||
+      isEIP1559Compatible === undefined
+    )
+      return;
 
     // Skip fee recalculation when using custom fees
     if (customFee.isCustom) {
@@ -1489,7 +1494,7 @@ export const SendConfirm = () => {
       return;
     }
 
-    if (!eipModeUnknown && isEIP1559Compatible === false) {
+    if (isEIP1559Compatible === false) {
       // Don't retry if we already have an error
       if (feeCalculationError || isCalculatingFees) {
         return;
@@ -2471,6 +2476,7 @@ export const SendConfirm = () => {
                 recipientWrongNetwork ||
                 Boolean(sptReviewError) ||
                 isCalculatingFees ||
+                (!isBitcoinBased && isEIP1559Compatible === undefined) ||
                 (isSmartAccountSend && !smartAccountQuoteReady) ||
                 (!isBitcoinBased && !!feeCalculationError)
               }

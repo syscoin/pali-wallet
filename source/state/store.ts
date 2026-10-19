@@ -13,7 +13,7 @@ import { ISpamFilterState } from 'types/security';
 import { walletPersistenceMutex } from 'utils/asyncMutex';
 import { chromeStorage } from 'utils/storageAPI';
 
-import dapp, { addDApp } from './dapp';
+import dapp, { addDApp, removeDApp } from './dapp';
 import { IDApp, IDAppState } from './dapp/types';
 import {
   assertWalletPersistenceAllowed,
@@ -32,6 +32,7 @@ import vault, {
   rehydrate as vaultRehydrate,
   initializeCleanVaultForSlip44,
   restoreVaultSnapshot,
+  removeAccount,
   setAccountLabel,
 } from './vault';
 import { IVaultState, IGlobalState } from './vault/types';
@@ -183,13 +184,19 @@ export function persistDappPermissionGrant(
   grant: IDApp,
   previous: IDApp | undefined,
   isCurrent: () => boolean,
-  restoredPrevious: () => IDApp | undefined = () => undefined
+  restoredPrevious: () => IDApp | undefined = () => undefined,
+  isPreviousRetired: () => boolean = () => false
 ): Promise<void> {
   return walletPersistenceMutex.runExclusive(async () => {
-    // A failed revoke can restore its exact old grant before this queued
-    // approval starts. Capture that predecessor once, never during the write.
+    // Capture the effective predecessor once: a failed revoke can restore its
+    // exact grant, or durable account removal can retire the exact old grant.
     const admittedPrevious =
-      previous === undefined ? restoredPrevious() : previous;
+      previous === undefined
+        ? restoredPrevious()
+        : store.getState().dapp.dapps[grant.host] === undefined &&
+          isPreviousRetired()
+        ? undefined
+        : previous;
     const assertCurrent = () => {
       assertWalletPersistenceAllowed();
       if (
@@ -320,23 +327,44 @@ export function persistFiatCurrency(
   });
 }
 
-/** Stage a label without exposing it to ordinary or emergency vault saves. */
-export function persistAccountLabel(
-  accountId: number,
-  accountType: KeyringAccountType,
-  label: string,
-  assertCurrent: () => void
+type AccountRemovalCommit = {
+  accountId: number;
+  accountType: KeyringAccountType;
+  grants: IDApp[];
+  isSameWallet: () => boolean;
+  retireSessions: () => void;
+};
+
+// Labels and removals share the same unpublished vault staging boundary.
+function persistAccountMutation(
+  action: ReturnType<typeof setAccountLabel> | ReturnType<typeof removeAccount>,
+  assertCurrent: () => void,
+  removal?: AccountRemovalCommit
 ): Promise<void> {
   return walletPersistenceMutex.runExclusive(async () => {
-    assertWalletPersistenceAllowed();
-    assertCurrent();
+    const assertCommitCurrent = () => {
+      assertWalletPersistenceAllowed();
+      assertCurrent();
+      if (removal) {
+        const grants = Object.values(store.getState().dapp.dapps).filter(
+          (grant) =>
+            grant.accountId === removal.accountId &&
+            grant.accountType === removal.accountType
+        );
+        if (
+          grants.length !== removal.grants.length ||
+          grants.some((grant) => !removal.grants.includes(grant))
+        )
+          throw new Error('Account permissions changed before removal');
+      }
+    };
+    assertCommitCurrent();
     const state = store.getState();
     const sourceSlip44 = state.vaultGlobal.activeSlip44;
     if (sourceSlip44 === null)
       throw new Error(
-        'Cannot persist an account label without an active slip44'
+        'Cannot persist an account edit without an active slip44'
       );
-    const labelAction = setAccountLabel({ accountId, accountType, label });
     const sourceVault = vaultCache.prepareSlip44Vault(
       sourceSlip44,
       state.vault,
@@ -344,26 +372,44 @@ export function persistAccountLabel(
     );
     const stagedVault = vaultCache.prepareSlip44Vault(
       sourceSlip44,
-      vault(state.vault, labelAction),
+      vault(state.vault, action),
       false
     );
-    const mainState = isMainStateUnchanged(state)
+    const mainState = removal
+      ? {
+          ...getMainStateForStorage(state),
+          dapp: removal.grants.reduce(
+            (current, grant) => dapp(current, removeDApp(grant.host)),
+            state.dapp
+          ),
+        }
+      : isMainStateUnchanged(state)
       ? undefined
       : getMainStateForStorage(state);
     await saveCommittedWalletState(sourceSlip44, stagedVault, mainState);
     if (mainState) lastPersistedState = mainState;
     try {
-      assertWalletPersistenceAllowed();
-      assertCurrent();
+      assertCommitCurrent();
     } catch (error) {
       assertWalletPersistenceAllowed();
+      if (removal && !removal.isSameWallet()) throw error;
       const current = store.getState();
-      const repairVault =
+      let repairVault =
         current.vaultGlobal.activeSlip44 === sourceSlip44 &&
         getSlip44ForNetwork(current.vault.activeNetwork) === sourceSlip44
           ? vaultCache.prepareSlip44Vault(sourceSlip44, current.vault, false)
           : sourceVault;
-      const repairMainState = getMainStateForStorage(current);
+      if (
+        removal &&
+        current.vaultGlobal.activeSlip44 !== sourceSlip44 &&
+        vaultCache.isVaultCached(sourceSlip44)
+      ) {
+        repairVault =
+          (await vaultCache.getSlip44Vault(sourceSlip44)) || sourceVault;
+      }
+      assertWalletPersistenceAllowed();
+      if (removal && !removal.isSameWallet()) throw error;
+      const repairMainState = getMainStateForStorage(store.getState());
       // Repair the source slot, never the newly active vault. Do not repopulate
       // a cache that lock/reset may have cleared while storage was pending.
       await saveCommittedWalletState(
@@ -374,9 +420,36 @@ export function persistAccountLabel(
       lastPersistedState = repairMainState;
       throw error;
     }
-    store.dispatch(labelAction);
+    store.dispatch(action);
+    removal?.grants.forEach((grant) => store.dispatch(removeDApp(grant.host)));
     vaultCache.prepareSlip44Vault(sourceSlip44, store.getState().vault);
+    removal?.retireSessions();
   });
+}
+
+/** Stage a label without exposing it to ordinary or emergency vault saves. */
+export function persistAccountLabel(
+  accountId: number,
+  accountType: KeyringAccountType,
+  label: string,
+  assertCurrent: () => void
+): Promise<void> {
+  return persistAccountMutation(
+    setAccountLabel({ accountId, accountType, label }),
+    assertCurrent
+  );
+}
+
+/** Commit the account and its affected grants before retiring their sessions. */
+export function persistAccountRemoval(
+  removal: AccountRemovalCommit,
+  assertCurrent: () => void
+): Promise<void> {
+  return persistAccountMutation(
+    removeAccount({ id: removal.accountId, type: removal.accountType }),
+    assertCurrent,
+    removal
+  );
 }
 
 /**
