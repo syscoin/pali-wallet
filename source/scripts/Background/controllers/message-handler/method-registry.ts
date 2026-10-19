@@ -313,8 +313,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     networkPreference: NetworkPreference.UTXO,
     networkEnforcement: NetworkEnforcement.Never,
     hasPopup: false,
-    cacheKey: 'sysProviderState',
-    cacheTTL: 10000, // 10 seconds
+    // Recovery snapshots must reflect current unlock and origin permissions.
   },
 
   wallet_getSysAssetMetadata: {
