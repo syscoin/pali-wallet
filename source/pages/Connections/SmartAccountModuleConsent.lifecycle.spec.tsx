@@ -202,6 +202,10 @@ it('owns approval synchronously so two same-frame activations do not sign twice'
 });
 
 it('submits the reviewed module and reports success without changing its public payload', async () => {
+  mockState.dapp.dapps['fixture.invalid'] = {
+    accountId: 0,
+    accountType: 'SmartAccount',
+  };
   render(<SmartAccountModuleConsent />);
   await waitReady();
   acknowledge();
@@ -260,6 +264,10 @@ it('allows a new user attempt after a failed signature without a confirmed submi
 });
 
 it('passes the reviewed context through uninstall and metadata persistence', async () => {
+  mockState.dapp.dapps['fixture.invalid'] = {
+    accountId: 0,
+    accountType: 'SmartAccount',
+  };
   mockQuery = { ...mockQuery, action: 'uninstall' };
   render(<SmartAccountModuleConsent />);
   await waitFor(() => expect(confirmation().disabled).toBe(false));

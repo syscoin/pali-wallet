@@ -340,10 +340,41 @@ it('preserves language typeahead and Enter selection after removing closed optio
   const trigger = screen.getByRole('button', {
     name: 'settings.setYourPreferredLanguage',
   });
-  await user.click(trigger);
+  trigger.focus();
+  await user.keyboard('{Enter}');
   await user.keyboard('ger{Enter}');
   expect(trigger.textContent).toContain('Deutsch');
   expect(screen.queryByRole('menu')).toBeNull();
+  await waitFor(() => expect(document.activeElement).toBe(trigger));
+  await user.keyboard('{Enter}');
+  expect(screen.getByRole('menu')).toBeDefined();
+  await user.keyboard('{Escape}');
+  expect(screen.queryByRole('menu')).toBeNull();
+  await waitFor(() => expect(document.activeElement).toBe(trigger));
+});
+
+it('prevents pointer-down focus on a language option while allowing its click selection', async () => {
+  const user = userEvent.setup();
+  await act(async () => {
+    render(<Languages />);
+  });
+  const trigger = screen.getByRole('button', {
+    name: 'settings.setYourPreferredLanguage',
+  });
+  await user.click(trigger);
+  const menu = screen.getByRole('menu');
+  const option = screen.getByRole('menuitem', { name: 'Spanish Español' });
+  let down: MouseEvent | undefined;
+  option.addEventListener('mousedown', (event) => (down = event), {
+    once: true,
+  });
+  await user.pointer({ keys: '[MouseLeft>]', target: option });
+  expect(down?.defaultPrevented).toBe(true);
+  expect(document.activeElement).toBe(menu);
+  await user.pointer({ keys: '[/MouseLeft]', target: option });
+  expect(screen.queryByRole('menu')).toBeNull();
+  expect(trigger.textContent).toContain('Español');
+  expect(changeLanguage).not.toHaveBeenCalled();
 });
 
 it('does not replace a language the user selected while the saved preference was loading', async () => {
