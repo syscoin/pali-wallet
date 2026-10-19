@@ -3,6 +3,7 @@ import React, { useEffect, useState } from 'react';
 
 import PaliLogo from 'assets/all_assets/favicon-32.png';
 import { NftFallbackSvg } from 'components/Icon/Icon';
+import { Tooltip } from 'components/Tooltip/Tooltip';
 import { NFT_FALLBACK_IMAGE } from 'utils/nftFallback';
 import { getKnownTokenLogo, sanitizeUtxoTokenLogo } from 'utils/tokens';
 
@@ -320,6 +321,73 @@ export const TokenIcon: React.FC<ITokenIconProps> = React.memo(
 );
 
 TokenIcon.displayName = 'TokenIcon';
+
+// Shared across connection approvals; React.memo retains stable-prop skips.
+export const TokenIconStack = React.memo(
+  ({ tokens, maxVisible = 3 }: { maxVisible?: number; tokens: any[] }) => {
+    if (!tokens || tokens.length === 0) return null;
+
+    const getVisualKey = (token: any) => {
+      if (token.logo) return `logo:${token.logo}`;
+      if (token.symbol) return `symbol:${token.symbol.charAt(0).toUpperCase()}`;
+      return `address:${token.contractAddress || token.assetGuid}`;
+    };
+
+    const uniqueTokens = tokens.reduce((acc: any[], token: any) => {
+      const visualKey = getVisualKey(token);
+      const exists = acc.some((t) => getVisualKey(t) === visualKey);
+      if (!exists) {
+        acc.push(token);
+      }
+      return acc;
+    }, []);
+
+    const sortedTokens = uniqueTokens.sort(
+      (a, b) => Number(Boolean(b.logo)) - Number(Boolean(a.logo))
+    );
+
+    const visibleTokens = sortedTokens.slice(0, maxVisible);
+    const remainingCount = uniqueTokens.length - visibleTokens.length;
+
+    return (
+      <div className="flex items-center">
+        <div className="flex">
+          {visibleTokens.map((token, index) => (
+            <Tooltip
+              key={
+                token.id || token.contractAddress || token.assetGuid || index
+              }
+              content={token.name || token.symbol}
+            >
+              <div
+                className="relative hover:scale-110 hover:shadow-md transition-transform duration-200"
+                style={{
+                  marginLeft: index > 0 ? '-8px' : '0',
+                  zIndex: visibleTokens.length - index,
+                }}
+              >
+                <TokenIcon
+                  logo={token.logo}
+                  contractAddress={token.contractAddress}
+                  assetGuid={token.assetGuid}
+                  symbol={token.symbol}
+                  size={16}
+                  className="border border-bkg-3 rounded-full"
+                />
+              </div>
+            </Tooltip>
+          ))}
+        </div>
+        {remainingCount > 0 && (
+          <span className="ml-1 text-[10px] text-brand-royalblue">
+            +{remainingCount}
+          </span>
+        )}
+      </div>
+    );
+  }
+);
+TokenIconStack.displayName = 'TokenIconStack';
 
 // Export a function to clear the cache if needed
 export const clearTokenIconCache = () => {

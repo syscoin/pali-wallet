@@ -5,7 +5,7 @@ import { useSelector } from 'react-redux';
 
 import { LazyAccountBalance } from 'components/AccountBalance';
 import { Button, Icon, PageActionFooter, Tooltip } from 'components/index';
-import { TokenIcon } from 'components/TokenIcon';
+import { TokenIconStack } from 'components/TokenIcon';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
@@ -44,77 +44,6 @@ const AccountIcon = React.memo(
   }
 );
 AccountIcon.displayName = 'AccountIcon';
-
-// Component to render overlapping token icons
-const TokenIconStack = React.memo(
-  ({ tokens, maxVisible = 3 }: { maxVisible?: number; tokens: any[] }) => {
-    if (!tokens || tokens.length === 0) return null;
-
-    const getVisualKey = (token: any) => {
-      if (token.logo) return `logo:${token.logo}`;
-      if (token.symbol) return `symbol:${token.symbol.charAt(0).toUpperCase()}`;
-      return `address:${token.contractAddress || token.assetGuid}`;
-    };
-
-    const uniqueTokens = tokens.reduce((acc: any[], token: any) => {
-      const visualKey = getVisualKey(token);
-      const exists = acc.some((t) => getVisualKey(t) === visualKey);
-      if (!exists) {
-        acc.push(token);
-      }
-      return acc;
-    }, []);
-
-    const sortedTokens = uniqueTokens.sort((a, b) => {
-      const aHasLogo = !!a.logo;
-      const bHasLogo = !!b.logo;
-      if (aHasLogo && !bHasLogo) return -1;
-      if (!aHasLogo && bHasLogo) return 1;
-      return 0;
-    });
-
-    const visibleTokens = sortedTokens.slice(0, maxVisible);
-    const remainingCount = uniqueTokens.length - visibleTokens.length;
-
-    return (
-      <div className="flex items-center">
-        <div className="flex">
-          {visibleTokens.map((token, index) => (
-            <Tooltip
-              key={
-                token.id || token.contractAddress || token.assetGuid || index
-              }
-              content={token.name || token.symbol}
-            >
-              <div
-                className="relative hover:scale-110 hover:shadow-md transition-transform duration-200"
-                style={{
-                  marginLeft: index > 0 ? '-8px' : '0',
-                  zIndex: visibleTokens.length - index,
-                }}
-              >
-                <TokenIcon
-                  logo={token.logo}
-                  contractAddress={token.contractAddress}
-                  assetGuid={token.assetGuid}
-                  symbol={token.symbol}
-                  size={16}
-                  className="border border-bkg-3 rounded-full"
-                />
-              </div>
-            </Tooltip>
-          ))}
-        </div>
-        {remainingCount > 0 && (
-          <span className="ml-1 text-[10px] text-brand-royalblue">
-            +{remainingCount}
-          </span>
-        )}
-      </div>
-    );
-  }
-);
-TokenIconStack.displayName = 'TokenIconStack';
 
 export const ChangeConnectedAccount = () => {
   const { controllerEmitter } = useController();

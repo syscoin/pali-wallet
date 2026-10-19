@@ -40,7 +40,10 @@ jest.mock('components/index', () => ({
 jest.mock('components/Loading/ListLoadMore', () => ({
   ListLoadMore: 'load-more',
 }));
-jest.mock('components/TokenIcon', () => ({ TokenIcon: 'token-icon' }));
+jest.mock('components/TokenIcon', () => ({
+  ...jest.requireActual('components/TokenIcon'),
+  TokenIcon: 'token-icon',
+}));
 jest.mock('utils/browser', () => ({ dispatchBackgroundEvent: jest.fn() }));
 jest.mock('utils/index', () => ({ ellipsis: (value: string) => value }));
 
@@ -57,6 +60,8 @@ describe('large account-change approval list', () => {
   let stateIndex: number;
   let memos: Array<{ deps: React.DependencyList; value: any }>;
   let memoIndex: number;
+  let refs: any[];
+  let refIndex: number;
   const memo = (factory: () => any, deps: React.DependencyList) => {
     const index = memoIndex++;
     const previous = memos[index];
@@ -69,7 +74,7 @@ describe('large account-change approval list', () => {
     return memos[index].value;
   };
   const render = () => {
-    stateIndex = memoIndex = 0;
+    stateIndex = memoIndex = refIndex = 0;
     return ChangeAccount();
   };
   const rows = (view = render()) =>
@@ -92,6 +97,12 @@ describe('large account-change approval list', () => {
   beforeEach(() => {
     states = [];
     memos = [];
+    refs = [];
+    jest.spyOn(React, 'useEffect').mockImplementation(() => undefined);
+    jest.spyOn(React, 'useRef').mockImplementation((initial?: any) => {
+      const index = refIndex++;
+      return (refs[index] ||= { current: initial });
+    });
     jest.spyOn(React, 'useState').mockImplementation((initial?: any) => {
       const index = stateIndex++;
       if (!(index in states))
@@ -213,11 +224,16 @@ describe('large account-change approval list', () => {
     expect(mockEmitter.mock.calls).toEqual([
       [
         ['dapp', 'requestPermissions'],
-        ['https://example.test', 349, KeyringAccountType.HDAccount],
+        [
+          'https://example.test',
+          349,
+          KeyringAccountType.HDAccount,
+          expect.objectContaining({ address: accounts[349].address }),
+        ],
       ],
       [
         ['wallet', 'setAccount'],
-        [349, KeyringAccountType.HDAccount, true],
+        [349, KeyringAccountType.HDAccount, true, accounts[349].address],
       ],
     ]);
     expect(dispatchBackgroundEvent).toHaveBeenCalledWith(
@@ -245,11 +261,23 @@ describe('large account-change approval list', () => {
     expect(mockEmitter.mock.calls).toEqual([
       [
         ['dapp', 'changeAccount'],
-        ['https://example.test', 349, KeyringAccountType.HDAccount],
+        [
+          'https://example.test',
+          349,
+          KeyringAccountType.HDAccount,
+          expect.objectContaining({
+            address: mockState.vault.accounts.HDAccount[349].address,
+          }),
+        ],
       ],
       [
         ['wallet', 'setAccount'],
-        [349, KeyringAccountType.HDAccount, true],
+        [
+          349,
+          KeyringAccountType.HDAccount,
+          true,
+          mockState.vault.accounts.HDAccount[349].address,
+        ],
       ],
     ]);
     expect(dispatchBackgroundEvent).toHaveBeenCalledWith(

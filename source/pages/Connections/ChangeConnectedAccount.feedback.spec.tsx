@@ -62,7 +62,10 @@ jest.mock('state/vault/selectors', () => ({
 jest.mock('components/AccountBalance', () => ({
   LazyAccountBalance: () => <span>Fixture balance</span>,
 }));
-jest.mock('components/TokenIcon', () => ({ TokenIcon: () => <span /> }));
+jest.mock('components/TokenIcon', () => ({
+  ...jest.requireActual('components/TokenIcon'),
+  TokenIcon: () => <span />,
+}));
 jest.mock('components/Icon/Icon', () => ({ LoadingSvg: () => <svg /> }));
 jest.mock('components/index', () => ({
   Button: jest.requireActual('components/Button/Button').Button,

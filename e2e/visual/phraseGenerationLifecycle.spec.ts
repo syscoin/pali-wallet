@@ -175,6 +175,10 @@ test.use({ trace: 'off' });
             });
             await page.locator('#create-password-action').click();
             await expect(page).toHaveURL(/#\/phrase$/);
+            await expect(checkbox).toBeEnabled();
+            await page
+              .getByRole('button', { name: 'Show', exact: true })
+              .click();
             await expect(words).toHaveCount(12);
             await expect(checkbox).not.toBeChecked();
             await expect(next).toBeDisabled();
@@ -218,6 +222,13 @@ test.use({ trace: 'off' });
                 (window as any).__phraseGeneration.release()
               );
             }
+            await expect(checkbox).toBeEnabled();
+            // Completed generation resets the explicit reveal. Wait for that
+            // reset before counting, without accepting the concealed mask as
+            // a generated phrase or changing the held-response timing checks.
+            await page
+              .getByRole('button', { name: 'Show', exact: true })
+              .click();
             await expect(words).toHaveCount(24);
             if (mode === 'older') {
               await page.evaluate(() =>

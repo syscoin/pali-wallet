@@ -57,7 +57,8 @@ export const SyscoinAssetDetails = ({
 
   // Get asset from store or navigation state (for import preview)
   let asset = accountAssetData.syscoin?.find(
-    (sysAsset: any) => sysAsset.assetGuid === id
+    (sysAsset: any) =>
+      sysAsset.assetGuid === id && sysAsset.chainId === activeNetwork.chainId
   );
 
   // If asset not found in store and this is an import preview, create a temporary asset object

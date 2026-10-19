@@ -3,9 +3,17 @@ import { INetwork } from '@sidhujag/sysweb3-network';
 import { notificationManager } from '../notification-manager';
 import { addDApp, removeDApp, updateDAppAccount } from 'state/dapp';
 import { IDApp } from 'state/dapp/types';
-import store, { persistMainStateStrict, saveMainState } from 'state/store';
+import store, {
+  persistDappPermissionGrant,
+  persistMainStateStrict,
+  saveMainState,
+} from 'state/store';
 import { IOmittedVault } from 'state/vault/types';
-import { IDAppController, IDAppDisconnectOptions } from 'types/controllers';
+import {
+  IDAppAccountSelectionContext,
+  IDAppController,
+  IDAppDisconnectOptions,
+} from 'types/controllers';
 import { KeyringAccountType } from 'types/network';
 import { removeSensitiveDataFromVault, removeXprv } from 'utils/account';
 import { isAccountCompatibleWithNetwork } from 'utils/accountCompatibility';
@@ -54,6 +62,7 @@ const DAppController = (
   isWalletUnlocked: () => boolean = () => false
 ): IDAppController => {
   const _dapps: IDappsSession = {};
+  const pendingGrants = new Map<string, object>();
   // Only origins whose real permission removal is pending may occupy this
   // bounded retry state. Unconnected pages cannot populate it or force writes.
   const pendingRevocations = new Map<string, { inFlight?: Promise<void> }>();
@@ -157,133 +166,176 @@ const DAppController = (
     );
   };
 
+  const validateAccountSelection = (
+    accountId: number,
+    accountType: KeyringAccountType,
+    expectedContext?: IDAppAccountSelectionContext
+  ) => {
+    const {
+      accounts,
+      activeNetwork: network,
+      isBitcoinBased,
+    } = store.getState().vault;
+    const account = accounts[accountType]?.[accountId];
+    if (
+      !account ||
+      !isAccountCompatibleWithNetwork(account, accountType, network)
+    )
+      throw new Error('Account is not available on the active network');
+    if (expectedContext !== undefined) {
+      const sameAddress =
+        typeof expectedContext?.address === 'string' &&
+        (isBitcoinBased
+          ? account.address === expectedContext.address
+          : account.address.toLowerCase() ===
+            expectedContext.address.toLowerCase());
+      if (
+        !sameAddress ||
+        account.xpub !== expectedContext?.xpub ||
+        network.kind !== expectedContext?.network?.kind ||
+        network.chainId !== expectedContext?.network?.chainId ||
+        network.url !== expectedContext?.network?.url ||
+        network.slip44 !== expectedContext?.network?.slip44
+      )
+        throw new Error(
+          'Account context changed. Please select an account again.'
+        );
+    }
+    return { account, network, isBitcoinBased };
+  };
+
   const requestPermissions = (
     host: string,
     accountId: number,
-    accountType: KeyringAccountType
+    accountType: KeyringAccountType,
+    expectedContext?: IDAppAccountSelectionContext
   ) => {
+    // Validate before touching the grant or session, including identities that
+    // changed while the approval message was travelling to the worker.
+    const { account, network, isBitcoinBased } = validateAccountSelection(
+      accountId,
+      accountType,
+      expectedContext
+    );
+    if (pendingGrants.has(host))
+      throw new Error('A permission grant is already pending for this site');
     const date = Date.now();
-    const network = getNetwork();
-
-    // Check if dapp exists, if not create it first
     const state = store.getState();
     const existingDapp = state.dapp.dapps[host];
-
-    if (!existingDapp) {
-      // Create the dapp first
-      store.dispatch(
-        addDApp({
+    const grant = existingDapp
+      ? { ...existingDapp, accountId, accountType, date }
+      : {
           host,
           accountId,
           accountType,
           date,
           chain: network.kind,
           chainId: network.chainId,
-        })
+        };
+    const address = account.address;
+    const xpub = account.xpub;
+    const attempt = {};
+    pendingGrants.set(host, attempt);
+    const isCurrent = () => {
+      const { accounts, activeNetwork } = store.getState().vault;
+      const current = accounts[accountType]?.[accountId];
+      return (
+        pendingGrants.get(host) === attempt &&
+        current?.address === address &&
+        current?.xpub === xpub &&
+        isAccountCompatibleWithNetwork(current, accountType, activeNetwork)
       );
-    } else {
-      // Update existing dapp
-      store.dispatch(updateDAppAccount({ host, accountId, accountType, date }));
-    }
+    };
 
-    const { accounts, isBitcoinBased } = store.getState().vault;
+    return persistDappPermissionGrant(grant, existingDapp, isCurrent)
+      .finally(clearProviderCache)
+      .then(() => {
+        if (!isCurrent() || store.getState().dapp.dapps[host] !== grant)
+          throw new Error('Permission grant context changed');
+        if (!_dapps[host])
+          _dapps[host] = { activeAddress: '', hasWindow: false };
 
-    const account = accounts[accountType]?.[accountId];
-
-    if (!account) {
-      // Return empty permissions array instead of null
-      // Don't dispatch here - the popup will handle it
-      return [];
-    }
-
-    // Ensure dapp session exists
-    if (!_dapps[host]) {
-      _dapps[host] = { activeAddress: '', hasWindow: false };
-    }
-
-    const response: any = [
-      {
-        id: '1',
-        parentCapability: 'eth_accounts',
-        invoker: host,
-        caveats: [
+        const response: any = [
           {
-            type: 'restrictReturnedAccounts',
-            value: [account.address], // Return address string, not full account object
+            id: '1',
+            parentCapability: 'eth_accounts',
+            invoker: host,
+            caveats: [
+              {
+                type: 'restrictReturnedAccounts',
+                value: [account.address], // Return address string, not full account object
+              },
+            ],
+            date: date,
           },
-        ],
-        date: date,
-      },
-    ];
+        ];
 
-    // Add endowment:permitted-chains permission for EVM networks
-    if (!isBitcoinBased) {
-      response.push({
-        id: '2',
-        parentCapability: 'endowment:permitted-chains',
-        invoker: host,
-        caveats: [
+        // Add endowment:permitted-chains permission for EVM networks
+        if (!isBitcoinBased) {
+          response.push({
+            id: '2',
+            parentCapability: 'endowment:permitted-chains',
+            invoker: host,
+            caveats: [
+              {
+                type: 'restrictNetworkSwitching',
+                value: [`0x${network.chainId.toString(16)}`], // Convert to hex format with 0x prefix
+              },
+            ],
+            date: date,
+          });
+        }
+
+        _dapps[host].activeAddress = isBitcoinBased
+          ? account.xpub
+          : account.address;
+
+        // For UTXO, also send xpubChanged for consumers that track xpub directly
+        if (isBitcoinBased) {
+          _dispatchPaliEvent(
+            host,
+            {
+              method: PaliSyscoinEvents.xpubChanged,
+              params: account.xpub,
+            },
+            PaliSyscoinEvents.xpubChanged
+          );
+        }
+
+        // Always dispatch accountsChanged with the address for consistency across network types
+        _dispatchPaliEvent(
+          host,
           {
-            type: 'restrictNetworkSwitching',
-            value: [`0x${network.chainId.toString(16)}`], // Convert to hex format with 0x prefix
+            method: PaliEvents.accountsChanged,
+            params: [account.address],
           },
-        ],
-        date: date,
+          PaliEvents.accountsChanged
+        );
+
+        // Return the response for the popup promise
+        return response;
+      })
+      .finally(() => {
+        if (pendingGrants.get(host) === attempt) pendingGrants.delete(host);
       });
-    }
-
-    _dapps[host].activeAddress = isBitcoinBased
-      ? account.xpub
-      : account.address;
-
-    // For UTXO, also send xpubChanged for consumers that track xpub directly
-    if (isBitcoinBased) {
-      _dispatchPaliEvent(
-        host,
-        {
-          method: PaliSyscoinEvents.xpubChanged,
-          params: account.xpub,
-        },
-        PaliSyscoinEvents.xpubChanged
-      );
-    }
-
-    // Always dispatch accountsChanged with the address for consistency across network types
-    _dispatchPaliEvent(
-      host,
-      {
-        method: PaliEvents.accountsChanged,
-        params: [account.address],
-      },
-      PaliEvents.accountsChanged
-    );
-
-    // Return the response for the popup promise
-    return response;
   };
 
   const changeAccount = async (
     host: string,
     accountId: number,
-    accountType: KeyringAccountType
+    accountType: KeyringAccountType,
+    expectedContext?: IDAppAccountSelectionContext
   ) => {
+    const { account, isBitcoinBased } = validateAccountSelection(
+      accountId,
+      accountType,
+      expectedContext
+    );
     if (!_dapps[host]) {
       _dapps[host] = { activeAddress: '', hasWindow: false };
     }
 
     const date = Date.now();
-    const { accounts, isBitcoinBased } = store.getState().vault;
-
-    const account = accounts[accountType]?.[accountId];
-    if (!account) {
-      console.error(
-        '[DAppController] Account not found:',
-        accountType,
-        accountId
-      );
-      return;
-    }
-
     store.dispatch(updateDAppAccount({ host, accountId, date, accountType }));
     // The connection is already changed in Redux at this point. Invalidate
     // eth_accounts/provider-state responses before persistence or event
@@ -365,15 +417,16 @@ const DAppController = (
 
   const disconnectDurably = (
     host: string,
-    allowAlreadyDisconnected: boolean
+    allowAlreadyDisconnected: boolean,
+    canceledGrant = false
   ): Promise<void> => {
     const pending = pendingRevocations.get(host);
     if (pending?.inFlight) {
-      if (_dapps[host] || getAll()[host]) {
-        // A newly approved permission is a separate removal, not covered by
-        // the write already in flight. Process this request after that attempt.
+      if (canceledGrant || _dapps[host] || getAll()[host]) {
+        // A newer or unpublished grant is not covered by the earlier write.
+        // Queue its removal after both that attempt and the staged grant write.
         const revokeCurrentPermission = () =>
-          disconnectDurably(host, allowAlreadyDisconnected);
+          disconnectDurably(host, allowAlreadyDisconnected, canceledGrant);
         return pending.inFlight.then(
           revokeCurrentPermission,
           revokeCurrentPermission
@@ -381,7 +434,7 @@ const DAppController = (
       }
       return pending.inFlight;
     }
-    if (!pending && !_dapps[host] && !getAll()[host]) {
+    if (!pending && !canceledGrant && !_dapps[host] && !getAll()[host]) {
       if (allowAlreadyDisconnected) {
         // Another main-state save may have persisted a failed removal before
         // the worker restarted and lost its retry map. Reconcile the caller's
@@ -425,11 +478,13 @@ const DAppController = (
     persist = true,
     options: IDAppDisconnectOptions = {}
   ) => {
+    const canceledGrant = pendingGrants.delete(host);
     try {
       if (persist && options.propagateErrors) {
         await disconnectDurably(
           host,
-          Boolean(options.allowAlreadyDisconnected)
+          Boolean(options.allowAlreadyDisconnected),
+          canceledGrant
         );
         return;
       }

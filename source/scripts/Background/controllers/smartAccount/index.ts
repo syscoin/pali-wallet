@@ -209,6 +209,21 @@ const ENTRYPOINT_FAILED_OP_SELECTOR = '0x220266b6';
 const AA21_PREFUND_REASON_HEX =
   '41413231206469646e2774207061792070726566756e64';
 const HYDRATED_METADATA_TTL_MS = 30_000;
+const PROVIDER_UNAVAILABLE_ERROR = 'Web3 provider not available';
+const INVALID_LEGACY_GAS_PRICE_ERROR = 'Invalid smart-account legacy gas price';
+const ZKSYS_GAS_TANK_REQUIRED_ERROR = 'PALI_ZKSYS_GAS_TANK_REQUIRED';
+const INFRASTRUCTURE_TIMEOUT_ERROR =
+  'Infrastructure RPC timed out. Refresh status before retrying.';
+const INFRASTRUCTURE_CODE_ERROR =
+  'Invalid infrastructure code response. Refresh status before deploying.';
+const DEPLOYMENT_RECEIPT_ERROR =
+  'Invalid deployment receipt. Refresh status before retrying.';
+const RECOVERY_MANAGEMENT_ADDRESS_ERROR =
+  'A wallet management address is required for smart-account recovery lookup';
+const DEPLOYMENT_NONCE_ERROR = 'Invalid deployment nonce response';
+const GUARDIAN_POLICY_ERROR =
+  'Guardian policy editing is handled by module templates';
+const GUARDIAN_MODULE_ERROR = 'Guardian recovery module is not configured';
 const ZKSYS_GAS_TANK_ABI = [
   'function creditOf(address account) view returns (uint256)',
 ] as const;
@@ -353,13 +368,13 @@ const getExplicitSmartAccountGasPrice = (fees?: {
       throw new Error('Legacy gasPrice cannot be combined with EIP-1559 fees');
     const price = BigNumber.from(fees.gasPrice);
     if (price.lt(0) || price.gte(BigNumber.from(2).pow(128)))
-      throw new Error('Invalid smart-account legacy gas price');
+      throw new Error(INVALID_LEGACY_GAS_PRICE_ERROR);
     return price.toString();
   } catch (error) {
     throw Object.assign(
       error instanceof Error
         ? error
-        : new Error('Invalid smart-account legacy gas price'),
+        : new Error(INVALID_LEGACY_GAS_PRICE_ERROR),
       {
         transactionNotBroadcast: true,
       }
@@ -430,7 +445,7 @@ class SmartAccountController {
     }
     const transaction = this.ethereumTransaction;
     const provider = transaction?.web3Provider;
-    if (!provider) throw new Error('Web3 provider not available');
+    if (!provider) throw new Error(PROVIDER_UNAVAILABLE_ERROR);
     const payer = accounts?.[activeAccount.type]?.[activeAccount.id];
     return {
       chainId: activeNetwork.chainId,
@@ -559,12 +574,7 @@ class SmartAccountController {
         operation,
         new Promise<never>((_, reject) => {
           timer = setTimeout(
-            () =>
-              reject(
-                new Error(
-                  'Infrastructure RPC timed out. Refresh status before retrying.'
-                )
-              ),
+            () => reject(new Error(INFRASTRUCTURE_TIMEOUT_ERROR)),
             timeoutMs
           );
         }),
@@ -628,10 +638,7 @@ class SmartAccountController {
       maximumWait = 8000
     ): Promise<T> => {
       const remaining = deadline - Date.now();
-      if (remaining <= 0)
-        throw new Error(
-          'Infrastructure RPC timed out. Refresh status before retrying.'
-        );
+      if (remaining <= 0) throw new Error(INFRASTRUCTURE_TIMEOUT_ERROR);
       return this.infrastructureDeadline(
         operation(),
         Math.min(maximumWait, remaining)
@@ -679,10 +686,7 @@ class SmartAccountController {
           addresses.map((address) => context.provider.getCode(address))
         )
       );
-      if (!validCodes(individual))
-        throw new Error(
-          'Invalid infrastructure code response. Refresh status before deploying.'
-        );
+      if (!validCodes(individual)) throw new Error(INFRASTRUCTURE_CODE_ERROR);
       codes = individual;
     }
     const contracts = infrastructureContracts.map((contract, index) => ({
@@ -753,9 +757,7 @@ class SmartAccountController {
           receipt &&
           !this.validInfrastructureReceipt(receipt, candidate.transactionHash)
         )
-          throw new Error(
-            'Invalid deployment receipt. Refresh status before retrying.'
-          );
+          throw new Error(DEPLOYMENT_RECEIPT_ERROR);
         settled = Boolean(receipt);
       }
       if (!settled && candidate.payerAddress && candidate.nonce !== undefined) {
@@ -772,7 +774,7 @@ class SmartAccountController {
           !/^0x(?:0|[1-9a-fA-F][0-9a-fA-F]*)$/.test(latestNonce) ||
           !Number.isSafeInteger(Number(latestNonce))
         )
-          throw new Error('Invalid deployment nonce response');
+          throw new Error(DEPLOYMENT_NONCE_ERROR);
         settled = Number(latestNonce) > candidate.nonce;
       }
       if (!settled) {
@@ -880,9 +882,7 @@ class SmartAccountController {
         );
         this.assertInfrastructureContext(context);
         if (typeof code !== 'string' || !/^0x(?:[0-9a-fA-F]{2})*$/.test(code))
-          throw new Error(
-            'Invalid infrastructure code response. Refresh status before deploying.'
-          );
+          throw new Error(INFRASTRUCTURE_CODE_ERROR);
         if (code !== '0x') {
           skipped.push(contract.id);
           continue;
@@ -902,10 +902,10 @@ class SmartAccountController {
           typeof pendingNonce !== 'string' ||
           !/^0x(?:0|[1-9a-fA-F][0-9a-fA-F]*)$/.test(pendingNonce)
         )
-          throw new Error('Invalid deployment nonce response');
+          throw new Error(DEPLOYMENT_NONCE_ERROR);
         const parsedNonce = Number(pendingNonce);
         if (!Number.isSafeInteger(parsedNonce) || parsedNonce < 0)
-          throw new Error('Invalid deployment nonce response');
+          throw new Error(DEPLOYMENT_NONCE_ERROR);
         const nonce = Math.max(nextNonce, parsedNonce);
         const reservation: InfrastructurePending = {
           contractId: contract.id,
@@ -1071,9 +1071,7 @@ class SmartAccountController {
             receipt &&
             !this.validInfrastructureReceipt(receipt, response.hash)
           )
-            throw new Error(
-              'Invalid deployment receipt. Refresh status before retrying.'
-            );
+            throw new Error(DEPLOYMENT_RECEIPT_ERROR);
           if (receipt) break;
           if (Date.now() >= deadline) return { deployed, skipped, pending };
           await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -1111,7 +1109,7 @@ class SmartAccountController {
     const { activeNetwork } = store.getState().vault;
     const provider = this.ethereumTransaction?.web3Provider;
     if (!provider) {
-      throw new Error('Web3 provider not available');
+      throw new Error(PROVIDER_UNAVAILABLE_ERROR);
     }
     const authenticator = this.buildAuthenticatorForCreation(
       activeNetwork.chainId,
@@ -1165,7 +1163,7 @@ class SmartAccountController {
     const { activeNetwork } = store.getState().vault;
     const provider = this.ethereumTransaction?.web3Provider;
     if (!provider) {
-      throw new Error('Web3 provider not available');
+      throw new Error(PROVIDER_UNAVAILABLE_ERROR);
     }
     const descriptor = this.deriveSmartAccountDescriptor(
       accountIndex ?? this.getNextRecoverableAccountIndex(activeNetwork.chainId)
@@ -1257,7 +1255,7 @@ class SmartAccountController {
       }
       const provider = this.ethereumTransaction?.web3Provider;
       if (!provider) {
-        throw new Error('Web3 provider not available');
+        throw new Error(PROVIDER_UNAVAILABLE_ERROR);
       }
 
       const code = await provider.getCode(accountAddress);
@@ -1545,7 +1543,7 @@ class SmartAccountController {
   }): Promise<CustomValidatorPreflightResult> {
     const provider = this.ethereumTransaction?.web3Provider;
     if (!provider) {
-      throw new Error('Web3 provider not available');
+      throw new Error(PROVIDER_UNAVAILABLE_ERROR);
     }
     const metadata = await this.hydrateSmartAccount(params.accountId);
     return preflightCustomValidatorInstall(provider, {
@@ -1646,7 +1644,7 @@ class SmartAccountController {
     const active = this.getSmartAccountById(params.accountId);
     const provider = this.ethereumTransaction?.web3Provider;
     if (!provider) {
-      throw new Error('Web3 provider not available');
+      throw new Error(PROVIDER_UNAVAILABLE_ERROR);
     }
 
     const entryPointAddress = getPaliEntryPointAddress(active.metadata.chainId);
@@ -1768,7 +1766,7 @@ class SmartAccountController {
       });
     const provider = this.ethereumTransaction?.web3Provider;
     if (!provider) {
-      throw new Error('Web3 provider not available');
+      throw new Error(PROVIDER_UNAVAILABLE_ERROR);
     }
     const useDeployedCachedMetadata =
       useCachedMetadata &&
@@ -2180,7 +2178,7 @@ class SmartAccountController {
       if (!outerGasLimit) {
         const provider = this.ethereumTransaction?.web3Provider;
         if (!provider) {
-          throw new Error('Web3 provider not available');
+          throw new Error(PROVIDER_UNAVAILABLE_ERROR);
         }
         outerGasLimit = toCompatBigNumber(
           await provider.estimateGas({
@@ -2352,7 +2350,7 @@ class SmartAccountController {
     const provider = this.ethereumTransaction?.web3Provider;
     const tankAddress = getZkSysGasTankAddress(chainId);
     if (!provider || !tankAddress) {
-      throw new Error('PALI_ZKSYS_GAS_TANK_REQUIRED');
+      throw new Error(ZKSYS_GAS_TANK_REQUIRED_ERROR);
     }
     const [gasLimit, rawCredit, feeData] = await Promise.all([
       provider.estimateGas({
@@ -2376,7 +2374,7 @@ class SmartAccountController {
       .add(SMART_ACCOUNT_GAS_TANK_OUTER_GAS_BUFFER)
       .mul(resolvedMaxFeePerGas);
     if (credit.lt(requiredCredit)) {
-      throw new Error('PALI_ZKSYS_GAS_TANK_REQUIRED');
+      throw new Error(ZKSYS_GAS_TANK_REQUIRED_ERROR);
     }
     return estimatedGasLimit;
   }
@@ -2400,7 +2398,7 @@ class SmartAccountController {
     assertCurrentContext?.();
     const provider = this.ethereumTransaction?.web3Provider;
     if (!provider) {
-      throw new Error('Web3 provider not available');
+      throw new Error(PROVIDER_UNAVAILABLE_ERROR);
     }
     const entryPoint = new Contract(
       entryPointAddress,
@@ -2496,12 +2494,12 @@ class SmartAccountController {
 
   public async prepareSmartAccountGuardianPolicyUpdate(params: unknown) {
     void params;
-    throw new Error('Guardian policy editing is handled by module templates');
+    throw new Error(GUARDIAN_POLICY_ERROR);
   }
 
   public async prepareSmartAccountGuardianRemoval(params: unknown) {
     void params;
-    throw new Error('Guardian policy editing is handled by module templates');
+    throw new Error(GUARDIAN_POLICY_ERROR);
   }
 
   public async submitSmartAccountGuardianPolicyTransaction(params: {
@@ -2726,7 +2724,7 @@ class SmartAccountController {
     const recoveryModule = params.recoveryModule || status?.moduleAddress;
     assertCurrent();
     if (!recoveryModule) {
-      throw new Error('Guardian recovery module is not configured');
+      throw new Error(GUARDIAN_MODULE_ERROR);
     }
     await this.validateSmartAccountGuardianRecoveryOperation({
       account,
@@ -2785,11 +2783,11 @@ class SmartAccountController {
     const status = await this.getGuardianRecoveryStatusForAccount(account);
     const recoveryModule = status?.moduleAddress;
     if (!recoveryModule) {
-      throw new Error('Guardian recovery module is not configured');
+      throw new Error(GUARDIAN_MODULE_ERROR);
     }
     const provider = this.ethereumTransaction?.web3Provider;
     if (!provider) {
-      throw new Error('Web3 provider not available');
+      throw new Error(PROVIDER_UNAVAILABLE_ERROR);
     }
     const accountContract = new Contract(
       account,
@@ -2837,7 +2835,7 @@ class SmartAccountController {
   ): Promise<SmartAccountGuardianRecoveryDigestContext> {
     const provider = this.ethereumTransaction?.web3Provider;
     if (!provider) {
-      throw new Error('Web3 provider not available');
+      throw new Error(PROVIDER_UNAVAILABLE_ERROR);
     }
     const module = new Contract(
       recoveryModule,
@@ -2899,7 +2897,7 @@ class SmartAccountController {
     }
     const provider = this.ethereumTransaction?.web3Provider;
     if (!provider) {
-      throw new Error('Web3 provider not available');
+      throw new Error(PROVIDER_UNAVAILABLE_ERROR);
     }
     const module = new Contract(
       recoveryModule,
@@ -3209,7 +3207,7 @@ class SmartAccountController {
     const metadata = account.smartAccount as ISmartAccountMetadata;
     const provider = this.ethereumTransaction?.web3Provider;
     if (!provider) {
-      throw new Error('Web3 provider not available');
+      throw new Error(PROVIDER_UNAVAILABLE_ERROR);
     }
     const chainId = metadata.chainId;
 
@@ -3533,7 +3531,7 @@ class SmartAccountController {
   ): Promise<GuardianRecoveryStatusForAccount | null> {
     const provider = this.ethereumTransaction?.web3Provider;
     if (!provider) {
-      throw new Error('Web3 provider not available');
+      throw new Error(PROVIDER_UNAVAILABLE_ERROR);
     }
     const moduleAddress = getConfiguredAuthenticatorAddress(
       chainId,
@@ -3667,9 +3665,7 @@ class SmartAccountController {
     const managementAddress = this.getWalletManagementAddress();
 
     if (!managementAddress) {
-      throw new Error(
-        'A wallet management address is required for smart-account recovery lookup'
-      );
+      throw new Error(RECOVERY_MANAGEMENT_ADDRESS_ERROR);
     }
 
     return `pali:eip155:${chainId}:${getAddress(
@@ -3690,9 +3686,7 @@ class SmartAccountController {
         ?.address;
 
     if (!managementAddress) {
-      throw new Error(
-        'A wallet management address is required for smart-account recovery lookup'
-      );
+      throw new Error(RECOVERY_MANAGEMENT_ADDRESS_ERROR);
     }
 
     return getAddress(managementAddress);

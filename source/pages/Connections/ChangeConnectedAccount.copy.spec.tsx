@@ -48,7 +48,11 @@ jest.mock('state/vault/selectors', () => ({
 jest.mock('components/AccountBalance', () => ({
   LazyAccountBalance: 'account-balance',
 }));
-jest.mock('components/TokenIcon', () => ({ TokenIcon: 'token-icon' }));
+jest.mock('components/Icon/Icon', () => ({ NftFallbackSvg: () => null }));
+jest.mock('components/TokenIcon', () => ({
+  ...jest.requireActual('components/TokenIcon'),
+  TokenIcon: 'token-icon',
+}));
 jest.mock('components/index', () => ({
   Button: 'button',
   Icon: 'icon',

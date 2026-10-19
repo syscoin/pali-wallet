@@ -26,6 +26,11 @@ import {
   navigateWithContext,
 } from 'utils/navigationState';
 
+const MENU_ITEM_CLASS_NAME =
+  'gap-2 py-1.5 cursor-pointer px-5 w-full backface-visibility-hidden flex items-center justify-start text-white text-sm font-medium hover:bg-brand-blue500 hover:bg-opacity-20 active:bg-opacity-40 focus:outline-none transition-colors duration-200';
+const SEED_AND_FORGET_ITEM_CLASS_NAME =
+  'py-1.5 cursor-pointer px-5 w-full backface-visibility-hidden gap-2 flex items-center justify-start text-white text-sm font-medium hover:bg-brand-blue500 hover:bg-opacity-20 active:bg-opacity-40 focus:outline-none transition-colors duration-200';
+
 interface IGeneralMenuProps {
   disabled?: boolean;
 }
@@ -185,7 +190,7 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
                           returnContext
                         );
                       }}
-                      className="gap-2 py-1.5 cursor-pointer px-5 w-full backface-visibility-hidden flex items-center justify-start text-white text-sm font-medium hover:bg-brand-blue500 hover:bg-opacity-20 active:bg-opacity-40 focus:outline-none transition-colors duration-200"
+                      className={MENU_ITEM_CLASS_NAME}
                     >
                       <PaliWhiteSmallIconSvg className="text-brand-white" />
 
@@ -205,7 +210,7 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
                           returnContext
                         );
                       }}
-                      className="gap-2 py-1.5 cursor-pointer px-5 w-full backface-visibility-hidden flex items-center justify-start text-white text-sm font-medium hover:bg-brand-blue500 hover:bg-opacity-20 active:bg-opacity-40 focus:outline-none transition-colors duration-200"
+                      className={MENU_ITEM_CLASS_NAME}
                     >
                       <Icon
                         name="wallet"
@@ -249,7 +254,7 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
                           returnContext
                         );
                       }}
-                      className="py-1.5 cursor-pointer px-5 w-full backface-visibility-hidden gap-2 flex items-center justify-start text-white text-sm font-medium hover:bg-brand-blue500 hover:bg-opacity-20 active:bg-opacity-40 focus:outline-none transition-colors duration-200"
+                      className={SEED_AND_FORGET_ITEM_CLASS_NAME}
                     >
                       <KeySvg className="mb-1 text-brand-white" />
 
@@ -271,7 +276,7 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
                           returnContext
                         );
                       }}
-                      className="py-1.5 cursor-pointer px-5 w-full backface-visibility-hidden gap-2 flex items-center justify-start text-white text-sm font-medium hover:bg-brand-blue500 hover:bg-opacity-20 active:bg-opacity-40 focus:outline-none transition-colors duration-200"
+                      className={SEED_AND_FORGET_ITEM_CLASS_NAME}
                     >
                       <TrashIconSvg className="mb-1 text-brand-white" />
 
@@ -321,7 +326,7 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
                           returnContext
                         );
                       }}
-                      className="gap-2 py-1.5 cursor-pointer px-5 w-full backface-visibility-hidden flex items-center justify-start text-white text-sm font-medium hover:bg-brand-blue500 hover:bg-opacity-20 active:bg-opacity-40 focus:outline-none transition-colors duration-200"
+                      className={MENU_ITEM_CLASS_NAME}
                     >
                       <DollarSignIconSvg className="text-brand-white" />
 
@@ -341,7 +346,7 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
                           returnContext
                         );
                       }}
-                      className="gap-2 py-1.5 cursor-pointer px-5 w-full backface-visibility-hidden flex items-center justify-start text-white text-sm font-medium hover:bg-brand-blue500 hover:bg-opacity-20 active:bg-opacity-40 focus:outline-none transition-colors duration-200"
+                      className={MENU_ITEM_CLASS_NAME}
                     >
                       <HelpIconSvg
                         id="info-help-btn"
@@ -353,10 +358,7 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
                   </Menu.Item>
 
                   <Menu.Item>
-                    <li
-                      onClick={handleLogout}
-                      className="gap-2 py-1.5 cursor-pointer px-5 w-full backface-visibility-hidden flex items-center justify-start text-white text-sm font-medium hover:bg-brand-blue500 hover:bg-opacity-20 active:bg-opacity-40 focus:outline-none transition-colors duration-200"
-                    >
+                    <li onClick={handleLogout} className={MENU_ITEM_CLASS_NAME}>
                       <LockIconSvg className="mb-2 text-brand-white" />
 
                       <span>{t('generalMenu.lock')}</span>
@@ -375,7 +377,7 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
                           returnContext
                         );
                       }}
-                      className="gap-2 py-1.5 cursor-pointer px-5 w-full backface-visibility-hidden flex items-center justify-start text-white text-sm font-medium hover:bg-brand-blue500 hover:bg-opacity-20 active:bg-opacity-40 focus:outline-none transition-colors duration-200"
+                      className={MENU_ITEM_CLASS_NAME}
                     >
                       <img
                         src={slider}

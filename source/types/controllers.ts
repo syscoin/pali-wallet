@@ -11,6 +11,13 @@ export interface IDAppDisconnectOptions {
   propagateErrors?: boolean;
 }
 
+/** Public identity reviewed by an account-permission approval. */
+export interface IDAppAccountSelectionContext {
+  address: string;
+  network: Pick<INetwork, 'chainId' | 'kind' | 'slip44' | 'url'>;
+  xpub?: string;
+}
+
 export interface IDAppController {
   /**
    * Changes the account
@@ -19,7 +26,8 @@ export interface IDAppController {
   changeAccount: (
     host: string,
     accountId: number,
-    accountType: KeyringAccountType
+    accountType: KeyringAccountType,
+    expectedContext?: IDAppAccountSelectionContext
   ) => Promise<void>;
   /**
    * Completes a connection with a DApp
@@ -78,8 +86,9 @@ export interface IDAppController {
   requestPermissions: (
     host: string,
     accountId: number,
-    accountType: KeyringAccountType
-  ) => void;
+    accountType: KeyringAccountType,
+    expectedContext?: IDAppAccountSelectionContext
+  ) => Promise<any[]>;
   /**
    * Sets whether a DApp has an open popup
    */

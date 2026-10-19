@@ -160,6 +160,8 @@ test('regenerating a phrase requires fresh acknowledgement and exact-word confir
           await page.locator('#confirm-password').fill(PASSWORD);
           await page.locator('#create-password-action').click();
           await expect(page).toHaveURL(/#\/phrase$/);
+          await expect(page.getByRole('checkbox')).toBeEnabled();
+          await page.getByRole('button', { name: 'Show', exact: true }).click();
           await expect(page.locator('.select-none p')).toHaveCount(12);
         }
       );
@@ -184,6 +186,11 @@ test('regenerating a phrase requires fresh acknowledgement and exact-word confir
           await page
             .getByRole('button', { name: en.buttons.generate, exact: true })
             .click();
+          await expect(check).toBeEnabled();
+          // A new seed resets the reveal state. Only inspect its digest after
+          // generation has settled and the ordinary Show action is chosen.
+          await page.getByRole('button', { name: 'Show', exact: true }).click();
+          await expect(page.locator('.select-none p')).toHaveCount(12);
           await expect.poll(digest).not.toBe(before);
           observations.checkedAfterRegenerate = await check.isChecked();
           await expect(check).not.toBeChecked();
