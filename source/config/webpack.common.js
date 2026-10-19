@@ -326,6 +326,13 @@ module.exports = {
           minChunks: 2,
           enforce: true,
         },
+        antdTypography: {
+          test: /[\\/]node_modules[\\/]antd[\\/]es[\\/]typography[\\/]/,
+          chunks: 'async',
+          name: 'antd-typography',
+          minChunks: 2,
+          enforce: true,
+        },
       },
       chunks(chunk) {
         // Only split chunks for app and external, NOT background, contentScript, inpage, pali, or handleWindowProperties
