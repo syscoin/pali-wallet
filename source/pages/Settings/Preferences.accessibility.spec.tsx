@@ -234,7 +234,10 @@ it('makes currency search keyboard-focusable only when opened and reports a fail
       'settings.preferencesSaveFailed'
     )
   );
-  expect(mockEmitter).toHaveBeenCalledWith(['wallet', 'setFiat'], ['eur']);
+  expect(mockEmitter).toHaveBeenCalledWith(
+    ['wallet', 'saveFiatCurrency'],
+    ['eur']
+  );
   expect(screen.queryByRole('dialog')).toBeNull();
 });
 
@@ -279,7 +282,10 @@ it('preserves a currency draft when a different saved currency arrives', async (
   const save = screen.getByRole('button', { name: 'buttons.save' });
   expect(save.hasAttribute('disabled')).toBe(false);
   await user.click(save);
-  expect(mockEmitter).toHaveBeenCalledWith(['wallet', 'setFiat'], ['eur']);
+  expect(mockEmitter).toHaveBeenCalledWith(
+    ['wallet', 'saveFiatCurrency'],
+    ['eur']
+  );
 });
 
 it('follows saved currency updates until the user edits the draft', () => {

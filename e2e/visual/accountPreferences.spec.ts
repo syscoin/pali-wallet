@@ -279,7 +279,7 @@ test('fiat updates preserve an edited and submitted currency draft in small wind
               : (send as any)(request).then(transform);
           if (
             request?.type === 'CONTROLLER_ACTION' &&
-            request.data?.methods?.join('.') === 'wallet.setFiat'
+            request.data?.methods?.join('.') === 'wallet.saveFiatCurrency'
           ) {
             qa.saves.push({ params: request.data.params, callback });
             return;

@@ -112,7 +112,7 @@ const CurrencyView = () => {
     setSaving(true);
     setSaveError(false);
     try {
-      await controllerEmitter(['wallet', 'setFiat'], [currencyToSave]);
+      await controllerEmitter(['wallet', 'saveFiatCurrency'], [currencyToSave]);
       setSavedCoin(currencyToSave);
       setConfirmed(true);
     } catch {

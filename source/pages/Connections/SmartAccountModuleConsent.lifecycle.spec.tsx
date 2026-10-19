@@ -8,6 +8,8 @@ import {
 } from '@testing-library/react';
 import React from 'react';
 
+import { dispatchBackgroundEvent } from 'utils/browser';
+
 import { SmartAccountModuleConsent } from './SmartAccountModuleConsent';
 
 const address = (value: string) => `0x${value.repeat(40)}`;
@@ -17,6 +19,7 @@ const mockSubmit = jest.fn();
 const mockT = (key: string) => key;
 let mockState: any;
 let mockQuery: any;
+let mockSessionGeneration: number;
 
 jest.mock('react-redux', () => ({
   useSelector: (select: any) => select(mockState),
@@ -78,11 +81,17 @@ const waitReady = async () =>
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockSessionGeneration = 7;
   mockState = {
     dapp: { dapps: {} },
+    vaultGlobal: { activeSlip44: 60 },
     vault: {
       activeAccount: { id: 0, type: 'SmartAccount' },
-      activeNetwork: { chainId: 57057, url: 'https://rpc-a.invalid' },
+      activeNetwork: {
+        kind: 'ethereum',
+        chainId: 57057,
+        url: 'https://rpc-a.invalid',
+      },
       accounts: {
         SmartAccount: {
           0: {
@@ -107,6 +116,8 @@ beforeEach(() => {
     module: { address: MODULE },
   };
   mockEmitter.mockImplementation(async (method: string[], args: any[]) => {
+    if (method[1] === 'getWalletSessionGeneration')
+      return mockSessionGeneration;
     if (method[1] === 'hydrateSmartAccount')
       return metadata(args[0] === 0 ? '1' : '4');
     return { ok: true, failures: [], compositeCompatible: true };
@@ -186,6 +197,7 @@ it('owns approval synchronously so two same-frame activations do not sign twice'
     button.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     button.dispatchEvent(new MouseEvent('click', { bubbles: true }));
   });
+  await waitFor(() => expect(mockSubmit).toHaveBeenCalledTimes(1));
   expect(mockSubmit).toHaveBeenCalledTimes(1);
 });
 
@@ -199,6 +211,14 @@ it('submits the reviewed module and reports success without changing its public 
   expect(mockSubmit.mock.calls[0][0]).toMatchObject({
     accountAddress: address('1'),
     accountId: 0,
+    trackLocalSubmission: true,
+    expectedContext: {
+      account: { address: address('1'), id: 0, type: 'SmartAccount' },
+      chainId: 57057,
+      rpcUrl: 'https://rpc-a.invalid',
+      sessionGeneration: 7,
+      slip44: 60,
+    },
     executions: [
       { data: '0xinstall', target: address('1'), value: '0x0' },
       { data: '0xrotate', target: address('1'), value: '0x0' },
@@ -208,6 +228,8 @@ it('submits the reviewed module and reports success without changing its public 
 
 it('does not resubmit an already confirmed installation when saving local metadata fails', async () => {
   mockEmitter.mockImplementation(async (method: string[]) => {
+    if (method[1] === 'getWalletSessionGeneration')
+      return mockSessionGeneration;
     if (method[1] === 'hydrateSmartAccount') return metadata('1');
     if (method[1] === 'addSmartAccountCustomModule')
       throw new Error('Local metadata save failed');
@@ -235,4 +257,145 @@ it('allows a new user attempt after a failed signature without a confirmed submi
   fireEvent.click(confirmation());
   await waitFor(() => expect(window.close).toHaveBeenCalledTimes(1));
   expect(mockSubmit).toHaveBeenCalledTimes(2);
+});
+
+it('passes the reviewed context through uninstall and metadata persistence', async () => {
+  mockQuery = { ...mockQuery, action: 'uninstall' };
+  render(<SmartAccountModuleConsent />);
+  await waitFor(() => expect(confirmation().disabled).toBe(false));
+  fireEvent.click(confirmation());
+  await waitFor(() => expect(window.close).toHaveBeenCalledTimes(1));
+  const expectedContext = mockSubmit.mock.calls[0][0].expectedContext;
+  expect(expectedContext).toMatchObject({
+    account: { address: address('1'), id: 0, type: 'SmartAccount' },
+    sessionGeneration: 7,
+    slip44: 60,
+  });
+  expect(mockEmitter).toHaveBeenCalledWith(
+    ['wallet', 'removeSmartAccountCustomModule'],
+    [{ accountId: 0, address: MODULE, expectedContext }],
+    30000
+  );
+  expect(mockEmitter).toHaveBeenCalledWith(
+    ['wallet', 'hydrateSmartAccount'],
+    [0, expectedContext],
+    300000
+  );
+});
+
+it.each(['install', 'uninstall'])(
+  'does not apply an acknowledged %s to a same-id replacement account',
+  async (action) => {
+    mockQuery = { ...mockQuery, action };
+    let resolveSubmission!: (value: any) => void;
+    mockSubmit.mockReturnValue(
+      new Promise((resolve) => {
+        resolveSubmission = resolve;
+      })
+    );
+    const view = render(<SmartAccountModuleConsent />);
+    if (action === 'install') {
+      await waitReady();
+      fireEvent.click(screen.getByRole('checkbox'));
+    } else {
+      await waitFor(() => expect(confirmation().disabled).toBe(false));
+    }
+    fireEvent.click(confirmation());
+    await waitFor(() => expect(mockSubmit).toHaveBeenCalledTimes(1));
+    mockState.vault.accounts.SmartAccount[0] = {
+      ...mockState.vault.accounts.SmartAccount[0],
+      address: address('5'),
+      smartAccount: metadata('5'),
+    };
+    view.rerender(<SmartAccountModuleConsent />);
+    await act(async () =>
+      resolveSubmission({ transactionHash: '0xacknowledged' })
+    );
+    expect(
+      mockEmitter.mock.calls.some(([method]) =>
+        [
+          'addSmartAccountCustomModule',
+          'removeSmartAccountCustomModule',
+        ].includes(method[1])
+      )
+    ).toBe(false);
+    expect(dispatchBackgroundEvent).toHaveBeenCalledWith(
+      `wallet_requestSmartAccountModule${
+        action === 'install' ? 'Install' : 'Uninstall'
+      }.fixture.invalid`,
+      { action, address: MODULE, success: true }
+    );
+    expect(window.close).not.toHaveBeenCalled();
+  }
+);
+
+it('does not persist metadata or close the page after the acknowledged operation changes session', async () => {
+  mockSubmit.mockImplementation(async () => {
+    mockSessionGeneration++;
+    return { transactionHash: '0xacknowledged' };
+  });
+  render(<SmartAccountModuleConsent />);
+  await waitReady();
+  acknowledge();
+  fireEvent.click(confirmation());
+  await waitFor(() => expect(dispatchBackgroundEvent).toHaveBeenCalledTimes(1));
+  expect(
+    mockEmitter.mock.calls.some(
+      ([method]) => method[1] === 'addSmartAccountCustomModule'
+    )
+  ).toBe(false);
+  expect(window.close).not.toHaveBeenCalled();
+  expect(confirmation().disabled).toBe(true);
+});
+
+it('rejects a stale scope before signing when it changes during session capture', async () => {
+  let generation!: (value: number) => void;
+  const original = mockEmitter.getMockImplementation()!;
+  mockEmitter.mockImplementation((method: string[], args: any[]) =>
+    method[1] === 'getWalletSessionGeneration'
+      ? new Promise((resolve) => {
+          generation = resolve;
+        })
+      : original(method, args)
+  );
+  const view = render(<SmartAccountModuleConsent />);
+  await waitReady();
+  acknowledge();
+  fireEvent.click(confirmation());
+  mockState.vault.activeNetwork.url = 'https://rpc-b.invalid';
+  view.rerender(<SmartAccountModuleConsent />);
+  await act(async () => generation(7));
+  expect(mockSubmit).not.toHaveBeenCalled();
+  expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
+  expect(window.close).not.toHaveBeenCalled();
+});
+
+it('settles an acknowledged result without metadata or closing a replacement view after unmount', async () => {
+  let resolveSubmission!: (value: any) => void;
+  mockSubmit.mockReturnValue(
+    new Promise((resolve) => {
+      resolveSubmission = resolve;
+    })
+  );
+  const view = render(<SmartAccountModuleConsent />);
+  await waitReady();
+  acknowledge();
+  fireEvent.click(confirmation());
+  await waitFor(() => expect(mockSubmit).toHaveBeenCalledTimes(1));
+  view.unmount();
+  render(<div>Replacement page</div>);
+  await act(async () =>
+    resolveSubmission({ transactionHash: '0xacknowledged' })
+  );
+  expect(
+    mockEmitter.mock.calls.some(
+      ([method]) => method[1] === 'addSmartAccountCustomModule'
+    )
+  ).toBe(false);
+  expect(dispatchBackgroundEvent).toHaveBeenCalledWith(
+    'wallet_requestSmartAccountModuleInstall.fixture.invalid',
+    { action: 'install', address: MODULE, success: true }
+  );
+  expect(window.close).not.toHaveBeenCalled();
+  expect(screen.getByText('Replacement page')).toBeDefined();
 });

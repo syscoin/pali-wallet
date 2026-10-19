@@ -16,7 +16,11 @@ const mockNavigate = jest.fn();
 const mockSave = jest.fn();
 let mockAssets: any[] = [];
 let mockState: any;
-const mockLocation = { key: 'send', pathname: '/send/eth', state: undefined };
+const mockLocation = {
+  key: 'send',
+  pathname: '/send/eth',
+  state: undefined as any,
+};
 const mockStatus = {
   isUnlocked: true,
   isLoading: false,
@@ -134,6 +138,7 @@ afterAll(() => {
 beforeEach(() => {
   jest.clearAllMocks();
   mockAssets = [];
+  mockLocation.state = undefined;
   window.history.replaceState(null, '', '/app.html');
   mockState = {
     vault: {
@@ -319,4 +324,153 @@ it('shows the native balance when no token is selected', async () => {
   render(<SendEth />);
   await act(async () => void (await Promise.resolve()));
   expect(screen.getByText('10 ETH')).toBeInTheDocument();
+});
+
+const prepareERC1155 = async (
+  rawBalance: string | null | undefined,
+  balance: number,
+  restored = false,
+  ownershipReply?: Promise<any>
+) => {
+  mockAssets = [
+    {
+      id: 'quantity-token',
+      contractAddress: '0x3333333333333333333333333333333333333333',
+      chainId: 1,
+      tokenSymbol: 'QTY',
+      tokenStandard: 'ERC-1155',
+      isNft: true,
+      tokenId: '7',
+      balance,
+      rawBalance,
+      decimals: 0,
+    },
+  ];
+  if (restored) {
+    mockLocation.state = {
+      walletScope: jest
+        .requireActual('utils/navigationState')
+        .getWalletNavigationScope(),
+      selectedAsset: mockAssets[0],
+      selectedNftTokenId: '7',
+      formValues: { amount: '1', nftTokenId: '7' },
+    };
+  }
+  mockEmitter.mockImplementation((path: string[]) =>
+    path.at(-1) === 'verifyERC1155Ownership'
+      ? ownershipReply ??
+        Promise.resolve([{ tokenId: '7', balance, rawBalance, verified: true }])
+      : Promise.resolve(undefined)
+  );
+  const view = render(<SendEth />);
+  if (!restored)
+    fireEvent.click(screen.getByRole('button', { name: /QTY.*ERC-1155/ }));
+  await act(async () => void (await Promise.resolve()));
+  fireEvent.change(screen.getByPlaceholderText('send.receiver'), {
+    target: { value: '0x2222222222222222222222222222222222222222' },
+  });
+  return view;
+};
+const nftAmount = () =>
+  document.querySelector('#with-max-button') as HTMLInputElement;
+
+it.each([false, true])(
+  'keeps ERC1155 MAX exact beyond Number precision, restored=%s',
+  async (restored) => {
+    const rawBalance = '9007199254740993';
+    await prepareERC1155(rawBalance, Number.MAX_SAFE_INTEGER, restored);
+    fireEvent.click(screen.getByRole('button', { name: 'MAX' }));
+    expect(nftAmount().value).toBe(rawBalance);
+    fireEvent.click(next());
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledTimes(1));
+    expect(mockNavigate.mock.calls[0][2].tx.amount).toBe(rawBalance);
+  }
+);
+
+it.each(['1.5', '9007199254740990.1'])(
+  'rejects fractional ERC1155 quantity %s without rounding',
+  async (value) => {
+    await prepareERC1155('9007199254740993', Number.MAX_SAFE_INTEGER);
+    fireEvent.change(nftAmount(), { target: { value } });
+    fireEvent.click(next());
+    await screen.findByText('send.amountMustBePositiveInteger');
+    expect(nftAmount().value).toBe(value);
+    expect(mockNavigate).not.toHaveBeenCalled();
+  }
+);
+
+it('rejects one ERC1155 unit above the exact raw balance', async () => {
+  await prepareERC1155('9007199254740993', Number.MAX_SAFE_INTEGER);
+  fireEvent.change(nftAmount(), {
+    target: { value: '9007199254740994' },
+  });
+  fireEvent.click(next());
+  await screen.findByText('send.youOnlyOwn');
+  expect(mockNavigate).not.toHaveBeenCalled();
+});
+
+it.each([
+  { before: '42', after: '41', beforeDisplay: 42, afterDisplay: 41 },
+  {
+    before: '9007199254740993',
+    after: '9007199254740995',
+    beforeDisplay: Number.MAX_SAFE_INTEGER,
+    afterDisplay: Number.MAX_SAFE_INTEGER,
+  },
+])(
+  'updates ERC1155 MAX when the raw balance changes from $before to $after',
+  async ({ before, after, beforeDisplay, afterDisplay }) => {
+    const view = await prepareERC1155(before, beforeDisplay);
+    mockAssets = [
+      { ...mockAssets[0], balance: afterDisplay, rawBalance: after },
+    ];
+    view.rerender(<SendEth />);
+    await act(async () => void (await Promise.resolve()));
+    fireEvent.click(screen.getByRole('button', { name: 'MAX' }));
+    expect(nftAmount().value).toBe(after);
+    fireEvent.click(next());
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledTimes(1));
+    expect(mockNavigate.mock.calls[0][2].tx.amount).toBe(after);
+  }
+);
+
+it('supports safe legacy ERC1155 balances without raw metadata', async () => {
+  await prepareERC1155(undefined, 42);
+  fireEvent.click(screen.getByRole('button', { name: 'MAX' }));
+  expect(nftAmount().value).toBe('42');
+  fireEvent.click(next());
+  await waitFor(() => expect(mockNavigate).toHaveBeenCalledTimes(1));
+  expect(mockNavigate.mock.calls[0][2].tx.amount).toBe('42');
+});
+
+it.each([
+  { rawBalance: undefined, balance: Number.MAX_SAFE_INTEGER + 1 },
+  { rawBalance: null, balance: Number.MAX_SAFE_INTEGER + 1 },
+  { rawBalance: '1.5', balance: 1 },
+])(
+  'does not use an inexact or malformed ERC1155 balance: %p',
+  async (asset) => {
+    await prepareERC1155(asset.rawBalance, asset.balance);
+    expect(screen.getByRole('button', { name: 'MAX' })).toBeDisabled();
+    expect(nftAmount()).toBeDisabled();
+  }
+);
+
+it('keeps a refreshed ERC1155 balance when an older restored ownership read resolves', async () => {
+  let resolve!: (value: any) => void;
+  const ownershipReply = new Promise((done) => {
+    resolve = done;
+  });
+  const view = await prepareERC1155('42', 42, true, ownershipReply);
+  expect(screen.getByRole('button', { name: 'MAX' })).toBeDisabled();
+  mockAssets = [{ ...mockAssets[0], balance: 41, rawBalance: '41' }];
+  view.rerender(<SendEth />);
+  await act(async () => void (await Promise.resolve()));
+  fireEvent.click(screen.getByRole('button', { name: 'MAX' }));
+  expect(nftAmount().value).toBe('41');
+  await act(async () =>
+    resolve([{ tokenId: '7', balance: 42, rawBalance: '42', verified: true }])
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'MAX' }));
+  expect(nftAmount().value).toBe('41');
 });

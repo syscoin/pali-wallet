@@ -256,7 +256,9 @@ test('offline onboarding and preferences remain keyboard accessible with localiz
         if (
           message?.type === 'CONTROLLER_ACTION' &&
           message.data?.methods?.[0] === 'wallet' &&
-          ['setFiat', 'setAdvancedSettings'].includes(message.data.methods[1])
+          ['saveFiatCurrency', 'setAdvancedSettings'].includes(
+            message.data.methods[1]
+          )
         ) {
           const response = { error: 'Synthetic preference failure' };
           if (typeof callback === 'function') {

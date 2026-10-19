@@ -754,7 +754,8 @@ export const EvmTransactionsList = ({
       if (
         shouldCheckForNewConfirmations &&
         prevConfirmationState.current[txHash] === 0 &&
-        currentConfirmations > 0
+        currentConfirmations > 0 &&
+        getEvmSettlementStatus(tx, chainId) === 'confirmed'
       ) {
         hasNewlyConfirmedTx = true;
       }
