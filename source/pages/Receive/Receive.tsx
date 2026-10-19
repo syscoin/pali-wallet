@@ -66,12 +66,12 @@ export const Receive = () => {
         <div className="flex flex-col items-center justify-center w-full">
           {/* Network + account-type context so users verify they're on the
               right chain before sharing the address */}
-          <div className="flex items-center gap-2 mb-4 px-3 py-1 rounded-full bg-alpha-whiteAlpha100 border border-alpha-whiteAlpha300">
-            <span className="text-xs text-white font-medium">
+          <div className="flex max-w-full items-center gap-2 mb-4 px-3 py-1 rounded-full bg-alpha-whiteAlpha100 border border-alpha-whiteAlpha300">
+            <span className="min-w-0 break-words text-xs text-white font-medium">
               {activeNetwork?.label}
             </span>
-            <span className="text-xs text-brand-gray200">•</span>
-            <span className="text-xs text-brand-gray200">
+            <span className="shrink-0 text-xs text-brand-gray200">•</span>
+            <span className="shrink-0 text-xs text-brand-gray200">
               {accountTypeLabel}
             </span>
           </div>
