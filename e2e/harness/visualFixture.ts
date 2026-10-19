@@ -7,7 +7,11 @@ import {
   keccak256,
 } from 'ethers';
 
-import { paliSmartAccountFactoryInterface } from '../../source/utils/smartAccount/contracts';
+import {
+  getPaliEntryPointAddress,
+  paliEntryPointInterface,
+  paliSmartAccountFactoryInterface,
+} from '../../source/utils/smartAccount/contracts';
 import {
   getPaliInfrastructureContracts,
   PALI_CREATE2_DEPLOYER_ADDRESS,
@@ -314,8 +318,50 @@ function rpcRead(fixture: VisualFixture, method: string, params: unknown[]) {
         return '0x';
       return undefined;
     }
-    case 'eth_getLogs':
+    case 'eth_getLogs': {
+      const filter = params[0] as Record<string, unknown> | undefined;
+      const block = (value: unknown): number | undefined => {
+        if (typeof value === 'number' && Number.isSafeInteger(value))
+          return value;
+        if (typeof value === 'string' && /^0x[0-9a-f]+$/i.test(value)) {
+          const parsed = Number(BigInt(value));
+          if (Number.isSafeInteger(parsed)) return parsed;
+        }
+        return undefined;
+      };
+      if (
+        params.length !== 1 ||
+        !filter ||
+        Array.isArray(filter) ||
+        Object.keys(filter).some(
+          (key) => !['address', 'fromBlock', 'toBlock', 'topics'].includes(key)
+        ) ||
+        !isAddress(filter.address) ||
+        lower(filter.address) !==
+          lower(getPaliEntryPointAddress(VISUAL_FIXTURE_CHAIN_ID))
+      )
+        return undefined;
+      const from = block(filter.fromBlock);
+      const to = block(filter.toBlock);
+      const topics = filter.topics;
+      if (
+        from === undefined ||
+        to === undefined ||
+        from < 0 ||
+        from > to ||
+        to > 43 ||
+        !Array.isArray(topics) ||
+        topics.length !== 3 ||
+        topics[0] !==
+          paliEntryPointInterface.getEventTopic('UserOperationEvent') ||
+        topics[1] !== null ||
+        typeof topics[2] !== 'string' ||
+        lower(topics[2]) !==
+          `0x${lower(fixture.smartAccountAddress).slice(2).padStart(64, '0')}`
+      )
+        return undefined;
       return [];
+    }
     case 'eth_getTransactionByHash':
       return transaction ? rpcTransaction(transaction) : null;
     case 'eth_getTransactionReceipt':

@@ -12,7 +12,11 @@ import {
   encodeEcdsaValidatorInitData,
   getPaliSmartAccountDeploymentSalt,
 } from '../../source/utils/smartAccount/account';
-import { paliSmartAccountFactoryInterface } from '../../source/utils/smartAccount/contracts';
+import {
+  getPaliEntryPointAddress,
+  paliEntryPointInterface,
+  paliSmartAccountFactoryInterface,
+} from '../../source/utils/smartAccount/contracts';
 import { PALI_CREATE2_DEPLOYER_ADDRESS } from '../../source/utils/smartAccount/deployment';
 import {
   createVisualFixture,
@@ -181,6 +185,63 @@ test.describe('visual network fixture boundaries', () => {
     expect(result(value, 'eth_getTransactionCount', [address, 'latest'])).toBe(
       '0x0'
     );
+  });
+
+  test('admits only the fixture EntryPoint and smart-account log filter', () => {
+    const value = fixture();
+    const filter = {
+      address: getPaliEntryPointAddress(VISUAL_FIXTURE_CHAIN_ID),
+      fromBlock: '0x0',
+      toBlock: '0x2b',
+      topics: [
+        paliEntryPointInterface.getEventTopic('UserOperationEvent'),
+        null,
+        `0x${value.smartAccountAddress
+          .slice(2)
+          .toLowerCase()
+          .padStart(64, '0')}`,
+      ],
+    };
+    expect(result(value, 'eth_getLogs', [filter])).toEqual([]);
+    expect(
+      result(value, 'eth_getLogs', [{ ...filter, fromBlock: '0x26' }])
+    ).toEqual([]);
+    for (const params of [
+      [],
+      [{}],
+      [filter, 'extra'],
+      [{ ...filter, address: foreignAddress }],
+      [{ ...filter, address: [filter.address] }],
+      [{ ...filter, topics: [] }],
+      [{ ...filter, topics: ['0x', null, filter.topics[2]] }],
+      [{ ...filter, topics: [filter.topics[0], null, null] }],
+      [
+        {
+          ...filter,
+          topics: [
+            filter.topics[0],
+            null,
+            `0x${value.address.slice(2).padStart(64, '0')}`,
+          ],
+        },
+      ],
+      [{ ...filter, topics: [filter.topics[0], null, [filter.topics[2]]] }],
+      [{ ...filter, fromBlock: -1 }],
+      [{ ...filter, fromBlock: '0x2c' }],
+      [{ ...filter, toBlock: 'latest' }],
+      [{ ...filter, toBlock: '0x2c' }],
+      [{ ...filter, blockHash: `0x${'11'.repeat(32)}` }],
+    ]) {
+      const response = visualFixtureRead(
+        value,
+        rpcUrl,
+        'POST',
+        rpc('eth_getLogs', params)
+      );
+      expect(response?.reads).toEqual([]);
+      expect(response?.unsupported).toEqual(['eth_getLogs']);
+      expect(response?.body).toHaveProperty('error.code', -32601);
+    }
   });
 
   test('provides confirmed native history, empty pending history and matching details', () => {
