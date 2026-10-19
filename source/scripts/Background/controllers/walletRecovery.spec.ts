@@ -188,7 +188,8 @@ describe('explicit seed recovery transaction', () => {
       .mocked(chromeStorage.removeItem)
       .mockReset()
       .mockImplementation(async (key) => {
-        delete mockRecords[key];
+        for (const item of Array.isArray(key) ? key : [key])
+          delete mockRecords[item];
       });
     wallet = {
       walletSessionGeneration: 0,

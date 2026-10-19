@@ -58,6 +58,7 @@ beforeEach(() => {
   mockQuery = {
     host: 'https://synthetic.invalid',
     eventName: 'eth_getEncryptionPublicKey',
+    0: `0x${'11'.repeat(20)}`,
   };
   mockState = {
     vault: {

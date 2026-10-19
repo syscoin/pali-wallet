@@ -170,7 +170,8 @@ test('encryption review wraps long identifiers and announces successful or denie
             JSON.stringify({
               host,
               eventName: 'synthetic-encryption-review',
-              0: 'synthetic-ciphertext',
+              0: route === 'tx/decrypt' ? 'synthetic-ciphertext' : address,
+              1: address,
             })
           )}`
         );

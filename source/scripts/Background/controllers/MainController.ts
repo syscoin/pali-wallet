@@ -4383,8 +4383,7 @@ class MainController {
       // Clear the vault state from storage
       const storageKey = `state-vault-${slip44}`;
       const passkeyProfileStorageKey = `state-vault-${slip44}-passkey-profile`;
-      await chromeStorage.removeItem(storageKey);
-      await chromeStorage.removeItem(passkeyProfileStorageKey);
+      await chromeStorage.removeItem([storageKey, passkeyProfileStorageKey]);
 
       // Clear from vault cache as well
       vaultCache.clearSlip44FromCache(slip44);
@@ -4422,6 +4421,21 @@ class MainController {
     }
   }
 
+  private storeImportedAccount(account: IKeyringAccountState) {
+    // SDK allocation can race across extension documents. Never replace an
+    // account already admitted while this import was being derived.
+    if (store.getState().vault.accounts.Imported?.[account.id])
+      throw new Error(
+        'Account import conflicted with another import. Please retry.'
+      );
+    store.dispatch(
+      createAccount({ account, accountType: KeyringAccountType.Imported })
+    );
+    store.dispatch(
+      setActiveAccount({ id: account.id, type: KeyringAccountType.Imported })
+    );
+  }
+
   public async importAccountFromPrivateKey(
     privKey: string,
     label?: string,
@@ -4434,18 +4448,7 @@ class MainController {
       options
     );
     assertCurrent();
-    store.dispatch(
-      createAccount({
-        account: importedAccount,
-        accountType: KeyringAccountType.Imported,
-      })
-    );
-    store.dispatch(
-      setActiveAccount({
-        id: importedAccount.id,
-        type: KeyringAccountType.Imported,
-      })
-    );
+    this.storeImportedAccount(importedAccount);
 
     // Save wallet state after importing account from private key
     // Use sync=true to ensure save completes before continuing
@@ -4478,18 +4481,7 @@ class MainController {
       label
     );
     assertCurrent();
-    store.dispatch(
-      createAccount({
-        account: importedAccount,
-        accountType: KeyringAccountType.Imported,
-      })
-    );
-    store.dispatch(
-      setActiveAccount({
-        id: importedAccount.id,
-        type: KeyringAccountType.Imported,
-      })
-    );
+    this.storeImportedAccount(importedAccount);
     await this.saveWalletState('import-account-watch-only', true, true);
     setTimeout(() => {
       this.getLatestUpdateForCurrentAccount(false, true).catch((err) => {

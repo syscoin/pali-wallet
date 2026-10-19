@@ -148,10 +148,10 @@ it('preserves a legacy shared vault for the surviving network and cleans it only
     other.label
   );
   expect(state.vaultGlobal.networks.syscoin[998]).toBeUndefined();
-  expect(chromeStorage.removeItem).toHaveBeenCalledWith('state-vault-1');
-  expect(chromeStorage.removeItem).toHaveBeenCalledWith(
-    'state-vault-1-passkey-profile'
-  );
+  expect(chromeStorage.removeItem).toHaveBeenCalledWith([
+    'state-vault-1',
+    'state-vault-1-passkey-profile',
+  ]);
   expect(vaultCache.clearSlip44FromCache).toHaveBeenCalledWith(1);
   expect(wallet.keyrings.has(1)).toBe(false);
 });

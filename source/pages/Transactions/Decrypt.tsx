@@ -77,6 +77,7 @@ const Decrypt: React.FC<ISign> = () => {
     host,
     data.eventName,
     data[0],
+    data[1],
   ]);
   const currentPreviewScope = useRef(previewScope);
   currentPreviewScope.current = previewScope;
@@ -130,7 +131,18 @@ const Decrypt: React.FC<ISign> = () => {
 
   const { label, address } = activeAccount;
 
+  const getDecryptParams = () => {
+    if (
+      typeof data[1] !== 'string' ||
+      data[1].toLowerCase() !== address.toLowerCase()
+    )
+      throw new Error('Requested account is not active');
+    return [data[0], data[1]];
+  };
+
   const handleDecrypt = async () => {
+    if (!mounted.current || currentPreviewScope.current !== previewScope)
+      return;
     const request = ++previewRequest.current;
     const isCurrent = () =>
       mounted.current &&
@@ -150,12 +162,9 @@ const Decrypt: React.FC<ISign> = () => {
 
     setIsDecrypting(true);
     try {
-      // Pass only the required parameters: [encryptedData, address]
-      const decryptParams = [data[0], address];
-
       const decrypted = await controllerEmitter(
         ['wallet', 'ethereumTransaction', 'decryptMessage'],
-        [decryptParams]
+        [getDecryptParams()]
       );
       if (isCurrent())
         setPreview({ message: decrypted as string, scope: previewScope });
@@ -168,6 +177,8 @@ const Decrypt: React.FC<ISign> = () => {
   };
 
   const onSubmit = async () => {
+    if (!mounted.current || currentPreviewScope.current !== previewScope)
+      return;
     setLoading(true);
     const type = data.eventName;
 
@@ -183,12 +194,9 @@ const Decrypt: React.FC<ISign> = () => {
     }
 
     try {
-      // Pass only the required parameters: [encryptedData, address]
-      const decryptParams = [data[0], address];
-
       const response = await controllerEmitter(
         ['wallet', 'ethereumTransaction', 'decryptMessage'],
-        [decryptParams]
+        [getDecryptParams()]
       );
 
       dispatchBackgroundEvent(`${type}.${host}`, response);

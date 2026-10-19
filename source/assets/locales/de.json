@@ -111,6 +111,7 @@
     "sortedBy": "Sortiert nach"
   },
   "header": {
+    "refresh": "Wallet aktualisieren",
     "importAccount": "Konto importieren",
     "thereWasAnError": "Es gab einen Fehler beim Versuch, das Netzwerk zu wechseln. Versuchen Sie es später erneut.",
     "errorSwitching": "Fehler beim Netzwerkwechsel",

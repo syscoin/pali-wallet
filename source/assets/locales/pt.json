@@ -111,6 +111,7 @@
     "sortedBy": "Ordenado por"
   },
   "header": {
+    "refresh": "Atualizar carteira",
     "importAccount": "Importar conta",
     "thereWasAnError": "Houve um erro ao tentar trocar de rede. Tente novamente mais tarde.",
     "errorSwitching": "Erro ao trocar redes",

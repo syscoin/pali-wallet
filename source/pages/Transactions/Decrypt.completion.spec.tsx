@@ -14,6 +14,7 @@ const mockQuery = {
   host: 'synthetic.example.invalid',
   eventName: 'synthetic-decryption-request',
   0: CIPHERTEXT,
+  1: ADDRESS,
 };
 
 jest.mock('react-redux', () => ({

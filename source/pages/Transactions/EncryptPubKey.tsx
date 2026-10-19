@@ -98,9 +98,16 @@ const EncryptPubKey: React.FC<ISign> = () => {
   };
 
   const onSubmit = async () => {
+    if (!copyContext.current.active || copyScopeRef.current !== copyScope)
+      return;
     setLoading(true);
     const type = data.eventName;
     try {
+      if (
+        typeof data[0] !== 'string' ||
+        data[0].toLowerCase() !== address.toLowerCase()
+      )
+        throw new Error('Requested account is not active');
       const response = await controllerEmitter([
         'wallet',
         'ethereumTransaction',

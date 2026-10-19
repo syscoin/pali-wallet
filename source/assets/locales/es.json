@@ -111,6 +111,7 @@
     "sortedBy": "Ordenado por"
   },
   "header": {
+    "refresh": "Actualizar billetera",
     "importAccount": "Importar cuenta",
     "thereWasAnError": "Hubo un error al intentar cambiar de red. Inténtalo de nuevo más tarde.",
     "errorSwitching": "Error al cambiar de redes",

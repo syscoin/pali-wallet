@@ -111,6 +111,7 @@
     "sortedBy": "Sorted by"
   },
   "header": {
+    "refresh": "Refresh wallet",
     "importAccount": "Import account",
     "thereWasAnError": "There was an error while trying to switch network. Try again later.",
     "errorSwitching": "Error switching networks",

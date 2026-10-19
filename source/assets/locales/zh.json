@@ -111,6 +111,7 @@
     "sortedBy": "排序依据"
   },
   "header": {
+    "refresh": "刷新钱包",
     "importAccount": "导入账户",
     "thereWasAnError": "尝试切换网络时出错。请稍后再试。",
     "errorSwitching": "切换网络时出错",

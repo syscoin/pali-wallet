@@ -70,6 +70,7 @@ test('decryption preview is cleared when the displayed wallet account changes', 
               host: 'synthetic-encryption.invalid',
               eventName: 'synthetic-preview-only',
               0: ciphertext,
+              1: Wallet.fromPhrase(UTXO_FIXTURE_SEED).address,
             })
           )}`
         );
