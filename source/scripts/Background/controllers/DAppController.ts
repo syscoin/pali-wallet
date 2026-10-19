@@ -322,44 +322,11 @@ const DAppController = (
     accountType: KeyringAccountType,
     expectedContext?: IDAppAccountSelectionContext
   ) => {
-    const { account, isBitcoinBased } = validateAccountSelection(
-      accountId,
-      accountType,
-      expectedContext
-    );
-    if (!_dapps[host]) {
-      _dapps[host] = { activeAddress: '', hasWindow: false };
-    }
-
-    const date = Date.now();
-    store.dispatch(updateDAppAccount({ host, accountId, date, accountType }));
-    // The connection is already changed in Redux at this point. Invalidate
-    // eth_accounts/provider-state responses before persistence or event
-    // delivery can overlap another request from this host.
-    clearProviderCache();
-    await persistDappState('dapp account change');
-    _dapps[host].activeAddress = isBitcoinBased
-      ? account.xpub
-      : account.address;
-
-    if (isBitcoinBased) {
-      _dispatchPaliEvent(
-        host,
-        {
-          method: PaliSyscoinEvents.xpubChanged,
-          params: account.xpub,
-        },
-        PaliSyscoinEvents.xpubChanged
-      );
-    }
-    _dispatchPaliEvent(
-      host,
-      {
-        method: PaliEvents.accountsChanged,
-        params: [account.address],
-      },
-      PaliEvents.accountsChanged
-    );
+    if (!store.getState().dapp.dapps[host])
+      throw new Error('Unable to update account. DApp does not exist');
+    // The admitted permission change must survive without the approval view's
+    // optional wallet switch. Publish and notify only after its durable write.
+    await grantAccountPermission(host, accountId, accountType, expectedContext);
   };
 
   const syncAccountSession = (

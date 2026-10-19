@@ -154,12 +154,15 @@ const initI18next = async () => {
     storedLocale !== defaultLocale &&
     availableLanguages.includes(storedLocale)
   ) {
-    await changeLanguage(storedLocale);
+    await applyLanguage(storedLocale, false);
   }
 };
 
 // Function to change language and load translations if needed
-export const changeLanguage = async (lng: string): Promise<void> => {
+const applyLanguage = async (
+  lng: string,
+  savePreference: boolean
+): Promise<void> => {
   if (!availableLanguages.includes(lng)) {
     console.warn(`[i18n] Language ${lng} not available`);
     return;
@@ -178,9 +181,13 @@ export const changeLanguage = async (lng: string): Promise<void> => {
   await i18next.changeLanguage(lng);
   if (selectionGeneration !== languageSelectionGeneration) return;
 
-  // Save to storage
-  await chromeStorage.setItem('language', lng);
+  // Startup only restores its snapshot. It must not overwrite a newer choice
+  // saved by another popup or approval document while that read was pending.
+  if (savePreference) await chromeStorage.setItem('language', lng);
 };
+
+export const changeLanguage = (lng: string): Promise<void> =>
+  applyLanguage(lng, true);
 
 void initI18next().catch((error) => {
   console.error('[i18n] Failed to initialize translations:', error);

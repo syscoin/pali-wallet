@@ -512,6 +512,10 @@ describe('DAppController account changes', () => {
         isBitcoinBased: false,
       },
     });
+    dispatchMock.mockImplementation((action) => {
+      if (action.type === 'dapp/addDApp')
+        getStateMock().dapp.dapps[action.payload.host] = action.payload;
+    });
   });
 
   it('clears cached provider accounts when the persisted connection changes', async () => {
@@ -530,17 +534,14 @@ describe('DAppController account changes', () => {
           accountType: KeyringAccountType.HDAccount,
           host,
         }),
-        type: 'dapp/updateDAppAccount',
+        type: 'dapp/addDApp',
       })
     );
     expect(clearProviderCache).toHaveBeenCalledTimes(1);
-    expect(saveMainStateMock).toHaveBeenCalledTimes(1);
+    expect(saveMainStateMock).not.toHaveBeenCalled();
     expect(dispatchMock.mock.invocationCallOrder[0]).toBeLessThan(
       (clearProviderCache as jest.Mock).mock.invocationCallOrder[0]
     );
-    expect(
-      (clearProviderCache as jest.Mock).mock.invocationCallOrder[0]
-    ).toBeLessThan(saveMainStateMock.mock.invocationCallOrder[0]);
   });
 
   it('does not clear the cache when the requested account does not exist', async () => {

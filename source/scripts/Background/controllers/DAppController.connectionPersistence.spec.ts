@@ -116,6 +116,76 @@ it('publishes a normal connection only after durable storage and restores it aft
   expect(DAppController(() => true).getAccount(host).address).toBe(address);
 });
 
+it('publishes an existing account change only after its durable write', async () => {
+  await connect();
+  const previous = controller.get(host);
+  const waitForWrite = holdWrite();
+  const change = controller.changeAccount(host, 1, type, context(1));
+  const finish = await waitForWrite();
+  expect(controller.get(host)).toBe(previous);
+  expect(controller.getAccount(host).address).toBe(address);
+  expect(disk.dapp.dapps[host].accountId).toBe(0);
+  finish();
+  await change;
+  expect(controller.get(host)?.accountId).toBe(1);
+  store.dispatch(rehydrate(clone(disk.dapp)));
+  expect(DAppController(() => true).getAccount(host).address).toBe(
+    store.getState().vault.accounts[type][1].address
+  );
+});
+
+it('keeps an account change unpublished on write failure and allows a durable retry', async () => {
+  await connect();
+  const previous = controller.get(host);
+  mockStorageSet.mockRejectedValueOnce(new Error('Storage unavailable'));
+  await expect(
+    controller.changeAccount(host, 1, type, context(1))
+  ).rejects.toThrow('Storage unavailable');
+  expect(controller.get(host)).toBe(previous);
+  expect(disk.dapp.dapps[host].accountId).toBe(0);
+  await controller.changeAccount(host, 1, type, context(1));
+  expect(disk.dapp.dapps[host].accountId).toBe(1);
+});
+
+it('does not turn a disconnected account-change request into a new grant', async () => {
+  await expect(
+    controller.changeAccount(host, 1, type, context(1))
+  ).rejects.toThrow('DApp does not exist');
+  expect(controller.isConnected(host)).toBe(false);
+  expect(mockStorageSet).not.toHaveBeenCalled();
+});
+
+it('shares pending ownership between account changes and permission grants', async () => {
+  await connect();
+  const waitForWrite = holdWrite();
+  const change = controller.changeAccount(host, 1, type, context(1));
+  const finish = await waitForWrite();
+  await expect(
+    Promise.resolve().then(() =>
+      controller.requestPermissions(host, 0, type, context())
+    )
+  ).rejects.toThrow('already pending');
+  finish();
+  await change;
+  expect(disk.dapp.dapps[host].accountId).toBe(1);
+});
+
+it('does not republish an account change revoked while its storage write is pending', async () => {
+  await connect();
+  const waitForWrite = holdWrite();
+  const change = controller.changeAccount(host, 1, type, context(1));
+  const rejected = expect(change).rejects.toThrow('context changed');
+  const finish = await waitForWrite();
+  const revoke = controller.disconnect(host, true, {
+    allowAlreadyDisconnected: true,
+    propagateErrors: true,
+  });
+  finish();
+  await Promise.all([rejected, revoke]);
+  expect(controller.isConnected(host)).toBe(false);
+  expect(disk.dapp.dapps[host]).toBeUndefined();
+});
+
 it.each([false, true])(
   'preserves the previous grant and allows retry after storage failure (existing=%s)',
   async (existing) => {
