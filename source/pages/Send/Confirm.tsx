@@ -79,6 +79,9 @@ import { useConfirmSubmission } from './useConfirmSubmission';
 const SMART_ACCOUNT_MAX_SEND_BUFFER_WEI = parseUnits('0.000001', 'ether');
 const NATIVE_EVM_MAX_SEND_BUFFER_WEI = parseUnits('0.000001', 'ether');
 const NATIVE_EVM_MAX_SEND_INITIAL_GAS_RESERVE = BigNumber.from(500_000);
+const transactionReviewDivider = (
+  <div className="border-dashed border-alpha-whiteAlpha300 border my-3  w-full h-full" />
+);
 
 export const SendConfirm = () => {
   const { controllerEmitter, isUnlocked, isLoading, connectionUnavailable } =
@@ -2043,7 +2046,7 @@ export const SendConfirm = () => {
               basicTxValues.sender,
               ellipsis(basicTxValues.sender, 7, 15)
             )}
-            <div className="border-dashed border-alpha-whiteAlpha300 border my-3  w-full h-full" />
+            {transactionReviewDivider}
             {renderAddress(
               'send.to',
               tooltipToAddress,
@@ -2080,7 +2083,7 @@ export const SendConfirm = () => {
                 </div>
               </div>
             )}
-            <div className="border-dashed border-alpha-whiteAlpha300 border my-3  w-full h-full" />
+            {transactionReviewDivider}
             {/* Only show fee section if we have meaningful fee information */}
             {!(isBitcoinBased && basicTxValues.fee === 0) && (
               <div className="flex flex-row items-end w-full">
@@ -2169,7 +2172,7 @@ export const SendConfirm = () => {
                 )}
               </div>
             )}
-            <div className="border-dashed border-alpha-whiteAlpha300 border my-3  w-full h-full" />
+            {transactionReviewDivider}
             <div className="flex flex-col w-full text-xs text-brand-gray200 font-poppins font-normal">
               {!basicTxValues.token?.isNft ? (
                 <>
