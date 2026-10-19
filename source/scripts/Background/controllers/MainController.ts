@@ -3043,8 +3043,10 @@ class MainController {
       return this.createSmartAccountRecord({ label });
     }
 
+    assertCompleteHDAccountData(store.getState().vault.accounts.HDAccount);
     const newAccount = await keyring.addNewAccount(label);
     assertCurrent();
+    assertCompleteHDAccountData(store.getState().vault.accounts.HDAccount);
 
     // Validate account creation was successful before storing in Redux
     if (!newAccount.address || !newAccount.xpub) {
@@ -3060,6 +3062,11 @@ class MainController {
         'Account creation failed: invalid account data returned from keyring'
       );
     }
+
+    if (store.getState().vault.accounts.HDAccount[newAccount.id])
+      throw new Error(
+        'Account creation conflicted with another request. Please retry.'
+      );
 
     store.dispatch(
       createAccount({

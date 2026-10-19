@@ -403,6 +403,9 @@ export const ImportToken: React.FC = () => {
         const tokenId = isSearchResult
           ? (token as ITokenSearchResult).tokenId
           : (token as any).tokenId; // For custom tokens, tokenId is added dynamically
+        const rawBalance = isSearchResult
+          ? (token as ITokenSearchResult).rawBalance
+          : undefined;
         const id =
           tokenStandard === 'ERC-1155' && tokenId
             ? `${baseId}-${tokenId}`
@@ -421,6 +424,8 @@ export const ImportToken: React.FC = () => {
           isNft,
           // Preserve tokenId for ERC-1155 tokens from search results or details
           ...(tokenId && { tokenId }),
+          ...(tokenStandard === 'ERC-1155' &&
+            rawBalance !== undefined && { rawBalance }),
           // Enhanced data will be fetched in asset details if needed
         };
       }),
@@ -501,6 +506,8 @@ export const ImportToken: React.FC = () => {
         // For owned tokens, tokenId comes from asset. For custom tokens, it comes from customTokenId
         const tokenId =
           activeTab === 'custom' ? customTokenId.trim() : asset.tokenId;
+        const rawBalance =
+          activeTab === 'custom' ? verifiedTokenRawBalance : asset.rawBalance;
 
         if (asset.tokenStandard === 'ERC-1155' && !tokenId) {
           throw new Error(t('tokens.tokenIdRequired'));
@@ -533,10 +540,8 @@ export const ImportToken: React.FC = () => {
           logo: tokenLogo,
           tokenStandard: asset.tokenStandard || 'ERC-20',
           ...(asset.tokenStandard === 'ERC-1155' && tokenId ? { tokenId } : {}),
-          ...(asset.tokenStandard === 'ERC-1155' &&
-          activeTab === 'custom' &&
-          verifiedTokenRawBalance
-            ? { rawBalance: verifiedTokenRawBalance }
+          ...(asset.tokenStandard === 'ERC-1155' && rawBalance
+            ? { rawBalance }
             : {}),
         };
 

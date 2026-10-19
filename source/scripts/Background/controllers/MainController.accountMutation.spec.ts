@@ -12,13 +12,17 @@ jest.mock('@sidhujag/sysweb3-keyring', () => ({
   CustomJsonRpcProvider: jest.fn(),
   PsbtUtils: {},
 }));
+let mockState: any;
 jest.mock('state/store', () => ({
   __esModule: true,
   default: {
-    dispatch: jest.fn(),
-    getState: () => ({
-      vault: { accounts: { HDAccount: { 1: { xpub: 'public-xpub' } } } },
+    dispatch: jest.fn((action) => {
+      if (action.type === 'vault/createAccount') {
+        const { account, accountType } = action.payload;
+        mockState.vault.accounts[accountType][account.id] = account;
+      }
     }),
+    getState: () => mockState,
   },
 }));
 
@@ -58,6 +62,17 @@ describe('account mutation wallet setup reservation', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     jest.useFakeTimers();
+    mockState = {
+      vault: {
+        accounts: {
+          HDAccount: {},
+          Imported: {},
+          SmartAccount: {},
+          Trezor: {},
+          Ledger: {},
+        },
+      },
+    };
     keyring = {
       addNewAccount: jest.fn(async () => account),
       createSmartAccount: jest.fn(async () => account),

@@ -275,3 +275,39 @@ it('keeps distinct ERC1155 token IDs importable within the same mounted custom l
     .map(([, [token]]) => token.tokenId);
   expect(saved).toEqual(['1', '2']);
 });
+
+it('preserves an exact discovered ERC1155 balance through the ordinary owned import', async () => {
+  const rawBalance = '9007199254740993';
+  const owned = {
+    id: `${CONTRACT}-1-7`,
+    contractAddress: CONTRACT,
+    symbol: fixture.symbol,
+    name: fixture.name,
+    image: fixture.image,
+    tokenId: '7',
+    tokenStandard: 'ERC-1155',
+    isNft: true,
+    decimals: 0,
+    balance: Number(rawBalance),
+    rawBalance,
+  };
+  const previous = mockEmitter.getMockImplementation()!;
+  mockEmitter.mockImplementation((path, args) =>
+    path[1] === 'getUserOwnedTokens'
+      ? Promise.resolve([owned])
+      : previous(path, args)
+  );
+  await load('owned');
+  await act(async () => fireEvent.click(importButton()));
+  expect(mockEmitter).toHaveBeenCalledWith(
+    ['wallet', 'saveTokenInfo'],
+    [
+      expect.objectContaining({
+        tokenId: '7',
+        balance: Number(rawBalance),
+        rawBalance,
+      }),
+      expect.any(Object),
+    ]
+  );
+});

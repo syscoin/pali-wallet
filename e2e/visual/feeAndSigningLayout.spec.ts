@@ -11,6 +11,7 @@ import path from 'path';
 
 import en from '../../source/assets/locales/en.json';
 import { E2E_CONFIG } from '../harness/config';
+import { dismissRejectedApproval } from '../harness/dismissRejectedApproval';
 import {
   createIsolatedVaultFixture,
   installIsolatedVaultRoutes,
@@ -358,10 +359,16 @@ for (const viewport of [
         expect(valueGeometry.exposed).toBe(true);
         expect(valueGeometry.overflow).toEqual([]);
         expect(valueGeometry.documentWidth).toBe(viewport.width);
-        await popup
-          .getByRole('button', { name: en.buttons.cancel, exact: true })
-          .click();
-        expect((await settle(dapp, request)).error?.code).toBe(4001);
+        const rejected = await dismissRejectedApproval({
+          click: () =>
+            popup
+              .getByRole('button', { name: en.buttons.cancel, exact: true })
+              .click(),
+          isClosed: () => popup.isClosed(),
+          settle: () => settle(dapp, request),
+        });
+        expect(rejected.error?.code).toBe(4001);
+        expect(rejected.result).toBeUndefined();
       }
     );
   });

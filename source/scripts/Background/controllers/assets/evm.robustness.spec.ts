@@ -70,6 +70,88 @@ afterEach(() => {
 });
 
 describe('discovery availability is not an empty wallet', () => {
+  it.each([
+    '0',
+    '42',
+    '9007199254740993',
+    '115792089237316195423570985008687907853269984665640564039457584007913129639935',
+  ])(
+    'retains the exact ERC1155 owned balance %s for import and MAX',
+    async (rawBalance) => {
+      network.apiUrl = `https://owned-nft-precision.test/api?case=${rawBalance}`;
+      (fetch as jest.Mock).mockResolvedValue(
+        response({
+          status: '1',
+          result: [
+            {
+              contractAddress: TOKEN,
+              type: 'ERC-1155',
+              id: '7',
+              name: 'Exact collection',
+              symbol: 'EXACT',
+              decimals: '0',
+              balance: rawBalance,
+            },
+          ],
+        })
+      );
+      const result = await EvmAssetsController().getUserOwnedTokens(ACCOUNT);
+      expect(result).toHaveLength(1);
+      expect(result[0]).toMatchObject({
+        tokenId: '7',
+        balance: Number(rawBalance),
+        rawBalance,
+      });
+    }
+  );
+
+  it.each([0, 42])(
+    'retains safe numeric ERC1155 balance %s as an exact integer',
+    async (balance) => {
+      network.apiUrl = `https://owned-nft-safe-number.test/api?case=${balance}`;
+      (fetch as jest.Mock).mockResolvedValue(
+        response({
+          status: '1',
+          result: [
+            {
+              contractAddress: TOKEN,
+              type: 'ERC-1155',
+              id: '7',
+              decimals: '0',
+              balance,
+            },
+          ],
+        })
+      );
+      const result = await EvmAssetsController().getUserOwnedTokens(ACCOUNT);
+      expect(result[0]).toMatchObject({ balance, rawBalance: String(balance) });
+    }
+  );
+
+  it.each([Number('9007199254740993'), '1e3', '1.5', undefined])(
+    'does not invent an exact ERC1155 balance from %s',
+    async (balance) => {
+      network.apiUrl = `https://owned-nft-inexact.test/api?case=${balance}`;
+      (fetch as jest.Mock).mockResolvedValue(
+        response({
+          status: '1',
+          result: [
+            {
+              contractAddress: TOKEN,
+              type: 'ERC-1155',
+              id: '7',
+              decimals: '0',
+              balance,
+            },
+          ],
+        })
+      );
+      const result = await EvmAssetsController().getUserOwnedTokens(ACCOUNT);
+      expect(result).toHaveLength(1);
+      expect(result[0]).not.toHaveProperty('rawBalance');
+    }
+  );
+
   it('converts Routescan raw holdings into the existing token search result', async () => {
     network.apiUrl =
       'https://api.routescan.io/v2/network/mainnet/evm/1/etherscan/api';

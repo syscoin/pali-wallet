@@ -89,6 +89,15 @@ jest.mock('antd', () => {
   return { Form };
 });
 
+let typeaheadClockActive = false;
+const setupTypeaheadUser = () => {
+  // HeadlessUI clears its prefix after 350 ms; CI scheduling must not decide
+  // whether the intended consecutive keystrokes belong to one search.
+  jest.useFakeTimers();
+  typeaheadClockActive = true;
+  return userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+};
+
 beforeEach(() => {
   jest.clearAllMocks();
   mockState.vaultGlobal.advancedSettings = { refresh: false, autolock: 5 };
@@ -125,7 +134,14 @@ it('preserves the advanced draft when a later setting fails after an earlier sav
       .hasAttribute('disabled')
   ).toBe(false);
 });
-afterEach(() => jest.restoreAllMocks());
+afterEach(() => {
+  jest.restoreAllMocks();
+  if (typeaheadClockActive) {
+    jest.clearAllTimers();
+    typeaheadClockActive = false;
+  }
+  jest.useRealTimers();
+});
 
 it('labels advanced controls and refuses an empty autolock value', () => {
   const { container } = render(<Advanced />);
@@ -338,7 +354,7 @@ it('keeps the submitted currency selected while its save is waiting on an older 
 });
 
 it('preserves language typeahead and Enter selection after removing closed options', async () => {
-  const user = userEvent.setup();
+  const user = setupTypeaheadUser();
   await act(async () => {
     render(<Languages />);
   });
@@ -347,6 +363,7 @@ it('preserves language typeahead and Enter selection after removing closed optio
   });
   trigger.focus();
   await user.keyboard('{Enter}');
+  await act(async () => jest.advanceTimersByTime(32));
   await user.keyboard('ger{Enter}');
   expect(trigger.textContent).toContain('Deutsch');
   expect(screen.queryByRole('menu')).toBeNull();
@@ -357,6 +374,35 @@ it('preserves language typeahead and Enter selection after removing closed optio
   expect(screen.queryByRole('menu')).toBeNull();
   await waitFor(() => expect(document.activeElement).toBe(trigger));
 });
+
+it.each([
+  { gap: 349, expected: 'Deutsch' },
+  { gap: 350, expected: 'Русский' },
+])(
+  'respects the language typeahead reset at an inter-key gap of $gap ms',
+  async ({ gap, expected }) => {
+    const user = setupTypeaheadUser();
+    await act(async () => {
+      render(<Languages />);
+    });
+    const trigger = screen.getByRole('button', {
+      name: 'settings.setYourPreferredLanguage',
+    });
+    trigger.focus();
+    await user.keyboard('{Enter}');
+    await act(async () => jest.advanceTimersByTime(32));
+    const menu = screen.getByRole('menu');
+    await user.keyboard('ge');
+    expect(menu.getAttribute('aria-activedescendant')).toBe(
+      screen.getByRole('menuitem', { name: 'German Deutsch' }).id
+    );
+    await act(async () => jest.advanceTimersByTime(gap));
+    await user.keyboard('r{Enter}');
+    expect(trigger.textContent).toContain(expected);
+    expect(screen.queryByRole('menu')).toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
+  }
+);
 
 it('prevents pointer-down focus on a language option while allowing its click selection', async () => {
   const user = userEvent.setup();
@@ -390,7 +436,7 @@ it('does not replace a language the user selected while the saved preference was
         finishLoading = resolve;
       })
   );
-  const user = userEvent.setup();
+  const user = setupTypeaheadUser();
   render(<Languages />);
   const trigger = screen.getByRole('button', {
     name: 'settings.setYourPreferredLanguage',
@@ -417,7 +463,7 @@ it('does not revert a completed language save when the older preference read fin
         finishLoading = resolve;
       })
   );
-  const user = userEvent.setup();
+  const user = setupTypeaheadUser();
   render(<Languages />);
   const trigger = screen.getByRole('button', {
     name: 'settings.setYourPreferredLanguage',
