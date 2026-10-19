@@ -39,6 +39,7 @@ import { SYSCOIN_MAINNET_NETWORK } from 'utils/constants';
 
 import DAppController from './DAppController';
 import MainController from './MainController';
+import { PaliEvents } from './message-handler/types';
 import { reconcileWalletRecoveryJournal } from './walletRecovery';
 
 const JOURNAL = 'pali-wallet-recovery-journal:v1';
@@ -217,7 +218,11 @@ describe('wallet reset durable cleanup', () => {
       }),
     };
     jest.mocked(getController).mockReturnValue({
-      dapp: { handleStateChange: jest.fn().mockResolvedValue(undefined) },
+      dapp: {
+        handleStateChange: jest.fn().mockResolvedValue(undefined),
+        getAll: () => store.getState().dapp.dapps,
+        resetSessions: jest.fn().mockResolvedValue(undefined),
+      },
     } as any);
   });
 
@@ -337,14 +342,22 @@ describe('wallet reset durable cleanup', () => {
     }
   );
 
-  const seedOldPermission = () => {
+  const seedOldPermission = (
+    address = '0x1111111111111111111111111111111111111111'
+  ) => {
     const host = 'https://previous-wallet.invalid';
-    const address = '0x1111111111111111111111111111111111111111';
     const oldVault = {
       ...store.getState().vault,
       accounts: {
         ...store.getState().vault.accounts,
-        HDAccount: { 0: { id: 0, address, label: 'Old synthetic wallet' } },
+        HDAccount: {
+          0: {
+            id: 0,
+            address,
+            xpub: 'public-old-xpub',
+            label: 'Old synthetic wallet',
+          },
+        },
       },
     };
     store.dispatch(restoreVaultSnapshot(oldVault as any));
@@ -370,6 +383,108 @@ describe('wallet reset durable cleanup', () => {
     originalRecords = structuredClone(records);
     return { host, address };
   };
+
+  const installLiveDapp = () => {
+    const { host, address } = seedOldPermission('sys1previous');
+    const dapp = DAppController(
+      () => unlocked,
+      () => wallet.walletStateGeneration
+    );
+    jest.mocked(getController).mockReturnValue({ dapp } as any);
+    (chrome.runtime as any).id = 'wallet-reset-test';
+    (chrome as any).tabs = {
+      query: jest.fn((_query, reply) =>
+        reply([{ id: 7, url: `${host}/page` }])
+      ),
+    };
+    (chrome as any).scripting = {
+      executeScript: jest.fn().mockResolvedValue([]),
+    };
+    dapp.setup({ url: `${host}/page` });
+    dapp.setHasWindow(host, true);
+    return { dapp, host, address, reset: jest.spyOn(dapp, 'resetSessions') };
+  };
+
+  it('clears live sessions only after a successful public forget', async () => {
+    const { dapp, host, reset } = installLiveDapp();
+    await wallet.forgetWallet('synthetic password');
+    expect(records).toEqual({});
+    expect(reset).toHaveBeenCalledWith([host]);
+    expect(dapp.getAll()).toEqual({});
+    expect(() => dapp.hasWindow(host)).toThrow();
+    const notifications = jest
+      .mocked(chrome.scripting.executeScript)
+      .mock.calls.map(([options]) => options.args?.[0]);
+    expect(notifications).toHaveLength(3);
+    expect(notifications[0]).toEqual({
+      id: PaliEvents.lockStateChanged,
+      data: {
+        method: PaliEvents.lockStateChanged,
+        params: { isUnlocked: false, accounts: [], xpub: null },
+      },
+    });
+    expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({
+      type: 'wallet_forgotten',
+    });
+  });
+
+  it('keeps real live routing unchanged when the forget password is wrong', async () => {
+    const { dapp, host, address, reset } = installLiveDapp();
+    await expect(wallet.forgetWallet('wrong password')).rejects.toThrow(
+      'Invalid password'
+    );
+    expect(reset).not.toHaveBeenCalled();
+    expect(dapp.hasWindow(host)).toBe(true);
+    expect(dapp.getAccount(host)?.address).toBe(address);
+    expect(chrome.scripting.executeScript).not.toHaveBeenCalled();
+    expect(records).toEqual(originalRecords);
+    expect(chrome.storage.local.set).not.toHaveBeenCalled();
+    expect(chrome.storage.local.remove).not.toHaveBeenCalled();
+    expect(unlocked).toBe(true);
+  });
+
+  it('retains real live routing after rollback so the restored wallet can notify its next unlock', async () => {
+    const { dapp, host, address, reset } = installLiveDapp();
+    failRemoval = 'state-vault-60';
+    await expect(
+      wallet.forgetWallet('synthetic password')
+    ).rejects.toMatchObject({ message: 'synthetic storage removal failure' });
+    await new Promise(setImmediate);
+    expect(records).toEqual(originalRecords);
+    expect(reset).not.toHaveBeenCalled();
+    expect(unlocked).toBe(false);
+    expect(dapp.hasWindow(host)).toBe(true);
+    expect(dapp.getAccount(host)?.address).toBe(address);
+    const inject = jest.mocked(chrome.scripting.executeScript);
+    expect(inject.mock.calls[0][0].args?.[0]).toEqual({
+      id: PaliEvents.lockStateChanged,
+      data: {
+        method: PaliEvents.lockStateChanged,
+        params: { isUnlocked: false, accounts: [], xpub: null },
+      },
+    });
+    inject.mockClear();
+    unlocked = true;
+    await dapp.handleStateChange(PaliEvents.lockStateChanged, {
+      method: PaliEvents.lockStateChanged,
+      params: { isUnlocked: true },
+    });
+    await new Promise(setImmediate);
+    expect(inject.mock.calls[0][0].args?.[0]).toEqual({
+      id: PaliEvents.lockStateChanged,
+      data: {
+        method: PaliEvents.lockStateChanged,
+        params: {
+          isUnlocked: true,
+          accounts: [address],
+          xpub: 'public-old-xpub',
+        },
+      },
+    });
+    expect(chrome.runtime.sendMessage).not.toHaveBeenCalledWith({
+      type: 'wallet_forgotten',
+    });
+  });
 
   it('does not carry a forgotten wallet permission into a new account in the same slot', async () => {
     const { host } = seedOldPermission();

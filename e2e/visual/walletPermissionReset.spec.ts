@@ -87,11 +87,13 @@ test('forgetting a wallet removes site permissions before a different wallet reu
           accounts: provider.accounts.map((address: string) =>
             address.toLowerCase()
           ),
-          synchronousAccounts: provider.send({
-            id: 1,
-            jsonrpc: '2.0',
-            method: 'eth_accounts',
-          }).result.map((address: string) => address.toLowerCase()),
+          synchronousAccounts: provider
+            .send({
+              id: 1,
+              jsonrpc: '2.0',
+              method: 'eth_accounts',
+            })
+            .result.map((address: string) => address.toLowerCase()),
           events: (window as any).__permissionResetAccountEvents,
         };
       });

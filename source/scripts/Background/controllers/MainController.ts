@@ -2476,6 +2476,8 @@ class MainController {
     await this.getSeedForCurrentSession(pwd, generation);
     const { forgetWalletWithRecovery } = await import('./walletRecovery');
     this.assertCurrentWalletSession(generation);
+    const dapp = getController().dapp;
+    const previousOrigins = Object.keys(dapp.getAll());
     await forgetWalletWithRecovery(this, this.walletRecoveryContext());
 
     // Reset activeSlip44 to default after forgetting wallet to ensure clean state
@@ -2486,6 +2488,7 @@ class MainController {
 
     store.dispatch(forgetWallet());
     store.dispatch(setLastLogin());
+    await dapp.resetSessions(previousOrigins);
 
     // Send a specific message to indicate wallet was forgotten (not just locked)
     chrome.runtime.sendMessage({ type: 'wallet_forgotten' }).catch(() => {
