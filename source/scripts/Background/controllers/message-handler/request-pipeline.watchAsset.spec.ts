@@ -25,7 +25,7 @@ jest.mock('./popup-promise', () => ({
 }));
 
 import EthAccountController from '../account/evm';
-import vaultReducer from 'state/vault';
+import vaultReducer, { rehydrate as rehydrateVault } from 'state/vault';
 import { INetworkType, KeyringAccountType } from 'types/network';
 
 import { onMessage } from './index';
@@ -154,3 +154,32 @@ it('retains a no-op when another-chain token and current-chain token both exist'
   expect(await request()).toBe(true);
   expect(popupPromise).not.toHaveBeenCalled();
 });
+
+it.each([undefined, null])(
+  'preserves the current-chain fallback for a restored legacy token with chainId %s',
+  async (chainId) => {
+    const legacyToken = {
+      contractAddress: TOKEN,
+      tokenSymbol: 'SYN',
+      tokenStandard: 'ERC-20',
+      decimals: 18,
+      balance: 1,
+      chainId,
+    };
+    // Exercise the real vault restoration path. JSON omits undefined, while
+    // explicit null is retained; neither is normalized into a chain ID.
+    const persisted = JSON.parse(JSON.stringify(mockState.vault));
+    persisted.accountAssets[TYPE][0].ethereum = JSON.parse(
+      JSON.stringify([legacyToken])
+    );
+    mockState = {
+      ...mockState,
+      vault: vaultReducer(mockState.vault, rehydrateVault(persisted)),
+    };
+    const restored = mockState.vault.accountAssets[TYPE][0].ethereum;
+    expect(restored[0].chainId).toBe(chainId);
+    expect(await request()).toBe(true);
+    expect(popupPromise).not.toHaveBeenCalled();
+    expect(mockState.vault.accountAssets[TYPE][0].ethereum).toBe(restored);
+  }
+);
