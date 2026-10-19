@@ -89,7 +89,11 @@ const resetOwnedKey = (key: string) =>
   key.startsWith('pali-slh-dsa-state:') ||
   key.startsWith('pali-slh-dsa-precompute:') ||
   key.startsWith('pali-slh-dsa-smart-account-setup:') ||
-  key.startsWith('pali-slh-dsa-prepared-smart-account-signer:v1:');
+  key.startsWith('pali-slh-dsa-prepared-smart-account-signer:v1:') ||
+  key.startsWith('sentry-operator-v1:') ||
+  key.startsWith('sentry-settings-v1:') ||
+  key.startsWith('sentry-collateral-v1:') ||
+  key.startsWith('sentry-linked-v1:');
 
 const getAll = (): Promise<Records> =>
   new Promise((resolve, reject) => {
@@ -492,6 +496,9 @@ const reconcileWithinLock = async (
     await context.storage.setItem(`state-vault-${slip44}`, isolated);
   }
   await context.storage.removeItem(JOURNAL_KEY);
+  const remainingJournal = (await getAll())[JOURNAL_KEY];
+  if (remainingJournal !== undefined && remainingJournal !== null)
+    throw new Error('Wallet recovery backup cleanup failed');
   walletPersistenceGate.blocked = false;
   return true;
 };
@@ -504,6 +511,88 @@ export const reconcileWalletRecoveryJournal = (
   return context.persistenceMutex.runExclusive(() =>
     reconcileWithinLock(context)
   );
+};
+
+/** An authenticated forget retains a rollback snapshot until all cleanup commits. */
+export const forgetWalletWithRecovery = async (
+  controller: MainController,
+  context: WalletRecoveryContext
+): Promise<void> => {
+  const wallet = controller as unknown as RecoveryHost;
+  const generation = wallet.walletSessionGeneration;
+  const stateGeneration = wallet.walletStateGeneration;
+  const assertCurrent = () => {
+    if (
+      generation !== wallet.walletSessionGeneration ||
+      stateGeneration !== wallet.walletStateGeneration
+    )
+      throw new Error('Wallet state changed before removal');
+  };
+  let backedUp = false;
+  let resetCompleted = false;
+  try {
+    await context.persistenceMutex.runExclusive(async () => {
+      assertCurrent();
+      const current = await getAll();
+      if (current[JOURNAL_KEY] !== undefined && current[JOURNAL_KEY] !== null)
+        throw new Error('Reload the wallet to finish the previous recovery');
+      assertStoredPair(current);
+      const before = snapshot(current);
+      const candidate: RecoveryJournal = {
+        version: 1,
+        before,
+        checksum: await digest(before),
+      };
+      assertCurrent();
+      wallet.recoveryJournalPending = true;
+      await context.storage.setItem(JOURNAL_KEY, candidate);
+      // A no-op storage acknowledgement cannot authorize deleting the only copy.
+      const saved = await validateJournal((await getAll())[JOURNAL_KEY]);
+      if (saved.checksum !== candidate.checksum || saved.committedFingerprint)
+        throw new Error('Wallet removal backup could not be verified');
+      backedUp = true;
+      assertCurrent();
+    });
+    await wallet.resetWalletState({ resetNetworks: true });
+    await context.persistenceMutex.runExclusive(async () => {
+      const remaining = await getAll();
+      if (
+        Object.keys(remaining).some(
+          (key) =>
+            resetOwnedKey(key) &&
+            remaining[key] !== undefined &&
+            remaining[key] !== null
+        )
+      )
+        throw new Error('Wallet removal left saved account data');
+      resetCompleted = true;
+      await context.storage.removeItem(JOURNAL_KEY);
+      const retired = await getAll();
+      if (retired[JOURNAL_KEY] !== undefined && retired[JOURNAL_KEY] !== null)
+        throw new Error('Wallet removal backup cleanup failed');
+    });
+    wallet.recoveryJournalPending = false;
+  } catch (error) {
+    if (!wallet.recoveryJournalPending) throw error;
+    // Stop ordinary/emergency saves before rollback or any ambiguous read.
+    walletPersistenceGate.blocked = true;
+    wallet.lock();
+    const current = await getAll();
+    if (current[JOURNAL_KEY] === undefined || current[JOURNAL_KEY] === null) {
+      // The final deletion can apply even when its callback reports failure.
+      // This is success only after the entire reset completed; otherwise no
+      // destructive action was admitted without a verified backup.
+      if (resetCompleted || !backedUp) {
+        wallet.recoveryJournalPending = false;
+        walletPersistenceGate.blocked = false;
+        if (resetCompleted) return;
+      }
+      throw error;
+    }
+    await reconcileWalletRecoveryJournal(context);
+    wallet.recoveryJournalPending = false;
+    throw error;
+  }
 };
 
 /** A failed same-worker cleanup must finish before any keyring is usable. */
