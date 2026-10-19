@@ -9,6 +9,17 @@ import {
   getPaliCanonicalFactoryAddress,
 } from './deployment';
 
+const VALIDATOR_IS_INITIALIZED_ABI =
+  'function isInitialized(address account) view returns (bool)';
+const VALIDATOR_IS_MODULE_TYPE_ABI =
+  'function isModuleType(uint256 moduleTypeId) view returns (bool)';
+const VALIDATOR_IS_VALID_SIGNATURE_WITH_SENDER_ABI =
+  'function isValidSignatureWithSender(address sender,bytes32 hash,bytes signature) view returns (bytes4)';
+const VALIDATOR_VALIDATE_USER_OP_ABI =
+  'function validateUserOp((address sender,uint256 nonce,bytes initCode,bytes callData,bytes32 accountGasLimits,uint256 preVerificationGas,bytes32 gasFees,bytes paymasterAndData,bytes signature) userOp,bytes32 userOpHash) view returns (uint256)';
+const VALIDATOR_VALIDATE_USER_OP_WITH_SENDER_ABI =
+  'function validateUserOpWithSender(address account,(address sender,uint256 nonce,bytes initCode,bytes callData,bytes32 accountGasLimits,uint256 preVerificationGas,bytes32 gasFees,bytes paymasterAndData,bytes signature) userOp,bytes32 userOpHash,bytes signature) returns (uint256)';
+
 export const PALI_SMART_ACCOUNT_VERSION = 'PALI_SMART_ACCOUNT_ERC7579_V2';
 
 export const ERC7579_MODULE_TYPE_VALIDATOR = 1;
@@ -159,33 +170,33 @@ export const PALI_ENTRYPOINT_V09_ABI = [
 ] as const;
 
 export const PALI_ECDSA_VALIDATOR_ABI = [
-  'function isInitialized(address account) view returns (bool)',
-  'function isModuleType(uint256 moduleTypeId) view returns (bool)',
-  'function isValidSignatureWithSender(address sender,bytes32 hash,bytes signature) view returns (bytes4)',
+  VALIDATOR_IS_INITIALIZED_ABI,
+  VALIDATOR_IS_MODULE_TYPE_ABI,
+  VALIDATOR_IS_VALID_SIGNATURE_WITH_SENDER_ABI,
   'function onInstall(bytes data)',
   'function onUninstall(bytes data)',
   'function owners(address account) view returns (address[])',
   'function threshold(address account) view returns (uint64)',
-  'function validateUserOp((address sender,uint256 nonce,bytes initCode,bytes callData,bytes32 accountGasLimits,uint256 preVerificationGas,bytes32 gasFees,bytes paymasterAndData,bytes signature) userOp,bytes32 userOpHash) view returns (uint256)',
-  'function validateUserOpWithSender(address account,(address sender,uint256 nonce,bytes initCode,bytes callData,bytes32 accountGasLimits,uint256 preVerificationGas,bytes32 gasFees,bytes paymasterAndData,bytes signature) userOp,bytes32 userOpHash,bytes signature) returns (uint256)',
+  VALIDATOR_VALIDATE_USER_OP_ABI,
+  VALIDATOR_VALIDATE_USER_OP_WITH_SENDER_ABI,
 ] as const;
 
 export const PALI_P256_WEBAUTHN_VALIDATOR_ABI = [
-  'function isInitialized(address account) view returns (bool)',
-  'function isModuleType(uint256 moduleTypeId) view returns (bool)',
-  'function isValidSignatureWithSender(address sender,bytes32 hash,bytes signature) view returns (bytes4)',
+  VALIDATOR_IS_INITIALIZED_ABI,
+  VALIDATOR_IS_MODULE_TYPE_ABI,
+  VALIDATOR_IS_VALID_SIGNATURE_WITH_SENDER_ABI,
   'function onInstall(bytes data)',
   'function onUninstall(bytes data)',
   'function authData(address account) view returns ((bytes32 publicKeyX,bytes32 publicKeyY,bytes32 rpIdHash,bytes32 originHash,uint256 originLength))',
-  'function validateUserOp((address sender,uint256 nonce,bytes initCode,bytes callData,bytes32 accountGasLimits,uint256 preVerificationGas,bytes32 gasFees,bytes paymasterAndData,bytes signature) userOp,bytes32 userOpHash) view returns (uint256)',
-  'function validateUserOpWithSender(address account,(address sender,uint256 nonce,bytes initCode,bytes callData,bytes32 accountGasLimits,uint256 preVerificationGas,bytes32 gasFees,bytes paymasterAndData,bytes signature) userOp,bytes32 userOpHash,bytes signature) returns (uint256)',
+  VALIDATOR_VALIDATE_USER_OP_ABI,
+  VALIDATOR_VALIDATE_USER_OP_WITH_SENDER_ABI,
 ] as const;
 
 export const PALI_COMPOSITE_VALIDATOR_ABI = [
   'function childValidators(address account) view returns (address[])',
-  'function isInitialized(address account) view returns (bool)',
-  'function isModuleType(uint256 moduleTypeId) view returns (bool)',
-  'function isValidSignatureWithSender(address sender,bytes32 hash,bytes signature) view returns (bytes4)',
+  VALIDATOR_IS_INITIALIZED_ABI,
+  VALIDATOR_IS_MODULE_TYPE_ABI,
+  VALIDATOR_IS_VALID_SIGNATURE_WITH_SENDER_ABI,
   'function onInstall(bytes data)',
   'function onUninstall(bytes data)',
   'function threshold(address account) view returns (uint64)',
@@ -194,13 +205,13 @@ export const PALI_COMPOSITE_VALIDATOR_ABI = [
 
 export const PALI_SLH_DSA_VALIDATOR_ABI = [
   'function authData(address account) view returns ((bytes32 pkSeed,bytes32 pkRoot))',
-  'function isInitialized(address account) view returns (bool)',
-  'function isModuleType(uint256 moduleTypeId) view returns (bool)',
-  'function isValidSignatureWithSender(address sender,bytes32 hash,bytes signature) view returns (bytes4)',
+  VALIDATOR_IS_INITIALIZED_ABI,
+  VALIDATOR_IS_MODULE_TYPE_ABI,
+  VALIDATOR_IS_VALID_SIGNATURE_WITH_SENDER_ABI,
   'function onInstall(bytes data)',
   'function onUninstall(bytes data)',
-  'function validateUserOp((address sender,uint256 nonce,bytes initCode,bytes callData,bytes32 accountGasLimits,uint256 preVerificationGas,bytes32 gasFees,bytes paymasterAndData,bytes signature) userOp,bytes32 userOpHash) view returns (uint256)',
-  'function validateUserOpWithSender(address account,(address sender,uint256 nonce,bytes initCode,bytes callData,bytes32 accountGasLimits,uint256 preVerificationGas,bytes32 gasFees,bytes paymasterAndData,bytes signature) userOp,bytes32 userOpHash,bytes signature) returns (uint256)',
+  VALIDATOR_VALIDATE_USER_OP_ABI,
+  VALIDATOR_VALIDATE_USER_OP_WITH_SENDER_ABI,
 ] as const;
 
 export const PALI_GUARDIAN_RECOVERY_MODULE_ABI = [
@@ -214,8 +225,8 @@ export const PALI_GUARDIAN_RECOVERY_MODULE_ABI = [
   'function getRecoveryScheduleHash(address account,bytes32 salt,bytes32 mode,bytes executionCalldata) view returns (bytes32)',
   'function guardians(address account) view returns (address[])',
   'function isGuardian(address account,address guardian) view returns (bool)',
-  'function isInitialized(address account) view returns (bool)',
-  'function isModuleType(uint256 moduleTypeId) view returns (bool)',
+  VALIDATOR_IS_INITIALIZED_ABI,
+  VALIDATOR_IS_MODULE_TYPE_ABI,
   'function onInstall(bytes data)',
   'function onUninstall(bytes data)',
   'function policyEpoch(address account) view returns (uint256)',
