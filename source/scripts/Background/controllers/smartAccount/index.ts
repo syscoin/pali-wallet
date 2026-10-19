@@ -218,6 +218,10 @@ const DEPLOYMENT_RECEIPT_ERROR =
   'Invalid deployment receipt. Refresh status before retrying.';
 const RECOVERY_MANAGEMENT_ADDRESS_ERROR =
   'A wallet management address is required for smart-account recovery lookup';
+const DEPLOYMENT_NONCE_ERROR = 'Invalid deployment nonce response';
+const GUARDIAN_POLICY_ERROR =
+  'Guardian policy editing is handled by module templates';
+const GUARDIAN_MODULE_ERROR = 'Guardian recovery module is not configured';
 const ZKSYS_GAS_TANK_ABI = [
   'function creditOf(address account) view returns (uint256)',
 ] as const;
@@ -768,7 +772,7 @@ class SmartAccountController {
           !/^0x(?:0|[1-9a-fA-F][0-9a-fA-F]*)$/.test(latestNonce) ||
           !Number.isSafeInteger(Number(latestNonce))
         )
-          throw new Error('Invalid deployment nonce response');
+          throw new Error(DEPLOYMENT_NONCE_ERROR);
         settled = Number(latestNonce) > candidate.nonce;
       }
       if (!settled) {
@@ -896,10 +900,10 @@ class SmartAccountController {
           typeof pendingNonce !== 'string' ||
           !/^0x(?:0|[1-9a-fA-F][0-9a-fA-F]*)$/.test(pendingNonce)
         )
-          throw new Error('Invalid deployment nonce response');
+          throw new Error(DEPLOYMENT_NONCE_ERROR);
         const parsedNonce = Number(pendingNonce);
         if (!Number.isSafeInteger(parsedNonce) || parsedNonce < 0)
-          throw new Error('Invalid deployment nonce response');
+          throw new Error(DEPLOYMENT_NONCE_ERROR);
         const nonce = Math.max(nextNonce, parsedNonce);
         const reservation: InfrastructurePending = {
           contractId: contract.id,
@@ -2488,12 +2492,12 @@ class SmartAccountController {
 
   public async prepareSmartAccountGuardianPolicyUpdate(params: unknown) {
     void params;
-    throw new Error('Guardian policy editing is handled by module templates');
+    throw new Error(GUARDIAN_POLICY_ERROR);
   }
 
   public async prepareSmartAccountGuardianRemoval(params: unknown) {
     void params;
-    throw new Error('Guardian policy editing is handled by module templates');
+    throw new Error(GUARDIAN_POLICY_ERROR);
   }
 
   public async submitSmartAccountGuardianPolicyTransaction(params: {
@@ -2718,7 +2722,7 @@ class SmartAccountController {
     const recoveryModule = params.recoveryModule || status?.moduleAddress;
     assertCurrent();
     if (!recoveryModule) {
-      throw new Error('Guardian recovery module is not configured');
+      throw new Error(GUARDIAN_MODULE_ERROR);
     }
     await this.validateSmartAccountGuardianRecoveryOperation({
       account,
@@ -2777,7 +2781,7 @@ class SmartAccountController {
     const status = await this.getGuardianRecoveryStatusForAccount(account);
     const recoveryModule = status?.moduleAddress;
     if (!recoveryModule) {
-      throw new Error('Guardian recovery module is not configured');
+      throw new Error(GUARDIAN_MODULE_ERROR);
     }
     const provider = this.ethereumTransaction?.web3Provider;
     if (!provider) {
