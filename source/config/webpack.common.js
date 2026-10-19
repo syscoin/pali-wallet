@@ -302,6 +302,16 @@ module.exports = {
   ],
   optimization: {
     splitChunks: {
+      cacheGroups: {
+        // These UI-only modules are shared by lazy approval routes. Keep one
+        // packaged copy without changing the background worker's chunk policy.
+        accountReview: {
+          test: /[\\/]source[\\/](?:components[\\/]AccountIdenticon|pages[\\/]Transactions[\\/]EncryptionReview)\.tsx$/,
+          chunks: 'async',
+          name: 'account-review',
+          enforce: true,
+        },
+      },
       chunks(chunk) {
         // Only split chunks for app and external, NOT background, contentScript, inpage, pali, or handleWindowProperties
         return (
