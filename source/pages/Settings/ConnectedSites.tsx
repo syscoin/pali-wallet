@@ -203,11 +203,11 @@ const ConnectedSites = () => {
             <Button
               type="button"
               fullWidth
-              aria-label={`${t('buttons.retry')}: ${retryHost}`}
+              aria-label={`${t('receive.retry')}: ${retryHost}`}
               disabled={disconnectingHost !== null}
               onClick={() => void disconnectHost(retryHost)}
             >
-              {t('buttons.retry')}
+              {t('receive.retry')}
             </Button>
           )}
           <Button

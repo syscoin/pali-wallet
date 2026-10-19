@@ -193,7 +193,7 @@ it('reports a failed Settings disconnect and allows a durable retry after live p
   );
   await userEvent
     .setup()
-    .click(screen.getByRole('button', { name: `buttons.retry: ${HOST}` }));
+    .click(screen.getByRole('button', { name: `receive.retry: ${HOST}` }));
   await waitFor(() => expect(stateWrites).toHaveLength(2));
   expect(records.state.dapp.dapps[HOST]).toBeUndefined();
   expect((await restorePersistedPermissions()).isConnected(HOST)).toBe(false);
