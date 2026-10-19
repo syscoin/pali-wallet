@@ -10,6 +10,10 @@ import path from 'path';
 
 import en from '../../source/assets/locales/en.json';
 import { E2E_CONFIG } from '../harness/config';
+import {
+  createIsolatedVaultFixture,
+  installIsolatedVaultRoutes,
+} from '../harness/isolatedVaultFixture';
 import { PaliWallet } from '../harness/pali';
 import {
   createUtxoFixture,
@@ -151,7 +155,11 @@ const capture = async (page: Page, name: string, info: TestInfo) => {
   fs.mkdirSync(outputDirectory, { recursive: true });
   const file = path.join(outputDirectory, `${name}.png`);
   await page.mouse.move(0, 0);
-  await page.screenshot({ animations: 'disabled', path: file });
+  await page.screenshot({
+    animations: 'disabled',
+    path: file,
+    mask: [page.locator('input[type=password],textarea')],
+  });
   await info.attach(name, { contentType: 'image/png', path: file });
 };
 
@@ -558,33 +566,74 @@ test('Combined approvals: isolated real-extension interaction and layout', async
   }
 });
 
-// The existing public QA account is used only to open the normal fee preview.
-// This test never saves the fee editor or presses transaction Confirm.
+// Normal fee preview with a disposable synthetic wallet behind the launch-time
+// deny proxy. No fee Save, transaction Confirm, signature or broadcast occurs.
 test('real extension fee editor uses the shared dialog layout', async ({}, info) => {
   test.setTimeout(120_000);
   const originalConfig = { ...E2E_CONFIG };
+  const server = await startUtxoFixtureServer();
+  const fixture = createIsolatedVaultFixture();
   Object.assign(E2E_CONFIG, {
     password: 'ReadOnlyFeePreview!2026',
-    seedPhrase:
-      'abuse expect crisp unaware skirt adjust height coin seven attitude usual kick',
-    networkLabel: 'zkTanenbaum',
-    chainId: 57057,
+    seedPhrase: UTXO_FIXTURE_SEED,
+    networkLabel: 'Syscoin NEVM Testnet',
+    chainId: 5700,
+    rpcUrl: server.url,
   });
   let wallet: PaliWallet | undefined;
   const errors: string[] = [];
+  const rpcReads: string[] = [];
   try {
-    wallet = await PaliWallet.launch('shared-fee-dialog-preview');
+    wallet = await PaliWallet.launch('shared-fee-dialog-preview', {
+      offlineHttpProxy: server.url,
+    });
+    const routes = await installIsolatedVaultRoutes(
+      wallet.context,
+      fixture,
+      server.url
+    );
+    // Supplement the existing zero-balance fixture with a synthetic native
+    // balance and ordinary fee-estimation reads. Unknown calls still reach
+    // the fixture's fail-closed allowlist; no request reaches a public RPC.
+    await wallet.context.route('https://rpc.tanenbaum.io/', async (route) => {
+      if (route.request().method() !== 'POST') return route.fallback();
+      const rpc = route.request().postDataJSON();
+      const calls = Array.isArray(rpc) ? rpc : [rpc];
+      const replies = calls.map((call: any) => {
+        let result: unknown;
+        if (call.method === 'eth_getBalance') result = '0x8ac7230489e80000';
+        if (call.method === 'eth_estimateGas') result = '0x5208';
+        if (call.method === 'eth_feeHistory')
+          result = {
+            oldestBlock: '0x1',
+            baseFeePerGas: ['0x3b9aca00', '0x3b9aca00'],
+            gasUsedRatio: [0.5],
+            reward: [['0x3b9aca00']],
+          };
+        if (call.method === 'eth_chainId') result = '0x1644';
+        if (result === undefined) return undefined;
+        rpcReads.push(call.method);
+        return { jsonrpc: '2.0', id: call.id, result };
+      });
+      if (!replies.every((reply) => reply !== undefined))
+        return route.fallback();
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(Array.isArray(rpc) ? replies : replies[0]),
+      });
+    });
     const page = wallet.page;
     page.on('pageerror', (error) => errors.push(error.message));
     await wallet.importSeedAndCreatePassword();
-    await wallet.switchNetwork('zkTanenbaum');
+    await wallet.switchNetwork('Syscoin NEVM Testnet', 'EVM');
     await wallet.ensureOnHome();
     await page.locator('#send-btn').click();
     await expect(page).toHaveURL(/send\/eth/);
     await page
       .getByPlaceholder(/receiver/i)
       .first()
-      .fill('0xfFC854565ff83a49d3302821c0AD23822ca1A50C');
+      .fill(fixture.evmAddresses[1]);
     await page
       .getByPlaceholder(/amount/i)
       .first()
@@ -634,6 +683,18 @@ test('real extension fee editor uses the shared dialog layout', async ({}, info)
     await expect(page).toHaveURL(/send\/confirm/);
     await wallet.gotoRoute('#/home');
     expect(errors).toEqual([]);
+    expect(routes.deniedWrites).toEqual([]);
+    expect(rpcReads).toContain('eth_getBalance');
+    expect(rpcReads).toContain('eth_estimateGas');
+    await info.attach('fee-dialog-offline-evidence', {
+      body: JSON.stringify({
+        syntheticHttpOnly: true,
+        controllerStateReplaced: false,
+        rpcReads,
+        deniedWrites: routes.deniedWrites,
+      }),
+      contentType: 'application/json',
+    });
   } catch (error) {
     if (wallet)
       await capture(wallet.page, 'fee-editor-failure', info).catch(
@@ -642,6 +703,7 @@ test('real extension fee editor uses the shared dialog layout', async ({}, info)
     throw error;
   } finally {
     await wallet?.context.close().catch(() => undefined);
+    await server.close();
     Object.assign(E2E_CONFIG, originalConfig);
   }
 });
