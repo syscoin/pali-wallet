@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useSelector } from 'react-redux';
 
 import { useController } from 'hooks/useController';
@@ -7,7 +7,7 @@ import { Block } from 'utils/ethersV6Compat';
 import { verifyNetworkEIP1559Compatibility } from 'utils/network';
 
 // Module-level cache that persists across component mounts
-const eip1559Cache = new Map<number, boolean>();
+const eip1559Cache = new Map<string, boolean>();
 
 export const useEIP1559 = () => {
   const { controllerEmitter } = useController();
@@ -15,47 +15,53 @@ export const useEIP1559 = () => {
     (state: RootState) => state.vault
   );
 
-  // Initialize from cache if available
-  const cachedValue = activeNetwork?.chainId
-    ? eip1559Cache.get(activeNetwork.chainId)
-    : undefined;
-
-  const [isEIP1559Compatible, setIsEIP1559Compatible] = useState<
-    boolean | undefined
-  >(cachedValue);
-  const [isLoading, setIsLoading] = useState(false);
+  const scope = JSON.stringify([
+    activeNetwork?.kind,
+    activeNetwork?.chainId,
+    activeNetwork?.url,
+  ]);
+  const applicable = !isBitcoinBased && Boolean(activeNetwork?.chainId);
+  const cachedValue = applicable ? eip1559Cache.get(scope) : false;
+  const scopeRef = useRef(scope);
+  scopeRef.current = scope;
+  const requestRevision = useRef(0);
+  const [result, setResult] = useState({
+    scope,
+    value: cachedValue,
+    isLoading: false,
+  });
   const [forceRecheckTrigger, setForceRecheckTrigger] = useState(0);
 
   const forceRecheck = () => {
-    if (activeNetwork?.chainId) {
-      eip1559Cache.delete(activeNetwork.chainId); // Clear cache
-      setIsEIP1559Compatible(undefined); // Reset to trigger loading state
+    if (applicable) {
+      eip1559Cache.delete(scope);
+      // Invalidate a response even before the next effect commits.
+      requestRevision.current += 1;
+      setResult({ scope, value: undefined, isLoading: true });
       setForceRecheckTrigger((prev) => prev + 1);
     }
   };
 
   useEffect(() => {
+    let current = true;
+    const revision = ++requestRevision.current;
+    const isCurrent = () =>
+      current &&
+      scopeRef.current === scope &&
+      requestRevision.current === revision;
     const checkEIP1559Compatibility = async () => {
       // Skip for Bitcoin-based networks
-      if (isBitcoinBased || !activeNetwork?.chainId) {
-        setIsEIP1559Compatible(false);
+      if (!applicable) {
+        setResult({ scope, value: false, isLoading: false });
         return;
       }
 
-      // Skip if we have cached value (unless force rechecking)
-      if (
-        eip1559Cache.has(activeNetwork.chainId) &&
-        forceRecheckTrigger === 0
-      ) {
-        const cached = eip1559Cache.get(activeNetwork.chainId);
-        // Only update if different from current state
-        if (cached !== isEIP1559Compatible) {
-          setIsEIP1559Compatible(cached);
-        }
+      if (eip1559Cache.has(scope)) {
+        setResult({ scope, value: eip1559Cache.get(scope), isLoading: false });
         return;
       }
 
-      setIsLoading(true);
+      setResult({ scope, value: undefined, isLoading: true });
 
       try {
         // Always fetch a fresh block for this network's EIP1559 check
@@ -69,24 +75,28 @@ export const useEIP1559 = () => {
           blockToCheck
         );
 
-        // Cache the result
-        eip1559Cache.set(activeNetwork.chainId, isCompatible);
-        setIsEIP1559Compatible(isCompatible);
+        if (!isCurrent()) return;
+        eip1559Cache.set(scope, isCompatible);
+        setResult({ scope, value: isCompatible, isLoading: false });
       } catch (error) {
+        if (!isCurrent()) return;
         console.error('Failed to check EIP1559 compatibility:', error);
-        setIsEIP1559Compatible(false);
-      } finally {
-        setIsLoading(false);
+        setResult({ scope, value: false, isLoading: false });
       }
     };
 
     checkEIP1559Compatibility();
-  }, [
-    activeNetwork?.chainId,
-    isBitcoinBased,
-    forceRecheckTrigger,
-    isEIP1559Compatible,
-  ]);
+    return () => {
+      current = false;
+    };
+  }, [scope, applicable, forceRecheckTrigger]);
 
-  return { isEIP1559Compatible, isLoading, forceRecheck };
+  // A new endpoint must never render the previous endpoint's fee mode while
+  // waiting for its effect. A matching endpoint cache remains immediately usable.
+  return {
+    isEIP1559Compatible: result.scope === scope ? result.value : cachedValue,
+    isLoading:
+      result.scope === scope ? result.isLoading : cachedValue === undefined,
+    forceRecheck,
+  };
 };

@@ -107,7 +107,7 @@ describe('synchronous translation registration before wallet rendering', () => {
     expect(probe.getAttribute('data-renders')).toBe('2');
     expect(instance.hasResourceBundle('es', 'translation')).toBe(true);
     expect(chromeStorage.getItem).toHaveBeenCalledWith('language');
-    expect(chromeStorage.setItem).toHaveBeenCalledWith('language', 'es');
+    expect(chromeStorage.setItem).not.toHaveBeenCalled();
     expect(instance.options.interpolation?.escapeValue).toBe(true);
     expect(errorLog).not.toHaveBeenCalled();
     expect(warningLog).not.toHaveBeenCalled();
@@ -142,19 +142,14 @@ describe('synchronous translation registration before wallet rendering', () => {
     expect(errorLog).not.toHaveBeenCalled();
   });
 
-  it('handles rejected locale persistence without breaking rendered translations', async () => {
+  it('restores translations without attempting to write the startup preference', async () => {
     jest
       .mocked(chromeStorage.setItem)
       .mockRejectedValue(new Error('Storage write unavailable'));
     const { instance } = loadTranslations();
     render(<BootstrapTranslationProbe />);
     await act(async () => resolveLanguage('es'));
-    await waitFor(() =>
-      expect(errorLog).toHaveBeenCalledWith(
-        '[i18n] Failed to initialize translations:',
-        expect.objectContaining({ message: 'Storage write unavailable' })
-      )
-    );
+    await waitFor(() => expect(instance.language).toBe('es'));
     fireEvent.click(screen.getByTestId('translation-probe'));
 
     expect(instance.language).toBe('es');
@@ -162,6 +157,8 @@ describe('synchronous translation registration before wallet rendering', () => {
       esTranslations.buttons.next
     );
     expect(reactI18next.getI18n()).toBe(instance);
+    expect(chromeStorage.setItem).not.toHaveBeenCalled();
+    expect(errorLog).not.toHaveBeenCalled();
   });
 
   it('retains a newer explicit locale choice when the initial storage read completes late', async () => {

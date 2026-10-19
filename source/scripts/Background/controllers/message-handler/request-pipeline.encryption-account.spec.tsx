@@ -58,6 +58,24 @@ jest.mock('state/store', () => ({
     },
   },
   saveMainState: jest.fn(async () => true),
+  // Match staged publication for this mocked store; real storage failures are
+  // exercised by the account-change persistence integration suite.
+  persistDappPermissionGrant: async (grant, previous, isCurrent) => {
+    const assertCurrent = () => {
+      if (!isCurrent() || mockState.dapp.dapps[grant.host] !== previous)
+        throw new Error('Permission grant context changed');
+    };
+    assertCurrent();
+    await Promise.resolve();
+    assertCurrent();
+    mockState = {
+      ...mockState,
+      dapp: dappReducer(mockState.dapp, {
+        type: 'dapp/addDApp',
+        payload: grant,
+      }),
+    };
+  },
 }));
 jest.mock('react-redux', () => ({
   useSelector: (select: any) => select(mockState),

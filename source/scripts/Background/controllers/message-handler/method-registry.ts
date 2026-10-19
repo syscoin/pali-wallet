@@ -1279,6 +1279,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     networkPreference: NetworkPreference.UTXO,
     networkEnforcement: NetworkEnforcement.Always,
     hasPopup: false,
+    isBlocking: true,
   },
 
   sys_sign: {

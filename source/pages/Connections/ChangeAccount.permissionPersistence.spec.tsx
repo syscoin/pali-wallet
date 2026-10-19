@@ -6,8 +6,13 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import React from 'react';
 import { Provider } from 'react-redux';
 
+import { getController } from 'scripts/Background';
 import DAppController from 'scripts/Background/controllers/DAppController';
 import MainController from 'scripts/Background/controllers/MainController';
+import {
+  accountSwitchingMiddleware,
+  requestCoordinator,
+} from 'scripts/Background/controllers/message-handler/request-pipeline';
 import { rehydrate as rehydrateDapp } from 'state/dapp';
 import { walletPersistenceGate } from 'state/paliStorage';
 import { rehydrateStore } from 'state/rehydrate';
@@ -108,6 +113,7 @@ let dapp: any;
 let releasePermission: () => void;
 let releaseNetwork: () => void;
 let sessionAlive: boolean;
+let failNextStateWrite: boolean;
 
 beforeEach(async () => {
   jest.clearAllMocks();
@@ -118,6 +124,7 @@ beforeEach(async () => {
   records = {};
   writes = [];
   sessionAlive = true;
+  failNextStateWrite = false;
   global.chrome = {
     runtime: {
       id: 'synthetic',
@@ -138,6 +145,15 @@ beforeEach(async () => {
           ),
         set: (items: any, callback: any) => {
           writes.push(clone(items));
+          if (failNextStateWrite && items.state) {
+            failNextStateWrite = false;
+            (chrome.runtime as any).lastError = {
+              message: 'synthetic permission storage failure',
+            };
+            callback();
+            delete (chrome.runtime as any).lastError;
+            return;
+          }
           Object.assign(records, clone(items));
           callback();
         },
@@ -204,6 +220,13 @@ beforeEach(async () => {
   mockEmitter.mockImplementation((path: string[], args: any[]) => {
     if (path[0] === 'dapp' && path[1] === 'requestPermissions') {
       const response = dapp.requestPermissions(...args);
+      return responseDelay.then(() => response);
+    }
+    if (path[0] === 'dapp' && path[1] === 'changeAccount') {
+      const response = dapp.changeAccount(...args);
+      // A background reply may be delayed after its operation has settled.
+      // Observe a rejected operation now; deliver that rejection unchanged.
+      void response.catch(() => undefined);
       return responseDelay.then(() => response);
     }
     if (path[0] === 'wallet' && path[1] === 'setAccount')
@@ -331,3 +354,120 @@ it('mitigation control: emergencySave after the same delayed approval makes the 
   await restoreDurableState();
   expect(store.getState().dapp.dapps[host].accountId).toBe(1);
 });
+
+const submitExistingAccountChange = async (failWrite = false) => {
+  await dapp.connect(
+    {
+      host,
+      accountId: 0,
+      accountType: type,
+      chain: 'ethereum',
+      chainId: 1,
+      date: 1,
+    },
+    {
+      address: account(0).address,
+      xpub: account(0).xpub,
+      network: { ...store.getState().vault.activeNetwork },
+    }
+  );
+  mockQuery = { ...mockQuery, eventName: 'changeAccount', currentAccountId: 0 };
+  failNextStateWrite = failWrite;
+  const view = render(
+    <Provider store={store}>
+      <ChangeAccount />
+    </Provider>
+  );
+  await act(async () => {
+    fireEvent.click(screen.getByText('Account 1'));
+  });
+  await act(async () => {
+    fireEvent.click(screen.getByText('buttons.change'));
+  });
+  return view;
+};
+
+it.each([false, true])(
+  'persists an existing account change before its reply (view unmounted=%s)',
+  async (unmount) => {
+    const view = await submitExistingAccountChange();
+    expect(records.state.dapp.dapps[host].accountId).toBe(1);
+    if (unmount) view.unmount();
+    await act(async () => releasePermission());
+    expect(dispatchBackgroundEvent).toHaveBeenCalledWith(
+      'changeAccount.' + host,
+      null
+    );
+    if (!unmount) view.unmount();
+    await restoreDurableState();
+    expect(store.getState().dapp.dapps[host].accountId).toBe(1);
+  }
+);
+
+it('does not acknowledge a failed account-change save when its view disappears before the reply', async () => {
+  const view = await submitExistingAccountChange(true);
+  expect(records.state.dapp.dapps[host].accountId).toBe(0);
+  view.unmount();
+  await act(async () => releasePermission());
+  expect(mockEmitter.mock.calls.map(([path]) => path)).toEqual([
+    ['dapp', 'changeAccount'],
+  ]);
+  await restoreDurableState();
+  expect(store.getState().dapp.dapps[host].accountId).toBe(0);
+  expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
+});
+
+it.each([false, true])(
+  'gates the real account-switch pipeline continuation on a durable permission change (write fails=%s)',
+  async (failWrite) => {
+    await dapp.connect(
+      {
+        host,
+        accountId: 0,
+        accountType: type,
+        chain: 'ethereum',
+        chainId: 1,
+        date: 1,
+      },
+      {
+        address: account(0).address,
+        xpub: account(0).xpub,
+        network: { ...store.getState().vault.activeNetwork },
+      }
+    );
+    jest.mocked(getController).mockReturnValue({ dapp } as any);
+    // Only the user's accepted switch prompt is synthetic. The subsequent
+    // middleware, DAppController, reducer and storage adapter remain real.
+    const consent = jest
+      .spyOn(requestCoordinator, 'coordinatePopupRequest')
+      .mockResolvedValue(null);
+    failNextStateWrite = failWrite;
+    const next = jest.fn().mockResolvedValue('continued');
+    const result = accountSwitchingMiddleware(
+      {
+        methodConfig: { isBlocking: true, requiresConnection: true },
+        originalRequest: {
+          host,
+          method: 'eth_sendTransaction',
+          params: [{ from: account(1).address }],
+          sender: {},
+          type: 'METHOD_REQUEST',
+        },
+      } as any,
+      next
+    );
+    if (failWrite) {
+      await expect(result).rejects.toMatchObject({
+        message: 'synthetic permission storage failure',
+      });
+      expect(next).not.toHaveBeenCalled();
+      expect(dapp.get(host).accountId).toBe(0);
+      expect(records.state.dapp.dapps[host].accountId).toBe(0);
+    } else {
+      await expect(result).resolves.toBe('continued');
+      expect(next).toHaveBeenCalledTimes(1);
+      expect(records.state.dapp.dapps[host].accountId).toBe(1);
+    }
+    expect(consent).toHaveBeenCalledTimes(1);
+  }
+);
