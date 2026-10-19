@@ -371,11 +371,18 @@ export const ChangeAccount = () => {
         response = null;
       }
 
-      if (isCurrentSubmission() && isSelectionCurrent(selection))
-        await controllerEmitter(
-          ['wallet', 'setAccount'],
-          [accountId, accountType, true, selection.context.address]
-        );
+      if (isCurrentSubmission() && isSelectionCurrent(selection)) {
+        try {
+          await controllerEmitter(
+            ['wallet', 'setAccount'],
+            [accountId, accountType, true, selection.context.address]
+          );
+        } catch (error) {
+          // The origin's grant is already durable; optional wallet selection
+          // must not turn that admitted operation into an unanswered failure.
+          console.error('Permission saved but wallet selection failed:', error);
+        }
+      }
 
       // Settle the admitted operation for its original approval document. A
       // replacement view must not be closed by this operation's completion.

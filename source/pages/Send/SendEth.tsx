@@ -250,8 +250,14 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
   const formValuesRef = useRef<any>(initialDraft.formValues || {});
   const tokenIdVerificationTimeoutRef = useRef<NodeJS.Timeout>();
   const nftRequest = useRef(0);
+  // Bind positive ownership to this exact form/contract/ID, and invalidate it
+  // synchronously before an input change can submit through an old render.
+  const ownedNftRef = useRef<string | null>(null);
+  const nftOwnershipKey = (contract: string, tokenId: string) =>
+    `${scopeKey}:${contract.toLowerCase()}:${tokenId}`;
   const beginNftLookup = useCallback(() => {
     const request = ++nftRequest.current;
+    ownedNftRef.current = null;
     clearTimeout(tokenIdVerificationTimeoutRef.current);
     setIsLoadingNftTokenIds(false);
     setIsVerifyingTokenId(false);
@@ -588,6 +594,11 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                 setSelectedNftTokenId(result[0].tokenId);
                 // Also set it in the form
                 form.setFieldValue('nftTokenId', result[0].tokenId);
+                if (result[0].balance > 0)
+                  ownedNftRef.current = nftOwnershipKey(
+                    getAsset.contractAddress,
+                    result[0].tokenId
+                  );
               }
             } catch {
               if (!current()) return;
@@ -626,6 +637,22 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
   const handleSubmit = useCallback(
     async (values: any) => {
       if (!isCurrentForm()) return;
+      if (
+        selectedAsset?.isNft &&
+        selectedAsset.tokenStandard !== 'ERC-1155' &&
+        ownedNftRef.current !==
+          nftOwnershipKey(
+            selectedAsset.contractAddress,
+            String(values.nftTokenId || '').trim()
+          )
+      ) {
+        alert.error(
+          isVerifyingTokenId
+            ? t('send.verifyingOwnership')
+            : verificationError || t('send.tokenVerificationFailed')
+        );
+        return;
+      }
       try {
         const receiver = String(values.receiver || '');
         // Only submit the result this validation admitted. A concurrent cache
@@ -765,6 +792,9 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
       nftTokenIds,
       selectedNftTokenId,
       hasPendingOutgoingEvmTx,
+      isVerifyingTokenId,
+      verificationError,
+      nftOwnershipKey,
       location.state?.returnContext,
       isCurrentForm,
       incompatibleSmartAddresses,
@@ -921,6 +951,10 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
         const tokenInfo = result[0];
         const balance = getExactNftBalance(tokenInfo);
         if (tokenInfo.verified && balance !== null && balance !== '0') {
+          ownedNftRef.current = nftOwnershipKey(
+            selectedAsset.contractAddress,
+            tokenId.trim()
+          );
           setVerifiedTokenBalance(balance);
           setVerificationError(null);
         } else {
@@ -1870,6 +1904,11 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                       type="button"
                       onClick={() => {
                         beginNftLookup();
+                        if (nft.balance > 0)
+                          ownedNftRef.current = nftOwnershipKey(
+                            selectedAsset.contractAddress,
+                            nft.tokenId
+                          );
                         setSelectedNftTokenId(nft.tokenId);
                         form.setFieldValue('nftTokenId', nft.tokenId);
                         setVerifiedTokenBalance(getExactNftBalance(nft));

@@ -37,6 +37,7 @@ const ConnectedSites = () => {
     null
   );
   const [disconnectError, setDisconnectError] = useState('');
+  const [retryHost, setRetryHost] = useState<string | null>(null);
 
   // Show all dapps since they're connected globally (one account per dapp)
   // Redux owns membership: an old optimistic removal must not hide a later
@@ -48,23 +49,28 @@ const ConnectedSites = () => {
     if (selectedHost && !selected) setSelectedHost(undefined);
   }, [selectedHost, selected]);
 
-  const disconnectSelected = async () => {
-    if (!selected) return;
-
-    const host = selected.host;
+  const disconnectHost = async (host: string) => {
     setDisconnectError('');
+    setRetryHost(null);
     setDisconnectingHost(host);
     setSelectedHost(undefined);
 
     try {
       // The controller will dispatch removeDApp action internally
-      await controllerEmitter(['dapp', 'disconnect'], [host]);
+      await controllerEmitter(
+        ['dapp', 'disconnect'],
+        [host, true, { allowAlreadyDisconnected: true, propagateErrors: true }]
+      );
     } catch (error) {
+      setRetryHost(host);
       setDisconnectError(error?.message || t('send.failed'));
       console.error('Error disconnecting dapp:', error);
     } finally {
       setDisconnectingHost((current) => (current === host ? null : current));
     }
+  };
+  const disconnectSelected = () => {
+    if (selected) void disconnectHost(selected.host);
   };
 
   return (
@@ -193,6 +199,17 @@ const ConnectedSites = () => {
         )}
 
         <PageActionFooter error={disconnectError}>
+          {retryHost && (
+            <Button
+              type="button"
+              fullWidth
+              aria-label={`${t('buttons.retry')}: ${retryHost}`}
+              disabled={disconnectingHost !== null}
+              onClick={() => void disconnectHost(retryHost)}
+            >
+              {t('buttons.retry')}
+            </Button>
+          )}
           <Button
             variant="neutral"
             className="text-sm text-brand-royalblue"

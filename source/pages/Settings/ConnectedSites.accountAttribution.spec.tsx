@@ -204,7 +204,10 @@ it('keeps the selected account attribution and disconnects the exact host', asyn
   );
   await waitFor(() => expect(screen.queryByText(host)).toBeNull());
   expect(mockEmitter).toHaveBeenCalledTimes(1);
-  expect(mockEmitter).toHaveBeenCalledWith(['dapp', 'disconnect'], [host]);
+  expect(mockEmitter).toHaveBeenCalledWith(
+    ['dapp', 'disconnect'],
+    [host, true, { allowAlreadyDisconnected: true, propagateErrors: true }]
+  );
   expect(screen.queryByRole('alert')).toBeNull();
 });
 
@@ -294,7 +297,7 @@ it('restores access after a rejected disconnect without hiding the still-connect
     expect(mockEmitter).toHaveBeenCalledTimes(2);
     expect(mockEmitter).toHaveBeenLastCalledWith(
       ['dapp', 'disconnect'],
-      [host]
+      [host, true, { allowAlreadyDisconnected: true, propagateErrors: true }]
     );
   } finally {
     errors.mockRestore();
