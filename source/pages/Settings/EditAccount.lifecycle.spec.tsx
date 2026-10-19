@@ -10,7 +10,7 @@ import {
 import React from 'react';
 import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
 
-import { KeyringAccountType } from 'types/network';
+import { INetworkType, KeyringAccountType } from 'types/network';
 import { getWalletNavigationScope } from 'utils/navigationState';
 
 import EditAccount from './EditAccount';
@@ -18,6 +18,7 @@ import EditAccount from './EditAccount';
 const mockEmitter = jest.fn();
 const mockAlert = { success: jest.fn(), error: jest.fn() };
 const initialState = () => ({
+  vaultGlobal: { activeSlip44: 60 },
   vault: {
     activeAccount: { id: 1, type: KeyringAccountType.SmartAccount },
     activeNetwork: {
@@ -101,7 +102,11 @@ const Policy = () => {
     </>
   );
 };
-const Tree = () => (
+const Tree = ({
+  accountType = KeyringAccountType.SmartAccount,
+}: {
+  accountType?: KeyringAccountType;
+}) => (
   <MemoryRouter
     future={{ ['v7_startTransition']: true, ['v7_relativeSplatPath']: true }}
     initialEntries={[
@@ -109,7 +114,7 @@ const Tree = () => (
         pathname: '/settings/edit-account',
         state: {
           id: 1,
-          accountType: KeyringAccountType.SmartAccount,
+          accountType,
           returnContext: { returnRoute: '/settings/manage-accounts' },
         },
       },
@@ -303,5 +308,177 @@ it.each(['active account', 'selected identity', 'network round trip'])(
     expect(screen.getByRole('button', { name: 'buttons.save' })).toBeEnabled();
     expect(mockAlert.success).not.toHaveBeenCalled();
     expect(mockAlert.error).not.toHaveBeenCalled();
+  }
+);
+
+const useHdAccountFixture = () => {
+  mockState.vaultGlobal.activeSlip44 = 57;
+  mockState.vault.activeNetwork = {
+    kind: INetworkType.Syscoin,
+    chainId: 57,
+    slip44: 57,
+    url: 'https://syscoin.invalid',
+  };
+  mockState.vault.activeAccount = {
+    id: 1,
+    type: KeyringAccountType.HDAccount,
+  };
+  mockState.vault.accounts.HDAccount = {
+    1: {
+      id: 1,
+      address: 'syscoin-public-receiving-address',
+      xpub: 'syscoin-public-account-key',
+      label: 'Syscoin savings',
+    },
+  };
+};
+
+it('does not carry a label draft into the same account slot in another UTXO vault', async () => {
+  useHdAccountFixture();
+  const view = render(<Tree accountType={KeyringAccountType.HDAccount} />);
+  fireEvent.change(screen.getByPlaceholderText('settings.accountLabel'), {
+    target: { value: 'Syscoin-only draft' },
+  });
+  // A completed ordinary network switch rehydrates the target vault while
+  // preserving this route. Its id/type can match a different source account.
+  mockState.vaultGlobal.activeSlip44 = 0;
+  mockState.vault.activeNetwork = {
+    kind: INetworkType.Syscoin,
+    chainId: 0,
+    slip44: 0,
+    url: 'https://bitcoin.invalid',
+  };
+  mockState.vault.accounts.HDAccount[1] = {
+    id: 1,
+    address: 'bitcoin-public-receiving-address',
+    xpub: 'bitcoin-public-account-key',
+    label: 'Bitcoin savings',
+  };
+  view.rerender(<Tree accountType={KeyringAccountType.HDAccount} />);
+  expect(screen.getByTitle('bitcoin-public-receiving-address')).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.save' }));
+  await waitFor(() => expect(mockEmitter).toHaveBeenCalledTimes(1));
+  expect(mockEmitter).toHaveBeenCalledWith(
+    ['wallet', 'editAccountLabel'],
+    [
+      'Bitcoin savings',
+      1,
+      KeyringAccountType.HDAccount,
+      {
+        account: {
+          address: 'bitcoin-public-receiving-address',
+          xpub: 'bitcoin-public-account-key',
+        },
+        walletScope: getWalletNavigationScope(),
+      },
+    ]
+  );
+});
+
+it('resets a smart-account label draft when its address changes even with the same owner xpub', async () => {
+  mockState.vault.accounts.SmartAccount[1].xpub = 'same-public-owner-key';
+  const view = render(<Tree />);
+  await act(async () => {
+    fireEvent.change(screen.getByPlaceholderText('settings.accountLabel'), {
+      target: { value: 'Earlier smart-account draft' },
+    });
+  });
+  mockState.vault.accounts.SmartAccount[1] = {
+    ...mockState.vault.accounts.SmartAccount[1],
+    address: '0x2222222222222222222222222222222222222222',
+    label: 'Different smart account',
+  };
+  view.rerender(<Tree />);
+  expect(
+    screen.getByTitle('0x2222222222222222222222222222222222222222')
+  ).toBeVisible();
+  expect(screen.getByPlaceholderText('settings.accountLabel')).toHaveValue(
+    'Different smart account'
+  );
+});
+
+it('preserves an HD account label draft when only its receiving address advances', async () => {
+  useHdAccountFixture();
+  const view = render(<Tree accountType={KeyringAccountType.HDAccount} />);
+  fireEvent.change(screen.getByPlaceholderText('settings.accountLabel'), {
+    target: { value: 'Keep my HD draft' },
+  });
+  mockState.vault.accounts.HDAccount[1] = {
+    ...mockState.vault.accounts.HDAccount[1],
+    address: 'syscoin-next-public-receiving-address',
+  };
+  view.rerender(<Tree accountType={KeyringAccountType.HDAccount} />);
+  expect(screen.getByPlaceholderText('settings.accountLabel')).toHaveValue(
+    'Keep my HD draft'
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.save' }));
+  await waitFor(() => expect(mockEmitter).toHaveBeenCalledTimes(1));
+  expect(mockEmitter.mock.calls[0][1]).toEqual([
+    'Keep my HD draft',
+    1,
+    KeyringAccountType.HDAccount,
+    {
+      account: {
+        address: 'syscoin-next-public-receiving-address',
+        xpub: 'syscoin-public-account-key',
+      },
+      walletScope: getWalletNavigationScope(),
+    },
+  ]);
+});
+
+it.each(['balance and saved label', 'active account', 'EVM chain'])(
+  'preserves the same target label draft after a %s update',
+  async (change) => {
+    const accountType =
+      change === 'EVM chain'
+        ? KeyringAccountType.HDAccount
+        : KeyringAccountType.SmartAccount;
+    if (change === 'EVM chain') {
+      mockState.vault.accounts.HDAccount = {
+        1: {
+          ...mockState.vault.accounts.SmartAccount[1],
+          xpub: 'same-public-hd-key',
+          isSmartAccount: false,
+        },
+      };
+      mockState.vault.activeAccount.type = KeyringAccountType.HDAccount;
+    }
+    const view = render(<Tree accountType={accountType} />);
+    await act(async () => {
+      fireEvent.change(screen.getByPlaceholderText('settings.accountLabel'), {
+        target: { value: 'Keep this target draft' },
+      });
+    });
+    if (change === 'balance and saved label') {
+      mockState.vault.accounts.SmartAccount[1] = {
+        ...mockState.vault.accounts.SmartAccount[1],
+        balances: { ethereum: 42, syscoin: 0 },
+        label: 'External saved label',
+      };
+    }
+    if (change === 'active account') {
+      mockState.vault.accounts.SmartAccount[2] = {
+        id: 2,
+        address: '0x2222222222222222222222222222222222222222',
+        label: 'Other active account',
+      };
+      mockState.vault.activeAccount = {
+        id: 2,
+        type: KeyringAccountType.SmartAccount,
+      };
+    }
+    if (change === 'EVM chain') {
+      mockState.vault.activeNetwork = {
+        ...mockState.vault.activeNetwork,
+        chainId: 42161,
+        url: 'https://arbitrum.invalid',
+      };
+    }
+    view.rerender(<Tree accountType={accountType} />);
+    expect(screen.getByPlaceholderText('settings.accountLabel')).toHaveValue(
+      'Keep this target draft'
+    );
+    expect(mockEmitter).not.toHaveBeenCalled();
   }
 );
