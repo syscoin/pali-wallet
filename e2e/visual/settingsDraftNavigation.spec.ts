@@ -154,9 +154,16 @@ test('currency quotes keep their denomination and custom RPC drafts survive head
           })
           .click();
         await expect(page).toHaveURL(/#\/settings\/networks\/connected-sites$/);
-        await page
+        // HashRouter updates the URL before the lazy route commits. Wait for
+        // ConnectedSites and select its footer, not the previous page's X.
+        const connectedSites = page.locator(
+          '[data-navigation-scroll="settings-connected-sites"]'
+        );
+        await expect(connectedSites).toBeVisible();
+        await connectedSites
+          .locator('..')
+          .locator('[data-page-action-footer]')
           .getByRole('button', { name: en.buttons.close, exact: true })
-          .last()
           .click();
         await expect(page).toHaveURL(/#\/settings\/networks\/custom-rpc$/);
         await expect(label).toBeVisible();
