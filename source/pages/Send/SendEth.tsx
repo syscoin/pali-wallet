@@ -758,7 +758,10 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
       if (selectedAsset.tokenStandard === 'ERC-1155') {
         const balance =
           verifiedTokenBalance ?? getExactNftBalance(selectedAsset);
-        if (balance !== null) return `${balance} ${selectedAsset.tokenSymbol}`;
+        if (balance !== null)
+          return `${formatFullPrecisionBalance(balance, 4)} ${
+            selectedAsset.tokenSymbol
+          }`;
       }
 
       // For NFTs and unverified tokens, use stored balance
@@ -1150,7 +1153,12 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
           <p className="text-brand-gray200 text-xs">
             {t('components.yourBalance')}
           </p>
-          <p className="text-white text-xs font-semibold">{finalBalance()}</p>
+          <p
+            className="text-white text-xs font-semibold"
+            title={verifiedTokenBalance || undefined}
+          >
+            {finalBalance()}
+          </p>
           {/* ERC-20 verification indicators */}
           {selectedAsset && !selectedAsset.isNft && isVerifyingERC20 && (
             <span className="text-brand-royalblue text-xs ml-1">🔄</span>

@@ -66,9 +66,11 @@ jest.mock('utils/index', () => ({
       .getWalletNavigationScope(...args),
   getAssetBalance: (...args: any[]) =>
     jest.requireActual('utils/transactions').getAssetBalance(...args),
-  ellipsis: (v: string) => v,
+  ellipsis: (...args: any[]) =>
+    jest.requireActual('utils/format').ellipsis(...args),
   adjustUrl: (v: string) => v,
-  formatFullPrecisionBalance: (v: any) => String(v),
+  formatFullPrecisionBalance: (...args: any[]) =>
+    jest.requireActual('utils/format').formatFullPrecisionBalance(...args),
   createNavigationContext: jest.fn(),
   navigateWithContext: (...args: any[]) => mockNavigate(...args),
   getTokenTypeBadgeColor: () => '',
@@ -436,11 +438,25 @@ it.each([
 
 it('supports safe legacy ERC1155 balances without raw metadata', async () => {
   await prepareERC1155(undefined, 42);
+  expect(screen.getByText('42 QTY')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'MAX' }));
   expect(nftAmount().value).toBe('42');
   fireEvent.click(next());
   await waitFor(() => expect(mockNavigate).toHaveBeenCalledTimes(1));
   expect(mockNavigate.mock.calls[0][2].tx.amount).toBe('42');
+});
+
+it('compacts a uint256 ERC1155 header while keeping MAX and confirmation exact', async () => {
+  const rawBalance =
+    '115792089237316195423570985008687907853269984665640564039457584007913129639935';
+  await prepareERC1155(rawBalance, Number.MAX_SAFE_INTEGER);
+  expect(screen.getByText('1.16e77 QTY')).toHaveAttribute('title', rawBalance);
+  expect(screen.queryByText(`${rawBalance} QTY`)).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'MAX' }));
+  expect(nftAmount().value).toBe(rawBalance);
+  fireEvent.click(next());
+  await waitFor(() => expect(mockNavigate).toHaveBeenCalledTimes(1));
+  expect(mockNavigate.mock.calls[0][2].tx.amount).toBe(rawBalance);
 });
 
 it.each([

@@ -255,6 +255,35 @@ test('manual ERC1155 import and Send MAX retain the exact verified quantity', as
           await page.getByRole('button', { name: 'MAX', exact: true }).click();
           await expect(page.locator('#with-max-button')).toHaveValue(QUANTITY);
           await expect(page.locator('#with-max-button')).toBeVisible();
+          for (const viewport of [
+            { width: 400, height: 620 },
+            { width: 320, height: 360 },
+          ]) {
+            await page.setViewportSize(viewport);
+            const balanceRow = page
+              .getByText(en.components.yourBalance, { exact: true })
+              .locator('..');
+            await expect
+              .poll(() =>
+                balanceRow.evaluate((row) =>
+                  [...row.querySelectorAll('p')].every((element) => {
+                    const bounds = element.getBoundingClientRect();
+                    return bounds.left >= 0 && bounds.right <= innerWidth;
+                  })
+                )
+              )
+              .toBe(true);
+            await expect(page.locator('#with-max-button')).toHaveValue(
+              QUANTITY
+            );
+            await info.attach(
+              `exact-max-${viewport.width}x${viewport.height}`,
+              {
+                body: await page.screenshot({ animations: 'disabled' }),
+                contentType: 'image/png',
+              }
+            );
+          }
           expect([...deniedWrites, ...routes!.deniedWrites]).toEqual([]);
         } finally {
           if (!page.isClosed()) await capture(page);
