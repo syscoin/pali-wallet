@@ -850,9 +850,12 @@ export const EvmTransactionsList = ({
     const map = new Map<string, any>();
     const list = activeAssets?.ethereum || [];
     for (const a of list) {
-      if (a?.contractAddress && Number(a.chainId) === Number(chainId)) {
-        map.set(String(a.contractAddress).toLowerCase(), a);
-      }
+      if (!a?.contractAddress) continue;
+      const address = String(a.contractAddress).toLowerCase();
+      const legacy = a.chainId === undefined || a.chainId === null;
+      // Legacy metadata is a fallback, never a replacement for this chain.
+      if (legacy ? !map.has(address) : Number(a.chainId) === Number(chainId))
+        map.set(address, a);
     }
     return map;
   }, [activeAssets?.ethereum, chainId]);

@@ -179,3 +179,77 @@ it('refreshes a same-chain tooltip when only the imported token name changes', a
     ).toBe('Updated token name')
   );
 });
+
+const legacyToken = (chainId?: null) => ({
+  ...token(1),
+  id: 'legacy-token',
+  chainId,
+  tokenSymbol: 'LEGACY',
+  name: 'Legacy token',
+  logo: 'https://icons.invalid/legacy.png',
+});
+
+const expectMetadata = (symbol: string, name: string, logo: string) => {
+  const icon = screen.getByTestId('history-token-icon');
+  expect(icon.getAttribute('data-symbol')).toBe(symbol);
+  expect(icon.getAttribute('data-logo')).toBe(logo);
+  expect(icon.parentElement?.parentElement?.getAttribute('title')).toBe(name);
+};
+
+it.each([undefined, null])(
+  'retains legacy icon metadata when optional chainId is %s',
+  async (chainId) => {
+    mockVault.accountAssets.HDAccount[0].ethereum = [legacyToken(chainId)];
+    render(<EvmTransactionsList userTransactions={mockRows} />);
+    // The calldata decoder does not infer a chain for this legacy entry.
+    // Wait for its real generic result, not the initial loading placeholder.
+    await screen.findByText('0x3333...3333 Transfer');
+    expectMetadata(
+      'LEGACY',
+      'Legacy token',
+      'https://icons.invalid/legacy.png'
+    );
+  }
+);
+
+it.each([false, true])(
+  'uses legacy metadata rather than an explicit foreign chain, legacy last=%s',
+  async (legacyLast) => {
+    const assets = [legacyToken(), token(137)];
+    mockVault.accountAssets.HDAccount[0].ethereum = legacyLast
+      ? assets.reverse()
+      : assets;
+    render(<EvmTransactionsList userTransactions={mockRows} />);
+    await screen.findByText('0x3333...3333 Transfer');
+    expectMetadata(
+      'LEGACY',
+      'Legacy token',
+      'https://icons.invalid/legacy.png'
+    );
+  }
+);
+
+it.each([false, true])(
+  'prefers explicit current-chain metadata over legacy, legacy last=%s',
+  async (legacyLast) => {
+    const assets = [legacyToken(), token(1)];
+    mockVault.accountAssets.HDAccount[0].ethereum = legacyLast
+      ? assets.reverse()
+      : assets;
+    render(<EvmTransactionsList userTransactions={mockRows} />);
+    await screen.findByText('1 TOKEN1');
+    expectMetadata('TOKEN1', 'Chain 1 token', 'https://icons.invalid/1.png');
+  }
+);
+
+it.each([137, 0, ''])(
+  'does not treat explicit chainId %s as missing-chain legacy metadata',
+  async (chainId) => {
+    mockVault.accountAssets.HDAccount[0].ethereum = [
+      { ...token(137), chainId },
+    ];
+    render(<EvmTransactionsList userTransactions={mockRows} />);
+    await screen.findByText('0x3333...3333 Transfer');
+    expect(screen.queryByTestId('history-token-icon')).toBeNull();
+  }
+);
