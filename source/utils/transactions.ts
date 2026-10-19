@@ -3,7 +3,7 @@ import { omit } from 'lodash';
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 import type { IEvmTransactionResponse } from 'scripts/Background/controllers/transactions/types';
 import store from 'state/store';
-import { IKeyringAccountState, KeyringAccountType } from 'types/network';
+import { KeyringAccountType } from 'types/network';
 import { ITokenDetails } from 'types/tokens';
 import { ITransactionParams, ITxState } from 'types/transactions';
 import { formatUnits } from 'utils/ethersV6Compat';
@@ -191,7 +191,7 @@ export const getTransactionDisplayInfo = async (
             if (isNft) {
               // For NFTs: if ERC-721, displayValue should be 1 and tokenId is the ID
               // If ERC-1155, tokenValue represents the amount transferred
-              const nftCount = isErc1155Tx ? Number(tokenValue) : 1;
+              const nftCount = isErc1155Tx ? tokenValue.toString() : 1;
               return {
                 displayValue: nftCount,
                 formattedValue: String(nftCount),
@@ -259,7 +259,7 @@ export const getTransactionDisplayInfo = async (
 
               if (isNft) {
                 // For NFTs: if ERC-721, count is 1; if ERC-1155, use provided amount
-                const nftCount = isErc1155Tx ? Number(tokenValue) : 1;
+                const nftCount = isErc1155Tx ? tokenValue.toString() : 1;
                 return {
                   displayValue: nftCount,
                   formattedValue: String(nftCount),
@@ -302,8 +302,8 @@ export const getTransactionDisplayInfo = async (
           const erc1155Value = getERC1155TransferValue(tx);
           const nftAmount =
             erc1155Value === null || erc1155Value === undefined
-              ? 1
-              : Number(erc1155Value);
+              ? '1'
+              : erc1155Value.toString();
           const inferredTokenId = getERC1155TokenId(tx) || undefined;
           return {
             displayValue: nftAmount,
@@ -316,23 +316,18 @@ export const getTransactionDisplayInfo = async (
           };
         }
 
-        // ERC-721: handle both safeTransferFrom and transferFrom signatures
+        // Only the safeTransferFrom selectors identify ERC-721 without
+        // metadata. ERC-20 shares transferFrom(address,address,uint256).
         const safeTransferFrom3Selector = id(
           ERC721_SAFE_TRANSFER_SIGNATURE
         ).slice(0, 10);
         const safeTransferFrom4Selector = id(
           ERC721_SAFE_TRANSFER_DATA_SIGNATURE
         ).slice(0, 10);
-        const transferFromSelector = id(TOKEN_TRANSFER_FROM_SIGNATURE).slice(
-          0,
-          10
-        );
-
         const isErc721Candidate =
           !!tx?.input &&
           (tx.input.startsWith(safeTransferFrom3Selector) ||
-            tx.input.startsWith(safeTransferFrom4Selector) ||
-            tx.input.startsWith(transferFromSelector));
+            tx.input.startsWith(safeTransferFrom4Selector));
 
         const erc721TokenId = isErc721Candidate ? getERC721TokenId(tx) : null;
         if (isErc721Candidate && erc721TokenId) {
@@ -590,19 +585,9 @@ export const getSmartAccountDisplayTransaction = (tx: any): any | null => {
   }
 };
 
-export const getAssetBalance = (
-  asset: any,
-  activeAccount: IKeyringAccountState,
-  isBitcoinBased: boolean,
-  activeNetwork: { currency: string }
-) => {
+export const getAssetBalance = (asset: any, isBitcoinBased: boolean) => {
   if (!isBitcoinBased) {
-    const networkCurrency = activeNetwork.currency.toLowerCase();
-    const value = Number(
-      asset.tokenSymbol?.toLowerCase() === networkCurrency
-        ? activeAccount.balances.ethereum
-        : asset.balance
-    );
+    const value = Number(asset.balance);
 
     return `${formatFullPrecisionBalance(value, 4)} ${asset.tokenSymbol}`;
   }

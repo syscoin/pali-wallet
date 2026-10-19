@@ -83,6 +83,36 @@ test('offline cold browser restart stays locked and unlocks the same synthetic a
       }
     );
     await wallet.step(
+      'save Advanced settings durably before acknowledging success',
+      async () => {
+        await wallet!.gotoRoute('#/settings/advanced');
+        const refresh = wallet!.page.locator('#advanced-refresh');
+        await expect(refresh).toHaveAttribute('aria-checked', 'false');
+        await refresh.click();
+        await wallet!.page.locator('#confirm-btn').click();
+        await wallet!.page.locator('#advanced-autolock').fill('10');
+        await wallet!.page
+          .getByRole('button', { name: en.buttons.save, exact: true })
+          .click();
+        await expect(
+          wallet!.page.getByRole('dialog', {
+            name: en.settings.advancedSettingsWasSet,
+          })
+        ).toBeVisible();
+        const persisted = await wallet!.page.evaluate(
+          () =>
+            new Promise((resolve) => {
+              chrome.storage.local.get('state', ({ state }) => {
+                resolve(state?.vaultGlobal?.advancedSettings);
+              });
+            })
+        );
+        expect(persisted).toMatchObject({ refresh: true, autolock: 10 });
+        await wallet!.page.keyboard.press('Escape');
+        await sameAccount();
+      }
+    );
+    await wallet.step(
       'Lock refuses the wrong password and correct unlock precedes the cold close',
       async () => {
         await wallet!.page.locator('#general-settings-button').click();
@@ -161,6 +191,14 @@ test('offline cold browser restart stays locked and unlocks the same synthetic a
         await wallet!.page.locator('#unlock-btn').click();
         await sameAccount();
         expect(await wallet!.getActiveNetworkLabel()).toBe('Syscoin Testnet');
+        await wallet!.gotoRoute('#/settings/advanced');
+        await expect(wallet!.page.locator('#advanced-autolock')).toHaveValue(
+          '10'
+        );
+        await expect(wallet!.page.locator('#advanced-refresh')).toHaveAttribute(
+          'aria-checked',
+          'true'
+        );
         for (const observation of observations)
           expect(observation.deniedWrites).toEqual([]);
       }

@@ -130,7 +130,11 @@ class VaultCache {
    * Validate and cache a vault snapshot for a caller that persists multiple
    * storage keys in one Chrome storage operation.
    */
-  prepareSlip44Vault(slip44: number, slip44State: ISlip44State): ISlip44State {
+  prepareSlip44Vault(
+    slip44: number,
+    slip44State: ISlip44State,
+    cacheSnapshot = true
+  ): ISlip44State {
     assertWalletPersistenceAllowed();
     // 🛡️ SAFEGUARD: Validate slip44 matches before saving
     if (!validateVaultSlip44(slip44State, slip44)) {
@@ -140,8 +144,8 @@ class VaultCache {
     }
     const vaultState = omitPasskeyCredentialProfile(slip44State);
 
-    // Update cache
-    this.slip44Cache.set(slip44, vaultState);
+    // Staged edits validate without publishing their uncommitted snapshot.
+    if (cacheSnapshot) this.slip44Cache.set(slip44, vaultState);
     return vaultState;
   }
 

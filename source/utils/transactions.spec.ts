@@ -192,8 +192,8 @@ describe('token transaction display', () => {
     });
   });
 
-  it('keeps ERC-721 token id zero on the NFT display path', async () => {
-    const input = `${id('transferFrom(address,address,uint256)').slice(
+  it('keeps ERC-721 safeTransferFrom token id zero on the NFT display path', async () => {
+    const input = `${id('safeTransferFrom(address,address,uint256)').slice(
       0,
       10
     )}${defaultAbiCoder

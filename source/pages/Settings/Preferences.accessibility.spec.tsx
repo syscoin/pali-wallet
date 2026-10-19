@@ -165,6 +165,36 @@ it('reports an advanced save failure and leaves the form retryable', async () =>
   ).toBe(false);
 });
 
+it('keeps an advanced draft retryable when its staged write fails before publication', async () => {
+  jest.spyOn(console, 'error').mockImplementation(() => undefined);
+  const view = render(<Advanced />);
+  fireEvent.change(screen.getByLabelText('settings.enableAutolock'), {
+    target: { value: '10' },
+  });
+  let rejectFirstAutolock = true;
+  mockEmitter.mockImplementation(async (_path, [property, value]) => {
+    if (property === 'autolock' && rejectFirstAutolock) {
+      rejectFirstAutolock = false;
+      throw new Error('Storage unavailable');
+    }
+    mockState.vaultGlobal.advancedSettings = {
+      ...mockState.vaultGlobal.advancedSettings,
+      [property]: value,
+    };
+    view.rerender(<Advanced />);
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.save' }));
+  await screen.findByRole('alert');
+  const save = screen.getByRole('button', { name: 'buttons.save' });
+  expect(save.hasAttribute('disabled')).toBe(false);
+  expect(
+    (screen.getByLabelText('settings.enableAutolock') as HTMLInputElement).value
+  ).toBe('10');
+  fireEvent.click(save);
+  await screen.findByRole('dialog');
+  expect(mockState.vaultGlobal.advancedSettings.autolock).toBe(10);
+});
+
 it('keeps closed language options out of the accessibility tree and reports a failed save', async () => {
   await act(async () => {
     render(<Languages />);
