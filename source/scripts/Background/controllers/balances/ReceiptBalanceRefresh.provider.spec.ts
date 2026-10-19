@@ -42,6 +42,7 @@ it('passes the same abort signal and captured endpoint to each minimal receipt R
         provider,
         A,
         {
+          chainId: 1,
           contractAddress: T,
           decimals: 0,
           balance: 0,

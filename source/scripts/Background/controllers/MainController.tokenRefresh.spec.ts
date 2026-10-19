@@ -1138,6 +1138,55 @@ it('retains external-dapp preflight for an unimported ERC20 without adding an as
   expect(state.vault.accountAssets[type][0].ethereum).toHaveLength(2);
 });
 
+it.each([undefined, null, 0, 2])(
+  'does not select a stored token with chainId %s for current-chain preflight',
+  async (chainId) => {
+    const other = { ...asset(T, 55), chainId };
+    const original = [other, asset(U)];
+    state.vault.accountAssets[type][0].ethereum = original;
+    controller.getERC20TokenInfo = jest.fn().mockResolvedValue({
+      balance: '123',
+      decimals: 2,
+      symbol: 'EXT',
+      name: 'External',
+    });
+
+    const result = await controller.refreshActiveEvmTokenBalance(T);
+
+    expect(controller.getERC20TokenInfo).toHaveBeenCalledWith(T, A);
+    expect(balanceOf).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      chainId: 1,
+      contractAddress: T,
+      balance: 1.23,
+      tokenSymbol: 'EXT',
+    });
+    expect(state.vault.accountAssets[type][0].ethereum).toBe(original);
+    expect(other).toEqual({ ...asset(T, 55), chainId });
+  }
+);
+
+it.each([undefined, null, 0, 2])(
+  'refreshes only the current-chain token beside a same-address chainId %s record',
+  async (chainId) => {
+    const other = { ...asset(T, 55), chainId };
+    state.vault.accountAssets[type][0].ethereum = [other, asset(T), asset(U)];
+    controller.getERC20TokenInfo = jest.fn();
+
+    const result = await controller.refreshActiveEvmTokenBalance(T);
+
+    expect(controller.getERC20TokenInfo).not.toHaveBeenCalled();
+    expect(balanceOf).toHaveBeenCalledWith(A, { blockTag: 'latest' });
+    expect(result).toMatchObject({ chainId: 1, balance: 9, rawBalance: '9' });
+    expect(state.vault.accountAssets[type][0].ethereum).toEqual([
+      other,
+      { ...asset(T), balance: 9, rawBalance: '9' },
+      asset(U),
+    ]);
+    expect(state.vault.accountAssets[type][0].ethereum[0]).toBe(other);
+  }
+);
+
 it.each(['failed', 'mixed'])(
   'does not discard a successful target when a normal poll has %s token reads',
   async (mode) => {
