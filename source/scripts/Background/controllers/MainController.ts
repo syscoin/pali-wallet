@@ -9859,6 +9859,16 @@ class MainController {
       return String(cachedBalance.balance);
     }
 
+    const nativeRevision = this.nativeBalanceRevision;
+    const networkRequest = this.networkRequestGeneration;
+    const nativeKey = `${this.accountBalanceKeyPrefix(
+      activeNetwork,
+      { id: storedAccount.id, type: resolvedType },
+      activeNetwork.kind === INetworkType.Syscoin
+        ? storedAccount.xpub || storedAccount.address
+        : storedAccount.address
+    )}native`;
+    const readIsCurrent = this.captureBalanceReadVersion(nativeKey);
     const balance =
       await this.balancesManager.utils.getBalanceUpdatedForAccount(
         storedAccount,
@@ -9867,7 +9877,12 @@ class MainController {
       );
 
     const latestState = store.getState().vault;
-    if (!isSameBalanceNetwork(latestState.activeNetwork, requestedNetwork)) {
+    if (
+      !isSameBalanceNetwork(latestState.activeNetwork, requestedNetwork) ||
+      latestState.activeNetwork.url !== activeNetwork.url ||
+      nativeRevision !== this.nativeBalanceRevision ||
+      networkRequest !== this.networkRequestGeneration
+    ) {
       throw new Error('Network changed while balance request was in flight');
     }
     const latestAccount = latestState.accounts[resolvedType]?.[account.id];
@@ -9881,6 +9896,15 @@ class MainController {
       throw new Error('Balance account changed while request was in flight');
     }
 
+    if (!readIsCurrent()) {
+      const latestBalance = getFreshNativeBalance(
+        latestAccount,
+        latestState.activeNetwork
+      );
+      if (latestBalance) return String(latestBalance.balance);
+      throw new Error('Balance request was superseded');
+    }
+    this.beginTargetedBalanceRead(nativeKey);
     store.dispatch(
       setAccountBalanceForNetwork({
         balance,
