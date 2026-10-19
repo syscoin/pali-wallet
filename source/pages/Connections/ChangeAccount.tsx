@@ -97,7 +97,7 @@ export const ChangeAccount = () => {
   const { useCopyClipboard, alert } = useUtils();
   const [, copy] = useCopyClipboard();
   const queryData = useQueryData();
-  const { host, eventName } = queryData;
+  const { approvalId, host, eventName } = queryData;
   const { t } = useTranslation();
   const mountedRef = useRef(true);
   useEffect(() => {
@@ -107,6 +107,7 @@ export const ChangeAccount = () => {
     };
   }, []);
   const liveContext = useRef({
+    approvalId,
     accounts,
     activeNetwork,
     isBitcoinBased,
@@ -114,6 +115,7 @@ export const ChangeAccount = () => {
     eventName,
   });
   liveContext.current = {
+    approvalId,
     accounts,
     activeNetwork,
     isBitcoinBased,
@@ -189,7 +191,7 @@ export const ChangeAccount = () => {
         slip44: activeNetwork.slip44,
       },
     };
-    return { id, type, context, host, eventName, isBitcoinBased };
+    return { id, type, context, approvalId, host, eventName, isBitcoinBased };
   };
   // Keep the reviewed identity, not only its reusable numeric account id.
   const [selection, setSelection] = useState(() =>
@@ -206,6 +208,7 @@ export const ChangeAccount = () => {
     const account = current.accounts?.[candidate.type]?.[candidate.id];
     const expected = candidate.context;
     return (
+      current.approvalId === candidate.approvalId &&
       current.host === candidate.host &&
       current.eventName === candidate.eventName &&
       current.isBitcoinBased === candidate.isBitcoinBased &&
@@ -223,8 +226,27 @@ export const ChangeAccount = () => {
     );
   };
   const selectionIsCurrent = isSelectionCurrent(selection);
-  const submissionState = useRef<'ready' | 'submitting' | 'completed'>('ready');
-  const [isChanging, setIsChanging] = useState<boolean>(false);
+  const scope = JSON.stringify([
+    approvalId,
+    host,
+    eventName,
+    isBitcoinBased,
+    activeNetwork.kind,
+    activeNetwork.chainId,
+    activeNetwork.url,
+    activeNetwork.slip44,
+  ]);
+  const submissionState = useRef<{
+    phase: 'ready' | 'submitting' | 'completed';
+    scope: string;
+  }>({ scope, phase: 'ready' });
+  if (submissionState.current.scope !== scope)
+    submissionState.current = { scope, phase: 'ready' };
+  const submission = submissionState.current;
+  const isCurrentSubmission = () => submissionState.current === submission;
+  const [pendingSubmission, setPendingSubmission] =
+    useState<typeof submission>();
+  const isChanging = pendingSubmission === submission;
   const [selectionError, setSelectionError] = useState('');
   const [search, setSearch] = useState('');
 
@@ -269,13 +291,7 @@ export const ChangeAccount = () => {
   }, [eligibleAccounts, search]);
   const { visibleItems, hasMore, showMore } = useIncrementalList(
     matchingAccounts,
-    JSON.stringify([
-      host,
-      activeNetwork.kind,
-      activeNetwork.chainId,
-      activeNetwork.url,
-      search,
-    ])
+    `${scope}:${search}`
   );
   const filteredAccounts = useMemo(() => {
     // Keep both the existing connection and proposed selection visible.
@@ -307,29 +323,40 @@ export const ChangeAccount = () => {
   ]);
 
   const handleSetAccountId = (id: number, type: KeyringAccountType) => {
-    if (!mountedRef.current || submissionState.current !== 'ready') return;
+    if (
+      !mountedRef.current ||
+      !isCurrentSubmission() ||
+      submission.phase !== 'ready'
+    )
+      return;
     setSelection(captureSelection(id, type));
     setSelectionError('');
   };
 
   const handleClose = () => {
-    if (!mountedRef.current || submissionState.current !== 'ready') return;
-    submissionState.current = 'completed';
+    if (
+      !mountedRef.current ||
+      !isCurrentSubmission() ||
+      submission.phase !== 'ready'
+    )
+      return;
+    submission.phase = 'completed';
     window.close();
   };
 
   const handleChangeAccount = async () => {
     // Safety check - ensure we have valid account selection
     if (
-      submissionState.current !== 'ready' ||
+      !isCurrentSubmission() ||
+      submission.phase !== 'ready' ||
       !selection ||
       !isSelectionCurrent(selection)
     )
       return;
     // Claim the attempt synchronously: React state alone cannot guard retained
     // callbacks or rapid clicks before the disabled state has rendered.
-    submissionState.current = 'submitting';
-    setIsChanging(true);
+    submission.phase = 'submitting';
+    setPendingSubmission(submission);
 
     if (
       accountId === currentAccountId &&
@@ -337,7 +364,7 @@ export const ChangeAccount = () => {
       eventName !== 'requestPermissions'
     ) {
       // Dispatch event right before closing
-      submissionState.current = 'completed';
+      submission.phase = 'completed';
       dispatchBackgroundEvent(`${eventName}.${host}`, null);
       window.close();
       return;
@@ -362,7 +389,7 @@ export const ChangeAccount = () => {
         response = null;
       }
 
-      if (isSelectionCurrent(selection))
+      if (isCurrentSubmission() && isSelectionCurrent(selection))
         await controllerEmitter(
           ['wallet', 'setAccount'],
           [accountId, accountType, true, selection.context.address]
@@ -370,17 +397,20 @@ export const ChangeAccount = () => {
 
       // Settle the admitted operation for its original approval document. A
       // replacement view must not be closed by this operation's completion.
-      submissionState.current = 'completed';
-      dispatchBackgroundEvent(`${eventName}.${host}`, response);
-      if (isSelectionCurrent(selection)) window.close();
+      submission.phase = 'completed';
+      if (liveContext.current.approvalId === approvalId)
+        dispatchBackgroundEvent(`${eventName}.${host}`, response);
+      if (isCurrentSubmission() && isSelectionCurrent(selection))
+        window.close();
     } catch (error) {
       console.error('Failed to change account:', error);
-      if (isSelectionCurrent(selection))
+      if (isCurrentSubmission() && isSelectionCurrent(selection))
         setSelectionError(error?.message || t('send.failed'));
     } finally {
-      if (submissionState.current === 'submitting') {
-        submissionState.current = 'ready';
-        if (mountedRef.current) setIsChanging(false);
+      if (submission.phase === 'submitting') {
+        submission.phase = 'ready';
+        if (mountedRef.current && isCurrentSubmission())
+          setPendingSubmission(undefined);
       }
     }
   };

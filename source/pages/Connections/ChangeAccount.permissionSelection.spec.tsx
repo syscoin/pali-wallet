@@ -109,6 +109,7 @@ beforeEach(() => {
     },
   };
   mockQuery = {
+    approvalId: 'original-approval',
     host,
     eventName: 'requestPermissions',
     currentAccountId: 1,
@@ -388,5 +389,151 @@ it.each(['unchanged', 'host', 'network', 'unmount'])(
     } else {
       expect(window.close).not.toHaveBeenCalled();
     }
+  }
+);
+
+const replaceApprovalScope = (change: string) => {
+  if (change === 'approvalId')
+    mockQuery = { ...mockQuery, approvalId: 'replacement-approval' };
+  else if (change === 'host')
+    mockQuery = { ...mockQuery, host: 'https://replacement.invalid' };
+  else if (change === 'eventName')
+    mockQuery = { ...mockQuery, eventName: 'changeAccount' };
+  else if (change === 'isBitcoinBased') mockState.vault.isBitcoinBased = true;
+  else {
+    mockState.vault.activeNetwork = {
+      ...mockState.vault.activeNetwork,
+      [change]: change === 'url' ? 'https://replacement-rpc.invalid' : 2,
+    };
+    if (change === 'kind') {
+      mockState.vault.activeNetwork.kind = 'syscoin';
+      mockState.vault.accounts.HDAccount[0].address = 'sys1replacement';
+    }
+  }
+};
+
+it.each([
+  'approvalId',
+  'host',
+  'eventName',
+  'isBitcoinBased',
+  'kind',
+  'chainId',
+  'url',
+  'slip44',
+])(
+  'lets a replacement %s approval proceed while the old account selection is pending',
+  async (change) => {
+    let finish!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const original = mockEmitter.getMockImplementation()!;
+    mockEmitter.mockImplementation((path, args) => {
+      if (path[0] === 'wallet') return pending;
+      return original(path, args);
+    });
+    const view = render(<ChangeAccount />);
+    const oldCancel = mockCancel;
+    await act(async () => {
+      fireEvent.click(screen.getByText('buttons.confirm'));
+    });
+    expect(mockEmitter).toHaveBeenCalledTimes(2);
+    replaceApprovalScope(change);
+    view.rerender(<ChangeAccount />);
+    await act(async () => finish());
+    expect(window.close).not.toHaveBeenCalled();
+    if (change === 'approvalId')
+      expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
+    const other = screen.getByText('Account 0').closest('[role="button"]')!;
+    expect(other.getAttribute('aria-disabled')).toBe('false');
+    expect(
+      (screen.getByText('buttons.cancel') as HTMLButtonElement).disabled
+    ).toBe(false);
+    oldCancel();
+    expect(window.close).not.toHaveBeenCalled();
+    fireEvent.click(other);
+    expect(
+      (
+        screen.getByText(
+          change === 'eventName' ? 'buttons.change' : 'buttons.confirm'
+        ) as HTMLButtonElement
+      ).disabled
+    ).toBe(false);
+    mockEmitter.mockImplementation(original);
+    await act(async () => mockConfirm());
+    expect(mockState.dapp.dapps[mockQuery.host].accountId).toBe(0);
+    expect(window.close).toHaveBeenCalledTimes(1);
+  }
+);
+
+it.each([
+  { outcome: 'resolve', returnToOriginal: false },
+  { outcome: 'reject', returnToOriginal: false },
+  { outcome: 'resolve', returnToOriginal: true },
+  { outcome: 'reject', returnToOriginal: true },
+  { outcome: 'resolve', returnToOriginal: false, scopeChange: 'approvalId' },
+  { outcome: 'reject', returnToOriginal: false, scopeChange: 'approvalId' },
+])(
+  'an old $outcome cannot complete or reset a replacement submission (return=$returnToOriginal, change=$scopeChange)',
+  async ({ outcome, returnToOriginal, scopeChange }) => {
+    let finishOld!: () => void;
+    let rejectOld!: (error: Error) => void;
+    let finishNew!: () => void;
+    const oldPending = new Promise<void>((resolve, reject) => {
+      finishOld = resolve;
+      rejectOld = reject;
+    });
+    const newPending = new Promise<void>((resolve) => {
+      finishNew = resolve;
+    });
+    const original = mockEmitter.getMockImplementation()!;
+    let walletCalls = 0;
+    mockEmitter.mockImplementation((path, args) => {
+      if (path[0] === 'wallet')
+        return ++walletCalls === 1 ? oldPending : newPending;
+      return original(path, args);
+    });
+    const view = render(<ChangeAccount />);
+    await act(async () => {
+      void mockConfirm();
+    });
+    replaceApprovalScope(scopeChange || 'host');
+    view.rerender(<ChangeAccount />);
+    if (returnToOriginal) {
+      mockQuery = { ...mockQuery, host };
+      view.rerender(<ChangeAccount />);
+    }
+    expect(
+      screen
+        .getByText('Account 0')
+        .closest('[role="button"]')!
+        .getAttribute('aria-disabled')
+    ).toBe('false');
+    fireEvent.click(screen.getByText('Account 0').closest('[role="button"]')!);
+    let replacement!: Promise<void>;
+    await act(async () => {
+      replacement = mockConfirm();
+    });
+    expect(mockEmitter).toHaveBeenCalledTimes(4);
+    await act(async () => {
+      if (outcome === 'resolve') finishOld();
+      else rejectOld(new Error('Old selection failed'));
+    });
+    expect(
+      (screen.getByText('buttons.cancel') as HTMLButtonElement).disabled
+    ).toBe(true);
+    expect(window.close).not.toHaveBeenCalled();
+    if (scopeChange === 'approvalId')
+      expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
+    expect(screen.queryByText('Old selection failed')).toBeNull();
+    await act(async () => mockConfirm());
+    expect(mockEmitter).toHaveBeenCalledTimes(4);
+    await act(async () => {
+      finishNew();
+      await replacement;
+    });
+    expect(mockState.dapp.dapps[mockQuery.host].accountId).toBe(0);
+    expect(window.close).toHaveBeenCalledTimes(1);
   }
 );

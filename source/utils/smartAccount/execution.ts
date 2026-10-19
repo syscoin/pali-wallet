@@ -49,6 +49,7 @@ export type SmartAccountExecutionIntent = {
 };
 
 const smartAccountSubmitJobs = new Map<string, Promise<any>>();
+const INVALID_FEE_QUOTE_ERROR = 'Invalid smart account fee quote';
 export const SMART_ACCOUNT_FEE_QUOTE_CHANGED =
   'PALI_SMART_ACCOUNT_FEE_QUOTE_CHANGED';
 export const isSmartAccountFeeQuoteChanged = (error: unknown): boolean =>
@@ -420,10 +421,10 @@ export const prepareSmartAccountFeeQuote = async ({
           value.length <= 80)
       )
     )
-      throw new Error('Invalid smart account fee quote');
+      throw new Error(INVALID_FEE_QUOTE_ERROR);
     const parsed = BigNumber.from(value);
     if (parsed.lt(0) || parsed.gt(BigNumber.from(2).pow(256).sub(1)))
-      throw new Error('Invalid smart account fee quote');
+      throw new Error(INVALID_FEE_QUOTE_ERROR);
     return parsed;
   };
   if (
@@ -432,7 +433,7 @@ export const prepareSmartAccountFeeQuote = async ({
       expectedContext.account.address.toLowerCase() !==
         accountAddress.toLowerCase())
   )
-    throw new Error('Invalid smart account fee quote');
+    throw new Error(INVALID_FEE_QUOTE_ERROR);
   const prepared = await controllerEmitter(
     ['wallet', 'prepareSmartAccountExecutions'],
     [
@@ -460,7 +461,7 @@ export const prepareSmartAccountFeeQuote = async ({
     !/^0x[\da-f]{64}$/i.test(userOp?.accountGasLimits || '') ||
     !/^0x[\da-f]{64}$/i.test(userOp?.gasFees || '')
   )
-    throw new Error('Invalid smart account fee quote');
+    throw new Error(INVALID_FEE_QUOTE_ERROR);
   const gasUnits = quantity(hexDataSlice(userOp.accountGasLimits, 0, 16))
     .add(quantity(hexDataSlice(userOp.accountGasLimits, 16, 32)))
     .add(quantity(userOp.preVerificationGas));
@@ -476,7 +477,7 @@ export const prepareSmartAccountFeeQuote = async ({
       !userOpMaxFee.eq(selectedMaxFee) &&
       userOp.gasFees !== '0x' + '0'.repeat(64))
   )
-    throw new Error('Invalid smart account fee quote');
+    throw new Error(INVALID_FEE_QUOTE_ERROR);
   return {
     gasUnits: gasUnits.toString(),
     maximumFeeWei: getSmartAccountUserOpRequiredPrefund(userOp).toString(),
