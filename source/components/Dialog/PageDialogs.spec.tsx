@@ -340,6 +340,6 @@ it('focuses safe Cancel in the warning and keeps it open while connection is pen
   ).toBe(dialog);
   expect(mockEmitter).toHaveBeenLastCalledWith(
     ['wallet', 'setAccount'],
-    [0, 'HDAccount', true]
+    [0, 'HDAccount', true, '0x1111111111111111111111111111111111111111']
   );
 });
