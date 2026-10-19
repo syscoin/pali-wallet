@@ -1,6 +1,6 @@
 import { CustomJsonRpcProvider } from '@sidhujag/sysweb3-keyring';
 
-import { BigNumber } from 'utils/ethersV6Compat';
+import { BigNumber, hexlify } from 'utils/ethersV6Compat';
 import { Contract } from 'utils/ethersV6Compat';
 
 // ERC-721 ABI fragments
@@ -29,12 +29,30 @@ const INTERFACE_ID_ERC721_ENUMERABLE = '0x780e9d63';
 async function detectFakeNftContract(
   contract: Contract,
   tokenStandard: 'ERC-721' | 'ERC-1155',
-  ownerAddress: string
+  ownerAddress: string,
+  tokenIds: string[]
 ): Promise<boolean> {
+  let invalidTokenId: string | undefined;
   try {
-    // Use a random high token ID that shouldn't exist
-    const invalidTokenId = '999999999999999999999999999999';
-
+    const requested = new Set(
+      tokenIds.map((id) => BigNumber.from(id).toString())
+    );
+    // Every fixed uint256 is a legal NFT ID. Use fresh entropy, excluding the
+    // requested holdings, as a negative probe; this remains a heuristic only.
+    for (let attempt = 0; attempt < 16; attempt += 1) {
+      const bytes = crypto.getRandomValues(new Uint8Array(32));
+      const candidate = BigNumber.from(hexlify(bytes)).toString();
+      if (!requested.has(candidate)) {
+        invalidTokenId = candidate;
+        break;
+      }
+    }
+  } catch {
+    // Without a usable independent probe, do not claim verified ownership.
+    return true;
+  }
+  if (invalidTokenId === undefined) return true;
+  try {
     let balance: any;
     if (tokenStandard === 'ERC-721') {
       // For ERC-721, try ownerOf first (should throw for non-existent tokens)
@@ -103,7 +121,8 @@ export async function verifyERC721OwnershipHelper(
     const isFake = await detectFakeNftContract(
       contract,
       'ERC-721',
-      ownerAddress
+      ownerAddress,
+      tokenIds
     );
     if (isFake) {
       console.warn(
@@ -176,7 +195,8 @@ export async function verifyERC1155OwnershipHelper(
     const isFake = await detectFakeNftContract(
       contract,
       'ERC-1155',
-      ownerAddress
+      ownerAddress,
+      tokenIds
     );
     if (isFake) {
       console.warn(

@@ -20,15 +20,24 @@ jest.mock('utils/slhDsa', () => ({
 import { webcrypto } from 'crypto';
 
 import { getController } from '..';
+import { rehydrate as rehydrateDapps } from 'state/dapp';
 import { walletPersistenceGate } from 'state/paliStorage';
-import store, { loadAndActivateSlip44Vault } from 'state/store';
-import { restoreVaultSnapshot } from 'state/vault';
+import store, {
+  loadAndActivateSlip44Vault,
+  persistMainStateStrict,
+} from 'state/store';
+import {
+  createAccount,
+  initializeCleanVaultForSlip44,
+  restoreVaultSnapshot,
+} from 'state/vault';
 import vaultCache from 'state/vaultCache';
 import { setActiveSlip44 } from 'state/vaultGlobal';
 import { KeyringAccountType } from 'types/network';
 import { AsyncMutex } from 'utils/asyncMutex';
 import { SYSCOIN_MAINNET_NETWORK } from 'utils/constants';
 
+import DAppController from './DAppController';
 import MainController from './MainController';
 import { reconcileWalletRecoveryJournal } from './walletRecovery';
 
@@ -46,6 +55,7 @@ describe('wallet reset durable cleanup', () => {
   let oldEvmVault: any;
   let originalRecords: Record<string, any>;
   const initialVault = store.getState().vault;
+  const initialDapps = store.getState().dapp;
   const originalChrome = global.chrome;
   const originalCrypto = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
 
@@ -60,6 +70,7 @@ describe('wallet reset durable cleanup', () => {
     });
     vaultCache.clearCache();
     store.dispatch(restoreVaultSnapshot(initialVault));
+    store.dispatch(rehydrateDapps(initialDapps));
     store.dispatch(setActiveSlip44(57));
     oldEvmVault = {
       ...initialVault,
@@ -217,6 +228,7 @@ describe('wallet reset durable cleanup', () => {
     vaultCache.clearCache();
     walletPersistenceGate.blocked = false;
     store.dispatch(restoreVaultSnapshot(initialVault));
+    store.dispatch(rehydrateDapps(initialDapps));
     store.dispatch(setActiveSlip44(57));
     jest.restoreAllMocks();
   });
@@ -229,6 +241,184 @@ describe('wallet reset durable cleanup', () => {
     expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({
       type: 'wallet_forgotten',
     });
+  });
+
+  const prepareSentrySettings = () => {
+    const current = store.getState().vault;
+    store.dispatch(
+      restoreVaultSnapshot({
+        ...current,
+        accounts: {
+          ...current.accounts,
+          HDAccount: {
+            0: {
+              ...current.accounts.HDAccount[0],
+              address: 'synthetic-address',
+              xpub: 'public-sentry-test-root',
+            },
+          },
+        },
+      })
+    );
+    records['state-vault-57'] = structuredClone(store.getState().vault);
+    return () =>
+      wallet.saveSentrySettings({
+        password: 'synthetic password',
+        serviceUrl: 'https://sysnode.info',
+        maxFeeSatoshis: '2000',
+      });
+  };
+
+  it('removes a completed Sentry preference during public forget', async () => {
+    const settings = await prepareSentrySettings()();
+    expect(settings.maxFeeSatoshis).toBe('2000');
+    await wallet.forgetWallet('synthetic password');
+    expect(records).toEqual({});
+  });
+
+  it.each([false, true])(
+    'orders a pending Sentry preference before reset cleanup and rollback=%s',
+    async (resetFails) => {
+      const save = prepareSentrySettings();
+      const write = jest
+        .mocked(chrome.storage.local.set)
+        .getMockImplementation()!;
+      let release!: () => void;
+      let entered!: () => void;
+      const started = new Promise<void>((resolve) => (entered = resolve));
+      let hold = true;
+      jest
+        .mocked(chrome.storage.local.set)
+        .mockImplementation((items, callback) => {
+          if (
+            hold &&
+            Object.keys(items).some((key) =>
+              key.startsWith('sentry-settings-v1:')
+            )
+          ) {
+            hold = false;
+            release = () => write(items, callback);
+            entered();
+          } else write(items, callback);
+        });
+      const saving = save().catch((error: Error) => error);
+      await started;
+      if (resetFails) failRemoval = 'state-vault-60';
+      let completed = false;
+      const forgetting = wallet.forgetWallet('synthetic password').then(
+        () => {
+          completed = true;
+          return undefined;
+        },
+        (error: Error) => error
+      );
+      // Public forget cannot pass its backup/cleanup boundary while the older
+      // final write owns persistence. No controller result is replaced.
+      for (let turn = 0; turn < 10; turn += 1) await Promise.resolve();
+      expect(completed).toBe(false);
+      expect(chrome.storage.local.remove).not.toHaveBeenCalled();
+      release();
+      const savedSnapshot = structuredClone(records);
+      const result = await forgetting;
+      await saving;
+      if (resetFails) {
+        expect(result).toMatchObject({
+          message: 'synthetic storage removal failure',
+        });
+        expect(records).toEqual(savedSnapshot);
+        expect(walletPersistenceGate.blocked).toBe(false);
+      } else {
+        expect(result).toBeUndefined();
+        expect(records).toEqual({});
+        expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({
+          type: 'wallet_forgotten',
+        });
+      }
+    }
+  );
+
+  const seedOldPermission = () => {
+    const host = 'https://previous-wallet.invalid';
+    const address = '0x1111111111111111111111111111111111111111';
+    const oldVault = {
+      ...store.getState().vault,
+      accounts: {
+        ...store.getState().vault.accounts,
+        HDAccount: { 0: { id: 0, address, label: 'Old synthetic wallet' } },
+      },
+    };
+    store.dispatch(restoreVaultSnapshot(oldVault as any));
+    store.dispatch(
+      rehydrateDapps({
+        dapps: {
+          [host]: {
+            host,
+            accountId: 0,
+            accountType: KeyringAccountType.HDAccount,
+            chain: 'ethereum',
+            chainId: 1,
+            date: 1,
+          },
+        },
+      } as any)
+    );
+    records['state-vault-57'] = structuredClone(oldVault);
+    records.state = {
+      ...records.state,
+      dapp: structuredClone(store.getState().dapp),
+    };
+    originalRecords = structuredClone(records);
+    return { host, address };
+  };
+
+  it('does not carry a forgotten wallet permission into a new account in the same slot', async () => {
+    const { host } = seedOldPermission();
+    const dapp = DAppController(() => true);
+    await wallet.forgetWallet('synthetic password');
+    const afterForget = Object.keys(store.getState().dapp.dapps);
+    // Use the same clean-vault/account reducers as createWalletExclusive.
+    store.dispatch(
+      initializeCleanVaultForSlip44({
+        ...SYSCOIN_MAINNET_NETWORK,
+        kind: 'ethereum',
+        chainId: 1,
+        url: 'https://new.synthetic.invalid',
+        slip44: 60,
+      } as any)
+    );
+    store.dispatch(
+      createAccount({
+        account: {
+          id: 0,
+          address: '0x2222222222222222222222222222222222222222',
+          label: 'New synthetic wallet',
+        } as any,
+        accountType: KeyringAccountType.HDAccount,
+      })
+    );
+    await persistMainStateStrict();
+    expect({
+      afterForget,
+      newlyDisclosedAccount: dapp.getAccount(host)?.address,
+      persistedOrigins: Object.keys(records.state.dapp.dapps),
+    }).toEqual({
+      afterForget: [],
+      newlyDisclosedAccount: undefined,
+      persistedOrigins: [],
+    });
+  });
+
+  it('restores the old permission with the old wallet when a forget rolls back', async () => {
+    const { host, address } = seedOldPermission();
+    failRemoval = 'state-vault-60';
+    const outcome = await wallet.forgetWallet('synthetic password').then(
+      () => 'success',
+      (error: any) => error.message || String(error)
+    );
+    expect(outcome).toBe('synthetic storage removal failure');
+    expect(records).toEqual(originalRecords);
+    expect(DAppController(() => true).getAccount(host)?.address).toBe(address);
+    expect(Object.keys(store.getState().dapp.dapps)).toEqual([host]);
   });
 
   it('does not acknowledge a forget that leaves a reloadable inactive vault behind', async () => {

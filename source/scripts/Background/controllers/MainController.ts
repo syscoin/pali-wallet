@@ -5966,6 +5966,10 @@ class MainController {
     return this.walletSessionGeneration;
   }
 
+  public getWalletStateGeneration(): number {
+    return this.walletStateGeneration;
+  }
+
   public assertSmartAccountExecutionContext(
     executionContextId: string,
     actionHash?: string

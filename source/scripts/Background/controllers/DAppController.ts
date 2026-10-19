@@ -59,7 +59,8 @@ const dispatchPropertyChange = async (
  * DApps connections use the site host as id
  */
 const DAppController = (
-  isWalletUnlocked: () => boolean = () => false
+  isWalletUnlocked: () => boolean = () => false,
+  getWalletStateGeneration: () => number = () => 0
 ): IDAppController => {
   const _dapps: IDappsSession = {};
   const pendingGrants = new Map<string, object>();
@@ -199,6 +200,7 @@ const DAppController = (
       throw new Error('A permission grant is already pending for this site');
     const date = connectionDetails?.date ?? Date.now();
     const state = store.getState();
+    const walletStateGeneration = getWalletStateGeneration();
     const existingDapp = state.dapp.dapps[host];
     const grant = connectionDetails
       ? { ...connectionDetails }
@@ -221,6 +223,7 @@ const DAppController = (
       const { accounts, activeNetwork } = store.getState().vault;
       const current = accounts[accountType]?.[accountId];
       return (
+        getWalletStateGeneration() === walletStateGeneration &&
         pendingGrants.get(host) === attempt &&
         current?.address === address &&
         current?.xpub === xpub &&

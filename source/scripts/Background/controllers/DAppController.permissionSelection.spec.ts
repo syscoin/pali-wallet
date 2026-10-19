@@ -1,4 +1,5 @@
 let mockState: any;
+let mockWalletStateGeneration: number;
 const mockDispatch = jest.fn();
 const mockPersistGrant = jest.fn();
 const mockPersistStrict = jest.fn();
@@ -43,6 +44,7 @@ const grant = (expected = context()) =>
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockWalletStateGeneration = 0;
   mockPersistStrict.mockReset().mockResolvedValue(undefined);
   mockState = {
     dapp: { dapps: {} },
@@ -73,7 +75,10 @@ beforeEach(() => {
   (chrome.runtime as any).id = 'pali';
   (chrome as any).tabs = { query: jest.fn((_query, reply) => reply([])) };
   (chrome as any).scripting = { executeScript: jest.fn(async () => []) };
-  controller = DAppController(() => true);
+  controller = DAppController(
+    () => true,
+    () => mockWalletStateGeneration
+  );
 });
 
 it('grants a live selected identity and tolerates unrelated balance updates', async () => {
@@ -156,6 +161,22 @@ const holdRevocation = () => {
   );
   return () => finish();
 };
+
+it('does not admit a pre-reset permission after the same account identity is restored', async () => {
+  const held = holdGrant();
+  const pending = grant();
+  const rejected = expect(pending).rejects.toThrow('context changed');
+  // A real reset invalidates this lifetime even if seed recovery or rollback
+  // later restores the same address, xpub, network and empty permission set.
+  mockWalletStateGeneration += 1;
+  mockState = structuredClone(mockState);
+  held.finish();
+  await rejected;
+  expect(controller.isConnected(host)).toBe(false);
+  expect(chrome.tabs.query).not.toHaveBeenCalled();
+  await expect(grant()).resolves.toEqual(expect.any(Array));
+  expect(controller.isConnected(host)).toBe(true);
+});
 
 it('publishes no permission, session event, or success before persistence', async () => {
   const held = holdGrant();

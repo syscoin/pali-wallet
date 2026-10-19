@@ -2,6 +2,7 @@ import { AsyncMutex } from 'utils/asyncMutex';
 import { chromeStorage } from 'utils/storageAPI';
 
 import { getSentryVaultId } from './keyStore';
+import { withSentryPersistence } from './persistence';
 
 export interface SentryCollateralReservation {
   pendingRegistration?: true;
@@ -137,9 +138,8 @@ export const reserveSentryCollateral = async (params: {
         );
       if (existing) items.splice(items.indexOf(existing), 1);
       items.push({ ...params.reservation });
-      await chromeStorage.setItem(
-        await keyFor(params.walletIdentity, params.genesisHash),
-        items
+      await withSentryPersistence(params.assertCurrent, () =>
+        chromeStorage.setItem(key, items)
       );
       params.assertCurrent();
     }
@@ -166,9 +166,9 @@ export const releaseSentryCollateral = async (params: {
     );
     if (remaining.length === items.length)
       throw new Error('Sentry collateral reservation was not found');
-    await chromeStorage.setItem(
-      await keyFor(params.walletIdentity, params.genesisHash),
-      remaining
+    const key = await keyFor(params.walletIdentity, params.genesisHash);
+    await withSentryPersistence(params.assertCurrent, () =>
+      chromeStorage.setItem(key, remaining)
     );
     params.assertCurrent();
   });
