@@ -154,7 +154,8 @@ describe('advanced Save ownership across wallet reset', () => {
       Object.assign(persisted, clone(items));
     });
     jest.spyOn(chromeStorage, 'removeItem').mockImplementation(async (keys) => {
-      for (const key of Array.isArray(keys) ? keys : [keys]) delete persisted[key];
+      for (const key of Array.isArray(keys) ? keys : [keys])
+        delete persisted[key];
     });
     (chrome.storage.local.get as jest.Mock).mockImplementation((_keys, done) =>
       done(persisted)
