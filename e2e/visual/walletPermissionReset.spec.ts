@@ -79,6 +79,20 @@ test('forgetting a wallet removes site permissions before a different wallet reu
     const dapp = await wallet.context.newPage();
     await dapp.goto(origin);
     await dapp.waitForFunction(() => Boolean((window as any).pali));
+    const liveEthereumState = () =>
+      dapp.evaluate(() => {
+        const provider = (window as any).ethereum;
+        return {
+          selectedAddress: provider.selectedAddress,
+          accounts: provider.accounts,
+          synchronousAccounts: provider.send({
+            id: 1,
+            jsonrpc: '2.0',
+            method: 'eth_accounts',
+          }).result,
+          events: (window as any).__permissionResetAccountEvents,
+        };
+      });
     const connect = async () => {
       const id = await startRequest(dapp, 'eth_requestAccounts');
       return approve(wallet!.context, dapp, id);
@@ -95,6 +109,20 @@ test('forgetting a wallet removes site permissions before a different wallet reu
         expect(await snapshot()).toMatchObject({
           grants: [origin],
           persistedGrants: [origin],
+        });
+        await expect
+          .poll(async () => (await liveEthereumState()).selectedAddress)
+          .toBe(original.active.address.toLowerCase());
+        expect(await liveEthereumState()).toMatchObject({
+          accounts: [original.active.address.toLowerCase()],
+          synchronousAccounts: [original.active.address.toLowerCase()],
+        });
+        await dapp.evaluate(() => {
+          const events: string[][] = [];
+          (window as any).__permissionResetAccountEvents = events;
+          (window as any).ethereum.on('accountsChanged', (accounts: string[]) =>
+            events.push(accounts)
+          );
         });
       }
     );
@@ -113,6 +141,15 @@ test('forgetting a wallet removes site permissions before a different wallet reu
         await forget.click();
         await expect(wallet!.page.locator('#import-wallet-link')).toBeVisible();
         observations.afterForget = await snapshot();
+        // Inspect the already-injected provider before any async account RPC
+        // can refresh its cache or a new wallet can trigger other events.
+        await expect.poll(liveEthereumState).toEqual({
+          selectedAddress: null,
+          accounts: [],
+          synchronousAccounts: [],
+          events: [[]],
+        });
+        observations.liveProviderAfterForget = await liveEthereumState();
       }
     );
     await wallet.step(
