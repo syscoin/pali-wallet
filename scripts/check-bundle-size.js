@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /* eslint-disable @typescript-eslint/no-var-requires */
-// Run after a production build: node scripts/check-bundle-size.js [build/chrome]
+// Run against an unpacked production ZIP: node scripts/check-bundle-size.js <directory>
 const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
@@ -13,8 +13,9 @@ const budget = {
   // Count every mandatory MV3 warm chunk below, including the optional feature.
   background: 4400000,
   contentScript: 16000,
-  // Legacy/PQ crypto and localized Sentry UI add ~368 KB to 8,940,628 bytes.
-  package: 9400000,
+  // Shared lazy UI and Typography reduced the package to 9,244,055 bytes.
+  // Round up to the next 10 KB so future changes retain these savings.
+  package: 9250000,
 };
 const allFiles = (root) =>
   fs.readdirSync(root, { withFileTypes: true }).flatMap((entry) => {

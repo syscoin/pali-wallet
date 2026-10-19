@@ -28,6 +28,13 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - name: Build extension
         run: yarn build:chrome
+      - name: Enforce production bundle budgets
+        # Check the shipped artifact, not late-emitted build-only metadata.
+        run: |
+          PACKAGE_DIR="$(mktemp -d "${RUNNER_TEMP}/pali-package-budget.XXXXXX")"
+          PACKAGE_VERSION="$(node -p "require('./package.json').version")"
+          unzip -q "build/pali-wallet-production-chrome-${PACKAGE_VERSION}.zip" -d "$PACKAGE_DIR"
+          node scripts/check-bundle-size.js "$PACKAGE_DIR"
       - name: Run visual baselines
         env:
           PALI_E2E_RUN_ID: pr-visual-${{ github.run_id }}-${{ github.run_attempt }}

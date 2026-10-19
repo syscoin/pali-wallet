@@ -311,6 +311,28 @@ module.exports = {
           name: 'account-review',
           enforce: true,
         },
+        // Extract only modules already duplicated across lazy UI chunks.
+        transactionDetails: {
+          test: /[\\/]source[\\/]components[\\/]TransactionDetails[\\/]/,
+          chunks: 'async',
+          name: 'transaction-details',
+          minChunks: 2,
+          enforce: true,
+        },
+        assetViews: {
+          test: /[\\/]source[\\/]pages[\\/]Home[\\/]Panel[\\/]components[\\/]Assets[\\/]/,
+          chunks: 'async',
+          name: 'asset-views',
+          minChunks: 2,
+          enforce: true,
+        },
+        antdTypography: {
+          test: /[\\/]node_modules[\\/]antd[\\/]es[\\/]typography[\\/]/,
+          chunks: 'async',
+          name: 'antd-typography',
+          minChunks: 2,
+          enforce: true,
+        },
       },
       chunks(chunk) {
         // Only split chunks for app and external, NOT background, contentScript, inpage, pali, or handleWindowProperties
