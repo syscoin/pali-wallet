@@ -43,6 +43,11 @@ const DAppState = createSlice({
       delete state.dapps[action.payload];
     },
   },
+  extraReducers: (builder) => {
+    // Permissions belong to the removed wallet, not reusable account slots.
+    // The recovery journal rehydrates the prior grant set if reset rolls back.
+    builder.addCase('vault/forgetWallet', () => initialState);
+  },
 });
 
 export const { addDApp, removeDApp, updateDAppAccount, rehydrate } =

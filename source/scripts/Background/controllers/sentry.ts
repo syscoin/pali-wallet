@@ -27,6 +27,7 @@ import {
   SENTRY_NETWORKS,
   validateSentryFeeLimit,
 } from 'utils/sentry/network';
+import { withSentryPersistence } from 'utils/sentry/persistence';
 import type {
   SentryApproval,
   SentrySettings,
@@ -381,9 +382,11 @@ export class SentryController {
           assertCurrent: assertLinkCurrent,
         });
         assertLinkCurrent();
-        await chromeStorage.setItem(
-          `sentry-linked-v1:${vaultId}:${approval.network}`,
-          linkedNodes
+        await withSentryPersistence(assertLinkCurrent, () =>
+          chromeStorage.setItem(
+            `sentry-linked-v1:${vaultId}:${approval.network}`,
+            linkedNodes
+          )
         );
         assertLinkCurrent();
         this.links.delete(id);
@@ -414,10 +417,14 @@ export class SentryController {
       const network = getSentryNetwork(scope.network);
       const vaultId = await getSentryVaultId(scope.rootPublicIdentity);
       this.assertCurrent(scope);
-      await chromeStorage.setItem(`sentry-settings-v1:${vaultId}:${network}`, {
-        serviceUrl,
-        maxFeeSatoshis,
-      });
+      await withSentryPersistence(
+        () => this.assertCurrent(scope),
+        () =>
+          chromeStorage.setItem(`sentry-settings-v1:${vaultId}:${network}`, {
+            serviceUrl,
+            maxFeeSatoshis,
+          })
+      );
       this.assertCurrent(scope);
       this.approvals.clear();
       this.feeAuthorizations.clear();

@@ -1,5 +1,6 @@
 import { chromeStorage } from 'utils/storageAPI';
 
+import { withSentryPersistence } from './persistence';
 import type { SentryKeySummary, SentryNetwork } from './types';
 import type { SentryAuthorityKey } from '@sidhujag/sysweb3-sentry';
 
@@ -236,10 +237,12 @@ export const saveSentryKeys = async (args: {
     }
   }
   assertCurrent();
-  await chromeStorage.setItem(storageKey(vaultId, network), {
-    ...store,
-    keys: [...store.keys, ...encrypted],
-  });
+  await withSentryPersistence(assertCurrent, () =>
+    chromeStorage.setItem(storageKey(vaultId, network), {
+      ...store,
+      keys: [...store.keys, ...encrypted],
+    })
+  );
   assertCurrent();
   return encrypted.map(({ summary }) => ({ ...summary }));
 };
@@ -300,6 +303,8 @@ export const removeSentryKey = async (
   if (!store.keys.some(({ summary }) => summary.id === id))
     throw new Error('Sentry operator key not found');
   store.keys = store.keys.filter(({ summary }) => summary.id !== id);
-  await chromeStorage.setItem(storageKey(vaultId, network), store);
+  await withSentryPersistence(assertCurrent, () =>
+    chromeStorage.setItem(storageKey(vaultId, network), store)
+  );
   assertCurrent();
 };

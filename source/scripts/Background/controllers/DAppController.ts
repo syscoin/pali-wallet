@@ -59,7 +59,8 @@ const dispatchPropertyChange = async (
  * DApps connections use the site host as id
  */
 const DAppController = (
-  isWalletUnlocked: () => boolean = () => false
+  isWalletUnlocked: () => boolean = () => false,
+  getWalletStateGeneration: () => number = () => 0
 ): IDAppController => {
   const _dapps: IDappsSession = {};
   const pendingGrants = new Map<string, object>();
@@ -199,6 +200,7 @@ const DAppController = (
       throw new Error('A permission grant is already pending for this site');
     const date = connectionDetails?.date ?? Date.now();
     const state = store.getState();
+    const walletStateGeneration = getWalletStateGeneration();
     const existingDapp = state.dapp.dapps[host];
     const grant = connectionDetails
       ? { ...connectionDetails }
@@ -221,6 +223,7 @@ const DAppController = (
       const { accounts, activeNetwork } = store.getState().vault;
       const current = accounts[accountType]?.[accountId];
       return (
+        getWalletStateGeneration() === walletStateGeneration &&
         pendingGrants.get(host) === attempt &&
         current?.address === address &&
         current?.xpub === xpub &&
@@ -590,7 +593,8 @@ const DAppController = (
   const _dispatchPaliEvent = async (
     host: string,
     data?: { method: string; params: any },
-    id = 'notification'
+    id = 'notification',
+    isCurrent: () => boolean = () => true
   ) => {
     // Don't dispatch notifications with undefined or invalid data
     if (!data || !data.method || data.method === 'undefined') {
@@ -649,11 +653,13 @@ const DAppController = (
           getDappOrigin(tab.url || '') === origin &&
           index === self.findIndex((t) => t.id === tab.id)
       );
+      if (!isCurrent()) return;
 
       if (uniqueTabs.length > 0) {
         // Use Promise.allSettled to handle individual tab failures gracefully
         const injectionResults = await Promise.allSettled(
           uniqueTabs.map(async (tab) => {
+            if (!isCurrent()) return;
             if (!tab.id) {
               return Promise.reject(new Error('Tab has no ID'));
             }
@@ -724,6 +730,31 @@ const DAppController = (
     }
   };
 
+  const resetSessions = async (previousOrigins: string[]) => {
+    const generation = getWalletStateGeneration();
+    const hosts = new Set([...previousOrigins, ...Object.keys(_dapps)]);
+    pendingGrants.clear();
+    for (const host of Object.keys(_dapps)) delete _dapps[host];
+    // Forget has already committed. Notify even when a worker restart lost
+    // the runtime session; never let delayed notices clear a newer grant.
+    await Promise.all(
+      Array.from(hosts, async (host) => {
+        for (const [method, params] of [
+          [PaliEvents.lockStateChanged, { isUnlocked: false }],
+          [PaliEvents.accountsChanged, []],
+          [PaliSyscoinEvents.xpubChanged, null],
+        ] as const) {
+          await _dispatchPaliEvent(
+            host,
+            { method, params },
+            method,
+            () => generation === getWalletStateGeneration() && !getAll()[host]
+          );
+        }
+      })
+    );
+  };
+
   //* ----- Getters/Setters -----
   const get = (host: string) => store.getState().dapp.dapps[host];
 
@@ -770,6 +801,7 @@ const DAppController = (
     changeAccount,
     syncAccountSession,
     disconnect,
+    resetSessions,
     requestPermissions,
     hasWindow,
     handleStateChange,

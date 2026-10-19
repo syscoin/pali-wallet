@@ -19,6 +19,7 @@ export const availableLanguages = [
 ];
 export const defaultLocale = 'en';
 let languageSelectionGeneration = 0;
+let languageCommit = Promise.resolve();
 
 // Cache for loaded languages
 const loadedLanguages: { [key: string]: any } = {
@@ -177,13 +178,24 @@ const applyLanguage = async (
     i18next.addResourceBundle(lng, 'translation', translations, true, true);
   }
 
-  // Change the language
-  await i18next.changeLanguage(lng);
-  if (selectionGeneration !== languageSelectionGeneration) return;
-
-  // Startup only restores its snapshot. It must not overwrite a newer choice
-  // saved by another popup or approval document while that read was pending.
-  if (savePreference) await chromeStorage.setItem('language', lng);
+  const commit = languageCommit.then(async () => {
+    if (selectionGeneration !== languageSelectionGeneration) return;
+    // Startup only restores its snapshot. Explicit choices become visible
+    // after storage accepts them, so a failed Save leaves the prior language.
+    if (savePreference) {
+      try {
+        await chromeStorage.setItem('language', lng);
+      } catch (error) {
+        if (selectionGeneration !== languageSelectionGeneration) return;
+        throw error;
+      }
+    }
+    // Commits are serialized: an already-written choice remains the fallback
+    // if a newer queued Save fails, without a late write undoing its successor.
+    await i18next.changeLanguage(lng);
+  });
+  languageCommit = commit.catch(() => undefined);
+  await commit;
 };
 
 export const changeLanguage = (lng: string): Promise<void> =>

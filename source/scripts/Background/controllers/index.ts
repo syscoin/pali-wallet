@@ -149,7 +149,12 @@ const MasterController = (
       );
     }
 
-    dapp = Object.freeze(DAppController(() => wallet?.isUnlocked() === true));
+    dapp = Object.freeze(
+      DAppController(
+        () => wallet?.isUnlocked() === true,
+        () => wallet?.getWalletStateGeneration() ?? 0
+      )
+    );
     wallet = new MainController();
 
     // Initialize startup state if wallet is already unlocked

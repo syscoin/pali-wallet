@@ -92,6 +92,8 @@ export interface IDAppController {
     accountType: KeyringAccountType,
     expectedContext?: IDAppAccountSelectionContext
   ) => Promise<any[]>;
+  /** Clear runtime sessions and notify prior origins after a committed forget. */
+  resetSessions: (previousOrigins: string[]) => Promise<void>;
   /**
    * Sets whether a DApp has an open popup
    */

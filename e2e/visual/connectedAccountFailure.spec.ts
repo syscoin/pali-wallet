@@ -5,6 +5,7 @@ import path from 'path';
 
 import en from '../../source/assets/locales/en.json';
 import { E2E_CONFIG } from '../harness/config';
+import { clickClosingPopup } from '../harness/dismissRejectedApproval';
 import { PaliWallet } from '../harness/pali';
 import { extensionEvidence } from '../harness/testDappConformance';
 import {
@@ -159,13 +160,18 @@ for (const viewport of [
           await shot(healthy);
           await Promise.all([
             healthy.waitForEvent('close'),
-            healthy
-              .getByRole('button', {
-                name: en.connections.switchAccount,
-                exact: true,
-              })
-              .click(),
+            clickClosingPopup({
+              click: () =>
+                healthy
+                  .getByRole('button', {
+                    name: en.connections.switchAccount,
+                    exact: true,
+                  })
+                  .click(),
+              isClosed: () => healthy.isClosed(),
+            }),
           ]);
+          expect(wallet!.page.isClosed()).toBe(false);
           evidence.healthyPopupClosed = true;
           expect(failures).toEqual([]);
           expect(await selection()).toEqual(initial);
@@ -250,7 +256,14 @@ for (const viewport of [
         'Cancel closes the failed approval without selecting the missing account',
         async (shot) => {
           await shot(failed);
-          await Promise.all([failed.waitForEvent('close'), cancel.click()]);
+          await Promise.all([
+            failed.waitForEvent('close'),
+            clickClosingPopup({
+              click: () => cancel.click(),
+              isClosed: () => failed.isClosed(),
+            }),
+          ]);
+          expect(wallet!.page.isClosed()).toBe(false);
           evidence.failedPopupCancelled = true;
           expect(await selection()).toEqual(initial);
         }
