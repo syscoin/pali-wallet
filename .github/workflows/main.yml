@@ -28,6 +28,8 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - name: Build extension
         run: yarn build:chrome
+      - name: Enforce production bundle budgets
+        run: node scripts/check-bundle-size.js build/chrome
       - name: Run visual baselines
         env:
           PALI_E2E_RUN_ID: pr-visual-${{ github.run_id }}-${{ github.run_attempt }}
