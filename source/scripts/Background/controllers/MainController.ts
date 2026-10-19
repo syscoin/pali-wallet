@@ -519,6 +519,7 @@ class MainController {
           '[MainController] Error clearing vault storage during reset:',
           error
         );
+        throw error;
       }
 
       // Clear all slip44-specific vault states and persisted Redux state
@@ -569,6 +570,7 @@ class MainController {
           '[MainController] Error clearing slip44 vault states during reset:',
           error
         );
+        throw error;
       }
 
       store.dispatch(forgetWallet());
@@ -1829,10 +1831,6 @@ class MainController {
     return this.getActiveKeyring().createNewSeed(wordCount);
   }
 
-  private async forgetMainWallet(pwd: string) {
-    return await this.getActiveKeyring().forgetMainWallet(pwd);
-  }
-
   /**
    * Get remaining lockout time in seconds (for UI display)
    * Returns 0 if not locked out
@@ -2472,30 +2470,13 @@ class MainController {
 
   private async forgetWalletExclusive(pwd: string) {
     await this.prepareWalletRecoveryAccess();
-    // Check rate limiting before password validation
-    const remainingLockout = await this.checkRateLimit();
-    if (remainingLockout > 0) {
-      throw new Error(
-        `Too many failed attempts. Please wait ${remainingLockout} seconds before trying again.`
-      );
-    }
-
-    try {
-      // FIRST: Validate password - throws if wrong password or wallet locked
-      // This prevents unnecessary cleanup if validation fails
-      await this.forgetMainWallet(pwd);
-      // Reset rate limit on success
-      await this.resetRateLimit();
-    } catch (error) {
-      // Record failed attempt if it's a password error
-      if (error.message === INVALID_PASSWORD_ERROR) {
-        await this.recordFailedAttempt();
-      }
-      throw error;
-    }
-
-    // Now proceed with cleanup since password is valid
-    await this.resetWalletState({ resetNetworks: true });
+    const generation = this.walletSessionGeneration;
+    // Authenticate without the SDK's destructive root-key deletion. The
+    // discarded seed never leaves the background; cleanup owns its backup.
+    await this.getSeedForCurrentSession(pwd, generation);
+    const { forgetWalletWithRecovery } = await import('./walletRecovery');
+    this.assertCurrentWalletSession(generation);
+    await forgetWalletWithRecovery(this, this.walletRecoveryContext());
 
     // Reset activeSlip44 to default after forgetting wallet to ensure clean state
     store.dispatch(setActiveSlip44(DEFAULT_UTXO_SLIP44));

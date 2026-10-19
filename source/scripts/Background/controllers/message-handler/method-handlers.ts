@@ -100,7 +100,7 @@ export class WalletMethodHandler implements IMethodHandler {
 
       const targetChainId = Number(params[0].chainId);
 
-      if (activeNetwork.chainId === targetChainId) {
+      if (!isBitcoinBased && activeNetwork.chainId === targetChainId) {
         return null; // Already on the correct chain
       }
 

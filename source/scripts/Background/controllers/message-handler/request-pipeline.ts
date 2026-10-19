@@ -1196,7 +1196,10 @@ export const popupOptimizationMiddleware: Middleware = async (
     case 'switchEthereumChain':
       // Already handled by middleware, but double-check
       const targetChainId = Number(params?.[0]?.chainId);
-      if (vault.activeNetwork.chainId === targetChainId) {
+      if (
+        !vault.isBitcoinBased &&
+        vault.activeNetwork.chainId === targetChainId
+      ) {
         return null; // Already on correct chain
       }
       break;
@@ -1209,7 +1212,7 @@ export const popupOptimizationMiddleware: Middleware = async (
         const { vaultGlobal } = store.getState();
 
         // Check if we're trying to add the current network
-        if (vault.activeNetwork.chainId === chainId) {
+        if (!vault.isBitcoinBased && vault.activeNetwork.chainId === chainId) {
           // Network already active, no need to add
           return null;
         }
