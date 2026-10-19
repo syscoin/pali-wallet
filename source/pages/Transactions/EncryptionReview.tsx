@@ -3,7 +3,9 @@ import React, { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { LazyAccountBalance } from 'components/AccountBalance';
-import { Icon, Tooltip } from 'components/index';
+import { LockIconSvg } from 'components/Icon/Icon';
+import { Button, Icon, Tooltip } from 'components/index';
+import { ToastActionFooter } from 'components/ToastActionFooter';
 import { IKeyringAccountState } from 'types/network';
 import { ellipsis } from 'utils/index';
 
@@ -31,7 +33,7 @@ const AccountIcon = React.memo(
 );
 AccountIcon.displayName = 'AccountIcon';
 
-export const EncryptionAccountHeader = ({
+const EncryptionAccountHeader = ({
   account,
   onCopy,
 }: {
@@ -79,6 +81,81 @@ export const EncryptionAccountHeader = ({
           />
         </div>
       </div>
+    </div>
+  );
+};
+
+export const EncryptionReview = ({
+  account,
+  children,
+  confirmed,
+  description,
+  errorMsg,
+  host,
+  loading,
+  onCopy,
+  onSubmit,
+  title,
+}: {
+  account: IKeyringAccountState;
+  children?: React.ReactNode;
+  confirmed: boolean;
+  description: string;
+  errorMsg: string | null;
+  host: string;
+  loading: boolean;
+  onCopy: () => void;
+  onSubmit: () => void;
+  title: string;
+}) => {
+  const { t } = useTranslation();
+  return (
+    <div className="flex min-w-0 flex-col h-full">
+      <div className="flex-1 overflow-y-auto remove-scrollbar">
+        <EncryptionAccountHeader account={account} onCopy={onCopy} />
+        <div className="px-6 pb-24">
+          <div className="bg-bkg-1 rounded-lg p-4 mb-4">
+            <div className="flex items-start gap-3">
+              <LockIconSvg className="text-brand-royalblue mt-0.5 w-5 h-5 shrink-0" />
+              <div className="min-w-0 flex-1">
+                <h3 className="text-base font-medium text-brand-white mb-2">
+                  {title}
+                </h3>
+                <p className="break-words [overflow-wrap:anywhere] text-sm text-brand-graylight">
+                  {host} {description}
+                </p>
+              </div>
+            </div>
+          </div>
+          {children}
+          {errorMsg && (
+            <div className="mt-4 bg-red-500/10 border border-red-500/20 rounded-lg p-3">
+              <p className="text-sm text-red-500">{errorMsg}</p>
+            </div>
+          )}
+        </div>
+      </div>
+      <ToastActionFooter className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 shadow-lg z-50">
+        <div className="flex gap-3 justify-center">
+          <Button
+            variant="secondary"
+            type="button"
+            disabled={loading}
+            onClick={window.close}
+          >
+            {t('buttons.cancel')}
+          </Button>
+          <Button
+            variant="primary"
+            type="submit"
+            disabled={confirmed}
+            loading={loading}
+            onClick={onSubmit}
+          >
+            {t('buttons.confirm')}
+          </Button>
+        </div>
+      </ToastActionFooter>
     </div>
   );
 };

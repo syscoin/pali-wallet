@@ -14,6 +14,7 @@ import {
 } from '../harness/isolatedVaultFixture';
 import { PaliWallet } from '../harness/pali';
 import {
+  approve,
   extensionEvidence,
   popupFor,
   settle,
@@ -82,20 +83,9 @@ test('encryption requests preserve the requested account and require selection c
     await dapp.goto(server.url);
     await dapp.waitForFunction(() => Boolean((window as any).pali?.request));
     const connection = await startRequest(dapp, 'eth_requestAccounts');
-    const connect = await popupFor(wallet.context, dapp, connection);
-    await clickClosingPopup({
-      click: () =>
-        connect
-          .getByRole('button', {
-            name: /(?:^|\s)(confirm|approve|connect|proceed)$/i,
-          })
-          .last()
-          .click(),
-      isClosed: () => connect.isClosed(),
-    });
     expect(
-      (await settle(dapp, connection)).result.map((address: string) =>
-        address.toLowerCase()
+      (await approve(wallet.context, dapp, connection)).result.map(
+        (address: string) => address.toLowerCase()
       )
     ).toEqual([fixture.address.toLowerCase()]);
 

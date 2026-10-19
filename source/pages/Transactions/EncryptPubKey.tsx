@@ -2,15 +2,12 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
-import { LockIconSvg } from 'components/Icon/Icon';
-import { Button } from 'components/index';
-import { ToastActionFooter } from 'components/ToastActionFooter';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { dispatchBackgroundEvent } from 'utils/browser';
 
-import { EncryptionAccountHeader } from './EncryptionAccountHeader';
+import { EncryptionReview } from './EncryptionReview';
 
 interface ISign {
   send?: boolean;
@@ -101,63 +98,17 @@ const EncryptPubKey: React.FC<ISign> = () => {
   };
 
   return (
-    <div className="flex min-w-0 flex-col h-full">
-      {/* Scrollable content area */}
-      <div className="flex-1 overflow-y-auto remove-scrollbar">
-        {/* Account section */}
-        <EncryptionAccountHeader
-          account={activeAccount}
-          onCopy={() => void copyAddress()}
-        />
-
-        {/* Request info section */}
-        <div className="px-6 pb-24">
-          <div className="bg-bkg-1 rounded-lg p-4 mb-4">
-            <div className="flex items-start gap-3">
-              <LockIconSvg className="text-brand-royalblue mt-0.5 w-5 h-5 shrink-0" />
-              <div className="min-w-0 flex-1">
-                <h3 className="text-base font-medium text-brand-white mb-2">
-                  {t('send.encryptKey')}
-                </h3>
-                <p className="break-words [overflow-wrap:anywhere] text-sm text-brand-graylight">
-                  {host} {t('transactions.wouldLikeYourPubEncryption')}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {errorMsg && (
-            <div className="mt-4 bg-red-500/10 border border-red-500/20 rounded-lg p-3">
-              <p className="text-sm text-red-500">{errorMsg}</p>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Fixed button container at bottom */}
-      <ToastActionFooter className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 shadow-lg z-50">
-        <div className="flex gap-3 justify-center">
-          <Button
-            variant="secondary"
-            type="button"
-            disabled={loading}
-            onClick={window.close}
-          >
-            {t('buttons.cancel')}
-          </Button>
-
-          <Button
-            variant="primary"
-            type="submit"
-            disabled={confirmed}
-            loading={loading}
-            onClick={onSubmit}
-          >
-            {t('buttons.confirm')}
-          </Button>
-        </div>
-      </ToastActionFooter>
-    </div>
+    <EncryptionReview
+      account={activeAccount}
+      confirmed={confirmed}
+      description={t('transactions.wouldLikeYourPubEncryption')}
+      errorMsg={errorMsg}
+      host={host}
+      loading={loading}
+      onCopy={() => void copyAddress()}
+      onSubmit={onSubmit}
+      title={t('send.encryptKey')}
+    />
   );
 };
 
