@@ -67,7 +67,37 @@ it('publishes an ordinary result and releases its active request token', async (
 });
 
 it.each(['older-first', 'newer-first'])(
-  'keeps only the latest same-name lookup when results finish %s',
+  'returns successful parallel same-address results to both callers (%s)',
+  async (order) => {
+    const old = deferred();
+    const current = deferred();
+    provider.resolveName
+      .mockReturnValueOnce(old.promise)
+      .mockReturnValueOnce(current.promise);
+    // Independent views may resolve the same name without editing either form.
+    const first = wallet.resolveEns(NAME);
+    const second = wallet.resolveEns(NAME);
+    if (order === 'older-first') {
+      old.resolve(OLDER);
+      expect(await first).toBe(OLDER);
+      expect(cached()).toBeUndefined();
+      current.resolve(OLDER);
+      expect(await second).toBe(OLDER);
+    } else {
+      current.resolve(OLDER);
+      expect(await second).toBe(OLDER);
+      const published = mockState.vaultGlobal.ensCache;
+      old.resolve(OLDER);
+      expect(await first).toBe(OLDER);
+      expect(mockState.vaultGlobal.ensCache).toBe(published);
+    }
+    expect(cached()).toBe(OLDER);
+    expect(wallet.ensResolutionRequests.size).toBe(0);
+  }
+);
+
+it.each(['older-first', 'newer-first'])(
+  'returns each same-name result but publishes only the latest request (%s)',
   async (order) => {
     const old = deferred();
     const current = deferred();
@@ -78,7 +108,7 @@ it.each(['older-first', 'newer-first'])(
     const second = wallet.resolveEns(NAME.toUpperCase());
     if (order === 'older-first') {
       old.resolve(OLDER);
-      expect(await first).toBeNull();
+      expect(await first).toBe(OLDER);
       expect(cached()).toBeUndefined();
       expect(wallet.ensResolutionRequests.size).toBe(1);
       current.resolve(NEWER);
@@ -88,7 +118,7 @@ it.each(['older-first', 'newer-first'])(
       expect(await second).toBe(NEWER);
       expect(cached()).toBe(NEWER);
       old.resolve(OLDER);
-      expect(await first).toBeNull();
+      expect(await first).toBe(OLDER);
     }
     expect(cached()).toBe(NEWER);
     expect(mockState.vaultGlobal.ensCache[OLDER]).toBeUndefined();
@@ -110,6 +140,22 @@ it('does not let an older failed request erase the current token', async () => {
   current.resolve(NEWER);
   expect(await second).toBe(NEWER);
   expect(cached()).toBe(NEWER);
+  expect(wallet.ensResolutionRequests.size).toBe(0);
+});
+
+it('returns an older caller success even if the newer lookup fails', async () => {
+  const old = deferred();
+  const current = deferred();
+  provider.resolveName
+    .mockReturnValueOnce(old.promise)
+    .mockReturnValueOnce(current.promise);
+  const first = wallet.resolveEns(NAME);
+  const second = wallet.resolveEns(NAME);
+  current.reject(new Error('Synthetic newer lookup failure'));
+  expect(await second).toBeNull();
+  old.resolve(OLDER);
+  expect(await first).toBe(OLDER);
+  expect(cached()).toBeUndefined();
   expect(wallet.ensResolutionRequests.size).toBe(0);
 });
 
@@ -224,7 +270,7 @@ it('does not publish a reverse result over a newer forward request during verifi
   current.resolve(NEWER);
   expect(await forward).toBe(NEWER);
   reverseVerification.resolve(OLDER);
-  expect(await reverse).toBeNull();
+  expect(await reverse).toBe(NAME);
   expect(cached()).toBe(NEWER);
 });
 

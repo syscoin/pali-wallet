@@ -9604,20 +9604,19 @@ class MainController {
         // Best-effort; fall through to null.
       }
 
-      // A late lookup must not replace a newer same-name result or refill the
-      // cache after reset, even if its originating form ignores the response.
-      if (
-        generation !== this.walletStateGeneration ||
-        this.ensResolutionRequests.get(key) !== request
-      )
-        return null;
+      // Reset invalidates the caller as well as cache publication. Independent
+      // same-wallet callers still receive their own successful RPC results.
+      if (generation !== this.walletStateGeneration) return null;
       if (
         resolved &&
         typeof resolved === 'string' &&
         resolved.startsWith('0x')
       ) {
-        const addressLower = resolved.toLowerCase();
-        store.dispatch(setEnsName({ address: addressLower, name }));
+        // Only the newest same-name request may update the shared cache.
+        if (this.ensResolutionRequests.get(key) === request) {
+          const addressLower = resolved.toLowerCase();
+          store.dispatch(setEnsName({ address: addressLower, name }));
+        }
         return resolved;
       }
       return null;
