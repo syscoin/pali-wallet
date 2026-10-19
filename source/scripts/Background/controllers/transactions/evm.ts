@@ -285,6 +285,30 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
     const fetchPending = includePending && !isRoutescanApiUrl(apiUrl, chainId);
     if (!apiUrl) return { transactions: null, error: 'No API URL provided' };
 
+    const { accounts, activeAccount } = store.getState().vault;
+    let hintOwner = accounts[activeAccount.type]?.[activeAccount.id] as any;
+    const persistCountHint = (count: number) => {
+      const current = store.getState().vault;
+      // The count is only a pagination hint. Discard it if another account or
+      // a replaced/updated account record now owns this slot during the read.
+      if (
+        !hintOwner ||
+        hintOwner.address?.toLowerCase() !== address.toLowerCase() ||
+        current.activeAccount.type !== activeAccount.type ||
+        current.activeAccount.id !== activeAccount.id ||
+        current.accounts[activeAccount.type]?.[activeAccount.id] !== hintOwner
+      )
+        return;
+      store.dispatch(
+        setActiveAccountProperty({
+          property: 'evmTxCountByChainId',
+          value: { ...(hintOwner.evmTxCountByChainId || {}), [chainId]: count },
+        })
+      );
+      hintOwner =
+        store.getState().vault.accounts[activeAccount.type]?.[activeAccount.id];
+    };
+
     // Most block explorers (Etherscan, Polygonscan, Blockscout, etc.) use this same API format
     // Reference: https://docs.blockscout.com/devs/apis/rpc/account
     const url = accountApiUrl(apiUrl, address, 'txlist');
@@ -293,8 +317,10 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
     let evmTxCount: number | undefined;
     let nativeBalanceHint = 0;
     try {
-      const { accounts, activeAccount } = store.getState().vault;
-      const acc = accounts[activeAccount.type]?.[activeAccount.id] as any;
+      const acc =
+        hintOwner?.address?.toLowerCase() === address.toLowerCase()
+          ? hintOwner
+          : undefined;
       if (acc) {
         // Chain-specific hint takes precedence
         const byChain = acc.evmTxCountByChainId || {};
@@ -308,16 +334,7 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
       try {
         const count = await web3Provider.getTransactionCount(address);
         evmTxCount = Number(count || 0);
-        const { accounts, activeAccount } = store.getState().vault;
-        const acc = accounts[activeAccount.type]?.[activeAccount.id] as any;
-        const byChain = { ...(acc?.evmTxCountByChainId || {}) };
-        byChain[chainId] = evmTxCount;
-        store.dispatch(
-          setActiveAccountProperty({
-            property: 'evmTxCountByChainId',
-            value: byChain,
-          })
-        );
+        persistCountHint(evmTxCount);
       } catch (e) {
         evmTxCount = 0; // safe default
       }
@@ -397,7 +414,14 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
 
     // Parse all responses in parallel (gate optional ones by ok)
     const parsePromises: Promise<any>[] = [response.json()];
-    if (pendingResponse) parsePromises.push(pendingResponse.json());
+    if (pendingResponse)
+      // Unsupported pending endpoints can return HTML instead of JSON. Their
+      // optional failure must not reject healthy confirmed/token history.
+      parsePromises.push(
+        pendingResponse.ok
+          ? pendingResponse.json().catch(() => null)
+          : Promise.resolve(null)
+      );
     if (token20Response && token20Response.ok)
       parsePromises.push(token20Response.json());
 
@@ -522,16 +546,7 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
         ? Math.max(1, evmTxCount || 0)
         : 0;
       // Maintain only per-chain counts going forward
-      const { accounts, activeAccount } = store.getState().vault;
-      const acc = accounts[activeAccount.type]?.[activeAccount.id] as any;
-      const byChain = { ...(acc?.evmTxCountByChainId || {}) };
-      byChain[chainId] = newCount;
-      store.dispatch(
-        setActiveAccountProperty({
-          property: 'evmTxCountByChainId',
-          value: byChain,
-        })
-      );
+      persistCountHint(newCount);
     } catch {}
 
     // If we didn't use offset, limit to 30 for consistency
