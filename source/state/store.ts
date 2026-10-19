@@ -157,14 +157,22 @@ export async function saveMainState() {
 }
 
 /** Persist an acknowledged permission change without best-effort save semantics. */
-export async function persistMainStateStrict(): Promise<void> {
+export async function persistMainStateStrict(
+  onFailure?: () => void
+): Promise<void> {
   return walletPersistenceMutex.runExclusive(async () => {
     assertWalletPersistenceAllowed();
     const mainState = getMainStateForStorage(store.getState());
     // Both saveMainState and saveState intentionally swallow some failures.
     // A permission revocation must instead observe the actual storage result,
     // even if a prior best-effort save left the cache claiming no change.
-    await chromeStorage.setItem('state', mainState);
+    try {
+      await chromeStorage.setItem('state', mainState);
+    } catch (error) {
+      // Roll back an unpublished mutation before another writer snapshots it.
+      onFailure?.();
+      throw error;
+    }
     lastPersistedState = mainState;
     assertWalletPersistenceAllowed();
   });
@@ -174,12 +182,20 @@ export async function persistMainStateStrict(): Promise<void> {
 export function persistDappPermissionGrant(
   grant: IDApp,
   previous: IDApp | undefined,
-  isCurrent: () => boolean
+  isCurrent: () => boolean,
+  restoredPrevious: () => IDApp | undefined = () => undefined
 ): Promise<void> {
   return walletPersistenceMutex.runExclusive(async () => {
+    // A failed revoke can restore its exact old grant before this queued
+    // approval starts. Capture that predecessor once, never during the write.
+    const admittedPrevious =
+      previous === undefined ? restoredPrevious() : previous;
     const assertCurrent = () => {
       assertWalletPersistenceAllowed();
-      if (!isCurrent() || store.getState().dapp.dapps[grant.host] !== previous)
+      if (
+        !isCurrent() ||
+        store.getState().dapp.dapps[grant.host] !== admittedPrevious
+      )
         throw new Error('Permission grant context changed');
     };
     assertCurrent();

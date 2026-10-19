@@ -1,7 +1,7 @@
 import { INetwork } from '@sidhujag/sysweb3-network';
 
 import { notificationManager } from '../notification-manager';
-import { removeDApp, updateDAppAccount } from 'state/dapp';
+import { addDApp, removeDApp, updateDAppAccount } from 'state/dapp';
 import { IDApp } from 'state/dapp/types';
 import store, {
   persistDappPermissionGrant,
@@ -63,15 +63,22 @@ const DAppController = (
   getWalletStateGeneration: () => number = () => 0
 ): IDAppController => {
   const _dapps: IDappsSession = {};
-  const pendingGrants = new Map<string, object>();
+  const pendingGrants = new Map<
+    string,
+    { previous?: IDApp; restoredPrevious?: IDApp }
+  >();
   // Only origins whose real permission removal is pending may occupy this
   // bounded retry state. Unconnected pages cannot populate it or force writes.
   const pendingRevocations = new Map<string, { inFlight?: Promise<void> }>();
   const MAX_PENDING_REVOCATIONS = 256;
 
-  const persistDappState = async (operation: string, strict = false) => {
+  const persistDappState = async (
+    operation: string,
+    strict = false,
+    onFailure?: () => void
+  ) => {
     try {
-      if (strict) await persistMainStateStrict();
+      if (strict) await persistMainStateStrict(onFailure);
       else await saveMainState();
     } catch (error) {
       console.error(`[DAppController] Failed to persist ${operation}:`, error);
@@ -217,7 +224,10 @@ const DAppController = (
     const address = account.address;
     const xpub = account.xpub;
     const selectedNetwork = { ...network };
-    const attempt = {};
+    const attempt = {
+      previous: existingDapp,
+      restoredPrevious: undefined as IDApp | undefined,
+    };
     pendingGrants.set(host, attempt);
     const isCurrent = () => {
       const { accounts, activeNetwork } = store.getState().vault;
@@ -239,7 +249,12 @@ const DAppController = (
       );
     };
 
-    return persistDappPermissionGrant(grant, existingDapp, isCurrent)
+    return persistDappPermissionGrant(
+      grant,
+      existingDapp,
+      isCurrent,
+      () => attempt.restoredPrevious
+    )
       .finally(clearProviderCache)
       .then(() => {
         if (!isCurrent() || store.getState().dapp.dapps[host] !== grant)
@@ -416,18 +431,53 @@ const DAppController = (
       );
     }
     const entry = pending || {};
+    const previous = getAll()[host];
+    const session = _dapps[host];
+    const generation = getWalletStateGeneration();
+    const account = previous
+      ? store.getState().vault.accounts[previous.accountType]?.[
+          previous.accountId
+        ]
+      : undefined;
+    let restored = false;
+    const restorePermission = () => {
+      const current = previous
+        ? store.getState().vault.accounts[previous.accountType]?.[
+            previous.accountId
+          ]
+        : undefined;
+      if (
+        !previous ||
+        !account ||
+        pendingRevocations.get(host) !== entry ||
+        generation !== getWalletStateGeneration() ||
+        getAll()[host] ||
+        _dapps[host] ||
+        current?.address !== account.address ||
+        current?.xpub !== account.xpub
+      )
+        return;
+      const pendingApproval = pendingGrants.get(host);
+      if (pendingApproval && pendingApproval.previous === undefined)
+        pendingApproval.restoredPrevious = previous;
+      store.dispatch(addDApp(previous));
+      if (session) _dapps[host] = session;
+      restored = true;
+    };
     pendingRevocations.set(host, entry);
     // Install the shared promise before work begins so concurrent same-origin
     // requests cannot write or emit the disconnect events more than once.
     entry.inFlight = Promise.resolve()
       .then(async () => {
-        await persistDappState('dapp disconnect', true);
+        await persistDappState('dapp disconnect', true, restorePermission);
         // A newly approved connection must not receive stale disconnect UI.
         if (!_dapps[host] && !getAll()[host]) notifyDisconnected(host);
         pendingRevocations.delete(host);
       })
       .catch((error) => {
         entry.inFlight = undefined;
+        if (restored && pendingRevocations.get(host) === entry)
+          pendingRevocations.delete(host);
         throw error;
       });
     // Remove synchronously after installing the shared attempt, so another
@@ -502,7 +552,17 @@ const DAppController = (
   ): Promise<void> =>
     new Promise<void>((resolve, reject) => {
       try {
-        const hosts = Object.keys(_dapps);
+        const hosts = new Set(Object.keys(_dapps));
+        if (
+          id === PaliEvents.chainChanged ||
+          id === PaliEvents.isBitcoinBased ||
+          (id === PaliEvents.lockStateChanged &&
+            data?.params?.isUnlocked === false)
+        ) {
+          // A failed revoke may restore this session. Keep only its public
+          // network/locked state current while account access remains revoked.
+          for (const host of pendingRevocations.keys()) hosts.add(host);
+        }
 
         // Validate input data - params can be null for some events like pali_accountsChanged on UTXO
         if (!data || !data.method || data.params === undefined) {

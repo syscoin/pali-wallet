@@ -37,7 +37,6 @@ const ConnectedSites = () => {
     null
   );
   const [disconnectError, setDisconnectError] = useState('');
-  const [retryHost, setRetryHost] = useState<string | null>(null);
 
   // Show all dapps since they're connected globally (one account per dapp)
   // Redux owns membership: an old optimistic removal must not hide a later
@@ -51,7 +50,6 @@ const ConnectedSites = () => {
 
   const disconnectHost = async (host: string) => {
     setDisconnectError('');
-    setRetryHost(null);
     setDisconnectingHost(host);
     setSelectedHost(undefined);
 
@@ -62,7 +60,6 @@ const ConnectedSites = () => {
         [host, true, { allowAlreadyDisconnected: true, propagateErrors: true }]
       );
     } catch (error) {
-      setRetryHost(host);
       setDisconnectError(error?.message || t('send.failed'));
       console.error('Error disconnecting dapp:', error);
     } finally {
@@ -199,17 +196,6 @@ const ConnectedSites = () => {
         )}
 
         <PageActionFooter error={disconnectError}>
-          {retryHost && (
-            <Button
-              type="button"
-              fullWidth
-              aria-label={`${t('receive.retry')}: ${retryHost}`}
-              disabled={disconnectingHost !== null}
-              onClick={() => void disconnectHost(retryHost)}
-            >
-              {t('receive.retry')}
-            </Button>
-          )}
           <Button
             variant="neutral"
             className="text-sm text-brand-royalblue"
