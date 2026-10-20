@@ -40,28 +40,24 @@ const EthAccountController = (): IEthAccountController => {
       );
       const tokenExists = currentAssets.find((asset: ITokenEthProps) => {
         // SYSCOIN: The same address may name different assets on other chains.
-        if (asset.chainId !== chainId) return false;
+        if (
+          asset.chainId !== chainId ||
+          asset.contractAddress.toLowerCase() !==
+            token.contractAddress.toLowerCase()
+        )
+          return false;
         // For ERC-1155 tokens, check both contract address and tokenId
         if (
           asset.tokenStandard === 'ERC-1155' &&
           token.tokenStandard === 'ERC-1155'
         ) {
-          if (
-            asset.contractAddress.toLowerCase() !==
-            token.contractAddress.toLowerCase()
-          )
-            return false;
           try {
             return normalizeNftTokenId(asset.tokenId) === tokenId;
           } catch {
             return false;
           }
         }
-        // For other token types, just check contract address
-        return (
-          asset.contractAddress.toLowerCase() ===
-          token.contractAddress.toLowerCase()
-        );
+        return true;
       });
 
       if (tokenExists) {
