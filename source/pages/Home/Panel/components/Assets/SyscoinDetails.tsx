@@ -29,6 +29,8 @@ import { retryableFetch } from 'utils/retryableFetch';
 
 import { AssetMarketLinks } from './AssetMarketLinks';
 
+const hasMarketValue = Number.isFinite;
+
 interface ISyscoinAssetDetailsProps {
   id: string;
   navigationState?: any;
@@ -89,6 +91,7 @@ export const SyscoinAssetDetails = ({
     marketDataState?.assetGuid === currentAssetGuid
       ? marketDataState.data
       : null;
+  const marketCoinId = typeof marketData?.id === 'string' ? marketData.id : '';
 
   // All hooks must be called before any early returns
   // Memoize formattedAsset and assetSymbol calculation
@@ -239,7 +242,7 @@ export const SyscoinAssetDetails = ({
         <h4 className="text-white font-medium mb-3 text-sm flex items-center justify-between">
           {t('tokens.marketInformation')}
           {/* CoinGecko Logo Link */}
-          {marketData.id && (
+          {marketCoinId && (
             <a
               href="https://www.coingecko.com"
               target="_blank"
@@ -259,7 +262,9 @@ export const SyscoinAssetDetails = ({
         </h4>
 
         {/* Price and Change - Full Width */}
-        {marketData.market_data?.current_price?.[userCurrency] && (
+        {hasMarketValue(
+          marketData.market_data?.current_price?.[userCurrency]
+        ) && (
           <div className="mb-4">
             <span className="text-gray-400 text-xs block mb-1">
               {t('tokens.currentPrice')}
@@ -297,14 +302,14 @@ export const SyscoinAssetDetails = ({
 
         {/* Market Cap and Rank - Grid */}
         <div className="grid grid-cols-2 gap-4 mb-4">
-          {marketData.market_cap_rank && (
+          {hasMarketValue(marketData.market_cap_rank) && (
             <div>
               <span className="text-gray-400 text-xs block mb-1">
                 {t('tokens.rank')}
               </span>
-              {marketData.id ? (
+              {marketCoinId ? (
                 <a
-                  href={`https://www.coingecko.com/en/coins/${marketData.id}`}
+                  href={`https://www.coingecko.com/en/coins/${marketCoinId}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-brand-royalblue font-medium hover:text-brand-deepPink100 transition-colors duration-200 flex items-center gap-1"
@@ -319,7 +324,9 @@ export const SyscoinAssetDetails = ({
               )}
             </div>
           )}
-          {marketData.market_data?.market_cap?.[userCurrency] && (
+          {hasMarketValue(
+            marketData.market_data?.market_cap?.[userCurrency]
+          ) && (
             <div className="text-right">
               <span className="text-gray-400 text-xs block mb-1">
                 {t('tokens.marketCap')}
@@ -337,7 +344,9 @@ export const SyscoinAssetDetails = ({
 
         {/* Volume and Supply - Grid */}
         <div className="grid grid-cols-2 gap-4 mb-4">
-          {marketData.market_data?.total_volume?.[userCurrency] && (
+          {hasMarketValue(
+            marketData.market_data?.total_volume?.[userCurrency]
+          ) && (
             <div>
               <span className="text-gray-400 text-xs block mb-1">
                 {t('tokens.volume24h')}
@@ -351,7 +360,7 @@ export const SyscoinAssetDetails = ({
               </span>
             </div>
           )}
-          {marketData.market_data?.circulating_supply && (
+          {hasMarketValue(marketData.market_data?.circulating_supply) && (
             <div className="text-right">
               <span className="text-gray-400 text-xs block mb-1">
                 {t('tokens.circulatingSupply')}

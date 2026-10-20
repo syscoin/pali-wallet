@@ -91,7 +91,14 @@ for (const width of [320, 400]) {
             // HTTP-only synthetic metadata; real fetching/rendering unchanged.
             // eslint-disable-next-line camelcase
             body: JSON.stringify({
-              market_data: { current_price: { usd: 42 } },
+              id: width === 320 ? { toString: null } : 'syscoin',
+              market_cap_rank: width === 320 ? { value: 7 } : 7,
+              market_data: {
+                current_price: { usd: 42 },
+                market_cap: { usd: width === 320 ? { toString: null } : 0 },
+                total_volume: { usd: width === 320 ? { toString: null } : 0 },
+                circulating_supply: width === 320 ? { toString: null } : 0,
+              },
               description: {
                 en:
                   width === 320
@@ -201,6 +208,41 @@ for (const width of [320, 400]) {
               })
             ).toHaveCount(width === 320 ? 0 : 1);
             await expect(page.locator('p b')).toHaveCount(0);
+            for (const label of [
+              en.tokens.rank,
+              en.tokens.marketCap,
+              en.tokens.volume24h,
+              en.tokens.circulatingSupply,
+            ]) {
+              await expect(page.getByText(label, { exact: true })).toHaveCount(
+                width === 320 ? 0 : 1
+              );
+            }
+            await expect(
+              page.getByRole('link', {
+                name: en.tokens.historicalData,
+                exact: true,
+              })
+            ).toHaveCount(width === 320 ? 0 : 1);
+            if (width === 400) {
+              await expect(page.getByText('#7', { exact: true })).toHaveCount(
+                1
+              );
+              for (const label of [en.tokens.marketCap, en.tokens.volume24h]) {
+                await expect(
+                  page
+                    .getByText(label, { exact: true })
+                    .locator('..')
+                    .getByText('$0', { exact: true })
+                ).toHaveCount(1);
+              }
+              await expect(
+                page
+                  .getByText(en.tokens.circulatingSupply, { exact: true })
+                  .locator('..')
+                  .getByText('0', { exact: true })
+              ).toHaveCount(1);
+            }
             expect(marketReads).toBe(1);
             expect(routes!.deniedWrites).toEqual([]);
             await close.click();

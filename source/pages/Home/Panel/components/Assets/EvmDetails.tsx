@@ -156,6 +156,7 @@ export const EvmAssetDetails = ({
   // Use enhanced data from token or fetched data
   const tokenData = enhancedData;
   const marketData = tokenData?.market_data;
+  const coinGeckoId = typeof tokenData?.id === 'string' ? tokenData.id : '';
 
   // Get user's preferred currency
   const userCurrency = (fiat.asset || 'usd').toLowerCase();
@@ -173,7 +174,7 @@ export const EvmAssetDetails = ({
         <h4 className="text-white font-medium mb-3 text-sm flex items-center justify-between">
           {t('tokens.marketInformation')}
           {/* CoinGecko Logo Link */}
-          {tokenData.id && (
+          {coinGeckoId && (
             <a
               href="https://www.coingecko.com"
               target="_blank"
@@ -227,9 +228,9 @@ export const EvmAssetDetails = ({
               <span className="text-gray-400 text-xs block mb-1">
                 {t('tokens.rank')}
               </span>
-              {tokenData.id ? (
+              {coinGeckoId ? (
                 <a
-                  href={`https://www.coingecko.com/en/coins/${tokenData.id}`}
+                  href={`https://www.coingecko.com/en/coins/${coinGeckoId}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-brand-royalblue font-medium hover:text-brand-deepPink100 transition-colors duration-200 flex items-center gap-1"

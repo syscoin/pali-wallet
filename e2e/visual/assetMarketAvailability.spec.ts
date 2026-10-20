@@ -27,6 +27,7 @@ const tokens = new Map([
 async function marketAvailability(
   malformedCategories: boolean,
   malformedDescription: boolean,
+  malformedIdentity: boolean,
   info: TestInfo
 ) {
   test.setTimeout(120_000);
@@ -184,7 +185,9 @@ async function marketAvailability(
         const address = match[1].toLowerCase();
         const complete = address === COMPLETE;
         const body = {
-          id: `synthetic-${tokens.get(address)!.toLowerCase()}`,
+          id: malformedIdentity
+            ? { toString: null }
+            : `synthetic-${tokens.get(address)!.toLowerCase()}`,
           symbol: tokens.get(address),
           name: tokens.get(address),
           categories: malformedCategories
@@ -200,17 +203,37 @@ async function marketAvailability(
               : 'Synthetic partial description',
           },
           // eslint-disable-next-line camelcase
-          market_cap_rank: complete ? 17 : null,
+          market_cap_rank: malformedIdentity
+            ? { value: 17 }
+            : complete
+            ? 17
+            : null,
           // eslint-disable-next-line camelcase
           market_data: {
             // eslint-disable-next-line camelcase
             current_price: { usd: 55 },
             // eslint-disable-next-line camelcase
-            market_cap: { usd: complete ? 1000 : null },
+            market_cap: {
+              usd: malformedIdentity
+                ? { toString: null }
+                : complete
+                ? 1000
+                : null,
+            },
             // eslint-disable-next-line camelcase
-            total_volume: { usd: complete ? 200 : null },
+            total_volume: {
+              usd: malformedIdentity
+                ? { toString: null }
+                : complete
+                ? 200
+                : null,
+            },
             // eslint-disable-next-line camelcase
-            circulating_supply: complete ? 10 : null,
+            circulating_supply: malformedIdentity
+              ? { toString: null }
+              : complete
+              ? 10
+              : null,
           },
         };
         marketResponses.push({ address, body });
@@ -286,27 +309,27 @@ async function marketAvailability(
         await expect(
           page.getByText('$55.000000', { exact: true })
         ).toBeVisible();
-        await expect(
-          page.getByText(en.tokens.marketCap, { exact: true })
-        ).toBeVisible();
-        await expect(
-          page.getByText(en.tokens.volume24h, { exact: true })
-        ).toBeVisible();
+        for (const label of [en.tokens.marketCap, en.tokens.volume24h]) {
+          const value = page.getByText(label, { exact: true });
+          if (malformedIdentity) await expect(value).toHaveCount(0);
+          else await expect(value).toBeVisible();
+        }
         await expect(
           page.getByRole('link', { name: 'Payments', exact: true })
         ).toHaveCount(malformedCategories ? 0 : 1);
         await expect(
           page.getByText(en.tokens.categories, { exact: true })
         ).toHaveCount(malformedCategories ? 0 : 1);
-        await expect(
-          page.getByRole('link', {
-            name: en.tokens.historicalData,
-            exact: true,
-          })
-        ).toHaveAttribute(
-          'href',
-          'https://www.coingecko.com/en/coins/synthetic-complete/historical_data'
-        );
+        const history = page.getByRole('link', {
+          name: en.tokens.historicalData,
+          exact: true,
+        });
+        if (malformedIdentity) await expect(history).toHaveCount(0);
+        else
+          await expect(history).toHaveAttribute(
+            'href',
+            'https://www.coingecko.com/en/coins/synthetic-complete/historical_data'
+          );
         await expect(
           page.getByText(en.tokens.about, { exact: true })
         ).toHaveCount(malformedDescription ? 0 : 1);
@@ -400,6 +423,7 @@ async function marketAvailability(
             syntheticHttpOnly: true,
             malformedCategories,
             malformedDescription,
+            malformedIdentity,
             controllerStateReplaced: false,
             controllerResultReplaced: false,
             contractReads,
@@ -427,17 +451,25 @@ async function marketAvailability(
   }
 }
 
-for (const [malformedCategories, malformedDescription] of [
-  [false, false],
-  [true, false],
-  [false, true],
+for (const [malformedCategories, malformedDescription, malformedIdentity] of [
+  [false, false, false],
+  [true, false, false],
+  [false, true, false],
+  [false, false, true],
 ]) {
   test(`ERC20 details preserve the price and close action with ${
     malformedCategories
       ? 'malformed categories'
       : malformedDescription
       ? 'malformed descriptions'
+      : malformedIdentity
+      ? 'malformed market identity and optional numeric values'
       : 'null optional market values'
   }`, async ({}, info) =>
-    marketAvailability(malformedCategories, malformedDescription, info));
+    marketAvailability(
+      malformedCategories,
+      malformedDescription,
+      malformedIdentity,
+      info
+    ));
 }
