@@ -383,6 +383,28 @@ it('does not repair over a replacement wallet waiting behind the held commit', a
   expect(commits).toHaveLength(2);
 });
 
+it.each(['profile', 'vault and profile'] as const)(
+  'keeps an originally absent %s absent after held removal rollback',
+  async (missing) => {
+    delete records['state-vault-111-passkey-profile'];
+    if (missing === 'vault and profile') delete records['state-vault-111'];
+    const before = await projection();
+    const held = holdCommit();
+    const removing = remove();
+    const rejected = expect(removing).rejects.toThrow('Wallet session changed');
+    await held.started;
+    wallet.walletSessionGeneration += 1;
+    held.release();
+    await rejected;
+    expect(await projection()).toEqual(before);
+    expect(records['state-vault-111-passkey-profile']).toBeNull();
+    if (missing === 'vault and profile')
+      expect(records['state-vault-111']).toBeNull();
+    expect(commits).toHaveLength(2);
+    expect(removedKeys).toEqual([]);
+  }
+);
+
 it('fails closed on a native snapshot read failure without deleting any records', async () => {
   const before = await projection();
   failReads = true;

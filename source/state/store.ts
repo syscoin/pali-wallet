@@ -379,7 +379,7 @@ export function persistNetworkRemoval(
       const current = getMainStateForStorage(store.getState());
       await chromeStorage.setItems({
         state: current,
-        ...Object.fromEntries(keys.map((key) => [key, previous[key] ?? null])),
+        ...previous,
       });
       lastPersistedState = current;
       throw error;
