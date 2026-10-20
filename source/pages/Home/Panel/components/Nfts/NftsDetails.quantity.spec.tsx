@@ -261,10 +261,17 @@ it.each([
   '42',
   '9007199254740993',
   '115792089237316195423570985008687907853269984665640564039457584007913129639935',
+  '0'.repeat(100),
+  `${'0'.repeat(100)}1`,
+  `${'0'.repeat(100)}9007199254740993`,
+  `${'0'.repeat(
+    20
+  )}115792089237316195423570985008687907853269984665640564039457584007913129639935`,
 ])(
   'retains the exact owned quantity %s through saved collection navigation',
-  async (quantity) => {
-    rawBalance = quantity;
+  async (explorerBalance) => {
+    const quantity = explorerBalance.replace(/^0+(?=\d)/, '');
+    rawBalance = explorerBalance;
     const imported = renderPage(<AddToken />);
     const importButton = await screen.findByRole('button', {
       name: 'Import EXACT token',
@@ -274,7 +281,7 @@ it.each([
     const saved = store.getState().vault.accountAssets[TYPE][0].ethereum[0];
     expect(saved).toMatchObject({
       balance: Number(quantity),
-      rawBalance: quantity,
+      rawBalance: explorerBalance,
       chainId: 5700,
       tokenId: '7',
     });
@@ -291,7 +298,7 @@ it.each([
       await screen.findByRole('button', { name: 'send.viewCollectionItems' })
     );
     await waitFor(() => expect(routeState?.nftCollection).toBe(true));
-    expect(routeState.nftData.rawBalance).toBe(quantity);
+    expect(routeState.nftData.rawBalance).toBe(explorerBalance);
     const header = screen.getByText(/• ERC-1155/);
     const amount = screen.getByText('Amount', { exact: true }).parentElement!;
     const exactValue = (element: HTMLElement) =>
@@ -311,6 +318,8 @@ it.each([
     expect(header).toHaveTextContent(
       quantity === '1' ? 'nftDetails.item •' : 'nftDetails.items •'
     );
+    expect(header.title).toBe(quantity);
+    expect(amount.title).toBe(quantity);
     if (quantity.length > 15) {
       expect(header.title).toBe(quantity);
       expect(amount.title).toBe(quantity);
@@ -377,6 +386,9 @@ it.each([
   '115792089237316195423570985008687907853269984665640564039457584007913129639936',
   '9'.repeat(79),
   '1'.repeat(2049),
+  `${'0'.repeat(
+    100
+  )}115792089237316195423570985008687907853269984665640564039457584007913129639936`,
 ])('does not accept an out-of-range uint256 quantity', (raw) => {
   const view = renderPage(
     <NftsDetails

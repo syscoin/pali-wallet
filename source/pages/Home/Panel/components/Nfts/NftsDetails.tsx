@@ -71,13 +71,17 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
 
   // Get NFT data from navigation state if available (for import preview/search results)
   const currentNft = nftData;
+  const normalizedRawQuantity =
+    typeof currentNft?.rawBalance === 'string'
+      ? currentNft.rawBalance.replace(/^0+(?=\d)/, '')
+      : undefined;
   const exactQuantity =
     currentNft?.tokenStandard === 'ERC-1155' &&
-    typeof currentNft.rawBalance === 'string' &&
-    /^\d{1,78}$/.test(currentNft.rawBalance) &&
-    (currentNft.rawBalance.length < MAX_NFT_QUANTITY.length ||
-      currentNft.rawBalance <= MAX_NFT_QUANTITY)
-      ? currentNft.rawBalance.replace(/^0+(?=\d)/, '')
+    typeof normalizedRawQuantity === 'string' &&
+    /^\d{1,78}$/.test(normalizedRawQuantity) &&
+    (normalizedRawQuantity.length < MAX_NFT_QUANTITY.length ||
+      normalizedRawQuantity <= MAX_NFT_QUANTITY)
+      ? normalizedRawQuantity
       : undefined;
   const quantity =
     exactQuantity === undefined
