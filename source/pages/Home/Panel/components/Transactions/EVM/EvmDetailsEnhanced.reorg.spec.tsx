@@ -161,6 +161,249 @@ beforeEach(() => {
   mockEmitter.mockResolvedValue(transaction({ gasUsed: '21000' }));
 });
 
+it.each(['pending read', 'settled read'])(
+  'keeps a later live receipt ABA authoritative over a %s and cached reopen',
+  async (phase) => {
+    // Both fork states use the same immutable transaction hash and calldata.
+    // Its execution outcome can differ because the preceding chain state does.
+    // eslint-disable-next-line camelcase -- Provider receipt field.
+    const first = transaction({ txreceipt_status: '0' });
+    const intermediate = transaction({
+      blockNumber: 102,
+      blockHash: NEW_BLOCK,
+      confirmations: 1,
+      // eslint-disable-next-line camelcase -- Provider receipt field.
+      txreceipt_status: '1',
+      gasUsed: '21000',
+    });
+    mockHistory = [first];
+    mockLocation.state.tx = first;
+    let resolve!: (value: any) => void;
+    mockEmitter.mockReturnValue(new Promise((done) => (resolve = done)));
+    const view = render(<DetailsView />);
+    await waitFor(() => expect(mockEmitter).toHaveBeenCalledTimes(1));
+    if (phase === 'settled read') {
+      await act(async () => resolve(intermediate));
+      expect(detailValue('Block Number')).toBe('102');
+    }
+
+    mockHistory = [{ ...intermediate }];
+    await act(async () => view.rerender(<DetailsView />));
+    expect(screen.getByTestId('transaction-status').textContent).toBe(
+      'send.confirmed'
+    );
+    mockHistory = [{ ...first }];
+    await act(async () => view.rerender(<DetailsView />));
+    expect(detailValue('Block Number')).toBe('100');
+    expect(screen.getByTestId('transaction-status').textContent).toBe(
+      'send.failed'
+    );
+    if (phase === 'pending read') await act(async () => resolve(intermediate));
+    expect(detailValue('Block Number')).toBe('100');
+    expect(screen.getByTestId('transaction-status').textContent).toBe(
+      'send.failed'
+    );
+    expect(screen.queryByText('Gas Used', { selector: 'dt' })).toBeNull();
+
+    view.unmount();
+    const reopened = render(<DetailsView />);
+    await waitFor(() => expect(detailValue('Block Number')).toBe('100'));
+    expect(screen.getByTestId('transaction-status').textContent).toBe(
+      'send.failed'
+    );
+    expect(screen.queryByText('Gas Used', { selector: 'dt' })).toBeNull();
+    expect(mockEmitter).toHaveBeenCalledTimes(1);
+
+    reopened.unmount();
+    const clock = jest.spyOn(Date, 'now').mockReturnValue(Date.now() + 300001);
+    try {
+      mockEmitter.mockResolvedValue(intermediate);
+      render(<DetailsView />);
+      await waitFor(() => expect(detailValue('Block Number')).toBe('102'));
+      expect(screen.getByTestId('transaction-status').textContent).toBe(
+        'send.confirmed'
+      );
+      expect(mockEmitter).toHaveBeenCalledTimes(2);
+    } finally {
+      clock.mockRestore();
+    }
+  }
+);
+
+it('retains a fresh mined cache after remounting with unchanged pending clones', async () => {
+  const pending = transaction({
+    blockNumber: null,
+    blockHash: null,
+    confirmations: 0,
+    // eslint-disable-next-line camelcase -- Provider receipt field.
+    txreceipt_status: null,
+  });
+  mockHistory = [pending];
+  mockLocation.state.tx = pending;
+  const view = render(<DetailsView />);
+  await waitFor(() => expect(detailValue('Gas Used')).toBe('21,000'));
+  view.unmount();
+
+  mockHistory = [{ ...pending }];
+  const second = render(<DetailsView />);
+  await waitFor(() => expect(detailValue('Block Number')).toBe('100'));
+  expect(detailValue('Gas Used')).toBe('21,000');
+  expect(screen.getByTestId('transaction-status').textContent).toBe(
+    'send.confirmed'
+  );
+  second.unmount();
+
+  mockHistory = [{ ...pending }];
+  render(<DetailsView />);
+  await waitFor(() => expect(detailValue('Gas Used')).toBe('21,000'));
+  expect(screen.getByTestId('transaction-status').textContent).toBe(
+    'send.confirmed'
+  );
+  expect(mockEmitter).toHaveBeenCalledTimes(1);
+});
+
+it('retains a later mined-to-pending observation when the lookup began without history', async () => {
+  mockHistory = [];
+  mockLocation.state.tx = undefined;
+  let resolve!: (value: any) => void;
+  mockEmitter.mockReturnValue(new Promise((done) => (resolve = done)));
+  const view = render(<DetailsView />);
+  await waitFor(() => expect(mockEmitter).toHaveBeenCalledTimes(1));
+
+  mockHistory = [transaction()];
+  await act(async () => view.rerender(<DetailsView />));
+  expect(detailValue('Block Number')).toBe('100');
+  mockHistory = [
+    transaction({ blockNumber: null, blockHash: null, confirmations: 0 }),
+  ];
+  await act(async () => view.rerender(<DetailsView />));
+  expect(screen.getByTestId('transaction-status').textContent).toBe(
+    'send.pending'
+  );
+  await act(async () => resolve(transaction({ gasUsed: '21000' })));
+  expect(screen.getByTestId('transaction-status').textContent).toBe(
+    'send.pending'
+  );
+  expect(screen.queryByText('Gas Used', { selector: 'dt' })).toBeNull();
+});
+
+it('retains the original scoped cache when returning from another endpoint', async () => {
+  const pending = transaction({
+    blockNumber: null,
+    blockHash: null,
+    confirmations: 0,
+  });
+  mockHistory = [pending];
+  const view = render(<DetailsView />);
+  await waitFor(() => expect(detailValue('Gas Used')).toBe('21,000'));
+  const originalUrl = mockState.vault.activeNetwork.url;
+  try {
+    mockScope.network = 'network-b';
+    mockState.vault.activeNetwork.url = 'https://other-rpc.example';
+    mockEmitter.mockResolvedValue(transaction({ blockNumber: 200 }));
+    await act(async () => view.rerender(<DetailsView />));
+    await waitFor(() => expect(detailValue('Block Number')).toBe('200'));
+
+    mockScope.network = 'network-a';
+    mockState.vault.activeNetwork.url = originalUrl;
+    await act(async () => view.rerender(<DetailsView />));
+    await waitFor(() => expect(detailValue('Block Number')).toBe('100'));
+    expect(detailValue('Gas Used')).toBe('21,000');
+    expect(mockEmitter).toHaveBeenCalledTimes(2);
+  } finally {
+    mockScope.network = 'network-a';
+    mockState.vault.activeNetwork.url = originalUrl;
+  }
+});
+
+it.each([
+  { mode: 'mounted view', fails: false },
+  { mode: 'cache reopen', fails: false },
+  { mode: 'mounted view', fails: true },
+  { mode: 'cache reopen', fails: true },
+])(
+  'refreshes a known-superseded receipt after its live row disappears: %o',
+  async ({ mode, fails }) => {
+    // A restored hash-only route may lose its live row as the history window moves.
+    mockLocation.state.tx = undefined;
+    // eslint-disable-next-line camelcase -- Provider receipt field.
+    const first = transaction({ txreceipt_status: '0' });
+    const intermediate = transaction({
+      blockNumber: 102,
+      blockHash: NEW_BLOCK,
+      confirmations: 1,
+      // eslint-disable-next-line camelcase -- Provider receipt field.
+      txreceipt_status: '1',
+      gasUsed: '21000',
+    });
+    mockHistory = [first];
+    let resolve!: (value: any) => void;
+    mockEmitter.mockReturnValue(new Promise((done) => (resolve = done)));
+    const view = render(<DetailsView />);
+    await waitFor(() => expect(mockEmitter).toHaveBeenCalledTimes(1));
+    mockHistory = [intermediate];
+    await act(async () => view.rerender(<DetailsView />));
+    mockHistory = [{ ...first }];
+    await act(async () => view.rerender(<DetailsView />));
+    await act(async () => resolve(intermediate));
+    expect(screen.getByTestId('transaction-status').textContent).toBe(
+      'send.failed'
+    );
+
+    let resolveFresh!: (value: any) => void;
+    let rejectFresh!: (error: Error) => void;
+    mockEmitter.mockReturnValue(
+      new Promise((done, reject) => {
+        resolveFresh = done;
+        rejectFresh = reject;
+      })
+    );
+    if (mode === 'cache reopen') view.unmount();
+    mockHistory = [];
+    const current = mode === 'cache reopen' ? render(<DetailsView />) : view;
+    if (mode === 'mounted view')
+      await act(async () => current.rerender(<DetailsView />));
+    expect(screen.queryByText('102', { selector: 'dd' })).toBeNull();
+    expect(screen.queryByText('send.confirmed')).toBeNull();
+    await waitFor(() => expect(mockEmitter).toHaveBeenCalledTimes(2));
+
+    if (fails) {
+      const errorLog = jest
+        .spyOn(console, 'error')
+        .mockImplementation(() => undefined);
+      try {
+        await act(async () => rejectFresh(new Error('synthetic unavailable')));
+        expect(screen.queryByText('102', { selector: 'dd' })).toBeNull();
+        expect(
+          screen.getByText('transactions.transactionNotFoundOrPending')
+        ).toBeTruthy();
+      } finally {
+        errorLog.mockRestore();
+      }
+    } else {
+      await act(async () => resolveFresh({ ...first, gasUsed: '30000' }));
+      await waitFor(() => expect(detailValue('Gas Used')).toBe('30,000'));
+      expect(screen.getByTestId('transaction-status').textContent).toBe(
+        'send.failed'
+      );
+    }
+    await act(async () => current.rerender(<DetailsView />));
+    expect(mockEmitter).toHaveBeenCalledTimes(2);
+  }
+);
+
+it('keeps an unsuperseded fresh receipt when its old live row disappears', async () => {
+  const view = render(<DetailsView />);
+  await waitFor(() => expect(detailValue('Gas Used')).toBe('21,000'));
+  mockHistory = [];
+  await act(async () => view.rerender(<DetailsView />));
+  expect(detailValue('Gas Used')).toBe('21,000');
+  expect(screen.getByTestId('transaction-status').textContent).toBe(
+    'send.confirmed'
+  );
+  expect(mockEmitter).toHaveBeenCalledTimes(1);
+});
+
 it('shows the current reorg block from live history when reopening cached EVM details', async () => {
   const firstVisit = render(<DetailsView />);
   await waitFor(() => expect(mockEmitter).toHaveBeenCalledTimes(1));
