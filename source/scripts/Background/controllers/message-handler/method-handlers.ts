@@ -395,7 +395,7 @@ export class WalletMethodHandler implements IMethodHandler {
         case 'getPermissions':
           // Check if dapp is actually connected
           const dappInfo = dapp.get(host);
-          if (!dappInfo) {
+          if (!dappInfo || !account) {
             // No permissions if not connected
             return [];
           }

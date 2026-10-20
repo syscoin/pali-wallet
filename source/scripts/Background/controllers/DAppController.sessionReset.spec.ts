@@ -25,7 +25,11 @@ import { PaliEvents, PaliSyscoinEvents } from './message-handler/types';
 
 const HOST = 'https://reset-session.example';
 const ADDRESS = `0x${'11'.repeat(20)}`;
-const grant = { accountId: 0, accountType: KeyringAccountType.HDAccount };
+const grant = {
+  accountId: 0,
+  accountType: KeyringAccountType.HDAccount,
+  chain: INetworkType.Ethereum,
+};
 const notices = () =>
   (chrome.scripting.executeScript as jest.Mock).mock.calls.map(
     ([options]) => options.args[0]

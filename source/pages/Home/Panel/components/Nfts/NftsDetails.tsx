@@ -18,8 +18,11 @@ import { useUtils, useAdjustedExplorer } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { INetworkType } from 'types/network';
-import { ellipsis } from 'utils/index';
+import { ellipsis, formatFullPrecisionBalance } from 'utils/index';
 import { NFT_FALLBACK_IMAGE } from 'utils/nftFallback';
+
+const MAX_NFT_QUANTITY =
+  '115792089237316195423570985008687907853269984665640564039457584007913129639935';
 
 export const NftsDetails = ({ nftData }: { nftData: any }) => {
   const { controllerEmitter } = useController();
@@ -35,6 +38,25 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
 
   // Get NFT data from navigation state if available (for import preview/search results)
   const currentNft = nftData;
+  const exactQuantity =
+    currentNft?.tokenStandard === 'ERC-1155' &&
+    typeof currentNft.rawBalance === 'string' &&
+    /^\d{1,78}$/.test(currentNft.rawBalance) &&
+    (currentNft.rawBalance.length < MAX_NFT_QUANTITY.length ||
+      currentNft.rawBalance <= MAX_NFT_QUANTITY)
+      ? currentNft.rawBalance.replace(/^0+(?=\d)/, '')
+      : undefined;
+  const quantity =
+    exactQuantity === undefined
+      ? currentNft?.tokenStandard === 'ERC-1155' &&
+        (!Number.isSafeInteger(currentNft.balance) || currentNft.balance < 0)
+        ? '—'
+        : currentNft?.balance
+      : formatFullPrecisionBalance(exactQuantity, 0);
+  const isSingle =
+    exactQuantity === undefined
+      ? currentNft?.balance === 1
+      : exactQuantity === '1';
   const nftScope = `${getHomeBrowsingScope(
     { ...currentAccount, ...activeAccount },
     activeNetwork
@@ -246,12 +268,10 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
               <h3 className="break-words text-brand-white text-lg font-medium">
                 {currentNft.name || t('send.nftCollection')}
               </h3>
-              <p className="text-brand-gray200 text-sm">
-                {currentNft.balance}{' '}
-                {currentNft.balance === 1
-                  ? t('nftDetails.item')
-                  : t('nftDetails.items')}{' '}
-                • {currentNft.tokenStandard || 'ERC-721'}
+              <p className="text-brand-gray200 text-sm" title={exactQuantity}>
+                {quantity}{' '}
+                {isSingle ? t('nftDetails.item') : t('nftDetails.items')} •{' '}
+                {currentNft.tokenStandard || 'ERC-721'}
               </p>
             </div>
 
@@ -387,8 +407,11 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
             </div>
 
             <div className="w-full flex items-center justify-evenly h-14 font-poppins">
-              <p className="flex flex-col items-center justify-evenly h-full font-medium text-base text-brand-white">
-                {currentNft.balance}
+              <p
+                className="flex flex-col items-center justify-evenly h-full font-medium text-base text-brand-white"
+                title={exactQuantity}
+              >
+                {quantity}
                 <span className="text-sm font-normal text-brand-gray200">
                   Amount
                 </span>
