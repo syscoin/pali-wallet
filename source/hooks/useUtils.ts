@@ -117,10 +117,19 @@ export const useUtils = () => {
         toast.dismiss();
         setTimeout(() => toast(message, options), 0);
       },
-      success: (message: string, options?: any) => {
-        if (!shouldShowMessage(message, 'success')) return;
-        toast.dismiss();
-        setTimeout(() => toast.success(message, options), 0);
+      success: (message: string, options?: any, isCurrent?: () => boolean) => {
+        if (isCurrent && !isCurrent()) return;
+        if (!isCurrent && !shouldShowMessage(message, 'success')) return;
+        if (!isCurrent) toast.dismiss();
+        setTimeout(() => {
+          if (
+            isCurrent &&
+            (!isCurrent() || !shouldShowMessage(message, 'success'))
+          )
+            return;
+          if (isCurrent) toast.dismiss();
+          toast.success(message, options);
+        }, 0);
       },
       error: (message: string, options?: any) => {
         if (!shouldShowMessage(message, 'error')) return;

@@ -8,6 +8,7 @@ import { useUtils } from './useUtils';
 const mockWrite = jest.fn();
 const mockError = jest.fn();
 const mockInfo = jest.fn();
+const mockSuccess = jest.fn();
 const mockDismiss = jest.fn();
 const message = 'Localized clipboard failure';
 let testClock = 1_900_000_000_000;
@@ -26,6 +27,7 @@ jest.mock('react-toastify', () => ({
   toast: Object.assign(jest.fn(), {
     error: (...args: any[]) => mockError(...args),
     info: (...args: any[]) => mockInfo(...args),
+    success: (...args: any[]) => mockSuccess(...args),
     dismiss: (...args: any[]) => mockDismiss(...args),
   }),
 }));
@@ -331,4 +333,36 @@ it('preserves immediate dismissal and queued insertion for unscoped info while s
   expect(mockDismiss).toHaveBeenCalledTimes(1);
   await settle();
   expect(mockInfo).toHaveBeenCalledTimes(1);
+});
+
+it('preserves immediate dismissal and queued insertion for unscoped success while skipping duplicates', async () => {
+  render(<Fixture />);
+  current.alert.success('Unscoped success');
+  expect(mockDismiss).toHaveBeenCalledTimes(1);
+  expect(mockSuccess).not.toHaveBeenCalled();
+  await settle();
+  expect(mockSuccess).toHaveBeenCalledWith('Unscoped success', undefined);
+  current.alert.success('Unscoped success');
+  await settle();
+  expect(mockDismiss).toHaveBeenCalledTimes(1);
+  expect(mockSuccess).toHaveBeenCalledTimes(1);
+});
+
+it('does not consume success deduplication or dismiss a toast for a retired scope', async () => {
+  const view = render(<Fixture scope="A" />);
+  await act(async () => current.copy('old public fixture'));
+  current.alert.success('Scoped success', undefined, current.isCurrentCopy);
+  view.rerender(<Fixture scope="B" />);
+  await settle();
+  expect(mockSuccess).not.toHaveBeenCalled();
+  expect(mockDismiss).not.toHaveBeenCalled();
+  await act(async () => current.copy('current public fixture'));
+  current.alert.success('Scoped success', undefined, current.isCurrentCopy);
+  await settle();
+  expect(mockSuccess).toHaveBeenCalledTimes(1);
+  expect(mockDismiss).toHaveBeenCalledTimes(1);
+  current.alert.success('Scoped success', undefined, current.isCurrentCopy);
+  await settle();
+  expect(mockSuccess).toHaveBeenCalledTimes(1);
+  expect(mockDismiss).toHaveBeenCalledTimes(1);
 });

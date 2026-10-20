@@ -113,6 +113,7 @@ describe('account mutation wallet setup reservation', () => {
       expect(keyring[sdkMethod]).toHaveBeenCalledTimes(1);
       if (
         sdkMethod === 'addNewAccount' ||
+        sdkMethod === 'createSmartAccount' ||
         sdkMethod === 'importAccount' ||
         sdkMethod === 'importWatchOnly'
       ) {

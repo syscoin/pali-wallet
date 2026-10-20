@@ -491,7 +491,10 @@ export function persistAccountRemoval(
 /** Publish a created account and its selection only after the vault commits. */
 export function persistAccountCreation(
   account: IKeyringAccountState,
-  accountType: KeyringAccountType.HDAccount | KeyringAccountType.Imported,
+  accountType:
+    | KeyringAccountType.HDAccount
+    | KeyringAccountType.Imported
+    | KeyringAccountType.SmartAccount,
   assertCurrent: () => void,
   isSameWallet: () => boolean
 ): Promise<void> {

@@ -185,9 +185,11 @@ it.each([
     await screen.findByText(test.success ? 'Confirmed' : 'Failed')
   ).toBeTruthy();
   if (test.success)
-    expect(mockAlert.success).toHaveBeenCalledWith('send.txSuccessfull', {
-      autoClose: 5000,
-    });
+    expect(mockAlert.success).toHaveBeenCalledWith(
+      'send.txSuccessfull',
+      { autoClose: 5000 },
+      expect.any(Function)
+    );
   else expect(mockAlert.success).not.toHaveBeenCalled();
 });
 
