@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
+import { useLocation } from 'react-router-dom';
 
 import { Button } from 'components/Button';
 import { ChainIcon } from 'components/ChainIcon';
 import { Icon } from 'components/Icon';
 import { useController } from 'hooks/useController';
+import { useRequestScope } from 'hooks/useRequestScope';
 import { useUtils } from 'hooks/useUtils';
 import store, { RootState } from 'state/store';
 import { switchNetworkError, resetNetworkStatus } from 'state/vaultGlobal';
@@ -14,24 +16,42 @@ import {
   createNavigationContext,
   navigateWithContext,
 } from 'utils/navigationState';
+import { networkRegistrationFingerprint } from 'utils/networkRegistration';
+
+const retryNetwork = (state: ReturnType<typeof store.getState>) => {
+  const network = state.vaultGlobal.networkTarget || state.vault.activeNetwork;
+  const kind = network.kind === INetworkType.Syscoin ? 'syscoin' : 'ethereum';
+  return state.vaultGlobal.networks[kind][network.chainId] || network;
+};
 
 export const ChainErrorPage = () => {
   const { controllerEmitter } = useController();
   const { navigate, alert } = useUtils();
   const { t } = useTranslation();
+  const location = useLocation();
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
   const networkTarget = useSelector(
     (state: RootState) => state.vaultGlobal.networkTarget
   );
+  const selectedRpc = useSelector(retryNetwork);
 
   // Use the target network if we're trying to switch, otherwise use active network
   const displayNetwork = networkTarget || activeNetwork;
+  // The registered target stays the same across this retry's own activation.
+  const retryIdentity = networkRegistrationFingerprint(selectedRpc);
+  const retryContext = JSON.stringify([location.key, retryIdentity]);
+  const beginRetry = useRequestScope(retryContext);
 
   const [isRetrying, setIsRetrying] = useState(false);
   const [retryStartTime, setRetryStartTime] = useState<number | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+
+  useEffect(() => {
+    setIsRetrying(false);
+    setRetryStartTime(null);
+  }, [retryContext]);
 
   // Always set error state when this page mounts
   useEffect(() => {
@@ -55,27 +75,20 @@ export const ChainErrorPage = () => {
   }, [isRetrying, retryStartTime]);
 
   const handleRetryToConnect = async () => {
+    if (isRetrying) return;
+    const ownsRequest = beginRetry();
+    const isCurrent = () =>
+      ownsRequest() &&
+      networkRegistrationFingerprint(retryNetwork(store.getState())) ===
+        retryIdentity;
     console.log('[ChainErrorPage] Retry clicked');
     setIsRetrying(true);
     setRetryStartTime(Date.now());
     setElapsedSeconds(0);
 
-    // Clear any previous error state to ensure a fresh retry
-    store.dispatch(resetNetworkStatus());
-
     try {
-      const networkToUse = displayNetwork;
-
-      // Get the RPC from global state in case it was edited
-      const globalNetworks = store.getState().vaultGlobal.networks;
-      const networkType =
-        networkToUse.kind === INetworkType.Syscoin ? 'syscoin' : 'ethereum';
-      const networkFromGlobal =
-        globalNetworks[networkType][networkToUse.chainId];
-
-      // Use the RPC from global state if it exists (could have been edited)
-      const selectedRpc = networkFromGlobal || networkToUse;
-
+      // Controller admission sets switching status; do not clear its target
+      // while the IPC request is still waiting to reach the background.
       console.log('[ChainErrorPage] Switching to network:', selectedRpc.label);
 
       // Call setActiveNetwork without arbitrary timeout
@@ -86,6 +99,7 @@ export const ChainErrorPage = () => {
         ['wallet', 'setActiveNetwork'],
         [selectedRpc, true]
       );
+      if (!isCurrent()) return;
 
       console.log(
         '[ChainErrorPage] Network switch completed successfully:',
@@ -111,6 +125,11 @@ export const ChainErrorPage = () => {
       setRetryStartTime(null);
       navigate('/home');
     } catch (error) {
+      if (
+        !isCurrent() ||
+        (error?.message || error) === 'Network change cancelled'
+      )
+        return;
       console.error('[ChainErrorPage] Retry failed:', error);
 
       // Set error status so user stays on error page
@@ -149,8 +168,10 @@ export const ChainErrorPage = () => {
       setRetryStartTime(null);
     } finally {
       // Always reset retry state, even if something unexpected happens
-      setIsRetrying(false);
-      setRetryStartTime(null);
+      if (isCurrent()) {
+        setIsRetrying(false);
+        setRetryStartTime(null);
+      }
     }
   };
 

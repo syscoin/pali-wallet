@@ -13,18 +13,27 @@ export const TransactionEventLogs: React.FC<ITransactionEventLogsProps> = ({
   className = '',
 }) => {
   const { t } = useTranslation();
+  const validLogs = Array.isArray(logs)
+    ? logs.filter(
+        (log) =>
+          log &&
+          typeof log === 'object' &&
+          !Array.isArray(log) &&
+          typeof log.address === 'string'
+      )
+    : [];
 
-  if (!logs || logs.length === 0) {
+  if (validLogs.length === 0) {
     return null;
   }
 
   return (
     <div className={`mt-4 ${className}`}>
       <p className="text-sm font-semibold text-white mb-2">
-        {t('transactions.eventLogs')} ({logs.length})
+        {t('transactions.eventLogs')} ({validLogs.length})
       </p>
       <div className="max-h-40 overflow-y-auto">
-        {logs.map((log: any, index: number) => (
+        {validLogs.map((log: any, index: number) => (
           <div key={index} className="mb-2 p-2 bg-bkg-2 rounded text-xs">
             <p className="text-brand-gray200">
               {t('transactions.log')} #{index + 1}
@@ -32,7 +41,7 @@ export const TransactionEventLogs: React.FC<ITransactionEventLogsProps> = ({
             <p className="text-white break-all">
               {t('send.address')}: {ellipsis(log.address, 6, 4)}
             </p>
-            {log.topics && log.topics.length > 0 && (
+            {Array.isArray(log.topics) && log.topics.length > 0 && (
               <p className="text-white break-all mt-1">
                 {t('transactions.topics')}: {log.topics.length}
               </p>

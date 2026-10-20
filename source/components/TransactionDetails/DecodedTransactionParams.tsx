@@ -44,20 +44,8 @@ export const DecodedTransactionParams: React.FC<
   // Helper to format values based on type
   const formatValue = (value: any, type: string): string => {
     if (type.includes('uint') || type.includes('int')) {
-      // Use the utility to handle BigNumber conversion
-      const numStr = convertBigNumberToString(value);
-
-      if (type.includes('uint256') && numStr.length > 10) {
-        // Check if it's the max uint256 (unlimited approval)
-        if (isMaxUint256(numStr)) {
-          return t('transactions.unlimited');
-        }
-        // Otherwise show truncated for very large numbers
-        return numStr.length > 20
-          ? `${numStr.slice(0, 6)}...${numStr.slice(-4)}`
-          : numStr;
-      }
-      return numStr;
+      // Keep tooltips exact; only the dedicated approval view uses Unlimited.
+      return convertBigNumberToString(value);
     }
 
     if (type === 'address') {
