@@ -470,13 +470,19 @@ export const ImportToken: React.FC = () => {
       const operation = {};
       importOperationRef.current = operation;
       const scope = tokenImportScope;
-      const isCurrent = () =>
+      const tokenIdRequest = tokenIdRequestRef.current;
+      const isCurrentOperation = () =>
         importViewRef.current.active &&
         importViewRef.current.scope === scope &&
-        importOperationRef.current === operation &&
+        importOperationRef.current === operation;
+      const isCurrent = () =>
+        isCurrentOperation() &&
         (activeTab !== 'custom' ||
           asset.contractAddress.toLowerCase() ===
-            customContractRef.current.trim().toLowerCase());
+            customContractRef.current.trim().toLowerCase()) &&
+        (activeTab !== 'custom' ||
+          asset.tokenStandard !== 'ERC-1155' ||
+          tokenIdRequestRef.current === tokenIdRequest);
       const assertCurrent = () => {
         if (!isCurrent()) throw new Error('Token import context changed');
       };
@@ -526,7 +532,7 @@ export const ImportToken: React.FC = () => {
             // Continue with default logo
           } finally {
             // Remove from fetching logos set
-            if (isCurrent())
+            if (isCurrentOperation())
               setFetchingLogos((prev) => {
                 const newSet = new Set(prev);
                 newSet.delete(asset.id);
