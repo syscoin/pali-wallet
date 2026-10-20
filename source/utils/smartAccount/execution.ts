@@ -36,11 +36,11 @@ type ControllerEmitter = (
 ) => Promise<any>;
 
 const SMART_ACCOUNT_ROTATE_VALIDATOR_SELECTOR =
-  paliSmartAccountInterface.getSighash('rotateValidator');
+  paliSmartAccountInterface.getFunction('rotateValidator')!.selector;
 const SMART_ACCOUNT_INSTALL_MODULE_SELECTOR =
-  paliSmartAccountInterface.getSighash('installModule');
+  paliSmartAccountInterface.getFunction('installModule')!.selector;
 const SMART_ACCOUNT_UNINSTALL_MODULE_SELECTOR =
-  paliSmartAccountInterface.getSighash('uninstallModule');
+  paliSmartAccountInterface.getFunction('uninstallModule')!.selector;
 
 export type SmartAccountExecutionIntent = {
   data?: string;

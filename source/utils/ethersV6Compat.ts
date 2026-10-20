@@ -8,17 +8,13 @@ import {
   isAddress as ethersIsAddress,
 } from 'ethers/address';
 import { Contract as EthersContract } from 'ethers/contract';
-import {
-  keccak256 as ethersKeccak256,
-  Signature as EthersSignature,
-} from 'ethers/crypto';
+import { keccak256 as ethersKeccak256 } from 'ethers/crypto';
 import {
   hashMessage as ethersHashMessage,
   id as ethersId,
   namehash as ethersNamehash,
   TypedDataEncoder as EthersTypedDataEncoder,
 } from 'ethers/hash';
-import { JsonRpcProvider as EthersJsonRpcProvider } from 'ethers/providers';
 import {
   concat as ethersConcat,
   dataSlice as ethersDataSlice,
@@ -33,36 +29,17 @@ import {
   toUtf8Bytes as ethersToUtf8Bytes,
   zeroPadValue as ethersZeroPadValue,
 } from 'ethers/utils';
-import { Wallet as EthersWallet } from 'ethers/wallet';
 
 export type Block = any;
 export type Contract = any;
 export type Interface = any;
 export type Provider = any;
 export type Result = any;
-export type TransactionReceipt = any;
-export type TransactionResponse = any;
 
 export const AbiCoder: any = EthersAbiCoder;
 export const Contract: any = EthersContract;
-const InterfaceImpl: any = EthersInterface;
-if (InterfaceImpl?.prototype && !InterfaceImpl.prototype.getSighash) {
-  InterfaceImpl.prototype.getSighash = function getSighash(fragment: any) {
-    return this.getFunction(fragment).selector;
-  };
-}
-if (InterfaceImpl?.prototype && !InterfaceImpl.prototype.getEventTopic) {
-  InterfaceImpl.prototype.getEventTopic = function getEventTopic(
-    fragment: any
-  ) {
-    return this.getEvent(fragment).topicHash;
-  };
-}
-export const Interface: any = InterfaceImpl;
-export const JsonRpcProvider: any = EthersJsonRpcProvider;
-export const Signature: any = EthersSignature;
+export const Interface: any = EthersInterface;
 export const TypedDataEncoder: any = EthersTypedDataEncoder;
-export const Wallet: any = EthersWallet;
 export const ZeroAddress: string = '0x0000000000000000000000000000000000000000';
 export const defaultAbiCoder = AbiCoder.defaultAbiCoder();
 export const AddressZero = ZeroAddress;

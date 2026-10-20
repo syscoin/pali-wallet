@@ -353,7 +353,7 @@ function rpcRead(fixture: VisualFixture, method: string, params: unknown[]) {
         !Array.isArray(topics) ||
         topics.length !== 3 ||
         topics[0] !==
-          paliEntryPointInterface.getEventTopic('UserOperationEvent') ||
+          paliEntryPointInterface.getEvent('UserOperationEvent')!.topicHash ||
         topics[1] !== null ||
         typeof topics[2] !== 'string' ||
         lower(topics[2]) !==

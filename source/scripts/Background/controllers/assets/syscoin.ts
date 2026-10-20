@@ -499,7 +499,7 @@ const SysAssetsControler = (): ISysAssetsController => {
     // Return the explicit snapshot supplied by the caller. Reading the live
     // active account here allowed a network/account switch during the request
     // to rebuild one account's assets from another account's state.
-    return updatedTokens.slice(0, MAX_TOKENS_DISPLAY);
+    return updatedTokens;
   };
 
   return {
