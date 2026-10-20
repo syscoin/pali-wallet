@@ -1,9 +1,8 @@
-import React, { useMemo } from 'react';
+import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { FaucetStatusResponse } from '../../types/faucet';
-// Import faucet status icons - make sure these paths are correct
 import errorIcon from 'assets/all_assets/faucet-error.svg';
 import loadingIcon from 'assets/all_assets/faucet-loading.svg';
 import successIcon from 'assets/all_assets/faucet-success.svg';
@@ -22,7 +21,6 @@ import { useFaucetComponentStates } from './hooks';
 
 export const Faucet: React.FC = () => {
   const { t } = useTranslation();
-
   const {
     account,
     status,
@@ -34,98 +32,79 @@ export const Faucet: React.FC = () => {
     eligible,
     ready,
   } = useFaucetComponentStates();
-
   const {
     activeNetwork: { chainId },
   } = useSelector((state: RootState) => state.vault);
-
-  // Define button label based on status
-  const faucetButtonLabel = useMemo(() => {
-    switch (status) {
-      case FaucetStatusResponse.REQUEST:
-        return t('faucet.requestNow');
-      case FaucetStatusResponse.SUCCESS:
-        return t('faucet.Close');
-      case FaucetStatusResponse.ERROR:
-        return t('faucet.grabTokens');
-      default:
-        return '';
-    }
-  }, [status, t]);
-
+  const request = status === FaucetStatusResponse.REQUEST;
+  const success = status === FaucetStatusResponse.SUCCESS;
+  const error = status === FaucetStatusResponse.ERROR;
+  const buttonLabel = request
+    ? t('faucet.requestNow')
+    : success
+    ? t('faucet.Close')
+    : error
+    ? t('faucet.grabTokens')
+    : '';
   if (!eligible) return null;
-
-  const renderFaucetContent = () => {
-    switch (status) {
-      case FaucetStatusResponse.REQUEST:
-        return (
-          !isLoading && (
-            <>
-              <FaucetFeedback
-                chainId={chainId}
-                networkKind={INetworkType.Ethereum}
-                textFeedbackTitle={faucetRequestDetails.grabText}
-                textFeedbackDesc={faucetRequestDetails.tokenQuantity}
-              />
-              <FaucetApiFeedback
-                apiTitle={t('send.smartContract')}
-                apiResponse={faucetRequestDetails.smartContract}
-              />
-              <FaucetCardAccount
-                accountXpub={account.xpub}
-                accountName={account.label}
-                accountAddress={ellipsis(account.address, 8, 8)}
-              />
-            </>
-          )
-        );
-      case FaucetStatusResponse.SUCCESS:
-        return (
-          !isLoading && (
-            <>
-              <FaucetFeedback
-                icon={successIcon}
-                textFeedbackTitle={t('faucet.CONGRATULATIONS')}
-                textFeedbackDesc={t('faucet.someHasJust', {
-                  tokenSymbol: faucetRequestDetails.tokenSymbol,
-                  networkName: faucetRequestDetails.networkName,
-                })}
-              />
-              <FaucetApiFeedback
-                apiTitle={t('faucet.transactionHash')}
-                status={status}
-                apiResponse={txHash}
-              />
-            </>
-          )
-        );
-      case FaucetStatusResponse.ERROR:
-        return (
-          !isLoading && (
-            <>
-              <FaucetFeedback
-                icon={errorIcon}
-                textFeedbackTitle={t('faucet.ERROR')}
-                textFeedbackDesc={errorMessage}
-              />
-            </>
-          )
-        );
-      default:
-        return null;
-    }
-  };
-
+  const feedback = isLoading
+    ? {
+        icon: loadingIcon,
+        textFeedbackTitle: t('faucet.pleaseWait'),
+        textFeedbackDesc: t('faucet.doNotClose'),
+      }
+    : request
+    ? {
+        chainId,
+        networkKind: INetworkType.Ethereum,
+        textFeedbackTitle: faucetRequestDetails.grabText,
+        textFeedbackDesc: faucetRequestDetails.tokenQuantity,
+      }
+    : success
+    ? {
+        icon: successIcon,
+        textFeedbackTitle: t('faucet.CONGRATULATIONS'),
+        textFeedbackDesc: t('faucet.someHasJust', {
+          tokenSymbol: faucetRequestDetails.tokenSymbol,
+          networkName: faucetRequestDetails.networkName,
+        }),
+      }
+    : error
+    ? {
+        icon: errorIcon,
+        textFeedbackTitle: t('faucet.ERROR'),
+        textFeedbackDesc: errorMessage,
+      }
+    : null;
+  const feedbackElement = feedback && <FaucetFeedback {...feedback} />;
   return (
     <>
-      {isLoading && (
-        <FaucetFeedback
-          icon={loadingIcon}
-          textFeedbackTitle={t('faucet.pleaseWait')}
-          textFeedbackDesc={t('faucet.doNotClose')}
-        />
+      {isLoading && feedbackElement}
+      {!isLoading && (request || success || error) && (
+        <>
+          {feedbackElement}
+          {(request || success) && (
+            <FaucetApiFeedback
+              {...(request
+                ? {
+                    apiTitle: t('send.smartContract'),
+                    apiResponse: faucetRequestDetails.smartContract,
+                  }
+                : {
+                    apiTitle: t('faucet.transactionHash'),
+                    status,
+                    apiResponse: txHash,
+                  })}
+            />
+          )}
+          {request && (
+            <FaucetCardAccount
+              accountXpub={account.xpub}
+              accountName={account.label}
+              accountAddress={ellipsis(account.address, 8, 8)}
+            />
+          )}
+        </>
       )}
-      {renderFaucetContent()}
       {!isLoading && (
         <PageActionFooter>
           <Button
@@ -136,7 +115,7 @@ export const Faucet: React.FC = () => {
             onClick={handleFaucetButton}
             disabled={!ready}
           >
-            {faucetButtonLabel}
+            {buttonLabel}
           </Button>
         </PageActionFooter>
       )}
