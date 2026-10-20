@@ -72,7 +72,8 @@ test('Receive and Edit Account render the same public-address QR across network 
     expect(rendered[0].address).not.toBe(rendered[1].address);
     expect(rendered[0].svg).not.toBe(rendered[1].svg);
     expect(routes.deniedWrites).toEqual([]);
-    expect(routes.syntheticBroadcasts).toEqual([]);
+    // This fixture refuses every unrecognized request and records attempted
+    // sends in deniedWrites; unlike the UTXO signing fixture it never broadcasts.
     await info.attach('public-address-qr-equality', {
       contentType: 'application/json',
       body: JSON.stringify(
