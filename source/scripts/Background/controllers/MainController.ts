@@ -7856,10 +7856,7 @@ class MainController {
                         // Merge against latest state: never restore removed tokens or
                         // another concurrent token's old balance/metadata.
                         value: latest.map((asset) =>
-                          asset.chainId === network.chainId &&
-                          tokenBalanceKey(asset) === tokenKey
-                            ? { ...asset, ...balance }
-                            : asset
+                          asset === token ? { ...asset, ...balance } : asset
                         ),
                       })
                     );
@@ -9018,11 +9015,7 @@ class MainController {
       throw new Error(TOKEN_BALANCE_CONTEXT_CHANGED_ERROR);
     const refreshedAsset = { ...existingAsset, ...balance };
     const ethereumAssets = latestAssets.map((asset) =>
-      !asset.isNft &&
-      asset.contractAddress?.toLowerCase() === contractLower &&
-      asset.chainId === activeNetwork.chainId
-        ? { ...asset, ...balance }
-        : asset
+      asset === existingAsset ? { ...asset, ...balance } : asset
     );
 
     store.dispatch(

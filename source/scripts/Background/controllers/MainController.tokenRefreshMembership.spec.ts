@@ -49,6 +49,7 @@ const CONTEXT_CHANGED = 'Token balance refresh context changed';
 const abi = new Interface([
   'function supportsInterface(bytes4) view returns (bool)',
   'function balanceOf(address) view returns (uint256)',
+  'function balanceOf(address,uint256) view returns (uint256)',
   'function symbol() view returns (string)',
   'function decimals() view returns (uint8)',
 ]);
@@ -186,7 +187,11 @@ beforeEach(async () => {
         const height =
           typeof tx.blockTag === 'number' ? tx.blockTag : chainHeight;
         const raw = BigInt(
-          normalPollRejectTarget && tx.to.toLowerCase() === OTHER
+          parsed.args.length === 2
+            ? String(parsed.args[1]) === '7'
+              ? 17
+              : 28
+            : normalPollRejectTarget && tx.to.toLowerCase() === OTHER
             ? 26000000
             : height <= 11
             ? 7000000
@@ -427,3 +432,80 @@ it('does not read unrelated NFT or fungible rows for an unknown receipt token', 
   expect(balanceReads).toEqual([]);
   expect(tokens()).toBe(before);
 });
+
+it('refreshes an admitted ERC721 collection without changing an unrelated row', async () => {
+  await wallet.saveTokenInfo(
+    {
+      contractAddress: OTHER,
+      chainId: 5700,
+      isNft: true,
+      tokenStandard: 'ERC-721',
+      decimals: 0,
+      tokenSymbol: 'NFT',
+      balance: 1,
+    },
+    getWalletNavigationScope()
+  );
+  const unchanged = tokens()[0];
+  incomingReceipt(OTHER);
+  await jest.advanceTimersByTimeAsync(100);
+  expect(tokens()[0]).toBe(unchanged);
+  expect(tokens()[1]).toMatchObject({
+    balance: 7000000,
+    rawBalance: '7000000',
+  });
+  expect(balanceReads).toHaveLength(1);
+});
+
+it('refreshes both admitted ERC1155 IDs while preserving their separate balances', async () => {
+  await remove();
+  for (const tokenId of ['0x07', '8']) {
+    await wallet.saveTokenInfo(
+      {
+        contractAddress: TOKEN,
+        chainId: 5700,
+        isNft: true,
+        tokenStandard: 'ERC-1155',
+        tokenId,
+        decimals: 0,
+        tokenSymbol: 'NFT',
+        balance: 1,
+      },
+      getWalletNavigationScope()
+    );
+  }
+  incomingReceipt();
+  await jest.advanceTimersByTimeAsync(100);
+  expect(tokens()).toEqual([
+    expect.objectContaining({ tokenId: '7', balance: 17, rawBalance: '17' }),
+    expect.objectContaining({ tokenId: '8', balance: 28, rawBalance: '28' }),
+  ]);
+  expect(balanceReads).toHaveLength(2);
+});
+
+it.each(['preflight', 'receipt'] as const)(
+  '%s updates only its captured row if an unsupported duplicate object is present',
+  async (kind) => {
+    const captured = tokens()[0];
+    // Production admission rejects duplicate keys; even malformed restored
+    // state must not broaden a read's write authority to another row object.
+    const duplicate = { ...captured, name: 'Duplicate object', balance: 55 };
+    store.dispatch(
+      setAccountAssets({
+        accountId: 0,
+        accountType: TYPE,
+        property: 'ethereum',
+        value: [captured, duplicate],
+      })
+    );
+    if (kind === 'preflight') await wallet.refreshActiveEvmTokenBalance(TOKEN);
+    else {
+      incomingReceipt();
+      await jest.advanceTimersByTimeAsync(100);
+    }
+    expect(tokens()[0]).toMatchObject({ balance: 7, rawBalance: '7000000' });
+    expect(tokens()[1]).toBe(duplicate);
+    expect(tokens()[1].balance).toBe(55);
+    expect(balanceReads).toHaveLength(1);
+  }
+);
