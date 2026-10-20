@@ -53,18 +53,23 @@ const SentryKeys = () => {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const isImport = mode === 'import';
+  const isRemoval = mode === 'remove';
+  const isRelease = mode === 'release';
+  const isList = mode === 'list';
+  const isBatchImport = importMode === 'batch';
+  const isSingleImport = importMode === 'single';
   const selectedRemovalKey = settings?.keys.find((key) => key.id === removeId);
   const batch = parseSentryKeyBatch(
     batchText,
     scheme,
     t('sentry.batchDefaultLabel')
   );
-  const canImport =
-    importMode === 'batch'
-      ? batch.entries.length > 0 &&
-        !batch.issues.length &&
-        batch.entries.length + (settings?.keys.length || 0) <= 100
-      : !!secret && !!label.trim();
+  const canImport = isBatchImport
+    ? batch.entries.length > 0 &&
+      !batch.issues.length &&
+      batch.entries.length + (settings?.keys.length || 0) <= 100
+    : !!secret && !!label.trim();
   const owner = useRef(scope);
   const active = useRef(true);
   const inFlight = useRef<symbol | null>(null);
@@ -135,29 +140,26 @@ const SentryKeys = () => {
     const isCurrentJob = () =>
       active.current && owner.current === current && inFlight.current === job;
     const completionNotice = () =>
-      mode === 'import'
-        ? importMode === 'batch'
+      isImport
+        ? isBatchImport
           ? t('sentry.batchImported', { count: batch.entries.length })
           : t('sentry.operatorKeyImportedSecurely')
-        : mode === 'remove'
+        : isRemoval
         ? t(
             'sentry.localOperatorKeyRemovedRegisteredCollateralRemainsProtected'
           )
-        : mode === 'release'
+        : isRelease
         ? t('sentry.collateralProtectionRemovedSpendingThisOutputWillStop')
         : t('sentry.trustedServiceSettingsSaved');
     try {
-      if (mode === 'import') {
+      if (isImport) {
         if (!backup)
           throw new Error(t('sentry.confirmThatYouHaveBackedUpThisOperator'));
         if (!canImport) throw new Error(t('sentry.fixBatchBeforeImport'));
         await controllerEmitter(
+          ['wallet', isBatchImport ? 'importSentryKeys' : 'importSentryKey'],
           [
-            'wallet',
-            importMode === 'batch' ? 'importSentryKeys' : 'importSentryKey',
-          ],
-          [
-            importMode === 'batch'
+            isBatchImport
               ? {
                   role,
                   scheme,
@@ -186,7 +188,7 @@ const SentryKeys = () => {
           30000,
           false
         );
-      } else if (mode === 'remove') {
+      } else if (isRemoval) {
         if (!selectedRemovalKey)
           throw new Error(t('sentry.unableToLoadSentrySettings'));
         const removed = (await controllerEmitter(
@@ -198,7 +200,7 @@ const SentryKeys = () => {
         if (removed?.removedKeyId !== removeId)
           throw new Error(t('sentry.unableToCompleteSentryOperation'));
         removedKeyId = removeId;
-      } else if (mode === 'release' && release) {
+      } else if (isRelease && release) {
         await controllerEmitter(
           ['wallet', 'releaseSentryCollateral'],
           [
@@ -225,7 +227,7 @@ const SentryKeys = () => {
         setRemoveId('');
         setMode('list');
       }
-      if (mode === 'import') setBackup(false);
+      if (isImport) setBackup(false);
       const value = (await controllerEmitter([
         'wallet',
         'getSentrySettings',
@@ -253,10 +255,9 @@ const SentryKeys = () => {
           setBusy(false);
           setPassword('');
           setSecret('');
-          if (mode !== 'import' || importMode !== 'batch' || importCommitted)
-            setBatchText('');
+          if (!isImport || !isBatchImport || importCommitted) setBatchText('');
           setShowKeys(false);
-          if (mode === 'import') setBackup(false);
+          if (isImport) setBackup(false);
         }
       }
     }
@@ -343,7 +344,7 @@ const SentryKeys = () => {
           {notice}
         </p>
       )}
-      {mode === 'list' && (
+      {isList && (
         <>
           <p className="text-sm text-brand-gray200">
             {t('sentry.manageYourNodesInSysnodeThisWalletAuthorizes')}
@@ -458,7 +459,7 @@ const SentryKeys = () => {
           </section>
         </>
       )}
-      {mode === 'import' && (
+      {isImport && (
         <>
           <fieldset className="grid grid-cols-2 gap-2">
             <legend className="mb-2 text-sm">{t('sentry.importMode')}</legend>
@@ -536,18 +537,16 @@ const SentryKeys = () => {
               )}
             </select>
           </label>
-          {importMode === 'single' ? (
-            <>
-              {inputField(
-                t('sentry.keyLabel'),
-                label,
-                (value) => {
-                  setLabel(value);
-                  setBackup(false);
-                },
-                { maxLength: 80 }
-              )}
-            </>
+          {isSingleImport ? (
+            inputField(
+              t('sentry.keyLabel'),
+              label,
+              (value) => {
+                setLabel(value);
+                setBackup(false);
+              },
+              { maxLength: 80 }
+            )
           ) : (
             <section className="min-w-0">
               <label className="block text-sm">
@@ -614,7 +613,7 @@ const SentryKeys = () => {
               )}
             </section>
           )}
-          {importMode === 'single' &&
+          {isSingleImport &&
             inputField(
               t(
                 scheme === 'secp256k1'
@@ -643,7 +642,7 @@ const SentryKeys = () => {
             />
             <span>
               {t(
-                importMode === 'batch'
+                isBatchImport
                   ? 'sentry.batchBackup'
                   : 'sentry.iHaveASeparateBackupImportedSentryKeys',
                 { count: batch.entries.length }
@@ -674,7 +673,7 @@ const SentryKeys = () => {
           </p>
         </>
       )}
-      {mode === 'remove' && (
+      {isRemoval && (
         <>
           <p className="text-sm">
             {t('sentry.removeThisKeyFromTheLocalWalletThis')}
@@ -686,7 +685,7 @@ const SentryKeys = () => {
           )}
         </>
       )}
-      {mode === 'release' && release && (
+      {isRelease && release && (
         <section className="rounded-xl border border-warning-error p-4">
           <h3 className="font-medium">{t('sentry.unlockThisCollateral')}</h3>
           <p className="mt-2 text-sm">
@@ -707,13 +706,13 @@ const SentryKeys = () => {
           </label>
         </section>
       )}
-      {mode !== 'list' &&
+      {!isList &&
         inputField(t('sentry.walletPassword'), password, setPassword, {
           type: 'password',
           autoComplete: 'current-password',
         })}
       <PageActionFooter error={error || undefined}>
-        {mode === 'list' && error && (
+        {isList && error && (
           <Button
             type="button"
             onClick={() => setReadAttempt((value) => value + 1)}
@@ -721,7 +720,7 @@ const SentryKeys = () => {
             {t('receive.retry')}
           </Button>
         )}
-        {mode !== 'list' && (
+        {!isList && (
           <div className="flex flex-wrap gap-3">
             <Button
               type="button"
@@ -736,18 +735,18 @@ const SentryKeys = () => {
               disabled={
                 busy ||
                 !password ||
-                (mode === 'remove' && !selectedRemovalKey) ||
-                (mode === 'release' && !releaseAcknowledged) ||
-                (mode === 'import' && (!canImport || !backup))
+                (isRemoval && !selectedRemovalKey) ||
+                (isRelease && !releaseAcknowledged) ||
+                (isImport && (!canImport || !backup))
               }
               loading={busy}
               className="flex-1"
             >
-              {mode === 'import'
+              {isImport
                 ? t('buttons.import')
-                : mode === 'remove'
+                : isRemoval
                 ? t('buttons.remove')
-                : mode === 'release'
+                : isRelease
                 ? t('sentry.unlockCollateral')
                 : t('buttons.save')}
             </Button>
