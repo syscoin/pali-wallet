@@ -62,6 +62,7 @@ import {
   SYSCOIN_PSBT_VERIFICATION_TIMEOUT_MS,
 } from 'utils/index';
 import { navigateBack } from 'utils/navigationState';
+import { normalizeNftTokenId } from 'utils/nftTokenId';
 import { safeToFixed } from 'utils/safeToFixed';
 import {
   getSmartAccountLocalOwnerContexts,
@@ -74,7 +75,6 @@ import { getTokenTypeBadgeColor } from 'utils/tokens';
 import { getErc20Abi, getErc721Abi, getErc1155Abi } from 'utils/validations';
 
 import { EditPriorityModal } from './EditPriority';
-import { normalizeNftTokenId } from './nftTokenId';
 import { useConfirmSubmission } from './useConfirmSubmission';
 const SMART_ACCOUNT_MAX_SEND_BUFFER_WEI = parseUnits('0.000001', 'ether');
 const NATIVE_EVM_MAX_SEND_BUFFER_WEI = parseUnits('0.000001', 'ether');

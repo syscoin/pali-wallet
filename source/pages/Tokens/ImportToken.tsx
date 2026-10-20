@@ -34,6 +34,7 @@ import {
   createBrowsingNavigationContext,
   navigateWithContext,
 } from 'utils/navigationState';
+import { normalizeNftTokenId } from 'utils/nftTokenId';
 
 import { useTokenImportNavigation } from './useTokenImportNavigation';
 
@@ -168,11 +169,15 @@ export const ImportToken: React.FC = () => {
         .forEach((token) => {
           // For ERC-1155 tokens, include tokenId in the ID format to allow different tokenIds from same contract
           if (token.tokenStandard === 'ERC-1155' && token.tokenId) {
-            ids.add(
-              `${token.contractAddress.toLowerCase()}-${token.chainId}-${
-                token.tokenId
-              }`
-            );
+            try {
+              ids.add(
+                `${token.contractAddress.toLowerCase()}-${
+                  token.chainId
+                }-${normalizeNftTokenId(token.tokenId)}`
+              );
+            } catch {
+              // An invalid ID cannot identify a newly imported uint256 token.
+            }
           } else {
             // Use the standard format for non-ERC-1155 tokens: contractAddress-chainId
             ids.add(`${token.contractAddress.toLowerCase()}-${token.chainId}`);
@@ -389,7 +394,7 @@ export const ImportToken: React.FC = () => {
   // Convert token data to ImportableAsset format
   const convertToImportableAssets = useCallback(
     (tokens: (ITokenSearchResult | ITokenDetails)[]) =>
-      tokens.map((token) => {
+      tokens.flatMap((token) => {
         const isSearchResult =
           'contractAddress' in token && !('chainId' in token && token.chainId);
         let imageUrl: string | undefined;
@@ -410,9 +415,16 @@ export const ImportToken: React.FC = () => {
           : (token as ITokenDetails).isNft || false; // For ITokenDetails, use the existing field
         // Generate appropriate ID format based on token standard
         const baseId = `${normalizedAddress}-${activeNetwork.chainId}`;
-        const tokenId = isSearchResult
+        let tokenId = isSearchResult
           ? (token as ITokenSearchResult).tokenId
           : (token as any).tokenId; // For custom tokens, tokenId is added dynamically
+        if (tokenStandard === 'ERC-1155') {
+          try {
+            tokenId = normalizeNftTokenId(tokenId);
+          } catch {
+            return [];
+          }
+        }
         const rawBalance = isSearchResult
           ? (token as ITokenSearchResult).rawBalance
           : undefined;
@@ -518,7 +530,7 @@ export const ImportToken: React.FC = () => {
 
         // For ERC1155, require tokenId and use verified balance
         // For owned tokens, tokenId comes from asset. For custom tokens, it comes from customTokenId
-        const tokenId =
+        let tokenId =
           activeTab === 'custom' ? customTokenId.trim() : asset.tokenId;
         const rawBalance =
           activeTab === 'custom' ? verifiedTokenRawBalance : asset.rawBalance;
@@ -526,6 +538,8 @@ export const ImportToken: React.FC = () => {
         if (asset.tokenStandard === 'ERC-1155' && !tokenId) {
           throw new Error(t('tokens.tokenIdRequired'));
         }
+        if (asset.tokenStandard === 'ERC-1155')
+          tokenId = normalizeNftTokenId(tokenId);
 
         // For custom ERC-1155 tokens, check if tokenId format is valid
         if (

@@ -9,6 +9,13 @@ it.each(['0', '1', '9007199254740993', maximum])(
 it.each([0, 42, '0x2a', BigInt(42)])('supports exact integer input %s', (id) =>
   expect(normalizeNftTokenId(id)).toBe(String(id === 0 ? 0 : 42))
 );
+it.each(['0001', '0x01', '0X01'])('normalizes equivalent token ID %s', (id) =>
+  expect(normalizeNftTokenId(id)).toBe('1')
+);
+it.each(['0000', '0x00', `000${maximum}`])(
+  'normalizes padded boundary token ID %s',
+  (id) => expect(normalizeNftTokenId(id)).toBe(BigInt(id).toString())
+);
 it.each([
   '',
   undefined,

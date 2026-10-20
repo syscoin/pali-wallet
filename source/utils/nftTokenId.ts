@@ -3,7 +3,7 @@ import { BigNumber } from 'utils/ethersV6Compat';
 const MAX_TOKEN_ID =
   '0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff';
 
-/** Keep uint256 identifiers exact across JSON and SDK signing boundaries. */
+/** Keep uint256 identifiers exact across storage, JSON and SDK boundaries. */
 export const normalizeNftTokenId = (value: unknown): string => {
   if (
     !(

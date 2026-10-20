@@ -2,6 +2,7 @@ import PaliLogo from 'assets/all_assets/favicon-32.png';
 import store from 'state/store';
 import { setAccountAssets } from 'state/vault';
 import { ITokenEthProps } from 'types/tokens';
+import { normalizeNftTokenId } from 'utils/nftTokenId';
 
 export interface IEthAccountController {
   prepareTokenAddition: (
@@ -16,6 +17,10 @@ export interface IEthAccountController {
 
 const EthAccountController = (): IEthAccountController => {
   const prepareTokenAddition = async (token: ITokenEthProps) => {
+    const tokenId =
+      token.tokenStandard === 'ERC-1155'
+        ? normalizeNftTokenId(token.tokenId)
+        : undefined;
     const { activeAccount, activeNetwork, accountAssets } =
       store.getState().vault;
     const { chainId } = activeNetwork;
@@ -60,11 +65,16 @@ const EthAccountController = (): IEthAccountController => {
           asset.tokenStandard === 'ERC-1155' &&
           token.tokenStandard === 'ERC-1155'
         ) {
-          return (
-            asset.contractAddress.toLowerCase() ===
-              token.contractAddress.toLowerCase() &&
-            asset.tokenId === token.tokenId
-          );
+          if (
+            asset.contractAddress.toLowerCase() !==
+            token.contractAddress.toLowerCase()
+          )
+            return false;
+          try {
+            return normalizeNftTokenId(asset.tokenId) === tokenId;
+          } catch {
+            return false;
+          }
         }
         // For other token types, just check contract address
         return (
@@ -75,9 +85,7 @@ const EthAccountController = (): IEthAccountController => {
 
       if (tokenExists) {
         if (token.tokenStandard === 'ERC-1155') {
-          throw new Error(
-            `ERC-1155 token with ID ${token.tokenId} already exists`
-          );
+          throw new Error(`ERC-1155 token with ID ${tokenId} already exists`);
         } else {
           throw new Error('Token already exists');
         }
@@ -86,12 +94,11 @@ const EthAccountController = (): IEthAccountController => {
       // Use token data as-is
       let web3Token = {
         ...token,
+        ...(tokenId !== undefined && { tokenId }),
         // For ERC-1155, include tokenId in the id to make it unique
         id:
-          token.tokenStandard === 'ERC-1155' && token.tokenId
-            ? `${token.contractAddress.toLowerCase()}-${chainId}-${
-                token.tokenId
-              }`
+          tokenId !== undefined
+            ? `${token.contractAddress.toLowerCase()}-${chainId}-${tokenId}`
             : `${token.contractAddress.toLowerCase()}-${chainId}`,
         chainId,
       };

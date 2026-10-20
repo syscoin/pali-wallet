@@ -127,7 +127,7 @@ test('manual ERC1155 import and Send MAX retain the exact verified quantity', as
               reads.push('balanceOf');
               result = abi.encode(
                 ['uint256'],
-                [String(tokenId) === TOKEN_ID ? QUANTITY : '0']
+                [[TOKEN_ID, '8'].includes(String(tokenId)) ? QUANTITY : '0']
               );
             }
           }
@@ -145,7 +145,7 @@ test('manual ERC1155 import and Send MAX retain the exact verified quantity', as
             ) {
               const ids = Array.from(tokenIds, String);
               const balances = ids.map((value) =>
-                value === TOKEN_ID ? QUANTITY : '0'
+                [TOKEN_ID, '8'].includes(value) ? QUANTITY : '0'
               );
               reads.push('balanceOfBatch');
               ownershipReads.push({ tokenIds: ids, balances });
@@ -243,6 +243,52 @@ test('manual ERC1155 import and Send MAX retain the exact verified quantity', as
           });
           await importToken.click();
           await expect(importToken).toBeDisabled();
+          for (const alias of ['07', '0x07']) {
+            await page.locator('#custom-token-id').fill(alias);
+            await expect(page.locator('#custom-token-id')).toHaveValue(alias);
+            await expect(
+              page.getByTitle(
+                en.tokens.balanceForTokenId.replace('{{balance}}', QUANTITY),
+                { exact: true }
+              )
+            ).toBeVisible();
+            await expect(importToken).toBeDisabled();
+            const membership = await page.evaluate(async (contract) => {
+              const state = await chrome.runtime.sendMessage({
+                type: 'getCurrentState',
+              });
+              const account = state.vault.activeAccount;
+              return state.vault.accountAssets[account.type][
+                account.id
+              ].ethereum
+                .filter(
+                  (asset: any) =>
+                    asset.contractAddress.toLowerCase() === contract
+                )
+                .map((asset: any) => ({
+                  id: asset.id,
+                  tokenId: asset.tokenId,
+                  chainId: asset.chainId,
+                }));
+            }, CONTRACT);
+            expect(membership).toEqual([
+              {
+                id: `${CONTRACT}-5700-${TOKEN_ID}`,
+                tokenId: TOKEN_ID,
+                chainId: 5700,
+              },
+            ]);
+          }
+          // A different on-chain ID remains available; only equivalent IDs
+          // are disabled. Keep it unimported so the MAX control selects ID7.
+          await page.locator('#custom-token-id').fill('8');
+          await expect(importToken).toBeEnabled();
+          expect(ownershipReads).toContainEqual({
+            tokenIds: ['8'],
+            balances: [QUANTITY],
+          });
+          await page.locator('#custom-token-id').fill(TOKEN_ID);
+          await expect(importToken).toBeDisabled();
           await wallet!.gotoRoute('#/send/eth');
           await page.getByRole('button', { name: 'TSYS', exact: true }).click();
           await page
@@ -321,8 +367,11 @@ test('manual ERC1155 import and Send MAX retain the exact verified quantity', as
       try {
         await wallet?.dispose(status);
       } finally {
-        await server.close();
-        Object.assign(E2E_CONFIG, before);
+        try {
+          await server.close();
+        } finally {
+          Object.assign(E2E_CONFIG, before);
+        }
       }
     }
   }
