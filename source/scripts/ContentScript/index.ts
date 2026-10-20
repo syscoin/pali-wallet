@@ -13,6 +13,7 @@ import { sendToBackground } from './backgroundMessaging';
 import { isAllowedPageProviderMessageType } from './pageMessageAuthorization';
 
 const emitter = new EventEmitter();
+let hasAppliedProviderPreference = false;
 
 const handleEthInjection = (message: any) => {
   const isInjected = message?.isInjected;
@@ -226,6 +227,7 @@ const backgroundMessageListener = (message, _sender, sendResponse) => {
     switch (data.params.type) {
       case 'pali_removeProperty':
         if (window !== window.top || !shouldInjectProvider()) break;
+        hasAppliedProviderPreference = true;
         injectScriptFile(
           'js/handleWindowProperties.bundle.js',
           'removeProperty'
@@ -233,6 +235,7 @@ const backgroundMessageListener = (message, _sender, sendResponse) => {
         break;
       case 'pali_addProperty':
         if (window !== window.top || !shouldInjectProvider()) break;
+        hasAppliedProviderPreference = true;
         injectScriptFile('js/inpage.bundle.js', 'inpage');
         break;
     }
@@ -280,7 +283,9 @@ if (window !== window.top) {
             );
             return;
           }
-          handleEthInjection(response);
+          // A live notification may arrive after the background captured this
+          // initial reply. Keep the preference already applied to this page.
+          if (!hasAppliedProviderPreference) handleEthInjection(response);
         }
       );
     }
