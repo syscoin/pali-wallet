@@ -340,6 +340,13 @@ module.exports = {
           minChunks: 2,
           enforce: true,
         },
+        qrCode: {
+          test: /[\\/]node_modules[\\/]qrcode\.react[\\/]lib[\\/]esm[\\/]index\.js$/,
+          chunks: 'async',
+          name: 'qr-code',
+          minChunks: 2,
+          enforce: true,
+        },
       },
       chunks(chunk) {
         // Only split chunks for app and external, NOT background, contentScript, inpage, pali, or handleWindowProperties

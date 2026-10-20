@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Navigate, useLocation } from 'react-router-dom';
 
@@ -18,16 +18,64 @@ export const SeedConfirm = () => {
   const { navigate, alert } = useUtils();
   const { t } = useTranslation();
 
-  const [passed, setPassed] = useState<boolean>(false);
+  const [passedGeneration, setPassedGeneration] = useState<number>();
   const [created, setCreated] = useState(false);
   const creationRequested = useRef(false);
   const { secrets, clear } = useOnboardingSecrets();
   const { password, phrase: createdSeed } = secrets;
   const { state } = useLocation();
   const next = state?.next === true;
+  // A -> B -> A is a new confirmation, even when the phrase text returns.
+  const liveConfirmation = useRef({
+    seed: createdSeed,
+    password,
+    kind: secrets.kind,
+    next,
+    generation: 0,
+    confirmed: false,
+  });
+  if (
+    liveConfirmation.current.seed !== createdSeed ||
+    liveConfirmation.current.password !== password ||
+    liveConfirmation.current.kind !== secrets.kind
+  ) {
+    liveConfirmation.current = {
+      seed: createdSeed,
+      password,
+      kind: secrets.kind,
+      next,
+      generation: liveConfirmation.current.generation + 1,
+      confirmed: false,
+    };
+  } else liveConfirmation.current.next = next;
+  const generation = liveConfirmation.current.generation;
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const isCurrentConfirmation = () =>
+    mounted.current &&
+    liveConfirmation.current.generation === generation &&
+    liveConfirmation.current.next &&
+    liveConfirmation.current.kind === 'create' &&
+    Boolean(liveConfirmation.current.seed && liveConfirmation.current.password);
+  const passed = passedGeneration === generation;
+  const setPassed = (value: boolean) => {
+    if (isCurrentConfirmation()) {
+      liveConfirmation.current.confirmed = value;
+      setPassedGeneration(value ? generation : undefined);
+    }
+  };
 
   const handleConfirm = async () => {
-    if (passed && !creationRequested.current) {
+    if (
+      liveConfirmation.current.confirmed &&
+      isCurrentConfirmation() &&
+      !creationRequested.current
+    ) {
       creationRequested.current = true;
       setCreated(true);
       clear();
@@ -58,6 +106,7 @@ export const SeedConfirm = () => {
     <>
       {next ? (
         <ConfirmPhrase
+          key={generation}
           confirmPassed={handleConfirm}
           passed={passed}
           seed={createdSeed}
