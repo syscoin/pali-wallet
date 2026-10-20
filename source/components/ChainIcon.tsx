@@ -1,5 +1,5 @@
 /* eslint-disable react/prop-types */
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 import ArbitrumIcon from '../assets/all_assets/arbitrum-icon.svg';
 import BaseIcon from '../assets/all_assets/base-icon.svg';
@@ -15,16 +15,16 @@ import { controllerEmitter } from 'scripts/Background/controllers/controllerEmit
 import { INetworkType } from 'types/network';
 
 // Cache for actual image data URLs (base64) to prevent any network requests
-const imageDataCache = new Map<number, string | null>();
+const imageDataCache = new Map<string, string | null>();
 
 // Track in-flight requests to prevent duplicate fetches
-const pendingRequests = new Map<number, Promise<string | null>>();
+const pendingRequests = new Map<string, Promise<string | null>>();
 
 /**
  * Simple Cache Strategy:
  *
- * imageDataCache: Maps chainId → base64 data URLs or null if failed
- * - Key: chainId (e.g., 1, 137, 570)
+ * imageDataCache: Maps network family + chainId to image data or null if failed
+ * - Key: network family + chainId (numeric IDs can overlap across families)
  * - Value: "data:image/jpeg;base64,..." or null if failed to load
  * - Purpose: Prevents ALL HTTP requests by storing actual image data
  */
@@ -71,6 +71,65 @@ const getKnownIcon = (chainId: number, networkKind?: INetworkType) => {
   return KNOWN_CHAIN_ICONS[iconKey] || null;
 };
 
+interface IIconScope {
+  chainId: number;
+  key: string;
+  networkKind?: INetworkType;
+  revision: number;
+}
+
+const initialIconState = (scope: IIconScope) => {
+  const known = getKnownIcon(scope.chainId, scope.networkKind);
+  const cached = imageDataCache.get(scope.key);
+  return {
+    scope,
+    url: typeof known === 'string' ? known : cached ?? null,
+    component: known && typeof known !== 'string' ? known : null,
+    error: !known && cached === null,
+    loading: !known && !imageDataCache.has(scope.key),
+  };
+};
+
+const fetchIcon = async (scope: IIconScope): Promise<string | null> => {
+  try {
+    const chainInfo = (await controllerEmitter(
+      ['wallet', 'getChainById'],
+      [scope.chainId, scope.networkKind]
+    )) as { chainSlug?: string; icon?: string; shortName?: string } | null;
+    const iconIdentifier =
+      chainInfo?.icon || chainInfo?.chainSlug || chainInfo?.shortName;
+    if (iconIdentifier) {
+      const iconUrls = [
+        `https://c1.coinlore.com/img/25x25/${iconIdentifier}.png`,
+        `https://coinlore.com/img/${iconIdentifier}.png`,
+        `https://icons.llamao.fi/icons/chains/rsz_${iconIdentifier}.jpg`,
+        `https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/${iconIdentifier}/info/logo.png`,
+      ];
+      for (const url of iconUrls) {
+        try {
+          const response = await fetch(url);
+          if (!response.ok) continue;
+          const blob = await response.blob();
+          const dataUrl = await new Promise<string | null>((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.onerror = () => resolve(null);
+            reader.readAsDataURL(blob);
+          });
+          imageDataCache.set(scope.key, dataUrl);
+          return dataUrl;
+        } catch {
+          // Keep the existing ordered fallbacks for a refused image source.
+        }
+      }
+    }
+  } catch (fetchError) {
+    console.error('Error fetching chain icon:', fetchError);
+  }
+  imageDataCache.set(scope.key, null);
+  return null;
+};
+
 /**
  * Component to display chain icons dynamically from ChainList
  * Falls back to local icons for known chains, then to Pali logo
@@ -83,191 +142,77 @@ export const ChainIcon: React.FC<IChainIconProps> = React.memo(
     fallbackClassName = 'rounded-full',
     networkKind,
   }) => {
-    // Determine initial state based on what we already know
-    const getInitialState = () => {
-      // Check for known local icons using smart lookup
-      const knownIcon = getKnownIcon(chainId, networkKind);
-      if (knownIcon) {
-        return {
-          url: typeof knownIcon === 'string' ? knownIcon : null,
-          component: typeof knownIcon !== 'string' ? knownIcon : null,
-          error: false,
-          loading: false,
-        };
-      }
-
-      // Check cache for networks
-      if (imageDataCache.has(chainId)) {
-        const cached = imageDataCache.get(chainId);
-        return {
-          url: cached,
-          component: null,
-          error: cached === null,
-          loading: false, // Never show loading for cached items
-        };
-      }
-
-      // Only show loading for truly new icons
-      return {
-        url: null,
-        component: null,
-        error: false,
-        loading: true,
+    // Keep omitted-kind callers' existing lookup behavior, without letting
+    // their result poison an explicitly selected network family's cache.
+    const key = `${networkKind ?? 'unspecified'}:${chainId}`;
+    const scopeRef = useRef<IIconScope>({
+      key,
+      chainId,
+      networkKind,
+      revision: 0,
+    });
+    if (scopeRef.current.key !== key) {
+      scopeRef.current = {
+        key,
+        chainId,
+        networkKind,
+        revision: scopeRef.current.revision + 1,
       };
-    };
-
-    const initial = getInitialState();
-    const [iconUrl, setIconUrl] = useState<string | null>(initial.url);
-    const [iconComponent, setIconComponent] = useState<React.ComponentType<{
-      className?: string;
-      style?: React.CSSProperties;
-    }> | null>(initial.component || null);
-    const [error, setError] = useState(initial.error);
-    const [isLoading, setIsLoading] = useState(initial.loading);
+    }
+    const scope = scopeRef.current;
+    const [state, setState] = useState(() => initialIconState(scope));
+    // Scope changes must not render the previous SVG/image while passive
+    // effects catch up. The revision also distinguishes A -> B -> A.
+    const {
+      url: iconUrl,
+      component: iconComponent,
+      error,
+      loading: isLoading,
+    } = state.scope === scope ? state : initialIconState(scope);
 
     useEffect(() => {
-      // Check for known local icons using smart lookup
-      const knownIcon = getKnownIcon(chainId, networkKind);
-      if (knownIcon) {
-        if (typeof knownIcon === 'string') {
-          if (iconUrl !== knownIcon) {
-            setIconUrl(knownIcon);
-            setIconComponent(null);
-            setError(false);
-            setIsLoading(false);
-          }
-        } else {
-          if (iconComponent !== knownIcon) {
-            setIconUrl(null);
-            setIconComponent(knownIcon);
-            setError(false);
-            setIsLoading(false);
-          }
-        }
-        return;
-      }
-
-      // Check cache for existing icon
-      if (imageDataCache.has(chainId)) {
-        const cachedUrl = imageDataCache.get(chainId);
-        if (cachedUrl !== iconUrl) {
-          setIconUrl(cachedUrl);
-          setIconComponent(null);
-          setError(cachedUrl === null);
-          setIsLoading(false);
-        }
-        return;
-      }
-
-      // Check if there's already a pending request for this chainId
-      const existingRequest = pendingRequests.get(chainId);
-      if (existingRequest) {
-        existingRequest.then((dataUrl) => {
-          if (dataUrl) {
-            setIconUrl(dataUrl);
-            setError(false);
-          } else {
-            setError(true);
-          }
-          setIsLoading(false);
-        });
-        return;
-      }
-
-      // Create a new fetch promise and track it
-      const fetchIconPromise = async (): Promise<string | null> => {
-        try {
-          // Get chain info from controller
-          const chainInfo = (await controllerEmitter(
-            ['wallet', 'getChainById'],
-            [chainId, networkKind]
-          )) as {
-            chainSlug?: string;
-            icon?: string;
-            shortName?: string;
-          } | null;
-
-          // Try to get icon identifier from chainInfo
-          const iconIdentifier =
-            chainInfo?.icon || chainInfo?.chainSlug || chainInfo?.shortName;
-
-          if (iconIdentifier) {
-            // Try different icon sources based on the icon data
-            const iconUrls = [
-              // CoinLore - has excellent coverage for major chains like Arbitrum
-              `https://c1.coinlore.com/img/25x25/${iconIdentifier}.png`,
-              // Alternative CoinLore format
-              `https://coinlore.com/img/${iconIdentifier}.png`,
-              // Llamao (works for many coins)
-              `https://icons.llamao.fi/icons/chains/rsz_${iconIdentifier}.jpg`,
-              // TrustWallet assets (backup)
-              `https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/${iconIdentifier}/info/logo.png`,
-            ];
-
-            // Try each URL in sequence
-            for (let index = 0; index < iconUrls.length; index++) {
-              try {
-                const response = await fetch(iconUrls[index]);
-                if (!response.ok) continue; // Try next URL
-
-                const blob = await response.blob();
-                const reader = new FileReader();
-
-                return new Promise<string>((resolve) => {
-                  reader.onloadend = () => {
-                    const dataUrl = reader.result as string;
-                    imageDataCache.set(chainId, dataUrl);
-                    resolve(dataUrl);
-                  };
-                  reader.onerror = () => {
-                    resolve(null);
-                  };
-                  reader.readAsDataURL(blob);
-                });
-              } catch (_blank) {
-                // Try next URL
-                continue;
-              }
-            }
-          }
-
-          // All attempts failed or no icon identifier
-          imageDataCache.set(chainId, null);
-          return null;
-        } catch (fetchError) {
-          console.error('Error fetching chain icon:', fetchError);
-          imageDataCache.set(chainId, null);
-          return null;
+      let active = true;
+      const initial = initialIconState(scope);
+      setState(initial);
+      const commit = (url: string | null) => {
+        if (active && scopeRef.current === scope) {
+          setState({
+            scope,
+            url,
+            component: null,
+            error: !url,
+            loading: false,
+          });
         }
       };
-
-      // Lazy load with delay to prevent blocking renderer
-      const loadTimer = setTimeout(() => {
-        const promise = fetchIconPromise();
-        pendingRequests.set(chainId, promise);
-
-        promise
-          .then((dataUrl) => {
-            if (dataUrl) {
-              setIconUrl(dataUrl);
-              setError(false);
-            } else {
-              setError(true);
-            }
-            setIsLoading(false);
-            pendingRequests.delete(chainId); // Clean up
-          })
-          .catch(() => {
-            setError(true);
-            setIsLoading(false);
-            pendingRequests.delete(chainId); // Clean up
-          });
-      }, 50); // Reduced from 150ms to 50ms for better UX while still preventing blocking
-
+      let loadTimer: ReturnType<typeof setTimeout>;
+      if (initial.loading) {
+        const load = () => {
+          if (imageDataCache.has(scope.key)) {
+            commit(imageDataCache.get(scope.key)!);
+            return;
+          }
+          let promise = pendingRequests.get(scope.key);
+          if (!promise) {
+            promise = fetchIcon(scope);
+            pendingRequests.set(scope.key, promise);
+            const ownedPromise = promise;
+            void promise.then(() => {
+              if (pendingRequests.get(scope.key) === ownedPromise) {
+                pendingRequests.delete(scope.key);
+              }
+            });
+          }
+          void promise.then(commit);
+        };
+        if (pendingRequests.has(scope.key)) load();
+        else loadTimer = setTimeout(load, 50);
+      }
       return () => {
+        active = false;
         clearTimeout(loadTimer);
       };
-    }, [chainId, networkKind]);
+    }, [scope]);
 
     // Use fallback SVG for unknown chains
     if (error || (!iconUrl && !iconComponent && !isLoading)) {
@@ -306,11 +251,20 @@ export const ChainIcon: React.FC<IChainIconProps> = React.memo(
     // Render image URL
     return (
       <img
+        key={`${scope.key}:${scope.revision}`}
         src={iconUrl}
         alt={`Chain ${chainId}`}
         className={`rounded-full ${className}`}
         style={{ width: size, height: size }}
-        onError={() => setError(true)}
+        onError={() => {
+          if (scopeRef.current === scope) {
+            setState((current) => ({
+              ...(current.scope === scope ? current : initialIconState(scope)),
+              error: true,
+              loading: false,
+            }));
+          }
+        }}
       />
     );
   },
