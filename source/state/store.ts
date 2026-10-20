@@ -342,8 +342,8 @@ export function persistNetworkRemoval(
   network: Parameters<typeof removeNetwork>[0],
   assertCurrent: () => void,
   isSameWallet: () => boolean,
-  removedSlip44?: number,
-  onCommitted?: () => void
+  removedSlip44: number | undefined,
+  onCommitted: () => void
 ): Promise<void> {
   return walletPersistenceMutex.runExclusive(async () => {
     const assertAdmitted = () => {
@@ -351,13 +351,11 @@ export function persistNetworkRemoval(
       assertCurrent();
     };
     assertAdmitted();
+    const vaultKey = `state-vault-${removedSlip44}`;
     const keys =
       removedSlip44 === undefined
         ? []
-        : [
-            `state-vault-${removedSlip44}`,
-            `state-vault-${removedSlip44}-passkey-profile`,
-          ];
+        : [vaultKey, `${vaultKey}-passkey-profile`];
     const previous = keys.length ? await chromeStorage.getItems(keys) : {};
     assertAdmitted();
     const action = removeNetwork(network);
@@ -387,7 +385,7 @@ export function persistNetworkRemoval(
     store.dispatch(action);
     if (removedSlip44 !== undefined)
       vaultCache.clearSlip44FromCache(removedSlip44);
-    onCommitted?.();
+    onCommitted();
   });
 }
 
