@@ -527,7 +527,9 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
             </a>
           </div>
         </div>
-      ) : null}
+      ) : (
+        <p className="py-8 text-center text-brand-gray200">Asset not found</p>
+      )}
     </>
   );
 };

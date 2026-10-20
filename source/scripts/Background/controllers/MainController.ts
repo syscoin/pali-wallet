@@ -5173,12 +5173,24 @@ class MainController {
     const requestId = ++this.transactionUpdateRequestId;
     const session = this.walletSessionGeneration;
     const networkRequest = this.networkRequestGeneration;
+    let cancelled = false;
+    const isCurrentRead = () => {
+      const network = store.getState().vault.activeNetwork;
+      return (
+        !cancelled &&
+        session === this.walletSessionGeneration &&
+        networkRequest === this.networkRequestGeneration &&
+        network.chainId === activeNetwork.chainId &&
+        network.kind === activeNetwork.kind &&
+        network.url === activeNetwork.url &&
+        (isBitcoinBased || network.apiUrl === activeNetwork.apiUrl)
+      );
+    };
     const { accounts, activeAccount, accountTransactions } =
       store.getState().vault;
     const currentAccount = accounts[activeAccount.type]?.[activeAccount.id];
     const currentAccountTxs =
       accountTransactions[activeAccount.type]?.[activeAccount.id];
-    let cancelled = false;
     const { currentPromise: transactionPromise, cancel } =
       this.cancellablePromises.createCancellablePromise<void>(
         async (resolve, reject) => {
@@ -5194,22 +5206,16 @@ class MainController {
                 isPolling,
                 isRapidPolling,
                 forceRefresh,
-                `${session}:${networkRequest}`
+                `${session}:${networkRequest}`,
+                isCurrentRead
               );
 
             const latestVault = store.getState().vault;
             if (
-              cancelled ||
               requestId < this.transactionUpdateCommitId ||
-              session !== this.walletSessionGeneration ||
-              networkRequest !== this.networkRequestGeneration ||
+              !isCurrentRead() ||
               latestVault.activeAccount.id !== activeAccount.id ||
-              latestVault.activeAccount.type !== activeAccount.type ||
-              latestVault.activeNetwork.chainId !== activeNetwork.chainId ||
-              latestVault.activeNetwork.kind !== activeNetwork.kind ||
-              latestVault.activeNetwork.url !== activeNetwork.url ||
-              (!isBitcoinBased &&
-                latestVault.activeNetwork.apiUrl !== activeNetwork.apiUrl)
+              latestVault.activeAccount.type !== activeAccount.type
             ) {
               console.log('[MainController] Skipping stale transaction update');
               resolve();

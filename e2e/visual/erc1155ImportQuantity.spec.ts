@@ -40,6 +40,7 @@ test('manual ERC1155 import and Send MAX retain the exact verified quantity', as
   const selector = (signature: string) => id(signature).slice(0, 10);
   const reads: string[] = [];
   const ownershipReads: { balances: string[]; tokenIds: string[] }[] = [];
+  let currentQuantity = QUANTITY;
   const deniedWrites: string[] = [];
   let routes:
     | Awaited<ReturnType<typeof installIsolatedVaultRoutes>>
@@ -127,7 +128,11 @@ test('manual ERC1155 import and Send MAX retain the exact verified quantity', as
               reads.push('balanceOf');
               result = abi.encode(
                 ['uint256'],
-                [[TOKEN_ID, '8'].includes(String(tokenId)) ? QUANTITY : '0']
+                [
+                  [TOKEN_ID, '8'].includes(String(tokenId))
+                    ? currentQuantity
+                    : '0',
+                ]
               );
             }
           }
@@ -145,7 +150,7 @@ test('manual ERC1155 import and Send MAX retain the exact verified quantity', as
             ) {
               const ids = Array.from(tokenIds, String);
               const balances = ids.map((value) =>
-                [TOKEN_ID, '8'].includes(value) ? QUANTITY : '0'
+                [TOKEN_ID, '8'].includes(value) ? currentQuantity : '0'
               );
               reads.push('balanceOfBatch');
               ownershipReads.push({ tokenIds: ids, balances });
@@ -329,6 +334,95 @@ test('manual ERC1155 import and Send MAX retain the exact verified quantity', as
                 contentType: 'image/png',
               }
             );
+          }
+          expect([...deniedWrites, ...routes!.deniedWrites]).toEqual([]);
+        } finally {
+          if (!page.isClosed()) await capture(page);
+        }
+      }
+    );
+    await wallet.step(
+      'keep the open owned collection current after genuine contract balance refreshes',
+      async (capture) => {
+        try {
+          await page.setViewportSize({ width: 400, height: 620 });
+          await wallet!.ensureOnHome();
+          await page.locator('#assets-btn').click();
+          await page
+            .getByRole('button', { name: en.tooltip.viewNFTs, exact: true })
+            .click();
+          await page
+            .getByRole('button', {
+              name: `View details for ${SYMBOL} collection`,
+              exact: true,
+            })
+            .click();
+          await page
+            .getByRole('button', {
+              name: `eye ${en.send.viewCollectionItems}`,
+              exact: true,
+            })
+            .click();
+          const header = page.getByText(/• ERC-1155$/);
+          const amount = page
+            .getByText('Amount', { exact: true })
+            .locator('..');
+          await expect(header).toHaveAttribute('title', QUANTITY);
+          await expect(amount).toHaveAttribute('title', QUANTITY);
+          const collectionUrl = page.url();
+          for (const balance of ['7', '0', QUANTITY]) {
+            currentQuantity = balance;
+            // Exercise the ordinary background asset refresh while the same
+            // collection stays mounted. Only ABI transport responses change;
+            // neither renderer state nor controller results are replaced.
+            const published = await page.evaluate(async (contract) => {
+              const initialState = await chrome.runtime.sendMessage({
+                type: 'getCurrentState',
+              });
+              const result = await chrome.runtime.sendMessage({
+                type: 'CONTROLLER_ACTION',
+                data: {
+                  methods: ['wallet', 'updateAssetsFromCurrentAccount'],
+                  params: [
+                    {
+                      isBitcoinBased: false,
+                      activeAccount: initialState.vault.activeAccount,
+                      activeNetwork: initialState.vault.activeNetwork,
+                      isPolling: true,
+                    },
+                  ],
+                },
+              });
+              if (result && (result.error || result.success === false))
+                throw new Error(
+                  `Asset refresh failed: ${JSON.stringify(result)}`
+                );
+              const after = await chrome.runtime.sendMessage({
+                type: 'getCurrentState',
+              });
+              const accountRef = after.vault.activeAccount;
+              const token = after.vault.accountAssets[accountRef.type][
+                accountRef.id
+              ].ethereum.find(
+                (asset: any) =>
+                  asset.contractAddress.toLowerCase() === contract &&
+                  asset.tokenId === '7' &&
+                  asset.chainId === 5700
+              );
+              return { balance: token?.balance, rawBalance: token?.rawBalance };
+            }, CONTRACT);
+            expect(published).toEqual({
+              balance: Number(balance),
+              rawBalance: balance,
+            });
+            expect(page.url()).toBe(collectionUrl);
+            await expect(header).toHaveAttribute('title', balance);
+            await expect(amount).toHaveAttribute('title', balance);
+            if (balance !== QUANTITY)
+              await info.attach(`live-owned-quantity-${balance}`, {
+                body: await page.screenshot({ animations: 'disabled' }),
+                contentType: 'image/png',
+              });
           }
           expect([...deniedWrites, ...routes!.deniedWrites]).toEqual([]);
         } finally {

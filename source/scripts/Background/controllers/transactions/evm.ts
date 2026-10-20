@@ -681,7 +681,8 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
   const pollingEvmTransactions = async (
     web3Provider: CustomJsonRpcProvider,
     isPolling?: boolean,
-    isRapidPolling?: boolean
+    isRapidPolling?: boolean,
+    isCurrentRead?: () => boolean
   ) => {
     // Guard: ensure web3Provider is valid before polling
     if (!web3Provider) {
@@ -932,7 +933,8 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
           web3Provider,
           currentAccount as any,
           activeAccount.type,
-          currentNetworkChainId
+          currentNetworkChainId,
+          isCurrentRead
         );
         rawTransactions = [...rawTransactions, ...userOpTransactions];
       } catch (error) {

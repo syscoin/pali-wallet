@@ -940,6 +940,29 @@ it('preserves a current scoped preview and collection at both boundaries', async
   }
 });
 
+it('retains only an explicit collection preview marker at the details boundary', () => {
+  const nftData = { ...previewState(), isImportPreview: true };
+  expect(
+    sanitizeBrowsingState('/home/details', {
+      nftCollection: true,
+      nftData,
+    }).nftData.isImportPreview
+  ).toBe(true);
+  for (const state of [
+    { nftCollection: false, nftData },
+    { nftCollection: true, nftData: { ...nftData, isImportPreview: 'true' } },
+  ])
+    expect(
+      sanitizeBrowsingState('/home/details', state).nftData
+    ).not.toHaveProperty('isImportPreview');
+  expect(
+    sanitizeBrowsingState('/home', {
+      nftCollection: true,
+      nftData,
+    }).nftData
+  ).not.toHaveProperty('isImportPreview');
+});
+
 it('accepts explicit current preview data separately from the unscoped raw route', () => {
   const legacy: Record<string, any> = previewState();
   delete legacy.walletScope;
