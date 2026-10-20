@@ -104,8 +104,11 @@ test('custom SPT validation recovers after coalesced input undo without importin
     try {
       await wallet?.dispose(status);
     } finally {
-      await server.close();
-      Object.assign(E2E_CONFIG, before);
+      try {
+        await server.close();
+      } finally {
+        Object.assign(E2E_CONFIG, before);
+      }
     }
   }
 });
