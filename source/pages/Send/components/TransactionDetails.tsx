@@ -21,6 +21,7 @@ import {
 import { formatEther, parseUnits } from 'utils/ethersV6Compat';
 import { BigNumber } from 'utils/ethersV6Compat';
 import { ellipsis } from 'utils/format';
+import { getWalletNavigationScope } from 'utils/navigationState';
 
 // Memoize copy icon to prevent unnecessary re-renders
 const CopyIcon = memo(() => (
@@ -61,7 +62,9 @@ export const TransactionDetailsComponent = (
   } = props;
   const { alert, useCopyClipboard } = useUtils();
   const { controllerEmitter } = useController();
-  const [, copy] = useCopyClipboard();
+  const [copyFieldType, setCopyFieldType] = useState<
+    'address' | 'hash' | 'other'
+  >('address');
   const [currentTxValue, setCurrentTxValue] = useState<string>('0');
   const [blacklistWarning, setBlacklistWarning] = useState<{
     isBlacklisted: boolean;
@@ -72,6 +75,11 @@ export const TransactionDetailsComponent = (
 
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
+  );
+  const walletScope = useSelector(getWalletNavigationScope);
+  const [copied, copy, isCurrentCopy] = useCopyClipboard(
+    1000,
+    `${walletScope.account}:${walletScope.network}:${tx.from}:${tx.to}`
   );
   // Prefer rendering ENS name when available in cache for destination
   // Use valid (non-expired) ENS cache for security
@@ -88,14 +96,17 @@ export const TransactionDetailsComponent = (
         return t('settings.successfullyCopied');
     }
   };
+  const copyMessage = getCopyMessage(copyFieldType);
+  useEffect(() => {
+    if (copied) alert.info(copyMessage, undefined, isCurrentCopy);
+  }, [copied, copyMessage, alert, isCurrentCopy]);
 
   const handleCopyWithMessage = (
     value: string,
     fieldType: 'address' | 'hash' | 'other' = 'address'
   ) => {
-    copy(value);
-
-    alert.info(getCopyMessage(fieldType));
+    setCopyFieldType(fieldType);
+    void copy(value);
   };
 
   // Calculate total fee: legacy uses gasPrice; EIP-1559 shows Max fee (gasLimit * maxFeePerGas)

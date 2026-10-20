@@ -61,7 +61,6 @@ export const AccountHeader: React.FC = () => {
   const { useCopyClipboard, alert, navigate } = useUtils();
   const { t } = useTranslation();
   const { controllerEmitter } = useController();
-  const [copied, copy] = useCopyClipboard();
   const isLoading = useSyncExternalStore(
     subscribeHardwareVerification,
     isHardwareVerificationPending
@@ -85,6 +84,10 @@ export const AccountHeader: React.FC = () => {
     location.hash,
     location.key,
   ]);
+  const [copied, copy, isCurrentCopy] = useCopyClipboard(
+    1000,
+    verificationScope
+  );
   const verification = useRef({
     generation: 0,
     scope: verificationScope,
@@ -267,8 +270,8 @@ export const AccountHeader: React.FC = () => {
   useEffect(() => {
     if (!copied) return;
 
-    alert.info(t('home.addressCopied'));
-  }, [copied, alert, t]);
+    alert.info(t('home.addressCopied'), undefined, isCurrentCopy);
+  }, [copied, alert, t, isCurrentCopy]);
 
   return (
     <div className="relative z-[55] flex items-center justify-between p-1 bg-bkg-3">

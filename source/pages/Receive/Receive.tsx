@@ -7,12 +7,12 @@ import { Button } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { KeyringAccountType } from 'types/network';
+import { getWalletNavigationScope } from 'utils/navigationState';
 
 const ADDRESS_WAIT_TIMEOUT_MS = 8000;
 
 export const Receive = () => {
   const { useCopyClipboard, alert, navigate } = useUtils();
-  const [isCopied, copyText] = useCopyClipboard();
   const { t } = useTranslation();
   const [hasTimedOut, setHasTimedOut] = useState(false);
 
@@ -23,6 +23,13 @@ export const Receive = () => {
     (state: RootState) => state.vault.activeNetwork
   );
   const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
+  const walletScope = useSelector(() =>
+    JSON.stringify(getWalletNavigationScope())
+  );
+  const [isCopied, copyText, isCurrentCopy] = useCopyClipboard(
+    1000,
+    `${walletScope}:${activeAccount?.address}`
+  );
 
   const accountTypeLabel = useMemo(() => {
     switch (activeAccountMeta.type) {
@@ -42,8 +49,8 @@ export const Receive = () => {
   useEffect(() => {
     if (!isCopied) return;
 
-    alert.success(t('home.addressCopied'));
-  }, [isCopied, alert, t]);
+    alert.success(t('home.addressCopied'), undefined, isCurrentCopy);
+  }, [isCopied, isCurrentCopy, alert, t]);
 
   // The address comes from the store; if it never materializes, surface a
   // retry path instead of spinning forever

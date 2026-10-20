@@ -5,7 +5,7 @@ import React from 'react';
 
 import EditAccount from './EditAccount';
 
-const mockCopy = jest.fn();
+const mockWrite = jest.fn();
 const mockAlert = { success: jest.fn(), error: jest.fn() };
 const mockAddress = 'tsys1qsyntheticpublicaccountaddress';
 jest.mock('react-redux', () => ({
@@ -30,11 +30,21 @@ jest.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 jest.mock('hooks/index', () => ({
-  useUtils: () => ({
-    navigate: jest.fn(),
-    alert: mockAlert,
-    useCopyClipboard: () => [false, mockCopy],
+  useUtils: jest.requireActual('hooks/useUtils').useUtils,
+}));
+jest.mock('hooks/useSafeNavigate', () => ({
+  useSafeNavigate: () => jest.fn(),
+}));
+jest.mock('react-toastify', () => ({
+  toast: Object.assign(jest.fn(), {
+    error: (...args: any[]) => mockAlert.error(...args),
+    success: (...args: any[]) => mockAlert.success(...args),
+    dismiss: jest.fn(),
   }),
+}));
+jest.mock('i18next', () => ({
+  __esModule: true,
+  default: { t: () => 'transactions.copyFailed' },
 }));
 jest.mock('hooks/useController', () => ({
   useController: () => ({ controllerEmitter: jest.fn() }),
@@ -65,22 +75,27 @@ jest.mock('components/index', () => ({
 
 beforeEach(() => {
   jest.clearAllMocks();
-  mockCopy.mockResolvedValue(undefined);
+  mockWrite.mockReset().mockResolvedValue(undefined);
+  Object.defineProperty(navigator, 'clipboard', {
+    configurable: true,
+    value: { writeText: mockWrite },
+  });
 });
 
 it('copies only the selected account public address', async () => {
   render(<EditAccount />);
   fireEvent.click(screen.getByRole('button', { name: 'buttons.copy' }));
-  await waitFor(() => expect(mockCopy).toHaveBeenCalledWith(mockAddress));
+  await waitFor(() => expect(mockWrite).toHaveBeenCalledWith(mockAddress));
   expect(mockAlert.error).not.toHaveBeenCalled();
 });
 
 it('reports public-address clipboard refusal without claiming success', async () => {
-  mockCopy.mockRejectedValueOnce(new Error('Synthetic clipboard refusal'));
+  mockWrite.mockRejectedValueOnce(new Error('Synthetic clipboard refusal'));
   render(<EditAccount />);
   fireEvent.click(screen.getByRole('button', { name: 'buttons.copy' }));
   await waitFor(() =>
     expect(mockAlert.error).toHaveBeenCalledWith('transactions.copyFailed')
   );
+  expect(mockAlert.error).toHaveBeenCalledTimes(1);
   expect(mockAlert.success).not.toHaveBeenCalled();
 });
