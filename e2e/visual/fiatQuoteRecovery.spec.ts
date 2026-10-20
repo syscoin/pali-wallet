@@ -105,11 +105,7 @@ test('Home survives malformed fiat quotes and recovers without a poisoned quote 
         ].includes(url.origin)
       )
         return route.fallback();
-      if (
-        request.method() !== 'GET' ||
-        url.search ||
-        url.hash
-      ) {
+      if (request.method() !== 'GET' || url.search || url.hash) {
         deniedQuoteRequests.push(request.method() + ' ' + request.url());
         return route.abort('blockedbyclient');
       }
