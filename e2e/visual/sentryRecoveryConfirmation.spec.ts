@@ -156,7 +156,8 @@ for (const refresh of ['healthy', 'refused once'] as const) {
                   });
                 return set(items).then(acknowledge);
               }) as typeof chrome.storage.local.set;
-              chrome.storage.local.get = ((keys: any, callback: any) => {
+              chrome.storage.local.get = ((...args: any[]) => {
+                const keys = args[0];
                 const requested = Array.isArray(keys) ? keys : [keys];
                 if (
                   committed &&
@@ -171,7 +172,7 @@ for (const refresh of ['healthy', 'refused once'] as const) {
                   audit.refusedSettingsReads += 1;
                   throw new Error('Synthetic postcommit settings read refusal');
                 }
-                return (get as any)(keys, callback);
+                return (get as any)(...args);
               }) as typeof chrome.storage.local.get;
             });
           }
