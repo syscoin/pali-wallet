@@ -320,7 +320,7 @@ module.exports = {
           enforce: true,
         },
         assetViews: {
-          test: /[\\/]source[\\/]pages[\\/]Home[\\/]Panel[\\/]components[\\/]Assets[\\/]/,
+          test: /[\\/]source[\\/](?:pages[\\/]Home[\\/]Panel[\\/]components[\\/](?:Assets[\\/]|Nfts[\\/]EvmNftsList\.tsx$)|utils[\\/]nftQuantity\.ts$)/,
           chunks: 'async',
           name: 'asset-views',
           minChunks: 2,

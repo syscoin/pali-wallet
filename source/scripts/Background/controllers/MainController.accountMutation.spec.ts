@@ -35,27 +35,50 @@ import { KeyringAccountType } from 'types/network';
 
 import MainController from './MainController';
 
-const flows: [string, any[], string][] = [
-  ['createAccount', ['account'], 'addNewAccount'],
+const flows: [string, any[], string, KeyringAccountType][] = [
+  ['createAccount', ['account'], 'addNewAccount', KeyringAccountType.HDAccount],
   [
     'createAccount',
     ['smart', KeyringAccountType.SmartAccount],
     'createSmartAccount',
+    KeyringAccountType.SmartAccount,
   ],
   [
     'createSmartAccount',
     [{ address: '0x-public-smart-address', metadata: {} }],
     'createSmartAccount',
+    KeyringAccountType.SmartAccount,
   ],
-  ['createSmartAccountRecord', [{ label: 'smart' }], 'createSmartAccount'],
-  ['importAccountFromPrivateKey', ['synthetic-test-key'], 'importAccount'],
+  [
+    'createSmartAccountRecord',
+    [{ label: 'smart' }],
+    'createSmartAccount',
+    KeyringAccountType.SmartAccount,
+  ],
+  [
+    'importAccountFromPrivateKey',
+    ['synthetic-test-key'],
+    'importAccount',
+    KeyringAccountType.Imported,
+  ],
   [
     'importWatchOnlyFromController',
     ['1BoatSLRHtKNngkdXEeobR76b53LETtpyT'],
     'importWatchOnly',
+    KeyringAccountType.Imported,
   ],
-  ['importTrezorAccountFromController', ['Trezor'], 'importTrezorAccount'],
-  ['importLedgerAccountFromController', ['Ledger'], 'importLedgerAccount'],
+  [
+    'importTrezorAccountFromController',
+    ['Trezor'],
+    'importTrezorAccount',
+    KeyringAccountType.Trezor,
+  ],
+  [
+    'importLedgerAccountFromController',
+    ['Ledger'],
+    'importLedgerAccount',
+    KeyringAccountType.Ledger,
+  ],
 ];
 
 describe('account mutation wallet setup reservation', () => {
@@ -100,7 +123,7 @@ describe('account mutation wallet setup reservation', () => {
 
   it.each(flows)(
     'blocks %s during setup and permits normal mutation afterward',
-    async (method, args, sdkMethod) => {
+    async (method, args, sdkMethod, accountType) => {
       wallet.isCreatingWallet = true;
       await expect(wallet[method](...args)).rejects.toThrow(
         'Wallet setup is in progress'
@@ -108,20 +131,18 @@ describe('account mutation wallet setup reservation', () => {
       expect(wallet.getActiveKeyring).not.toHaveBeenCalled();
       expect(keyring[sdkMethod]).not.toHaveBeenCalled();
       expect(store.dispatch).not.toHaveBeenCalled();
+      expect(persistAccountCreation).not.toHaveBeenCalled();
       wallet.isCreatingWallet = false;
       await expect(wallet[method](...args)).resolves.toEqual(account);
       expect(keyring[sdkMethod]).toHaveBeenCalledTimes(1);
-      if (
-        sdkMethod === 'addNewAccount' ||
-        sdkMethod === 'createSmartAccount' ||
-        sdkMethod === 'importAccount' ||
-        sdkMethod === 'importWatchOnly'
-      ) {
-        expect(persistAccountCreation).toHaveBeenCalledTimes(1);
-        expect(wallet.saveWalletState).not.toHaveBeenCalled();
-      } else {
-        expect(wallet.saveWalletState).toHaveBeenCalledTimes(1);
-      }
+      expect(persistAccountCreation).toHaveBeenCalledTimes(1);
+      expect(persistAccountCreation).toHaveBeenCalledWith(
+        account,
+        accountType,
+        expect.any(Function),
+        expect.any(Function)
+      );
+      expect(wallet.saveWalletState).not.toHaveBeenCalled();
     }
   );
 
@@ -143,6 +164,7 @@ describe('account mutation wallet setup reservation', () => {
       resolve(account);
       await rejection;
       expect(store.dispatch).not.toHaveBeenCalled();
+      expect(persistAccountCreation).not.toHaveBeenCalled();
       expect(wallet.saveWalletState).not.toHaveBeenCalled();
     }
   );
@@ -172,6 +194,7 @@ describe('account mutation wallet setup reservation', () => {
       resolve(account);
       await rejection;
       expect(store.dispatch).not.toHaveBeenCalled();
+      expect(persistAccountCreation).not.toHaveBeenCalled();
       expect(wallet.saveWalletState).not.toHaveBeenCalled();
     }
   });
