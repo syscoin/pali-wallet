@@ -28,7 +28,7 @@ export const Receive = () => {
   );
   const [isCopied, copyText, isCurrentCopy] = useCopyClipboard(
     1000,
-    `${walletScope}:${activeAccount?.address}`
+    walletScope
   );
 
   const accountTypeLabel = useMemo(() => {
