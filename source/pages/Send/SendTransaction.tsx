@@ -84,6 +84,23 @@ type FeeSafetyAdjustment = {
   };
 };
 
+const getApprovalWalletContextKey = (
+  current: Pick<RootState, 'vault' | 'vaultGlobal'>
+): string => {
+  const { vault, vaultGlobal } = current;
+  const { activeAccount, activeNetwork } = vault;
+  const account = vault.accounts[activeAccount.type]?.[activeAccount.id];
+  return JSON.stringify([
+    Boolean(vault.isBitcoinBased),
+    activeAccount.type,
+    activeAccount.id,
+    account?.address?.toLowerCase(),
+    activeNetwork.chainId,
+    activeNetwork.url,
+    vaultGlobal.activeSlip44,
+  ]);
+};
+
 export const SendTransaction = () => {
   const { controllerEmitter } = useController();
   const { t } = useTranslation();
@@ -97,6 +114,9 @@ export const SendTransaction = () => {
     (state: RootState) => state.vault
   );
   const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
+  const currentApprovalWalletContextKey = useSelector(
+    getApprovalWalletContextKey
+  );
 
   // when using the default routing, state will have the tx data
   // when using createPopup (DApps), the data comes from route params
@@ -143,6 +163,53 @@ export const SendTransaction = () => {
   const isApproval = txMetadata.isApproval || false;
   const approvalType = txMetadata.approvalType as ApprovalType | undefined;
   const tokenStandard = txMetadata.tokenStandard;
+  const approvedWalletContextKey = useMemo(
+    () =>
+      JSON.stringify([
+        false,
+        approvedContext.account.type,
+        approvedContext.account.id,
+        approvedContext.account.address.toLowerCase(),
+        approvedContext.chainId,
+        approvedContext.rpcUrl,
+        approvedContext.slip44,
+      ]),
+    [approvedContext]
+  );
+  // An object identity retires metadata even when the wallet leaves and then
+  // returns to the same context. Hide the old result during render, before
+  // effect cleanup or a replacement metadata request can complete.
+  const approvalMetadataScope = useMemo(
+    () => ({
+      accountAddress: activeAccount.address,
+      approvalType,
+      approvedContext,
+      contractAddress: dataTx?.to,
+      decodedTx: decodedTxData,
+      eventName,
+      host,
+      isApproval,
+      isApprovedContext:
+        currentApprovalWalletContextKey === approvedWalletContextKey,
+      transactionData: dataTx?.data,
+      walletContextKey: currentApprovalWalletContextKey,
+    }),
+    [
+      activeAccount.address,
+      approvalType,
+      approvedContext,
+      dataTx?.to,
+      dataTx?.data,
+      decodedTxData,
+      eventName,
+      host,
+      isApproval,
+      currentApprovalWalletContextKey,
+      approvedWalletContextKey,
+    ]
+  );
+  const currentApprovalMetadataScope = React.useRef(approvalMetadataScope);
+  currentApprovalMetadataScope.current = approvalMetadataScope;
 
   const targetedErc20ContractAddress = useMemo(() => {
     if (!dataTx?.to) return null;
@@ -232,8 +299,18 @@ export const SendTransaction = () => {
   const quotedApprovalDataRef = React.useRef<string>();
 
   // Approval-specific state
-  const [approvedTokenInfos, setApprovedTokenInfos] =
-    useState<IApprovedTokenInfos>();
+  const [approvalMetadata, setApprovalMetadata] = useState<{
+    nftInfo?: { name?: string; tokenId?: string; tokenUri?: string };
+    scope: typeof approvalMetadataScope;
+    tokenInfo?: IApprovedTokenInfos;
+  }>();
+  const currentApprovalMetadata =
+    approvalMetadataScope.isApprovedContext &&
+    approvalMetadata?.scope === approvalMetadataScope
+      ? approvalMetadata
+      : undefined;
+  const approvedTokenInfos = currentApprovalMetadata?.tokenInfo;
+  const nftInfo = currentApprovalMetadata?.nftInfo;
   const [customApprovedAllowanceAmount, setCustomApprovedAllowanceAmount] =
     useState<ICustomApprovedAllowanceAmount>({
       isCustom: false,
@@ -242,13 +319,6 @@ export const SendTransaction = () => {
     });
   const [openEditAllowanceModal, setOpenEditAllowanceModal] =
     useState<boolean>(false);
-
-  // NFT-specific state for approvals
-  const [nftInfo, setNftInfo] = useState<{
-    name?: string;
-    tokenId?: string;
-    tokenUri?: string;
-  }>();
 
   // Contract warning state
   const [showContractWarning, setShowContractWarning] =
@@ -1397,17 +1467,22 @@ export const SendTransaction = () => {
 
   // Fetch token info for approval transactions
   useEffect(() => {
-    if (!isApproval || !dataTx?.to) return;
-
-    const abortController = new AbortController();
+    const scope = approvalMetadataScope;
+    if (!scope.isApproval || !scope.contractAddress || !scope.isApprovedContext)
+      return;
+    let cancelled = false;
+    const canApplyMetadata = () =>
+      !cancelled &&
+      currentApprovalMetadataScope.current === scope &&
+      getApprovalWalletContextKey(store.getState()) === scope.walletContextKey;
 
     const getTokenInfo = async (contractAddress: string) => {
       try {
-        if (approvalType === 'erc20-amount') {
+        if (scope.approvalType === 'erc20-amount') {
           // Fetch ERC-20 token info
           const tokenInfo = (await controllerEmitter(
             ['wallet', 'getERC20TokenInfo'],
-            [contractAddress, activeAccount.address]
+            [contractAddress, scope.accountAddress, scope.approvedContext]
           )) as {
             balance: string;
             decimals: number;
@@ -1419,53 +1494,52 @@ export const SendTransaction = () => {
           const parsed = Number(tokenInfo.decimals);
           const safeDecimals =
             Number.isFinite(parsed) && parsed >= 0 ? parsed : 18;
-          setApprovedTokenInfos({
-            tokenSymbol: tokenInfo.symbol,
-            tokenDecimals: safeDecimals,
+          if (!canApplyMetadata()) return;
+          setApprovalMetadata({
+            scope,
+            tokenInfo: {
+              tokenSymbol: tokenInfo.symbol,
+              tokenDecimals: safeDecimals,
+            },
           });
         } else if (
-          approvalType === 'erc721-single' ||
-          approvalType === 'nft-all'
+          scope.approvalType === 'erc721-single' ||
+          scope.approvalType === 'nft-all'
         ) {
           // Fetch NFT collection info
           const tokenDetails = (await controllerEmitter(
             ['wallet', 'getTokenDetails'],
-            [contractAddress, activeAccount.address]
+            [contractAddress, scope.accountAddress, scope.approvedContext]
           )) as any;
-
-          if (tokenDetails) {
-            setApprovedTokenInfos({
-              tokenSymbol: tokenDetails.symbol || 'NFT',
-              tokenDecimals: 0, // NFTs don't have decimals
-            });
-          }
-
+          if (!canApplyMetadata()) return;
           // For single NFT approvals, try to get token metadata
-          if (approvalType === 'erc721-single' && decodedTxData?.inputs?.[1]) {
-            const tokenIdString = convertBigNumberToString(
-              decodedTxData.inputs[1]
-            );
-            setNftInfo({ tokenId: tokenIdString });
-            // TODO: Fetch token URI and metadata if needed
-          }
+          const tokenId =
+            scope.approvalType === 'erc721-single' &&
+            scope.decodedTx?.inputs?.[1]
+              ? convertBigNumberToString(scope.decodedTx.inputs[1])
+              : undefined;
+          setApprovalMetadata({
+            scope,
+            tokenInfo: tokenDetails
+              ? {
+                  tokenSymbol: tokenDetails.symbol || 'NFT',
+                  tokenDecimals: 0, // NFTs don't have decimals
+                }
+              : undefined,
+            nftInfo: tokenId ? { tokenId } : undefined,
+          });
         }
       } catch (error) {
         console.error('Failed to get token info:', error);
       }
     };
 
-    getTokenInfo(dataTx.to);
+    getTokenInfo(scope.contractAddress);
 
     return () => {
-      abortController.abort();
+      cancelled = true;
     };
-  }, [
-    isApproval,
-    approvalType,
-    dataTx?.to,
-    activeAccount.address,
-    decodedTxData,
-  ]);
+  }, [approvalMetadataScope]);
 
   // The allowance editor accepts human-readable token units and is available
   // only for plain approve calls. Increment/decrement methods keep their

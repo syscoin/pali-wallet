@@ -8668,15 +8668,61 @@ class MainController {
     );
   }
 
+  private captureApprovalMetadataContext(
+    accountAddress: string,
+    expectedContext?: IEvmTransactionContext
+  ) {
+    const expected = expectedContext
+      ? {
+          ...expectedContext,
+          account: { ...expectedContext.account },
+          sessionGeneration:
+            expectedContext.sessionGeneration ?? this.walletSessionGeneration,
+        }
+      : undefined;
+    const assertExpected = () => {
+      if (!expected) return;
+      // The existing EVM context assertion also supports ordinary accounts.
+      this.smartAccount.assertExpectedExecutionContext(
+        expected,
+        undefined,
+        false
+      );
+      if (
+        accountAddress.toLowerCase() !== expected.account.address.toLowerCase()
+      )
+        throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    };
+    // Reject stale approval messages before selecting a keyring/provider.
+    assertExpected();
+    const provider = this.ethereumTransaction.web3Provider;
+    const assertCurrent = () => {
+      assertExpected();
+      if (expected && this.ethereumTransaction.web3Provider !== provider)
+        throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    };
+    return { assertCurrent, provider };
+  }
+
   public async getERC20TokenInfo(
     contractAddress: string,
-    accountAddress: string
+    accountAddress: string,
+    expectedContext?: IEvmTransactionContext
   ) {
-    return this.evmAssetsController.getERC20TokenInfo(
-      contractAddress,
+    const context = this.captureApprovalMetadataContext(
       accountAddress,
-      this.ethereumTransaction.web3Provider
+      expectedContext
     );
+    context.assertCurrent();
+    try {
+      return await this.evmAssetsController.getERC20TokenInfo(
+        contractAddress,
+        accountAddress,
+        context.provider
+      );
+    } finally {
+      context.assertCurrent();
+    }
   }
 
   public async refreshActiveEvmTokenBalance(contractAddress: string) {
@@ -9231,12 +9277,25 @@ class MainController {
   /**
    * Get basic token details from blockchain - delegates to EvmAssetsController
    */
-  public async getTokenDetails(contractAddress: string, walletAddress: string) {
-    return this.evmAssetsController.getTokenDetails(
-      contractAddress,
+  public async getTokenDetails(
+    contractAddress: string,
+    walletAddress: string,
+    expectedContext?: IEvmTransactionContext
+  ) {
+    const context = this.captureApprovalMetadataContext(
       walletAddress,
-      this.ethereumTransaction.web3Provider
+      expectedContext
     );
+    context.assertCurrent();
+    try {
+      return await this.evmAssetsController.getTokenDetails(
+        contractAddress,
+        walletAddress,
+        context.provider
+      );
+    } finally {
+      context.assertCurrent();
+    }
   }
 
   /**
