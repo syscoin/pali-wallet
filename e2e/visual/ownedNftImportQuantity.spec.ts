@@ -130,7 +130,11 @@ for (const quantity of [
         })
         .click();
       await page
-        .getByRole('button', { name: en.send.viewCollectionItems, exact: true })
+        .locator('[data-navigation-scroll="asset-details"]')
+        .getByRole('button', {
+          name: `eye ${en.send.viewCollectionItems}`,
+          exact: true,
+        })
         .click();
       const header = page.getByText(/• ERC-1155$/);
       const amount = page.getByText('Amount', { exact: true }).locator('..');

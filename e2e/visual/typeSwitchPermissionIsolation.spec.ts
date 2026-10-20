@@ -46,6 +46,7 @@ const projection = (page: Page, host: string) =>
       savedGrant: grant(saved),
       liveSlip44: live.vaultGlobal.activeSlip44,
       savedSlip44: saved?.vaultGlobal?.activeSlip44,
+      postLoading: live.vaultGlobal.isPostNetworkSwitchLoading,
       address: live.vault.accounts[ref.type]?.[ref.id]?.address,
     };
   }, host);
@@ -58,6 +59,13 @@ async function installOutage(worker: Worker, host: string) {
       targetCommits: 0,
       disconnectFailures: 0,
       repairFailures: 0,
+      attempts: [] as {
+        at: number;
+        grant: string | null;
+        keys: string[];
+        postLoading?: boolean;
+        refused: boolean;
+      }[],
       restore: () => {
         local.set = original;
         delete (globalThis as any).__typeSwitchStorage;
@@ -66,6 +74,14 @@ async function installOutage(worker: Worker, host: string) {
     (globalThis as any).__typeSwitchStorage = probe;
     local.set = ((items: Record<string, any>, ...args: any[]) => {
       const main = items.state;
+      const attempt = {
+        at: Date.now(),
+        keys: Object.keys(items).sort(),
+        grant: main?.dapp?.dapps?.[origin]?.chain || null,
+        postLoading: main?.vaultGlobal?.isPostNetworkSwitchLoading,
+        refused: false,
+      };
+      if (probe.attempts.length < 100) probe.attempts.push(attempt);
       if (
         main?.vaultGlobal?.activeSlip44 === 60 &&
         main.dapp?.dapps?.[origin]?.chain === 'syscoin' &&
@@ -79,6 +95,7 @@ async function installOutage(worker: Worker, host: string) {
         main?.dapp?.dapps &&
         !main.dapp.dapps[origin]
       ) {
+        attempt.refused = true;
         if (items['state-vault-60']) probe.repairFailures += 1;
         else probe.disconnectFailures += 1;
         // Only native writes after the target network commit are refused.
@@ -97,6 +114,7 @@ const outageCounts = (worker: Worker) =>
       targetCommits: probe.targetCommits,
       disconnectFailures: probe.disconnectFailures,
       repairFailures: probe.repairFailures,
+      attempts: probe.attempts,
     };
   });
 
@@ -151,6 +169,7 @@ test('a failed type-switch permission removal cannot expose the target account a
     | Awaited<ReturnType<typeof installIsolatedVaultRoutes>>
     | undefined;
   let status: 'passed' | 'failed' = 'failed';
+  let releaseRefresh: (() => void) | undefined;
   const observations: Record<string, unknown> = {};
   try {
     wallet = await PaliWallet.launch('type-switch-permission-isolation', {
@@ -195,6 +214,39 @@ test('a failed type-switch permission removal cannot expose the target account a
       );
     expect(worker).toBeDefined();
     await installOutage(worker!, origin);
+    // Realistic slow public balance I/O keeps the normal post-switch refresh
+    // pending until the actual disconnect has failed. It never blocks the
+    // initial network commit, changes a reply, or replaces a controller method.
+    let heldRefreshReads = 0;
+    let refreshReleased = false;
+    const refreshHeld = new Promise<void>((resolve) => {
+      releaseRefresh = () => {
+        refreshReleased = true;
+        resolve();
+      };
+    });
+    await wallet.context.route('https://rpc.tanenbaum.io/', async (route) => {
+      let rpc: any;
+      try {
+        rpc = route.request().postDataJSON();
+      } catch {
+        return route.fallback();
+      }
+      const calls = Array.isArray(rpc) ? rpc : [rpc];
+      if (
+        !refreshReleased &&
+        calls.some((call) => call?.method === 'eth_getBalance') &&
+        (await outageCounts(worker!)).targetCommits > 0
+      ) {
+        heldRefreshReads += 1;
+        observations.refreshRead = {
+          heldReads: heldRefreshReads,
+          at: Date.now(),
+        };
+        await refreshHeld;
+      }
+      return route.fallback();
+    });
     await wallet.step(
       'approve the network switch but reject a new EVM account connection',
       async () => {
@@ -230,6 +282,10 @@ test('a failed type-switch permission removal cannot expose the target account a
         await expect
           .poll(async () => (await outageCounts(worker!)).disconnectFailures)
           .toBeGreaterThan(0);
+        await expect.poll(() => heldRefreshReads).toBeGreaterThan(0);
+        expect((await projection(page, origin)).postLoading).toBe(true);
+        observations.beforeRefreshRelease = await outageCounts(worker!);
+        releaseRefresh!();
         await expect
           .poll(async () => (await outageCounts(worker!)).repairFailures)
           .toBeGreaterThan(0);
@@ -310,6 +366,9 @@ test('a failed type-switch permission removal cannot expose the target account a
     expect(routes.deniedWrites).toEqual([]);
     status = 'passed';
   } finally {
+    releaseRefresh?.();
+    if (worker)
+      observations.outage = await outageCounts(worker).catch(() => undefined);
     try {
       await info.attach('type-switch-permission-isolation', {
         body: JSON.stringify({
