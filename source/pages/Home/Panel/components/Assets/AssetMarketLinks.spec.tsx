@@ -10,6 +10,20 @@ jest.mock('components/Icon/Icon', () => ({
 
 const t = (key: string) => `translated:${key}`;
 
+it.each([null, 7, {}, { toString: null }, ''])(
+  'ignores unsupported coin IDs while retaining valid categories (%j)',
+  (id) => {
+    render(
+      <AssetMarketLinks marketData={{ id, categories: ['Payments'] }} t={t} />
+    );
+    expect(screen.getAllByRole('link')).toHaveLength(1);
+    expect(
+      screen.getByRole('link', { name: 'Payments' }).getAttribute('href')
+    ).toBe('https://www.coingecko.com/en/categories/payments');
+    expect(screen.queryByText('translated:tokens.viewOnCoinGecko')).toBeNull();
+  }
+);
+
 it.each([{}, { categories: [], id: '' }])(
   'does not add a wrapper or headings when categories and coin links are absent (%j)',
   (marketData) => {

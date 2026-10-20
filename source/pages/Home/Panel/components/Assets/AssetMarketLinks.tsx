@@ -6,9 +6,10 @@ export const AssetMarketLinks = ({
   marketData,
   t,
 }: {
-  marketData: { categories?: unknown; id?: string };
+  marketData: { categories?: unknown; id?: unknown };
   t: (key: string) => string;
 }) => {
+  const coinGeckoId = typeof marketData.id === 'string' ? marketData.id : '';
   const categories = Array.isArray(marketData.categories)
     ? marketData.categories.filter(
         (category): category is string => typeof category === 'string'
@@ -51,14 +52,14 @@ export const AssetMarketLinks = ({
       )}
 
       {/* CoinGecko Links Section */}
-      {marketData.id && (
+      {coinGeckoId && (
         <div className="mb-4 pt-3 border-t border-gray-700">
           <span className="text-gray-400 text-xs block mb-2">
             {t('tokens.viewOnCoinGecko')}
           </span>
           <div className="flex flex-wrap gap-2">
             <a
-              href={`https://www.coingecko.com/en/coins/${marketData.id}`}
+              href={`https://www.coingecko.com/en/coins/${coinGeckoId}`}
               target="_blank"
               rel="noopener noreferrer"
               className="px-3 py-1.5 bg-green-600 bg-opacity-20 text-green-500 text-xs rounded hover:bg-opacity-30 transition-all duration-200 flex items-center gap-1"
@@ -72,7 +73,7 @@ export const AssetMarketLinks = ({
               <ExternalLinkIcon size={12} />
             </a>
             <a
-              href={`https://www.coingecko.com/en/coins/${marketData.id}/historical_data`}
+              href={`https://www.coingecko.com/en/coins/${coinGeckoId}/historical_data`}
               target="_blank"
               rel="noopener noreferrer"
               className="px-3 py-1.5 bg-blue-600 bg-opacity-20 text-blue-500 text-xs rounded hover:bg-opacity-30 transition-all duration-200 flex items-center gap-1"

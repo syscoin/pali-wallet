@@ -26,10 +26,16 @@ const tokens = new Map([
 
 async function marketAvailability(
   malformedCategories: boolean,
+  malformedDescription: boolean,
+  malformedIdentity: boolean,
   info: TestInfo
 ) {
   const variant = malformedCategories
     ? 'malformed-categories'
+    : malformedDescription
+    ? 'malformed-descriptions'
+    : malformedIdentity
+    ? 'malformed-identity'
     : 'null-optionals';
   test.setTimeout(120_000);
   expect(process.env.PALI_TEST_DAPP_REVISION).toMatch(/^[a-f0-9]{40}$/);
@@ -186,7 +192,9 @@ async function marketAvailability(
         const address = match[1].toLowerCase();
         const complete = address === COMPLETE;
         const body = {
-          id: `synthetic-${tokens.get(address)!.toLowerCase()}`,
+          id: malformedIdentity
+            ? { toString: null }
+            : `synthetic-${tokens.get(address)!.toLowerCase()}`,
           symbol: tokens.get(address),
           name: tokens.get(address),
           categories: malformedCategories
@@ -194,18 +202,45 @@ async function marketAvailability(
               ? 'Payments'
               : ['Payments', null]
             : ['Payments', 'Layer 2'],
+          description: {
+            en: malformedDescription
+              ? { summary: 'Synthetic unrenderable description' }
+              : complete
+              ? '<b>Synthetic complete description</b>'
+              : 'Synthetic partial description',
+          },
           // eslint-disable-next-line camelcase
-          market_cap_rank: complete ? 17 : null,
+          market_cap_rank: malformedIdentity
+            ? { value: 17 }
+            : complete
+            ? 17
+            : null,
           // eslint-disable-next-line camelcase
           market_data: {
             // eslint-disable-next-line camelcase
             current_price: { usd: 55 },
             // eslint-disable-next-line camelcase
-            market_cap: { usd: complete ? 1000 : null },
+            market_cap: {
+              usd: malformedIdentity
+                ? { toString: null }
+                : complete
+                ? 1000
+                : null,
+            },
             // eslint-disable-next-line camelcase
-            total_volume: { usd: complete ? 200 : null },
+            total_volume: {
+              usd: malformedIdentity
+                ? { toString: null }
+                : complete
+                ? 200
+                : null,
+            },
             // eslint-disable-next-line camelcase
-            circulating_supply: complete ? 10 : null,
+            circulating_supply: malformedIdentity
+              ? { toString: null }
+              : complete
+              ? 10
+              : null,
           },
         };
         marketResponses.push({ address, body });
@@ -281,27 +316,58 @@ async function marketAvailability(
         await expect(
           page.getByText('$55.000000', { exact: true })
         ).toBeVisible();
-        await expect(
-          page.getByText(en.tokens.marketCap, { exact: true })
-        ).toBeVisible();
-        await expect(
-          page.getByText(en.tokens.volume24h, { exact: true })
-        ).toBeVisible();
+        for (const label of [en.tokens.marketCap, en.tokens.volume24h]) {
+          const value = page.getByText(label, { exact: true });
+          if (malformedIdentity) await expect(value).toHaveCount(0);
+          else await expect(value).toBeVisible();
+        }
         await expect(
           page.getByRole('link', { name: 'Payments', exact: true })
         ).toHaveCount(malformedCategories ? 0 : 1);
         await expect(
           page.getByText(en.tokens.categories, { exact: true })
         ).toHaveCount(malformedCategories ? 0 : 1);
+        const history = page.getByRole('link', {
+          name: en.tokens.historicalData,
+          exact: true,
+        });
+        if (malformedIdentity) await expect(history).toHaveCount(0);
+        else
+          await expect(history).toHaveAttribute(
+            'href',
+            'https://www.coingecko.com/en/coins/synthetic-complete/historical_data'
+          );
         await expect(
-          page.getByRole('link', {
-            name: en.tokens.historicalData,
+          page.getByText(en.tokens.about, { exact: true })
+        ).toHaveCount(malformedDescription ? 0 : 1);
+        await expect(
+          page.getByText('<b>Synthetic complete description</b>', {
             exact: true,
           })
-        ).toHaveAttribute(
-          'href',
-          'https://www.coingecko.com/en/coins/synthetic-complete/historical_data'
-        );
+        ).toHaveCount(malformedDescription ? 0 : 1);
+        await expect(page.locator('p b')).toHaveCount(0);
+        // Assertions above exercise the live data; capture after the existing
+        // route transition finishes so evidence is not its near-transparent frame.
+        await expect
+          .poll(() =>
+            page
+              .getByText('$55.000000', { exact: true })
+              .evaluate((element) => {
+                let opacity = 1;
+                for (
+                  let node = element as HTMLElement | null;
+                  node;
+                  node = node.parentElement
+                )
+                  opacity *= Number(getComputedStyle(node).opacity);
+                return opacity;
+              })
+          )
+          .toBe(1);
+        await info.attach('complete-market-details', {
+          body: await page.screenshot(),
+          contentType: 'image/png',
+        });
         expect(pageErrors).toEqual([]);
         await page
           .getByRole('button', { name: en.buttons.close, exact: true })
@@ -344,6 +410,12 @@ async function marketAvailability(
         await expect(
           page.getByRole('link', { name: 'Layer 2', exact: true })
         ).toHaveCount(malformedCategories ? 0 : 1);
+        await expect(
+          page.getByText(en.tokens.about, { exact: true })
+        ).toHaveCount(malformedDescription ? 0 : 1);
+        await expect(
+          page.getByText('Synthetic partial description', { exact: true })
+        ).toHaveCount(malformedDescription ? 0 : 1);
         const close = page
           .getByRole('button', {
             name: en.buttons.close,
@@ -375,6 +447,8 @@ async function marketAvailability(
               .digest('hex'),
             syntheticHttpOnly: true,
             malformedCategories,
+            malformedDescription,
+            malformedIdentity,
             controllerStateReplaced: false,
             controllerResultReplaced: false,
             contractReads,
@@ -402,8 +476,25 @@ async function marketAvailability(
   }
 }
 
-for (const malformedCategories of [false, true]) {
+for (const [malformedCategories, malformedDescription, malformedIdentity] of [
+  [false, false, false],
+  [true, false, false],
+  [false, true, false],
+  [false, false, true],
+]) {
   test(`ERC20 details preserve the price and close action with ${
-    malformedCategories ? 'malformed categories' : 'null optional market values'
-  }`, async ({}, info) => marketAvailability(malformedCategories, info));
+    malformedCategories
+      ? 'malformed categories'
+      : malformedDescription
+      ? 'malformed descriptions'
+      : malformedIdentity
+      ? 'malformed market identity and optional numeric values'
+      : 'null optional market values'
+  }`, async ({}, info) =>
+    marketAvailability(
+      malformedCategories,
+      malformedDescription,
+      malformedIdentity,
+      info
+    ));
 }
