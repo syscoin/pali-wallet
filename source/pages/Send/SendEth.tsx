@@ -1183,6 +1183,14 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
       } as any);
   }, []);
 
+  const isAmountDisabled =
+    (selectedAsset?.isNft &&
+      selectedAsset?.tokenStandard === 'ERC-1155' &&
+      verifiedTokenBalance === null) ||
+    (!selectedAsset?.isNft && selectedAsset && verifiedERC20Balance === null) ||
+    isVerifyingERC20 ||
+    isVerifyingTokenId;
+
   return (
     <div className="w-full md:max-w-sm">
       <div className="flex flex-col items-center justify-center">
@@ -1565,38 +1573,13 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
               <div className="value-custom-input w-full relative">
                 <button
                   type="button"
-                  disabled={
-                    (selectedAsset?.isNft &&
-                      selectedAsset?.tokenStandard === 'ERC-1155' &&
-                      verifiedTokenBalance === null) ||
-                    (!selectedAsset?.isNft &&
-                      selectedAsset &&
-                      verifiedERC20Balance === null) ||
-                    isVerifyingERC20 ||
-                    isVerifyingTokenId
-                  }
+                  disabled={isAmountDisabled}
                   onClick={
                     // Disable MAX button until verification complete
-                    (selectedAsset?.isNft &&
-                      selectedAsset?.tokenStandard === 'ERC-1155' &&
-                      verifiedTokenBalance === null) ||
-                    (!selectedAsset?.isNft &&
-                      selectedAsset &&
-                      verifiedERC20Balance === null) ||
-                    isVerifyingERC20 ||
-                    isVerifyingTokenId
-                      ? undefined
-                      : handleMaxButton
+                    isAmountDisabled ? undefined : handleMaxButton
                   }
                   className={`absolute left-[15px] top-5 transform -translate-y-1/2 text-xs h-[18px] border border-alpha-whiteAlpha300 px-2 py-[2px] w-[41px] flex items-center justify-center rounded-pill z-10 focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-bkg-1 ${
-                    (selectedAsset?.isNft &&
-                      selectedAsset?.tokenStandard === 'ERC-1155' &&
-                      verifiedTokenBalance === null) ||
-                    (!selectedAsset?.isNft &&
-                      selectedAsset &&
-                      verifiedERC20Balance === null) ||
-                    isVerifyingERC20 ||
-                    isVerifyingTokenId
+                    isAmountDisabled
                       ? 'opacity-50 cursor-not-allowed'
                       : 'cursor-pointer hover:bg-alpha-whiteAlpha200'
                   }`}
@@ -1800,14 +1783,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                     }
                     disabled={
                       // Disable until verification complete
-                      (selectedAsset?.isNft &&
-                        selectedAsset?.tokenStandard === 'ERC-1155' &&
-                        verifiedTokenBalance === null) ||
-                      (!selectedAsset?.isNft &&
-                        selectedAsset &&
-                        verifiedERC20Balance === null) ||
-                      isVerifyingERC20 ||
-                      isVerifyingTokenId
+                      isAmountDisabled
                     }
                     placeholder={
                       selectedAsset?.isNft &&

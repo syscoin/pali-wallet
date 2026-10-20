@@ -8941,6 +8941,21 @@ class MainController {
       throw new Error('Active account or token contract not found');
     }
 
+    const assertCurrentContext = () => {
+      const latest = store.getState().vault;
+      if (
+        latest.activeNetwork.chainId !== activeNetwork.chainId ||
+        latest.activeNetwork.url !== activeNetwork.url ||
+        latest.activeAccount.id !== activeAccount.id ||
+        latest.activeAccount.type !== activeAccount.type ||
+        latest.accounts[activeAccount.type]?.[activeAccount.id]?.address !==
+          currentAccount.address
+      ) {
+        throw new Error(TOKEN_BALANCE_CONTEXT_CHANGED_ERROR);
+      }
+      return latest;
+    };
+
     const currentAssets = accountAssets[activeAccount.type]?.[
       activeAccount.id
     ] || {
@@ -8962,17 +8977,7 @@ class MainController {
         contractAddress,
         currentAccount.address
       );
-      const latest = store.getState().vault;
-      if (
-        latest.activeNetwork.chainId !== activeNetwork.chainId ||
-        latest.activeNetwork.url !== activeNetwork.url ||
-        latest.activeAccount.id !== activeAccount.id ||
-        latest.activeAccount.type !== activeAccount.type ||
-        latest.accounts[activeAccount.type]?.[activeAccount.id]?.address !==
-          currentAccount.address
-      ) {
-        throw new Error(TOKEN_BALANCE_CONTEXT_CHANGED_ERROR);
-      }
+      assertCurrentContext();
       return {
         chainId: activeNetwork.chainId,
         contractAddress,
@@ -8998,20 +9003,11 @@ class MainController {
       currentAccount.address,
       existingAsset
     );
-    const latest = store.getState().vault;
+    const latest = assertCurrentContext();
     const latestAssets =
       latest.accountAssets[activeAccount.type]?.[activeAccount.id]?.ethereum ||
       [];
-    if (
-      latest.activeNetwork.chainId !== activeNetwork.chainId ||
-      latest.activeNetwork.url !== activeNetwork.url ||
-      latest.activeAccount.id !== activeAccount.id ||
-      latest.activeAccount.type !== activeAccount.type ||
-      latest.accounts[activeAccount.type]?.[activeAccount.id]?.address !==
-        currentAccount.address ||
-      !latestRead() ||
-      !latestAssets.includes(existingAsset)
-    )
+    if (!latestRead() || !latestAssets.includes(existingAsset))
       throw new Error(TOKEN_BALANCE_CONTEXT_CHANGED_ERROR);
     const refreshedAsset = { ...existingAsset, ...balance };
     const ethereumAssets = latestAssets.map((asset) =>
