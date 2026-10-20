@@ -222,15 +222,28 @@ export class PaliWallet {
     const balance = this.page
       .locator('#home-balance, #home-balance-pending')
       .first();
-    const login = this.page.locator('#login');
-    const password = login.locator('#password');
-    const unlock = login.locator('#unlock-btn');
-    const isIdleLockedForm = async () =>
-      new URL(this.page.url()).hash.split('?')[0] === '#/' &&
-      (await login.isVisible()) &&
-      (await password.isVisible()) &&
-      (await unlock.isVisible()) &&
-      (await unlock.isEnabled());
+    const isIdleLockedForm = () =>
+      this.page.evaluate(() => {
+        if (window.location.hash.split('?')[0] !== '#/') return false;
+        const login = document.querySelector('#login');
+        const password = login?.querySelector('#password');
+        const unlock = login?.querySelector<HTMLButtonElement>('#unlock-btn');
+        const visible = (element: Element | null | undefined) => {
+          if (!element || getComputedStyle(element).visibility !== 'visible')
+            return false;
+          const bounds = element.getBoundingClientRect();
+          return bounds.width > 0 && bounds.height > 0;
+        };
+        // One non-waiting snapshot cannot strand a locator after Login has
+        // already navigated to Home between visibility and enabled checks.
+        return Boolean(
+          visible(login) &&
+            visible(password) &&
+            visible(unlock) &&
+            !unlock!.matches(':disabled') &&
+            !unlock!.closest('[aria-disabled="true"]')
+        );
+      });
     let readyToUnlock = false;
     // A rehydrating router can still show #/home before redirecting to Lock.
     // A completed unlock can also leave its old form visible briefly at Home.
