@@ -55,9 +55,17 @@ import {
   ReplacementWinner,
 } from './replacementWinner';
 
-type DetailsRead = { data: any; summaryAtRead?: string };
+type LiveObservation = { summary?: string; token: object };
+type DetailsRead = {
+  data: any;
+  observationAtRead: object;
+  summaryAtRead?: string;
+};
 // Transaction details cache with TTL (5 minutes)
-const txDetailsCache = new Map<string, DetailsRead & { timestamp: number }>();
+const txDetailsCache = new Map<
+  string,
+  DetailsRead & { observation: LiveObservation; timestamp: number }
+>();
 const decodedTxCache = new Map<
   string,
   { data: IDecodedTx | null; timestamp: number }
@@ -200,6 +208,36 @@ export const EvmTransactionDetailsEnhanced = ({
     matchingTx && history.includes(matchingTx)
       ? settlementSnapshot(matchingTx)
       : undefined;
+  const cachedRead = txDetailsCache.get(scope);
+  const freshCache =
+    cachedRead && Date.now() - cachedRead.timestamp < CACHE_TTL
+      ? cachedRead
+      : undefined;
+  const observationRef = useRef({
+    scope,
+    value: freshCache?.observation || { summary: liveSummary, token: {} },
+  });
+  if (observationRef.current.scope !== scope)
+    observationRef.current = {
+      scope,
+      value: freshCache?.observation || { summary: liveSummary, token: {} },
+    };
+  const previousObservation = observationRef.current.value;
+  if (liveSummary !== undefined && liveSummary !== previousObservation.summary)
+    observationRef.current.value = {
+      summary: liveSummary,
+      // A first pending summary may lag a fresh mined lookup. A first mined
+      // observation, and later changes including A -> B -> A, are newer.
+      token:
+        previousObservation.summary === undefined &&
+        !isTransactionInBlock(matchingTx)
+          ? previousObservation.token
+          : {},
+    };
+  const observation = observationRef.current.value;
+  // Preserve observed transitions across remounts without comparing unrelated
+  // mount-local counters, or extending the existing bounded cache's TTL.
+  if (freshCache) freshCache.observation = observation;
   const minedNonceIndex = useMemo(
     () => buildEvmMinedNonceIndex(history, chainId),
     [activeAccountTransactions, chainId]
@@ -236,7 +274,18 @@ export const EvmTransactionDetailsEnhanced = ({
     scope,
     null
   );
-  const enhancedDetails = detailsRead?.data ?? null;
+  const refreshSupersededRead =
+    liveSummary === undefined &&
+    Boolean(
+      (detailsRead && detailsRead.observationAtRead !== observation.token) ||
+        (freshCache && freshCache.observationAtRead !== observation.token)
+    );
+  // A disappearing history row must not restore an already superseded body or
+  // route snapshot. Revalidate once through the same scoped lookup lifecycle.
+  const usableSummary = refreshSupersededRead ? undefined : matchingTx;
+  const enhancedDetails = refreshSupersededRead
+    ? null
+    : detailsRead?.data ?? null;
   const [isLoadingDetails, setIsLoadingDetails] = useContextualState(
     scope,
     false
@@ -256,22 +305,30 @@ export const EvmTransactionDetailsEnhanced = ({
   let isTxSent: boolean;
   const mergedTransaction = useMemo(
     () =>
-      matchingTx || enhancedDetails
+      usableSummary || enhancedDetails
         ? mergeTransactionDetails(
-            matchingTx,
+            usableSummary,
             enhancedDetails,
             // Only newly observed live settlement data supersedes the read;
             // cloned unchanged history and old route snapshots do not.
             Boolean(
               liveSummary !== undefined &&
-                liveSummary !== detailsRead?.summaryAtRead &&
-                (detailsRead?.summaryAtRead !== undefined ||
-                  isTransactionInBlock(matchingTx) ||
-                  !isTransactionInBlock(enhancedDetails))
+                ((detailsRead?.observationAtRead &&
+                  detailsRead.observationAtRead !== observation.token) ||
+                  (liveSummary !== detailsRead?.summaryAtRead &&
+                    (detailsRead?.summaryAtRead !== undefined ||
+                      isTransactionInBlock(matchingTx) ||
+                      !isTransactionInBlock(enhancedDetails))))
             )
           )
         : undefined,
-    [matchingTx, enhancedDetails, detailsRead, liveSummary]
+    [
+      usableSummary,
+      enhancedDetails,
+      detailsRead,
+      liveSummary,
+      observation.token,
+    ]
   );
   // An EntryPoint bundle may contain many accounts. Never fall back to its first
   // operation when restoring this account's details from an outer hash alone.
@@ -444,10 +501,16 @@ export const EvmTransactionDetailsEnhanced = ({
     let cancelled = false;
     const isCurrent = () => !cancelled && scopeRef.current === scope;
     const summaryAtRead = liveSummary;
+    const observationAtRead = observationRef.current.value.token;
     const fetchEnhancedDetails = async () => {
       if (!hash) return;
       const cached = txDetailsCache.get(scope);
-      if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+      if (
+        cached &&
+        Date.now() - cached.timestamp < CACHE_TTL &&
+        (liveSummary !== undefined ||
+          cached.observationAtRead === observation.token)
+      ) {
         setDetailsRead(cached);
         return;
       }
@@ -474,6 +537,8 @@ export const EvmTransactionDetailsEnhanced = ({
           txDetailsCache.set(scope, {
             data: enhancedData,
             summaryAtRead,
+            observationAtRead,
+            observation: observationRef.current.value,
             timestamp: Date.now(),
           });
           if (txDetailsCache.size > 100)
@@ -481,6 +546,7 @@ export const EvmTransactionDetailsEnhanced = ({
           setDetailsRead({
             data: enhancedData,
             summaryAtRead,
+            observationAtRead,
           });
         } else {
           setDetailsRead(null);
@@ -498,7 +564,7 @@ export const EvmTransactionDetailsEnhanced = ({
     return () => {
       cancelled = true;
     };
-  }, [hash, scope]);
+  }, [hash, scope, refreshSupersededRead]);
 
   // Effect to decode transaction data when we have transaction data
   useEffect(() => {

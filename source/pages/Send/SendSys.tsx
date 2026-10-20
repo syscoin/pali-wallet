@@ -522,7 +522,11 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
 
       // For native SYS transactions
       if (!selectedAsset) {
-        const amountAtomic = nativeAtomicAmount(amount);
+        // The numeric input accepts exponent notation, but the UTXO builder
+        // expects plain decimal text. Match the validator without a Number
+        // round trip; keep the original input in the return draft below.
+        const nativeAmount = String(removeScientificNotation(String(amount)));
+        const amountAtomic = nativeAtomicAmount(nativeAmount);
         const balanceAtomic = nativeAtomicAmount(
           activeAccount.balances[INetworkType.Syscoin]
         );
@@ -532,7 +536,7 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
         // bounded subtract-fee request, never permission to expand that amount.
         const nativeSweep = nativeMaxIntent.current;
         const isMaxTransaction = nativeSweep || amountAtomic.eq(balanceAtomic);
-        let quotedGrossAmount = String(amount);
+        let quotedGrossAmount = nativeAmount;
 
         // For validation, we need to estimate the total fee to ensure sufficient funds
         let estimatedTotalFee = 0.001; // Conservative default
@@ -542,7 +546,7 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
             ['wallet', 'getEstimateSysTransactionFee'],
             [
               {
-                amount: amount, // Keep as string to preserve precision
+                amount: nativeAmount,
                 receivingAddress: receiver,
                 feeRate,
                 txOptions: { rbf: RBF },
