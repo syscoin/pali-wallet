@@ -6,12 +6,16 @@ import React from 'react';
 import { Provider } from 'react-redux';
 import { MemoryRouter, useNavigate } from 'react-router-dom';
 
+import MainController from 'scripts/Background/controllers/MainController';
 import vaultReducer, {
   setAccounts,
   setActiveAccount,
   setActiveNetwork,
 } from 'state/vault';
-import vaultGlobalReducer, { setIsSwitchingAccount } from 'state/vaultGlobal';
+import vaultGlobalReducer, {
+  setIsSwitchingAccount,
+  switchNetworkError,
+} from 'state/vaultGlobal';
 import { INetworkType, KeyringAccountType } from 'types/network';
 
 import { AccountHeader } from './AccountHeader';
@@ -25,7 +29,25 @@ const mockEmitter = jest.fn();
 const mockTranslate = (key: string) => key;
 jest.mock('state/store', () => ({
   __esModule: true,
-  default: { getState: () => mockStore.getState() },
+  default: {
+    getState: () => mockStore.getState(),
+    dispatch: (action: any) => mockStore.dispatch(action),
+  },
+}));
+jest.mock('scripts/Background', () => ({ getController: jest.fn() }));
+// The status producer does not parse or sign transactions.
+jest.mock('syscointx-js', () => ({ bufferUtils: {} }));
+jest.mock('@sidhujag/sysweb3-keyring', () => ({
+  KeyringAccountType: {
+    HDAccount: 'HDAccount',
+    Imported: 'Imported',
+    Ledger: 'Ledger',
+    Trezor: 'Trezor',
+    SmartAccount: 'SmartAccount',
+  },
+  KeyringManager: jest.fn(),
+  CustomJsonRpcProvider: jest.fn(),
+  PsbtUtils: {},
 }));
 jest.mock('hooks/index', () => ({
   useUtils: jest.requireActual('hooks/useUtils').useUtils,
@@ -312,4 +334,63 @@ it('allows a fresh copy of B while the old A promise is still pending', async ()
   expect(mockError).not.toHaveBeenCalled();
   await settle(second, 'success');
   expect(mockInfo).toHaveBeenCalledTimes(1);
+});
+
+it.each(['success', 'failure'] as const)(
+  'retains current-address %s feedback when a background balance refresh recovers network status',
+  async (outcome) => {
+    const write = deferred();
+    const balance = deferred();
+    mockWrite.mockReturnValue(write.promise);
+    mockStore.dispatch(switchNetworkError());
+    // Run the actual normal background refresh/status producer. Only its
+    // public balance I/O is held; it performs its own error -> idle dispatch.
+    const background = Object.create(MainController.prototype);
+    Object.assign(background, {
+      walletSessionGeneration: 0,
+      networkRequestGeneration: 0,
+      isUnlocked: () => true,
+      getActiveKeyring: () => ({ ethereumTransaction: { web3Provider: {} } }),
+      updateUserNativeBalance: () => balance.promise,
+    });
+    const refresh = background.getLatestUpdateForCurrentAccount(
+      true,
+      true,
+      false,
+      true
+    );
+    mount();
+    fireEvent.click(copyButton());
+    expect(mockWrite).toHaveBeenCalledWith(A);
+    const identity = mockStore.getState().vault;
+    await act(async () => {
+      balance.resolve();
+      await refresh;
+    });
+    expect(mockStore.getState().vault).toBe(identity);
+    expect(mockStore.getState().vaultGlobal.networkStatus).toBe('idle');
+    expect(screen.getByText(A)).toBeInTheDocument();
+    await settle(write, outcome);
+    if (outcome === 'success') {
+      expect(mockInfo).toHaveBeenCalledTimes(1);
+      expect(mockError).not.toHaveBeenCalled();
+    } else {
+      expect(mockError).toHaveBeenCalledTimes(1);
+      expect(mockInfo).not.toHaveBeenCalled();
+    }
+  }
+);
+
+it('preserves current copy feedback across a same-identity switching indicator', async () => {
+  const write = deferred();
+  mockWrite.mockReturnValue(write.promise);
+  mount();
+  fireEvent.click(copyButton());
+  act(() => mockStore.dispatch(setIsSwitchingAccount(true)));
+  expect(screen.queryByText(A)).toBeNull();
+  act(() => mockStore.dispatch(setIsSwitchingAccount(false)));
+  expect(screen.getByText(A)).toBeInTheDocument();
+  await settle(write, 'success');
+  expect(mockInfo).toHaveBeenCalledTimes(1);
+  expect(mockError).not.toHaveBeenCalled();
 });

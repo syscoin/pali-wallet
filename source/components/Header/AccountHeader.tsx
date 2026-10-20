@@ -66,7 +66,7 @@ export const AccountHeader: React.FC = () => {
     isHardwareVerificationPending
   );
   const [isOpenModal, setIsOpenModal] = useState(false);
-  const verificationScope = JSON.stringify([
+  const identityScope = [
     activeAccount?.id,
     activeAccount?.type,
     currentAccount?.address,
@@ -77,16 +77,19 @@ export const AccountHeader: React.FC = () => {
     activeNetwork.url,
     activeNetwork.currency,
     activeNetwork.slip44,
-    networkStatus,
-    isSwitchingAccount,
     location.pathname,
     location.search,
     location.hash,
     location.key,
+  ];
+  const verificationScope = JSON.stringify([
+    ...identityScope,
+    networkStatus,
+    isSwitchingAccount,
   ]);
   const [copied, copy, isCurrentCopy] = useCopyClipboard(
     1000,
-    verificationScope
+    JSON.stringify(identityScope)
   );
   const verification = useRef({
     generation: 0,
