@@ -428,7 +428,7 @@ export const resolveCallsStatus = async (
         topics: log.topics,
       })),
       status: receipt.status === 0 ? '0x0' : '0x1',
-      transactionHash: receipt.transactionHash,
+      transactionHash: receipt.hash,
     }));
 
   return {

@@ -92,6 +92,12 @@ for (const width of [320, 400]) {
             // eslint-disable-next-line camelcase
             body: JSON.stringify({
               market_data: { current_price: { usd: 42 } },
+              description: {
+                en:
+                  width === 320
+                    ? { summary: 'Synthetic malformed description' }
+                    : '<b>Synthetic SPT description</b>',
+              },
             }),
           });
         }
@@ -186,6 +192,15 @@ for (const width of [320, 400]) {
             expect(result.focused).toBe(true);
             expect(result.oldPaneConnected).toBe(true);
             expect(result.oldCloseConnected).toBe(true);
+            await expect(
+              page.getByText(en.tokens.about, { exact: true })
+            ).toHaveCount(width === 320 ? 0 : 1);
+            await expect(
+              page.getByText('<b>Synthetic SPT description</b>', {
+                exact: true,
+              })
+            ).toHaveCount(width === 320 ? 0 : 1);
+            await expect(page.locator('p b')).toHaveCount(0);
             expect(marketReads).toBe(1);
             expect(routes!.deniedWrites).toEqual([]);
             await close.click();
@@ -207,6 +222,7 @@ for (const width of [320, 400]) {
                 .update(fs.readFileSync(__filename))
                 .digest('hex'),
               width,
+              malformedDescription: width === 320,
               height: 360,
               syntheticHttpOnly: true,
               controllerStateReplaced: false,
@@ -224,8 +240,11 @@ for (const width of [320, 400]) {
         try {
           await wallet?.dispose(status);
         } finally {
-          await server.close();
-          Object.assign(E2E_CONFIG, before);
+          try {
+            await server.close();
+          } finally {
+            Object.assign(E2E_CONFIG, before);
+          }
         }
       }
     }

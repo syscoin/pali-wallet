@@ -281,7 +281,7 @@ describe('sendCalls reservation submission boundary', () => {
         status: 1,
         blockNumber: 1,
         gasUsed: 1,
-        transactionHash: hash,
+        hash,
       }),
     };
     expect((await resolveCallsStatus(() => provider, host, id)).status).toBe(
@@ -363,7 +363,7 @@ describe('sendCalls reservation submission boundary', () => {
         status: 1,
         blockNumber: 1,
         gasUsed: 1,
-        transactionHash: hash,
+        hash,
       }),
     };
     expect((await resolveCallsStatus(() => provider, host, id)).status).toBe(

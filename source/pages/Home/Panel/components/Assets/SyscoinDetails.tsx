@@ -385,16 +385,17 @@ export const SyscoinAssetDetails = ({
         </div>
 
         {/* Description */}
-        {marketData.description?.en && (
-          <div className="pt-3 border-t border-gray-700">
-            <span className="text-gray-400 text-xs block mb-1">
-              {t('tokens.about')}
-            </span>
-            <p className="text-white text-xs leading-relaxed line-clamp-3">
-              {marketData.description.en}
-            </p>
-          </div>
-        )}
+        {typeof marketData.description?.en === 'string' &&
+          marketData.description.en && (
+            <div className="pt-3 border-t border-gray-700">
+              <span className="text-gray-400 text-xs block mb-1">
+                {t('tokens.about')}
+              </span>
+              <p className="text-white text-xs leading-relaxed line-clamp-3">
+                {marketData.description.en}
+              </p>
+            </div>
+          )}
       </div>
     );
   };
