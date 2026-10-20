@@ -24,7 +24,7 @@ async function typeDecimal(input: Locator, value: string) {
   await input.pressSequentially(value, { delay: 20 });
 }
 
-test('fee keyboard input preserves a sub-one decimal through Save and discards a later Cancel draft', async ({}, info) => {
+test('fee keyboard input preserves exact wei, rejects lossy values and discards a later Cancel draft', async ({}, info) => {
   test.setTimeout(120_000);
   expect(process.env.PALI_TEST_DAPP_REVISION).toMatch(/^[a-f0-9]{40}$/);
   expect(path.isAbsolute(process.env.PALI_TEST_DAPP_EXTENSION_PATH || '')).toBe(
@@ -146,6 +146,71 @@ test('fee keyboard input preserves a sub-one decimal through Save and discards a
       priority: await priority.inputValue(),
       gas: await gas.inputValue(),
     });
+    await wallet.step(
+      'reject unrepresentable prices without changing the quote',
+      async (capture) => {
+        try {
+          await edit.click();
+          await expect(dialog).toBeVisible();
+          const original = await read();
+          await priority.fill('0');
+          for (const value of [
+            '1000000000000000000000',
+            '0.0000000001',
+            '9007199.254740991',
+          ]) {
+            await maximum.fill(value);
+            await expect(
+              dialog.getByRole('button', { name: en.buttons.save, exact: true })
+            ).toBeDisabled();
+            await expect(dialog).toBeVisible();
+            observations[`rejected-${value}`] = await read();
+          }
+          await dialog
+            .getByRole('button', { name: en.buttons.cancel, exact: true })
+            .click();
+          await expect(dialog).toBeHidden();
+          await expect(
+            page.getByRole('button', { name: en.buttons.confirm, exact: true })
+          ).toBeEnabled();
+          await edit.click();
+          await expect(dialog).toBeVisible();
+          expect(await read()).toEqual(original);
+          observations.afterInvalidCancel = await read();
+          await dialog
+            .getByRole('button', { name: en.buttons.cancel, exact: true })
+            .click();
+        } finally {
+          if (!page.isClosed()) await capture(page);
+        }
+      }
+    );
+    await wallet.step(
+      'save and reopen an exact one-wei cap with zero priority',
+      async (capture) => {
+        try {
+          await edit.click();
+          await expect(dialog).toBeVisible();
+          await priority.fill('0');
+          await typeDecimal(maximum, '0.000000001');
+          await expect(maximum).toHaveValue('0.000000001');
+          await dialog
+            .getByRole('button', { name: en.buttons.save, exact: true })
+            .click();
+          await expect(dialog).toBeHidden();
+          await edit.click();
+          await expect(dialog).toBeVisible();
+          await expect(maximum).toHaveValue('0.000000001');
+          await expect(priority).toHaveValue('0');
+          observations.savedOneWei = await read();
+          await dialog
+            .getByRole('button', { name: en.buttons.cancel, exact: true })
+            .click();
+        } finally {
+          if (!page.isClosed()) await capture(page);
+        }
+      }
+    );
     for (const viewport of [
       { width: 320, height: 360 },
       { width: 400, height: 620 },

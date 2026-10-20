@@ -13,6 +13,7 @@ import {
 } from 'components/Dialog';
 import { EditFeeModalBase } from 'components/Modal/EditFeeModalBase';
 import { ICustomFeeParams, IFeeState } from 'types/transactions';
+import { getCustomFeeGwei, getFeePresetGwei } from 'utils/customFee';
 import removeScientificNotation from 'utils/removeScientificNotation';
 
 import { PriorityBar } from './components';
@@ -98,12 +99,14 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
     estimatedFeeFloor?.minimumGasLimit ??
     fee?.gasLimit ??
     defaultGasLimit;
-  const isValidGasLimit = (value: number | string) =>
-    Number.isSafeInteger(minimumGasLimit) &&
-    minimumGasLimit > 0 &&
+  const minimumGasLimitRef = useRef(minimumGasLimit);
+  minimumGasLimitRef.current = minimumGasLimit;
+  const isValidGasLimit = (value: number | string, minimum = minimumGasLimit) =>
+    Number.isSafeInteger(minimum) &&
+    minimum > 0 &&
     (typeof value === 'number' || /^\d+$/.test(value)) &&
     Number.isSafeInteger(Number(value)) &&
-    Number(value) >= minimumGasLimit;
+    Number(value) >= minimum;
   const watchedGasLimit = Form.useWatch('gasLimit', form);
   const watchedGasPrice = Form.useWatch('gasPrice', form);
   const watchedMaxFeePerGas = Form.useWatch('maxFeePerGas', form);
@@ -200,17 +203,18 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
     return isValid;
   };
 
-  const validatePriorityFee = (value: number) => {
-    const maxFee = form.getFieldValue('maxFeePerGas');
+  const validatePriorityFee = (value: unknown) => {
+    const priorityFee = getCustomFeeGwei(value, true);
+    const maxFee = getCustomFeeGwei(form.getFieldValue('maxFeePerGas'));
     // Allow 0 priority fee for networks like Arbitrum
 
-    if (value < 0) {
+    if (priorityFee === null) {
       setPriorityFeeValid(false);
       setPriorityFeeError('priorityFeeMustBePositive');
       return false;
     }
 
-    if (maxFee && value > maxFee) {
+    if (maxFee !== null && priorityFee > maxFee) {
       setPriorityFeeValid(false);
       setPriorityFeeError('priorityFeeTooHigh');
       return false;
@@ -221,17 +225,21 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
     return true;
   };
 
-  const validateMaxFee = (value: number) => {
-    const priorityFee = form.getFieldValue('maxPriorityFeePerGas');
+  const validateMaxFee = (value: unknown) => {
+    const maxFee = getCustomFeeGwei(value);
+    const priorityFee = getCustomFeeGwei(
+      form.getFieldValue('maxPriorityFeePerGas'),
+      true
+    );
     // Max fee must be greater than or equal to priority fee
 
-    if (value <= 0) {
+    if (maxFee === null) {
       setMaxFeeValid(false);
       setMaxFeeError('maxFeeMustBePositive');
       return false;
     }
 
-    if (priorityFee > 0 && value < priorityFee) {
+    if (priorityFee !== null && maxFee < priorityFee) {
       setMaxFeeValid(false);
       setMaxFeeError('maxFeeTooLow');
       return false;
@@ -242,8 +250,8 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
     return true;
   };
 
-  const validateGasPrice = (value: number) => {
-    const isValid = value > 0;
+  const validateGasPrice = (value: unknown) => {
+    const isValid = getCustomFeeGwei(value) !== null;
     setGasPriceValid(isValid);
     return isValid;
   };
@@ -315,17 +323,9 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
       }
     } else {
       // Use default values with current priority multiplier
-      const multiplier =
-        openingPriority === 0 ? 0.8 : openingPriority === 2 ? 1.2 : 1;
-
       if (isSendLegacyTransaction) {
         const validGasPrice = gasPrice ?? 0;
-        const calculatedGasPrice = Number(
-          removeScientificNotation(multiplier * validGasPrice)
-        );
-        const finalGasPrice = isNaN(calculatedGasPrice)
-          ? 0
-          : calculatedGasPrice;
+        const finalGasPrice = getFeePresetGwei(validGasPrice, openingPriority);
 
         form.setFieldsValue({
           gasLimit: validGasLimit, // Always set gas limit
@@ -340,17 +340,14 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
         const validMaxPriorityFeePerGas = maxPriorityFeePerGas ?? 0;
         const validMaxFeePerGas = maxFeePerGas ?? 0;
 
-        const calculatedPriorityFee = Number(
-          removeScientificNotation(multiplier * validMaxPriorityFeePerGas)
+        const finalPriorityFee = getFeePresetGwei(
+          validMaxPriorityFeePerGas,
+          openingPriority
         );
-        const calculatedMaxFee = Number(
-          removeScientificNotation(multiplier * validMaxFeePerGas)
+        const finalMaxFee = getFeePresetGwei(
+          validMaxFeePerGas,
+          openingPriority
         );
-
-        const finalPriorityFee = isNaN(calculatedPriorityFee)
-          ? 0
-          : calculatedPriorityFee;
-        const finalMaxFee = isNaN(calculatedMaxFee) ? 0 : calculatedMaxFee;
 
         form.setFieldsValue({
           gasLimit: validGasLimit, // Always set gas limit
@@ -410,6 +407,23 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
         generation !== editorGeneration.current
       )
         return;
+      // A successful quote can raise its gas requirement while Form's async
+      // validation is pending. Keep this draft open against the current floor.
+      if (!isValidGasLimit(values.gasLimit, minimumGasLimitRef.current)) {
+        setGasLimitValid(false);
+        form.setFields([
+          {
+            name: 'gasLimit',
+            errors: [
+              t('send.gasLimitTooLow', {
+                minimum: minimumGasLimitRef.current,
+              }),
+            ],
+          },
+        ]);
+        setHaveError(true);
+        return;
+      }
       const finalGasLimit = Number(values.gasLimit);
 
       // Update custom fee with final values based on transaction type
@@ -450,7 +464,6 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
 
   const handlePriorityChange = (value: number) => {
     setPriority(value);
-    const multiplier = value === 0 ? 0.8 : value === 2 ? 1.2 : 1;
 
     // Don't reset validation states - we'll update them after setting new values
 
@@ -460,11 +473,7 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
     const validGasLimit = Number(currentGasLimit);
 
     if (isSendLegacyTransaction) {
-      const newGasPrice = Number(
-        removeScientificNotation(multiplier * (gasPrice ?? 0))
-      );
-      // Ensure the value is a valid number
-      const validGasPrice = isNaN(newGasPrice) ? 0 : newGasPrice;
+      const validGasPrice = getFeePresetGwei(gasPrice, value);
       form.setFieldValue('gasLimit', validGasLimit); // Always set gas limit
       form.setFieldValue('gasPrice', validGasPrice);
       // Validate after setting values with a small delay to ensure form is updated
@@ -473,16 +482,8 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
         validateGasPrice(validGasPrice);
       }, 0);
     } else {
-      const newPriorityFee = Number(
-        removeScientificNotation(multiplier * (maxPriorityFeePerGas ?? 0))
-      );
-      const newMaxFee = Number(
-        removeScientificNotation(multiplier * (maxFeePerGas ?? 0))
-      );
-
-      // Ensure the values are valid numbers
-      const validPriorityFee = isNaN(newPriorityFee) ? 0 : newPriorityFee;
-      const validMaxFee = isNaN(newMaxFee) ? 0 : newMaxFee;
+      const validPriorityFee = getFeePresetGwei(maxPriorityFeePerGas, value);
+      const validMaxFee = getFeePresetGwei(maxFeePerGas, value);
 
       form.setFieldValue('gasLimit', validGasLimit); // Always set gas limit
       form.setFieldValue('maxPriorityFeePerGas', validPriorityFee);
@@ -500,8 +501,10 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
   const handleFieldChange = (field: string, value: string) => {
     const numValue = value === '' ? 0 : Number(value);
     const validNumValue = isNaN(numValue) ? 0 : numValue;
-
-    form.setFieldValue(field, validNumValue);
+    // Preserve fee text until validation: Number() can erase sub-wei digits
+    // before the editor has a chance to reject a lossy conversion.
+    const fieldValue = field === 'gasLimit' ? validNumValue : value;
+    form.setFieldValue(field, fieldValue);
 
     // Validate the field
     switch (field) {
@@ -509,7 +512,7 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
         validateGasLimit(validNumValue);
         break;
       case 'maxPriorityFeePerGas':
-        validatePriorityFee(validNumValue);
+        validatePriorityFee(fieldValue);
         // Re-validate max fee when priority changes
         const maxFee = form.getFieldValue('maxFeePerGas');
         if (maxFee !== undefined) {
@@ -517,7 +520,7 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
         }
         break;
       case 'maxFeePerGas':
-        validateMaxFee(validNumValue);
+        validateMaxFee(fieldValue);
         // Re-validate priority fee when max changes
         const priorityFee = form.getFieldValue('maxPriorityFeePerGas');
         if (priorityFee !== undefined) {
@@ -525,7 +528,7 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
         }
         break;
       case 'gasPrice':
-        validateGasPrice(validNumValue);
+        validateGasPrice(fieldValue);
         break;
     }
   };
@@ -636,13 +639,21 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
                     rules={[
                       {
                         validator: (_, value) => {
-                          const maxFee = form.getFieldValue('maxFeePerGas');
+                          const maxFee = getCustomFeeGwei(
+                            form.getFieldValue('maxFeePerGas')
+                          );
                           if (value < 0) {
                             return Promise.reject(
                               new Error(t('send.priorityFeeMustBePositive'))
                             );
                           }
-                          if (value > 0 && maxFee > 0 && value > maxFee) {
+                          const priorityFee = getCustomFeeGwei(value, true);
+                          if (priorityFee === null) {
+                            return Promise.reject(
+                              new Error(t('send.invalidFeeRate'))
+                            );
+                          }
+                          if (maxFee !== null && priorityFee > maxFee) {
                             return Promise.reject(
                               new Error(t('send.priorityFeeTooHigh'))
                             );
@@ -699,15 +710,22 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
                     rules={[
                       {
                         validator: (_, value) => {
-                          const priorityFee = form.getFieldValue(
-                            'maxPriorityFeePerGas'
+                          const priorityFee = getCustomFeeGwei(
+                            form.getFieldValue('maxPriorityFeePerGas'),
+                            true
                           );
                           if (!value || value <= 0) {
                             return Promise.reject(
                               new Error(t('send.maxFeeMustBePositive'))
                             );
                           }
-                          if (priorityFee > 0 && value < priorityFee) {
+                          const maxFee = getCustomFeeGwei(value);
+                          if (maxFee === null) {
+                            return Promise.reject(
+                              new Error(t('send.invalidFeeRate'))
+                            );
+                          }
+                          if (priorityFee !== null && maxFee < priorityFee) {
                             return Promise.reject(
                               new Error(t('send.maxFeeTooLow'))
                             );
@@ -763,6 +781,11 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
                         if (!value || value <= 0) {
                           return Promise.reject(
                             new Error(t('send.gasPriceTooLow'))
+                          );
+                        }
+                        if (getCustomFeeGwei(value) === null) {
+                          return Promise.reject(
+                            new Error(t('send.invalidFeeRate'))
                           );
                         }
                         return Promise.resolve();

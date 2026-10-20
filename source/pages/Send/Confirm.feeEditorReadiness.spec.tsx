@@ -295,3 +295,31 @@ it.each(['1000000000', '0'])(
     ).toHaveValue(4);
   }
 );
+
+it.each(['1000000000000000000000', '0.0000000001'])(
+  'keeps unrepresentable custom cap %s in the real editor without changing review',
+  async (value) => {
+    const [quote] = prepare();
+    await waitForQuote();
+    await resolveQuote(quote, '0');
+    await waitFor(() => expect(edit()).toBeEnabled());
+    await act(async () => fireEvent.click(edit()));
+    const dialog = within(screen.getByRole('dialog'));
+    fireEvent.change(dialog.getByPlaceholderText('send.maxFee (GWEI)'), {
+      target: { value },
+    });
+    await waitFor(() =>
+      expect(
+        dialog.getByRole('button', { name: 'buttons.save' })
+      ).toBeDisabled()
+    );
+    await act(async () =>
+      fireEvent.click(dialog.getByRole('button', { name: 'buttons.cancel' }))
+    );
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(screen.getByText('0.000063 TSYS')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'buttons.confirm' })
+    ).toBeEnabled();
+  }
+);
