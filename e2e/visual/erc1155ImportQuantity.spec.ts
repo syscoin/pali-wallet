@@ -412,7 +412,9 @@ test('manual ERC1155 import and Send MAX retain the exact verified quantity', as
               return { balance: token?.balance, rawBalance: token?.rawBalance };
             }, CONTRACT);
             expect(published).toEqual({
-              balance: Number(balance),
+              // The existing NFT transport helper caps its legacy numeric
+              // field; rawBalance and the rendered exact titles stay lossless.
+              balance: Math.min(Number(balance), Number.MAX_SAFE_INTEGER),
               rawBalance: balance,
             });
             expect(page.url()).toBe(collectionUrl);
