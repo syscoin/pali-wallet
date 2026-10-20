@@ -1502,23 +1502,12 @@ class SmartAccountController {
     if (expectedContext)
       this.assertExpectedExecutionContext(expectedContext, undefined, false);
     const active = this.getSmartAccountById(accountId);
-    const target = {
-      address: getAddress(active.account.address),
-      chainId: active.metadata.chainId,
-      type: active.account.type,
-    };
-    const assertTarget = () => {
-      const current = this.getSmartAccountById(accountId);
-      if (
-        current.account.id !== accountId ||
-        target.chainId !== context.chainId ||
-        current.metadata.chainId !== target.chainId ||
-        current.account.type !== target.type ||
-        getAddress(current.account.address) !== target.address
-      )
-        throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
-    };
-    assertTarget();
+    getAddress(active.account.address);
+    if (
+      active.account.id !== accountId ||
+      active.metadata.chainId !== context.chainId
+    )
+      throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
     // Explicit hydration requests (UI refresh, post-action flows) bypass the
     // short-lived metadata cache.
     const metadata = await this.hydrateSmartAccountMetadata(active.account, {
@@ -1527,12 +1516,11 @@ class SmartAccountController {
     this.assertInfrastructureContext(context);
     if (expectedContext)
       this.assertExpectedExecutionContext(expectedContext, undefined, false);
-    assertTarget();
     await this.persistSmartAccountMetadata(
       accountId,
       metadata,
       expectedContext,
-      active.metadata
+      active
     );
     return metadata;
   }
@@ -1567,7 +1555,7 @@ class SmartAccountController {
     record: SmartAccountCustomModuleRecord;
   }): Promise<ISmartAccountMetadata> {
     const address = getAddress(params.record.address);
-    const metadata = await this.persistSmartAccountMetadata(
+    return this.persistSmartAccountMetadata(
       params.accountId,
       (current) => ({
         ...current,
@@ -1579,7 +1567,6 @@ class SmartAccountController {
       }),
       params.expectedContext
     );
-    return metadata;
   }
 
   /** Drops a bring-your-own module record (after on-chain uninstall). */
@@ -1588,7 +1575,7 @@ class SmartAccountController {
     address: string;
     expectedContext?: IEvmTransactionContext;
   }): Promise<ISmartAccountMetadata> {
-    const metadata = await this.persistSmartAccountMetadata(
+    return this.persistSmartAccountMetadata(
       params.accountId,
       (current) => ({
         ...current,
@@ -1599,7 +1586,6 @@ class SmartAccountController {
       }),
       params.expectedContext
     );
-    return metadata;
   }
 
   public async getSmartAccountNativeGasStatus(params: {
@@ -3062,12 +3048,12 @@ class SmartAccountController {
       | ISmartAccountMetadata
       | ((current: ISmartAccountMetadata) => ISmartAccountMetadata),
     expectedContext?: IEvmTransactionContext,
-    expectedMetadata?: ISmartAccountMetadata
+    expectedTarget?: ReturnType<SmartAccountController['getSmartAccountById']>
   ): Promise<ISmartAccountMetadata> {
+    const customEdit = typeof update === 'function';
     const assertExpected = () => {
       if (!expectedContext) return;
       try {
-        const customEdit = typeof update === 'function';
         this.assertExpectedExecutionContext(
           expectedContext,
           customEdit ? accountId : undefined,
@@ -3080,20 +3066,22 @@ class SmartAccountController {
     };
     assertExpected();
     const context = this.infrastructureContext();
-    const target = this.getSmartAccountById(accountId);
+    const target = expectedTarget || this.getSmartAccountById(accountId);
     const walletGeneration = this.deps.getWalletStateGeneration();
+    const isSameWallet = () =>
+      walletGeneration === this.deps.getWalletStateGeneration();
     const assertCurrent = () => {
       this.assertInfrastructureContext(context);
       assertExpected();
       const current = this.getSmartAccountById(accountId);
       if (
-        walletGeneration !== this.deps.getWalletStateGeneration() ||
+        !isSameWallet() ||
         current.account.id !== target.account.id ||
         current.account.type !== target.account.type ||
         current.account.address !== target.account.address ||
         current.metadata.chainId !== context.chainId ||
         current.metadata.descriptor !== target.metadata.descriptor ||
-        (expectedMetadata && current.metadata !== expectedMetadata)
+        (expectedTarget && current.metadata !== target.metadata)
       )
         throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
     };
@@ -3103,14 +3091,13 @@ class SmartAccountController {
       accountId,
       () => {
         const current = this.getSmartAccountById(accountId).metadata;
-        metadata = typeof update === 'function' ? update(current) : update;
+        metadata = customEdit ? update(current) : update;
         return metadata;
       },
       assertCurrent,
-      () => walletGeneration === this.deps.getWalletStateGeneration()
+      isSameWallet
     );
-    if (typeof update === 'function')
-      this.invalidateHydratedMetadata(target.account.address);
+    if (customEdit) this.invalidateHydratedMetadata(target.account.address);
     return metadata!;
   }
 

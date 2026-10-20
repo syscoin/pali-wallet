@@ -21,6 +21,7 @@ import store, {
 } from 'state/store';
 import {
   restoreVaultSnapshot,
+  setAccountBalances,
   setAccountPropertyByIdAndType,
   setActiveAccount,
   setNetworkChange,
@@ -409,6 +410,42 @@ it('persists healthy read-only hydration without dropping custom records', async
   expect(
     (await loadSlip44State(60)).accounts.SmartAccount[0].smartAccount
   ).toEqual(result);
+});
+
+it('allows unrelated label and balance updates during delayed hydration', async () => {
+  let release!: () => void;
+  let entered!: () => void;
+  const started = new Promise<void>((resolve) => (entered = resolve));
+  transaction.web3Provider.getCode.mockImplementation(
+    async (address: string) => {
+      if (address === ACCOUNT) {
+        entered();
+        await new Promise<void>((resolve) => (release = resolve));
+      }
+      return '0x';
+    }
+  );
+  const original = store.getState().vault.accounts.SmartAccount[0];
+  const hydration = wallet.hydrateSmartAccount(0);
+  await started;
+  store.dispatch(
+    setAccountPropertyByIdAndType({
+      id: 0,
+      type: KeyringAccountType.SmartAccount,
+      property: 'label',
+      value: 'Updated while reading',
+    })
+  );
+  store.dispatch(setAccountBalances({ ethereum: 123, syscoin: 0 }));
+  const updated = store.getState().vault.accounts.SmartAccount[0];
+  expect(updated).not.toBe(original);
+  expect(updated.smartAccount).toBe(original.smartAccount);
+  release();
+  const result = await hydration;
+  const saved = (await loadSlip44State(60)).accounts.SmartAccount[0];
+  expect(saved.smartAccount).toEqual(result);
+  expect(saved.label).toBe('Updated while reading');
+  expect(saved.balances.ethereum).toBe(123);
 });
 
 it('refuses a hydration snapshot overtaken by a custom-module edit', async () => {
