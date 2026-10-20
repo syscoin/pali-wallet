@@ -137,6 +137,9 @@ const SentryKeys = () => {
     setNotice('');
     let importCommitted = false;
     let removedKeyId: string | undefined;
+    let savedPreferences:
+      | Pick<SentrySettings, 'serviceUrl' | 'maxFeeSatoshis'>
+      | undefined;
     const isCurrentJob = () =>
       active.current && owner.current === current && inFlight.current === job;
     const completionNotice = () =>
@@ -182,12 +185,23 @@ const SentryKeys = () => {
           setShowKeys(false);
         }
       } else if (mode === 'service') {
-        await controllerEmitter(
+        const saved = (await controllerEmitter(
           ['wallet', 'saveSentrySettings'],
           [{ serviceUrl, maxFeeSatoshis: feeLimit, password }],
           30000,
           false
-        );
+        )) as typeof savedPreferences;
+        if (
+          typeof saved?.serviceUrl !== 'string' ||
+          !saved.serviceUrl ||
+          typeof saved.maxFeeSatoshis !== 'string' ||
+          !saved.maxFeeSatoshis
+        )
+          throw new Error(t('sentry.unableToCompleteSentryOperation'));
+        savedPreferences = {
+          serviceUrl: saved.serviceUrl,
+          maxFeeSatoshis: saved.maxFeeSatoshis,
+        };
       } else if (isRemoval) {
         if (!selectedRemovalKey)
           throw new Error(t('sentry.unableToLoadSentrySettings'));
@@ -215,6 +229,10 @@ const SentryKeys = () => {
         );
       }
       if (!isCurrentJob()) return;
+      if (savedPreferences)
+        setSettings((previous) =>
+          previous ? { ...previous, ...savedPreferences } : previous
+        );
       if (removedKeyId) {
         setSettings((previous) =>
           previous
@@ -238,7 +256,7 @@ const SentryKeys = () => {
       setNotice(completionNotice());
     } catch (reason: any) {
       if (isCurrentJob()) {
-        if (importCommitted || removedKeyId) {
+        if (importCommitted || removedKeyId || savedPreferences) {
           setMode('list');
           setNotice(completionNotice());
           setError(t('sentry.unableToLoadSentrySettings'));

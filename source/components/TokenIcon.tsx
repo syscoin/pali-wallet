@@ -1,5 +1,5 @@
 /* eslint-disable react/prop-types */
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 import PaliLogo from 'assets/all_assets/favicon-32.png';
 import { NftFallbackSvg } from 'components/Icon/Icon';
@@ -77,6 +77,16 @@ export const TokenIcon: React.FC<ITokenIconProps> = React.memo(
     };
 
     const cacheKey = getCacheKey();
+    const imageScopeRef = useRef({ key: cacheKey, active: true });
+    if (imageScopeRef.current.key !== cacheKey)
+      imageScopeRef.current = { key: cacheKey, active: true };
+    const imageScope = imageScopeRef.current;
+    useEffect(() => {
+      imageScopeRef.current.active = true;
+      return () => {
+        imageScopeRef.current.active = false;
+      };
+    }, []);
 
     // Determine initial state based on cache
     const getInitialState = () => {
@@ -296,12 +306,32 @@ export const TokenIcon: React.FC<ITokenIconProps> = React.memo(
     // Render the image (either from state or cache)
     return (
       <img
+        key={cacheKey}
         src={imageToRender}
         alt={symbol || 'Token'}
         className={`${fallbackClassName} ${className}`}
         style={{ width: size, height: size }}
         loading="lazy"
         decoding="async"
+        onError={() => {
+          if (!imageScope.active || imageScopeRef.current !== imageScope)
+            return;
+          if (
+            !tokenImageCache.has(cacheKey) &&
+            tokenImageCache.size >= MAX_CACHE_ENTRIES
+          ) {
+            const oldestKey = tokenImageCache.keys().next().value;
+            if (oldestKey !== undefined) tokenImageCache.delete(oldestKey);
+          }
+          tokenImageCache.set(cacheKey, null);
+          tokenImageFailureTs.set(cacheKey, Date.now());
+          setIconState({
+            key: cacheKey,
+            url: null,
+            error: true,
+            loading: false,
+          });
+        }}
       />
     );
   },
