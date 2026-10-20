@@ -471,7 +471,7 @@ it.each([false, true])(
     });
     const notices = jest
       .mocked(chrome.scripting.executeScript)
-      .mock.calls.map(([details]: any) => details.args[0].data);
+      .mock.calls.map(([details]: any) => JSON.parse(details.args[0]).data);
     if (held) {
       failNextStateWrite = true;
       await act(async () => {
@@ -553,7 +553,7 @@ it.each([false, true])(
     });
     const notices = jest
       .mocked(chrome.scripting.executeScript)
-      .mock.calls.map(([details]: any) => details.args[0].data);
+      .mock.calls.map(([details]: any) => JSON.parse(details.args[0]).data);
     if (held) {
       failNextStateWrite = true;
       await act(async () => {

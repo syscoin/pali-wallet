@@ -382,7 +382,7 @@ it.each([false, true])(
     );
     const events = jest
       .mocked(chrome.scripting.executeScript)
-      .mock.calls.map(([options]: any) => options.args[0]);
+      .mock.calls.map(([options]: any) => JSON.parse(options.args[0]));
     expect(events).toEqual(
       expect.arrayContaining([
         {

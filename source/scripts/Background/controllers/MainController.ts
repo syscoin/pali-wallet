@@ -342,7 +342,6 @@ class MainController {
 
   // Auto-lock timer management
   private autoLockAlarmName = 'pali_auto_lock_timer';
-  private autoLockResetTimeout: NodeJS.Timeout | null = null;
 
   // Centralized wallet state saving
   private saveTimeout: NodeJS.Timeout | null = null;
@@ -1217,12 +1216,6 @@ class MainController {
     if (this.saveTimeout) {
       clearTimeout(this.saveTimeout);
       this.saveTimeout = null;
-    }
-
-    // Clear auto-lock reset timeout
-    if (this.autoLockResetTimeout) {
-      clearTimeout(this.autoLockResetTimeout);
-      this.autoLockResetTimeout = null;
     }
 
     // Clear all rapid polling timeouts
@@ -2115,11 +2108,8 @@ class MainController {
         return;
       }
 
-      // Clear any existing auto-lock alarm
-      await this.stopAutoLockTimer();
-
-      // Create Chrome alarm for auto-lock
-      chrome.alarms.create(this.autoLockAlarmName, {
+      // A same-name alarm replaces the deadline without a clear/re-arm gap.
+      await chrome.alarms.create(this.autoLockAlarmName, {
         delayInMinutes: minutes,
       });
 
@@ -2134,58 +2124,15 @@ class MainController {
 
   private async stopAutoLockTimer() {
     // Clear the Chrome alarm
-    chrome.alarms.clear(this.autoLockAlarmName);
-
-    // Clear any pending reset timeout
-    if (this.autoLockResetTimeout) {
-      clearTimeout(this.autoLockResetTimeout);
-      this.autoLockResetTimeout = null;
-    }
+    await chrome.alarms.clear(this.autoLockAlarmName);
 
     console.log('[MainController] Auto-lock timer stopped');
   }
 
-  // Reset auto-lock timer on user activity (debounced to prevent loops)
+  // Route activity is already coalesced; never leave the old deadline armed
+  // while waiting to acknowledge newer user activity.
   public resetAutoLockTimer() {
-    try {
-      // Clear any existing reset timeout to debounce rapid calls
-      if (this.autoLockResetTimeout) {
-        clearTimeout(this.autoLockResetTimeout);
-      }
-
-      // Debounce the actual timer reset by 500ms to prevent rapid consecutive calls
-      this.autoLockResetTimeout = setTimeout(() => {
-        try {
-          const vaultGlobalState = store.getState().vaultGlobal;
-
-          // Get the timer value from advancedSettings
-          const autoLockRaw: any =
-            (vaultGlobalState?.advancedSettings?.autolock as any) ?? 0; // Use 0 (disabled) as default
-          const minutes = Number(autoLockRaw);
-
-          // Only restart timer if it's enabled (> 0) and wallet is unlocked
-          if (Number.isFinite(minutes) && minutes > 0 && this.isUnlocked()) {
-            // Restart the timer
-            this.startAutoLockTimer().catch((error) => {
-              console.error(
-                '[MainController] Failed to restart auto-lock timer:',
-                error
-              );
-            });
-          }
-        } catch (error) {
-          console.error(
-            '[MainController] Error in debounced resetAutoLockTimer:',
-            error
-          );
-        } finally {
-          this.autoLockResetTimeout = null;
-        }
-      }, 500); // 500ms debounce delay
-    } catch (error) {
-      console.error('[MainController] Error in resetAutoLockTimer:', error);
-      // Fail silently - auto-lock is a convenience feature, not critical
-    }
+    void this.startAutoLockTimer();
   }
 
   // Perform deferred vault save in background (non-blocking)
@@ -8302,6 +8249,7 @@ class MainController {
       });
     }
 
+    assertCurrent();
     // Skip dapp notifications during startup
     if (this.isStartingUp) {
       console.log(

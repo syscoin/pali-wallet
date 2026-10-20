@@ -409,7 +409,7 @@ describe('wallet reset durable cleanup', () => {
     jest
       .mocked(chrome.scripting.executeScript)
       .mock.calls.map(([options]) =>
-        'args' in options ? options.args?.[0] : undefined
+        'args' in options ? JSON.parse(options.args?.[0] as string) : undefined
       );
 
   it('clears live sessions only after a successful public forget', async () => {

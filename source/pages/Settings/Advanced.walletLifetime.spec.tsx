@@ -286,6 +286,11 @@ describe('advanced Save ownership across wallet reset', () => {
     );
     const rejected = expect(saving).rejects.toThrow('Wallet state changed');
     await writing.promise;
+    expect(chrome.alarms.create).toHaveBeenCalledWith('test-auto-lock', {
+      delayInMinutes: 5,
+    });
+    const createdBeforeReset = (chrome.alarms.create as jest.Mock).mock.calls
+      .length;
     const resetting = wallet.resetWalletState({ resetNetworks: true });
     expect(wallet.walletStateGeneration).toBe(1);
     releaseWrite.resolve();
@@ -293,7 +298,11 @@ describe('advanced Save ownership across wallet reset', () => {
     await resetting;
     expect(store.getState().vaultGlobal.advancedSettings.autolock).toBe(0);
     expect(persisted).toEqual({});
-    expect(chrome.alarms.create).not.toHaveBeenCalled();
+    expect(chrome.alarms.create).toHaveBeenCalledTimes(createdBeforeReset);
+    expect(chrome.alarms.clear).toHaveBeenCalledWith('test-auto-lock');
+    expect(chrome.alarms.create).not.toHaveBeenCalledWith('test-auto-lock', {
+      delayInMinutes: 10,
+    });
   });
 
   it.each([false, true])(
