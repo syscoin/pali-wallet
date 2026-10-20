@@ -57,6 +57,7 @@ import {
   persistCommittedWalletState,
   persistFiatCurrency,
   persistHasEthProperty,
+  persistNetworkRegistry,
   restoreSourceVaultAfterUncommittedSwitch,
   saveMainState,
 } from 'state/store';
@@ -91,7 +92,6 @@ import {
   switchNetworkSuccess,
   setError as setStoreError,
   setIsLoadingBalances,
-  setNetwork,
   setNetworks,
   removeNetwork,
   setIsPollingUpdate,
@@ -4068,6 +4068,40 @@ class MainController {
       );
   }
 
+  private async persistCustomRpc(
+    network: INetwork,
+    isEdit: boolean,
+    generation = this.walletStateGeneration
+  ) {
+    const family = network.kind;
+    const previous =
+      store.getState().vaultGlobal.networks[family]?.[network.chainId];
+    const assertCurrent = () => {
+      if (generation !== this.walletStateGeneration)
+        throw new Error('Wallet state changed before saving network');
+      if (this.isRemovingNetwork)
+        throw new Error(NETWORK_REMOVAL_IN_PROGRESS_ERROR);
+      const current =
+        store.getState().vaultGlobal.networks[family]?.[network.chainId];
+      if (isEdit ? !previous || current !== previous : Boolean(current))
+        throw new Error(
+          isEdit
+            ? 'Network changed. Please save it again.'
+            : NETWORK_ALREADY_EXISTS_ERROR
+        );
+      this.assertUniqueUtxoNetworkVault(network);
+    };
+    assertCurrent();
+    this.resetAutoLockTimer();
+    await persistNetworkRegistry(
+      network,
+      isEdit,
+      assertCurrent,
+      () => generation === this.walletStateGeneration
+    );
+    return network;
+  }
+
   public async addCustomRpc(network: INetwork): Promise<INetwork> {
     const generation = this.walletStateGeneration;
     if (this.isRemovingNetwork) {
@@ -4152,27 +4186,14 @@ class MainController {
       throw new Error(NETWORK_ALREADY_EXISTS_ERROR);
     }
     this.assertUniqueUtxoNetworkVault(network);
-    store.dispatch(setNetwork({ network: networkWithCustomParams }));
-
-    // Save wallet state after adding custom network
-    // Use sync=true to ensure save completes before returning
-    await this.saveWalletState('add-custom-network', true, true);
-
-    return networkWithCustomParams;
+    return this.persistCustomRpc(networkWithCustomParams, false, generation);
   }
 
   public async editCustomRpc(network: INetwork): Promise<INetwork> {
     if (this.isRemovingNetwork) {
       throw new Error(NETWORK_REMOVAL_IN_PROGRESS_ERROR);
     }
-    this.assertUniqueUtxoNetworkVault(network);
-    // Update the network in the global networks store
-    // The setNetwork reducer will automatically preserve CoinGecko IDs and other metadata
-    store.dispatch(setNetwork({ network, isEdit: true }));
-
-    // Save wallet state after editing network
-    await this.saveWalletState('edit-network', true, true);
-    return network;
+    return this.persistCustomRpc(network, true);
   }
 
   public async editAccountLabel(

@@ -21,6 +21,7 @@ jest.mock('utils/storageAPI', () => ({
 import store from 'state/store';
 import vaultGlobalReducer from 'state/vaultGlobal';
 import { INetworkType } from 'types/network';
+import { chromeStorage } from 'utils/storageAPI';
 
 import MainController from './MainController';
 
@@ -58,7 +59,8 @@ describe('custom-network registration concurrency', () => {
     wallet = Object.create(MainController.prototype);
     wallet.walletStateGeneration = 0;
     wallet.isRemovingNetwork = false;
-    wallet.saveWalletState = jest.fn().mockResolvedValue(undefined);
+    wallet.resetAutoLockTimer = jest.fn();
+    jest.mocked(chromeStorage.setItem).mockReset().mockResolvedValue(undefined);
     wallet.evmAssetsController = {
       detectCoinGeckoIds: jest.fn().mockResolvedValue(null),
     };
@@ -92,7 +94,7 @@ describe('custom-network registration concurrency', () => {
         [replacement.chainId]: replacement,
       });
       expect(store.dispatch).not.toHaveBeenCalled();
-      expect(wallet.saveWalletState).not.toHaveBeenCalled();
+      expect(chromeStorage.setItem).not.toHaveBeenCalled();
     }
   );
 
@@ -105,7 +107,7 @@ describe('custom-network registration concurrency', () => {
     expect(wallet.evmAssetsController.detectCoinGeckoIds).toHaveBeenCalledTimes(
       1
     );
-    expect(wallet.saveWalletState).toHaveBeenCalledTimes(1);
+    expect(chromeStorage.setItem).toHaveBeenCalledTimes(1);
   });
 
   it.each(['added', 'edited', 'discovery failed'])(
@@ -131,7 +133,7 @@ describe('custom-network registration concurrency', () => {
           : other;
       if (scenario === 'edited') await wallet.editCustomRpc(saved);
       const dispatches = jest.mocked(store.dispatch).mock.calls.length;
-      const saves = wallet.saveWalletState.mock.calls.length;
+      const saves = jest.mocked(chromeStorage.setItem).mock.calls.length;
 
       if (scenario === 'discovery failed')
         pending.reject(new Error('Metadata unavailable'));
@@ -143,7 +145,7 @@ describe('custom-network registration concurrency', () => {
         undefined
       );
       expect(store.dispatch).toHaveBeenCalledTimes(dispatches);
-      expect(wallet.saveWalletState).toHaveBeenCalledTimes(saves);
+      expect(chromeStorage.setItem).toHaveBeenCalledTimes(saves);
     }
   );
 
@@ -162,7 +164,7 @@ describe('custom-network registration concurrency', () => {
     });
     expect(state.vaultGlobal.networks.ethereum[31337]).toMatchObject(network);
     expect(state.vaultGlobal.networks.ethereum[31338]).toMatchObject(other);
-    expect(wallet.saveWalletState).toHaveBeenCalledTimes(2);
+    expect(chromeStorage.setItem).toHaveBeenCalledTimes(2);
   });
 
   it('still adds a new chain if optional metadata discovery fails', async () => {
@@ -171,7 +173,7 @@ describe('custom-network registration concurrency', () => {
     );
     await expect(wallet.addCustomRpc(network)).resolves.toMatchObject(network);
     expect(state.vaultGlobal.networks.ethereum[31337]).toMatchObject(network);
-    expect(wallet.saveWalletState).toHaveBeenCalledTimes(1);
+    expect(chromeStorage.setItem).toHaveBeenCalledTimes(1);
   });
 
   it('retains removal ownership precedence when discovery settles', async () => {
@@ -185,6 +187,6 @@ describe('custom-network registration concurrency', () => {
     pending.resolve(null);
     await rejected;
     expect(store.dispatch).not.toHaveBeenCalled();
-    expect(wallet.saveWalletState).not.toHaveBeenCalled();
+    expect(chromeStorage.setItem).not.toHaveBeenCalled();
   });
 });

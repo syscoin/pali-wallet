@@ -48,6 +48,7 @@ import vaultGlobal, {
   setActiveSlip44,
   setAdvancedSettings,
   setHasEthProperty,
+  setNetwork,
 } from './vaultGlobal';
 
 // Define RootState earlier if possible, or use a more generic type for ThunkMiddleware initially
@@ -258,73 +259,34 @@ export async function persistHasEthProperty(enabled: boolean): Promise<void> {
   });
 }
 
-/** Publish a preference only after its staged main-state write is durable. */
-export function persistAdvancedSetting(
-  advancedProperty: string,
-  value: boolean | number,
-  isCurrent: () => boolean
-): Promise<void> {
-  return walletPersistenceMutex.runExclusive(async () => {
-    const assertCurrent = () => {
-      assertWalletPersistenceAllowed();
-      if (!isCurrent())
-        throw new Error('Wallet state changed before saving settings');
-    };
-    assertCurrent();
-    const state = store.getState();
-    const mainState = {
-      ...getMainStateForStorage(state),
-      vaultGlobal: {
-        ...state.vaultGlobal,
-        advancedSettings: {
-          ...state.vaultGlobal.advancedSettings,
-          [advancedProperty]: value,
-        },
-      },
-    };
-    await chromeStorage.setItem('state', mainState);
-    lastPersistedState = mainState;
-    try {
-      assertCurrent();
-    } catch (error) {
-      // A reset can invalidate the write while it is pending. Keep the staged
-      // preference unpublished and remove it from disk before releasing the lock.
-      assertWalletPersistenceAllowed();
-      const currentState = getMainStateForStorage(store.getState());
-      await chromeStorage.setItem('state', currentState);
-      lastPersistedState = currentState;
-      throw error;
-    }
-    // A queued background save must observe the committed value; unrelated
-    // Redux updates received during the write must also remain intact.
-    store.dispatch(setAdvancedSettings({ advancedProperty, value }));
-  });
-}
+type MainMutationAction =
+  | ReturnType<typeof setAdvancedSettings>
+  | ReturnType<typeof setPrices>
+  | ReturnType<typeof setNetwork>;
 
-/** Keep an explicitly saved currency private until its main-state write commits. */
-export function persistFiatCurrency(
-  currency: string,
-  isCurrent: () => boolean
+/** Stage only the requested action; publish it after a guarded durable write. */
+function persistMainMutation(
+  action: MainMutationAction,
+  assertCurrent: () => void,
+  isSameWallet?: () => boolean
 ): Promise<void> {
   return walletPersistenceMutex.runExclusive(async () => {
-    const assertCurrent = () => {
+    const assertAdmitted = () => {
       assertWalletPersistenceAllowed();
-      if (!isCurrent())
-        throw new Error('Wallet state changed before saving currency');
+      assertCurrent();
     };
-    assertCurrent();
-    const state = store.getState();
-    const action = setPrices({ asset: currency, price: 0 });
-    const mainState = {
-      ...getMainStateForStorage(state),
-      price: price(state.price, action),
-    };
+    assertAdmitted();
+    const mainState = getMainStateForStorage(
+      reducers(store.getState(), action)
+    );
     await chromeStorage.setItem('state', mainState);
     lastPersistedState = mainState;
     try {
-      assertCurrent();
+      assertAdmitted();
     } catch (error) {
+      // Keep invalidated writes unpublished and repair only their owning wallet.
       assertWalletPersistenceAllowed();
+      if (isSameWallet && !isSameWallet()) throw error;
       const currentState = getMainStateForStorage(store.getState());
       await chromeStorage.setItem('state', currentState);
       lastPersistedState = currentState;
@@ -332,6 +294,46 @@ export function persistFiatCurrency(
     }
     store.dispatch(action);
   });
+}
+
+/** Publish a preference only after its staged main-state write is durable. */
+export function persistAdvancedSetting(
+  advancedProperty: string,
+  value: boolean | number,
+  isCurrent: () => boolean
+): Promise<void> {
+  return persistMainMutation(
+    setAdvancedSettings({ advancedProperty, value }),
+    () => {
+      if (!isCurrent())
+        throw new Error('Wallet state changed before saving settings');
+    }
+  );
+}
+
+/** Keep an explicitly saved currency private until its main-state write commits. */
+export function persistFiatCurrency(
+  currency: string,
+  isCurrent: () => boolean
+): Promise<void> {
+  return persistMainMutation(setPrices({ asset: currency, price: 0 }), () => {
+    if (!isCurrent())
+      throw new Error('Wallet state changed before saving currency');
+  });
+}
+
+/** Commit a network registry edit before exposing it to retrying callers. */
+export function persistNetworkRegistry(
+  network: INetwork,
+  isEdit: boolean,
+  assertCurrent: () => void,
+  isSameWallet: () => boolean
+): Promise<void> {
+  return persistMainMutation(
+    setNetwork({ network, isEdit }),
+    assertCurrent,
+    isSameWallet
+  );
 }
 
 type AccountRemovalCommit = {
