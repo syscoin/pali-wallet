@@ -138,7 +138,7 @@ for (const scenario of ['historical dates', 'duplicate page'] as const) {
           }
         });
       await step(
-        'open ordinary Activity with the expected current HTTP rows',
+        `${scenario}: open ordinary Activity with the expected current HTTP rows`,
         async () => {
           await wallet!.importSeedAndCreatePassword();
           await wallet!.switchNetwork('Syscoin Testnet', 'UTXO');
