@@ -3,12 +3,10 @@ import { shallowEqual, useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
 import { ExternalLinkSvg } from 'components/Icon/Icon';
-import { useAdjustedExplorer } from 'hooks/useAdjustedExplorer';
 import { useUtils } from 'hooks/useUtils';
 import { RootState } from 'state/store';
 import { selectActiveAccountTransactions } from 'state/vault/selectors';
 import { TransactionsType } from 'state/vault/types';
-import { adjustUrl } from 'utils/index';
 import { getWalletNavigationScope, navigateBack } from 'utils/navigationState';
 
 import { AssetDetails } from './AssetDetails';
@@ -98,25 +96,20 @@ export const DetailsView = () => {
       )
     : undefined;
 
-  const adjustedExplorer = useAdjustedExplorer(
-    activeNetwork.explorer || activeNetwork.url
-  );
-
   useEffect(() => {
     if (!hasDetails) navigateBack(navigate, location);
   }, [hasDetails, navigate, location]);
 
-  const openEthExplorer = () => {
-    const url = `${adjustedExplorer}${isAsset ? 'address' : 'tx'}/${
-      isAsset ? id : hash
-    }`;
-    window.open(url, '_blank');
-  };
-
-  const openSysExplorer = () => {
-    const base = adjustUrl(activeNetwork.explorer || activeNetwork.url);
-    const url = `${base}${isAsset ? 'asset' : 'tx'}/${isAsset ? id : hash}`;
-    window.open(url, '_blank');
+  const openExplorer = () => {
+    const url = new URL(activeNetwork.explorer || activeNetwork.url);
+    const route = url.hash.startsWith('#/')
+      ? new URL(url.hash.slice(1), url)
+      : url;
+    route.pathname = `${route.pathname.replace(/\/?$/, '/')}${
+      isAsset ? (isBitcoinBased ? 'asset' : 'address') : 'tx'
+    }/${isAsset ? id : hash}`;
+    if (route !== url) url.hash = route.pathname + route.search + route.hash;
+    window.open(url.href, '_blank');
   };
 
   if (!hasDetails) return null;
@@ -147,7 +140,7 @@ export const DetailsView = () => {
           <button
             type="button"
             className="flex items-center justify-center gap-2 cursor-pointer transition-all duration-300 hover:opacity-60 py-3 px-4 rounded-lg border border-dashed border-[#FFFFFF29] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
-            onClick={isBitcoinBased ? openSysExplorer : openEthExplorer}
+            onClick={openExplorer}
           >
             <ExternalLinkSvg className="w-4 h-4" />
             <span className="text-sm text-white underline">

@@ -31,6 +31,8 @@ export const Faucet: React.FC = () => {
     faucetRequestDetails,
     errorMessage,
     txHash,
+    eligible,
+    ready,
   } = useFaucetComponentStates();
 
   const {
@@ -50,6 +52,8 @@ export const Faucet: React.FC = () => {
         return '';
     }
   }, [status, t]);
+
+  if (!eligible) return null;
 
   const renderFaucetContent = () => {
     switch (status) {
@@ -130,6 +134,7 @@ export const Faucet: React.FC = () => {
             type="button"
             fullWidth
             onClick={handleFaucetButton}
+            disabled={!ready}
           >
             {faucetButtonLabel}
           </Button>
