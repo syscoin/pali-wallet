@@ -120,13 +120,22 @@ test('normal connected network publication and route activity preserve the auto-
     waitedForRealExpiry: false,
   };
   try {
+    // CI loads raw webpack output; local qualification loads the release ZIP.
+    // Fingerprint every member before launch instead of assuming package count.
+    const runtime = extensionEvidence();
+    expect(runtime.sourceRevision).toBe(process.env.PALI_TEST_DAPP_REVISION);
+    expect(runtime.artifactSha256).toMatch(/^[a-f0-9]{64}$/);
+    expect(runtime.bundleHashes).toEqual({
+      background: expect.stringMatching(/^[a-f0-9]{64}$/),
+      external: expect.stringMatching(/^[a-f0-9]{64}$/),
+      inpage: expect.stringMatching(/^[a-f0-9]{64}$/),
+    });
+    observations.runtime = runtime;
     wallet = await PaliWallet.launch('network-publication-auto-lock', {
       offlineHttpProxy: server.url,
       viewport: { width: 400, height: 620 },
     });
-    const runtime = extensionEvidence();
-    expect(runtime.fileCount).toBe(158);
-    observations.runtime = runtime;
+    expect(extensionEvidence()).toEqual(runtime);
     const fixture = createIsolatedVaultFixture();
     routes = await installIsolatedVaultRoutes(
       wallet.context,
