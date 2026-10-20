@@ -25,10 +25,12 @@ import {
 async function publicSelection(page: Page) {
   return page.evaluate(async () => {
     const state = await chrome.runtime.sendMessage({ type: 'getCurrentState' });
-    const { activeAccount, activeNetwork, accountAssets } = state.vault;
+    const { activeAccount, activeNetwork, accountAssets, accounts } =
+      state.vault;
     return {
       accountId: activeAccount.id,
       accountType: activeAccount.type,
+      accountLabel: accounts[activeAccount.type][activeAccount.id].label,
       chainId: activeNetwork.chainId,
       guids: (
         accountAssets[activeAccount.type][activeAccount.id].syscoin || []
@@ -113,6 +115,7 @@ for (const outcome of ['success', 'refusal'] as const) {
       const errors: string[] = [];
       page.on('pageerror', (error) => errors.push(error.message));
       const secondLabel = 'Other public SPT account';
+      let lastImportNoticeAt = 0;
       const select = async (target: Page, id: number) => {
         await target.locator('#general-settings-button').click();
         await target.locator(`#account-HDAccount-${id}`).click();
@@ -135,6 +138,13 @@ for (const outcome of ['success', 'refusal'] as const) {
           exact: true,
         });
         await expect(button).toBeEnabled();
+        if (lastImportNoticeAt) {
+          // The app deliberately deduplicates identical notices for 2 seconds.
+          // Keep each import's positive feedback control outside that window.
+          await expect
+            .poll(() => page.evaluate(() => Date.now()))
+            .toBeGreaterThanOrEqual(lastImportNoticeAt + 2000);
+        }
         await button.click();
         await expect
           .poll(() => publicSelection(page))
@@ -146,6 +156,7 @@ for (const outcome of ['success', 'refusal'] as const) {
           { exact: true }
         );
         await expect(successNotice).toBeVisible();
+        lastImportNoticeAt = await page.evaluate(() => Date.now());
         // The real app omits a close button and dismisses toasts on click.
         await successNotice.click();
         await expect(successNotice).toBeHidden();
@@ -179,6 +190,10 @@ for (const outcome of ['success', 'refusal'] as const) {
             })
             .click();
           await expect(page).toHaveURL(/#\/home\/details/);
+          const firstBalance = page
+            .getByText('Balance', { exact: true })
+            .locator('..');
+          await expect(firstBalance).not.toContainText(/42\.00\s*TSPT/);
           await expect(
             page.getByTitle(en.send.copyContractAddress)
           ).toBeVisible();
@@ -282,10 +297,17 @@ for (const outcome of ['success', 'refusal'] as const) {
           }
           await expect
             .poll(() => publicSelection(page))
-            .toMatchObject({ accountId: 1, guids: [SPT_GUID] });
+            .toMatchObject({
+              accountId: 1,
+              accountLabel: secondLabel,
+              guids: [SPT_GUID],
+            });
+          // AccountHeader intentionally exists only on /home. The details
+          // route instead proves its renderer received account 1 by displaying
+          // that account's distinct HTTP-backed asset balance.
           await expect(
-            page.locator('[id="active-account-label items-center"]')
-          ).toContainText(secondLabel);
+            page.getByText('Balance', { exact: true }).locator('..')
+          ).toContainText(/42\.00\s*TSPT/);
           await expect(page).toHaveURL(/#\/home\/details/);
           await expect(copy).toBeVisible();
           expect(
