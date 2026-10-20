@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, TestInfo } from '@playwright/test';
 import { createHash } from 'crypto';
 import { AbiCoder, id } from 'ethers';
 import fs from 'fs';
@@ -24,7 +24,13 @@ const tokens = new Map([
   [PARTIAL, 'PARTIAL'],
 ]);
 
-test('ERC20 details preserve the price and close action when optional market values are null', async ({}, info) => {
+async function marketAvailability(
+  malformedCategories: boolean,
+  info: TestInfo
+) {
+  const variant = malformedCategories
+    ? 'malformed-categories'
+    : 'null-optionals';
   test.setTimeout(120_000);
   expect(process.env.PALI_TEST_DAPP_REVISION).toMatch(/^[a-f0-9]{40}$/);
   expect(path.isAbsolute(E2E_CONFIG.extensionPath)).toBe(true);
@@ -50,7 +56,7 @@ test('ERC20 details preserve the price and close action when optional market val
     rpcUrl: server.url,
   });
   try {
-    wallet = await PaliWallet.launch('asset-market-availability', {
+    wallet = await PaliWallet.launch(`asset-market-availability-${variant}`, {
       offlineHttpProxy: server.url,
       viewport: { width: 400, height: 620 },
     });
@@ -151,7 +157,10 @@ test('ERC20 details preserve the price and close action when optional market val
             ? {
                 jsonrpc: '2.0',
                 id: call.id,
-                error: { code: -32000, message: 'Unsupported synthetic read' },
+                error: {
+                  code: -32000,
+                  message: 'Unsupported synthetic read',
+                },
               }
             : { jsonrpc: '2.0', id: call.id, result };
         });
@@ -180,6 +189,11 @@ test('ERC20 details preserve the price and close action when optional market val
           id: `synthetic-${tokens.get(address)!.toLowerCase()}`,
           symbol: tokens.get(address),
           name: tokens.get(address),
+          categories: malformedCategories
+            ? complete
+              ? 'Payments'
+              : ['Payments', null]
+            : ['Payments', 'Layer 2'],
           // eslint-disable-next-line camelcase
           market_cap_rank: complete ? 17 : null,
           // eslint-disable-next-line camelcase
@@ -205,7 +219,7 @@ test('ERC20 details preserve the price and close action when optional market val
     const page = wallet.page;
     page.on('pageerror', (error) => pageErrors.push(error.message));
     const step = (name: string, run: () => Promise<void>) =>
-      wallet!.step(name, async (capture) => {
+      wallet!.step(`${variant}: ${name}`, async (capture) => {
         try {
           await run();
         } finally {
@@ -273,6 +287,21 @@ test('ERC20 details preserve the price and close action when optional market val
         await expect(
           page.getByText(en.tokens.volume24h, { exact: true })
         ).toBeVisible();
+        await expect(
+          page.getByRole('link', { name: 'Payments', exact: true })
+        ).toHaveCount(malformedCategories ? 0 : 1);
+        await expect(
+          page.getByText(en.tokens.categories, { exact: true })
+        ).toHaveCount(malformedCategories ? 0 : 1);
+        await expect(
+          page.getByRole('link', {
+            name: en.tokens.historicalData,
+            exact: true,
+          })
+        ).toHaveAttribute(
+          'href',
+          'https://www.coingecko.com/en/coins/synthetic-complete/historical_data'
+        );
         expect(pageErrors).toEqual([]);
         await page
           .getByRole('button', { name: en.buttons.close, exact: true })
@@ -306,6 +335,15 @@ test('ERC20 details preserve the price and close action when optional market val
           en.tokens.circulatingSupply,
         ])
           await expect(page.getByText(label, { exact: true })).toHaveCount(0);
+        await expect(
+          page.getByRole('link', { name: 'Payments', exact: true })
+        ).toHaveAttribute(
+          'href',
+          'https://www.coingecko.com/en/categories/payments'
+        );
+        await expect(
+          page.getByRole('link', { name: 'Layer 2', exact: true })
+        ).toHaveCount(malformedCategories ? 0 : 1);
         const close = page
           .getByRole('button', {
             name: en.buttons.close,
@@ -336,6 +374,7 @@ test('ERC20 details preserve the price and close action when optional market val
               .update(fs.readFileSync(__filename))
               .digest('hex'),
             syntheticHttpOnly: true,
+            malformedCategories,
             controllerStateReplaced: false,
             controllerResultReplaced: false,
             contractReads,
@@ -353,9 +392,18 @@ test('ERC20 details preserve the price and close action when optional market val
       try {
         await wallet?.dispose(status);
       } finally {
-        await server.close();
-        Object.assign(E2E_CONFIG, previous);
+        try {
+          await server.close();
+        } finally {
+          Object.assign(E2E_CONFIG, previous);
+        }
       }
     }
   }
-});
+}
+
+for (const malformedCategories of [false, true]) {
+  test(`ERC20 details preserve the price and close action with ${
+    malformedCategories ? 'malformed categories' : 'null optional market values'
+  }`, async ({}, info) => marketAvailability(malformedCategories, info));
+}

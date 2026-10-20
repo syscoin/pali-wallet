@@ -18,6 +18,42 @@ it.each([{}, { categories: [], id: '' }])(
   }
 );
 
+it.each(['Payments', 7, {}, [null, 3, {}]])(
+  'ignores malformed optional category data without hiding valid coin links (%j)',
+  (categories) => {
+    render(
+      <AssetMarketLinks marketData={{ categories, id: 'syscoin' }} t={t} />
+    );
+    expect(screen.queryByText('translated:tokens.categories')).toBeNull();
+    expect(screen.getAllByRole('link')).toHaveLength(2);
+    expect(
+      screen
+        .getByRole('link', { name: 'translated:tokens.historicalData' })
+        .getAttribute('href')
+    ).toBe('https://www.coingecko.com/en/coins/syscoin/historical_data');
+  }
+);
+
+it('filters invalid category members while preserving valid labels, links and counts', () => {
+  const categories = [
+    'Payments',
+    null,
+    'Layer 2',
+    7,
+    'Three',
+    'Four',
+    'Five',
+    {},
+    'Six',
+  ];
+  render(<AssetMarketLinks marketData={{ categories }} t={t} />);
+  expect(screen.getAllByRole('link')).toHaveLength(6);
+  expect(
+    screen.getByRole('link', { name: 'Layer 2' }).getAttribute('href')
+  ).toBe('https://www.coingecko.com/en/categories/layer-2');
+  expect(screen.getByText('+1 translated:tokens.more')).toBeTruthy();
+});
+
 it('preserves every category and the existing additional-count label beyond five', () => {
   const categories = [
     'Layer 2 Protocols',
