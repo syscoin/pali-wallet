@@ -1,5 +1,5 @@
 import getSymbolFromCurrency from 'currency-symbol-map';
-import React, { Fragment, useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
@@ -14,6 +14,7 @@ import { useUtils } from 'hooks/index';
 import { getHomeBrowsingScope } from 'pages/Home/useHomeBrowsingState';
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 import { RootState } from 'state/store';
+import { formatFullPrecisionBalance } from 'utils/format';
 import {
   formatCurrency,
   truncate,
@@ -467,51 +468,49 @@ export const SyscoinAssetDetails = ({
           {formattedAsset
             .filter((item) => item.key !== 'Symbol' && item.key !== 'Decimals')
             .map((item, index, totalArray) => (
-              <Fragment key={item.originalKey}>
-                <li
-                  className={`flex items-center justify-between my-1 pl-0 pr-3 py-2 w-full text-xs border-b 
+              <li
+                key={item.originalKey}
+                className={`flex items-center justify-between my-1 pl-0 pr-3 py-2 w-full text-xs border-b
                 border-dashed border-bkg-white200 cursor-default transition-all duration-300 ${
                   index + 1 === totalArray.length && 'border-none'
                 } `}
-                >
-                  <p className="font-normal text-xs">{item.key}</p>
-                  {item.originalKey === 'contract' ? (
-                    <div className="flex items-center gap-x-2">
-                      <span className="text-brand-white text-xs">
-                        {truncate(item.value, 10, true)}
-                      </span>
-                      <button
-                        onClick={() => copy(item.value)}
-                        className="text-brand-royalbluemedium hover:text-brand-deepPink100 transition-colors"
-                        title={t('send.copyContractAddress')}
-                      >
-                        <CopyIcon size={14} />
-                      </button>
-                    </div>
-                  ) : item.originalKey === 'metaData' ? (
-                    <p className="text-brand-white text-xs max-w-[200px] truncate">
-                      {item.value}
-                    </p>
-                  ) : (
-                    <p className="flex items-center font-normal gap-x-1.5 text-xs">
-                      <span className="text-brand-white">
-                        {truncate(
-                          formatCurrency(
-                            String(item.value),
-                            assetDecimals.value
-                          ),
-                          5,
-                          false
-                        )}
-                      </span>
+              >
+                <p className="font-normal text-xs">{item.key}</p>
+                {item.originalKey === 'contract' ? (
+                  <div className="flex items-center gap-x-2">
+                    <span className="text-brand-white text-xs">
+                      {truncate(item.value, 10, true)}
+                    </span>
+                    <button
+                      onClick={() => copy(item.value)}
+                      className="text-brand-royalbluemedium hover:text-brand-deepPink100 transition-colors"
+                      title={t('send.copyContractAddress')}
+                    >
+                      <CopyIcon size={14} />
+                    </button>
+                  </div>
+                ) : item.originalKey === 'metaData' ? (
+                  <p className="text-brand-white text-xs max-w-[200px] truncate">
+                    {item.value}
+                  </p>
+                ) : (
+                  <p className="flex items-center font-normal gap-x-1.5 text-xs">
+                    <span
+                      className="text-brand-white"
+                      title={String(item.value)}
+                    >
+                      {formatFullPrecisionBalance(
+                        String(item.value),
+                        Math.min(assetDecimals.value, 4)
+                      )}
+                    </span>
 
-                      <span className="text-brand-royalbluemedium">
-                        {assetSymbol.value}
-                      </span>
-                    </p>
-                  )}
-                </li>
-              </Fragment>
+                    <span className="text-brand-royalbluemedium">
+                      {assetSymbol.value}
+                    </span>
+                  </p>
+                )}
+              </li>
             ))}
         </div>
 

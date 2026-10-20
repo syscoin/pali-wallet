@@ -28,7 +28,7 @@ for (const value of [
     label: '184.467B',
   },
 ]) {
-  test(`SPT list preserves the exact balance ${value.exact} with a readable compact label`, async ({}, info) => {
+  test(`SPT list and Details preserve the exact balance ${value.exact} with readable compact labels`, async ({}, info) => {
     expect(process.env.PALI_TEST_DAPP_REVISION).toMatch(/^[a-f0-9]{40}$/);
     expect(path.isAbsolute(E2E_CONFIG.extensionPath)).toBe(true);
     const before = { ...E2E_CONFIG };
@@ -206,6 +206,76 @@ for (const value of [
             })
             .click();
           await expect(page).toHaveURL(/#\/home\/details/);
+        }
+      );
+      await wallet.step(
+        'refresh the real Details totals and retain their exact values at both widths',
+        async () => {
+          const totals = [
+            { name: 'Balance', exact: value.exact, label: value.label },
+            { name: 'Total Received', exact: value.exact, label: value.label },
+            {
+              name: 'Total Sent',
+              exact: value.decimals === 0 ? '0' : '0.0',
+              label: '0',
+            },
+          ];
+          for (const viewport of [
+            { width: 320, height: 360 },
+            { width: 400, height: 620 },
+          ]) {
+            await page.setViewportSize(viewport);
+            for (const total of totals) {
+              const row = page
+                .getByRole('listitem')
+                .filter({ has: page.getByText(total.name, { exact: true }) });
+              const amount = row.locator('span.text-brand-white');
+              await expect(amount).toHaveText(total.label);
+              await expect(amount).toHaveAttribute('title', total.exact);
+              await amount.scrollIntoViewIfNeeded();
+              await expect(amount).toBeVisible();
+              const bounds = await amount.evaluate((element) => {
+                const box = element.getBoundingClientRect();
+                return {
+                  left: box.left,
+                  right: box.right,
+                  documentWidth: document.documentElement.scrollWidth,
+                };
+              });
+              expect(bounds.left).toBeGreaterThanOrEqual(0);
+              expect(bounds.right).toBeLessThanOrEqual(viewport.width);
+              expect(bounds.documentWidth).toBe(viewport.width);
+              geometry.push({
+                view: 'details',
+                field: total.name,
+                ...viewport,
+                ...bounds,
+              });
+            }
+            await info.attach(`spt-details-${viewport.width}`, {
+              body: await page.screenshot({ animations: 'disabled' }),
+              contentType: 'image/png',
+            });
+          }
+          const publicTotals = await page.evaluate(async (guid) => {
+            const state = await chrome.runtime.sendMessage({
+              type: 'getCurrentState',
+            });
+            const selected = state.vault.activeAccount;
+            const asset = state.vault.accountAssets[selected.type][
+              selected.id
+            ].syscoin.find((entry: any) => String(entry.assetGuid) === guid);
+            return {
+              balance: asset.balance,
+              totalSent: asset.totalSent,
+              totalReceived: asset.totalReceived,
+            };
+          }, SPT_GUID);
+          expect(publicTotals).toEqual({
+            balance: value.exact,
+            totalReceived: value.exact,
+            totalSent: value.decimals === 0 ? '0' : '0.0',
+          });
         }
       );
       // Owned-token discovery already carries metadata. Normal import saves
