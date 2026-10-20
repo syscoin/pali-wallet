@@ -111,7 +111,8 @@ describe('read-only smart-account hydration approval and target identity', () =>
       expect(persist).toHaveBeenCalledWith(
         7,
         metadata,
-        'hydrate-smart-account-metadata'
+        expectedContext(),
+        mockState.vault.accounts.SmartAccount[7].smartAccount
       );
     }
   );

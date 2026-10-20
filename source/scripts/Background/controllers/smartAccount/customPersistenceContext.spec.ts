@@ -76,9 +76,13 @@ describe.each(['add', 'remove'])(
       await persist();
       expect(controller.persistSmartAccountMetadata).toHaveBeenCalledWith(
         0,
-        { customModules: operation === 'add' ? [record] : [] },
-        `${operation}-smart-account-custom-module`
+        expect.any(Function),
+        expectedContext
       );
+      const transform = controller.persistSmartAccountMetadata.mock.calls[0][1];
+      expect(transform({ customModules: [] })).toEqual({
+        customModules: operation === 'add' ? [record] : [],
+      });
     });
 
     it('retains compatibility for existing internal callers without a context', async () => {
@@ -89,6 +93,11 @@ describe.each(['add', 'remove'])(
     it.each(['account', 'address', 'chain', 'rpc', 'slip44', 'session'])(
       'rejects a stale %s before writing without misreporting the accepted transaction',
       async (axis) => {
+        // Exercise the real staged helper admission, not a mocked writer that
+        // would bypass the expected-context guard now owned by that helper.
+        controller.persistSmartAccountMetadata = (
+          SmartAccountController.prototype as any
+        ).persistSmartAccountMetadata;
         if (axis === 'account') state.vault.activeAccount.id = 1;
         if (axis === 'address')
           state.vault.accounts.SmartAccount[0].address = address(3);
@@ -102,7 +111,6 @@ describe.each(['add', 'remove'])(
         expect(error.message).toBe('PALI_TRANSACTION_CONTEXT_CHANGED');
         expect(error.transactionNotBroadcast).not.toBe(true);
         expect(controller.getSmartAccountById).not.toHaveBeenCalled();
-        expect(controller.persistSmartAccountMetadata).not.toHaveBeenCalled();
         expect(store.dispatch).not.toHaveBeenCalled();
       }
     );

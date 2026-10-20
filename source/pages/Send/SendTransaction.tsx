@@ -189,6 +189,26 @@ export const SendTransaction = () => {
   // replace a nonce the user explicitly selected (including zero).
   const [customNonce, setCustomNonce] = useState<number>();
   const [tabSelected, setTabSelected] = useState<string>(tabElements[0].id);
+  const handleTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
+    const index = tabElements.findIndex((tab) => tab.id === tabSelected);
+    const next =
+      event.key === 'Home'
+        ? 0
+        : event.key === 'End'
+        ? tabElements.length - 1
+        : event.key === 'ArrowRight'
+        ? (index + 1) % tabElements.length
+        : event.key === 'ArrowLeft'
+        ? (index + tabElements.length - 1) % tabElements.length
+        : -1;
+    if (next < 0) return;
+    event.preventDefault();
+    setTabSelected(tabElements[next].id);
+    event.currentTarget
+      .closest('[role="tablist"]')
+      ?.querySelectorAll<HTMLButtonElement>('[role="tab"]')
+      [next]?.focus();
+  };
   // Removed unused haveError state
   const [hasTxDataError, setHasTxDataError] = useState<boolean>(false);
   const [hasGasError, setHasGasError] = useState<boolean>(false);
@@ -1748,17 +1768,24 @@ export const SendTransaction = () => {
                 role="tablist"
               >
                 {tabElements.map((tab) => (
-                  <li
-                    className={`h-[40px] w-[92px] text-base font-normal cursor-pointer hover:opacity-60 ${
-                      tab.id === tabSelected
-                        ? 'bg-brand-blue600 rounded-t-[20px] py-[8px] px-[16px] '
-                        : 'bg-alpha-whiteAlpha200 rounded-t-[20px] py-[8px] px-[16px] '
-                    }`}
-                    role="presentation"
-                    key={tab.id}
-                    onClick={() => setTabSelected(tab.id)}
-                  >
-                    {t(`send.${tab.tabName.toLowerCase()}`)}
+                  <li role="presentation" key={tab.id}>
+                    <button
+                      type="button"
+                      role="tab"
+                      id={`${tab.id}-tab`}
+                      aria-controls={tab.id}
+                      aria-selected={tab.id === tabSelected}
+                      tabIndex={tab.id === tabSelected ? 0 : -1}
+                      className={`h-[40px] w-[92px] text-base font-normal cursor-pointer hover:opacity-60 ${
+                        tab.id === tabSelected
+                          ? 'bg-brand-blue600 rounded-t-[20px] py-[8px] px-[16px] '
+                          : 'bg-alpha-whiteAlpha200 rounded-t-[20px] py-[8px] px-[16px] '
+                      }`}
+                      onClick={() => setTabSelected(tab.id)}
+                      onKeyDown={handleTabKeyDown}
+                    >
+                      {t(`send.${tab.tabName.toLowerCase()}`)}
+                    </button>
                   </li>
                 ))}
               </ul>
@@ -1775,6 +1802,7 @@ export const SendTransaction = () => {
                   }`}
                   id={component.id}
                   role="tabpanel"
+                  aria-labelledby={`${component.id}-tab`}
                 >
                   {component.component === 'details' ? (
                     <TransactionDetailsComponent
