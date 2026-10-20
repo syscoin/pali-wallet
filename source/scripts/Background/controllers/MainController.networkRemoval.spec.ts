@@ -13,6 +13,8 @@ jest.mock('@sidhujag/sysweb3-keyring', () => ({
 jest.mock('utils/storageAPI', () => ({
   chromeStorage: {
     getItem: jest.fn().mockResolvedValue(null),
+    getItems: jest.fn(),
+    setItems: jest.fn(),
     removeItem: jest.fn(),
     setItem: jest.fn(),
   },
@@ -100,6 +102,25 @@ describe('network removal cannot delete a switching or active vault', () => {
     });
     jest.spyOn(vaultCache, 'clearSlip44FromCache').mockImplementation();
     jest
+      .mocked(chromeStorage.getItems)
+      .mockReset()
+      .mockImplementation(async (keys) =>
+        Object.fromEntries(
+          keys
+            .filter((key) => persisted.has(key))
+            .map((key) => [key, persisted.get(key)])
+        )
+      );
+    jest
+      .mocked(chromeStorage.setItems)
+      .mockReset()
+      .mockImplementation(async (items) => {
+        for (const [key, value] of Object.entries(items)) {
+          if (value === null) persisted.delete(key);
+          else persisted.set(key, value);
+        }
+      });
+    jest
       .mocked(chromeStorage.removeItem)
       .mockReset()
       .mockImplementation(async (key) => {
@@ -120,6 +141,7 @@ describe('network removal cannot delete a switching or active vault', () => {
     wallet.isRemovingNetwork = false;
     wallet.currentPromise = null;
     wallet.saveWalletState = jest.fn().mockResolvedValue(undefined);
+    wallet.resetAutoLockTimer = jest.fn();
     wallet.evmAssetsController = {
       detectCoinGeckoIds: jest.fn().mockResolvedValue(null),
     };
@@ -198,12 +220,14 @@ describe('network removal cannot delete a switching or active vault', () => {
     let started!: () => void;
     const deleting = new Promise<void>((resolve) => (started = resolve));
     jest
-      .mocked(chromeStorage.removeItem)
-      .mockImplementationOnce(async (key) => {
+      .mocked(chromeStorage.setItems)
+      .mockImplementationOnce(async (items) => {
         started();
         await new Promise<void>((resolve) => (release = resolve));
-        for (const item of Array.isArray(key) ? key : [key])
-          persisted.delete(item);
+        for (const [key, value] of Object.entries(items)) {
+          if (value === null) persisted.delete(key);
+          else persisted.set(key, value);
+        }
       });
     const removing = removeTarget(wallet);
     await deleting;
@@ -228,11 +252,7 @@ describe('network removal cannot delete a switching or active vault', () => {
     expect(state.vault.accountTransactions.HDAccount[7].syscoin[57]).toEqual([
       'saved-history',
     ]);
-    expect(wallet.saveWalletState).toHaveBeenCalledWith(
-      'remove-network',
-      true,
-      true
-    );
+    expect(chromeStorage.setItems).toHaveBeenCalledTimes(1);
     expect(wallet.isRemovingNetwork).toBe(false);
   });
 
@@ -243,12 +263,14 @@ describe('network removal cannot delete a switching or active vault', () => {
       let started!: () => void;
       const deleting = new Promise<void>((resolve) => (started = resolve));
       jest
-        .mocked(chromeStorage.removeItem)
-        .mockImplementationOnce(async (key) => {
+        .mocked(chromeStorage.setItems)
+        .mockImplementationOnce(async (items) => {
           started();
           await new Promise<void>((resolve) => (release = resolve));
-          for (const item of Array.isArray(key) ? key : [key])
-            persisted.delete(item);
+          for (const [key, value] of Object.entries(items)) {
+            if (value === null) persisted.delete(key);
+            else persisted.set(key, value);
+          }
         });
       const removing = removeTarget(wallet);
       await deleting;
@@ -292,12 +314,14 @@ describe('network removal cannot delete a switching or active vault', () => {
     let started!: () => void;
     const deleting = new Promise<void>((resolve) => (started = resolve));
     jest
-      .mocked(chromeStorage.removeItem)
-      .mockImplementationOnce(async (key) => {
+      .mocked(chromeStorage.setItems)
+      .mockImplementationOnce(async (items) => {
         started();
         await new Promise<void>((resolve) => (release = resolve));
-        for (const item of Array.isArray(key) ? key : [key])
-          persisted.delete(item);
+        for (const [key, value] of Object.entries(items)) {
+          if (value === null) persisted.delete(key);
+          else persisted.set(key, value);
+        }
       });
     const removing = removeTarget(wallet);
     await deleting;
@@ -388,7 +412,7 @@ describe('network removal cannot delete a switching or active vault', () => {
     let release!: () => void;
     let started!: () => void;
     const saving = new Promise<void>((resolve) => (started = resolve));
-    wallet.saveWalletState.mockImplementationOnce(async () => {
+    jest.mocked(chromeStorage.setItems).mockImplementationOnce(async () => {
       started();
       await new Promise<void>((resolve) => (release = resolve));
     });
@@ -407,33 +431,37 @@ describe('network removal cannot delete a switching or active vault', () => {
     const { chromeStorage: nativeStorage } =
       jest.requireActual('utils/storageAPI');
     jest
-      .mocked(chromeStorage.removeItem)
-      .mockImplementation(nativeStorage.removeItem);
+      .mocked(chromeStorage.setItems)
+      .mockImplementation(nativeStorage.setItems);
     let fail = true;
-    const remove = jest
-      .spyOn(chrome.storage.local, 'remove')
-      .mockImplementation(((keys: string[], callback: () => void) => {
-        if (fail) {
-          const descriptor = Object.getOwnPropertyDescriptor(
-            chrome.runtime,
-            'lastError'
-          );
-          Object.defineProperty(chrome.runtime, 'lastError', {
-            configurable: true,
-            value: { message: 'Native removal rejected' },
-          });
-          try {
-            callback();
-          } finally {
-            if (descriptor)
-              Object.defineProperty(chrome.runtime, 'lastError', descriptor);
-            else Reflect.deleteProperty(chrome.runtime, 'lastError');
-          }
-          return;
+    const remove = jest.spyOn(chrome.storage.local, 'set').mockImplementation(((
+      items: Record<string, unknown>,
+      callback: () => void
+    ) => {
+      if (fail) {
+        const descriptor = Object.getOwnPropertyDescriptor(
+          chrome.runtime,
+          'lastError'
+        );
+        Object.defineProperty(chrome.runtime, 'lastError', {
+          configurable: true,
+          value: { message: 'Native removal rejected' },
+        });
+        try {
+          callback();
+        } finally {
+          if (descriptor)
+            Object.defineProperty(chrome.runtime, 'lastError', descriptor);
+          else Reflect.deleteProperty(chrome.runtime, 'lastError');
         }
-        for (const key of keys) persisted.delete(key);
-        callback();
-      }) as any);
+        return;
+      }
+      for (const [key, value] of Object.entries(items)) {
+        if (value === null) persisted.delete(key);
+        else persisted.set(key, value);
+      }
+      callback();
+    }) as any);
     const before = [...persisted];
     await expect(removeTarget(wallet)).rejects.toMatchObject({
       message: 'Native removal rejected',
@@ -441,7 +469,10 @@ describe('network removal cannot delete a switching or active vault', () => {
     expect([...persisted]).toEqual(before);
     expect(remove).toHaveBeenCalledTimes(1);
     expect(remove).toHaveBeenCalledWith(
-      ['state-vault-1', 'state-vault-1-passkey-profile'],
+      expect.objectContaining({
+        'state-vault-1': null,
+        'state-vault-1-passkey-profile': null,
+      }),
       expect.any(Function)
     );
     expect(wallet.keyrings.get(1)).toBe(targetKeyring);
@@ -453,12 +484,12 @@ describe('network removal cannot delete a switching or active vault', () => {
     expect(persisted.has('state-vault-1-passkey-profile')).toBe(false);
     expect(state.vaultGlobal.networks.syscoin[999]).toBeUndefined();
     expect(wallet.keyrings.has(1)).toBe(false);
-    expect(wallet.saveWalletState).toHaveBeenCalledTimes(1);
+    expect(chromeStorage.setItems).toHaveBeenCalledTimes(2);
   });
 
   it('propagates a storage failure and releases removal without deleting its keyring or network', async () => {
     jest
-      .mocked(chromeStorage.removeItem)
+      .mocked(chromeStorage.setItems)
       .mockRejectedValueOnce(Error('Storage unavailable'));
     await expect(removeTarget(wallet)).rejects.toThrow('Storage unavailable');
     expect(wallet.keyrings.get(1)).toBe(targetKeyring);
@@ -474,12 +505,14 @@ describe('network removal cannot delete a switching or active vault', () => {
     let started!: () => void;
     const deleting = new Promise<void>((resolve) => (started = resolve));
     jest
-      .mocked(chromeStorage.removeItem)
-      .mockImplementationOnce(async (key) => {
+      .mocked(chromeStorage.setItems)
+      .mockImplementationOnce(async (items) => {
         started();
         await new Promise<void>((resolve) => (release = resolve));
-        for (const item of Array.isArray(key) ? key : [key])
-          persisted.delete(item);
+        for (const [key, value] of Object.entries(items)) {
+          if (value === null) persisted.delete(key);
+          else persisted.set(key, value);
+        }
       });
     const removing = removeTarget(wallet);
     const rejected = expect(removing).rejects.toThrow('Wallet session changed');

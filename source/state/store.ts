@@ -49,6 +49,7 @@ import vaultGlobal, {
   setAdvancedSettings,
   setHasEthProperty,
   setNetwork,
+  removeNetwork,
 } from './vaultGlobal';
 
 // Define RootState earlier if possible, or use a more generic type for ThunkMiddleware initially
@@ -334,6 +335,60 @@ export function persistNetworkRegistry(
     assertCurrent,
     isSameWallet
   );
+}
+
+/** Remove registry and owned vault data in one native commit. */
+export function persistNetworkRemoval(
+  network: Parameters<typeof removeNetwork>[0],
+  assertCurrent: () => void,
+  isSameWallet: () => boolean,
+  removedSlip44?: number,
+  onCommitted?: () => void
+): Promise<void> {
+  return walletPersistenceMutex.runExclusive(async () => {
+    const assertAdmitted = () => {
+      assertWalletPersistenceAllowed();
+      assertCurrent();
+    };
+    assertAdmitted();
+    const keys =
+      removedSlip44 === undefined
+        ? []
+        : [
+            `state-vault-${removedSlip44}`,
+            `state-vault-${removedSlip44}-passkey-profile`,
+          ];
+    const previous = keys.length ? await chromeStorage.getItems(keys) : {};
+    assertAdmitted();
+    const action = removeNetwork(network);
+    const mainState = getMainStateForStorage(
+      reducers(store.getState(), action)
+    );
+    // Existing vault/profile readers treat null as absent. Tombstones allow
+    // registry removal and data erasure to share one acknowledged operation.
+    await chromeStorage.setItems({
+      state: mainState,
+      ...Object.fromEntries(keys.map((key) => [key, null])),
+    });
+    lastPersistedState = mainState;
+    try {
+      assertAdmitted();
+    } catch (error) {
+      assertWalletPersistenceAllowed();
+      if (!isSameWallet()) throw error;
+      const current = getMainStateForStorage(store.getState());
+      await chromeStorage.setItems({
+        state: current,
+        ...Object.fromEntries(keys.map((key) => [key, previous[key] ?? null])),
+      });
+      lastPersistedState = current;
+      throw error;
+    }
+    store.dispatch(action);
+    if (removedSlip44 !== undefined)
+      vaultCache.clearSlip44FromCache(removedSlip44);
+    onCommitted?.();
+  });
 }
 
 type AccountRemovalCommit = {

@@ -58,6 +58,7 @@ import {
   persistFiatCurrency,
   persistHasEthProperty,
   persistNetworkRegistry,
+  persistNetworkRemoval,
   restoreSourceVaultAfterUncommittedSwitch,
   saveMainState,
 } from 'state/store';
@@ -93,7 +94,6 @@ import {
   setError as setStoreError,
   setIsLoadingBalances,
   setNetworks,
-  removeNetwork,
   setIsPollingUpdate,
   updateNetworkQualityLatency,
   clearNetworkQualityIfStale,
@@ -4385,6 +4385,7 @@ class MainController {
       const network = vaultGlobal.networks[chain]?.[chainId];
       if (
         !network ||
+        network !== originalNetwork ||
         network.url !== rpcUrl ||
         network.slip44 !== originalNetwork?.slip44
       ) {
@@ -4414,52 +4415,33 @@ class MainController {
         assertCanRemove();
         const networkToRemove =
           store.getState().vaultGlobal.networks[chain]?.[chainId];
-        // UTXO networks have separate vaults. Finish deleting storage while
-        // holding switch/persistence ownership, before publishing the removal.
-        if (
+        // Shared UTXO vaults belong to every surviving registration.
+        const removedSlip44 =
           chain === INetworkType.Syscoin &&
-          networkToRemove?.slip44 !== undefined
-        ) {
-          const slip44ToRemove = networkToRemove.slip44;
-          // Legacy registrations can share a vault. Removing one registration
-          // must retain the surviving network's account records and keyring.
-          if (!hasOtherOwner(slip44ToRemove)) {
-            await walletPersistenceMutex.runExclusive(async () => {
-              assertCanRemove();
-              await this.clearSlip44VaultState(slip44ToRemove);
-            });
+          networkToRemove?.slip44 !== undefined &&
+          !hasOtherOwner(networkToRemove.slip44)
+            ? networkToRemove.slip44
+            : undefined;
+        this.resetAutoLockTimer();
+        await persistNetworkRemoval(
+          { chain, chainId, rpcUrl, label, key },
+          () => {
             assertCanRemove();
-            this.keyrings.delete(slip44ToRemove);
+            if (removedSlip44 !== undefined && hasOtherOwner(removedSlip44))
+              throw new Error(
+                'Network ownership changed. Please confirm removal again.'
+              );
+          },
+          () => walletStateGeneration === this.walletStateGeneration,
+          removedSlip44,
+          () => {
+            if (removedSlip44 !== undefined)
+              this.keyrings.delete(removedSlip44);
           }
-        }
-
-        store.dispatch(removeNetwork({ chain, chainId, rpcUrl, label, key }));
-        await this.saveWalletState('remove-network', true, true);
+        );
       });
     } finally {
       this.isRemovingNetwork = false;
-    }
-  }
-
-  private async clearSlip44VaultState(slip44: number): Promise<void> {
-    try {
-      // Clear the vault state from storage
-      const storageKey = `state-vault-${slip44}`;
-      const passkeyProfileStorageKey = `state-vault-${slip44}-passkey-profile`;
-      await chromeStorage.removeItem([storageKey, passkeyProfileStorageKey]);
-
-      // Clear from vault cache as well
-      vaultCache.clearSlip44FromCache(slip44);
-
-      console.log(
-        `[MainController] Successfully cleared vault state for slip44: ${slip44}`
-      );
-    } catch (error) {
-      console.error(
-        `[MainController] Error clearing vault state for slip44 ${slip44}:`,
-        error
-      );
-      throw error;
     }
   }
 
