@@ -1,9 +1,10 @@
 import axios from 'axios';
 
+import PaliLogo from 'assets/all_assets/favicon-32.png';
 import { KeyringAccountType } from 'types/network';
 
 import EthAccountController from './evm';
-import { getAccountAssets } from './getAccountAssets';
+import { getAccountAssets, requireAssetArray } from './getAccountAssets';
 import SysAccountController from './syscoin';
 
 let mockState: any;
@@ -88,6 +89,39 @@ it('validates the supplied snapshot without reading the current global store', (
   const original = mockState.vault.accountAssets;
   mockState.vault.accountAssets = undefined;
   expect(getAccountAssets(original, selected)).toBe(original[TYPE][0]);
+});
+
+it.each(['Ethereum', 'Syscoin'] as const)(
+  'retains the original %s array reference, including an empty array',
+  (family) => {
+    const assets: unknown[] = [];
+    expect(requireAssetArray(assets, family)).toBe(assets);
+    expect(() => requireAssetArray(undefined, family)).toThrow(
+      `${family} assets array not initialized`
+    );
+  }
+);
+
+it.each([undefined, '', null, false, 0, NaN])(
+  'preserves the original EVM logo fallback for %s',
+  async (logo) => {
+    const token = { ...evm(), logo };
+    const prepare = await EthAccountController().prepareTokenAddition(
+      token as any
+    );
+    expect(prepare().payload.value[0].logo).toBe(PaliLogo);
+    expect(token.logo).toBe(logo);
+  }
+);
+
+it('preserves a provided EVM logo without modifying the input token', async () => {
+  const logo = 'https://images.synthetic.invalid/public.svg';
+  const token = { ...evm(), logo };
+  const prepare = await EthAccountController().prepareTokenAddition(
+    token as any
+  );
+  expect(prepare().payload.value[0].logo).toBe(logo);
+  expect(token.logo).toBe(logo);
 });
 
 describe.each(controllers)('$label asset container boundaries', (scenario) => {

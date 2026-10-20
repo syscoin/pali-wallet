@@ -6,7 +6,7 @@ import store from 'state/store';
 import { setAccountPropertyByIdAndType, setAccountAssets } from 'state/vault';
 import { ITokenSysProps } from 'types/tokens';
 
-import { getAccountAssets } from './getAccountAssets';
+import { getAccountAssets, requireAssetArray } from './getAccountAssets';
 
 const config = {
   headers: {
@@ -51,9 +51,7 @@ const SysAccountController = (
       store.getState().vault;
     const activeAccountAssets = getAccountAssets(accountAssets, activeAccount);
 
-    if (!activeAccountAssets.syscoin) {
-      throw new Error('Syscoin assets array not initialized');
-    }
+    requireAssetArray(activeAccountAssets.syscoin, 'Syscoin');
 
     // Syscoin 5 no longer uses pubData field
     const description = token.description || '';
@@ -76,12 +74,12 @@ const SysAccountController = (
     return () => {
       // Metadata and storage can outlive other updates. Always merge into the
       // latest target list and recheck duplicates at each commit boundary.
-      const currentAssets =
+      const currentAssets = requireAssetArray(
         store.getState().vault.accountAssets?.[activeAccount.type]?.[
           activeAccount.id
-        ]?.syscoin;
-      if (!currentAssets)
-        throw new Error('Syscoin assets array not initialized');
+        ]?.syscoin,
+        'Syscoin'
+      );
       if (
         currentAssets.some(
           (asset: ITokenSysProps) =>
@@ -109,14 +107,15 @@ const SysAccountController = (
         activeAccount
       );
 
-      if (!activeAccountAssets.syscoin) {
-        throw new Error('Syscoin assets array not initialized');
-      }
+      const currentAssets = requireAssetArray(
+        activeAccountAssets.syscoin,
+        'Syscoin'
+      );
 
       const matchesToken = (asset: ITokenSysProps) =>
         asset.assetGuid === assetGuid &&
         asset.chainId === activeNetwork.chainId;
-      const tokenExists = activeAccountAssets.syscoin.find(matchesToken);
+      const tokenExists = currentAssets.find(matchesToken);
 
       if (!tokenExists) throw new Error("Token doesn't exist on this network!");
 
@@ -124,7 +123,7 @@ const SysAccountController = (
         accountId: activeAccount.id,
         accountType: activeAccount.type,
         property: 'syscoin',
-        value: activeAccountAssets.syscoin.filter(
+        value: currentAssets.filter(
           (currentToken) => !matchesToken(currentToken)
         ),
       });
