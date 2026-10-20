@@ -6,10 +6,14 @@ import React from 'react';
 import { Provider } from 'react-redux';
 import { MemoryRouter } from 'react-router-dom';
 
+import {
+  clearTokenIconCache,
+  preloadTokenIcons,
+  TokenIcon,
+} from 'components/TokenIcon';
 import { DetailsView } from 'pages/Home/Panel/components/Details';
 import EvmAssetsController from 'scripts/Background/controllers/assets/evm';
 import vaultReducer, { setAccountAssets } from 'state/vault';
-import { clearTokenIconCache, TokenIcon } from 'components/TokenIcon';
 import { INetworkType, KeyringAccountType } from 'types/network';
 import { getWalletNavigationScope } from 'utils/navigationState';
 
@@ -200,6 +204,7 @@ const installImage = (ok: boolean, validImage = false) => {
         id: 'synthetic-token',
         symbol: 'syn',
         image: { large: LOGO },
+        // eslint-disable-next-line camelcase
         market_data: { current_price: { usd: 55 } },
       }),
     } as Response;
@@ -386,3 +391,66 @@ it('retains native failure handling under StrictMode effect replay', async () =>
   fireEvent.error(await screen.findByAltText('STRICT'));
   expect(screen.getByText('S', { exact: true })).toBeInTheDocument();
 });
+
+it.each(['direct URL', 'FileReader', 'preload'])(
+  'preserves the cache boundary and existing-key failure with %s insertion',
+  async (insertion) => {
+    const urls = Array.from(
+      { length: 201 },
+      (_, index) => `${LOGO}?cache-boundary=${index}`
+    );
+    const largeBlob = new Blob(['x'.repeat(256 * 1024 + 1)]);
+    const smallBlob = new Blob(['<svg xmlns="http://www.w3.org/2000/svg"/>'], {
+      type: 'image/svg+xml',
+    });
+    global.fetch = jest.fn(
+      async (url) =>
+        ({
+          ok: true,
+          blob: async () =>
+            url === urls[200] && insertion !== 'direct URL'
+              ? smallBlob
+              : largeBlob,
+        } as Response)
+    ) as typeof fetch;
+    const full = render(
+      <>
+        {urls.slice(0, 200).map((logo, index) => (
+          <TokenIcon key={logo} logo={logo} symbol={`CACHE${index}`} />
+        ))}
+      </>
+    );
+    await waitFor(() =>
+      expect(full.container.querySelectorAll('img')).toHaveLength(200)
+    );
+    fireEvent.error(screen.getByAltText('CACHE199'));
+    full.unmount();
+
+    const first = render(<TokenIcon logo={urls[0]} symbol="FIRST" />);
+    expect(await screen.findByAltText('FIRST')).toHaveAttribute('src', urls[0]);
+    expect(fetch).toHaveBeenCalledTimes(200);
+    first.unmount();
+
+    if (insertion === 'preload') await preloadTokenIcons([urls[200]]);
+    else {
+      const next = render(<TokenIcon logo={urls[200]} symbol="NEXT" />);
+      await screen.findByAltText('NEXT');
+      next.unmount();
+    }
+    expect(fetch).toHaveBeenCalledTimes(201);
+    const retained = render(<TokenIcon logo={urls[1]} symbol="RETAINED" />);
+    expect(await screen.findByAltText('RETAINED')).toHaveAttribute(
+      'src',
+      urls[1]
+    );
+    expect(fetch).toHaveBeenCalledTimes(201);
+    retained.unmount();
+
+    render(<TokenIcon logo={urls[0]} symbol="EVICTED" />);
+    expect(await screen.findByAltText('EVICTED')).toHaveAttribute(
+      'src',
+      urls[0]
+    );
+    expect(fetch).toHaveBeenCalledTimes(202);
+  }
+);

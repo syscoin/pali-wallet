@@ -21,6 +21,13 @@ const MAX_CACHED_BLOB_BYTES = 256 * 1024; // 256KB
 // Track in-flight requests to prevent duplicate fetches
 const pendingTokenRequests = new Map<string, Promise<string | null>>();
 
+const pruneTokenImageCache = () => {
+  if (tokenImageCache.size >= MAX_CACHE_ENTRIES) {
+    const oldestKey = tokenImageCache.keys().next().value;
+    if (oldestKey !== undefined) tokenImageCache.delete(oldestKey);
+  }
+};
+
 /**
  * Token Icon Cache Strategy:
  *
@@ -185,12 +192,7 @@ export const TokenIcon: React.FC<ITokenIconProps> = React.memo(
           // If it's too large for base64 caching, just cache the URL so it can still render reliably
           if (blob.size > MAX_CACHED_BLOB_BYTES) {
             // Enforce LRU cap
-            if (tokenImageCache.size >= MAX_CACHE_ENTRIES) {
-              const oldestKey = tokenImageCache.keys().next().value as
-                | string
-                | undefined;
-              if (oldestKey !== undefined) tokenImageCache.delete(oldestKey);
-            }
+            pruneTokenImageCache();
             tokenImageCache.set(cacheKey, resolvedLogo);
             tokenImageFailureTs.delete(cacheKey);
             return resolvedLogo;
@@ -201,24 +203,14 @@ export const TokenIcon: React.FC<ITokenIconProps> = React.memo(
             reader.onloadend = () => {
               const dataUrl = reader.result as string;
               // Enforce LRU cap
-              if (tokenImageCache.size >= MAX_CACHE_ENTRIES) {
-                const oldestKey = tokenImageCache.keys().next().value as
-                  | string
-                  | undefined;
-                if (oldestKey !== undefined) tokenImageCache.delete(oldestKey);
-              }
+              pruneTokenImageCache();
               tokenImageCache.set(cacheKey, dataUrl);
               tokenImageFailureTs.delete(cacheKey);
               resolve(dataUrl);
             };
 
             reader.onerror = () => {
-              if (tokenImageCache.size >= MAX_CACHE_ENTRIES) {
-                const oldestKey = tokenImageCache.keys().next().value as
-                  | string
-                  | undefined;
-                if (oldestKey !== undefined) tokenImageCache.delete(oldestKey);
-              }
+              pruneTokenImageCache();
               tokenImageCache.set(cacheKey, null);
               tokenImageFailureTs.set(cacheKey, Date.now());
               resolve(null);
@@ -316,13 +308,7 @@ export const TokenIcon: React.FC<ITokenIconProps> = React.memo(
         onError={() => {
           if (!imageScope.active || imageScopeRef.current !== imageScope)
             return;
-          if (
-            !tokenImageCache.has(cacheKey) &&
-            tokenImageCache.size >= MAX_CACHE_ENTRIES
-          ) {
-            const oldestKey = tokenImageCache.keys().next().value;
-            if (oldestKey !== undefined) tokenImageCache.delete(oldestKey);
-          }
+          if (!tokenImageCache.has(cacheKey)) pruneTokenImageCache();
           tokenImageCache.set(cacheKey, null);
           tokenImageFailureTs.set(cacheKey, Date.now());
           setIconState({
@@ -445,22 +431,12 @@ export const preloadTokenIcons = async (logoUrls: string[]) => {
         return new Promise<string | null>((resolve) => {
           reader.onloadend = () => {
             const dataUrl = reader.result as string;
-            if (tokenImageCache.size >= MAX_CACHE_ENTRIES) {
-              const oldestKey = tokenImageCache.keys().next().value as
-                | string
-                | undefined;
-              if (oldestKey !== undefined) tokenImageCache.delete(oldestKey);
-            }
+            pruneTokenImageCache();
             tokenImageCache.set(url, dataUrl);
             resolve(dataUrl);
           };
           reader.onerror = () => {
-            if (tokenImageCache.size >= MAX_CACHE_ENTRIES) {
-              const oldestKey = tokenImageCache.keys().next().value as
-                | string
-                | undefined;
-              if (oldestKey !== undefined) tokenImageCache.delete(oldestKey);
-            }
+            pruneTokenImageCache();
             tokenImageCache.set(url, null);
             resolve(null);
           };

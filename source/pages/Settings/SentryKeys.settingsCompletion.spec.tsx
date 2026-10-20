@@ -354,6 +354,9 @@ it('preserves native failure and retries the same draft after password re-entry'
 it.each([
   undefined,
   null,
+  false,
+  0,
+  '',
   {},
   { serviceUrl: 7, maxFeeSatoshis: '120000' },
   { serviceUrl: NEXT.serviceUrl, maxFeeSatoshis: 120000 },

@@ -185,22 +185,24 @@ const SentryKeys = () => {
           setShowKeys(false);
         }
       } else if (mode === 'service') {
-        const saved = (await controllerEmitter(
+        const saved = ((await controllerEmitter(
           ['wallet', 'saveSentrySettings'],
           [{ serviceUrl, maxFeeSatoshis: feeLimit, password }],
           30000,
           false
-        )) as typeof savedPreferences;
+        )) || {}) as Partial<NonNullable<typeof savedPreferences>>;
+        const savedUrl = saved.serviceUrl;
+        const savedFee = saved.maxFeeSatoshis;
         if (
-          typeof saved?.serviceUrl !== 'string' ||
-          !saved.serviceUrl ||
-          typeof saved.maxFeeSatoshis !== 'string' ||
-          !saved.maxFeeSatoshis
+          typeof savedUrl !== 'string' ||
+          !savedUrl ||
+          typeof savedFee !== 'string' ||
+          !savedFee
         )
           throw new Error(t('sentry.unableToCompleteSentryOperation'));
         savedPreferences = {
-          serviceUrl: saved.serviceUrl,
-          maxFeeSatoshis: saved.maxFeeSatoshis,
+          serviceUrl: savedUrl,
+          maxFeeSatoshis: savedFee,
         };
       } else if (isRemoval) {
         if (!selectedRemovalKey)
