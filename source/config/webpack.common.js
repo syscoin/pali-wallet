@@ -347,6 +347,13 @@ module.exports = {
           minChunks: 2,
           enforce: true,
         },
+        transactionErrors: {
+          test: /[\\/]source[\\/]utils[\\/]errorHandling\.ts$/,
+          chunks: 'async',
+          name: 'transaction-errors',
+          minChunks: 2,
+          enforce: true,
+        },
       },
       chunks(chunk) {
         // Only split chunks for app and external, NOT background, contentScript, inpage, pali, or handleWindowProperties
