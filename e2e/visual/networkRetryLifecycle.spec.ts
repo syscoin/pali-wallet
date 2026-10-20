@@ -171,9 +171,14 @@ for (const leaveView of [false, true]) {
                 exact: true,
               })
             ).toBeEnabled();
+            // Mounting recovery changes the popup's Redux state only. This
+            // fixture's healthy background remains idle until the real retry.
+            await expect(
+              page.getByText(en.chainError.connectionTooLong, { exact: true })
+            ).toBeVisible();
             await expect
               .poll(async () => (await publicState(page)).status)
-              .toBe('error');
+              .toBe('idle');
           }
         );
         await wallet.step(
