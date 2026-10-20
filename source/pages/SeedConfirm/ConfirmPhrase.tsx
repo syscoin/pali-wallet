@@ -17,7 +17,7 @@ export const ConfirmPhrase = ({
   confirmPassed: () => Promise<void>;
   passed: boolean;
   seed: string;
-  setPassed: React.Dispatch<React.SetStateAction<boolean>>;
+  setPassed: (confirmed: boolean) => void;
 }) => {
   const [orgList, setOrgList] = useState<Array<string>>(
     shuffle((seed || '').split(' '))

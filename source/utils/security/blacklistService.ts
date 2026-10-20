@@ -151,10 +151,11 @@ class BlacklistService {
       // Process MEW URLs
       if (mewUrls.status === 'fulfilled' && Array.isArray(mewUrls.value.data)) {
         mewUrls.value.data.forEach((entry: any) => {
-          if (entry.id) {
+          const domain = this.normalizeUrl(entry?.id);
+          if (domain) {
             // MEW uses 'id' field for the URL
             this.urlBlacklist.set(
-              this.normalizeUrl(entry.id),
+              domain,
               entry.comment || 'Blacklisted domain'
             );
           }
@@ -168,25 +169,28 @@ class BlacklistService {
         // Add blacklisted domains
         if (Array.isArray(config.blacklist)) {
           config.blacklist.forEach((domain: string) => {
-            this.urlBlacklist.set(
-              this.normalizeUrl(domain),
-              'MetaMask phishing detector: Known phishing site'
-            );
+            const normalized = this.normalizeUrl(domain);
+            if (normalized)
+              this.urlBlacklist.set(
+                normalized,
+                'MetaMask phishing detector: Known phishing site'
+              );
           });
         }
 
         // Store whitelist
         if (Array.isArray(config.whitelist)) {
           config.whitelist.forEach((domain: string) => {
-            this.urlWhitelist.add(this.normalizeUrl(domain));
+            const normalized = this.normalizeUrl(domain);
+            if (normalized) this.urlWhitelist.add(normalized);
           });
         }
 
         // Store fuzzylist for similarity detection
         if (Array.isArray(config.fuzzylist)) {
-          this.legitimateSites = config.fuzzylist.map((domain: string) =>
-            this.normalizeUrl(domain)
-          );
+          this.legitimateSites = config.fuzzylist
+            .map((domain: string) => this.normalizeUrl(domain))
+            .filter(Boolean);
         }
 
         console.log(
@@ -196,7 +200,8 @@ class BlacklistService {
 
       // Add local malicious domains
       this.LOCAL_MALICIOUS_DOMAINS.forEach((entry) => {
-        this.urlBlacklist.set(this.normalizeUrl(entry.url), entry.reason);
+        const domain = this.normalizeUrl(entry.url);
+        if (domain) this.urlBlacklist.set(domain, entry.reason);
       });
 
       // Process Scam Sniffer addresses
@@ -223,9 +228,10 @@ class BlacklistService {
         Array.isArray(scamSnifferDomains.value.data)
       ) {
         scamSnifferDomains.value.data.forEach((domain: string) => {
-          if (domain) {
+          const normalized = this.normalizeUrl(domain);
+          if (normalized) {
             this.urlBlacklist.set(
-              this.normalizeUrl(domain),
+              normalized,
               'Scam Sniffer: Known phishing domain'
             );
           }
@@ -247,12 +253,30 @@ class BlacklistService {
     }
   }
 
-  private normalizeUrl(url: string): string {
-    return url
-      .toLowerCase()
-      .replace(/^https?:\/\//, '')
-      .replace(/^www\./, '')
-      .replace(/\/$/, '');
+  private normalizeUrl(url: unknown): string {
+    if (typeof url !== 'string') return '';
+    const input = url.trim();
+    if (!input || /[\s\\]/.test(input)) return '';
+    try {
+      // Lists describe hostnames, not permission origins. Use the same URL/IDNA
+      // parsing as the browser, excluding ports and the DNS root's terminal dot.
+      // Keep complete origins unchanged everywhere outside this list lookup.
+      const parsed = new URL(
+        input.includes('://') ? input : `https://${input}`
+      );
+      if (
+        !['http:', 'https:'].includes(parsed.protocol) ||
+        parsed.username ||
+        parsed.password
+      )
+        return '';
+      return parsed.hostname
+        .toLowerCase()
+        .replace(/\.$/, '')
+        .replace(/^www\./, '');
+    } catch {
+      return '';
+    }
   }
 
   /**
@@ -301,6 +325,7 @@ class BlacklistService {
     );
 
     const normalized = this.normalizeUrl(url);
+    if (!normalized) return { isBlacklisted: false, severity: 'low' };
 
     // Check whitelist first
     if (this.urlWhitelist.has(normalized)) {
