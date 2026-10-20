@@ -899,8 +899,10 @@ const DAppController = (
   const getNetwork = (): INetwork => {
     const { activeNetwork } = store.getState().vault;
 
-    // Return the exact network object from Redux state to preserve kind property
-    return activeNetwork;
+    // Explorer API URLs may contain credentials; keep them internal.
+    const network = { ...activeNetwork };
+    delete network.apiUrl;
+    return network;
   };
 
   const hasWindow = (host: string) => _dapps[host].hasWindow;
