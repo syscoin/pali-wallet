@@ -15,9 +15,15 @@ jest.mock('@sidhujag/sysweb3-keyring', () => ({
 jest.mock('state/store', () => ({
   __esModule: true,
   default: { dispatch: jest.fn(), getState: jest.fn() },
+  persistAccountCreation: jest.fn(
+    async (_account, _accountType, assertCurrent, isSameWallet) => {
+      assertCurrent();
+      if (!isSameWallet()) throw new Error('Wallet changed before import');
+    }
+  ),
 }));
 
-import store from 'state/store';
+import store, { persistAccountCreation } from 'state/store';
 
 import MainController from './MainController';
 
@@ -42,6 +48,7 @@ describe('watch-only import public-material admission', () => {
       assertCurrent: jest.fn(),
     }));
     wallet.saveWalletState = jest.fn(async () => undefined);
+    wallet.resetAutoLockTimer = jest.fn();
     wallet.getLatestUpdateForCurrentAccount = jest.fn(async () => undefined);
   });
   afterEach(() => {
@@ -62,6 +69,7 @@ describe('watch-only import public-material admission', () => {
       expect(importWatchOnly).not.toHaveBeenCalled();
       expect(store.dispatch).not.toHaveBeenCalled();
       expect(wallet.saveWalletState).not.toHaveBeenCalled();
+      expect(persistAccountCreation).not.toHaveBeenCalled();
     }
   );
 
@@ -74,7 +82,28 @@ describe('watch-only import public-material admission', () => {
       address: 'public-address',
     });
     expect(importWatchOnly).toHaveBeenCalledWith(address, 'Watch');
-    expect(wallet.saveWalletState).toHaveBeenCalledTimes(1);
+    expect(persistAccountCreation).toHaveBeenCalledTimes(1);
+    expect(persistAccountCreation).toHaveBeenCalledWith(
+      { id: 1, address: 'public-address' },
+      'Imported',
+      expect.any(Function),
+      expect.any(Function)
+    );
+    expect(wallet.saveWalletState).not.toHaveBeenCalled();
+  });
+
+  it('propagates a refused staged commit without reporting an accepted import', async () => {
+    const failure = new Error('Synthetic watch import persistence refusal');
+    jest.mocked(persistAccountCreation).mockRejectedValueOnce(failure);
+    await expect(
+      wallet.importWatchOnlyFromController(
+        '1BoatSLRHtKNngkdXEeobR76b53LETtpyT',
+        'Watch'
+      )
+    ).rejects.toBe(failure);
+    expect(persistAccountCreation).toHaveBeenCalledTimes(1);
+    expect(wallet.saveWalletState).not.toHaveBeenCalled();
+    expect(wallet.getLatestUpdateForCurrentAccount).not.toHaveBeenCalled();
   });
 
   it('validates public text locally without invoking SDK, storage or network paths', () => {
@@ -86,5 +115,6 @@ describe('watch-only import public-material admission', () => {
     expect(wallet.accountMutationContext).not.toHaveBeenCalled();
     expect(store.dispatch).not.toHaveBeenCalled();
     expect(wallet.saveWalletState).not.toHaveBeenCalled();
+    expect(persistAccountCreation).not.toHaveBeenCalled();
   });
 });

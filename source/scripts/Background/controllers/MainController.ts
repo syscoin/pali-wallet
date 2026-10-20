@@ -50,12 +50,12 @@ import store from 'state/store';
 import {
   loadAndActivateSlip44Vault,
   persistAccountLabel,
+  persistAccountCreation,
   persistAccountRemoval,
   persistAdvancedSetting,
   persistCommittedWalletState,
   persistFiatCurrency,
   persistHasEthProperty,
-  persistImportedAccount,
   restoreSourceVaultAfterUncommittedSwitch,
   saveMainState,
 } from 'state/store';
@@ -3067,27 +3067,11 @@ class MainController {
       );
     }
 
-    if (store.getState().vault.accounts.HDAccount[newAccount.id])
-      throw new Error(
-        'Account creation conflicted with another request. Please retry.'
-      );
-
-    store.dispatch(
-      createAccount({
-        account: newAccount,
-        accountType: KeyringAccountType.HDAccount,
-      })
+    await this.storeCreatedAccount(
+      newAccount,
+      KeyringAccountType.HDAccount,
+      assertCurrent
     );
-    store.dispatch(
-      setActiveAccount({
-        id: newAccount.id,
-        type: KeyringAccountType.HDAccount,
-      })
-    );
-
-    // Persist before returning so MV3 service worker teardown cannot lose the
-    // newly created account after the UI reports success.
-    await this.saveWalletState('create-account', true, true);
 
     // Double-check the account was stored correctly
     const { accounts } = store.getState().vault;
@@ -4486,24 +4470,31 @@ class MainController {
     }
   }
 
-  private storeImportedAccount(
+  private storeCreatedAccount(
     account: IKeyringAccountState,
+    accountType: KeyringAccountType.HDAccount | KeyringAccountType.Imported,
     assertCurrent: () => void
   ) {
     const generation = this.walletStateGeneration;
     // SDK allocation can race across extension documents. Never replace an
     // account already admitted while this import was being derived.
-    const assertImportCurrent = () => {
+    const assertCreationCurrent = () => {
       assertCurrent();
-      if (store.getState().vault.accounts.Imported?.[account.id])
+      const { accounts } = store.getState().vault;
+      if (accountType === KeyringAccountType.HDAccount)
+        assertCompleteHDAccountData(accounts.HDAccount);
+      if (accounts[accountType]?.[account.id])
         throw new Error(
-          'Account import conflicted with another import. Please retry.'
+          accountType === KeyringAccountType.HDAccount
+            ? 'Account creation conflicted with another request. Please retry.'
+            : 'Account import conflicted with another import. Please retry.'
         );
     };
     this.resetAutoLockTimer();
-    return persistImportedAccount(
+    return persistAccountCreation(
       account,
-      assertImportCurrent,
+      accountType,
+      assertCreationCurrent,
       () => generation === this.walletStateGeneration
     );
   }
@@ -4520,7 +4511,11 @@ class MainController {
       options
     );
     assertCurrent();
-    await this.storeImportedAccount(importedAccount, assertCurrent);
+    await this.storeCreatedAccount(
+      importedAccount,
+      KeyringAccountType.Imported,
+      assertCurrent
+    );
 
     setTimeout(() => {
       this.getLatestUpdateForCurrentAccount(false, true).catch((error) =>
@@ -4549,7 +4544,11 @@ class MainController {
       label
     );
     assertCurrent();
-    await this.storeImportedAccount(importedAccount, assertCurrent);
+    await this.storeCreatedAccount(
+      importedAccount,
+      KeyringAccountType.Imported,
+      assertCurrent
+    );
     setTimeout(() => {
       this.getLatestUpdateForCurrentAccount(false, true).catch((err) => {
         console.warn(

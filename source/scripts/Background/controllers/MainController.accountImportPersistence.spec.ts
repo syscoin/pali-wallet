@@ -202,7 +202,8 @@ describe.each(['private', 'watch'] as const)(
         .mockResolvedValue(undefined);
     });
 
-    afterEach(() => {
+    afterEach(async () => {
+      await manager.destroy();
       jest.clearAllTimers();
       jest.useRealTimers();
       vaultCache.clearCache();

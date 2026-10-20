@@ -464,13 +464,13 @@ export function persistAccountRemoval(
   );
 }
 
-/** Publish an imported account and its selection only after the vault commits. */
-export function persistImportedAccount(
+/** Publish a created account and its selection only after the vault commits. */
+export function persistAccountCreation(
   account: IKeyringAccountState,
+  accountType: KeyringAccountType.HDAccount | KeyringAccountType.Imported,
   assertCurrent: () => void,
   isSameWallet: () => boolean
 ): Promise<void> {
-  const accountType = KeyringAccountType.Imported;
   return persistAccountMutation(
     [
       createAccount({ account, accountType }),
