@@ -205,9 +205,17 @@ export const ImportToken: React.FC = () => {
       )) as ITokenSearchResult[];
       // Filter out already imported tokens
       const filteredResults = results.filter((token) => {
-        // Match the ID format used in getUserOwnedTokens
-        const tokenId = token.id; // Use the ID directly from the API response
-        return !importedAssetIds.has(tokenId);
+        try {
+          const tokenId =
+            token.tokenStandard === 'ERC-1155'
+              ? `${token.contractAddress.toLowerCase()}-${
+                  activeNetwork.chainId
+                }-${normalizeNftTokenId(token.tokenId)}`
+              : token.id;
+          return !importedAssetIds.has(tokenId);
+        } catch {
+          return false;
+        }
       });
 
       if (isCurrent()) setOwnedTokens(filteredResults);

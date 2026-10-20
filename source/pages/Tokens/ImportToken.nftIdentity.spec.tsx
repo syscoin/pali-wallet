@@ -8,8 +8,9 @@ import { MemoryRouter } from 'react-router-dom';
 
 import { AddToken } from 'pages/Tokens/AddToken';
 import EthAccountController from 'scripts/Background/controllers/account/evm';
+import EvmAssetsController from 'scripts/Background/controllers/assets/evm';
 import { verifyERC1155OwnershipHelper } from 'scripts/Background/controllers/assets/nft-utils';
-import vaultReducer, { setAccountAssets } from 'state/vault';
+import vaultReducer, { setAccountAssets, setActiveNetwork } from 'state/vault';
 import vaultGlobalReducer from 'state/vaultGlobal';
 import { INetworkType, KeyringAccountType } from 'types/network';
 import { Interface } from 'utils/ethersV6Compat';
@@ -19,6 +20,7 @@ let mockAccount: ReturnType<typeof EthAccountController>;
 const mockEmitter = jest.fn();
 const mockAlert = { success: jest.fn(), error: jest.fn() };
 const originalFetch = globalThis.fetch;
+jest.mock('scripts/Background', () => ({ getController: jest.fn() }));
 jest.mock('state/store', () => ({
   __esModule: true,
   default: { getState: () => mockStore.getState() },
@@ -405,3 +407,103 @@ it('imports a valid owned alias canonically without letting an invalid ID hide t
     rawBalance: '2',
   });
 });
+
+it.each([
+  { id: '1', storedChain: 1, otherContract: false, omitted: true },
+  { id: '0001', storedChain: 1, otherContract: false, omitted: true },
+  { id: '0x01', storedChain: 1, otherContract: false, omitted: true },
+  { id: '2', storedChain: 1, otherContract: false, omitted: false },
+  { id: '0001', storedChain: 2, otherContract: false, omitted: false },
+  { id: '0001', storedChain: 1, otherContract: true, omitted: false },
+  {
+    id: (BigInt(1) << BigInt(256)).toString(),
+    storedChain: 1,
+    otherContract: false,
+    omitted: true,
+  },
+])(
+  'filters real owned discovery ID $id against chain $storedChain and other contract $otherContract',
+  async ({ id, storedChain, otherContract, omitted }) => {
+    const network = mockStore.getState().vault.activeNetwork;
+    mockStore.dispatch(
+      setActiveNetwork({
+        ...network,
+        chainId: storedChain,
+        apiUrl: `${network.apiUrl}?id=${id}&chain=${storedChain}&other=${otherContract}`,
+      })
+    );
+    const add = await mockAccount.prepareTokenAddition({
+      contractAddress: otherContract ? `0x${'44'.repeat(20)}` : CONTRACT,
+      chainId: storedChain,
+      tokenSymbol: 'SAMPLE',
+      decimals: 0,
+      balance: 2,
+      tokenStandard: 'ERC-1155',
+      isNft: true,
+      tokenId: '1',
+    });
+    mockStore.dispatch(add());
+    mockStore.dispatch(
+      setActiveNetwork({
+        ...mockStore.getState().vault.activeNetwork,
+        chainId: 1,
+      })
+    );
+    globalThis.fetch = jest.fn(
+      async () =>
+        ({
+          ok: true,
+          status: 200,
+          headers: { get: () => null },
+          json: async () => ({
+            status: '1',
+            result: [
+              {
+                contractAddress: CONTRACT,
+                type: 'ERC-1155',
+                id,
+                symbol: 'SAMPLE',
+                name: 'Sample NFT',
+                decimals: '0',
+                balance: '2',
+              },
+            ],
+          }),
+        } as unknown as Response)
+    );
+    let observed: any[] = [];
+    const original = mockEmitter.getMockImplementation()!;
+    mockEmitter.mockImplementation(async (path, args) => {
+      if (path[1] !== 'getUserOwnedTokens') return original(path, args);
+      observed = await EvmAssetsController().getUserOwnedTokens(args[0]);
+      return observed;
+    });
+    render(
+      <Provider store={mockStore}>
+        <MemoryRouter
+          initialEntries={['/tokens/add?tab=owned']}
+          future={{
+            ['v7_startTransition']: true,
+            ['v7_relativeSplatPath']: true,
+          }}
+        >
+          <AddToken />
+        </MemoryRouter>
+      </Provider>
+    );
+    await act(async () => jest.advanceTimersByTimeAsync(0));
+    expect(observed[0].tokenId).toBe(id);
+    if (omitted) {
+      expect(
+        screen.queryByRole('button', { name: 'Import SAMPLE token' })
+      ).toBeNull();
+      expect(
+        screen.getByText('tokens.noAdditionalTokensFound')
+      ).toBeInTheDocument();
+    } else {
+      expect(button()).toBeEnabled();
+    }
+    expect(assets()).toHaveLength(1);
+    expect(mockAlert.error).not.toHaveBeenCalled();
+  }
+);
