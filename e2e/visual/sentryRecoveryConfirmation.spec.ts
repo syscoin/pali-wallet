@@ -143,13 +143,18 @@ for (const refresh of ['healthy', 'refused once'] as const) {
                     key.startsWith('sentry-operator-v1:') &&
                     value?.keys?.length === 1
                 );
-                return (set as any)(items, (...args: any[]) => {
+                const acknowledge = () => {
                   if (removal && !chrome.runtime.lastError) {
                     committed = true;
                     audit.nativeKeyWrites += 1;
                   }
-                  callback?.(...args);
-                });
+                };
+                if (typeof callback === 'function')
+                  return (set as any)(items, (...args: any[]) => {
+                    acknowledge();
+                    callback(...args);
+                  });
+                return set(items).then(acknowledge);
               }) as typeof chrome.storage.local.set;
               chrome.storage.local.get = ((keys: any, callback: any) => {
                 const requested = Array.isArray(keys) ? keys : [keys];
@@ -189,6 +194,10 @@ for (const refresh of ['healthy', 'refused once'] as const) {
         await expect(
           page.getByText(en.sentry.unableToLoadSentrySettings, { exact: true })
         ).toBeVisible();
+        await info.attach('committed-removal-refresh-refusal', {
+          body: await page.screenshot({ animations: 'disabled' }),
+          contentType: 'image/png',
+        });
         const worker = wallet.context
           .serviceWorkers()
           .find((candidate) =>
