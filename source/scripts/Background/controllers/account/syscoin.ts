@@ -15,11 +15,12 @@ const config = {
 };
 
 export interface ISysAccountController {
-  deleteTokenInfo: (assetGuid: string) => void;
-  saveTokenInfo: (
-    token: ITokenSysProps,
-    assertCurrent?: () => void
-  ) => Promise<void>;
+  prepareTokenAddition: (
+    token: ITokenSysProps
+  ) => Promise<() => ReturnType<typeof setAccountAssets>>;
+  prepareTokenRemoval: (
+    assetGuid: string
+  ) => () => ReturnType<typeof setAccountAssets>;
   setAddress: () => Promise<string>;
 }
 
@@ -43,10 +44,7 @@ const SysAccountController = (
     return address;
   };
 
-  const saveTokenInfo = async (
-    token: ITokenSysProps,
-    assertCurrent?: () => void
-  ) => {
+  const prepareTokenAddition = async (token: ITokenSysProps) => {
     const { activeAccount, activeNetwork, accountAssets } =
       store.getState().vault;
     // Validate accountAssets exists
@@ -92,36 +90,36 @@ const SysAccountController = (
       assetInfos.image = data && data.image ? data.image : '';
     }
 
-    assertCurrent?.();
-    // Metadata can arrive after another import/removal. Merge into the latest
-    // target list and recheck duplicates immediately before publishing.
-    const currentAssets =
-      store.getState().vault.accountAssets?.[activeAccount.type]?.[
-        activeAccount.id
-      ]?.syscoin;
-    if (!currentAssets) throw new Error('Syscoin assets array not initialized');
-    if (
-      currentAssets.some(
-        (asset: ITokenSysProps) =>
-          asset.assetGuid === token.assetGuid &&
-          asset.chainId === activeNetwork.chainId
+    return () => {
+      // Metadata and storage can outlive other updates. Always merge into the
+      // latest target list and recheck duplicates at each commit boundary.
+      const currentAssets =
+        store.getState().vault.accountAssets?.[activeAccount.type]?.[
+          activeAccount.id
+        ]?.syscoin;
+      if (!currentAssets)
+        throw new Error('Syscoin assets array not initialized');
+      if (
+        currentAssets.some(
+          (asset: ITokenSysProps) =>
+            asset.assetGuid === token.assetGuid &&
+            asset.chainId === activeNetwork.chainId
+        )
       )
-    )
-      throw new Error('Token already exists');
-    store.dispatch(
-      setAccountAssets({
+        throw new Error('Token already exists');
+      return setAccountAssets({
         accountId: activeAccount.id,
         accountType: activeAccount.type,
         property: 'syscoin',
         value: [...currentAssets, assetInfos],
-      })
-    );
+      });
+    };
   };
 
-  const deleteTokenInfo = (assetGuid: string) => {
-    try {
-      const { activeAccount, accountAssets, activeNetwork } =
-        store.getState().vault;
+  const prepareTokenRemoval = (assetGuid: string) => {
+    const { activeAccount, activeNetwork } = store.getState().vault;
+    return () => {
+      const { accountAssets } = store.getState().vault;
 
       // Validate accountAssets exists
       if (!accountAssets) {
@@ -157,31 +155,27 @@ const SysAccountController = (
 
       if (!tokenExists) throw new Error("Token doesn't exist on this network!");
 
-      store.dispatch(
-        setAccountAssets({
-          accountId: activeAccount.id,
-          accountType: activeAccount.type,
-          property: 'syscoin',
-          value: activeAccountAssets.syscoin.filter(
-            (currentToken) =>
-              !(
-                currentToken.assetGuid === assetGuid &&
-                currentToken.chainId === activeNetwork.chainId
-              )
-          ),
-        })
-      );
-    } catch (error) {
-      throw new Error(`Could not delete SPT token. ${error}`);
-    }
+      return setAccountAssets({
+        accountId: activeAccount.id,
+        accountType: activeAccount.type,
+        property: 'syscoin',
+        value: activeAccountAssets.syscoin.filter(
+          (currentToken) =>
+            !(
+              currentToken.assetGuid === assetGuid &&
+              currentToken.chainId === activeNetwork.chainId
+            )
+        ),
+      });
+    };
   };
 
   //todo we cannot call those fn directly we should call over keyring manager class
 
   return {
     setAddress,
-    saveTokenInfo,
-    deleteTokenInfo,
+    prepareTokenAddition,
+    prepareTokenRemoval,
   };
 };
 

@@ -52,6 +52,7 @@ import {
   persistAccountLabel,
   persistAccountCreation,
   persistAccountRemoval,
+  persistAssetMutation,
   persistAdvancedSetting,
   persistCommittedWalletState,
   persistFiatCurrency,
@@ -9223,6 +9224,35 @@ class MainController {
       throw new Error('Asset context changed. Please try again.');
   }
 
+  private async persistTokenMutation(
+    expectedScope: IWalletNavigationScope,
+    prepare: () =>
+      | (() => ReturnType<typeof setAccountAssets>)
+      | Promise<() => ReturnType<typeof setAccountAssets>>
+  ) {
+    const session = this.walletSessionGeneration;
+    const generation = this.walletStateGeneration;
+    const keyring = this.getActiveKeyring();
+    const assertCurrent = () => {
+      if (
+        session !== this.walletSessionGeneration ||
+        generation !== this.walletStateGeneration ||
+        keyring !== this.getActiveKeyring()
+      )
+        throw new Error('Asset context changed. Please try again.');
+      this.assertAssetMutationContext(expectedScope);
+    };
+    assertCurrent();
+    const mutation = await prepare();
+    assertCurrent();
+    this.resetAutoLockTimer();
+    await persistAssetMutation(
+      mutation,
+      assertCurrent,
+      () => generation === this.walletStateGeneration
+    );
+  }
+
   public async saveTokenInfo(
     token: any,
     expectedScope: IWalletNavigationScope
@@ -9231,27 +9261,11 @@ class MainController {
     const { isBitcoinBased, activeNetwork } = store.getState().vault;
     if (token?.chainId !== activeNetwork.chainId)
       throw new Error('Asset network changed. Please try again.');
-    const generation = this.walletSessionGeneration;
-    let result;
-
-    // Handle Ethereum tokens
-    if (!isBitcoinBased || token.contractAddress) {
-      result = await this.account.eth.saveTokenInfo(token);
-    } else {
-      // Handle Syscoin tokens
-      result = await this.account.sys.saveTokenInfo(token, () => {
-        if (generation !== this.walletSessionGeneration)
-          throw new Error('Asset context changed. Please try again.');
-        this.assertAssetMutationContext(expectedScope);
-      });
-    }
-
-    // Token import is user-authored durable state. Do not report success until
-    // it has crossed the persistence boundary; a network switch can otherwise
-    // replace the active slip44 vault before the debounced save runs.
-    await this.saveWalletState('add-token', true, true);
-
-    return result;
+    return this.persistTokenMutation(expectedScope, () =>
+      !isBitcoinBased || token.contractAddress
+        ? this.account.eth.prepareTokenAddition(token)
+        : this.account.sys.prepareTokenAddition(token)
+    );
   }
 
   public async deleteTokenInfo(
@@ -9264,27 +9278,12 @@ class MainController {
     const { isBitcoinBased, activeNetwork } = store.getState().vault;
     if (chainId !== activeNetwork.chainId)
       throw new Error('Asset network changed. Please try again.');
-    let result;
-
-    // Handle Ethereum tokens (tokenToDelete is contractAddress string)
-    if (
+    return this.persistTokenMutation(expectedScope, () =>
       !isBitcoinBased ||
       (typeof tokenToDelete === 'string' && tokenToDelete.startsWith('0x'))
-    ) {
-      result = await this.account.eth.deleteTokenInfo(
-        tokenToDelete,
-        chainId,
-        tokenId
-      );
-    } else {
-      // Handle Syscoin tokens (tokenToDelete is assetGuid string)
-      result = await this.account.sys.deleteTokenInfo(tokenToDelete);
-    }
-
-    // Save wallet state after deleting token
-    await this.saveWalletState('delete-token', true, true);
-
-    return result;
+        ? this.account.eth.prepareTokenRemoval(tokenToDelete, chainId, tokenId)
+        : this.account.sys.prepareTokenRemoval(tokenToDelete)
+    );
   }
 
   // Clean up persistent providers

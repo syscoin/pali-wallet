@@ -1,25 +1,21 @@
-import cloneDeep from 'lodash/cloneDeep';
-
 import PaliLogo from 'assets/all_assets/favicon-32.png';
 import store from 'state/store';
 import { setAccountAssets } from 'state/vault';
 import { ITokenEthProps } from 'types/tokens';
 
 export interface IEthAccountController {
-  deleteTokenInfo: (
+  prepareTokenAddition: (
+    token: ITokenEthProps
+  ) => Promise<() => ReturnType<typeof setAccountAssets>>;
+  prepareTokenRemoval: (
     tokenAddress: string,
     chainId: number,
     tokenId?: string
-  ) => void;
-  saveTokenInfo: (
-    token: ITokenEthProps,
-    tokenType?: string,
-    currentTokens?: ITokenEthProps[]
-  ) => Promise<void>;
+  ) => () => ReturnType<typeof setAccountAssets>;
 }
 
-const EthAccountController = (): IEthAccountController | any => {
-  const saveTokenInfo = async (token: ITokenEthProps) => {
+const EthAccountController = (): IEthAccountController => {
+  const prepareTokenAddition = async (token: ITokenEthProps) => {
     const { activeAccount, activeNetwork, accountAssets } =
       store.getState().vault;
     const { chainId } = activeNetwork;
@@ -49,29 +45,33 @@ const EthAccountController = (): IEthAccountController | any => {
       throw new Error('Ethereum assets array not initialized');
     }
 
-    try {
-      const tokenExists = activeAccountAssets.ethereum.find(
-        (asset: ITokenEthProps) => {
-          // SYSCOIN: The same address may name different assets on other chains.
-          if (asset.chainId !== chainId) return false;
-          // For ERC-1155 tokens, check both contract address and tokenId
-          if (
-            asset.tokenStandard === 'ERC-1155' &&
-            token.tokenStandard === 'ERC-1155'
-          ) {
-            return (
-              asset.contractAddress.toLowerCase() ===
-                token.contractAddress.toLowerCase() &&
-              asset.tokenId === token.tokenId
-            );
-          }
-          // For other token types, just check contract address
+    return () => {
+      const currentAssets =
+        store.getState().vault.accountAssets?.[activeAccount.type]?.[
+          activeAccount.id
+        ]?.ethereum;
+      if (!currentAssets)
+        throw new Error('Ethereum assets array not initialized');
+      const tokenExists = currentAssets.find((asset: ITokenEthProps) => {
+        // SYSCOIN: The same address may name different assets on other chains.
+        if (asset.chainId !== chainId) return false;
+        // For ERC-1155 tokens, check both contract address and tokenId
+        if (
+          asset.tokenStandard === 'ERC-1155' &&
+          token.tokenStandard === 'ERC-1155'
+        ) {
           return (
             asset.contractAddress.toLowerCase() ===
-            token.contractAddress.toLowerCase()
+              token.contractAddress.toLowerCase() &&
+            asset.tokenId === token.tokenId
           );
         }
-      );
+        // For other token types, just check contract address
+        return (
+          asset.contractAddress.toLowerCase() ===
+          token.contractAddress.toLowerCase()
+        );
+      });
 
       if (tokenExists) {
         if (token.tokenStandard === 'ERC-1155') {
@@ -104,26 +104,23 @@ const EthAccountController = (): IEthAccountController | any => {
         };
       }
 
-      store.dispatch(
-        setAccountAssets({
-          accountId: activeAccount.id,
-          accountType: activeAccount.type,
-          property: 'ethereum',
-          value: [...activeAccountAssets.ethereum, web3Token],
-        })
-      );
-    } catch (error) {
-      throw new Error(`Could not save token info. ${error}`);
-    }
+      return setAccountAssets({
+        accountId: activeAccount.id,
+        accountType: activeAccount.type,
+        property: 'ethereum',
+        value: [...currentAssets, web3Token],
+      });
+    };
   };
 
-  const deleteTokenInfo = (
+  const prepareTokenRemoval = (
     tokenAddress: string,
     chainId: number,
     tokenId?: string
   ) => {
-    try {
-      const { activeAccount, accountAssets } = store.getState().vault;
+    const { activeAccount } = store.getState().vault;
+    return () => {
+      const { accountAssets } = store.getState().vault;
 
       // Validate accountAssets exists
       if (!accountAssets) {
@@ -168,34 +165,28 @@ const EthAccountController = (): IEthAccountController | any => {
       if (!tokenExists)
         throw new Error("Token doesn't exist on specified network!");
 
-      const cloneAssets = cloneDeep(activeAccountAssets);
-
-      store.dispatch(
-        setAccountAssets({
-          accountId: activeAccount.id,
-          accountType: activeAccount.type,
-          property: 'ethereum',
-          value: cloneAssets.ethereum.filter((currentToken) => {
-            const matchesAddress =
-              currentToken.contractAddress.toLowerCase() ===
-                tokenAddress.toLowerCase() && currentToken.chainId === chainId;
-            // If tokenId is provided, only remove if tokenId also matches
-            if (tokenId) {
-              return !(matchesAddress && currentToken.tokenId === tokenId);
-            }
-            // If no tokenId provided, remove all tokens from this contract address
-            return !matchesAddress;
-          }),
-        })
-      );
-    } catch (error) {
-      throw new Error(`Could not delete token. ${error}`);
-    }
+      return setAccountAssets({
+        accountId: activeAccount.id,
+        accountType: activeAccount.type,
+        property: 'ethereum',
+        value: activeAccountAssets.ethereum.filter((currentToken) => {
+          const matchesAddress =
+            currentToken.contractAddress.toLowerCase() ===
+              tokenAddress.toLowerCase() && currentToken.chainId === chainId;
+          // If tokenId is provided, only remove if tokenId also matches
+          if (tokenId) {
+            return !(matchesAddress && currentToken.tokenId === tokenId);
+          }
+          // If no tokenId provided, remove all tokens from this contract address
+          return !matchesAddress;
+        }),
+      });
+    };
   };
 
   return {
-    saveTokenInfo,
-    deleteTokenInfo,
+    prepareTokenAddition,
+    prepareTokenRemoval,
   };
 };
 export default EthAccountController;

@@ -17,6 +17,7 @@ const RemoveEthView = () => {
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const isEnabled = hasEthProperty;
   const [loading, setLoading] = useState<boolean>(false);
+  const [saveError, setSaveError] = useState(false);
   const { controllerEmitter } = useController();
   const navigate = useNavigate();
   const location = useLocation();
@@ -24,42 +25,25 @@ const RemoveEthView = () => {
   const onSubmit = async () => {
     if (loading) return;
     setLoading(true);
+    setSaveError(false);
 
     try {
       switch (isEnabled) {
         case true:
-          await controllerEmitter(['wallet', 'removeWindowEthProperty']);
-
-          // Get all dapps and disconnect them efficiently
-          try {
-            const dapps = await controllerEmitter(['dapp', 'getAll']);
-            const dappEntries = Object.values(dapps);
-
-            if (dappEntries.length > 0) {
-              await Promise.all(
-                dappEntries.map(async (dapp: any) => {
-                  const isConnected = await controllerEmitter(
-                    ['dapp', 'isConnected'],
-                    [dapp.host]
-                  );
-                  if (isConnected) {
-                    await controllerEmitter(
-                      ['dapp', 'disconnect'],
-                      [dapp.host]
-                    );
-                  }
-                })
-              );
-
-              // Now save once after all disconnects are complete
-              await controllerEmitter(
-                ['wallet', 'saveCurrentState'],
-                ['remove-eth-disconnects']
-              );
-            }
-          } catch (error) {
-            console.error('Error disconnecting dapps:', error);
+          // Keep the provider enabled until its requested revocations are
+          // durable, so a failed write leaves this same action retryable.
+          const dapps = await controllerEmitter(['dapp', 'getAll']);
+          for (const dapp of Object.values(dapps) as { host: string }[]) {
+            await controllerEmitter(
+              ['dapp', 'disconnect'],
+              [
+                dapp.host,
+                true,
+                { propagateErrors: true, allowAlreadyDisconnected: true },
+              ]
+            );
           }
+          await controllerEmitter(['wallet', 'removeWindowEthProperty']);
 
           setConfirmed(true);
           break;
@@ -73,6 +57,7 @@ const RemoveEthView = () => {
       }
     } catch (error) {
       console.error('Error changing Ethereum provider:', error);
+      setSaveError(true);
     } finally {
       setLoading(false);
     }
@@ -134,7 +119,7 @@ const RemoveEthView = () => {
           </div>
         )}
 
-        <PageActionFooter>
+        <PageActionFooter error={saveError ? t('send.failed') : undefined}>
           <div className="flex w-full flex-col gap-3">
             <button
               type="button"
