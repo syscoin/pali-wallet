@@ -46,13 +46,20 @@ for (const value of [
     let routes:
       | Awaited<ReturnType<typeof installIsolatedVaultRoutes>>
       | undefined;
-    const reads: string[] = [];
+    const reads: {
+      details: string | null;
+      path: string;
+      tokens: string | null;
+    }[] = [];
     const geometry: unknown[] = [];
     try {
-      wallet = await PaliWallet.launch('spt-balance-display', {
-        offlineHttpProxy: server.url,
-        viewport: { width: 400, height: 620 },
-      });
+      wallet = await PaliWallet.launch(
+        `spt-balance-${value.decimals}-${value.units}`,
+        {
+          offlineHttpProxy: server.url,
+          viewport: { width: 400, height: 620 },
+        }
+      );
       routes = await installIsolatedVaultRoutes(
         wallet.context,
         fixture,
@@ -88,7 +95,12 @@ for (const value of [
             unconfirmedBalance: '0',
             decimals: value.decimals,
           });
-          reads.push(new URL(request.url()).pathname);
+          const url = new URL(request.url());
+          reads.push({
+            path: url.pathname,
+            details: url.searchParams.get('details'),
+            tokens: url.searchParams.get('tokens'),
+          });
           return route.fulfill({
             status: 200,
             contentType: 'application/json',
@@ -196,8 +208,15 @@ for (const value of [
           await expect(page).toHaveURL(/#\/home\/details/);
         }
       );
-      expect(reads).toContain(`/api/v2/asset/${SPT_GUID}`);
-      expect(reads).toContain(`/api/v2/xpub/${fixture.utxo.userXpub}`);
+      // Owned-token discovery already carries metadata. Normal import saves
+      // that admitted record without requiring a separate asset metadata read.
+      for (const tokens of ['nonzero', 'used']) {
+        expect(reads).toContainEqual({
+          path: `/api/v2/xpub/${fixture.utxo.userXpub}`,
+          details: 'tokenBalances',
+          tokens,
+        });
+      }
       expect(routes.deniedWrites).toEqual([]);
       status = 'passed';
     } finally {
