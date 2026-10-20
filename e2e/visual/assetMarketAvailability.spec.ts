@@ -55,10 +55,15 @@ async function marketAvailability(
     rpcUrl: server.url,
   });
   try {
-    wallet = await PaliWallet.launch('asset-market-availability', {
-      offlineHttpProxy: server.url,
-      viewport: { width: 400, height: 620 },
-    });
+    wallet = await PaliWallet.launch(
+      `asset-market-availability-${
+        malformedCategories ? 'malformed-categories' : 'null-optionals'
+      }`,
+      {
+        offlineHttpProxy: server.url,
+        viewport: { width: 400, height: 620 },
+      }
+    );
     routes = await installIsolatedVaultRoutes(
       wallet.context,
       fixture,
