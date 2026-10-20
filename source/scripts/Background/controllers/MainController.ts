@@ -3128,19 +3128,11 @@ class MainController {
     });
     assertCurrent();
 
-    store.dispatch(
-      createAccount({
-        account,
-        accountType: KeyringAccountType.SmartAccount,
-      })
+    await this.storeCreatedAccount(
+      account,
+      KeyringAccountType.SmartAccount,
+      assertCurrent
     );
-    store.dispatch(
-      setActiveAccount({
-        id: account.id,
-        type: KeyringAccountType.SmartAccount,
-      })
-    );
-    await this.saveWalletState('create-smart-account', true, true);
 
     setTimeout(() => {
       this.refreshActiveAccountLightweight('smart account creation');
@@ -4494,7 +4486,10 @@ class MainController {
 
   private storeCreatedAccount(
     account: IKeyringAccountState,
-    accountType: KeyringAccountType.HDAccount | KeyringAccountType.Imported,
+    accountType:
+      | KeyringAccountType.HDAccount
+      | KeyringAccountType.Imported
+      | KeyringAccountType.SmartAccount,
     assertCurrent: () => void
   ) {
     const generation = this.walletStateGeneration;
@@ -4507,9 +4502,9 @@ class MainController {
         assertCompleteHDAccountData(accounts.HDAccount);
       if (accounts[accountType]?.[account.id])
         throw new Error(
-          accountType === KeyringAccountType.HDAccount
-            ? 'Account creation conflicted with another request. Please retry.'
-            : 'Account import conflicted with another import. Please retry.'
+          accountType === KeyringAccountType.Imported
+            ? 'Account import conflicted with another import. Please retry.'
+            : 'Account creation conflicted with another request. Please retry.'
         );
     };
     this.resetAutoLockTimer();
