@@ -470,7 +470,7 @@ export const SyscoinAssetDetails = ({
             .map((item, index, totalArray) => (
               <li
                 key={item.originalKey}
-                className={`flex items-center justify-between my-1 pl-0 pr-3 py-2 w-full text-xs border-b 
+                className={`flex items-center justify-between my-1 pl-0 pr-3 py-2 w-full text-xs border-b
                 border-dashed border-bkg-white200 cursor-default transition-all duration-300 ${
                   index + 1 === totalArray.length && 'border-none'
                 } `}
