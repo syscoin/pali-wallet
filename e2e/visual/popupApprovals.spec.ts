@@ -48,6 +48,7 @@ test('external approval frames and error actions remain reachable in short windo
     rpcUrl: server.url,
   });
   let wallet: PaliWallet | undefined;
+  let status: 'passed' | 'failed' = 'failed';
   let popup: Page | undefined;
   const errors: string[] = [];
   const directory =
@@ -226,6 +227,7 @@ test('external approval frames and error actions remain reachable in short windo
     }
     expect(errors).toEqual([]);
     expect(routes.deniedWrites).toEqual([]);
+    if (test.info().errors.length === 0) status = 'passed';
   } catch (error) {
     if (popup) {
       await capture(popup, 'failure');
@@ -240,8 +242,14 @@ test('external approval frames and error actions remain reachable in short windo
     }
     throw error;
   } finally {
-    await wallet?.context.close().catch(() => undefined);
-    await server.close();
-    Object.assign(E2E_CONFIG, previous);
+    try {
+      await wallet?.dispose(status);
+    } finally {
+      try {
+        await server.close();
+      } finally {
+        Object.assign(E2E_CONFIG, previous);
+      }
+    }
   }
 });

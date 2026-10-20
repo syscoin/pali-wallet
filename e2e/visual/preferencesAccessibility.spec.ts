@@ -125,6 +125,7 @@ test('offline onboarding and preferences remain keyboard accessible with localiz
     rpcUrl: server.url,
   });
   let wallet: PaliWallet | undefined;
+  let status: 'passed' | 'failed' = 'failed';
   const pageErrors: string[] = [];
   const directory =
     process.env.PALI_PREFERENCES_VISUAL_OUTPUT ||
@@ -382,6 +383,7 @@ test('offline onboarding and preferences remain keyboard accessible with localiz
     await capture(page, 'import-account-named-german-400x480');
     expect(pageErrors).toEqual([]);
     expect(routes.deniedWrites).toEqual([]);
+    if (test.info().errors.length === 0) status = 'passed';
   } catch (error) {
     if (wallet) {
       await capture(wallet.page, 'failure').catch(() => undefined);
@@ -410,9 +412,15 @@ test('offline onboarding and preferences remain keyboard accessible with localiz
     }
     throw error;
   } finally {
-    await wallet?.context.close().catch(() => undefined);
-    await server.close();
-    Object.assign(E2E_CONFIG, before);
+    try {
+      await wallet?.dispose(status);
+    } finally {
+      try {
+        await server.close();
+      } finally {
+        Object.assign(E2E_CONFIG, before);
+      }
+    }
   }
 });
 
@@ -470,6 +478,7 @@ test('open preference menu options stay clickable above the sticky action at sho
     rpcUrl: server.url,
   });
   let wallet: PaliWallet | undefined;
+  let status: 'passed' | 'failed' = 'failed';
   try {
     wallet = await PaliWallet.launch('preferences-menu-overlap', {
       offlineHttpProxy: server.url,
@@ -593,10 +602,17 @@ test('open preference menu options stay clickable above the sticky action at sho
       }
     }
     expect(routes.deniedWrites).toEqual([]);
+    if (test.info().errors.length === 0) status = 'passed';
   } finally {
-    await wallet?.context.close().catch(() => undefined);
-    await server.close();
-    Object.assign(E2E_CONFIG, before);
+    try {
+      await wallet?.dispose(status);
+    } finally {
+      try {
+        await server.close();
+      } finally {
+        Object.assign(E2E_CONFIG, before);
+      }
+    }
   }
 });
 
@@ -613,6 +629,7 @@ test('preference Save remains fully visible after errors at supported short heig
     rpcUrl: server.url,
   });
   let wallet: PaliWallet | undefined;
+  let status: 'passed' | 'failed' = 'failed';
   try {
     wallet = await PaliWallet.launch('preferences-short-window', {
       offlineHttpProxy: server.url,
@@ -804,9 +821,16 @@ test('preference Save remains fully visible after errors at supported short heig
       }
     }
     expect(routes.deniedWrites).toEqual([]);
+    if (test.info().errors.length === 0) status = 'passed';
   } finally {
-    await wallet?.context.close().catch(() => undefined);
-    await server.close();
-    Object.assign(E2E_CONFIG, before);
+    try {
+      await wallet?.dispose(status);
+    } finally {
+      try {
+        await server.close();
+      } finally {
+        Object.assign(E2E_CONFIG, before);
+      }
+    }
   }
 });

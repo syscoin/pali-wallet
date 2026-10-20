@@ -69,7 +69,11 @@ export class JourneySummary {
       status: 'running',
       steps: [],
     };
-    this.flush();
+    // A journey name owns one primary summary for this run. Never erase an
+    // earlier case (including a different name with the same sanitized path).
+    fs.writeFileSync(this.file, JSON.stringify(this.summary, null, 2), {
+      flag: 'wx',
+    });
   }
 
   addStep(step: StepRecord) {

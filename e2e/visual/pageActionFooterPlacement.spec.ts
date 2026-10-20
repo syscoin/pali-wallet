@@ -46,6 +46,7 @@ test('shared page actions stay bottom-aligned and reachable across wallet screen
     rpcUrl: server.url,
   });
   let wallet: PaliWallet | undefined;
+  let status: 'passed' | 'failed' = 'failed';
   const directory = path.join(E2E_CONFIG.artifactsDir, 'page-action-footer');
   fs.mkdirSync(directory, { recursive: true });
   const records: unknown[] = [];
@@ -184,14 +185,27 @@ test('shared page actions stay bottom-aligned and reachable across wallet screen
       await page.evaluate(() => (window as any).__restoreFooterFixture());
     }
     expect(routes.deniedWrites).toEqual([]);
+    if (test.info().errors.length === 0) status = 'passed';
   } finally {
-    await info.attach('footer-geometry', {
-      body: JSON.stringify(records, null, 2),
-      contentType: 'application/json',
-    });
-    await wallet?.context.close().catch(() => undefined);
-    await server.close();
-    Object.assign(E2E_CONFIG, previous);
+    try {
+      await info.attach('footer-geometry', {
+        body: JSON.stringify(records, null, 2),
+        contentType: 'application/json',
+      });
+    } catch (error) {
+      status = 'failed';
+      throw error;
+    } finally {
+      try {
+        await wallet?.dispose(status);
+      } finally {
+        try {
+          await server.close();
+        } finally {
+          Object.assign(E2E_CONFIG, previous);
+        }
+      }
+    }
   }
 });
 

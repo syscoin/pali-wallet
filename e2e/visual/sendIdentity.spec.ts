@@ -24,6 +24,7 @@ test('Send keeps long account identities readable and copyable in narrow windows
     rpcUrl: server.url,
   });
   let wallet: PaliWallet | undefined;
+  let status: 'passed' | 'failed' = 'failed';
   try {
     wallet = await PaliWallet.launch('send-identity-qa', {
       offlineHttpProxy: server.url,
@@ -216,6 +217,7 @@ test('Send keeps long account identities readable and copyable in narrow windows
       await page.getByRole('button', { name: 'Back', exact: true }).click();
     }
     expect(routes.deniedWrites).toEqual([]);
+    if (test.info().errors.length === 0) status = 'passed';
   } catch (error) {
     if (wallet)
       await info
@@ -226,8 +228,14 @@ test('Send keeps long account identities readable and copyable in narrow windows
         .catch(() => undefined);
     throw error;
   } finally {
-    await wallet?.context.close().catch(() => undefined);
-    await server.close();
-    Object.assign(E2E_CONFIG, before);
+    try {
+      await wallet?.dispose(status);
+    } finally {
+      try {
+        await server.close();
+      } finally {
+        Object.assign(E2E_CONFIG, before);
+      }
+    }
   }
 });

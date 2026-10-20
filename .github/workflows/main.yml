@@ -59,6 +59,8 @@ jobs:
         # generated baseline into the artifact below: download it, commit the
         # new linux png(s), and re-run. Changed screens fail with a diff.
         run: yarn e2e:visual --update-snapshots=missing --shard=${{ matrix.shard }}/2 --workers=1
+      - name: Require completed visual journey summaries
+        run: node e2e/scripts/check-summary-completion.cjs "e2e/artifacts/pr-visual-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard }}"
       - name: Upload visual artifacts (diffs + new baselines)
         if: always()
         uses: actions/upload-artifact@v7

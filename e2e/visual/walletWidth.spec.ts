@@ -23,6 +23,7 @@ test('standalone wallet pages fit narrow windows without clipping controls', asy
     rpcUrl: server.url,
   });
   let wallet: PaliWallet | undefined;
+  let status: 'passed' | 'failed' = 'failed';
   try {
     wallet = await PaliWallet.launch('wallet-narrow-windows', {
       offlineHttpProxy: server.url,
@@ -98,9 +99,16 @@ test('standalone wallet pages fit narrow windows without clipping controls', asy
       }
     }
     expect(routes.deniedWrites).toEqual([]);
+    if (test.info().errors.length === 0) status = 'passed';
   } finally {
-    await wallet?.context.close().catch(() => undefined);
-    await server.close();
-    Object.assign(E2E_CONFIG, previous);
+    try {
+      await wallet?.dispose(status);
+    } finally {
+      try {
+        await server.close();
+      } finally {
+        Object.assign(E2E_CONFIG, previous);
+      }
+    }
   }
 });

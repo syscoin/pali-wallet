@@ -110,6 +110,7 @@ test('short-window navigation keeps actions, instructions and errors unobscured'
       })),
     });
   };
+  let status: 'passed' | 'failed' = 'failed';
   try {
     wallet = await PaliWallet.launch('navigation-short-window', {
       offlineHttpProxy: server.url,
@@ -344,13 +345,26 @@ test('short-window navigation keeps actions, instructions and errors unobscured'
     }
     await listPage.close();
     expect(routes.deniedWrites).toEqual([]);
+    status = info.errors.length === 0 ? 'passed' : 'failed';
   } finally {
-    fs.writeFileSync(
-      path.join(output, 'audit.json'),
-      JSON.stringify(records, null, 2)
-    );
-    await wallet?.context.close().catch(() => undefined);
-    await server.close();
-    Object.assign(E2E_CONFIG, before);
+    try {
+      fs.writeFileSync(
+        path.join(output, 'audit.json'),
+        JSON.stringify(records, null, 2)
+      );
+    } catch (error) {
+      status = 'failed';
+      throw error;
+    } finally {
+      try {
+        await wallet?.dispose(status);
+      } finally {
+        try {
+          await server.close();
+        } finally {
+          Object.assign(E2E_CONFIG, before);
+        }
+      }
+    }
   }
 });

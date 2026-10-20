@@ -225,6 +225,7 @@ for (const { width, height } of viewports) {
       rpcUrl: server.url,
     });
     let wallet: PaliWallet | undefined;
+    let status: 'passed' | 'failed' = 'failed';
     try {
       wallet = await PaliWallet.launch(`short-send-utxo-${width}-${height}`, {
         offlineHttpProxy: server.url,
@@ -464,10 +465,17 @@ for (const { width, height } of viewports) {
           2
         )
       );
+      if (test.info().errors.length === 0) status = 'passed';
     } finally {
-      await wallet?.context.close().catch(() => undefined);
-      await server.close();
-      Object.assign(E2E_CONFIG, previous);
+      try {
+        await wallet?.dispose(status);
+      } finally {
+        try {
+          await server.close();
+        } finally {
+          Object.assign(E2E_CONFIG, previous);
+        }
+      }
     }
   });
 }
@@ -506,6 +514,7 @@ for (const { width, height } of viewports) {
       rpcUrl: server.url,
     });
     let wallet: PaliWallet | undefined;
+    let status: 'passed' | 'failed' = 'failed';
     const extraReads: string[] = [];
     const deniedWrites: string[] = [];
     try {
@@ -698,10 +707,17 @@ for (const { width, height } of viewports) {
           2
         )
       );
+      if (test.info().errors.length === 0) status = 'passed';
     } finally {
-      await wallet?.context.close().catch(() => undefined);
-      await server.close();
-      Object.assign(E2E_CONFIG, previous);
+      try {
+        await wallet?.dispose(status);
+      } finally {
+        try {
+          await server.close();
+        } finally {
+          Object.assign(E2E_CONFIG, previous);
+        }
+      }
     }
   });
 }

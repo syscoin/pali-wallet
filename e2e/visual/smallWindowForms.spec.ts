@@ -68,6 +68,7 @@ test('small wallet forms keep complete fields and actions exposed through resize
     rpcUrl: server.url,
   });
   let wallet: PaliWallet | undefined;
+  let status: 'passed' | 'failed' = 'failed';
   const errors: string[] = [];
   const directory =
     process.env.PALI_SMALL_WINDOW_OUTPUT ||
@@ -175,12 +176,19 @@ test('small wallet forms keep complete fields and actions exposed through resize
     }
     expect(errors).toEqual([]);
     expect(routes.deniedWrites).toEqual([]);
+    if (test.info().errors.length === 0) status = 'passed';
   } catch (error) {
     if (wallet) await capture(wallet.page, 'failure').catch(() => undefined);
     throw error;
   } finally {
-    await wallet?.context.close().catch(() => undefined);
-    await server.close();
-    Object.assign(E2E_CONFIG, before);
+    try {
+      await wallet?.dispose(status);
+    } finally {
+      try {
+        await server.close();
+      } finally {
+        Object.assign(E2E_CONFIG, before);
+      }
+    }
   }
 });

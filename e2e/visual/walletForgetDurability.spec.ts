@@ -178,6 +178,7 @@ test.describe('authenticated wallet forgetting durability', () => {
           rpcUrl: server.url,
         });
         let wallet: PaliWallet | undefined;
+        let status: 'passed' | 'failed' = 'failed';
         let worker: Worker | undefined;
         try {
           wallet = await PaliWallet.launch(
@@ -338,15 +339,28 @@ test.describe('authenticated wallet forgetting durability', () => {
             wallet.page.locator('#import-wallet-link')
           ).toBeVisible();
           expect(routes.deniedWrites).toEqual([]);
+          if (test.info().errors.length === 0) status = 'passed';
         } finally {
-          await worker
-            ?.evaluate(() =>
-              (globalThis as any).__walletForgetDurabilityProbe?.restore()
-            )
-            .catch(() => undefined);
-          await wallet?.context.close();
-          await server.close();
-          Object.assign(E2E_CONFIG, previous);
+          try {
+            await worker
+              ?.evaluate(() =>
+                (globalThis as any).__walletForgetDurabilityProbe?.restore()
+              )
+              .catch(() => undefined);
+          } catch (error) {
+            status = 'failed';
+            throw error;
+          } finally {
+            try {
+              await wallet?.dispose(status);
+            } finally {
+              try {
+                await server.close();
+              } finally {
+                Object.assign(E2E_CONFIG, previous);
+              }
+            }
+          }
         }
       }
     );
