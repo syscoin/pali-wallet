@@ -23,6 +23,7 @@ import {
   navigateBack,
   navigateWithContext,
 } from 'utils/navigationState';
+import { networkRegistrationFingerprint } from 'utils/networkRegistration';
 
 const ManageNetworkView = () => {
   const networks = useSelector(
@@ -57,6 +58,7 @@ const ManageNetworkView = () => {
   const [networkToRemove, setNetworkToRemove] = useState<{
     chain: INetworkType;
     chainId: number;
+    expectedRegistration: string;
     key?: string;
     label: string;
     rpcUrl: string;
@@ -87,16 +89,18 @@ const ManageNetworkView = () => {
     }
   }, [location.state]);
 
-  const removeNetwork = (
-    chain: INetworkType,
-    chainId: number,
-    rpcUrl: string,
-    label: string,
-    key?: string
-  ) => {
+  const removeNetwork = (chain: INetworkType, network: INetwork) => {
     if (isNetworkActionBlocked()) return;
-    // Store network info and show confirmation modal
-    setNetworkToRemove({ chain, chainId, rpcUrl, label, key });
+    // Bind confirmation to the exact registration displayed by this row.
+    const { chainId, url: rpcUrl, label, key } = network;
+    setNetworkToRemove({
+      chain,
+      chainId,
+      rpcUrl,
+      label,
+      key,
+      expectedRegistration: networkRegistrationFingerprint(network)!,
+    });
     setShowConfirmModal(true);
   };
 
@@ -118,6 +122,7 @@ const ManageNetworkView = () => {
           networkToRemove.chainId,
           networkToRemove.rpcUrl,
           networkToRemove.label,
+          networkToRemove.expectedRegistration,
           networkToRemove.key,
         ]
       );
@@ -237,15 +242,7 @@ const ManageNetworkView = () => {
                   }
                 >
                   <IconButton
-                    onClick={() =>
-                      removeNetwork(
-                        INetworkType.Syscoin,
-                        network.chainId,
-                        network.url,
-                        network.label,
-                        network?.key
-                      )
-                    }
+                    onClick={() => removeNetwork(INetworkType.Syscoin, network)}
                     type="primary"
                     shape="circle"
                     disabled={
@@ -335,13 +332,7 @@ const ManageNetworkView = () => {
                 >
                   <IconButton
                     onClick={() =>
-                      removeNetwork(
-                        INetworkType.Ethereum,
-                        network.chainId,
-                        network.url,
-                        network.label,
-                        network?.key
-                      )
+                      removeNetwork(INetworkType.Ethereum, network)
                     }
                     type="primary"
                     shape="circle"

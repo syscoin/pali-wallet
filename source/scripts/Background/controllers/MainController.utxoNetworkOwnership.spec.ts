@@ -156,7 +156,8 @@ it('preserves a legacy shared vault for the surviving network and cleans it only
     network.kind,
     network.chainId,
     network.url,
-    network.label
+    network.label,
+    networkRegistrationFingerprint(network)!
   );
   expect(state.vaultGlobal.networks.syscoin[999]).toBeUndefined();
   expect(state.vaultGlobal.networks.syscoin[998]).toEqual(other);
@@ -168,7 +169,8 @@ it('preserves a legacy shared vault for the surviving network and cleans it only
     other.kind,
     other.chainId,
     other.url,
-    other.label
+    other.label,
+    networkRegistrationFingerprint(other)!
   );
   expect(state.vaultGlobal.networks.syscoin[998]).toBeUndefined();
   expect(chromeStorage.setItems).toHaveBeenLastCalledWith(
@@ -191,7 +193,8 @@ it('removes an inactive legacy co-owner while preserving its active shared vault
     other.kind,
     other.chainId,
     other.url,
-    other.label
+    other.label,
+    networkRegistrationFingerprint(other)!
   );
 
   expect(state.vaultGlobal.networks.syscoin[998]).toBeUndefined();
@@ -214,7 +217,8 @@ it('rejects the exact active network even when a legacy co-owner survives', asyn
       network.kind,
       network.chainId,
       network.url,
-      network.label
+      network.label,
+      networkRegistrationFingerprint(network)!
     )
   ).rejects.toThrow('currently active network');
 
@@ -234,7 +238,8 @@ it('rejects the last owner of the active vault even if the displayed chain diffe
       network.kind,
       network.chainId,
       network.url,
-      network.label
+      network.label,
+      networkRegistrationFingerprint(network)!
     )
   ).rejects.toThrow('currently active network');
 

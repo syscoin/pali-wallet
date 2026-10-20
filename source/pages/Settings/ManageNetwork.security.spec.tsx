@@ -1,6 +1,7 @@
 import React from 'react';
 
 import { INetworkType } from 'types/network';
+import { networkRegistrationFingerprint } from 'utils/networkRegistration';
 
 import ManageNetwork from './ManageNetwork';
 
@@ -191,7 +192,16 @@ describe('network management transition safety', () => {
     await confirmation.props.onClick();
     expect(mockControllerEmitter).toHaveBeenCalledWith(
       ['wallet', 'removeKeyringNetwork'],
-      [INetworkType.Syscoin, 1, 'https://target.example', 'Target', undefined]
+      [
+        INetworkType.Syscoin,
+        1,
+        'https://target.example',
+        'Target',
+        networkRegistrationFingerprint(
+          mockState.vaultGlobal.networks.syscoin[1]
+        ),
+        undefined,
+      ]
     );
     expect(mockAlert.error).not.toHaveBeenCalled();
   });
@@ -213,7 +223,16 @@ describe('network management transition safety', () => {
     await openRemoval().props.onClick();
     expect(mockControllerEmitter).toHaveBeenLastCalledWith(
       ['wallet', 'removeKeyringNetwork'],
-      [INetworkType.Syscoin, 1, 'https://updated.example', 'Target', undefined]
+      [
+        INetworkType.Syscoin,
+        1,
+        'https://updated.example',
+        'Target',
+        networkRegistrationFingerprint(
+          mockState.vaultGlobal.networks.syscoin[1]
+        ),
+        undefined,
+      ]
     );
     expect(mockAlert.error).toHaveBeenCalledTimes(1);
   });

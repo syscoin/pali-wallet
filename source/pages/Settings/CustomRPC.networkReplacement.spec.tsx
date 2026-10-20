@@ -256,7 +256,8 @@ it.each(['edit', 'remove and re-add'])(
           target.kind,
           target.chainId,
           target.url,
-          target.label
+          target.label,
+          networkRegistrationFingerprint(liveTarget())!
         );
         await wallet.addCustomRpc(replacement);
       }
