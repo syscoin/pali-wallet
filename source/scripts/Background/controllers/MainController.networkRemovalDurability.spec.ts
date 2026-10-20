@@ -28,6 +28,7 @@ import {
 } from 'state/vaultGlobal';
 import { INetwork, INetworkType, KeyringAccountType } from 'types/network';
 import { walletPersistenceMutex } from 'utils/asyncMutex';
+import { networkRegistrationFingerprint } from 'utils/networkRegistration';
 import { chromeStorage } from 'utils/storageAPI';
 
 import MainController from './MainController';
@@ -79,7 +80,8 @@ const remove = (network = target) =>
     network.kind,
     network.chainId,
     network.url,
-    network.label
+    network.label,
+    networkRegistrationFingerprint(network)!
   );
 const result = (operation: Promise<unknown>) =>
   operation.then(

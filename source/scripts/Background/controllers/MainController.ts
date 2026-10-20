@@ -4199,6 +4199,7 @@ class MainController {
     chainId: number,
     rpcUrl: string,
     label: string,
+    expectedRegistration: string,
     key?: string
   ) {
     const generation = this.walletSessionGeneration;
@@ -4235,6 +4236,8 @@ class MainController {
       if (
         !network ||
         network !== originalNetwork ||
+        typeof expectedRegistration !== 'string' ||
+        networkRegistrationFingerprint(network) !== expectedRegistration ||
         network.url !== rpcUrl ||
         network.slip44 !== originalNetwork?.slip44
       ) {

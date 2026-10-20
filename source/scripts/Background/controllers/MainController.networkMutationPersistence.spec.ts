@@ -362,7 +362,12 @@ describe.each([INetworkType.Ethereum, INetworkType.Syscoin])(
         removable.kind,
         removable.chainId,
         removable.url,
-        removable.label
+        removable.label,
+        networkRegistrationFingerprint(
+          store.getState().vaultGlobal.networks[removable.kind][
+            removable.chainId
+          ]
+        )!
       );
       expect(wallet.isRemovingNetwork).toBe(true);
       held.release();

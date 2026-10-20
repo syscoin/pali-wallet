@@ -49,7 +49,8 @@ const removeTarget = (wallet: MainController) =>
     target.kind,
     target.chainId,
     target.url,
-    target.label
+    target.label,
+    networkRegistrationFingerprint(target)!
   );
 const flush = async () => {
   for (let i = 0; i < 20; i += 1) await Promise.resolve();
@@ -207,7 +208,8 @@ describe('network removal cannot delete a switching or active vault', () => {
           network.kind,
           network.chainId,
           network.url,
-          network.label
+          network.label,
+          networkRegistrationFingerprint(network)!
         )
       ).rejects.toThrow(/active network|Network changed/);
       expect(JSON.stringify(state)).toBe(before);
