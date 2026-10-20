@@ -115,6 +115,7 @@ export const TokenIcon: React.FC<ITokenIconProps> = React.memo(
               error: true,
               loading: false,
               resource: cached,
+              key: cacheKey,
             };
           }
         } else {
@@ -122,12 +123,14 @@ export const TokenIcon: React.FC<ITokenIconProps> = React.memo(
             error: false,
             loading: false,
             resource: cached,
+            key: cacheKey,
           };
         }
         return {
           error: cached?.url === null,
           loading: false,
           resource: cached,
+          key: cacheKey,
         };
       }
 
@@ -137,6 +140,7 @@ export const TokenIcon: React.FC<ITokenIconProps> = React.memo(
           error: true,
           loading: false,
           resource: undefined,
+          key: cacheKey,
         };
       }
 
@@ -145,11 +149,12 @@ export const TokenIcon: React.FC<ITokenIconProps> = React.memo(
         error: false,
         loading: true,
         resource: undefined,
+        key: cacheKey,
       };
     };
 
     const initial = getInitialState();
-    const [iconState, setIconState] = useState({ ...initial, key: cacheKey });
+    const [iconState, setIconState] = useState(initial);
     // Props may change before effects run; never render another token's state.
     const {
       error,
@@ -171,7 +176,7 @@ export const TokenIcon: React.FC<ITokenIconProps> = React.memo(
             loading: false,
           });
       };
-      setIconState({ ...getInitialState(), key: cacheKey });
+      setIconState(getInitialState());
       // Skip if no logo URL or already cached
       if (!resolvedLogo || tokenImageCache.has(cacheKey)) {
         return cleanup;
