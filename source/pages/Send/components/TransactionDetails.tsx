@@ -62,9 +62,6 @@ export const TransactionDetailsComponent = (
   } = props;
   const { alert, useCopyClipboard } = useUtils();
   const { controllerEmitter } = useController();
-  const [copyFieldType, setCopyFieldType] = useState<
-    'address' | 'hash' | 'other'
-  >('address');
   const [currentTxValue, setCurrentTxValue] = useState<string>('0');
   const [blacklistWarning, setBlacklistWarning] = useState<{
     isBlacklisted: boolean;
@@ -85,29 +82,9 @@ export const TransactionDetailsComponent = (
   // Use valid (non-expired) ENS cache for security
   const ensCache = useReduxSelector(selectValidEnsCache);
 
-  // Helper function to get appropriate copy message based on field type
-  const getCopyMessage = (fieldType: 'address' | 'hash' | 'other') => {
-    switch (fieldType) {
-      case 'address':
-        return t('home.addressCopied');
-      case 'hash':
-        return t('home.hashCopied');
-      default:
-        return t('settings.successfullyCopied');
-    }
-  };
-  const copyMessage = getCopyMessage(copyFieldType);
   useEffect(() => {
-    if (copied) alert.info(copyMessage, undefined, isCurrentCopy);
-  }, [copied, copyMessage, alert, isCurrentCopy]);
-
-  const handleCopyWithMessage = (
-    value: string,
-    fieldType: 'address' | 'hash' | 'other' = 'address'
-  ) => {
-    setCopyFieldType(fieldType);
-    void copy(value);
-  };
+    if (copied) alert.info(t('home.addressCopied'), undefined, isCurrentCopy);
+  }, [copied, t, alert, isCurrentCopy]);
 
   // Calculate total fee: legacy uses gasPrice; EIP-1559 shows Max fee (gasLimit * maxFeePerGas)
   const gasLimit = customFee.isCustom ? customFee.gasLimit : fee.gasLimit;
@@ -193,9 +170,7 @@ export const TransactionDetailsComponent = (
           <Tooltip content={tx.from} childrenClassName="flex">
             {ellipsis(tx.from, 7, 15)}
             {
-              <IconButton
-                onClick={() => handleCopyWithMessage(tx.from ?? '', 'address')}
-              >
+              <IconButton onClick={() => copy(tx.from ?? '')}>
                 <CopyIcon />
               </IconButton>
             }
@@ -214,9 +189,7 @@ export const TransactionDetailsComponent = (
               return ellipsis(label, 7, 15);
             })()}
             {
-              <IconButton
-                onClick={() => handleCopyWithMessage(tx.to ?? '', 'address')}
-              >
+              <IconButton onClick={() => copy(tx.to ?? '')}>
                 <CopyIcon />
               </IconButton>
             }
