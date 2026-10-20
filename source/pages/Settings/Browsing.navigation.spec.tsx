@@ -3,6 +3,7 @@
 import React from 'react';
 
 import { INetworkType, KeyringAccountType } from 'types/network';
+import { networkRegistrationFingerprint } from 'utils/networkRegistration';
 
 import CustomRPC from './CustomRPC';
 import EditAccount from './EditAccount';
@@ -42,6 +43,7 @@ const mockForm = {
 const rpc = {
   chainId: 12345,
   kind: INetworkType.Ethereum,
+  slip44: 60,
   url: 'https://rpc.example',
   label: 'Test',
   currency: 'eth',
@@ -223,7 +225,10 @@ describe('settings browsing context', () => {
       });
       expect(mockEmitter).toHaveBeenCalledWith(
         ['wallet', mode === 'edit' ? 'editCustomRpc' : 'addCustomRpc'],
-        [expect.objectContaining({ chainId: rpc.chainId })]
+        [
+          expect.objectContaining({ chainId: rpc.chainId }),
+          ...(mode === 'edit' ? [networkRegistrationFingerprint(rpc)] : []),
+        ]
       );
       expect(mockNavigateBack).toHaveBeenCalledWith(mockNavigate, mockLocation);
       expect(mockNavigate).not.toHaveBeenCalled();

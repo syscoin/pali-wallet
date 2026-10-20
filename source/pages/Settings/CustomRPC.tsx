@@ -20,6 +20,7 @@ import { RootState } from 'state/store';
 import { INetworkType, INetwork } from 'types/network';
 import { ICustomRpcParams } from 'types/transactions';
 import { getWalletNavigationScope, navigateBack } from 'utils/navigationState';
+import { networkRegistrationFingerprint } from 'utils/networkRegistration';
 
 import {
   discardCustomRpcDraft,
@@ -57,6 +58,22 @@ interface IChainInfo {
   slip44?: number;
 }
 
+const NETWORK_BADGE_CLASS =
+  'text-xs px-2 py-0.5 text-white bg-brand-royalblue rounded-full font-medium shadow-sm group-hover:shadow-md group-hover:bg-brand-blue500 transform group-hover:scale-105 transition-all duration-300 flex-shrink-0';
+const NETWORK_INPUT_CLASS = 'custom-input-normal relative';
+
+const networkFormValues = (
+  network: INetwork | null | undefined,
+  isSyscoinRpc: boolean
+) => ({
+  label: network?.label ?? '',
+  url: network?.url ?? '',
+  chainId: network?.chainId ?? '',
+  symbol: network?.currency?.toUpperCase() ?? '',
+  explorer: network?.explorer?.trim() || network?.url || '',
+  apiUrl: isSyscoinRpc ? '' : network?.apiUrl ?? '',
+});
+
 const CustomRPCView = () => {
   const location = useLocation();
   const { state }: { state: any } = location;
@@ -67,13 +84,27 @@ const CustomRPCView = () => {
   const draftScope = useSelector(() =>
     JSON.stringify(getWalletNavigationScope())
   );
-  const draftEditor = JSON.stringify([
+  const currentNetwork: INetwork | undefined =
+    state?.isEditing && state?.selected
+      ? networks[
+          state.selected.kind === INetworkType.Syscoin ? 'syscoin' : 'ethereum'
+        ][state.selected.key || state.selected.chainId]
+      : undefined;
+  // Keep the predecessor tied to the fields, not to later Redux broadcasts.
+  const editingNetworkRef = React.useRef(currentNetwork);
+  const latestEditingNetworkRef = React.useRef(currentNetwork);
+  latestEditingNetworkRef.current = currentNetwork;
+  const [draftRegistration, setDraftRegistration] = useState(() =>
+    networkRegistrationFingerprint(currentNetwork)
+  );
+  const draftEditorIdentity = JSON.stringify([
     Boolean(state?.isEditing),
     state?.selected?.kind,
     state?.selected?.key,
     state?.selected?.chainId,
     Boolean(state?.isDefault),
   ]);
+  const draftEditor = JSON.stringify([draftEditorIdentity, draftRegistration]);
   const [draftId] = useState(() =>
     typeof state?.customRpcDraftId === 'string' &&
     /^[a-f0-9-]{36}$/.test(state.customRpcDraftId)
@@ -113,8 +144,8 @@ const CustomRPCView = () => {
   const [form] = useForm();
   const draftFamilyRef = React.useRef(isSyscoinRpc);
   draftFamilyRef.current = isSyscoinRpc;
-  const draftContext = JSON.stringify([draftScope, draftEditor]);
-  const initialDraftContext = React.useRef(draftContext);
+  const draftContext = JSON.stringify([draftScope, draftEditorIdentity]);
+  const initialDraftContext = React.useRef<string | undefined>(draftContext);
   const currentDraftContext = React.useRef(draftContext);
   const draftDiscarded = React.useRef(false);
   const discardDraft = () => {
@@ -136,6 +167,27 @@ const CustomRPCView = () => {
     draftRevisionRef.current += 1;
     setTestingRpcs(false);
     setCurrentRpcTest(null);
+  };
+  const refreshChangedEditor = () => {
+    if (
+      !state?.isEditing ||
+      networkRegistrationFingerprint(editingNetworkRef.current) ===
+        networkRegistrationFingerprint(latestEditingNetworkRef.current)
+    )
+      return false;
+    editingNetworkRef.current = latestEditingNetworkRef.current;
+    setDraftRegistration(
+      networkRegistrationFingerprint(latestEditingNetworkRef.current)
+    );
+    invalidatePendingChecks();
+    discardCustomRpcDraft(draftId);
+    form.setFieldsValue(
+      networkFormValues(latestEditingNetworkRef.current, isSyscoinRpc)
+    );
+    setLoading(false);
+    setShowModal(true);
+    setErrorModalMessage('Network changed. Please save it again.');
+    return true;
   };
   const isCurrentRoute = (origin: typeof location) => {
     const current = latestLocationRef.current;
@@ -159,6 +211,9 @@ const CustomRPCView = () => {
     const origin = location;
     const scope = getWalletNavigationScope();
     const draftRevision = draftRevisionRef.current;
+    const expectedRegistration = networkRegistrationFingerprint(
+      editingNetworkRef.current
+    );
     return (allowNetworkChange = false) => {
       const status = getControllerStatus();
       const currentScope = getWalletNavigationScope();
@@ -169,7 +224,14 @@ const CustomRPCView = () => {
         !status.isLoading &&
         !status.connectionUnavailable &&
         currentScope.account === scope.account &&
-        (allowNetworkChange || currentScope.network === scope.network)
+        (allowNetworkChange ||
+          (currentScope.network === scope.network &&
+            (!state?.isEditing ||
+              (expectedRegistration !== undefined &&
+                expectedRegistration ===
+                  networkRegistrationFingerprint(
+                    latestEditingNetworkRef.current
+                  )))))
       );
     };
   };
@@ -224,6 +286,18 @@ const CustomRPCView = () => {
       return false;
     }
   };
+
+  const urlFormatRule = () => ({
+    validator(_, value) {
+      if (!value || value.trim() === '') {
+        return Promise.resolve();
+      }
+      if (validateUrl(value.trim())) {
+        return Promise.resolve();
+      }
+      return Promise.reject(new Error(t('settings.validUrlRequired')));
+    },
+  });
 
   const testBlockExplorerApi = async (
     apiUrl: string
@@ -477,11 +551,17 @@ const CustomRPCView = () => {
 
   const onSubmit = async (data: ICustomRpcParams) => {
     const origin = location;
+    const expectedNetwork = editingNetworkRef.current;
+    const expectedRegistration =
+      networkRegistrationFingerprint(expectedNetwork);
     const stillActive = createOperationGuard();
     const canContinue = (allowNetworkChange = false) => {
       if (stillActive(allowNetworkChange)) return true;
       // A canceled request must not leave this visible form in a pending state.
-      if (isCurrentRoute(origin)) setLoading(false);
+      if (isCurrentRoute(origin)) {
+        setLoading(false);
+        refreshChangedEditor();
+      }
       return false;
     };
     if (!canContinue()) return;
@@ -591,7 +671,7 @@ const CustomRPCView = () => {
 
       if (state?.isEditing) {
         // In edit mode, network should exist
-        if (!existingNetwork) {
+        if (!existingNetwork || !expectedNetwork || !expectedRegistration) {
           throw new Error(t('settings.networkNotFoundForEditing'));
         }
 
@@ -599,11 +679,14 @@ const CustomRPCView = () => {
         // Preserve key if it exists
         const updatedNetwork: INetwork = {
           ...network,
-          ...(existingNetwork.key && { key: existingNetwork.key }),
-          default: existingNetwork.default, // Preserve original default value
+          ...(expectedNetwork.key && { key: expectedNetwork.key }),
+          default: expectedNetwork.default, // Preserve original default value
         };
 
-        await controllerEmitter(['wallet', 'editCustomRpc'], [updatedNetwork]);
+        await controllerEmitter(
+          ['wallet', 'editCustomRpc'],
+          [updatedNetwork, expectedRegistration]
+        );
         if (!canContinue(true)) return;
         setLoading(false);
 
@@ -630,41 +713,19 @@ const CustomRPCView = () => {
       }
     } catch (error: any) {
       if (!canContinue(true)) return;
+      refreshChangedEditor();
       setShowModal(true);
       setLoading(false);
       setErrorModalMessage(error.message);
     }
   };
 
-  // Get fresh network data from Redux store instead of stale route state
-  const getCurrentNetworkData = () => {
-    if (!state?.isEditing || !state?.selected) return null;
-
-    const chain = isSyscoinRpc ? 'syscoin' : 'ethereum';
-    const networkKey = state.selected.key || state.selected.chainId;
-
-    // Use fresh data from Redux store
-    const freshNetwork = networks[chain][networkKey];
-
-    return freshNetwork || null;
-  };
-
-  const currentNetwork = getCurrentNetworkData();
-
   useEffect(() => {
     if (state?.isEditing && !currentNetwork) navigateBack(navigate, location);
   }, [state?.isEditing, currentNetwork, navigate, location]);
 
   const initialValues = {
-    label: currentNetwork?.label ?? '',
-    url: currentNetwork?.url ?? '',
-    chainId: currentNetwork?.chainId ?? '',
-    symbol: currentNetwork?.currency?.toUpperCase() ?? '',
-    explorer:
-      (currentNetwork?.explorer && currentNetwork.explorer.trim()) ||
-      currentNetwork?.url ||
-      '',
-    apiUrl: isSyscoinRpc ? '' : currentNetwork?.apiUrl ?? '',
+    ...networkFormValues(currentNetwork, isSyscoinRpc),
     ...(initialDraftContext.current === draftContext
       ? restoredDraft?.values
       : {}),
@@ -685,21 +746,30 @@ const CustomRPCView = () => {
 
   React.useLayoutEffect(
     () => () => {
-      if (draftDiscarded.current) return;
+      if (
+        draftDiscarded.current ||
+        draftRegistration !==
+          networkRegistrationFingerprint(editingNetworkRef.current)
+      )
+        return;
       writeCustomRpcDraft(draftId, draftScope, draftEditor, {
         isSyscoinRpc: draftFamilyRef.current,
         values: form.getFieldsValue(true),
       });
     },
-    [draftId, draftScope, draftEditor, form]
+    [draftId, draftScope, draftEditor, draftRegistration, form]
   );
 
   useEffect(() => {
     if (currentDraftContext.current === draftContext) return;
+    // A later return to this scope cannot revive its initial restored values.
+    initialDraftContext.current = undefined;
     currentDraftContext.current = draftContext;
     draftDiscarded.current = false;
     discardCustomRpcDraft(draftId);
     invalidatePendingChecks();
+    editingNetworkRef.current = currentNetwork;
+    setDraftRegistration(networkRegistrationFingerprint(currentNetwork));
     form.resetFields();
     form.setFieldsValue(initialValues);
     setIsSyscoinRpc(
@@ -754,17 +824,7 @@ const CustomRPCView = () => {
   // Update form when Redux state changes (for editing mode) - only once on initial load
   useEffect(() => {
     if (currentNetwork && state?.isEditing && !formInitialized) {
-      const formValues = {
-        label: currentNetwork?.label ?? '',
-        url: currentNetwork?.url ?? '',
-        chainId: currentNetwork?.chainId ?? '',
-        symbol: currentNetwork?.currency?.toUpperCase() ?? '',
-        explorer:
-          (currentNetwork?.explorer && currentNetwork.explorer.trim()) ||
-          currentNetwork?.url ||
-          '',
-        apiUrl: isSyscoinRpc ? '' : currentNetwork?.apiUrl ?? '',
-      };
+      const formValues = networkFormValues(currentNetwork, isSyscoinRpc);
       form.setFieldsValue(formValues);
       setFormInitialized(true);
     }
@@ -1131,9 +1191,7 @@ const CustomRPCView = () => {
             </Tooltip>
 
             {/* Chain ID badge */}
-            <span className="text-xs px-2 py-0.5 text-white bg-brand-royalblue rounded-full font-medium shadow-sm group-hover:shadow-md group-hover:bg-brand-blue500 transform group-hover:scale-105 transition-all duration-300 flex-shrink-0">
-              {chain.chainId}
-            </span>
+            <span className={NETWORK_BADGE_CLASS}>{chain.chainId}</span>
           </div>
 
           {/* Currency and RPC info - more compact */}
@@ -1224,7 +1282,7 @@ const CustomRPCView = () => {
                 <span className="font-bold text-white truncate text-xl group-hover:text-brand-royalbluemedium transition-colors duration-200">
                   {currentNetwork.label || 'Unknown Network'}
                 </span>
-                <span className="text-xs px-2 py-0.5 text-white bg-brand-royalblue rounded-full font-medium shadow-sm group-hover:shadow-md group-hover:bg-brand-blue500 transform group-hover:scale-105 transition-all duration-300 flex-shrink-0">
+                <span className={NETWORK_BADGE_CLASS}>
                   {currentNetwork.kind === INetworkType.Syscoin || isSyscoinRpc
                     ? currentNetwork.slip44 ?? currentNetwork.chainId
                     : currentNetwork.chainId}
@@ -1332,7 +1390,7 @@ const CustomRPCView = () => {
                     'settings.searchNetworksPlaceholder',
                     { networkType: isSyscoinRpc ? 'UTXO' : 'EVM' }
                   )}`}
-                  className="custom-input-normal relative"
+                  className={NETWORK_INPUT_CLASS}
                   onChange={(e) => {
                     invalidatePendingChecks();
                     const value = e.target.value;
@@ -1458,20 +1516,7 @@ const CustomRPCView = () => {
               required: true,
               message: t('settings.rpcUrlRequired'),
             },
-            () => ({
-              validator(_, value) {
-                if (!value || value.trim() === '') {
-                  return Promise.resolve();
-                }
-                // Basic URL format validation only
-                if (validateUrl(value.trim())) {
-                  return Promise.resolve();
-                }
-                return Promise.reject(
-                  new Error(t('settings.validUrlRequired'))
-                );
-              },
-            }),
+            urlFormatRule,
           ]}
         >
           <Input
@@ -1482,7 +1527,7 @@ const CustomRPCView = () => {
                 ? 'settings.blockbookUrlPlaceholder'
                 : 'settings.rpcUrlPlaceholder'
             )}
-            className="custom-input-normal relative"
+            className={NETWORK_INPUT_CLASS}
             onBlur={async (e) => {
               const url = e.target.value?.trim();
               if (url) {
@@ -1535,7 +1580,7 @@ const CustomRPCView = () => {
                 ? t('settings.chainIdCannotBeEdited')
                 : t('settings.chainIdCustomEvm')
             }
-            className="custom-input-normal relative"
+            className={NETWORK_INPUT_CLASS}
             style={{
               cursor: isSyscoinRpc || state?.isEditing ? 'not-allowed' : 'text',
               backgroundColor:
@@ -1575,25 +1620,13 @@ const CustomRPCView = () => {
               required: false,
               message: t('settings.explorerUrlRequired'),
             },
-            () => ({
-              validator(_, value) {
-                if (!value || value.trim() === '') {
-                  return Promise.resolve();
-                }
-                if (validateUrl(value.trim())) {
-                  return Promise.resolve();
-                }
-                return Promise.reject(
-                  new Error(t('settings.validUrlRequired'))
-                );
-              },
-            }),
+            urlFormatRule,
           ]}
         >
           <Input
             type="text"
             placeholder={t('settings.explorer')}
-            className="custom-input-normal relative"
+            className={NETWORK_INPUT_CLASS}
           />
         </Form.Item>
         {!isSyscoinRpc && (
@@ -1620,26 +1653,13 @@ const CustomRPCView = () => {
                   required: false,
                   message: '',
                 },
-                () => ({
-                  validator(_, value) {
-                    if (!value || value.trim() === '') {
-                      return Promise.resolve();
-                    }
-                    // Only validate URL format, not API functionality
-                    if (validateUrl(value.trim())) {
-                      return Promise.resolve();
-                    }
-                    return Promise.reject(
-                      new Error(t('settings.validUrlRequired'))
-                    );
-                  },
-                }),
+                urlFormatRule,
               ]}
             >
               <Input
                 type="text"
                 placeholder="https://api.example.com/api"
-                className="custom-input-normal relative"
+                className={NETWORK_INPUT_CLASS}
               />
             </Form.Item>
           </div>

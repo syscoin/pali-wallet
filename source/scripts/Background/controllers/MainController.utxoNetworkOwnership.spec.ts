@@ -24,6 +24,7 @@ import store from 'state/store';
 import vaultCache from 'state/vaultCache';
 import vaultGlobalReducer from 'state/vaultGlobal';
 import { INetworkType } from 'types/network';
+import { networkRegistrationFingerprint } from 'utils/networkRegistration';
 import { chromeStorage } from 'utils/storageAPI';
 
 import MainController from './MainController';
@@ -87,7 +88,12 @@ it('allows distinct UTXO vaults and edits to the same registration', async () =>
   await wallet.addCustomRpc(network);
   await wallet.addCustomRpc({ ...other, slip44: 2 });
   const edited = { ...network, url: 'https://edited.invalid' };
-  await expect(wallet.editCustomRpc(edited)).resolves.toEqual(edited);
+  await expect(
+    wallet.editCustomRpc(
+      edited,
+      networkRegistrationFingerprint(state.vaultGlobal.networks.syscoin[999])
+    )
+  ).resolves.toEqual(edited);
   expect(state.vaultGlobal.networks.syscoin[999].url).toBe(edited.url);
   expect(Object.keys(state.vaultGlobal.networks.syscoin)).toHaveLength(2);
 });
@@ -117,7 +123,12 @@ it('rejects editing another registration into an already owned UTXO vault', asyn
   await wallet.addCustomRpc({ ...other, slip44: 2 });
   const before = JSON.stringify(state);
   const saves = jest.mocked(chromeStorage.setItem).mock.calls.length;
-  await expect(wallet.editCustomRpc(other)).rejects.toThrow('UTXO network');
+  await expect(
+    wallet.editCustomRpc(
+      other,
+      networkRegistrationFingerprint(state.vaultGlobal.networks.syscoin[998])
+    )
+  ).rejects.toThrow('UTXO network');
   expect(JSON.stringify(state)).toBe(before);
   expect(chromeStorage.setItem).toHaveBeenCalledTimes(saves);
 });

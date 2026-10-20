@@ -25,6 +25,7 @@ import vaultCache from 'state/vaultCache';
 import vaultGlobalReducer from 'state/vaultGlobal';
 import { INetworkType, KeyringAccountType } from 'types/network';
 import { networkSwitchMutex, walletPersistenceMutex } from 'utils/asyncMutex';
+import { networkRegistrationFingerprint } from 'utils/networkRegistration';
 import { chromeStorage } from 'utils/storageAPI';
 
 import MainController from './MainController';
@@ -277,7 +278,10 @@ describe('network removal cannot delete a switching or active vault', () => {
       try {
         const mutation =
           operation === 'edit'
-            ? wallet.editCustomRpc({ ...target, url: 'https://edited.example' })
+            ? wallet.editCustomRpc(
+                { ...target, url: 'https://edited.example' },
+                networkRegistrationFingerprint(target)
+              )
             : wallet.addCustomRpc({
                 ...target,
                 kind: INetworkType.Ethereum,

@@ -21,6 +21,7 @@ jest.mock('utils/storageAPI', () => ({
 import store from 'state/store';
 import vaultGlobalReducer from 'state/vaultGlobal';
 import { INetworkType } from 'types/network';
+import { networkRegistrationFingerprint } from 'utils/networkRegistration';
 import { chromeStorage } from 'utils/storageAPI';
 
 import MainController from './MainController';
@@ -131,7 +132,13 @@ describe('custom-network registration concurrency', () => {
         scenario === 'edited'
           ? { ...other, url: 'http://127.0.0.1:38545' }
           : other;
-      if (scenario === 'edited') await wallet.editCustomRpc(saved);
+      if (scenario === 'edited')
+        await wallet.editCustomRpc(
+          saved,
+          networkRegistrationFingerprint(
+            state.vaultGlobal.networks.ethereum[31337]
+          )
+        );
       const dispatches = jest.mocked(store.dispatch).mock.calls.length;
       const saves = jest.mocked(chromeStorage.setItem).mock.calls.length;
 

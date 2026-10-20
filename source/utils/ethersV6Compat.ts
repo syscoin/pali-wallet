@@ -12,7 +12,6 @@ import { keccak256 as ethersKeccak256 } from 'ethers/crypto';
 import {
   hashMessage as ethersHashMessage,
   id as ethersId,
-  namehash as ethersNamehash,
   TypedDataEncoder as EthersTypedDataEncoder,
 } from 'ethers/hash';
 import {
@@ -53,7 +52,6 @@ export const id: any = ethersId;
 export const isAddress: any = ethersIsAddress;
 export const isHexString: any = ethersIsHexString;
 export const keccak256: any = ethersKeccak256;
-export const namehash: any = ethersNamehash;
 export const toBeHex: any = ethersToBeHex;
 export const toUtf8Bytes: any = ethersToUtf8Bytes;
 export const zeroPadValue: any = ethersZeroPadValue;

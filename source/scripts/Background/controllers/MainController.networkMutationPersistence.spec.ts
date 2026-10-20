@@ -24,6 +24,7 @@ import {
   setNetworks,
 } from 'state/vaultGlobal';
 import { INetwork, INetworkType } from 'types/network';
+import { networkRegistrationFingerprint } from 'utils/networkRegistration';
 
 import MainController from './MainController';
 
@@ -161,7 +162,12 @@ describe.each([INetworkType.Ethereum, INetworkType.Syscoin])(
         label: 'Edited synthetic network',
         url: 'https://edited-network.synthetic.invalid',
       };
-      await expect(wallet.editCustomRpc(edited)).resolves.toMatchObject(edited);
+      await expect(
+        wallet.editCustomRpc(
+          edited,
+          networkRegistrationFingerprint(liveTarget())
+        )
+      ).resolves.toMatchObject(edited);
       expect(liveTarget()).toMatchObject(edited);
       expect(await savedTarget()).toEqual(liveTarget());
       expect(store.getState().vault.activeNetwork).toEqual(source);
@@ -197,12 +203,22 @@ describe.each([INetworkType.Ethereum, INetworkType.Syscoin])(
       };
       writeCount = 0;
       refuseNextCommit = true;
-      const refused = await resultOf(wallet.editCustomRpc(edited));
+      const refused = await resultOf(
+        wallet.editCustomRpc(
+          edited,
+          networkRegistrationFingerprint(liveTarget())
+        )
+      );
       const afterRefusal = {
         live: liveTarget(),
         saved: await savedTarget(),
       };
-      const retry = await resultOf(wallet.editCustomRpc(edited));
+      const retry = await resultOf(
+        wallet.editCustomRpc(
+          edited,
+          networkRegistrationFingerprint(liveTarget())
+        )
+      );
       expect({ refused, afterRefusal, retry, writeCount }).toEqual({
         refused: { success: false, message: FAILURE },
         afterRefusal: { live: original, saved: original },
@@ -266,9 +282,10 @@ describe.each([INetworkType.Ethereum, INetworkType.Syscoin])(
       const firstEdit = { ...target, label: 'First accepted edit' };
       const secondEdit = { ...target, label: 'Second explicit edit' };
       const held = holdNextWrite();
-      const first = wallet.editCustomRpc(firstEdit);
+      const expected = networkRegistrationFingerprint(liveTarget());
+      const first = wallet.editCustomRpc(firstEdit, expected);
       await held.started;
-      const second = wallet.editCustomRpc(secondEdit);
+      const second = wallet.editCustomRpc(secondEdit, expected);
       const rejected = expect(second).rejects.toThrow('Network changed');
       expect(liveTarget().label).toBe(target.label);
       held.release();
@@ -277,7 +294,10 @@ describe.each([INetworkType.Ethereum, INetworkType.Syscoin])(
       expect(liveTarget()).toMatchObject(firstEdit);
       expect(await savedTarget()).toEqual(liveTarget());
       expect(writeCount).toBe(1);
-      await wallet.editCustomRpc(secondEdit);
+      await wallet.editCustomRpc(
+        secondEdit,
+        networkRegistrationFingerprint(liveTarget())
+      );
       expect(await savedTarget()).toMatchObject(secondEdit);
     });
 
@@ -285,7 +305,10 @@ describe.each([INetworkType.Ethereum, INetworkType.Syscoin])(
       await wallet.addCustomRpc(target);
       writeCount = 0;
       const held = holdNextWrite();
-      const edit = wallet.editCustomRpc({ ...target, label: 'Obsolete edit' });
+      const edit = wallet.editCustomRpc(
+        { ...target, label: 'Obsolete edit' },
+        networkRegistrationFingerprint(liveTarget())
+      );
       const rejected = expect(edit).rejects.toThrow('Network changed');
       await held.started;
       const latest = { ...target, label: 'Replacement registry record' };
@@ -362,11 +385,10 @@ describe.each([INetworkType.Ethereum, INetworkType.Syscoin])(
         coingeckoPlatformId: 'synthetic-platform',
       };
       await wallet.addCustomRpc(metadata);
-      await wallet.editCustomRpc({
-        ...target,
-        label: 'Edited label',
-        default: true,
-      });
+      await wallet.editCustomRpc(
+        { ...target, label: 'Edited label', default: true },
+        networkRegistrationFingerprint(liveTarget())
+      );
       expect(await savedTarget()).toMatchObject({
         label: 'Edited label',
         coingeckoId: metadata.coingeckoId,
