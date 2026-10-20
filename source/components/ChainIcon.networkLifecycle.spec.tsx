@@ -213,9 +213,11 @@ beforeEach(() => {
     });
   mockStore = createStore();
   mockController.mockClear();
-  mockReadChain.mockImplementation(async (_method, [chainId, kind]) =>
-    ChainListService.getInstance().getChainById(chainId, kind)
-  );
+  mockReadChain
+    .mockClear()
+    .mockImplementation(async (_method, [chainId, kind]) =>
+      ChainListService.getInstance().getChainById(chainId, kind)
+    );
   chrome.storage.local.get = jest.fn((_keys, callback) => callback({})) as any;
   chrome.storage.local.set = jest.fn((_values, callback) =>
     callback?.()
@@ -434,4 +436,29 @@ it('preserves omitted-kind lookup semantics without caching that result for an e
     )
   );
   expect(fetch).toHaveBeenCalledTimes(1);
+});
+
+it('keeps local SVG and URL icons offline and falls back after a current local image error', () => {
+  render(
+    <>
+      <div data-testid="local-svg">
+        <ChainIcon chainId={1} networkKind={INetworkType.Ethereum} />
+      </div>
+      <div data-testid="local-url">
+        <ChainIcon chainId={8453} networkKind={INetworkType.Ethereum} />
+      </div>
+    </>
+  );
+  expect(screen.getByTestId('local-svg').querySelector('svg')).not.toBeNull();
+  const local = within(screen.getByTestId('local-url')).getByAltText(
+    'Chain 8453'
+  );
+  expect(local).toHaveAttribute('src', 'test-file-stub');
+  fireEvent.error(local);
+  expect(
+    within(screen.getByTestId('local-url')).queryByAltText('Chain 8453')
+  ).toBeNull();
+  expect(screen.getByTestId('local-url').querySelector('svg')).not.toBeNull();
+  expect(mockReadChain).not.toHaveBeenCalled();
+  expect(fetch).not.toHaveBeenCalled();
 });

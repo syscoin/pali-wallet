@@ -39,36 +39,39 @@ interface IChainIconProps {
 
 // Known chain icons with chainId and network type
 const KNOWN_CHAIN_ICONS: {
-  [key: string]:
-    | React.ComponentType<{ className?: string; style?: React.CSSProperties }>
-    | string;
+  [family: string]: {
+    [chainId: number]:
+      | React.ComponentType<{ className?: string; style?: React.CSSProperties }>
+      | string;
+  };
 } = {
-  // Ethereum networks (chainId-networkType)
-  '1-ethereum': EthChainSvg, // Ethereum Mainnet
-  '5-ethereum': EthChainSvg, // Ethereum Goerli (testnet)
-  '11155111-ethereum': EthChainSvg, // Ethereum Sepolia (testnet)
-  '57-ethereum': SysChainSvg, // Syscoin NEVM Mainnet
-  '5700-ethereum': SysChainSvg, // Syscoin NEVM Testnet
-  '57057-ethereum': ZkSysIcon, // zkTanenbaum Testnet
-  '570-ethereum': RolluxChainSvg, // Rollux Mainnet
-  '57000-ethereum': RolluxChainSvg, // Rollux Testnet
-  '8453-ethereum': BaseIcon, // Base Mainnet
-  '42161-ethereum': ArbitrumIcon, // Arbitrum One
-
-  // UTXO networks (chainId-networkType) - using chainId from coins.ts
-  '0-syscoin': BtcChainSvg, // Bitcoin Mainnet (slip44: 0)
-  '1-syscoin': BtcChainSvg, // Bitcoin Testnet (chainId: 1)
-  '57-syscoin': SysChainSvg, // Syscoin UTXO Mainnet (slip44: 57)
-  '5700-syscoin': SysChainSvg, // Syscoin Testnet (chainId: 5700)
-  '10000-syscoin': BtcChainSvg, // Bitcoin Regtest (chainId: 10000)
+  ethereum: {
+    1: EthChainSvg, // Ethereum Mainnet
+    5: EthChainSvg, // Ethereum Goerli (testnet)
+    11155111: EthChainSvg, // Ethereum Sepolia (testnet)
+    57: SysChainSvg, // Syscoin NEVM Mainnet
+    5700: SysChainSvg, // Syscoin NEVM Testnet
+    57057: ZkSysIcon, // zkTanenbaum Testnet
+    570: RolluxChainSvg, // Rollux Mainnet
+    57000: RolluxChainSvg, // Rollux Testnet
+    8453: BaseIcon, // Base Mainnet
+    42161: ArbitrumIcon, // Arbitrum One
+  },
+  // UTXO chain IDs from coins.ts.
+  syscoin: {
+    0: BtcChainSvg, // Bitcoin Mainnet (slip44: 0)
+    1: BtcChainSvg, // Bitcoin Testnet (chainId: 1)
+    57: SysChainSvg, // Syscoin UTXO Mainnet (slip44: 57)
+    5700: SysChainSvg, // Syscoin Testnet (chainId: 5700)
+    10000: BtcChainSvg, // Bitcoin Regtest (chainId: 10000)
+  },
 };
 
 // Helper function to get icon with fallback
 const getKnownIcon = (chainId: number, networkKind?: INetworkType) => {
   const networkType =
     networkKind === INetworkType.Ethereum ? 'ethereum' : 'syscoin';
-  const iconKey = `${chainId}-${networkType}`;
-  return KNOWN_CHAIN_ICONS[iconKey] || null;
+  return KNOWN_CHAIN_ICONS[networkType][chainId] || null;
 };
 
 interface IIconScope {
@@ -80,13 +83,15 @@ interface IIconScope {
 
 const initialIconState = (scope: IIconScope) => {
   const known = getKnownIcon(scope.chainId, scope.networkKind);
-  const cached = imageDataCache.get(scope.key);
   return {
     scope,
-    url: typeof known === 'string' ? known : cached ?? null,
-    component: known && typeof known !== 'string' ? known : null,
-    error: !known && cached === null,
-    loading: !known && !imageDataCache.has(scope.key),
+    // An undefined URL is loading; null is the fallback. Local SVG components
+    // are derived from the current scope, never retained in async state.
+    url: known
+      ? typeof known === 'string'
+        ? known
+        : null
+      : imageDataCache.get(scope.key),
   };
 };
 
@@ -145,30 +150,24 @@ export const ChainIcon: React.FC<IChainIconProps> = React.memo(
     // Keep omitted-kind callers' existing lookup behavior, without letting
     // their result poison an explicitly selected network family's cache.
     const key = `${networkKind ?? 'unspecified'}:${chainId}`;
-    const scopeRef = useRef<IIconScope>({
-      key,
-      chainId,
-      networkKind,
-      revision: 0,
-    });
-    if (scopeRef.current.key !== key) {
+    const scopeRef = useRef<IIconScope>();
+    if (scopeRef.current?.key !== key) {
       scopeRef.current = {
         key,
         chainId,
         networkKind,
-        revision: scopeRef.current.revision + 1,
+        revision: (scopeRef.current?.revision ?? -1) + 1,
       };
     }
-    const scope = scopeRef.current;
+    const scope = scopeRef.current!;
     const [state, setState] = useState(() => initialIconState(scope));
     // Scope changes must not render the previous SVG/image while passive
     // effects catch up. The revision also distinguishes A -> B -> A.
-    const {
-      url: iconUrl,
-      component: iconComponent,
-      error,
-      loading: isLoading,
-    } = state.scope === scope ? state : initialIconState(scope);
+    const known = getKnownIcon(chainId, networkKind);
+    const iconComponent = typeof known === 'string' ? null : known;
+    const { url: iconUrl } =
+      state.scope === scope ? state : initialIconState(scope);
+    const dimensions = { width: size, height: size };
 
     useEffect(() => {
       let active = true;
@@ -176,17 +175,11 @@ export const ChainIcon: React.FC<IChainIconProps> = React.memo(
       setState(initial);
       const commit = (url: string | null) => {
         if (active && scopeRef.current === scope) {
-          setState({
-            scope,
-            url,
-            component: null,
-            error: !url,
-            loading: false,
-          });
+          setState({ scope, url });
         }
       };
       let loadTimer: ReturnType<typeof setTimeout>;
-      if (initial.loading) {
+      if (initial.url === undefined) {
         const load = () => {
           if (imageDataCache.has(scope.key)) {
             commit(imageDataCache.get(scope.key)!);
@@ -215,22 +208,22 @@ export const ChainIcon: React.FC<IChainIconProps> = React.memo(
     }, [scope]);
 
     // Use fallback SVG for unknown chains
-    if (error || (!iconUrl && !iconComponent && !isLoading)) {
+    if (iconUrl !== undefined && !iconUrl && !iconComponent) {
       return (
         <ChainFallbackSvg
           className={`${fallbackClassName} ${className}`}
-          style={{ width: size, height: size }}
+          style={dimensions}
           chainId={chainId}
         />
       );
     }
 
     // Show loading state
-    if (isLoading && !iconUrl && !iconComponent) {
+    if (iconUrl === undefined) {
       return (
         <div
           className={`animate-pulse bg-gray-600 ${fallbackClassName} ${className}`}
-          style={{ width: size, height: size }}
+          style={dimensions}
         />
       );
     }
@@ -239,7 +232,7 @@ export const ChainIcon: React.FC<IChainIconProps> = React.memo(
     if (iconComponent) {
       const IconComponent = iconComponent;
       return (
-        <div style={{ width: size, height: size }} className={className}>
+        <div style={dimensions} className={className}>
           <IconComponent
             className="w-full h-full rounded-full"
             style={{ width: '100%', height: '100%' }}
@@ -251,30 +244,19 @@ export const ChainIcon: React.FC<IChainIconProps> = React.memo(
     // Render image URL
     return (
       <img
-        key={`${scope.key}:${scope.revision}`}
+        key={scope.revision}
         src={iconUrl}
         alt={`Chain ${chainId}`}
         className={`rounded-full ${className}`}
-        style={{ width: size, height: size }}
+        style={dimensions}
         onError={() => {
           if (scopeRef.current === scope) {
-            setState((current) => ({
-              ...(current.scope === scope ? current : initialIconState(scope)),
-              error: true,
-              loading: false,
-            }));
+            setState({ scope, url: null });
           }
         }}
       />
     );
-  },
-  // Proper memoization comparison
-  (prevProps, nextProps) =>
-    prevProps.chainId === nextProps.chainId &&
-    prevProps.size === nextProps.size &&
-    prevProps.className === nextProps.className &&
-    prevProps.fallbackClassName === nextProps.fallbackClassName &&
-    prevProps.networkKind === nextProps.networkKind
+  }
 );
 
 ChainIcon.displayName = 'ChainIcon';
