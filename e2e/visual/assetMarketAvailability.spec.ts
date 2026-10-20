@@ -57,7 +57,13 @@ async function marketAvailability(
   try {
     wallet = await PaliWallet.launch(
       `asset-market-availability-${
-        malformedCategories ? 'malformed-categories' : 'null-optionals'
+        malformedCategories
+          ? 'malformed-categories'
+          : malformedDescription
+          ? 'malformed-descriptions'
+          : malformedIdentity
+          ? 'malformed-identity'
+          : 'null-optionals'
       }`,
       {
         offlineHttpProxy: server.url,
