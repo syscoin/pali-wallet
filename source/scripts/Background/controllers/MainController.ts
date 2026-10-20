@@ -899,6 +899,7 @@ class MainController {
     this.smartAccount = new SmartAccountController({
       getEthereumTransaction: () => this.ethereumTransaction,
       getWalletSessionGeneration: () => this.walletSessionGeneration,
+      getWalletStateGeneration: () => this.walletStateGeneration,
       getLatestUpdateForCurrentAccount: (
         isPolling,
         forceUpdate,

@@ -11,6 +11,7 @@ import { thunk, ThunkMiddleware } from 'redux-thunk';
 import {
   IKeyringAccountState,
   INetwork,
+  ISmartAccountMetadata,
   KeyringAccountType,
 } from 'types/network';
 import { ISpamFilterState } from 'types/security';
@@ -41,6 +42,7 @@ import vault, {
   setActiveAccount,
   setAccountLabel,
   setAccountAssets,
+  setAccountPropertyByIdAndType,
 } from './vault';
 import { IVaultState, IGlobalState } from './vault/types';
 import vaultCache, { getSlip44ForNetwork } from './vaultCache';
@@ -402,7 +404,8 @@ type VaultMutationAction =
   | ReturnType<typeof removeAccount>
   | ReturnType<typeof createAccount>
   | ReturnType<typeof setActiveAccount>
-  | ReturnType<typeof setAccountAssets>;
+  | ReturnType<typeof setAccountAssets>
+  | ReturnType<typeof setAccountPropertyByIdAndType>;
 
 // User-authored vault edits share the same unpublished staging boundary.
 function persistVaultMutation(
@@ -510,6 +513,28 @@ export function persistAssetMutation(
 ): Promise<void> {
   return persistVaultMutation(
     () => [prepare()],
+    assertCurrent,
+    undefined,
+    isSameWallet
+  );
+}
+
+/** Keep smart-account metadata unpublished until its guarded vault commit. */
+export function persistSmartAccountMetadata(
+  accountId: number,
+  prepare: () => ISmartAccountMetadata,
+  assertCurrent: () => void,
+  isSameWallet: () => boolean
+): Promise<void> {
+  return persistVaultMutation(
+    () => [
+      setAccountPropertyByIdAndType({
+        id: accountId,
+        property: 'smartAccount',
+        type: KeyringAccountType.SmartAccount,
+        value: prepare(),
+      }),
+    ],
     assertCurrent,
     undefined,
     isSameWallet

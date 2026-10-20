@@ -4,7 +4,9 @@ import {
   IEvmTransactionResponse,
   ISysTransaction,
 } from '../transactions/types';
-import store from 'state/store';
+import store, {
+  persistSmartAccountMetadata as persistMetadata,
+} from 'state/store';
 import { setAccountPropertyByIdAndType } from 'state/vault';
 import {
   INetworkType,
@@ -111,6 +113,7 @@ export interface ISmartAccountControllerDependencies {
     skipCache?: boolean
   ) => Promise<boolean>;
   getWalletSessionGeneration?: () => number;
+  getWalletStateGeneration: () => number;
   saveWalletState: (
     operation: string,
     isUserActivity?: boolean,
@@ -1499,23 +1502,12 @@ class SmartAccountController {
     if (expectedContext)
       this.assertExpectedExecutionContext(expectedContext, undefined, false);
     const active = this.getSmartAccountById(accountId);
-    const target = {
-      address: getAddress(active.account.address),
-      chainId: active.metadata.chainId,
-      type: active.account.type,
-    };
-    const assertTarget = () => {
-      const current = this.getSmartAccountById(accountId);
-      if (
-        current.account.id !== accountId ||
-        target.chainId !== context.chainId ||
-        current.metadata.chainId !== target.chainId ||
-        current.account.type !== target.type ||
-        getAddress(current.account.address) !== target.address
-      )
-        throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
-    };
-    assertTarget();
+    getAddress(active.account.address);
+    if (
+      active.account.id !== accountId ||
+      active.metadata.chainId !== context.chainId
+    )
+      throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
     // Explicit hydration requests (UI refresh, post-action flows) bypass the
     // short-lived metadata cache.
     const metadata = await this.hydrateSmartAccountMetadata(active.account, {
@@ -1524,11 +1516,11 @@ class SmartAccountController {
     this.assertInfrastructureContext(context);
     if (expectedContext)
       this.assertExpectedExecutionContext(expectedContext, undefined, false);
-    assertTarget();
     await this.persistSmartAccountMetadata(
       accountId,
       metadata,
-      'hydrate-smart-account-metadata'
+      expectedContext,
+      active
     );
     return metadata;
   }
@@ -1562,39 +1554,19 @@ class SmartAccountController {
     expectedContext?: IEvmTransactionContext;
     record: SmartAccountCustomModuleRecord;
   }): Promise<ISmartAccountMetadata> {
-    if (params.expectedContext) {
-      try {
-        this.assertExpectedExecutionContext(
-          params.expectedContext,
-          params.accountId
-        );
-      } catch {
-        // This guards local metadata after the install was acknowledged. It
-        // must not turn an accepted transaction into a not-broadcast result.
-        throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
-      }
-    }
-    const active = this.getSmartAccountById(params.accountId);
     const address = getAddress(params.record.address);
-    const existing = active.metadata.customModules || [];
-    if (
-      existing.some(
-        (record) => record.address.toLowerCase() === address.toLowerCase()
-      )
-    ) {
-      return active.metadata;
-    }
-    const metadata: ISmartAccountMetadata = {
-      ...active.metadata,
-      customModules: [...existing, { ...params.record, address }],
-    };
-    await this.persistSmartAccountMetadata(
-      active.account.id,
-      metadata,
-      'add-smart-account-custom-module'
+    return this.persistSmartAccountMetadata(
+      params.accountId,
+      (current) => ({
+        ...current,
+        customModules: (current.customModules || []).some(
+          (record) => record.address.toLowerCase() === address.toLowerCase()
+        )
+          ? current.customModules
+          : [...(current.customModules || []), { ...params.record, address }],
+      }),
+      params.expectedContext
     );
-    this.invalidateHydratedMetadata(active.account.address);
-    return metadata;
   }
 
   /** Drops a bring-your-own module record (after on-chain uninstall). */
@@ -1603,33 +1575,17 @@ class SmartAccountController {
     address: string;
     expectedContext?: IEvmTransactionContext;
   }): Promise<ISmartAccountMetadata> {
-    if (params.expectedContext) {
-      try {
-        this.assertExpectedExecutionContext(
-          params.expectedContext,
-          params.accountId
-        );
-      } catch {
-        // The on-chain removal has already been acknowledged; only this
-        // local metadata write is rejected when its account/session changed.
-        throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
-      }
-    }
-    const active = this.getSmartAccountById(params.accountId);
-    const metadata: ISmartAccountMetadata = {
-      ...active.metadata,
-      customModules: (active.metadata.customModules || []).filter(
-        (record) =>
-          record.address.toLowerCase() !== params.address.toLowerCase()
-      ),
-    };
-    await this.persistSmartAccountMetadata(
-      active.account.id,
-      metadata,
-      'remove-smart-account-custom-module'
+    return this.persistSmartAccountMetadata(
+      params.accountId,
+      (current) => ({
+        ...current,
+        customModules: (current.customModules || []).filter(
+          (record) =>
+            record.address.toLowerCase() !== params.address.toLowerCase()
+        ),
+      }),
+      params.expectedContext
     );
-    this.invalidateHydratedMetadata(active.account.address);
-    return metadata;
   }
 
   public async getSmartAccountNativeGasStatus(params: {
@@ -3088,18 +3044,61 @@ class SmartAccountController {
 
   private async persistSmartAccountMetadata(
     accountId: number,
-    metadata: ISmartAccountMetadata,
-    operation: string
-  ): Promise<void> {
-    store.dispatch(
-      setAccountPropertyByIdAndType({
-        id: accountId,
-        property: 'smartAccount',
-        type: PaliKeyringAccountType.SmartAccount,
-        value: metadata,
-      })
+    update:
+      | ISmartAccountMetadata
+      | ((current: ISmartAccountMetadata) => ISmartAccountMetadata),
+    expectedContext?: IEvmTransactionContext,
+    expectedTarget?: ReturnType<SmartAccountController['getSmartAccountById']>
+  ): Promise<ISmartAccountMetadata> {
+    const customEdit = typeof update === 'function';
+    const assertExpected = () => {
+      if (!expectedContext) return;
+      try {
+        this.assertExpectedExecutionContext(
+          expectedContext,
+          customEdit ? accountId : undefined,
+          customEdit
+        );
+      } catch {
+        // The chain operation was acknowledged; only local metadata is stale.
+        throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+      }
+    };
+    assertExpected();
+    const context = this.infrastructureContext();
+    const target = expectedTarget || this.getSmartAccountById(accountId);
+    const walletGeneration = this.deps.getWalletStateGeneration();
+    const isSameWallet = () =>
+      walletGeneration === this.deps.getWalletStateGeneration();
+    const assertCurrent = () => {
+      this.assertInfrastructureContext(context);
+      assertExpected();
+      const current = this.getSmartAccountById(accountId);
+      if (
+        !isSameWallet() ||
+        current.account.id !== target.account.id ||
+        current.account.type !== target.account.type ||
+        current.account.address !== target.account.address ||
+        current.metadata.chainId !== context.chainId ||
+        current.metadata.descriptor !== target.metadata.descriptor ||
+        (expectedTarget && current.metadata !== target.metadata)
+      )
+        throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    };
+    assertCurrent();
+    let metadata: ISmartAccountMetadata;
+    await persistMetadata(
+      accountId,
+      () => {
+        const current = this.getSmartAccountById(accountId).metadata;
+        metadata = customEdit ? update(current) : update;
+        return metadata;
+      },
+      assertCurrent,
+      isSameWallet
     );
-    await this.deps.saveWalletState(operation, false, true);
+    if (customEdit) this.invalidateHydratedMetadata(target.account.address);
+    return metadata!;
   }
 
   private async getHydratedActiveSmartAccount(address?: string): Promise<{

@@ -1,9 +1,11 @@
 jest.mock('state/store', () => ({
   __esModule: true,
   default: { getState: () => mockState, dispatch: jest.fn() },
+  persistSmartAccountMetadata: jest.fn(),
 }));
 jest.mock('utils/security/blacklistService', () => ({ blacklistService: {} }));
 
+import { persistSmartAccountMetadata } from 'state/store';
 import { INetworkType, KeyringAccountType } from 'types/network';
 
 import SmartAccountController from './index';
@@ -81,6 +83,7 @@ describe('read-only smart-account hydration approval and target identity', () =>
     controller = new SmartAccountController({
       getEthereumTransaction: () => ({ web3Provider: provider }),
       getWalletSessionGeneration: () => generation,
+      getWalletStateGeneration: () => 0,
     } as any);
     // Hold the actual transaction object stable, as the production controller does.
     const transaction = { web3Provider: provider };
@@ -108,11 +111,10 @@ describe('read-only smart-account hydration approval and target identity', () =>
         mockState.vault.accounts.SmartAccount[7],
         { forceRefresh: true }
       );
-      expect(persist).toHaveBeenCalledWith(
-        7,
-        metadata,
-        'hydrate-smart-account-metadata'
-      );
+      expect(persist).toHaveBeenCalledWith(7, metadata, expectedContext(), {
+        account: mockState.vault.accounts.SmartAccount[7],
+        metadata: mockState.vault.accounts.SmartAccount[7].smartAccount,
+      });
     }
   );
 
@@ -130,23 +132,38 @@ describe('read-only smart-account hydration approval and target identity', () =>
       // Omitted explicit context is also used by ordinary read-only entry hydration.
       const gate = deferred<typeof metadata>();
       read.mockReturnValueOnce(gate.promise);
+      // The real persistence helper owns the captured target checks. Preserve
+      // that boundary while keeping this test's unrelated storage stub.
+      const actualPersist = (SmartAccountController.prototype as any)
+        .persistSmartAccountMetadata;
+      controller.persistSmartAccountMetadata = actualPersist;
       const pending = controller.hydrateSmartAccount(7);
       const rejected = expect(pending).rejects.toThrow();
       if (axis === 'payer') mockState.vault.activeAccount.id = 1;
       if (axis === 'session') generation++;
+      const account = mockState.vault.accounts.SmartAccount[7];
       if (axis === 'target address')
-        mockState.vault.accounts.SmartAccount[7].address = OTHER;
-      if (axis === 'target id') mockState.vault.accounts.SmartAccount[7].id = 8;
+        mockState.vault.accounts.SmartAccount[7] = {
+          ...account,
+          address: OTHER,
+        };
+      if (axis === 'target id')
+        mockState.vault.accounts.SmartAccount[7] = { ...account, id: 8 };
       if (axis === 'target chain')
-        mockState.vault.accounts.SmartAccount[7].smartAccount.chainId = 1;
+        mockState.vault.accounts.SmartAccount[7] = {
+          ...account,
+          smartAccount: { ...account.smartAccount, chainId: 1 },
+        };
       if (axis === 'target type')
-        mockState.vault.accounts.SmartAccount[7].type =
-          KeyringAccountType.HDAccount;
+        mockState.vault.accounts.SmartAccount[7] = {
+          ...account,
+          type: KeyringAccountType.HDAccount,
+        };
       if (axis === 'target deleted')
         delete mockState.vault.accounts.SmartAccount[7];
       gate.resolve(metadata);
       await rejected;
-      expect(persist).not.toHaveBeenCalled();
+      expect(persistSmartAccountMetadata).not.toHaveBeenCalled();
     }
   );
 
