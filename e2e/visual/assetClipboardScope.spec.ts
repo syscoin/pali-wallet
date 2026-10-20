@@ -12,6 +12,7 @@ import {
 import { PaliWallet } from '../harness/pali';
 import {
   SPT_GUID,
+  SPT_BALANCE,
   SPT_ORIGIN_CONTRACT,
   SPT_SYMBOL,
   sptFixtureRead,
@@ -193,7 +194,12 @@ for (const outcome of ['success', 'refusal'] as const) {
           const firstBalance = page
             .getByText('Balance', { exact: true })
             .locator('..');
-          await expect(firstBalance).not.toContainText(/42\.00\s*TSPT/);
+          await expect(
+            firstBalance.locator('span.text-brand-white')
+          ).toHaveAttribute('title', SPT_BALANCE);
+          await expect(
+            firstBalance.locator('span.text-brand-white')
+          ).not.toHaveAttribute('title', '42.0');
           await expect(
             page.getByTitle(en.send.copyContractAddress)
           ).toBeVisible();
@@ -305,9 +311,16 @@ for (const outcome of ['success', 'refusal'] as const) {
           // AccountHeader intentionally exists only on /home. The details
           // route instead proves its renderer received account 1 by displaying
           // that account's distinct HTTP-backed asset balance.
+          const secondBalance = page
+            .getByText('Balance', { exact: true })
+            .locator('..');
           await expect(
-            page.getByText('Balance', { exact: true }).locator('..')
-          ).toContainText(/42\.00\s*TSPT/);
+            secondBalance.locator('span.text-brand-white')
+          ).toHaveText('42');
+          await expect(
+            secondBalance.locator('span.text-brand-white')
+          ).toHaveAttribute('title', '42.0');
+          await expect(secondBalance).toContainText('TSPT');
           await expect(page).toHaveURL(/#\/home\/details/);
           await expect(copy).toBeVisible();
           expect(
