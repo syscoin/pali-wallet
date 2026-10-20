@@ -47,6 +47,24 @@ const CopyIcon = memo(() => (
 ));
 CopyIcon.displayName = 'CopyIcon';
 
+// Source script addresses are not identities or account-ownership claims.
+const getSendingAddresses = (transaction: ISysTransaction): string[] => {
+  const addresses = new Set<string>();
+  for (const input of Array.isArray(transaction.vin) ? transaction.vin : []) {
+    if (input?.isAddress === false || !Array.isArray(input?.addresses))
+      continue;
+    for (const address of input.addresses)
+      if (
+        typeof address === 'string' &&
+        address.length > 0 &&
+        !/^OP_/i.test(address) &&
+        !/\s/.test(address)
+      )
+        addresses.add(address);
+  }
+  return [...addresses];
+};
+
 // These are receiving output destinations, not a guess at the original intent.
 const getReceivingAddresses = (transaction: ISysTransaction): string[] => {
   const kind = normalizeSyscoinTransactionType(transaction.tokenType);
@@ -368,7 +386,7 @@ export const SyscoinTransactionDetails = ({
     const confirmationETA = !isConfirmed
       ? formatSyscoinConfirmationETA(txSource as any)
       : null;
-    const vinAddresses = (txSource as any).vin?.[0]?.addresses || [];
+    const vinAddresses = getSendingAddresses(txSource);
     const vinFormattedValue = {
       value: vinAddresses.join(', '),
       label: 'From',
