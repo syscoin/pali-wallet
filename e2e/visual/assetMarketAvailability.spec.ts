@@ -28,6 +28,9 @@ async function marketAvailability(
   malformedCategories: boolean,
   info: TestInfo
 ) {
+  const variant = malformedCategories
+    ? 'malformed-categories'
+    : 'null-optionals';
   test.setTimeout(120_000);
   expect(process.env.PALI_TEST_DAPP_REVISION).toMatch(/^[a-f0-9]{40}$/);
   expect(path.isAbsolute(E2E_CONFIG.extensionPath)).toBe(true);
@@ -53,15 +56,10 @@ async function marketAvailability(
     rpcUrl: server.url,
   });
   try {
-    wallet = await PaliWallet.launch(
-      `asset-market-availability-${
-        malformedCategories ? 'malformed-categories' : 'null-optionals'
-      }`,
-      {
-        offlineHttpProxy: server.url,
-        viewport: { width: 400, height: 620 },
-      }
-    );
+    wallet = await PaliWallet.launch(`asset-market-availability-${variant}`, {
+      offlineHttpProxy: server.url,
+      viewport: { width: 400, height: 620 },
+    });
     routes = await installIsolatedVaultRoutes(
       wallet.context,
       fixture,
@@ -221,7 +219,7 @@ async function marketAvailability(
     const page = wallet.page;
     page.on('pageerror', (error) => pageErrors.push(error.message));
     const step = (name: string, run: () => Promise<void>) =>
-      wallet!.step(name, async (capture) => {
+      wallet!.step(`${variant}: ${name}`, async (capture) => {
         try {
           await run();
         } finally {
