@@ -415,22 +415,16 @@ const DAppController = (
   ) => {
     const generation = getWalletStateGeneration();
     let retired = false;
-    const captured = Object.values(getAll())
-      .filter(
-        (grant) =>
-          grant.accountId === accountId && grant.accountType === accountType
-      )
-      .map((grant) => ({
-        grant,
-        session: _dapps[grant.host],
-        address: _dapps[grant.host]?.activeAddress,
-      }));
+    const captured = Object.values(getAll()).filter(
+      (grant) =>
+        grant.accountId === accountId && grant.accountType === accountType
+    );
     return {
-      grants: captured.map(({ grant }) => grant),
+      grants: captured,
       retire: () => {
         if (retired || generation !== getWalletStateGeneration()) return;
         retired = true;
-        for (const { grant, session, address } of captured) {
+        for (const grant of captured) {
           const host = grant.host;
           if (getAll()[host]) continue;
           const attempt = pendingGrants.get(host);
@@ -444,10 +438,11 @@ const DAppController = (
             // by the durable account commit. A later grant gets no token.
             attempt.retiredPrevious = grant;
           }
-          if (_dapps[host] === session && session?.activeAddress === address) {
-            delete _dapps[host];
-            notifyDisconnected(host);
-          }
+          // The writer removed this exact grant and retires synchronously.
+          // setup() may have refreshed its session during the storage await;
+          // any newly approved grant above still protects its own session.
+          delete _dapps[host];
+          notifyDisconnected(host);
         }
       },
     };

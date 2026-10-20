@@ -16,6 +16,7 @@ import { walletPersistenceMutex } from 'utils/asyncMutex';
 
 import DAppController from './DAppController';
 import MainController, { AccountRemovalContext } from './MainController';
+import { PaliEvents, PaliSyscoinEvents } from './message-handler/types';
 
 jest.mock('..', () => ({
   getController: jest.fn(),
@@ -93,7 +94,8 @@ const grantAnchor = () =>
 
 const configureTarget = async (
   kind: 'private import' | 'watch import' | 'HD',
-  connected = false
+  connected = false,
+  liveSession = true
 ) => {
   targetType =
     kind === 'HD' ? KeyringAccountType.HDAccount : KeyringAccountType.Imported;
@@ -175,7 +177,8 @@ const configureTarget = async (
     slip44: 60,
   };
   await persistCommittedWalletState(true);
-  if (connected) dapp.setup({ url: HOST } as chrome.runtime.MessageSender);
+  if (connected && liveSession)
+    dapp.setup({ url: HOST } as chrome.runtime.MessageSender);
 };
 
 beforeEach(() => {
@@ -341,6 +344,73 @@ it('does not retire an attached permission or session before account removal is 
     connectedAddress: TARGET,
     disconnected: [],
   });
+});
+
+it.each([false, true])(
+  'retires a reloaded session for the removed grant (initial session=%s)',
+  async (liveSession) => {
+    await configureTarget('watch import', true, liveSession);
+    jest
+      .mocked(chrome.tabs.query)
+      .mockImplementation(
+        (_query: any, callback?: (tabs: chrome.tabs.Tab[]) => void) => {
+          const tabs = [
+            { id: 17, url: `${HOST}/reloaded` },
+          ] as chrome.tabs.Tab[];
+          callback?.(tabs);
+          return Promise.resolve(tabs);
+        }
+      );
+    const write = holdNextVaultWrite();
+    const removing = wallet.removeAccount(1, targetType, expected);
+    await write.entered;
+    // A content-script setup on a reload recreates the runtime session while
+    // the same persisted permission remains admitted by the pending write.
+    dapp.setup({ url: `${HOST}/reloaded` } as chrome.runtime.MessageSender);
+    dapp.setHasWindow(HOST, true);
+    expect(dapp.hasWindow(HOST)).toBe(true);
+    expect(dapp.getAccount(HOST)?.address).toBe(TARGET);
+    write.release();
+    await removing;
+    await new Promise(setImmediate);
+    expect(dapp.get(HOST)).toBeUndefined();
+    expect(records.state.dapp.dapps[HOST]).toBeUndefined();
+    expect(() => dapp.hasWindow(HOST)).toThrow();
+    expect(notificationManager.notifyDappConnection).toHaveBeenCalledWith(
+      HOST,
+      false
+    );
+    const events = jest
+      .mocked(chrome.scripting.executeScript)
+      .mock.calls.map(([options]: any) => options.args[0]);
+    expect(events).toEqual(
+      expect.arrayContaining([
+        {
+          id: PaliEvents.accountsChanged,
+          data: { method: PaliEvents.accountsChanged, params: [] },
+        },
+        {
+          id: PaliSyscoinEvents.xpubChanged,
+          data: { method: PaliSyscoinEvents.xpubChanged, params: null },
+        },
+      ])
+    );
+  }
+);
+
+it('never retires a genuinely newly approved grant or its refreshed session', async () => {
+  await configureTarget('watch import', true);
+  const earlier = dapp.captureAccountSessionRetirement(1, targetType);
+  await wallet.removeAccount(1, targetType, expected);
+  await grantAnchor();
+  dapp.setup({ url: `${HOST}/new-approval` } as chrome.runtime.MessageSender);
+  dapp.setHasWindow(HOST, true);
+  jest.mocked(notificationManager.notifyDappConnection).mockClear();
+  earlier.retire();
+  expect(dapp.getAccount(HOST)?.address).toBe(ANCHOR);
+  expect(dapp.hasWindow(HOST)).toBe(true);
+  expect(records.state.dapp.dapps[HOST]).toMatchObject({ accountId: 0 });
+  expect(notificationManager.notifyDappConnection).not.toHaveBeenCalled();
 });
 
 it('preserves a new permission grant for another account queued after removal started', async () => {
