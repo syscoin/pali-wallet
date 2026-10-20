@@ -11,7 +11,7 @@ import { useRequestScope } from 'hooks/useRequestScope';
 import { useUtils } from 'hooks/useUtils';
 import store, { RootState } from 'state/store';
 import { switchNetworkError, resetNetworkStatus } from 'state/vaultGlobal';
-import { INetworkType } from 'types/network';
+import { INetwork, INetworkType } from 'types/network';
 import {
   createNavigationContext,
   navigateWithContext,
@@ -23,6 +23,25 @@ const retryNetwork = (state: ReturnType<typeof store.getState>) => {
   const kind = network.kind === INetworkType.Syscoin ? 'syscoin' : 'ethereum';
   return state.vaultGlobal.networks[kind][network.chainId] || network;
 };
+
+const renderChain = (network: INetwork, single = false) => (
+  <div className="flex flex-col items-center gap-1">
+    <ChainIcon
+      chainId={Number(network.chainId)}
+      size={45}
+      className=""
+      networkKind={network.kind}
+      fallbackClassName="rounded-full flex items-center justify-center text-brand-blue200 bg-white text-sm"
+    />
+    <span
+      className={`text-xs text-gray-300 truncate ${
+        single ? 'max-w-[120px]' : 'max-w-[80px]'
+      }`}
+    >
+      {network.label}
+    </span>
+  </div>
+);
 
 export const ChainErrorPage = () => {
   const { controllerEmitter } = useController();
@@ -189,66 +208,19 @@ export const ChainErrorPage = () => {
     const isSameChain =
       !networkTarget || activeNetwork.chainId === displayNetwork.chainId;
 
-    if (isSameChain) {
-      return (
-        <div className="flex text-center items-center justify-center w-full">
-          <div className="flex flex-col items-center gap-1">
-            <ChainIcon
-              chainId={Number(displayNetwork.chainId)}
-              size={45}
-              className=""
-              networkKind={displayNetwork.kind}
-              fallbackClassName="rounded-full flex items-center justify-center text-brand-blue200 bg-white text-sm"
-            />
-            <span className="text-xs text-gray-300 truncate max-w-[120px]">
-              {displayNetwork.label}
-            </span>
-          </div>
-        </div>
-      );
-    }
-
-    // Show current network on the left and target network on the right
-    const fromChain = (
-      <ChainIcon
-        chainId={Number(activeNetwork.chainId)}
-        size={45}
-        className=""
-        networkKind={activeNetwork.kind}
-        fallbackClassName="rounded-full flex items-center justify-center text-brand-blue200 bg-white text-sm"
-      />
-    );
-
-    const toChain = (
-      <ChainIcon
-        chainId={Number(displayNetwork.chainId)}
-        size={45}
-        className=""
-        networkKind={displayNetwork.kind}
-        fallbackClassName="rounded-full flex items-center justify-center text-brand-blue200 bg-white text-sm"
-      />
-    );
-
     return (
-      <div className="flex text-center gap-3 items-center justify-center w-full">
-        {/* Current network */}
-        <div className="flex flex-col items-center gap-1">
-          {fromChain}
-          <span className="text-xs text-gray-300 truncate max-w-[80px]">
-            {activeNetwork.label}
-          </span>
-        </div>
-
-        {/* Arrow */}
-        <Icon name="arrowright" size={20} isSvg className="mx-2" />
-
-        {/* Target network */}
-        <div className="flex flex-col items-center gap-1">
-          {toChain}
-          <span className="text-xs text-gray-300 truncate max-w-[80px]">
-            {displayNetwork.label}
-          </span>
-        </div>
+      <div
+        className={`flex text-center ${
+          isSameChain ? '' : 'gap-3 '
+        }items-center justify-center w-full`}
+      >
+        {renderChain(isSameChain ? displayNetwork : activeNetwork, isSameChain)}
+        {!isSameChain && (
+          <>
+            <Icon name="arrowright" size={20} isSvg className="mx-2" />
+            {renderChain(displayNetwork)}
+          </>
+        )}
       </div>
     );
   };
