@@ -79,9 +79,15 @@ test('listed hostnames remain blocked across ports and terminal DNS dots', async
         });
       }
     );
-    await wallet.importSeedAndCreatePassword();
-    await wallet.switchNetwork('Syscoin NEVM Testnet', 'EVM');
-    await wallet.ensureOnHome();
+    await wallet.step('import disposable synthetic wallet', async () => {
+      await wallet!.importSeedAndCreatePassword();
+    });
+    await wallet.step('select the EVM test network', async () => {
+      await wallet!.switchNetwork('Syscoin NEVM Testnet', 'EVM');
+    });
+    await wallet.step('verify the home screen is ready', async () => {
+      await wallet!.ensureOnHome();
+    });
     for (const origin of safe) {
       await wallet.step(
         `safe origin reaches ordinary consent: ${origin}`,
