@@ -1,4 +1,4 @@
-import React, { useMemo, useCallback } from 'react';
+import React, { useMemo, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
@@ -56,7 +56,6 @@ const UtxoTransactionsListComponentBase = ({
 }) => {
   const { navigate, useCopyClipboard, alert } = useUtils();
   const { t } = useTranslation();
-  const [, copy] = useCopyClipboard();
   const { getTxStatus, formatTimeStampUtxo, blocktime } =
     useTransactionsListConfig();
   const activeNetwork = useSelector(
@@ -67,6 +66,10 @@ const UtxoTransactionsListComponentBase = ({
   const scope = `${walletScope.account}:${
     walletScope.network
   }:${tx.txid.toLowerCase()}`;
+  const [isCopied, copy, isCurrentCopy] = useCopyClipboard(1000, scope);
+  useEffect(() => {
+    if (isCopied) alert.success(t('home.hashCopied'), undefined, isCurrentCopy);
+  }, [isCopied, isCurrentCopy, alert, t]);
   const cachedDetails = React.useSyncExternalStore(
     useCallback(
       (onChange) => subscribeUtxoTransactionDetails(scope, onChange),
@@ -205,8 +208,7 @@ const UtxoTransactionsListComponentBase = ({
   };
 
   const handleCopyTxId = () => {
-    copy(tx.txid);
-    alert.success(t('home.hashCopied'));
+    void copy(tx.txid);
   };
 
   return (

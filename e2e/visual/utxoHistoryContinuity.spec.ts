@@ -149,6 +149,50 @@ for (const scenario of ['historical dates', 'duplicate page'] as const) {
         }
       );
       if (scenario === 'historical dates') {
+        await step(
+          'report public transaction copy only after clipboard completion and retain refusal feedback',
+          async () => {
+            await page.evaluate(() => {
+              Object.defineProperty(navigator, 'clipboard', {
+                configurable: true,
+                value: {
+                  writeText: (text: string) =>
+                    new Promise<void>((resolve) => {
+                      (window as any).__historyClipboard = { text, resolve };
+                    }),
+                },
+              });
+            });
+            const copy = row(initial[0].txid).getByRole('button').first();
+            const copied = page.getByText(en.home.hashCopied, { exact: true });
+            await copy.click();
+            await expect
+              .poll(() =>
+                page.evaluate(() => (window as any).__historyClipboard?.text)
+              )
+              .toBe(initial[0].txid);
+            await expect(copied).toHaveCount(0);
+            await page.evaluate(() =>
+              (window as any).__historyClipboard.resolve()
+            );
+            await expect(copied).toBeVisible();
+            await page.evaluate(() => {
+              Object.defineProperty(navigator, 'clipboard', {
+                configurable: true,
+                value: {
+                  writeText: async () => {
+                    throw new Error('Synthetic history clipboard refusal');
+                  },
+                },
+              });
+            });
+            await copy.click();
+            await expect(
+              page.getByText(en.transactions.copyFailed, { exact: true })
+            ).toBeVisible();
+            await expect(copied).toHaveCount(0);
+          }
+        );
         await step('recent history retains its genuine date', async () => {
           await expect(
             row(initial[0].txid).getByText('11-04-24', { exact: true })
