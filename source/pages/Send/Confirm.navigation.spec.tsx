@@ -404,6 +404,13 @@ it.each(
       ([path]) => path.at(-1) === 'sendAndSaveTokenTransaction'
     )!;
     expect(submitted[1][1].tokenId).toBe(tokenId);
+    expect(submitted[1][1]).toMatchObject({
+      isLegacy: true,
+      gasPrice: '0x3b9aca00',
+    });
+    expect(submitted[1][1].gasLimit.toString()).toBe('21000');
+    expect(submitted[1][1].maxFeePerGas.toString()).toBe('0');
+    expect(submitted[1][1].maxPriorityFeePerGas.toString()).toBe('0');
   }
 );
 
@@ -481,7 +488,12 @@ it('forwards a sub-wei ERC20 amount unchanged to SDK token-unit serialization', 
   expect(submitted[1][1]).toMatchObject({
     tokenAmount: '0.000000000000000000000001',
     decimals: 24,
+    isLegacy: true,
+    gasPrice: '0x3b9aca00',
   });
+  expect(submitted[1][1].gasLimit.toString()).toBe('21000');
+  expect(submitted[1][1].maxFeePerGas.toString()).toBe('0');
+  expect(submitted[1][1].maxPriorityFeePerGas.toString()).toBe('0');
 });
 
 it.each([
@@ -1120,7 +1132,11 @@ it.each([
     expect(BigNumber.from(sent.maxPriorityFeePerGas).isZero()).toBe(true);
     if (transactionType === TransactionType.NATIVE_ETH)
       expect(args[1]).not.toBe(true);
-    else expect(sent.isLegacy).toBe(false);
+    else {
+      expect(sent.isLegacy).toBe(false);
+      expect(sent.gasPrice).toBe('0x00');
+      expect(sent.gasLimit.toString()).toBe('21000');
+    }
   }
 );
 

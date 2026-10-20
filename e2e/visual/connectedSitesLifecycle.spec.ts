@@ -120,6 +120,102 @@ test('connection settings follow external revocation and reconnection without re
       }
     );
     await wallet.step(
+      'keep a refused settings removal visible after remount',
+      async () => {
+        const worker = wallet!.context
+          .serviceWorkers()
+          .find((candidate) =>
+            candidate
+              .url()
+              .startsWith(`chrome-extension://${wallet!.extensionId}/`)
+          );
+        expect(worker).toBeDefined();
+        await worker!.evaluate((host) => {
+          const local = chrome.storage.local;
+          const original = local.set;
+          const probe = {
+            failures: 0,
+            restore: () => {
+              local.set = original;
+            },
+          };
+          (globalThis as any).__connectionRemovalProbe = probe;
+          local.set = ((items: Record<string, any>, ...args: any[]) => {
+            if (
+              items.state?.dapp?.dapps &&
+              !Object.prototype.hasOwnProperty.call(
+                items.state.dapp.dapps,
+                host
+              ) &&
+              probe.failures === 0
+            ) {
+              probe.failures += 1;
+              throw new Error('Synthetic connection storage refusal');
+            }
+            return (original as any).call(local, items, ...args);
+          }) as typeof local.set;
+        }, origin);
+        await page
+          .getByRole('button', {
+            name: en.settings.editConnection,
+            exact: true,
+          })
+          .click();
+        await page
+          .getByRole('dialog')
+          .getByRole('button', {
+            name: en.settings.deleteConnected,
+            exact: true,
+          })
+          .click();
+        await expect(
+          page.getByText('Synthetic connection storage refusal', {
+            exact: true,
+          })
+        ).toBeVisible();
+        const state = await page.evaluate(async (host) => {
+          const live = await chrome.runtime.sendMessage({
+            type: 'getCurrentState',
+          });
+          const saved = await chrome.storage.local.get('state');
+          return {
+            live: Boolean(live.dapp.dapps[host]),
+            saved: Boolean(saved.state?.dapp?.dapps[host]),
+          };
+        }, origin);
+        expect(state).toEqual({ live: true, saved: true });
+        expect(await providerRequest(dapp, 'eth_accounts')).toEqual([
+          originalAddress,
+        ]);
+        expect(
+          await worker!.evaluate(() => {
+            const probe = (globalThis as any).__connectionRemovalProbe;
+            probe.restore();
+            delete (globalThis as any).__connectionRemovalProbe;
+            return probe.failures;
+          })
+        ).toBe(1);
+        await wallet!.gotoRoute('#/home');
+        await wallet!.gotoRoute('#/settings/networks/connected-sites');
+        await expect(page.getByText(origin, { exact: true })).toBeVisible();
+        await expect(
+          page.getByRole('button', {
+            name: `${en.receive.retry}: ${origin}`,
+            exact: true,
+          })
+        ).toHaveCount(0);
+        await info.attach('failed-connection-removal', {
+          body: JSON.stringify({
+            state,
+            providerAccountRetained: true,
+            source:
+              'actual background storage API failure; controller replies unchanged',
+          }),
+          contentType: 'application/json',
+        });
+      }
+    );
+    await wallet.step(
       'disconnect through the ordinary settings confirmation',
       async () => {
         await page

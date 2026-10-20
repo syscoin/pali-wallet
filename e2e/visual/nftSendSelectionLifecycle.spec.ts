@@ -27,7 +27,7 @@ const collections = [
   },
 ];
 
-test('NFT Send keeps the selected collection token ID after a late enumeration reply', async () => {
+test('NFT Send keeps the current collection and requires ownership of manual IDs', async () => {
   test.setTimeout(120_000);
   expect(process.env.PALI_TEST_DAPP_REVISION).toMatch(/^[a-f0-9]{40}$/);
   expect(E2E_CONFIG.extensionPath).toBe(
@@ -102,8 +102,15 @@ test('NFT Send keeps the selected collection token ID after a late enumeration r
             result = abi.encode(['uint256'], ['1']);
           if (prefix === selector('tokenOfOwnerByIndex(address,uint256)'))
             result = abi.encode(['uint256'], [collection.tokenId]);
-          if (prefix === selector('ownerOf(uint256)'))
-            result = abi.encode(['address'], [fixture.evmAddresses[0]]);
+          if (prefix === selector('ownerOf(uint256)')) {
+            const [tokenId] = abi.decode(['uint256'], `0x${data.slice(10)}`);
+            // Unknown IDs must revert, including the real fake-contract probe.
+            if (tokenId === BigInt(collection.tokenId) || tokenId === BigInt(8))
+              result = abi.encode(
+                ['address'],
+                [fixture.evmAddresses[tokenId === BigInt(8) ? 1 : 0]]
+              );
+          }
           if (prefix === selector('supportsInterface(bytes4)')) {
             const [value] = abi.decode(['bytes4'], `0x${data.slice(10)}`);
             result = abi.encode(
@@ -279,6 +286,39 @@ test('NFT Send keeps the selected collection token ID after a late enumeration r
         await expect(
           page.getByRole('button', { name: '#7', exact: true })
         ).toHaveCount(0);
+      }
+    );
+    await wallet.step(
+      'refuse a manually entered ID owned by another account',
+      async () => {
+        await page
+          .getByPlaceholder(en.send.receiver, { exact: true })
+          .fill(fixture.evmAddresses[1]);
+        await page.locator('#nftTokenId').fill('8');
+        await expect(
+          page.getByText(en.send.youDontOwnThisToken, { exact: false })
+        ).toBeVisible();
+        await page
+          .getByRole('button', { name: en.buttons.next, exact: true })
+          .click();
+        await expect(page).toHaveURL(/#\/send\/eth$/);
+        await expect(page.locator('#nftTokenId')).toHaveValue('8');
+      }
+    );
+    await wallet.step(
+      'admit a corrected manual ID only after positive ownership verification',
+      async () => {
+        // The same genuine ID entered manually, not the discovered-ID button.
+        await page.locator('#nftTokenId').fill('0009');
+        await expect(
+          page.getByText(en.send.youOwnThisToken, { exact: false })
+        ).toBeVisible();
+        await page
+          .getByRole('button', { name: en.buttons.next, exact: true })
+          .click();
+        await expect(page).toHaveURL(/#\/send\/confirm$/);
+        expect(deniedWrites).toEqual([]);
+        expect(routes.deniedWrites).toEqual([]);
       }
     );
     status = 'passed';

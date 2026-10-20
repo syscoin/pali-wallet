@@ -10,8 +10,14 @@ jest.mock('state/store', () => ({
     getState: () => getStateMock(),
   },
   saveMainState: (...args: any[]) => saveMainStateMock(...args),
-  persistMainStateStrict: (...args: any[]) =>
-    persistMainStateStrictMock(...args),
+  persistMainStateStrict: async (onFailure?: () => void) => {
+    try {
+      await persistMainStateStrictMock();
+    } catch (error) {
+      onFailure?.();
+      throw error;
+    }
+  },
   persistDappPermissionGrant: async (grant, previous, isCurrent) => {
     if (!isCurrent() || getStateMock().dapp.dapps[grant.host] !== previous)
       throw new Error('Permission grant context changed');
@@ -173,7 +179,7 @@ describe('DAppController idempotent permission revocation', () => {
   });
 
   it.each([false, true])(
-    'reconciles a removal saved by another operation before a worker restart (UTXO=%s)',
+    'keeps a failed removal retryable after another save and worker restart (UTXO=%s)',
     async (isBitcoinBased) => {
       state.vault.isBitcoinBased = isBitcoinBased;
       state.dapp.dapps[host] = {
@@ -187,11 +193,11 @@ describe('DAppController idempotent permission revocation', () => {
       await expect(controller.disconnect(host, true, options)).rejects.toBe(
         failure
       );
-      expect(state.dapp.dapps[host]).toBeUndefined();
+      expect(state.dapp.dapps[host]).toBeDefined();
       expect(notificationManager.notifyDappConnection).not.toHaveBeenCalled();
       expect(chrome.scripting.executeScript).not.toHaveBeenCalled();
 
-      // Any unrelated main-state save can commit the already-removed permission.
+      // An unrelated save must keep the permission restored by the failed revoke.
       let persisted: any;
       saveMainStateMock.mockImplementationOnce(async () => {
         persisted = JSON.parse(JSON.stringify(state));
@@ -214,9 +220,9 @@ describe('DAppController idempotent permission revocation', () => {
       ).resolves.toBeUndefined();
       await new Promise((resolve) => setImmediate(resolve));
 
-      expect(persistMainStateStrictMock).toHaveBeenCalledTimes(1);
+      expect(persistMainStateStrictMock).toHaveBeenCalledTimes(2);
       expect(saveMainStateMock).toHaveBeenCalledTimes(1);
-      expect(notificationManager.notifyDappConnection).not.toHaveBeenCalled();
+      expect(notificationManager.notifyDappConnection).toHaveBeenCalledTimes(1);
       expect(
         (chrome.scripting.executeScript as jest.Mock).mock.calls.map(
           ([call]) => ({ tabId: call.target.tabId, args: call.args })
@@ -311,7 +317,7 @@ describe('DAppController idempotent permission revocation', () => {
   });
 
   it.each([false, true])(
-    'retries a failed revocation durably after the in-memory removal (active=%s)',
+    'retries a failed revocation durably after restoring the permission (active=%s)',
     async (active) => {
       state.dapp.dapps[host] = {
         host,
@@ -340,6 +346,8 @@ describe('DAppController idempotent permission revocation', () => {
       (chrome.scripting.executeScript as jest.Mock).mockResolvedValue([]);
       dispatchMock.mockImplementation((action) => {
         if (action.type === 'dapp/removeDApp') delete state.dapp.dapps[host];
+        if (action.type === 'dapp/addDApp')
+          state.dapp.dapps[action.payload.host] = action.payload;
       });
       const failure = new Error('Storage unavailable');
       persistMainStateStrictMock.mockRejectedValueOnce(failure);
@@ -347,7 +355,7 @@ describe('DAppController idempotent permission revocation', () => {
       await expect(controller.disconnect(host, true, options)).rejects.toBe(
         failure
       );
-      expect(state.dapp.dapps[host]).toBeUndefined();
+      expect(state.dapp.dapps[host]).toBeDefined();
       expect(notificationManager.notifyDappConnection).not.toHaveBeenCalled();
       expect(chrome.scripting.executeScript).not.toHaveBeenCalled();
       await controller.disconnect('https://unrelated.example', true, options);
@@ -445,7 +453,7 @@ describe('DAppController idempotent permission revocation', () => {
     }
   );
 
-  it('bounds failed-origin retry state without removing another permission at capacity', async () => {
+  it('restores failed-origin permissions without consuming pending retry capacity', async () => {
     const controller = DAppController();
     const failure = new Error('Storage unavailable');
     persistMainStateStrictMock.mockRejectedValue(failure);
@@ -461,16 +469,16 @@ describe('DAppController idempotent permission revocation', () => {
       );
     }
     state.dapp.dapps[host] = { host, accountId: 0, accountType: 'HDAccount' };
-    await expect(controller.disconnect(host, true, options)).rejects.toThrow(
-      'Too many pending revocations'
+    await expect(controller.disconnect(host, true, options)).rejects.toBe(
+      failure
     );
     expect(state.dapp.dapps[host]).toBeDefined();
-    expect(persistMainStateStrictMock).toHaveBeenCalledTimes(256);
+    expect(persistMainStateStrictMock).toHaveBeenCalledTimes(257);
     persistMainStateStrictMock.mockResolvedValue(undefined);
     await controller.disconnect('https://connected-0.example', true, options);
     await controller.disconnect(host, true, options);
     expect(state.dapp.dapps[host]).toBeUndefined();
-    expect(persistMainStateStrictMock).toHaveBeenCalledTimes(258);
+    expect(persistMainStateStrictMock).toHaveBeenCalledTimes(259);
   });
 });
 

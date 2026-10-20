@@ -48,23 +48,26 @@ const ConnectedSites = () => {
     if (selectedHost && !selected) setSelectedHost(undefined);
   }, [selectedHost, selected]);
 
-  const disconnectSelected = async () => {
-    if (!selected) return;
-
-    const host = selected.host;
+  const disconnectHost = async (host: string) => {
     setDisconnectError('');
     setDisconnectingHost(host);
     setSelectedHost(undefined);
 
     try {
       // The controller will dispatch removeDApp action internally
-      await controllerEmitter(['dapp', 'disconnect'], [host]);
+      await controllerEmitter(
+        ['dapp', 'disconnect'],
+        [host, true, { allowAlreadyDisconnected: true, propagateErrors: true }]
+      );
     } catch (error) {
       setDisconnectError(error?.message || t('send.failed'));
       console.error('Error disconnecting dapp:', error);
     } finally {
       setDisconnectingHost((current) => (current === host ? null : current));
     }
+  };
+  const disconnectSelected = () => {
+    if (selected) void disconnectHost(selected.host);
   };
 
   return (

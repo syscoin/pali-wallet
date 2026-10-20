@@ -114,6 +114,7 @@ let releasePermission: () => void;
 let releaseNetwork: () => void;
 let sessionAlive: boolean;
 let failNextStateWrite: boolean;
+let failNextVaultWrite: boolean;
 
 beforeEach(async () => {
   jest.clearAllMocks();
@@ -125,6 +126,7 @@ beforeEach(async () => {
   writes = [];
   sessionAlive = true;
   failNextStateWrite = false;
+  failNextVaultWrite = false;
   global.chrome = {
     runtime: {
       id: 'synthetic',
@@ -145,10 +147,17 @@ beforeEach(async () => {
           ),
         set: (items: any, callback: any) => {
           writes.push(clone(items));
-          if (failNextStateWrite && items.state) {
+          if (
+            (failNextStateWrite && items.state) ||
+            (failNextVaultWrite && items['state-vault-60'])
+          ) {
+            const vaultFailure = failNextVaultWrite;
             failNextStateWrite = false;
+            failNextVaultWrite = false;
             (chrome.runtime as any).lastError = {
-              message: 'synthetic permission storage failure',
+              message: vaultFailure
+                ? 'synthetic wallet selection storage failure'
+                : 'synthetic permission storage failure',
             };
             callback();
             delete (chrome.runtime as any).lastError;
@@ -220,6 +229,7 @@ beforeEach(async () => {
   mockEmitter.mockImplementation((path: string[], args: any[]) => {
     if (path[0] === 'dapp' && path[1] === 'requestPermissions') {
       const response = dapp.requestPermissions(...args);
+      void response.catch(() => undefined);
       return responseDelay.then(() => response);
     }
     if (path[0] === 'dapp' && path[1] === 'changeAccount') {
@@ -403,6 +413,67 @@ it.each([false, true])(
     expect(store.getState().dapp.dapps[host].accountId).toBe(1);
   }
 );
+
+it.each(['requestPermissions', 'changeAccount'])(
+  'acknowledges a durable %s when the optional wallet selection save fails',
+  async (eventName) => {
+    const view =
+      eventName === 'requestPermissions'
+        ? await mountAndSubmit()
+        : await submitExistingAccountChange();
+    expect(records.state.dapp.dapps[host].accountId).toBe(1);
+    // The real permission writer already succeeded. Reject only the following
+    // real MainController.setAccount vault write, not the admitted grant.
+    failNextVaultWrite = true;
+    await act(async () => releasePermission());
+    expect(failNextVaultWrite).toBe(false);
+    expect(mockEmitter).toHaveBeenCalledWith(
+      ['wallet', 'setAccount'],
+      [1, type, true, account(1).address]
+    );
+    const replies = jest.mocked(dispatchBackgroundEvent).mock.calls.slice();
+    const closes = jest.mocked(window.close).mock.calls.length;
+    view.unmount();
+    await restoreDurableState();
+    expect(store.getState().dapp.dapps[host].accountId).toBe(1);
+    expect(store.getState().vault.activeAccount).toEqual({ id: 0, type });
+    expect(replies).toHaveLength(1);
+    expect(dispatchBackgroundEvent).toHaveBeenCalledWith(
+      `${eventName}.${host}`,
+      eventName === 'requestPermissions'
+        ? expect.arrayContaining([
+            expect.objectContaining({ parentCapability: 'eth_accounts' }),
+          ])
+        : null
+    );
+    expect(closes).toBe(1);
+  }
+);
+
+it('keeps a failed permission grant visible and never reports approval success', async () => {
+  failNextStateWrite = true;
+  const view = render(
+    <Provider store={store}>
+      <ChangeAccount />
+    </Provider>
+  );
+  await act(async () => {
+    fireEvent.click(screen.getByText('buttons.confirm'));
+    releasePermission();
+  });
+  expect(
+    screen.getByText('synthetic permission storage failure')
+  ).toBeDefined();
+  expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
+  expect(window.close).not.toHaveBeenCalled();
+  expect(mockEmitter.mock.calls.some(([path]) => path[0] === 'wallet')).toBe(
+    false
+  );
+  view.unmount();
+  await restoreDurableState();
+  expect(store.getState().dapp.dapps[host]).toBeUndefined();
+  expect(store.getState().vault.activeAccount).toEqual({ id: 0, type });
+});
 
 it('does not acknowledge a failed account-change save when its view disappears before the reply', async () => {
   const view = await submitExistingAccountChange(true);

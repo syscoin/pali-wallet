@@ -763,6 +763,28 @@ export const SendConfirm = () => {
     stableGetLegacyGasPrice.current = getLegacyGasPrice;
   }, [navigate, alert, t, getLegacyGasPrice]);
 
+  const getTokenFeeParams = (fallbackGasLimit: number) => ({
+    isLegacy: !isEIP1559Compatible,
+    gasPrice: BigNumber.from(gasPrice).toHexString(),
+    maxPriorityFeePerGas: parseUnits(
+      Boolean(customFee.isCustom && customFee.maxPriorityFeePerGas >= 0)
+        ? safeToFixed(customFee.maxPriorityFeePerGas)
+        : safeToFixed(fee.maxPriorityFeePerGas),
+      9
+    ),
+    maxFeePerGas: parseUnits(
+      Boolean(customFee.isCustom && customFee.maxFeePerGas > 0)
+        ? safeToFixed(customFee.maxFeePerGas)
+        : safeToFixed(fee.maxFeePerGas),
+      9
+    ),
+    gasLimit: validateCustomGasLimit
+      ? BigNumber.from(customFee.gasLimit)
+      : BigNumber.from(
+          fee.gasLimit || basicTxValues.defaultGasLimit || fallbackGasLimit
+        ),
+  });
+
   const performConfirm = async () => {
     if (isSmartAccountSend && !smartAccountQuoteReady) return;
     if (sptReviewError) {
@@ -1249,33 +1271,8 @@ export const SendConfirm = () => {
                       receiver: destinationTo,
                       tokenAddress: basicTxValues.token.contractAddress,
                       tokenAmount: `${basicTxValues.amount}`,
-                      isLegacy: !isEIP1559Compatible,
                       decimals: basicTxValues?.token?.decimals,
-                      gasPrice: BigNumber.from(gasPrice).toHexString(),
-                      maxPriorityFeePerGas: parseUnits(
-                        Boolean(
-                          customFee.isCustom &&
-                            customFee.maxPriorityFeePerGas >= 0
-                        )
-                          ? safeToFixed(customFee.maxPriorityFeePerGas)
-                          : safeToFixed(fee.maxPriorityFeePerGas),
-                        9
-                      ),
-                      maxFeePerGas: parseUnits(
-                        Boolean(
-                          customFee.isCustom && customFee.maxFeePerGas > 0
-                        )
-                          ? safeToFixed(customFee.maxFeePerGas)
-                          : safeToFixed(fee.maxFeePerGas),
-                        9
-                      ),
-                      gasLimit: validateCustomGasLimit
-                        ? BigNumber.from(customFee.gasLimit)
-                        : BigNumber.from(
-                            fee.gasLimit ||
-                              basicTxValues.defaultGasLimit ||
-                              65000
-                          ),
+                      ...getTokenFeeParams(65000),
                     },
                   ],
                   activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
@@ -1328,32 +1325,7 @@ export const SendConfirm = () => {
                       receiver: destinationTo,
                       tokenAddress: basicTxValues.token.contractAddress,
                       tokenId,
-                      isLegacy: !isEIP1559Compatible,
-                      gasPrice: BigNumber.from(gasPrice).toHexString(),
-                      maxPriorityFeePerGas: parseUnits(
-                        Boolean(
-                          customFee.isCustom &&
-                            customFee.maxPriorityFeePerGas >= 0
-                        )
-                          ? safeToFixed(customFee.maxPriorityFeePerGas)
-                          : safeToFixed(fee.maxPriorityFeePerGas),
-                        9
-                      ),
-                      maxFeePerGas: parseUnits(
-                        Boolean(
-                          customFee.isCustom && customFee.maxFeePerGas > 0
-                        )
-                          ? safeToFixed(customFee.maxFeePerGas)
-                          : safeToFixed(fee.maxFeePerGas),
-                        9
-                      ),
-                      gasLimit: validateCustomGasLimit
-                        ? BigNumber.from(customFee.gasLimit)
-                        : BigNumber.from(
-                            fee.gasLimit ||
-                              basicTxValues.defaultGasLimit ||
-                              150000
-                          ),
+                      ...getTokenFeeParams(150000),
                     },
                   ],
                   activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
@@ -1409,32 +1381,7 @@ export const SendConfirm = () => {
                       tokenAddress: basicTxValues.token.contractAddress,
                       tokenId,
                       tokenAmount: String(basicTxValues.amount),
-                      isLegacy: !isEIP1559Compatible,
-                      maxPriorityFeePerGas: parseUnits(
-                        Boolean(
-                          customFee.isCustom &&
-                            customFee.maxPriorityFeePerGas >= 0
-                        )
-                          ? safeToFixed(customFee.maxPriorityFeePerGas)
-                          : safeToFixed(fee.maxPriorityFeePerGas),
-                        9
-                      ),
-                      maxFeePerGas: parseUnits(
-                        Boolean(
-                          customFee.isCustom && customFee.maxFeePerGas > 0
-                        )
-                          ? safeToFixed(customFee.maxFeePerGas)
-                          : safeToFixed(fee.maxFeePerGas),
-                        9
-                      ),
-                      gasPrice: BigNumber.from(gasPrice).toHexString(),
-                      gasLimit: validateCustomGasLimit
-                        ? BigNumber.from(customFee.gasLimit)
-                        : BigNumber.from(
-                            fee.gasLimit ||
-                              basicTxValues.defaultGasLimit ||
-                              90000
-                          ),
+                      ...getTokenFeeParams(90000),
                     },
                   ],
                   activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
@@ -1863,6 +1810,29 @@ export const SendConfirm = () => {
   // The overlay handles loading display, so we just check for confirmed state
   const shouldShowMainContent = !confirmed;
 
+  const renderFeeAmount = (feeAmount: number | string | undefined) => {
+    const formattedFee = getFormattedFee(feeAmount);
+    const fiatAmount = getFeeFiatAmount(feeAmount);
+    return (
+      <div className="flex flex-col">
+        <span>{formattedFee}</span>
+        {fiatAmount && (
+          <span className="text-brand-gray200 text-xs">≈ {fiatAmount}</span>
+        )}
+      </div>
+    );
+  };
+
+  const formatNativeTotal = (feeAmount: any) => {
+    const total = basicTxValues.isMax
+      ? currency(basicTxValues.amount, { precision: 8 })
+      : currency(feeAmount, { precision: 8 }).add(basicTxValues.amount);
+    return {
+      totalAmount: basicTxValues.isMax ? basicTxValues.amount : total.value,
+      totalCrypto: total.format({ symbol: '' }),
+    };
+  };
+
   const renderFeeError = () => (
     <div className="flex items-center gap-2">
       <div className="flex items-center gap-1 px-2 py-1 bg-warning-error bg-opacity-10 rounded">
@@ -2207,19 +2177,7 @@ export const SendConfirm = () => {
                         feeAmount = getCalculatedFee;
                       }
 
-                      const formattedFee = getFormattedFee(feeAmount);
-                      const fiatAmount = getFeeFiatAmount(feeAmount);
-
-                      return (
-                        <div className="flex flex-col">
-                          <span>{formattedFee}</span>
-                          {fiatAmount && (
-                            <span className="text-brand-gray200 text-xs">
-                              ≈ {fiatAmount}
-                            </span>
-                          )}
-                        </div>
-                      );
+                      return renderFeeAmount(feeAmount);
                     })()}
                   </span>
                 </div>
@@ -2348,66 +2306,26 @@ export const SendConfirm = () => {
                         }).format({ symbol: '' });
                       } else if (basicTxValues.fee !== undefined) {
                         // For MAX sends, don't add fee to amount since amount is already (balance - fee)
-                        if (basicTxValues.isMax) {
-                          totalAmount = basicTxValues.amount;
-                          totalCrypto = currency(basicTxValues.amount, {
-                            precision: 8,
-                          }).format({ symbol: '' });
-                        } else {
-                          const total = currency(basicTxValues.fee, {
-                            precision: 8,
-                          }).add(basicTxValues.amount);
-                          totalAmount = total.value;
-                          totalCrypto = total.format({ symbol: '' });
-                        }
+                        ({ totalAmount, totalCrypto } = formatNativeTotal(
+                          basicTxValues.fee
+                        ));
                       } else if (isBitcoinBased) {
                         // For MAX sends, don't add fee to amount since amount is already (balance - fee)
-                        if (basicTxValues.isMax) {
-                          totalAmount = basicTxValues.amount;
-                          totalCrypto = currency(basicTxValues.amount, {
-                            precision: 8,
-                          }).format({ symbol: '' });
-                        } else {
-                          const total = currency(basicTxValues.fee, {
-                            precision: 8,
-                          }).add(basicTxValues.amount);
-                          totalAmount = total.value;
-                          totalCrypto = total.format({ symbol: '' });
-                        }
+                        ({ totalAmount, totalCrypto } = formatNativeTotal(
+                          basicTxValues.fee
+                        ));
                       } else if (
                         !isBitcoinBased &&
                         isEIP1559Compatible === false
                       ) {
                         const calculatedFeeEther = getCalculatedFee;
-                        if (basicTxValues.isMax) {
-                          // For MAX sends, fee is already deducted from amount
-                          totalAmount = basicTxValues.amount;
-                          totalCrypto = currency(basicTxValues.amount, {
-                            precision: 8,
-                          }).format({ symbol: '' });
-                        } else {
-                          const total = currency(calculatedFeeEther, {
-                            precision: 8,
-                          }).add(basicTxValues.amount);
-                          totalAmount = total.value;
-                          totalCrypto = total.format({ symbol: '' });
-                        }
+                        ({ totalAmount, totalCrypto } =
+                          formatNativeTotal(calculatedFeeEther));
                       } else {
                         const calculatedFeeEther = getCalculatedFee;
                         if (calculatedFeeEther !== undefined) {
-                          if (basicTxValues.isMax) {
-                            // For MAX sends, fee is already deducted from amount
-                            totalAmount = basicTxValues.amount;
-                            totalCrypto = currency(basicTxValues.amount, {
-                              precision: 8,
-                            }).format({ symbol: '' });
-                          } else {
-                            const total = currency(calculatedFeeEther, {
-                              precision: 8,
-                            }).add(basicTxValues.amount);
-                            totalAmount = total.value;
-                            totalCrypto = total.format({ symbol: '' });
-                          }
+                          ({ totalAmount, totalCrypto } =
+                            formatNativeTotal(calculatedFeeEther));
                         } else {
                           // If fee calculation is pending, just show the amount
                           totalAmount = basicTxValues.amount;
@@ -2462,19 +2380,7 @@ export const SendConfirm = () => {
                         feeAmount = getCalculatedFee;
                       }
 
-                      const formattedFee = getFormattedFee(feeAmount);
-                      const fiatAmount = getFeeFiatAmount(feeAmount);
-
-                      return (
-                        <div className="flex flex-col">
-                          <span>{formattedFee}</span>
-                          {fiatAmount && (
-                            <span className="text-brand-gray200 text-xs">
-                              ≈ {fiatAmount}
-                            </span>
-                          )}
-                        </div>
-                      );
+                      return renderFeeAmount(feeAmount);
                     })()}
                   </span>
                 </>

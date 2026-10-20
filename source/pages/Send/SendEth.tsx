@@ -54,6 +54,29 @@ import {
   useSendPreparationGuard,
 } from './useSendDraftWriter';
 
+const renderVerificationSpinner = (className: string) => (
+  <svg
+    className={className}
+    xmlns="http://www.w3.org/2000/svg"
+    fill="none"
+    viewBox="0 0 24 24"
+  >
+    <circle
+      className="opacity-25"
+      cx="12"
+      cy="12"
+      r="10"
+      stroke="currentColor"
+      strokeWidth="4"
+    ></circle>
+    <path
+      className="opacity-75"
+      fill="currentColor"
+      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+    ></path>
+  </svg>
+);
+
 const getExactNftBalance = (token: {
   balance: number;
   rawBalance?: string;
@@ -250,8 +273,14 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
   const formValuesRef = useRef<any>(initialDraft.formValues || {});
   const tokenIdVerificationTimeoutRef = useRef<NodeJS.Timeout>();
   const nftRequest = useRef(0);
+  // Bind positive ownership to this exact form/contract/ID, and invalidate it
+  // synchronously before an input change can submit through an old render.
+  const ownedNftRef = useRef<string | null>(null);
+  const nftOwnershipKey = (contract: string, tokenId: string) =>
+    `${scopeKey}:${contract.toLowerCase()}:${tokenId}`;
   const beginNftLookup = useCallback(() => {
     const request = ++nftRequest.current;
+    ownedNftRef.current = null;
     clearTimeout(tokenIdVerificationTimeoutRef.current);
     setIsLoadingNftTokenIds(false);
     setIsVerifyingTokenId(false);
@@ -588,6 +617,11 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                 setSelectedNftTokenId(result[0].tokenId);
                 // Also set it in the form
                 form.setFieldValue('nftTokenId', result[0].tokenId);
+                if (result[0].balance > 0)
+                  ownedNftRef.current = nftOwnershipKey(
+                    getAsset.contractAddress,
+                    result[0].tokenId
+                  );
               }
             } catch {
               if (!current()) return;
@@ -626,6 +660,22 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
   const handleSubmit = useCallback(
     async (values: any) => {
       if (!isCurrentForm()) return;
+      if (
+        selectedAsset?.isNft &&
+        selectedAsset.tokenStandard !== 'ERC-1155' &&
+        ownedNftRef.current !==
+          nftOwnershipKey(
+            selectedAsset.contractAddress,
+            String(values.nftTokenId || '').trim()
+          )
+      ) {
+        alert.error(
+          isVerifyingTokenId
+            ? t('send.verifyingOwnership')
+            : verificationError || t('send.tokenVerificationFailed')
+        );
+        return;
+      }
       try {
         const receiver = String(values.receiver || '');
         // Only submit the result this validation admitted. A concurrent cache
@@ -765,6 +815,9 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
       nftTokenIds,
       selectedNftTokenId,
       hasPendingOutgoingEvmTx,
+      isVerifyingTokenId,
+      verificationError,
+      nftOwnershipKey,
       location.state?.returnContext,
       isCurrentForm,
       incompatibleSmartAddresses,
@@ -921,6 +974,10 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
         const tokenInfo = result[0];
         const balance = getExactNftBalance(tokenInfo);
         if (tokenInfo.verified && balance !== null && balance !== '0') {
+          ownedNftRef.current = nftOwnershipKey(
+            selectedAsset.contractAddress,
+            tokenId.trim()
+          );
           setVerifiedTokenBalance(balance);
           setVerificationError(null);
         } else {
@@ -1813,26 +1870,9 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                       <div className="flex items-center justify-center gap-1">
                         {isVerifyingERC20 ? (
                           <>
-                            <svg
-                              className="animate-spin h-3 w-3 text-brand-royalblue"
-                              xmlns="http://www.w3.org/2000/svg"
-                              fill="none"
-                              viewBox="0 0 24 24"
-                            >
-                              <circle
-                                className="opacity-25"
-                                cx="12"
-                                cy="12"
-                                r="10"
-                                stroke="currentColor"
-                                strokeWidth="4"
-                              ></circle>
-                              <path
-                                className="opacity-75"
-                                fill="currentColor"
-                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                              ></path>
-                            </svg>
+                            {renderVerificationSpinner(
+                              'animate-spin h-3 w-3 text-brand-royalblue'
+                            )}
                             <p className="text-brand-royalblue text-[10px]">
                               {t('send.verifyingBalance')}
                             </p>
@@ -1870,6 +1910,11 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                       type="button"
                       onClick={() => {
                         beginNftLookup();
+                        if (nft.balance > 0)
+                          ownedNftRef.current = nftOwnershipKey(
+                            selectedAsset.contractAddress,
+                            nft.tokenId
+                          );
                         setSelectedNftTokenId(nft.tokenId);
                         form.setFieldValue('nftTokenId', nft.tokenId);
                         setVerifiedTokenBalance(getExactNftBalance(nft));
@@ -1939,42 +1984,29 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                   <div className="mt-2">
                     {isVerifyingTokenId ? (
                       <p className="text-xs text-brand-royalblue flex items-center justify-center">
-                        <svg
-                          className="animate-spin -ml-1 mr-2 h-3 w-3 text-brand-royalblue"
-                          xmlns="http://www.w3.org/2000/svg"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                        >
-                          <circle
-                            className="opacity-25"
-                            cx="12"
-                            cy="12"
-                            r="10"
-                            stroke="currentColor"
-                            strokeWidth="4"
-                          ></circle>
-                          <path
-                            className="opacity-75"
-                            fill="currentColor"
-                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                          ></path>
-                        </svg>
+                        {renderVerificationSpinner(
+                          'animate-spin -ml-1 mr-2 h-3 w-3 text-brand-royalblue'
+                        )}
                         {t('send.verifyingOwnership')}
                       </p>
-                    ) : verificationError ? (
-                      <p className="text-xs text-red-400 text-center">
-                        ❌ {verificationError}
+                    ) : verificationError || verifiedTokenBalance !== null ? (
+                      <p
+                        className={
+                          verificationError || verifiedTokenBalance === '0'
+                            ? 'text-xs text-red-400 text-center'
+                            : 'text-xs text-green-400 text-center'
+                        }
+                      >
+                        {verificationError || verifiedTokenBalance === '0'
+                          ? '❌ '
+                          : '✅ '}
+                        {verificationError ||
+                          t(
+                            verifiedTokenBalance === '0'
+                              ? 'send.youDontOwnThisToken'
+                              : 'send.youOwnThisToken'
+                          )}
                       </p>
-                    ) : verifiedTokenBalance !== null ? (
-                      verifiedTokenBalance !== '0' ? (
-                        <p className="text-xs text-green-400 text-center">
-                          ✅ {t('send.youOwnThisToken')}
-                        </p>
-                      ) : (
-                        <p className="text-xs text-red-400 text-center">
-                          ❌ {t('send.youDontOwnThisToken')}
-                        </p>
-                      )
                     ) : null}
                   </div>
                 )}
