@@ -1505,6 +1505,13 @@ export const SendTransaction = () => {
     approvedTokenInfos?.tokenDecimals,
   ]);
 
+  const renderFeeNoticeText = (title: string, description: string) => (
+    <>
+      <p className="text-warning-info text-xs font-semibold mb-1">{t(title)}</p>
+      <p className="text-warning-info text-xs leading-5">{t(description)}</p>
+    </>
+  );
+
   return (
     <>
       <EditPriorityModal
@@ -1713,20 +1720,14 @@ export const SendTransaction = () => {
               <div className="w-full mt-4">
                 {hasDappFeeSafetyAdjustment && !acceptedDappFeeRequest && (
                   <div className="rounded-xl border border-warning-info bg-warning-info bg-opacity-10 p-3 text-left">
-                    <p className="text-warning-info text-xs font-semibold mb-1">
-                      {t(
-                        feeRecommendationOnly
-                          ? 'send.feeBelowEstimateTitle'
-                          : 'send.dappFeeRaisedTitle'
-                      )}
-                    </p>
-                    <p className="text-warning-info text-xs leading-5">
-                      {t(
-                        feeRecommendationOnly
-                          ? 'send.customFeeBelowEstimateWarning'
-                          : 'send.dappFeeRaisedDescription'
-                      )}
-                    </p>
+                    {renderFeeNoticeText(
+                      feeRecommendationOnly
+                        ? 'send.feeBelowEstimateTitle'
+                        : 'send.dappFeeRaisedTitle',
+                      feeRecommendationOnly
+                        ? 'send.customFeeBelowEstimateWarning'
+                        : 'send.dappFeeRaisedDescription'
+                    )}
                     <button
                       type="button"
                       className="mt-2 text-xs text-brand-royalblue hover:opacity-80"
@@ -1750,45 +1751,42 @@ export const SendTransaction = () => {
 
                 {isCurrentFeeBelowEstimate && (
                   <div className="mt-2 rounded-xl border border-warning-info bg-warning-info bg-opacity-10 p-3 text-left">
-                    <p className="text-warning-info text-xs font-semibold mb-1">
-                      {t('send.feeBelowEstimateTitle')}
-                    </p>
-                    <p className="text-warning-info text-xs leading-5">
-                      {t('send.customFeeBelowEstimateWarning')}
-                    </p>
+                    {renderFeeNoticeText(
+                      'send.feeBelowEstimateTitle',
+                      'send.customFeeBelowEstimateWarning'
+                    )}
                   </div>
                 )}
               </div>
             ) : null}
 
             <div className="w-full mt-6">
-              <ul
+              <div
                 className="flex gap-2 flex-wrap text-center text-brand-white font-normal"
                 id="tabExample"
                 role="tablist"
               >
                 {tabElements.map((tab) => (
-                  <li role="presentation" key={tab.id}>
-                    <button
-                      type="button"
-                      role="tab"
-                      id={`${tab.id}-tab`}
-                      aria-controls={tab.id}
-                      aria-selected={tab.id === tabSelected}
-                      tabIndex={tab.id === tabSelected ? 0 : -1}
-                      className={`h-[40px] w-[92px] text-base font-normal cursor-pointer hover:opacity-60 ${
-                        tab.id === tabSelected
-                          ? 'bg-brand-blue600 rounded-t-[20px] py-[8px] px-[16px] '
-                          : 'bg-alpha-whiteAlpha200 rounded-t-[20px] py-[8px] px-[16px] '
-                      }`}
-                      onClick={() => setTabSelected(tab.id)}
-                      onKeyDown={handleTabKeyDown}
-                    >
-                      {t(`send.${tab.tabName.toLowerCase()}`)}
-                    </button>
-                  </li>
+                  <button
+                    key={tab.id}
+                    type="button"
+                    role="tab"
+                    id={`${tab.id}-tab`}
+                    aria-controls={tab.id}
+                    aria-selected={tab.id === tabSelected}
+                    tabIndex={tab.id === tabSelected ? 0 : -1}
+                    className={`h-[40px] w-[92px] text-base font-normal cursor-pointer hover:opacity-60 rounded-t-[20px] py-[8px] px-[16px] ${
+                      tab.id === tabSelected
+                        ? 'bg-brand-blue600'
+                        : 'bg-alpha-whiteAlpha200'
+                    }`}
+                    onClick={() => setTabSelected(tab.id)}
+                    onKeyDown={handleTabKeyDown}
+                  >
+                    {t(`send.${tab.tabName.toLowerCase()}`)}
+                  </button>
                 ))}
-              </ul>
+              </div>
             </div>
 
             <div id="tabContentExample" className="flex flex-col w-full">
