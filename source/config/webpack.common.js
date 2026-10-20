@@ -361,6 +361,13 @@ module.exports = {
           minChunks: 2,
           enforce: true,
         },
+        warningModals: {
+          test: /[\\/]source[\\/]components[\\/]Modal[\\/]WarningBaseModal\.tsx$/,
+          chunks: 'async',
+          name: 'warning-modals',
+          minChunks: 2,
+          enforce: true,
+        },
       },
       chunks(chunk) {
         // Only split chunks for app and external, NOT background, contentScript, inpage, pali, or handleWindowProperties
