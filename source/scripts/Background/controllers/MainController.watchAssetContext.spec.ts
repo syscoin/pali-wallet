@@ -12,6 +12,7 @@ jest.mock('@sidhujag/sysweb3-keyring', () => ({
 }));
 
 import store from 'state/store';
+import * as storeModule from 'state/store';
 import vaultReducer from 'state/vault';
 import { INetworkType, KeyringAccountType } from 'types/network';
 import { EVM_TRANSACTION_CONTEXT_CHANGED } from 'utils/evmTransactionContext';
@@ -40,7 +41,7 @@ let state: any;
 let wallet: MainController;
 let expected: IWalletNavigationScope;
 let ethSave: jest.SpyInstance;
-let persistence: jest.Mock;
+let persistence: jest.SpyInstance;
 
 const change = (field: string) => {
   // The real reducer freezes committed state. A later UI/controller action
@@ -103,14 +104,23 @@ beforeEach(() => {
     return action;
   });
   wallet = Object.create(MainController.prototype);
+  (wallet as any).walletSessionGeneration = 0;
+  (wallet as any).walletStateGeneration = 0;
+  const keyring = {};
+  (wallet as any).getActiveKeyring = () => keyring;
+  (wallet as any).resetAutoLockTimer = jest.fn();
   wallet.isUnlocked = jest.fn(() => true);
   wallet.account = {
     eth: EthAccountController(),
-    sys: { saveTokenInfo: jest.fn() } as any,
+    sys: { prepareTokenAddition: jest.fn() } as any,
   };
-  ethSave = jest.spyOn(wallet.account.eth, 'saveTokenInfo');
-  persistence = jest.fn(async () => undefined);
-  (wallet as any).saveWalletState = persistence;
+  ethSave = jest.spyOn(wallet.account.eth, 'prepareTokenAddition');
+  persistence = jest
+    .spyOn(storeModule, 'persistAssetMutation')
+    .mockImplementation(async (prepare, assertCurrent) => {
+      assertCurrent();
+      store.dispatch(prepare());
+    });
   expected = getWalletNavigationScope();
   jest.spyOn(console, 'log').mockImplementation();
   jest.spyOn(console, 'error').mockImplementation();
@@ -162,7 +172,7 @@ it('rejects Bitcoin mode even with an otherwise matching scope', async () => {
   expect(persistence).not.toHaveBeenCalled();
 });
 
-it('adds the reviewed token to the exact approved account and chain before persistence', async () => {
+it('publishes the reviewed token to the exact approved account and chain through persistence', async () => {
   await expect(wallet.handleWatchAsset(preview, expected)).resolves.toBe(true);
   expect(ethSave).toHaveBeenCalledTimes(1);
   expect(state.vault.accountAssets[TYPE][0].ethereum).toEqual([
@@ -176,30 +186,35 @@ it('adds the reviewed token to the exact approved account and chain before persi
     }),
   ]);
   expect(state.vault.accountAssets[TYPE][1].ethereum).toEqual([]);
-  expect(persistence).toHaveBeenCalledWith('add-token', true, true);
+  expect(persistence).toHaveBeenCalledWith(
+    expect.any(Function),
+    expect.any(Function),
+    expect.any(Function)
+  );
 });
 
 it.each(['account', 'network'])(
-  'preserves the successful original ACK when %s changes during persistence',
+  'refuses an unpublished approval when %s changes during persistence',
   async (field) => {
     let entered!: () => void;
     const started = new Promise<void>((resolve) => (entered = resolve));
     let finish!: () => void;
     const pending = new Promise<void>((resolve) => (finish = resolve));
-    persistence.mockImplementationOnce(() => {
+    persistence.mockImplementationOnce(async (prepare, assertCurrent) => {
       entered();
-      return pending;
+      await pending;
+      assertCurrent();
+      store.dispatch(prepare());
     });
     const saving = wallet.handleWatchAsset(preview, expected);
+    const rejected = expect(saving).rejects.toThrow('Asset context changed');
     await started;
     change(field);
     finish();
-    await expect(saving).resolves.toBe(true);
+    await rejected;
     expect(ethSave).toHaveBeenCalledTimes(1);
-    expect(store.dispatch).toHaveBeenCalledTimes(1);
-    expect(state.vault.accountAssets[TYPE][0].ethereum).toEqual([
-      expect.objectContaining({ chainId: 5700, contractAddress: TOKEN }),
-    ]);
+    expect(store.dispatch).not.toHaveBeenCalled();
+    expect(state.vault.accountAssets[TYPE][0].ethereum).toEqual([]);
     expect(state.vault.accountAssets[TYPE][1].ethereum).toEqual([]);
   }
 );

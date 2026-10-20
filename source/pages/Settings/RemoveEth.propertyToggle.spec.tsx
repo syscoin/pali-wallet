@@ -80,8 +80,14 @@ it('blocks overlapping settings choices while normal property delivery is pendin
   });
   fireEvent.click(disable);
   expect(disable).toBeDisabled();
+  await waitFor(() =>
+    expect(mockEmitter).toHaveBeenCalledWith([
+      'wallet',
+      'removeWindowEthProperty',
+    ])
+  );
   fireEvent.click(disable);
-  expect(mockEmitter).toHaveBeenCalledTimes(1);
+  expect(mockEmitter).toHaveBeenCalledTimes(2);
 
   mockHasEthProperty = false;
   await act(async () => complete());
@@ -148,8 +154,13 @@ it.each([true, false])(
         expect(screen.getByRole('button', { name: label })).toBeEnabled()
       );
       expect(mockEmitter).toHaveBeenCalledTimes(1);
+      expect(mockEmitter).toHaveBeenCalledWith(
+        enabled ? ['dapp', 'getAll'] : ['wallet', 'addWindowEthProperty']
+      );
       expect(
-        mockEmitter.mock.calls.some(([methods]) => methods[0] === 'dapp')
+        mockEmitter.mock.calls.some(([methods]) =>
+          ['disconnect', 'removeWindowEthProperty'].includes(methods[1])
+        )
       ).toBe(false);
     } finally {
       error.mockRestore();

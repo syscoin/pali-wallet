@@ -40,6 +40,7 @@ import vault, {
   removeAccount,
   setActiveAccount,
   setAccountLabel,
+  setAccountAssets,
 } from './vault';
 import { IVaultState, IGlobalState } from './vault/types';
 import vaultCache, { getSlip44ForNetwork } from './vaultCache';
@@ -341,14 +342,16 @@ type AccountRemovalCommit = {
   retireSessions: () => void;
 };
 
-// Account edits share the same unpublished vault staging boundary.
-function persistAccountMutation(
-  actions: (
-    | ReturnType<typeof setAccountLabel>
-    | ReturnType<typeof removeAccount>
-    | ReturnType<typeof createAccount>
-    | ReturnType<typeof setActiveAccount>
-  )[],
+type VaultMutationAction =
+  | ReturnType<typeof setAccountLabel>
+  | ReturnType<typeof removeAccount>
+  | ReturnType<typeof createAccount>
+  | ReturnType<typeof setActiveAccount>
+  | ReturnType<typeof setAccountAssets>;
+
+// User-authored vault edits share the same unpublished staging boundary.
+function persistVaultMutation(
+  mutation: VaultMutationAction[] | (() => VaultMutationAction[]),
   assertCurrent: () => void,
   removal?: AccountRemovalCommit,
   isSameWallet = removal?.isSameWallet
@@ -371,6 +374,7 @@ function persistAccountMutation(
       }
     };
     assertCommitCurrent();
+    const actions = typeof mutation === 'function' ? mutation() : mutation;
     const state = store.getState();
     const sourceSlip44 = state.vaultGlobal.activeSlip44;
     if (sourceSlip44 === null)
@@ -400,8 +404,12 @@ function persistAccountMutation(
       : getMainStateForStorage(state);
     await saveCommittedWalletState(sourceSlip44, stagedVault, mainState);
     if (mainState) lastPersistedState = mainState;
+    let publicationActions = actions;
     try {
       assertCommitCurrent();
+      // Asset lists may receive newer balances while storage is pending.
+      // Reapply the same membership edit to the latest list, not an old array.
+      if (typeof mutation === 'function') publicationActions = mutation();
     } catch (error) {
       assertWalletPersistenceAllowed();
       if (isSameWallet && !isSameWallet()) throw error;
@@ -432,11 +440,25 @@ function persistAccountMutation(
       lastPersistedState = repairMainState;
       throw error;
     }
-    actions.forEach((action) => store.dispatch(action));
+    publicationActions.forEach((action) => store.dispatch(action));
     removal?.grants.forEach((grant) => store.dispatch(removeDApp(grant.host)));
     vaultCache.prepareSlip44Vault(sourceSlip44, store.getState().vault);
     removal?.retireSessions();
   });
+}
+
+/** Stage a token membership edit without publishing its uncommitted list. */
+export function persistAssetMutation(
+  prepare: () => ReturnType<typeof setAccountAssets>,
+  assertCurrent: () => void,
+  isSameWallet: () => boolean
+): Promise<void> {
+  return persistVaultMutation(
+    () => [prepare()],
+    assertCurrent,
+    undefined,
+    isSameWallet
+  );
 }
 
 /** Stage a label without exposing it to ordinary or emergency vault saves. */
@@ -446,7 +468,7 @@ export function persistAccountLabel(
   label: string,
   assertCurrent: () => void
 ): Promise<void> {
-  return persistAccountMutation(
+  return persistVaultMutation(
     [setAccountLabel({ accountId, accountType, label })],
     assertCurrent
   );
@@ -457,7 +479,7 @@ export function persistAccountRemoval(
   removal: AccountRemovalCommit,
   assertCurrent: () => void
 ): Promise<void> {
-  return persistAccountMutation(
+  return persistVaultMutation(
     [removeAccount({ id: removal.accountId, type: removal.accountType })],
     assertCurrent,
     removal
@@ -471,7 +493,7 @@ export function persistAccountCreation(
   assertCurrent: () => void,
   isSameWallet: () => boolean
 ): Promise<void> {
-  return persistAccountMutation(
+  return persistVaultMutation(
     [
       createAccount({ account, accountType }),
       setActiveAccount({ id: account.id, type: accountType }),

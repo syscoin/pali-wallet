@@ -47,7 +47,9 @@ export const onMessage = async (
           requestContext
         );
       case 'DISABLE':
-        return await getController().dapp.disconnect(host);
+        return await getController().dapp.disconnect(host, true, {
+          propagateErrors: true,
+        });
       case 'IS_UNLOCKED':
         return isUnlocked();
       default:

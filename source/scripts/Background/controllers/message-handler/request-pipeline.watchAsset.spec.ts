@@ -25,6 +25,7 @@ jest.mock('./popup-promise', () => ({
 }));
 
 import EthAccountController from '../account/evm';
+import store from 'state/store';
 import vaultReducer, { rehydrate as rehydrateVault } from 'state/vault';
 import { INetworkType, KeyringAccountType } from 'types/network';
 
@@ -60,7 +61,7 @@ const seedToken = async (chainId: number) => {
       activeNetwork: { ...mockState.vault.activeNetwork, chainId },
     },
   };
-  await EthAccountController().saveTokenInfo({
+  const prepare = await EthAccountController().prepareTokenAddition({
     contractAddress: TOKEN,
     tokenSymbol: 'SYN',
     tokenStandard: 'ERC-20',
@@ -68,6 +69,7 @@ const seedToken = async (chainId: number) => {
     decimals: 18,
     balance: 1,
   } as any);
+  store.dispatch(prepare());
 };
 
 beforeEach(() => {

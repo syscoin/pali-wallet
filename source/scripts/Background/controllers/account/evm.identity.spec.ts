@@ -13,6 +13,7 @@ jest.mock('state/vault', () => ({
 }));
 
 import { validateAndManageUserAssets } from '../assets/utils';
+import store from 'state/store';
 
 import EthAccountController from './evm';
 
@@ -27,6 +28,12 @@ const asset = (chainId: number, tokenId?: string) => ({
   tokenStandard: tokenId ? 'ERC-1155' : 'ERC-20',
   tokenId,
 });
+const add = async (token: ReturnType<typeof asset>) => {
+  const prepare = await EthAccountController().prepareTokenAddition(
+    token as any
+  );
+  store.dispatch(prepare());
+};
 beforeEach(() => {
   state = {
     vault: {
@@ -38,21 +45,18 @@ beforeEach(() => {
 });
 
 it('imports the same address on a different chain, but rejects a same-chain duplicate', async () => {
-  const controller = EthAccountController();
-  await controller.saveTokenInfo(asset(2) as any);
+  await add(asset(2));
   const list = state.vault.accountAssets.HD[0].ethereum;
   expect(list).toHaveLength(2);
   expect(list[1].id).toBe(`${TOKEN}-2`);
-  await expect(controller.saveTokenInfo(asset(2) as any)).rejects.toThrow(
-    'already exists'
-  );
+  await expect(add(asset(2))).rejects.toThrow('already exists');
 });
 
 it('stamps the active chain when the token input omits its chain ID', async () => {
   const token = { ...asset(2) };
   delete (token as Partial<typeof token>).chainId;
 
-  await EthAccountController().saveTokenInfo(token as any);
+  await add(token);
 
   const saved = state.vault.accountAssets.HD[0].ethereum[1];
   expect(saved).toMatchObject({ chainId: 2, id: `${TOKEN}-2` });
@@ -60,14 +64,11 @@ it('stamps the active chain when the token input omits its chain ID', async () =
 });
 
 it('keeps ERC1155 IDs distinct per chain and within one contract', async () => {
-  const controller = EthAccountController();
   state.vault.accountAssets.HD[0].ethereum = [asset(1, '1')];
-  await controller.saveTokenInfo(asset(2, '1') as any);
-  await controller.saveTokenInfo(asset(2, '2') as any);
+  await add(asset(2, '1'));
+  await add(asset(2, '2'));
   expect(state.vault.accountAssets.HD[0].ethereum).toHaveLength(3);
-  await expect(controller.saveTokenInfo(asset(2, '1') as any)).rejects.toThrow(
-    'already exists'
-  );
+  await expect(add(asset(2, '1'))).rejects.toThrow('already exists');
 });
 
 it('deduplicates within a chain without collapsing another chain address', () => {

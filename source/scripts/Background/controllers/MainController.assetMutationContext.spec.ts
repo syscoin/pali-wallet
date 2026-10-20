@@ -15,6 +15,7 @@ import axios from 'axios';
 
 import { handleMasterControllerResponses } from '../handlers/handleMasterControllerResponses';
 import store from 'state/store';
+import * as storeModule from 'state/store';
 import vaultReducer from 'state/vault';
 import { INetworkType, KeyringAccountType } from 'types/network';
 import { getWalletNavigationScope } from 'utils/navigationState';
@@ -44,6 +45,7 @@ const sptAsset = {
 };
 let state: any;
 let wallet: any;
+let persistence: jest.SpyInstance;
 
 beforeEach(() => {
   const initial = vaultReducer(undefined, { type: '@@init' });
@@ -83,12 +85,21 @@ beforeEach(() => {
   jest.spyOn(console, 'error').mockImplementation();
   wallet = Object.create(MainController.prototype);
   wallet.walletSessionGeneration = 0;
+  wallet.walletStateGeneration = 0;
+  const keyring = {};
+  wallet.getActiveKeyring = () => keyring;
   wallet.isUnlocked = jest.fn(() => true);
+  wallet.resetAutoLockTimer = jest.fn();
   wallet.account = {
     eth: EthAccountController(),
     sys: SysAccountController(() => ({} as any)),
   };
-  wallet.saveWalletState = jest.fn().mockResolvedValue(undefined);
+  persistence = jest
+    .spyOn(storeModule, 'persistAssetMutation')
+    .mockImplementation(async (prepare, assertCurrent) => {
+      assertCurrent();
+      store.dispatch(prepare());
+    });
   wallet.saveTokenInfo = wallet.saveTokenInfo.bind(wallet);
   wallet.deleteTokenInfo = wallet.deleteTokenInfo.bind(wallet);
 });
@@ -136,18 +147,7 @@ describe.each(['ethereum', 'syscoin'])(
       await wallet.deleteTokenInfo(tokenKey(), 5700, undefined, scope);
       expect(assets(0)).toEqual([]);
       expect(assets(1)).toHaveLength(1);
-      expect(wallet.saveWalletState).toHaveBeenNthCalledWith(
-        1,
-        'add-token',
-        true,
-        true
-      );
-      expect(wallet.saveWalletState).toHaveBeenNthCalledWith(
-        2,
-        'delete-token',
-        true,
-        true
-      );
+      expect(persistence).toHaveBeenCalledTimes(2);
     });
 
     it.each([
@@ -178,7 +178,7 @@ describe.each(['ethereum', 'syscoin'])(
         ).rejects.toThrow('Asset context changed');
         expect(JSON.stringify(state)).toBe(before);
         expect(store.dispatch).not.toHaveBeenCalled();
-        expect(wallet.saveWalletState).not.toHaveBeenCalled();
+        expect(persistence).not.toHaveBeenCalled();
       }
     );
 
@@ -206,7 +206,7 @@ describe.each(['ethereum', 'syscoin'])(
         wallet.deleteTokenInfo(tokenKey(), 1, undefined, scope)
       ).rejects.toThrow('Asset network changed');
       expect(store.dispatch).not.toHaveBeenCalled();
-      expect(wallet.saveWalletState).not.toHaveBeenCalled();
+      expect(persistence).not.toHaveBeenCalled();
     });
   }
 );
@@ -269,7 +269,7 @@ it('rechecks an SPT import after optional metadata awaits before dispatching', a
   finish({ data: { image: 'https://image.invalid' } });
   await rejected;
   expect(store.dispatch).not.toHaveBeenCalled();
-  expect(wallet.saveWalletState).not.toHaveBeenCalled();
+  expect(persistence).not.toHaveBeenCalled();
 });
 
 describe('SPT imports with delayed metadata', () => {
@@ -301,7 +301,7 @@ describe('SPT imports with delayed metadata', () => {
     await first;
     await wallet.saveTokenInfo(token('second'), scope);
     expect(guids()).toEqual(['123457', 'first', 'second']);
-    expect(wallet.saveWalletState).toHaveBeenCalledTimes(2);
+    expect(persistence).toHaveBeenCalledTimes(2);
   });
 
   it('preserves a newer addition when earlier metadata completes', async () => {
@@ -312,7 +312,7 @@ describe('SPT imports with delayed metadata', () => {
     await first;
     expect(getWalletNavigationScope()).toEqual(scope);
     expect(guids()).toEqual(['123457', 'second', 'first']);
-    expect(wallet.saveWalletState).toHaveBeenCalledTimes(2);
+    expect(persistence).toHaveBeenCalledTimes(2);
   });
 
   it('does not resurrect an asset removed while metadata was pending', async () => {
@@ -323,7 +323,7 @@ describe('SPT imports with delayed metadata', () => {
     await first;
     expect(getWalletNavigationScope()).toEqual(scope);
     expect(guids()).toEqual(['first']);
-    expect(wallet.saveWalletState).toHaveBeenCalledTimes(2);
+    expect(persistence).toHaveBeenCalledTimes(2);
   });
 
   it('rejects a duplicate imported while the original metadata was pending', async () => {
@@ -334,6 +334,9 @@ describe('SPT imports with delayed metadata', () => {
     finish({ data: {} });
     await rejected;
     expect(guids()).toEqual(['123457', 'same']);
-    expect(wallet.saveWalletState).toHaveBeenCalledTimes(1);
+    // Both reach admission; the second factory refuses the duplicate before
+    // any write or publication (the real writer is covered separately).
+    expect(persistence).toHaveBeenCalledTimes(2);
+    expect(store.dispatch).toHaveBeenCalledTimes(1);
   });
 });
