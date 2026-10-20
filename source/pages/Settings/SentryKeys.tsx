@@ -131,6 +131,7 @@ const SentryKeys = () => {
     setError('');
     setNotice('');
     let importCommitted = false;
+    let removedKeyId: string | undefined;
     try {
       if (mode === 'import') {
         if (!backup)
@@ -178,12 +179,15 @@ const SentryKeys = () => {
       } else if (mode === 'remove') {
         if (!selectedRemovalKey)
           throw new Error(t('sentry.unableToLoadSentrySettings'));
-        await controllerEmitter(
+        const removed = (await controllerEmitter(
           ['wallet', 'removeSentryKey'],
           [{ id: removeId, password }],
           30000,
           false
-        );
+        )) as { removedKeyId?: unknown } | null;
+        if (removed?.removedKeyId !== removeId)
+          throw new Error(t('sentry.unableToCompleteSentryOperation'));
+        removedKeyId = removeId;
       } else if (mode === 'release' && release) {
         await controllerEmitter(
           ['wallet', 'releaseSentryCollateral'],
@@ -204,6 +208,18 @@ const SentryKeys = () => {
         inFlight.current !== job
       )
         return;
+      if (removedKeyId) {
+        setSettings((previous) =>
+          previous
+            ? {
+                ...previous,
+                keys: previous.keys.filter((key) => key.id !== removedKeyId),
+              }
+            : previous
+        );
+        setRemoveId('');
+        setMode('list');
+      }
       if (mode === 'import') setBackup(false);
       const value = (await controllerEmitter([
         'wallet',
@@ -236,10 +252,14 @@ const SentryKeys = () => {
         owner.current === current &&
         inFlight.current === job
       ) {
-        if (importCommitted) {
+        if (importCommitted || removedKeyId) {
           setMode('list');
           setNotice(
-            importMode === 'batch'
+            removedKeyId
+              ? t(
+                  'sentry.localOperatorKeyRemovedRegisteredCollateralRemainsProtected'
+                )
+              : importMode === 'batch'
               ? t('sentry.batchImported', { count: batch.entries.length })
               : t('sentry.operatorKeyImportedSecurely')
           );
@@ -733,6 +753,14 @@ const SentryKeys = () => {
         </label>
       )}
       <PageActionFooter error={error || undefined}>
+        {mode === 'list' && error && (
+          <Button
+            type="button"
+            onClick={() => setReadAttempt((value) => value + 1)}
+          >
+            {t('receive.retry')}
+          </Button>
+        )}
         {mode !== 'list' && (
           <div className="flex flex-wrap gap-3">
             <Button
