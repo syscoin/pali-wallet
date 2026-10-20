@@ -129,7 +129,6 @@ import {
 } from 'utils/constants';
 import { assertSupportedEvmFees } from 'utils/dappTransaction';
 import { formatUnits } from 'utils/ethersV6Compat';
-import { Contract } from 'utils/ethersV6Compat';
 import { decodeTransactionData } from 'utils/ethUtil';
 import { getBlacklistTargetsForEvmCallWithContractType } from 'utils/evmCallBlacklist';
 import {
@@ -273,7 +272,6 @@ const NETWORK_ALREADY_EXISTS_ERROR =
   'network already exists, remove or edit it';
 const TOKEN_BALANCE_CONTEXT_CHANGED_ERROR =
   'Token balance refresh context changed';
-const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 const NETWORK_SWITCH_AFTER_UPDATES = 'network-switch-after-updates';
 
 const fiatNetworkKey = (network: INetwork) =>
