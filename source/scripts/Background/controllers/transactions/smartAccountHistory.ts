@@ -25,7 +25,7 @@ import { IEvmTransactionResponse } from './types';
  */
 
 const USER_OP_EVENT_TOPIC =
-  paliEntryPointInterface.getEventTopic('UserOperationEvent');
+  paliEntryPointInterface.getEvent('UserOperationEvent')!.topicHash;
 // Re-scan a small window behind the cursor to tolerate shallow reorgs.
 const REORG_SAFETY_BLOCKS = 5;
 // Bounded chunk size for providers that cap eth_getLogs block ranges.

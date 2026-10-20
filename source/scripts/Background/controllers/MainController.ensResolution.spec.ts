@@ -338,3 +338,175 @@ it('keeps the latest forward destination when a name moves A to B to A', async (
   expect(cached()).toBe(OLDER);
   expect(Object.keys(mockState.vaultGlobal.ensCache)).toEqual([OLDER]);
 });
+
+describe('bulk ENS resolution', () => {
+  it('uses the guarded ethers lookup for each unique ENS name and retains input keys', async () => {
+    const resolve = jest.spyOn(wallet, 'resolveEns');
+    provider.resolveName.mockImplementation(async (name: string) => {
+      if (name === NAME) return OLDER;
+      if (name === 'OTHER.ETH') return NEWER;
+      if (name === 'failed.eth') throw new Error('Synthetic resolver failure');
+      return null;
+    });
+
+    expect(
+      await wallet.batchResolveEns([
+        NAME,
+        NAME,
+        'OTHER.ETH',
+        'missing.eth',
+        'failed.eth',
+        OLDER,
+        '',
+        null,
+      ])
+    ).toEqual({
+      [NAME]: OLDER,
+      'OTHER.ETH': NEWER,
+      'missing.eth': null,
+      'failed.eth': null,
+    });
+    expect(resolve.mock.calls.map(([name]) => name).sort()).toEqual(
+      [NAME, 'OTHER.ETH', 'missing.eth', 'failed.eth'].sort()
+    );
+    expect(provider.resolveName).toHaveBeenCalledTimes(4);
+    expect(cached()).toBe(OLDER);
+    expect(cached('other.eth')).toBe(NEWER);
+    expect(wallet.ensResolutionRequests.size).toBe(0);
+  });
+
+  it('limits active ethers lookups to three without dropping queued names', async () => {
+    const responses = Array.from({ length: 5 }, deferred);
+    const names = responses.map((_, index) => `receiver${index}.eth`);
+    let active = 0;
+    let maximumActive = 0;
+    provider.resolveName.mockImplementation((name: string) => {
+      active += 1;
+      maximumActive = Math.max(maximumActive, active);
+      return responses[names.indexOf(name)].promise.finally(() => {
+        active -= 1;
+      });
+    });
+    const result = wallet.batchResolveEns(names);
+    expect(provider.resolveName).toHaveBeenCalledTimes(3);
+    for (const response of responses) response.resolve(OLDER);
+    expect(await result).toEqual(
+      Object.fromEntries(names.map((name) => [name, OLDER]))
+    );
+    expect(maximumActive).toBe(3);
+    expect(provider.resolveName).toHaveBeenCalledTimes(5);
+    expect(wallet.ensResolutionRequests.size).toBe(0);
+  });
+
+  it('does not let a bulk reply overwrite a newer individual lookup', async () => {
+    const bulkReply = deferred();
+    provider.resolveName
+      .mockReturnValueOnce(bulkReply.promise)
+      .mockResolvedValueOnce(NEWER);
+    const bulk = wallet.batchResolveEns([NAME]);
+    expect(provider.resolveName).toHaveBeenCalledTimes(1);
+    expect(await wallet.resolveEns(NAME)).toBe(NEWER);
+    bulkReply.resolve(OLDER);
+    expect(await bulk).toEqual({ [NAME]: OLDER });
+    expect(cached()).toBe(NEWER);
+    expect(wallet.ensResolutionRequests.size).toBe(0);
+  });
+
+  it('stops queued lookups and returns no obsolete results after wallet reset', async () => {
+    const responses = Array.from({ length: 3 }, deferred);
+    const names = Array.from({ length: 5 }, (_, index) => `name${index}.eth`);
+    provider.resolveName.mockImplementation(
+      (name: string) => responses[names.indexOf(name)].promise
+    );
+    const result = wallet.batchResolveEns(names);
+    expect(provider.resolveName).toHaveBeenCalledTimes(3);
+    wallet.walletStateGeneration += 1;
+    mockState = {
+      ...mockState,
+      vaultGlobal: vaultGlobalReducer(
+        mockState.vaultGlobal,
+        clearAllEnsCache()
+      ),
+    };
+    for (const response of responses) response.resolve(OLDER);
+    expect(await result).toEqual(
+      Object.fromEntries(names.map((name) => [name, null]))
+    );
+    expect(provider.resolveName).toHaveBeenCalledTimes(3);
+    expect(mockState.vaultGlobal.ensCache).toEqual({});
+    expect(wallet.ensResolutionRequests.size).toBe(0);
+  });
+
+  it('invalidates completed entries too when reset overtakes a partially completed batch', async () => {
+    const responses = Array.from({ length: 3 }, deferred);
+    const names = responses.map((_, index) => `partial${index}.eth`);
+    provider.resolveName.mockImplementation(
+      (name: string) => responses[names.indexOf(name)].promise
+    );
+    const result = wallet.batchResolveEns(names);
+    responses[0].resolve(OLDER);
+    await responses[0].promise;
+    expect(cached(names[0])).toBe(OLDER);
+    wallet.walletStateGeneration += 1;
+    mockState = {
+      ...mockState,
+      vaultGlobal: vaultGlobalReducer(
+        mockState.vaultGlobal,
+        clearAllEnsCache()
+      ),
+    };
+    responses[1].resolve(OLDER);
+    responses[2].resolve(OLDER);
+    expect(await result).toEqual(
+      Object.fromEntries(names.map((name) => [name, null]))
+    );
+    expect(mockState.vaultGlobal.ensCache).toEqual({});
+    provider.resolveName.mockResolvedValue(NEWER);
+    expect(await wallet.batchResolveEns([NAME])).toEqual({ [NAME]: NEWER });
+    expect(cached()).toBe(NEWER);
+    expect(wallet.ensResolutionRequests.size).toBe(0);
+  });
+
+  it.each(['older-first', 'newer-first'])(
+    'shares newest-result cache protection between concurrent batches (%s)',
+    async (order) => {
+      const old = deferred();
+      const current = deferred();
+      provider.resolveName
+        .mockReturnValueOnce(old.promise)
+        .mockReturnValueOnce(current.promise);
+      const first = wallet.batchResolveEns([NAME]);
+      const second = wallet.batchResolveEns([NAME]);
+      if (order === 'older-first') {
+        old.resolve(OLDER);
+        expect(await first).toEqual({ [NAME]: OLDER });
+        expect(cached()).toBeUndefined();
+        current.resolve(NEWER);
+        expect(await second).toEqual({ [NAME]: NEWER });
+      } else {
+        current.resolve(NEWER);
+        expect(await second).toEqual({ [NAME]: NEWER });
+        expect(cached()).toBe(NEWER);
+        old.resolve(OLDER);
+        expect(await first).toEqual({ [NAME]: OLDER });
+      }
+      expect(cached()).toBe(NEWER);
+      expect(wallet.ensResolutionRequests.size).toBe(0);
+    }
+  );
+
+  it('returns an empty result without looking up a provider for non-ENS input', async () => {
+    const getProvider = jest.spyOn(wallet, 'getEnsMainnetProvider');
+    expect(await wallet.batchResolveEns([OLDER, '', null])).toEqual({});
+    expect(getProvider).not.toHaveBeenCalled();
+    expect(provider.resolveName).not.toHaveBeenCalled();
+  });
+
+  it('retains the missing-mainnet configuration error', async () => {
+    wallet.getEnsMainnetProvider = () => null;
+    await expect(wallet.batchResolveEns([NAME])).rejects.toThrow(
+      'Ethereum mainnet RPC not configured. Cannot batch-resolve ENS.'
+    );
+    expect(provider.resolveName).not.toHaveBeenCalled();
+  });
+});

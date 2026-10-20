@@ -281,7 +281,11 @@ export const EvmTransactionDetailsEnhanced = ({
     const input = String(
       mergedTransaction.input || mergedTransaction.data || ''
     );
-    if (!input.startsWith(paliEntryPointInterface.getSighash('handleOps'))) {
+    if (
+      !input.startsWith(
+        paliEntryPointInterface.getFunction('handleOps')!.selector
+      )
+    ) {
       return { transaction: mergedTransaction, isOperation: false };
     }
     const entryPoint = getPaliEntryPointAddress(chainId).toLowerCase();

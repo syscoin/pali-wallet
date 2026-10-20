@@ -10,13 +10,13 @@ import {
 import { E2E_CONFIG } from '../harness/config';
 import { getAddress } from 'utils/ethersV6Compat';
 import { Contract } from 'utils/ethersV6Compat';
-import { JsonRpcProvider } from 'utils/ethersV6Compat';
+import { JsonRpcProvider } from 'ethers/providers';
 import {
   formatEther,
   parseEther,
   toEthersBigNumberish,
 } from 'utils/ethersV6Compat';
-import { Wallet } from 'utils/ethersV6Compat';
+import { Wallet } from 'ethers/wallet';
 
 export type PredictedSmartAccount = {
   accountIndex: number;

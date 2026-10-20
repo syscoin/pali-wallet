@@ -680,7 +680,7 @@ export const SendCalls = () => {
         ) {
           batchEnsMap = (await controllerEmitter(
             ['wallet', 'batchResolveEns'],
-            [ensNamesToResolve, { fallbackToProvider: false }]
+            [ensNamesToResolve]
           )) as Record<string, string | null>;
         }
       } catch (e) {

@@ -1,6 +1,6 @@
 import { getChainId, provider } from '../../e2e/harness/chain';
 
-jest.mock('utils/ethersV6Compat', () => ({
+jest.mock('ethers/providers', () => ({
   JsonRpcProvider: jest.fn().mockImplementation(() => ({
     getNetwork: jest.fn(),
   })),

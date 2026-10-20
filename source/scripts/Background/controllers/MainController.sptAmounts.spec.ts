@@ -1,8 +1,11 @@
 import { configureStore } from '@reduxjs/toolkit';
 
-import vaultReducer from 'state/vault';
+import { persistAssetMutation } from 'state/store';
+import vaultReducer, { setAccountAssets } from 'state/vault';
 import { KeyringAccountType } from 'types/network';
+import { getWalletNavigationScope } from 'utils/navigationState';
 
+import SysAccountController from './account/syscoin';
 import AssetsManager from './assets';
 import MainController from './MainController';
 import { CancellablePromises } from './promises/cancellablesPromises';
@@ -17,6 +20,12 @@ jest.mock('state/store', () => ({
     getState: () => mockStore.getState(),
     dispatch: (action: any) => mockStore.dispatch(action),
   },
+  // This adapter exercises the native prepare/assert/dispatch contract. It is
+  // intentionally not evidence of browser storage durability.
+  persistAssetMutation: jest.fn(async (prepare, assertCurrent) => {
+    assertCurrent();
+    mockStore.dispatch(prepare());
+  }),
 }));
 jest.mock('@sidhujag/sysweb3-keyring', () => ({
   KeyringAccountType: {
@@ -250,5 +259,118 @@ it('preserves the token when the aggregate transfer count is unsafe', async () =
   expect({ failed: Boolean(error), token: currentToken() }).toEqual({
     failed: true,
     token,
+  });
+});
+
+describe('SPT imported inventory refresh', () => {
+  const foreignToken = {
+    ...token,
+    assetGuid: '123457',
+    chainId: 5700,
+    balance: '19',
+    description: 'Other network metadata',
+  };
+  const tokens = () =>
+    mockStore.getState().vault.accountAssets.HDAccount[0].syscoin;
+  const importedToken = (index: number) => ({
+    ...token,
+    assetGuid: String(123457 + index),
+    assetType: 'ERC20',
+    decimals: 8,
+    symbol: `SPT${index}`,
+    description: `Imported token ${index}`,
+  });
+  const inventoryRow = (index: number) => ({
+    ...healthyRow,
+    assetGuid: importedToken(index).assetGuid,
+    assetType: 'ERC20',
+    decimals: 8,
+    balance: '700000000',
+    unconfirmedBalance: '-100000000',
+    totalReceived: '800000000',
+    totalSent: '100000000',
+  });
+  const importInventory = async (count: number) => {
+    const scope = getWalletNavigationScope();
+    for (let index = 0; index < count; index++) {
+      await controller.saveTokenInfo(importedToken(index), scope);
+    }
+    expect(persistAssetMutation).toHaveBeenCalledTimes(count);
+    expect(tokens()).toHaveLength(count + 1);
+  };
+
+  beforeEach(() => {
+    mockStore = configureStore({
+      reducer: {
+        vault: vaultReducer,
+        vaultGlobal: (state = { activeSlip44: 57 }) => state,
+      },
+      preloadedState: {
+        vault: { ...mockStore.getState().vault, isBitcoinBased: true },
+      },
+    });
+    mockStore.dispatch(
+      setAccountAssets({
+        accountId: 0,
+        accountType: KeyringAccountType.HDAccount,
+        assets: { ethereum: [], syscoin: [foreignToken] },
+      })
+    );
+    const keyring = { ethereumTransaction: { web3Provider: {} } };
+    Object.assign(controller, {
+      walletStateGeneration: 0,
+      getActiveKeyring: () => keyring,
+      isUnlocked: () => true,
+      resetAutoLockTimer: jest.fn(),
+      account: { sys: SysAccountController(() => keyring as any) },
+    });
+    (persistAssetMutation as jest.Mock).mockClear();
+  });
+
+  it.each([30, 31, 65])(
+    'refreshes every one of %i natively imported assets and preserves the other chain',
+    async (count) => {
+      await importInventory(count);
+      reply(
+        ...Array.from({ length: count }, (_, index) => inventoryRow(index))
+      );
+      await refresh();
+      const current = tokens().filter((asset: any) => asset.chainId === 57);
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      expect(tokens()).toHaveLength(count + 1);
+      expect(tokens().find((asset: any) => asset.chainId === 5700)).toEqual(
+        foreignToken
+      );
+      expect(current.map((asset: any) => asset.assetGuid)).toEqual(
+        Array.from(
+          { length: count },
+          (_, index) => importedToken(index).assetGuid
+        )
+      );
+      for (let index = 0; index < count; index++) {
+        expect(current[index]).toMatchObject({
+          assetGuid: importedToken(index).assetGuid,
+          balance: '6.0',
+          confirmedBalance: '7.0',
+          unconfirmedBalance: '-1.0',
+          totalSent: '1.0',
+          totalReceived: '8.0',
+          description: importedToken(index).description,
+        });
+      }
+    }
+  );
+
+  it('preserves every imported asset when a large inventory has a malformed final row', async () => {
+    await importInventory(31);
+    const before = tokens();
+    reply(...Array.from({ length: 30 }, (_, index) => inventoryRow(index)), {
+      ...inventoryRow(30),
+      balance: null,
+    });
+    await expect(refresh()).rejects.toThrow(
+      'SPT token inventory is unavailable or invalid'
+    );
+    expect(tokens()).toEqual(before);
   });
 });

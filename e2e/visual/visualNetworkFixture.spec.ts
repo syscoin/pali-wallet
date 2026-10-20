@@ -194,7 +194,7 @@ test.describe('visual network fixture boundaries', () => {
       fromBlock: '0x0',
       toBlock: '0x2b',
       topics: [
-        paliEntryPointInterface.getEventTopic('UserOperationEvent'),
+        paliEntryPointInterface.getEvent('UserOperationEvent')!.topicHash,
         null,
         `0x${value.smartAccountAddress
           .slice(2)

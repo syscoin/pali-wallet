@@ -2,7 +2,7 @@ import {
   getPaliInfrastructureContracts,
   type PaliInfrastructureContract,
 } from '../../source/utils/smartAccount/deployment';
-import { JsonRpcProvider } from 'utils/ethersV6Compat';
+import { JsonRpcProvider } from 'ethers/providers';
 
 import { E2E_CONFIG } from './config';
 

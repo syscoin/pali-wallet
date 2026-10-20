@@ -304,7 +304,7 @@ const aggregateUserOperationSuccess = (
   chainId: number
 ): boolean | undefined => {
   const userOpEventTopic =
-    paliEntryPointInterface.getEventTopic('UserOperationEvent');
+    paliEntryPointInterface.getEvent('UserOperationEvent')!.topicHash;
   const entryPoint = getPaliEntryPointAddress(chainId).toLowerCase();
   let found = false;
   let allSucceeded = true;

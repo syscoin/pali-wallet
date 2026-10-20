@@ -130,7 +130,7 @@ describe('smart account EntryPoint log history', () => {
         fromBlock: 0,
         toBlock: 100,
         topics: [
-          paliEntryPointInterface.getEventTopic('UserOperationEvent'),
+          paliEntryPointInterface.getEvent('UserOperationEvent')!.topicHash,
           null,
           `0x000000000000000000000000${SMART_ACCOUNT.slice(2)}`,
         ],

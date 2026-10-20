@@ -129,7 +129,6 @@ import {
 } from 'utils/constants';
 import { assertSupportedEvmFees } from 'utils/dappTransaction';
 import { formatUnits } from 'utils/ethersV6Compat';
-import { namehash } from 'utils/ethersV6Compat';
 import { Contract } from 'utils/ethersV6Compat';
 import { decodeTransactionData } from 'utils/ethUtil';
 import { getBlacklistTargetsForEvmCallWithContractType } from 'utils/evmCallBlacklist';
@@ -594,218 +593,47 @@ class MainController {
     }
   }
 
-  /**
-   * Batch resolve multiple ENS names to addresses using on-chain Multicall3 on Ethereum mainnet.
-   * Falls back to per-name provider.resolveName for entries that fail (e.g., CCIP-read resolvers).
-   * Returns a map of name -> address (or null if not resolvable).
-   */
+  /** Resolve ENS names through the same guarded ethers path as single lookups. */
   public async batchResolveEns(
-    names: string[],
-    options?: { fallbackToProvider?: boolean }
+    names: string[]
   ): Promise<Record<string, string | null>> {
     const result: Record<string, string | null> = {};
     const uniqueNames = Array.from(
       new Set(
-        (names || []).filter((n) => typeof n === 'string' && n.endsWith('.eth'))
+        (names || []).filter(
+          (n) => typeof n === 'string' && n.toLowerCase().endsWith('.eth')
+        )
       )
     );
     if (uniqueNames.length === 0) return result;
 
-    const provider = this.getEnsMainnetProvider();
-    if (!provider) {
+    if (!this.getEnsMainnetProvider()) {
       throw new Error(
         'Ethereum mainnet RPC not configured. Cannot batch-resolve ENS.'
       );
     }
 
-    // Minimal ABIs
-    const MULTICALL3_ADDRESS = '0xcA11bde05977b3631167028862bE2a173976CA11';
-    const ENS_REGISTRY_ADDRESS = '0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e';
-
-    const MULTICALL3_ABI = [
-      'function aggregate3(tuple(address target, bool allowFailure, bytes callData)[] calls) public view returns (tuple(bool success, bytes returnData)[])',
-    ];
-    const ENS_REGISTRY_ABI = [
-      'function resolver(bytes32 node) external view returns (address)',
-    ];
-    const ENS_RESOLVER_ABI = [
-      'function addr(bytes32 node) external view returns (address)',
-    ];
-
-    const multicall = new Contract(
-      MULTICALL3_ADDRESS,
-      MULTICALL3_ABI,
-      provider as any
-    );
-    const registry = new Contract(
-      ENS_REGISTRY_ADDRESS,
-      ENS_REGISTRY_ABI,
-      provider as any
-    );
-
-    // Phase 1: resolver() lookups
-    const nodes = uniqueNames.map((n) => namehash(n));
-    const resolverCalls = nodes.map((node) => ({
-      target: ENS_REGISTRY_ADDRESS,
-      allowFailure: true,
-      callData: registry.interface.encodeFunctionData('resolver', [node]),
-    }));
-
-    let resolverResults: Array<{ returnData: string; success: boolean }>;
-    try {
-      resolverResults = await multicall.aggregate3(resolverCalls);
-    } catch (_e) {
-      // If multicall is unavailable or fails, optionally fall back to provider
-      if (options?.fallbackToProvider !== false) {
-        await Promise.all(
-          uniqueNames.map(async (name) => {
-            try {
-              const addr = await (provider as any).resolveName(name);
-              const normalized =
-                addr && typeof addr === 'string' && addr.startsWith('0x')
-                  ? addr
-                  : null;
-              result[name] = normalized;
-              if (normalized) {
-                store.dispatch(
-                  setEnsName({ address: normalized.toLowerCase(), name })
-                );
-              }
-            } catch {
-              result[name] = null;
-            }
-          })
-        );
-        return result;
-      }
-      // No fallback requested; return nulls
-      uniqueNames.forEach((n) => (result[n] = null));
-      return result;
-    }
-
-    // Decode resolver addresses
-    const resolverAddresses = resolverResults.map((r) => {
-      if (!r.success || r.returnData === '0x') return ZERO_ADDRESS;
-      try {
-        const [addr] = registry.interface.decodeFunctionResult(
-          'resolver',
-          r.returnData
-        );
-        return addr as string;
-      } catch {
-        return ZERO_ADDRESS;
-      }
-    });
-
-    // Phase 2: resolver.addr(node) lookups for those with non-zero resolver
-    const addrCalls: Array<{
-      allowFailure: boolean;
-      callData: string;
-      target: string;
-    } | null> = resolverAddresses.map((resolverAddr, i) => {
-      if (!resolverAddr || /^0x0{40}$/i.test(resolverAddr.replace(/^0x/, '')))
-        return null;
-      const resolver = new Contract(
-        resolverAddr,
-        ENS_RESOLVER_ABI,
-        provider as any
-      );
-      return {
-        target: resolverAddr,
-        allowFailure: true,
-        callData: resolver.interface.encodeFunctionData('addr', [nodes[i]]),
-      };
-    });
-
-    const validAddrCalls = addrCalls.filter(Boolean) as Array<{
-      allowFailure: boolean;
-      callData: string;
-      target: string;
-    }>;
-
-    let addrResults: Array<{ returnData: string; success: boolean }> = [];
-    if (validAddrCalls.length > 0) {
-      try {
-        addrResults = await multicall.aggregate3(validAddrCalls);
-      } catch (_e) {
-        // Ignore; we'll fall back per-name below for unresolved entries if allowed
-      }
-    }
-
-    // Map back results
-    let addrResultIndex = 0;
-    uniqueNames.forEach((name, i) => {
-      const hasResolver = !!addrCalls[i];
-      if (!hasResolver) {
+    const generation = this.walletStateGeneration;
+    let index = 0;
+    const runNext = async (): Promise<void> => {
+      while (index < uniqueNames.length) {
+        const name = uniqueNames[index++];
         result[name] = null;
-        return;
-      }
-      const r = addrResults[addrResultIndex++];
-      if (r && r.success && r.returnData && r.returnData !== '0x') {
+        // Queued work belongs to the original wallet, just like in-flight work.
+        if (generation !== this.walletStateGeneration) continue;
         try {
-          const resolver = new Contract(
-            resolverAddresses[i],
-            ENS_RESOLVER_ABI,
-            provider as any
-          );
-          const [addr] = resolver.interface.decodeFunctionResult(
-            'addr',
-            r.returnData
-          );
-          const normalized =
-            addr && typeof addr === 'string' && addr.startsWith('0x')
-              ? (addr as string)
-              : null;
-          result[name] = normalized;
-          if (normalized) {
-            store.dispatch(
-              setEnsName({ address: normalized.toLowerCase(), name })
-            );
-          }
+          const address = await this.resolveEns(name);
+          if (generation === this.walletStateGeneration) result[name] = address;
         } catch {
-          result[name] = null;
+          // One unavailable name must not discard the other results.
         }
-      } else {
-        result[name] = null;
       }
-    });
-
-    // Optional fallback for nulls to support CCIP-read or custom resolver logic
-    if (options?.fallbackToProvider !== false) {
-      const unresolved = uniqueNames.filter((n) => !result[n]);
-      if (unresolved.length > 0) {
-        // Limit concurrency to avoid rate limiting
-        const CONCURRENCY = 3;
-        let index = 0;
-        const runNext = async (): Promise<void> => {
-          if (index >= unresolved.length) return;
-          const name = unresolved[index++];
-          try {
-            const addr = await (provider as any).resolveName(name);
-            const normalized =
-              addr && typeof addr === 'string' && addr.startsWith('0x')
-                ? addr
-                : null;
-            result[name] = normalized;
-            if (normalized) {
-              store.dispatch(
-                setEnsName({ address: normalized.toLowerCase(), name })
-              );
-            }
-          } catch {
-            result[name] = null;
-          } finally {
-            await runNext();
-          }
-        };
-        await Promise.all(
-          Array.from({ length: Math.min(CONCURRENCY, unresolved.length) }, () =>
-            runNext()
-          )
-        );
-      }
-    }
-
+    };
+    await Promise.all(
+      Array.from({ length: Math.min(3, uniqueNames.length) }, () => runNext())
+    );
+    if (generation !== this.walletStateGeneration)
+      uniqueNames.forEach((name) => (result[name] = null));
     return result;
   }
 

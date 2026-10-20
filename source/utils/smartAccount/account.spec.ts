@@ -393,9 +393,9 @@ describe('ERC-7579 smart account helpers', () => {
     );
 
     expect(calldata.slice(0, 10)).toBe(
-      paliSmartAccountFactoryInterface.getSighash(
+      paliSmartAccountFactoryInterface.getFunction(
         'createAccount(bytes32,bytes)'
-      )
+      )!.selector
     );
     const decoded = paliSmartAccountFactoryInterface.decodeFunctionData(
       'createAccount',
@@ -407,17 +407,18 @@ describe('ERC-7579 smart account helpers', () => {
 
   it('exposes the Pali ERC-7579 factory module creation ABI', () => {
     expect(
-      paliSmartAccountFactoryInterface.getSighash(
+      paliSmartAccountFactoryInterface.getFunction(
         'createAccountWithModules(bytes32,(address,bytes)[],(address,bytes)[],(address,bytes),(address,bytes)[])'
-      )
+      )!.selector
     ).toBe('0x731db2ac');
     expect(
-      paliSmartAccountFactoryInterface.getSighash('getInitData(bytes)')
+      paliSmartAccountFactoryInterface.getFunction('getInitData(bytes)')!
+        .selector
     ).toBe('0x19e925aa');
     expect(
-      paliSmartAccountFactoryInterface.getSighash(
+      paliSmartAccountFactoryInterface.getFunction(
         'getInitData((address,bytes)[],(address,bytes)[],(address,bytes),(address,bytes)[])'
-      )
+      )!.selector
     ).toBe('0xd8dcbebf');
   });
 
@@ -482,9 +483,9 @@ describe('ERC-7579 smart account helpers', () => {
     expect(account.address).toBe(accountAddress);
     expect(factoryArgs.factory).toBe(factoryAddress);
     expect(factoryArgs.factoryData.slice(0, 10)).toBe(
-      paliSmartAccountFactoryInterface.getSighash(
+      paliSmartAccountFactoryInterface.getFunction(
         'createAccount(bytes32,bytes)'
-      )
+      )!.selector
     );
     expect(await account.getDeploymentInitCode()).toBe(
       hexConcat([factoryAddress, factoryArgs.factoryData])
@@ -531,12 +532,12 @@ describe('ERC-7579 smart account helpers', () => {
     expect(getConfiguredAuthenticatorAddress(57057, 'p256-webauthn')).toMatch(
       /^0x[0-9a-fA-F]{40}$/
     );
-    expect(paliP256WebAuthnValidatorInterface.getSighash('onInstall')).toBe(
-      '0x6d61fe70'
-    );
-    expect(paliP256WebAuthnValidatorInterface.getSighash('onUninstall')).toBe(
-      '0x8a91b0e3'
-    );
+    expect(
+      paliP256WebAuthnValidatorInterface.getFunction('onInstall')!.selector
+    ).toBe('0x6d61fe70');
+    expect(
+      paliP256WebAuthnValidatorInterface.getFunction('onUninstall')!.selector
+    ).toBe('0x8a91b0e3');
 
     const isModuleTypeCalldata =
       paliP256WebAuthnValidatorInterface.encodeFunctionData('isModuleType', [
