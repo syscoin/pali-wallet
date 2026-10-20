@@ -8,6 +8,11 @@ const NodePolyfillPlugin = require('node-polyfill-webpack-plugin');
 const { join, resolve } = require('path');
 const { DefinePlugin, IgnorePlugin, ProvidePlugin } = require('webpack');
 
+const ethersPublicAliases = require('./ethersPublicAliases');
+const {
+  createIdenticalDependencyDedupPlugins,
+} = require('./plugins/deduplicateIdenticalDependencies');
+
 const viewsPath = join(__dirname, '../../views');
 const sourcePath = join(__dirname, '../../source');
 const destPath = join(__dirname, '../../build');
@@ -57,6 +62,7 @@ module.exports = {
       types: resolve(__dirname, '../../source/types'),
       utils: resolve(__dirname, '../../source/utils'),
       helpers: resolve(__dirname, '../../source/helpers'),
+      ...ethersPublicAliases,
       // Drop Ledger's embedded ERC-20 signature dataset (~130KB); it is only
       // the offline fallback - resolveTransaction fetches the live list from
       // the Ledger CDN by default. See stub for details.
@@ -176,6 +182,7 @@ module.exports = {
     ],
   },
   plugins: [
+    ...createIdenticalDependencyDedupPlugins(),
     new ForkTsCheckerWebpackPlugin({
       typescript: {
         memoryLimit: 4096,

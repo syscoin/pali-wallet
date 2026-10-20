@@ -58,6 +58,10 @@ interface IChainInfo {
   slip44?: number;
 }
 
+const NETWORK_BADGE_CLASS =
+  'text-xs px-2 py-0.5 text-white bg-brand-royalblue rounded-full font-medium shadow-sm group-hover:shadow-md group-hover:bg-brand-blue500 transform group-hover:scale-105 transition-all duration-300 flex-shrink-0';
+const NETWORK_INPUT_CLASS = 'custom-input-normal relative';
+
 const networkFormValues = (
   network: INetwork | null | undefined,
   isSyscoinRpc: boolean
@@ -282,6 +286,18 @@ const CustomRPCView = () => {
       return false;
     }
   };
+
+  const urlFormatRule = () => ({
+    validator(_, value) {
+      if (!value || value.trim() === '') {
+        return Promise.resolve();
+      }
+      if (validateUrl(value.trim())) {
+        return Promise.resolve();
+      }
+      return Promise.reject(new Error(t('settings.validUrlRequired')));
+    },
+  });
 
   const testBlockExplorerApi = async (
     apiUrl: string
@@ -1175,9 +1191,7 @@ const CustomRPCView = () => {
             </Tooltip>
 
             {/* Chain ID badge */}
-            <span className="text-xs px-2 py-0.5 text-white bg-brand-royalblue rounded-full font-medium shadow-sm group-hover:shadow-md group-hover:bg-brand-blue500 transform group-hover:scale-105 transition-all duration-300 flex-shrink-0">
-              {chain.chainId}
-            </span>
+            <span className={NETWORK_BADGE_CLASS}>{chain.chainId}</span>
           </div>
 
           {/* Currency and RPC info - more compact */}
@@ -1268,7 +1282,7 @@ const CustomRPCView = () => {
                 <span className="font-bold text-white truncate text-xl group-hover:text-brand-royalbluemedium transition-colors duration-200">
                   {currentNetwork.label || 'Unknown Network'}
                 </span>
-                <span className="text-xs px-2 py-0.5 text-white bg-brand-royalblue rounded-full font-medium shadow-sm group-hover:shadow-md group-hover:bg-brand-blue500 transform group-hover:scale-105 transition-all duration-300 flex-shrink-0">
+                <span className={NETWORK_BADGE_CLASS}>
                   {currentNetwork.kind === INetworkType.Syscoin || isSyscoinRpc
                     ? currentNetwork.slip44 ?? currentNetwork.chainId
                     : currentNetwork.chainId}
@@ -1376,7 +1390,7 @@ const CustomRPCView = () => {
                     'settings.searchNetworksPlaceholder',
                     { networkType: isSyscoinRpc ? 'UTXO' : 'EVM' }
                   )}`}
-                  className="custom-input-normal relative"
+                  className={NETWORK_INPUT_CLASS}
                   onChange={(e) => {
                     invalidatePendingChecks();
                     const value = e.target.value;
@@ -1502,20 +1516,7 @@ const CustomRPCView = () => {
               required: true,
               message: t('settings.rpcUrlRequired'),
             },
-            () => ({
-              validator(_, value) {
-                if (!value || value.trim() === '') {
-                  return Promise.resolve();
-                }
-                // Basic URL format validation only
-                if (validateUrl(value.trim())) {
-                  return Promise.resolve();
-                }
-                return Promise.reject(
-                  new Error(t('settings.validUrlRequired'))
-                );
-              },
-            }),
+            urlFormatRule,
           ]}
         >
           <Input
@@ -1526,7 +1527,7 @@ const CustomRPCView = () => {
                 ? 'settings.blockbookUrlPlaceholder'
                 : 'settings.rpcUrlPlaceholder'
             )}
-            className="custom-input-normal relative"
+            className={NETWORK_INPUT_CLASS}
             onBlur={async (e) => {
               const url = e.target.value?.trim();
               if (url) {
@@ -1579,7 +1580,7 @@ const CustomRPCView = () => {
                 ? t('settings.chainIdCannotBeEdited')
                 : t('settings.chainIdCustomEvm')
             }
-            className="custom-input-normal relative"
+            className={NETWORK_INPUT_CLASS}
             style={{
               cursor: isSyscoinRpc || state?.isEditing ? 'not-allowed' : 'text',
               backgroundColor:
@@ -1619,25 +1620,13 @@ const CustomRPCView = () => {
               required: false,
               message: t('settings.explorerUrlRequired'),
             },
-            () => ({
-              validator(_, value) {
-                if (!value || value.trim() === '') {
-                  return Promise.resolve();
-                }
-                if (validateUrl(value.trim())) {
-                  return Promise.resolve();
-                }
-                return Promise.reject(
-                  new Error(t('settings.validUrlRequired'))
-                );
-              },
-            }),
+            urlFormatRule,
           ]}
         >
           <Input
             type="text"
             placeholder={t('settings.explorer')}
-            className="custom-input-normal relative"
+            className={NETWORK_INPUT_CLASS}
           />
         </Form.Item>
         {!isSyscoinRpc && (
@@ -1664,26 +1653,13 @@ const CustomRPCView = () => {
                   required: false,
                   message: '',
                 },
-                () => ({
-                  validator(_, value) {
-                    if (!value || value.trim() === '') {
-                      return Promise.resolve();
-                    }
-                    // Only validate URL format, not API functionality
-                    if (validateUrl(value.trim())) {
-                      return Promise.resolve();
-                    }
-                    return Promise.reject(
-                      new Error(t('settings.validUrlRequired'))
-                    );
-                  },
-                }),
+                urlFormatRule,
               ]}
             >
               <Input
                 type="text"
                 placeholder="https://api.example.com/api"
-                className="custom-input-normal relative"
+                className={NETWORK_INPUT_CLASS}
               />
             </Form.Item>
           </div>
