@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { createHash } from 'crypto';
 import fs from 'fs';
+import net from 'net';
 
 import en from '../../source/assets/locales/en.json';
 import { E2E_CONFIG } from '../harness/config';
@@ -14,6 +15,92 @@ import {
   startUtxoFixtureServer,
   UTXO_FIXTURE_SEED,
 } from '../harness/utxoFixture';
+
+type ProxyDenial = {
+  blockedDelta: string[];
+  body: string;
+  connectionClosed: boolean;
+  method: 'GET' | 'CONNECT';
+  statusCode: number;
+};
+
+// The socket always connects to loopback. The .invalid target is HTTP text,
+// never a DNS lookup or a connection destination.
+const probeProxyDenial = async (
+  server: Awaited<ReturnType<typeof startUtxoFixtureServer>>,
+  method: 'GET' | 'CONNECT'
+): Promise<ProxyDenial> => {
+  const proxy = new URL(server.url);
+  expect(proxy.protocol).toBe('http:');
+  expect(proxy.hostname).toBe('127.0.0.1');
+  expect(proxy.port).toMatch(/^[0-9]+$/);
+  const before = server.blocked.length;
+  const target =
+    method === 'GET'
+      ? 'http://gas-display-denied.invalid/'
+      : 'gas-display-denied.invalid:443';
+  const response = await new Promise<
+    Omit<ProxyDenial, 'method' | 'blockedDelta'>
+  >((resolve, reject) => {
+    const socket = net.createConnection({
+      host: '127.0.0.1',
+      port: Number(proxy.port),
+    });
+    let bytes = Buffer.alloc(0);
+    let ended = false;
+    let settled = false;
+    const fail = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      reject(error);
+    };
+    // Bound only this new local I/O operation; the test's timeout is unchanged.
+    socket.setTimeout(2000, () =>
+      fail(new Error('Loopback denial probe timed out'))
+    );
+    socket.once('error', fail);
+    socket.once('connect', () => {
+      // HTTP/1.0 avoids chunk framing in the GET body; Connection: close
+      // requires a terminal response, never a keepalive or tunnel.
+      socket.write(
+        `${method} ${target} HTTP/1.0\r\nHost: gas-display-denied.invalid\r\nConnection: close\r\n\r\n`
+      );
+    });
+    socket.on('data', (chunk: Buffer) => {
+      bytes = Buffer.concat([bytes, chunk]);
+      if (bytes.length > 4096)
+        fail(new Error('Unexpectedly large denial response'));
+    });
+    socket.once('end', () => {
+      ended = true;
+    });
+    socket.once('close', (hadError) => {
+      if (settled) return;
+      settled = true;
+      try {
+        expect(hadError).toBe(false);
+        expect(ended).toBe(true);
+        const text = bytes.toString('utf8');
+        const separator = text.indexOf('\r\n\r\n');
+        expect(separator).toBeGreaterThanOrEqual(0);
+        const header = text.slice(0, separator);
+        expect(header.split('\r\n')[0]).toMatch(
+          /^HTTP\/1\.[01] 403 Forbidden$/
+        );
+        expect(header).toMatch(/\r\nConnection: close(?:\r\n|$)/i);
+        const body = text.slice(separator + 4);
+        expect(body).toBe(method === 'GET' ? 'Offline fixture only' : '');
+        resolve({ statusCode: 403, body, connectionClosed: true });
+      } catch (error) {
+        reject(error);
+      }
+    });
+  });
+  const blockedDelta = server.blocked.slice(before);
+  expect(blockedDelta).toEqual([method]);
+  return { method, ...response, blockedDelta };
+};
 
 // Synthetic public read responses only. No transaction is created or signed.
 test('transaction details preserve low positive gas prices and ordinary controls', async ({}, info) => {
@@ -114,6 +201,7 @@ test('transaction details preserve low positive gas prices and ordinary controls
     [];
   const rpcReads: Array<{ method: string; params: unknown[] }> = [];
   const attemptedWrites: string[] = [];
+  const denialCanaries: ProxyDenial[] = [];
   const unexpectedReads: string[] = [];
   const observed: Array<{
     name: string;
@@ -133,6 +221,10 @@ test('transaction details preserve low positive gas prices and ordinary controls
   const evidencePath = info.outputPath('transaction-gas-display-evidence.json');
   try {
     const activeServer = (server = await startUtxoFixtureServer());
+    // Run before Chrome exists so each exact counter delta has one producer.
+    expect(activeServer.blocked).toEqual([]);
+    denialCanaries.push(await probeProxyDenial(activeServer, 'GET'));
+    denialCanaries.push(await probeProxyDenial(activeServer, 'CONNECT'));
     Object.assign(E2E_CONFIG, {
       seedPhrase: UTXO_FIXTURE_SEED,
       password: 'GasDisplaySynthetic!2026',
@@ -412,7 +504,13 @@ test('transaction details preserve low positive gas prices and ordinary controls
     expect(routes.deniedWrites).toEqual([]);
     expect(attemptedWrites).toEqual([]);
     expect(unexpectedReads).toEqual([]);
-    expect(activeServer.blocked).toEqual([]);
+    expect(denialCanaries).toHaveLength(2);
+    expect(activeServer.blocked.slice(0, 2)).toEqual(['GET', 'CONNECT']);
+    expect(
+      activeServer.blocked.every(
+        (method) => method === 'GET' || method === 'CONNECT'
+      )
+    ).toBe(true);
     status = 'passed';
   } finally {
     try {
@@ -434,6 +532,8 @@ test('transaction details preserve low positive gas prices and ordinary controls
             testSourceSha256: createHash('sha256')
               .update(fs.readFileSync(info.file))
               .digest('hex'),
+            denialCanaries,
+            proxyDeniedMethods: server?.blocked.slice() ?? [],
             deniedWrites: routes?.deniedWrites ?? [],
             proxyDeniedConnections: server?.blocked.length ?? 0,
             syntheticHttpOnly: true,
