@@ -359,7 +359,7 @@ const ExternalWatchAsset = () => {
 
                   <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
                     {t('send.balance')}
-                    <span className="text-brand-royalblue text-xs">
+                    <span className="text-brand-royalblue text-xs break-all">
                       {assetInfo.tokenStandard === 'ERC-1155'
                         ? assetInfo.rawBalance
                         : assetInfo.balance}

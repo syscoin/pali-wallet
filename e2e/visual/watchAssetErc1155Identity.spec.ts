@@ -51,6 +51,11 @@ test('wallet_watchAsset preserves exact ERC1155 quantities and distinct token ID
   const ownershipReads: { balance: string; owner: string; tokenId: string }[] =
     [];
   const settlements: { action: string; code?: number; result?: unknown }[] = [];
+  const quantityGeometry: {
+    tokenId: string;
+    width: number;
+    scrollWidth: number;
+  }[] = [];
   const deniedWrites: string[] = [];
   let routes:
     | Awaited<ReturnType<typeof installIsolatedVaultRoutes>>
@@ -376,6 +381,18 @@ test('wallet_watchAsset preserves exact ERC1155 quantities and distinct token ID
             owner: fixture.evmAddresses[0].toLowerCase(),
             tokenId,
           });
+          quantityGeometry.push({
+            tokenId,
+            ...(await popup
+              .getByText(QUANTITIES[tokenId], { exact: true })
+              .evaluate((node) => {
+                node.scrollIntoView({ block: 'center' });
+                return {
+                  width: node.clientWidth,
+                  scrollWidth: node.scrollWidth,
+                };
+              })),
+          });
           await capture(popup);
           await clickClosingPopup({
             click: () => add.click(),
@@ -422,6 +439,17 @@ test('wallet_watchAsset preserves exact ERC1155 quantities and distinct token ID
       }
     );
     await step(
+      'keep ordinary and uint256-max quantities readable without horizontal overflow',
+      async () => {
+        const ordinary = quantityGeometry.find(
+          (entry) => entry.tokenId === '8'
+        )!;
+        const large = quantityGeometry.find((entry) => entry.tokenId === '7')!;
+        expect(ordinary.scrollWidth).toBeLessThanOrEqual(ordinary.width);
+        expect(large.scrollWidth).toBeLessThanOrEqual(large.width);
+      }
+    );
+    await step(
       'retain both exact token identities after the wallet document reloads',
       async () => {
         await wallet!.page.reload();
@@ -448,6 +476,7 @@ test('wallet_watchAsset preserves exact ERC1155 quantities and distinct token ID
             contractReads,
             ownershipReads,
             settlements,
+            quantityGeometry,
             deniedWrites: [...deniedWrites, ...(routes?.deniedWrites || [])],
             proxyDeniedConnections: server.blocked.length,
           },
