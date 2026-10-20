@@ -4,6 +4,8 @@ import { setAccountAssets } from 'state/vault';
 import { ITokenEthProps } from 'types/tokens';
 import { normalizeNftTokenId } from 'utils/nftTokenId';
 
+import { getAccountAssets } from './getAccountAssets';
+
 export interface IEthAccountController {
   prepareTokenAddition: (
     token: ITokenEthProps
@@ -25,26 +27,7 @@ const EthAccountController = (): IEthAccountController => {
       store.getState().vault;
     const { chainId } = activeNetwork;
 
-    // Validate accountAssets exists
-    if (!accountAssets) {
-      throw new Error('Account assets not initialized');
-    }
-
-    // Validate account type exists
-    if (!accountAssets[activeAccount.type]) {
-      throw new Error(
-        `Account type '${activeAccount.type}' not found in accountAssets`
-      );
-    }
-
-    // Validate account ID exists
-    const activeAccountAssets =
-      accountAssets[activeAccount.type][activeAccount.id];
-    if (!activeAccountAssets) {
-      throw new Error(
-        `Account ID '${activeAccount.id}' not found for account type '${activeAccount.type}'`
-      );
-    }
+    const activeAccountAssets = getAccountAssets(accountAssets, activeAccount);
 
     if (!activeAccountAssets.ethereum) {
       throw new Error('Ethereum assets array not initialized');
@@ -129,45 +112,20 @@ const EthAccountController = (): IEthAccountController => {
     return () => {
       const { accountAssets } = store.getState().vault;
 
-      // Validate accountAssets exists
-      if (!accountAssets) {
-        throw new Error('Account assets not initialized');
-      }
-
-      // Validate account type exists
-      if (!accountAssets[activeAccount.type]) {
-        throw new Error(
-          `Account type '${activeAccount.type}' not found in accountAssets`
-        );
-      }
-
-      // Validate account ID exists
-      const activeAccountAssets =
-        accountAssets[activeAccount.type][activeAccount.id];
-      if (!activeAccountAssets) {
-        throw new Error(
-          `Account ID '${activeAccount.id}' not found for account type '${activeAccount.type}'`
-        );
-      }
+      const activeAccountAssets = getAccountAssets(
+        accountAssets,
+        activeAccount
+      );
 
       if (!activeAccountAssets.ethereum) {
         throw new Error('Ethereum assets array not initialized');
       }
 
-      // Check if token exists with optional tokenId consideration
-      const tokenExists = activeAccountAssets.ethereum.find(
-        (asset: ITokenEthProps) => {
-          // Compare addresses case-insensitively
-          const matchesAddress =
-            asset.contractAddress.toLowerCase() ===
-              tokenAddress.toLowerCase() && asset.chainId === chainId;
-          // If tokenId is provided, also check it matches
-          if (tokenId) {
-            return matchesAddress && asset.tokenId === tokenId;
-          }
-          return matchesAddress;
-        }
-      );
+      const matchesToken = (asset: ITokenEthProps) =>
+        asset.contractAddress.toLowerCase() === tokenAddress.toLowerCase() &&
+        asset.chainId === chainId &&
+        (!tokenId || asset.tokenId === tokenId);
+      const tokenExists = activeAccountAssets.ethereum.find(matchesToken);
 
       if (!tokenExists)
         throw new Error("Token doesn't exist on specified network!");
@@ -176,17 +134,9 @@ const EthAccountController = (): IEthAccountController => {
         accountId: activeAccount.id,
         accountType: activeAccount.type,
         property: 'ethereum',
-        value: activeAccountAssets.ethereum.filter((currentToken) => {
-          const matchesAddress =
-            currentToken.contractAddress.toLowerCase() ===
-              tokenAddress.toLowerCase() && currentToken.chainId === chainId;
-          // If tokenId is provided, only remove if tokenId also matches
-          if (tokenId) {
-            return !(matchesAddress && currentToken.tokenId === tokenId);
-          }
-          // If no tokenId provided, remove all tokens from this contract address
-          return !matchesAddress;
-        }),
+        value: activeAccountAssets.ethereum.filter(
+          (currentToken) => !matchesToken(currentToken)
+        ),
       });
     };
   };

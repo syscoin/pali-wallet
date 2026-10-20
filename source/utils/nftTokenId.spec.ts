@@ -29,6 +29,28 @@ it.each([
   NaN,
   9007199254740992,
   '115792089237316195423570985008687907853269984665640564039457584007913129639936',
+  `000${BigInt(maximum) + BigInt(1)}`,
+  `0x1${'0'.repeat(64)}`,
+  BigInt(maximum) + BigInt(1),
+  BigInt(-1),
+  '-0',
+  {},
+  true,
 ])('rejects malformed, lossy or out-of-range identifier %s', (id) =>
   expect(() => normalizeNftTokenId(id)).toThrow('Invalid token id')
 );
+
+it('preserves each supported primitive representation across a bounded integer range', () => {
+  for (let id = 0; id < 1000; id += 1) {
+    const expected = String(id);
+    for (const value of [
+      id,
+      BigInt(id),
+      expected,
+      `000${id}`,
+      `0x${id.toString(16)}`,
+    ])
+      expect(normalizeNftTokenId(value)).toBe(expected);
+  }
+  expect(normalizeNftTokenId(-0)).toBe('0');
+});

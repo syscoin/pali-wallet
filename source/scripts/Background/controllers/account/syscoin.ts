@@ -6,6 +6,8 @@ import store from 'state/store';
 import { setAccountPropertyByIdAndType, setAccountAssets } from 'state/vault';
 import { ITokenSysProps } from 'types/tokens';
 
+import { getAccountAssets } from './getAccountAssets';
+
 const config = {
   headers: {
     'X-User-Agent':
@@ -47,26 +49,7 @@ const SysAccountController = (
   const prepareTokenAddition = async (token: ITokenSysProps) => {
     const { activeAccount, activeNetwork, accountAssets } =
       store.getState().vault;
-    // Validate accountAssets exists
-    if (!accountAssets) {
-      throw new Error('Account assets not initialized');
-    }
-
-    // Validate account type exists
-    if (!accountAssets[activeAccount.type]) {
-      throw new Error(
-        `Account type '${activeAccount.type}' not found in accountAssets`
-      );
-    }
-
-    // Validate account ID exists
-    const activeAccountAssets =
-      accountAssets[activeAccount.type][activeAccount.id];
-    if (!activeAccountAssets) {
-      throw new Error(
-        `Account ID '${activeAccount.id}' not found for account type '${activeAccount.type}'`
-      );
-    }
+    const activeAccountAssets = getAccountAssets(accountAssets, activeAccount);
 
     if (!activeAccountAssets.syscoin) {
       throw new Error('Syscoin assets array not initialized');
@@ -121,37 +104,19 @@ const SysAccountController = (
     return () => {
       const { accountAssets } = store.getState().vault;
 
-      // Validate accountAssets exists
-      if (!accountAssets) {
-        throw new Error('Account assets not initialized');
-      }
-
-      // Validate account type exists
-      if (!accountAssets[activeAccount.type]) {
-        throw new Error(
-          `Account type '${activeAccount.type}' not found in accountAssets`
-        );
-      }
-
-      // Validate account ID exists
-      const activeAccountAssets =
-        accountAssets[activeAccount.type][activeAccount.id];
-      if (!activeAccountAssets) {
-        throw new Error(
-          `Account ID '${activeAccount.id}' not found for account type '${activeAccount.type}'`
-        );
-      }
+      const activeAccountAssets = getAccountAssets(
+        accountAssets,
+        activeAccount
+      );
 
       if (!activeAccountAssets.syscoin) {
         throw new Error('Syscoin assets array not initialized');
       }
 
-      // Find token considering both assetGuid AND chainId (network-specific)
-      const tokenExists = activeAccountAssets.syscoin.find(
-        (asset: ITokenSysProps) =>
-          asset.assetGuid === assetGuid &&
-          asset.chainId === activeNetwork.chainId
-      );
+      const matchesToken = (asset: ITokenSysProps) =>
+        asset.assetGuid === assetGuid &&
+        asset.chainId === activeNetwork.chainId;
+      const tokenExists = activeAccountAssets.syscoin.find(matchesToken);
 
       if (!tokenExists) throw new Error("Token doesn't exist on this network!");
 
@@ -160,11 +125,7 @@ const SysAccountController = (
         accountType: activeAccount.type,
         property: 'syscoin',
         value: activeAccountAssets.syscoin.filter(
-          (currentToken) =>
-            !(
-              currentToken.assetGuid === assetGuid &&
-              currentToken.chainId === activeNetwork.chainId
-            )
+          (currentToken) => !matchesToken(currentToken)
         ),
       });
     };
