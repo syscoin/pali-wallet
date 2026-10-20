@@ -226,10 +226,11 @@ export const EvmTransactionDetailsEnhanced = ({
   if (liveSummary !== undefined && liveSummary !== previousObservation.summary)
     observationRef.current.value = {
       summary: liveSummary,
-      // A first live summary is not a transition: pending history may lag a
-      // fresh mined lookup. Later changes, including A -> B -> A, are newer.
+      // A first pending summary may lag a fresh mined lookup. A first mined
+      // observation, and later changes including A -> B -> A, are newer.
       token:
-        previousObservation.summary === undefined
+        previousObservation.summary === undefined &&
+        !isTransactionInBlock(matchingTx)
           ? previousObservation.token
           : {},
     };

@@ -404,6 +404,84 @@ it('keeps an unsuperseded fresh receipt when its old live row disappears', async
   expect(mockEmitter).toHaveBeenCalledTimes(1);
 });
 
+it.each(['pending read', 'settled read', 'cache reopen'])(
+  'retains a first live mined observation after its row disappears: %s',
+  async (phase) => {
+    mockHistory = [];
+    mockLocation.state.tx = undefined;
+    let resolve!: (value: any) => void;
+    mockEmitter.mockReturnValue(new Promise((done) => (resolve = done)));
+    const view = render(<DetailsView />);
+    await waitFor(() => expect(mockEmitter).toHaveBeenCalledTimes(1));
+
+    const current = transaction({ blockNumber: 102, blockHash: NEW_BLOCK });
+    // eslint-disable-next-line camelcase -- Provider receipt field.
+    const older = transaction({ txreceipt_status: '0', gasUsed: '21000' });
+    mockHistory = [current];
+    await act(async () => view.rerender(<DetailsView />));
+    expect(detailValue('Block Number')).toBe('102');
+    if (phase !== 'pending read') {
+      await act(async () => resolve(older));
+      expect(detailValue('Block Number')).toBe('102');
+    }
+
+    let resolveFresh!: (value: any) => void;
+    mockEmitter.mockReturnValue(new Promise((done) => (resolveFresh = done)));
+    if (phase === 'cache reopen') view.unmount();
+    mockHistory = [];
+    const active = phase === 'cache reopen' ? render(<DetailsView />) : view;
+    if (phase !== 'cache reopen')
+      await act(async () => active.rerender(<DetailsView />));
+    if (phase === 'pending read') await act(async () => resolve(older));
+    expect(screen.queryByText('100', { selector: 'dd' })).toBeNull();
+    expect(screen.queryByText('send.failed')).toBeNull();
+    await waitFor(() => expect(mockEmitter).toHaveBeenCalledTimes(2));
+
+    await act(async () => resolveFresh({ ...current, gasUsed: '30000' }));
+    await waitFor(() => expect(detailValue('Gas Used')).toBe('30,000'));
+    expect(detailValue('Block Number')).toBe('102');
+    expect(screen.getByTestId('transaction-status').textContent).toBe(
+      'send.confirmed'
+    );
+    await act(async () => active.rerender(<DetailsView />));
+    expect(mockEmitter).toHaveBeenCalledTimes(2);
+  }
+);
+
+it.each([false, true])(
+  'retains a fresh mined lookup after a first pending-only row disappears (removeBeforeReply=%s)',
+  async (removeBeforeReply) => {
+    mockHistory = [];
+    mockLocation.state.tx = undefined;
+    let resolve!: (value: any) => void;
+    mockEmitter.mockReturnValue(new Promise((done) => (resolve = done)));
+    const view = render(<DetailsView />);
+    await waitFor(() => expect(mockEmitter).toHaveBeenCalledTimes(1));
+    mockHistory = [
+      transaction({ blockNumber: null, blockHash: null, confirmations: 0 }),
+    ];
+    await act(async () => view.rerender(<DetailsView />));
+    if (removeBeforeReply) {
+      mockHistory = [];
+      await act(async () => view.rerender(<DetailsView />));
+    }
+    await act(async () => resolve(transaction({ gasUsed: '21000' })));
+    if (!removeBeforeReply) {
+      mockHistory = [];
+      await act(async () => view.rerender(<DetailsView />));
+    }
+    expect(detailValue('Block Number')).toBe('100');
+    expect(screen.getByTestId('transaction-status').textContent).toBe(
+      'send.confirmed'
+    );
+    expect(mockEmitter).toHaveBeenCalledTimes(1);
+    view.unmount();
+    render(<DetailsView />);
+    await waitFor(() => expect(detailValue('Gas Used')).toBe('21,000'));
+    expect(mockEmitter).toHaveBeenCalledTimes(1);
+  }
+);
+
 it('shows the current reorg block from live history when reopening cached EVM details', async () => {
   const firstVisit = render(<DetailsView />);
   await waitFor(() => expect(mockEmitter).toHaveBeenCalledTimes(1));
