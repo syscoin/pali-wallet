@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import { utils } from 'syscoinjs-lib';
 
 import { E2E_CONFIG } from '../harness/config';
+import { dismissRejectedApproval } from '../harness/dismissRejectedApproval';
 import { PaliWallet } from '../harness/pali';
 import {
   approve,
@@ -195,10 +196,15 @@ test('Pali reviews and signs exact legacy governance votes without disclosing ke
           cancelledPopup.getByText('No · Funding vote', { exact: true })
         ).toBeVisible();
         await capture(cancelledPopup);
-        await cancelledPopup
-          .getByRole('button', { name: 'Cancel', exact: true })
-          .click();
-        expect((await settle(page, cancelledId)).error).toBeTruthy();
+        const cancelledResult = await dismissRejectedApproval({
+          click: () =>
+            cancelledPopup
+              .getByRole('button', { name: 'Cancel', exact: true })
+              .click(),
+          isClosed: () => cancelledPopup.isClosed(),
+          settle: () => settle(page, cancelledId),
+        });
+        expect(cancelledResult.error).toBeTruthy();
       }
     );
 
@@ -283,10 +289,14 @@ test('Pali reviews and signs exact legacy governance votes without disclosing ke
           missingPopup.getByLabel('Wallet password', { exact: true })
         ).toHaveCount(0);
         await capture(missingPopup);
-        await missingPopup
-          .getByRole('button', { name: 'Cancel', exact: true })
-          .click();
-        const missingResult = await settle(page, missingId);
+        const missingResult = await dismissRejectedApproval({
+          click: () =>
+            missingPopup
+              .getByRole('button', { name: 'Cancel', exact: true })
+              .click(),
+          isClosed: () => missingPopup.isClosed(),
+          settle: () => settle(page, missingId),
+        });
         expect(missingResult.error).toBeTruthy();
         expect(JSON.stringify(missingResult)).not.toContain(
           'missingVotingKeys'
