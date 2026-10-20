@@ -4472,7 +4472,9 @@ class MainController {
     accountType:
       | KeyringAccountType.HDAccount
       | KeyringAccountType.Imported
-      | KeyringAccountType.SmartAccount,
+      | KeyringAccountType.SmartAccount
+      | KeyringAccountType.Trezor
+      | KeyringAccountType.Ledger,
     assertCurrent: () => void
   ) {
     const generation = this.walletStateGeneration;
@@ -4587,21 +4589,11 @@ class MainController {
     }
     assertCurrent();
 
-    store.dispatch(
-      createAccount({
-        account: importedAccount,
-        accountType: KeyringAccountType.Trezor,
-      })
+    await this.storeCreatedAccount(
+      importedAccount,
+      KeyringAccountType.Trezor,
+      assertCurrent
     );
-    store.dispatch(
-      setActiveAccount({
-        id: importedAccount.id,
-        type: KeyringAccountType.Trezor,
-      })
-    );
-
-    // Save wallet state after importing Trezor account
-    await this.saveWalletState('import-account-trezor', true, true);
 
     // Update account with initial data
     try {
@@ -4648,21 +4640,11 @@ class MainController {
     }
     assertCurrent();
 
-    store.dispatch(
-      createAccount({
-        account: importedAccount,
-        accountType: KeyringAccountType.Ledger,
-      })
+    await this.storeCreatedAccount(
+      importedAccount,
+      KeyringAccountType.Ledger,
+      assertCurrent
     );
-    store.dispatch(
-      setActiveAccount({
-        id: importedAccount.id,
-        type: KeyringAccountType.Ledger,
-      })
-    );
-
-    // Save wallet state after importing Ledger account
-    await this.saveWalletState('import-account-ledger', true, true);
 
     // Update account with initial data
     try {

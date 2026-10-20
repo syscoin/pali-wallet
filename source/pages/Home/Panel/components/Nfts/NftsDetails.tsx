@@ -18,11 +18,9 @@ import { useUtils, useAdjustedExplorer } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { INetworkType } from 'types/network';
-import { ellipsis, formatFullPrecisionBalance } from 'utils/index';
+import { ellipsis } from 'utils/index';
 import { NFT_FALLBACK_IMAGE } from 'utils/nftFallback';
-
-const MAX_NFT_QUANTITY =
-  '115792089237316195423570985008687907853269984665640564039457584007913129639935';
+import { getNftQuantity } from 'utils/nftQuantity';
 
 const renderNftSection = (title: string, children: React.ReactNode) => (
   <div
@@ -71,29 +69,7 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
 
   // Get NFT data from navigation state if available (for import preview/search results)
   const currentNft = nftData;
-  const normalizedRawQuantity =
-    typeof currentNft?.rawBalance === 'string'
-      ? currentNft.rawBalance.replace(/^0+(?=\d)/, '')
-      : undefined;
-  const exactQuantity =
-    currentNft?.tokenStandard === 'ERC-1155' &&
-    typeof normalizedRawQuantity === 'string' &&
-    /^\d{1,78}$/.test(normalizedRawQuantity) &&
-    (normalizedRawQuantity.length < MAX_NFT_QUANTITY.length ||
-      normalizedRawQuantity <= MAX_NFT_QUANTITY)
-      ? normalizedRawQuantity
-      : undefined;
-  const quantity =
-    exactQuantity === undefined
-      ? currentNft?.tokenStandard === 'ERC-1155' &&
-        (!Number.isSafeInteger(currentNft.balance) || currentNft.balance < 0)
-        ? '—'
-        : currentNft?.balance
-      : formatFullPrecisionBalance(exactQuantity, 0);
-  const isSingle =
-    exactQuantity === undefined
-      ? currentNft?.balance === 1
-      : exactQuantity === '1';
+  const { exactQuantity, quantity, isSingle } = getNftQuantity(currentNft);
   const nftScope = `${getHomeBrowsingScope(
     { ...currentAccount, ...activeAccount },
     activeNetwork
