@@ -85,6 +85,7 @@ describe('DAppController idempotent permission revocation', () => {
     state = {
       dapp: { dapps: {} },
       vault: {
+        activeNetwork: { kind: INetworkType.Ethereum, chainId: 57057 },
         accounts: {
           [KeyringAccountType.HDAccount]: {
             0: {
@@ -182,10 +183,14 @@ describe('DAppController idempotent permission revocation', () => {
     'keeps a failed removal retryable after another save and worker restart (UTXO=%s)',
     async (isBitcoinBased) => {
       state.vault.isBitcoinBased = isBitcoinBased;
+      state.vault.activeNetwork.kind = isBitcoinBased
+        ? INetworkType.Syscoin
+        : INetworkType.Ethereum;
       state.dapp.dapps[host] = {
         host,
         accountId: 0,
         accountType: 'HDAccount',
+        chain: state.vault.activeNetwork.kind,
       };
       const controller = DAppController();
       const failure = new Error('Storage unavailable');
@@ -323,6 +328,7 @@ describe('DAppController idempotent permission revocation', () => {
         host,
         accountId: 0,
         accountType: 'HDAccount',
+        chain: INetworkType.Ethereum,
       };
       const controller = DAppController();
       if (active) {
@@ -505,6 +511,7 @@ describe('DAppController account changes', () => {
             accountId: 0,
             accountType: KeyringAccountType.HDAccount,
             host,
+            chain: INetworkType.Ethereum,
           },
         },
       },
@@ -681,10 +688,12 @@ describe('per-site account notification disclosure', () => {
           [originA]: {
             accountId: 0,
             accountType: KeyringAccountType.HDAccount,
+            chain: INetworkType.Ethereum,
           },
           [originB]: {
             accountId: 1,
             accountType: KeyringAccountType.HDAccount,
+            chain: INetworkType.Ethereum,
           },
         },
       },
@@ -749,6 +758,8 @@ describe('per-site account notification disclosure', () => {
       slip44: 57,
     };
     state.vault.isBitcoinBased = true;
+    state.dapp.dapps[originA].chain = INetworkType.Syscoin;
+    state.dapp.dapps[originB].chain = INetworkType.Syscoin;
     state.vault.accounts.HDAccount[0].address = 'sys-account-a';
     state.vault.accounts.HDAccount[1].address = 'sys-account-b';
     const instance = controller();
@@ -795,6 +806,7 @@ describe('per-site account notification disclosure', () => {
     state.dapp.dapps[originA] = {
       accountId: 0,
       accountType: KeyringAccountType.SmartAccount,
+      chain: INetworkType.Ethereum,
     };
     state.vault.accounts.SmartAccount = {
       0: { address: addressA, smartAccount: { chainId: 5700 } },
@@ -844,10 +856,12 @@ describe('Ethereum property toggle dispatch', () => {
             host: origin,
             accountId: 0,
             accountType: KeyringAccountType.HDAccount,
+            chain: INetworkType.Ethereum,
           },
         },
       },
       vault: {
+        activeNetwork: { kind: INetworkType.Ethereum, chainId: 1 },
         accounts: { HDAccount: { 0: { address: '0x1234', xpub: 'xpub' } } },
         isBitcoinBased: false,
       },

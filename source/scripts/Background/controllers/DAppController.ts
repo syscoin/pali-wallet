@@ -96,11 +96,17 @@ const DAppController = (
   // Message handler is registered in handleListeners - no need to register here
   // This prevents duplicate listener registration which causes "message port closed" errors
 
-  const isConnected = (host: string) => {
-    const { dapps } = store.getState().dapp;
-
-    return !!dapps?.[host];
+  const currentConnection = (host: string) => {
+    const { dapp, vault } = store.getState();
+    const connection = dapp.dapps[host];
+    // Equal account slots across UTXO/EVM vaults are different identities.
+    // Retain raw grants for management, but never reuse them across families.
+    return connection?.chain && connection.chain === vault?.activeNetwork?.kind
+      ? connection
+      : undefined;
   };
+
+  const isConnected = (host: string) => Boolean(currentConnection(host));
 
   const setup = (sender: chrome.runtime.MessageSender) => {
     // Validate sender and sender.url to prevent TypeError
@@ -218,7 +224,7 @@ const DAppController = (
     const existingDapp = state.dapp.dapps[host];
     const grant = connectionDetails
       ? { ...connectionDetails }
-      : existingDapp
+      : existingDapp?.chain === network.kind
       ? { ...existingDapp, accountId, accountType, date }
       : {
           host,
@@ -353,7 +359,7 @@ const DAppController = (
     accountType: KeyringAccountType,
     expectedContext?: IDAppAccountSelectionContext
   ) => {
-    if (!store.getState().dapp.dapps[host])
+    if (!isConnected(host))
       throw new Error('Unable to update account. DApp does not exist');
     // The admitted permission change must survive without the approval view's
     // optional wallet switch. Publish and notify only after its durable write.
@@ -368,7 +374,7 @@ const DAppController = (
     const date = Date.now();
     const { accounts, isBitcoinBased } = store.getState().vault;
     const account = accounts[accountType]?.[accountId];
-    if (!account) return;
+    if (!account || !isConnected(host)) return;
 
     store.dispatch(updateDAppAccount({ host, accountId, date, accountType }));
 
@@ -664,8 +670,8 @@ const DAppController = (
 
     // Re-read after the asynchronous tab lookup. A global account change must
     // never disclose another site's account, nor a revoked/locked connection.
-    const { vault, dapp } = store.getState();
-    const connection = dapp?.dapps?.[host];
+    const { vault } = store.getState();
+    const connection = currentConnection(host);
     const account = connection
       ? vault.accounts[connection.accountType]?.[connection.accountId]
       : undefined;
@@ -873,7 +879,7 @@ const DAppController = (
   const getAll = () => store.getState().dapp.dapps;
 
   const getAccount = (host: string) => {
-    const dapp = store.getState().dapp.dapps[host];
+    const dapp = currentConnection(host);
     const { accounts } = store.getState().vault;
     if (!dapp) return null;
 

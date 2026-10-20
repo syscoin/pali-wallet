@@ -686,7 +686,7 @@ export const utxoEvmSwitchMiddleware: Middleware = async (context, next) => {
   const isTargetNetworkBitcoinBased = newChainValue === 'syscoin';
   const isNetworkTypeSwitch = isBitcoinBased !== isTargetNetworkBitcoinBased;
 
-  if (isNetworkTypeSwitch && dapp.isConnected(originalRequest.host)) {
+  if (isNetworkTypeSwitch && dapp.get(originalRequest.host)) {
     // Network type is changing (UTXO <-> EVM), the dapp's connected account
     // will be invalid for the new network type, so disconnect it
     console.log(

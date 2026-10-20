@@ -16,8 +16,13 @@ const CONTRACT = '0x000000000000000000000000000000000000e115';
 const SYMBOL = 'OWN1155';
 const TOKEN_ID = '7';
 
-for (const quantity of ['42', '9007199254740993']) {
-  test(`owned ERC1155 import retains quantity ${quantity} through reload and Send MAX`, async ({}, info) => {
+for (const quantity of [
+  '0',
+  '42',
+  '9007199254740993',
+  '115792089237316195423570985008687907853269984665640564039457584007913129639935',
+]) {
+  test(`owned ERC1155 import retains quantity ${quantity} through collection details, reload and Send MAX`, async ({}, info) => {
     test.setTimeout(120_000);
     const before = { ...E2E_CONFIG };
     const fixture = createIsolatedVaultFixture();
@@ -113,6 +118,60 @@ for (const quantity of ['42', '9007199254740993']) {
         contentType: 'application/json',
         body: JSON.stringify({ quantity, saved: await saved(), discoveries }),
       });
+      await wallet.ensureOnHome();
+      await page.locator('#assets-btn').click();
+      await page
+        .getByRole('button', { name: en.tooltip.viewNFTs, exact: true })
+        .click();
+      await page
+        .getByRole('button', {
+          name: `View details for ${SYMBOL} collection`,
+          exact: true,
+        })
+        .click();
+      await page
+        .locator('[data-navigation-scroll="asset-details"]')
+        .getByRole('button', {
+          name: `eye ${en.send.viewCollectionItems}`,
+          exact: true,
+        })
+        .click();
+      const header = page.getByText(/• ERC-1155$/);
+      const amount = page.getByText('Amount', { exact: true }).locator('..');
+      await expect(header).toHaveAttribute('title', quantity);
+      await expect(amount).toHaveAttribute('title', quantity);
+      const visibleQuantity =
+        quantity.length > 20
+          ? '1.16e77'
+          : quantity.length > 15
+          ? '9.01e15'
+          : quantity;
+      for (const width of [320, 400]) {
+        await page.setViewportSize({ width, height: 360 });
+        for (const [label, value] of [
+          ['header', header],
+          ['amount', amount],
+        ] as const) {
+          await value.scrollIntoViewIfNeeded();
+          await expect(value).toBeInViewport();
+          await expect(value).toContainText(visibleQuantity);
+          expect(
+            await value.evaluate((element) => {
+              const bounds = element.getBoundingClientRect();
+              return {
+                left: bounds.left >= 0,
+                right: bounds.right <= window.innerWidth,
+                fits: element.scrollWidth <= element.clientWidth,
+              };
+            })
+          ).toEqual({ left: true, right: true, fits: true });
+          await info.attach(`collection-quantity-${width}-${label}`, {
+            contentType: 'image/png',
+            body: await page.screenshot({ animations: 'disabled' }),
+          });
+        }
+      }
+      await page.setViewportSize({ width: 400, height: 620 });
       // Do not supply contract balances to repair the explorer result later.
       // Healthy small quantities remain usable through the numeric fallback;
       // quantities beyond Number precision require the exact stored string.

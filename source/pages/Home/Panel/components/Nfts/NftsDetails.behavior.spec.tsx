@@ -202,7 +202,65 @@ it('copies the public token ID and contract with keyboard controls and handles r
   await user.keyboard('{Enter}');
   expect(mockAlert.error).toHaveBeenCalledWith('transactions.copyFailed');
   expect(mockAlert.info).not.toHaveBeenCalled();
+  write.mockResolvedValue(undefined);
+  await user.keyboard('{Enter}');
+  expect(write).toHaveBeenLastCalledWith(nft.contractAddress);
+  expect(mockAlert.info).toHaveBeenCalledWith('home.contractCopied');
   write.mockRestore();
+});
+
+it('preserves the section and copy-row DOM when rendering collection metadata', () => {
+  render(
+    <NftsDetails
+      nftData={{ ...nft, tokenStandard: 'ERC-1155', tokenId: '123' }}
+    />
+  );
+  for (const [title, childCount] of [
+    ['nftDetails.about', 3],
+    ['nftDetails.collectionInfo', 2],
+    ['nftDetails.technicalInfo', 2],
+  ] as const) {
+    const heading = screen.getByText(title);
+    const section = heading.parentElement!;
+    expect(section.tagName).toBe('DIV');
+    expect(section.className).toBe(
+      'w-full bg-brand-blue800 flex flex-col items-start gap-y-3'
+    );
+    expect(section.style.borderRadius).toBe('20px');
+    expect(section.style.padding).toBe('17px 16px');
+    expect(section.children).toHaveLength(childCount);
+    expect(section.firstElementChild).toBe(heading);
+    expect(heading.className).toBe('font-poppins font-bold text-base');
+  }
+  for (const [label, rowClass] of [
+    [
+      'buttons.copy send.tokenId',
+      'flex items-center justify-between my-1 pl-0 pr-3 py-2 w-full text-xs border-b  border-dashed border-bkg-white200 cursor-default transition-all duration-300',
+    ],
+    [
+      'send.copyContractAddress',
+      'flex items-center justify-between my-1 pl-0 pr-3 py-2 w-full text-xs  cursor-default transition-all duration-300  border-none',
+    ],
+  ]) {
+    const button = screen.getByRole('button', { name: label });
+    const valueGroup = button.parentElement!;
+    const row = valueGroup.parentElement!;
+    expect(row.tagName).toBe('LI');
+    expect(row.className).toBe(rowClass);
+    expect(Array.from(row.children).map((element) => element.tagName)).toEqual([
+      'P',
+      'DIV',
+    ]);
+    expect(valueGroup.className).toBe(
+      'flex items-center font-normal gap-x-1.5 text-xs'
+    );
+    expect(
+      Array.from(valueGroup.children).map((element) => element.tagName)
+    ).toEqual(['SPAN', 'BUTTON']);
+    expect(button.className).toBe(
+      'inline-flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg text-brand-white hover:text-brand-deepPink100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue'
+    );
+  }
 });
 
 it('does not announce a delayed public copy after the details page closes', async () => {

@@ -18,8 +18,44 @@ import { useUtils, useAdjustedExplorer } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { INetworkType } from 'types/network';
-import { ellipsis } from 'utils/index';
+import { ellipsis, formatFullPrecisionBalance } from 'utils/index';
 import { NFT_FALLBACK_IMAGE } from 'utils/nftFallback';
+
+const MAX_NFT_QUANTITY =
+  '115792089237316195423570985008687907853269984665640564039457584007913129639935';
+
+const renderNftSection = (title: string, children: React.ReactNode) => (
+  <div
+    className="w-full bg-brand-blue800 flex flex-col items-start gap-y-3"
+    style={{ borderRadius: '20px', padding: '17px 16px' }}
+  >
+    <p className="font-poppins font-bold text-base">{title}</p>
+    {children}
+  </div>
+);
+
+const renderCopyRow = (
+  className: string,
+  label: string,
+  value: string,
+  copyLabel: string,
+  onCopy: () => void
+) => (
+  <li className={className}>
+    <p className="font-normal text-xs">{label}</p>
+    <div className="flex items-center font-normal gap-x-1.5 text-xs">
+      <span className="text-brand-white">{value}</span>
+      <button
+        type="button"
+        aria-label={copyLabel}
+        className="inline-flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg text-brand-white hover:text-brand-deepPink100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue"
+        onClick={onCopy}
+      >
+        <CopyIcon size={15} />
+      </button>
+    </div>
+  </li>
+);
 
 export const NftsDetails = ({ nftData }: { nftData: any }) => {
   const { controllerEmitter } = useController();
@@ -35,6 +71,29 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
 
   // Get NFT data from navigation state if available (for import preview/search results)
   const currentNft = nftData;
+  const normalizedRawQuantity =
+    typeof currentNft?.rawBalance === 'string'
+      ? currentNft.rawBalance.replace(/^0+(?=\d)/, '')
+      : undefined;
+  const exactQuantity =
+    currentNft?.tokenStandard === 'ERC-1155' &&
+    typeof normalizedRawQuantity === 'string' &&
+    /^\d{1,78}$/.test(normalizedRawQuantity) &&
+    (normalizedRawQuantity.length < MAX_NFT_QUANTITY.length ||
+      normalizedRawQuantity <= MAX_NFT_QUANTITY)
+      ? normalizedRawQuantity
+      : undefined;
+  const quantity =
+    exactQuantity === undefined
+      ? currentNft?.tokenStandard === 'ERC-1155' &&
+        (!Number.isSafeInteger(currentNft.balance) || currentNft.balance < 0)
+        ? '—'
+        : currentNft?.balance
+      : formatFullPrecisionBalance(exactQuantity, 0);
+  const isSingle =
+    exactQuantity === undefined
+      ? currentNft?.balance === 1
+      : exactQuantity === '1';
   const nftScope = `${getHomeBrowsingScope(
     { ...currentAccount, ...activeAccount },
     activeNetwork
@@ -246,12 +305,10 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
               <h3 className="break-words text-brand-white text-lg font-medium">
                 {currentNft.name || t('send.nftCollection')}
               </h3>
-              <p className="text-brand-gray200 text-sm">
-                {currentNft.balance}{' '}
-                {currentNft.balance === 1
-                  ? t('nftDetails.item')
-                  : t('nftDetails.items')}{' '}
-                • {currentNft.tokenStandard || 'ERC-721'}
+              <p className="text-brand-gray200 text-sm" title={exactQuantity}>
+                {quantity}{' '}
+                {isSingle ? t('nftDetails.item') : t('nftDetails.items')} •{' '}
+                {currentNft.tokenStandard || 'ERC-721'}
               </p>
             </div>
 
@@ -387,8 +444,11 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
             </div>
 
             <div className="w-full flex items-center justify-evenly h-14 font-poppins">
-              <p className="flex flex-col items-center justify-evenly h-full font-medium text-base text-brand-white">
-                {currentNft.balance}
+              <p
+                className="flex flex-col items-center justify-evenly h-full font-medium text-base text-brand-white"
+                title={exactQuantity}
+              >
+                {quantity}
                 <span className="text-sm font-normal text-brand-gray200">
                   Amount
                 </span>
@@ -414,37 +474,27 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
           </div>
 
           <div className="w-full flex flex-col gap-y-4 my-4">
-            <div
-              className="w-full bg-brand-blue800 flex flex-col items-start gap-y-3"
-              style={{ borderRadius: '20px', padding: '17px 16px' }}
-            >
-              <p className="font-poppins font-bold text-base">
-                {t('nftDetails.about')}
-              </p>
-
-              <p className="max-w-full break-words text-xs font-normal">
-                {currentNft.name || t('send.nftCollection')}
-              </p>
-
-              <div className="w-full flex items-center text-xs font-normal gap-x-1.5">
-                <p className="text-brand-gray200">
-                  {t('nftDetails.tokenStandard')}
-                </p>
-                <span className="text-brand-white">
-                  {currentNft.tokenStandard || 'ERC-721'}
-                </span>
-              </div>
-            </div>
-
-            {currentNft.name && (
-              <div
-                className="w-full bg-brand-blue800 flex flex-col items-start gap-y-3"
-                style={{ borderRadius: '20px', padding: '17px 16px' }}
-              >
-                <p className="font-poppins font-bold text-base">
-                  {t('nftDetails.collectionInfo')}
+            {renderNftSection(
+              t('nftDetails.about'),
+              <>
+                <p className="max-w-full break-words text-xs font-normal">
+                  {currentNft.name || t('send.nftCollection')}
                 </p>
 
+                <div className="w-full flex items-center text-xs font-normal gap-x-1.5">
+                  <p className="text-brand-gray200">
+                    {t('nftDetails.tokenStandard')}
+                  </p>
+                  <span className="text-brand-white">
+                    {currentNft.tokenStandard || 'ERC-721'}
+                  </span>
+                </div>
+              </>
+            )}
+
+            {currentNft.name &&
+              renderNftSection(
+                t('nftDetails.collectionInfo'),
                 <div className="w-full flex items-center text-xs font-normal gap-x-1.5">
                   <TokenIcon
                     logo={currentNft.logo}
@@ -459,72 +509,32 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
                     {currentNft.name}
                   </span>
                 </div>
-              </div>
-            )}
+              )}
 
-            <div
-              className="w-full bg-brand-blue800 flex flex-col items-start gap-y-3"
-              style={{ borderRadius: '20px', padding: '17px 16px' }}
-            >
-              <p className="font-poppins font-bold text-base">
-                {t('nftDetails.technicalInfo')}
-              </p>
-
+            {renderNftSection(
+              t('nftDetails.technicalInfo'),
               <ul className="w-full">
-                {displayTokenId && (
-                  <li
-                    className="flex items-center justify-between my-1 pl-0 pr-3 py-2 w-full text-xs border-b 
-                    border-dashed border-bkg-white200 cursor-default transition-all duration-300"
-                  >
-                    <p className="font-normal text-xs">{t('send.tokenId')}</p>
-                    <div className="flex items-center font-normal gap-x-1.5 text-xs">
-                      <span className="text-brand-white">
-                        {displayTokenId.length > 9
-                          ? ellipsis(displayTokenId)
-                          : displayTokenId}
-                      </span>
+                {displayTokenId &&
+                  renderCopyRow(
+                    'flex items-center justify-between my-1 pl-0 pr-3 py-2 w-full text-xs border-b  border-dashed border-bkg-white200 cursor-default transition-all duration-300',
+                    t('send.tokenId'),
+                    displayTokenId.length > 9
+                      ? ellipsis(displayTokenId)
+                      : displayTokenId,
+                    `${t('buttons.copy')} ${t('send.tokenId')}`,
+                    () => void copy(displayTokenId, 'components.copied')
+                  )}
 
-                      <button
-                        type="button"
-                        aria-label={`${t('buttons.copy')} ${t('send.tokenId')}`}
-                        className="inline-flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg text-brand-white hover:text-brand-deepPink100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue"
-                        onClick={() =>
-                          void copy(displayTokenId, 'components.copied')
-                        }
-                      >
-                        <CopyIcon size={15} />
-                      </button>
-                    </div>
-                  </li>
+                {renderCopyRow(
+                  'flex items-center justify-between my-1 pl-0 pr-3 py-2 w-full text-xs  cursor-default transition-all duration-300  border-none',
+                  'Contract Address',
+                  ellipsis(currentNft.contractAddress),
+                  t('send.copyContractAddress'),
+                  () =>
+                    void copy(currentNft.contractAddress, 'home.contractCopied')
                 )}
-
-                <li
-                  className="flex items-center justify-between my-1 pl-0 pr-3 py-2 w-full text-xs  cursor-default transition-all duration-300 
-                  border-none"
-                >
-                  <p className="font-normal text-xs">Contract Address</p>
-                  <div className="flex items-center font-normal gap-x-1.5 text-xs">
-                    <span className="text-brand-white">
-                      {ellipsis(currentNft.contractAddress)}
-                    </span>
-
-                    <button
-                      type="button"
-                      aria-label={t('send.copyContractAddress')}
-                      className="inline-flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg text-brand-white hover:text-brand-deepPink100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue"
-                      onClick={() =>
-                        void copy(
-                          currentNft.contractAddress,
-                          'home.contractCopied'
-                        )
-                      }
-                    >
-                      <CopyIcon size={15} />
-                    </button>
-                  </div>
-                </li>
               </ul>
-            </div>
+            )}
           </div>
 
           <div className="w-full flex items-center justify-center text-brand-white hover:text-brand-deepPink100 my-6">
