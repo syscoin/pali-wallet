@@ -437,8 +437,16 @@ for (const scheme of ['bls-basic', 'slh-dsa-shake-128s'] as const) {
         .poll(
           async () => {
             if ((await rpcObservation(page, id)).settled) return true;
-            if (!popup.isClosed() && (await popup.getByRole('alert').count()))
-              throw new Error(await popup.getByRole('alert').innerText());
+            if (!popup.isClosed()) {
+              const alerts = await popup
+                .getByRole('alert')
+                .allTextContents()
+                .catch((error) => {
+                  if (popup.isClosed()) return [];
+                  throw error;
+                });
+              if (alerts.length) throw new Error(alerts.join('\n'));
+            }
             return false;
           },
           { timeout: 45000 }
