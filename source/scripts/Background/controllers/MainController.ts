@@ -5211,9 +5211,9 @@ class MainController {
     const currentAccount = accounts[activeAccount.type]?.[activeAccount.id];
     // Imports can reuse an inactive account id without a session change.
     // UTXO receiving addresses may rotate, but their xpub stays the owner.
-    const accountIdentity = isBitcoinBased
-      ? currentAccount?.xpub
-      : currentAccount?.address?.toLowerCase();
+    const identityOf = (account?: IKeyringAccountState) =>
+      isBitcoinBased ? account?.xpub : account?.address?.toLowerCase();
+    const accountIdentity = identityOf(currentAccount);
     let cancelled = false;
     const isCurrentRead = () => {
       const latest = store.getState().vault;
@@ -5222,8 +5222,7 @@ class MainController {
       return (
         !cancelled &&
         Boolean(accountIdentity) &&
-        accountIdentity ===
-          (isBitcoinBased ? account?.xpub : account?.address?.toLowerCase()) &&
+        accountIdentity === identityOf(account) &&
         session === this.walletSessionGeneration &&
         networkRequest === this.networkRequestGeneration &&
         network.chainId === activeNetwork.chainId &&
@@ -7758,12 +7757,22 @@ class MainController {
           { type, id: accountId },
           owner
         );
-        const accountIsCurrent = () =>
+        const isCurrentRead = (
+          current: () => boolean,
+          token?: ITokenEthProps
+        ) =>
+          current() &&
           contextIsCurrent() &&
           store
             .getState()
             .vault.accounts[type]?.[accountId]?.address?.toLowerCase() ===
-            owner;
+            owner &&
+          (!token ||
+            store
+              .getState()
+              .vault.accountAssets[type]?.[accountId]?.ethereum?.includes(
+                token
+              ));
         if (targets.native.has(owner)) {
           this.receiptBalanceRefresh.schedule(
             `${keyPrefix}native`,
@@ -7773,21 +7782,20 @@ class MainController {
                 signal,
                 network,
                 async (readProvider) => {
-                  if (!current() || !accountIsCurrent()) return;
+                  if (!isCurrentRead(current)) return;
                   const latestRead = this.beginTargetedBalanceRead(
                     `${keyPrefix}native`
                   );
                   let raw;
                   try {
                     const head = await currentBlock(readProvider, signal);
-                    if (!current() || !accountIsCurrent()) return;
+                    if (!isCurrentRead(current)) return;
                     raw = await readProvider.getBalance(account.address, head);
                   } catch (error) {
                     headRead = undefined;
                     throw error;
                   }
-                  if (!current() || !accountIsCurrent() || !latestRead())
-                    return;
+                  if (!isCurrentRead(current) || !latestRead()) return;
                   store.dispatch(
                     setAccountBalanceForNetwork({
                       balance: Number(formatUnits(raw, 18)),
@@ -7810,12 +7818,6 @@ class MainController {
           )
           .forEach((token) => {
             const tokenKey = tokenBalanceKey(token);
-            const tokenIsCurrent = () =>
-              store
-                .getState()
-                .vault.accountAssets[type]?.[accountId]?.ethereum?.includes(
-                  token
-                );
             this.receiptBalanceRefresh.schedule(
               `${keyPrefix}${tokenKey}`,
               block,
@@ -7824,20 +7826,14 @@ class MainController {
                   signal,
                   network,
                   async (readProvider) => {
-                    if (!current() || !accountIsCurrent() || !tokenIsCurrent())
-                      return;
+                    if (!isCurrentRead(current, token)) return;
                     const latestRead = this.beginTargetedBalanceRead(
                       `${keyPrefix}${tokenKey}`
                     );
                     let balance;
                     try {
                       const head = await currentBlock(readProvider, signal);
-                      if (
-                        !current() ||
-                        !accountIsCurrent() ||
-                        !tokenIsCurrent()
-                      )
-                        return;
+                      if (!isCurrentRead(current, token)) return;
                       balance = await readTrackedTokenBalance(
                         readProvider,
                         account.address,
@@ -7848,13 +7844,7 @@ class MainController {
                       headRead = undefined;
                       throw error;
                     }
-                    if (
-                      !current() ||
-                      !accountIsCurrent() ||
-                      !latestRead() ||
-                      !tokenIsCurrent()
-                    )
-                      return;
+                    if (!isCurrentRead(current, token) || !latestRead()) return;
                     const latest =
                       store.getState().vault.accountAssets[type]?.[accountId]
                         ?.ethereum || [];

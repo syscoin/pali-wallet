@@ -27,6 +27,8 @@ import {
 const RPC = 'https://rpc.tanenbaum.io';
 const CHAIN = 5700;
 const INITIAL_WEI = '10000000000000000000';
+// ethers AbstractProvider shares identical reads for this default cache window.
+const PROVIDER_READ_CACHE_MS = 250;
 const scenarios = [
   {
     id: 'unchanged',
@@ -67,6 +69,7 @@ async function installNativeRpc(
   const balanceReads: {
     address: string;
     balanceWei: string;
+    observedAtMs: number;
     phase: string;
   }[] = [];
   const deniedWrites: string[] = [];
@@ -97,6 +100,14 @@ async function installNativeRpc(
     transactions: [],
     baseFeePerGas: '0x3b9aca00',
   };
+  const genesis = {
+    ...block,
+    number: '0x0',
+    hash: block.parentHash,
+    parentHash: '0x' + '00'.repeat(32),
+    timestamp: '0x6553f0f4',
+    transactions: [],
+  };
   const reply = (method: string, params: any[]): unknown => {
     reads.push({ method, phase });
     switch (method) {
@@ -115,6 +126,7 @@ async function installNativeRpc(
         balanceReads.push({
           address: lower(params[0]),
           balanceWei: value,
+          observedAtMs: Date.now(),
           phase,
         });
         return '0x' + BigInt(value).toString(16);
@@ -136,6 +148,9 @@ async function installNativeRpc(
         if (/^0x[0-9a-f]{64}$/i.test(String(params[0]))) return null;
         break;
       case 'eth_getBlockByNumber':
+        // The ordinary history scan includes genesis at this synthetic head 1.
+        if (params.length === 2 && params[0] === '0x0' && params[1] === true)
+          return genesis;
         if (['latest', 'pending', '0x1'].includes(params[0])) return block;
         break;
       case 'eth_getBlockByHash':
@@ -162,7 +177,12 @@ async function installNativeRpc(
         break;
       }
     }
-    throw new Error('Unallowlisted native MAX fixture read: ' + method);
+    throw new Error(
+      'Unallowlisted native MAX fixture read: ' +
+        method +
+        ' ' +
+        JSON.stringify(params)
+    );
   };
   await context.route(RPC + '/', async (route) => {
     const request = route.request();
@@ -333,6 +353,15 @@ test('native MAX revalidates a live balance change without rewriting the reviewe
       name: en.header.refresh,
       exact: true,
     });
+    const waitForProviderReadCache = () =>
+      expect
+        .poll(() => {
+          const latest = rpc!.balanceReads.at(-1);
+          return (
+            !latest || Date.now() - latest.observedAtMs > PROVIDER_READ_CACHE_MS
+          );
+        })
+        .toBe(true);
     await wallet.step('native-max-balance-enable-normal-refresh', async () => {
       await wallet!.importSeedAndCreatePassword();
       await wallet!.switchNetwork('Syscoin NEVM Testnet', 'EVM');
@@ -360,6 +389,7 @@ test('native MAX revalidates a live balance change without rewriting the reviewe
         async () => {
           rpc!.setBalance(scenario.id + '-baseline', INITIAL_WEI);
           await wallet!.ensureOnHome();
+          await waitForProviderReadCache();
           const readCount = rpc!.balanceReads.length;
           await refresh.click();
           await expect
@@ -380,7 +410,7 @@ test('native MAX revalidates a live balance change without rewriting the reviewe
           await page.getByRole('button', { name: 'MAX', exact: true }).click();
           await expect(
             page.getByPlaceholder(en.send.amount, { exact: true })
-          ).toHaveValue('10');
+          ).toHaveValue('10.0');
         }
       );
       await wallet.step(
@@ -389,8 +419,9 @@ test('native MAX revalidates a live balance change without rewriting the reviewe
           const form = await page.locator('#send-form').elementHandle();
           expect(form).not.toBeNull();
           const before = await publicNativeState(page);
-          const readCount = rpc!.balanceReads.length;
           rpc!.setBalance(scenario.id, scenario.balanceWei);
+          await waitForProviderReadCache();
+          const readCount = rpc!.balanceReads.length;
           await refresh.click();
           await expect
             .poll(() =>
@@ -421,7 +452,7 @@ test('native MAX revalidates a live balance change without rewriting the reviewe
           expect(await form!.evaluate((node) => node.isConnected)).toBe(true);
           await expect(
             page.getByPlaceholder(en.send.amount, { exact: true })
-          ).toHaveValue('10');
+          ).toHaveValue('10.0');
           await page.locator('#send-eth-next-btn').click();
           if (!scenario.admitsPreview) {
             await expect(
@@ -439,7 +470,7 @@ test('native MAX revalidates a live balance change without rewriting the reviewe
               before,
               after,
               rejectedForGas: true,
-              amount: '10',
+              amount: '10.0',
             });
           } else {
             await expect(page).toHaveURL(/#\/send\/confirm$/);
@@ -454,7 +485,7 @@ test('native MAX revalidates a live balance change without rewriting the reviewe
               };
             });
             expect(tx).toMatchObject({
-              amount: '10',
+              amount: '10.0',
               isMax: scenario.isMax,
               sender: fixture.evmAddresses[0],
               receivingAddress: fixture.evmAddresses[1],
