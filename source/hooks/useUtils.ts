@@ -130,13 +130,14 @@ export const useUtils = () => {
       info: (message: string, options?: any, isCurrent?: () => boolean) => {
         if (isCurrent && !isCurrent()) return;
         if (!isCurrent && !shouldShowMessage(message, 'info')) return;
-        toast.dismiss();
+        if (!isCurrent) toast.dismiss();
         setTimeout(() => {
           if (
             isCurrent &&
             (!isCurrent() || !shouldShowMessage(message, 'info'))
           )
             return;
+          if (isCurrent) toast.dismiss();
           toast.info(message, options);
         }, 0);
       },

@@ -5,6 +5,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import React from 'react';
 import { Provider } from 'react-redux';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { ToastContainer } from 'react-toastify';
 
 import { DetailsView } from '../Details';
 import vaultReducer, {
@@ -19,6 +20,8 @@ let mockStore: any;
 const mockWrite = jest.fn();
 const mockInfo = jest.fn();
 const mockError = jest.fn();
+const mockDismiss = jest.fn();
+let mockRenderToasts = false;
 const mockTranslate = (key: string) => key;
 jest.mock('state/store', () => ({
   __esModule: true,
@@ -31,13 +34,23 @@ jest.mock('i18next', () => ({
   __esModule: true,
   default: { t: (key: string) => key },
 }));
-jest.mock('react-toastify', () => ({
-  toast: Object.assign(jest.fn(), {
-    info: (...args: any[]) => mockInfo(...args),
-    error: (...args: any[]) => mockError(...args),
-    dismiss: jest.fn(),
-  }),
-}));
+jest.mock('react-toastify', () => {
+  const actual = jest.requireActual('react-toastify');
+  return {
+    ...actual,
+    toast: Object.assign(jest.fn(), {
+      info: (...args: any[]) => {
+        mockInfo(...args);
+        if (mockRenderToasts) return actual.toast.info(...args);
+      },
+      error: (...args: any[]) => mockError(...args),
+      dismiss: (...args: any[]) => {
+        mockDismiss(...args);
+        if (mockRenderToasts) actual.toast.dismiss(...args);
+      },
+    }),
+  };
+});
 jest.mock('hooks/index', () => ({
   useUtils: jest.requireActual('hooks/useUtils').useUtils,
   useAdjustedExplorer: (url: string) => url,
@@ -122,6 +135,7 @@ beforeEach(() => {
   jest.useFakeTimers();
   jest.setSystemTime((clock += 10_000));
   jest.clearAllMocks();
+  mockRenderToasts = false;
   Object.defineProperty(navigator, 'clipboard', {
     configurable: true,
     value: { writeText: mockWrite },
@@ -332,4 +346,38 @@ it('does not migrate a copied success effect into a different asset context', as
   act(() => mockStore.dispatch(setActiveAccount({ id: 1, type: TYPE })));
   await act(async () => jest.advanceTimersByTimeAsync(0));
   expect(mockInfo).not.toHaveBeenCalled();
+});
+
+it('keeps the visible copied toast during an ordinary balance and label refresh', async () => {
+  mockRenderToasts = true;
+  const write = pending();
+  mockWrite.mockReturnValue(write.promise);
+  mount();
+  render(<ToastContainer autoClose={false} />);
+  fireEvent.click(screen.getByTitle('send.copyContractAddress'));
+  await settle(write, 'success');
+  expect(screen.getByRole('alert')).toHaveTextContent('home.contractCopied');
+  expect(mockDismiss).toHaveBeenCalledTimes(1);
+  expect(mockInfo).toHaveBeenCalledTimes(1);
+  act(() => {
+    mockStore.dispatch(
+      setAccountAssets({
+        accountId: 0,
+        accountType: TYPE,
+        property: 'syscoin',
+        value: [{ ...token('REFRESHED', 5700, CONTRACT), balance: 42 }],
+      })
+    );
+  });
+  await act(async () => jest.advanceTimersByTimeAsync(0));
+  expect(screen.getByText('REFRESHED (Syscoin Testnet)')).toBeInTheDocument();
+  expect({
+    dismissCalls: mockDismiss.mock.calls.length,
+    visibleToast: screen.queryByRole('alert')?.textContent,
+  }).toEqual({
+    dismissCalls: 1,
+    visibleToast: expect.stringContaining('home.contractCopied'),
+  });
+  expect(mockInfo).toHaveBeenCalledTimes(1);
+  expect(screen.getByRole('alert')).toHaveTextContent('home.contractCopied');
 });

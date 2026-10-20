@@ -319,3 +319,16 @@ it.each(['scope change', 'new copy', 'unmount'] as const)(
     expect(mockInfo).toHaveBeenCalledWith('Scoped copied notice', undefined);
   }
 );
+
+it('preserves immediate dismissal and queued insertion for unscoped info while skipping duplicates', async () => {
+  render(<Fixture />);
+  current.alert.info('Unscoped info');
+  expect(mockDismiss).toHaveBeenCalledTimes(1);
+  expect(mockInfo).not.toHaveBeenCalled();
+  await settle();
+  expect(mockInfo).toHaveBeenCalledWith('Unscoped info', undefined);
+  current.alert.info('Unscoped info');
+  expect(mockDismiss).toHaveBeenCalledTimes(1);
+  await settle();
+  expect(mockInfo).toHaveBeenCalledTimes(1);
+});
