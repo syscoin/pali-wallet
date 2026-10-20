@@ -145,6 +145,7 @@ import {
   isSameBalanceNetwork,
 } from 'utils/nativeBalanceCache';
 import { getNetworkChain } from 'utils/network';
+import { networkRegistrationFingerprint } from 'utils/networkRegistration';
 import { blacklistService } from 'utils/security/blacklistService';
 import {
   getSentryCollateralReservations,
@@ -4008,9 +4009,22 @@ class MainController {
     return this.persistCustomRpc(networkWithCustomParams, false, generation);
   }
 
-  public async editCustomRpc(network: INetwork): Promise<INetwork> {
+  public async editCustomRpc(
+    network: INetwork,
+    expectedRegistration: string
+  ): Promise<INetwork> {
     if (this.isRemovingNetwork) {
       throw new Error(NETWORK_REMOVAL_IN_PROGRESS_ERROR);
+    }
+    const current =
+      store.getState().vaultGlobal.networks[network.kind]?.[network.chainId];
+    // The request may arrive after another window saved or replaced this
+    // registration. Only the record the editor actually displayed may be edited.
+    if (
+      typeof expectedRegistration !== 'string' ||
+      networkRegistrationFingerprint(current) !== expectedRegistration
+    ) {
+      throw new Error('Network changed. Please save it again.');
     }
     return this.persistCustomRpc(network, true);
   }
