@@ -20,7 +20,11 @@ import {
   selectActiveAccountAssets,
   selectActiveAccountTransactions,
 } from 'state/vault/selectors';
-import { formatCurrency, truncate, getTokenLogo } from 'utils/index';
+import {
+  formatFullPrecisionBalance,
+  truncate,
+  getTokenLogo,
+} from 'utils/index';
 import {
   createBrowsingNavigationContext,
   navigateWithContext,
@@ -140,14 +144,13 @@ export const SyscoinAssetsList = ({
 
               <div className="flex flex-col">
                 <div className="flex items-center gap-x-2">
-                  <span className="text-brand-white font-semibold">
-                    {truncate(
-                      formatCurrency(
-                        String(asset.balance),
-                        Math.min(asset.decimals, 4) // Limit displayed decimals for UI
-                      ),
-                      8,
-                      false
+                  <span
+                    className="text-brand-white font-semibold"
+                    title={String(asset.balance ?? 0)}
+                  >
+                    {formatFullPrecisionBalance(
+                      asset.balance ?? 0,
+                      Math.min(asset.decimals ?? 8, 4)
                     )}
                   </span>
 
