@@ -354,6 +354,13 @@ module.exports = {
           minChunks: 2,
           enforce: true,
         },
+        incrementalList: {
+          test: /[\\/]source[\\/]hooks[\\/]useIncrementalList\.ts$/,
+          chunks: 'async',
+          name: 'incremental-list',
+          minChunks: 2,
+          enforce: true,
+        },
       },
       chunks(chunk) {
         // Only split chunks for app and external, NOT background, contentScript, inpage, pali, or handleWindowProperties

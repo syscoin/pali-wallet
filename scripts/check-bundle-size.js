@@ -15,7 +15,7 @@ const budget = {
   contentScript: 16000,
   // Shared dependency/UI helpers measured 8,611,614 bytes with fee guards.
   // Retain the saving with a rounded ceiling and a small platform buffer.
-  package: 8612000,
+  package: 8609000,
 };
 const allFiles = (root) =>
   fs.readdirSync(root, { withFileTypes: true }).flatMap((entry) => {

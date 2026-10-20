@@ -391,6 +391,49 @@ test('approval metadata from a retired wallet context cannot supply allowance un
         expect(await readContext()).toEqual(evm);
       });
       const { dapp, address } = await connect(wallet, origin);
+      // Observe only metadata replies. Forward the original message, callback,
+      // receiver and response unchanged; no controller state/result is replaced.
+      await wallet.context.addInitScript(() => {
+        if (
+          location.protocol !== 'chrome-extension:' ||
+          !chrome.runtime?.sendMessage
+        )
+          return;
+        const send = chrome.runtime.sendMessage;
+        const replies: any[] = [];
+        (window as any).__approvalMetadataReplies = replies;
+        chrome.runtime.sendMessage = function (...args: any[]) {
+          const message = args[0];
+          const callback = args[args.length - 1];
+          if (
+            message?.type !== 'CONTROLLER_ACTION' ||
+            message.data?.methods?.join('.') !== 'wallet.getERC20TokenInfo' ||
+            typeof callback !== 'function'
+          )
+            return Reflect.apply(send, this, args);
+          const row: any = {
+            ordinal: replies.length,
+            startedAt: Date.now(),
+            completed: false,
+          };
+          replies.push(row);
+          args[args.length - 1] = function (...responseArgs: any[]) {
+            try {
+              return Reflect.apply(callback, this, responseArgs);
+            } finally {
+              const response = responseArgs[0];
+              Object.assign(row, {
+                completed: true,
+                completedAt: Date.now(),
+                error: response?.error ?? null,
+                decimals: response?.decimals ?? null,
+                symbol: response?.symbol ?? null,
+              });
+            }
+          };
+          return Reflect.apply(send, this, args);
+        } as typeof chrome.runtime.sendMessage;
+      });
       const abi = AbiCoder.defaultAbiCoder();
       const selectors = new Set(
         ['name()', 'symbol()', 'decimals()', 'balanceOf(address)'].map(
@@ -476,14 +519,7 @@ test('approval metadata from a retired wallet context cannot supply allowance un
           name: en.send.editPermission,
           exact: true,
         });
-        let rejectedMetadata = false;
-        popup.on('console', (message) => {
-          if (
-            message.text().includes('Failed to get token info:') &&
-            message.text().includes('PALI_TRANSACTION_CONTEXT_CHANGED')
-          )
-            rejectedMetadata = true;
-        });
+        let originalRead: { ordinal: number; startedAt: number };
         await popupStep(
           wallet,
           popup,
@@ -491,6 +527,10 @@ test('approval metadata from a retired wallet context cannot supply allowance un
           async () => {
             await expect.poll(() => seenSelectors('old')).toBe(4);
             await expect(edit).toHaveCount(0);
+            originalRead = await popup.evaluate(
+              () => (window as any).__approvalMetadataReplies[0]
+            );
+            expect(originalRead.ordinal).toBe(0);
           }
         );
         await popupStep(
@@ -546,14 +586,28 @@ test('approval metadata from a retired wallet context cannot supply allowance un
           popup,
           'reject the retired approval metadata result',
           async () => {
-            rejectedMetadata = false;
             held
               .filter((item) => item.round === 'old')
               .forEach((item) => item.release());
             await expect
-              .poll(async () => rejectedMetadata || (await edit.count()) > 0)
+              .poll(() =>
+                popup.evaluate(
+                  (ordinal) =>
+                    (window as any).__approvalMetadataReplies[ordinal]
+                      ?.completed,
+                  originalRead.ordinal
+                )
+              )
               .toBe(true);
-            expect(rejectedMetadata).toBe(true);
+            const reply = await popup.evaluate(
+              (ordinal) => (window as any).__approvalMetadataReplies[ordinal],
+              originalRead.ordinal
+            );
+            expect(reply.completedAt - reply.startedAt).toBeLessThan(10000);
+            expect(reply.error).toEqual({
+              message: 'PALI_TRANSACTION_CONTEXT_CHANGED',
+              transactionNotBroadcast: true,
+            });
             await expect(edit).toHaveCount(0);
             await expect(
               popup.getByText('100.0 OLD', { exact: true })
@@ -561,6 +615,7 @@ test('approval metadata from a retired wallet context cannot supply allowance un
             await capture(popup, info, 'retired-token-metadata', {
               runtime: extensionEvidence(),
               currentContext: await readContext(),
+              originalMetadataReply: reply,
               metadataRequests: held.map((item) => ({
                 round: item.round,
                 ids: item.ids,
