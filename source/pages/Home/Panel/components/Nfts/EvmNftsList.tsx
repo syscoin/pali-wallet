@@ -23,6 +23,7 @@ import {
   navigateWithContext,
   ellipsis,
 } from 'utils/index';
+import { getNftQuantity } from 'utils/nftQuantity';
 import { getNftAssetsFromEthereum } from 'utils/nftToAsset';
 import { getTokenTypeBadgeColor } from 'utils/tokens';
 
@@ -106,6 +107,7 @@ export const EvmNftsList = ({
         totalBalance: nft.balance, // This is already the total count
         tokenId: nft.tokenId,
         logo: nft.logo, // Include logo if available
+        ...getNftQuantity(nft),
       })),
     [nftAssets]
   );
@@ -130,8 +132,15 @@ export const EvmNftsList = ({
       return [...filtered].sort((a, b) => a.name.localeCompare(b.name));
     }
     if (state.sortByValue === 'Balance') {
-      return [...filtered].sort(
-        (a, b) => Number(b.totalBalance) - Number(a.totalBalance)
+      return [...filtered].sort((a, b) =>
+        a.exactQuantity !== undefined && b.exactQuantity !== undefined
+          ? b.exactQuantity.length - a.exactQuantity.length ||
+            (b.exactQuantity > a.exactQuantity
+              ? 1
+              : b.exactQuantity < a.exactQuantity
+              ? -1
+              : 0)
+          : Number(b.totalBalance) - Number(a.totalBalance)
       );
     }
     return filtered;
@@ -203,9 +212,12 @@ export const EvmNftsList = ({
             {/* Collection Info */}
             <div className="flex flex-col gap-y-1 flex-1 text-left">
               <div className="flex items-center gap-x-2">
-                <span className="text-brand-white">
-                  {collection.totalBalance}{' '}
-                  {collection.totalBalance === 1
+                <span
+                  className="text-brand-white"
+                  title={collection.exactQuantity}
+                >
+                  {collection.quantity}{' '}
+                  {collection.isSingle
                     ? t('nftDetails.item')
                     : t('nftDetails.items')}
                 </span>

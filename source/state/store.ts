@@ -572,7 +572,9 @@ export function persistAccountCreation(
   accountType:
     | KeyringAccountType.HDAccount
     | KeyringAccountType.Imported
-    | KeyringAccountType.SmartAccount,
+    | KeyringAccountType.SmartAccount
+    | KeyringAccountType.Trezor
+    | KeyringAccountType.Ledger,
   assertCurrent: () => void,
   isSameWallet: () => boolean
 ): Promise<void> {

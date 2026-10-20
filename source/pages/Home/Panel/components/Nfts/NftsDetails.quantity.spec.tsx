@@ -21,7 +21,7 @@ import EvmAssetsController from 'scripts/Background/controllers/assets/evm';
 import MainController from 'scripts/Background/controllers/MainController';
 import { loadSlip44State, walletPersistenceGate } from 'state/paliStorage';
 import store from 'state/store';
-import { restoreVaultSnapshot } from 'state/vault';
+import { restoreVaultSnapshot, setAccountAssets } from 'state/vault';
 import vaultCache from 'state/vaultCache';
 import {
   setActiveSlip44,
@@ -31,6 +31,7 @@ import {
 import { INetworkType, KeyringAccountType } from 'types/network';
 import { getWalletNavigationScope } from 'utils/navigationState';
 
+import { EvmNftsList } from './EvmNftsList';
 import { NftsDetails } from './NftsDetails';
 
 jest.mock('@sidhujag/sysweb3-keyring', () => ({
@@ -95,6 +96,7 @@ jest.mock('components/Tooltip', () => ({
   Tooltip: ({ children }: any) => children,
 }));
 jest.mock('components/Icon/Icon', () => ({
+  HiTrash: () => null,
   FiDownload: () => null,
   RiShareForward2Line: () => null,
   FiExternalLink: () => null,
@@ -106,6 +108,7 @@ jest.mock('components/Icon/Icon', () => ({
   Icon: () => null,
 }));
 jest.mock('components/index', () => ({
+  TokenIcon: () => null,
   ImportableAssetsList: jest.requireActual('components/ImportableAssetsList')
     .ImportableAssetsList,
   Icon: () => null,
@@ -116,6 +119,7 @@ jest.mock('components/index', () => ({
     <button {...props}>{children}</button>
   ),
 }));
+jest.mock('components/Modal', () => ({ ConfirmationModal: () => null }));
 jest.mock('../TransactionDetails', () => ({ TransactionDetails: () => null }));
 
 const CONTRACT = `0x${'33'.repeat(20)}`;
@@ -125,7 +129,7 @@ const originalChrome = global.chrome;
 const originalFetch = global.fetch;
 let wallet: any;
 let records: Record<string, any>;
-let rawBalance = '0';
+let rawBalance: string | string[] = '0';
 let testCase = 0;
 let routeState: any;
 const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value));
@@ -183,17 +187,17 @@ beforeEach(() => {
       headers: { get: () => null },
       json: async () => ({
         status: '1',
-        result: [
-          {
+        result: (Array.isArray(rawBalance) ? rawBalance : [rawBalance]).map(
+          (balance, index) => ({
             contractAddress: CONTRACT,
             type: 'ERC-1155',
-            id: '7',
+            id: String(index + 7),
             name: 'Exact collection',
-            symbol: 'EXACT',
+            symbol: Array.isArray(rawBalance) ? `EXACT${index}` : 'EXACT',
             decimals: '0',
-            balance: rawBalance,
-          },
-        ],
+            balance,
+          })
+        ),
       }),
     } as unknown as Response;
   }) as typeof fetch;
@@ -268,7 +272,7 @@ it.each([
     20
   )}115792089237316195423570985008687907853269984665640564039457584007913129639935`,
 ])(
-  'retains the exact owned quantity %s through saved collection navigation',
+  'retains the exact owned quantity %s through the saved list and collection navigation',
   async (explorerBalance) => {
     const quantity = explorerBalance.replace(/^0+(?=\d)/, '');
     rawBalance = explorerBalance;
@@ -289,6 +293,31 @@ it.each([
       (await loadSlip44State(60)).accountAssets[TYPE][0].ethereum[0]
     ).toEqual(saved);
     imported.unmount();
+
+    const list = renderPage(
+      <EvmNftsList
+        scope="owned-quantity-list"
+        state={{ isCoinSelected: false, searchValue: '', sortByValue: '' }}
+      />
+    );
+    const row = (
+      await screen.findByRole('button', {
+        name: 'View details for EXACT collection',
+      })
+    ).closest('li')!;
+    const listQuantity = row.querySelector('span.text-brand-white')!;
+    expect(
+      `${listQuantity.textContent} ${listQuantity.getAttribute('title')}`
+    ).toContain(quantity);
+    expect(listQuantity).toHaveTextContent(
+      quantity === '1' ? 'nftDetails.item' : 'nftDetails.items'
+    );
+    expect(listQuantity).toHaveAttribute('title', quantity);
+    if (quantity.length > 15) {
+      expect(listQuantity.textContent!.length).toBeLessThan(40);
+      expect(listQuantity.textContent).not.toContain(quantity);
+    }
+    list.unmount();
 
     renderPage(<DetailsView />, {
       id: saved.id,
@@ -327,6 +356,52 @@ it.each([
       expect(header.textContent!.length).toBeLessThan(50);
       expect(amount.textContent!.length).toBeLessThan(25);
     }
+  }
+);
+
+it.each([
+  ['1', '42'],
+  ['9007199254740992', '9007199254740993'],
+])(
+  'sorts saved NFT quantities %s and %s by their actual balance',
+  async (low, high) => {
+    rawBalance = [low, high];
+    const imported = renderPage(<AddToken />);
+    for (const index of [0, 1]) {
+      const button = await screen.findByRole('button', {
+        name: `Import EXACT${index} token`,
+      });
+      await act(async () => fireEvent.click(button));
+      await waitFor(() =>
+        expect(mockAlerts.success).toHaveBeenCalledTimes(index + 1)
+      );
+    }
+    expect(
+      store
+        .getState()
+        .vault.accountAssets[TYPE][0].ethereum.map((asset) => asset.rawBalance)
+    ).toEqual([low, high]);
+    imported.unmount();
+    renderPage(
+      <EvmNftsList
+        scope="owned-quantity-sorted-list"
+        state={{
+          isCoinSelected: false,
+          searchValue: '',
+          sortByValue: 'Balance',
+        }}
+      />
+    );
+    expect(
+      screen
+        .getAllByRole('button', {
+          name: /^View details for EXACT\d collection$/,
+        })
+        .map((button) => button.getAttribute('aria-label'))
+    ).toEqual([
+      'View details for EXACT1 collection',
+      'View details for EXACT0 collection',
+    ]);
   }
 );
 
@@ -422,6 +497,49 @@ it.each([
   );
   expect(screen.getByText(/• ERC-1155/)).not.toHaveAttribute('title');
 });
+
+it.each([
+  ['1e3', 42, 'ERC-1155', '42'],
+  [undefined, Number('9007199254740993'), 'ERC-1155', '—'],
+  ['9'.repeat(79), 42, 'ERC-1155', '42'],
+  ['9'.repeat(79), Number('9'.repeat(79)), 'ERC-1155', '—'],
+  ['9007199254740993', 2, 'ERC-721', '2'],
+])(
+  'keeps list fallback %s / %s / %s without claiming an exact raw quantity',
+  (raw, balance, standard, expected) => {
+    store.dispatch(
+      setAccountAssets({
+        accountId: 0,
+        accountType: TYPE,
+        property: 'ethereum',
+        value: [
+          {
+            id: 'fallback-nft',
+            contractAddress: CONTRACT,
+            chainId: 5700,
+            tokenStandard: standard,
+            tokenSymbol: 'FALLBACK',
+            isNft: true,
+            balance,
+            rawBalance: raw,
+          },
+        ] as any,
+      })
+    );
+    renderPage(
+      <EvmNftsList
+        scope="fallback-quantity-list"
+        state={{ isCoinSelected: false, searchValue: '', sortByValue: '' }}
+      />
+    );
+    const quantity = screen
+      .getByRole('button', { name: 'View details for FALLBACK collection' })
+      .closest('li')!
+      .querySelector('span.text-brand-white')!;
+    expect(quantity).toHaveTextContent(`${expected} nftDetails.items`);
+    expect(quantity).not.toHaveAttribute('title');
+  }
+);
 
 it('does not reinterpret an ERC721 collection count as an ERC1155 raw quantity', async () => {
   mockEmitter.mockResolvedValue([]);

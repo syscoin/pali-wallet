@@ -22,7 +22,7 @@ for (const quantity of [
   '9007199254740993',
   '115792089237316195423570985008687907853269984665640564039457584007913129639935',
 ]) {
-  test(`owned ERC1155 import retains quantity ${quantity} through collection details, reload and Send MAX`, async ({}, info) => {
+  test(`owned ERC1155 import retains quantity ${quantity} through the list, collection details, reload and Send MAX`, async ({}, info) => {
     test.setTimeout(120_000);
     const before = { ...E2E_CONFIG };
     const fixture = createIsolatedVaultFixture();
@@ -123,12 +123,41 @@ for (const quantity of [
       await page
         .getByRole('button', { name: en.tooltip.viewNFTs, exact: true })
         .click();
-      await page
-        .getByRole('button', {
-          name: `View details for ${SYMBOL} collection`,
-          exact: true,
-        })
-        .click();
+      const viewCollection = page.getByRole('button', {
+        name: `View details for ${SYMBOL} collection`,
+        exact: true,
+      });
+      const collection = page.locator('li').filter({ has: viewCollection });
+      const listQuantity = collection.locator(`span[title="${quantity}"]`);
+      const visibleQuantity =
+        quantity.length > 20
+          ? '1.16e77'
+          : quantity.length > 15
+          ? '9.01e15'
+          : quantity;
+      await expect(listQuantity).toHaveAttribute('title', quantity);
+      for (const width of [320, 400]) {
+        await page.setViewportSize({ width, height: 360 });
+        await listQuantity.scrollIntoViewIfNeeded();
+        await expect(listQuantity).toBeInViewport();
+        await expect(listQuantity).toContainText(visibleQuantity);
+        expect(
+          await listQuantity.evaluate((element) => {
+            const bounds = element.getBoundingClientRect();
+            return {
+              left: bounds.left >= 0,
+              right: bounds.right <= window.innerWidth,
+              fits: element.scrollWidth <= element.clientWidth,
+            };
+          })
+        ).toEqual({ left: true, right: true, fits: true });
+        await info.attach(`list-quantity-${width}`, {
+          contentType: 'image/png',
+          body: await page.screenshot({ animations: 'disabled' }),
+        });
+      }
+      await page.setViewportSize({ width: 400, height: 620 });
+      await viewCollection.click();
       await page
         .locator('[data-navigation-scroll="asset-details"]')
         .getByRole('button', {
@@ -140,12 +169,6 @@ for (const quantity of [
       const amount = page.getByText('Amount', { exact: true }).locator('..');
       await expect(header).toHaveAttribute('title', quantity);
       await expect(amount).toHaveAttribute('title', quantity);
-      const visibleQuantity =
-        quantity.length > 20
-          ? '1.16e77'
-          : quantity.length > 15
-          ? '9.01e15'
-          : quantity;
       for (const width of [320, 400]) {
         await page.setViewportSize({ width, height: 360 });
         for (const [label, value] of [
