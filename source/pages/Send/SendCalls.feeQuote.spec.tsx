@@ -143,7 +143,7 @@ it('blocks approval until preparation succeeds and accepts genuine tank zero', a
   expect(screen.getByText('0.0 TSYS')).toBeTruthy();
 });
 
-it('requotes exact selection and ignores an obsolete in-flight response', async () => {
+it('keeps every call in a refreshed quote and ignores an obsolete in-flight response', async () => {
   let resolve!: (value: any) => void;
   mockQuote
     .mockReturnValueOnce(
@@ -152,16 +152,22 @@ it('requotes exact selection and ignores an obsolete in-flight response', async 
       })
     )
     .mockResolvedValue(quote('123'));
-  render(<SendCalls />);
+  const view = render(<SendCalls />);
   await waitFor(() => expect(mockQuote).toHaveBeenCalledTimes(1));
   fireEvent.click(screen.getAllByRole('checkbox')[1]);
+  expect((screen.getAllByRole('checkbox')[1] as HTMLInputElement).checked).toBe(
+    true
+  );
+  expect(mockQuote).toHaveBeenCalledTimes(1);
+  mockState.vault.accounts.SmartAccount[19].smartAccount.installedModules = [];
+  view.rerender(<SendCalls />);
   await ready();
-  expect(mockQuote.mock.calls[1][0].executions).toHaveLength(1);
+  expect(mockQuote.mock.calls[1][0].executions).toHaveLength(2);
   await act(async () => resolve(quote('999999999999999999')));
   fireEvent.click(sign());
   await waitFor(() => expect(mockSubmit).toHaveBeenCalledTimes(1));
   expect(mockSubmit.mock.calls[0][0].maximumUserOpFeeWei).toBe('123');
-  expect(mockSubmit.mock.calls[0][0].executions).toHaveLength(1);
+  expect(mockSubmit.mock.calls[0][0].executions).toHaveLength(2);
 });
 
 it('requires explicit fee refresh and a new approval after a fresh quote grows', async () => {

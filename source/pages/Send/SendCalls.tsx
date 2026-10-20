@@ -207,7 +207,6 @@ export const SendCalls = () => {
   const [rejecting, setRejecting] = useState(false);
   const [isPqSigning, setIsPqSigning] = useState<boolean>(false);
   const [initialLoading, setInitialLoading] = useState<boolean>(true);
-  const [selectedCalls, setSelectedCalls] = useState<boolean[]>([]);
   const [processingIndex, setProcessingIndex] = useState<number>(-1);
   const [transactionStatuses, setTransactionStatuses] = useState<
     Array<{
@@ -225,6 +224,19 @@ export const SendCalls = () => {
   const submissionInFlightRef = React.useRef(false);
   const rejectionStartedRef = React.useRef(false);
   const lastStartedSubmissionRef = React.useRef<string>();
+  const mountedRef = React.useRef(true);
+  const settlementStartedRef = React.useRef(false);
+  const closeTimerRef = React.useRef<ReturnType<typeof setTimeout>>();
+  const unknownSubmissionRef = React.useRef(false);
+  const acknowledgedCallsRef = React.useRef(new Set<number>());
+  const durableHashesRef = React.useRef(new Set<string>());
+  const terminalSubmissionRef = React.useRef<{ submissionId?: string }>();
+  const pendingCompletionRef = React.useRef<{
+    failed: boolean;
+    submissionId?: string;
+    txHashes: string[];
+  }>();
+  const [completionRevision, setCompletionRevision] = useState(0);
   const [progressSubmissionId, setProgressSubmissionId] = useState<string>();
   const [requestSmartAccount] = useState(() => ({
     supportsAtomicBatch: Boolean(
@@ -236,18 +248,13 @@ export const SendCalls = () => {
   // Reverse ENS cache: name -> address (lowercased)
   const ensNameToAddress = useSelector(selectEnsNameToAddress);
   const effectiveSelectedCalls = useMemo(
-    () =>
-      callsData.atomicRequired && callsData.calls
-        ? new Array(callsData.calls.length).fill(true)
-        : selectedCalls,
-    [callsData.atomicRequired, callsData.calls, selectedCalls]
+    () => new Array(callsData.calls?.length || 0).fill(true),
+    [callsData.calls]
   );
 
-  // Initialize selected calls
+  // Every original call is reviewed. Non-atomic execution permits partial
+  // outcomes, not arbitrary omission of calls from the approved request.
   useEffect(() => {
-    if (callsData.calls && callsData.calls.length > 0) {
-      setSelectedCalls(new Array(callsData.calls.length).fill(true));
-    }
     setInitialLoading(false);
   }, [callsData.calls]);
 
@@ -381,6 +388,52 @@ export const SendCalls = () => {
     // The serialized key includes the exact ordered selection and context.
   }, [feeQuoteKey, feeQuoteRevision]);
 
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      clearTimeout(closeTimerRef.current);
+    };
+  }, []);
+
+  const canReturnBundleId = () =>
+    Boolean(
+      callsData.bundleId &&
+        terminalSubmissionRef.current &&
+        terminalSubmissionRef.current.submissionId ===
+          lastStartedSubmissionRef.current &&
+        durableHashesRef.current.size > 0 &&
+        !pendingCompletionRef.current &&
+        !unknownSubmissionRef.current
+    );
+
+  const rememberDurableHashes = (hashes: string[]) => {
+    for (const hash of hashes)
+      if (/^0x[\da-f]{64}$/i.test(hash)) durableHashesRef.current.add(hash);
+  };
+
+  // Both completion paths own one response. A retained callback or timer may
+  // not settle another view after this popup closes or unmounts.
+  const finishPopup = async (returnBundleId: boolean) => {
+    if (!mountedRef.current || settlementStartedRef.current) return;
+    settlementStartedRef.current = true;
+    rejectionStartedRef.current = true;
+    clearTimeout(closeTimerRef.current);
+    setRejecting(true);
+    try {
+      await clearTransactionNavigationState();
+    } catch (error) {
+      console.error('Failed to clean navigation after completing calls', error);
+    }
+    if (!mountedRef.current) return;
+    if (returnBundleId)
+      dispatchBackgroundEvent(`${eventName}.${host}`, {
+        id: callsData.bundleId,
+        capabilities: {},
+      });
+    window.close();
+  };
+
   // Persist broadcast tx hashes (and any pre-broadcast failure) incrementally
   // so a partially broadcast non-atomic batch still resolves in
   // wallet_getCallsStatus / wallet_showCallsStatus — as partially reverted
@@ -411,6 +464,8 @@ export const SendCalls = () => {
         ]
       );
       lastStartedSubmissionRef.current = submissionId;
+      terminalSubmissionRef.current = undefined;
+      pendingCompletionRef.current = undefined;
       setProgressSubmissionId(submissionId);
     } catch (error) {
       console.error('Failed to persist sendCalls submission boundary', error);
@@ -445,6 +500,9 @@ export const SendCalls = () => {
     failed: boolean,
     txHashes: string[]
   ) => {
+    const submissionId = lastStartedSubmissionRef.current;
+    const completion = { failed, txHashes, submissionId };
+    pendingCompletionRef.current = completion;
     await controllerEmitter(
       ['wallet', 'recordSendCallsBundle'],
       [
@@ -457,15 +515,20 @@ export const SendCalls = () => {
           reservationId: callsData.reservationId,
           smartAccount: requestSmartAccount.supportsAtomicBatch,
           submissionCompleted: true,
-          submissionId: lastStartedSubmissionRef.current,
+          submissionId,
           failed,
           txHashes,
         },
       ]
     );
+    rememberDurableHashes(txHashes);
+    if (pendingCompletionRef.current === completion)
+      pendingCompletionRef.current = undefined;
+    terminalSubmissionRef.current = { submissionId };
+    if (mountedRef.current) setCompletionRevision((revision) => revision + 1);
   };
-  const recordBroadcastHash = (txHash: string) =>
-    controllerEmitter(
+  const recordBroadcastHash = async (txHash: string) => {
+    await controllerEmitter(
       ['wallet', 'recordSendCallsBundle'],
       [
         host,
@@ -481,7 +544,10 @@ export const SendCalls = () => {
         },
       ]
     );
+    rememberDurableHashes([txHash]);
+  };
   const stopUnknownSubmission = (indices: number[], txHash?: string) => {
+    unknownSubmissionRef.current = true;
     setTransactionStatuses((prev) => {
       const statuses = [...prev];
       for (const index of indices)
@@ -517,7 +583,9 @@ export const SendCalls = () => {
       failed,
       smartAccount,
       reservationId: callsData.reservationId,
-      submissionCompleted: allTransactionsSuccessful,
+      // Only the awaited terminal write can complete an attempt. A progress
+      // effect must not race a failed completion write into a false success.
+      submissionCompleted: false,
       submissionId: progressSubmissionId,
       txHashes,
     };
@@ -547,58 +615,17 @@ export const SendCalls = () => {
 
   // Watch for when all transactions are completed and dispatch response
   useEffect(() => {
-    if (allTransactionsSuccessful && !confirmed && transactionStatuses) {
+    if (
+      mountedRef.current &&
+      !settlementStartedRef.current &&
+      allTransactionsSuccessful &&
+      !confirmed &&
+      transactionStatuses &&
+      canReturnBundleId()
+    ) {
       setConfirmed(true);
-
-      // Finalize the bundle reserved by the background handler with the
-      // broadcast tx hashes so wallet_getCallsStatus / wallet_showCallsStatus
-      // can resolve receipts. The smart account path executes every call in a
-      // single atomic user operation (one hash); the EOA path broadcasts one
-      // transaction per call.
-      const smartAccount = requestSmartAccount.supportsAtomicBatch;
-      const txHashes = Array.from(
-        new Set(
-          transactionStatuses
-            .map((status) => status?.txHash)
-            .filter((hash): hash is string => Boolean(hash))
-        )
-      );
-      const bundleDescriptor = {
-        atomic: smartAccount ? true : callsData.atomicRequired,
-        chainId: approvedContext.chainId,
-        failed: false,
-        smartAccount,
-        reservationId: callsData.reservationId,
-        submissionCompleted: true,
-        submissionId: progressSubmissionId,
-        txHashes,
-      };
-      const id = callsData.bundleId || `0x${uuidv4().replace(/-/g, '')}`;
-
-      const response = {
-        id,
-        capabilities: {},
-      };
-
-      // Close window after a short delay
-      setTimeout(async () => {
-        if (txHashes.length > 0) {
-          try {
-            await controllerEmitter(
-              ['wallet', 'recordSendCallsBundle'],
-              [host, id, bundleDescriptor]
-            );
-          } catch (error) {
-            // The reservation stays pending; status lookups for this id will
-            // report 100 (pending) instead of the real receipts. The batch
-            // itself already executed, so still resolve the dapp.
-            console.error('Failed to record sendCalls bundle id', error);
-          }
-        }
-        await clearTransactionNavigationState();
-        // Dispatch event right before closing
-        dispatchBackgroundEvent(`${eventName}.${host}`, response);
-        window.close();
+      closeTimerRef.current = setTimeout(() => {
+        if (canReturnBundleId()) void finishPopup(true);
       }, 2000);
     }
   }, [
@@ -607,6 +634,7 @@ export const SendCalls = () => {
     callsData.atomicRequired,
     callsData.bundleId,
     callsData.reservationId,
+    completionRevision,
     confirmed,
     controllerEmitter,
     eventName,
@@ -618,8 +646,15 @@ export const SendCalls = () => {
 
   const handleApprove = async () => {
     if (
+      !mountedRef.current ||
+      settlementStartedRef.current ||
       rejectionStartedRef.current ||
       submissionInFlightRef.current ||
+      pendingCompletionRef.current ||
+      unknownSubmissionRef.current ||
+      callsData.calls?.every((_, index) =>
+        acknowledgedCallsRef.current.has(index)
+      ) ||
       hasUnknownSubmission ||
       !hasCurrentFeeQuote ||
       Boolean(feeQuoteError)
@@ -649,12 +684,10 @@ export const SendCalls = () => {
         return;
       }
 
-      // Filter calls based on selection AND exclude already successful transactions.
-      // Retry attempts must not resubmit calls that already succeeded.
+      // Only acknowledged calls may be omitted on retry, never user-selected
+      // subsets. The ref also protects retained handlers from stale renders.
       const shouldSubmitCall = (_: unknown, index: number) =>
-        (callsData.atomicRequired || effectiveSelectedCalls[index]) &&
-        (!transactionStatuses?.[index] ||
-          transactionStatuses[index].status !== 'success');
+        !acknowledgedCallsRef.current.has(index);
       const selectedCallsData = callsData.calls.filter(shouldSubmitCall);
       const selectedIndices = callsData.calls
         .map((_, index) => index)
@@ -695,6 +728,7 @@ export const SendCalls = () => {
             ['wallet', 'getRecommendedNonceForBatch'],
             [from]
           )) as number);
+      if (!mountedRef.current || settlementStartedRef.current) return;
       // Track the nonce we actually use to avoid gaps when skipping transactions
       let currentNonce = startingNonce;
 
@@ -741,7 +775,11 @@ export const SendCalls = () => {
             expectedContext: approvedContext,
             maximumUserOpFeeWei: approvedQuote.maximumFeeWei,
             onPrepared: () => {
-              if (approvedQuote.key !== currentFeeQuoteKeyRef.current)
+              if (
+                !mountedRef.current ||
+                settlementStartedRef.current ||
+                approvedQuote.key !== currentFeeQuoteKeyRef.current
+              )
                 throw Object.assign(
                   new Error(EVM_TRANSACTION_CONTEXT_CHANGED),
                   {
@@ -769,7 +807,11 @@ export const SendCalls = () => {
               }
             },
             onBeforeSubmit: async () => {
-              if (approvedQuote.key !== currentFeeQuoteKeyRef.current)
+              if (
+                !mountedRef.current ||
+                settlementStartedRef.current ||
+                approvedQuote.key !== currentFeeQuoteKeyRef.current
+              )
                 throw Object.assign(
                   new Error(EVM_TRANSACTION_CONTEXT_CHANGED),
                   {
@@ -777,11 +819,21 @@ export const SendCalls = () => {
                   }
                 );
               await markSubmissionStarted();
+              if (!mountedRef.current)
+                throw Object.assign(
+                  new Error(EVM_TRANSACTION_CONTEXT_CHANGED),
+                  {
+                    transactionNotBroadcast: true,
+                  }
+                );
               smartSubmissionInvoked = true;
             },
             smartAccount: approvedAccount.smartAccount,
           })) as any;
           const txHash = response.hash || response;
+          selectedIndices.forEach((index) =>
+            acknowledgedCallsRef.current.add(index)
+          );
 
           try {
             await recordCompletedSubmission(false, [txHash]);
@@ -827,9 +879,14 @@ export const SendCalls = () => {
             !txHash &&
             smartSubmissionInvoked &&
             error?.transactionNotBroadcast !== true;
+          if (unknown) unknownSubmissionRef.current = true;
           if (!txHash && error?.transactionNotBroadcast === true)
             await markSubmissionNotBroadcast();
           if (!unknown && smartSubmissionInvoked) {
+            if (txHash)
+              selectedIndices.forEach((index) =>
+                acknowledgedCallsRef.current.add(index)
+              );
             try {
               await recordCompletedSubmission(!txHash, txHash ? [txHash] : []);
             } catch (persistenceError) {
@@ -872,6 +929,7 @@ export const SendCalls = () => {
 
       // Sign and send each transaction with incremented nonces
       for (let i = 0; i < selectedCallsData.length; i++) {
+        if (!mountedRef.current || settlementStartedRef.current) return;
         let submissionInvoked = false;
         const call = selectedCallsData[i];
         const originalIndex = selectedIndices[i];
@@ -932,7 +990,7 @@ export const SendCalls = () => {
                     alert.error(t('send.unableToResolveEns'));
                     return;
                   }
-                  // Non-atomic: mark this call as error and continue with others
+                  // Stop at the unsent call so retries preserve request order.
                   setTransactionStatuses((prev) => {
                     const newStatuses = prev
                       ? [...prev]
@@ -946,7 +1004,7 @@ export const SendCalls = () => {
                     return newStatuses;
                   });
                   receipts.push({ status: '0x0' });
-                  continue;
+                  break;
                 }
                 toResolved = resolved;
               } else {
@@ -982,7 +1040,7 @@ export const SendCalls = () => {
                   return newStatuses;
                 });
                 receipts.push({ status: '0x0' });
-                continue;
+                break;
               }
             }
           }
@@ -1011,6 +1069,7 @@ export const SendCalls = () => {
 
           // Use the same method as SendTransaction
           await markSubmissionStarted();
+          if (!mountedRef.current || settlementStartedRef.current) return;
           submissionInvoked = true;
           const response = (await controllerEmitter(
             ['wallet', 'sendAndSaveEthTransaction'],
@@ -1028,6 +1087,7 @@ export const SendCalls = () => {
           )) as any;
 
           const txHash = response.hash || response;
+          acknowledgedCallsRef.current.add(originalIndex);
 
           try {
             // Persist each acknowledged hash before the next sender can start.
@@ -1061,6 +1121,7 @@ export const SendCalls = () => {
             ? error.transactionHash
             : undefined;
           if (txHash) {
+            acknowledgedCallsRef.current.add(originalIndex);
             try {
               await recordBroadcastHash(txHash);
             } catch (persistenceError) {
@@ -1090,6 +1151,7 @@ export const SendCalls = () => {
           }
           const unknown =
             submissionInvoked && error?.transactionNotBroadcast !== true;
+          if (unknown) unknownSubmissionRef.current = true;
           if (error?.transactionNotBroadcast === true)
             await markSubmissionNotBroadcast();
           const errorMessage = unknown
@@ -1119,7 +1181,9 @@ export const SendCalls = () => {
             alert.error(errorMessage);
             return;
           }
-          if (error?.message === EVM_TRANSACTION_CONTEXT_CHANGED) break;
+          // A retry must remain an ordered suffix of the original request.
+          // Do not submit later calls past one that never reached broadcast.
+          break;
         }
       }
 
@@ -1172,17 +1236,39 @@ export const SendCalls = () => {
   };
 
   const handleReject = async () => {
-    if (rejectionStartedRef.current || submissionInFlightRef.current) return;
-    // Own the terminal decision before awaiting storage or React's next render.
-    rejectionStartedRef.current = true;
-    setRejecting(true);
-    try {
-      await clearTransactionNavigationState();
-    } catch (error) {
-      console.error('Failed to clean navigation after rejecting calls', error);
-    } finally {
-      window.close();
+    if (
+      !mountedRef.current ||
+      settlementStartedRef.current ||
+      rejectionStartedRef.current ||
+      submissionInFlightRef.current
+    )
+      return;
+    const pending = pendingCompletionRef.current;
+    if (
+      pending &&
+      !unknownSubmissionRef.current &&
+      durableHashesRef.current.size > 0
+    ) {
+      // Recovery retries storage only, never signing or submission.
+      submissionInFlightRef.current = true;
+      setRejecting(true);
+      try {
+        await recordCompletedSubmission(pending.failed, pending.txHashes);
+      } catch (error) {
+        console.error(
+          'Failed to persist calls completion before closing',
+          error
+        );
+        if (mountedRef.current) {
+          setRejecting(false);
+          alert.error(t('send.sendError'));
+        }
+        return;
+      } finally {
+        submissionInFlightRef.current = false;
+      }
     }
+    await finishPopup(canReturnBundleId());
   };
 
   if (initialLoading) {
@@ -1275,7 +1361,7 @@ export const SendCalls = () => {
             <div
               key={index}
               className={`bg-bkg-3 rounded-lg p-4 border overflow-hidden ${
-                selectedCalls[index]
+                effectiveSelectedCalls[index]
                   ? 'border-brand-blue400'
                   : 'border-brand-gray300 opacity-50'
               }`}
@@ -1287,22 +1373,9 @@ export const SendCalls = () => {
                       type="checkbox"
                       id={`call-${index}`}
                       checked={effectiveSelectedCalls[index]}
-                      onChange={(e) => {
-                        if (callsData.atomicRequired) {
-                          return;
-                        }
-                        const newSelection = [...selectedCalls];
-                        newSelection[index] = e.target.checked;
-                        setSelectedCalls(newSelection);
-                      }}
+                      readOnly
                       className="w-4 h-4 text-brand-blue600 rounded"
-                      disabled={
-                        callsData.atomicRequired ||
-                        loading ||
-                        (transactionStatuses &&
-                          transactionStatuses[index]?.status === 'success') ||
-                        transactionStatuses?.[index]?.status === 'unknown'
-                      }
+                      disabled
                     />
                     <label
                       htmlFor={`call-${index}`}
@@ -1565,7 +1638,9 @@ export const SendCalls = () => {
             onClick={handleReject}
             disabled={loading || rejecting}
           >
-            {confirmed ? t('buttons.close') : t('buttons.reject')}
+            {confirmed || canReturnBundleId() || pendingCompletionRef.current
+              ? t('buttons.close')
+              : t('buttons.reject')}
           </Button>
           <Button
             variant="primary"
@@ -1575,6 +1650,7 @@ export const SendCalls = () => {
               loading ||
               rejecting ||
               confirmed ||
+              Boolean(pendingCompletionRef.current) ||
               !hasUnsuccessfulSelected ||
               !hasCurrentFeeQuote ||
               Boolean(feeQuoteError)
