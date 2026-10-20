@@ -422,7 +422,16 @@ test('faucet feedback and eligibility follow a network switch in another normal 
         expect(deniedClaims).toEqual([]);
         expect(deniedRollux).toEqual([]);
         expect(routes!.deniedWrites).toEqual([]);
-        expect(rolluxReads).toContain('eth_chainId');
+        // The configured static provider need not request eth_chainId. The
+        // selected chain/address and both exact claim targets are asserted
+        // above; require the actual read-only refresh traffic here.
+        expect(rolluxReads).toEqual(
+          expect.arrayContaining([
+            'eth_getBalance',
+            'eth_getTransactionCount',
+            'eth_blockNumber',
+          ])
+        );
         expect(extensionEvidence()).toEqual(runtime);
         expect(
           createHash('sha256').update(fs.readFileSync(__filename)).digest('hex')

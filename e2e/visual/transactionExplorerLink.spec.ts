@@ -117,11 +117,44 @@ test('public explorer transaction links preserve a saved query', async ({}, info
       await openEditor();
     });
     await step('save and reopen the public explorer URL', async () => {
+      // The durable edit ACK can precede the debounced frontend registry
+      // broadcast. Observe the exact public field before reopening a form
+      // which intentionally initializes its draft only once.
+      await page.evaluate((expectedExplorer) => {
+        const observation = window as typeof window & {
+          transactionExplorerSavedRegistry?: string;
+        };
+        const listener = (message: any) => {
+          const savedExplorer =
+            message.type === 'CONTROLLER_STATE_CHANGE'
+              ? message.data?.vaultGlobal?.networks?.syscoin?.[5700]?.explorer
+              : undefined;
+          if (savedExplorer !== expectedExplorer) return;
+          chrome.runtime.onMessage.removeListener(listener);
+          requestAnimationFrame(() => {
+            observation.transactionExplorerSavedRegistry = savedExplorer;
+          });
+        };
+        chrome.runtime.onMessage.addListener(listener);
+      }, explorer);
       await page.locator('#rpc_explorer').fill(explorer);
       await page
         .getByRole('button', { name: en.buttons.save, exact: true })
         .click();
       await expect(page).toHaveURL(/#\/settings\/networks\/edit$/);
+      await expect
+        .poll(() =>
+          page.evaluate(
+            () =>
+              (
+                window as typeof window & {
+                  transactionExplorerSavedRegistry?: string;
+                }
+              ).transactionExplorerSavedRegistry
+          )
+        )
+        .toBe(explorer);
+      observations.savedRegistryBroadcastExplorer = explorer;
       await openEditor();
       await expect(page.locator('#rpc_explorer')).toHaveValue(explorer);
       observations.savedExplorer = await page

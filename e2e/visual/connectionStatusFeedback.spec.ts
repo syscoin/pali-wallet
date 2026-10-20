@@ -19,6 +19,8 @@ import {
 const RPC = 'https://rpc.tanenbaum.io/';
 // The same existing provider-cache boundary used by nativeMaxBalance.
 const PROVIDER_READ_CACHE_MS = 250;
+// Actual ConnectionStatusIndicator slow-warning threshold; not an assertion timeout.
+const SLOW_FEEDBACK_DELAY_MS = 5_000;
 const publicState = (page: Page) =>
   page.evaluate(async () => {
     const state = await chrome.runtime.sendMessage({ type: 'getCurrentState' });
@@ -53,6 +55,10 @@ test('a new UI refresh retires prior success while its balance read is pending',
   let status: 'passed' | 'failed' = 'failed';
   let phase = 'baseline';
   let holdSecond = false;
+  let releaseFirst!: () => void;
+  const firstGate = new Promise<void>((resolve) => {
+    releaseFirst = resolve;
+  });
   let releaseSecond!: () => void;
   const secondGate = new Promise<void>((resolve) => {
     releaseSecond = resolve;
@@ -126,11 +132,11 @@ test('a new UI refresh retires prior success while its balance read is pending',
       }
       const row = {
         phase,
-        held: holdSecond,
+        held: phase === 'first' || holdSecond,
         receivedAt: Date.now(),
       } as (typeof reads)[number];
       reads.push(row);
-      if (row.held) await secondGate;
+      if (row.held) await (row.phase === 'first' ? firstGate : secondGate);
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -187,6 +193,17 @@ test('a new UI refresh retires prior success while its balance read is pending',
         const count = reads.length;
         await refresh.click();
         await expect.poll(() => reads.length).toBeGreaterThan(count);
+        // Loading-state publication is debounced. Keep the real first read
+        // pending until this document has observed it, rather than assuming
+        // a fast background true -> false cycle must render a green flash.
+        await expect
+          .poll(async () => (await publicState(page)).loadingBalances)
+          .toBe(true);
+        await indicator.hover();
+        await expect(tooltip).toHaveText(en.networkConnection.updatingBalances);
+        await expect(indicator).toHaveClass(/bg-brand-blue500/);
+        observations.firstPending = await publicState(page);
+        releaseFirst();
         await expect
           .poll(async () => (await publicState(page)).loadingBalances)
           .toBe(false);
@@ -225,7 +242,19 @@ test('a new UI refresh retires prior success while its balance read is pending',
         await indicator.hover();
         await expect(tooltip).toHaveText(en.networkConnection.updatingBalances);
         await expect(indicator).not.toHaveClass(/bg-green-500/);
+        await expect(indicator).toHaveClass(/bg-brand-blue500/);
         observations.secondPending = await publicState(page);
+        const pendingObservedAt = await page.evaluate(() => Date.now());
+        observations.secondPendingAt = pendingObservedAt;
+        // Observe the real held operation through its documented threshold
+        // before starting the unchanged locator assertion window.
+        await page.waitForFunction(
+          ({ since, delay }) => Date.now() - since >= delay,
+          { since: pendingObservedAt, delay: SLOW_FEEDBACK_DELAY_MS }
+        );
+        observations.slowAssertionStartedAt = await page.evaluate(() =>
+          Date.now()
+        );
         const slow = en.networkConnection.operationSlow.replace(
           '{{operation}}',
           en.networkConnection.operationInProgress.replace('...', '')
@@ -282,6 +311,7 @@ test('a new UI refresh retires prior success while its balance read is pending',
     ).toBe(testSourceSha256);
     status = 'passed';
   } finally {
+    releaseFirst();
     releaseSecond();
     try {
       await info.attach('connection-status-feedback-evidence', {
