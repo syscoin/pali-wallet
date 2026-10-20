@@ -13,9 +13,9 @@ const budget = {
   // Count every mandatory MV3 warm chunk below, including the optional feature.
   background: 4400000,
   contentScript: 16000,
-  // Shared ethers, crypto and QR code dependencies measured 8,633,932 bytes.
+  // Shared dependency/UI helpers measured 8,611,614 bytes with fee guards.
   // Retain the saving with a rounded ceiling and a small platform buffer.
-  package: 8635000,
+  package: 8612000,
 };
 const allFiles = (root) =>
   fs.readdirSync(root, { withFileTypes: true }).flatMap((entry) => {
