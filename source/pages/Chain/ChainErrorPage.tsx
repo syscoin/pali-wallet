@@ -1,37 +1,76 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
+import { useLocation } from 'react-router-dom';
 
 import { Button } from 'components/Button';
 import { ChainIcon } from 'components/ChainIcon';
 import { Icon } from 'components/Icon';
 import { useController } from 'hooks/useController';
+import { useRequestScope } from 'hooks/useRequestScope';
 import { useUtils } from 'hooks/useUtils';
 import store, { RootState } from 'state/store';
 import { switchNetworkError, resetNetworkStatus } from 'state/vaultGlobal';
-import { INetworkType } from 'types/network';
+import { INetwork, INetworkType } from 'types/network';
 import {
   createNavigationContext,
   navigateWithContext,
 } from 'utils/navigationState';
+import { networkRegistrationFingerprint } from 'utils/networkRegistration';
+
+const retryNetwork = (state: ReturnType<typeof store.getState>) => {
+  const network = state.vaultGlobal.networkTarget || state.vault.activeNetwork;
+  const kind = network.kind === INetworkType.Syscoin ? 'syscoin' : 'ethereum';
+  return state.vaultGlobal.networks[kind][network.chainId] || network;
+};
+
+const renderChain = (network: INetwork, single = false) => (
+  <div className="flex flex-col items-center gap-1">
+    <ChainIcon
+      chainId={Number(network.chainId)}
+      size={45}
+      className=""
+      networkKind={network.kind}
+      fallbackClassName="rounded-full flex items-center justify-center text-brand-blue200 bg-white text-sm"
+    />
+    <span
+      className={`text-xs text-gray-300 truncate ${
+        single ? 'max-w-[120px]' : 'max-w-[80px]'
+      }`}
+    >
+      {network.label}
+    </span>
+  </div>
+);
 
 export const ChainErrorPage = () => {
   const { controllerEmitter } = useController();
   const { navigate, alert } = useUtils();
   const { t } = useTranslation();
+  const location = useLocation();
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
   const networkTarget = useSelector(
     (state: RootState) => state.vaultGlobal.networkTarget
   );
+  const selectedRpc = useSelector(retryNetwork);
 
   // Use the target network if we're trying to switch, otherwise use active network
   const displayNetwork = networkTarget || activeNetwork;
+  // The registered target stays the same across this retry's own activation.
+  const retryIdentity = networkRegistrationFingerprint(selectedRpc);
+  const retryContext = JSON.stringify([location.key, retryIdentity]);
+  const beginRetry = useRequestScope(retryContext);
 
   const [isRetrying, setIsRetrying] = useState(false);
   const [retryStartTime, setRetryStartTime] = useState<number | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+
+  useEffect(() => {
+    setIsRetrying(false);
+    setRetryStartTime(null);
+  }, [retryContext]);
 
   // Always set error state when this page mounts
   useEffect(() => {
@@ -55,27 +94,20 @@ export const ChainErrorPage = () => {
   }, [isRetrying, retryStartTime]);
 
   const handleRetryToConnect = async () => {
+    if (isRetrying) return;
+    const ownsRequest = beginRetry();
+    const isCurrent = () =>
+      ownsRequest() &&
+      networkRegistrationFingerprint(retryNetwork(store.getState())) ===
+        retryIdentity;
     console.log('[ChainErrorPage] Retry clicked');
     setIsRetrying(true);
     setRetryStartTime(Date.now());
     setElapsedSeconds(0);
 
-    // Clear any previous error state to ensure a fresh retry
-    store.dispatch(resetNetworkStatus());
-
     try {
-      const networkToUse = displayNetwork;
-
-      // Get the RPC from global state in case it was edited
-      const globalNetworks = store.getState().vaultGlobal.networks;
-      const networkType =
-        networkToUse.kind === INetworkType.Syscoin ? 'syscoin' : 'ethereum';
-      const networkFromGlobal =
-        globalNetworks[networkType][networkToUse.chainId];
-
-      // Use the RPC from global state if it exists (could have been edited)
-      const selectedRpc = networkFromGlobal || networkToUse;
-
+      // Controller admission sets switching status; do not clear its target
+      // while the IPC request is still waiting to reach the background.
       console.log('[ChainErrorPage] Switching to network:', selectedRpc.label);
 
       // Call setActiveNetwork without arbitrary timeout
@@ -86,6 +118,7 @@ export const ChainErrorPage = () => {
         ['wallet', 'setActiveNetwork'],
         [selectedRpc, true]
       );
+      if (!isCurrent()) return;
 
       console.log(
         '[ChainErrorPage] Network switch completed successfully:',
@@ -111,6 +144,11 @@ export const ChainErrorPage = () => {
       setRetryStartTime(null);
       navigate('/home');
     } catch (error) {
+      if (
+        !isCurrent() ||
+        (error?.message || error) === 'Network change cancelled'
+      )
+        return;
       console.error('[ChainErrorPage] Retry failed:', error);
 
       // Set error status so user stays on error page
@@ -149,8 +187,10 @@ export const ChainErrorPage = () => {
       setRetryStartTime(null);
     } finally {
       // Always reset retry state, even if something unexpected happens
-      setIsRetrying(false);
-      setRetryStartTime(null);
+      if (isCurrent()) {
+        setIsRetrying(false);
+        setRetryStartTime(null);
+      }
     }
   };
 
@@ -168,69 +208,43 @@ export const ChainErrorPage = () => {
     const isSameChain =
       !networkTarget || activeNetwork.chainId === displayNetwork.chainId;
 
-    if (isSameChain) {
-      return (
-        <div className="flex text-center items-center justify-center w-full">
-          <div className="flex flex-col items-center gap-1">
-            <ChainIcon
-              chainId={Number(displayNetwork.chainId)}
-              size={45}
-              className=""
-              networkKind={displayNetwork.kind}
-              fallbackClassName="rounded-full flex items-center justify-center text-brand-blue200 bg-white text-sm"
-            />
-            <span className="text-xs text-gray-300 truncate max-w-[120px]">
-              {displayNetwork.label}
-            </span>
-          </div>
-        </div>
-      );
-    }
-
-    // Show current network on the left and target network on the right
-    const fromChain = (
-      <ChainIcon
-        chainId={Number(activeNetwork.chainId)}
-        size={45}
-        className=""
-        networkKind={activeNetwork.kind}
-        fallbackClassName="rounded-full flex items-center justify-center text-brand-blue200 bg-white text-sm"
-      />
-    );
-
-    const toChain = (
-      <ChainIcon
-        chainId={Number(displayNetwork.chainId)}
-        size={45}
-        className=""
-        networkKind={displayNetwork.kind}
-        fallbackClassName="rounded-full flex items-center justify-center text-brand-blue200 bg-white text-sm"
-      />
-    );
-
     return (
-      <div className="flex text-center gap-3 items-center justify-center w-full">
-        {/* Current network */}
-        <div className="flex flex-col items-center gap-1">
-          {fromChain}
-          <span className="text-xs text-gray-300 truncate max-w-[80px]">
-            {activeNetwork.label}
-          </span>
-        </div>
-
-        {/* Arrow */}
-        <Icon name="arrowright" size={20} isSvg className="mx-2" />
-
-        {/* Target network */}
-        <div className="flex flex-col items-center gap-1">
-          {toChain}
-          <span className="text-xs text-gray-300 truncate max-w-[80px]">
-            {displayNetwork.label}
-          </span>
-        </div>
+      <div
+        className={`flex text-center ${
+          isSameChain ? '' : 'gap-3 '
+        }items-center justify-center w-full`}
+      >
+        {renderChain(isSameChain ? displayNetwork : activeNetwork, isSameChain)}
+        {!isSameChain && (
+          <>
+            <Icon name="arrowright" size={20} isSvg className="mx-2" />
+            {renderChain(displayNetwork)}
+          </>
+        )}
       </div>
     );
   };
+
+  const elapsedCounter = (
+    <span className="ml-2 text-brand-gray400 text-xs">({elapsedSeconds}s)</span>
+  );
+  const renderAction = (
+    onClick: () => void,
+    label: string,
+    loading?: boolean
+  ) => (
+    <Button
+      variant="neutral"
+      className="text-sm text-brand-royalblue"
+      type="button"
+      onClick={onClick}
+      disabled={isRetrying}
+      loading={loading}
+      fullWidth
+    >
+      {t(label)}
+    </Button>
+  );
 
   return (
     <div className="flex flex-col items-center justify-start min-h-full px-4 py-6 overflow-y-auto">
@@ -272,17 +286,13 @@ export const ChainErrorPage = () => {
               {elapsedSeconds >= 3 && elapsedSeconds < 7 && (
                 <>
                   {t('networkConnection.stillConnecting')}
-                  <span className="ml-2 text-brand-gray400 text-xs">
-                    ({elapsedSeconds}s)
-                  </span>
+                  {elapsedCounter}
                 </>
               )}
               {elapsedSeconds >= 7 && (
                 <div className="text-yellow-400">
                   {t('networkConnection.slowConnection')}
-                  <span className="ml-2 text-brand-gray400 text-xs">
-                    ({elapsedSeconds}s)
-                  </span>
+                  {elapsedCounter}
                 </div>
               )}
             </div>
@@ -344,27 +354,15 @@ export const ChainErrorPage = () => {
           </div>
         </div>
         <div className="flex flex-col gap-2 mt-4 mb-4 w-full">
-          <Button
-            variant="neutral"
-            className="text-sm text-brand-royalblue"
-            type="button"
-            onClick={handleConnectToAnotherRpc}
-            disabled={isRetrying}
-            fullWidth
-          >
-            {t('chainError.goToAnotherNetwork')}
-          </Button>
-          <Button
-            variant="neutral"
-            className="text-sm text-brand-royalblue"
-            type="button"
-            onClick={handleRetryToConnect}
-            disabled={isRetrying}
-            loading={isRetrying}
-            fullWidth
-          >
-            {t('buttons.retryConnect')}
-          </Button>
+          {renderAction(
+            handleConnectToAnotherRpc,
+            'chainError.goToAnotherNetwork'
+          )}
+          {renderAction(
+            handleRetryToConnect,
+            'buttons.retryConnect',
+            isRetrying
+          )}
         </div>
       </div>
     </div>

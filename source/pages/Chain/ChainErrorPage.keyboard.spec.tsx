@@ -18,7 +18,10 @@ jest.mock('react-redux', () => ({
   useSelector: (select: any) =>
     select({
       vault: { activeNetwork: mockNetwork },
-      vaultGlobal: { networkTarget: null },
+      vaultGlobal: {
+        networkTarget: null,
+        networks: { syscoin: { 57: mockNetwork }, ethereum: {} },
+      },
     }),
 }));
 jest.mock('hooks/useController', () => ({
@@ -32,6 +35,9 @@ jest.mock('hooks/useUtils', () => ({
 }));
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
+}));
+jest.mock('react-router-dom', () => ({
+  useLocation: () => ({ key: 'chain-error' }),
 }));
 jest.mock('components/ChainIcon', () => ({ ChainIcon: () => null }));
 jest.mock('components/Icon', () => ({ Icon: () => null }));

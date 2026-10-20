@@ -16,10 +16,20 @@ import {
   UTXO_FIXTURE_SEED,
 } from '../harness/utxoFixture';
 
-for (const mode of ['complete', 'sparse'] as const) {
+for (const mode of [
+  'complete',
+  'sparse',
+  'long-integer',
+  'maximum-integer',
+  'mixed-logs',
+] as const) {
   test(`received-token details decode ${mode} explorer history after the RPC body arrives`, async ({}, info) => {
     test.setTimeout(120_000);
+    expect(info.config.workers).toBe(1);
     const runtime = extensionEvidence();
+    const testSourceSha256 = createHash('sha256')
+      .update(fs.readFileSync(__filename))
+      .digest('hex');
     expect(runtime.sourceRevision).toBe(process.env.PALI_TEST_DAPP_REVISION);
     expect(runtime.sourceRevision).toMatch(/^[a-f0-9]{40}$/);
     const previous = { ...E2E_CONFIG };
@@ -28,11 +38,24 @@ for (const mode of ['complete', 'sparse'] as const) {
     const recipient = fixture.evmAddresses[0];
     const sender = `0x${'44'.repeat(20)}`;
     const contract = `0x${'33'.repeat(20)}`;
-    const hash = `0x${(mode === 'complete' ? 'a1' : 'a2').repeat(32)}`;
+    const hashByte = {
+      complete: 'a1',
+      sparse: 'a2',
+      'long-integer': 'a3',
+      'maximum-integer': 'a4',
+      'mixed-logs': 'a5',
+    }[mode];
+    const hash = `0x${hashByte.repeat(32)}`;
     const blockHash = `0x${'42'.repeat(32)}`;
+    const amount =
+      mode === 'long-integer'
+        ? '123456789012345678901'
+        : mode === 'maximum-integer'
+        ? '115792089237316195423570985008687907853269984665640564039457584007913129639935'
+        : '7';
     const input = new Interface([
       'function transfer(address to,uint256 value)',
-    ]).encodeFunctionData('transfer', [recipient, 7]);
+    ]).encodeFunctionData('transfer', [recipient, amount]);
     const abi = AbiCoder.defaultAbiCoder();
     const metadata = new Map([
       [
@@ -41,8 +64,11 @@ for (const mode of ['complete', 'sparse'] as const) {
       ],
       [id('symbol()').slice(0, 10), abi.encode(['string'], ['TRANSFER'])],
       [id('decimals()').slice(0, 10), abi.encode(['uint8'], [0])],
-      [id('balanceOf(address)').slice(0, 10), abi.encode(['uint256'], [7])],
-      [id('totalSupply()').slice(0, 10), abi.encode(['uint256'], [7])],
+      [
+        id('balanceOf(address)').slice(0, 10),
+        abi.encode(['uint256'], [amount]),
+      ],
+      [id('totalSupply()').slice(0, 10), abi.encode(['uint256'], [amount])],
       [
         id('supportsInterface(bytes4)').slice(0, 10),
         abi.encode(['bool'], [false]),
@@ -53,8 +79,8 @@ for (const mode of ['complete', 'sparse'] as const) {
       from: sender,
       to: recipient,
       contractAddress: contract,
-      value: '7',
-      ...(mode === 'complete' ? { input } : {}),
+      value: amount,
+      ...(mode !== 'sparse' ? { input } : {}),
       nonce: '1',
       blockNumber: '42',
       blockHash,
@@ -101,6 +127,15 @@ for (const mode of ['complete', 'sparse'] as const) {
       type: '0x0',
       contractAddress: null,
     };
+    const validLog = {
+      address: contract,
+      topics: [
+        id('Transfer(address,address,uint256)'),
+        abi.encode(['address'], [sender]),
+        abi.encode(['address'], [recipient]),
+      ],
+      data: abi.encode(['uint256'], [amount]),
+    };
     let releaseBody!: () => void;
     const heldBody = new Promise<void>((resolve) => {
       releaseBody = resolve;
@@ -141,8 +176,23 @@ for (const mode of ['complete', 'sparse'] as const) {
               recipient.toLowerCase()
               ? [event]
               : action === 'gettxinfo'
-              ? null
+              ? mode === 'mixed-logs' && url.searchParams.get('txhash') === hash
+                ? {
+                    ...event,
+                    to: contract,
+                    value: '0',
+                    chainId: 5700,
+                    logs: [
+                      validLog,
+                      null,
+                      { ...validLog, address: `0x${'55'.repeat(20)}` },
+                    ],
+                  }
+                : null
               : [];
+          const hasResult = Array.isArray(result)
+            ? result.length > 0
+            : Boolean(result);
           explorerReads.push({
             action,
             txhash: url.searchParams.get('txhash'),
@@ -152,11 +202,8 @@ for (const mode of ['complete', 'sparse'] as const) {
             status: 200,
             contentType: 'application/json',
             body: JSON.stringify({
-              status: Array.isArray(result) && result.length ? '1' : '0',
-              message:
-                Array.isArray(result) && result.length
-                  ? 'OK'
-                  : 'No transactions found',
+              status: hasResult ? '1' : '0',
+              message: hasResult ? 'OK' : 'No transactions found',
               result,
             }),
           });
@@ -290,9 +337,19 @@ for (const mode of ['complete', 'sparse'] as const) {
         `${mode}: render full RPC transfer input and decoded parameters`,
         async () => {
           releaseBody();
-          await expect
-            .poll(() => rpcReads.includes('eth_getTransactionReceipt'))
-            .toBe(true);
+          if (mode === 'mixed-logs') {
+            await expect
+              .poll(() =>
+                explorerReads.some(
+                  (read: any) => read.action === 'gettxinfo' && read.result
+                )
+              )
+              .toBe(true);
+          } else {
+            await expect
+              .poll(() => rpcReads.includes('eth_getTransactionReceipt'))
+              .toBe(true);
+          }
           await expect(page.getByText('Input', { exact: true })).toBeAttached();
           await expect(
             page.getByText('Gas Used', { exact: true })
@@ -306,38 +363,82 @@ for (const mode of ['complete', 'sparse'] as const) {
           await expect(
             page.getByText('Transfer', { exact: true })
           ).toBeVisible();
+          if (mode === 'long-integer' || mode === 'maximum-integer') {
+            const decoded = page
+              .getByText(en.transactions.decodedData, { exact: true })
+              .locator('..');
+            const displayed = `${amount.slice(0, 10)}...${amount.slice(-4)}`;
+            const parameter = decoded.getByText(displayed, { exact: true });
+            await expect(parameter).toBeVisible();
+            await expect(
+              decoded.getByText(en.transactions.unlimited, { exact: true })
+            ).toHaveCount(0);
+            await parameter.hover();
+            await expect(page.getByRole('tooltip')).toHaveText(amount);
+          }
+          if (mode === 'mixed-logs') {
+            const heading = page.getByText(`${en.transactions.eventLogs} (2)`, {
+              exact: true,
+            });
+            await expect(heading).toBeVisible();
+            const records = heading.locator('..').locator(':scope > div > div');
+            await expect(records).toHaveCount(2);
+            await expect(records).toContainText([
+              `${en.send.address}: 0x3333...3333`,
+              `${en.send.address}: 0x5555...5555`,
+            ]);
+            await expect(
+              page.getByText(`${en.transactions.topics}: 3`, { exact: true })
+            ).toHaveCount(2);
+            await expect(page.getByText('Something went wrong')).toHaveCount(0);
+          }
         }
       );
       expect(routes.deniedWrites).toEqual([]);
       expect(attemptedWrites).toEqual([]);
-      status = 'passed';
+      expect(extensionEvidence()).toEqual(runtime);
+      expect(
+        createHash('sha256').update(fs.readFileSync(__filename)).digest('hex')
+      ).toBe(testSourceSha256);
+      status = info.errors.length === 0 ? 'passed' : 'failed';
     } finally {
       releaseBody();
-      fs.writeFileSync(
-        info.outputPath('transaction-decoding-evidence.json'),
-        JSON.stringify(
-          {
-            mode,
-            status,
-            runtime,
-            explorerReads,
-            rpcReads,
-            attemptedWrites,
-            testSourceSha256: createHash('sha256')
-              .update(fs.readFileSync(__filename))
-              .digest('hex'),
-            deniedWrites: routes?.deniedWrites,
-            proxyDeniedConnections: server.blocked.length,
-            syntheticHttpOnly: true,
-            controllerOrStateInjection: false,
-          },
-          null,
-          2
-        )
-      );
-      await wallet?.dispose(status);
-      await server.close();
-      Object.assign(E2E_CONFIG, previous);
+      try {
+        fs.writeFileSync(
+          info.outputPath('transaction-decoding-evidence.json'),
+          JSON.stringify(
+            {
+              mode,
+              amount,
+              status,
+              runtime,
+              explorerReads,
+              rpcReads,
+              attemptedWrites,
+              testSourceSha256,
+              deniedWrites: routes?.deniedWrites,
+              proxyDeniedConnections: server.blocked.length,
+              syntheticHttpOnly: true,
+              controllerOrStateInjection: false,
+            },
+            null,
+            2
+          )
+        );
+      } catch (error) {
+        status = 'failed';
+        throw error;
+      } finally {
+        try {
+          await wallet?.dispose(status);
+        } finally {
+          try {
+            await server.close();
+          } finally {
+            Object.assign(E2E_CONFIG, previous);
+          }
+        }
+      }
     }
   });
 }
