@@ -345,3 +345,114 @@ it('does not deliver an old completion into a changed account view', async () =>
   expect(screen.queryByText(removedNotice)).toBeNull();
   expect(screen.queryByText(/session changed/)).toBeNull();
 });
+
+it('preserves the exact key-summary DOM in the list and final removal review', async () => {
+  render(<SentryKeys />);
+  const heading = await screen.findByText('Selected key');
+  const list = heading.closest('section')!;
+  const details = Array.from(list.children).slice(0, 3);
+  expect(details.map((element) => element.tagName)).toEqual(['H3', 'P', 'P']);
+  expect(details.map((element) => element.className)).toEqual([
+    'break-words font-medium',
+    'mt-1 text-xs text-brand-gray200',
+    'mt-3 break-all font-mono text-xs',
+  ]);
+  expect(list.className).toBe(
+    'min-w-0 rounded-xl border border-brand-blue600 p-4'
+  );
+  const originalMarkup = details.map((element) => element.outerHTML);
+  fireEvent.click(
+    screen.getAllByRole('button', { name: 'Remove local key' })[0]
+  );
+  const review = screen.getByText('Selected key').closest('section')!;
+  expect(review.className).toBe(
+    'min-w-0 rounded-xl border border-warning-error p-4'
+  );
+  expect(
+    Array.from(review.children).map((element) => element.outerHTML)
+  ).toEqual(originalMarkup);
+  expect(review.children).toHaveLength(3);
+});
+
+it('preserves import-field attributes, focus, controlled values and backup invalidation', async () => {
+  render(<SentryKeys />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Import Sentry key' })
+  );
+  const label = screen.getByLabelText('Key label') as HTMLInputElement;
+  const secret = screen.getByLabelText(
+    'Sentry private key (hex)'
+  ) as HTMLInputElement;
+  const password = screen.getByLabelText('Wallet password') as HTMLInputElement;
+  for (const input of [label, secret, password]) {
+    expect(input.parentElement?.tagName).toBe('LABEL');
+    expect(input.parentElement?.className).toBe('text-sm');
+    expect(input.className).toBe(
+      'mt-2 w-full min-w-0 min-h-11 rounded-xl border border-fields-input-border bg-bkg-1 p-3 text-sm text-white focus:border-fields-input-borderfocus'
+    );
+    expect(input).not.toBeDisabled();
+  }
+  expect(label.maxLength).toBe(80);
+  expect(secret.type).toBe('password');
+  expect(secret.autocomplete).toBe('new-password');
+  expect(secret).toHaveAttribute('spellcheck', 'false');
+  expect(secret.maxLength).toBe(130);
+  expect(password.type).toBe('password');
+  expect(password.autocomplete).toBe('current-password');
+  label.focus();
+  fireEvent.change(label, { target: { value: 'New public label' } });
+  expect(screen.getByLabelText('Key label')).toBe(label);
+  expect(label).toHaveFocus();
+  fireEvent.change(secret, { target: { value: '12'.repeat(32) } });
+  fireEvent.click(screen.getByRole('checkbox'));
+  expect(screen.getByRole('checkbox')).toBeChecked();
+  fireEvent.change(label, { target: { value: 'Updated public label' } });
+  expect(screen.getByRole('checkbox')).not.toBeChecked();
+  expect(label.value).toBe('Updated public label');
+  expect(secret.value).toBe('12'.repeat(32));
+});
+
+it('preserves service inputs and disables the same removal password node during native IO', async () => {
+  render(<SentryKeys />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Trusted data service' })
+  );
+  const service = screen.getByLabelText(
+    'Trusted HTTPS service origin'
+  ) as HTMLInputElement;
+  const fee = screen.getByLabelText(
+    'Maximum transaction fee (satoshis)'
+  ) as HTMLInputElement;
+  expect(service.type).toBe('url');
+  expect(service.placeholder).toBe('https://sysnode.info');
+  expect(fee.getAttribute('inputmode')).toBe('numeric');
+  expect(fee.getAttribute('type')).toBeNull();
+  fireEvent.change(service, {
+    target: { value: 'https://service.synthetic.invalid' },
+  });
+  fireEvent.change(fee, { target: { value: '200000' } });
+  expect(screen.getByLabelText('Trusted HTTPS service origin')).toBe(service);
+  expect(service.value).toBe('https://service.synthetic.invalid');
+  expect(fee.value).toBe('200000');
+  fireEvent.click(screen.getByRole('button', { name: english.buttons.cancel }));
+  fireEvent.click(
+    screen.getAllByRole('button', { name: 'Remove local key' })[0]
+  );
+  const password = screen.getByLabelText('Wallet password');
+  fireEvent.change(password, { target: { value: 'synthetic' } });
+  let entered!: () => void;
+  const waiting = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  enteredWrite = entered;
+  failWrite = true;
+  fireEvent.click(screen.getByRole('button', { name: english.buttons.remove }));
+  await waiting;
+  expect(screen.getByLabelText('Wallet password')).toBe(password);
+  expect(password).toBeDisabled();
+  await act(async () => holdWrite!());
+  await screen.findByText('Synthetic native write failed');
+  expect(screen.getByLabelText('Wallet password')).toBe(password);
+  expect(password).not.toBeDisabled();
+  expect(password).toHaveValue('');
+});

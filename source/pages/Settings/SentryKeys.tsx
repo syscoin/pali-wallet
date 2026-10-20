@@ -132,6 +132,20 @@ const SentryKeys = () => {
     setNotice('');
     let importCommitted = false;
     let removedKeyId: string | undefined;
+    const isCurrentJob = () =>
+      active.current && owner.current === current && inFlight.current === job;
+    const completionNotice = () =>
+      mode === 'import'
+        ? importMode === 'batch'
+          ? t('sentry.batchImported', { count: batch.entries.length })
+          : t('sentry.operatorKeyImportedSecurely')
+        : mode === 'remove'
+        ? t(
+            'sentry.localOperatorKeyRemovedRegisteredCollateralRemainsProtected'
+          )
+        : mode === 'release'
+        ? t('sentry.collateralProtectionRemovedSpendingThisOutputWillStop')
+        : t('sentry.trustedServiceSettingsSaved');
     try {
       if (mode === 'import') {
         if (!backup)
@@ -161,11 +175,7 @@ const SentryKeys = () => {
           false
         );
         importCommitted = true;
-        if (
-          active.current &&
-          owner.current === current &&
-          inFlight.current === job
-        ) {
+        if (isCurrentJob()) {
           setBatchText('');
           setShowKeys(false);
         }
@@ -202,12 +212,7 @@ const SentryKeys = () => {
           false
         );
       }
-      if (
-        !active.current ||
-        owner.current !== current ||
-        inFlight.current !== job
-      )
-        return;
+      if (!isCurrentJob()) return;
       if (removedKeyId) {
         setSettings((previous) =>
           previous
@@ -225,44 +230,15 @@ const SentryKeys = () => {
         'wallet',
         'getSentrySettings',
       ])) as SentrySettings;
-      if (
-        !active.current ||
-        owner.current !== current ||
-        inFlight.current !== job
-      )
-        return;
+      if (!isCurrentJob()) return;
       setSettings(value);
       setMode('list');
-      setNotice(
-        mode === 'import'
-          ? importMode === 'batch'
-            ? t('sentry.batchImported', { count: batch.entries.length })
-            : t('sentry.operatorKeyImportedSecurely')
-          : mode === 'remove'
-          ? t(
-              'sentry.localOperatorKeyRemovedRegisteredCollateralRemainsProtected'
-            )
-          : mode === 'release'
-          ? t('sentry.collateralProtectionRemovedSpendingThisOutputWillStop')
-          : t('sentry.trustedServiceSettingsSaved')
-      );
+      setNotice(completionNotice());
     } catch (reason: any) {
-      if (
-        active.current &&
-        owner.current === current &&
-        inFlight.current === job
-      ) {
+      if (isCurrentJob()) {
         if (importCommitted || removedKeyId) {
           setMode('list');
-          setNotice(
-            removedKeyId
-              ? t(
-                  'sentry.localOperatorKeyRemovedRegisteredCollateralRemainsProtected'
-                )
-              : importMode === 'batch'
-              ? t('sentry.batchImported', { count: batch.entries.length })
-              : t('sentry.operatorKeyImportedSecurely')
-          );
+          setNotice(completionNotice());
           setError(t('sentry.unableToLoadSentrySettings'));
         } else {
           setError(
@@ -285,6 +261,38 @@ const SentryKeys = () => {
       }
     }
   };
+
+  const keyDetails = (key: SentrySettings['keys'][number]) => (
+    <>
+      <h3 className="break-words font-medium">{key.label}</h3>
+      <p className="mt-1 text-xs text-brand-gray200">
+        {key.scheme === 'bls-basic'
+          ? t('sentry.legacyBLS')
+          : key.scheme === 'secp256k1'
+          ? t('sentry.secp256k1')
+          : t('sentry.sLHDSASHAKE128s')}{' '}
+        · {t(`sentry.roles.${key.role}`)}
+      </p>
+      <p className="mt-3 break-all font-mono text-xs">{key.publicKey}</p>
+    </>
+  );
+  const inputField = (
+    labelText: string,
+    value: string,
+    update: (next: string) => void,
+    attributes?: React.InputHTMLAttributes<HTMLInputElement>
+  ) => (
+    <label className="text-sm">
+      {labelText}
+      <input
+        {...attributes}
+        className={fieldClass}
+        value={value}
+        disabled={busy}
+        onChange={(event) => update(event.target.value)}
+      />
+    </label>
+  );
 
   if (!supported)
     return (
@@ -380,18 +388,7 @@ const SentryKeys = () => {
               key={key.id}
               className="min-w-0 rounded-xl border border-brand-blue600 p-4"
             >
-              <h3 className="break-words font-medium">{key.label}</h3>
-              <p className="mt-1 text-xs text-brand-gray200">
-                {key.scheme === 'bls-basic'
-                  ? t('sentry.legacyBLS')
-                  : key.scheme === 'secp256k1'
-                  ? t('sentry.secp256k1')
-                  : t('sentry.sLHDSASHAKE128s')}{' '}
-                · {t(`sentry.roles.${key.role}`)}
-              </p>
-              <p className="mt-3 break-all font-mono text-xs">
-                {key.publicKey}
-              </p>
+              {keyDetails(key)}
               <button
                 type="button"
                 aria-label={t('sentry.copyPublicKeyFor', { label: key.label })}
@@ -541,19 +538,15 @@ const SentryKeys = () => {
           </label>
           {importMode === 'single' ? (
             <>
-              <label className="text-sm">
-                {t('sentry.keyLabel')}
-                <input
-                  className={fieldClass}
-                  value={label}
-                  maxLength={80}
-                  disabled={busy}
-                  onChange={(e) => {
-                    setLabel(e.target.value);
-                    setBackup(false);
-                  }}
-                />
-              </label>
+              {inputField(
+                t('sentry.keyLabel'),
+                label,
+                (value) => {
+                  setLabel(value);
+                  setBackup(false);
+                },
+                { maxLength: 80 }
+              )}
             </>
           ) : (
             <section className="min-w-0">
@@ -621,28 +614,25 @@ const SentryKeys = () => {
               )}
             </section>
           )}
-          {importMode === 'single' && (
-            <label className="text-sm">
-              {t(
+          {importMode === 'single' &&
+            inputField(
+              t(
                 scheme === 'secp256k1'
                   ? 'sentry.sentryPrivateKeyHexOrWif'
                   : 'sentry.sentryPrivateKeyHex'
-              )}
-              <input
-                className={fieldClass}
-                type="password"
-                autoComplete="new-password"
-                spellCheck={false}
-                value={secret}
-                maxLength={130}
-                disabled={busy}
-                onChange={(e) => {
-                  setSecret(e.target.value);
-                  setBackup(false);
-                }}
-              />
-            </label>
-          )}
+              ),
+              secret,
+              (value) => {
+                setSecret(value);
+                setBackup(false);
+              },
+              {
+                type: 'password',
+                autoComplete: 'new-password',
+                spellCheck: false,
+                maxLength: 130,
+              }
+            )}
           <label className="flex items-start gap-3 text-sm">
             <input
               type="checkbox"
@@ -667,27 +657,18 @@ const SentryKeys = () => {
           <p className="text-sm text-brand-gray200">
             {t('sentry.thisServiceReportsRegisteredNodeStateAndActivation')}
           </p>
-          <label className="text-sm">
-            {t('sentry.trustedHTTPSServiceOrigin')}
-            <input
-              className={fieldClass}
-              type="url"
-              value={serviceUrl}
-              disabled={busy}
-              placeholder="https://sysnode.info"
-              onChange={(e) => setServiceUrl(e.target.value)}
-            />
-          </label>
-          <label className="text-sm">
-            {t('sentry.maximumTransactionFeeSatoshis')}
-            <input
-              className={fieldClass}
-              inputMode="numeric"
-              value={feeLimit}
-              disabled={busy}
-              onChange={(e) => setFeeLimit(e.target.value)}
-            />
-          </label>
+          {inputField(
+            t('sentry.trustedHTTPSServiceOrigin'),
+            serviceUrl,
+            setServiceUrl,
+            { type: 'url', placeholder: 'https://sysnode.info' }
+          )}
+          {inputField(
+            t('sentry.maximumTransactionFeeSatoshis'),
+            feeLimit,
+            setFeeLimit,
+            { inputMode: 'numeric' }
+          )}
           <p className="text-xs text-brand-gray200">
             {t('sentry.onlyFixedReadonlySentryEndpointsAreUsedA')}
           </p>
@@ -700,20 +681,7 @@ const SentryKeys = () => {
           </p>
           {selectedRemovalKey && (
             <section className="min-w-0 rounded-xl border border-warning-error p-4">
-              <h3 className="break-words font-medium">
-                {selectedRemovalKey.label}
-              </h3>
-              <p className="mt-1 text-xs text-brand-gray200">
-                {selectedRemovalKey.scheme === 'bls-basic'
-                  ? t('sentry.legacyBLS')
-                  : selectedRemovalKey.scheme === 'secp256k1'
-                  ? t('sentry.secp256k1')
-                  : t('sentry.sLHDSASHAKE128s')}{' '}
-                · {t(`sentry.roles.${selectedRemovalKey.role}`)}
-              </p>
-              <p className="mt-3 break-all font-mono text-xs">
-                {selectedRemovalKey.publicKey}
-              </p>
+              {keyDetails(selectedRemovalKey)}
             </section>
           )}
         </>
@@ -739,19 +707,11 @@ const SentryKeys = () => {
           </label>
         </section>
       )}
-      {mode !== 'list' && (
-        <label className="text-sm">
-          {t('sentry.walletPassword')}
-          <input
-            className={fieldClass}
-            type="password"
-            autoComplete="current-password"
-            value={password}
-            disabled={busy}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-        </label>
-      )}
+      {mode !== 'list' &&
+        inputField(t('sentry.walletPassword'), password, setPassword, {
+          type: 'password',
+          autoComplete: 'current-password',
+        })}
       <PageActionFooter error={error || undefined}>
         {mode === 'list' && error && (
           <Button
