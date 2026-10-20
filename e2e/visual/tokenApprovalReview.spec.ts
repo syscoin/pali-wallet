@@ -477,6 +477,9 @@ test('approval metadata from a retired wallet context cannot supply allowance un
           selectors: calls.map((call: any) => call.params[0].data.slice(0, 10)),
           release,
         });
+        // A new approval can perform another metadata read after its quote.
+        // All fresh reads are healthy controls; only retired reads are held.
+        if (requestRound === 'fresh') release();
         await gate;
         const metadata = new Map([
           [id('name()').slice(0, 10), abi.encode(['string'], [requestRound])],
