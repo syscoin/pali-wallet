@@ -79,6 +79,9 @@ import { useConfirmSubmission } from './useConfirmSubmission';
 const SMART_ACCOUNT_MAX_SEND_BUFFER_WEI = parseUnits('0.000001', 'ether');
 const NATIVE_EVM_MAX_SEND_BUFFER_WEI = parseUnits('0.000001', 'ether');
 const NATIVE_EVM_MAX_SEND_INITIAL_GAS_RESERVE = BigNumber.from(500_000);
+const transactionReviewDivider = (
+  <div className="border-dashed border-alpha-whiteAlpha300 border my-3  w-full h-full" />
+);
 
 export const SendConfirm = () => {
   const { controllerEmitter, isUnlocked, isLoading, connectionUnavailable } =
@@ -785,6 +788,23 @@ export const SendConfirm = () => {
         ),
   });
 
+  const handleTokenSendError = (error: any, label: string) => {
+    const handled = handleTransactionError(
+      error,
+      alert,
+      t,
+      activeAccount,
+      activeNetwork,
+      basicTxValues
+    );
+    if (!handled) {
+      logError(label, 'Transaction', error);
+      alert.error(t('send.cantCompleteTxs'));
+    }
+    setLoading(false);
+    return handled;
+  };
+
   const performConfirm = async () => {
     if (isSmartAccountSend && !smartAccountQuoteReady) return;
     if (sptReviewError) {
@@ -1283,23 +1303,7 @@ export const SendConfirm = () => {
                 setConfirmed(true);
                 setLoading(false);
               } catch (error: any) {
-                const wasHandledSpecifically = handleTransactionError(
-                  error,
-                  alert,
-                  t,
-                  activeAccount,
-                  activeNetwork,
-                  basicTxValues
-                );
-
-                if (wasHandledSpecifically) {
-                  setLoading(false);
-                  return;
-                }
-
-                logError('error send ERC20', 'Transaction', error);
-                alert.error(t('send.cantCompleteTxs'));
-                setLoading(false);
+                if (handleTokenSendError(error, 'error send ERC20')) return;
               }
               break;
 
@@ -1336,25 +1340,7 @@ export const SendConfirm = () => {
                 setConfirmed(true);
                 setLoading(false);
               } catch (error: any) {
-                // Handle blind signing requirement
-                // Handle specific errors (blacklist, cancellation, device issues, etc.)
-                const wasHandledSpecifically = handleTransactionError(
-                  error,
-                  alert,
-                  t,
-                  activeAccount,
-                  activeNetwork,
-                  basicTxValues
-                );
-
-                if (wasHandledSpecifically) {
-                  setLoading(false);
-                  return;
-                }
-
-                logError('error send ERC721', 'Transaction', error);
-                alert.error(t('send.cantCompleteTxs'));
-                setLoading(false);
+                if (handleTokenSendError(error, 'error send ERC721')) return;
               }
               break;
 
@@ -1392,24 +1378,7 @@ export const SendConfirm = () => {
                 setConfirmed(true);
                 setLoading(false);
               } catch (error: any) {
-                // Handle specific errors (blacklist, cancellation, device issues, etc.)
-                const wasHandledSpecifically = handleTransactionError(
-                  error,
-                  alert,
-                  t,
-                  activeAccount,
-                  activeNetwork,
-                  basicTxValues
-                );
-
-                if (wasHandledSpecifically) {
-                  setLoading(false);
-                  return;
-                }
-
-                logError('error send ERC1155', 'Transaction', error);
-                alert.error(t('send.cantCompleteTxs'));
-                setLoading(false);
+                if (handleTokenSendError(error, 'error send ERC1155')) return;
               }
 
               break;
@@ -1454,8 +1423,13 @@ export const SendConfirm = () => {
   }, [isBitcoinBased, basicTxValues?.fee]);
 
   useEffect(() => {
-    if (!basicTxValues || isBitcoinBased || recipientWrongNetwork) return;
-    const eipModeUnknown = isEIP1559Compatible === undefined;
+    if (
+      !basicTxValues ||
+      isBitcoinBased ||
+      recipientWrongNetwork ||
+      isEIP1559Compatible === undefined
+    )
+      return;
 
     // Skip fee recalculation when using custom fees
     if (customFee.isCustom) {
@@ -1489,7 +1463,7 @@ export const SendConfirm = () => {
       return;
     }
 
-    if (!eipModeUnknown && isEIP1559Compatible === false) {
+    if (isEIP1559Compatible === false) {
       // Don't retry if we already have an error
       if (feeCalculationError || isCalculatingFees) {
         return;
@@ -1833,6 +1807,63 @@ export const SendConfirm = () => {
     };
   };
 
+  const renderContractIdentifier = (value: string, label: string) => (
+    <div className="flex items-center gap-2">
+      <span className="text-white text-sm font-mono">
+        <Tooltip content={value}>{label}</Tooltip>
+      </span>
+      <button
+        type="button"
+        onClick={() => copy(value)}
+        className="text-brand-gray200 hover:text-white transition-colors"
+      >
+        <Icon
+          name="Copy"
+          isSvg
+          className="w-4 h-4 text-brand-gray200 hover:text-white"
+        />
+      </button>
+    </div>
+  );
+
+  const renderTokenHeading = (name: string, standard: string) => (
+    <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center gap-2">
+        <h3 className="text-white font-medium text-base">{name}</h3>
+        <span
+          className={`text-xs px-2 py-1 rounded-full ${getTokenTypeBadgeColor(
+            standard
+          )}`}
+        >
+          {standard}
+        </span>
+      </div>
+    </div>
+  );
+
+  const renderAddress = (
+    label: string,
+    address: string,
+    display: React.ReactNode
+  ) => (
+    <div className="flex flex-col w-full text-xs text-brand-gray200 font-poppins font-normal">
+      {t(label)}
+      <span className="text-white text-xs">
+        <Tooltip content={address} childrenClassName="flex">
+          {display}
+          <IconButton onClick={() => copy(address ?? '')}>
+            <Icon
+              wrapperClassname="flex items-center justify-center"
+              name="Copy"
+              isSvg
+              className="px-1 text-brand-white hover:text-fields-input-borderfocus"
+            />
+          </IconButton>
+        </Tooltip>
+      </span>
+    </div>
+  );
+
   const renderFeeError = () => (
     <div className="flex items-center gap-2">
       <div className="flex items-center gap-1 px-2 py-1 bg-warning-error bg-opacity-10 rounded">
@@ -1879,46 +1910,22 @@ export const SendConfirm = () => {
               {/* NFT Token Information Card */}
               <div className="bg-bkg-2 rounded-2xl p-4 w-full border border-bkg-4 mb-4">
                 {/* Token Name and Type */}
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-white font-medium text-base">
-                      {basicTxValues.token.name ||
-                        basicTxValues.token.symbol ||
-                        'NFT'}
-                    </h3>
-                    <span
-                      className={`text-xs px-2 py-1 rounded-full ${getTokenTypeBadgeColor(
-                        basicTxValues.token.tokenStandard
-                      )}`}
-                    >
-                      {basicTxValues.token.tokenStandard}
-                    </span>
-                  </div>
-                </div>
+                {renderTokenHeading(
+                  basicTxValues.token.name ||
+                    basicTxValues.token.symbol ||
+                    'NFT',
+                  basicTxValues.token.tokenStandard
+                )}
 
                 {/* Contract Address */}
                 <div className="mb-3">
                   <p className="text-brand-gray200 text-xs mb-1">
                     {t('settings.contractAddress')}
                   </p>
-                  <div className="flex items-center gap-2">
-                    <span className="text-white text-sm font-mono">
-                      <Tooltip content={basicTxValues.token.contractAddress}>
-                        {ellipsis(basicTxValues.token.contractAddress, 8, 6)}
-                      </Tooltip>
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => copy(basicTxValues.token.contractAddress)}
-                      className="text-brand-gray200 hover:text-white transition-colors"
-                    >
-                      <Icon
-                        name="Copy"
-                        isSvg
-                        className="w-4 h-4 text-brand-gray200 hover:text-white"
-                      />
-                    </button>
-                  </div>
+                  {renderContractIdentifier(
+                    basicTxValues.token.contractAddress,
+                    ellipsis(basicTxValues.token.contractAddress, 8, 6)
+                  )}
                 </div>
 
                 {/* Token Details */}
@@ -1980,21 +1987,10 @@ export const SendConfirm = () => {
                 {basicTxValues.token && !basicTxValues.token.isNft && (
                   <>
                     {/* Token Name and Type */}
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-2">
-                        <h3 className="text-white font-medium text-base">
-                          {basicTxValues.token.name ||
-                            basicTxValues.token.symbol}
-                        </h3>
-                        <span
-                          className={`text-xs px-2 py-1 rounded-full ${getTokenTypeBadgeColor(
-                            isBitcoinBased ? 'SPT' : 'ERC-20'
-                          )}`}
-                        >
-                          {isBitcoinBased ? 'SPT' : 'ERC-20'}
-                        </span>
-                      </div>
-                    </div>
+                    {renderTokenHeading(
+                      basicTxValues.token.name || basicTxValues.token.symbol,
+                      isBitcoinBased ? 'SPT' : 'ERC-20'
+                    )}
 
                     {/* Contract Address or Asset GUID */}
                     <div className="bg-bkg-3 rounded-lg px-3 py-2">
@@ -2003,46 +1999,17 @@ export const SendConfirm = () => {
                           ? t('send.assetGuid')
                           : t('settings.contractAddress')}
                       </p>
-                      <div className="flex items-center gap-2">
-                        <span className="text-white text-sm font-mono">
-                          <Tooltip
-                            content={
-                              isBitcoinBased
-                                ? basicTxValues.token.guid ||
-                                  basicTxValues.token.assetGuid
-                                : basicTxValues.token.contractAddress
-                            }
-                          >
-                            {isBitcoinBased
-                              ? basicTxValues.token.guid ||
-                                basicTxValues.token.assetGuid ||
-                                'N/A'
-                              : ellipsis(
-                                  basicTxValues.token.contractAddress,
-                                  8,
-                                  6
-                                )}
-                          </Tooltip>
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            copy(
-                              isBitcoinBased
-                                ? basicTxValues.token.guid ||
-                                    basicTxValues.token.assetGuid
-                                : basicTxValues.token.contractAddress
-                            )
-                          }
-                          className="text-brand-gray200 hover:text-white transition-colors"
-                        >
-                          <Icon
-                            name="Copy"
-                            isSvg
-                            className="w-4 h-4 text-brand-gray200 hover:text-white"
-                          />
-                        </button>
-                      </div>
+                      {renderContractIdentifier(
+                        isBitcoinBased
+                          ? basicTxValues.token.guid ||
+                              basicTxValues.token.assetGuid
+                          : basicTxValues.token.contractAddress,
+                        isBitcoinBased
+                          ? basicTxValues.token.guid ||
+                              basicTxValues.token.assetGuid ||
+                              'N/A'
+                          : ellipsis(basicTxValues.token.contractAddress, 8, 6)
+                      )}
                     </div>
 
                     {/* Decimals */}
@@ -2074,42 +2041,17 @@ export const SendConfirm = () => {
           )}
 
           <div className="flex flex-col p-6 bg-brand-blue700 items-start justify-center w-full max-w-md mx-auto text-left text-sm rounded-xl">
-            <div className="flex flex-col w-full text-xs text-brand-gray200 font-poppins font-normal">
-              {t('send.from')}
-              <span className="text-white text-xs">
-                <Tooltip
-                  content={basicTxValues.sender}
-                  childrenClassName="flex"
-                >
-                  {ellipsis(basicTxValues.sender, 7, 15)}
-                  <IconButton onClick={() => copy(basicTxValues.sender ?? '')}>
-                    <Icon
-                      wrapperClassname="flex items-center justify-center"
-                      name="Copy"
-                      isSvg
-                      className="px-1 text-brand-white hover:text-fields-input-borderfocus"
-                    />
-                  </IconButton>
-                </Tooltip>
-              </span>
-            </div>
-            <div className="border-dashed border-alpha-whiteAlpha300 border my-3  w-full h-full" />
-            <div className="flex flex-col w-full text-xs text-brand-gray200 font-poppins font-normal">
-              {t('send.to')}
-              <span className="text-white text-xs">
-                <Tooltip content={tooltipToAddress} childrenClassName="flex">
-                  {ellipsis(labelToDisplay, 7, 15)}{' '}
-                  <IconButton onClick={() => copy(tooltipToAddress ?? '')}>
-                    <Icon
-                      wrapperClassname="flex items-center justify-center"
-                      name="Copy"
-                      isSvg
-                      className="px-1 text-brand-white hover:text-fields-input-borderfocus"
-                    />
-                  </IconButton>
-                </Tooltip>
-              </span>
-            </div>
+            {renderAddress(
+              'send.from',
+              basicTxValues.sender,
+              ellipsis(basicTxValues.sender, 7, 15)
+            )}
+            {transactionReviewDivider}
+            {renderAddress(
+              'send.to',
+              tooltipToAddress,
+              <>{ellipsis(labelToDisplay, 7, 15)} </>
+            )}
             {recipientWrongNetwork && (
               <p
                 role="alert"
@@ -2141,7 +2083,7 @@ export const SendConfirm = () => {
                 </div>
               </div>
             )}
-            <div className="border-dashed border-alpha-whiteAlpha300 border my-3  w-full h-full" />
+            {transactionReviewDivider}
             {/* Only show fee section if we have meaningful fee information */}
             {!(isBitcoinBased && basicTxValues.fee === 0) && (
               <div className="flex flex-row items-end w-full">
@@ -2168,11 +2110,6 @@ export const SendConfirm = () => {
                         feeAmount = basicTxValues.fee;
                       } else if (isBitcoinBased) {
                         feeAmount = basicTxValues.fee;
-                      } else if (
-                        !isBitcoinBased &&
-                        isEIP1559Compatible === false
-                      ) {
-                        feeAmount = getCalculatedFee;
                       } else {
                         feeAmount = getCalculatedFee;
                       }
@@ -2235,7 +2172,7 @@ export const SendConfirm = () => {
                 )}
               </div>
             )}
-            <div className="border-dashed border-alpha-whiteAlpha300 border my-3  w-full h-full" />
+            {transactionReviewDivider}
             <div className="flex flex-col w-full text-xs text-brand-gray200 font-poppins font-normal">
               {!basicTxValues.token?.isNft ? (
                 <>
@@ -2371,11 +2308,6 @@ export const SendConfirm = () => {
 
                       if (isBitcoinBased) {
                         feeAmount = basicTxValues.fee;
-                      } else if (
-                        !isBitcoinBased &&
-                        isEIP1559Compatible === false
-                      ) {
-                        feeAmount = getCalculatedFee;
                       } else {
                         feeAmount = getCalculatedFee;
                       }
@@ -2471,6 +2403,7 @@ export const SendConfirm = () => {
                 recipientWrongNetwork ||
                 Boolean(sptReviewError) ||
                 isCalculatingFees ||
+                (!isBitcoinBased && isEIP1559Compatible === undefined) ||
                 (isSmartAccountSend && !smartAccountQuoteReady) ||
                 (!isBitcoinBased && !!feeCalculationError)
               }

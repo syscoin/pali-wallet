@@ -1,5 +1,5 @@
 jest.mock('..', () => ({
-  getController: () => ({ dapp: { disconnect: jest.fn() } }),
+  getController: jest.fn(),
   notificationManager: { cleanup: jest.fn() },
 }));
 jest.mock('./providers/patchFetchWithPaliHeaders', () => ({
@@ -11,16 +11,22 @@ jest.mock('@sidhujag/sysweb3-keyring', () => ({
   PsbtUtils: {},
 }));
 
+import { getController } from '..';
 import store from 'state/store';
 import vaultReducer from 'state/vault';
+import vaultCache from 'state/vaultCache';
 import { INetworkType, KeyringAccountType } from 'types/network';
+import { chromeStorage } from 'utils/storageAPI';
 
+import DAppController from './DAppController';
 import MainController, { AccountRemovalContext } from './MainController';
 
 describe('account removal delivery context', () => {
   let state: any;
   let wallet: MainController;
   let expected: AccountRemovalContext;
+  let writes: jest.SpyInstance;
+  let captureSessions: jest.SpyInstance;
   const change = (kind: string) => {
     if (kind === 'slip') state.vaultGlobal.activeSlip44 = 0;
     if (kind === 'chain') state.vault.activeNetwork.chainId = 570;
@@ -90,7 +96,12 @@ describe('account removal delivery context', () => {
       return action;
     });
     wallet = Object.create(MainController.prototype);
-    (wallet as any).saveWalletState = jest.fn().mockResolvedValue(undefined);
+    (wallet as any).resetAutoLockTimer = jest.fn();
+    const dapp = DAppController(() => true);
+    captureSessions = jest.spyOn(dapp, 'captureAccountSessionRetirement');
+    jest.mocked(getController).mockReturnValue({ dapp } as any);
+    writes = jest.spyOn(chromeStorage, 'setItems').mockResolvedValue(undefined);
+    vaultCache.clearCache();
     expected = {
       activeAccount: {
         id: 0,
@@ -102,7 +113,10 @@ describe('account removal delivery context', () => {
       slip44: 57,
     };
   });
-  afterEach(() => jest.restoreAllMocks());
+  afterEach(() => {
+    vaultCache.clearCache();
+    jest.restoreAllMocks();
+  });
 
   it.each([
     'slip',
@@ -130,7 +144,8 @@ describe('account removal delivery context', () => {
       ).rejects.toThrow('Account context changed');
       expect(JSON.stringify(state)).toBe(before);
       expect(store.dispatch).not.toHaveBeenCalled();
-      expect((wallet as any).saveWalletState).not.toHaveBeenCalled();
+      expect(writes).not.toHaveBeenCalled();
+      expect(captureSessions).not.toHaveBeenCalled();
     }
   );
 
@@ -140,10 +155,15 @@ describe('account removal delivery context', () => {
     expect(state.vault.accountAssets.HDAccount[7]).toBeUndefined();
     expect(state.vault.accountTransactions.HDAccount[7]).toBeUndefined();
     expect(state.vault.accounts.HDAccount[0].address).toBe('anchor-address');
-    expect((wallet as any).saveWalletState).toHaveBeenCalledWith(
-      'remove-account',
-      true,
-      true
+    expect(writes).toHaveBeenCalledTimes(1);
+    const written = writes.mock.calls[0][0]['state-vault-57'];
+    expect(written.accounts.HDAccount[7]).toBeUndefined();
+    expect(written.accountAssets.HDAccount[7]).toBeUndefined();
+    expect(written.accountTransactions.HDAccount[7]).toBeUndefined();
+    expect(written.accounts.HDAccount[0].address).toBe('anchor-address');
+    expect(captureSessions).toHaveBeenCalledWith(
+      7,
+      KeyringAccountType.HDAccount
     );
   });
 

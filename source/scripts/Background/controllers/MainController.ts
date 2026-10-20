@@ -50,6 +50,7 @@ import store from 'state/store';
 import {
   loadAndActivateSlip44Vault,
   persistAccountLabel,
+  persistAccountRemoval,
   persistAdvancedSetting,
   persistCommittedWalletState,
   persistFiatCurrency,
@@ -61,7 +62,6 @@ import {
   createAccount,
   initializeCleanVaultForSlip44,
   forgetWallet,
-  removeAccount,
   setAccountBalanceForNetwork,
   setAccountPropertyByIdAndType,
   setActiveAccount,
@@ -4239,85 +4239,111 @@ class MainController {
     accountType: KeyringAccountType,
     expectedContext?: AccountRemovalContext
   ) {
-    const state = store.getState();
-    const { accounts, activeAccount, activeNetwork } = state.vault;
-
-    // A confirmation from another window/context must never remove an account
-    // that happens to reuse the same id/type in the newly active vault. Keep
-    // this check and the removal synchronous, before any notification or save.
-    if (
-      expectedContext !== undefined &&
-      (this.isResettingWallet ||
-        state.vaultGlobal.isSwitchingAccount ||
-        state.vaultGlobal.networkStatus === 'switching' ||
-        state.vaultGlobal.networkStatus === 'connecting' ||
-        expectedContext?.slip44 !== state.vaultGlobal.activeSlip44 ||
-        expectedContext?.network?.kind !== activeNetwork.kind ||
-        expectedContext?.network?.chainId !== activeNetwork.chainId ||
-        expectedContext?.network?.url !== activeNetwork.url ||
-        expectedContext?.activeAccount?.id !== activeAccount.id ||
-        expectedContext?.activeAccount?.type !== activeAccount.type ||
-        expectedContext?.activeAccount?.address !==
-          accounts[activeAccount.type]?.[activeAccount.id]?.address ||
-        !expectedContext?.address ||
-        expectedContext.address !== accounts[accountType]?.[accountId]?.address)
-    ) {
-      throw new Error('Account context changed. Please confirm removal again.');
-    }
-
-    // Safety check: Don't allow removing the active account
-    if (activeAccount.id === accountId && activeAccount.type === accountType) {
-      throw new Error(
-        'Cannot remove the currently active account. Please switch to another account first.'
-      );
-    }
-
-    // Safety check: Don't allow removing the last account
-    const allAccountsCount = Object.values(accounts).reduce(
-      (total, accountTypeAccounts) =>
-        total + Object.keys(accountTypeAccounts).length,
-      0
-    );
-
-    if (allAccountsCount <= 1) {
-      throw new Error('Cannot remove the last remaining account.');
-    }
-
-    // Safety check: For HD accounts, keep index 0 as the default account anchor
-    // used by repair and network-switch display paths.
-    if (accountType === KeyringAccountType.HDAccount) {
-      if (accountId === 0) {
-        throw new Error('Cannot remove the first HD account.');
-      }
-
-      const hdAccountsCount = Object.keys(accounts.HDAccount).length;
-      if (hdAccountsCount <= 1) {
+    const initial = store.getState();
+    const target = initial.vault.accounts[accountType]?.[accountId];
+    const walletGeneration = this.walletStateGeneration;
+    const sessionGeneration = this.walletSessionGeneration;
+    const sourceSlip44 = initial.vaultGlobal.activeSlip44;
+    const sourceNetwork = initial.vault.activeNetwork;
+    const sourceAccount = initial.vault.activeAccount;
+    const assertCurrent = () => {
+      const state = store.getState();
+      const { accounts, activeAccount, activeNetwork } = state.vault;
+      const currentTarget = accounts[accountType]?.[accountId];
+      const matchesSelection = (
+        slip44: number | null | undefined,
+        network: AccountRemovalContext['network'] | undefined,
+        account:
+          | Pick<AccountRemovalContext['activeAccount'], 'id' | 'type'>
+          | undefined
+      ) =>
+        slip44 === state.vaultGlobal.activeSlip44 &&
+        network?.kind === activeNetwork.kind &&
+        network?.chainId === activeNetwork.chainId &&
+        network?.url === activeNetwork.url &&
+        account?.id === activeAccount.id &&
+        account?.type === activeAccount.type;
+      if (
+        !target ||
+        walletGeneration !== this.walletStateGeneration ||
+        sessionGeneration !== this.walletSessionGeneration ||
+        !matchesSelection(sourceSlip44, sourceNetwork, sourceAccount) ||
+        target.address !== currentTarget?.address ||
+        target.xpub !== currentTarget?.xpub ||
+        // A confirmation from another window must not target a reused id/type.
+        // Recheck before staging and after storage, before publication/events.
+        (expectedContext !== undefined &&
+          (this.isResettingWallet ||
+            state.vaultGlobal.isSwitchingAccount ||
+            state.vaultGlobal.networkStatus === 'switching' ||
+            state.vaultGlobal.networkStatus === 'connecting' ||
+            !matchesSelection(
+              expectedContext?.slip44,
+              expectedContext?.network,
+              expectedContext?.activeAccount
+            ) ||
+            expectedContext?.activeAccount?.address !==
+              accounts[activeAccount.type]?.[activeAccount.id]?.address ||
+            !expectedContext?.address ||
+            expectedContext.address !== currentTarget?.address))
+      ) {
         throw new Error(
-          'Cannot remove the only HD account. At least one HD account must remain.'
+          'Account context changed. Please confirm removal again.'
         );
       }
-    }
 
-    // Remove from store
-    store.dispatch(removeAccount({ id: accountId, type: accountType }));
-
-    // Notify connected DApps if needed
-    const controller = getController();
-    const { dapps } = store.getState().dapp;
-
-    // Check if any dApps were connected to this account and disconnect them
-    Object.keys(dapps).forEach((dappHost) => {
-      const dapp = dapps[dappHost];
+      // Safety check: Don't allow removing the active account
       if (
-        dapp &&
-        dapp.accountId === accountId &&
-        dapp.accountType === accountType
+        activeAccount.id === accountId &&
+        activeAccount.type === accountType
       ) {
-        controller.dapp.disconnect(dappHost);
+        throw new Error(
+          'Cannot remove the currently active account. Please switch to another account first.'
+        );
       }
-    });
-    // Save wallet state after removing account
-    await this.saveWalletState('remove-account', true, true);
+
+      // Safety check: Don't allow removing the last account
+      const allAccountsCount = Object.values(accounts).reduce(
+        (total, accountTypeAccounts) =>
+          total + Object.keys(accountTypeAccounts).length,
+        0
+      );
+
+      if (allAccountsCount <= 1) {
+        throw new Error('Cannot remove the last remaining account.');
+      }
+
+      // Safety check: For HD accounts, keep index 0 as the default account anchor
+      // used by repair and network-switch display paths.
+      if (accountType === KeyringAccountType.HDAccount) {
+        if (accountId === 0) {
+          throw new Error('Cannot remove the first HD account.');
+        }
+
+        const hdAccountsCount = Object.keys(accounts.HDAccount).length;
+        if (hdAccountsCount <= 1) {
+          throw new Error(
+            'Cannot remove the only HD account. At least one HD account must remain.'
+          );
+        }
+      }
+    };
+    assertCurrent();
+    const retirement = getController().dapp.captureAccountSessionRetirement(
+      accountId,
+      accountType
+    );
+    this.resetAutoLockTimer();
+    await persistAccountRemoval(
+      {
+        accountId,
+        accountType,
+        grants: retirement.grants,
+        isSameWallet: () => walletGeneration === this.walletStateGeneration,
+        retireSessions: retirement.retire,
+      },
+      assertCurrent
+    );
   }
 
   public async removeKeyringNetwork(

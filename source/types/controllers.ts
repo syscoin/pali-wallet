@@ -19,6 +19,11 @@ export interface IDAppAccountSelectionContext {
 }
 
 export interface IDAppController {
+  /** Internal retirement of the sessions captured for one removed account. */
+  captureAccountSessionRetirement: (
+    accountId: number,
+    accountType: KeyringAccountType
+  ) => { grants: IDApp[]; retire: () => void };
   /**
    * Changes the account
    * @emits accountsChanged

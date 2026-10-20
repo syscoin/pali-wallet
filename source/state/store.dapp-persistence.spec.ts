@@ -184,6 +184,26 @@ describe('staged permission grant persistence', () => {
     expect(store.getState().dapp.dapps[host]).toBeUndefined();
   });
 
+  it('pins retired absence at admission even if the exact old grant returns during writing', async () => {
+    const previous = grant(0);
+    const finish = holdWrite();
+    const request = persistDappPermissionGrant(
+      grant(),
+      previous,
+      () => true,
+      () => grant(2),
+      () => true
+    );
+    const rejected = expect(request).rejects.toThrow('context changed');
+    await new Promise(setImmediate);
+    store.dispatch(addDApp(previous));
+    finish();
+    await rejected;
+    expect(store.getState().dapp.dapps[host]).toBe(previous);
+    expect(disk.dapp.dapps[host]).toEqual(previous);
+    expect(storageSetMock).toHaveBeenCalledTimes(2);
+  });
+
   it('does not publish or repair after recovery blocks persistence during a write', async () => {
     const finish = holdWrite();
     const request = persistDappPermissionGrant(grant(), undefined, () => true);

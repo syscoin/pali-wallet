@@ -65,7 +65,14 @@ const DAppController = (
   const _dapps: IDappsSession = {};
   const pendingGrants = new Map<
     string,
-    { previous?: IDApp; restoredPrevious?: IDApp }
+    {
+      accountId: number;
+      accountType: KeyringAccountType;
+      isCurrent?: () => boolean;
+      previous?: IDApp;
+      restoredPrevious?: IDApp;
+      retiredPrevious?: IDApp;
+    }
   >();
   // Only origins whose real permission removal is pending may occupy this
   // bounded retry state. Unconnected pages cannot populate it or force writes.
@@ -224,9 +231,10 @@ const DAppController = (
     const address = account.address;
     const xpub = account.xpub;
     const selectedNetwork = { ...network };
-    const attempt = {
+    const attempt: NonNullable<ReturnType<typeof pendingGrants.get>> = {
+      accountId,
+      accountType,
       previous: existingDapp,
-      restoredPrevious: undefined as IDApp | undefined,
     };
     pendingGrants.set(host, attempt);
     const isCurrent = () => {
@@ -249,11 +257,16 @@ const DAppController = (
       );
     };
 
+    attempt.isCurrent = isCurrent;
     return persistDappPermissionGrant(
       grant,
       existingDapp,
       isCurrent,
-      () => attempt.restoredPrevious
+      () => attempt.restoredPrevious,
+      () =>
+        existingDapp !== undefined &&
+        pendingGrants.get(host) === attempt &&
+        attempt.retiredPrevious === existingDapp
     )
       .finally(clearProviderCache)
       .then(() => {
@@ -394,6 +407,45 @@ const DAppController = (
   const notifyDisconnected = (host: string) => {
     notificationManager.notifyDappConnection(host, false);
     dispatchDisconnectedAccounts(host);
+  };
+
+  const captureAccountSessionRetirement = (
+    accountId: number,
+    accountType: KeyringAccountType
+  ) => {
+    const generation = getWalletStateGeneration();
+    let retired = false;
+    const captured = Object.values(getAll()).filter(
+      (grant) =>
+        grant.accountId === accountId && grant.accountType === accountType
+    );
+    return {
+      grants: captured,
+      retire: () => {
+        if (retired || generation !== getWalletStateGeneration()) return;
+        retired = true;
+        for (const grant of captured) {
+          const host = grant.host;
+          if (getAll()[host]) continue;
+          const attempt = pendingGrants.get(host);
+          if (
+            attempt?.previous === grant &&
+            (attempt.accountId !== accountId ||
+              attempt.accountType !== accountType) &&
+            attempt.isCurrent?.()
+          ) {
+            // Only this pending attempt may replace the exact grant removed
+            // by the durable account commit. A later grant gets no token.
+            attempt.retiredPrevious = grant;
+          }
+          // The writer removed this exact grant and retires synchronously.
+          // setup() may have refreshed its session during the storage await;
+          // any newly approved grant above still protects its own session.
+          delete _dapps[host];
+          notifyDisconnected(host);
+        }
+      },
+    };
   };
 
   const disconnectDurably = (
@@ -852,6 +904,7 @@ const DAppController = (
   };
 
   return {
+    captureAccountSessionRetirement,
     get,
     getAll,
     getAccount,
