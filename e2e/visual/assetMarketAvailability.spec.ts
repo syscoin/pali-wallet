@@ -30,6 +30,13 @@ async function marketAvailability(
   malformedIdentity: boolean,
   info: TestInfo
 ) {
+  const variant = malformedCategories
+    ? 'malformed-categories'
+    : malformedDescription
+    ? 'malformed-descriptions'
+    : malformedIdentity
+    ? 'malformed-identity'
+    : 'null-optionals';
   test.setTimeout(120_000);
   expect(process.env.PALI_TEST_DAPP_REVISION).toMatch(/^[a-f0-9]{40}$/);
   expect(path.isAbsolute(E2E_CONFIG.extensionPath)).toBe(true);
@@ -55,7 +62,7 @@ async function marketAvailability(
     rpcUrl: server.url,
   });
   try {
-    wallet = await PaliWallet.launch('asset-market-availability', {
+    wallet = await PaliWallet.launch(`asset-market-availability-${variant}`, {
       offlineHttpProxy: server.url,
       viewport: { width: 400, height: 620 },
     });
@@ -247,7 +254,7 @@ async function marketAvailability(
     const page = wallet.page;
     page.on('pageerror', (error) => pageErrors.push(error.message));
     const step = (name: string, run: () => Promise<void>) =>
-      wallet!.step(name, async (capture) => {
+      wallet!.step(`${variant}: ${name}`, async (capture) => {
         try {
           await run();
         } finally {
@@ -339,6 +346,24 @@ async function marketAvailability(
           })
         ).toHaveCount(malformedDescription ? 0 : 1);
         await expect(page.locator('p b')).toHaveCount(0);
+        // Assertions above exercise the live data; capture after the existing
+        // route transition finishes so evidence is not its near-transparent frame.
+        await expect
+          .poll(() =>
+            page
+              .getByText('$55.000000', { exact: true })
+              .evaluate((element) => {
+                let opacity = 1;
+                for (
+                  let node = element as HTMLElement | null;
+                  node;
+                  node = node.parentElement
+                )
+                  opacity *= Number(getComputedStyle(node).opacity);
+                return opacity;
+              })
+          )
+          .toBe(1);
         await info.attach('complete-market-details', {
           body: await page.screenshot(),
           contentType: 'image/png',
