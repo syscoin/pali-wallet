@@ -8,7 +8,11 @@ import isEqual from 'lodash/isEqual';
 // Assuming redux-thunk v3+, which exports 'thunk' and ThunkMiddleware type
 import { thunk, ThunkMiddleware } from 'redux-thunk';
 
-import { INetwork, KeyringAccountType } from 'types/network';
+import {
+  IKeyringAccountState,
+  INetwork,
+  KeyringAccountType,
+} from 'types/network';
 import { ISpamFilterState } from 'types/security';
 import { walletPersistenceMutex } from 'utils/asyncMutex';
 import { chromeStorage } from 'utils/storageAPI';
@@ -32,7 +36,9 @@ import vault, {
   rehydrate as vaultRehydrate,
   initializeCleanVaultForSlip44,
   restoreVaultSnapshot,
+  createAccount,
   removeAccount,
+  setActiveAccount,
   setAccountLabel,
 } from './vault';
 import { IVaultState, IGlobalState } from './vault/types';
@@ -335,11 +341,17 @@ type AccountRemovalCommit = {
   retireSessions: () => void;
 };
 
-// Labels and removals share the same unpublished vault staging boundary.
+// Account edits share the same unpublished vault staging boundary.
 function persistAccountMutation(
-  action: ReturnType<typeof setAccountLabel> | ReturnType<typeof removeAccount>,
+  actions: (
+    | ReturnType<typeof setAccountLabel>
+    | ReturnType<typeof removeAccount>
+    | ReturnType<typeof createAccount>
+    | ReturnType<typeof setActiveAccount>
+  )[],
   assertCurrent: () => void,
-  removal?: AccountRemovalCommit
+  removal?: AccountRemovalCommit,
+  isSameWallet = removal?.isSameWallet
 ): Promise<void> {
   return walletPersistenceMutex.runExclusive(async () => {
     const assertCommitCurrent = () => {
@@ -372,7 +384,7 @@ function persistAccountMutation(
     );
     const stagedVault = vaultCache.prepareSlip44Vault(
       sourceSlip44,
-      vault(state.vault, action),
+      actions.reduce((current, action) => vault(current, action), state.vault),
       false
     );
     const mainState = removal
@@ -392,7 +404,7 @@ function persistAccountMutation(
       assertCommitCurrent();
     } catch (error) {
       assertWalletPersistenceAllowed();
-      if (removal && !removal.isSameWallet()) throw error;
+      if (isSameWallet && !isSameWallet()) throw error;
       const current = store.getState();
       let repairVault =
         current.vaultGlobal.activeSlip44 === sourceSlip44 &&
@@ -400,7 +412,7 @@ function persistAccountMutation(
           ? vaultCache.prepareSlip44Vault(sourceSlip44, current.vault, false)
           : sourceVault;
       if (
-        removal &&
+        isSameWallet &&
         current.vaultGlobal.activeSlip44 !== sourceSlip44 &&
         vaultCache.isVaultCached(sourceSlip44)
       ) {
@@ -408,7 +420,7 @@ function persistAccountMutation(
           (await vaultCache.getSlip44Vault(sourceSlip44)) || sourceVault;
       }
       assertWalletPersistenceAllowed();
-      if (removal && !removal.isSameWallet()) throw error;
+      if (isSameWallet && !isSameWallet()) throw error;
       const repairMainState = getMainStateForStorage(store.getState());
       // Repair the source slot, never the newly active vault. Do not repopulate
       // a cache that lock/reset may have cleared while storage was pending.
@@ -420,7 +432,7 @@ function persistAccountMutation(
       lastPersistedState = repairMainState;
       throw error;
     }
-    store.dispatch(action);
+    actions.forEach((action) => store.dispatch(action));
     removal?.grants.forEach((grant) => store.dispatch(removeDApp(grant.host)));
     vaultCache.prepareSlip44Vault(sourceSlip44, store.getState().vault);
     removal?.retireSessions();
@@ -435,7 +447,7 @@ export function persistAccountLabel(
   assertCurrent: () => void
 ): Promise<void> {
   return persistAccountMutation(
-    setAccountLabel({ accountId, accountType, label }),
+    [setAccountLabel({ accountId, accountType, label })],
     assertCurrent
   );
 }
@@ -446,9 +458,27 @@ export function persistAccountRemoval(
   assertCurrent: () => void
 ): Promise<void> {
   return persistAccountMutation(
-    removeAccount({ id: removal.accountId, type: removal.accountType }),
+    [removeAccount({ id: removal.accountId, type: removal.accountType })],
     assertCurrent,
     removal
+  );
+}
+
+/** Publish a created account and its selection only after the vault commits. */
+export function persistAccountCreation(
+  account: IKeyringAccountState,
+  accountType: KeyringAccountType.HDAccount | KeyringAccountType.Imported,
+  assertCurrent: () => void,
+  isSameWallet: () => boolean
+): Promise<void> {
+  return persistAccountMutation(
+    [
+      createAccount({ account, accountType }),
+      setActiveAccount({ id: account.id, type: accountType }),
+    ],
+    assertCurrent,
+    undefined,
+    isSameWallet
   );
 }
 

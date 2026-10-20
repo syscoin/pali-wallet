@@ -1,3 +1,4 @@
+/** @jest-environment jsdom */
 import { expect as playwrightExpect } from '@playwright/test';
 
 import { PaliWallet } from '../../e2e/harness/pali';
@@ -12,6 +13,36 @@ describe('Pali harness exact Home route', () => {
     let controlsVisible = initiallyLocked;
     let submitEnabled = true;
     let observe: (attempt: number) => void = () => undefined;
+    let afterSnapshot: () => void = () => undefined;
+    document.body.innerHTML = `
+      <div id="login"><input id="password"><button id="unlock-btn">Unlock</button></div>
+    `;
+    const loginElement = document.querySelector<HTMLElement>('#login')!;
+    const passwordElement =
+      document.querySelector<HTMLInputElement>('#password')!;
+    const unlockElement =
+      document.querySelector<HTMLButtonElement>('#unlock-btn')!;
+    const syncDocument = () => {
+      window.location.hash = new URL(url).hash;
+      loginElement.style.visibility = controlsVisible ? 'visible' : 'hidden';
+      passwordElement.style.visibility = controlsVisible ? 'visible' : 'hidden';
+      unlockElement.style.visibility = controlsVisible ? 'visible' : 'hidden';
+      unlockElement.disabled = !submitEnabled;
+    };
+    for (const element of [loginElement, passwordElement, unlockElement]) {
+      jest.spyOn(element, 'getBoundingClientRect').mockImplementation(() => ({
+        x: 0,
+        y: 0,
+        top: 0,
+        left: 0,
+        right: 100,
+        bottom: 40,
+        width: controlsVisible ? 100 : 0,
+        height: controlsVisible ? 40 : 0,
+        toJSON: () => ({}),
+      }));
+    }
+    syncDocument();
     const isHome = () => new URL(url).hash.split('?')[0] === '#/home';
     const balance = {
       first: jest.fn(),
@@ -24,7 +55,11 @@ describe('Pali harness exact Home route', () => {
     balance.first.mockReturnValue(balance);
     const unlock = {
       isVisible: jest.fn(async () => controlsVisible),
-      isEnabled: jest.fn(async () => submitEnabled),
+      isEnabled: jest.fn(async () => {
+        if (!controlsVisible)
+          throw Error('Missing unlock locator would wait for its timeout');
+        return submitEnabled;
+      }),
     };
     const password = { isVisible: jest.fn(async () => controlsVisible) };
     const login = {
@@ -39,6 +74,12 @@ describe('Pali harness exact Home route', () => {
       url: jest.fn(() => url),
       goto: jest.fn(async (next: string) => {
         url = next;
+        syncDocument();
+      }),
+      evaluate: jest.fn(async (read: () => boolean) => {
+        const result = read();
+        afterSnapshot();
+        return result;
       }),
       locator: jest.fn((selector: string) => {
         if (selector === '#home-balance, #home-balance-pending') return balance;
@@ -57,6 +98,7 @@ describe('Pali harness exact Home route', () => {
         controlsVisible = false;
         balanceVisible = true;
         url = origin + '#/home';
+        syncDocument();
       }),
       dismissBlockingModals: jest.fn().mockResolvedValue(undefined),
     }) as PaliWallet;
@@ -75,20 +117,27 @@ describe('Pali harness exact Home route', () => {
       wallet,
       page,
       balance,
+      unlock,
       setUrl: (next: string) => {
         url = next;
+        syncDocument();
       },
       setBalanceVisible: (next: boolean) => {
         balanceVisible = next;
       },
       setControlsVisible: (next: boolean) => {
         controlsVisible = next;
+        syncDocument();
       },
       setSubmitEnabled: (next: boolean) => {
         submitEnabled = next;
+        syncDocument();
       },
       onPoll: (callback: (attempt: number) => void) => {
         observe = callback;
+      },
+      afterSnapshot: (callback: () => void) => {
+        afterSnapshot = callback;
       },
     };
   };
@@ -205,4 +254,58 @@ describe('Pali harness exact Home route', () => {
     );
     expect(wallet.unlock).not.toHaveBeenCalled();
   });
+
+  it('never waits on a removed unlock locator when Login transitions to Home between reads', async () => {
+    const fixture = setup(origin + '#/home', true);
+    const finishNavigation = () => {
+      fixture.setUrl(origin + '#/home');
+      fixture.setControlsVisible(false);
+      fixture.setBalanceVisible(true);
+    };
+    fixture.onPoll((attempt) => {
+      if (attempt === 0) fixture.setUrl(origin + '#/');
+    });
+    // Reproduce the old multi-call boundary: Login was visible, then its
+    // document transitioned before the separate waiting enabled query.
+    fixture.unlock.isVisible.mockImplementation(async () => {
+      finishNavigation();
+      return true;
+    });
+    // The new atomic snapshot can finish just before the same transition;
+    // its existing pre-submit recheck must then decline the stale unlock.
+    fixture.afterSnapshot(finishNavigation);
+    await fixture.wallet.ensureOnHome();
+    expect(fixture.unlock.isEnabled).not.toHaveBeenCalled();
+    expect(fixture.wallet.unlock).not.toHaveBeenCalled();
+    expect(fixture.page.evaluate).toHaveBeenCalledTimes(2);
+    expect(fixture.balance.waitFor).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['hidden', 'collapsed', 'zero-size', 'aria-disabled'])(
+    'does not authenticate a %s login control',
+    async (kind) => {
+      const fixture = setup(origin + '#/home', true);
+      const button = document.querySelector<HTMLButtonElement>('#unlock-btn')!;
+      if (kind === 'hidden') button.style.visibility = 'hidden';
+      if (kind === 'collapsed') button.style.visibility = 'collapse';
+      if (kind === 'zero-size')
+        jest.spyOn(button, 'getBoundingClientRect').mockReturnValue({
+          width: 0,
+          height: 0,
+        } as DOMRect);
+      if (kind === 'aria-disabled')
+        button.setAttribute('aria-disabled', 'true');
+      // Keep the deliberately unusable DOM state when changing route.
+      fixture.onPoll(() => {
+        fixture.setUrl(origin + '#/');
+        if (kind === 'hidden') button.style.visibility = 'hidden';
+        if (kind === 'collapsed') button.style.visibility = 'collapse';
+      });
+      await expect(fixture.wallet.ensureOnHome()).rejects.toThrow(
+        'Home did not become ready'
+      );
+      expect(fixture.wallet.unlock).not.toHaveBeenCalled();
+      expect(fixture.unlock.isEnabled).not.toHaveBeenCalled();
+    }
+  );
 });

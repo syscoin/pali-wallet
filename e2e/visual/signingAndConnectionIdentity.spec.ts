@@ -3,6 +3,7 @@ import { getBytes, verifyMessage } from 'ethers';
 
 import en from '../../source/assets/locales/en.json';
 import { E2E_CONFIG } from '../harness/config';
+import { dismissRejectedApproval } from '../harness/dismissRejectedApproval';
 import {
   createIsolatedVaultFixture,
   installIsolatedVaultRoutes,
@@ -124,10 +125,15 @@ for (const method of ['eth_signTypedData_v3', 'eth_signTypedData_v4']) {
         popup.getByText('Structured Data', { exact: true })
       ).toBeVisible();
       await capture(popup, info, `${method}-valid-data`);
-      await popup
-        .getByRole('button', { name: en.buttons.cancel, exact: true })
-        .click();
-      expect((await settle(dapp, id)).error?.code).toBe(4001);
+      const canceled = await dismissRejectedApproval({
+        click: () =>
+          popup
+            .getByRole('button', { name: en.buttons.cancel, exact: true })
+            .click(),
+        isClosed: () => popup.isClosed(),
+        settle: () => settle(dapp, id),
+      });
+      expect(canceled.error?.code).toBe(4001);
       expect(errors).toEqual([]);
     });
   });

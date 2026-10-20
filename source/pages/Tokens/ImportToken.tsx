@@ -81,6 +81,9 @@ export const ImportToken: React.FC = () => {
   const [customContractAddress, setCustomContractAddress] = useState(
     restoredState?.customContractAddress || ''
   );
+  const contractValidationRevision = useRef(0);
+  const customContractRef = useRef(customContractAddress);
+  customContractRef.current = customContractAddress;
   const [customTokenDetails, setCustomTokenDetails] =
     useState<ITokenDetails | null>(restoredState?.customTokenDetails || null);
   const [isValidatingCustom, setIsValidatingCustom] = useState(false);
@@ -243,6 +246,13 @@ export const ImportToken: React.FC = () => {
   useEffect(() => {
     let current = true;
     const validateCustomToken = async (contractAddress: string) => {
+      const revision = ++contractValidationRevision.current;
+      const isCurrent = () =>
+        current &&
+        revision === contractValidationRevision.current &&
+        contractAddress.toLowerCase() ===
+          customContractRef.current.trim().toLowerCase();
+      if (!isCurrent()) return;
       if (!contractAddress || contractAddress.length < 42) {
         // SYSCOIN: A cancelled validation cannot clear this input's spinner.
         setIsValidatingCustom(false);
@@ -260,7 +270,7 @@ export const ImportToken: React.FC = () => {
         ).catch(() => null);
 
         // If enhanced validation fails, try NFT validation
-        if (!current) return;
+        if (!isCurrent()) return;
         if (!details) {
           details = await controllerEmitter(
             ['wallet', 'validateNftContract'],
@@ -269,7 +279,7 @@ export const ImportToken: React.FC = () => {
         }
 
         // If NFT validation fails, try basic ERC-20
-        if (!current) return;
+        if (!isCurrent()) return;
         if (!details) {
           details = await controllerEmitter(
             ['wallet', 'validateERC20Only'],
@@ -277,7 +287,7 @@ export const ImportToken: React.FC = () => {
           );
         }
 
-        if (!current) return;
+        if (!isCurrent()) return;
         if (details) {
           setCustomTokenDetails(details as ITokenDetails);
         } else {
@@ -285,9 +295,9 @@ export const ImportToken: React.FC = () => {
         }
       } catch (error) {
         console.error('Validation error:', error);
-        if (current) setCustomTokenDetails(null);
+        if (isCurrent()) setCustomTokenDetails(null);
       } finally {
-        if (current) setIsValidatingCustom(false);
+        if (isCurrent()) setIsValidatingCustom(false);
       }
     };
 
@@ -443,13 +453,17 @@ export const ImportToken: React.FC = () => {
       const isCurrent = () =>
         importViewRef.current.active &&
         importViewRef.current.scope === scope &&
-        importOperationRef.current === operation;
+        importOperationRef.current === operation &&
+        (activeTab !== 'custom' ||
+          asset.contractAddress.toLowerCase() ===
+            customContractRef.current.trim().toLowerCase());
       const assertCurrent = () => {
         if (!isCurrent()) throw new Error('Token import context changed');
       };
       setCurrentlyImporting(asset.id);
 
       try {
+        assertCurrent();
         let tokenLogo = asset.logo || PaliLogo;
 
         // If token doesn't have a logo or is using default Pali logo, try to fetch from CoinGecko
@@ -639,6 +653,8 @@ export const ImportToken: React.FC = () => {
     setRequestedTab(tab);
     updateTabInUrl(tab);
     if (tab === 'custom') {
+      contractValidationRevision.current += 1;
+      customContractRef.current = '';
       setCustomContractAddress('');
       setCustomTokenDetails(null);
       setCustomTokenId('');
@@ -687,6 +703,41 @@ export const ImportToken: React.FC = () => {
     verifiedTokenRawBalance,
     customTokenId,
   ]);
+
+  const renderCustomField = (
+    id: string,
+    label: string,
+    placeholder: string,
+    value: string,
+    onChange: React.ChangeEventHandler<HTMLInputElement>,
+    padding: string,
+    indicatorClass: string,
+    indicator: React.ReactNode,
+    help?: React.ReactNode
+  ) => (
+    <div className="relative max-w-lg mx-auto">
+      <label
+        className="block mb-2 text-sm font-medium text-brand-white"
+        htmlFor={id}
+      >
+        {t(label)}
+      </label>
+      <div className="relative">
+        <input
+          id={id}
+          className={`w-full h-12 px-6 ${padding} bg-brand-blue800 border border-bkg-white200/30
+                    rounded-full text-brand-white placeholder-brand-gray200/70 text-sm font-poppins
+                    focus:border-brand-royalblue/50 focus:outline-none focus:ring-2 focus:ring-brand-royalblue/20
+                    transition-all duration-200`}
+          placeholder={t(placeholder)}
+          value={value}
+          onChange={onChange}
+        />
+        <div className={indicatorClass}>{indicator}</div>
+      </div>
+      {help}
+    </div>
+  );
 
   return (
     <div className="flex min-w-0 w-full flex-col h-full bg-bkg-3 text-brand-white font-poppins">
@@ -772,43 +823,35 @@ export const ImportToken: React.FC = () => {
         ) : (
           <div className="space-y-4">
             {/* Contract Address Input */}
-            <div className="relative max-w-lg mx-auto">
-              <label
-                className="block mb-2 text-sm font-medium text-brand-white"
-                htmlFor="custom-token-contract"
-              >
-                {t('settings.contractAddress')}
-              </label>
-              <div className="relative">
-                <input
-                  id="custom-token-contract"
-                  className="w-full h-12 px-6 pr-12 bg-brand-blue800 border border-bkg-white200/30
-                            rounded-full text-brand-white placeholder-brand-gray200/70 text-sm font-poppins
-                            focus:border-brand-royalblue/50 focus:outline-none focus:ring-2 focus:ring-brand-royalblue/20
-                            transition-all duration-200"
-                  placeholder={t('tokens.enterContractAddress')}
-                  value={customContractAddress}
-                  onChange={(e) => {
-                    setCustomContractAddress(e.target.value);
-                    setCustomTokenDetails(null);
-                    setCustomTokenId('');
-                    tokenIdRequestRef.current += 1;
-                    setTokenIdResult(null);
-                  }}
-                />
-                <div className="absolute right-4 top-1/2 transform -translate-y-1/2 flex items-center justify-center w-6 h-6">
-                  {isValidatingCustom ? (
-                    <LoadingOutlined className="text-brand-royalblue animate-spin text-base" />
-                  ) : customTokenDetails && customContractAddress ? (
-                    <CheckCircleOutlined className="text-warning-success text-base" />
-                  ) : customContractAddress &&
-                    !customTokenDetails &&
-                    !isValidatingCustom ? (
-                    <CloseCircleOutlined className="text-warning-error text-base" />
-                  ) : null}
-                </div>
-              </div>
-              {!activeNetwork.apiUrl && (
+            {renderCustomField(
+              'custom-token-contract',
+              'settings.contractAddress',
+              'tokens.enterContractAddress',
+              customContractAddress,
+              (e) => {
+                contractValidationRevision.current += 1;
+                customContractRef.current = e.target.value;
+                // Restart even when urgent A -> B -> A edits leave the
+                // deferred address unchanged.
+                debouncedValidationRef.current?.(e.target.value.trim());
+                setCustomContractAddress(e.target.value);
+                setCustomTokenDetails(null);
+                setCustomTokenId('');
+                tokenIdRequestRef.current += 1;
+                setTokenIdResult(null);
+              },
+              'pr-12',
+              'absolute right-4 top-1/2 transform -translate-y-1/2 flex items-center justify-center w-6 h-6',
+              isValidatingCustom ? (
+                <LoadingOutlined className="text-brand-royalblue animate-spin text-base" />
+              ) : customTokenDetails && customContractAddress ? (
+                <CheckCircleOutlined className="text-warning-success text-base" />
+              ) : customContractAddress &&
+                !customTokenDetails &&
+                !isValidatingCustom ? (
+                <CloseCircleOutlined className="text-warning-error text-base" />
+              ) : null,
+              !activeNetwork.apiUrl && (
                 <div className="mt-3 text-xs text-brand-gray200 leading-relaxed">
                   <p>{t('tokens.discoveryUnavailable')}</p>
                   <a
@@ -820,67 +863,52 @@ export const ImportToken: React.FC = () => {
                     {t('tokens.importHelp')}
                   </a>
                 </div>
-              )}
-            </div>
+              )
+            )}
 
             {/* Token ID Input for ERC-1155 */}
-            {customTokenDetails?.tokenStandard === 'ERC-1155' && (
-              <div className="relative max-w-lg mx-auto">
-                <label
-                  className="block mb-2 text-sm font-medium text-brand-white"
-                  htmlFor="custom-token-id"
-                >
-                  {t('send.tokenId')}
-                </label>
-                <div className="relative">
-                  <input
-                    id="custom-token-id"
-                    className="w-full h-12 px-6 pr-14 bg-brand-blue800 border border-bkg-white200/30
-                              rounded-full text-brand-white placeholder-brand-gray200/70 text-sm font-poppins
-                              focus:border-brand-royalblue/50 focus:outline-none focus:ring-2 focus:ring-brand-royalblue/20
-                              transition-all duration-200"
-                    placeholder={t('send.enterTokenId')}
-                    value={customTokenId}
-                    onChange={(e) => {
-                      tokenIdRequestRef.current += 1;
-                      setCustomTokenId(e.target.value);
-                      setTokenIdResult(null);
-                    }}
-                  />
-                  <div className="absolute right-5 top-1/2 transform -translate-y-1/2 flex items-center justify-center w-5 h-5">
-                    {tokenIdValidationPending ? (
-                      <LoadingOutlined className="text-brand-royalblue animate-spin text-sm" />
-                    ) : verifiedTokenBalance !== null && customTokenId ? (
-                      verifiedTokenBalance >= 0 ? (
-                        <CheckCircleOutlined
-                          className={
-                            verifiedTokenBalance === 0
-                              ? 'text-brand-gray200 text-sm'
-                              : 'text-warning-success text-sm'
-                          }
-                          title={
-                            verifiedTokenBalance === 0
-                              ? `${t('tokens.balanceForTokenId', {
-                                  balance: 0,
-                                })} ${t('tokens.verifyTokenExists')}`
-                              : t('tokens.balanceForTokenId', {
-                                  balance:
-                                    verifiedTokenRawBalance ??
-                                    verifiedTokenBalance,
-                                })
-                          }
-                        />
-                      ) : (
-                        <CloseCircleOutlined
-                          className="text-warning-error text-sm"
-                          title={t('send.invalidTokenId')}
-                        />
-                      )
-                    ) : null}
-                  </div>
-                </div>
-              </div>
-            )}
+            {customTokenDetails?.tokenStandard === 'ERC-1155' &&
+              renderCustomField(
+                'custom-token-id',
+                'send.tokenId',
+                'send.enterTokenId',
+                customTokenId,
+                (e) => {
+                  tokenIdRequestRef.current += 1;
+                  setCustomTokenId(e.target.value);
+                  setTokenIdResult(null);
+                },
+                'pr-14',
+                'absolute right-5 top-1/2 transform -translate-y-1/2 flex items-center justify-center w-5 h-5',
+                tokenIdValidationPending ? (
+                  <LoadingOutlined className="text-brand-royalblue animate-spin text-sm" />
+                ) : verifiedTokenBalance !== null && customTokenId ? (
+                  verifiedTokenBalance >= 0 ? (
+                    <CheckCircleOutlined
+                      className={
+                        verifiedTokenBalance === 0
+                          ? 'text-brand-gray200 text-sm'
+                          : 'text-warning-success text-sm'
+                      }
+                      title={
+                        verifiedTokenBalance === 0
+                          ? `${t('tokens.balanceForTokenId', {
+                              balance: 0,
+                            })} ${t('tokens.verifyTokenExists')}`
+                          : t('tokens.balanceForTokenId', {
+                              balance:
+                                verifiedTokenRawBalance ?? verifiedTokenBalance,
+                            })
+                      }
+                    />
+                  ) : (
+                    <CloseCircleOutlined
+                      className="text-warning-error text-sm"
+                      title={t('send.invalidTokenId')}
+                    />
+                  )
+                ) : null
+              )}
             {customTokenDetails?.tokenStandard === 'ERC-1155' &&
               customTokenId &&
               verifiedTokenBalance === 0 && (
