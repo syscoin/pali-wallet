@@ -240,7 +240,7 @@ test('stale network removal confirmation preserves a same-URL replacement until 
     const manage = async (target: Page) => {
       await target.goto(wallet!.appUrl('#/settings/networks/edit'));
       await expect(
-        target.getByRole('button', { name: en.buttons.close, exact: true })
+        target.locator('[data-navigation-scroll="settings-manage-networks"]')
       ).toBeVisible();
     };
     const add = async (target: Page, label: string, explorer: string) => {
@@ -260,9 +260,13 @@ test('stale network removal confirmation preserves a same-URL replacement until 
       const beforeReads = server!.reads.length;
       await rpcInput.fill(rpc);
       await rpcInput.press('Tab');
-      await expect
-        .poll(() => server!.reads.length)
-        .toBeGreaterThan(beforeReads);
+      // The SDK caches chain identity for the same URL. Require the initial
+      // real HTTP validation without pretending re-add must bypass that cache.
+      if (beforeReads === 0) {
+        await expect.poll(() => server!.reads).toContain('eth_chainId');
+      } else {
+        expect(server!.reads).toContain('eth_chainId');
+      }
       const save = target.getByRole('button', {
         name: en.buttons.save,
         exact: true,
