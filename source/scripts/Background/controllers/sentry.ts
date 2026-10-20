@@ -884,14 +884,18 @@ export class SentryController {
     if (pending.signing)
       throw new Error('This Sentry approval is already being signed');
     pending.signing = true;
+    const assertPending = () => {
+      if (this.pending(params.id) !== pending)
+        throw new Error('Sentry approval was cancelled');
+    };
     try {
       return await this.mutex.runExclusive(async () => {
-        if (this.pending(params.id) !== pending)
-          throw new Error('Sentry approval was cancelled');
+        assertPending();
         const { scope, publicApproval } = pending;
         const seed = await this.host.getSeed(params.password);
-        this.assertCurrent(scope);
+        assertPending();
         const fresh = await this.context(scope, publicApproval.request);
+        assertPending();
         if (
           !isEqual(fresh.context, pending.context) ||
           fresh.settings.serviceUrl !== publicApproval.serviceUrl
@@ -908,6 +912,7 @@ export class SentryController {
         )
           throw new Error('Select the registered operator key');
         const vaultId = await getSentryVaultId(scope.rootPublicIdentity);
+        assertPending();
         let key: SentryAuthorityKey;
         if (
           params.keyId.startsWith('wallet-') &&
@@ -935,7 +940,7 @@ export class SentryController {
               scheme: 'secp256k1',
               secretKey: secret.secretKey,
             },
-            () => this.assertCurrent(scope)
+            assertPending
           );
         } else
           key = await loadSentryKey({
@@ -943,8 +948,9 @@ export class SentryController {
             network: publicApproval.network,
             id: params.keyId,
             seed,
-            assertCurrent: () => this.assertCurrent(scope),
+            assertCurrent: assertPending,
           });
+        assertPending();
         if (publicApproval.request.operation === 'register') {
           const sdk = await loadSdk();
           const registration = sdk.inspectSentryManagementOperation(
@@ -957,7 +963,9 @@ export class SentryController {
             walletIdentity: scope.rootPublicIdentity,
             genesisHash: pending.context.chain.genesisHash,
             reservation: { ...registration, pendingRegistration: true },
-            assertCurrent: () => this.assertCurrent(scope),
+            // Cancellation can stop a queued write, never undo protection
+            // whose native write has already been admitted.
+            assertCurrent: assertPending,
           });
         }
         const collateral = pending.context.node?.collateralOutpoint;
@@ -967,7 +975,7 @@ export class SentryController {
           collateral &&
           (await this.host.ownsCollateral?.(collateral, scope))
         ) {
-          this.assertCurrent(scope);
+          assertPending();
           await reserveSentryCollateral({
             admission: pending.admission,
             walletIdentity: scope.rootPublicIdentity,
@@ -976,7 +984,7 @@ export class SentryController {
               ...collateral,
               proTxHash: publicApproval.review.proTxHash!,
             },
-            assertCurrent: () => this.assertCurrent(scope),
+            assertCurrent: assertPending,
           });
         }
         const response = await runSentryCrypto<
@@ -996,11 +1004,9 @@ export class SentryController {
                 key,
                 authorizationId: params.authorizationId!,
               },
-          () => this.assertCurrent(scope)
+          assertPending
         );
-        this.assertCurrent(scope);
-        if (this.pending(params.id) !== pending)
-          throw new Error('Sentry approval was cancelled');
+        assertPending();
         if (
           response.operation === 'updateService' ||
           ('complete' in response && response.complete)

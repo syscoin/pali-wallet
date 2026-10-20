@@ -64,7 +64,9 @@ beforeEach(() => {
   jest.spyOn(console, 'log').mockImplementation();
   wallet = Object.create(MainController.prototype);
   wallet.isRemovingNetwork = false;
+  wallet.resetAutoLockTimer = jest.fn();
   wallet.saveWalletState = jest.fn().mockResolvedValue(undefined);
+  jest.mocked(chromeStorage.setItem).mockReset().mockResolvedValue(undefined);
   wallet.walletSessionGeneration = 0;
   wallet.walletStateGeneration = 0;
   wallet.keyrings = new Map([[1, { test: 'synthetic keyring' }]]);
@@ -89,25 +91,32 @@ it('allows distinct UTXO vaults and edits to the same registration', async () =>
 
 it('rejects a concurrent distinct-chain registration that would share a UTXO vault', async () => {
   let finish!: () => void;
-  wallet.saveWalletState.mockReturnValueOnce(
-    new Promise<void>((resolve) => (finish = resolve))
-  );
+  let entered!: () => void;
+  const started = new Promise<void>((resolve) => (entered = resolve));
+  jest.mocked(chromeStorage.setItem).mockImplementationOnce(async () => {
+    entered();
+    await new Promise<void>((resolve) => (finish = resolve));
+  });
   const first = wallet.addCustomRpc(network);
-  await expect(wallet.addCustomRpc(other)).rejects.toThrow('UTXO network');
-  expect(state.vaultGlobal.networks.syscoin[998]).toBeUndefined();
-  expect(wallet.saveWalletState).toHaveBeenCalledTimes(1);
+  await started;
+  const second = wallet.addCustomRpc(other);
+  const rejected = expect(second).rejects.toThrow('UTXO network');
+  expect(state.vaultGlobal.networks.syscoin[999]).toBeUndefined();
   finish();
   await expect(first).resolves.toMatchObject(network);
+  await rejected;
+  expect(state.vaultGlobal.networks.syscoin[998]).toBeUndefined();
+  expect(chromeStorage.setItem).toHaveBeenCalledTimes(1);
 });
 
 it('rejects editing another registration into an already owned UTXO vault', async () => {
   await wallet.addCustomRpc(network);
   await wallet.addCustomRpc({ ...other, slip44: 2 });
   const before = JSON.stringify(state);
-  const saves = wallet.saveWalletState.mock.calls.length;
+  const saves = jest.mocked(chromeStorage.setItem).mock.calls.length;
   await expect(wallet.editCustomRpc(other)).rejects.toThrow('UTXO network');
   expect(JSON.stringify(state)).toBe(before);
-  expect(wallet.saveWalletState).toHaveBeenCalledTimes(saves);
+  expect(chromeStorage.setItem).toHaveBeenCalledTimes(saves);
 });
 
 it('keeps EVM chains independent of a shared BIP44 coin type', async () => {

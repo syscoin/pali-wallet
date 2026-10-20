@@ -33,12 +33,21 @@ export const useUtils = () => {
   const navigate = useSafeNavigate();
 
   const useCopyClipboard = (
-    timeout = 1000
-  ): [boolean, (toCopy: string) => Promise<void>] => {
-    const [isCopied, setIsCopied] = useState<boolean>(false);
+    timeout = 1000,
+    scope?: string
+  ): [boolean, (toCopy: string) => Promise<void>, () => boolean] => {
+    const [copiedRevision, setCopiedRevision] = useState<number | null>(null);
     const active = useRef(true);
     const copyRevision = useRef(0);
+    const context = useRef({ scope, revision: 0 });
     const resetTimer = useRef<ReturnType<typeof setTimeout>>();
+    // Invalidate during render, before an old promise or passive effect can
+    // publish into the next context. The epoch also rejects A -> B -> A.
+    if (context.current.scope !== scope) {
+      context.current = { scope, revision: context.current.revision + 1 };
+      copyRevision.current += 1;
+    }
+    const scopeRevision = context.current.revision;
 
     // The indicator and its timer belong to the latest copy, not whichever
     // browser promise happens to resolve last.
@@ -53,9 +62,11 @@ export const useUtils = () => {
 
     const staticCopy = useCallback(
       (text: string) => {
+        if (scopeRevision !== context.current.revision)
+          return Promise.resolve();
         const revision = ++copyRevision.current;
         clearTimeout(resetTimer.current);
-        setIsCopied(false);
+        setCopiedRevision(null);
         let writing: Promise<void>;
         try {
           // Invoke within the user gesture, preserving clipboard activation.
@@ -65,17 +76,17 @@ export const useUtils = () => {
         }
         const result = writing.then(() => {
           if (!active.current || revision !== copyRevision.current) return;
-          setIsCopied(true);
+          setCopiedRevision(revision);
           resetTimer.current = setTimeout(() => {
             if (active.current && revision === copyRevision.current)
-              setIsCopied(false);
+              setCopiedRevision(null);
           }, timeout);
         });
         // Observe the same returned promise, rather than swallowing its error:
         // fire-and-forget callers are safe, while awaited callers still reject.
         void result.catch(() => {
           if (!active.current || revision !== copyRevision.current) return;
-          setIsCopied(false);
+          setCopiedRevision(null);
           const message = i18next.t('transactions.copyFailed', {
             defaultValue: 'Could not copy to clipboard. Please try again.',
           });
@@ -90,10 +101,12 @@ export const useUtils = () => {
         });
         return result;
       },
-      [timeout]
+      [timeout, scopeRevision]
     );
 
-    return [isCopied, staticCopy];
+    const isCurrentCopy = () =>
+      active.current && copiedRevision === copyRevision.current;
+    return [isCurrentCopy(), staticCopy, isCurrentCopy];
   };
 
   return {
@@ -114,10 +127,18 @@ export const useUtils = () => {
         toast.dismiss();
         setTimeout(() => toast.error(message, options), 0);
       },
-      info: (message: string, options?: any) => {
-        if (!shouldShowMessage(message, 'info')) return;
+      info: (message: string, options?: any, isCurrent?: () => boolean) => {
+        if (isCurrent && !isCurrent()) return;
+        if (!isCurrent && !shouldShowMessage(message, 'info')) return;
         toast.dismiss();
-        setTimeout(() => toast.info(message, options), 0);
+        setTimeout(() => {
+          if (
+            isCurrent &&
+            (!isCurrent() || !shouldShowMessage(message, 'info'))
+          )
+            return;
+          toast.info(message, options);
+        }, 0);
       },
       warning: (message: string, options?: any) => {
         if (!shouldShowMessage(message, 'warning')) return;

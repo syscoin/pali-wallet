@@ -48,6 +48,7 @@ import vaultGlobal, {
   setActiveSlip44,
   setAdvancedSettings,
   setHasEthProperty,
+  setNetwork,
 } from './vaultGlobal';
 
 // Define RootState earlier if possible, or use a more generic type for ThunkMiddleware initially
@@ -328,6 +329,41 @@ export function persistFiatCurrency(
       const currentState = getMainStateForStorage(store.getState());
       await chromeStorage.setItem('state', currentState);
       lastPersistedState = currentState;
+      throw error;
+    }
+    store.dispatch(action);
+  });
+}
+
+/** Commit a network registry edit before exposing it to retrying callers. */
+export function persistNetworkRegistry(
+  network: INetwork,
+  isEdit: boolean,
+  assertCurrent: () => void,
+  isSameWallet: () => boolean
+): Promise<void> {
+  return walletPersistenceMutex.runExclusive(async () => {
+    const assertAdmitted = () => {
+      assertWalletPersistenceAllowed();
+      assertCurrent();
+    };
+    assertAdmitted();
+    const action = setNetwork({ network, isEdit });
+    const state = store.getState();
+    const mainState = {
+      ...getMainStateForStorage(state),
+      vaultGlobal: vaultGlobal(state.vaultGlobal, action),
+    };
+    await chromeStorage.setItem('state', mainState);
+    lastPersistedState = mainState;
+    try {
+      assertAdmitted();
+    } catch (error) {
+      assertWalletPersistenceAllowed();
+      if (!isSameWallet()) throw error;
+      const current = getMainStateForStorage(store.getState());
+      await chromeStorage.setItem('state', current);
+      lastPersistedState = current;
       throw error;
     }
     store.dispatch(action);

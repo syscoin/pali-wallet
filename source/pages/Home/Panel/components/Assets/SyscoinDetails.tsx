@@ -11,6 +11,7 @@ import {
 import { Button } from 'components/index';
 import { TokenIcon } from 'components/TokenIcon';
 import { useUtils } from 'hooks/index';
+import { getHomeBrowsingScope } from 'pages/Home/useHomeBrowsingState';
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 import { RootState } from 'state/store';
 import {
@@ -38,14 +39,13 @@ export const SyscoinAssetDetails = ({
 }: ISyscoinAssetDetailsProps) => {
   const { navigate, useCopyClipboard, alert } = useUtils();
   const location = useLocation();
-  const [isCopied, copy] = useCopyClipboard();
   const [isLoadingMarketData, setIsLoadingMarketData] = useState(false);
   const [marketDataState, setMarketDataState] = useState<{
     assetGuid: string;
     data: any;
   } | null>(null);
 
-  const { activeAccount, accountAssets, activeNetwork } = useSelector(
+  const { activeAccount, accountAssets, activeNetwork, accounts } = useSelector(
     (state: RootState) => state.vault
   );
   const { fiat } = useSelector((state: RootState) => state.price);
@@ -77,6 +77,12 @@ export const SyscoinAssetDetails = ({
   }
 
   const currentAssetGuid = String(asset?.assetGuid || id);
+  const copyScope = `${getHomeBrowsingScope(
+    { ...accounts?.[activeAccount.type]?.[activeAccount.id], ...activeAccount },
+    activeNetwork,
+    true
+  )}:${currentAssetGuid}:${asset?.contract}`;
+  const [isCopied, copy, isCurrentCopy] = useCopyClipboard(1000, copyScope);
   const hasAsset = Boolean(asset);
   const marketData =
     marketDataState?.assetGuid === currentAssetGuid
@@ -202,8 +208,8 @@ export const SyscoinAssetDetails = ({
   useEffect(() => {
     if (!isCopied) return;
 
-    alert.info(t('home.contractCopied'));
-  }, [isCopied, alert, t]);
+    alert.info(t('home.contractCopied'), undefined, isCurrentCopy);
+  }, [isCopied, isCurrentCopy, alert, t]);
 
   // If still no asset, return error message (after all hooks have been called)
   if (!asset) {
