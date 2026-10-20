@@ -1,4 +1,5 @@
 /** @jest-environment jsdom */
+import '@testing-library/jest-dom';
 import {
   act,
   fireEvent,
@@ -7,6 +8,7 @@ import {
   waitFor,
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { Form } from 'antd';
 import React from 'react';
 
 import { ICustomFeeParams } from 'types/transactions';
@@ -68,7 +70,8 @@ function prepare(
   gasLimit = 21000,
   minimumGasLimit?: number,
   legacy = true,
-  suggestedGasLimit = gasLimit
+  suggestedGasLimit = gasLimit,
+  quotedPrice = 1
 ) {
   const saved = jest.fn();
   render(
@@ -78,9 +81,9 @@ function prepare(
       fee={{
         gasLimit,
         minimumGasLimit,
-        gasPrice: 1,
-        maxFeePerGas: 1,
-        maxPriorityFeePerGas: 1,
+        gasPrice: quotedPrice,
+        maxFeePerGas: quotedPrice,
+        maxPriorityFeePerGas: quotedPrice,
         baseFee: 0,
       }}
       customFee={{
@@ -285,6 +288,115 @@ it('revalidates a changed gas minimum without overwriting the open draft', async
   await waitFor(() => expect(save.hasAttribute('disabled')).toBe(false));
 });
 
+it.each([
+  {
+    label: 'stable',
+    initial: 21000,
+    next: 21000,
+    gasLimit: 21000,
+    saves: true,
+  },
+  {
+    label: 'raised above the draft',
+    initial: 21000,
+    next: 30000,
+    gasLimit: 21000,
+    saves: false,
+  },
+  {
+    label: 'decreased',
+    initial: 30000,
+    next: 21000,
+    gasLimit: 30000,
+    saves: true,
+  },
+  {
+    label: 'raised within the draft',
+    initial: 21000,
+    next: 25000,
+    gasLimit: 30000,
+    saves: true,
+  },
+])(
+  'uses the latest $label minimum after asynchronous Save validation',
+  async ({ initial, next, gasLimit, saves }) => {
+    const saved = jest.fn();
+    const setOpen = jest.fn();
+    const setHaveError = jest.fn();
+    let committedMinimum = initial;
+    let updateMinimum: (minimum: number) => void;
+    const Harness = () => {
+      const [minimum, setMinimum] = React.useState(initial);
+      React.useLayoutEffect(() => {
+        committedMinimum = minimum;
+      }, [minimum]);
+      updateMinimum = setMinimum;
+      return (
+        <EditPriorityModal
+          showModal
+          fee={{
+            gasLimit,
+            minimumGasLimit: minimum,
+            gasPrice: 1,
+            maxFeePerGas: 1,
+            maxPriorityFeePerGas: 0,
+            baseFee: 0,
+          }}
+          customFee={{
+            isCustom: false,
+            gasLimit: 0,
+            gasPrice: 0,
+            maxFeePerGas: 0,
+            maxPriorityFeePerGas: 0,
+          }}
+          setCustomFee={(value) => saved(value, committedMinimum)}
+          setHaveError={setHaveError}
+          setIsOpen={setOpen}
+        />
+      );
+    };
+    render(<Harness />);
+    const save = screen.getByRole('button', { name: 'buttons.save' });
+    const gas = screen.getByPlaceholderText(
+      'send.gasLimit'
+    ) as HTMLInputElement;
+    await waitFor(() => expect(save).toBeEnabled());
+    await act(async () => {
+      fireEvent.click(save);
+      updateMinimum(next);
+    });
+    expect(committedMinimum).toBe(next);
+    if (saves) {
+      expect(saved).toHaveBeenCalledWith(
+        expect.objectContaining({ gasLimit }),
+        next
+      );
+      expect(setOpen).toHaveBeenCalledWith(false);
+    } else {
+      expect(saved).not.toHaveBeenCalled();
+      expect(setOpen).not.toHaveBeenCalled();
+      expect(setHaveError).toHaveBeenCalledWith(true);
+      expect(save).toBeDisabled();
+      expect(gas.value).toBe(String(gasLimit));
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+      await waitFor(() =>
+        expect(
+          screen.getByText(`send.gasLimitTooLow:${next}`)
+        ).toBeInTheDocument()
+      );
+      // The same editor session stays usable after correcting the draft.
+      fireEvent.change(gas, { target: { value: String(next) } });
+      await waitFor(() => expect(save).toBeEnabled());
+      await act(async () => fireEvent.click(save));
+      expect(saved).toHaveBeenCalledTimes(1);
+      expect(saved).toHaveBeenCalledWith(
+        expect.objectContaining({ gasLimit: next }),
+        next
+      );
+    }
+  }
+);
+
 it('reopens from the latest saved parent fee rather than old form fields', async () => {
   const { price, setSaved } = prepareLifecycle();
   await waitFor(() => expect(price().value).toBe('10'));
@@ -410,3 +522,116 @@ it.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY, 21000.5])(
     );
   }
 );
+
+describe.each([false, true])('exact custom fee units (legacy=%s)', (legacy) => {
+  it.each([
+    '1e21',
+    '1e309',
+    '0.0000000001',
+    '1.0000000001',
+    '9007199.254740991',
+  ])(
+    'rejects unrepresentable GWEI %s in both live and asynchronous form validation',
+    async (value) => {
+      // Capture the real antd form solely to exercise its asynchronous rules
+      // independently of the Save button's live disabled state.
+      const realUseForm = Form.useForm;
+      let actualForm: ReturnType<typeof Form.useForm>[0];
+      const formSpy = jest
+        .spyOn(Form, 'useForm')
+        .mockImplementation((...args) => {
+          const result = realUseForm(...args);
+          actualForm = result[0];
+          return result;
+        });
+      try {
+        const { saved } = prepare(21000, 21000, legacy);
+        const price = screen.getByPlaceholderText(
+          legacy ? 'send.gasPrice (GWEI)' : 'send.maxFee (GWEI)'
+        );
+        await waitFor(() =>
+          expect((price as HTMLInputElement).value).toBe('1')
+        );
+        if (!legacy) {
+          fireEvent.change(
+            screen.getByPlaceholderText('send.maxPriorityFee (GWEI)'),
+            {
+              target: { value: '0' },
+            }
+          );
+        }
+        fireEvent.change(price, { target: { value } });
+        await waitFor(() =>
+          expect(
+            screen.getByRole('button', { name: 'buttons.save' })
+          ).toBeDisabled()
+        );
+        await act(async () => {
+          await expect(actualForm!.validateFields()).rejects.toBeTruthy();
+        });
+        expect(saved).not.toHaveBeenCalled();
+      } finally {
+        formSpy.mockRestore();
+      }
+    }
+  );
+
+  it.each([
+    '0.000000001',
+    '1.000000001',
+    '3.500000001',
+    '100000000000000000000',
+  ])(
+    'saves exactly representable GWEI %s without an economic cap',
+    async (value) => {
+      const { saved } = prepare(21000, 21000, legacy);
+      const price = screen.getByPlaceholderText(
+        legacy ? 'send.gasPrice (GWEI)' : 'send.maxFee (GWEI)'
+      );
+      await waitFor(() => expect((price as HTMLInputElement).value).toBe('1'));
+      if (!legacy) {
+        fireEvent.change(
+          screen.getByPlaceholderText('send.maxPriorityFee (GWEI)'),
+          {
+            target: { value: '0' },
+          }
+        );
+      }
+      fireEvent.change(price, { target: { value } });
+      await act(async () =>
+        fireEvent.click(screen.getByRole('button', { name: 'buttons.save' }))
+      );
+      await waitFor(() =>
+        expect(saved).toHaveBeenCalledWith(
+          expect.objectContaining({
+            [legacy ? 'gasPrice' : 'maxFeePerGas']: Number(value),
+          })
+        )
+      );
+    }
+  );
+
+  it.each([0.000000001, 3.000000001])(
+    'keeps the higher preset valid at integer-wei precision for quote %s',
+    async (quote) => {
+      const { saved } = prepare(21000, 21000, legacy, 21000, quote);
+      await waitFor(() =>
+        expect(
+          screen.getByRole('button', { name: 'buttons.save' })
+        ).toBeEnabled()
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'higher-price' }));
+      await act(async () =>
+        fireEvent.click(screen.getByRole('button', { name: 'buttons.save' }))
+      );
+      const expected = quote === 0.000000001 ? 0.000000001 : 3.600000001;
+      await waitFor(() =>
+        expect(saved).toHaveBeenCalledWith(
+          expect.objectContaining({
+            [legacy ? 'gasPrice' : 'maxFeePerGas']: expected,
+          })
+        )
+      );
+    }
+  );
+});
