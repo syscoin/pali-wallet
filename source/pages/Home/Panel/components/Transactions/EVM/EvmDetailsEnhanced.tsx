@@ -767,8 +767,9 @@ export const EvmTransactionDetailsEnhanced = ({
         try {
           const gwei = formatUnits(bigNumberish ?? '0', 'gwei');
           const num = Number(gwei);
+          const rounded = num.toFixed(2);
           formattedValue.value = Number.isFinite(num)
-            ? `${num.toFixed(2)} Gwei`
+            ? `${num > 0 && rounded === '0.00' ? gwei : rounded} Gwei`
             : 'N/A';
         } catch {
           formattedValue.value = 'N/A';
