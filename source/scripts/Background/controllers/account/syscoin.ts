@@ -6,6 +6,8 @@ import store from 'state/store';
 import { setAccountPropertyByIdAndType, setAccountAssets } from 'state/vault';
 import { ITokenSysProps } from 'types/tokens';
 
+import { getAccountAssets, requireAssetArray } from './getAccountAssets';
+
 const config = {
   headers: {
     'X-User-Agent':
@@ -47,30 +49,9 @@ const SysAccountController = (
   const prepareTokenAddition = async (token: ITokenSysProps) => {
     const { activeAccount, activeNetwork, accountAssets } =
       store.getState().vault;
-    // Validate accountAssets exists
-    if (!accountAssets) {
-      throw new Error('Account assets not initialized');
-    }
+    const activeAccountAssets = getAccountAssets(accountAssets, activeAccount);
 
-    // Validate account type exists
-    if (!accountAssets[activeAccount.type]) {
-      throw new Error(
-        `Account type '${activeAccount.type}' not found in accountAssets`
-      );
-    }
-
-    // Validate account ID exists
-    const activeAccountAssets =
-      accountAssets[activeAccount.type][activeAccount.id];
-    if (!activeAccountAssets) {
-      throw new Error(
-        `Account ID '${activeAccount.id}' not found for account type '${activeAccount.type}'`
-      );
-    }
-
-    if (!activeAccountAssets.syscoin) {
-      throw new Error('Syscoin assets array not initialized');
-    }
+    requireAssetArray(activeAccountAssets.syscoin, 'Syscoin');
 
     // Syscoin 5 no longer uses pubData field
     const description = token.description || '';
@@ -93,12 +74,12 @@ const SysAccountController = (
     return () => {
       // Metadata and storage can outlive other updates. Always merge into the
       // latest target list and recheck duplicates at each commit boundary.
-      const currentAssets =
+      const currentAssets = requireAssetArray(
         store.getState().vault.accountAssets?.[activeAccount.type]?.[
           activeAccount.id
-        ]?.syscoin;
-      if (!currentAssets)
-        throw new Error('Syscoin assets array not initialized');
+        ]?.syscoin,
+        'Syscoin'
+      );
       if (
         currentAssets.some(
           (asset: ITokenSysProps) =>
@@ -121,37 +102,20 @@ const SysAccountController = (
     return () => {
       const { accountAssets } = store.getState().vault;
 
-      // Validate accountAssets exists
-      if (!accountAssets) {
-        throw new Error('Account assets not initialized');
-      }
-
-      // Validate account type exists
-      if (!accountAssets[activeAccount.type]) {
-        throw new Error(
-          `Account type '${activeAccount.type}' not found in accountAssets`
-        );
-      }
-
-      // Validate account ID exists
-      const activeAccountAssets =
-        accountAssets[activeAccount.type][activeAccount.id];
-      if (!activeAccountAssets) {
-        throw new Error(
-          `Account ID '${activeAccount.id}' not found for account type '${activeAccount.type}'`
-        );
-      }
-
-      if (!activeAccountAssets.syscoin) {
-        throw new Error('Syscoin assets array not initialized');
-      }
-
-      // Find token considering both assetGuid AND chainId (network-specific)
-      const tokenExists = activeAccountAssets.syscoin.find(
-        (asset: ITokenSysProps) =>
-          asset.assetGuid === assetGuid &&
-          asset.chainId === activeNetwork.chainId
+      const activeAccountAssets = getAccountAssets(
+        accountAssets,
+        activeAccount
       );
+
+      const currentAssets = requireAssetArray(
+        activeAccountAssets.syscoin,
+        'Syscoin'
+      );
+
+      const matchesToken = (asset: ITokenSysProps) =>
+        asset.assetGuid === assetGuid &&
+        asset.chainId === activeNetwork.chainId;
+      const tokenExists = currentAssets.find(matchesToken);
 
       if (!tokenExists) throw new Error("Token doesn't exist on this network!");
 
@@ -159,12 +123,8 @@ const SysAccountController = (
         accountId: activeAccount.id,
         accountType: activeAccount.type,
         property: 'syscoin',
-        value: activeAccountAssets.syscoin.filter(
-          (currentToken) =>
-            !(
-              currentToken.assetGuid === assetGuid &&
-              currentToken.chainId === activeNetwork.chainId
-            )
+        value: currentAssets.filter(
+          (currentToken) => !matchesToken(currentToken)
         ),
       });
     };

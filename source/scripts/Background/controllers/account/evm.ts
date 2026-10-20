@@ -2,6 +2,9 @@ import PaliLogo from 'assets/all_assets/favicon-32.png';
 import store from 'state/store';
 import { setAccountAssets } from 'state/vault';
 import { ITokenEthProps } from 'types/tokens';
+import { normalizeNftTokenId } from 'utils/nftTokenId';
+
+import { getAccountAssets, requireAssetArray } from './getAccountAssets';
 
 export interface IEthAccountController {
   prepareTokenAddition: (
@@ -16,93 +19,67 @@ export interface IEthAccountController {
 
 const EthAccountController = (): IEthAccountController => {
   const prepareTokenAddition = async (token: ITokenEthProps) => {
+    const tokenId =
+      token.tokenStandard === 'ERC-1155'
+        ? normalizeNftTokenId(token.tokenId)
+        : undefined;
     const { activeAccount, activeNetwork, accountAssets } =
       store.getState().vault;
     const { chainId } = activeNetwork;
 
-    // Validate accountAssets exists
-    if (!accountAssets) {
-      throw new Error('Account assets not initialized');
-    }
+    const activeAccountAssets = getAccountAssets(accountAssets, activeAccount);
 
-    // Validate account type exists
-    if (!accountAssets[activeAccount.type]) {
-      throw new Error(
-        `Account type '${activeAccount.type}' not found in accountAssets`
-      );
-    }
-
-    // Validate account ID exists
-    const activeAccountAssets =
-      accountAssets[activeAccount.type][activeAccount.id];
-    if (!activeAccountAssets) {
-      throw new Error(
-        `Account ID '${activeAccount.id}' not found for account type '${activeAccount.type}'`
-      );
-    }
-
-    if (!activeAccountAssets.ethereum) {
-      throw new Error('Ethereum assets array not initialized');
-    }
+    requireAssetArray(activeAccountAssets.ethereum, 'Ethereum');
 
     return () => {
-      const currentAssets =
+      const currentAssets = requireAssetArray(
         store.getState().vault.accountAssets?.[activeAccount.type]?.[
           activeAccount.id
-        ]?.ethereum;
-      if (!currentAssets)
-        throw new Error('Ethereum assets array not initialized');
+        ]?.ethereum,
+        'Ethereum'
+      );
       const tokenExists = currentAssets.find((asset: ITokenEthProps) => {
         // SYSCOIN: The same address may name different assets on other chains.
-        if (asset.chainId !== chainId) return false;
+        if (
+          asset.chainId !== chainId ||
+          asset.contractAddress.toLowerCase() !==
+            token.contractAddress.toLowerCase()
+        )
+          return false;
         // For ERC-1155 tokens, check both contract address and tokenId
         if (
           asset.tokenStandard === 'ERC-1155' &&
           token.tokenStandard === 'ERC-1155'
         ) {
-          return (
-            asset.contractAddress.toLowerCase() ===
-              token.contractAddress.toLowerCase() &&
-            asset.tokenId === token.tokenId
-          );
+          try {
+            return normalizeNftTokenId(asset.tokenId) === tokenId;
+          } catch {
+            return false;
+          }
         }
-        // For other token types, just check contract address
-        return (
-          asset.contractAddress.toLowerCase() ===
-          token.contractAddress.toLowerCase()
-        );
+        return true;
       });
 
       if (tokenExists) {
         if (token.tokenStandard === 'ERC-1155') {
-          throw new Error(
-            `ERC-1155 token with ID ${token.tokenId} already exists`
-          );
+          throw new Error(`ERC-1155 token with ID ${tokenId} already exists`);
         } else {
           throw new Error('Token already exists');
         }
       }
 
       // Use token data as-is
-      let web3Token = {
+      const web3Token = {
         ...token,
+        ...(tokenId !== undefined && { tokenId }),
         // For ERC-1155, include tokenId in the id to make it unique
         id:
-          token.tokenStandard === 'ERC-1155' && token.tokenId
-            ? `${token.contractAddress.toLowerCase()}-${chainId}-${
-                token.tokenId
-              }`
+          tokenId !== undefined
+            ? `${token.contractAddress.toLowerCase()}-${chainId}-${tokenId}`
             : `${token.contractAddress.toLowerCase()}-${chainId}`,
         chainId,
+        logo: token.logo || PaliLogo,
       };
-
-      // Only add fallback logo if no logo is provided
-      if (!web3Token.logo || web3Token.logo === '') {
-        web3Token = {
-          ...web3Token,
-          logo: PaliLogo,
-        };
-      }
 
       return setAccountAssets({
         accountId: activeAccount.id,
@@ -122,45 +99,21 @@ const EthAccountController = (): IEthAccountController => {
     return () => {
       const { accountAssets } = store.getState().vault;
 
-      // Validate accountAssets exists
-      if (!accountAssets) {
-        throw new Error('Account assets not initialized');
-      }
-
-      // Validate account type exists
-      if (!accountAssets[activeAccount.type]) {
-        throw new Error(
-          `Account type '${activeAccount.type}' not found in accountAssets`
-        );
-      }
-
-      // Validate account ID exists
-      const activeAccountAssets =
-        accountAssets[activeAccount.type][activeAccount.id];
-      if (!activeAccountAssets) {
-        throw new Error(
-          `Account ID '${activeAccount.id}' not found for account type '${activeAccount.type}'`
-        );
-      }
-
-      if (!activeAccountAssets.ethereum) {
-        throw new Error('Ethereum assets array not initialized');
-      }
-
-      // Check if token exists with optional tokenId consideration
-      const tokenExists = activeAccountAssets.ethereum.find(
-        (asset: ITokenEthProps) => {
-          // Compare addresses case-insensitively
-          const matchesAddress =
-            asset.contractAddress.toLowerCase() ===
-              tokenAddress.toLowerCase() && asset.chainId === chainId;
-          // If tokenId is provided, also check it matches
-          if (tokenId) {
-            return matchesAddress && asset.tokenId === tokenId;
-          }
-          return matchesAddress;
-        }
+      const activeAccountAssets = getAccountAssets(
+        accountAssets,
+        activeAccount
       );
+
+      const currentAssets = requireAssetArray(
+        activeAccountAssets.ethereum,
+        'Ethereum'
+      );
+
+      const matchesToken = (asset: ITokenEthProps) =>
+        asset.contractAddress.toLowerCase() === tokenAddress.toLowerCase() &&
+        asset.chainId === chainId &&
+        (!tokenId || asset.tokenId === tokenId);
+      const tokenExists = currentAssets.find(matchesToken);
 
       if (!tokenExists)
         throw new Error("Token doesn't exist on specified network!");
@@ -169,17 +122,9 @@ const EthAccountController = (): IEthAccountController => {
         accountId: activeAccount.id,
         accountType: activeAccount.type,
         property: 'ethereum',
-        value: activeAccountAssets.ethereum.filter((currentToken) => {
-          const matchesAddress =
-            currentToken.contractAddress.toLowerCase() ===
-              tokenAddress.toLowerCase() && currentToken.chainId === chainId;
-          // If tokenId is provided, only remove if tokenId also matches
-          if (tokenId) {
-            return !(matchesAddress && currentToken.tokenId === tokenId);
-          }
-          // If no tokenId provided, remove all tokens from this contract address
-          return !matchesAddress;
-        }),
+        value: currentAssets.filter(
+          (currentToken) => !matchesToken(currentToken)
+        ),
       });
     };
   };

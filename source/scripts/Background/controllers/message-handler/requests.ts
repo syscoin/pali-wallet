@@ -98,6 +98,24 @@ export const methodRequest = async (
     data.params = [data.params];
   }
 
+  // Reject malformed module fields before account selection or approval UI.
+  if (
+    data.method === 'wallet_requestSmartAccountModuleInstall' ||
+    data.method === 'wallet_requestSmartAccountModuleUninstall'
+  ) {
+    const module = data.params?.[0];
+    if (
+      !module ||
+      typeof module !== 'object' ||
+      Array.isArray(module) ||
+      ['address', 'name', 'initData'].some(
+        (field) =>
+          module[field] !== undefined && typeof module[field] !== 'string'
+      )
+    )
+      throw ethErrors.rpc.invalidParams('Invalid smart account module');
+  }
+
   if (data.method === 'eth_sendTransaction') {
     if (!data.params || data.params.length !== 1)
       throw ethErrors.rpc.invalidParams('Expected one transaction');
