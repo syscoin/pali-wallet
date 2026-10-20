@@ -108,6 +108,7 @@ jest.mock('utils/fetchGasAndDecodeFunction', () => ({
 }));
 jest.mock('utils/browser', () => ({ dispatchBackgroundEvent: jest.fn() }));
 jest.mock('utils/navigationState', () => ({
+  ...jest.requireActual('utils/navigationState'),
   clearTransactionNavigationState: jest.fn().mockResolvedValue(undefined),
 }));
 jest.mock('utils/smartAccount', () => ({

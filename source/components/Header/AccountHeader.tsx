@@ -61,13 +61,12 @@ export const AccountHeader: React.FC = () => {
   const { useCopyClipboard, alert, navigate } = useUtils();
   const { t } = useTranslation();
   const { controllerEmitter } = useController();
-  const [copied, copy] = useCopyClipboard();
   const isLoading = useSyncExternalStore(
     subscribeHardwareVerification,
     isHardwareVerificationPending
   );
   const [isOpenModal, setIsOpenModal] = useState(false);
-  const verificationScope = JSON.stringify([
+  const identityScope = [
     activeAccount?.id,
     activeAccount?.type,
     currentAccount?.address,
@@ -78,13 +77,20 @@ export const AccountHeader: React.FC = () => {
     activeNetwork.url,
     activeNetwork.currency,
     activeNetwork.slip44,
-    networkStatus,
-    isSwitchingAccount,
     location.pathname,
     location.search,
     location.hash,
     location.key,
+  ];
+  const verificationScope = JSON.stringify([
+    ...identityScope,
+    networkStatus,
+    isSwitchingAccount,
   ]);
+  const [copied, copy, isCurrentCopy] = useCopyClipboard(
+    1000,
+    JSON.stringify(identityScope)
+  );
   const verification = useRef({
     generation: 0,
     scope: verificationScope,
@@ -267,8 +273,8 @@ export const AccountHeader: React.FC = () => {
   useEffect(() => {
     if (!copied) return;
 
-    alert.info(t('home.addressCopied'));
-  }, [copied, alert, t]);
+    alert.info(t('home.addressCopied'), undefined, isCurrentCopy);
+  }, [copied, alert, t, isCurrentCopy]);
 
   return (
     <div className="relative z-[55] flex items-center justify-between p-1 bg-bkg-3">

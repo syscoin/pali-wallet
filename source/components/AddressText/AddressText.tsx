@@ -1,4 +1,4 @@
-import React, { FC, useCallback } from 'react';
+import React, { FC, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { Icon } from 'components/Icon';
@@ -48,20 +48,18 @@ export const AddressText: FC<IAddressText> = ({
 }) => {
   const { t } = useTranslation();
   const { alert, useCopyClipboard } = useUtils();
-  const [, copy] = useCopyClipboard();
+  const [copied, copy, isCurrentCopy] = useCopyClipboard(1000, value);
 
   const display =
     preset === 'full' ? value : ellipsis(value, ...PRESETS[preset]);
   const isTruncated = display !== value;
 
-  const handleCopy = useCallback(async () => {
-    try {
-      await copy(value);
-      alert.info(t('home.addressCopied'));
-    } catch {
-      alert.error(t('transactions.copyFailed'));
-    }
-  }, [alert, copy, t, value]);
+  const handleCopy = useCallback(() => {
+    void copy(value);
+  }, [copy, value]);
+  useEffect(() => {
+    if (copied) alert.info(t('home.addressCopied'), undefined, isCurrentCopy);
+  }, [copied, alert, t, isCurrentCopy]);
 
   const text = explorerUrl ? (
     <a

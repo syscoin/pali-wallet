@@ -201,6 +201,53 @@ test('external transaction review exposes exact Data and Hex through keyboard ta
       }
     );
     await wallet.step(
+      'report address copy only after native acceptance and retain refusal feedback',
+      async (capture) => {
+        await popup.evaluate(() => {
+          (window as any).__reviewCopies = [];
+          Object.defineProperty(navigator, 'clipboard', {
+            configurable: true,
+            value: {
+              writeText: (text: string) =>
+                new Promise<void>((resolve, reject) => {
+                  (window as any).__reviewCopies.push(text);
+                  (window as any).__finishReviewCopy = (accepted: boolean) =>
+                    accepted
+                      ? resolve()
+                      : reject(
+                          new DOMException(
+                            'Synthetic clipboard refusal',
+                            'NotAllowedError'
+                          )
+                        );
+                }),
+            },
+          });
+        });
+        const copyFrom = detailsPanel.getByRole('button').first();
+        await copyFrom.click();
+        expect(
+          await popup.evaluate(() => (window as any).__reviewCopies)
+        ).toEqual([connected.result[0]]);
+        await expect(
+          popup.getByText(en.home.addressCopied, { exact: true })
+        ).toHaveCount(0);
+        await popup.evaluate(() => (window as any).__finishReviewCopy(false));
+        await expect(
+          popup.getByText(en.transactions.copyFailed, { exact: true })
+        ).toBeVisible();
+        await expect(
+          popup.getByText(en.home.addressCopied, { exact: true })
+        ).toHaveCount(0);
+        await copyFrom.click();
+        await popup.evaluate(() => (window as any).__finishReviewCopy(true));
+        await expect(
+          popup.getByText(en.home.addressCopied, { exact: true })
+        ).toBeVisible();
+        await capture(popup);
+      }
+    );
+    await wallet.step(
       'retain ordinary mouse selection and the exact original calldata',
       async (capture) => {
         await dataTab.click();

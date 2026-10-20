@@ -66,7 +66,7 @@ const EditAccountView = () => {
   const loading = pendingSave?.entry === currentEntry;
 
   const { alert, navigate, useCopyClipboard } = useUtils();
-  const [copied, copyText] = useCopyClipboard();
+  const [copied, copyText] = useCopyClipboard(1000, entryKey);
 
   const { controllerEmitter } = useController();
 
@@ -171,12 +171,8 @@ const EditAccountView = () => {
     }
   };
 
-  const handleCopyToClipboard = async () => {
-    try {
-      await copyText(state.address);
-    } catch {
-      alert.error(t('transactions.copyFailed'));
-    }
+  const handleCopyToClipboard = () => {
+    void copyText(state.address);
   };
 
   const openSmartAccountPolicy = () => {

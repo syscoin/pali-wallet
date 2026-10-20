@@ -21,6 +21,7 @@ import {
 import { formatEther, parseUnits } from 'utils/ethersV6Compat';
 import { BigNumber } from 'utils/ethersV6Compat';
 import { ellipsis } from 'utils/format';
+import { getWalletNavigationScope } from 'utils/navigationState';
 
 // Memoize copy icon to prevent unnecessary re-renders
 const CopyIcon = memo(() => (
@@ -61,7 +62,6 @@ export const TransactionDetailsComponent = (
   } = props;
   const { alert, useCopyClipboard } = useUtils();
   const { controllerEmitter } = useController();
-  const [, copy] = useCopyClipboard();
   const [currentTxValue, setCurrentTxValue] = useState<string>('0');
   const [blacklistWarning, setBlacklistWarning] = useState<{
     isBlacklisted: boolean;
@@ -73,30 +73,18 @@ export const TransactionDetailsComponent = (
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
+  const walletScope = useSelector(getWalletNavigationScope);
+  const [copied, copy, isCurrentCopy] = useCopyClipboard(
+    1000,
+    `${walletScope.account}:${walletScope.network}:${tx.from}:${tx.to}`
+  );
   // Prefer rendering ENS name when available in cache for destination
   // Use valid (non-expired) ENS cache for security
   const ensCache = useReduxSelector(selectValidEnsCache);
 
-  // Helper function to get appropriate copy message based on field type
-  const getCopyMessage = (fieldType: 'address' | 'hash' | 'other') => {
-    switch (fieldType) {
-      case 'address':
-        return t('home.addressCopied');
-      case 'hash':
-        return t('home.hashCopied');
-      default:
-        return t('settings.successfullyCopied');
-    }
-  };
-
-  const handleCopyWithMessage = (
-    value: string,
-    fieldType: 'address' | 'hash' | 'other' = 'address'
-  ) => {
-    copy(value);
-
-    alert.info(getCopyMessage(fieldType));
-  };
+  useEffect(() => {
+    if (copied) alert.info(t('home.addressCopied'), undefined, isCurrentCopy);
+  }, [copied, t, alert, isCurrentCopy]);
 
   // Calculate total fee: legacy uses gasPrice; EIP-1559 shows Max fee (gasLimit * maxFeePerGas)
   const gasLimit = customFee.isCustom ? customFee.gasLimit : fee.gasLimit;
@@ -182,9 +170,7 @@ export const TransactionDetailsComponent = (
           <Tooltip content={tx.from} childrenClassName="flex">
             {ellipsis(tx.from, 7, 15)}
             {
-              <IconButton
-                onClick={() => handleCopyWithMessage(tx.from ?? '', 'address')}
-              >
+              <IconButton onClick={() => copy(tx.from ?? '')}>
                 <CopyIcon />
               </IconButton>
             }
@@ -203,9 +189,7 @@ export const TransactionDetailsComponent = (
               return ellipsis(label, 7, 15);
             })()}
             {
-              <IconButton
-                onClick={() => handleCopyWithMessage(tx.to ?? '', 'address')}
-              >
+              <IconButton onClick={() => copy(tx.to ?? '')}>
                 <CopyIcon />
               </IconButton>
             }
