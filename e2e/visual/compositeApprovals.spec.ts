@@ -183,6 +183,7 @@ test('Combined approvals: isolated real-extension interaction and layout', async
     rpcUrl: server.url,
     seedPhrase: UTXO_FIXTURE_SEED,
   });
+  let status: 'passed' | 'failed' = 'failed';
   try {
     wallet = await PaliWallet.launch('composite-approvals-offline', {
       offlineHttpProxy: server.url,
@@ -539,6 +540,7 @@ test('Combined approvals: isolated real-extension interaction and layout', async
       contentType: 'application/json',
       path: evidenceFile,
     });
+    status = info.errors.length === 0 ? 'passed' : 'failed';
   } catch (error) {
     if (page && !page.isClosed()) {
       await capture(page, 'failure', info).catch(() => undefined);
@@ -559,10 +561,22 @@ test('Combined approvals: isolated real-extension interaction and layout', async
     }
     throw error;
   } finally {
-    await page?.close().catch(() => undefined);
-    await wallet?.context.close().catch(() => undefined);
-    await server.close();
-    Object.assign(E2E_CONFIG, originalConfig);
+    try {
+      await page?.close().catch(() => undefined);
+    } catch (error) {
+      status = 'failed';
+      throw error;
+    } finally {
+      try {
+        await wallet?.dispose(status);
+      } finally {
+        try {
+          await server.close();
+        } finally {
+          Object.assign(E2E_CONFIG, originalConfig);
+        }
+      }
+    }
   }
 });
 
@@ -583,6 +597,7 @@ test('real extension fee editor uses the shared dialog layout', async ({}, info)
   let wallet: PaliWallet | undefined;
   const errors: string[] = [];
   const rpcReads: string[] = [];
+  let status: 'passed' | 'failed' = 'failed';
   try {
     wallet = await PaliWallet.launch('shared-fee-dialog-preview', {
       offlineHttpProxy: server.url,
@@ -695,6 +710,7 @@ test('real extension fee editor uses the shared dialog layout', async ({}, info)
       }),
       contentType: 'application/json',
     });
+    status = info.errors.length === 0 ? 'passed' : 'failed';
   } catch (error) {
     if (wallet)
       await capture(wallet.page, 'fee-editor-failure', info).catch(
@@ -702,8 +718,14 @@ test('real extension fee editor uses the shared dialog layout', async ({}, info)
       );
     throw error;
   } finally {
-    await wallet?.context.close().catch(() => undefined);
-    await server.close();
-    Object.assign(E2E_CONFIG, originalConfig);
+    try {
+      await wallet?.dispose(status);
+    } finally {
+      try {
+        await server.close();
+      } finally {
+        Object.assign(E2E_CONFIG, originalConfig);
+      }
+    }
   }
 });

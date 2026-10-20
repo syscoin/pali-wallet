@@ -66,6 +66,7 @@ test('network recovery, spam warning and batch status retain reachable controls'
     await page!.screenshot({ path: file, animations: 'disabled' });
     await info.attach(name, { path: file, contentType: 'image/png' });
   };
+  let status: 'passed' | 'failed' = 'failed';
   try {
     wallet = await PaliWallet.launch('edge-route-windows', {
       offlineHttpProxy: server.url,
@@ -183,10 +184,23 @@ test('network recovery, spam warning and batch status retain reachable controls'
       await capture(`network-picker-${size}`);
     }
     expect(routes.deniedWrites).toEqual([]);
+    status = info.errors.length === 0 ? 'passed' : 'failed';
   } finally {
-    await page?.close().catch(() => undefined);
-    await wallet?.context.close().catch(() => undefined);
-    await server.close();
-    Object.assign(E2E_CONFIG, previous);
+    try {
+      await page?.close().catch(() => undefined);
+    } catch (error) {
+      status = 'failed';
+      throw error;
+    } finally {
+      try {
+        await wallet?.dispose(status);
+      } finally {
+        try {
+          await server.close();
+        } finally {
+          Object.assign(E2E_CONFIG, previous);
+        }
+      }
+    }
   }
 });

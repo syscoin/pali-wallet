@@ -31,10 +31,20 @@ describe('journey summary completion', () => {
     (verifyExecutingWorker as jest.Mock).mockResolvedValue(undefined);
     files = new Map();
     jest.spyOn(fs, 'mkdirSync').mockImplementation(() => undefined);
-    jest.spyOn(fs, 'writeFileSync').mockImplementation((file, data) => {
-      written = JSON.parse(String(data));
-      files.set(String(file), written);
-    });
+    jest
+      .spyOn(fs, 'writeFileSync')
+      .mockImplementation((file, data, options) => {
+        if (
+          typeof options === 'object' &&
+          options?.flag === 'wx' &&
+          files.has(String(file))
+        )
+          throw Object.assign(new Error('EEXIST: summary already exists'), {
+            code: 'EEXIST',
+          });
+        written = JSON.parse(String(data));
+        files.set(String(file), written);
+      });
   });
 
   afterEach(() => jest.restoreAllMocks());
@@ -62,6 +72,116 @@ describe('journey summary completion', () => {
     const summary = new JourneySummary('synthetic');
     summary.finish();
     expect(written.status).toBe('failed');
+  });
+
+  it('creates the first summary exclusively and permits its later updates', () => {
+    const summary = new JourneySummary('synthetic');
+    expect(fs.writeFileSync).toHaveBeenLastCalledWith(
+      summary.filePath,
+      expect.any(String),
+      { flag: 'wx' }
+    );
+    summary.addStep({ name: 'check', durationMs: 1, status: 'passed' });
+    summary.finish('passed');
+    expect(files.get(summary.filePath)).toMatchObject({
+      status: 'passed',
+      steps: [{ name: 'check' }],
+    });
+    expect(jest.mocked(fs.writeFileSync).mock.calls.slice(1)).toEqual([
+      [summary.filePath, expect.any(String)],
+      [summary.filePath, expect.any(String)],
+    ]);
+  });
+
+  it.each([
+    ['same-journey', 'same-journey'],
+    ['same/journey', 'same:journey'],
+  ])(
+    'rejects %s and %s colliding without replacing the first result',
+    (first, second) => {
+      const original = new JourneySummary(first);
+      original.addStep({ name: 'original', durationMs: 1, status: 'passed' });
+      original.finish('passed');
+      const saved = files.get(original.filePath);
+      expect(() => new JourneySummary(second)).toThrow('EEXIST');
+      expect(files.get(original.filePath)).toEqual(saved);
+      expect(files.size).toBe(1);
+      expect(written.journey).toBe(first);
+    }
+  );
+
+  it('records successful disposal only after the context has closed', async () => {
+    const summary = new JourneySummary('synthetic');
+    let completeClose!: () => void;
+    const context = {
+      close: jest.fn(
+        () => new Promise<void>((resolve) => (completeClose = resolve))
+      ),
+    };
+    const pending = PaliWallet.prototype.dispose.call(
+      { summary, context },
+      'passed'
+    );
+    expect(context.close).toHaveBeenCalledTimes(1);
+    expect(written.status).toBe('running');
+    expect(written.endedAt).toBeUndefined();
+    completeClose();
+    await pending;
+    expect(written.status).toBe('passed');
+    expect(written.endedAt).toEqual(expect.any(String));
+  });
+
+  it('records failed disposal and rethrows the original context close error', async () => {
+    const summary = new JourneySummary('synthetic');
+    const error = new Error('Synthetic context close failure');
+    const context = { close: jest.fn().mockRejectedValue(error) };
+    await expect(
+      PaliWallet.prototype.dispose.call({ summary, context }, 'passed')
+    ).rejects.toBe(error);
+    expect(context.close).toHaveBeenCalledTimes(1);
+    expect(written.status).toBe('failed');
+    expect(written.endedAt).toEqual(expect.any(String));
+  });
+
+  it('closes the context even when the final summary write fails', async () => {
+    const summary = new JourneySummary('synthetic');
+    const error = new Error('Synthetic summary storage failure');
+    jest.mocked(fs.writeFileSync).mockImplementation(() => {
+      throw error;
+    });
+    const context = { close: jest.fn().mockResolvedValue(undefined) };
+    await expect(
+      PaliWallet.prototype.dispose.call({ summary, context }, 'passed')
+    ).rejects.toBe(error);
+    expect(context.close).toHaveBeenCalledTimes(1);
+    expect(written.status).toBe('running');
+  });
+
+  it('preserves the context close error if recording that failure also fails', async () => {
+    const summary = new JourneySummary('synthetic');
+    const closeError = new Error('Synthetic context close failure');
+    const writeError = new Error('Synthetic summary storage failure');
+    jest.mocked(fs.writeFileSync).mockImplementation(() => {
+      throw writeError;
+    });
+    const context = { close: jest.fn().mockRejectedValue(closeError) };
+    await expect(
+      PaliWallet.prototype.dispose.call({ summary, context }, 'passed')
+    ).rejects.toBe(closeError);
+    expect(context.close).toHaveBeenCalledTimes(1);
+    expect(fs.writeFileSync).toHaveBeenLastCalledWith(
+      summary.filePath,
+      expect.stringContaining('"status": "failed"')
+    );
+  });
+
+  it('never converts a failed step to a pass after successful context close', async () => {
+    const summary = new JourneySummary('synthetic');
+    summary.addStep({ name: 'check', durationMs: 1, status: 'failed' });
+    const context = { close: jest.fn().mockResolvedValue(undefined) };
+    await PaliWallet.prototype.dispose.call({ summary, context }, 'passed');
+    expect(written.status).toBe('failed');
+    expect(written.steps[0].status).toBe('failed');
   });
 
   it('records a launch rejection before a wallet exists and preserves the error', async () => {

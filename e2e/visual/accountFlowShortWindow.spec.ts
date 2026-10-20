@@ -72,6 +72,7 @@ test('account label validation remains visible at short heights', async ({}, inf
     rpcUrl: server.url,
   });
   let wallet: PaliWallet | undefined;
+  let status: 'passed' | 'failed' = 'failed';
   try {
     wallet = await PaliWallet.launch('account-label-short-window', {
       offlineHttpProxy: server.url,
@@ -120,10 +121,17 @@ test('account label validation remains visible at short heights', async ({}, inf
         .toBe(true);
     }
     expect(routes.deniedWrites).toEqual([]);
+    status = info.errors.length === 0 ? 'passed' : 'failed';
   } finally {
-    await wallet?.context.close().catch(() => undefined);
-    await server.close();
-    Object.assign(E2E_CONFIG, before);
+    try {
+      await wallet?.dispose(status);
+    } finally {
+      try {
+        await server.close();
+      } finally {
+        Object.assign(E2E_CONFIG, before);
+      }
+    }
   }
 });
 
@@ -139,6 +147,7 @@ test('backup and private-key errors remain readable without exporting secrets', 
     rpcUrl: server.url,
   });
   let wallet: PaliWallet | undefined;
+  let status: 'passed' | 'failed' = 'failed';
   try {
     wallet = await PaliWallet.launch('account-secrets-short-window', {
       offlineHttpProxy: server.url,
@@ -210,10 +219,17 @@ test('backup and private-key errors remain readable without exporting secrets', 
           .toBe(true);
       }
     expect(routes.deniedWrites).toEqual([]);
+    status = info.errors.length === 0 ? 'passed' : 'failed';
   } finally {
-    await wallet?.context.close().catch(() => undefined);
-    await server.close();
-    Object.assign(E2E_CONFIG, before);
+    try {
+      await wallet?.dispose(status);
+    } finally {
+      try {
+        await server.close();
+      } finally {
+        Object.assign(E2E_CONFIG, before);
+      }
+    }
   }
 });
 
@@ -229,6 +245,7 @@ test('account management retains access to the last row in short windows', async
     rpcUrl: server.url,
   });
   let wallet: PaliWallet | undefined;
+  let status: 'passed' | 'failed' = 'failed';
   try {
     wallet = await PaliWallet.launch('manage-accounts-short-window', {
       offlineHttpProxy: server.url,
@@ -277,10 +294,17 @@ test('account management retains access to the last row in short windows', async
         .toBe(true);
     }
     expect(routes.deniedWrites).toEqual([]);
+    status = info.errors.length === 0 ? 'passed' : 'failed';
   } finally {
-    await wallet?.context.close().catch(() => undefined);
-    await server.close();
-    Object.assign(E2E_CONFIG, before);
+    try {
+      await wallet?.dispose(status);
+    } finally {
+      try {
+        await server.close();
+      } finally {
+        Object.assign(E2E_CONFIG, before);
+      }
+    }
   }
 });
 const wheelTo = async (page: Page, control: Locator) => {
@@ -310,6 +334,7 @@ test('account creation errors keep the action and error exposed in short windows
     rpcUrl: server.url,
   });
   let wallet: PaliWallet | undefined;
+  let status: 'passed' | 'failed' = 'failed';
   try {
     wallet = await PaliWallet.launch('account-creation-short-window', {
       offlineHttpProxy: server.url,
@@ -386,9 +411,16 @@ test('account creation errors keep the action and error exposed in short windows
         .toBe(true);
     }
     expect(routes.deniedWrites).toEqual([]);
+    status = info.errors.length === 0 ? 'passed' : 'failed';
   } finally {
-    await wallet?.context.close().catch(() => undefined);
-    await server.close();
-    Object.assign(E2E_CONFIG, before);
+    try {
+      await wallet?.dispose(status);
+    } finally {
+      try {
+        await server.close();
+      } finally {
+        Object.assign(E2E_CONFIG, before);
+      }
+    }
   }
 });

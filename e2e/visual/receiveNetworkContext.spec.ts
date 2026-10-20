@@ -18,6 +18,7 @@ test('Receive retains readable network context and copy controls with long custo
     rpcUrl: server.url,
   });
   let wallet: PaliWallet | undefined;
+  let status: 'passed' | 'failed' = 'failed';
   try {
     wallet = await PaliWallet.launch('receive-network-context', {
       offlineHttpProxy: server.url,
@@ -119,9 +120,16 @@ test('Receive retains readable network context and copy controls with long custo
     }
     expect(routes.deniedWrites).toEqual([]);
     expect(routes.syntheticBroadcasts).toEqual([]);
+    if (test.info().errors.length === 0) status = 'passed';
   } finally {
-    await wallet?.context.close();
-    await server.close();
-    Object.assign(E2E_CONFIG, previous);
+    try {
+      await wallet?.dispose(status);
+    } finally {
+      try {
+        await server.close();
+      } finally {
+        Object.assign(E2E_CONFIG, previous);
+      }
+    }
   }
 });

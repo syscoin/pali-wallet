@@ -17,7 +17,9 @@ import {
 
 test('settings: disable and re-enable Ethereum without reloading or reconnecting dapps', async () => {
   const stopChains = await startLocalChains();
-  const wallet = await launchConformanceWallet().catch((error) => {
+  const wallet = await launchConformanceWallet(
+    'provider-property-toggle'
+  ).catch((error) => {
     stopChains();
     throw error;
   });

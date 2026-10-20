@@ -21,6 +21,7 @@ test('WIF import keeps every address type reachable in narrow windows without im
     rpcUrl: server.url,
   });
   let wallet: PaliWallet | undefined;
+  let status: 'passed' | 'failed' = 'failed';
   try {
     wallet = await PaliWallet.launch('account-import-edge', {
       offlineHttpProxy: server.url,
@@ -86,10 +87,17 @@ test('WIF import keeps every address type reachable in narrow windows without im
     await page.getByRole('button', { name: 'Back', exact: true }).click();
     await expect(page.locator('#import-account-identifier')).toHaveCount(0);
     expect(routes.deniedWrites).toEqual([]);
+    status = info.errors.length === 0 ? 'passed' : 'failed';
   } finally {
-    await wallet?.context.close().catch(() => undefined);
-    await server.close();
-    Object.assign(E2E_CONFIG, before);
+    try {
+      await wallet?.dispose(status);
+    } finally {
+      try {
+        await server.close();
+      } finally {
+        Object.assign(E2E_CONFIG, before);
+      }
+    }
   }
 });
 
@@ -104,6 +112,7 @@ test('public XPUB copy is a keyboard control in the private-key view at narrow h
     rpcUrl: server.url,
   });
   let wallet: PaliWallet | undefined;
+  let status: 'passed' | 'failed' = 'failed';
   try {
     wallet = await PaliWallet.launch('public-xpub-keyboard-edge', {
       offlineHttpProxy: server.url,
@@ -200,10 +209,17 @@ test('public XPUB copy is a keyboard control in the private-key view at narrow h
         .count()
     ).toBe(0);
     expect(routes.deniedWrites).toEqual([]);
+    status = info.errors.length === 0 ? 'passed' : 'failed';
   } finally {
-    await wallet?.context.close().catch(() => undefined);
-    await server.close();
-    Object.assign(E2E_CONFIG, before);
+    try {
+      await wallet?.dispose(status);
+    } finally {
+      try {
+        await server.close();
+      } finally {
+        Object.assign(E2E_CONFIG, before);
+      }
+    }
   }
 });
 
@@ -217,6 +233,7 @@ test('late language preference reads preserve keyboard-selected drafts in short 
     rpcUrl: server.url,
   });
   let wallet: PaliWallet | undefined;
+  let status: 'passed' | 'failed' = 'failed';
   try {
     wallet = await PaliWallet.launch('language-draft-edge', {
       offlineHttpProxy: server.url,
@@ -284,10 +301,17 @@ test('late language preference reads preserve keyboard-selected drafts in short 
     }
     await page.evaluate(() => (window as any).__restoreLanguageReads());
     expect(routes.deniedWrites).toEqual([]);
+    status = info.errors.length === 0 ? 'passed' : 'failed';
   } finally {
-    await wallet?.context.close().catch(() => undefined);
-    await server.close();
-    Object.assign(E2E_CONFIG, before);
+    try {
+      await wallet?.dispose(status);
+    } finally {
+      try {
+        await server.close();
+      } finally {
+        Object.assign(E2E_CONFIG, before);
+      }
+    }
   }
 });
 
@@ -301,6 +325,7 @@ test('About support links and URL copy are named keyboard controls in small wind
     rpcUrl: server.url,
   });
   let wallet: PaliWallet | undefined;
+  let status: 'passed' | 'failed' = 'failed';
   try {
     wallet = await PaliWallet.launch('about-keyboard-edge', {
       offlineHttpProxy: server.url,
@@ -499,12 +524,25 @@ test('About support links and URL copy are named keyboard controls in small wind
     await action.click();
     await expect(modal).toBeHidden();
     expect(routes.deniedWrites).toEqual([]);
+    status = info.errors.length === 0 ? 'passed' : 'failed';
   } finally {
-    await wallet?.page
-      .evaluate(() => window.dispatchEvent(new Event('focus')))
-      .catch(() => undefined);
-    await wallet?.context.close().catch(() => undefined);
-    await server.close();
-    Object.assign(E2E_CONFIG, before);
+    try {
+      await wallet?.page
+        .evaluate(() => window.dispatchEvent(new Event('focus')))
+        .catch(() => undefined);
+    } catch (error) {
+      status = 'failed';
+      throw error;
+    } finally {
+      try {
+        await wallet?.dispose(status);
+      } finally {
+        try {
+          await server.close();
+        } finally {
+          Object.assign(E2E_CONFIG, before);
+        }
+      }
+    }
   }
 });

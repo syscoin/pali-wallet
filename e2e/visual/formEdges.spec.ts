@@ -43,6 +43,7 @@ test('forget-wallet failure stays readable and retryable without erasing the off
     rpcUrl: server.url,
   });
   let wallet: PaliWallet | undefined;
+  let status: 'passed' | 'failed' = 'failed';
   try {
     wallet = await PaliWallet.launch('form-error-edge', {
       offlineHttpProxy: server.url,
@@ -134,10 +135,17 @@ test('forget-wallet failure stays readable and retryable without erasing the off
     }
     expect(await page.evaluate(() => (window as any).__forgetCalls)).toBe(2);
     expect(routes.deniedWrites).toEqual([]);
+    status = info.errors.length === 0 ? 'passed' : 'failed';
   } finally {
-    await wallet?.context.close().catch(() => undefined);
-    await server.close();
-    Object.assign(E2E_CONFIG, previous);
+    try {
+      await wallet?.dispose(status);
+    } finally {
+      try {
+        await server.close();
+      } finally {
+        Object.assign(E2E_CONFIG, previous);
+      }
+    }
   }
 });
 
@@ -154,6 +162,7 @@ test('edited account Copy remains keyboard-operable and fully exposed in narrow 
     rpcUrl: server.url,
   });
   let wallet: PaliWallet | undefined;
+  let status: 'passed' | 'failed' = 'failed';
   try {
     wallet = await PaliWallet.launch('form-copy-edge', {
       offlineHttpProxy: server.url,
@@ -239,9 +248,16 @@ test('edited account Copy remains keyboard-operable and fully exposed in narrow 
     );
     expect(copied).toEqual(expectedAddresses);
     expect(routes.deniedWrites).toEqual([]);
+    status = info.errors.length === 0 ? 'passed' : 'failed';
   } finally {
-    await wallet?.context.close().catch(() => undefined);
-    await server.close();
-    Object.assign(E2E_CONFIG, previous);
+    try {
+      await wallet?.dispose(status);
+    } finally {
+      try {
+        await server.close();
+      } finally {
+        Object.assign(E2E_CONFIG, previous);
+      }
+    }
   }
 });

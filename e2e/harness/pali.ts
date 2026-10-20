@@ -502,7 +502,16 @@ export class PaliWallet {
   }
 
   async dispose(status?: 'passed' | 'failed') {
+    try {
+      await this.context.close();
+    } catch (error) {
+      try {
+        this.summary.finish('failed');
+      } catch {
+        // Preserve the original close failure if summary storage also fails.
+      }
+      throw error;
+    }
     this.summary.finish(status);
-    await this.context.close();
   }
 }

@@ -87,6 +87,7 @@ test('account dropdown supports keyboard selection and separate copy actions in 
     rpcUrl: server.url,
   });
   let wallet: PaliWallet | undefined;
+  let status: 'passed' | 'failed' = 'failed';
   try {
     wallet = await PaliWallet.launch('qa117-account-menu', {
       offlineHttpProxy: server.url,
@@ -287,10 +288,17 @@ test('account dropdown supports keyboard selection and separate copy actions in 
       });
     }
     expect(routes.deniedWrites).toEqual([]);
+    status = info.errors.length === 0 ? 'passed' : 'failed';
   } finally {
-    await wallet?.context.close().catch(() => undefined);
-    await server.close();
-    Object.assign(E2E_CONFIG, previous);
+    try {
+      await wallet?.dispose(status);
+    } finally {
+      try {
+        await server.close();
+      } finally {
+        Object.assign(E2E_CONFIG, previous);
+      }
+    }
   }
 });
 
@@ -304,6 +312,7 @@ test('a long smart-account menu keeps bottom actions reachable by keyboard and s
     rpcUrl: server.url,
   });
   let wallet: PaliWallet | undefined;
+  let status: 'passed' | 'failed' = 'failed';
   try {
     wallet = await PaliWallet.launch('qa117-long-smart-menu', {
       offlineHttpProxy: server.url,
@@ -542,9 +551,16 @@ test('a long smart-account menu keeps bottom actions reachable by keyboard and s
     ).toEqual([]);
     expect(routes.deniedWrites).toEqual([]);
     expect(errors).toEqual([]);
+    status = info.errors.length === 0 ? 'passed' : 'failed';
   } finally {
-    await wallet?.context.close().catch(() => undefined);
-    await server.close();
-    Object.assign(E2E_CONFIG, previous);
+    try {
+      await wallet?.dispose(status);
+    } finally {
+      try {
+        await server.close();
+      } finally {
+        Object.assign(E2E_CONFIG, previous);
+      }
+    }
   }
 });

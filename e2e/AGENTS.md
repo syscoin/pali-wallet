@@ -69,6 +69,12 @@ Each run writes to `e2e/artifacts/<runId>/`:
   inspect with `npx playwright show-trace <trace.zip>`
 - `playwright.json` / `html-report/` — standard Playwright reports
 
+After successful visual baselines, CI runs
+`node e2e/scripts/check-summary-completion.cjs <run-directory>` on that exact
+shard's artifact directory. Every summary must be passed, have a valid end
+timestamp, and contain no failed step. Missing, malformed, unfinished or failed
+summaries fail the read-only gate; artifact uploads still run on failure.
+
 Agent loop recipe: run a journey → parse the summary JSON → triage `failed`
 steps and `quirk`/`bug` findings → fix code or extend the journey → rerun.
 Record new oddities with `wallet.finding({ severity, detail })` so they

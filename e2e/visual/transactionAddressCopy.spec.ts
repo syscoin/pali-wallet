@@ -24,8 +24,9 @@ for (const alias of ['alice.eth', 'a-very-long-recipient-alias.eth']) {
       rpcUrl: server.url,
       seedPhrase: VISUAL_FIXTURE_SEED,
     });
+    let status: 'passed' | 'failed' = 'failed';
     try {
-      wallet = await PaliWallet.launch('transaction-address-copy', {
+      wallet = await PaliWallet.launch(`transaction-address-copy-${alias}`, {
         offlineHttpProxy: server.url,
         viewport: { width: 400, height: 620 },
       });
@@ -116,10 +117,17 @@ for (const alias of ['alice.eth', 'a-very-long-recipient-alias.eth']) {
         contentType: 'image/png',
       });
       expect(routes.deniedWrites).toEqual([]);
+      status = info.errors.length === 0 ? 'passed' : 'failed';
     } finally {
-      await wallet?.context.close().catch(() => undefined);
-      await server.close();
-      Object.assign(E2E_CONFIG, before);
+      try {
+        await wallet?.dispose(status);
+      } finally {
+        try {
+          await server.close();
+        } finally {
+          Object.assign(E2E_CONFIG, before);
+        }
+      }
     }
   });
 }

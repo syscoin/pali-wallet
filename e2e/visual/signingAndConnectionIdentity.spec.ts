@@ -32,6 +32,7 @@ async function withWallet(
     rpcUrl: server.url,
   });
   let wallet: PaliWallet | undefined;
+  let status: 'passed' | 'failed' = 'failed';
   try {
     wallet = await PaliWallet.launch(name, {
       offlineHttpProxy: server.url,
@@ -47,10 +48,17 @@ async function withWallet(
     await wallet.switchNetwork('Syscoin NEVM Testnet', 'EVM');
     await run(wallet, server.url);
     expect(routes.deniedWrites).toEqual([]);
+    if (test.info().errors.length === 0) status = 'passed';
   } finally {
-    await wallet?.context.close();
-    await server.close();
-    Object.assign(E2E_CONFIG, before);
+    try {
+      await wallet?.dispose(status);
+    } finally {
+      try {
+        await server.close();
+      } finally {
+        Object.assign(E2E_CONFIG, before);
+      }
+    }
   }
 }
 

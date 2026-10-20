@@ -36,10 +36,13 @@ for (const quantity of [
     let wallet: PaliWallet | undefined;
     let status: 'passed' | 'failed' = 'failed';
     try {
-      wallet = await PaliWallet.launch('owned-nft-import-quantity', {
-        offlineHttpProxy: server.url,
-        viewport: { width: 400, height: 620 },
-      });
+      wallet = await PaliWallet.launch(
+        `owned-nft-import-quantity-${quantity}`,
+        {
+          offlineHttpProxy: server.url,
+          viewport: { width: 400, height: 620 },
+        }
+      );
       const routes = await installIsolatedVaultRoutes(
         wallet.context,
         fixture,
@@ -236,13 +239,16 @@ for (const quantity of [
         body: await page.screenshot({ animations: 'disabled' }),
       });
       expect(routes.deniedWrites).toEqual([]);
-      status = 'passed';
+      status = info.errors.length === 0 ? 'passed' : 'failed';
     } finally {
       try {
         await wallet?.dispose(status);
       } finally {
-        await server.close();
-        Object.assign(E2E_CONFIG, before);
+        try {
+          await server.close();
+        } finally {
+          Object.assign(E2E_CONFIG, before);
+        }
       }
     }
   });

@@ -58,6 +58,7 @@ test('NFT detail ownership follows the latest edit and cancels reads on Back in 
     rpcUrl: server.url,
   });
   let wallet: PaliWallet | undefined;
+  let status: 'passed' | 'failed' = 'failed';
   try {
     wallet = await PaliWallet.launch('qa117-nft-details', {
       offlineHttpProxy: server.url,
@@ -307,9 +308,16 @@ test('NFT detail ownership follows the latest edit and cancels reads on Back in 
     }
     expect(routes.deniedWrites).toEqual([]);
     await page.close();
+    status = info.errors.length === 0 ? 'passed' : 'failed';
   } finally {
-    await wallet?.context.close().catch(() => undefined);
-    await server.close();
-    Object.assign(E2E_CONFIG, original);
+    try {
+      await wallet?.dispose(status);
+    } finally {
+      try {
+        await server.close();
+      } finally {
+        Object.assign(E2E_CONFIG, original);
+      }
+    }
   }
 });

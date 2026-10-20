@@ -21,6 +21,7 @@ test('module consent wraps long requests and drops stale checks after identity c
     rpcUrl: server.url,
   });
   let wallet: PaliWallet | undefined;
+  let status: 'passed' | 'failed' = 'failed';
   try {
     wallet = await PaliWallet.launch('qa117-module-consent', {
       offlineHttpProxy: server.url,
@@ -269,9 +270,16 @@ test('module consent wraps long requests and drops stale checks after identity c
     expect(routes.deniedWrites).toEqual([]);
     expect(errors).toEqual([]);
     await page.close();
+    status = info.errors.length === 0 ? 'passed' : 'failed';
   } finally {
-    await wallet?.context.close().catch(() => undefined);
-    await server.close();
-    Object.assign(E2E_CONFIG, previous);
+    try {
+      await wallet?.dispose(status);
+    } finally {
+      try {
+        await server.close();
+      } finally {
+        Object.assign(E2E_CONFIG, previous);
+      }
+    }
   }
 });

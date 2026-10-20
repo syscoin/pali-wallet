@@ -207,6 +207,7 @@ test('locked wallet and recovery warning remain readable and operable', async ({
     rpcUrl: server.url,
   });
   let wallet: PaliWallet | undefined;
+  let status: 'passed' | 'failed' = 'failed';
   try {
     wallet = await PaliWallet.launch('locked-window-sweep', {
       offlineHttpProxy: server.url,
@@ -419,10 +420,17 @@ test('locked wallet and recovery warning remain readable and operable', async ({
       );
     }
     expect(routes.deniedWrites).toEqual([]);
+    status = info.errors.length === 0 ? 'passed' : 'failed';
   } finally {
-    await wallet?.context.close();
-    await server.close();
-    Object.assign(E2E_CONFIG, before);
+    try {
+      await wallet?.dispose(status);
+    } finally {
+      try {
+        await server.close();
+      } finally {
+        Object.assign(E2E_CONFIG, before);
+      }
+    }
   }
 });
 
@@ -511,6 +519,7 @@ test('hardware entry and device instructions fit narrow and short windows', asyn
     rpcUrl: server.url,
   });
   let wallet: PaliWallet | undefined;
+  let status: 'passed' | 'failed' = 'failed';
   try {
     wallet = await PaliWallet.launch('hardware-window-sweep', {
       offlineHttpProxy: server.url,
@@ -572,9 +581,16 @@ test('hardware entry and device instructions fit narrow and short windows', asyn
       }
     }
     expect(routes.deniedWrites).toEqual([]);
+    status = info.errors.length === 0 ? 'passed' : 'failed';
   } finally {
-    await wallet?.context.close();
-    await server.close();
-    Object.assign(E2E_CONFIG, before);
+    try {
+      await wallet?.dispose(status);
+    } finally {
+      try {
+        await server.close();
+      } finally {
+        Object.assign(E2E_CONFIG, before);
+      }
+    }
   }
 });

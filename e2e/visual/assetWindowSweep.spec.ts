@@ -169,6 +169,7 @@ test('long ERC20 and NFT metadata stays readable in lists, details and import pr
     });
     expect.soft(overflow, `${name}: visible metadata fits`).toEqual([]);
   };
+  let status: 'passed' | 'failed' = 'failed';
   try {
     wallet = await PaliWallet.launch('asset-window-sweep', {
       offlineHttpProxy: server.url,
@@ -432,9 +433,16 @@ test('long ERC20 and NFT metadata stays readable in lists, details and import pr
     }
     expect(routes.deniedWrites).toEqual([]);
     await page.close();
+    status = info.errors.length === 0 ? 'passed' : 'failed';
   } finally {
-    await wallet?.context.close().catch(() => undefined);
-    await server.close();
-    Object.assign(E2E_CONFIG, before);
+    try {
+      await wallet?.dispose(status);
+    } finally {
+      try {
+        await server.close();
+      } finally {
+        Object.assign(E2E_CONFIG, before);
+      }
+    }
   }
 });

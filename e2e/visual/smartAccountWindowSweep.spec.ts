@@ -152,6 +152,7 @@ test('smart-account dialogs, policy and long dapp approvals fit narrow and short
   const previous = { ...E2E_CONFIG };
   const server = await startUtxoFixtureServer();
   let wallet: PaliWallet | undefined;
+  let status: 'passed' | 'failed' = 'failed';
   let page: Page | undefined;
   const errors: string[] = [];
   const directory = path.join(
@@ -545,11 +546,24 @@ test('smart-account dialogs, policy and long dapp approvals fit narrow and short
     expect(
       await page.evaluate(() => (window as any).__windowSweep.deniedActions)
     ).toEqual([]);
+    if (test.info().errors.length === 0) status = 'passed';
   } finally {
-    await page?.close().catch(() => undefined);
-    await wallet?.context.close().catch(() => undefined);
-    await server.close();
-    Object.assign(E2E_CONFIG, previous);
+    try {
+      await page?.close().catch(() => undefined);
+    } catch (error) {
+      status = 'failed';
+      throw error;
+    } finally {
+      try {
+        await wallet?.dispose(status);
+      } finally {
+        try {
+          await server.close();
+        } finally {
+          Object.assign(E2E_CONFIG, previous);
+        }
+      }
+    }
   }
 });
 

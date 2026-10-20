@@ -79,6 +79,7 @@ test('settings, navigation menus and token search fit small localized windows', 
   const records: unknown[] = [];
   const failures: string[] = [];
   let wallet: PaliWallet | undefined;
+  let status: 'passed' | 'failed' = 'failed';
   const capture = async (page: Page, name: string) => {
     const file = path.join(output, `${name}.png`);
     await page.screenshot({ path: file, animations: 'disabled' });
@@ -337,14 +338,27 @@ test('settings, navigation menus and token search fit small localized windows', 
     await evmPage.close();
     expect(routes.deniedWrites).toEqual([]);
     expect(failures).toEqual([]);
+    if (test.info().errors.length === 0) status = 'passed';
   } finally {
-    fs.writeFileSync(
-      path.join(output, 'geometry.json'),
-      JSON.stringify(records, null, 2)
-    );
-    await wallet?.context.close().catch(() => undefined);
-    await server.close();
-    Object.assign(E2E_CONFIG, before);
+    try {
+      fs.writeFileSync(
+        path.join(output, 'geometry.json'),
+        JSON.stringify(records, null, 2)
+      );
+    } catch (error) {
+      status = 'failed';
+      throw error;
+    } finally {
+      try {
+        await wallet?.dispose(status);
+      } finally {
+        try {
+          await server.close();
+        } finally {
+          Object.assign(E2E_CONFIG, before);
+        }
+      }
+    }
   }
 });
 
@@ -360,6 +374,7 @@ test('long network labels and populated menus stay bounded and keyboard reachabl
     rpcUrl: server.url,
   });
   let wallet: PaliWallet | undefined;
+  let status: 'passed' | 'failed' = 'failed';
   const output = path.join(E2E_CONFIG.artifactsDir, 'network-labels');
   fs.mkdirSync(output, { recursive: true });
   try {
@@ -530,9 +545,16 @@ test('long network labels and populated menus stay bounded and keyboard reachabl
     await expect(dialog).toHaveCount(0);
     await page.close();
     expect(routes.deniedWrites).toEqual([]);
+    if (test.info().errors.length === 0) status = 'passed';
   } finally {
-    await wallet?.context.close().catch(() => undefined);
-    await server.close();
-    Object.assign(E2E_CONFIG, before);
+    try {
+      await wallet?.dispose(status);
+    } finally {
+      try {
+        await server.close();
+      } finally {
+        Object.assign(E2E_CONFIG, before);
+      }
+    }
   }
 });

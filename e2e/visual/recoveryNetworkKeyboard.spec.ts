@@ -41,6 +41,7 @@ test('recovery network picker can be operated by keyboard in a short window', as
     rpcUrl: server.url,
   });
   let wallet: PaliWallet | undefined;
+  let status: 'passed' | 'failed' = 'failed';
   try {
     wallet = await PaliWallet.launch('qa116-network-keyboard', {
       offlineHttpProxy: server.url,
@@ -101,9 +102,16 @@ test('recovery network picker can be operated by keyboard in a short window', as
     });
     // This pass tests selection only, not a network connection or transaction.
     expect(routes.deniedWrites).toEqual([]);
+    if (test.info().errors.length === 0) status = 'passed';
   } finally {
-    await wallet?.context.close().catch(() => undefined);
-    await server.close();
-    Object.assign(E2E_CONFIG, previous);
+    try {
+      await wallet?.dispose(status);
+    } finally {
+      try {
+        await server.close();
+      } finally {
+        Object.assign(E2E_CONFIG, previous);
+      }
+    }
   }
 });

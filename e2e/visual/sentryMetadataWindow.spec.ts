@@ -20,6 +20,7 @@ test('Sentry settings wrap a long custom network label in small windows', async 
     rpcUrl: server.url,
   });
   let wallet: PaliWallet | undefined;
+  let status: 'passed' | 'failed' = 'failed';
   try {
     wallet = await PaliWallet.launch('sentry-metadata-small-window', {
       offlineHttpProxy: server.url,
@@ -83,9 +84,16 @@ test('Sentry settings wrap a long custom network label in small windows', async 
     }
     expect(routes.deniedWrites).toEqual([]);
     expect(routes.syntheticBroadcasts).toEqual([]);
+    if (test.info().errors.length === 0) status = 'passed';
   } finally {
-    await wallet?.context.close().catch(() => undefined);
-    Object.assign(E2E_CONFIG, before);
-    await server.close();
+    try {
+      await wallet?.dispose(status);
+    } finally {
+      try {
+        Object.assign(E2E_CONFIG, before);
+      } finally {
+        await server.close();
+      }
+    }
   }
 });

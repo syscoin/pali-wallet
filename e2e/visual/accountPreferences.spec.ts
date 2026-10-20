@@ -20,6 +20,7 @@ test('ordinary account creation freezes its label and rejects duplicate form sub
     rpcUrl: server.url,
   });
   let wallet: PaliWallet | undefined;
+  let status: 'passed' | 'failed' = 'failed';
   try {
     wallet = await PaliWallet.launch('qa117-account-pending', {
       offlineHttpProxy: server.url,
@@ -97,10 +98,17 @@ test('ordinary account creation freezes its label and rejects duplicate form sub
       await page.evaluate(() => ((window as any).__qa117Creates = []));
     }
     expect(routes.deniedWrites).toEqual([]);
+    status = info.errors.length === 0 ? 'passed' : 'failed';
   } finally {
-    await wallet?.context.close().catch(() => undefined);
-    await server.close();
-    Object.assign(E2E_CONFIG, before);
+    try {
+      await wallet?.dispose(status);
+    } finally {
+      try {
+        await server.close();
+      } finally {
+        Object.assign(E2E_CONFIG, before);
+      }
+    }
   }
 });
 
@@ -114,6 +122,7 @@ test('account public-address copy reports clipboard refusal and stays retryable'
     rpcUrl: server.url,
   });
   let wallet: PaliWallet | undefined;
+  let status: 'passed' | 'failed' = 'failed';
   try {
     wallet = await PaliWallet.launch('qa117-account-copy', {
       offlineHttpProxy: server.url,
@@ -206,10 +215,17 @@ test('account public-address copy reports clipboard refusal and stays retryable'
     }
     expect(errors).toEqual([]);
     expect(routes.deniedWrites).toEqual([]);
+    status = info.errors.length === 0 ? 'passed' : 'failed';
   } finally {
-    await wallet?.context.close().catch(() => undefined);
-    await server.close();
-    Object.assign(E2E_CONFIG, before);
+    try {
+      await wallet?.dispose(status);
+    } finally {
+      try {
+        await server.close();
+      } finally {
+        Object.assign(E2E_CONFIG, before);
+      }
+    }
   }
 });
 
@@ -223,6 +239,7 @@ test('fiat updates preserve an edited and submitted currency draft in small wind
     rpcUrl: server.url,
   });
   let wallet: PaliWallet | undefined;
+  let status: 'passed' | 'failed' = 'failed';
   try {
     wallet = await PaliWallet.launch('qa117-currency-draft', {
       offlineHttpProxy: server.url,
@@ -345,9 +362,16 @@ test('fiat updates preserve an edited and submitted currency draft in small wind
       await page.close();
     }
     expect(routes.deniedWrites).toEqual([]);
+    status = info.errors.length === 0 ? 'passed' : 'failed';
   } finally {
-    await wallet?.context.close().catch(() => undefined);
-    await server.close();
-    Object.assign(E2E_CONFIG, before);
+    try {
+      await wallet?.dispose(status);
+    } finally {
+      try {
+        await server.close();
+      } finally {
+        Object.assign(E2E_CONFIG, before);
+      }
+    }
   }
 });
