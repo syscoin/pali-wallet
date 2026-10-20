@@ -59,6 +59,20 @@ const networkEvents = [
   PaliEvents.isBitcoinBased,
   PaliSyscoinEvents.blockExplorerChanged,
 ];
+// Chromium's extension ANY argument converter strips null object members,
+// unlike JSON.stringify; null array elements remain present. Model that
+// boundary before executing the real injected function.
+const chromeAnyArgument = (value: any): any =>
+  Array.isArray(value)
+    ? value.map(chromeAnyArgument)
+    : value && typeof value === 'object'
+    ? Object.fromEntries(
+        Object.entries(value)
+          .filter(([, item]) => item !== null)
+          .map(([key, item]) => [key, chromeAnyArgument(item)])
+      )
+    : value;
+const notice = (options: any) => JSON.parse(options.args[0]);
 const network = (chainId: number) => ({
   chainId,
   kind: INetworkType.Ethereum,
@@ -205,7 +219,8 @@ beforeEach(() => {
   (chrome as any).scripting = {
     executeScript: jest.fn(async (options) => {
       injected.push(options);
-      if (options.target.tabId === 1) options.func(...options.args);
+      if (options.target.tabId === 1)
+        options.func(...options.args.map(chromeAnyArgument));
       return [];
     }),
   };
@@ -290,6 +305,60 @@ afterEach(() => {
   );
   jest.restoreAllMocks();
   globalThis.fetch = originalFetch;
+});
+
+it('preserves an explicit null EVM explorer through Chromium argument conversion', async () => {
+  const provider = new PaliInpageProviderSys();
+  await new Promise<void>((resolve) =>
+    provider.once('_sysInitialized', resolve)
+  );
+  expect(await provider.activeExplorer()).toBeNull();
+  await wallet.setActiveNetwork(network(2));
+  await deliver(2);
+  expect(provider.chainId).toBe('0x2');
+  expect(provider.isBitcoinBased()).toBe(false);
+  expect(await provider.activeExplorer()).toBeNull();
+});
+
+it.each([
+  [PaliSyscoinEvents.xpubChanged, null, null],
+  [
+    PaliEvents.lockStateChanged,
+    { isUnlocked: false },
+    { isUnlocked: false, accounts: [], xpub: null },
+  ],
+])(
+  'preserves nullable %s fields through Chromium argument conversion',
+  async (method, params, expected) => {
+    const received: any[] = [];
+    window.addEventListener('paliNotification', (event: any) => {
+      const data = JSON.parse(event.detail).data;
+      if (data.method === method) received.push(data);
+    });
+    await dapp.handleStateChange(method as PaliEvents, { method, params });
+    await deliver(1);
+    expect(received).toEqual([{ method, params: expected }]);
+  }
+);
+
+it('retains strings, false values and null array elements through the event transport', async () => {
+  const received: any[] = [];
+  window.addEventListener('paliNotification', (event: any) =>
+    received.push(JSON.parse(event.detail).data)
+  );
+  // Opaque JSON fields exercise transport fidelity, not new provider behavior.
+  const params = {
+    chainId: '0x1',
+    networkVersion: 1,
+    isBitcoinBased: false,
+    values: [null, false, 'text'],
+  };
+  await dapp.handleStateChange(PaliEvents.chainChanged, {
+    method: PaliEvents.chainChanged,
+    params,
+  });
+  await deliver(1);
+  expect(received).toEqual([{ method: PaliEvents.chainChanged, params }]);
 });
 
 it('healthy ordered network publications track the latest completed switch', async () => {
@@ -387,17 +456,17 @@ it('normal account selection and network publication retain each origin account'
   await deliver(2);
   expect(provider.selectedAddress).toBe(A);
   const accountMessages = injected.filter(
-    (entry) => entry.args[0].data.method === PaliEvents.accountsChanged
+    (entry) => notice(entry).data.method === PaliEvents.accountsChanged
   );
   expect(
     accountMessages
       .filter((entry) => entry.target.tabId === 1)
-      .map((entry) => entry.args[0].data.params)
+      .map((entry) => notice(entry).data.params)
   ).toEqual([[A]]);
   expect(
     accountMessages
       .filter((entry) => entry.target.tabId === 2)
-      .map((entry) => entry.args[0].data.params)
+      .map((entry) => notice(entry).data.params)
   ).toEqual([[B]]);
 });
 
@@ -427,7 +496,7 @@ it('drops superseded same-chain endpoint publications without dropping the curre
   await deliver(2, latest.url);
   const networkMessages = () =>
     injected.filter((entry) =>
-      networkEvents.includes(entry.args[0].data.method)
+      networkEvents.includes(notice(entry).data.method)
     );
   const count = networkMessages().length;
   expect(provider.chainId).toBe('0x2');
@@ -449,7 +518,7 @@ it('drops an old EVM network snapshot after a normal same-chain family transitio
   await wallet.setActiveNetwork(utxo);
   await deliver(2, first.url);
   const oldNetworkMessages = injected.filter((entry) =>
-    networkEvents.includes(entry.args[0].data.method)
+    networkEvents.includes(notice(entry).data.method)
   );
   expect(oldNetworkMessages).toEqual([]);
   await deliver(2, utxo.url);
@@ -462,7 +531,7 @@ it('drops a pending network snapshot after the supplied wallet generation retire
   wallet.walletStateGeneration += 1;
   await deliver(2);
   const networkMessages = injected.filter((entry) =>
-    networkEvents.includes(entry.args[0].data.method)
+    networkEvents.includes(notice(entry).data.method)
   );
   expect(networkMessages).toEqual([]);
 });
@@ -478,14 +547,14 @@ it.each(['chain', 'endpoint', 'UTXO endpoint'] as const)(
     const executed: any[] = [];
     const run = (options: any) => {
       if (options.target.tabId === 1) {
-        if (networkEvents.includes(options.args[0].data.method))
-          executed.push(options.args[0].data);
+        if (networkEvents.includes(notice(options).data.method))
+          executed.push(notice(options).data);
         options.func(...options.args);
       }
     };
     (chrome.scripting.executeScript as jest.Mock).mockImplementation(
       (options) => {
-        if (!networkEvents.includes(options.args[0].data.method)) {
+        if (!networkEvents.includes(notice(options).data.method)) {
           run(options);
           return Promise.resolve([]);
         }
@@ -548,7 +617,7 @@ it.each(['chain', 'endpoint', 'UTXO endpoint'] as const)(
     expect(
       old.every(
         (script) =>
-          script.options.args[0].data.method === PaliEvents.chainChanged
+          notice(script.options).data.method === PaliEvents.chainChanged
       )
     ).toBe(true);
     expect(overtaking).toHaveLength(0);
@@ -567,8 +636,8 @@ it.each(['reject', 'generation'] as const)(
         attempts.push(options);
         if (
           options.target.tabId === 1 &&
-          options.args[0].data.method === PaliEvents.chainChanged &&
-          options.args[0].data.params.chainId === '0x2'
+          notice(options).data.method === PaliEvents.chainChanged &&
+          notice(options).data.params.chainId === '0x2'
         ) {
           return new Promise((resolve, reject) => {
             release = () => {
@@ -592,7 +661,7 @@ it.each(['reject', 'generation'] as const)(
       attempts.some(
         (entry) =>
           entry.target.tabId === 2 &&
-          entry.args[0].data.params?.chainId === '0x3'
+          notice(entry).data.params?.chainId === '0x3'
       )
     ).toBe(true);
     if (completion === 'generation') wallet.walletStateGeneration += 1;
@@ -603,9 +672,9 @@ it.each(['reject', 'generation'] as const)(
         .filter(
           (entry) =>
             entry.target.tabId === 1 &&
-            entry.args[0].data.method === PaliEvents.chainChanged
+            notice(entry).data.method === PaliEvents.chainChanged
         )
-        .map((entry) => entry.args[0].data.params.chainId);
+        .map((entry) => notice(entry).data.params.chainId);
     expect(hostChains()).toEqual(
       completion === 'generation' ? ['0x2'] : ['0x2', '0x3']
     );

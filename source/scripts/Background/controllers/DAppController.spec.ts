@@ -230,7 +230,12 @@ describe('DAppController idempotent permission revocation', () => {
       expect(notificationManager.notifyDappConnection).toHaveBeenCalledTimes(1);
       expect(
         (chrome.scripting.executeScript as jest.Mock).mock.calls.map(
-          ([call]) => ({ tabId: call.target.tabId, args: call.args })
+          ([call]) => ({
+            tabId: call.target.tabId,
+            args: call.args.map((value, index) =>
+              index === 0 ? JSON.parse(value) : value
+            ),
+          })
         )
       ).toEqual([
         {
@@ -286,7 +291,7 @@ describe('DAppController idempotent permission revocation', () => {
 
     expect(
       (chrome.scripting.executeScript as jest.Mock).mock.calls.map(
-        ([call]) => call.args[0].data
+        ([call]) => JSON.parse(call.args[0]).data
       )
     ).toEqual([
       {
@@ -381,7 +386,7 @@ describe('DAppController idempotent permission revocation', () => {
         expect(
           (chrome.scripting.executeScript as jest.Mock).mock.calls
             .filter(([call]) => call.target.tabId === tabId)
-            .map(([call]) => call.args[0].data)
+            .map(([call]) => JSON.parse(call.args[0]).data)
         ).toEqual([
           { method: PaliEvents.accountsChanged, params: [] },
           { method: PaliSyscoinEvents.xpubChanged, params: null },
@@ -739,7 +744,7 @@ describe('per-site account notification disclosure', () => {
   const messages = (tabId: number) =>
     (chrome.scripting.executeScript as jest.Mock).mock.calls
       .filter(([call]) => call.target.tabId === tabId)
-      .map(([call]) => call.args[0].data);
+      .map(([call]) => JSON.parse(call.args[0]).data);
 
   it('does not disclose the globally active EVM account to other site connections', async () => {
     await deliver(controller(), PaliEvents.accountsChanged, [addressB]);

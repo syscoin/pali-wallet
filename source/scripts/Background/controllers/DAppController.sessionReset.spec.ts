@@ -31,8 +31,8 @@ const grant = {
   chain: INetworkType.Ethereum,
 };
 const notices = () =>
-  (chrome.scripting.executeScript as jest.Mock).mock.calls.map(
-    ([options]) => options.args[0]
+  (chrome.scripting.executeScript as jest.Mock).mock.calls.map(([options]) =>
+    JSON.parse(options.args[0])
   );
 const deferred = () => {
   let resolve!: () => void;

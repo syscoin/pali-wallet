@@ -839,16 +839,21 @@ const DAppController = (
               return await chrome.scripting.executeScript({
                 target: { tabId: tab.id },
                 world: 'MAIN',
-                func: (eventData, approvedOrigin) => {
+                func: (eventJson, approvedOrigin) => {
                   // The tab can navigate after tabs.query returns. Check in
                   // the receiving document before exposing account events.
                   if (window.location.origin !== approvedOrigin) return;
                   const event = new CustomEvent('paliNotification', {
-                    detail: JSON.stringify(eventData),
+                    detail: eventJson,
                   });
                   window.dispatchEvent(event);
                 },
-                args: [{ id, data: publicAccountEvent(host, data) }, origin],
+                // Chrome's ANY argument conversion drops null object fields.
+                // Serialize before that boundary to preserve the event schema.
+                args: [
+                  JSON.stringify({ id, data: publicAccountEvent(host, data) }),
+                  origin,
+                ],
               });
             } catch (error) {
               // Don't let individual tab failures crash the service worker

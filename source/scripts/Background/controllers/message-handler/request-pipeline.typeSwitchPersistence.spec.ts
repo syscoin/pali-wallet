@@ -461,7 +461,7 @@ describe.each([true, false])(
       await jest.advanceTimersByTimeAsync(0);
       const notices = () =>
         (chrome.scripting.executeScript as jest.Mock).mock.calls.map(
-          ([options]) => options.args[0].data
+          ([options]) => JSON.parse(options.args[0]).data
         );
       const accountNotices = notices().filter(
         (data) => data.method === PaliEvents.accountsChanged
