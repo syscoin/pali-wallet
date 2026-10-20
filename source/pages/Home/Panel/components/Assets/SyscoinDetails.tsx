@@ -14,6 +14,7 @@ import { useUtils } from 'hooks/index';
 import { getHomeBrowsingScope } from 'pages/Home/useHomeBrowsingState';
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 import { RootState } from 'state/store';
+import { formatFullPrecisionBalance } from 'utils/format';
 import {
   formatCurrency,
   truncate,
@@ -494,14 +495,13 @@ export const SyscoinAssetDetails = ({
                     </p>
                   ) : (
                     <p className="flex items-center font-normal gap-x-1.5 text-xs">
-                      <span className="text-brand-white">
-                        {truncate(
-                          formatCurrency(
-                            String(item.value),
-                            assetDecimals.value
-                          ),
-                          5,
-                          false
+                      <span
+                        className="text-brand-white"
+                        title={String(item.value)}
+                      >
+                        {formatFullPrecisionBalance(
+                          String(item.value),
+                          Math.min(assetDecimals.value, 4)
                         )}
                       </span>
 
