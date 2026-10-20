@@ -15,7 +15,7 @@ const budget = {
   contentScript: 16000,
   // Shared warning modals measured 8,590,479 bytes with receipt/amount guards.
   // Retain the saving with a rounded ceiling and a small platform buffer.
-  package: 8591000,
+  package: 8578000,
 };
 const allFiles = (root) =>
   fs.readdirSync(root, { withFileTypes: true }).flatMap((entry) => {

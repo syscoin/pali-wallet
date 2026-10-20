@@ -576,3 +576,22 @@ it('rejects cancellation without an approved scope instead of adopting the curre
     'transactions.transactionCancelFailed'
   );
 });
+
+it.each([
+  ['nonce', { nonce: 19 }],
+  ['sender', { from: NEXT_ACCOUNT }],
+  ['type', { type: 0 }],
+])(
+  'closes cancellation when same-hash %s identity changes',
+  async (_label, fields) => {
+    mockEmitter.mockResolvedValue({ isCanceled: false });
+    const view = render(<Harness />);
+    fireEvent.click(screen.getByText('Cancel'));
+    const oldConfirm = mockModal.onClick;
+    view.rerender(<Harness tx={{ ...transaction, ...fields }} />);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    await act(async () => oldConfirm());
+    expect(mockUpdate).not.toHaveBeenCalled();
+    expect(mockEmitter).not.toHaveBeenCalled();
+  }
+);

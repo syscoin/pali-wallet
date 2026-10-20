@@ -368,6 +368,13 @@ module.exports = {
           minChunks: 2,
           enforce: true,
         },
+        accountBalance: {
+          test: /[\\/]source[\\/]components[\\/]AccountBalance[\\/](?:index\.ts|LazyAccountBalance\.tsx)$/,
+          chunks: 'async',
+          name: 'account-balance',
+          minChunks: 2,
+          enforce: true,
+        },
       },
       chunks(chunk) {
         // Only split chunks for app and external, NOT background, contentScript, inpage, pali, or handleWindowProperties

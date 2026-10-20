@@ -22,6 +22,7 @@ import {
   getErc55Abi,
   isValidSYSAddress,
 } from '@sidhujag/sysweb3-utils';
+import { Transaction } from 'ethers/transaction';
 import isEmpty from 'lodash/isEmpty';
 import isEqual from 'lodash/isEqual';
 import isNil from 'lodash/isNil';
@@ -113,6 +114,7 @@ import {
   IWatchAssetTokenProps,
   ISysAssetMetadata,
   ITokenDetails,
+  WatchAssetType,
 } from 'types/tokens';
 import { ICustomRpcParams, IDecodedTx } from 'types/transactions';
 import { isAccountCompatibleWithNetwork } from 'utils/accountCompatibility';
@@ -128,13 +130,17 @@ import {
   PALI_NETWORKS_STATE,
 } from 'utils/constants';
 import { assertSupportedEvmFees } from 'utils/dappTransaction';
-import { formatUnits } from 'utils/ethersV6Compat';
+import { Contract, formatUnits } from 'utils/ethersV6Compat';
 import { decodeTransactionData } from 'utils/ethUtil';
 import { getBlacklistTargetsForEvmCallWithContractType } from 'utils/evmCallBlacklist';
 import {
   getEoaNonceFromHistoryTransaction,
   needsEoaNonceHistoryVerification,
 } from 'utils/evmNonce';
+import {
+  buildEvmMinedNonceIndex,
+  getEvmSettlementStatus,
+} from 'utils/evmReplacement';
 import {
   EVM_TRANSACTION_CONTEXT_CHANGED,
   IEvmTransactionContext,
@@ -146,6 +152,7 @@ import {
 } from 'utils/nativeBalanceCache';
 import { getNetworkChain } from 'utils/network';
 import { networkRegistrationFingerprint } from 'utils/networkRegistration';
+import { normalizeNftTokenId } from 'utils/nftTokenId';
 import { blacklistService } from 'utils/security/blacklistService';
 import {
   getSentryCollateralReservations,
@@ -3771,6 +3778,14 @@ class MainController {
       throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
 
     try {
+      const tokenId =
+        assetPreview.tokenStandard === 'ERC-1155'
+          ? normalizeNftTokenId(assetPreview.tokenId)
+          : undefined;
+      const rawBalance =
+        tokenId !== undefined
+          ? normalizeNftTokenId(assetPreview.rawBalance)
+          : undefined;
       // Use the provided asset details (already fetched by getAssetInfo) and convert to vault format
       const assetToAdd: ITokenEthProps = {
         tokenSymbol: assetPreview.symbol,
@@ -3786,6 +3801,7 @@ class MainController {
         name: assetPreview.name,
         id: assetPreview.id,
         tokenStandard: assetPreview.tokenStandard || 'ERC-20',
+        ...(tokenId !== undefined && { tokenId, rawBalance }),
       };
       console.log(
         `[MainController] Using provided asset details for ${assetPreview.symbol}`
@@ -3809,8 +3825,30 @@ class MainController {
   }
 
   public async getAssetInfo(
-    asset: IWatchAssetTokenProps
+    asset: IWatchAssetTokenProps,
+    assetType: WatchAssetType,
+    expectedScope: IWalletNavigationScope
   ): Promise<ITokenDetails> {
+    if (!['ERC20', 'ERC721', 'ERC1155'].includes(assetType))
+      throw new Error('Unsupported asset type');
+    // Normalize before any metadata I/O. A multi-token request identifies one
+    // uint256 token, not its collection or another rounded JavaScript number.
+    const requestedTokenId =
+      assetType === 'ERC1155' ? normalizeNftTokenId(asset.tokenId) : undefined;
+    const session = this.walletSessionGeneration;
+    const generation = this.walletStateGeneration;
+    const assertCurrent = () => {
+      const scope = getWalletNavigationScope();
+      if (
+        expectedScope?.account !== scope.account ||
+        expectedScope?.network !== scope.network ||
+        session !== this.walletSessionGeneration ||
+        generation !== this.walletStateGeneration
+      )
+        throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+      this.assertAssetMutationContext(expectedScope);
+    };
+    assertCurrent();
     const {
       activeAccount: activeAccountInfo,
       accounts,
@@ -3823,16 +3861,39 @@ class MainController {
 
     const activeAccount =
       accounts[activeAccountInfo.type][activeAccountInfo.id];
+    const provider = this.ethereumTransaction.web3Provider;
 
     try {
       // Use market data validation to get enhanced token info including logos
-      const tokenDetails = await this.getTokenDetailsWithMarketData(
+      let tokenDetails = await this.getTokenDetailsWithMarketData(
         asset.address,
         activeAccount.address
       );
+      assertCurrent();
 
       if (!tokenDetails) {
         throw new Error('Invalid token contract or token not found');
+      }
+      if (tokenDetails.tokenStandard !== `ERC-${assetType.slice(3)}`)
+        throw new Error('Asset type does not match token contract');
+
+      if (tokenDetails.tokenStandard === 'ERC-1155') {
+        const tokenId = requestedTokenId!;
+        const contract = new Contract(asset.address, getErc55Abi(), provider);
+        const rawBalance = normalizeNftTokenId(
+          await contract.balanceOf(activeAccount.address, tokenId)
+        );
+        assertCurrent();
+        tokenDetails = {
+          ...tokenDetails,
+          id: `${asset.address.toLowerCase()}-${
+            tokenDetails.chainId
+          }-${tokenId}`,
+          tokenId,
+          rawBalance,
+          balance: Number(rawBalance),
+          decimals: 0,
+        };
       }
 
       const knownTokenLogo =
@@ -4675,17 +4736,30 @@ class MainController {
     }
   ) {
     this.assertWalletReadyForSigning();
-    const { accounts, activeAccount, activeNetwork, isBitcoinBased } =
-      store.getState().vault;
+    const vault = store.getState().vault;
+    const { accounts, activeNetwork, isBitcoinBased } = vault;
+    const activeAccount = { ...vault.activeAccount };
+    const account = accounts[activeAccount.type]?.[activeAccount.id];
     const scope = getWalletNavigationScope();
     if (
       isBitcoinBased ||
       !expectedContext ||
+      activeNetwork.kind !== INetworkType.Ethereum ||
       expectedContext.chainId !== activeNetwork.chainId ||
       expectedContext.walletScope?.account !== scope.account ||
       expectedContext.walletScope?.network !== scope.network ||
+      typeof txHash !== 'string' ||
+      !/^0x[0-9a-f]{64}$/i.test(txHash) ||
+      typeof fallbackNonce !== 'number' ||
+      !Number.isSafeInteger(fallbackNonce) ||
+      fallbackNonce < 0 ||
       typeof signerAddress !== 'string' ||
-      !signerAddress.trim()
+      !/^0x[0-9a-f]{40}$/i.test(signerAddress) ||
+      !isAccountCompatibleWithNetwork(
+        account,
+        activeAccount.type,
+        activeNetwork
+      )
     )
       throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
     const normalizedSignerAddress = signerAddress.toLowerCase();
@@ -4708,8 +4782,18 @@ class MainController {
         }
 
         const accountsById = accounts[accountType];
-        for (const [accountId, account] of Object.entries(accountsById)) {
-          if (account?.address?.toLowerCase() === normalizedSignerAddress) {
+        for (const [accountId, candidateAccount] of Object.entries(
+          accountsById
+        )) {
+          if (
+            candidateAccount?.address?.toLowerCase() ===
+              normalizedSignerAddress &&
+            isAccountCompatibleWithNetwork(
+              candidateAccount,
+              accountType,
+              activeNetwork
+            )
+          ) {
             targetAccount = {
               id: Number(accountId),
               type: accountType,
@@ -4724,17 +4808,99 @@ class MainController {
       }
     }
 
-    const activeAccountValue = accounts[activeAccount.type]?.[activeAccount.id];
     if (
       !targetAccount &&
-      activeAccount.type === KeyringAccountType.SmartAccount &&
-      normalizedSignerAddress &&
-      activeAccountValue?.address?.toLowerCase() !== normalizedSignerAddress
+      activeAccount.type === KeyringAccountType.SmartAccount
     ) {
       throw new Error(
         `Unable to find local signer ${signerAddress} for transaction cancellation`
       );
     }
+
+    const chainId = expectedContext.chainId;
+    const normalizedHash = txHash.toLowerCase();
+    const history = (currentVault = store.getState().vault) =>
+      currentVault.accountTransactions?.[activeAccount.type]?.[activeAccount.id]
+        ?.ethereum?.[chainId] || [];
+    const findOriginal = (currentVault = store.getState().vault) =>
+      history(currentVault).find(
+        (tx: any) => tx.hash?.toLowerCase() === normalizedHash
+      ) as any;
+    const outerNonce = (tx: any) =>
+      getEoaNonceFromHistoryTransaction(
+        { ...tx, smartAccountExecutionFrom: undefined },
+        normalizedSignerAddress
+      );
+    const isPendingOriginal = (
+      tx: any,
+      currentVault = store.getState().vault
+    ) =>
+      Boolean(
+        tx &&
+          tx.hash?.toLowerCase() === normalizedHash &&
+          tx.from?.toLowerCase() === normalizedSignerAddress &&
+          outerNonce(tx) === fallbackNonce &&
+          (tx.chainId === undefined || Number(tx.chainId) === chainId) &&
+          (canUseSignerOverride
+            ? tx.smartAccountExecutionFrom?.toLowerCase() ===
+              account.address.toLowerCase()
+            : !tx.smartAccountExecutionFrom) &&
+          getEvmSettlementStatus(
+            tx,
+            chainId,
+            buildEvmMinedNonceIndex(history(currentVault), chainId)
+          ) === 'pending'
+      );
+    if (!isPendingOriginal(findOriginal()))
+      throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+
+    // An explorer nonce alone cannot authorize the SDK's missing-RPC fallback.
+    // Require a cached signed envelope whose hash commits to this exact nonce.
+    const hasSignedSubmission = (tx: any) => {
+      try {
+        const quantity = (value: any) =>
+          value && typeof value === 'object'
+            ? value._hex ?? value.hex ?? value.toString()
+            : value;
+        const type =
+          tx.type === null || tx.type === undefined
+            ? undefined
+            : Number(tx.type);
+        const signed = Transaction.from(
+          typeof tx.raw === 'string'
+            ? tx.raw
+            : {
+                type,
+                chainId: tx.chainId,
+                nonce: outerNonce(tx),
+                to: tx.to,
+                value: quantity(tx.value),
+                data: tx.input ?? tx.data ?? '0x',
+                gasLimit: quantity(tx.gasLimit ?? tx.gas),
+                ...(type === 0 || type === 1
+                  ? { gasPrice: quantity(tx.gasPrice) }
+                  : {
+                      maxFeePerGas: quantity(tx.maxFeePerGas),
+                      maxPriorityFeePerGas: quantity(tx.maxPriorityFeePerGas),
+                    }),
+                ...(type === 1 || type === 2
+                  ? { accessList: tx.accessList ?? [] }
+                  : {}),
+                signature: tx.signature ?? { r: tx.r, s: tx.s, v: tx.v },
+              }
+        );
+        return (
+          (signed.type === 0 || signed.type === 1 || signed.type === 2) &&
+          signed.signature !== null &&
+          signed.hash === normalizedHash &&
+          signed.from?.toLowerCase() === normalizedSignerAddress &&
+          signed.chainId === BigInt(chainId) &&
+          signed.nonce === fallbackNonce
+        );
+      } catch {
+        return false;
+      }
+    };
 
     const shouldUseTargetAccount =
       targetAccount &&
@@ -4744,16 +4910,43 @@ class MainController {
     const transactionController = keyring.ethereumTransaction;
     const provider = transactionController.web3Provider;
     const generation = this.walletSessionGeneration;
+    let usingFallback = false;
     const assertCurrentContext = () => {
       this.assertWalletReadyForSigning();
       const currentScope = getWalletNavigationScope();
+      const currentVault = store.getState().vault;
+      const currentOriginal = findOriginal(currentVault);
+      const payerRef = targetAccount ?? activeAccount;
+      const payer = currentVault.accounts[payerRef.type]?.[payerRef.id];
       if (
         this.walletSessionGeneration !== generation ||
         currentScope.account !== scope.account ||
         currentScope.network !== scope.network ||
         this.getActiveKeyring() !== keyring ||
         keyring.ethereumTransaction !== transactionController ||
-        transactionController.web3Provider !== provider
+        transactionController.web3Provider !== provider ||
+        payer?.address?.toLowerCase() !== normalizedSignerAddress ||
+        !isAccountCompatibleWithNetwork(payer, payerRef.type, activeNetwork) ||
+        !isPendingOriginal(currentOriginal, currentVault) ||
+        (usingFallback && !hasSignedSubmission(currentOriginal))
+      )
+        throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    };
+    const validateOriginal = (transaction: any | null) => {
+      assertCurrentContext();
+      if (transaction === null) {
+        if (!hasSignedSubmission(findOriginal()))
+          throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+        usingFallback = true;
+        return;
+      }
+      if (
+        !transaction ||
+        transaction.hash?.toLowerCase() !== normalizedHash ||
+        transaction.from?.toLowerCase() !== normalizedSignerAddress ||
+        outerNonce(transaction) !== fallbackNonce ||
+        Number(transaction.chainId) !== chainId ||
+        isTransactionInBlock(transaction)
       )
         throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
     };
@@ -4770,7 +4963,7 @@ class MainController {
         txHash,
         isLegacy,
         fallbackNonce,
-        { assertCurrentContext }
+        { assertCurrentContext, validateOriginal }
       );
     } finally {
       if (shouldUseTargetAccount) {

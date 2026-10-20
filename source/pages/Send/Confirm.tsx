@@ -353,6 +353,7 @@ export const SendConfirm = () => {
     baseFee: 0,
     gasPrice: 0,
   });
+  const [quotedEvmFeeMode, setQuotedEvmFeeMode] = useState<boolean>();
   const feeSelectionRef = useRef('');
   feeSelectionRef.current = JSON.stringify({
     customFee,
@@ -360,9 +361,11 @@ export const SendConfirm = () => {
     gasPrice,
     isEIP1559Compatible,
   });
+  const renderedFeeSelection = feeSelectionRef.current;
 
   // Manual retry function for fee calculation
   const retryFeeCalculation = () => {
+    setQuotedEvmFeeMode(undefined);
     setFeeCalculationError(null);
     setIsCalculatingFees(false);
 
@@ -451,6 +454,16 @@ export const SendConfirm = () => {
       !smartAccountQuoteError &&
       !smartAccountQuoteNeedsRefresh
   );
+  const confirmationFeeReady =
+    isBitcoinBased ||
+    (!isCalculatingFees &&
+      !feeCalculationError &&
+      isEIP1559Compatible !== undefined &&
+      (isSmartAccountSend
+        ? smartAccountQuoteReady
+        : quotedEvmFeeMode === isEIP1559Compatible));
+  const confirmationFeeReadyRef = useRef(confirmationFeeReady);
+  confirmationFeeReadyRef.current = confirmationFeeReady;
 
   useEffect(() => {
     if (
@@ -748,6 +761,7 @@ export const SendConfirm = () => {
     startTransition(() => {
       setFee(initialFee);
       setGasPrice(correctGasPrice);
+      setQuotedEvmFeeMode(false);
     });
 
     return { gasLimit, gasPrice: correctGasPrice };
@@ -1400,6 +1414,14 @@ export const SendConfirm = () => {
       alert.error(t('send.smartAccountWrongNetwork'));
       return;
     }
+    // A queued handler must retain the quote it rendered, including readiness
+    // before the initial debounce or after a newer fee selection replaces it.
+    if (
+      !confirmationFeeReady ||
+      !confirmationFeeReadyRef.current ||
+      (!isBitcoinBased && renderedFeeSelection !== feeSelectionRef.current)
+    )
+      return;
     return submission.run(performConfirm).catch((error) => {
       if (!submission.isActive()) return;
       logError('error', 'Transaction', error);
@@ -1550,6 +1572,7 @@ export const SendConfirm = () => {
 
             setTxObjectState(formattedTxObject);
             setFee(initialFeeDetails as any);
+            setQuotedEvmFeeMode(true);
 
             // Cache the result
             setFeeCalculationCache(
@@ -1627,6 +1650,7 @@ export const SendConfirm = () => {
         };
 
         setFee(finalFeeDetails as any);
+        setQuotedEvmFeeMode(true);
 
         // Cache the successful result
         setFeeCalculationCache(
@@ -2402,6 +2426,7 @@ export const SendConfirm = () => {
                 Boolean(recipientPoisoningCollision) ||
                 recipientWrongNetwork ||
                 Boolean(sptReviewError) ||
+                !confirmationFeeReady ||
                 isCalculatingFees ||
                 (!isBitcoinBased && isEIP1559Compatible === undefined) ||
                 (isSmartAccountSend && !smartAccountQuoteReady) ||

@@ -349,7 +349,9 @@ it('retains a fee transport error and recovers only after an explicit retry', as
   await advance();
   expect(screen.getAllByText('send.unableToLoad').length).toBeGreaterThan(0);
   expect(confirm()).toBeDisabled();
-  fireEvent.click(screen.getAllByRole('button', { name: 'reload' })[0]);
+  await act(async () => {
+    fireEvent.click(screen.getAllByRole('button', { name: 'reload' })[0]);
+  });
   await advance();
   expect(screen.queryByText('send.unableToLoad')).toBeNull();
   expect(confirm()).toBeEnabled();

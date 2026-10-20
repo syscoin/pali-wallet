@@ -36,14 +36,14 @@ const ADDRESS = `0x${'11'.repeat(20)}`;
 const TOKEN = `0x${'ab'.repeat(20)}`;
 const HOST = 'https://watchasset.invalid';
 const TYPE = KeyringAccountType.HDAccount;
-const request = (address = TOKEN) =>
+const request = (address = TOKEN, asset?: any) =>
   onMessage(
     {
       type: 'METHOD_REQUEST',
       data: {
         method: 'wallet_watchAsset',
         params: [
-          {
+          asset || {
             type: 'ERC20',
             options: { address, symbol: 'SYN', decimals: 18 },
           },
@@ -71,6 +71,24 @@ const seedToken = async (chainId: number) => {
   } as any);
   store.dispatch(prepare());
 };
+
+const seedMultiToken = async (tokenId = '7') => {
+  const prepare = await EthAccountController().prepareTokenAddition({
+    contractAddress: TOKEN,
+    tokenSymbol: 'SYN',
+    tokenStandard: 'ERC-1155',
+    isNft: true,
+    tokenId,
+    rawBalance: '1',
+    chainId: 5700,
+    decimals: 0,
+    balance: 1,
+  });
+  store.dispatch(prepare());
+};
+
+const multiTokenRequest = (tokenId: unknown) =>
+  request(TOKEN, { type: 'ERC1155', options: { address: TOKEN, tokenId } });
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -119,6 +137,38 @@ it('treats a token already watched on the current chain as a successful no-op', 
   expect(await request(TOKEN.toUpperCase().replace('0X', '0x'))).toBe(true);
   expect(popupPromise).not.toHaveBeenCalled();
 });
+
+it.each(['7', '0x07', '0007'])(
+  'keeps the same canonical ERC1155 ID %s as a no-op',
+  async (tokenId) => {
+    await seedMultiToken();
+    expect(await multiTokenRequest(tokenId)).toBe(true);
+    expect(popupPromise).not.toHaveBeenCalled();
+  }
+);
+
+it('reviews a different ERC1155 ID at the same contract', async () => {
+  await seedMultiToken();
+  expect(await multiTokenRequest('8')).toBe(true);
+  expect(popupPromise).toHaveBeenCalledTimes(1);
+});
+
+it('does not treat a fungible token record as an already watched ERC1155 ID', async () => {
+  await seedToken(5700);
+  expect(await multiTokenRequest('7')).toBe(true);
+  expect(popupPromise).toHaveBeenCalledTimes(1);
+});
+
+it.each([undefined, null, '-1', '1.5', `0x1${'0'.repeat(64)}`])(
+  'rejects invalid ERC1155 ID %j before an existing-contract shortcut',
+  async (tokenId) => {
+    await seedMultiToken();
+    expect(await multiTokenRequest(tokenId)).toEqual({
+      error: { code: -32602, message: 'Invalid token id' },
+    });
+    expect(popupPromise).not.toHaveBeenCalled();
+  }
+);
 
 it('opens the normal approval for an absent token', async () => {
   expect(await request()).toBe(true);

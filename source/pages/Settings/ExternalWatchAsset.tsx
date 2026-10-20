@@ -169,7 +169,7 @@ const ExternalWatchAsset = () => {
         const { options: assetOptions } = receivedAsset;
         const currentAsset = (await controllerEmitter(
           ['wallet', 'getAssetInfo'],
-          [assetOptions]
+          [assetOptions, receivedAsset.type, JSON.parse(approvalScope)]
         )) as ITokenDetails;
 
         if (current && isCurrent()) setAssetInfo(currentAsset);
@@ -348,10 +348,21 @@ const ExternalWatchAsset = () => {
                     </span>
                   </p>
 
+                  {assetInfo.tokenStandard === 'ERC-1155' && (
+                    <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
+                      {t('send.tokenId')}
+                      <span className="text-brand-royalblue text-xs break-all">
+                        {assetInfo.tokenId}
+                      </span>
+                    </p>
+                  )}
+
                   <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
                     {t('send.balance')}
-                    <span className="text-brand-royalblue text-xs">
-                      {assetInfo.balance}
+                    <span className="text-brand-royalblue text-xs break-all">
+                      {assetInfo.tokenStandard === 'ERC-1155'
+                        ? assetInfo.rawBalance
+                        : assetInfo.balance}
                     </span>
                   </p>
 

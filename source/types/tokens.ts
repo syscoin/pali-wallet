@@ -61,7 +61,9 @@ export interface ITokenDetails {
   };
   name: string;
   platforms?: { [platform: string]: string };
+  rawBalance?: string;
   symbol: string;
+  tokenId?: string;
   // Token standard information
   tokenStandard?: 'ERC-20' | 'ERC-721' | 'ERC-1155' | 'ERC-777' | 'ERC-4626';
 }
@@ -90,12 +92,15 @@ export interface ITokenSearchResult {
     | string;
 }
 
+export type WatchAssetType = 'ERC20' | 'ERC721' | 'ERC1155';
+
 export interface IWatchAssetTokenProps {
   address: string;
   decimals: number;
   image?: string;
   name?: string;
   symbol: string;
+  tokenId?: string;
 }
 
 export interface ITokenSysProps {

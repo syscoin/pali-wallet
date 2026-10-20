@@ -54,3 +54,47 @@ it('preserves each supported primitive representation across a bounded integer r
   }
   expect(normalizeNftTokenId(-0)).toBe('0');
 });
+
+it.each(['0'.repeat(255) + '7', '0x' + '0'.repeat(253) + '7'])(
+  'accepts a valid zero-padded identifier at the 256-character work limit',
+  (id) => {
+    expect(id).toHaveLength(256);
+    expect(normalizeNftTokenId(id)).toBe('7');
+  }
+);
+
+it.each([
+  ['decimal', '9'.repeat(4096)],
+  ['hexadecimal', '0x' + 'f'.repeat(4096)],
+  ['valid padded value', '0'.repeat(4095) + '7'],
+  ['just over the limit', '0'.repeat(256) + '7'],
+])('rejects oversized %s before regex or native BigInt work', (_label, id) => {
+  const nativeBigInt = BigInt;
+  const nativeTest = RegExp.prototype.test;
+  let regexCalls = 0;
+  let bigIntCalls = 0;
+  const regex = jest
+    .spyOn(RegExp.prototype, 'test')
+    .mockImplementation(function (value) {
+      if (value === id) regexCalls += 1;
+      return nativeTest.call(this, value);
+    });
+  const integer = jest.spyOn(global, 'BigInt').mockImplementation(((
+    value: any
+  ) => {
+    bigIntCalls += 1;
+    return nativeBigInt(value);
+  }) as typeof BigInt);
+  let error: unknown;
+  try {
+    normalizeNftTokenId(id);
+  } catch (reason) {
+    error = reason;
+  } finally {
+    regex.mockRestore();
+    integer.mockRestore();
+  }
+  expect(error).toEqual(new Error('Invalid token id'));
+  expect(regexCalls).toBe(0);
+  expect(bigIntCalls).toBe(0);
+});

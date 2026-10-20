@@ -68,7 +68,18 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
   useEffect(() => {
     preview.current?.close();
     return () => preview.current?.close();
-  }, [scope.account, scope.network, transaction.hash, chainId]);
+  }, [
+    scope.account,
+    scope.network,
+    transaction.hash,
+    transaction.from,
+    transaction.nonce,
+    transaction.type,
+    transaction.chainId,
+    transaction.isReplaced,
+    transaction.status,
+    chainId,
+  ]);
 
   const previewSpeedUp = async () => {
     preview.current?.cancel();
@@ -344,7 +355,12 @@ export const TransactionOptions = React.memo(
       prev.chainId === next.chainId &&
       prev.alert === next.alert &&
       prevTx?.hash === nextTx?.hash &&
+      prevTx?.from === nextTx?.from &&
       prevTx?.nonce === nextTx?.nonce &&
+      prevTx?.type === nextTx?.type &&
+      prevTx?.chainId === nextTx?.chainId &&
+      prevTx?.isReplaced === nextTx?.isReplaced &&
+      prevTx?.status === nextTx?.status &&
       prevTx?.isCanceled === nextTx?.isCanceled
     );
   }
