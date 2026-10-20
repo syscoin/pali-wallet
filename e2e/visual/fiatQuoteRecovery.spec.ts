@@ -37,9 +37,11 @@ async function changeCurrency(wallet: PaliWallet, currency: string) {
   await page
     .getByRole('textbox', { name: en.settings.searchCurrencies, exact: true })
     .fill(currency);
-  await page
-    .getByRole('button', { name: new RegExp(`^${currency.toUpperCase()}\\b`) })
-    .click();
+  const option = page.getByRole('button').filter({
+    has: page.getByText(currency.toUpperCase(), { exact: true }),
+  });
+  await expect(option).toHaveCount(1);
+  await option.click();
   await page
     .getByRole('button', { name: en.buttons.save, exact: true })
     .click();
@@ -97,11 +99,14 @@ test('Home survives malformed fiat quotes and recovers without a poisoned quote 
       const request = route.request();
       const url = new URL(request.url());
       if (
-        request.method() !== 'GET' ||
         ![
           'https://blockbook-dev.syscoin.org',
           'https://explorer-blockbook-dev.syscoin.org',
-        ].includes(url.origin) ||
+        ].includes(url.origin)
+      )
+        return route.fallback();
+      if (
+        request.method() !== 'GET' ||
         url.search ||
         url.hash
       ) {
