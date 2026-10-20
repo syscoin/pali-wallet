@@ -137,6 +137,9 @@ const SentryKeys = () => {
     setNotice('');
     let importCommitted = false;
     let removedKeyId: string | undefined;
+    let savedPreferences:
+      | Pick<SentrySettings, 'serviceUrl' | 'maxFeeSatoshis'>
+      | undefined;
     const isCurrentJob = () =>
       active.current && owner.current === current && inFlight.current === job;
     const completionNotice = () =>
@@ -182,12 +185,25 @@ const SentryKeys = () => {
           setShowKeys(false);
         }
       } else if (mode === 'service') {
-        await controllerEmitter(
+        const saved = ((await controllerEmitter(
           ['wallet', 'saveSentrySettings'],
           [{ serviceUrl, maxFeeSatoshis: feeLimit, password }],
           30000,
           false
-        );
+        )) || {}) as Partial<NonNullable<typeof savedPreferences>>;
+        const savedUrl = saved.serviceUrl;
+        const savedFee = saved.maxFeeSatoshis;
+        if (
+          typeof savedUrl !== 'string' ||
+          !savedUrl ||
+          typeof savedFee !== 'string' ||
+          !savedFee
+        )
+          throw new Error(t('sentry.unableToCompleteSentryOperation'));
+        savedPreferences = {
+          serviceUrl: savedUrl,
+          maxFeeSatoshis: savedFee,
+        };
       } else if (isRemoval) {
         if (!selectedRemovalKey)
           throw new Error(t('sentry.unableToLoadSentrySettings'));
@@ -215,6 +231,10 @@ const SentryKeys = () => {
         );
       }
       if (!isCurrentJob()) return;
+      if (savedPreferences)
+        setSettings((previous) =>
+          previous ? { ...previous, ...savedPreferences } : previous
+        );
       if (removedKeyId) {
         setSettings((previous) =>
           previous
@@ -238,7 +258,7 @@ const SentryKeys = () => {
       setNotice(completionNotice());
     } catch (reason: any) {
       if (isCurrentJob()) {
-        if (importCommitted || removedKeyId) {
+        if (importCommitted || removedKeyId || savedPreferences) {
           setMode('list');
           setNotice(completionNotice());
           setError(t('sentry.unableToLoadSentrySettings'));

@@ -22,10 +22,12 @@ for (const refresh of ['healthy', 'refused once'] as const) {
       rpcUrl: server.url,
     });
     let wallet: PaliWallet | undefined;
+    let status: 'passed' | 'failed' = 'failed';
     try {
-      wallet = await PaliWallet.launch('sentry-recovery-confirmation', {
-        offlineHttpProxy: server.url,
-      });
+      wallet = await PaliWallet.launch(
+        `sentry-recovery-confirmation-${refresh.replace(/ /g, '-')}`,
+        { offlineHttpProxy: server.url }
+      );
       const routes = await installUtxoFixtureRoutes(
         wallet.context,
         createUtxoFixture(),
@@ -246,10 +248,14 @@ for (const refresh of ['healthy', 'refused once'] as const) {
       ).toHaveCount(0);
       expect(routes.deniedWrites).toEqual([]);
       expect(routes.syntheticBroadcasts).toEqual([]);
+      status = 'passed';
     } finally {
-      await wallet?.context.close().catch(() => undefined);
-      Object.assign(E2E_CONFIG, before);
-      await server.close();
+      try {
+        await wallet?.dispose(status);
+      } finally {
+        Object.assign(E2E_CONFIG, before);
+        await server.close();
+      }
     }
   });
 }

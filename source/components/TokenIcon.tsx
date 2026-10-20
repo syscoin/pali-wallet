@@ -1,5 +1,5 @@
 /* eslint-disable react/prop-types */
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 import PaliLogo from 'assets/all_assets/favicon-32.png';
 import { NftFallbackSvg } from 'components/Icon/Icon';
@@ -10,7 +10,8 @@ import { getKnownTokenLogo, sanitizeUtxoTokenLogo } from 'utils/tokens';
 // Cache for actual image data URLs (base64) to prevent any network requests
 // Add a simple LRU cap to prevent unbounded growth
 const MAX_CACHE_ENTRIES = 200;
-const tokenImageCache = new Map<string, string | null>();
+type TokenImageResource = { readonly url: string | null };
+const tokenImageCache = new Map<string, TokenImageResource>();
 // Track when a cache key last failed so we can retry later
 const tokenImageFailureTs = new Map<string, number>();
 // Retry failed icon fetches after a short cooldown (prevents permanent "stuck" fallbacks)
@@ -19,14 +20,24 @@ const FAILURE_RETRY_MS = 5 * 60 * 1000; // 5 minutes
 const MAX_CACHED_BLOB_BYTES = 256 * 1024; // 256KB
 
 // Track in-flight requests to prevent duplicate fetches
-const pendingTokenRequests = new Map<string, Promise<string | null>>();
+const pendingTokenRequests = new Map<
+  string,
+  Promise<TokenImageResource | null>
+>();
+
+const pruneTokenImageCache = () => {
+  if (tokenImageCache.size >= MAX_CACHE_ENTRIES) {
+    const oldestKey = tokenImageCache.keys().next().value;
+    if (oldestKey !== undefined) tokenImageCache.delete(oldestKey);
+  }
+};
 
 /**
  * Token Icon Cache Strategy:
  *
- * tokenImageCache: Maps tokenKey → base64 data URLs or null if failed
+ * tokenImageCache: Maps tokenKey → a loaded resource record
  * - Key: Unique identifier (contractAddress for EVM, assetGuid for UTXO, or logo URL)
- * - Value: "data:image/...;base64,..." or null if failed to load
+ * - Value: Immutable identity with a data URL, direct URL, or null for failure
  * - Purpose: Prevents ALL HTTP requests by storing actual image data
  */
 
@@ -77,6 +88,16 @@ export const TokenIcon: React.FC<ITokenIconProps> = React.memo(
     };
 
     const cacheKey = getCacheKey();
+    const imageScopeRef = useRef({ key: cacheKey, active: true });
+    if (imageScopeRef.current.key !== cacheKey)
+      imageScopeRef.current = { key: cacheKey, active: true };
+    const imageScope = imageScopeRef.current;
+    useEffect(() => {
+      imageScopeRef.current.active = true;
+      return () => {
+        imageScopeRef.current.active = false;
+      };
+    }, []);
 
     // Determine initial state based on cache
     const getInitialState = () => {
@@ -84,56 +105,61 @@ export const TokenIcon: React.FC<ITokenIconProps> = React.memo(
       if (tokenImageCache.has(cacheKey)) {
         const cached = tokenImageCache.get(cacheKey);
         // If we previously cached a failure (null), allow retry after cooldown
-        if (cached === null) {
+        if (cached?.url === null) {
           const failedAt = tokenImageFailureTs.get(cacheKey) || 0;
           if (failedAt && Date.now() - failedAt >= FAILURE_RETRY_MS) {
             tokenImageCache.delete(cacheKey);
             tokenImageFailureTs.delete(cacheKey);
           } else {
             return {
-              url: null,
               error: true,
               loading: false,
+              resource: cached,
+              key: cacheKey,
             };
           }
         } else {
           return {
-            url: cached,
             error: false,
             loading: false,
+            resource: cached,
+            key: cacheKey,
           };
         }
         return {
-          url: cached,
-          error: cached === null,
+          error: cached?.url === null,
           loading: false,
+          resource: cached,
+          key: cacheKey,
         };
       }
 
       // No logo URL provided, use fallback immediately
       if (!resolvedLogo) {
         return {
-          url: null,
           error: true,
           loading: false,
+          resource: undefined,
+          key: cacheKey,
         };
       }
 
       // Need to load the logo
       return {
-        url: null,
         error: false,
         loading: true,
+        resource: undefined,
+        key: cacheKey,
       };
     };
 
     const initial = getInitialState();
-    const [iconState, setIconState] = useState({ ...initial, key: cacheKey });
+    const [iconState, setIconState] = useState(initial);
     // Props may change before effects run; never render another token's state.
     const {
-      url: iconUrl,
       error,
       loading: isLoading,
+      resource: iconResource,
     } = iconState.key === cacheKey ? iconState : initial;
 
     useEffect(() => {
@@ -141,11 +167,16 @@ export const TokenIcon: React.FC<ITokenIconProps> = React.memo(
       const cleanup = () => {
         current = false;
       };
-      const applyResult = (url: string | null) => {
+      const applyResult = (resource: TokenImageResource | null) => {
         if (current)
-          setIconState({ key: cacheKey, url, error: !url, loading: false });
+          setIconState({
+            key: cacheKey,
+            resource: resource || undefined,
+            error: !resource?.url,
+            loading: false,
+          });
       };
-      setIconState({ ...getInitialState(), key: cacheKey });
+      setIconState(getInitialState());
       // Skip if no logo URL or already cached
       if (!resolvedLogo || tokenImageCache.has(cacheKey)) {
         return cleanup;
@@ -153,7 +184,7 @@ export const TokenIcon: React.FC<ITokenIconProps> = React.memo(
 
       // Skip if it's a Pali logo (already local)
       if (resolvedLogo === PaliLogo || resolvedLogo === NFT_FALLBACK_IMAGE) {
-        applyResult(resolvedLogo);
+        applyResult({ url: resolvedLogo });
         // Don't cache local assets
         return cleanup;
       }
@@ -166,7 +197,7 @@ export const TokenIcon: React.FC<ITokenIconProps> = React.memo(
       }
 
       // Create fetch promise for deduplication
-      const fetchIcon = async (): Promise<string | null> => {
+      const fetchIcon = async (): Promise<TokenImageResource> => {
         try {
           const response = await fetch(resolvedLogo);
           if (!response.ok) throw new Error('Failed to fetch');
@@ -175,52 +206,40 @@ export const TokenIcon: React.FC<ITokenIconProps> = React.memo(
           // If it's too large for base64 caching, just cache the URL so it can still render reliably
           if (blob.size > MAX_CACHED_BLOB_BYTES) {
             // Enforce LRU cap
-            if (tokenImageCache.size >= MAX_CACHE_ENTRIES) {
-              const oldestKey = tokenImageCache.keys().next().value as
-                | string
-                | undefined;
-              if (oldestKey !== undefined) tokenImageCache.delete(oldestKey);
-            }
-            tokenImageCache.set(cacheKey, resolvedLogo);
+            pruneTokenImageCache();
+            const resource = { url: resolvedLogo };
+            tokenImageCache.set(cacheKey, resource);
             tokenImageFailureTs.delete(cacheKey);
-            return resolvedLogo;
+            return resource;
           }
           const reader = new FileReader();
 
-          return new Promise<string>((resolve) => {
+          return new Promise<TokenImageResource>((resolve) => {
             reader.onloadend = () => {
-              const dataUrl = reader.result as string;
+              const resource = { url: reader.result as string };
               // Enforce LRU cap
-              if (tokenImageCache.size >= MAX_CACHE_ENTRIES) {
-                const oldestKey = tokenImageCache.keys().next().value as
-                  | string
-                  | undefined;
-                if (oldestKey !== undefined) tokenImageCache.delete(oldestKey);
-              }
-              tokenImageCache.set(cacheKey, dataUrl);
+              pruneTokenImageCache();
+              tokenImageCache.set(cacheKey, resource);
               tokenImageFailureTs.delete(cacheKey);
-              resolve(dataUrl);
+              resolve(resource);
             };
 
             reader.onerror = () => {
-              if (tokenImageCache.size >= MAX_CACHE_ENTRIES) {
-                const oldestKey = tokenImageCache.keys().next().value as
-                  | string
-                  | undefined;
-                if (oldestKey !== undefined) tokenImageCache.delete(oldestKey);
-              }
-              tokenImageCache.set(cacheKey, null);
+              pruneTokenImageCache();
+              const resource = { url: null };
+              tokenImageCache.set(cacheKey, resource);
               tokenImageFailureTs.set(cacheKey, Date.now());
-              resolve(null);
+              resolve(resource);
             };
 
             reader.readAsDataURL(blob);
           });
         } catch (err) {
           // Cache the failure to prevent repeated attempts
-          tokenImageCache.set(cacheKey, null);
+          const resource = { url: null };
+          tokenImageCache.set(cacheKey, resource);
           tokenImageFailureTs.set(cacheKey, Date.now());
-          return null;
+          return resource;
         }
       };
 
@@ -242,14 +261,16 @@ export const TokenIcon: React.FC<ITokenIconProps> = React.memo(
 
     // Check if we have a cached image to use immediately
     const cachedImage = tokenImageCache.get(cacheKey);
-    const imageToRender = iconUrl || cachedImage;
+    const imageResource = iconResource?.url ? iconResource : cachedImage;
+    const imageToRender = imageResource?.url;
+    const iconStyle = { width: size, height: size };
 
     // Show loading state only if we truly have nothing to show
     if (isLoading && !imageToRender && !error) {
       return (
         <div
           className={`animate-pulse bg-gray-600 ${fallbackClassName} ${className}`}
-          style={{ width: size, height: size }}
+          style={iconStyle}
         />
       );
     }
@@ -260,7 +281,7 @@ export const TokenIcon: React.FC<ITokenIconProps> = React.memo(
         return (
           <NftFallbackSvg
             className={`${fallbackClassName} ${className}`}
-            style={{ width: size, height: size }}
+            style={iconStyle}
           />
         );
       }
@@ -271,7 +292,7 @@ export const TokenIcon: React.FC<ITokenIconProps> = React.memo(
           <div
             className={`bg-gradient-to-br from-brand-royalblue to-brand-pink200 
                         flex items-center justify-center ${fallbackClassName} ${className}`}
-            style={{ width: size, height: size }}
+            style={iconStyle}
           >
             <span className="text-white text-xs font-bold">
               {symbol.charAt(0).toUpperCase()}
@@ -286,7 +307,7 @@ export const TokenIcon: React.FC<ITokenIconProps> = React.memo(
           src={PaliLogo}
           alt="Token"
           className={`${fallbackClassName} ${className}`}
-          style={{ width: size, height: size }}
+          style={iconStyle}
           loading="lazy"
           decoding="async"
         />
@@ -296,12 +317,28 @@ export const TokenIcon: React.FC<ITokenIconProps> = React.memo(
     // Render the image (either from state or cache)
     return (
       <img
+        key={cacheKey}
         src={imageToRender}
         alt={symbol || 'Token'}
         className={`${fallbackClassName} ${className}`}
-        style={{ width: size, height: size }}
+        style={iconStyle}
         loading="lazy"
         decoding="async"
+        onError={() => {
+          if (!imageScope.active || imageScopeRef.current !== imageScope)
+            return;
+          const resource = { url: null };
+          if (tokenImageCache.get(cacheKey) === imageResource) {
+            tokenImageCache.set(cacheKey, resource);
+            tokenImageFailureTs.set(cacheKey, Date.now());
+          }
+          setIconState({
+            key: cacheKey,
+            resource,
+            error: true,
+            loading: false,
+          });
+        }}
       />
     );
   },
@@ -412,27 +449,18 @@ export const preloadTokenIcons = async (logoUrls: string[]) => {
         if (blob.size > 256 * 1024) return null;
         const reader = new FileReader();
 
-        return new Promise<string | null>((resolve) => {
+        return new Promise<TokenImageResource>((resolve) => {
           reader.onloadend = () => {
-            const dataUrl = reader.result as string;
-            if (tokenImageCache.size >= MAX_CACHE_ENTRIES) {
-              const oldestKey = tokenImageCache.keys().next().value as
-                | string
-                | undefined;
-              if (oldestKey !== undefined) tokenImageCache.delete(oldestKey);
-            }
-            tokenImageCache.set(url, dataUrl);
-            resolve(dataUrl);
+            const resource = { url: reader.result as string };
+            pruneTokenImageCache();
+            tokenImageCache.set(url, resource);
+            resolve(resource);
           };
           reader.onerror = () => {
-            if (tokenImageCache.size >= MAX_CACHE_ENTRIES) {
-              const oldestKey = tokenImageCache.keys().next().value as
-                | string
-                | undefined;
-              if (oldestKey !== undefined) tokenImageCache.delete(oldestKey);
-            }
-            tokenImageCache.set(url, null);
-            resolve(null);
+            pruneTokenImageCache();
+            const resource = { url: null };
+            tokenImageCache.set(url, resource);
+            resolve(resource);
           };
           reader.readAsDataURL(blob);
         });

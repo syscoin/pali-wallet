@@ -429,7 +429,7 @@ export class SentryController {
       this.approvals.clear();
       this.feeAuthorizations.clear();
       this.votes.clear();
-      return this.settings(scope);
+      return { serviceUrl, maxFeeSatoshis };
     });
   }
 
