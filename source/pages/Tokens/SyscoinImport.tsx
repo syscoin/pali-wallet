@@ -210,13 +210,14 @@ export const SyscoinImport: React.FC = () => {
   // Create debounced validation function
   useEffect(() => {
     let current = true;
-    const requestId = ++validationRequestRef.current;
-    const key = validationKey;
-    const isCurrent = () =>
-      current &&
-      validationRequestRef.current === requestId &&
-      validationKeyRef.current === key;
     const validateCustomToken = async (assetGuid: string) => {
+      const requestId = ++validationRequestRef.current;
+      const key = `${tokenImportScope}:${assetGuid}`;
+      const isCurrent = () =>
+        current &&
+        validationRequestRef.current === requestId &&
+        validationKeyRef.current === key;
+      if (!isCurrent()) return;
       // Validate assetGuid format - must be only digits (same as backend validation)
       if (!assetGuid || !/^\d+$/.test(assetGuid)) {
         setCustomTokenDetails(null);
@@ -257,12 +258,7 @@ export const SyscoinImport: React.FC = () => {
         debouncedValidationRef.current = null;
       }
     };
-  }, [
-    activeAccount?.xpub,
-    tokenImportScope,
-    deferredCustomGuid,
-    validationKey,
-  ]);
+  }, [activeAccount?.xpub, tokenImportScope, deferredCustomGuid]);
 
   // Handle custom asset input change
   useEffect(() => {
@@ -483,6 +479,7 @@ export const SyscoinImport: React.FC = () => {
                 value={customAssetGuid}
                 onChange={(e) => {
                   validationRequestRef.current += 1;
+                  debouncedValidationRef.current?.(e.target.value.trim());
                   setCustomAssetGuid(e.target.value);
                   setCustomTokenDetails(null);
                   setIsValidatingCustom(Boolean(e.target.value.trim()));
