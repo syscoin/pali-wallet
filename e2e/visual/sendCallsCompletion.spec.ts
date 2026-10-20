@@ -1,5 +1,6 @@
 // Real batch approval and completion against narrowly fenced synthetic RPC.
 import { expect, test, type BrowserContext, type Page } from '@playwright/test';
+import { createHash } from 'crypto';
 import { Transaction, keccak256 } from 'ethers';
 import fs from 'fs';
 import path from 'path';
@@ -379,6 +380,8 @@ for (const scenario of [
       wallet = await PaliWallet.launch(`send-calls-${scenario}`, {
         offlineHttpProxy: server.url,
       });
+      const step = (name: string, run: Parameters<PaliWallet['step']>[1]) =>
+        wallet!.step(`${scenario}: ${name}`, run);
       routes = await installIsolatedVaultRoutes(
         wallet.context,
         fixture,
@@ -389,7 +392,7 @@ for (const scenario of [
         fixture.evmAddresses[0],
         scenario
       );
-      await wallet.step(
+      await step(
         'import disposable wallet and select the existing EVM network through normal UI',
         async () => {
           await wallet!.importSeedAndCreatePassword();
@@ -399,7 +402,7 @@ for (const scenario of [
         }
       );
       const dapp = await wallet.context.newPage();
-      await wallet.step(
+      await step(
         'connect the real local dapp to the synthetic EOA',
         async (capture) => {
           await dapp.goto(server.url);
@@ -417,7 +420,7 @@ for (const scenario of [
       );
       let requestId = -1;
       let popup: Page;
-      await wallet.step(
+      await step(
         'all original non-atomic calls are checked and cannot be omitted',
         async (capture) => {
           requestId = await startRequest(dapp, 'wallet_sendCalls', [
@@ -434,7 +437,14 @@ for (const scenario of [
           for (let index = 0; index < CALLS.length; index++) {
             await expect(popup.locator(`#call-${index}`)).toBeChecked();
             await expect(popup.locator(`#call-${index}`)).toBeDisabled();
-            await popup.locator(`label[for="call-${index}"]`).click();
+            const label = popup.locator(`label[for="call-${index}"]`);
+            await label.scrollIntoViewIfNeeded();
+            const box = await label.boundingBox();
+            expect(box).not.toBeNull();
+            await popup.mouse.click(
+              box!.x + box!.width / 2,
+              box!.y + box!.height / 2
+            );
             await expect(popup.locator(`#call-${index}`)).toBeChecked();
           }
           await capture(popup);
@@ -444,7 +454,7 @@ for (const scenario of [
           expect(rpc!.acks).toHaveLength(0);
         }
       );
-      await wallet.step(
+      await step(
         'approve through the real sender and await the deterministic outcome',
         async (capture) => {
           await popup
@@ -492,7 +502,7 @@ for (const scenario of [
         }
       );
       if (scenario !== 'all-success') {
-        await wallet.step(
+        await step(
           'close settles the original real dapp request without another send',
           async () => {
             await popup
@@ -517,7 +527,7 @@ for (const scenario of [
         );
       }
       if (scenario !== 'pre-send-rejection') {
-        await wallet.step(
+        await step(
           'real registry status is pending until the accepted synthetic receipt exists',
           async () => {
             pendingStatus = await providerRequest(
@@ -533,7 +543,7 @@ for (const scenario of [
             });
           }
         );
-        await wallet.step(
+        await step(
           'mined status preserves the same bundle and exactly the admitted hashes',
           async () => {
             rpc!.mine();
@@ -560,7 +570,7 @@ for (const scenario of [
           }
         );
       }
-      await wallet.step(
+      await step(
         'audit denies every non-admitted write and leaves the exact call order intact',
         async () => {
           expect(rpc!.forbiddenWrites).toEqual([]);
@@ -596,6 +606,9 @@ for (const scenario of [
         JSON.stringify(
           {
             ...evidence,
+            testSourceSha256: createHash('sha256')
+              .update(fs.readFileSync(testInfo.file))
+              .digest('hex'),
             scenario,
             status,
             simulated: true,
