@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 
+import { walletPersistenceMutex } from 'utils/asyncMutex';
 import { chromeStorage } from 'utils/storageAPI';
 
 import { SLH_DSA_PARAMETER_SET } from './constants';
@@ -49,7 +50,6 @@ const setupJobs = new Map<
     setupJobId: string;
   }
 >();
-const setupStorageQueues = new Map<number, Promise<void>>();
 
 const getCurrentSetupJob = (accountId: number, sessionGeneration: number) => {
   const owner = setupJobs.get(accountId);
@@ -69,25 +69,12 @@ const getCurrentSetupJob = (accountId: number, sessionGeneration: number) => {
   }
 };
 
-// A dispatched storage write cannot be cancelled. Retain its ordering barrier
-// across wallet sessions so the new owner always writes after it settles.
+// Global FIFO also retains same-account ordering across sessions, while making
+// dispatched setup writes settle before wallet reset can remove their records.
 const withSetupStorage = <T>(
-  accountId: number,
+  _accountId: number,
   action: () => Promise<T>
-): Promise<T> => {
-  const previous = setupStorageQueues.get(accountId) ?? Promise.resolve();
-  const result = previous.then(action);
-  const settled = result.then(
-    () => undefined,
-    () => undefined
-  );
-  setupStorageQueues.set(accountId, settled);
-  void settled.then(() => {
-    if (setupStorageQueues.get(accountId) === settled)
-      setupStorageQueues.delete(accountId);
-  });
-  return result;
-};
+): Promise<T> => walletPersistenceMutex.runExclusive(action);
 
 const getSLHDSASetupStorageKey = (accountId: number) =>
   `pali-slh-dsa-smart-account-setup:${accountId}`;
