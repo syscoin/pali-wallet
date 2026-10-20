@@ -708,6 +708,22 @@ const DAppController = (
     };
   };
 
+  const networkPublicationScope = () => {
+    const { vault, vaultGlobal } = store.getState();
+    const network = vault.activeNetwork;
+    return JSON.stringify([
+      getWalletStateGeneration(),
+      network.kind,
+      network.chainId,
+      network.slip44,
+      network.url,
+      network.apiUrl,
+      vaultGlobal?.activeSlip44,
+      vault.isBitcoinBased,
+    ]);
+  };
+  const networkPublications = new Map<string, Promise<void>>();
+
   const _dispatchPaliEvent = async (
     host: string,
     data?: { method: string; params: any },
@@ -722,6 +738,21 @@ const DAppController = (
       );
       return;
     }
+
+    // These fields describe one public network snapshot. Do not deliver an
+    // older member after a switch/reset while its tab lookup was pending.
+    const networkScope =
+      data.method === PaliEvents.chainChanged ||
+      data.method === PaliEvents.isBitcoinBased ||
+      data.method === PaliSyscoinEvents.blockExplorerChanged
+        ? networkPublicationScope()
+        : undefined;
+    const canDispatch = () =>
+      isCurrent() &&
+      (networkScope === undefined ||
+        networkScope === networkPublicationScope());
+    let publication: Promise<void> | undefined;
+    let finishPublication: (() => void) | undefined;
 
     try {
       // Check if chrome APIs are available (service worker might be terminating)
@@ -771,13 +802,25 @@ const DAppController = (
           getDappOrigin(tab.url || '') === origin &&
           index === self.findIndex((t) => t.id === tab.id)
       );
-      if (!isCurrent()) return;
+      if (!canDispatch()) return;
+
+      if (networkScope !== undefined && uniqueTabs.length > 0) {
+        const previous = networkPublications.get(host);
+        publication = new Promise<void>((resolve) => {
+          finishPublication = resolve;
+        });
+        networkPublications.set(host, publication);
+        // executeScript settles after execution. Keep each origin ordered even
+        // when Chrome has accepted an old script that cannot be withdrawn.
+        await previous;
+        if (!canDispatch()) return;
+      }
 
       if (uniqueTabs.length > 0) {
         // Use Promise.allSettled to handle individual tab failures gracefully
         const injectionResults = await Promise.allSettled(
           uniqueTabs.map(async (tab) => {
-            if (!isCurrent()) return;
+            if (!canDispatch()) return;
             if (!tab.id) {
               return Promise.reject(new Error('Tab has no ID'));
             }
@@ -845,6 +888,11 @@ const DAppController = (
         '[DAppController] Unexpected error in _dispatchPaliEvent:',
         error
       );
+    } finally {
+      finishPublication?.();
+      if (publication && networkPublications.get(host) === publication) {
+        networkPublications.delete(host);
+      }
     }
   };
 

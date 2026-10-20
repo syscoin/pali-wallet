@@ -127,13 +127,19 @@ describe('advanced settings durable completion and auto-lock timers', () => {
       expect(completed).toBe(false);
       expect(store.getState().vaultGlobal.advancedSettings.autolock).toBe(5);
       expect(persisted.state.vaultGlobal.advancedSettings.autolock).toBe(5);
+      expect(chrome.alarms.create).toHaveBeenCalledWith('test-auto-lock', {
+        delayInMinutes: 5,
+      });
+      const createdBeforeCommit = (chrome.alarms.create as jest.Mock).mock.calls
+        .length;
       storage.resolve();
       await setting;
       expect(persisted.state.vaultGlobal.advancedSettings.autolock).toBe(
         minutes
       );
       if (minutes === 0) {
-        expect(chrome.alarms.create).not.toHaveBeenCalled();
+        expect(chrome.alarms.create).toHaveBeenCalledTimes(createdBeforeCommit);
+        expect(chrome.alarms.clear).toHaveBeenCalledWith('test-auto-lock');
       } else {
         expect(chrome.alarms.create).toHaveBeenCalledWith('test-auto-lock', {
           delayInMinutes: minutes,
@@ -289,8 +295,15 @@ describe('advanced settings durable completion and auto-lock timers', () => {
 
   it('preserves an ordinary pending wallet save when restarting the auto-lock alarm', async () => {
     await wallet.saveCurrentState('pending-wallet-save', false);
-    await wallet.startAutoLockTimer();
     expect(chrome.alarms.create).toHaveBeenCalledTimes(1);
+    expect(chrome.alarms.create).toHaveBeenLastCalledWith('test-auto-lock', {
+      delayInMinutes: 5,
+    });
+    await wallet.startAutoLockTimer();
+    expect(chrome.alarms.create).toHaveBeenCalledTimes(2);
+    expect(chrome.alarms.create).toHaveBeenLastCalledWith('test-auto-lock', {
+      delayInMinutes: 5,
+    });
     expect(ordinaryWrites).not.toHaveBeenCalled();
     await jest.advanceTimersByTimeAsync(100);
     expect(ordinaryWrites).toHaveBeenCalledTimes(1);
