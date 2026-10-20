@@ -48,7 +48,9 @@ describe('cancellation controller account and network admission', () => {
         accounts: {
           HDAccount: { 0: { address: PAYER, xpub: 'payer public fixture' } },
           Imported: { 3: { address: `0x${'44'.repeat(20)}` } },
-          SmartAccount: { 1: { address: SMART } },
+          SmartAccount: {
+            1: { address: SMART, smartAccount: { chainId: CHAIN } },
+          },
         },
         activeNetwork: {
           kind: 'ethereum',
@@ -56,12 +58,51 @@ describe('cancellation controller account and network admission', () => {
           slip44: 60,
           url: 'https://rpc.invalid',
         },
+        accountTransactions: {
+          HDAccount: {
+            0: {
+              ethereum: {
+                [CHAIN]: [
+                  {
+                    hash: HASH,
+                    from: PAYER,
+                    nonce: 7,
+                    chainId: CHAIN,
+                    type: 0,
+                  },
+                ],
+              },
+            },
+          },
+          SmartAccount: {
+            1: {
+              ethereum: {
+                [CHAIN]: [
+                  {
+                    hash: HASH,
+                    from: PAYER,
+                    nonce: 7,
+                    chainId: CHAIN,
+                    type: 0,
+                    smartAccountExecutionFrom: SMART,
+                  },
+                ],
+              },
+            },
+          },
+        },
       },
       vaultGlobal: { activeSlip44: 60 },
     };
     readVault = () => mockState.vault;
     cancel = jest.fn(async (_hash, _legacy, _nonce, options) => {
       options.assertCurrentContext();
+      options.validateOriginal({
+        hash: HASH,
+        from: PAYER,
+        nonce: 7,
+        chainId: CHAIN,
+      });
       return { isCanceled: true, transaction: { hash: HASH } };
     });
     keyring = {
@@ -81,6 +122,7 @@ describe('cancellation controller account and network admission', () => {
     await expect(run()).resolves.toMatchObject({ isCanceled: true });
     expect(cancel).toHaveBeenCalledWith(HASH, true, 7, {
       assertCurrentContext: expect.any(Function),
+      validateOriginal: expect.any(Function),
     });
     expect(keyring.setVaultStateGetter).not.toHaveBeenCalled();
   });
@@ -94,6 +136,19 @@ describe('cancellation controller account and network admission', () => {
 
   it('compares signer addresses case-insensitively', async () => {
     mockState.vault.accounts.HDAccount[0].address = `0x${'ab'.repeat(20)}`;
+    mockState.vault.accountTransactions.HDAccount[0].ethereum[
+      CHAIN
+    ][0].from = `0x${'ab'.repeat(20)}`;
+    cancel.mockImplementation(async (_hash, _legacy, _nonce, options) => {
+      options.assertCurrentContext();
+      options.validateOriginal({
+        hash: HASH,
+        from: `0x${'AB'.repeat(20)}`,
+        nonce: 7,
+        chainId: CHAIN,
+      });
+      return { isCanceled: true };
+    });
     await expect(
       run(expected(), `0x${'AB'.repeat(20)}`)
     ).resolves.toMatchObject({

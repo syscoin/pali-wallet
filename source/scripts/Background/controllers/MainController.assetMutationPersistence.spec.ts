@@ -481,6 +481,43 @@ describe.each(['ethereum', 'syscoin'] as const)(
       expect(commits).toBe(2);
     });
 
+    if (family === 'ethereum') {
+      it('durably retains distinct reviewed ERC1155 IDs and exact units', async () => {
+        const scope = getWalletNavigationScope();
+        const rawBalance = '9007199254740993';
+        for (const tokenId of ['0x07', '8']) {
+          await wallet.handleWatchAsset(
+            {
+              ...asset(),
+              symbol: 'TOKEN',
+              isNft: true,
+              tokenStandard: 'ERC-1155',
+              tokenId,
+              rawBalance,
+              balance: Number(rawBalance),
+              decimals: 0,
+            },
+            scope
+          );
+        }
+        const saved = (await loadSlip44State(slip44)).accountAssets[TYPE][0]
+          .ethereum;
+        expect(saved).toEqual([
+          expect.objectContaining({
+            tokenId: '7',
+            rawBalance,
+            id: `${CONTRACT}-5700-7`,
+          }),
+          expect.objectContaining({
+            tokenId: '8',
+            rawBalance,
+            id: `${CONTRACT}-5700-8`,
+          }),
+        ]);
+        expect(commits).toBe(2);
+      });
+    }
+
     it('refuses an old queued addition before it writes or publishes', async () => {
       const held = holdNextCommit();
       const first = mutate('add');

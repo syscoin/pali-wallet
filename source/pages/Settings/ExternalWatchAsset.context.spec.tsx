@@ -12,7 +12,7 @@ let mockAdd: () => void;
 const mockEmitter = jest.fn();
 const mockDispatch = jest.fn();
 const mockAlert = { info: jest.fn(), error: jest.fn() };
-const mockRequest = {
+const mockRequest: any = {
   host: 'synthetic.test',
   eventName: 'wallet_watchAsset',
   asset: { type: 'ERC20', options: { address: `0x${'11'.repeat(20)}` } },
@@ -76,6 +76,10 @@ jest.mock('utils/index', () => ({ formatCurrency: (value: string) => value }));
 beforeEach(() => {
   jest.useFakeTimers();
   jest.clearAllMocks();
+  mockRequest.asset = {
+    type: 'ERC20',
+    options: { address: preview.contractAddress },
+  };
   mockScope = { account: 'first-account', network: 'first-network' };
   mockNetwork = { chainId: 1, explorer: 'https://first.invalid/' };
   mockStatus = {
@@ -89,6 +93,41 @@ beforeEach(() => {
     throw new Error(`Unexpected method ${method}`);
   });
   jest.spyOn(window, 'close').mockImplementation();
+});
+
+it('shows the normalized ERC1155 token ID and exact owned units before Add', async () => {
+  const tokenId = '9007199254740993';
+  const rawBalance = '9007199254740995';
+  mockRequest.asset = {
+    type: 'ERC1155',
+    options: { address: preview.contractAddress, tokenId: '0x20000000000001' },
+  };
+  const nft = {
+    ...preview,
+    tokenStandard: 'ERC-1155',
+    isNft: true,
+    tokenId,
+    rawBalance,
+    balance: Number(rawBalance),
+  };
+  mockEmitter.mockImplementation(async ([, method]) =>
+    method === 'getAssetInfo' ? nft : true
+  );
+  await loadPreview();
+  expect(screen.getByText('send.tokenId')).toBeVisible();
+  expect(screen.getByText(tokenId)).toBeVisible();
+  expect(screen.getByText(rawBalance)).toBeVisible();
+  expect(mockEmitter).toHaveBeenCalledWith(
+    ['wallet', 'getAssetInfo'],
+    [mockRequest.asset.options, 'ERC1155', mockScope]
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.addToken' }));
+  await act(async () => undefined);
+  expect(mockEmitter).toHaveBeenCalledWith(
+    ['wallet', 'handleWatchAsset'],
+    [nft, mockScope]
+  );
+  expect(mockDispatch).toHaveBeenCalledTimes(1);
 });
 afterEach(() => {
   jest.restoreAllMocks();

@@ -10,11 +10,16 @@ jest.mock('@sidhujag/sysweb3-keyring', () => ({
   CustomJsonRpcProvider: jest.fn(),
   PsbtUtils: {},
 }));
+jest.mock('utils/ethersV6Compat', () => ({
+  ...jest.requireActual('utils/ethersV6Compat'),
+  Contract: jest.fn(),
+}));
 
 import store from 'state/store';
 import * as storeModule from 'state/store';
 import vaultReducer from 'state/vault';
 import { INetworkType, KeyringAccountType } from 'types/network';
+import { Contract } from 'utils/ethersV6Compat';
 import { EVM_TRANSACTION_CONTEXT_CHANGED } from 'utils/evmTransactionContext';
 import {
   getWalletNavigationScope,
@@ -106,7 +111,7 @@ beforeEach(() => {
   wallet = Object.create(MainController.prototype);
   (wallet as any).walletSessionGeneration = 0;
   (wallet as any).walletStateGeneration = 0;
-  const keyring = {};
+  const keyring = { ethereumTransaction: { web3Provider: {} } };
   (wallet as any).getActiveKeyring = () => keyring;
   (wallet as any).resetAutoLockTimer = jest.fn();
   wallet.isUnlocked = jest.fn(() => true);
@@ -138,6 +143,181 @@ it.each([undefined, null, {}, { account: 'invalid', network: 'invalid' }])(
     expect(persistence).not.toHaveBeenCalled();
   }
 );
+
+describe('watchAsset ERC1155 metadata and token identity', () => {
+  let metadata: jest.SpyInstance;
+  let balanceOf: jest.Mock;
+  const requested = (tokenId: any) => ({
+    address: TOKEN,
+    symbol: 'DAPP',
+    decimals: 18,
+    tokenId,
+  });
+  const read = (tokenId: any = '0x07') =>
+    wallet.getAssetInfo(requested(tokenId), 'ERC1155', expected);
+
+  beforeEach(() => {
+    metadata = jest
+      .spyOn(wallet, 'getTokenDetailsWithMarketData')
+      .mockResolvedValue({
+        ...preview,
+        decimals: 0,
+        isNft: true,
+        tokenStandard: 'ERC-1155',
+        balance: 999,
+      });
+    balanceOf = jest.fn().mockResolvedValue(BigInt('9007199254740993'));
+    (Contract as jest.Mock).mockImplementation(() => ({ balanceOf }));
+  });
+
+  it('previews and saves the normalized ID with its exact per-ID units', async () => {
+    const result = await read();
+    expect(balanceOf).toHaveBeenCalledWith(ADDRESS, '7');
+    expect(result).toMatchObject({
+      tokenId: '7',
+      rawBalance: '9007199254740993',
+      decimals: 0,
+      tokenStandard: 'ERC-1155',
+      id: `${TOKEN}-5700-7`,
+    });
+    await expect(wallet.handleWatchAsset(result, expected)).resolves.toBe(true);
+    expect(state.vault.accountAssets[TYPE][0].ethereum).toEqual([
+      expect.objectContaining({
+        tokenId: '7',
+        rawBalance: '9007199254740993',
+        id: `${TOKEN}-5700-7`,
+      }),
+    ]);
+  });
+
+  it.each([
+    undefined,
+    null,
+    '',
+    '-1',
+    '1.5',
+    {},
+    [],
+    Number.MAX_SAFE_INTEGER + 1,
+    `0x1${'0'.repeat(64)}`,
+  ])(
+    'rejects invalid ERC1155 ID %j before metadata or persistence',
+    async (tokenId) => {
+      await expect(
+        wallet.getAssetInfo(requested(tokenId), 'ERC1155', expected)
+      ).rejects.toThrow('Invalid token id');
+      expect(metadata).not.toHaveBeenCalled();
+      expect(balanceOf).not.toHaveBeenCalled();
+      expect(persistence).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each(['0', `0x${'f'.repeat(64)}`])(
+    'accepts uint256 boundary ID %s without rounding',
+    async (tokenId) => {
+      balanceOf.mockResolvedValue(BigInt(0));
+      const result = await read(tokenId);
+      expect(result.tokenId).toBe(BigInt(tokenId).toString());
+      expect(result.rawBalance).toBe('0');
+      expect(result.balance).toBe(0);
+    }
+  );
+
+  it('rejects a changed scope during a delayed per-ID read', async () => {
+    let finish!: (balance: bigint) => void;
+    balanceOf.mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve;
+      })
+    );
+    const pending = read();
+    const rejected = expect(pending).rejects.toThrow(
+      EVM_TRANSACTION_CONTEXT_CHANGED
+    );
+    await Promise.resolve();
+    change('RPC');
+    finish(BigInt(1));
+    await rejected;
+    expect(persistence).not.toHaveBeenCalled();
+  });
+
+  it('does not invent zero owned units when the per-ID read fails', async () => {
+    balanceOf.mockRejectedValue(new Error('Synthetic balance lookup failed'));
+    await expect(read()).rejects.toThrow('Synthetic balance lookup failed');
+    expect(persistence).not.toHaveBeenCalled();
+  });
+
+  it.each(['-1', `0x1${'0'.repeat(64)}`])(
+    'rejects an invalid per-ID balance %s',
+    async (balance) => {
+      balanceOf.mockResolvedValue(balance);
+      await expect(read()).rejects.toThrow('Invalid token id');
+      expect(persistence).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each([
+    ['ERC-20', 'ERC20'],
+    ['ERC-721', 'ERC721'],
+  ] as const)(
+    'preserves the %s metadata path without ERC1155 balance reads',
+    async (tokenStandard, assetType) => {
+      metadata.mockResolvedValue({ ...preview, tokenStandard });
+      const result = await wallet.getAssetInfo(
+        { address: TOKEN, symbol: 'DAPP', decimals: 18 },
+        assetType,
+        expected
+      );
+      expect(result.symbol).toBe('REVIEW');
+      expect(result.tokenStandard).toBe(tokenStandard);
+      expect(balanceOf).not.toHaveBeenCalled();
+      await expect(wallet.handleWatchAsset(result, expected)).resolves.toBe(
+        true
+      );
+    }
+  );
+
+  it.each([
+    ['ERC20', 'ERC-721'],
+    ['ERC20', 'ERC-1155'],
+    ['ERC721', 'ERC-20'],
+    ['ERC721', 'ERC-1155'],
+    ['ERC1155', 'ERC-20'],
+    ['ERC1155', 'ERC-721'],
+  ] as const)(
+    'rejects requested %s when metadata discovers %s',
+    async (assetType, tokenStandard) => {
+      metadata.mockResolvedValue({ ...preview, tokenStandard });
+      await expect(
+        wallet.getAssetInfo(requested('7'), assetType, expected)
+      ).rejects.toThrow('Asset type does not match token contract');
+      expect(balanceOf).not.toHaveBeenCalled();
+      expect(persistence).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each([undefined, null, {}, { account: 'wrong', network: 'wrong' }])(
+    'rejects missing or stale metadata scope %j before reads',
+    async (scope) => {
+      await expect(
+        wallet.getAssetInfo(requested('7'), 'ERC1155', scope as any)
+      ).rejects.toThrow(EVM_TRANSACTION_CONTEXT_CHANGED);
+      expect(metadata).not.toHaveBeenCalled();
+      expect(balanceOf).not.toHaveBeenCalled();
+    }
+  );
+
+  it('rejects a malformed reviewed ERC1155 ID before token preparation', async () => {
+    await expect(
+      wallet.handleWatchAsset(
+        { ...preview, tokenStandard: 'ERC-1155', tokenId: '-1' } as any,
+        expected
+      )
+    ).rejects.toThrow('Invalid token id');
+    expect(ethSave).not.toHaveBeenCalled();
+    expect(persistence).not.toHaveBeenCalled();
+  });
+});
 
 it.each([
   'account',

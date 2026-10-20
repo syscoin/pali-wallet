@@ -9,6 +9,7 @@ import {
   getBlacklistTargetsForEvmCallWithContractType,
   IEvmCallBlacklistTarget,
 } from 'utils/evmCallBlacklist';
+import { normalizeNftTokenId } from 'utils/nftTokenId';
 import { getPersonalSignParams } from 'utils/personalSignReview';
 import { blacklistService } from 'utils/security/blacklistService';
 
@@ -1231,6 +1232,16 @@ export const popupOptimizationMiddleware: Middleware = async (
     case 'watchAsset':
       // Check if asset already exists
       const assetParams = params?.[0];
+      let requestedTokenId: string | undefined;
+      if (assetParams?.type === 'ERC1155') {
+        try {
+          requestedTokenId = normalizeNftTokenId(assetParams.options?.tokenId);
+        } catch {
+          throw cleanErrorStack(
+            ethErrors.rpc.invalidParams('Invalid token id')
+          );
+        }
+      }
       if (assetParams?.options?.address) {
         const activeAccount = vault.activeAccount;
         const { accountAssets } = vault;
@@ -1240,12 +1251,21 @@ export const popupOptimizationMiddleware: Middleware = async (
             accountAssets[activeAccount.type]?.[activeAccount.id];
 
           if (accountAsset && accountAsset.ethereum) {
-            const assetExists = accountAsset.ethereum.some(
-              (asset: any) =>
-                asset.chainId === vault.activeNetwork.chainId &&
-                asset.contractAddress?.toLowerCase() ===
+            const assetExists = accountAsset.ethereum.some((asset: any) => {
+              if (
+                asset.chainId !== vault.activeNetwork.chainId ||
+                asset.contractAddress?.toLowerCase() !==
                   assetParams.options.address.toLowerCase()
-            );
+              )
+                return false;
+              if (requestedTokenId === undefined) return true;
+              if (asset.tokenStandard !== 'ERC-1155') return false;
+              try {
+                return normalizeNftTokenId(asset.tokenId) === requestedTokenId;
+              } catch {
+                return false;
+              }
+            });
 
             if (assetExists) {
               // Asset already added
