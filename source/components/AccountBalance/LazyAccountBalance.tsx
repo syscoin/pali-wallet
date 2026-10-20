@@ -260,7 +260,7 @@ export const LazyAccountBalance: React.FC<ILazyAccountBalanceProps> = ({
 
   // Calculate fiat value
   const fiatValue =
-    showFiat && nativeBalance > 0 ? getFiatAmount(nativeBalance, 4) : '$0.00';
+    showFiat && nativeBalance >= 0 ? getFiatAmount(nativeBalance, 4) : '$0.00';
 
   const hasFreshBalance = Boolean(freshBalanceEntry);
 
