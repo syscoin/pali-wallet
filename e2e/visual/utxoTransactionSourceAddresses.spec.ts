@@ -14,6 +14,9 @@ import {
   UTXO_FIXTURE_SEED,
 } from '../harness/utxoFixture';
 
+// useUtils coalesces identical info notices within this existing interval.
+const COPY_NOTICE_DEDUP_MS = 2000;
+
 test('UTXO transaction details retain every distinct source address through ordinary Activity', async ({}, info) => {
   test.setTimeout(120_000);
   expect(info.config.workers).toBe(1);
@@ -114,6 +117,7 @@ test('UTXO transaction details retain every distinct source address through ordi
   }[] = [];
   let readCountBeforeReopen: number | undefined;
   let readCountAfterReopen: number | undefined;
+  let lastFeedbackObservedAt: number | undefined;
 
   try {
     server = await startUtxoFixtureServer();
@@ -177,6 +181,16 @@ test('UTXO transaction details retain every distinct source address through ordi
       await expect(row(cases[0].txid)).toBeVisible();
     };
     const checkAndCopyFrom = async (caseName: string, value: string) => {
+      const copyNotice = page.getByText(en.home.addressCopied, { exact: true });
+      if (lastFeedbackObservedAt !== undefined) {
+        await expect
+          .poll(() => page.evaluate(() => Date.now()))
+          .toBeGreaterThanOrEqual(
+            lastFeedbackObservedAt + COPY_NOTICE_DEDUP_MS
+          );
+      }
+      // Do not let an exiting prior toast satisfy this copy's feedback check.
+      await expect(copyNotice).toHaveCount(0);
       const from = field('From');
       await from.locator('span > div').first().hover();
       await expect(
@@ -192,9 +206,8 @@ test('UTXO transaction details retain every distinct source address through ordi
       observedCopies = await page.evaluate(
         () => (window as any).__utxoSourceAddressCopies as string[]
       );
-      await expect(
-        page.getByText(en.home.addressCopied, { exact: true }).last()
-      ).toBeVisible();
+      await expect(copyNotice).toBeVisible();
+      lastFeedbackObservedAt = await page.evaluate(() => Date.now());
       observations.push({
         caseName,
         copied: observedCopies[observedCopies.length - 1],
