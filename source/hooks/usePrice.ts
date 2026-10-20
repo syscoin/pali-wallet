@@ -40,7 +40,7 @@ export const usePrice = () => {
 
     const symbol = validateSymbol ? currencySymbol : '';
 
-    if (!fiat.price || fiat.price === 0 || value === 0 || !value) {
+    if (!Number.isFinite(value) || !value) {
       return `${symbol}0 ${withCurrency ? currency : ''}`;
     }
 
