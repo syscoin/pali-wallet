@@ -13,6 +13,8 @@ jest.mock('@sidhujag/sysweb3-keyring', () => ({
 jest.mock('utils/storageAPI', () => ({
   chromeStorage: {
     getItem: jest.fn(),
+    getItems: jest.fn().mockResolvedValue({}),
+    setItems: jest.fn().mockResolvedValue(undefined),
     removeItem: jest.fn(),
     setItem: jest.fn(),
   },
@@ -67,6 +69,7 @@ beforeEach(() => {
   wallet.resetAutoLockTimer = jest.fn();
   wallet.saveWalletState = jest.fn().mockResolvedValue(undefined);
   jest.mocked(chromeStorage.setItem).mockReset().mockResolvedValue(undefined);
+  jest.mocked(chromeStorage.setItems).mockReset().mockResolvedValue(undefined);
   wallet.walletSessionGeneration = 0;
   wallet.walletStateGeneration = 0;
   wallet.keyrings = new Map([[1, { test: 'synthetic keyring' }]]);
@@ -157,10 +160,12 @@ it('preserves a legacy shared vault for the surviving network and cleans it only
     other.label
   );
   expect(state.vaultGlobal.networks.syscoin[998]).toBeUndefined();
-  expect(chromeStorage.removeItem).toHaveBeenCalledWith([
-    'state-vault-1',
-    'state-vault-1-passkey-profile',
-  ]);
+  expect(chromeStorage.setItems).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      'state-vault-1': null,
+      'state-vault-1-passkey-profile': null,
+    })
+  );
   expect(vaultCache.clearSlip44FromCache).toHaveBeenCalledWith(1);
   expect(wallet.keyrings.has(1)).toBe(false);
 });
@@ -185,11 +190,7 @@ it('removes an inactive legacy co-owner while preserving its active shared vault
   expect(chromeStorage.removeItem).not.toHaveBeenCalled();
   expect(vaultCache.clearSlip44FromCache).not.toHaveBeenCalled();
   expect(wallet.keyrings.get(1)).toBe(sharedKeyring);
-  expect(wallet.saveWalletState).toHaveBeenCalledWith(
-    'remove-network',
-    true,
-    true
-  );
+  expect(chromeStorage.setItems).toHaveBeenCalledTimes(1);
 });
 
 it('rejects the exact active network even when a legacy co-owner survives', async () => {
