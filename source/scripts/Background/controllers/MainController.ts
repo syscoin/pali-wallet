@@ -5206,11 +5206,24 @@ class MainController {
     const requestId = ++this.transactionUpdateRequestId;
     const session = this.walletSessionGeneration;
     const networkRequest = this.networkRequestGeneration;
+    const { accounts, activeAccount, accountTransactions } =
+      store.getState().vault;
+    const currentAccount = accounts[activeAccount.type]?.[activeAccount.id];
+    // Imports can reuse an inactive account id without a session change.
+    // UTXO receiving addresses may rotate, but their xpub stays the owner.
+    const accountIdentity = isBitcoinBased
+      ? currentAccount?.xpub
+      : currentAccount?.address?.toLowerCase();
     let cancelled = false;
     const isCurrentRead = () => {
-      const network = store.getState().vault.activeNetwork;
+      const latest = store.getState().vault;
+      const network = latest.activeNetwork;
+      const account = latest.accounts[activeAccount.type]?.[activeAccount.id];
       return (
         !cancelled &&
+        Boolean(accountIdentity) &&
+        accountIdentity ===
+          (isBitcoinBased ? account?.xpub : account?.address?.toLowerCase()) &&
         session === this.walletSessionGeneration &&
         networkRequest === this.networkRequestGeneration &&
         network.chainId === activeNetwork.chainId &&
@@ -5219,9 +5232,6 @@ class MainController {
         (isBitcoinBased || network.apiUrl === activeNetwork.apiUrl)
       );
     };
-    const { accounts, activeAccount, accountTransactions } =
-      store.getState().vault;
-    const currentAccount = accounts[activeAccount.type]?.[activeAccount.id];
     const currentAccountTxs =
       accountTransactions[activeAccount.type]?.[activeAccount.id];
     const { currentPromise: transactionPromise, cancel } =
@@ -7800,6 +7810,12 @@ class MainController {
           )
           .forEach((token) => {
             const tokenKey = tokenBalanceKey(token);
+            const tokenIsCurrent = () =>
+              store
+                .getState()
+                .vault.accountAssets[type]?.[accountId]?.ethereum?.includes(
+                  token
+                );
             this.receiptBalanceRefresh.schedule(
               `${keyPrefix}${tokenKey}`,
               block,
@@ -7808,14 +7824,20 @@ class MainController {
                   signal,
                   network,
                   async (readProvider) => {
-                    if (!current() || !accountIsCurrent()) return;
+                    if (!current() || !accountIsCurrent() || !tokenIsCurrent())
+                      return;
                     const latestRead = this.beginTargetedBalanceRead(
                       `${keyPrefix}${tokenKey}`
                     );
                     let balance;
                     try {
                       const head = await currentBlock(readProvider, signal);
-                      if (!current() || !accountIsCurrent()) return;
+                      if (
+                        !current() ||
+                        !accountIsCurrent() ||
+                        !tokenIsCurrent()
+                      )
+                        return;
                       balance = await readTrackedTokenBalance(
                         readProvider,
                         account.address,
@@ -7826,7 +7848,12 @@ class MainController {
                       headRead = undefined;
                       throw error;
                     }
-                    if (!current() || !accountIsCurrent() || !latestRead())
+                    if (
+                      !current() ||
+                      !accountIsCurrent() ||
+                      !latestRead() ||
+                      !tokenIsCurrent()
+                    )
                       return;
                     const latest =
                       store.getState().vault.accountAssets[type]?.[accountId]
@@ -8985,6 +9012,9 @@ class MainController {
       existingAsset
     );
     const latest = store.getState().vault;
+    const latestAssets =
+      latest.accountAssets[activeAccount.type]?.[activeAccount.id]?.ethereum ||
+      [];
     if (
       latest.activeNetwork.chainId !== activeNetwork.chainId ||
       latest.activeNetwork.url !== activeNetwork.url ||
@@ -8992,14 +9022,12 @@ class MainController {
       latest.activeAccount.type !== activeAccount.type ||
       latest.accounts[activeAccount.type]?.[activeAccount.id]?.address !==
         currentAccount.address ||
-      !latestRead()
+      !latestRead() ||
+      !latestAssets.includes(existingAsset)
     )
       throw new Error(TOKEN_BALANCE_CONTEXT_CHANGED_ERROR);
     const refreshedAsset = { ...existingAsset, ...balance };
-    const ethereumAssets = (
-      latest.accountAssets[activeAccount.type]?.[activeAccount.id]?.ethereum ||
-      []
-    ).map((asset) =>
+    const ethereumAssets = latestAssets.map((asset) =>
       !asset.isNft &&
       asset.contractAddress?.toLowerCase() === contractLower &&
       asset.chainId === activeNetwork.chainId

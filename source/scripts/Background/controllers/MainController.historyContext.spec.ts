@@ -93,7 +93,12 @@ beforeEach(() => {
         accounts: {
           ...initial.accounts,
           [type]: {
-            0: { address: ADDRESS, label: 'Original' },
+            0: {
+              address: ADDRESS,
+              label: 'Original',
+              // This shared fixture also exercises UTXO history, whose owner is its xpub.
+              xpub: 'vpub5YRRorZVvAATHuEEHuFw1sBdoTr86WAbRqErEmc37QW5GQdJ6QT2iARGALeCtcpVRmFdR1PQ4BFAuCNPy6Rv4tqSLNHpbaCNDAF4K549MT1',
+            },
             1: { address: `0x${'33'.repeat(20)}`, label: 'Second' },
           },
         },

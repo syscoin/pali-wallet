@@ -289,7 +289,7 @@ it('targeted balance refresh merges into latest assets and never restores a remo
   const second = controller.refreshActiveEvmTokenBalance(T);
   state.vault.accountAssets[type][0].ethereum = [asset(U)];
   resolve(BigInt(8));
-  await second;
+  await expect(second).rejects.toThrow('Token balance refresh context changed');
   expect(
     state.vault.accountAssets[type][0].ethereum.map(
       (token: any) => token.contractAddress
@@ -1204,7 +1204,8 @@ it.each(['failed', 'mixed'])(
           // T failed (old value preserved). Only U succeeded in the mixed case.
           if (mode === 'mixed') args[6](asset(U, 26));
           return {
-            ethereum: mode === 'mixed' ? [asset(T), asset(U, 26)] : [],
+            ethereum:
+              mode === 'mixed' ? [args[5].ethereum[0], asset(U, 26)] : [],
             syscoin: [],
           };
         },
