@@ -225,6 +225,27 @@ export const ChainErrorPage = () => {
     );
   };
 
+  const elapsedCounter = (
+    <span className="ml-2 text-brand-gray400 text-xs">({elapsedSeconds}s)</span>
+  );
+  const renderAction = (
+    onClick: () => void,
+    label: string,
+    loading?: boolean
+  ) => (
+    <Button
+      variant="neutral"
+      className="text-sm text-brand-royalblue"
+      type="button"
+      onClick={onClick}
+      disabled={isRetrying}
+      loading={loading}
+      fullWidth
+    >
+      {t(label)}
+    </Button>
+  );
+
   return (
     <div className="flex flex-col items-center justify-start min-h-full px-4 py-6 overflow-y-auto">
       <div className="flex flex-col items-center gap-4 w-full max-w-[22rem]">
@@ -265,17 +286,13 @@ export const ChainErrorPage = () => {
               {elapsedSeconds >= 3 && elapsedSeconds < 7 && (
                 <>
                   {t('networkConnection.stillConnecting')}
-                  <span className="ml-2 text-brand-gray400 text-xs">
-                    ({elapsedSeconds}s)
-                  </span>
+                  {elapsedCounter}
                 </>
               )}
               {elapsedSeconds >= 7 && (
                 <div className="text-yellow-400">
                   {t('networkConnection.slowConnection')}
-                  <span className="ml-2 text-brand-gray400 text-xs">
-                    ({elapsedSeconds}s)
-                  </span>
+                  {elapsedCounter}
                 </div>
               )}
             </div>
@@ -337,27 +354,15 @@ export const ChainErrorPage = () => {
           </div>
         </div>
         <div className="flex flex-col gap-2 mt-4 mb-4 w-full">
-          <Button
-            variant="neutral"
-            className="text-sm text-brand-royalblue"
-            type="button"
-            onClick={handleConnectToAnotherRpc}
-            disabled={isRetrying}
-            fullWidth
-          >
-            {t('chainError.goToAnotherNetwork')}
-          </Button>
-          <Button
-            variant="neutral"
-            className="text-sm text-brand-royalblue"
-            type="button"
-            onClick={handleRetryToConnect}
-            disabled={isRetrying}
-            loading={isRetrying}
-            fullWidth
-          >
-            {t('buttons.retryConnect')}
-          </Button>
+          {renderAction(
+            handleConnectToAnotherRpc,
+            'chainError.goToAnotherNetwork'
+          )}
+          {renderAction(
+            handleRetryToConnect,
+            'buttons.retryConnect',
+            isRetrying
+          )}
         </div>
       </div>
     </div>
