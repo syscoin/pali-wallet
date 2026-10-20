@@ -92,6 +92,15 @@ const getExactNftBalance = (token: {
     : null;
 };
 
+// Share the existing 1,000-wei tolerance across validation, preview and draft UI.
+const isNativeMaxAmount = (amount: string, balance: string): boolean => {
+  try {
+    return parseEther(balance).sub(parseEther(amount)).abs().lte(1000);
+  } catch {
+    return false;
+  }
+};
+
 export const SendEth = () => {
   const scopeKey = useSelector(() =>
     JSON.stringify(getWalletNavigationScope())
@@ -717,26 +726,13 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
           transactionType = TransactionType.NATIVE_ETH;
         }
 
-        // Determine if this is a MAX send for native ETH
-        let isMax = false;
-        if (!selectedAsset && values.amount) {
-          // Check if the entered value equals the full balance
-          const balanceEth = String(activeAccount?.balances?.ethereum || 0);
-
-          try {
-            const amountBN = parseEther(values.amount);
-            const balanceBN = parseEther(balanceEth);
-
-            // Check if amounts are equal or within a small tolerance (rounding tolerance)
-            // This handles cases where the displayed value might be slightly rounded
-            // 1000 wei = 0.000000000000001 ETH (negligible but accounts for display rounding)
-            const difference = balanceBN.sub(amountBN).abs();
-            isMax = difference.lte(1000); // Consider it max if difference is <= 1000 wei
-          } catch {
-            // If parsing fails, it's not a MAX send
-            isMax = false;
-          }
-        }
+        const isMax =
+          !selectedAsset &&
+          Boolean(values.amount) &&
+          isNativeMaxAmount(
+            values.amount,
+            String(activeAccount?.balances?.ethereum || 0)
+          );
 
         // If the user is trying to MAX-send while they already have a pending outgoing tx,
         // block it to prevent mempool "insufficient funds" rejections.
@@ -1187,6 +1183,14 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
       } as any);
   }, []);
 
+  const isAmountDisabled =
+    (selectedAsset?.isNft &&
+      selectedAsset?.tokenStandard === 'ERC-1155' &&
+      verifiedTokenBalance === null) ||
+    (!selectedAsset?.isNft && selectedAsset && verifiedERC20Balance === null) ||
+    isVerifyingERC20 ||
+    isVerifyingTokenId;
+
   return (
     <div className="w-full md:max-w-sm">
       <div className="flex flex-col items-center justify-center">
@@ -1569,38 +1573,13 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
               <div className="value-custom-input w-full relative">
                 <button
                   type="button"
-                  disabled={
-                    (selectedAsset?.isNft &&
-                      selectedAsset?.tokenStandard === 'ERC-1155' &&
-                      verifiedTokenBalance === null) ||
-                    (!selectedAsset?.isNft &&
-                      selectedAsset &&
-                      verifiedERC20Balance === null) ||
-                    isVerifyingERC20 ||
-                    isVerifyingTokenId
-                  }
+                  disabled={isAmountDisabled}
                   onClick={
                     // Disable MAX button until verification complete
-                    (selectedAsset?.isNft &&
-                      selectedAsset?.tokenStandard === 'ERC-1155' &&
-                      verifiedTokenBalance === null) ||
-                    (!selectedAsset?.isNft &&
-                      selectedAsset &&
-                      verifiedERC20Balance === null) ||
-                    isVerifyingERC20 ||
-                    isVerifyingTokenId
-                      ? undefined
-                      : handleMaxButton
+                    isAmountDisabled ? undefined : handleMaxButton
                   }
                   className={`absolute left-[15px] top-5 transform -translate-y-1/2 text-xs h-[18px] border border-alpha-whiteAlpha300 px-2 py-[2px] w-[41px] flex items-center justify-center rounded-pill z-10 focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-bkg-1 ${
-                    (selectedAsset?.isNft &&
-                      selectedAsset?.tokenStandard === 'ERC-1155' &&
-                      verifiedTokenBalance === null) ||
-                    (!selectedAsset?.isNft &&
-                      selectedAsset &&
-                      verifiedERC20Balance === null) ||
-                    isVerifyingERC20 ||
-                    isVerifyingTokenId
+                    isAmountDisabled
                       ? 'opacity-50 cursor-not-allowed'
                       : 'cursor-pointer hover:bg-alpha-whiteAlpha200'
                   }`}
@@ -1718,15 +1697,9 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                             return Promise.reject(t('send.insufficientFunds'));
                           }
 
-                          // For MAX sends, we need to ensure there's enough for gas
-                          if (isMaxSend && valueBN.eq(balanceBN)) {
-                            // For MAX sends, we'll validate gas availability at transaction time
-                            // The backend will handle the proper gas deduction
-                            return Promise.resolve();
-                          }
-
-                          // For non-MAX native ETH sends, validate against a conservative gas estimate
-                          if (!isMaxSend) {
+                          // Only the current MAX amount gets confirmation-time gas
+                          // deduction. A prior MAX click cannot exempt a fixed amount.
+                          if (!isNativeMaxAmount(String(value), balanceEth)) {
                             try {
                               // Use cached fee data if available, otherwise use conservative estimate
                               let estimatedGasCost: BigNumber;
@@ -1810,14 +1783,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                     }
                     disabled={
                       // Disable until verification complete
-                      (selectedAsset?.isNft &&
-                        selectedAsset?.tokenStandard === 'ERC-1155' &&
-                        verifiedTokenBalance === null) ||
-                      (!selectedAsset?.isNft &&
-                        selectedAsset &&
-                        verifiedERC20Balance === null) ||
-                      isVerifyingERC20 ||
-                      isVerifyingTokenId
+                      isAmountDisabled
                     }
                     placeholder={
                       selectedAsset?.isNft &&
@@ -1837,17 +1803,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                           activeAccount?.balances?.ethereum || 0
                         );
 
-                        try {
-                          const inputBN = parseEther(inputValue);
-                          const balanceBN = parseEther(balanceEth);
-
-                          // Check if amounts are equal or within a small tolerance (rounding tolerance)
-                          const difference = balanceBN.sub(inputBN).abs();
-                          setIsMaxSend(difference.lte(1000)); // Consider it max if difference is <= 1000 wei
-                        } catch {
-                          // If parsing fails, it's not a MAX send
-                          setIsMaxSend(false);
-                        }
+                        setIsMaxSend(isNativeMaxAmount(inputValue, balanceEth));
                       } else {
                         // For tokens or empty input, clear MAX flag
                         setIsMaxSend(false);
