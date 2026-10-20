@@ -378,8 +378,15 @@ export const sanitizeBrowsingState = (
     );
   if (record(input?.selected))
     state.selected = pick(input.selected, ['chainId', 'key', 'kind']);
-  if (record(input?.nftData))
+  if (record(input?.nftData)) {
     state.nftData = pick(input.nftData, PUBLIC_ASSET_FIELDS);
+    if (
+      pathname === '/home/details' &&
+      input.nftCollection === true &&
+      input.nftData.isImportPreview === true
+    )
+      state.nftData.isImportPreview = true;
+  }
   if (DRAFT_ROUTES.has(pathname)) {
     state.formValues = boundedPick(input?.formValues, [
       'receiver',

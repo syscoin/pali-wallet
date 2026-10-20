@@ -552,9 +552,12 @@ export const SmartAccountModuleConsent = () => {
             </p>
           </div>
           <p className="mt-3 break-words text-xs text-brand-graylight [overflow-wrap:anywhere]">
-            {action === 'install'
-              ? t('smartAccountHub.dappInstallPrompt', { host })
-              : t('smartAccountHub.dappUninstallPrompt', { host })}
+            {t(
+              action === 'install'
+                ? 'smartAccountHub.dappInstallPrompt'
+                : 'smartAccountHub.dappUninstallPrompt',
+              { host, interpolation: { escapeValue: false } }
+            )}
           </p>
         </div>
 

@@ -308,17 +308,27 @@ it.each(['account', 'network'])(
 it.each(['account', 'network'])(
   'does not retain an NFT ownership snapshot after changing %s',
   (change) => {
+    const owned = {
+      ...token,
+      name: 'Original collection',
+      isNft: true,
+      tokenStandard: 'ERC-1155' as const,
+      tokenId: '123',
+    };
     const store = mount({
       id: undefined,
       nftCollection: true,
-      nftData: {
-        ...token,
-        name: 'Original collection',
-        isNft: true,
-        tokenStandard: 'ERC-1155',
-        tokenId: '123',
-      },
+      nftData: owned,
     });
+    act(() =>
+      store.dispatch(
+        setAccountAssets({
+          accountId: 0,
+          accountType: KeyringAccountType.HDAccount,
+          assets: { syscoin: [], ethereum: [owned] },
+        })
+      )
+    );
     expect(screen.getAllByText('Original collection').length).toBeGreaterThan(
       0
     );

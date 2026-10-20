@@ -313,7 +313,7 @@ module.exports = {
         },
         // Extract only modules already duplicated across lazy UI chunks.
         transactionDetails: {
-          test: /[\\/]source[\\/]components[\\/]TransactionDetails[\\/]/,
+          test: /[\\/]source[\\/](?:components[\\/]TransactionDetails[\\/]|pages[\\/]Send[\\/]components[\\/])/,
           chunks: 'async',
           name: 'transaction-details',
           minChunks: 2,

@@ -70,6 +70,21 @@ export const DetailsView = () => {
   const isNft = Boolean(
     nftCollection && nftData?.contractAddress && isCurrentPublicPayload
   );
+  const currentNft = useSelector((state: RootState) =>
+    !isNft || nftData.isImportPreview === true
+      ? nftData
+      : state.vault.accountAssets?.[state.vault.activeAccount.type]?.[
+          state.vault.activeAccount.id
+        ]?.ethereum.find(
+          (asset) =>
+            asset.id === nftData.id &&
+            asset.chainId === activeNetwork.chainId &&
+            asset.isNft &&
+            asset.tokenStandard === nftData.tokenStandard &&
+            asset.contractAddress.toLowerCase() ===
+              nftData.contractAddress.toLowerCase()
+        )
+  );
   const hasDetails = Boolean(isAsset || isNft || hash);
   const transactions =
     accountTransactions[
@@ -113,7 +128,7 @@ export const DetailsView = () => {
       className="remove-scrollbar md:max-h-max w-full text-sm overflow-auto"
     >
       {isNft ? (
-        <NftsDetails nftData={nftData} />
+        <NftsDetails nftData={currentNft} />
       ) : isAsset ? (
         <AssetDetails
           id={id}

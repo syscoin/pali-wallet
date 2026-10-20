@@ -198,6 +198,108 @@ describe('smart account EntryPoint log history', () => {
     );
   });
 
+  it('does not stamp a reused account slot after the first awaited read', async () => {
+    let release!: (height: number) => void;
+    const provider = buildProvider({
+      getBlockNumber: jest.fn(
+        () =>
+          new Promise<number>((resolve) => {
+            release = resolve;
+          })
+      ),
+      getLogs: jest.fn().mockResolvedValue([]),
+    });
+    const oldAccount = vaultState.accounts.SmartAccount[0];
+    const read = fetchSmartAccountUserOpTransactions(
+      provider as any,
+      oldAccount,
+      ACCOUNT_TYPE,
+      CHAIN_ID
+    );
+    vaultState.accounts.SmartAccount[0] = { id: 0, address: GAS_PAYER };
+    release(100);
+    await read;
+    expect(dispatchMock).not.toHaveBeenCalled();
+  });
+
+  it('retains case-insensitive identity and unrelated account updates while inactive', async () => {
+    let release!: (logs: any[]) => void;
+    const provider = buildProvider({
+      getLogs: jest.fn(
+        () =>
+          new Promise<any[]>((resolve) => {
+            release = resolve;
+          })
+      ),
+    });
+    const read = fetchSmartAccountUserOpTransactions(
+      provider as any,
+      vaultState.accounts.SmartAccount[0],
+      ACCOUNT_TYPE,
+      CHAIN_ID,
+      () => true
+    );
+    await Promise.resolve();
+    vaultState.accounts.SmartAccount[0] = {
+      ...vaultState.accounts.SmartAccount[0],
+      address: SMART_ACCOUNT.toUpperCase(),
+      label: 'Updated label',
+    };
+    vaultState.activeAccount = { id: 1, type: ACCOUNT_TYPE };
+    release([]);
+    await read;
+    expect(dispatchMock).toHaveBeenCalledWith(expectCursorDispatch(100));
+  });
+
+  it('rejects a stale lifetime even if the replacement reuses the same address and id', async () => {
+    let release!: (logs: any[]) => void;
+    let current = true;
+    const provider = buildProvider({
+      getLogs: jest.fn(
+        () =>
+          new Promise<any[]>((resolve) => {
+            release = resolve;
+          })
+      ),
+    });
+    const read = fetchSmartAccountUserOpTransactions(
+      provider as any,
+      vaultState.accounts.SmartAccount[0],
+      ACCOUNT_TYPE,
+      CHAIN_ID,
+      () => current
+    );
+    await Promise.resolve();
+    current = false;
+    vaultState.accounts.SmartAccount[0] = { id: 0, address: SMART_ACCOUNT };
+    release([]);
+    await read;
+    expect(dispatchMock).not.toHaveBeenCalled();
+  });
+
+  it('does not recreate a removed account while committing a scan cursor', async () => {
+    let release!: (logs: any[]) => void;
+    const provider = buildProvider({
+      getLogs: jest.fn(
+        () =>
+          new Promise<any[]>((resolve) => {
+            release = resolve;
+          })
+      ),
+    });
+    const read = fetchSmartAccountUserOpTransactions(
+      provider as any,
+      vaultState.accounts.SmartAccount[0],
+      ACCOUNT_TYPE,
+      CHAIN_ID
+    );
+    await Promise.resolve();
+    delete vaultState.accounts.SmartAccount[0];
+    release([]);
+    await read;
+    expect(dispatchMock).not.toHaveBeenCalled();
+  });
+
   it('refreshes confirmations for already-confirmed vault transactions without refetching', async () => {
     vaultState.accountTransactions.SmartAccount[0].ethereum[CHAIN_ID] = [
       {

@@ -119,15 +119,19 @@ const refreshExistingConfirmations = (
 // "active account" reducer at completion time would stamp the cursor onto
 // the wrong account, permanently skipping its older user operations.
 const persistScanCursor = (
-  accountId: number,
+  scannedAccount: Pick<ScannedAccount, 'id' | 'address'>,
   accountType: KeyringAccountType,
   chainId: number,
-  scannedThroughBlock: number
+  scannedThroughBlock: number,
+  isCurrentRead?: () => boolean
 ) => {
   try {
     const { accounts } = store.getState().vault;
-    const account = accounts[accountType]?.[accountId] as any;
-    if (!account) {
+    const account = accounts[accountType]?.[scannedAccount.id] as any;
+    if (
+      (isCurrentRead && !isCurrentRead()) ||
+      account?.address?.toLowerCase() !== scannedAccount.address.toLowerCase()
+    ) {
       return;
     }
     const byChain = {
@@ -136,7 +140,7 @@ const persistScanCursor = (
     };
     store.dispatch(
       setAccountPropertyByIdAndType({
-        id: accountId,
+        id: scannedAccount.id,
         property: 'smartAccountUserOpScanByChainId',
         type: accountType,
         value: byChain,
@@ -197,8 +201,10 @@ export const fetchSmartAccountUserOpTransactions = async (
   provider: CustomJsonRpcProvider,
   account: ScannedAccount,
   accountType: KeyringAccountType,
-  chainId: number
+  chainId: number,
+  isCurrentRead?: () => boolean
 ): Promise<IEvmTransactionResponse[]> => {
+  const scannedAccount = { id: account.id, address: account.address };
   const latestBlock = await provider.getBlockNumber();
   const refreshedExisting = refreshExistingConfirmations(
     account,
@@ -372,7 +378,13 @@ export const fetchSmartAccountUserOpTransactions = async (
   // would never be re-scanned once the cursor passes it. Tip-window logs
   // beyond coveredToBlock are display-only and never move the cursor.
   if (allDetailsFetched) {
-    persistScanCursor(account.id, accountType, chainId, coveredToBlock);
+    persistScanCursor(
+      scannedAccount,
+      accountType,
+      chainId,
+      coveredToBlock,
+      isCurrentRead
+    );
   }
 
   // Reorged transactions that were successfully refetched replace their

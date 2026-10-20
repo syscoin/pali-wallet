@@ -159,6 +159,14 @@ test('module request structural validation rejects malformed fields without open
           await expect(
             popup.getByText('Public synthetic module', { exact: true })
           ).toBeVisible();
+          const origin = new URL(server.url).origin;
+          const prompt = (
+            method.endsWith('Uninstall')
+              ? en.smartAccountHub.dappUninstallPrompt
+              : en.smartAccountHub.dappInstallPrompt
+          ).replace('{{host}}', origin);
+          await expect(popup.getByText(prompt, { exact: true })).toBeVisible();
+          await expect(popup.locator('body')).not.toContainText('&#x2F;');
           await expect(cancel).toBeEnabled();
           // This is an ordinary HD account: render/cancel is the healthy
           // control, not authorization to install a smart-account validator.

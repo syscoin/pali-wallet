@@ -54,7 +54,8 @@ const TransactionsManager = (): ITransactionsManager => {
     isPolling?: boolean,
     isRapidPolling?: boolean,
     forceRefresh?: boolean,
-    requestScope?: string
+    requestScope?: string,
+    isCurrentRead?: () => boolean
   ) => {
     // Clear expired cache entries
     clearExpiredCache();
@@ -119,7 +120,8 @@ const TransactionsManager = (): ITransactionsManager => {
           result = await EvmTransactionsController().pollingEvmTransactions(
             web3Provider,
             isPolling,
-            isRapidPolling && !forceRefresh
+            isRapidPolling && !forceRefresh,
+            isCurrentRead
           );
         }
         // Cache the result only if no pending transactions
