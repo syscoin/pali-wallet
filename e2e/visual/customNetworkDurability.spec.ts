@@ -182,6 +182,11 @@ test('custom RPC add and edit remain retryable after refused storage and survive
       name: en.buttons.save,
       exact: true,
     });
+    const labelInput = page.getByRole('combobox', {
+      name: en.settings.label,
+      exact: true,
+    });
+    const rpcInput = page.locator('input#rpc_url');
     const expected = (url: string) => ({
       chainId: CHAIN_ID,
       kind: 'ethereum',
@@ -197,12 +202,12 @@ test('custom RPC add and edit remain retryable after refused storage and survive
         await wallet!.switchNetwork('Syscoin NEVM Testnet', 'EVM');
         await wallet!.ensureOnHome();
         await wallet!.gotoRoute('#/settings/networks/custom-rpc');
-        await expect(page.locator('#rpc_label')).toBeVisible();
-        await page.locator('#rpc_label').fill(LABEL);
-        await page.locator('#rpc_symbol').fill('TEST');
-        await page.locator('#rpc_chainId').fill(String(CHAIN_ID));
-        await page.locator('#rpc_url').fill(rpc);
-        await page.locator('#rpc_url').press('Tab');
+        await expect(labelInput).toBeVisible();
+        await labelInput.fill(LABEL);
+        await page.locator('input#rpc_symbol').fill('TEST');
+        await page.locator('input#rpc_chainId').fill(String(CHAIN_ID));
+        await rpcInput.fill(rpc);
+        await rpcInput.press('Tab');
         await expect
           .poll(() => server.reads.includes('/rpc:eth_chainId'))
           .toBe(true);
@@ -269,8 +274,8 @@ test('custom RPC add and edit remain retryable after refused storage and survive
         await save.click();
         await dismissRefusal('add');
         expect(await registry(page)).toEqual(before);
-        await expect(page.locator('#rpc_url')).toHaveValue(rpc);
-        await expect(page.locator('#rpc_label')).toHaveValue(LABEL);
+        await expect(rpcInput).toHaveValue(rpc);
+        await expect(labelInput).toHaveValue(LABEL);
         await save.click();
         await expect(page).toHaveURL(/#\/home$/);
         await expect
@@ -293,19 +298,19 @@ test('custom RPC add and edit remain retryable after refused storage and survive
         await expect(row).toHaveCount(1);
         await row.locator('button').first().click();
         await expect(page).toHaveURL(/#\/settings\/networks\/custom-rpc$/);
-        await expect(page.locator('#rpc_url')).toHaveValue(rpc);
+        await expect(rpcInput).toHaveValue(rpc);
         await worker!.evaluate(() => {
           (globalThis as any).__networkRegistryStorage.mode = 'edit';
         });
-        await page.locator('#rpc_url').fill(editedRpc);
-        await page.locator('#rpc_url').press('Tab');
+        await rpcInput.fill(editedRpc);
+        await rpcInput.press('Tab');
         await expect
           .poll(() => server.reads.includes('/rpc-edited:eth_chainId'))
           .toBe(true);
         await save.click();
         await dismissRefusal('edit');
         expect(await registry(page)).toEqual(observations.added);
-        await expect(page.locator('#rpc_url')).toHaveValue(editedRpc);
+        await expect(rpcInput).toHaveValue(editedRpc);
         await save.click();
         await expect(page).toHaveURL(/#\/settings\/networks\/edit$/);
         await expect
@@ -369,7 +374,7 @@ test('custom RPC add and edit remain retryable after refused storage and survive
           .filter({ has: page.getByText(LABEL, { exact: true }) });
         await expect(row).toHaveCount(1);
         await row.locator('button').first().click();
-        await expect(page.locator('#rpc_url')).toHaveValue(editedRpc);
+        await expect(rpcInput).toHaveValue(editedRpc);
       }
     );
     expect(server.deniedWrites).toEqual([]);

@@ -141,13 +141,14 @@ for (const outcome of ['success', 'refusal'] as const) {
           .toMatchObject({
             guids: [SPT_GUID],
           });
-        await expect(
-          page.getByText(
-            en.tokens.hasBeenAddedToYourWallet.replace('{{token}}', SPT_SYMBOL),
-            { exact: true }
-          )
-        ).toBeVisible();
-        await page.locator('.Toastify__close-button').last().click();
+        const successNotice = page.getByText(
+          en.tokens.hasBeenAddedToYourWallet.replace('{{token}}', SPT_SYMBOL),
+          { exact: true }
+        );
+        await expect(successNotice).toBeVisible();
+        // The real app omits a close button and dismisses toasts on click.
+        await successNotice.click();
+        await expect(successNotice).toBeHidden();
         await expect(button).toBeDisabled();
         await page.getByRole('button', { name: 'Back', exact: true }).click();
         await wallet!.ensureOnHome();
