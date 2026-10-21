@@ -150,7 +150,10 @@ it('keeps cached EVM history when its reader returns an empty result', async () 
   expect(mockDispatch).not.toHaveBeenCalled();
   expect(
     notificationManager.updatePendingTransactionBadge
-  ).not.toHaveBeenCalled();
+  ).toHaveBeenCalledTimes(1);
+  expect(
+    notificationManager.updatePendingTransactionBadge
+  ).toHaveBeenCalledWith([existing]);
 });
 
 it('retains history after a rejected read and accepts the next current response', async () => {

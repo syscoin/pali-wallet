@@ -8,6 +8,7 @@ import { RootState } from 'state/store';
 import { selectActiveAccountTransactions } from 'state/vault/selectors';
 import { TransactionsType } from 'state/vault/types';
 import { getWalletNavigationScope, navigateBack } from 'utils/navigationState';
+import { buildExplorerUrl } from 'utils/strings';
 
 import { AssetDetails } from './AssetDetails';
 import { NftsDetails } from './Nfts';
@@ -101,17 +102,14 @@ export const DetailsView = () => {
   }, [hasDetails, navigate, location]);
 
   const openExplorer = () => {
-    const url = new URL(activeNetwork.explorer || activeNetwork.url);
-    const prefix = url.hash.startsWith('#!/') ? '#!' : '#';
-    const route = url.hash.startsWith(`${prefix}/`)
-      ? new URL(url.hash.slice(prefix.length), url)
-      : url;
-    route.pathname = `${route.pathname.replace(/\/?$/, '/')}${
-      isAsset ? (isBitcoinBased ? 'asset' : 'address') : 'tx'
-    }/${isAsset ? id : hash}`;
-    if (route !== url)
-      url.hash = prefix + route.pathname + route.search + route.hash;
-    window.open(url.href, '_blank');
+    window.open(
+      buildExplorerUrl(
+        activeNetwork.explorer || activeNetwork.url,
+        isAsset ? (isBitcoinBased ? 'asset' : 'address') : 'tx',
+        isAsset ? id : hash
+      ),
+      '_blank'
+    );
   };
 
   if (!hasDetails) return null;

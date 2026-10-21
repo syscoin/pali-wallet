@@ -5320,6 +5320,14 @@ class MainController {
 
               // Update pending transaction badge
               notificationManager.updatePendingTransactionBadge(updatedTxs);
+            } else if (Array.isArray(txs)) {
+              // An empty EVM read retains local history, but the badge must
+              // still belong to the current account after a context switch.
+              notificationManager.updatePendingTransactionBadge(
+                latestVault.accountTransactions[activeAccount.type]?.[
+                  activeAccount.id
+                ]?.ethereum?.[activeNetwork.chainId] || []
+              );
             }
 
             if (!isBitcoinBased) {
