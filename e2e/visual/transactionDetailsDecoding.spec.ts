@@ -371,14 +371,26 @@ for (const mode of [
           await expect(
             page.getByText(en.transactions.decodedData, { exact: true })
           ).toBeVisible({ timeout: 3000 });
-          await expect(
-            page.getByText(
-              mode === 'byte-parameters' ? 'Execute' : 'Transfer',
-              {
-                exact: true,
-              }
-            )
-          ).toBeVisible();
+          const methodLabel =
+            mode === 'byte-parameters'
+              ? en.transactions.methodNames.execute
+              : 'Transfer';
+          const methodValue = page.getByText(
+            methodLabel.length >= 20
+              ? `${methodLabel.slice(0, 2)}...${methodLabel.slice(-4)}`
+              : methodLabel,
+            { exact: true }
+          );
+          await expect(methodValue).toBeVisible();
+          if (mode === 'byte-parameters') {
+            await methodValue.hover();
+            const methodTooltip = page
+              .getByRole('tooltip')
+              .filter({ hasText: methodLabel });
+            await expect(methodTooltip).toHaveText(methodLabel);
+            await page.mouse.move(0, 0);
+            await expect(methodTooltip).toBeHidden();
+          }
           if (
             mode === 'long-integer' ||
             mode === 'maximum-integer' ||
