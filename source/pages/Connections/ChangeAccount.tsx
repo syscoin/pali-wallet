@@ -499,6 +499,7 @@ export const ChangeAccount = () => {
                               )
                             }
                             onKeyDown={(e) => {
+                              if (e.target !== e.currentTarget) return;
                               if (e.key === 'Enter' || e.key === ' ') {
                                 e.preventDefault();
                                 handleSetAccountId(
@@ -540,6 +541,9 @@ export const ChangeAccount = () => {
                                       className="inline-flex flex-shrink-0 items-center relative z-20"
                                     >
                                       <IconButton
+                                        aria-label={t(
+                                          'transactions.copyAddress'
+                                        )}
                                         onClick={async () => {
                                           try {
                                             await copy(acc.address);
@@ -550,7 +554,7 @@ export const ChangeAccount = () => {
                                             );
                                           }
                                         }}
-                                        className="opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+                                        className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity duration-200"
                                       >
                                         <Icon
                                           name="copy"

@@ -475,7 +475,7 @@ const CustomRPCView = () => {
       }
 
       // Auto-fill chainId from RPC validation
-      if (network.chainId && !state?.selected) {
+      if (network.chainId !== undefined && !state?.selected) {
         // For UTXO networks, always auto-fill chainId
         // For EVM networks, only auto-fill if user hasn't provided one
         const chainIdString = String(formData?.chainId || '').trim();
@@ -1352,17 +1352,7 @@ const CustomRPCView = () => {
                 <p className="text-brand-deepPink100 text-xs">UTXO</p>
               </div>
             </Form.Item>
-            <Form.Item
-              name="label"
-              className="w-full"
-              hasFeedback
-              rules={[
-                {
-                  required: true,
-                  message: '',
-                },
-              ]}
-            >
+            <Form.Item className="w-full" hasFeedback>
               {/* Autocomplete input for both EVM and UTXO networks */}
               <div
                 className="relative w-full"
@@ -1372,69 +1362,75 @@ const CustomRPCView = () => {
                     closeSuggestions();
                 }}
               >
-                <Input
-                  type="text"
-                  role="combobox"
-                  aria-label={t('settings.label')}
-                  aria-autocomplete="list"
-                  aria-expanded={showSuggestions}
-                  aria-controls={suggestionsId}
-                  aria-activedescendant={activeSuggestionId}
-                  disabled={isInputDisableByEditMode}
-                  placeholder={`${t('settings.label')} - ${t(
-                    'settings.searchNetworksPlaceholder',
-                    { networkType: isSyscoinRpc ? 'UTXO' : 'EVM' }
-                  )}`}
-                  className={NETWORK_INPUT_CLASS}
-                  onChange={(e) => {
-                    invalidatePendingChecks();
-                    const value = e.target.value;
-                    form.setFieldsValue({ label: value });
-                    setNetworkQuery(value);
-                    setSuggestionsOpen(true);
-                    setActiveSuggestion(-1);
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.nativeEvent.isComposing || testingRpcs) return;
-                    if (event.key === 'Escape') {
-                      if (suggestionsOpen) {
+                <Form.Item
+                  name="label"
+                  noStyle
+                  rules={[{ required: true, message: '' }]}
+                >
+                  <Input
+                    role="combobox"
+                    aria-label={t('settings.label')}
+                    aria-autocomplete="list"
+                    aria-expanded={showSuggestions}
+                    aria-controls={suggestionsId}
+                    aria-activedescendant={activeSuggestionId}
+                    disabled={isInputDisableByEditMode}
+                    placeholder={`${t('settings.label')} - ${t(
+                      'settings.searchNetworksPlaceholder',
+                      { networkType: isSyscoinRpc ? 'UTXO' : 'EVM' }
+                    )}`}
+                    className={NETWORK_INPUT_CLASS}
+                    onChange={(e) => {
+                      invalidatePendingChecks();
+                      const value = e.target.value;
+                      setNetworkQuery(value);
+                      setSuggestionsOpen(true);
+                      setActiveSuggestion(-1);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.nativeEvent.isComposing || testingRpcs) return;
+                      if (event.key === 'Escape') {
+                        if (suggestionsOpen) {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          closeSuggestions();
+                        }
+                      } else if (
+                        (event.key === 'ArrowDown' ||
+                          event.key === 'ArrowUp') &&
+                        networkSuggestions.length > 0
+                      ) {
+                        event.preventDefault();
+                        setSuggestionsOpen(true);
+                        const last = networkSuggestions.length - 1;
+                        setActiveSuggestion((current) =>
+                          event.key === 'ArrowDown'
+                            ? !showSuggestions ||
+                              current < 0 ||
+                              current === last
+                              ? 0
+                              : current + 1
+                            : !showSuggestions || current <= 0
+                            ? last
+                            : current - 1
+                        );
+                      } else if (event.key === 'Enter' && showSuggestions) {
                         event.preventDefault();
                         event.stopPropagation();
+                        void handleNetworkSelect(
+                          networkSuggestions[
+                            Math.min(
+                              networkSuggestions.length - 1,
+                              Math.max(0, activeSuggestion)
+                            )
+                          ]
+                        );
+                      } else if (event.key === 'Tab') {
                         closeSuggestions();
                       }
-                    } else if (
-                      (event.key === 'ArrowDown' || event.key === 'ArrowUp') &&
-                      networkSuggestions.length > 0
-                    ) {
-                      event.preventDefault();
-                      setSuggestionsOpen(true);
-                      const last = networkSuggestions.length - 1;
-                      setActiveSuggestion((current) =>
-                        event.key === 'ArrowDown'
-                          ? !showSuggestions || current < 0 || current === last
-                            ? 0
-                            : current + 1
-                          : !showSuggestions || current <= 0
-                          ? last
-                          : current - 1
-                      );
-                    } else if (event.key === 'Enter' && showSuggestions) {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      void handleNetworkSelect(
-                        networkSuggestions[
-                          Math.min(
-                            networkSuggestions.length - 1,
-                            Math.max(0, activeSuggestion)
-                          )
-                        ]
-                      );
-                    } else if (event.key === 'Tab') {
-                      closeSuggestions();
-                    }
-                  }}
-                  value={form.getFieldValue('label')}
-                />
+                    }}
+                  />
+                </Form.Item>
                 <div
                   id={suggestionsId}
                   role="listbox"
@@ -1516,7 +1512,6 @@ const CustomRPCView = () => {
         >
           <Input
             ref={urlInputRef}
-            type="text"
             placeholder={t(
               isSyscoinRpc
                 ? 'settings.blockbookUrlPlaceholder'
@@ -1566,7 +1561,6 @@ const CustomRPCView = () => {
           ]}
         >
           <Input
-            type="text"
             readOnly={isSyscoinRpc || state?.isEditing}
             placeholder={
               isSyscoinRpc
@@ -1597,7 +1591,6 @@ const CustomRPCView = () => {
           ]}
         >
           <Input
-            type="text"
             placeholder={t('settings.symbol')}
             className="custom-input-normal relative uppercase"
             onChange={(e) => {
@@ -1619,7 +1612,6 @@ const CustomRPCView = () => {
           ]}
         >
           <Input
-            type="text"
             placeholder={t('settings.explorer')}
             className={NETWORK_INPUT_CLASS}
           />
@@ -1652,7 +1644,6 @@ const CustomRPCView = () => {
               ]}
             >
               <Input
-                type="text"
                 placeholder="https://api.example.com/api"
                 className={NETWORK_INPUT_CLASS}
               />
