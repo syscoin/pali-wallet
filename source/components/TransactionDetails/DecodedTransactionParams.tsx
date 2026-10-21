@@ -43,6 +43,8 @@ export const DecodedTransactionParams: React.FC<
 
   // Helper to format values based on type
   const formatValue = (value: any, type: string): string => {
+    if (Array.isArray(value)) return JSON.stringify(value);
+
     if (type.includes('uint') || type.includes('int')) {
       // Keep tooltips exact; only the dedicated approval view uses Unlimited.
       return convertBigNumberToString(value);
