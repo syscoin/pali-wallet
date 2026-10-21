@@ -201,6 +201,26 @@ it.each([INetworkType.Syscoin, INetworkType.Ethereum])(
   }
 );
 
+it.each([undefined, 'unrecognized'])(
+  'keeps an unscoped grant removable without guessing its account or family (%s)',
+  async (chain) => {
+    connection().chain = chain as INetworkType;
+    mount();
+    await userEvent
+      .setup()
+      .click(screen.getByRole('button', { name: 'Edit connection' }));
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByText('Unavailable')).toBeVisible();
+    expect(within(dialog).queryByText('Imported signer')).toBeNull();
+    expect(within(dialog).queryByText('imported-address')).toBeNull();
+    expect(within(dialog).queryByText('EVM')).toBeNull();
+    expect(within(dialog).queryByText('UTXO')).toBeNull();
+    expect(
+      within(dialog).getByRole('button', { name: 'Delete connected site' })
+    ).toBeEnabled();
+  }
+);
+
 it('constrains long inactive-account labels and hosts without dropping their accessible text', () => {
   const label = 'A'.repeat(80);
   const longHost = `https://${'long-subdomain'.repeat(12)}.example`;
