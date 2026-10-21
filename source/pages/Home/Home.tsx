@@ -280,9 +280,9 @@ export const Home = () => {
     if (moreThanMillion) {
       // Compact only usePrice's ungrouped numeric field, retaining its units.
       return fiatPriceValue.replace(
-        /^(\D*?)(-?\d+(?:\.\d+)?)(\s\S+)$/,
+        /^(\D*)(\d+(?:\.\d+)?)(\s\S+)$/,
         (_, symbol, value, currency) =>
-          `${symbol}${formatMillionNumber(Number(value))}${currency}`
+          symbol + formatMillionNumber(+value) + currency
       );
     }
 
