@@ -34,10 +34,14 @@ export const Receive = () => {
   );
   const address =
     typeof activeAccount?.address === 'string' ? activeAccount.address : '';
-  const isAddressReady =
-    validatedAddress?.address === address &&
-    validatedAddress?.scope === walletScope;
-  const canReceive = isAddressReady && validatedAddress?.valid;
+  const isEthereum = activeNetwork.kind === INetworkType.Ethereum;
+  const isAddressReady = isEthereum
+    ? Boolean(address)
+    : validatedAddress?.address === address &&
+      validatedAddress?.scope === walletScope;
+  const canReceive = isEthereum
+    ? isValidEthereumAddress(address)
+    : isAddressReady && validatedAddress?.valid;
   const [isCopied, copyText, isCurrentCopy] = useCopyClipboard(
     1000,
     walletScope
@@ -67,19 +71,23 @@ export const Receive = () => {
   useEffect(() => {
     let current = true;
     setValidatedAddress(undefined);
-    if (!address) return;
+    if (!address || isEthereum) return;
     const complete = (valid: boolean) => {
       if (current) setValidatedAddress({ address, scope: walletScope, valid });
     };
-    if (activeNetwork.kind === INetworkType.Ethereum)
-      complete(isValidEthereumAddress(address));
-    else if (activeNetwork.kind === INetworkType.Syscoin)
+    if (activeNetwork.kind === INetworkType.Syscoin)
       void isValidSYSAddress(address, activeNetwork.chainId).then(complete);
     else complete(false);
     return () => {
       current = false;
     };
-  }, [address, walletScope, activeNetwork.kind, activeNetwork.chainId]);
+  }, [
+    address,
+    walletScope,
+    activeNetwork.kind,
+    activeNetwork.chainId,
+    isEthereum,
+  ]);
 
   // Neither missing addresses nor unfinished validation may spin forever.
   useEffect(() => {

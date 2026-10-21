@@ -348,7 +348,7 @@ module.exports = {
           enforce: true,
         },
         transactionErrors: {
-          test: /[\\/]source[\\/]utils[\\/]errorHandling\.ts$/,
+          test: /[\\/]source[\\/]utils[\\/](?:errorHandling|commonMethodSignatures|validations)\.ts$/,
           chunks: 'async',
           name: 'transaction-errors',
           minChunks: 2,
