@@ -76,6 +76,12 @@ test('UTXO asset picker keyboard selects native and SPT buttons and skips its cl
         .and(page.locator('[aria-haspopup="menu"]'));
     const item = (symbol: string) =>
       menu.getByRole('menuitem').filter({ hasText: symbol });
+    const expectKeyboardMenuReady = async () => {
+      // Opening via the keyboard selects the first item on the next frame.
+      // Wait for that initialization before testing further navigation.
+      await expect(menu).toBeFocused();
+      await expect.poll(() => activeItem(menu, item('TSYS'))).toBe(true);
+    };
 
     await wallet.step(
       'discover and import the synthetic SPT through ordinary UI',
@@ -126,6 +132,7 @@ test('UTXO asset picker keyboard selects native and SPT buttons and skips its cl
         await tabTo(page, picker('tsys'));
         await page.keyboard.press('ArrowDown');
         await expect(menu).toBeVisible();
+        await expectKeyboardMenuReady();
         await expect(menu.getByRole('menuitem')).toHaveCount(2);
         await page.keyboard.press('Home');
         await expect.poll(() => activeItem(menu, item('TSYS'))).toBe(true);
@@ -153,6 +160,7 @@ test('UTXO asset picker keyboard selects native and SPT buttons and skips its cl
         await tabTo(page, picker(SPT_SYMBOL));
         await page.keyboard.press('Enter');
         await expect(menu).toBeVisible();
+        await expectKeyboardMenuReady();
         await page.keyboard.press('Home');
         await expect.poll(() => activeItem(menu, item('TSYS'))).toBe(true);
         await page.keyboard.press('Space');
@@ -162,6 +170,7 @@ test('UTXO asset picker keyboard selects native and SPT buttons and skips its cl
         await tabTo(page, picker('tsys'));
         await page.keyboard.press('Enter');
         await expect(menu).toBeVisible();
+        await expectKeyboardMenuReady();
         await page.keyboard.press('Home');
         await page.keyboard.press('ArrowDown');
         await expect.poll(() => activeItem(menu, item(SPT_SYMBOL))).toBe(true);
@@ -180,6 +189,7 @@ test('UTXO asset picker keyboard selects native and SPT buttons and skips its cl
         await tabTo(page, current);
         await page.keyboard.press('Enter');
         await expect(menu).toBeVisible();
+        await expectKeyboardMenuReady();
         await page.keyboard.press('Home');
         await expect.poll(() => activeItem(menu, item('TSYS'))).toBe(true);
         await page.keyboard.press('Escape');
