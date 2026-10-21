@@ -34,7 +34,9 @@ const QUERY_EXPLORER = `${PATH_EXPLORER}?view=compact`;
 const publicMetadata = (page: Page) =>
   page.evaluate(async (chainId) => {
     const state = await chrome.runtime.sendMessage({ type: 'getCurrentState' });
-    const storage = await chrome.storage.local.get('state');
+    // Global network registrations and the active EVM vault are persisted
+    // separately; token membership belongs to the slip44-60 vault.
+    const storage = await chrome.storage.local.get(['state', 'state-vault-60']);
     const projectNetwork = (network: any) =>
       network
         ? {
@@ -79,7 +81,7 @@ const publicMetadata = (page: Page) =>
         accountAssets?.[activeAccount.type]?.[activeAccount.id]?.ethereum
       ),
       savedAssets: projectAssets(
-        storage.state?.vault?.accountAssets?.[activeAccount.type]?.[
+        storage['state-vault-60']?.accountAssets?.[activeAccount.type]?.[
           activeAccount.id
         ]?.ethereum
       ),
@@ -244,7 +246,9 @@ test('token details preserve a normally saved explorer subpath and compact query
             if (result === undefined) return undefined;
             if (
               selector === id('balanceOf(address)').slice(0, 10) &&
-              !knownAccounts.includes(
+              // The SDK classifies ERC-20 contracts with balanceOf(contract)
+              // before it reads the actual selected wallet's token balance.
+              ![CONTRACT, ...knownAccounts].includes(
                 String(
                   abi.decode(['address'], '0x' + transaction.data.slice(10))[0]
                 ).toLowerCase()
