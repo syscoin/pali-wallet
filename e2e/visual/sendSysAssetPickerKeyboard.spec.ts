@@ -111,7 +111,7 @@ test('UTXO asset picker keyboard selects native and SPT buttons and skips its cl
         expect(nativeBalance).toMatch(/^0\.0010*$/);
         await page.locator('#send-btn').click();
         await expect(page).toHaveURL(/#\/send\/sys$/);
-        await expect(picker('TSYS')).toBeVisible();
+        await expect(picker('tsys')).toBeVisible();
         await expect(menu).toHaveCount(0);
         await max.click();
         await expect(amount).toHaveValue(nativeBalance);
@@ -123,7 +123,7 @@ test('UTXO asset picker keyboard selects native and SPT buttons and skips its cl
       'Home and ArrowDown reach actionable buttons before Enter selects the SPT',
       async (capture) => {
         await page.mouse.move(0, 0);
-        await tabTo(page, picker('TSYS'));
+        await tabTo(page, picker('tsys'));
         await page.keyboard.press('ArrowDown');
         await expect(menu).toBeVisible();
         await expect(menu.getByRole('menuitem')).toHaveCount(2);
@@ -156,10 +156,10 @@ test('UTXO asset picker keyboard selects native and SPT buttons and skips its cl
         await page.keyboard.press('Home');
         await expect.poll(() => activeItem(menu, item('TSYS'))).toBe(true);
         await page.keyboard.press('Space');
-        await expect(picker('TSYS')).toBeVisible();
+        await expect(picker('tsys')).toBeVisible();
         await max.click();
         await expect(amount).toHaveValue(nativeBalance);
-        await tabTo(page, picker('TSYS'));
+        await tabTo(page, picker('tsys'));
         await page.keyboard.press('Enter');
         await expect(menu).toBeVisible();
         await page.keyboard.press('Home');
@@ -197,10 +197,10 @@ test('UTXO asset picker keyboard selects native and SPT buttons and skips its cl
       async (capture) => {
         await picker(SPT_SYMBOL).click();
         await item('TSYS').click();
-        await expect(picker('TSYS')).toBeVisible();
+        await expect(picker('tsys')).toBeVisible();
         await max.click();
         await expect(amount).toHaveValue(nativeBalance);
-        await picker('TSYS').click();
+        await picker('tsys').click();
         await item(SPT_SYMBOL).click();
         await expect(picker(SPT_SYMBOL)).toBeVisible();
         await max.click();
