@@ -416,9 +416,10 @@ test('Activity explorer navigation preserves a normally saved custom-network que
       async () => {
         phase = 'query-save';
         await wallet!.gotoRoute('#/settings/networks/edit');
+        // Manage Networks appends an ellipsis at this label's 25-character cutoff.
         const row = page
           .locator('li')
-          .filter({ has: page.getByText(LABEL, { exact: true }) });
+          .filter({ has: page.getByText(`${LABEL} ...`, { exact: true }) });
         await expect(row).toHaveCount(1);
         await row.locator('button').first().click();
         await expect(page).toHaveURL(/#\/settings\/networks\/custom-rpc$/);
