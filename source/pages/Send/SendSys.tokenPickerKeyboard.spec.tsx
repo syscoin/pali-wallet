@@ -187,6 +187,38 @@ const mount = async () => {
   await act(async () => render(<SendSys />));
   return user;
 };
+// Escape restores focus through Headless UI's two-frame lifecycle. Deliver its
+// real callbacks deterministically instead of depending on JSDOM's frame clock.
+const completeMenuFrames = async (interaction: () => Promise<void>) => {
+  const callbacks = new Map<number, FrameRequestCallback>();
+  const nativeCancel = window.cancelAnimationFrame.bind(window);
+  let id = 0;
+  const request = jest
+    .spyOn(window, 'requestAnimationFrame')
+    .mockImplementation((callback) => {
+      callbacks.set(--id, callback);
+      return id;
+    });
+  const cancel = jest
+    .spyOn(window, 'cancelAnimationFrame')
+    .mockImplementation((handle) => {
+      if (!callbacks.delete(handle)) nativeCancel(handle);
+    });
+  try {
+    await interaction();
+    for (let frame = 0; frame < 2; frame += 1) {
+      const current = [...callbacks.values()];
+      callbacks.clear();
+      await act(async () => {
+        current.forEach((callback) => callback(performance.now()));
+      });
+    }
+    expect(callbacks.size).toBe(0);
+  } finally {
+    cancel.mockRestore();
+    request.mockRestore();
+  }
+};
 const trigger = (symbol = 'SYS') =>
   screen.getByRole('button', { name: symbol });
 const amount = () =>
@@ -300,7 +332,7 @@ it('excludes the closed selector from accessibility and Tab order', async () => 
   const user = await mount();
   expect(screen.queryByRole('menu')).toBeNull();
   await open(user);
-  await user.keyboard('{Escape}');
+  await completeMenuFrames(() => user.keyboard('{Escape}'));
   await waitFor(() => expect(trigger()).toHaveFocus());
   expect(screen.queryByRole('menu')).toBeNull();
   await user.tab();
@@ -312,7 +344,7 @@ it('preserves the selected asset and typed amount when Escape dismisses another 
   await selectPointer(user, 'SPTONE');
   await user.type(amount(), '1.23');
   await open(user, 'SPTONE');
-  await user.keyboard('{Home}{Escape}');
+  await completeMenuFrames(() => user.keyboard('{Home}{Escape}'));
   await waitFor(() => expect(trigger('SPTONE')).toHaveFocus());
   expect(trigger('SPTONE')).toBeInTheDocument();
   expect(amount().value).toBe('1.23');
