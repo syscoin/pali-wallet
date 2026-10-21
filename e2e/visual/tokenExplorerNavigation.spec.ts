@@ -550,9 +550,11 @@ test('token details preserve a normally saved explorer subpath and compact query
     await wallet.step(
       'token-explorer: retain read-only transport and exact runtime evidence',
       async () => {
+        // Normal ERC-20 import classifies the contract, then reads symbol,
+        // decimals and balance. Its basic display name reuses the symbol.
         expect(contractReads).toEqual(
           expect.arrayContaining([
-            id('name()').slice(0, 10),
+            id('supportsInterface(bytes4)').slice(0, 10),
             id('symbol()').slice(0, 10),
             id('decimals()').slice(0, 10),
             id('balanceOf(address)').slice(0, 10),
