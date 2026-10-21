@@ -212,7 +212,7 @@ for (const scenario of ['descriptor', 'plain address'] as const) {
           });
         }
       );
-      await wallet.context.addInitScript(() => {
+      const observeClipboard = () => {
         const original = navigator.clipboard.writeText.bind(
           navigator.clipboard
         );
@@ -220,8 +220,11 @@ for (const scenario of ['descriptor', 'plain address'] as const) {
           await original(text);
           (window as any).__watchReceiveCopied = text;
         };
-      });
+      };
+      await wallet.context.addInitScript(observeClipboard);
       const page = wallet.page;
+      // The launch already loaded this document; hash-only onboarding does not rerun init scripts.
+      await page.evaluate(observeClipboard);
       const step = (name: string, action: () => Promise<void>) =>
         wallet!.step(`${scenario}: ${name}`, async (capture) => {
           try {
