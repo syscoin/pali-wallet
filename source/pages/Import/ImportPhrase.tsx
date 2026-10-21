@@ -128,6 +128,14 @@ const ImportPhrase: React.FC = () => {
         form={form}
         name="import"
         onFinish={onSubmit}
+        onValuesChange={() => {
+          // User edits supersede any pending submission. Programmatic phrase
+          // normalization via setFieldsValue does not trigger this callback.
+          requestGeneration.current += 1;
+          validationRequest.current += 1;
+          submissionPending.current = false;
+          setSeedIsValid(false);
+        }}
         autoComplete="off"
         className="flex flex-col gap-4 items-center w-full max-w-xs"
       >

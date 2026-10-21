@@ -980,9 +980,9 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
                               ? 'opacity-100 scale-100 pointer-events-auto'
                               : 'opacity-0 scale-95 pointer-events-none'
                           }`}
-                        static
+                        unmount={false}
                       >
-                        <Menu.Item as="div" key="native-sys">
+                        <Menu.Item key="native-sys">
                           <button
                             type="button"
                             onClick={() => handleSelectedAsset(-1)}
@@ -1004,10 +1004,7 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
                         {assets.length > 0
                           ? assets.map((item: any) =>
                               item?.assetGuid ? (
-                                <Menu.Item
-                                  as="div"
-                                  key={`asset-${item.assetGuid}`}
-                                >
+                                <Menu.Item key={`asset-${item.assetGuid}`}>
                                   <button
                                     type="button"
                                     onClick={() => {
