@@ -403,14 +403,14 @@ for (const payloadBytes of [48, 2048]) {
           window.addEventListener(
             'keydown',
             (keyEvent) => {
-              // The scroll handler stops propagation; inspect its final result
-              // in a microtask after capturing the original native key event.
-              queueMicrotask(() => {
+              // A capture-listener microtask runs before React's bubbling
+              // handler in Chromium. Observe the completed native dispatch.
+              setTimeout(() => {
                 (window as any).__tooltipScrollKeyEvidence = {
                   key: keyEvent.key,
                   prevented: keyEvent.defaultPrevented,
                 };
-              });
+              }, 0);
             },
             { once: true, capture: true }
           );
