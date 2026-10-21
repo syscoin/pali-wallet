@@ -336,3 +336,155 @@ it('retains the current name and validation error when it cannot be resolved', a
   expect(receiver()).toHaveValue('earlier.eth');
   expect(await screen.findByText('send.unableToResolveEns')).toBeVisible();
 });
+
+describe('reverse ENS suggestion query ownership', () => {
+  const originalAddress = '0x1111111111111111111111111111111111111111';
+  const currentLabel = 'Current local recipient';
+
+  const openChooser = async (
+    reverse: (input: string) => Promise<string | null>
+  ) => {
+    mockState.vault.accounts.HDAccount[1] = {
+      ...mockState.vault.accounts.HDAccount[0],
+      id: 1,
+      label: currentLabel,
+      address: RECIPIENT,
+      xpub: 'public-b',
+    };
+    mockEmitter.mockImplementation(async (path, args) => {
+      if (path[1] === 'reverseResolveEns') return reverse(args[0]);
+      if (path[1] === 'getFeeDataWithDynamicMaxPriorityFeePerGas')
+        return {
+          maxFeePerGas: '1000000000',
+          maxPriorityFeePerGas: '100000000',
+        };
+      return undefined;
+    });
+    const view = render(<SendEth />);
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'buttons.next' })).toBeEnabled()
+    );
+    return view;
+  };
+  const reverseResponse = () => {
+    let resolve!: (value: string | null) => void;
+    let reject!: (error: Error) => void;
+    const promise = new Promise<string | null>((done, fail) => {
+      resolve = done;
+      reject = fail;
+    });
+    return { promise, resolve, reject };
+  };
+  const displayedSuggestions = () => ({
+    original: Boolean(
+      screen.queryByRole('button', { name: 'Synthetic account account' })
+    ),
+    current: Boolean(
+      screen.queryByRole('button', { name: `${currentLabel} account` })
+    ),
+  });
+
+  it('keeps a healthy unchanged lookup matched to its input', async () => {
+    const old = deferred();
+    await openChooser(() => old.promise);
+    fireEvent.change(receiver(), { target: { value: originalAddress } });
+    await waitFor(() =>
+      expect(mockEmitter).toHaveBeenCalledWith(
+        ['wallet', 'reverseResolveEns'],
+        [originalAddress]
+      )
+    );
+    await act(async () => old.resolve(null));
+    expect(receiver()).toHaveValue(originalAddress);
+    expect(displayedSuggestions()).toEqual({ original: true, current: false });
+    await submitCurrentRecipient(originalAddress);
+  });
+
+  it('cancels a retired lookup timer before a newer query is entered', async () => {
+    await openChooser(async () => null);
+    await act(async () => {
+      fireEvent.change(receiver(), { target: { value: originalAddress } });
+      fireEvent.change(receiver(), { target: { value: RECIPIENT } });
+    });
+    await waitFor(() =>
+      expect(mockEmitter).toHaveBeenCalledWith(
+        ['wallet', 'reverseResolveEns'],
+        [RECIPIENT]
+      )
+    );
+    expect(mockEmitter).not.toHaveBeenCalledWith(
+      ['wallet', 'reverseResolveEns'],
+      [originalAddress]
+    );
+    expect(displayedSuggestions()).toEqual({ original: false, current: true });
+    await submitCurrentRecipient(RECIPIENT);
+  });
+
+  it.each(['null', 'success', 'error'] as const)(
+    'ignores an old %s reverse response after the recipient changes and accepts the current response',
+    async (result) => {
+      const old = reverseResponse();
+      const current = reverseResponse();
+      await openChooser((input) =>
+        input === originalAddress ? old.promise : current.promise
+      );
+      fireEvent.change(receiver(), { target: { value: originalAddress } });
+      await waitFor(() =>
+        expect(mockEmitter).toHaveBeenCalledWith(
+          ['wallet', 'reverseResolveEns'],
+          [originalAddress]
+        )
+      );
+      fireEvent.change(receiver(), { target: { value: RECIPIENT } });
+      expect(displayedSuggestions()).toEqual({
+        original: false,
+        current: true,
+      });
+      await act(async () => {
+        if (result === 'error')
+          old.reject(new Error('Synthetic reverse failure'));
+        else old.resolve(result === 'success' ? 'previous.eth' : null);
+      });
+      expect(receiver()).toHaveValue(RECIPIENT);
+      const afterOldReply = displayedSuggestions();
+      await waitFor(() =>
+        expect(mockEmitter).toHaveBeenCalledWith(
+          ['wallet', 'reverseResolveEns'],
+          [RECIPIENT]
+        )
+      );
+      await act(async () => current.resolve('current.eth'));
+      expect(displayedSuggestions()).toEqual({
+        original: false,
+        current: true,
+      });
+      // Even the broken chooser must not be mistaken for a signing mismatch:
+      // submitting without selecting a stale suggestion retains the typed hex.
+      await submitCurrentRecipient(RECIPIENT);
+      expect(afterOldReply).toEqual({ original: false, current: true });
+    }
+  );
+
+  it('ignores a retired response after leaving and reopening the send form', async () => {
+    const old = reverseResponse();
+    const view = await openChooser((input) =>
+      input === originalAddress ? old.promise : Promise.resolve('current.eth')
+    );
+    fireEvent.change(receiver(), { target: { value: originalAddress } });
+    await waitFor(() =>
+      expect(mockEmitter).toHaveBeenCalledWith(
+        ['wallet', 'reverseResolveEns'],
+        [originalAddress]
+      )
+    );
+    view.unmount();
+    window.history.replaceState(null, '', '/app.html#/home');
+    window.history.replaceState(null, '', '/app.html#/send/eth');
+    await openChooser(async () => 'current.eth');
+    fireEvent.change(receiver(), { target: { value: RECIPIENT } });
+    await act(async () => old.resolve('previous.eth'));
+    expect(receiver()).toHaveValue(RECIPIENT);
+    expect(displayedSuggestions()).toEqual({ original: false, current: true });
+    await submitCurrentRecipient(RECIPIENT);
+  });
+});

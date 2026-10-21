@@ -278,14 +278,12 @@ export const Home = () => {
     if (!fiatPriceValue) return null;
 
     if (moreThanMillion) {
-      const matches = fiatPriceValue.match(/[\d\.]+/g);
-      if (matches && matches.length > 0) {
-        const numberValue = Number(matches[0]);
-        // Preserve original formatted string when fiat is zero
-        if (numberValue === 0) return fiatPriceValue;
-        return formatMillionNumber(numberValue);
-      }
-      return fiatPriceValue;
+      // Compact only usePrice's ungrouped numeric field, retaining its units.
+      return fiatPriceValue.replace(
+        /^(\D*)(\d+(?:\.\d+)?)(\s\S+)$/,
+        (_, symbol, value, currency) =>
+          symbol + formatMillionNumber(+value) + currency
+      );
     }
 
     return fiatPriceValue;

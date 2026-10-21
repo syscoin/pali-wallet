@@ -1117,20 +1117,27 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
       clearTimeout(reverseEnsTimeoutRef.current);
       reverseEnsTimeoutRef.current = undefined;
     }
+    let current = true;
     reverseEnsTimeoutRef.current = setTimeout(async () => {
       try {
         await controllerEmitter(['wallet', 'reverseResolveEns'], [input]);
-        buildSuggestions(input);
+        if (
+          current &&
+          isCurrentForm() &&
+          form.getFieldValue('receiver') === input
+        )
+          buildSuggestions(input);
       } catch {}
     }, 600);
 
     return () => {
+      current = false;
       if (reverseEnsTimeoutRef.current) {
         clearTimeout(reverseEnsTimeoutRef.current);
         reverseEnsTimeoutRef.current = undefined;
       }
     };
-  }, [receiverInput, ensCache, buildSuggestions]);
+  }, [receiverInput, ensCache, buildSuggestions, isCurrentForm, form]);
 
   // Calculate gas fees when component mounts or asset changes
   useEffect(() => {
