@@ -3080,10 +3080,10 @@
     crypto-js "^4.1.1"
     ethers "^6.17.0"
 
-"@sidhujag/sysweb3-network@^1.0.109":
-  version "1.0.109"
-  resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-network/-/sysweb3-network-1.0.109.tgz#dc25e4e0938403ef18661d7874d2d8186be7ee98"
-  integrity sha512-ivHoiFMNeCeOIqMofDF0o9+zrEP1Zgq+IoIXGLdqltUoZluQb78ga63mKTeGivZjy3GZ6niMBFVIeSSSFswDog==
+"@sidhujag/sysweb3-network@^1.0.109", "@sidhujag/sysweb3-network@^1.0.110":
+  version "1.0.110"
+  resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-network/-/sysweb3-network-1.0.110.tgz#a22ca7eb525bef2f5ed7dcab93669be8e7208eac"
+  integrity sha512-VBBlP7X1ThIFwf3HYXtgL3lEbvr+ZV7uFFuD+2jwhisdOyadmBQJ2Kkl9cY/oLhJB4zU5cHiZnjfZkF4OHRGpQ==
   dependencies:
     eth-chains "^1.0.0"
     ethers "^6.17.0"
