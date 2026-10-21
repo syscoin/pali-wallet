@@ -310,10 +310,10 @@ module.exports = {
   optimization: {
     splitChunks: {
       cacheGroups: {
-        // These UI-only modules are shared by lazy approval routes. Keep one
-        // packaged copy without changing the background worker's chunk policy.
+        // Share copies used by lazy account/approval routes. Initial worker
+        // modules stay static, preserving its separate chunk policy.
         accountReview: {
-          test: /[\\/]source[\\/](?:components[\\/]AccountIdenticon|pages[\\/]Transactions[\\/]EncryptionReview)\.tsx$/,
+          test: /[\\/]source[\\/](?:(?:components[\\/]AccountIdenticon|pages[\\/]Transactions[\\/]EncryptionReview)\.tsx|state[\\/]dapp[\\/]accountScope\.ts)$/,
           chunks: 'async',
           name: 'account-review',
           enforce: true,
