@@ -1,3 +1,56 @@
+/**
+ * @jest-environment ./tests/connected-sites-dom-env.cjs
+ */
+import '@testing-library/jest-dom';
+
+jest.mock('hooks/index', () => ({
+  useUtils: () => ({
+    navigate: jest.requireActual('react-router-dom').useNavigate(),
+    alert: { info: jest.fn(), error: jest.fn(), success: jest.fn() },
+  }),
+}));
+jest.mock('hooks/useController', () => ({
+  useController: () => ({
+    controllerEmitter: (methods: string[], args: any[] = []) => {
+      if (methods[0] === 'wallet' && methods[1] === 'setActiveNetwork')
+        return mockController.wallet.setActiveNetwork(...args);
+      if (methods[0] === 'dapp' && methods[1] === 'disconnect')
+        return mockController.dapp.disconnect(...args);
+      throw new Error(`Unexpected UI controller call ${methods.join('.')}`);
+    },
+  }),
+}));
+jest.mock('react-i18next', () => ({
+  useTranslation: () => ({ t: (key: string) => key, i18n: { language: 'en' } }),
+}));
+jest.mock('components/ChainIcon', () => ({ ChainIcon: () => null }));
+jest.mock('components/Icon/Icon', () => ({
+  Icon: () => null,
+  LoadingSvg: () => null,
+  EditIconSvg: () => null,
+  DropdownArrowSvg: () => null,
+  BtcIconSvg: () => null,
+  EthIconSvg: () => null,
+  WhiteSuccessIconSvg: () => null,
+  NetworkIconSvg: () => null,
+  KeySvg: () => null,
+  PaliWhiteSmallIconSvg: () => null,
+  TrashIconSvg: () => null,
+  LanguageIconSvg: () => null,
+  DollarSignIconSvg: () => null,
+  HelpIconSvg: () => null,
+  LockIconSvg: () => null,
+}));
+jest.mock('components/index', () => ({
+  Button: jest.requireActual('components/Button/Button').Button,
+  IconButton: jest.requireActual('components/IconButton/IconButton').IconButton,
+  PageActionFooter: jest.requireActual('components/PageActionFooter')
+    .PageActionFooter,
+  Icon: () => null,
+  Tooltip: ({ children }: any) => children,
+  AccountMenu: () => null,
+}));
+
 jest.unmock('syscoinjs-lib');
 jest.unmock('tiny-secp256k1');
 jest.mock('@trezor/connect-webextension', () => ({
@@ -19,13 +72,21 @@ jest.mock('../providers/patchFetchWithPaliHeaders', () => ({
 jest.mock('./popup-promise', () => ({ popupPromise: jest.fn() }));
 
 import { CustomJsonRpcProvider } from '@sidhujag/sysweb3-keyring';
+import { act, render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { webcrypto } from 'crypto';
 import http from 'http';
 import https from 'https';
+import React from 'react';
+import { Provider } from 'react-redux';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import * as sys from 'syscoinjs-lib';
 
 import DAppController from '../DAppController';
 import MainController from '../MainController';
+import { GeneralMenu } from 'components/Header/Menus/GeneralMenu';
+import { NetworkMenu } from 'components/Header/Menus/NetworkMenu';
+import ConnectedSites from 'pages/Settings/ConnectedSites';
 import { rehydrate as rehydrateDapps } from 'state/dapp';
 import { loadState, walletPersistenceGate } from 'state/paliStorage';
 import { rehydrateStore } from 'state/rehydrate';
@@ -38,6 +99,7 @@ import {
   setNetworkRuntimeState,
 } from 'state/vaultGlobal';
 import { INetwork, INetworkType, KeyringAccountType } from 'types/network';
+import { ellipsis } from 'utils/format';
 import { blacklistService } from 'utils/security/blacklistService';
 
 import { onMessage } from './index';
@@ -49,6 +111,7 @@ let mockController: any;
 const originalChrome = global.chrome;
 const originalCrypto = global.crypto;
 const originalLocks = Object.getOwnPropertyDescriptor(navigator, 'locks');
+const originalResizeObserver = globalThis.ResizeObserver;
 const HOST = 'https://type-switch.synthetic.invalid';
 const TYPE = KeyringAccountType.HDAccount;
 const FAILURE = 'Synthetic type-switch disconnect refusal';
@@ -109,6 +172,17 @@ describe.each([true, false])(
 
     beforeEach(async () => {
       jest.useFakeTimers();
+      globalThis.ResizeObserver = class {
+        observe() {
+          return undefined;
+        }
+        unobserve() {
+          return undefined;
+        }
+        disconnect() {
+          return undefined;
+        }
+      } as typeof ResizeObserver;
       Object.defineProperty(globalThis, 'crypto', {
         configurable: true,
         value: webcrypto,
@@ -234,7 +308,10 @@ describe.each([true, false])(
         const accounts = groups();
         accounts[TYPE][0] = {
           id: 0,
-          label: 'Synthetic account zero',
+          label:
+            network.kind === INetworkType.Syscoin
+              ? 'UTXO account zero'
+              : 'EVM account zero',
           address,
           xpub: `public-${network.kind}`,
           balances: { ethereum: 0, syscoin: 0 },
@@ -359,6 +436,7 @@ describe.each([true, false])(
       vaultCache.clearCache();
       jest.restoreAllMocks();
       global.chrome = originalChrome;
+      globalThis.ResizeObserver = originalResizeObserver;
       Object.defineProperty(globalThis, 'crypto', {
         configurable: true,
         value: originalCrypto,
@@ -491,6 +569,113 @@ describe.each([true, false])(
       });
       expect(mockController.dapp.get(HOST)).toBeUndefined();
       expect((await loadState()).dapp.dapps[HOST]).toBeUndefined();
+    });
+
+    it('does not relabel a retained foreign grant in normally reopened Connected Sites', async () => {
+      const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+      render(
+        React.createElement(
+          Provider,
+          // createElement supplies the required children in its third argument.
+          { store } as React.ComponentProps<typeof Provider>,
+          React.createElement(
+            MemoryRouter,
+            { initialEntries: ['/home'] },
+            React.createElement(
+              Routes,
+              null,
+              React.createElement(Route, {
+                path: '/home',
+                element: React.createElement(
+                  React.Fragment,
+                  null,
+                  React.createElement(GeneralMenu),
+                  React.createElement(NetworkMenu)
+                ),
+              }),
+              React.createElement(Route, {
+                path: '/settings/networks/connected-sites',
+                element: React.createElement(ConnectedSites),
+              })
+            )
+          )
+        )
+      );
+      await user.click(
+        screen.getByRole('button', { name: 'settings.connectedSites' })
+      );
+      await user.click(
+        screen.getByRole('button', { name: 'settings.editConnection' })
+      );
+      const sourceDialog = screen.getByRole('dialog');
+      expect(
+        within(sourceDialog).getByText(ellipsis(addressFor(sourceNetwork)))
+      ).toBeVisible();
+      expect(
+        within(sourceDialog).queryByText(ellipsis(addressFor(targetNetwork)))
+      ).toBeNull();
+      await user.click(
+        within(sourceDialog.querySelector('footer')!).getByRole('button', {
+          name: 'buttons.close',
+        })
+      );
+      await act(async () => jest.advanceTimersByTimeAsync(300));
+      await user.click(
+        within(
+          document.querySelector('[data-page-action-footer]') as HTMLElement
+        ).getByRole('button', { name: 'buttons.close' })
+      );
+      await user.click(
+        screen.getByRole('button', { name: new RegExp(sourceNetwork.label) })
+      );
+      await user.click(
+        screen.getByRole('menuitem', {
+          name: fromUtxo
+            ? 'networkMenu.evmNetworks'
+            : 'networkMenu.utxoNetworks',
+        })
+      );
+      await act(async () => {
+        await user.click(
+          screen.getByRole('menuitem', {
+            name: targetNetwork.label,
+          })
+        );
+        await finishScheduledSave();
+      });
+      expect(store.getState().vault.activeNetwork.kind).toBe(
+        targetNetwork.kind
+      );
+      expect(mockController.dapp.getAll()[HOST].chain).toBe(sourceNetwork.kind);
+      expect(mockController.dapp.isConnected(HOST)).toBe(false);
+      expect(mockController.dapp.getAccount(HOST)).toBeNull();
+      await user.click(
+        screen.getByRole('button', { name: 'settings.connectedSites' })
+      );
+      await user.click(
+        screen.getByRole('button', { name: 'settings.editConnection' })
+      );
+      const foreignDialog = screen.getByRole('dialog');
+      expect(within(foreignDialog).getByText(HOST)).toBeVisible();
+      expect(
+        within(foreignDialog).queryByText(ellipsis(addressFor(targetNetwork)))
+      ).toBeNull();
+      expect(within(foreignDialog).getByText('Account 1')).toBeVisible();
+      expect(
+        within(foreignDialog).getByText('settings.unavailable')
+      ).toBeVisible();
+      expect(
+        within(foreignDialog).getByText(fromUtxo ? 'UTXO' : 'EVM')
+      ).toBeVisible();
+      await user.click(
+        within(foreignDialog).getByRole('button', {
+          name: 'settings.deleteConnected',
+        })
+      );
+      await act(async () => jest.advanceTimersByTimeAsync(0));
+      expect(mockController.dapp.getAll()[HOST]).toBeUndefined();
+      expect((await loadState()).dapp.dapps[HOST]).toBeUndefined();
+      expect(screen.queryByRole('alert')).toBeNull();
     });
 
     it('requires fresh consent before replacing a retained foreign-family grant', async () => {
