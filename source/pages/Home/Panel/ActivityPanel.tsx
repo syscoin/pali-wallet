@@ -4,7 +4,6 @@ import { useSelector } from 'react-redux';
 
 import { ExternalLinkSvg } from 'components/Icon/Icon';
 import SkeletonLoader from 'components/Loader/SkeletonLoader';
-import { useAdjustedExplorer } from 'hooks/useAdjustedExplorer';
 import { RootState } from 'state/store';
 import {
   selectActiveAccountWithTransactions,
@@ -15,6 +14,7 @@ import type {
   ITransactionInfoEvm,
   ITransactionInfoUtxo,
 } from 'types/useTransactionsInfo';
+import { buildExplorerUrl } from 'utils/strings';
 
 import { EvmTransactionsList } from './components/Transactions/EVM/EvmList';
 import { UtxoTransactionsList } from './components/Transactions/UTXO/UtxoList';
@@ -27,11 +27,6 @@ export const TransactionsPanel = () => {
     useSelector(selectVaultCoreData);
 
   const { t } = useTranslation();
-
-  // ✅ MEMOIZED: Explorer base (use explorer if set, fallback to url)
-  const adjustedExplorer = useAdjustedExplorer(
-    activeNetwork.explorer || activeNetwork.url
-  );
 
   const utxoTransactions = useMemo<ITransactionInfoUtxo[]>(() => {
     if (!isBitcoinBased) {
@@ -123,11 +118,15 @@ export const TransactionsPanel = () => {
         : xpub
       : userAddress;
 
-    const explorerUrl = `${adjustedExplorer}${pathSegment}/${encodeURIComponent(
-      identifier
-    )}`;
-
-    const openExplorer = () => window.open(explorerUrl, '_blank');
+    const openExplorer = () =>
+      window.open(
+        buildExplorerUrl(
+          activeNetwork.explorer || activeNetwork.url,
+          pathSegment,
+          identifier
+        ),
+        '_blank'
+      );
 
     return (
       <div className="flex mt-5 items-center justify-center gap-2">
@@ -141,7 +140,13 @@ export const TransactionsPanel = () => {
         </button>
       </div>
     );
-  }, [activeAccount, adjustedExplorer, isBitcoinBased, t]);
+  }, [
+    activeAccount,
+    activeNetwork.explorer,
+    activeNetwork.url,
+    isBitcoinBased,
+    t,
+  ]);
 
   // Show the skeleton until the first transaction fetch for this
   // account/network has settled, instead of flashing the empty state.
