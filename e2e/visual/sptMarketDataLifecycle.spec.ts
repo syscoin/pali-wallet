@@ -37,6 +37,7 @@ test('SPT market failure settles and a later visit can display price-only data',
   let recovered = false;
   let releaseDuplicate: (() => void) | undefined;
   const marketReads: number[] = [];
+  const failureBody = 'Synthetic record 503 not found';
   const pageErrors: string[] = [];
   try {
     wallet = await PaliWallet.launch('spt-market-data-lifecycle', {
@@ -75,7 +76,7 @@ test('SPT market failure settles and a later visit can display price-only data',
         url.pathname === '/api/v3/coins/syscoin',
       async (route) => {
         // Other startup reads have a different query; only the asset-details
-        // request is under test, and retryableFetch itself remains unchanged.
+        // request is under test through Pali's actual retryableFetch helper.
         if (
           new URL(route.request().url()).searchParams.get('market_data') !==
           'true'
@@ -95,7 +96,7 @@ test('SPT market failure settles and a later visit can display price-only data',
             recovered
               ? // eslint-disable-next-line camelcase
                 { market_data: { current_price: { usd: 42 } } }
-              : { error: 'Synthetic market data unavailable' }
+              : { error: failureBody }
           ),
         });
       }
@@ -183,6 +184,7 @@ test('SPT market failure settles and a later visit can display price-only data',
               .update(fs.readFileSync(__filename))
               .digest('hex'),
             marketReads,
+            failureBody,
             pageErrors,
             syntheticHttpOnly: true,
             controllerStateReplaced: false,
