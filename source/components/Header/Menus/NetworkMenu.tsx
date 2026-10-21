@@ -479,8 +479,8 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
         <>
           <Menu.Button
             disabled={disabled}
-            onClick={(event) => {
-              resetSearchOnOpen.current = !menuprops.open && event.detail > 0;
+            onClick={() => {
+              resetSearchOnOpen.current = !menuprops.open;
             }}
             className={`group relative inline-flex gap-x-2 items-center justify-start ml-2 w-max max-w-full text-white text-sm font-medium rounded-lg px-2 py-1.5 focus:outline-none transition-all duration-300 ease-in-out ${
               disabled

@@ -288,6 +288,32 @@ it('starts a fresh choice query after activating a typeahead-selected group with
   expect(mockEmitter).not.toHaveBeenCalled();
 });
 
+it('zero-detail click reopening clears typeahead and preserves Space opening focus', async () => {
+  const { user, menu, trigger } = await openMenu();
+  await user.keyboard('UTXO');
+  await expectActive(
+    menu,
+    screen.getByRole('menuitem', { name: 'UTXO networks' })
+  );
+  await user.keyboard('{Escape}');
+  await waitFor(() => expect(document.activeElement).toBe(trigger));
+  fireEvent.click(trigger, { detail: 0 });
+  const reopened = screen.getByRole('menu');
+  await user.keyboard('EVM');
+  await expectActive(
+    reopened,
+    screen.getByRole('menuitem', { name: 'EVM networks' })
+  );
+  await user.keyboard('{Escape}');
+  await waitFor(() => expect(document.activeElement).toBe(trigger));
+  await user.keyboard(' ');
+  await expectActive(
+    screen.getByRole('menu'),
+    screen.getByRole('menuitem', { name: 'Connected sites' })
+  );
+  expect(mockEmitter).not.toHaveBeenCalled();
+});
+
 it('treats Space as group activation after the native typeahead timeout', async () => {
   const { user, menu } = await openMenu();
   await user.keyboard('{Home}UTXO');
