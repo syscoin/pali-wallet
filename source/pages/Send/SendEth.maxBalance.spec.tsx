@@ -2,6 +2,7 @@
 import '@testing-library/jest-dom';
 import {
   act,
+  cleanup,
   fireEvent,
   render,
   screen,
@@ -344,41 +345,79 @@ describe('native MAX classification after balance changes', () => {
   });
 
   it('does not apply native MAX classification to a verified ERC20 amount', async () => {
-    changeBalance('0.000001');
-    mockAssets = [
-      {
-        id: 'verified-token',
-        chainId: 1,
-        tokenSymbol: 'TOKEN',
-        tokenStandard: 'ERC-20',
-        contractAddress: '0x4444444444444444444444444444444444444444',
-        decimals: 24,
-        balance: '1',
-      },
-    ];
-    mockEmitter.mockImplementation((path: string[]) => {
-      if (path.at(-1) === 'getERC20TokenInfo')
-        return Promise.resolve({
+    jest.useFakeTimers();
+    try {
+      changeBalance('0.000001');
+      mockAssets = [
+        {
+          id: 'verified-token',
+          chainId: 1,
+          tokenSymbol: 'TOKEN',
+          tokenStandard: 'ERC-20',
+          contractAddress: '0x4444444444444444444444444444444444444444',
+          decimals: 24,
+          balance: '1',
+        },
+      ];
+      let resolveTokenInfo!: (value: {
+        balance: string;
+        decimals: number;
+      }) => void;
+      const tokenInfo = new Promise<{ balance: string; decimals: number }>(
+        (resolve) => {
+          resolveTokenInfo = resolve;
+        }
+      );
+      mockEmitter.mockImplementation((path: string[]) => {
+        if (path.at(-1) === 'getERC20TokenInfo') return tokenInfo;
+        if (path.at(-1) === 'getFeeDataWithDynamicMaxPriorityFeePerGas')
+          return Promise.resolve(QUOTE);
+        return Promise.resolve(undefined);
+      });
+      render(<SendEth />);
+      await flush();
+      setRecipient();
+      fireEvent.click(screen.getByRole('button', { name: /TOKEN.*ERC-20/ }));
+      expect(screen.getByRole('button', { name: 'MAX' })).toBeDisabled();
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(999);
+      });
+      expect(screen.getByRole('button', { name: 'MAX' })).toBeDisabled();
+      expect(
+        mockEmitter.mock.calls.filter(
+          ([path]) => path.at(-1) === 'getERC20TokenInfo'
+        )
+      ).toHaveLength(0);
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(1);
+      });
+      expect(
+        mockEmitter.mock.calls.filter(
+          ([path]) => path.at(-1) === 'getERC20TokenInfo'
+        )
+      ).toEqual([
+        [
+          ['wallet', 'getERC20TokenInfo'],
+          ['0x4444444444444444444444444444444444444444', account().address],
+        ],
+      ]);
+      expect(screen.getByRole('button', { name: 'MAX' })).toBeDisabled();
+      await act(async () => {
+        resolveTokenInfo({
           balance: '1000000000000000000000001',
           decimals: 24,
         });
-      if (path.at(-1) === 'getFeeDataWithDynamicMaxPriorityFeePerGas')
-        return Promise.resolve(QUOTE);
-      return Promise.resolve(undefined);
-    });
-    render(<SendEth />);
-    await flush();
-    setRecipient();
-    fireEvent.click(screen.getByRole('button', { name: /TOKEN.*ERC-20/ }));
-    await waitFor(
-      () => expect(screen.getByRole('button', { name: 'MAX' })).toBeEnabled(),
-      { timeout: 2500 }
-    );
-    clickMax();
-    expect(await submitPreview()).toMatchObject({
-      amount: '1.000000000000000000000001',
-      isMax: false,
-      token: expect.objectContaining({ decimals: 24 }),
-    });
+      });
+      expect(screen.getByRole('button', { name: 'MAX' })).toBeEnabled();
+      clickMax();
+      expect(await submitPreview()).toMatchObject({
+        amount: '1.000000000000000000000001',
+        isMax: false,
+        token: expect.objectContaining({ decimals: 24 }),
+      });
+    } finally {
+      cleanup();
+      jest.useRealTimers();
+    }
   });
 });
