@@ -32,7 +32,7 @@ import {
 const MESSAGE = '0x7370616d2d6475726174696f6e'; // Public text only.
 type WarningCopy = {
   buttons: { cancel: string; continue: string };
-  spamWarning: { blockDuration: string; title: string };
+  spamWarning: { blockDuration: string; description: string; title: string };
 };
 
 // Read only the public spam-policy metadata; never replace a controller result,
@@ -147,6 +147,44 @@ test('spam warning duration follows the saved UI language without approving sign
       })
     ).toBeVisible();
     await expect(warning.getByText(host, { exact: true })).toBeVisible();
+    const description = warning.getByText(copy.spamWarning.description, {
+      exact: true,
+    });
+    await expect(description).toBeVisible();
+    const colors = await description.evaluate((element) => {
+      const surface = element.closest('.bg-bkg-1');
+      if (!surface) throw new Error('Missing actual spam-warning surface');
+      const opacities: string[] = [];
+      for (let node: Element | null = element; node; node = node.parentElement)
+        opacities.push(getComputedStyle(node).opacity);
+      return {
+        foreground: getComputedStyle(element).color,
+        background: getComputedStyle(surface).backgroundColor,
+        fontSize: getComputedStyle(element).fontSize,
+        opacities,
+      };
+    });
+    expect(colors.foreground).toBe('rgb(162, 165, 171)');
+    expect(colors.background).toBe('rgb(7, 21, 42)');
+    expect(colors.opacities.every((value) => Number(value) === 1)).toBe(true);
+    const luminance = (color: string) =>
+      color
+        .match(/\d+/g)!
+        .map(Number)
+        .map((channel) => {
+          const value = channel / 255;
+          return value <= 0.04045
+            ? value / 12.92
+            : ((value + 0.055) / 1.055) ** 2.4;
+        })
+        .reduce(
+          (sum, value, index) => sum + value * [0.2126, 0.7152, 0.0722][index],
+          0
+        );
+    const contrast =
+      (luminance(colors.foreground) + 0.05) /
+      (luminance(colors.background) + 0.05);
+    expect(contrast).toBeGreaterThanOrEqual(4.5);
     const duration = language === 'es' ? '1 minuto' : '1 minute';
     const expected = copy.spamWarning.blockDuration.replace(
       '{{duration}}',
@@ -182,7 +220,13 @@ test('spam warning duration follows the saved UI language without approving sign
     );
     expect(times[2] - times[0]).toBeLessThan(current.config.timeWindowMs);
     expect((await rpcObservation(dapp!, thirdRequest)).settled).not.toBe(true);
-    observations[language + 'Warning'] = { data, expected, metadata: current };
+    observations[language + 'Warning'] = {
+      data,
+      expected,
+      metadata: current,
+      descriptionColors: colors,
+      descriptionContrast: contrast,
+    };
     await capture(warning);
   };
 

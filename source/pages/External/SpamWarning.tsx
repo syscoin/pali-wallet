@@ -136,7 +136,7 @@ export const SpamWarning: React.FC = () => {
 
           {/* Description and Block Duration Combined */}
           <div className="space-y-2">
-            <p className="text-sm text-center text-gray-600 dark:text-gray-300">
+            <p className="text-sm text-center text-content-muted">
               {t('spamWarning.description')}
             </p>
 
