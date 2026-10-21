@@ -404,6 +404,7 @@ export const ConnectWallet = () => {
                                 );
                               }}
                               onKeyDown={(e) => {
+                                if (e.target !== e.currentTarget) return;
                                 if (e.key === 'Enter' || e.key === ' ') {
                                   e.preventDefault();
                                   setAccountId(acc.id);
@@ -438,6 +439,9 @@ export const ConnectWallet = () => {
                                         className="inline-flex flex-shrink-0 items-center relative z-20"
                                       >
                                         <IconButton
+                                          aria-label={t(
+                                            'transactions.copyAddress'
+                                          )}
                                           onClick={async () => {
                                             try {
                                               await copy(acc.address);
@@ -450,7 +454,7 @@ export const ConnectWallet = () => {
                                               );
                                             }
                                           }}
-                                          className="opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+                                          className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity duration-200"
                                         >
                                           <Icon
                                             name="copy"
