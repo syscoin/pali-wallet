@@ -14,7 +14,10 @@ import { useUtils } from 'hooks/index';
 import { getHomeBrowsingScope } from 'pages/Home/useHomeBrowsingState';
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 import { RootState } from 'state/store';
-import { CHAIN_IDS } from 'utils/constants';
+import {
+  SYSCOIN_MAINNET_NETWORK,
+  SYSCOIN_NEVM_TESTNET_NETWORK_5700,
+} from 'utils/constants';
 import { formatFullPrecisionBalance } from 'utils/format';
 import {
   formatCurrency,
@@ -228,6 +231,12 @@ export const SyscoinAssetDetails = ({
   const hasContract =
     asset?.contract &&
     asset.contract !== '0x0000000000000000000000000000000000000000';
+  const nevmNetwork =
+    activeNetwork.chainId === SYSCOIN_MAINNET_NETWORK.chainId
+      ? SYSCOIN_MAINNET_NETWORK
+      : activeNetwork.chainId === SYSCOIN_NEVM_TESTNET_NETWORK_5700.chainId
+      ? SYSCOIN_NEVM_TESTNET_NETWORK_5700
+      : null;
 
   const assetDecimals = formattedAsset.find((item) => item.key === 'Decimals');
 
@@ -543,38 +552,29 @@ export const SyscoinAssetDetails = ({
               </span>
             </a>
           </div>
-          {hasContract &&
-            activeNetwork.chainId === CHAIN_IDS.SYSCOIN_MAINNET && (
-              <div className="text-brand-white hover:text-brand-deepPink100">
-                <a
-                  href={`https://explorer.syscoin.org/token/${asset.contract}`}
-                  target="_blank"
-                  className="flex items-center justify-center gap-x-2"
-                  rel="noreferrer"
-                >
-                  <ExternalLinkIcon size={16} />
-                  <span className="font-normal font-poppins underline text-sm">
-                    View on NEVM Explorer
-                  </span>
-                </a>
-              </div>
-            )}
-          {hasContract &&
-            activeNetwork.chainId === CHAIN_IDS.SYSCOIN_TESTNET && (
-              <div className="text-brand-white hover:text-brand-deepPink100">
-                <a
-                  href={`https://explorer.tanenbaum.io/token/${asset.contract}`}
-                  target="_blank"
-                  className="flex items-center justify-center gap-x-2"
-                  rel="noreferrer"
-                >
-                  <ExternalLinkIcon size={16} />
-                  <span className="font-normal font-poppins underline text-sm">
-                    View on Tanenbaum Explorer
-                  </span>
-                </a>
-              </div>
-            )}
+          {hasContract && nevmNetwork && (
+            <div className="text-brand-white hover:text-brand-deepPink100">
+              <a
+                href={buildExplorerUrl(
+                  nevmNetwork.explorer,
+                  'token',
+                  asset.contract
+                )}
+                target="_blank"
+                className="flex items-center justify-center gap-x-2"
+                rel="noreferrer"
+              >
+                <ExternalLinkIcon size={16} />
+                <span className="font-normal font-poppins underline text-sm">
+                  View on{' '}
+                  {nevmNetwork === SYSCOIN_MAINNET_NETWORK
+                    ? 'NEVM'
+                    : 'Tanenbaum'}{' '}
+                  Explorer
+                </span>
+              </a>
+            </div>
+          )}
         </div>
       </div>
 
