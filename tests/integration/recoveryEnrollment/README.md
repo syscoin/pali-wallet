@@ -15,7 +15,7 @@ funds or external email service are needed.
 
 Use Node 23.11.1, Anvil 1.7.1, and install Pali's locked dependencies. Separately
 check out `syscoin/sysnode-backend` at
-`370d375fed74223dc203134ad2c936b1a68109ac` and run `npm ci` there with the same Node
+`9298147e3dbefa7f2d0c91a88228b5e84ef282fd` and run `npm ci` there with the same Node
 version. Then run from Pali:
 
 ```sh
