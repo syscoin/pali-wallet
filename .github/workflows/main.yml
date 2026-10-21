@@ -35,7 +35,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           repository: syscoin/sysnode-backend
-          ref: 9298147e3dbefa7f2d0c91a88228b5e84ef282fd
+          ref: fba027dc99ef4331d33e47ee3bcee8f55e5f81dd
           path: .recovery-backend-fixture
           persist-credentials: false
       - name: Install backend fixture dependencies
