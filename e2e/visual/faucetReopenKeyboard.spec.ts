@@ -1,5 +1,6 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { createHash } from 'crypto';
+import { getAddress } from 'ethers';
 import fs from 'fs';
 import path from 'path';
 
@@ -237,9 +238,17 @@ test('the dismissed Home faucet banner reopens by Tab with Enter and Space', asy
         const eligible = await publicState(page);
         expect(fixture.evmAddresses).toContain(eligible.account.address);
         await expect(page.locator('#home-balance')).toHaveText('0');
-        expect(zeroBalanceReads).toEqual(
+        expect(
+          zeroBalanceReads.map((read) => ({
+            ...read,
+            address: getAddress(read.address),
+          }))
+        ).toEqual(
           expect.arrayContaining([
-            { address: eligible.account.address, block: 'latest' },
+            {
+              address: getAddress(eligible.account.address),
+              block: 'latest',
+            },
           ])
         );
         observations.eligible = eligible;
