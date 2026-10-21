@@ -14,7 +14,7 @@ import { LoadingSvg } from 'components/Icon/Icon';
 import { Button, Icon, IconButton, Tooltip } from 'components/index';
 import { ListLoadMore } from 'components/Loading/ListLoadMore';
 import { ToastActionFooter } from 'components/ToastActionFooter';
-import { TokenIconStack } from 'components/TokenIcon';
+import { getAccountReviewTokens, TokenIconStack } from 'components/TokenIcon';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { useIncrementalList } from 'hooks/useIncrementalList';
@@ -240,21 +240,6 @@ export const ChangeAccount = () => {
     [isBitcoinBased, isBridgeHost, accountType]
   );
 
-  // Helper function to get tokens for an account
-  const getAccountTokens = useCallback(
-    (account: any, accType: string) => {
-      const assets = accountAssets[accType]?.[account.id];
-      const allAssets = isBitcoinBased ? assets?.syscoin : assets?.ethereum;
-      const tokens = Array.isArray(allAssets)
-        ? allAssets.filter(
-            (asset: any) => asset.contractAddress && asset.balance > 0
-          )
-        : [];
-      return tokens;
-    },
-    [accountAssets, isBitcoinBased]
-  );
-
   const eligibleAccounts = useMemo(() => {
     if (!accounts) return [];
     return Object.entries(accounts).flatMap(([keyringType, accountList]) =>
@@ -474,7 +459,12 @@ export const ChangeAccount = () => {
                         const isCurrent =
                           acc.id === currentAccountId &&
                           currentAccountType === keyringType;
-                        const tokens = getAccountTokens(acc, keyringType);
+                        const tokens = getAccountReviewTokens(
+                          accountAssets,
+                          isBitcoinBased,
+                          acc,
+                          keyringType
+                        );
 
                         return (
                           <div

@@ -25,7 +25,7 @@ import { LoadingSvg } from 'components/Icon/Icon';
 import { Button, Icon, IconButton, Tooltip } from 'components/index';
 import { ListLoadMore } from 'components/Loading/ListLoadMore';
 import { ToastActionFooter } from 'components/ToastActionFooter';
-import { TokenIconStack } from 'components/TokenIcon';
+import { getAccountReviewTokens, TokenIconStack } from 'components/TokenIcon';
 import trustedApps from 'constants/trustedApps.json';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
@@ -99,21 +99,6 @@ export const ConnectWallet = () => {
       isBridgeHost &&
       accountType === KeyringAccountType.Trezor,
     [isBitcoinBased, isBridgeHost, accountType]
-  );
-
-  // Helper function to get tokens for an account
-  const getAccountTokens = useCallback(
-    (account: any, accType: string) => {
-      const assets = accountAssets[accType]?.[account.id];
-      const allAssets = isBitcoinBased ? assets?.syscoin : assets?.ethereum;
-      const tokens = Array.isArray(allAssets)
-        ? allAssets.filter(
-            (asset: any) => asset.contractAddress && asset.balance > 0
-          )
-        : [];
-      return tokens;
-    },
-    [accountAssets, isBitcoinBased]
   );
 
   const isAccountValidForNetwork = useCallback(
@@ -380,7 +365,12 @@ export const ConnectWallet = () => {
                         {keyringAccounts.map((acc) => {
                           const isSelected =
                             acc.id === accountId && accountType === keyringType;
-                          const tokens = getAccountTokens(acc, keyringType);
+                          const tokens = getAccountReviewTokens(
+                            accountAssets,
+                            isBitcoinBased,
+                            acc,
+                            keyringType
+                          );
 
                           return (
                             <div

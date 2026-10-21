@@ -91,7 +91,11 @@ jest.mock('components/Dialog/Dialog', () => ({
 jest.mock('components/ToastActionFooter', () => ({
   ToastActionFooter: ({ children }: any) => <div>{children}</div>,
 }));
-jest.mock('components/TokenIcon', () => ({ TokenIconStack: () => null }));
+jest.mock('components/TokenIcon', () => ({
+  getAccountReviewTokens: jest.requireActual('components/TokenIcon')
+    .getAccountReviewTokens,
+  TokenIconStack: () => null,
+}));
 jest.mock('utils/browser', () => ({
   dispatchBackgroundEvent: (...args: any[]) => mockDispatch(...args),
 }));
