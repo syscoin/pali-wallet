@@ -1,5 +1,5 @@
 import { Form, Input } from 'antd';
-import React, { Dispatch, SetStateAction, useState } from 'react';
+import React, { Dispatch, SetStateAction, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { Button } from 'components/index';
@@ -20,6 +20,7 @@ const Unlock: React.FC<{
   const { controllerEmitter } = useController();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const submitting = useRef(false);
   const { t, i18n } = useTranslation();
   const { language } = i18n;
 
@@ -28,6 +29,8 @@ const Unlock: React.FC<{
   const { host, eventName } = queryData;
 
   const onSubmit = async ({ password }: { password: string }) => {
+    if (submitting.current) return;
+    submitting.current = true;
     try {
       setIsLoading(true);
 
@@ -80,6 +83,8 @@ const Unlock: React.FC<{
         // For regular password errors, show in the form
         setErrorMessage(errorMsg);
       }
+    } finally {
+      submitting.current = false;
     }
   };
 
@@ -118,15 +123,19 @@ const Unlock: React.FC<{
           </Button>
         </Form.Item>
       </Form>
-      <a
+      <button
+        type="button"
+        disabled={isLoading}
         className={`mt-7 hover:text-brand-graylight text-[#A2A5AB] ${
           language === 'es' ? 'text-xs' : 'text-base'
-        } font-light transition-all duration-300 cursor-pointer`}
+        } font-light transition-all duration-300 cursor-pointer disabled:cursor-not-allowed disabled:opacity-60`}
         id="import-wallet-link"
-        onClick={() => setIsOpenValidation(true)}
+        onClick={() => {
+          if (!submitting.current) setIsOpenValidation(true);
+        }}
       >
         {t('start.importUsing')}
-      </a>
+      </button>
     </>
   );
 };

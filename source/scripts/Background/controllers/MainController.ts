@@ -2544,10 +2544,12 @@ class MainController {
   }
 
   public async beginWalletRecovery(): Promise<string> {
-    return (await import('./walletRecovery')).beginWalletRecovery(
-      this,
-      this.walletRecoveryContext()
-    );
+    const generation = this.walletSessionGeneration;
+    return this.authenticationMutex.runExclusive(async () => {
+      const recovery = await import('./walletRecovery');
+      this.assertCurrentWalletSession(generation);
+      return recovery.beginWalletRecovery(this, this.walletRecoveryContext());
+    });
   }
 
   private walletRecoveryContext() {
