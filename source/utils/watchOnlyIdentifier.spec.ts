@@ -1,4 +1,11 @@
 jest.unmock('syscoinjs-lib');
+// Loading the published SDK must not initialize a physical-device transport.
+// Its real descriptor checksum and all identifier validation remain in use.
+jest.mock('@trezor/connect-webextension', () => ({
+  __esModule: true,
+  default: { on: jest.fn(), dispose: jest.fn().mockResolvedValue(undefined) },
+  DEVICE_EVENT: 'device-event',
+}));
 
 import { sha256 } from 'ethers/crypto';
 import { decodeBase58, encodeBase58, getBytes, toBeHex } from 'ethers/utils';

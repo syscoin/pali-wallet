@@ -1,3 +1,4 @@
+import { descriptorChecksum } from '@sidhujag/sysweb3-keyring';
 import { utils as syscoinUtils } from 'syscoinjs-lib';
 
 import { isAddress } from './ethersV6Compat';
@@ -98,52 +99,6 @@ const publicAddress = (value: string): boolean => {
       return false;
     }
   }
-};
-
-// Same descriptor checksum algorithm as Core's script/descriptor.cpp. This
-// validates public text only; the backend still validates network/support.
-const descriptorChecksum = (value: string): string => {
-  const input =
-    '0123456789()[],\'/*abcdefgh@:$%{}IJKLMNOPQRSTUVWXYZ&+-.;<=>?!^_|~ijklmnopqrstuvwxyzABCDEFGH`#"\\ ';
-  const output = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l';
-  const generators = [
-    'f5dee51989',
-    'a9fdca3312',
-    '1bab10e32d',
-    '3706b1677a',
-    '644d626ffd',
-  ].map((hex) => BigInt(`0x${hex}`));
-  const poly = (current: bigint, next: number) => {
-    const top = current >> BigInt(35);
-    let result =
-      ((current & BigInt('0x7ffffffff')) << BigInt(5)) ^ BigInt(next);
-    generators.forEach((generator, index) => {
-      if ((top & (BigInt(1) << BigInt(index))) !== BigInt(0))
-        result ^= generator;
-    });
-    return result;
-  };
-  let checksum = BigInt(1),
-    group = 0,
-    count = 0;
-  for (const character of value) {
-    const position = input.indexOf(character);
-    if (position < 0) return '';
-    checksum = poly(checksum, position & 31);
-    group = group * 3 + (position >> 5);
-    if (++count === 3) {
-      checksum = poly(checksum, group);
-      group = count = 0;
-    }
-  }
-  if (count) checksum = poly(checksum, group);
-  for (let index = 0; index < 8; index++) checksum = poly(checksum, 0);
-  checksum ^= BigInt(1);
-  return Array.from(
-    { length: 8 },
-    (_, index) =>
-      output[Number((checksum >> BigInt(5 * (7 - index))) & BigInt(31))]
-  ).join('');
 };
 
 const publicKeyExpression = (value: string, xOnly: boolean): boolean => {

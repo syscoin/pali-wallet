@@ -6,15 +6,21 @@ import { useSelector } from 'react-redux';
 import { Button } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
-import { KeyringAccountType } from 'types/network';
+import { INetworkType, KeyringAccountType } from 'types/network';
 import { getWalletNavigationScope } from 'utils/navigationState';
+import { isValidEthereumAddress, isValidSYSAddress } from 'utils/validations';
 
 const ADDRESS_WAIT_TIMEOUT_MS = 8000;
 
 export const Receive = () => {
   const { useCopyClipboard, alert, navigate } = useUtils();
   const { t } = useTranslation();
-  const [hasTimedOut, setHasTimedOut] = useState(false);
+  const [timedOutScope, setTimedOutScope] = useState<string>();
+  const [validatedAddress, setValidatedAddress] = useState<{
+    address: string;
+    scope: string;
+    valid: boolean;
+  }>();
 
   const { accounts, activeAccount: activeAccountMeta } = useSelector(
     (state: RootState) => state.vault
@@ -26,6 +32,16 @@ export const Receive = () => {
   const walletScope = useSelector(() =>
     JSON.stringify(getWalletNavigationScope())
   );
+  const address =
+    typeof activeAccount?.address === 'string' ? activeAccount.address : '';
+  const isEthereum = activeNetwork.kind === INetworkType.Ethereum;
+  const isAddressReady = isEthereum
+    ? Boolean(address)
+    : validatedAddress?.address === address &&
+      validatedAddress?.scope === walletScope;
+  const canReceive = isEthereum
+    ? isValidEthereumAddress(address)
+    : isAddressReady && validatedAddress?.valid;
   const [isCopied, copyText, isCurrentCopy] = useCopyClipboard(
     1000,
     walletScope
@@ -52,24 +68,41 @@ export const Receive = () => {
     alert.success(t('home.addressCopied'), undefined, isCurrentCopy);
   }, [isCopied, isCurrentCopy, alert, t]);
 
-  // The address comes from the store; if it never materializes, surface a
-  // retry path instead of spinning forever
   useEffect(() => {
-    if (activeAccount?.address) {
-      setHasTimedOut(false);
-      return;
-    }
+    let current = true;
+    setValidatedAddress(undefined);
+    if (!address || isEthereum) return;
+    const complete = (valid: boolean) => {
+      if (current) setValidatedAddress({ address, scope: walletScope, valid });
+    };
+    if (activeNetwork.kind === INetworkType.Syscoin)
+      void isValidSYSAddress(address, activeNetwork.chainId).then(complete);
+    else complete(false);
+    return () => {
+      current = false;
+    };
+  }, [
+    address,
+    walletScope,
+    activeNetwork.kind,
+    activeNetwork.chainId,
+    isEthereum,
+  ]);
 
+  // Neither missing addresses nor unfinished validation may spin forever.
+  useEffect(() => {
+    setTimedOutScope(undefined);
+    if (isAddressReady) return;
     const timer = setTimeout(
-      () => setHasTimedOut(true),
+      () => setTimedOutScope(walletScope),
       ADDRESS_WAIT_TIMEOUT_MS
     );
     return () => clearTimeout(timer);
-  }, [activeAccount?.address]);
+  }, [isAddressReady, walletScope]);
 
   return (
     <>
-      {activeAccount.address ? (
+      {canReceive ? (
         <div className="flex flex-col items-center justify-center w-full">
           {/* Network + account-type context so users verify they're on the
               right chain before sharing the address */}
@@ -85,7 +118,7 @@ export const Receive = () => {
 
           <div id="qr-code">
             <QRCodeSVG
-              value={activeAccount.address}
+              value={address}
               bgColor="#fff"
               fgColor="#000"
               style={{
@@ -102,7 +135,7 @@ export const Receive = () => {
               className="mt-4 text-sm text-center"
               style={{ wordBreak: 'break-all' }}
             >
-              {activeAccount.address}
+              {address}
             </p>
           </div>
 
@@ -112,13 +145,13 @@ export const Receive = () => {
               className="text-sm text-brand-royalblue"
               type="button"
               fullWidth={true}
-              onClick={() => copyText(activeAccount.address)}
+              onClick={() => copyText(address)}
             >
               <span className="text-xs">{t('buttons.copy')}</span>
             </Button>
           </div>
         </div>
-      ) : hasTimedOut ? (
+      ) : isAddressReady || timedOutScope === walletScope ? (
         <div className="flex flex-col items-center justify-center h-80 gap-4 px-6">
           <p className="text-sm text-brand-gray200 text-center">
             {t('receive.addressUnavailable')}
