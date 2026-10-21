@@ -16,6 +16,10 @@ import { formatCurrency } from 'utils/index';
 import { getWalletNavigationScope } from 'utils/navigationState';
 import { buildExplorerUrl } from 'utils/strings';
 
+const DETAIL_FIELD_CLASS =
+  'flex flex-col pt-2 w-full text-brand-white font-poppins font-thin';
+const DETAIL_VALUE_CLASS = 'text-brand-royalblue text-xs';
+
 const ExternalWatchAsset = () => {
   const { host, ...data } = useQueryData();
   const [loading, setLoading] = useState(false);
@@ -318,14 +322,12 @@ const ExternalWatchAsset = () => {
                 </div>
 
                 <div className="flex flex-col gap-3 items-start justify-center mt-4 px-4 py-2 w-full text-left text-sm divide-bkg-3 divide-dashed divide-y">
-                  <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
+                  <p className={DETAIL_FIELD_CLASS}>
                     {t('settings.tokenName')}
-                    <span className="text-brand-royalblue text-xs">
-                      {assetInfo.name}
-                    </span>
+                    <span className={DETAIL_VALUE_CLASS}>{assetInfo.name}</span>
                   </p>
 
-                  <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
+                  <p className={DETAIL_FIELD_CLASS}>
                     {t('settings.contractAddress')}
                     <button
                       onClick={() => {
@@ -342,15 +344,15 @@ const ExternalWatchAsset = () => {
                     </button>
                   </p>
 
-                  <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
+                  <p className={DETAIL_FIELD_CLASS}>
                     {t('settings.decimals')}
-                    <span className="text-brand-royalblue text-xs">
+                    <span className={DETAIL_VALUE_CLASS}>
                       {assetInfo.decimals}
                     </span>
                   </p>
 
                   {assetInfo.tokenStandard === 'ERC-1155' && (
-                    <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
+                    <p className={DETAIL_FIELD_CLASS}>
                       {t('send.tokenId')}
                       <span className="text-brand-royalblue text-xs break-all">
                         {assetInfo.tokenId}
@@ -358,7 +360,7 @@ const ExternalWatchAsset = () => {
                     </p>
                   )}
 
-                  <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
+                  <p className={DETAIL_FIELD_CLASS}>
                     {t('send.balance')}
                     <span className="text-brand-royalblue text-xs break-all">
                       {assetInfo.tokenStandard === 'ERC-1155'
@@ -367,18 +369,18 @@ const ExternalWatchAsset = () => {
                     </span>
                   </p>
 
-                  <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
+                  <p className={DETAIL_FIELD_CLASS}>
                     {t('settings.tokenSymbol')}
-                    <span className="text-brand-royalblue text-xs">
+                    <span className={DETAIL_VALUE_CLASS}>
                       {assetInfo.symbol}
                     </span>
                   </p>
 
                   {/* Market Data Display */}
                   {assetInfo.market_data?.current_price?.[userCurrency] && (
-                    <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
+                    <p className={DETAIL_FIELD_CLASS}>
                       Current Price
-                      <span className="text-brand-royalblue text-xs">
+                      <span className={DETAIL_VALUE_CLASS}>
                         {currencySymbol || ''}
                         {formatCurrency(
                           assetInfo.market_data.current_price[
@@ -412,9 +414,9 @@ const ExternalWatchAsset = () => {
                   )}
 
                   {assetInfo.market_data?.market_cap?.[userCurrency] && (
-                    <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
+                    <p className={DETAIL_FIELD_CLASS}>
                       Market Cap
-                      <span className="text-brand-royalblue text-xs">
+                      <span className={DETAIL_VALUE_CLASS}>
                         {currencySymbol || ''}
                         {formatCurrency(
                           (
