@@ -41,6 +41,21 @@ export const ConnectionStatusIndicator = memo(
       (state: RootState) => state.vault.activeNetwork
     );
 
+    const activeAccount = useSelector(
+      (state: RootState) => state.vault.activeAccount
+    );
+    const operationNetwork = networkTarget ?? activeNetwork;
+    const operationScope = JSON.stringify([
+      operationNetwork?.kind,
+      operationNetwork?.chainId,
+      operationNetwork?.slip44,
+      operationNetwork?.url,
+      activeAccount?.type,
+      activeAccount?.id,
+    ]);
+    const feedbackScopeRef = useRef(operationScope);
+    const isCurrentFeedback = feedbackScopeRef.current === operationScope;
+
     // Comprehensive network activity check (same logic as isPollingRunNotValid)
     const isNetworkActivity =
       networkStatus === 'switching' ||
@@ -50,7 +65,7 @@ export const ConnectionStatusIndicator = memo(
     // Track successful network operation completion
     useEffect(() => {
       // If we had network activity and now we don't (successful completion)
-      if (isNetworkActivity) {
+      if (isNetworkActivity || !isCurrentFeedback) {
         setShowSuccessConfirmation(false);
       } else if (
         previousNetworkActivityRef.current &&
@@ -74,7 +89,7 @@ export const ConnectionStatusIndicator = memo(
           successTimeoutRef.current = null;
         }
       };
-    }, [isNetworkActivity, networkStatus]);
+    }, [isNetworkActivity, networkStatus, operationScope]);
 
     // Handle timing states for visual indicators during network activity
     useEffect(() => {
@@ -88,20 +103,21 @@ export const ConnectionStatusIndicator = memo(
         criticalTimeoutRef.current = null;
       }
 
+      feedbackScopeRef.current = operationScope;
+      setShowSlowWarning(false);
+      setShowCriticalError(false);
       if (isNetworkActivity) {
         // Show slow warning after 5 seconds
         warningTimeoutRef.current = setTimeout(() => {
-          setShowSlowWarning(true);
+          if (feedbackScopeRef.current === operationScope)
+            setShowSlowWarning(true);
         }, 5000);
 
         // Show critical error after 9 seconds (1 second before main timeout)
         criticalTimeoutRef.current = setTimeout(() => {
-          setShowCriticalError(true);
+          if (feedbackScopeRef.current === operationScope)
+            setShowCriticalError(true);
         }, 9000);
-      } else {
-        // Reset states when no network activity
-        setShowSlowWarning(false);
-        setShowCriticalError(false);
       }
 
       return () => {
@@ -114,7 +130,7 @@ export const ConnectionStatusIndicator = memo(
           criticalTimeoutRef.current = null;
         }
       };
-    }, [isNetworkActivity]);
+    }, [isNetworkActivity, operationScope]);
 
     // Handle click - for error state or critical errors to go to error page
     const handleClick = () => {
@@ -134,7 +150,7 @@ export const ConnectionStatusIndicator = memo(
     // Determine if indicator should be visible
     const shouldShowIndicator =
       isNetworkActivity ||
-      showSuccessConfirmation ||
+      (isCurrentFeedback && showSuccessConfirmation) ||
       networkStatus === 'error' ||
       hasSlowOperations ||
       hasCriticalErrors;
@@ -166,6 +182,7 @@ export const ConnectionStatusIndicator = memo(
       isClickable = true;
     } else if (
       !isNetworkActivity &&
+      isCurrentFeedback &&
       showSuccessConfirmation &&
       !hasSlowOperations &&
       !hasCriticalErrors
@@ -174,7 +191,7 @@ export const ConnectionStatusIndicator = memo(
       statusColor = 'bg-green-500';
       pulseClass = 'animate-pulse';
       tooltipContent = t('networkConnection.operationCompleted');
-    } else if (showCriticalError) {
+    } else if (isCurrentFeedback && showCriticalError) {
       // Red: Operation failing/about to timeout
       statusColor = 'bg-red-600';
       pulseClass = 'animate-pulse-fast'; // Faster pulsing for urgency
@@ -182,7 +199,10 @@ export const ConnectionStatusIndicator = memo(
         'networkConnection.operationFailing',
         'Network operation taking too long'
       );
-    } else if ((showSlowWarning || hasSlowOperations) && !hasCriticalErrors) {
+    } else if (
+      ((isCurrentFeedback && showSlowWarning) || hasSlowOperations) &&
+      !hasCriticalErrors
+    ) {
       // Orange: Operation is slow or network quality is poor (but not critical)
       statusColor = 'bg-orange-500';
       if (hasSlowOperations && !isNetworkActivity) {
@@ -199,6 +219,7 @@ export const ConnectionStatusIndicator = memo(
       }
     } else if (
       !isNetworkActivity &&
+      isCurrentFeedback &&
       showSuccessConfirmation &&
       (hasSlowOperations || hasCriticalErrors)
     ) {

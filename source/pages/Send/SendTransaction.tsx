@@ -34,7 +34,6 @@ import { fetchGasAndDecodeFunction } from 'utils/fetchGasAndDecodeFunction';
 import { ellipsis } from 'utils/format';
 import { logError } from 'utils/logger';
 import { clearTransactionNavigationState } from 'utils/navigationState';
-import removeScientificNotation from 'utils/removeScientificNotation';
 import { safeBigNumber } from 'utils/safeBigNumber';
 import { safeToFixed } from 'utils/safeToFixed';
 import {
@@ -353,8 +352,9 @@ export const SendTransaction = () => {
       const ethValue = formatEther(
         BigNumber.isBigNumber(tx.value) ? tx.value : BigNumber.from(tx.value)
       );
-      return `${removeScientificNotation(
-        Number(ethValue)
+      return `${ethValue.replace(
+        /\.0$/,
+        ''
       )} ${activeNetwork.currency?.toUpperCase()}`;
     } catch (error) {
       console.error('Error formatting value:', error);
