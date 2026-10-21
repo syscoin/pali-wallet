@@ -1476,7 +1476,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                               ? 'opacity-100 scale-100 pointer-events-auto'
                               : 'opacity-0 scale-95 pointer-events-none'
                           }`}
-                      static
+                      unmount={false}
                     >
                       <Menu.Item>
                         <button
@@ -1502,66 +1502,48 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                           (item: ITokenEthProps) => (
                             <div key={item.id}>
                               {item.chainId === activeNetwork.chainId ? (
-                                <Menu.Item as="div">
-                                  <Menu.Item>
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        handleSelectedAsset(item.id)
-                                      }
-                                      className="group flex items-center justify-between px-2 py-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
-                                    >
-                                      <div className="flex flex-col items-start flex-1 overflow-hidden">
-                                        <p className="truncate max-w-[100px]">
-                                          {item.tokenSymbol.length > 8
-                                            ? item.tokenSymbol.slice(0, 8) +
-                                              '...'
-                                            : item.tokenSymbol}
-                                        </p>
-                                        {item.isNft ? (
-                                          <span className="text-[10px] text-brand-gray200 font-mono">
-                                            {ellipsis(
-                                              item.contractAddress,
-                                              4,
-                                              4
+                                <Menu.Item>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSelectedAsset(item.id)}
+                                    className="group flex items-center justify-between px-2 py-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
+                                  >
+                                    <div className="flex flex-col items-start flex-1 overflow-hidden">
+                                      <p className="truncate max-w-[100px]">
+                                        {item.tokenSymbol.length > 8
+                                          ? item.tokenSymbol.slice(0, 8) + '...'
+                                          : item.tokenSymbol}
+                                      </p>
+                                      {item.isNft ? (
+                                        <span className="text-[10px] text-brand-gray200 font-mono">
+                                          {ellipsis(item.contractAddress, 4, 4)}
+                                          {item.tokenStandard === 'ERC-1155' &&
+                                            item.tokenId && (
+                                              <>
+                                                {' '}
+                                                • #
+                                                {item.tokenId.length > 8
+                                                  ? ellipsis(item.tokenId, 4, 3)
+                                                  : item.tokenId}
+                                              </>
                                             )}
-                                            {item.tokenStandard ===
-                                              'ERC-1155' &&
-                                              item.tokenId && (
-                                                <>
-                                                  {' '}
-                                                  • #
-                                                  {item.tokenId.length > 8
-                                                    ? ellipsis(
-                                                        item.tokenId,
-                                                        4,
-                                                        3
-                                                      )
-                                                    : item.tokenId}
-                                                </>
-                                              )}
-                                          </span>
-                                        ) : (
-                                          <span className="text-[10px] text-brand-gray200 font-mono">
-                                            {ellipsis(
-                                              item.contractAddress,
-                                              4,
-                                              4
-                                            )}
-                                          </span>
-                                        )}
-                                      </div>
-                                      <div className="flex flex-col items-end">
-                                        <span
-                                          className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${getTokenTypeBadgeColor(
-                                            item.tokenStandard || 'ERC-20'
-                                          )}`}
-                                        >
-                                          {item.tokenStandard || 'ERC-20'}
                                         </span>
-                                      </div>
-                                    </button>
-                                  </Menu.Item>
+                                      ) : (
+                                        <span className="text-[10px] text-brand-gray200 font-mono">
+                                          {ellipsis(item.contractAddress, 4, 4)}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="flex flex-col items-end">
+                                      <span
+                                        className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${getTokenTypeBadgeColor(
+                                          item.tokenStandard || 'ERC-20'
+                                        )}`}
+                                      >
+                                        {item.tokenStandard || 'ERC-20'}
+                                      </span>
+                                    </div>
+                                  </button>
                                 </Menu.Item>
                               ) : null}
                             </div>
