@@ -1,6 +1,6 @@
 import { Menu } from '@headlessui/react';
 import { Badge } from 'antd';
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
@@ -58,10 +58,19 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
     host: '',
     isConnected: false,
   });
+  const resetSearchOnOpen = useRef(false);
 
   // Use hasAnyConnectedDapps OR current tab connection for the icon color
   const className =
     hasAnyConnectedDapps || currentTab.isConnected ? 'success' : 'error';
+
+  const handleSettingsNavigation = (pathname: string) =>
+    navigateWithContext(
+      navigate,
+      pathname,
+      {},
+      createBrowsingNavigationContext(location)
+    );
 
   const handleLogout = () => {
     controllerEmitter(['wallet', 'lock']);
@@ -103,15 +112,9 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
             <button
               type="button"
               aria-label={t('settings.connectedSites')}
-              onClick={() => {
-                const returnContext = createBrowsingNavigationContext(location);
-                navigateWithContext(
-                  navigate,
-                  '/settings/networks/connected-sites',
-                  {},
-                  returnContext
-                );
-              }}
+              onClick={() =>
+                handleSettingsNavigation('/settings/networks/connected-sites')
+              }
               className="relative mx-1.5 text-brand-white cursor-pointer rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue"
             >
               <Icon
@@ -138,6 +141,9 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
             as="button"
             aria-label={t('generalMenu.generalOptions')}
             disabled={disabled}
+            onClick={() => {
+              resetSearchOnOpen.current = !open;
+            }}
             className={`mx-1.5 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue ${
               disabled ? 'opacity-50 cursor-not-allowed' : ''
             }`}
@@ -165,6 +171,22 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
               as="div"
               aria-hidden={!open}
               {...(open ? {} : { inert: '' })}
+              onFocusCapture={(event) => {
+                if (
+                  event.target !== event.currentTarget ||
+                  !resetSearchOnOpen.current
+                )
+                  return;
+                resetSearchOnOpen.current = false;
+                // Item focus clears Headless UI's retained typeahead without selecting it.
+                const menu = event.currentTarget;
+                menu
+                  .querySelector<HTMLElement>(
+                    '[role="menuitem"]:not([aria-disabled="true"])'
+                  )
+                  ?.focus({ preventScroll: true });
+                menu.focus({ preventScroll: true });
+              }}
               className={`fixed overflow-x-hidden z-50 inset-x-0 top-8 bottom-0 w-full text-center text-brand-white font-poppins bg-brand-blue600 rounded-2xl focus:outline-none shadow-2xl ring-1 ring-black ring-opacity-5
               transform transition-all duration-100 ease-out ${
                 open
@@ -182,16 +204,9 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
 
                   <Menu.Item>
                     <li
-                      onClick={() => {
-                        const returnContext =
-                          createBrowsingNavigationContext(location);
-                        navigateWithContext(
-                          navigate,
-                          '/settings/remove-eth',
-                          {},
-                          returnContext
-                        );
-                      }}
+                      onClick={() =>
+                        handleSettingsNavigation('/settings/remove-eth')
+                      }
                       className={MENU_ITEM_CLASS_NAME}
                     >
                       <PaliWhiteSmallIconSvg className="text-brand-white" />
@@ -202,16 +217,9 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
 
                   <Menu.Item>
                     <li
-                      onClick={() => {
-                        const returnContext =
-                          createBrowsingNavigationContext(location);
-                        navigateWithContext(
-                          navigate,
-                          '/home/smart-account',
-                          {},
-                          returnContext
-                        );
-                      }}
+                      onClick={() =>
+                        handleSettingsNavigation('/home/smart-account')
+                      }
                       className={MENU_ITEM_CLASS_NAME}
                     >
                       <Icon
@@ -230,12 +238,7 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
                     <button
                       type="button"
                       onClick={() =>
-                        navigateWithContext(
-                          navigate,
-                          '/settings/sentry',
-                          {},
-                          createBrowsingNavigationContext(location)
-                        )
+                        handleSettingsNavigation('/settings/sentry')
                       }
                       className="flex min-h-11 w-full items-center gap-2 px-5 text-left text-sm text-white hover:bg-brand-blue500 hover:bg-opacity-20 focus-visible:outline focus-visible:outline-2"
                     >
@@ -246,16 +249,7 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
 
                   <Menu.Item>
                     <li
-                      onClick={() => {
-                        const returnContext =
-                          createBrowsingNavigationContext(location);
-                        navigateWithContext(
-                          navigate,
-                          '/settings/seed',
-                          {},
-                          returnContext
-                        );
-                      }}
+                      onClick={() => handleSettingsNavigation('/settings/seed')}
                       className={SEED_AND_FORGET_ITEM_CLASS_NAME}
                     >
                       <KeySvg className="mb-1 text-brand-white" />
@@ -268,16 +262,9 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
 
                   <Menu.Item>
                     <li
-                      onClick={() => {
-                        const returnContext =
-                          createBrowsingNavigationContext(location);
-                        navigateWithContext(
-                          navigate,
-                          '/settings/forget-wallet',
-                          {},
-                          returnContext
-                        );
-                      }}
+                      onClick={() =>
+                        handleSettingsNavigation('/settings/forget-wallet')
+                      }
                       className={SEED_AND_FORGET_ITEM_CLASS_NAME}
                     >
                       <TrashIconSvg className="mb-1 text-brand-white" />
@@ -293,17 +280,10 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
 
                   <Menu.Item>
                     <li
-                      onClick={() => {
-                        const returnContext =
-                          createBrowsingNavigationContext(location);
-                        navigateWithContext(
-                          navigate,
-                          '/settings/languages',
-                          {},
-                          returnContext
-                        );
-                      }}
-                      className="py-1.5 gap-2 cursor-pointer px-5 w-full backface-visibility-hidden flex items-center justify-start text-white text-sm font-medium hover:bg-brand-blue500 hover:bg-opacity-20 active:bg-opacity-40 focus:outline-none transition-colors duration-200"
+                      onClick={() =>
+                        handleSettingsNavigation('/settings/languages')
+                      }
+                      className={MENU_ITEM_CLASS_NAME}
                     >
                       <div className="max-w-10">
                         <LanguageIconSvg
@@ -318,16 +298,9 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
 
                   <Menu.Item>
                     <li
-                      onClick={() => {
-                        const returnContext =
-                          createBrowsingNavigationContext(location);
-                        navigateWithContext(
-                          navigate,
-                          '/settings/currency',
-                          {},
-                          returnContext
-                        );
-                      }}
+                      onClick={() =>
+                        handleSettingsNavigation('/settings/currency')
+                      }
                       className={MENU_ITEM_CLASS_NAME}
                     >
                       <DollarSignIconSvg className="text-brand-white" />
@@ -338,16 +311,9 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
 
                   <Menu.Item>
                     <li
-                      onClick={() => {
-                        const returnContext =
-                          createBrowsingNavigationContext(location);
-                        navigateWithContext(
-                          navigate,
-                          '/settings/about',
-                          {},
-                          returnContext
-                        );
-                      }}
+                      onClick={() =>
+                        handleSettingsNavigation('/settings/about')
+                      }
                       className={MENU_ITEM_CLASS_NAME}
                     >
                       <HelpIconSvg
@@ -369,16 +335,9 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
 
                   <Menu.Item>
                     <li
-                      onClick={() => {
-                        const returnContext =
-                          createBrowsingNavigationContext(location);
-                        navigateWithContext(
-                          navigate,
-                          '/settings/advanced',
-                          {},
-                          returnContext
-                        );
-                      }}
+                      onClick={() =>
+                        handleSettingsNavigation('/settings/advanced')
+                      }
                       className={MENU_ITEM_CLASS_NAME}
                     >
                       <img

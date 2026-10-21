@@ -7,6 +7,7 @@ import {
   waitFor,
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { Form } from 'antd';
 import React, { useState } from 'react';
 
 import { ICustomApprovedAllowanceAmount } from 'types/transactions';
@@ -151,35 +152,80 @@ it('submits a valid allowance through the native form submit path', async () => 
 it.each(['hide', 'unmount'])(
   'does not commit pending validation after an external %s',
   async (exit) => {
-    const saved = jest.fn();
-    const props = {
-      approvedTokenInfos: { tokenDecimals: 6, tokenSymbol: 'UNIT' },
-      customApprovedAllowanceAmount: {
-        isCustom: false,
-        defaultAllowanceValue: '100',
-        customAllowanceValue: null,
-      },
-      host: 'https://dapp.example',
-      setCustomApprovedAllowanceAmount: saved,
-      setOpenEditFeeModal: jest.fn(),
-    };
-    const view = render(
-      <EditApprovedAllowanceValueModal {...props} showModal />
-    );
-    selectCustom();
-    fireEvent.change(input(), { target: { value: '20' } });
-    act(() => {
-      save();
-      if (exit === 'unmount') view.unmount();
-      else
-        view.rerender(
-          <EditApprovedAllowanceValueModal {...props} showModal={false} />
-        );
+    let releaseValidation!: () => void;
+    const held = new Promise<void>((resolve) => {
+      releaseValidation = resolve;
     });
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 0));
+    let validated!: () => void;
+    const validationReady = new Promise<void>((resolve) => {
+      validated = resolve;
     });
-    expect(saved).not.toHaveBeenCalled();
+    const originalUseForm = Form.useForm;
+    let restoreValidation: (() => void) | undefined;
+    let validation: Promise<unknown> | undefined;
+    const useForm = jest
+      .spyOn(Form, 'useForm')
+      .mockImplementation((...args) => {
+        const result = originalUseForm(...args);
+        if (!restoreValidation) {
+          const form = result[0];
+          const originalValidate = form.validateFields.bind(form);
+          const spy = jest
+            .spyOn(form, 'validateFields')
+            .mockImplementation((...validateArgs) => {
+              validation = originalValidate(...validateArgs).then(
+                async (data) => {
+                  validated();
+                  await held;
+                  return data;
+                }
+              );
+              return validation;
+            });
+          restoreValidation = () => spy.mockRestore();
+        }
+        return result;
+      });
+    try {
+      const saved = jest.fn();
+      const props = {
+        approvedTokenInfos: { tokenDecimals: 6, tokenSymbol: 'UNIT' },
+        customApprovedAllowanceAmount: {
+          isCustom: false,
+          defaultAllowanceValue: '100',
+          customAllowanceValue: null,
+        },
+        host: 'https://dapp.example',
+        setCustomApprovedAllowanceAmount: saved,
+        setOpenEditFeeModal: jest.fn(),
+      };
+      const view = render(
+        <EditApprovedAllowanceValueModal {...props} showModal />
+      );
+      selectCustom();
+      fireEvent.change(input(), { target: { value: '20' } });
+      act(save);
+      await act(async () => {
+        await validationReady;
+      });
+      expect(saved).not.toHaveBeenCalled();
+      act(() => {
+        if (exit === 'unmount') view.unmount();
+        else
+          view.rerender(
+            <EditApprovedAllowanceValueModal {...props} showModal={false} />
+          );
+      });
+      await act(async () => {
+        releaseValidation();
+        await validation;
+      });
+      expect(saved).not.toHaveBeenCalled();
+    } finally {
+      releaseValidation();
+      restoreValidation?.();
+      useForm.mockRestore();
+    }
   }
 );
 
