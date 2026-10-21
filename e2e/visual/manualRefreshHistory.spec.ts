@@ -265,6 +265,11 @@ test('manual Refresh retrieves new confirmed history within the normal cache int
             Math.max(0, 5001 - (Date.now() - baselineHistoryObservedAt))
           )
         );
+        // A timer callback can land on the integer-millisecond boundary.
+        // Observe the strict real-clock precondition before proceeding.
+        await expect
+          .poll(() => Date.now() - baselineHistoryObservedAt)
+          .toBeGreaterThan(5000);
         const readyAt = Date.now();
         expect(readyAt - baselineHistoryObservedAt).toBeGreaterThan(5000);
         expect(readyAt - baselineRead.at).toBeLessThan(60_000);
