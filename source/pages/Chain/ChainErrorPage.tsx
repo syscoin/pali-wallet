@@ -160,14 +160,12 @@ export const ChainErrorPage = () => {
       if (error?.message) {
         if (
           error.message.includes('Network request timed out') ||
-          error.message.includes('RPC request timeout') ||
           error.message.includes('timeout')
         ) {
           errorMessage = t('chainError.networkTimeout');
         } else if (
           error.message.includes('parse error') ||
-          error.message.includes('JSON') ||
-          error.message.includes('Unexpected end of JSON input')
+          error.message.includes('JSON')
         ) {
           errorMessage = t('chainError.invalidResponse');
         } else if (
