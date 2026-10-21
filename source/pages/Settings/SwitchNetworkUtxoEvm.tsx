@@ -117,7 +117,7 @@ const SwitchNeworkUtxoEvm: React.FC = () => {
                   <ChainIcon
                     chainId={newNetwork?.chainId}
                     size={18}
-                    networkKind={INetworkType.Syscoin}
+                    networkKind={newNetwork.kind}
                   />
                   {newNetwork?.label || newChainValue}
                   <NetworkTypeBadge
