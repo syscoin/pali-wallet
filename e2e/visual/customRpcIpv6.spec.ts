@@ -18,8 +18,8 @@ import {
 
 const CHAIN_ID = 31337;
 const scenarios = [
-  { name: 'IPv6', url: 'http://[2001:db8::1]:8545/rpc' },
-  { name: 'IPv4', url: 'http://192.0.2.1:8545/rpc' },
+  { name: 'IPv6', url: 'https://[2001:db8::1]:8545/rpc' },
+  { name: 'IPv4', url: 'https://192.0.2.1:8545/rpc' },
 ] as const;
 
 const publicState = (page: Page) =>
@@ -240,7 +240,7 @@ for (const scenario of scenarios) {
         }
       );
       await wallet.step(
-        `${scenario.name}: validate the exact manually entered HTTP endpoint`,
+        `${scenario.name}: validate the exact manually entered HTTPS endpoint`,
         async () => {
           phase = 'manual-entry';
           await page
