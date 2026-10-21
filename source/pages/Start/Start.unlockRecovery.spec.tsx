@@ -305,6 +305,7 @@ afterEach(async () => {
   if (originalCrypto)
     Object.defineProperty(globalThis, 'crypto', originalCrypto);
   jest.restoreAllMocks();
+  jest.useRealTimers();
 });
 const beginUnlock = async () => {
   const user = userEvent.setup();
@@ -432,3 +433,141 @@ it.each(['{Enter}', ' '])(
     expect(screen.getByTestId('route').textContent).toBe('/import');
   }
 );
+
+const realTimedTransport = () => {
+  const replies: Array<{ method: string; promise: Promise<unknown> }> = [];
+  const actualEmitter = jest.requireActual(
+    'scripts/Background/controllers/controllerEmitter'
+  ).controllerEmitter;
+  mockEmitter.mockImplementation(actualEmitter);
+  (chrome.runtime as any).sendMessage = (
+    message: any,
+    callback: (response: unknown) => void
+  ) => {
+    expect(message.type).toBe('CONTROLLER_ACTION');
+    const [group, method] = message.data.methods;
+    expect(group).toBe('wallet');
+    expect([
+      'isUnlocked',
+      'resetAutoLockTimer',
+      'unlockFromController',
+      'beginWalletRecovery',
+    ]).toContain(method);
+    const promise = Promise.resolve().then(() =>
+      wallet[method](...message.data.params)
+    );
+    replies.push({ method, promise });
+    void promise.then(callback, (error: Error) =>
+      callback({ success: false, error: error.message })
+    );
+  };
+  return replies;
+};
+const startTimedUnlock = async () => {
+  const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+  await user.type(document.getElementById('password')!, PASSWORD);
+  await user.click(screen.getByRole('button', { name: 'buttons.unlock' }));
+  await entered;
+  await act(async () => {
+    await Promise.resolve();
+  });
+  expect(document.getElementById('unlock-btn')).toBeDisabled();
+  await act(async () => jest.advanceTimersByTimeAsync(9999));
+  expect(document.getElementById('unlock-btn')).toBeDisabled();
+  await act(async () => jest.advanceTimersByTimeAsync(1));
+  expect(screen.getByText('Network request timed out')).toBeVisible();
+  expect(document.getElementById('unlock-btn')).toBeEnabled();
+  expect(document.getElementById('import-wallet-link')).toBeEnabled();
+  expect(wallet.isUnlocked()).toBe(false);
+  return user;
+};
+
+it.each([true, false])(
+  'does not begin recovery after a real transport timeout while background authentication is pending (late success=%s)',
+  async (lateSuccess) => {
+    const replies = realTimedTransport();
+    jest.useFakeTimers({
+      doNotFake: ['nextTick', 'setImmediate', 'queueMicrotask'],
+    });
+    mount();
+    const user = await startTimedUnlock();
+    await user.click(document.getElementById('import-wallet-link')!);
+    await user.click(
+      await screen.findByRole('button', { name: 'buttons.recoverWallet' })
+    );
+    await act(async () => jest.advanceTimersByTimeAsync(10000));
+    expect(screen.getByTestId('route').textContent).toBe('/');
+    expect(document.getElementById('import-wallet-input')).toBeNull();
+    expect(document.getElementById('confirm-import-btn')).toBeEnabled();
+    expect(mockAlert.error).toHaveBeenCalledWith(
+      'settings.walletRecoveryFailed'
+    );
+    const unlock = replies.find(
+      (reply) => reply.method === 'unlockFromController'
+    )!.promise;
+    const recovery = replies.find(
+      (reply) => reply.method === 'beginWalletRecovery'
+    )!.promise;
+    await act(async () => {
+      release(lateSuccess);
+      await unlock.catch(() => undefined);
+      await recovery.catch(() => undefined);
+    });
+    expect(screen.getByTestId('route').textContent).toBe('/');
+    expect(document.getElementById('import-wallet-input')).toBeNull();
+    expect(wallet.isUnlocked()).toBe(lateSuccess);
+    if (lateSuccess) {
+      await expect(recovery).rejects.toThrow(
+        'Lock the wallet before starting seed recovery'
+      );
+      await user.click(document.getElementById('cancel-import-btn')!);
+      expect(document.getElementById('import-wallet-link')).toBeEnabled();
+    } else {
+      await expect(recovery).resolves.toMatch(/^[a-f0-9]{64}$/);
+      await user.click(document.getElementById('confirm-import-btn')!);
+      const retried = replies
+        .filter((reply) => reply.method === 'beginWalletRecovery')
+        .at(-1)!.promise;
+      await act(async () => {
+        await retried;
+      });
+      await waitFor(() =>
+        expect(document.getElementById('import-wallet-input')).toBeVisible()
+      );
+      expect(screen.getByTestId('route').textContent).toBe('/import');
+    }
+  }
+);
+
+it('keeps the ordinary real-message wrong-password response and subsequent recovery usable', async () => {
+  const replies = realTimedTransport();
+  mount();
+  await beginUnlock();
+  const unlock = replies.find(
+    (reply) => reply.method === 'unlockFromController'
+  )!.promise;
+  await act(async () => {
+    release(false);
+    await unlock.catch(() => undefined);
+  });
+  expect(screen.getByText('Invalid password')).toBeVisible();
+  expect(screen.queryByText('Network request timed out')).toBeNull();
+  expect(document.getElementById('import-wallet-link')).toBeEnabled();
+  await beginRecovery();
+});
+
+it('rejects queued recovery when its admitted wallet session changes', async () => {
+  let resume!: () => void;
+  const held = new Promise<void>((resolve) => (resume = resolve));
+  const occupying = wallet.authenticationMutex.runExclusive(() => held);
+  await Promise.resolve();
+  const read = jest.spyOn(chrome.storage.local, 'get');
+  const recovery = wallet.beginWalletRecovery();
+  const rejected = expect(recovery).rejects.toThrow('Wallet session changed');
+  // Lock, reset and account/network transitions invalidate this exact epoch.
+  wallet.walletSessionGeneration += 1;
+  resume();
+  await occupying;
+  await rejected;
+  expect(read).not.toHaveBeenCalled();
+});

@@ -41,12 +41,9 @@ export const Start = (props: any) => {
   return (
     <div className="bg-no-repeat bg-[url('../../../source/assets/all_assets/GET_STARTED2.webp')] min-w-full h-screen !overflow-y-auto overscroll-y-contain login-animated-bg">
       {/* Subtle twinkling particles */}
-      <div className="particle-1"></div>
-      <div className="particle-2"></div>
-      <div className="particle-3"></div>
-      <div className="particle-4"></div>
-      <div className="particle-5"></div>
-      <div className="particle-6"></div>
+      {[1, 2, 3, 4, 5, 6].map((number) => (
+        <div key={number} className={`particle-${number}`} />
+      ))}
 
       <ImportWalletWarning
         title={t('settings.recoveryTitle')}
@@ -63,12 +60,14 @@ export const Start = (props: any) => {
         </p>
 
         <div className="relative z-10 flex flex-row gap-3 mb-6">
-          <h1 className="text-[#4DA2CF] text-justify font-poppins text-[37.87px] font-bold leading-[37.87px] tracking-[0.379px]">
-            Pali
-          </h1>
-          <h1 className="text-[#4DA2CF] font-poppins text-[37.87px] font-light leading-[37.87px] tracking-[0.379px]">
-            Wallet
-          </h1>
+          {['Pali', 'Wallet'].map((word, index) => (
+            <h1
+              key={word}
+              className={`text-[#4DA2CF] ${index ? '' : 'text-justify '}font-poppins text-[37.87px] ${index ? 'font-light' : 'font-bold'} leading-[37.87px] tracking-[0.379px]`}
+            >
+              {word}
+            </h1>
+          ))}
         </div>
 
         <div className="relative z-10 flex flex-col items-center w-full max-w-md px-6">
