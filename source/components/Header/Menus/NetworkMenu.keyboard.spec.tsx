@@ -10,6 +10,7 @@ import {
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 
+import { switchNetworkError } from 'state/vaultGlobal';
 import { INetworkType } from 'types/network';
 
 import { NetworkMenu } from './NetworkMenu';
@@ -397,6 +398,83 @@ it('uses the normal pointer selection for individual network choices', async () 
     [mockNetworks.syscoin.testnet]
   );
   expect(screen.queryByRole('menu')).toBeNull();
+});
+
+it('closes the menu while a network change is still pending', async () => {
+  let complete!: () => void;
+  mockEmitter.mockImplementationOnce(
+    () =>
+      new Promise<void>((resolve) => {
+        complete = resolve;
+      })
+  );
+  const { user, trigger } = await openMenu();
+  await user.click(screen.getByRole('menuitem', { name: 'UTXO networks' }));
+  await user.click(screen.getByRole('menuitem', { name: 'Syscoin Testnet' }));
+  expect(mockEmitter).toHaveBeenCalledTimes(1);
+  expect(mockEmitter).toHaveBeenCalledWith(
+    ['wallet', 'setActiveNetwork'],
+    [mockNetworks.syscoin.testnet]
+  );
+  expect(screen.queryByRole('menu')).toBeNull();
+  expect(mockDispatch).not.toHaveBeenCalled();
+  await waitFor(() => expect(document.activeElement).toBe(trigger));
+  await act(async () => complete());
+  expect(screen.queryByRole('menu')).toBeNull();
+  expect(mockDispatch).not.toHaveBeenCalled();
+});
+
+it('dispatches a switch error when the closed menu network request rejects', async () => {
+  const failure = new Error('Network change rejected');
+  let reject!: (error: Error) => void;
+  mockEmitter.mockImplementationOnce(
+    () =>
+      new Promise<void>((_resolve, rejectRequest) => {
+        reject = rejectRequest;
+      })
+  );
+  const log = jest.spyOn(console, 'error').mockImplementation();
+  try {
+    const { user } = await openMenu();
+    await user.click(screen.getByRole('menuitem', { name: 'UTXO networks' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Syscoin Testnet' }));
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(mockDispatch).not.toHaveBeenCalled();
+    await act(async () => reject(failure));
+    await waitFor(() => expect(mockDispatch).toHaveBeenCalledTimes(1));
+    expect(mockDispatch).toHaveBeenCalledWith(switchNetworkError());
+    expect(log).toHaveBeenCalledWith(
+      '[NetworkMenu] Network switch failed:',
+      failure
+    );
+    expect(mockEmitter).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('menu')).toBeNull();
+  } finally {
+    log.mockRestore();
+  }
+});
+
+it('dispatches a switch error when starting a network request throws', async () => {
+  const failure = new Error('Network request could not start');
+  mockEmitter.mockImplementationOnce(() => {
+    throw failure;
+  });
+  const log = jest.spyOn(console, 'error').mockImplementation();
+  try {
+    const { user } = await openMenu();
+    await user.click(screen.getByRole('menuitem', { name: 'UTXO networks' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Syscoin Testnet' }));
+    expect(mockEmitter).toHaveBeenCalledTimes(1);
+    expect(mockDispatch).toHaveBeenCalledTimes(1);
+    expect(mockDispatch).toHaveBeenCalledWith(switchNetworkError());
+    expect(log).toHaveBeenCalledWith(
+      '[NetworkMenu] Error initiating network switch:',
+      failure
+    );
+    expect(screen.queryByRole('menu')).toBeNull();
+  } finally {
+    log.mockRestore();
+  }
 });
 
 it('disables all choices while switching, keeps the current spinner, and skips disabled rows for keyboard navigation', async () => {
