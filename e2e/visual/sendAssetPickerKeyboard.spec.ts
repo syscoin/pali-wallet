@@ -321,7 +321,7 @@ test('Send asset picker has one keyboard stop per asset and excludes its closed 
         await expect(picker('TSYS')).toBeVisible();
         await expect(max).toBeEnabled();
         await max.click();
-        await expect(amount).toHaveValue('1');
+        await expect(amount).toHaveValue('1.0');
         observations.nativeMax = await amount.inputValue();
         await expect(page).toHaveURL(/#\/send\/eth$/);
         expect(
