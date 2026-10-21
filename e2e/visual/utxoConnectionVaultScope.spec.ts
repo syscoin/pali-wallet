@@ -199,7 +199,10 @@ test('UTXO connection grants do not follow an equal Imported account slot into a
                 };
         } else if (/^\/api\/v2\/estimatefee\/\d+$/.test(url.pathname)) {
           body = { result: '0.00001' };
-        } else if (url.pathname === '/api/v2/tickers') {
+        } else if (
+          url.pathname === '/api/v2/tickers' ||
+          url.pathname === '/api/v2/tickers/currency'
+        ) {
           body = { ts: 1, rates: { usd: 1 } };
         }
       }
