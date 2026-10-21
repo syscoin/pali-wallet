@@ -23,7 +23,15 @@ const INVALID_CHAIN_ID = 'Chain ID must be a positive number';
 async function startLocalRpc(addresses: string[]) {
   let origin = '';
   const reads: string[] = [];
-  const denied: string[] = [];
+  const denied: Array<Record<string, unknown>> = [];
+  const blockedProxy: Array<{
+    classification: 'chromium-time-service' | 'refused-https-tunnel';
+    forwarded: false;
+    method: string;
+    rawUrl: string;
+    responseStatus: 403;
+    url: string;
+  }> = [];
   const knownAddresses = new Set(addresses.map((value) => value.toLowerCase()));
   const resultFor = (call: any): unknown => {
     if (!call || call.jsonrpc !== '2.0' || !Array.isArray(call.params))
@@ -83,7 +91,33 @@ async function startLocalRpc(addresses: string[]) {
       return;
     }
     if (!allowed || req.method !== 'POST') {
-      denied.push(`${req.method} ${url.pathname}`);
+      const request = {
+        method: req.method || 'unknown',
+        rawUrl: req.url || '',
+        url: url.href,
+        responseStatus: 403 as const,
+        forwarded: false as const,
+      };
+      // Chromium's launch-time clock probe reaches the deny proxy before page
+      // routing exists. Only this exact non-RPC endpoint is expected here.
+      if (
+        req.method === 'GET' &&
+        url.origin === 'http://clients2.google.com' &&
+        url.pathname === '/time/1/current' &&
+        !url.username &&
+        !url.password &&
+        !url.hash &&
+        [...url.searchParams.keys()].every((key) =>
+          ['cup2key', 'cup2hreq'].includes(key)
+        )
+      ) {
+        blockedProxy.push({
+          classification: 'chromium-time-service',
+          ...request,
+        });
+      } else {
+        denied.push({ reason: 'unexpected-http-request', ...request });
+      }
       res.writeHead(403, headers);
       res.end('{}');
       return;
@@ -91,7 +125,15 @@ async function startLocalRpc(addresses: string[]) {
     let body = '';
     req.on('data', (chunk) => {
       body += chunk;
-      if (body.length > 65536) req.destroy();
+      if (body.length > 65536) {
+        denied.push({
+          reason: 'oversized-rpc-body',
+          method: req.method,
+          url: url.href,
+          forwarded: false,
+        });
+        req.destroy();
+      }
     });
     req.on('end', () => {
       try {
@@ -100,7 +142,15 @@ async function startLocalRpc(addresses: string[]) {
         const replies = calls.map((call: any) => {
           const result = resultFor(call);
           if (result === undefined) {
-            denied.push(String(call?.method));
+            denied.push({
+              reason: 'unsupported-rpc-call',
+              method: req.method,
+              url: url.href,
+              rpcMethod: String(call?.method),
+              responseStatus: 200,
+              rpcError: -32601,
+              forwarded: false,
+            });
             return {
               jsonrpc: '2.0',
               id: call?.id,
@@ -113,13 +163,40 @@ async function startLocalRpc(addresses: string[]) {
         res.writeHead(200, headers);
         res.end(JSON.stringify(Array.isArray(input) ? replies : replies[0]));
       } catch {
+        denied.push({
+          reason: 'malformed-rpc-json',
+          method: req.method,
+          url: url.href,
+          responseStatus: 400,
+          forwarded: false,
+        });
         res.writeHead(400, headers);
         res.end('{}');
       }
     });
   });
-  server.on('connect', (_request, socket) => {
-    denied.push('CONNECT');
+  server.on('connect', (request, socket) => {
+    const rawUrl = request.url || '';
+    // This is a refusal, not a destination allowlist: no socket is opened to
+    // any target. Keep every full HTTPS authority in the launch-proxy audit.
+    if (/^[a-z0-9.-]+:443$/i.test(rawUrl)) {
+      blockedProxy.push({
+        classification: 'refused-https-tunnel',
+        method: 'CONNECT',
+        rawUrl,
+        url: `https://${rawUrl}/`,
+        responseStatus: 403,
+        forwarded: false,
+      });
+    } else {
+      denied.push({
+        reason: 'unexpected-connect-authority',
+        method: 'CONNECT',
+        rawUrl,
+        responseStatus: 403,
+        forwarded: false,
+      });
+    }
     socket.on('error', (error: NodeJS.ErrnoException) => {
       if (error.code !== 'ECONNRESET' && error.code !== 'EPIPE')
         server.emit('error', error);
@@ -136,6 +213,7 @@ async function startLocalRpc(addresses: string[]) {
     url: origin,
     reads,
     denied,
+    blockedProxy,
     close: () =>
       new Promise<void>((resolve, reject) => {
         server.close((error) => (error ? reject(error) : resolve()));
@@ -329,6 +407,11 @@ test('custom RPC rejects malformed chain ID text and saves only the corrected ma
       }
     );
     expect(server.denied).toEqual([]);
+    expect(
+      server.blockedProxy.every(
+        (request) => request.responseStatus === 403 && !request.forwarded
+      )
+    ).toBe(true);
     expect(routes.deniedWrites).toEqual([]);
     expect(extensionEvidence()).toEqual(runtime);
     expect(
@@ -346,6 +429,7 @@ test('custom RPC rejects malformed chain ID text and saves only the corrected ma
           observations,
           reads: server.reads,
           denied: server.denied,
+          blockedProxy: server.blockedProxy,
           fixtureReads: routes?.reads || [],
           deniedWrites: routes?.deniedWrites || [],
           controllerStateReplaced: false,
