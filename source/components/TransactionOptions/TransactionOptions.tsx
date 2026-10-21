@@ -6,10 +6,10 @@ import { useSelector } from 'react-redux';
 import { ExternalLinkSvg, TrashIconSvg } from 'components/Icon/Icon';
 import { Icon } from 'components/index';
 import { useUtils } from 'hooks/index';
-import { useAdjustedExplorer } from 'hooks/useAdjustedExplorer';
 import { RootState } from 'state/store';
 import { formatUnits } from 'utils/ethersV6Compat';
 import { getWalletNavigationScope } from 'utils/navigationState';
+import { buildExplorerUrl } from 'utils/strings';
 import { previewSpeedUpTransaction, UpdateTxAction } from 'utils/transactions';
 import { ITransactionOptions } from 'utils/types';
 
@@ -53,9 +53,9 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
   const { navigate } = useUtils();
   // Select only what we need to minimize re-renders
   const explorer = useSelector(
-    (state: RootState) => state.vault.activeNetwork.explorer
+    (state: RootState) =>
+      state.vault.activeNetwork.explorer || state.vault.activeNetwork.url
   );
-  const adjustedExplorer = useAdjustedExplorer(explorer);
   const currency = useSelector(
     (state: RootState) => state.vault.activeNetwork.currency
   );
@@ -233,9 +233,9 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
   }, [transaction.hash]);
 
   const openTransactionOnExplorer = useCallback(() => {
-    const url = `${adjustedExplorer}tx/${transaction.hash}`;
+    const url = buildExplorerUrl(explorer, 'tx', transaction.hash);
     window.open(url, '_blank');
-  }, [adjustedExplorer, transaction.hash]);
+  }, [explorer, transaction.hash]);
 
   return (
     <>

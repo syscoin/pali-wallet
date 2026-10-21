@@ -14,13 +14,14 @@ import {
 import { LoadingOutlined } from 'components/Icon/Icon';
 import { Icon } from 'components/Icon/Icon';
 import { TokenIcon } from 'components/TokenIcon';
-import { useUtils, useAdjustedExplorer } from 'hooks/index';
+import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { INetworkType } from 'types/network';
 import { ellipsis } from 'utils/index';
 import { NFT_FALLBACK_IMAGE } from 'utils/nftFallback';
 import { getNftQuantity } from 'utils/nftQuantity';
+import { buildExplorerUrl } from 'utils/strings';
 
 const renderNftSection = (title: string, children: React.ReactNode) => (
   <div
@@ -63,7 +64,7 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
 
   // Use proper selector for assets
   const currentAccount = accounts[activeAccount.type]?.[activeAccount.id];
-  const { explorer } = activeNetwork;
+  const explorer = activeNetwork.explorer || activeNetwork.url;
 
   const { alert } = useUtils();
 
@@ -239,11 +240,9 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
     return currentNft.logo || NFT_FALLBACK_IMAGE;
   };
 
-  const adjustedExplorer = useAdjustedExplorer(explorer);
-
   const openCollectionOnExplorer = () =>
     window.open(
-      `${adjustedExplorer}token/${currentNft.contractAddress}`,
+      buildExplorerUrl(explorer, 'token', currentNft.contractAddress),
       '_blank',
       'noopener, noreferrer'
     );
@@ -515,7 +514,11 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
 
           <div className="w-full flex items-center justify-center text-brand-white hover:text-brand-deepPink100 my-6">
             <a
-              href={`${adjustedExplorer}address/${currentNft.contractAddress}`}
+              href={buildExplorerUrl(
+                explorer,
+                'address',
+                currentNft.contractAddress
+              )}
               target="_blank"
               className="flex items-center justify-center gap-x-2"
               rel="noreferrer"
