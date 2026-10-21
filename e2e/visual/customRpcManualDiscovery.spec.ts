@@ -205,20 +205,83 @@ for (const scenario of scenarios) {
           await wallet!.importSeedAndCreatePassword();
           await wallet!.switchNetwork('Syscoin Testnet', 'UTXO');
           await wallet!.ensureOnHome();
-          before = await publicNetworkState(page, scenario.chainId);
-          expect(before.active).toMatchObject({
+          const onboarded = await publicNetworkState(page, scenario.chainId);
+          expect(onboarded.active).toMatchObject({
             chainId: 5700,
             kind: 'syscoin',
           });
+          observations.onboarded = onboarded;
           if (scenario.save) {
-            expect(before.live).toBeNull();
-            expect(before.stored).toBeNull();
+            // A normal wallet already registers Bitcoin. Remove only that
+            // non-active registration through its ordinary confirmation UI,
+            // rather than inventing an empty registry for the Add scenario.
+            expect(onboarded.live).toEqual({
+              chainId: 0,
+              currency: 'btc',
+              default: false,
+              explorer: 'https://btc1.trezor.io/',
+              kind: 'syscoin',
+              label: 'Bitcoin',
+              slip44: 0,
+              url: 'https://btc1.trezor.io/',
+            });
+            expect(onboarded.stored).toEqual(onboarded.live);
+            await trigger.click();
+            await page
+              .getByRole('menuitem', {
+                name: en.networkMenu.manageNetworks,
+                exact: true,
+              })
+              .click();
+            await expect(page).toHaveURL(/#\/settings\/networks\/edit$/);
+            const row = page.locator('li').filter({
+              has: page.getByText('Bitcoin', { exact: true }),
+            });
+            await expect(row).toHaveCount(1);
+            await expect(row.locator('button')).toHaveCount(2);
+            const remove = row.locator('button').last();
+            await expect(remove).toBeEnabled();
+            await remove.click();
+            const confirmation = page.getByRole('dialog', {
+              name: en.settings.confirmRemoveNetwork.replace(
+                '{{networkName}}',
+                'Bitcoin'
+              ),
+              exact: true,
+            });
+            await expect(confirmation).toBeVisible();
+            await confirmation
+              .getByRole('button', { name: en.buttons.remove, exact: true })
+              .click();
+            await expect(confirmation).toHaveCount(0);
+            await expect
+              .poll(() => publicNetworkState(page, scenario.chainId))
+              .toEqual({ ...onboarded, live: null, stored: null });
+            await expect(row).toHaveCount(0);
+            observations.afterRemoval = await publicNetworkState(
+              page,
+              scenario.chainId
+            );
+            // The loaded Manage Networks footer is the final Close button;
+            // its native action returns to the same Home predecessor.
+            await page
+              .getByRole('button', { name: en.buttons.close, exact: true })
+              .last()
+              .click();
+            await expect(page).toHaveURL(/#\/home$/);
           } else {
-            expect(before.live).toMatchObject({
+            expect(onboarded.live).toMatchObject({
               chainId: 57,
               kind: 'syscoin',
             });
+            expect(onboarded.stored).toEqual(onboarded.live);
           }
+          before = await publicNetworkState(page, scenario.chainId);
+          expect(before).toEqual(
+            scenario.save
+              ? { ...onboarded, live: null, stored: null }
+              : onboarded
+          );
           observations.before = before;
           await trigger.click();
           await page
