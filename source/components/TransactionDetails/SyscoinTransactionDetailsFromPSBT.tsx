@@ -190,19 +190,21 @@ const ExpandableSection: React.FC<{
 
   return (
     <div className="mt-4">
-      <div
+      <button
+        type="button"
+        aria-expanded={expanded}
         onClick={() => setExpanded(!expanded)}
-        className="flex items-center gap-2 text-white text-sm hover:text-fields-input-borderfocus transition-colors mb-2 cursor-pointer"
+        className="flex w-full items-center gap-2 text-left text-white text-sm hover:text-fields-input-borderfocus transition-colors mb-2 cursor-pointer"
       >
         {expanded ? (
-          <DownOutlined className="text-xs" />
+          <DownOutlined aria-hidden="true" className="text-xs" />
         ) : (
-          <RightOutlined className="text-xs" />
+          <RightOutlined aria-hidden="true" className="text-xs" />
         )}
         <span>
           {title} {count !== undefined && `(${count})`}
         </span>
-      </div>
+      </button>
       {expanded && <div className="ml-4">{children}</div>}
     </div>
   );
