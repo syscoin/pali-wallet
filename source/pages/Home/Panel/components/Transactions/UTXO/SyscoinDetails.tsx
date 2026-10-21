@@ -506,7 +506,7 @@ export const SyscoinTransactionDetails = ({
     );
   }
 
-  const RenderTransaction = () => (
+  return (
     <>
       <div className="flex flex-col justify-center items-center w-full mb-2">
         <p className="text-brand-gray200 text-xs font-light">
@@ -725,6 +725,4 @@ export const SyscoinTransactionDetails = ({
       )}
     </>
   );
-
-  return <RenderTransaction />;
 };
