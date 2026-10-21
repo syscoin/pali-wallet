@@ -938,11 +938,7 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
               }),
             ]}
           >
-            <Input
-              type="text"
-              placeholder={t('send.receiver')}
-              onBlur={handleFieldBlur}
-            />
+            <Input placeholder={t('send.receiver')} onBlur={handleFieldBlur} />
           </Form.Item>
         </div>
         <div className="flex gap-2 w-full items-start">
@@ -973,16 +969,15 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
                       </Menu.Button>
 
                       <Menu.Items
-                        as="div"
                         className={`scrollbar-styled absolute z-10 left-0 mt-2 py-3 w-56 h-56 text-brand-white font-poppins bg-brand-blue800 border border-fields-input-border focus:border-fields-input-borderfocus rounded-2xl shadow-2xl overflow-auto origin-top-right
                           transform transition-all duration-100 ease-out ${
                             open
                               ? 'opacity-100 scale-100 pointer-events-auto'
                               : 'opacity-0 scale-95 pointer-events-none'
                           }`}
-                        static
+                        unmount={false}
                       >
-                        <Menu.Item as="div" key="native-sys">
+                        <Menu.Item key="native-sys">
                           <button
                             type="button"
                             onClick={() => handleSelectedAsset(-1)}
@@ -1004,10 +999,7 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
                         {assets.length > 0
                           ? assets.map((item: any) =>
                               item?.assetGuid ? (
-                                <Menu.Item
-                                  as="div"
-                                  key={`asset-${item.assetGuid}`}
-                                >
+                                <Menu.Item key={`asset-${item.assetGuid}`}>
                                   <button
                                     type="button"
                                     onClick={() => {

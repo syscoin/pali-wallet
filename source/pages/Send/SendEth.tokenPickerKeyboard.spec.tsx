@@ -238,6 +238,38 @@ const mount = async () => {
   await act(async () => render(<SendEth />));
   return user;
 };
+// Escape restores focus through Headless UI's two-frame lifecycle. Deliver its
+// real callbacks deterministically instead of depending on JSDOM's frame clock.
+const completeMenuFrames = async (interaction: () => Promise<void>) => {
+  const callbacks = new Map<number, FrameRequestCallback>();
+  const nativeCancel = window.cancelAnimationFrame.bind(window);
+  let id = 0;
+  const request = jest
+    .spyOn(window, 'requestAnimationFrame')
+    .mockImplementation((callback) => {
+      callbacks.set(--id, callback);
+      return id;
+    });
+  const cancel = jest
+    .spyOn(window, 'cancelAnimationFrame')
+    .mockImplementation((handle) => {
+      if (!callbacks.delete(handle)) nativeCancel(handle);
+    });
+  try {
+    await interaction();
+    for (let frame = 0; frame < 2; frame += 1) {
+      const current = [...callbacks.values()];
+      callbacks.clear();
+      await act(async () => {
+        current.forEach((callback) => callback(performance.now()));
+      });
+    }
+    expect(callbacks.size).toBe(0);
+  } finally {
+    cancel.mockRestore();
+    request.mockRestore();
+  }
+};
 const open = async (
   user: ReturnType<typeof userEvent.setup>,
   label = 'ETH'
@@ -278,7 +310,9 @@ it('retains pointer selection and does not select another asset on Escape', asyn
   const user = await mount();
   await selectWithPointer(user, 'PRECISE');
   await open(user, 'PRECISE');
-  await user.keyboard('{Home}{ArrowDown}{ArrowDown}{Escape}');
+  await completeMenuFrames(() =>
+    user.keyboard('{Home}{ArrowDown}{ArrowDown}{Escape}')
+  );
   await waitFor(() =>
     expect(screen.getByRole('button', { name: 'PRECISE' })).toHaveFocus()
   );
@@ -307,7 +341,7 @@ it('removes the closed selector from accessibility and skips it while tabbing to
   const user = await mount();
   expect(screen.queryByRole('menu')).toBeNull();
   await open(user);
-  await user.keyboard('{Escape}');
+  await completeMenuFrames(() => user.keyboard('{Escape}'));
   const trigger = screen.getByRole('button', { name: 'ETH' });
   await waitFor(() => expect(trigger).toHaveFocus());
   expect(screen.queryByRole('menu')).toBeNull();
