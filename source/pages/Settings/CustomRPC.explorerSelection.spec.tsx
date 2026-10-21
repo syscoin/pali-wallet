@@ -1,6 +1,12 @@
 /** @jest-environment jsdom */
 import '@testing-library/jest-dom';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 
@@ -122,8 +128,7 @@ afterEach(() => {
   globalThis.MessageChannel = originalMessageChannel;
 });
 
-const open = async (kind = INetworkType.Ethereum) => {
-  const user = userEvent.setup();
+const open = async (kind = INetworkType.Ethereum, user = userEvent.setup()) => {
   render(<CustomRPC />);
   await waitFor(() =>
     expect(mockEmitter).toHaveBeenCalledWith(
@@ -138,7 +143,8 @@ const open = async (kind = INetworkType.Ethereum) => {
 
 const choose = async (
   user: ReturnType<typeof userEvent.setup>,
-  kind: INetworkType
+  kind: INetworkType,
+  afterSelection?: () => Promise<void>
 ) => {
   const input = screen.getByRole('combobox');
   await user.clear(input);
@@ -146,6 +152,7 @@ const choose = async (
   await user.click(
     await screen.findByRole('option', { name: new RegExp(chains[kind].name) })
   );
+  await afterSelection?.();
   await waitFor(() =>
     expect(screen.getByRole('button', { name: 'buttons.save' })).toBeEnabled()
   );
@@ -263,12 +270,42 @@ it('keeps the working UTXO fallback instead of the first failed catalogue endpoi
       return { success: false, error: 'Synthetic unavailable endpoint' };
     return normal(method, args);
   });
-  const user = await open(INetworkType.Syscoin);
-  await choose(user, INetworkType.Syscoin);
-  const saved = await save(user);
-  expect(saved).toMatchObject({
-    kind: INetworkType.Syscoin,
-    url: fallback,
-    explorer: fallback,
-  });
+  jest.useFakeTimers();
+  try {
+    const user = await open(
+      INetworkType.Syscoin,
+      userEvent.setup({ advanceTimers: jest.advanceTimersByTime })
+    );
+    await choose(user, INetworkType.Syscoin, async () => {
+      // Each catalogue candidate has a real 300 ms presentation delay. Drive
+      // both explicitly instead of racing their sum against waitFor's deadline.
+      await act(async () => jest.advanceTimersByTimeAsync(300));
+      expect(mockEmitter).toHaveBeenCalledWith(
+        ['wallet', 'testRpcConnection'],
+        [chains.syscoin.rpc[0].url, INetworkType.Syscoin, 2, 5000, 500]
+      );
+      expect(
+        mockEmitter.mock.calls.some(
+          ([[, method], args]) =>
+            method === 'testRpcConnection' && args[0] === fallback
+        )
+      ).toBe(false);
+      expect(
+        screen.getByRole('button', { name: 'buttons.save' })
+      ).toBeDisabled();
+      await act(async () => jest.advanceTimersByTimeAsync(300));
+      expect(mockEmitter).toHaveBeenCalledWith(
+        ['wallet', 'testRpcConnection'],
+        [fallback, INetworkType.Syscoin, 2, 5000, 500]
+      );
+    });
+    const saved = await save(user);
+    expect(saved).toMatchObject({
+      kind: INetworkType.Syscoin,
+      url: fallback,
+      explorer: fallback,
+    });
+  } finally {
+    jest.useRealTimers();
+  }
 });
