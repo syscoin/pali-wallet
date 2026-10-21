@@ -255,6 +255,7 @@ for (const scenario of ['descriptor', 'plain address'] as const) {
         expect(state.live!.address).not.toBe(fixture.userAddress);
         return state;
       };
+      let lastCopySuccessAt = 0;
       const expectReceive = async () => {
         await expect(page).toHaveURL(/#\/receive$/);
         await expect(page.locator('#qr-code + div p')).toHaveText(address);
@@ -271,6 +272,11 @@ for (const scenario of ['descriptor', 'plain address'] as const) {
         expect(actualPaths).toEqual(expectedPaths);
         const copy = page.locator('#copy-address-receive-btn button');
         await expect(copy).toBeEnabled();
+        // Identical success notices are deduplicated for two real seconds.
+        if (lastCopySuccessAt)
+          await expect
+            .poll(() => Date.now() - lastCopySuccessAt)
+            .toBeGreaterThan(2000);
         await page.evaluate(() => {
           delete (window as any).__watchReceiveCopied;
         });
@@ -281,6 +287,7 @@ for (const scenario of ['descriptor', 'plain address'] as const) {
         await expect(
           page.getByText(en.home.addressCopied, { exact: true })
         ).toBeVisible();
+        lastCopySuccessAt = Date.now();
         return {
           state: await expectAccount(),
           visibleAddress: await page.locator('#qr-code + div p').innerText(),
