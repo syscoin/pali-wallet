@@ -15,6 +15,7 @@ import { EvmTransactionDetailsEnhanced } from 'pages/Home/Panel/components/Trans
 import MainController from 'scripts/Background/controllers/MainController';
 import { Interface } from 'utils/ethersV6Compat';
 import { ellipsis } from 'utils/format';
+import { paliSmartAccountInterface } from 'utils/smartAccount/contracts';
 
 const mockHttp = jest.fn<any, any[]>(() => {
   throw new Error('Public HTTP forbidden');
@@ -157,11 +158,17 @@ afterEach(() => {
 });
 
 async function details(amount: string, method = 'transfer') {
+  const isBytes = method === 'bytes' || method === 'bytes32';
   const tx = {
     hash: `0x${(++sequence).toString(16).padStart(64, '0')}`,
     from: ACCOUNT,
     to: TARGET,
-    input: token.encodeFunctionData(method, [RECIPIENT, amount]),
+    input: isBytes
+      ? paliSmartAccountInterface.encodeFunctionData('execute', [
+          method === 'bytes32' ? amount : `0xfe${'00'.repeat(31)}`,
+          method === 'bytes' ? amount : '0x1234',
+        ])
+      : token.encodeFunctionData(method, [RECIPIENT, amount]),
     value: '0',
     chainId: 5700,
     blockNumber: 42,
@@ -179,7 +186,7 @@ async function details(amount: string, method = 'transfer') {
       },
     ],
   ]);
-  wallet.getErc20Abi = async () => ABI;
+  wallet.getErc20Abi = jest.fn(async () => ABI);
   mockEmitter.mockImplementation(([, requestMethod], args) => {
     if (requestMethod === 'getEvmTransactionFromProvider')
       return Promise.resolve(tx);
@@ -198,13 +205,27 @@ async function details(amount: string, method = 'transfer') {
     method === 'transfer' && amount.length > 20
       ? ellipsis(amount, 10, 4)
       : amount;
-  const value = await screen.findByText(visible, { exact: true });
+  const value = isBytes
+    ? (
+        await screen.findByText(
+          method === 'bytes32' ? 'mode' : 'executionCalldata',
+          {
+            exact: false,
+            selector: 'span.text-brand-gray200',
+          }
+        )
+      ).parentElement!.querySelector<HTMLElement>('span.font-mono')!
+    : await screen.findByText(visible, { exact: true });
   expect(mockEmitter).toHaveBeenCalledWith(
     ['wallet', 'decodeEvmTransactionData'],
     [expect.objectContaining({ input: tx.input })]
   );
   const decoded = await wallet.decodeEvmTransactionData(tx);
-  expect(decoded.inputs[1]).toBe(amount);
+  expect(decoded.inputs[method === 'bytes32' ? 0 : 1]).toBe(amount);
+  if (isBytes) {
+    expect(decoded.types).toEqual(['bytes32', 'bytes']);
+    expect(decoded.method).toBe('execute');
+  }
   expect(value.parentElement!.tagName).toBe('DIV');
   return { value, reference: value.parentElement!, user: userEvent.setup() };
 }
@@ -288,4 +309,48 @@ it('keeps unrelated Tooltip callers non-focusable by default', async () => {
   await user.tab();
   expect(screen.getByRole('button', { name: 'After default' })).toHaveFocus();
   expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+});
+
+it.each([
+  ['bytes', 'bytes', `0x${'ab'.repeat(24)}`],
+  ['bytes32', 'bytes32', `0xfe${'cd'.repeat(31)}`],
+])(
+  'discloses exact decoded %s through keyboard and hover',
+  async (_type, method, payload) => {
+    const { reference, value, user } = await details(payload, method);
+    expect(reference).toHaveAttribute('tabindex', '0');
+    expect(value).toHaveTextContent(ellipsis(payload, 10, 4));
+    for (let step = 0; step < 6 && document.activeElement !== reference; step++)
+      await user.tab();
+    expect(reference).toHaveFocus();
+    const tooltip = await screen.findByRole('tooltip');
+    expect(within(tooltip).getByText(payload, { exact: true })).toBeVisible();
+    const descriptionId = reference.getAttribute('aria-describedby');
+    expect(document.getElementById(descriptionId!)).toContainElement(tooltip);
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(tooltip).not.toBeVisible());
+    expect(reference).toHaveFocus();
+    await user.hover(reference);
+    expect(
+      within(await screen.findByRole('tooltip')).getByText(payload, {
+        exact: true,
+      })
+    ).toBeVisible();
+  }
+);
+
+it('keeps short decoded bytes exact without an additional Tab stop', async () => {
+  const { reference, value, user } = await details('0x1234', 'bytes');
+  expect(value.textContent).toBe('0x1234');
+  expect(reference).not.toHaveAttribute('tabindex');
+  for (let step = 0; step < 5; step++) {
+    await user.tab();
+    expect(reference).not.toHaveFocus();
+    if (
+      document.activeElement ===
+      screen.getByRole('button', { name: 'After details' })
+    )
+      break;
+  }
+  expect(screen.getByRole('button', { name: 'After details' })).toHaveFocus();
 });

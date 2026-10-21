@@ -59,10 +59,6 @@ export const DecodedTransactionParams: React.FC<
       return value ? t('send.yes') : t('send.no');
     }
 
-    if (type === 'bytes' || type.startsWith('bytes')) {
-      return value.slice(0, 10) + '...';
-    }
-
     return String(value);
   };
 

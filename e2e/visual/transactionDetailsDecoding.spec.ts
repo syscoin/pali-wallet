@@ -22,6 +22,7 @@ for (const mode of [
   'long-integer',
   'maximum-integer',
   'mixed-logs',
+  'byte-parameters',
 ] as const) {
   test(`received-token details decode ${mode} explorer history after the RPC body arrives`, async ({}, info) => {
     test.setTimeout(120_000);
@@ -44,6 +45,7 @@ for (const mode of [
       'long-integer': 'a3',
       'maximum-integer': 'a4',
       'mixed-logs': 'a5',
+      'byte-parameters': 'a6',
     }[mode];
     const hash = `0x${hashByte.repeat(32)}`;
     const blockHash = `0x${'42'.repeat(32)}`;
@@ -53,9 +55,18 @@ for (const mode of [
         : mode === 'maximum-integer'
         ? '115792089237316195423570985008687907853269984665640564039457584007913129639935'
         : '7';
-    const input = new Interface([
-      'function transfer(address to,uint256 value)',
-    ]).encodeFunctionData('transfer', [recipient, amount]);
+    const byteParameters = [
+      `0xfe${'12'.repeat(31)}`,
+      `0x${'ab'.repeat(40)}${'cd'.repeat(8)}`,
+    ];
+    const input =
+      mode === 'byte-parameters'
+        ? new Interface([
+            'function execute(bytes32 mode,bytes executionCalldata)',
+          ]).encodeFunctionData('execute', byteParameters)
+        : new Interface([
+            'function transfer(address to,uint256 value)',
+          ]).encodeFunctionData('transfer', [recipient, amount]);
     const abi = AbiCoder.defaultAbiCoder();
     const metadata = new Map([
       [
@@ -334,7 +345,7 @@ for (const mode of [
         }
       );
       await step(
-        `${mode}: render full RPC transfer input and decoded parameters`,
+        `${mode}: render full RPC input and decoded parameters`,
         async () => {
           releaseBody();
           if (mode === 'mixed-logs') {
@@ -361,47 +372,71 @@ for (const mode of [
             page.getByText(en.transactions.decodedData, { exact: true })
           ).toBeVisible({ timeout: 3000 });
           await expect(
-            page.getByText('Transfer', { exact: true })
+            page.getByText(
+              mode === 'byte-parameters' ? 'Execute' : 'Transfer',
+              {
+                exact: true,
+              }
+            )
           ).toBeVisible();
-          if (mode === 'long-integer' || mode === 'maximum-integer') {
+          if (
+            mode === 'long-integer' ||
+            mode === 'maximum-integer' ||
+            mode === 'byte-parameters'
+          ) {
             const decoded = page
               .getByText(en.transactions.decodedData, { exact: true })
               .locator('..');
-            const displayed = `${amount.slice(0, 10)}...${amount.slice(-4)}`;
-            const parameter = decoded.getByText(displayed, { exact: true });
-            await expect(parameter).toBeVisible();
             await expect(
               decoded.getByText(en.transactions.unlimited, { exact: true })
             ).toHaveCount(0);
-            await parameter.hover();
-            await expect(page.getByRole('tooltip')).toHaveText(amount);
-            await page.mouse.move(0, 0);
-            await expect(page.getByRole('tooltip')).toBeHidden();
-            const disclosure = parameter.locator('..');
-            await expect(disclosure).toHaveAttribute('tabindex', '0');
-            // Traverse the ordinary tab order; do not programmatically focus
-            // the value whose keyboard access is under test.
-            for (let index = 0; index < 80; index++) {
-              await page.keyboard.press('Tab');
-              if (
-                await disclosure.evaluate(
-                  (element) => element === document.activeElement
+            for (const value of mode === 'byte-parameters'
+              ? byteParameters
+              : [amount]) {
+              const displayed = `${value.slice(0, 10)}...${value.slice(-4)}`;
+              const parameter = decoded.getByText(displayed, { exact: true });
+              await expect(parameter).toBeVisible();
+              const disclosure = parameter.locator('..');
+              await parameter.hover();
+              await expect(disclosure).toHaveAttribute(
+                'aria-describedby',
+                /\S/
+              );
+              const hoverId = await disclosure.getAttribute('aria-describedby');
+              const hoverTooltip = page
+                .locator(`[id="${hoverId}"]`)
+                .getByRole('tooltip');
+              await expect(hoverTooltip).toHaveText(value);
+              await page.mouse.move(0, 0);
+              await expect(hoverTooltip).toBeHidden();
+              await expect(disclosure).toHaveAttribute('tabindex', '0');
+              // Traverse the ordinary tab order; do not programmatically focus
+              // the value whose keyboard access is under test.
+              for (let index = 0; index < 80; index++) {
+                await page.keyboard.press('Tab');
+                if (
+                  await disclosure.evaluate(
+                    (element) => element === document.activeElement
+                  )
                 )
-              )
-                break;
+                  break;
+              }
+              await expect(disclosure).toBeFocused();
+              await expect(disclosure).toHaveAttribute(
+                'aria-describedby',
+                /\S/
+              );
+              const descriptionId = await disclosure.getAttribute(
+                'aria-describedby'
+              );
+              const ownedTooltip = page
+                .locator(`[id="${descriptionId}"]`)
+                .getByRole('tooltip');
+              await expect(ownedTooltip).toHaveText(value);
+              await page.keyboard.press('Escape');
+              await expect(ownedTooltip).toBeHidden();
+              await expect(disclosure).toBeFocused();
             }
-            await expect(disclosure).toBeFocused();
-            await expect(disclosure).toHaveAttribute('aria-describedby', /\S/);
-            const descriptionId = await disclosure.getAttribute(
-              'aria-describedby'
-            );
-            const ownedTooltip = page
-              .locator(`[id="${descriptionId}"]`)
-              .getByRole('tooltip');
-            await expect(ownedTooltip).toHaveText(amount);
-            await page.keyboard.press('Escape');
-            await expect(ownedTooltip).toBeHidden();
-            await expect(disclosure).toBeFocused();
           }
           if (mode === 'mixed-logs') {
             const heading = page.getByText(`${en.transactions.eventLogs} (2)`, {
@@ -437,6 +472,7 @@ for (const mode of [
             {
               mode,
               amount,
+              byteParameters: mode === 'byte-parameters' ? byteParameters : [],
               status,
               runtime,
               explorerReads,
