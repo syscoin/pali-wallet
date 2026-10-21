@@ -247,7 +247,10 @@ test('connection account Copy supports keyboard activation without changing sele
           isClosed: () => approval.isClosed(),
           settle: () => settle(dapp, requestId),
         });
-        expect(result.error?.code).toBe(4001);
+        // Connection middleware maps cancelled Connect to unauthorized, unlike
+        // signing cancellation. Keep its established exact provider error.
+        expect(result.error?.code).toBe(4100);
+        expect(result.error?.message).toBe('Connection required');
         expect(result.result).toBeUndefined();
         expect(await publicState(wallet!.page, host)).toEqual(before);
         observations.rejectionCode = result.error?.code;
