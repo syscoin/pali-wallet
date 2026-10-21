@@ -102,13 +102,15 @@ export const DetailsView = () => {
 
   const openExplorer = () => {
     const url = new URL(activeNetwork.explorer || activeNetwork.url);
-    const route = url.hash.startsWith('#/')
-      ? new URL(url.hash.slice(1), url)
+    const prefix = url.hash.startsWith('#!/') ? '#!' : '#';
+    const route = url.hash.startsWith(`${prefix}/`)
+      ? new URL(url.hash.slice(prefix.length), url)
       : url;
     route.pathname = `${route.pathname.replace(/\/?$/, '/')}${
       isAsset ? (isBitcoinBased ? 'asset' : 'address') : 'tx'
     }/${isAsset ? id : hash}`;
-    if (route !== url) url.hash = route.pathname + route.search + route.hash;
+    if (route !== url)
+      url.hash = prefix + route.pathname + route.search + route.hash;
     window.open(url.href, '_blank');
   };
 

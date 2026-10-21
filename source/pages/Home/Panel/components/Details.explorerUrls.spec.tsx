@@ -158,6 +158,12 @@ const cases = [
     base + '/public/tx/' + TXID + '?next=%2Faccount%3Fx%3D1',
   ],
   [base + '/#/', base + '/#/tx/' + TXID],
+  [base + '/#!/', base + '/#!/tx/' + TXID],
+  [base + '/#!/route', base + '/#!/route/tx/' + TXID],
+  [
+    base + '/app/?outer=a%2Fb#!/route?inner=x%2Fy#section',
+    base + '/app/?outer=a%2Fb#!/route/tx/' + TXID + '?inner=x%2Fy#section',
+  ],
   [
     base + '/app/#/route?view=compact',
     base + '/app/#/route/tx/' + TXID + '?view=compact',
