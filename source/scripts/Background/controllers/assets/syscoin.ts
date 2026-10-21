@@ -6,11 +6,7 @@ import store from 'state/store';
 import { ITokenSysProps, ISysAssetMetadata } from 'types/tokens';
 import { formatUnits } from 'utils/ethersV6Compat';
 
-import {
-  ASSET_CACHE_DURATION,
-  USER_TOKENS_CACHE_DURATION,
-  MAX_TOKENS_DISPLAY,
-} from './constants';
+import { ASSET_CACHE_DURATION, USER_TOKENS_CACHE_DURATION } from './constants';
 import { ISysAssetsController, ISysTokensAssetReponse } from './types';
 import { ensureTrailingSlash } from './utils';
 
@@ -123,65 +119,61 @@ const SysAssetsControler = (): ISysAssetsController => {
     // Aggregate balances for each unique asset
     const getOnlyTokensWithAssetGuid: ISysTokensAssetReponse[] = Array.from(
       tokensByAssetGuid.entries()
-    )
-      .map(([assetGuid, tokens]) => {
-        // Take the first token as the base (for metadata)
-        const firstToken = tokens[0];
-        const decimals = firstToken.decimals ?? 8;
+    ).map(([assetGuid, tokens]) => {
+      // Take the first token as the base (for metadata)
+      const firstToken = tokens[0];
+      const decimals = firstToken.decimals ?? 8;
 
-        // Sum up balances from all UTXOs for this asset
-        let totalConfirmedBalance = BigInt(0);
-        let totalUnconfirmedBalance = BigInt(0);
-        let totalSent = BigInt(0);
-        let totalReceived = BigInt(0);
-        let totalTransfers = 0;
+      // Sum up balances from all UTXOs for this asset
+      let totalConfirmedBalance = BigInt(0);
+      let totalUnconfirmedBalance = BigInt(0);
+      let totalSent = BigInt(0);
+      let totalReceived = BigInt(0);
+      let totalTransfers = 0;
 
-        tokens.forEach((token: any) => {
-          // Add confirmed balance
-          totalConfirmedBalance += BigInt(String(token.balance || 0));
+      tokens.forEach((token: any) => {
+        // Add confirmed balance
+        totalConfirmedBalance += BigInt(String(token.balance || 0));
 
-          // Add unconfirmed delta (can be positive or negative)
-          // Blockbook now provides per-address SPT unconfirmed deltas
-          const unconfirmedRaw =
-            token.unconfirmedBalance !== undefined
-              ? token.unconfirmedBalance
-              : 0;
-          totalUnconfirmedBalance += BigInt(String(unconfirmedRaw || 0));
+        // Add unconfirmed delta (can be positive or negative)
+        // Blockbook now provides per-address SPT unconfirmed deltas
+        const unconfirmedRaw =
+          token.unconfirmedBalance !== undefined ? token.unconfirmedBalance : 0;
+        totalUnconfirmedBalance += BigInt(String(unconfirmedRaw || 0));
 
-          // Sum up totals (using BigInt to avoid precision issues)
-          totalSent += BigInt(token.totalSent || 0);
-          totalReceived += BigInt(token.totalReceived || 0);
-          totalTransfers += token.transfers || 0;
-        });
+        // Sum up totals (using BigInt to avoid precision issues)
+        totalSent += BigInt(token.totalSent || 0);
+        totalReceived += BigInt(token.totalReceived || 0);
+        totalTransfers += token.transfers || 0;
+      });
 
-        // Real-time balance is confirmed + unconfirmed delta
-        const displayBalance = formatUnits(
-          (totalConfirmedBalance + totalUnconfirmedBalance).toString(),
+      // Real-time balance is confirmed + unconfirmed delta
+      const displayBalance = formatUnits(
+        (totalConfirmedBalance + totalUnconfirmedBalance).toString(),
+        decimals
+      );
+
+      return {
+        ...firstToken,
+        assetGuid: assetGuid,
+        // Use aggregated balances
+        balance: displayBalance,
+        confirmedBalance: formatUnits(
+          totalConfirmedBalance.toString(),
           decimals
-        );
-
-        return {
-          ...firstToken,
-          assetGuid: assetGuid,
-          // Use aggregated balances
-          balance: displayBalance,
-          confirmedBalance: formatUnits(
-            totalConfirmedBalance.toString(),
-            decimals
-          ),
-          unconfirmedBalance: formatUnits(
-            totalUnconfirmedBalance.toString(),
-            decimals
-          ),
-          totalSent: formatUnits(totalSent.toString(), decimals),
-          totalReceived: formatUnits(totalReceived.toString(), decimals),
-          transfers: totalTransfers,
-          chainId: networkChainId,
-          // Include count of UTXOs for debugging
-          utxoCount: tokens.length,
-        };
-      })
-      .slice(0, MAX_TOKENS_DISPLAY);
+        ),
+        unconfirmedBalance: formatUnits(
+          totalUnconfirmedBalance.toString(),
+          decimals
+        ),
+        totalSent: formatUnits(totalSent.toString(), decimals),
+        totalReceived: formatUnits(totalReceived.toString(), decimals),
+        transfers: totalTransfers,
+        chainId: networkChainId,
+        // Include count of UTXOs for debugging
+        utxoCount: tokens.length,
+      };
+    });
 
     console.log(
       `[SysAssetsController] Found ${getOnlyTokensWithAssetGuid.length} SPT tokens for user (from ${preventUndefined.length} total entries)`

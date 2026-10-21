@@ -261,10 +261,12 @@ const CustomRPCView = () => {
         return false;
       }
 
-      // For localhost/IP addresses, skip domain validation
+      // URL parsing has already validated bracketed IPv6 literals.
+      // Localhost and IP addresses do not need the DNS/TLD checks below.
       if (
         urlObj.hostname === 'localhost' ||
-        /^\d+\.\d+\.\d+\.\d+$/.test(urlObj.hostname)
+        /^\d+\.\d+\.\d+\.\d+$/.test(urlObj.hostname) ||
+        urlObj.hostname.startsWith('[')
       ) {
         return true;
       }
