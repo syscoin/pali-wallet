@@ -1,6 +1,6 @@
 /** @jest-environment jsdom */
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { createInstance } from 'i18next';
 import React from 'react';
 import { I18nextProvider, initReactI18next } from 'react-i18next';
@@ -23,7 +23,9 @@ const mockPopupData = {
   host: 'https://test-dapp.example',
   requestCount: 3,
 };
-const mockSpamConfig = { blockDurationMs: 60_000 };
+const mockSpamConfig: { blockDurationMs?: number } = {
+  blockDurationMs: 60_000,
+};
 const mockNavigate = jest.fn();
 
 jest.mock('hooks/index', () => ({
@@ -68,10 +70,12 @@ const renderWarning = async (
       <SpamWarning />
     </I18nextProvider>
   );
+  return i18n;
 };
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockSpamConfig.blockDurationMs = 60_000;
   jest.spyOn(window, 'close').mockImplementation(() => undefined);
 });
 afterEach(() => jest.restoreAllMocks());
@@ -98,6 +102,72 @@ it.each(locales)(
     expect(mockNavigate).not.toHaveBeenCalled();
   }
 );
+
+const durationTexts: Record<string, [string, string, string]> = {
+  en: ['1 minute', '2 minutes', '30 seconds'],
+  es: ['1 minuto', '2 minutos', '30 segundos'],
+  pt: ['1 minuto', '2 minutos', '30 segundos'],
+  fr: ['1 minute', '2 minutes', '30\u00a0secondes'],
+  de: ['1 Minute', '2 Minuten', '30 Sekunden'],
+  zh: ['1分钟', '2分钟', '30秒钟'],
+  ja: ['1 分', '2 分', '30 秒'],
+  ko: ['1분', '2분', '30초'],
+  ru: ['1 минута', '2 минуты', '30 секунд'],
+};
+
+it.each(
+  locales.flatMap(({ language, translations }) =>
+    [60_000, 120_000, 30_000].map((duration, index) => ({
+      language,
+      translations,
+      duration,
+      text: durationTexts[language][index],
+    }))
+  )
+)(
+  'localizes the duration $duration in $language',
+  async ({ language, translations, duration, text }) => {
+    mockSpamConfig.blockDurationMs = duration;
+    await renderWarning(language, translations);
+    const expected = translations.spamWarning.blockDuration.replace(
+      '{{duration}}',
+      text
+    );
+    expect(
+      screen.getByText(expected, { normalizer: (value) => value })
+    ).toBeTruthy();
+    expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
+    expect(mockNavigate).not.toHaveBeenCalled();
+  }
+);
+
+it.each([undefined, 0])(
+  'retains the one-minute default for duration %s',
+  async (duration) => {
+    mockSpamConfig.blockDurationMs = duration;
+    await renderWarning('en', enTranslations);
+    expect(screen.getByText('Block duration: 1 minute')).toBeTruthy();
+  }
+);
+
+it('retains singular seconds and the existing whole-minute rounding', async () => {
+  mockSpamConfig.blockDurationMs = 1_000;
+  const i18n = await renderWarning('en', enTranslations);
+  expect(screen.getByText('Block duration: 1 second')).toBeTruthy();
+  mockSpamConfig.blockDurationMs = 61_000;
+  await act(async () => i18n.changeLanguage('en'));
+  expect(screen.getByText('Block duration: 1 minute')).toBeTruthy();
+});
+
+it('updates the duration when the mounted warning changes language', async () => {
+  const i18n = await renderWarning('en', enTranslations);
+  expect(screen.getByText('Block duration: 1 minute')).toBeTruthy();
+  i18n.addResourceBundle('es', 'translation', esTranslations);
+  await act(async () => i18n.changeLanguage('es'));
+  expect(screen.getByText('Duración del bloqueo: 1 minuto')).toBeTruthy();
+  expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
+  expect(mockNavigate).not.toHaveBeenCalled();
+});
 
 it.each(locales)(
   'sends the temporary block choice before closing in $language',

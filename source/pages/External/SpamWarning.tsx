@@ -15,36 +15,32 @@ interface ISpamWarningData {
 }
 
 export const SpamWarning: React.FC = () => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
   const popupData = useQueryData() as ISpamWarningData;
-  const [timeRemaining, setTimeRemaining] = useState<string>('1 minute');
 
   // This route renders outside AppLayout, so signal readiness explicitly
   // to dismiss the HTML loader in external popups
   useAppReady();
 
   const spamConfig = useSelector((state: RootState) => state.spamFilter.config);
+  const duration = spamConfig.blockDurationMs || 60_000;
+  const minutes = Math.floor(duration / 60_000);
+  const timeRemaining = new Intl.NumberFormat(
+    i18n.resolvedLanguage || i18n.language || 'en',
+    {
+      style: 'unit',
+      unit: minutes > 0 ? 'minute' : 'second',
+      unitDisplay: 'long',
+    }
+  ).format(minutes > 0 ? minutes : Math.floor((duration % 60_000) / 1000));
   useEffect(() => {
     if (!popupData?.host) {
       console.error('No popup data provided');
       navigate('/home');
     }
   }, [popupData, navigate]);
-
-  useEffect(() => {
-    // Calculate time remaining in human-readable format
-    if (spamConfig.blockDurationMs) {
-      const minutes = Math.floor(spamConfig.blockDurationMs / 60000);
-      const seconds = Math.floor((spamConfig.blockDurationMs % 60000) / 1000);
-      if (minutes > 0) {
-        setTimeRemaining(`${minutes} minute${minutes !== 1 ? 's' : ''}`);
-      } else {
-        setTimeRemaining(`${seconds} second${seconds !== 1 ? 's' : ''}`);
-      }
-    }
-  }, [spamConfig.blockDurationMs]);
 
   const handleBlockSite = async () => {
     setIsLoading(true);
