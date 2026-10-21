@@ -60,7 +60,11 @@ async function open({
   render(
     <div onKeyDown={bubbled}>
       <button type="button">Before</button>
-      <div data-testid="unrelated-scroll-region" data-tooltip-scroll="" />
+      <div className="tippy-content">
+        <div>
+          <div data-testid="unrelated-scroll-region" />
+        </div>
+      </div>
       <Tooltip content={content} focusable={focusable}>
         <span>Preview</span>
         {withCopy && (
@@ -98,7 +102,7 @@ function key(reference: HTMLElement, value: string) {
 
 it('bounds only opted-in content while retaining the exact text and aria description', async () => {
   const { reference, tooltip, region } = await open();
-  expect(region).toHaveAttribute('data-tooltip-scroll');
+  expect(region.parentElement?.parentElement).toHaveClass('tippy-content');
   expect(region.style.maxHeight).toBe('50vh');
   expect(region.style.overflowY).toBe('auto');
   expect(region.textContent).toBe(PAYLOAD);
@@ -137,7 +141,7 @@ it('does not intercept scrolling keys when short content does not overflow', asy
 it('leaves non-focusable Tooltip content and ordinary Tab order unchanged', async () => {
   const { reference, region, user } = await open({ focusable: false });
   expect(reference).not.toHaveAttribute('tabindex');
-  expect(region).not.toHaveAttribute('data-tooltip-scroll');
+  expect(region.parentElement?.parentElement).toHaveClass('tippy-content');
   expect(region.style.maxHeight).toBe('');
   expect(region.style.overflowY).toBe('');
   await user.tab();

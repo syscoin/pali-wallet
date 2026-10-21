@@ -459,7 +459,7 @@ for (const payloadBytes of [48, 2048]) {
             .locator('[id="' + descriptionId + '"]')
             .getByRole('tooltip');
           await expect(tooltip).toHaveText(payload);
-          scrollRegion = tooltip.locator('[data-tooltip-scroll]');
+          scrollRegion = tooltip.locator('.tippy-content > div > div');
           await expect(scrollRegion).toHaveCount(1);
           await frame();
           const initial = await measure('keyboard-open');
