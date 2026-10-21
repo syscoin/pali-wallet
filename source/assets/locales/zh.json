@@ -459,6 +459,10 @@
     "receipts": "收据"
   },
   "settings": {
+    "smartAccountGuardianRecoveryDelayTestnet": "10分钟（测试网）",
+    "smartAccountGuardianRecoveryChooseDelay": "更新此策略前，请选择可用的等待时间。已安装的策略保持不变。",
+    "smartAccountRecoveryEmailAlerts": "Sysnode 邮件提醒",
+    "smartAccountRecoveryEmailAlertsDescription": "恢复开始或发生变化时接收邮件。登录 Sysnode 并连接此智能账户以启用监控。密钥保留在 Pali 中；提醒无法取消恢复，且邮件送达不受保证。",
     "smartAccountMetadataLoadFailed": "无法验证此账户的当前设置。请检查网络连接后重试。",
     "smartAccountMetadataRetry": "重试",
     "invalidWatchOnlyIdentifier": "请使用公开地址、扩展公钥或仅包含公开信息的描述符。切勿输入私钥。",

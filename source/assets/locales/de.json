@@ -459,6 +459,10 @@
     "receipts": "Belege"
   },
   "settings": {
+    "smartAccountGuardianRecoveryDelayTestnet": "10 Min. (Testnetz)",
+    "smartAccountGuardianRecoveryChooseDelay": "Wähle eine verfügbare Wartezeit, bevor du diese Richtlinie aktualisierst. Die installierte Richtlinie bleibt unverändert.",
+    "smartAccountRecoveryEmailAlerts": "E-Mail-Benachrichtigungen in Sysnode",
+    "smartAccountRecoveryEmailAlertsDescription": "Erhalte eine E-Mail, wenn eine Wiederherstellung beginnt oder sich ändert. Melde dich bei Sysnode an und verbinde dieses Smart-Konto, um die Überwachung zu aktivieren. Schlüssel bleiben in Pali; Benachrichtigungen können keine Wiederherstellung abbrechen und die Zustellung ist nicht garantiert.",
     "smartAccountMetadataLoadFailed": "Die aktuellen Einstellungen dieses Kontos konnten nicht überprüft werden. Prüfen Sie Ihre Verbindung und versuchen Sie es erneut.",
     "smartAccountMetadataRetry": "Erneut versuchen",
     "invalidWatchOnlyIdentifier": "Verwenden Sie eine öffentliche Adresse, einen erweiterten öffentlichen Schlüssel oder einen rein öffentlichen Deskriptor. Geben Sie niemals einen privaten Schlüssel ein.",

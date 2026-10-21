@@ -459,6 +459,10 @@
     "receipts": "Receipts"
   },
   "settings": {
+    "smartAccountGuardianRecoveryDelayTestnet": "10 min (testnet)",
+    "smartAccountGuardianRecoveryChooseDelay": "Choose an available wait period before updating this policy. The installed policy is unchanged.",
+    "smartAccountRecoveryEmailAlerts": "Email alerts in Sysnode",
+    "smartAccountRecoveryEmailAlertsDescription": "Get an email when recovery starts or changes. Sign in to Sysnode and connect this smart account to enable monitoring. Keys stay in Pali; alerts cannot cancel recovery and delivery is not guaranteed.",
     "smartAccountMetadataLoadFailed": "Couldn't verify this account's current settings. Check your connection and try again.",
     "smartAccountMetadataRetry": "Retry",
     "invalidWatchOnlyIdentifier": "Use a public address, public extended key, or public-only descriptor. Never enter a private key.",

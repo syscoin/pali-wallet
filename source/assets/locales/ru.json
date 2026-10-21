@@ -459,6 +459,10 @@
     "receipts": "Квитанции"
   },
   "settings": {
+    "smartAccountGuardianRecoveryDelayTestnet": "10 мин (тестовая сеть)",
+    "smartAccountGuardianRecoveryChooseDelay": "Выберите доступный период ожидания перед обновлением политики. Установленная политика не изменяется.",
+    "smartAccountRecoveryEmailAlerts": "Оповещения по почте в Sysnode",
+    "smartAccountRecoveryEmailAlertsDescription": "Получайте письма о начале или изменении восстановления. Войдите в Sysnode и подключите этот смарт-аккаунт для включения мониторинга. Ключи остаются в Pali; оповещения не могут отменить восстановление, и доставка не гарантируется.",
     "smartAccountMetadataLoadFailed": "Не удалось проверить текущие настройки этого аккаунта. Проверьте подключение и повторите попытку.",
     "smartAccountMetadataRetry": "Повторить",
     "invalidWatchOnlyIdentifier": "Используйте публичный адрес, расширенный публичный ключ или дескриптор, содержащий только публичные данные. Никогда не вводите приватный ключ.",

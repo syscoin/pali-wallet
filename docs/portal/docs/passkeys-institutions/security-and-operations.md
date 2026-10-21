@@ -45,6 +45,25 @@ Guardian recovery is a delayed validator replacement path. A guardian signature 
 
 Guardian recovery is not a custodial backdoor. It only works if the module is installed and the configured guardian threshold signs the recovery intent.
 
+### Recovery email alerts
+
+The recovery settings link to **Sysnode Account → Recovery alerts**. Sign in
+with a verified email address, connect the deployed smart account on a supported
+network, and approve the enrollment message in the wallet. This links the email
+address to that public account; it does not give Sysnode any signing keys or
+permission to move funds or cancel recovery.
+
+Check that Sysnode reports monitoring as active. It monitors independently of
+Pali being open and displays the on-chain execution deadline for a pending
+recovery. An email is a prompt to review the account in your trusted wallet,
+not an approval or cancellation action. Delivery can be delayed or fail, and an
+unavailable or lagging monitor is not evidence that the account is safe.
+
+New Pali recovery policies offer three- and seven-day waiting periods. The
+ten-minute option is restricted to known testnets. Existing policies are not
+changed automatically; the deployed contract's actual configuration remains
+authoritative.
+
 ## Credential backup status
 
 Pali may surface WebAuthn credential backup status when the browser and authenticator expose it. Treat this as operational signal, not as an on-chain security rule.

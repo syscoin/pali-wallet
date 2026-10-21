@@ -459,6 +459,10 @@
     "receipts": "レシート"
   },
   "settings": {
+    "smartAccountGuardianRecoveryDelayTestnet": "10分（テストネット）",
+    "smartAccountGuardianRecoveryChooseDelay": "このポリシーを更新する前に、選択可能な待機期間を選んでください。設定済みのポリシーは変更されません。",
+    "smartAccountRecoveryEmailAlerts": "Sysnodeのメール通知",
+    "smartAccountRecoveryEmailAlertsDescription": "復旧の開始や変更をメールで通知します。Sysnodeにログインしてこのスマートアカウントを接続すると監視を有効にできます。鍵はPali内に保持されます。通知で復旧を取り消すことはできず、メールの配信は保証されません。",
     "smartAccountMetadataLoadFailed": "このアカウントの現在の設定を確認できませんでした。接続を確認して、もう一度お試しください。",
     "smartAccountMetadataRetry": "再試行",
     "invalidWatchOnlyIdentifier": "公開アドレス、拡張公開鍵、または公開情報のみを含むディスクリプターを使用してください。秘密鍵は絶対に入力しないでください。",

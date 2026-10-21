@@ -48,6 +48,9 @@ import {
   getConfiguredAuthenticatorAddress,
   getPaliErc7739PersonalSignHash,
   getSmartAccountLocalOwnerContexts,
+  getGuardianRecoveryDelayOptions,
+  isGuardianRecoveryDelayAllowed,
+  SMART_ACCOUNT_GUARDIAN_DEFAULT_RECOVERY_DELAY_SECONDS,
   paliSmartAccountInterface,
   signAndSubmitSmartAccountExecutions,
   signSmartAccountActionHash,
@@ -341,7 +344,16 @@ const SmartAccountPolicy = () => {
     useState<RecoveryAuthenticatorId>('p256-webauthn');
   const [replacementEcdsaOwner, setReplacementEcdsaOwner] = useState('');
   const [guardianAddress, setGuardianAddress] = useState('');
-  const [guardianDelaySeconds, setGuardianDelaySeconds] = useState(86400);
+  const [guardianDelaySeconds, setGuardianDelaySeconds] = useState(
+    SMART_ACCOUNT_GUARDIAN_DEFAULT_RECOVERY_DELAY_SECONDS
+  );
+  const guardianDelayOptions = getGuardianRecoveryDelayOptions(
+    activeNetwork.chainId
+  );
+  const guardianDelayAllowed = isGuardianRecoveryDelayAllowed(
+    activeNetwork.chainId,
+    guardianDelaySeconds
+  );
   const [isGuardianRecoveryScreenOpen, setIsGuardianRecoveryScreenOpen] =
     useState(routeState?.smartAccountPolicyView === 'recovery');
   useEffect(() => {
@@ -885,7 +897,9 @@ const SmartAccountPolicy = () => {
     }
 
     setGuardianAddress('');
-    setGuardianDelaySeconds(86400);
+    setGuardianDelaySeconds(
+      SMART_ACCOUNT_GUARDIAN_DEFAULT_RECOVERY_DELAY_SECONDS
+    );
   }, [
     configuredGuardianAddress,
     configuredGuardianDelaySeconds,
@@ -1594,6 +1608,10 @@ const SmartAccountPolicy = () => {
     setIsGuardianPolicyUpdateConfirmOpen(false);
     if (!metadata || !normalizedGuardianAddress) {
       alert.error(t('settings.invalidSmartAccountGuardianAddress'));
+      return;
+    }
+    if (!guardianDelayAllowed) {
+      alert.error(t('settings.smartAccountGuardianRecoveryChooseDelay'));
       return;
     }
     if (hasGuardianRecovery && !guardianPolicyChanged) {
@@ -2647,45 +2665,48 @@ const SmartAccountPolicy = () => {
                               }
                             />
                           </Form.Item>
-                          <div className="grid grid-cols-3 gap-2">
-                            {[
-                              {
-                                label: '10 min',
-                                value: 600,
-                              },
-                              {
-                                label: t(
-                                  'settings.smartAccountGuardianRecoveryDelayThreeDays'
-                                ),
-                                value: 259200,
-                              },
-                              {
-                                label: t(
-                                  'settings.smartAccountGuardianRecoveryDelaySevenDays'
-                                ),
-                                value: 604800,
-                              },
-                            ].map((option) => (
+                          <div
+                            className={`grid gap-2 ${
+                              guardianDelayOptions.length === 3
+                                ? 'grid-cols-3'
+                                : 'grid-cols-2'
+                            }`}
+                          >
+                            {guardianDelayOptions.map((delaySeconds) => (
                               <button
-                                key={option.value}
+                                key={delaySeconds}
                                 type="button"
                                 className={`rounded-full border px-2 py-2 text-[11px] font-medium transition-all duration-200 ${
-                                  guardianDelaySeconds === option.value
+                                  guardianDelaySeconds === delaySeconds
                                     ? 'border-brand-blue500 bg-brand-blue500 bg-opacity-20 text-brand-blue100'
                                     : 'border-alpha-whiteAlpha300 bg-alpha-whiteAlpha100 text-white'
                                 }`}
                                 disabled={loading}
                                 onClick={() =>
-                                  setGuardianDelaySeconds(option.value)
+                                  setGuardianDelaySeconds(delaySeconds)
                                 }
                               >
-                                {option.label}
+                                {t(
+                                  delaySeconds === 600
+                                    ? 'settings.smartAccountGuardianRecoveryDelayTestnet'
+                                    : delaySeconds === 259200
+                                    ? 'settings.smartAccountGuardianRecoveryDelayThreeDays'
+                                    : 'settings.smartAccountGuardianRecoveryDelaySevenDays'
+                                )}
                               </button>
                             ))}
                           </div>
+                          {!guardianDelayAllowed && (
+                            <p className="text-xs leading-5 text-brand-yellowInfo">
+                              {t(
+                                'settings.smartAccountGuardianRecoveryChooseDelay'
+                              )}
+                            </p>
+                          )}
                           {renderModuleAction(
                             requestGuardianPolicyUpdate,
                             loading ||
+                              !guardianDelayAllowed ||
                               !normalizedGuardianAddress ||
                               (installed && !guardianPolicyChanged),
                             moduleActionKey === 'guardian-recovery:update',
@@ -2749,6 +2770,24 @@ const SmartAccountPolicy = () => {
                                       'settings.smartAccountGuardianRecoveryShowOptions'
                                     )}
                               </button>
+                            </div>
+                          )}
+                          {installed && (
+                            <div className="rounded-2xl border border-alpha-whiteAlpha300 p-3">
+                              <p className="text-xs leading-5 text-brand-graylight">
+                                {t(
+                                  'settings.smartAccountRecoveryEmailAlertsDescription'
+                                )}
+                              </p>
+                              <a
+                                href="https://sysnode.info/account#recovery-alerts"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="mt-2 inline-flex max-w-full items-center gap-2 rounded text-xs font-semibold text-brand-blue100 underline underline-offset-4 transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue500"
+                              >
+                                {t('settings.smartAccountRecoveryEmailAlerts')}
+                                <span aria-hidden="true">↗</span>
+                              </a>
                             </div>
                           )}
                         </div>

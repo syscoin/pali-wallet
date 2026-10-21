@@ -459,6 +459,10 @@
     "receipts": "Recibos"
   },
   "settings": {
+    "smartAccountGuardianRecoveryDelayTestnet": "10 min (red de prueba)",
+    "smartAccountGuardianRecoveryChooseDelay": "Elige un período de espera disponible antes de actualizar esta política. La política instalada no cambia.",
+    "smartAccountRecoveryEmailAlerts": "Alertas por correo en Sysnode",
+    "smartAccountRecoveryEmailAlertsDescription": "Recibe un correo cuando se inicie o cambie una recuperación. Inicia sesión en Sysnode y conecta esta cuenta inteligente para activar la supervisión. Las claves permanecen en Pali; las alertas no pueden cancelar una recuperación y no se garantiza su entrega.",
     "smartAccountMetadataLoadFailed": "No se pudo verificar la configuración actual de esta cuenta. Compruebe su conexión e inténtelo de nuevo.",
     "smartAccountMetadataRetry": "Reintentar",
     "invalidWatchOnlyIdentifier": "Use una dirección pública, una clave pública extendida o un descriptor que solo contenga información pública. Nunca introduzca una clave privada.",
