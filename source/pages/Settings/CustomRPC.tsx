@@ -944,19 +944,12 @@ const CustomRPCView = () => {
       label: chain.name,
       chainId: chain.chainId.toString(),
       symbol: chain.nativeCurrency.symbol.toUpperCase(),
+      // A new suggestion must not inherit another chain's explorer.
+      // UTXO keeps its existing fallback to the RPC that passes validation.
+      explorer: isSyscoinRpc ? '' : chain.explorers?.[0]?.url || '',
     };
 
     form.setFieldsValue(formValues);
-
-    // For EVM networks, also set explorer
-    if (!isSyscoinRpc) {
-      form.setFieldsValue({
-        explorer:
-          chain.explorers && chain.explorers.length > 0
-            ? chain.explorers[0].url
-            : '',
-      });
-    }
 
     // Reset URL field before testing
     form.setFieldsValue({ url: '' });

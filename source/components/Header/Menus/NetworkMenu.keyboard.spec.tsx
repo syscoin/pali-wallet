@@ -436,3 +436,81 @@ it('does not expose a menu while the header action is disabled', async () => {
   expect(screen.queryByRole('menu')).toBeNull();
   expect(mockEmitter).not.toHaveBeenCalled();
 });
+
+it('freshly opened menu selects EVM with a fresh typeahead query', async () => {
+  const { user, menu } = await openMenu();
+  await user.keyboard('EVM');
+  await expectActive(
+    menu,
+    screen.getByRole('menuitem', { name: 'EVM networks' })
+  );
+  expect(mockEmitter).not.toHaveBeenCalled();
+});
+
+it.each(['Escape', 'Tab', 'outside click'])(
+  'pointer reopening after %s starts a fresh typeahead query',
+  async (dismissal) => {
+    const { user, menu, trigger } = await openMenu();
+    await user.keyboard('UTXO');
+    await expectActive(
+      menu,
+      screen.getByRole('menuitem', { name: 'UTXO networks' })
+    );
+    if (dismissal === 'outside click') await user.click(document.body);
+    else await user.keyboard(`{${dismissal}}`);
+    if (dismissal === 'Escape')
+      await waitFor(() => expect(document.activeElement).toBe(trigger));
+    expect(screen.queryByRole('menu')).toBeNull();
+    await user.click(trigger);
+    const reopened = screen.getByRole('menu');
+    await user.keyboard('EVM');
+    expect(mockEmitter).not.toHaveBeenCalled();
+    await expectActive(
+      reopened,
+      screen.getByRole('menuitem', { name: 'EVM networks' })
+    );
+    expect(mockEmitter).not.toHaveBeenCalled();
+  }
+);
+
+it('Home clears the retained query after pointer reopening and restores typeahead', async () => {
+  const { user, menu, trigger } = await openMenu();
+  await user.keyboard('UTXO');
+  await expectActive(
+    menu,
+    screen.getByRole('menuitem', { name: 'UTXO networks' })
+  );
+  await user.keyboard('{Escape}');
+  await waitFor(() => expect(document.activeElement).toBe(trigger));
+  await user.click(trigger);
+  const reopened = screen.getByRole('menu');
+  await user.keyboard('{Home}EVM');
+  await expectActive(
+    reopened,
+    screen.getByRole('menuitem', { name: 'EVM networks' })
+  );
+  expect(mockEmitter).not.toHaveBeenCalled();
+});
+
+it('keyboard reopening retains ArrowUp last-item focus and fresh typeahead', async () => {
+  const { user, menu, trigger } = await openMenu();
+  await user.keyboard('UTXO');
+  await expectActive(
+    menu,
+    screen.getByRole('menuitem', { name: 'UTXO networks' })
+  );
+  await user.keyboard('{Escape}');
+  await waitFor(() => expect(document.activeElement).toBe(trigger));
+  await user.keyboard('{ArrowUp}');
+  const reopened = screen.getByRole('menu');
+  await expectActive(
+    reopened,
+    screen.getByRole('menuitem', { name: 'networkMenu.manageNetworks' })
+  );
+  await user.keyboard('EVM');
+  await expectActive(
+    reopened,
+    screen.getByRole('menuitem', { name: 'EVM networks' })
+  );
+  expect(mockEmitter).not.toHaveBeenCalled();
+});

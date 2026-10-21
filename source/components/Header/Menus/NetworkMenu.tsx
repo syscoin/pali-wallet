@@ -86,6 +86,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
   });
   const typeaheadInProgress = useRef(false);
   const typeaheadTimeout = useRef<ReturnType<typeof setTimeout>>();
+  const resetSearchOnOpen = useRef(false);
   const pointerPositions = useRef(new WeakMap<HTMLElement, [number, number]>());
   const resetTypeahead = useCallback(() => {
     clearTimeout(typeaheadTimeout.current);
@@ -478,6 +479,9 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
         <>
           <Menu.Button
             disabled={disabled}
+            onClick={(event) => {
+              resetSearchOnOpen.current = !menuprops.open && event.detail > 0;
+            }}
             className={`group relative inline-flex gap-x-2 items-center justify-start ml-2 w-max max-w-full text-white text-sm font-medium rounded-lg px-2 py-1.5 focus:outline-none transition-all duration-300 ease-in-out ${
               disabled
                 ? 'opacity-50 cursor-not-allowed'
@@ -536,7 +540,20 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
               as="div"
               onKeyDownCapture={handleGroupKeyDown}
               onFocusCapture={(event) => {
-                if (event.target !== event.currentTarget) resetTypeahead();
+                if (event.target !== event.currentTarget) {
+                  resetTypeahead();
+                  return;
+                }
+                if (!resetSearchOnOpen.current) return;
+                resetSearchOnOpen.current = false;
+                // Item focus clears Headless UI's retained typeahead query.
+                const menu = event.currentTarget;
+                menu
+                  .querySelector<HTMLElement>(
+                    '[role="menuitem"]:not([aria-disabled="true"])'
+                  )
+                  ?.focus({ preventScroll: true });
+                menu.focus({ preventScroll: true });
               }}
               className={`fixed overflow-x-hidden z-50 inset-x-0 top-8 bottom-0 w-full text-center text-brand-white font-poppins bg-brand-blue600 rounded-2xl focus:outline-none shadow-2xl ring-1 ring-black ring-opacity-5
               transform transition-all duration-100 ease-out ${
