@@ -938,10 +938,7 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
               }),
             ]}
           >
-            <Input
-              placeholder={t('send.receiver')}
-              onBlur={handleFieldBlur}
-            />
+            <Input placeholder={t('send.receiver')} onBlur={handleFieldBlur} />
           </Form.Item>
         </div>
         <div className="flex gap-2 w-full items-start">
