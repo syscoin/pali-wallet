@@ -113,7 +113,7 @@ test('Connected Sites keeps a foreign-family grant separate from the current acc
         .getByRole('button', { name: en.settings.connectedSites, exact: true })
         .click();
       await expect(page).toHaveURL(/#\/settings\/networks\/connected-sites$/);
-      await expect(page.getByText(origin, { exact: true })).toBeVisible();
+      await expect(page.getByTitle(origin, { exact: true })).toBeVisible();
     };
     const openReview = async () => {
       await page
@@ -296,7 +296,7 @@ test('Connected Sites keeps a foreign-family grant separate from the current acc
           })
           .click();
         await expect(page.getByRole('dialog')).toHaveCount(0);
-        await expect(page.getByText(origin, { exact: true })).toHaveCount(0);
+        await expect(page.getByTitle(origin, { exact: true })).toHaveCount(0);
         await expect(
           page.getByText('No sites are connected to Pali Wallet', {
             exact: true,
