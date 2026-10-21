@@ -224,6 +224,52 @@ describe('SmartAccountPolicy guardian approval', () => {
     delete (globalThis as any).localStorage;
   });
 
+  it('opens only the trusted Sysnode enrollment page without sharing account data', () => {
+    const link = findElement(
+      render(),
+      (element) =>
+        element.type === 'a' &&
+        element.props.children?.[0] ===
+          'settings.smartAccountRecoveryEmailAlerts'
+    );
+    expect(link).toBeDefined();
+    expect(link!.props.href).toBe(
+      'https://sysnode.info/account#recovery-alerts'
+    );
+    expect(link!.props.target).toBe('_blank');
+    expect(link!.props.rel).toBe('noopener noreferrer');
+    expect(link!.props.href).not.toContain(ACCOUNT);
+  });
+
+  it('offers the short recovery wait on testnet but not when the chain changes to mainnet', () => {
+    const testOption = (element: React.ReactElement) =>
+      element.type === 'button' &&
+      element.props.children ===
+        'settings.smartAccountGuardianRecoveryDelayTestnet';
+    expect(findElement(render(), testOption)).toBeDefined();
+    const selectState = (useSelector as jest.Mock).getMockImplementation()!;
+    const currentVault = selectState((state: any) => state.vault);
+    (useSelector as jest.Mock).mockImplementation((select) =>
+      select({
+        vault: {
+          ...currentVault,
+          activeNetwork: { chainId: 1, url: 'https://rpc.test' },
+        },
+        vaultGlobal: { activeSlip44: 60 },
+      })
+    );
+    expect(findElement(render(), testOption)).toBeUndefined();
+    expect(
+      findElement(
+        render(),
+        (element) =>
+          element.type === 'button' &&
+          element.props.children ===
+            'settings.smartAccountGuardianRecoveryDelayThreeDays'
+      )
+    ).toBeDefined();
+  });
+
   const startRecovery = async () => {
     await click('settings.smartAccountGuardianRecoveryShowOptions');
     await click('settings.ecdsaAuthenticator');

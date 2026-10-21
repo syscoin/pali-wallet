@@ -422,6 +422,20 @@ test('smart-account dialogs, policy and long dapp approvals fit narrow and short
         ).toBeVisible();
         await assertNoHorizontalClip(page, `policy ${label}`);
         await capture(`policy-${label}`);
+        const emailAlerts = page.getByRole('link', {
+          name: copy.settings.smartAccountRecoveryEmailAlerts,
+        });
+        await expect(emailAlerts).toHaveAttribute(
+          'href',
+          'https://sysnode.info/account#recovery-alerts'
+        );
+        await expect(emailAlerts).toHaveAttribute('rel', 'noopener noreferrer');
+        await emailAlerts.scrollIntoViewIfNeeded();
+        expect
+          .soft(await exposed(emailAlerts), `recovery alerts ${label}`)
+          .toBe(true);
+        await assertNoHorizontalClip(page, `recovery alerts ${label}`);
+        await capture(`recovery-alerts-${label}`);
         const recover = page.getByRole('button', {
           name: copy.settings.smartAccountGuardianRecoveryShowOptions,
           exact: true,

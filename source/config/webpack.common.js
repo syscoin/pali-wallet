@@ -259,7 +259,9 @@ module.exports = {
           from: 'source/assets/all_assets',
           to: 'assets/all_assets',
           globOptions: {
-            ignore: [],
+            // These files are byte-identical to favicon-128.png. Manifest and
+            // notification icons share that payload instead of shipping copies.
+            ignore: ['**/favicon-16.png', '**/favicon-48.png'],
           },
         },
         // Locale JSON is already emitted by i18n's static/dynamic imports.
@@ -279,7 +281,9 @@ module.exports = {
           from: 'source/assets/slh-dsa',
           to: 'assets/slh-dsa',
           globOptions: {
-            ignore: [],
+            // Keep the runtime JS/WASM unchanged. Build sources and developer
+            // notes belong in the repository, not every installed extension.
+            ignore: ['**/*.c', '**/*.md'],
           },
         },
         {

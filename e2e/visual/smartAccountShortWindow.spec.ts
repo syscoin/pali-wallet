@@ -38,6 +38,7 @@ test.beforeAll(async () => {
     export const useSelector=(fn:any)=>fn(state);
     const forbidden=(...args:any[])=>{(window as any).__forbidden.push(args);throw new Error('Synthetic layout fixture forbids wallet mutation');};
     const emitter=async([,method]:string[])=>{
+      if(method==='getWalletSessionGeneration')return 7;
       if(method==='hydrateSmartAccount')return metadata;
       if(method==='getSmartAccountGuardianRecoveryStatus')return{delay:'60',exists:true,guardians:[GUARDIAN],threshold:1};
       if(method==='getSLHDSASmartAccountSetupStatus')return null;
@@ -264,6 +265,73 @@ const exposed = (locator: Locator) =>
       return !!e && (e === element || element.contains(e));
     });
   });
+
+test('guardian disable confirmation identifies its account and fits short windows without submitting', async ({
+  page,
+}, info) => {
+  await page.route('**/*', (route) =>
+    new URL(route.request().url()).origin === origin
+      ? route.continue()
+      : route.abort('blockedbyclient')
+  );
+  for (const locale of ['en', 'de']) {
+    const copy = locale === 'en' ? en : de;
+    for (const height of [360, 480, 620]) {
+      await page.setViewportSize({ width: 400, height });
+      await page.goto(`${origin}/?mode=recovery&locale=${locale}`);
+      await page
+        .getByRole('button', {
+          name: copy.settings.smartAccountGuardianRecoveryDisable,
+          exact: true,
+        })
+        .click();
+      const dialog = page.getByRole('dialog');
+      await expect(dialog).toBeVisible();
+      await expect(dialog).toContainText(
+        '0x1111111111111111111111111111111111111111'
+      );
+      const confirm = dialog.getByRole('button', {
+        name: copy.settings.smartAccountGuardianRecoveryDisableConfirmButton,
+        exact: true,
+      });
+      const cancel = dialog.getByRole('button', {
+        name: copy.buttons.cancel,
+        exact: true,
+      });
+      expect(await exposed(confirm)).toBe(true);
+      expect(await exposed(cancel)).toBe(true);
+      expect(
+        await exposed(
+          dialog.getByText('0x1111111111111111111111111111111111111111', {
+            exact: true,
+          })
+        )
+      ).toBe(true);
+      expect(
+        await exposed(
+          dialog.getByText(
+            copy.settings.smartAccountGuardianRecoveryInvalidatesPending,
+            { exact: true }
+          )
+        )
+      ).toBe(true);
+      expect(await page.evaluate(() => (window as any).__forbidden)).toEqual(
+        []
+      );
+      await info.attach(`disable-recovery-${locale}-${height}`, {
+        body: await page.screenshot({
+          path: info.outputPath(`disable-recovery-${locale}-${height}.png`),
+        }),
+        contentType: 'image/png',
+      });
+      await cancel.click();
+      await expect(dialog).toHaveCount(0);
+      expect(await page.evaluate(() => (window as any).__forbidden)).toEqual(
+        []
+      );
+    }
+  }
+});
 
 test('synthetic smart-account creation error and recovery controls fit short windows', async ({
   page,
