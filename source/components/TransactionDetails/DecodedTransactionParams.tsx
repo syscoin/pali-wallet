@@ -59,11 +59,23 @@ export const DecodedTransactionParams: React.FC<
       return value ? t('send.yes') : t('send.no');
     }
 
-    if (type === 'bytes' || type.startsWith('bytes')) {
-      return value.slice(0, 10) + '...';
-    }
-
     return String(value);
+  };
+
+  const renderDetail = (label: string, content: React.ReactNode) => (
+    <div className="flex items-center justify-between">
+      <span className="text-xs text-brand-gray200">{label}:</span>
+      {content}
+    </div>
+  );
+
+  const renderAddress = (address: string) => {
+    const display = formatAddress(address);
+    return (
+      <Tooltip content={address} focusable={display !== address}>
+        <span className="text-xs text-white font-mono">{display}</span>
+      </Tooltip>
+    );
   };
 
   // Special formatting for approval transactions
@@ -77,20 +89,12 @@ export const DecodedTransactionParams: React.FC<
 
       return (
         <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-brand-gray200">
-              {t('transactions.spender')}:
-            </span>
-            <Tooltip content={approvalData.inputs[0]}>
-              <span className="text-xs text-white font-mono">
-                {formatAddress(approvalData.inputs[0])}
-              </span>
-            </Tooltip>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-brand-gray200">
-              {t('transactions.approvalAmount')}:
-            </span>
+          {renderDetail(
+            t('transactions.spender'),
+            renderAddress(approvalData.inputs[0])
+          )}
+          {renderDetail(
+            t('transactions.approvalAmount'),
             <span
               className={`text-xs font-medium ${
                 isUnlimited ? 'text-warning-error' : 'text-white'
@@ -98,17 +102,14 @@ export const DecodedTransactionParams: React.FC<
             >
               {isUnlimited ? `⚠️ ${t('transactions.unlimited')}` : amountStr}
             </span>
-          </div>
-          {approvalData.tokenStandard && (
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-brand-gray200">
-                {t('transactions.tokenStandard')}:
-              </span>
+          )}
+          {approvalData.tokenStandard &&
+            renderDetail(
+              t('transactions.tokenStandard'),
               <span className="text-xs text-white">
                 {approvalData.tokenStandard}
               </span>
-            </div>
-          )}
+            )}
         </div>
       );
     }
@@ -116,24 +117,16 @@ export const DecodedTransactionParams: React.FC<
     if (approvalData.approvalType === 'erc721-single') {
       return (
         <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-brand-gray200">
-              {t('transactions.approvedTo')}:
-            </span>
-            <Tooltip content={approvalData.inputs[0]}>
-              <span className="text-xs text-white font-mono">
-                {formatAddress(approvalData.inputs[0])}
-              </span>
-            </Tooltip>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-brand-gray200">
-              {t('send.tokenId')}:
-            </span>
+          {renderDetail(
+            t('transactions.approvedTo'),
+            renderAddress(approvalData.inputs[0])
+          )}
+          {renderDetail(
+            t('send.tokenId'),
             <span className="text-xs text-white">
               #{approvalData.inputs[1].toString()}
             </span>
-          </div>
+          )}
         </div>
       );
     }
@@ -141,20 +134,12 @@ export const DecodedTransactionParams: React.FC<
     if (approvalData.approvalType === 'nft-all') {
       return (
         <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-brand-gray200">
-              {t('transactions.operator')}:
-            </span>
-            <Tooltip content={approvalData.inputs[0]}>
-              <span className="text-xs text-white font-mono">
-                {formatAddress(approvalData.inputs[0])}
-              </span>
-            </Tooltip>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-brand-gray200">
-              {t('transactions.approvalStatus')}:
-            </span>
+          {renderDetail(
+            t('transactions.operator'),
+            renderAddress(approvalData.inputs[0])
+          )}
+          {renderDetail(
+            t('transactions.approvalStatus'),
             <span
               className={`text-xs font-medium ${
                 approvalData.inputs[1]
@@ -166,7 +151,7 @@ export const DecodedTransactionParams: React.FC<
                 ? `✓ ${t('transactions.approved')}`
                 : `✗ ${t('transactions.revoked')}`}
             </span>
-          </div>
+          )}
         </div>
       );
     }
@@ -185,30 +170,31 @@ export const DecodedTransactionParams: React.FC<
 
         {!isApproval && decodedData.inputs.length > 0 && (
           <div className="space-y-2">
-            {decodedData.inputs.map((input, index) => (
-              <div key={index} className="flex items-center justify-between">
-                <span className="text-xs text-brand-gray200">
-                  {decodedData.names[index] || `param${index}`}
-                  <span className="text-brand-gray400 ml-1">
-                    ({decodedData.types[index]})
+            {decodedData.inputs.map((input, index) => {
+              const value = formatValue(input, decodedData.types[index]);
+              const display =
+                decodedData.types[index] === 'address'
+                  ? formatAddress(input)
+                  : value.length > 20
+                  ? ellipsis(value, 10, 4)
+                  : value;
+              return (
+                <div key={index} className="flex items-center justify-between">
+                  <span className="text-xs text-brand-gray200">
+                    {decodedData.names[index] || `param${index}`}
+                    <span className="text-brand-gray400 ml-1">
+                      ({decodedData.types[index]})
+                    </span>
+                    :
                   </span>
-                  :
-                </span>
-                <Tooltip content={formatValue(input, decodedData.types[index])}>
-                  <span className="text-xs text-white font-mono">
-                    {decodedData.types[index] === 'address'
-                      ? formatAddress(input)
-                      : formatValue(input, decodedData.types[index]).length > 20
-                      ? ellipsis(
-                          formatValue(input, decodedData.types[index]),
-                          10,
-                          4
-                        )
-                      : formatValue(input, decodedData.types[index])}
-                  </span>
-                </Tooltip>
-              </div>
-            ))}
+                  <Tooltip content={value} focusable={display !== value}>
+                    <span className="text-xs text-white font-mono">
+                      {display}
+                    </span>
+                  </Tooltip>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
