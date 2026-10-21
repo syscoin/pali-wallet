@@ -13,9 +13,9 @@ const budget = {
   // Count every mandatory MV3 warm chunk below, including the optional feature.
   background: 4400000,
   contentScript: 16000,
-  // Shared warning modals measured 8,590,479 bytes with receipt/amount guards.
+  // Current recovery packaging measured 8,557,224 bytes with review guards.
   // Retain the saving with a rounded ceiling and a small platform buffer.
-  package: 8565000,
+  package: 8558000,
 };
 const allFiles = (root) =>
   fs.readdirSync(root, { withFileTypes: true }).flatMap((entry) => {
