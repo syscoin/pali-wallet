@@ -30,6 +30,7 @@ const updatedApi = 'https://new-explorer.example/api';
 let manager: ReturnType<typeof TransactionsManager>;
 const read = (
   options: {
+    bypassCompleted?: boolean;
     force?: boolean;
     pending?: boolean;
     rapid?: boolean;
@@ -49,7 +50,9 @@ const read = (
     true,
     Boolean(options.rapid),
     Boolean(options.force),
-    options.scope
+    options.scope,
+    undefined,
+    options.bypassCompleted
   );
 
 beforeEach(() => {
@@ -328,3 +331,77 @@ it('keeps independent endpoint cache writers independent', async () => {
   expect(await read()).toBe(firstEndpoint);
   expect(mockEvmPolling).toHaveBeenCalledTimes(2);
 });
+
+it.each([false, true])(
+  'manual cache bypass coalesces repeated fresh reads (utxo=%s)',
+  async (utxo) => {
+    const poll = utxo ? mockUtxoPolling : mockEvmPolling;
+    await read({ utxo });
+    const response = deferred();
+    poll.mockReturnValueOnce(response.promise);
+    const first = read({ utxo, bypassCompleted: true, scope: '1:1' });
+    const second = read({ utxo, bypassCompleted: true, scope: '1:1' });
+    expect(poll).toHaveBeenCalledTimes(2);
+    const fresh = [{ hash: 'manual', txid: 'manual', blockNumber: 2 }];
+    response.resolve(fresh);
+    expect(await first).toBe(fresh);
+    expect(await second).toBe(fresh);
+  }
+);
+
+it.each([false, true])(
+  'manual cache bypass joins a current ordinary full read (utxo=%s)',
+  async (utxo) => {
+    const poll = utxo ? mockUtxoPolling : mockEvmPolling;
+    const response = deferred();
+    poll.mockReturnValueOnce(response.promise);
+    const ordinary = read({ utxo, scope: '1:1' });
+    const manual = read({ utxo, bypassCompleted: true, scope: '1:1' });
+    expect(poll).toHaveBeenCalledTimes(1);
+    const fresh = [{ hash: 'manual', txid: 'manual', blockNumber: 2 }];
+    response.resolve(fresh);
+    expect(await ordinary).toBe(fresh);
+    expect(await manual).toBe(fresh);
+  }
+);
+
+it.each([false, true])(
+  'manual cache bypass retries an expired full read without weakening its deadline (utxo=%s)',
+  async (utxo) => {
+    const now = jest.spyOn(Date, 'now').mockReturnValue(1000);
+    const poll = utxo ? mockUtxoPolling : mockEvmPolling;
+    const response = deferred();
+    const fresh = [{ hash: 'manual', txid: 'manual', blockNumber: 2 }];
+    poll.mockReturnValueOnce(response.promise).mockResolvedValueOnce(fresh);
+    const first = read({ utxo, bypassCompleted: true, scope: '1:1' });
+    now.mockReturnValue(6000);
+    const joined = read({ utxo, bypassCompleted: true, scope: '1:1' });
+    expect(poll).toHaveBeenCalledTimes(1);
+    now.mockReturnValue(6001);
+    expect(await read({ utxo, bypassCompleted: true, scope: '1:1' })).toBe(
+      fresh
+    );
+    expect(poll).toHaveBeenCalledTimes(2);
+    response.resolve([{ hash: 'old', txid: 'old', blockNumber: 1 }]);
+    await Promise.all([first, joined]);
+    expect(await read({ utxo, scope: '1:1' })).toBe(fresh);
+  }
+);
+
+it.each([false, true])(
+  'manual cache bypass does not join an older request scope (utxo=%s)',
+  async (utxo) => {
+    const poll = utxo ? mockUtxoPolling : mockEvmPolling;
+    const response = deferred();
+    const fresh = [{ hash: 'manual', txid: 'manual', blockNumber: 2 }];
+    poll.mockReturnValueOnce(response.promise).mockResolvedValueOnce(fresh);
+    const first = read({ utxo, bypassCompleted: true, scope: '1:1' });
+    expect(await read({ utxo, bypassCompleted: true, scope: '2:1' })).toBe(
+      fresh
+    );
+    expect(poll).toHaveBeenCalledTimes(2);
+    response.resolve([{ hash: 'old', txid: 'old', blockNumber: 1 }]);
+    await first;
+    expect(await read({ utxo, scope: '2:1' })).toBe(fresh);
+  }
+);

@@ -55,7 +55,8 @@ const TransactionsManager = (): ITransactionsManager => {
     isRapidPolling?: boolean,
     forceRefresh?: boolean,
     requestScope?: string,
-    isCurrentRead?: () => boolean
+    isCurrentRead?: () => boolean,
+    bypassCompletedCache = false
   ) => {
     // Clear expired cache entries
     clearExpiredCache();
@@ -90,7 +91,7 @@ const TransactionsManager = (): ITransactionsManager => {
 
     // Only use cache if there are no pending transactions
     // This ensures we always get fresh data when confirmations might have changed
-    if (!forceRefresh && !hasUnconfirmedTxs) {
+    if (!forceRefresh && !bypassCompletedCache && !hasUnconfirmedTxs) {
       const cachedResult = transactionCache.get(cacheKey);
       if (cachedResult && Date.now() - cachedResult.timestamp < CACHE_TTL) {
         return cachedResult.data;

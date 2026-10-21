@@ -168,7 +168,14 @@ const MasterController = (
     const vaultState = externalStore.getState().vault;
     const activeAccount = selectActiveAccount({ vault: vaultState } as any);
     if (!activeAccount?.address) return;
-    callGetLatestUpdateForAccount();
+    // Explicit user refresh bypasses completed history cache; polling does not.
+    void wallet.getLatestUpdateForCurrentAccount(
+      false,
+      true,
+      false,
+      false,
+      true
+    );
   };
 
   /**
