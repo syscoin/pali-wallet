@@ -601,13 +601,15 @@ export class SentryController {
       await this.host.getSeed(params.password);
       this.assertCurrent(scope);
       const network = getSentryNetwork(scope.network);
+      const { txid, vout, proTxHash, pendingRegistration } = params.reservation;
+      const reservation = { txid, vout, proTxHash, pendingRegistration };
       await releaseSentryCollateral({
         walletIdentity: scope.rootPublicIdentity,
         genesisHash: SENTRY_NETWORKS[network].genesisHash,
-        reservation: params.reservation,
+        reservation,
         assertCurrent: () => this.assertCurrent(scope),
       });
-      return this.settings(scope);
+      return reservation;
     });
   }
 

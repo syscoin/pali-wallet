@@ -5,7 +5,7 @@ import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { MemoryRouter } from 'react-router-dom';
 
-import { KeyringAccountType } from 'types/network';
+import { INetworkType, KeyringAccountType } from 'types/network';
 
 import ConnectedSites from './ConnectedSites';
 
@@ -74,6 +74,7 @@ beforeEach(() => {
   mockNavigate.mockReset();
   mockState = {
     vault: {
+      activeNetwork: { kind: INetworkType.Ethereum },
       activeAccount: { id: 0, type: KeyringAccountType.HDAccount },
       accounts: {
         [KeyringAccountType.HDAccount]: {
@@ -104,6 +105,7 @@ beforeEach(() => {
           host,
           accountId: 0,
           accountType: KeyringAccountType.Imported,
+          chain: INetworkType.Ethereum,
         },
       },
     },
@@ -156,13 +158,68 @@ it('retains attribution for a different ID within the same account type', () => 
   expect(screen.getByText('Connected to: Another HD account')).toBeVisible();
 });
 
-it('uses the account-number fallback when the connected account is missing', () => {
+it('uses the account-number fallback when the connected account is missing', async () => {
   delete mockState.vault.accounts[KeyringAccountType.Imported][0];
   mount();
 
   expect(screen.getByText('Connected to: Account 1')).toBeVisible();
   expect(screen.queryByText('Connected to: Active HD account')).toBeNull();
+  await userEvent
+    .setup()
+    .click(screen.getByRole('button', { name: 'Edit connection' }));
+  expect(
+    within(screen.getByRole('dialog')).getByText('Unavailable')
+  ).toBeVisible();
+  expect(
+    within(screen.getByRole('dialog')).queryByText('active-address')
+  ).toBeNull();
 });
+
+it.each([INetworkType.Syscoin, INetworkType.Ethereum])(
+  'does not attribute a retained foreign grant to the current %s vault',
+  async (kind) => {
+    mockState.vault.activeNetwork.kind = kind;
+    connection().chain =
+      kind === INetworkType.Syscoin
+        ? INetworkType.Ethereum
+        : INetworkType.Syscoin;
+    const user = userEvent.setup();
+    mount();
+    expect(screen.getByText('Connected to: Account 1')).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Edit connection' }));
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByText('Account 1')).toBeVisible();
+    expect(within(dialog).getByText('Unavailable')).toBeVisible();
+    expect(within(dialog).queryByText('Imported signer')).toBeNull();
+    expect(within(dialog).queryByText('imported-address')).toBeNull();
+    expect(
+      within(dialog).getByText(kind === INetworkType.Syscoin ? 'EVM' : 'UTXO')
+    ).toBeVisible();
+    expect(
+      within(dialog).getByRole('button', { name: 'Delete connected site' })
+    ).toBeEnabled();
+  }
+);
+
+it.each([undefined, 'unrecognized'])(
+  'keeps an unscoped grant removable without guessing its account or family (%s)',
+  async (chain) => {
+    connection().chain = chain as INetworkType;
+    mount();
+    await userEvent
+      .setup()
+      .click(screen.getByRole('button', { name: 'Edit connection' }));
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByText('Unavailable')).toBeVisible();
+    expect(within(dialog).queryByText('Imported signer')).toBeNull();
+    expect(within(dialog).queryByText('imported-address')).toBeNull();
+    expect(within(dialog).queryByText('EVM')).toBeNull();
+    expect(within(dialog).queryByText('UTXO')).toBeNull();
+    expect(
+      within(dialog).getByRole('button', { name: 'Delete connected site' })
+    ).toBeEnabled();
+  }
+);
 
 it('constrains long inactive-account labels and hosts without dropping their accessible text', () => {
   const label = 'A'.repeat(80);

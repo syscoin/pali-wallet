@@ -18,6 +18,15 @@ import type {
 const fieldClass =
   'mt-2 w-full min-w-0 min-h-11 rounded-xl border border-fields-input-border bg-bkg-1 p-3 text-sm text-white focus:border-fields-input-borderfocus';
 
+const sameReservation = (
+  first: SentryCollateralReservation,
+  second: SentryCollateralReservation
+) =>
+  first.txid === second.txid &&
+  first.vout === second.vout &&
+  first.proTxHash === second.proTxHash &&
+  first.pendingRegistration === second.pendingRegistration;
+
 /** Keys never enter Redux, navigation state, the dapp or analytics. */
 const SentryKeys = () => {
   const { t } = useTranslation();
@@ -137,6 +146,7 @@ const SentryKeys = () => {
     setNotice('');
     let importCommitted = false;
     let removedKeyId: string | undefined;
+    let releasedReservation: SentryCollateralReservation | undefined;
     let savedPreferences:
       | Pick<SentrySettings, 'serviceUrl' | 'maxFeeSatoshis'>
       | undefined;
@@ -217,7 +227,7 @@ const SentryKeys = () => {
           throw new Error(t('sentry.unableToCompleteSentryOperation'));
         removedKeyId = removeId;
       } else if (isRelease && release) {
-        await controllerEmitter(
+        const released = (await controllerEmitter(
           ['wallet', 'releaseSentryCollateral'],
           [
             {
@@ -228,7 +238,10 @@ const SentryKeys = () => {
           ],
           30000,
           false
-        );
+        )) as SentryCollateralReservation | null;
+        if (!released || !sameReservation(released, release))
+          throw new Error(t('sentry.unableToCompleteSentryOperation'));
+        releasedReservation = release;
       }
       if (!isCurrentJob()) return;
       if (savedPreferences)
@@ -247,6 +260,22 @@ const SentryKeys = () => {
         setRemoveId('');
         setMode('list');
       }
+      if (releasedReservation) {
+        const released = releasedReservation;
+        setSettings((previous) =>
+          previous
+            ? {
+                ...previous,
+                collateral: previous.collateral.filter(
+                  (entry) => !sameReservation(entry, released)
+                ),
+              }
+            : previous
+        );
+        setRelease(undefined);
+        setReleaseAcknowledged(false);
+        setMode('list');
+      }
       if (isImport) setBackup(false);
       const value = (await controllerEmitter([
         'wallet',
@@ -258,7 +287,12 @@ const SentryKeys = () => {
       setNotice(completionNotice());
     } catch (reason: any) {
       if (isCurrentJob()) {
-        if (importCommitted || removedKeyId || savedPreferences) {
+        if (
+          importCommitted ||
+          removedKeyId ||
+          releasedReservation ||
+          savedPreferences
+        ) {
           setMode('list');
           setNotice(completionNotice());
           setError(t('sentry.unableToLoadSentrySettings'));

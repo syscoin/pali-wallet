@@ -4,6 +4,7 @@ import { INetworkType } from 'types/network';
 
 export const NetworkTypeBadge = ({ kind }: { kind?: INetworkType }) => {
   const isUtxo = kind === INetworkType.Syscoin;
+  if (!isUtxo && kind !== INetworkType.Ethereum) return null;
   return (
     <span
       className={`px-1.5 py-0.5 text-[10px] font-medium text-white rounded-full ${

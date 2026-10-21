@@ -18,18 +18,23 @@ import { EditIconSvg } from 'components/Icon/Icon';
 import { Button, Icon, IconButton, PageActionFooter } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
+import { IDApp } from 'state/dapp/types';
 import { RootState } from 'state/store';
 import { ellipsis } from 'utils/index';
 import { navigateBack } from 'utils/navigationState';
+
+import { NetworkTypeBadge } from './NetworkTypeBadge';
 
 const ConnectedSites = () => {
   const { controllerEmitter } = useController();
   const { navigate } = useUtils();
   const location = useLocation();
   const { t } = useTranslation();
-  const { accounts, activeAccount: activeAccountMeta } = useSelector(
-    (state: RootState) => state.vault
-  );
+  const {
+    accounts,
+    activeAccount: activeAccountMeta,
+    activeNetwork,
+  } = useSelector((state: RootState) => state.vault);
 
   // Get dapps directly from Redux state
   const dapps = useSelector((state: RootState) => state.dapp.dapps);
@@ -44,6 +49,15 @@ const ConnectedSites = () => {
   const dappsList = Object.values(dapps);
   const [selectedHost, setSelectedHost] = useState<string>();
   const selected = dappsList.find((dapp) => dapp.host === selectedHost);
+  // Retained grants from another family remain removable, but their numeric
+  // account slot must never resolve against the currently loaded vault.
+  const accountFor = (dapp: IDApp) =>
+    dapp.chain === activeNetwork.kind
+      ? accounts[dapp.accountType]?.[dapp.accountId]
+      : undefined;
+  const accountLabel = (dapp: IDApp) =>
+    accountFor(dapp)?.label || `Account ${dapp.accountId + 1}`;
+  const selectedAccount = selected ? accountFor(selected) : undefined;
   useEffect(() => {
     if (selectedHost && !selected) setSelectedHost(undefined);
   }, [selectedHost, selected]);
@@ -95,18 +109,14 @@ const ConnectedSites = () => {
                 <p className="truncate font-medium" title={_dapp.host}>
                   {_dapp.host}
                 </p>
-                {(_dapp.accountType !== activeAccountMeta.type ||
+                {(_dapp.chain !== activeNetwork.kind ||
+                  _dapp.accountType !== activeAccountMeta.type ||
                   _dapp.accountId !== activeAccountMeta.id) && (
                   <p
                     className="truncate text-brand-graylight text-[10px] mt-1"
-                    title={
-                      accounts[_dapp.accountType]?.[_dapp.accountId]?.label ||
-                      `Account ${_dapp.accountId + 1}`
-                    }
+                    title={accountLabel(_dapp)}
                   >
-                    Connected to:{' '}
-                    {accounts[_dapp.accountType]?.[_dapp.accountId]?.label ||
-                      `Account ${_dapp.accountId + 1}`}
+                    Connected to: {accountLabel(_dapp)}
                   </p>
                 )}
               </div>
@@ -163,18 +173,19 @@ const ConnectedSites = () => {
                   <p className="mb-3 text-brand-white">
                     {t('settings.permissions')}
                   </p>
+                  {selected.chain !== activeNetwork.kind && (
+                    <NetworkTypeBadge kind={selected.chain} />
+                  )}
 
                   <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
                     <p className="break-words text-brand-white text-xs">
-                      {accounts[selected.accountType]?.[selected.accountId]
-                        ?.label || `Account ${selected.accountId + 1}`}
+                      {accountLabel(selected)}
                     </p>
 
                     <p className="break-all text-brand-white text-xs">
-                      {ellipsis(
-                        accounts[selected.accountType]?.[selected.accountId]
-                          ?.address
-                      )}
+                      {selectedAccount?.address
+                        ? ellipsis(selectedAccount.address)
+                        : t('settings.unavailable')}
                     </p>
                   </div>
                 </div>
