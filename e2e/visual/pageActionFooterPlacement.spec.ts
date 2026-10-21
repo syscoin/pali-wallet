@@ -1,4 +1,5 @@
 import { chromium, expect, test, type Locator } from '@playwright/test';
+import { HDNodeWallet } from 'ethers';
 import fs from 'fs';
 import path from 'path';
 
@@ -63,6 +64,112 @@ test('shared page actions stay bottom-aligned and reachable across wallet screen
     await wallet.importSeedAndCreatePassword();
     await wallet.ensureOnHome();
     const page = wallet.page;
+    const evmAddress = HDNodeWallet.fromPhrase(UTXO_FIXTURE_SEED).address;
+    const evmReads: string[] = [];
+    const deniedEvmReads: string[] = [];
+    await wallet.context.route('https://rpc.tanenbaum.io/**', async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      let payload: any;
+      try {
+        payload = request.postDataJSON();
+      } catch {
+        payload = null;
+      }
+      const calls = Array.isArray(payload) ? payload : [payload];
+      const replies = calls.map((call) => {
+        if (
+          request.method() !== 'POST' ||
+          url.origin !== 'https://rpc.tanenbaum.io' ||
+          url.pathname !== '/' ||
+          url.search ||
+          call?.jsonrpc !== '2.0' ||
+          !Array.isArray(call.params)
+        )
+          return undefined;
+        let result: unknown;
+        if (!call.params.length) {
+          if (call.method === 'eth_chainId') result = '0x1644';
+          if (call.method === 'net_version') result = '5700';
+          if (call.method === 'eth_blockNumber') result = '0x1';
+          if (
+            ['eth_gasPrice', 'eth_maxPriorityFeePerGas'].includes(call.method)
+          )
+            result = '0x3b9aca00';
+        }
+        if (
+          ['eth_getBalance', 'eth_getTransactionCount'].includes(call.method) &&
+          call.params.length === 2 &&
+          String(call.params[0]).toLowerCase() === evmAddress.toLowerCase() &&
+          ['latest', 'pending'].includes(call.params[1])
+        )
+          result = '0x0';
+        if (
+          call.method === 'eth_getBlockByNumber' &&
+          call.params.length === 2 &&
+          ((['latest', '0x1'].includes(call.params[0]) &&
+            call.params[1] === false) ||
+            (['0x0', '0x1'].includes(call.params[0]) &&
+              call.params[1] === true))
+        )
+          result = {
+            number: call.params[0] === '0x0' ? '0x0' : '0x1',
+            hash: '0x' + (call.params[0] === '0x0' ? '11' : '12').repeat(32),
+            parentHash:
+              '0x' + (call.params[0] === '0x0' ? '00' : '11').repeat(32),
+            nonce: '0x0000000000000000',
+            timestamp: call.params[0] === '0x0' ? '0x0' : '0x1',
+            difficulty: '0x0',
+            gasLimit: '0x1c9c380',
+            gasUsed: '0x0',
+            miner: '0x' + '00'.repeat(20),
+            extraData: '0x',
+            transactions: [],
+            baseFeePerGas: '0x3b9aca00',
+          };
+        if (result === undefined) return undefined;
+        return { jsonrpc: '2.0', id: call.id, result };
+      });
+      if (!calls.length || replies.some((reply) => !reply)) {
+        deniedEvmReads.push(
+          calls.map((call) => call?.method || 'invalid').join(',')
+        );
+        return route.abort('blockedbyclient');
+      }
+      evmReads.push(...calls.map((call) => call.method));
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(Array.isArray(payload) ? replies : replies[0]),
+      });
+    });
+    const expectNetwork = async (
+      kind: 'syscoin' | 'ethereum',
+      label: string
+    ) => {
+      await expect
+        .poll(() =>
+          page.evaluate(async () => {
+            const state = await chrome.runtime.sendMessage({
+              type: 'getCurrentState',
+            });
+            return {
+              kind: state.vault.activeNetwork.kind,
+              chainId: state.vault.activeNetwork.chainId,
+              label: state.vault.activeNetwork.label,
+              isBitcoinBased: state.vault.isBitcoinBased,
+            };
+          })
+        )
+        .toEqual({
+          kind,
+          chainId: 5700,
+          label,
+          isBitcoinBased: kind === 'syscoin',
+        });
+    };
+    await wallet.switchNetwork('Syscoin Testnet', 'UTXO');
+    await expectNetwork('syscoin', 'Syscoin Testnet');
     for (const height of [360, 480, 620]) {
       await page.setViewportSize({ width: 400, height });
       for (const route of [
@@ -79,6 +186,10 @@ test('shared page actions stay bottom-aligned and reachable across wallet screen
         'settings/seed',
         'faucet',
       ]) {
+        if (route === 'faucet') {
+          await wallet.switchNetwork('Syscoin NEVM Testnet', 'EVM');
+          await expectNetwork('ethereum', 'Syscoin NEVM Testnet');
+        }
         await wallet.gotoRoute('#/home');
         await wallet.gotoRoute(`#/${route}`);
         const footer = page.locator('[data-page-action-footer]');
@@ -113,6 +224,10 @@ test('shared page actions stay bottom-aligned and reachable across wallet screen
           path: screenshot,
           contentType: 'image/png',
         });
+        if (route === 'faucet') {
+          await wallet.switchNetwork('Syscoin Testnet', 'UTXO');
+          await expectNetwork('syscoin', 'Syscoin Testnet');
+        }
       }
       await wallet.gotoRoute('#/home');
       await wallet.gotoRoute('#/settings/manage-accounts');
@@ -185,6 +300,8 @@ test('shared page actions stay bottom-aligned and reachable across wallet screen
       await page.evaluate(() => (window as any).__restoreFooterFixture());
     }
     expect(routes.deniedWrites).toEqual([]);
+    expect(deniedEvmReads).toEqual([]);
+    expect(evmReads).toEqual(expect.arrayContaining(['eth_getBalance']));
     if (test.info().errors.length === 0) status = 'passed';
   } finally {
     try {
