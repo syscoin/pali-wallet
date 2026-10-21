@@ -57,8 +57,8 @@ afterEach(() => {
 });
 
 it('retains ordinary hover and pointer activation', async () => {
-  const view = mount();
-  fireEvent.mouseEnter(view.container.querySelector('.fixed')!);
+  mount();
+  fireEvent.mouseEnter(opener());
   expect(screen.getByText('Set Pali as default wallet!')).toBeInTheDocument();
   await act(async () =>
     fireEvent.click(screen.getByText('Set Pali as default wallet!'))
@@ -66,6 +66,26 @@ it('retains ordinary hover and pointer activation', async () => {
   expect(mockEmitter.mock.calls).toEqual([
     [['wallet', 'addWindowEthProperty']],
   ]);
+});
+
+it('stays closed when removing the Close target causes parent-only pointer re-entry', () => {
+  const view = mount();
+  const container = view.container.querySelector('.fixed')!;
+  fireEvent.mouseEnter(opener());
+  expect(action()).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+  expect(opener()).toHaveFocus();
+  expect(screen.queryByText('Set Pali as default wallet!')).toBeNull();
+
+  // The pointer can remain over the collapsing parent after its Close target
+  // is removed. Only entering the opener should deliberately reopen it.
+  fireEvent.mouseEnter(container);
+  expect(opener()).toHaveAttribute('aria-expanded', 'false');
+  expect(screen.queryByText('Set Pali as default wallet!')).toBeNull();
+  fireEvent.mouseEnter(opener());
+  expect(opener()).toHaveAttribute('aria-expanded', 'true');
+  expect(action()).toBeInTheDocument();
+  expect(mockEmitter).not.toHaveBeenCalled();
 });
 
 it.each(['{Enter}', ' '])(

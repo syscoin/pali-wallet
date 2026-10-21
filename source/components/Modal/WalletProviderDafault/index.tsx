@@ -26,7 +26,6 @@ export const WalletProviderDefaultModal = () => {
 
   return (
     <motion.div
-      onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={(event) => {
         if (!event.currentTarget.contains(document.activeElement))
           setIsHovered(false);
@@ -54,6 +53,7 @@ export const WalletProviderDefaultModal = () => {
         aria-expanded={isHovered && !isNotVisible}
         aria-controls="default-wallet-options"
         disabled={isNotVisible}
+        onMouseEnter={() => setIsHovered(true)}
         onClick={() => setIsHovered(!isHovered)}
         className="focus-visible:ring-2 focus-visible:ring-white"
         style={containerIconStyleAnimation.style}

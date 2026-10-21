@@ -198,6 +198,7 @@ test('Home default-wallet controls support keyboard actions, dismissal and hidde
         await expect(action).toBeVisible();
         await close.click();
         await expect(panel).toHaveCount(0);
+        await expect(opener.locator('..')).toHaveCSS('width', '44px');
         expect(await publicState(page)).toEqual(providerState(false));
         await opener.hover();
         await expect(action).toBeVisible();
