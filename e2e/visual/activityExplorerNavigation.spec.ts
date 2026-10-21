@@ -88,10 +88,18 @@ test('Activity explorer navigation preserves a normally saved custom-network que
   const deniedRequests: string[] = [];
   const pageErrors: string[] = [];
   const navigationAttempts: Array<{
+    isNavigationRequest: boolean;
     method: string;
     phase: string;
-    topLevel: boolean;
+    resourceType: string;
     url: string;
+  }> = [];
+  const popupObservations: Array<{
+    mainFrameIsTopLevel: boolean;
+    newPages: number;
+    openerMatches: boolean;
+    phase: string;
+    popupEvents: number;
   }> = [];
   const observations: Record<string, unknown> = {};
   let phase = 'onboarding';
@@ -239,15 +247,22 @@ test('Activity explorer navigation preserves a normally saved custom-network que
     // Nothing from this origin is fulfilled or forwarded to an external server.
     await wallet.context.route(`${EXPLORER}/**`, async (route) => {
       const request = route.request();
-      const topLevel =
-        request.isNavigationRequest() && request.frame().parentFrame() === null;
+      // A popup's first navigation can arrive before Playwright creates its
+      // Frame. Inspect the request here; verify the actual popup frame below.
+      const isNavigationRequest = request.isNavigationRequest();
+      const resourceType = request.resourceType();
       navigationAttempts.push({
+        isNavigationRequest,
         method: request.method(),
         phase,
-        topLevel,
+        resourceType,
         url: request.url(),
       });
-      if (request.method() !== 'GET' || !topLevel)
+      if (
+        request.method() !== 'GET' ||
+        !isNavigationRequest ||
+        resourceType !== 'document'
+      )
         deniedRequests.push('explorer:unexpected non-navigation request');
       await route.abort('blockedbyclient');
     });
@@ -278,22 +293,48 @@ test('Activity explorer navigation preserves a normally saved custom-network que
     };
     const clickExplorer = async (expectedUrl: string) => {
       const before = navigationAttempts.length;
-      const [popup] = await Promise.all([
-        page.waitForEvent('popup'),
-        page
-          .getByRole('button', { name: en.home.seeAllTxs, exact: true })
-          .click(),
-      ]);
+      const previousPages = new Set(wallet!.context.pages());
+      const popups: Page[] = [];
+      const onPopup = (popup: Page) => popups.push(popup);
+      page.on('popup', onPopup);
       try {
+        const [popup] = await Promise.all([
+          page.waitForEvent('popup'),
+          page
+            .getByRole('button', { name: en.home.seeAllTxs, exact: true })
+            .click(),
+        ]);
         await expect.poll(() => navigationAttempts.length).toBe(before + 1);
         expect(navigationAttempts[before]).toEqual({
+          isNavigationRequest: true,
           method: 'GET',
           phase,
-          topLevel: true,
+          resourceType: 'document',
           url: expectedUrl,
         });
+        expect(popups).toEqual([popup]);
+        expect(popup).not.toBe(page);
+        expect(previousPages.has(popup)).toBe(false);
+        const newPages = wallet!.context
+          .pages()
+          .filter((candidate) => !previousPages.has(candidate));
+        expect(newPages).toEqual([popup]);
+        const openerMatches = (await popup.opener()) === page;
+        const mainFrame = popup.mainFrame();
+        const mainFrameIsTopLevel =
+          mainFrame.parentFrame() === null && mainFrame.page() === popup;
+        expect(openerMatches).toBe(true);
+        expect(mainFrameIsTopLevel).toBe(true);
+        popupObservations.push({
+          mainFrameIsTopLevel,
+          newPages: newPages.length,
+          openerMatches,
+          phase,
+          popupEvents: popups.length,
+        });
       } finally {
-        if (!popup.isClosed()) await popup.close();
+        page.off('popup', onPopup);
+        for (const popup of popups) if (!popup.isClosed()) await popup.close();
         if (!page.isClosed()) await page.bringToFront();
       }
     };
@@ -435,6 +476,7 @@ test('Activity explorer navigation preserves a normally saved custom-network que
           `${ROOT_EXPLORER}address/${encodeURIComponent(address)}?returnPath=/`
         );
         expect(navigationAttempts).toHaveLength(2);
+        expect(popupObservations).toHaveLength(2);
         expect(new URL(navigationAttempts[1].url).search).toBe('?returnPath=/');
         expect((await publicMetadata(page)).account.address).toBe(address);
         expect(reads.some((read) => read.method === 'eth_getBalance')).toBe(
@@ -462,6 +504,7 @@ test('Activity explorer navigation preserves a normally saved custom-network que
           observations,
           reads,
           navigationAttempts,
+          popupObservations,
           deniedRequests,
           deniedWrites: routes?.deniedWrites || [],
           proxyDeniedConnections: server?.blocked.length || 0,
