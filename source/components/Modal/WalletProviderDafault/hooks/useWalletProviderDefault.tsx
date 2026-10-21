@@ -83,8 +83,6 @@ export const useWalletProviderDefault = () => {
     iconStyleAnimation,
     isHovered,
     setIsHovered,
-    isEnabled,
     isNotVisible,
-    setIsNotVisible,
   };
 };

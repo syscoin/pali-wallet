@@ -15,13 +15,12 @@ export const getContainerStyleAnimation = (
   } as MotionStyle;
   return {
     style,
-    animation: {
-      ...style,
+    animation: Object.assign({}, style, {
       transition: {
         duration: 0.3,
         ease: 'easeInOut',
       },
-    } as IMotionType,
+    }) as IMotionType,
   };
 };
 
@@ -32,17 +31,18 @@ export const getContainerIconStyleAnimation = (isHovered: boolean) => {
     borderTopLeftRadius: isHovered ? `20px` : `unset`,
   };
   return {
-    style: {
-      width: isHovered ? `55px` : `2.75rem`,
-      ...shared,
-    } as MotionStyle,
-    animation: {
-      ...shared,
+    style: Object.assign(
+      {
+        width: isHovered ? `55px` : `2.75rem`,
+      },
+      shared
+    ) as MotionStyle,
+    animation: Object.assign({}, shared, {
       transition: {
         duration: 0.3,
         ease: 'easeInOut',
       },
-    } as IMotionType,
+    }) as IMotionType,
   };
 };
 
@@ -54,6 +54,6 @@ export const getIconStyleAnimation = (isHovered: boolean) => {
   } as MotionStyle;
   return {
     style,
-    animation: { ...style } as IMotionType,
+    animation: Object.assign({}, style) as IMotionType,
   };
 };
