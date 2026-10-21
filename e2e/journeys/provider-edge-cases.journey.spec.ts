@@ -194,7 +194,7 @@ test('provider edges: exact RPC results, capabilities and ordinary asset watch',
         onboarded = true;
         await wallet.gotoRoute('#/settings/networks/custom-rpc');
         await wallet.page
-          .locator('#rpc_label input')
+          .getByRole('combobox', { name: en.settings.label, exact: true })
           .fill('Pali provider edge fixture');
         await wallet.page.locator('#rpc_url').fill(LOCAL_CHAINS[0].url);
         await wallet.page
