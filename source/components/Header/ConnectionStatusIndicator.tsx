@@ -50,9 +50,10 @@ export const ConnectionStatusIndicator = memo(
     // Track successful network operation completion
     useEffect(() => {
       // If we had network activity and now we don't (successful completion)
-      if (
+      if (isNetworkActivity) {
+        setShowSuccessConfirmation(false);
+      } else if (
         previousNetworkActivityRef.current &&
-        !isNetworkActivity &&
         networkStatus !== 'error'
       ) {
         // Show green confirmation briefly
@@ -164,6 +165,7 @@ export const ConnectionStatusIndicator = memo(
       }
       isClickable = true;
     } else if (
+      !isNetworkActivity &&
       showSuccessConfirmation &&
       !hasSlowOperations &&
       !hasCriticalErrors
@@ -196,6 +198,7 @@ export const ConnectionStatusIndicator = memo(
         });
       }
     } else if (
+      !isNetworkActivity &&
       showSuccessConfirmation &&
       (hasSlowOperations || hasCriticalErrors)
     ) {
