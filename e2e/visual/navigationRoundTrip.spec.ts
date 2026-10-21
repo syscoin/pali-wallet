@@ -58,7 +58,18 @@ test('browser Back and Forward restore account-list and editor scroll in a short
       .first()
       .click();
     await expect(page).toHaveURL(/#\/settings\/edit-account$/);
+    await expect(page.locator('#edit-account')).toBeVisible();
+    await expect(page.locator('#edit-account_label')).toHaveValue(
+      'Round Trip 4'
+    );
     const editor = page.locator('[data-navigation-scroll="wallet-layout"]');
+    await expect
+      .poll(() =>
+        editor.evaluate(
+          (element) => element.scrollHeight - element.clientHeight
+        )
+      )
+      .toBeGreaterThan(0);
     await editor.hover({ position: { x: 180, y: 120 } });
     await page.mouse.wheel(0, 240);
     await page.waitForTimeout(300);
