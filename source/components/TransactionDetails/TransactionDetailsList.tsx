@@ -43,7 +43,11 @@ export const TransactionDetailsList: React.FC<ITransactionDetailsListProps> = ({
               <p className="text-xs font-normal text-white">{label}</p>
               <span className={className || ''}>
                 {String(value).length >= 20 ? (
-                  <Tooltip content={tooltip ?? value} childrenClassName="flex">
+                  <Tooltip
+                    content={tooltip ?? value}
+                    childrenClassName="flex"
+                    focusable
+                  >
                     <p
                       className={`text-xs font-normal ${
                         className || 'text-white'
