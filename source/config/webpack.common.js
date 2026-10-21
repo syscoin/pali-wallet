@@ -355,7 +355,7 @@ module.exports = {
           enforce: true,
         },
         incrementalList: {
-          test: /[\\/]source[\\/]hooks[\\/]useIncrementalList\.ts$/,
+          test: /[\\/]source[\\/](?:hooks[\\/]useIncrementalList\.ts|components[\\/]Loading[\\/]ListLoadMore\.tsx)$/,
           chunks: 'async',
           name: 'incremental-list',
           minChunks: 2,
