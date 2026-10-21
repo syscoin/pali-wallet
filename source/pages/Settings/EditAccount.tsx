@@ -258,7 +258,6 @@ const EditAccountView = () => {
           ]}
         >
           <Input
-            type="text"
             placeholder={t('settings.accountLabel')}
             className="custom-edit-input relative"
             disabled={loading}

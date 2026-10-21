@@ -166,6 +166,7 @@ const mountAndEdit = async () => {
     screen.getByRole('button', { name: 'buttons.edit: Second account' })
   );
   const input = screen.getByPlaceholderText('settings.accountLabel');
+  expect(input).toHaveProperty('type', 'text');
   expect(input).toHaveValue('Second account');
   expect(mockEmitter).not.toHaveBeenCalled();
   return { user, input };
