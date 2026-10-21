@@ -465,6 +465,7 @@
     "smartAccountGuardianRecoveryInvalidatesPending": "保留中の復元はすべて無効になります。",
     "smartAccountGuardianRecoveryDisableConfirmDescription": "このアカウントの復元ガーディアンを削除し、このウォレット外で開始されたものを含むすべての保留中の復元を無効にします。現在の承認方法とネットワーク手数料が必要です。",
     "smartAccountGuardianRecoveryDisableFailed": "無効化を確認できませんでした。承認方法と手数料残高を確認し、もう一度お試しください。",
+    "smartAccountGuardianRecoveryDisableStorageFailed": "削除状況を保存できませんでした。今回の試行ではトランザクションは送信されていません。ローカルストレージを確認してから再試行してください。",
     "smartAccountGuardianRecoveryDisableUnverified": "削除トランザクションが送信された可能性がありますが、削除は未確認です。別のトランザクションを送信する前にオンチェーンの状態を確認してください。",
     "smartAccountGuardianRecoveryDisabled": "ガーディアン復元は無効です。保留中の復元リクエストは無効になりました。",
     "smartAccountGuardianRecoveryAlreadyDisabled": "このアカウントのガーディアン復元はすでに無効です。",

@@ -465,6 +465,7 @@
     "smartAccountGuardianRecoveryInvalidatesPending": "All pending recoveries become invalid.",
     "smartAccountGuardianRecoveryDisableConfirmDescription": "This removes the recovery guardian from this account and invalidates every pending recovery, including requests started outside this wallet. Your current approval method and network gas are required.",
     "smartAccountGuardianRecoveryDisableFailed": "Guardian recovery was not confirmed disabled. Review your approval method and gas balance, then try again.",
+    "smartAccountGuardianRecoveryDisableStorageFailed": "The wallet could not save the removal status. This attempt was not submitted. Check local storage availability and try again.",
     "smartAccountGuardianRecoveryDisableUnverified": "A removal transaction may have been submitted, but removal is not confirmed. Check the on-chain status before sending another transaction.",
     "smartAccountGuardianRecoveryDisabled": "Guardian recovery is disabled. Pending recovery requests were invalidated.",
     "smartAccountGuardianRecoveryAlreadyDisabled": "Guardian recovery is already disabled for this account.",

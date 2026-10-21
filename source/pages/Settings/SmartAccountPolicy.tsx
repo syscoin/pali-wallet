@@ -163,6 +163,7 @@ type PolicyApprovalScope = {
 
 type GuardianDisablePending = {
   accountAddress: string;
+  attemptId?: string;
   chainId: number;
   localRecoverySalt?: string;
   moduleAddress: string;
@@ -177,10 +178,22 @@ type GuardianDisableConfirmation = GuardianDisablePending & {
 
 const guardianDisablePendingKey = (account: string, chainId: number) =>
   `pali-smart-account-recovery-disable:${chainId}:${account.toLowerCase()}`;
+const GUARDIAN_DISABLE_STORAGE_ERROR = 'PALI_RECOVERY_REMOVAL_STORAGE_FAILED';
+
+const sameGuardianDisableAttempt = (
+  first: GuardianDisablePending,
+  second: GuardianDisablePending
+) =>
+  first.attemptId === second.attemptId &&
+  first.chainId === second.chainId &&
+  first.accountAddress.toLowerCase() === second.accountAddress.toLowerCase() &&
+  first.moduleAddress.toLowerCase() === second.moduleAddress.toLowerCase() &&
+  first.localRecoverySalt === second.localRecoverySalt;
 
 const readGuardianDisablePending = (
   account: string | undefined,
-  chainId: number
+  chainId: number,
+  requireReadable = false
 ): GuardianDisablePending | null => {
   if (!account) return null;
   try {
@@ -191,10 +204,14 @@ const readGuardianDisablePending = (
     if (
       pending?.chainId === chainId &&
       getAddress(pending.accountAddress) === getAddress(account) &&
-      getAddress(pending.moduleAddress)
+      getAddress(pending.moduleAddress) &&
+      (pending.attemptId === undefined || typeof pending.attemptId === 'string')
     )
       return pending;
+    if (pending !== null && requireReadable)
+      throw new Error(GUARDIAN_DISABLE_STORAGE_ERROR);
   } catch {
+    if (requireReadable) throw new Error(GUARDIAN_DISABLE_STORAGE_ERROR);
     // A malformed local status marker cannot authorize an operation.
   }
   return null;
@@ -1811,25 +1828,37 @@ const SmartAccountPolicy = () => {
     installGuardianRecovery();
   };
 
-  const rememberGuardianDisable = (target: GuardianDisablePending) => {
+  const showGuardianDisablePending = (pending: GuardianDisablePending) => {
+    if (createUiGuard()()) {
+      guardianDisablePendingRef.current = pending;
+      setGuardianDisablePending(pending);
+    }
+  };
+
+  const rememberGuardianDisable = (
+    target: GuardianDisablePending,
+    requireDurable = false
+  ) => {
     const pending: GuardianDisablePending = {
       accountAddress: target.accountAddress,
+      ...(target.attemptId ? { attemptId: target.attemptId } : {}),
       chainId: target.chainId,
       localRecoverySalt: target.localRecoverySalt,
       moduleAddress: target.moduleAddress,
     };
     try {
-      localStorage.setItem(
-        guardianDisablePendingKey(target.accountAddress, target.chainId),
-        JSON.stringify(pending)
+      const key = guardianDisablePendingKey(
+        target.accountAddress,
+        target.chainId
       );
+      const serialized = JSON.stringify(pending);
+      localStorage.setItem(key, serialized);
+      if (localStorage.getItem(key) !== serialized)
+        throw new Error(GUARDIAN_DISABLE_STORAGE_ERROR);
     } catch {
-      // Keep this mounted page non-retryable even when local storage is full.
+      if (requireDurable) throw new Error(GUARDIAN_DISABLE_STORAGE_ERROR);
     }
-    if (createUiGuard()()) {
-      guardianDisablePendingRef.current = pending;
-      setGuardianDisablePending(pending);
-    }
+    showGuardianDisablePending(pending);
   };
 
   const clearGuardianDisable = (
@@ -1837,6 +1866,15 @@ const SmartAccountPolicy = () => {
     clearRecoveryOperation: boolean
   ) => {
     try {
+      const storedPending = readGuardianDisablePending(
+        target.accountAddress,
+        target.chainId,
+        true
+      );
+      if (storedPending && !sameGuardianDisableAttempt(storedPending, target)) {
+        showGuardianDisablePending(storedPending);
+        return;
+      }
       localStorage.removeItem(
         guardianDisablePendingKey(target.accountAddress, target.chainId)
       );
@@ -1926,6 +1964,7 @@ const SmartAccountPolicy = () => {
       }
       const confirmation: GuardianDisableConfirmation = {
         accountAddress: getAddress(account.address),
+        attemptId: uuidv4(),
         accountLabel:
           typeof account.label === 'string' && account.label
             ? account.label
@@ -1975,6 +2014,7 @@ const SmartAccountPolicy = () => {
     }
     guardianDisableInFlight.current = true;
     const previousPending = guardianDisablePendingRef.current;
+    let otherPending: GuardianDisablePending | null = null;
     setGuardianDisableRetryReady(false);
     let submissionAttempted = false;
     setLoading(true);
@@ -2009,8 +2049,24 @@ const SmartAccountPolicy = () => {
         {
           approval: target.approval,
           onBeforeSubmit: () => {
+            // This synchronous checkpoint follows asynchronous preparation and
+            // signing. Do not replace a different window's newer attempt.
+            const latest = readGuardianDisablePending(
+              target.accountAddress,
+              target.chainId,
+              true
+            );
+            if (
+              latest &&
+              (!previousPending ||
+                !sameGuardianDisableAttempt(latest, previousPending))
+            ) {
+              otherPending = latest;
+              showGuardianDisablePending(latest);
+              throw new Error('PALI_TRANSACTION_CONTEXT_CHANGED');
+            }
+            rememberGuardianDisable(target, true);
             submissionAttempted = true;
-            rememberGuardianDisable(target);
           },
           refreshAfterSubmit: false,
           retrySignature: false,
@@ -2018,7 +2074,6 @@ const SmartAccountPolicy = () => {
           waitForConfirmation: true,
         }
       );
-      rememberGuardianDisable(target);
       const hydrated = await refreshMetadata(target.approval, false).catch(
         () => null
       );
@@ -2037,15 +2092,32 @@ const SmartAccountPolicy = () => {
         error?.transactionNotBroadcast === true ||
         error?.code === 4001 ||
         error?.receipt?.status === 0;
-      if (definitelyNotApplied && !previousPending)
+      if (otherPending) showGuardianDisablePending(otherPending);
+      else if (definitelyNotApplied && !previousPending)
         clearGuardianDisable(target, false);
-      else if (definitelyNotApplied && previousPending)
-        rememberGuardianDisable(previousPending);
-      else rememberGuardianDisable(target);
+      else if (definitelyNotApplied && previousPending) {
+        try {
+          const latest = readGuardianDisablePending(
+            target.accountAddress,
+            target.chainId,
+            true
+          );
+          if (latest && !sameGuardianDisableAttempt(latest, target))
+            showGuardianDisablePending(latest);
+          else rememberGuardianDisable(previousPending);
+        } catch {
+          // Without a readable ownership marker, never overwrite storage.
+          showGuardianDisablePending(previousPending);
+        }
+      }
+      // An unknown post-submit result already has its verified durable marker.
+      // Rewriting it here could lose a newer observation or fail needlessly.
       if (isCurrentUi() && !handleWalletLockedError(error)) {
         alert.error(
           t(
-            definitelyNotApplied
+            error?.message === GUARDIAN_DISABLE_STORAGE_ERROR
+              ? 'settings.smartAccountGuardianRecoveryDisableStorageFailed'
+              : definitelyNotApplied
               ? 'settings.smartAccountGuardianRecoveryDisableFailed'
               : 'settings.smartAccountGuardianRecoveryDisableUnverified'
           )

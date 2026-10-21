@@ -25,6 +25,7 @@ let mockMetadata: any;
 let mockReadbackFails: boolean;
 let mockModal: any;
 const mockSubmit = jest.fn();
+const mockBroadcast = jest.fn();
 const mockEmitter = jest.fn();
 const mockAlert = { error: jest.fn(), info: jest.fn(), success: jest.fn() };
 
@@ -204,11 +205,15 @@ beforeEach(() => {
   mockSubmit.mockImplementation(async (params: any) => {
     params.onPrepared?.();
     await params.onBeforeSubmit?.();
+    mockBroadcast();
     mockMetadata = metadata(57057, false);
     return { hash: `0x${'de'.repeat(32)}` };
   });
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  jest.restoreAllMocks();
+});
 
 async function openConfirmation() {
   fireEvent.click(await screen.findByRole('button', { name: REMOVE }));
@@ -403,6 +408,7 @@ test('accepted submission without removal readback cannot claim success or sign 
   const marker = JSON.parse(localStorage.getItem(removalKey)!);
   expect(marker).toEqual({
     accountAddress: ACCOUNT,
+    attemptId: expect.any(String),
     chainId: 57057,
     moduleAddress: MODULE,
   });
@@ -532,4 +538,245 @@ test('a removal started in another window is noticed before a new request', asyn
   await screen.findByRole('button', { name: CHECK });
   expect(screen.queryByRole('dialog')).toBeNull();
   expect(mockSubmit).not.toHaveBeenCalled();
+});
+
+test.each(['write throws', 'readback missing', 'readback throws'])(
+  'storage %s prevents broadcast and remains safely retryable after reopening',
+  async (failure) => {
+    const view = render(<SmartAccountPolicy />);
+    await openConfirmation();
+    const write = Storage.prototype.setItem;
+    const read = Storage.prototype.getItem;
+    let wrote = false;
+    const setSpy = jest
+      .spyOn(Storage.prototype, 'setItem')
+      .mockImplementation(function (key, value) {
+        if (key === removalKey) {
+          if (failure === 'write throws') throw new Error('Storage full');
+          wrote = true;
+        }
+        return write.call(this, key, value);
+      });
+    const getSpy = jest
+      .spyOn(Storage.prototype, 'getItem')
+      .mockImplementation(function (key) {
+        if (key === removalKey && wrote) {
+          wrote = false;
+          if (failure === 'readback throws') throw new Error('Storage blocked');
+          return null;
+        }
+        return read.call(this, key);
+      });
+    await confirm();
+    await waitFor(() =>
+      expect(mockAlert.error).toHaveBeenCalledWith(
+        'settings.smartAccountGuardianRecoveryDisableStorageFailed'
+      )
+    );
+    expect(mockBroadcast).not.toHaveBeenCalled();
+    expect(mockAlert.success).not.toHaveBeenCalled();
+    expect(mockAlert.info).not.toHaveBeenCalledWith(PENDING);
+    setSpy.mockRestore();
+    getSpy.mockRestore();
+    expect(localStorage.getItem(removalKey)).toBeNull();
+    view.unmount();
+    render(<SmartAccountPolicy />);
+    await openConfirmation();
+    expect(screen.queryByRole('button', { name: CHECK })).toBeNull();
+    fireEvent.click(screen.getByRole('dialog').querySelector('button')!);
+    await waitFor(() => expect(mockBroadcast).toHaveBeenCalledTimes(1));
+  }
+);
+
+test('a failed mandatory read cannot overwrite a pending marker', async () => {
+  const view = render(<SmartAccountPolicy />);
+  await openConfirmation();
+  const previous = JSON.stringify({
+    accountAddress: ACCOUNT,
+    attemptId: 'other-window',
+    chainId: 57057,
+    moduleAddress: MODULE,
+  });
+  const write = Storage.prototype.setItem;
+  const read = Storage.prototype.getItem;
+  const setSpy = jest.spyOn(Storage.prototype, 'setItem');
+  mockSubmit.mockImplementationOnce(async (params) => {
+    write.call(localStorage, removalKey, previous);
+    jest.spyOn(Storage.prototype, 'getItem').mockImplementationOnce(() => {
+      throw new Error('Storage blocked');
+    });
+    await params.onBeforeSubmit();
+    mockBroadcast();
+  });
+  await confirm();
+  await waitFor(() => expect(mockAlert.error).toHaveBeenCalled());
+  expect(mockBroadcast).not.toHaveBeenCalled();
+  expect(setSpy).not.toHaveBeenCalled();
+  expect(read.call(localStorage, removalKey)).toBe(previous);
+  jest.restoreAllMocks();
+  view.unmount();
+  render(<SmartAccountPolicy />);
+  await screen.findByRole('button', { name: CHECK });
+});
+
+test.each(['not-json', '{}'])(
+  'an unreadable legacy marker is not overwritten before broadcast (%s)',
+  async (marker) => {
+    localStorage.setItem(removalKey, marker);
+    render(<SmartAccountPolicy />);
+    await openConfirmation();
+    const write = jest.spyOn(Storage.prototype, 'setItem');
+    await confirm();
+    await waitFor(() =>
+      expect(mockAlert.error).toHaveBeenCalledWith(
+        'settings.smartAccountGuardianRecoveryDisableStorageFailed'
+      )
+    );
+    expect(mockBroadcast).not.toHaveBeenCalled();
+    expect(write).not.toHaveBeenCalled();
+    expect(localStorage.getItem(removalKey)).toBe(marker);
+  }
+);
+
+test('another window claiming the same target during preparation blocks broadcast and survives cleanup', async () => {
+  const marker = JSON.stringify({
+    accountAddress: ACCOUNT,
+    attemptId: 'other-window',
+    chainId: 57057,
+    moduleAddress: MODULE,
+  });
+  mockSubmit.mockImplementationOnce(async (params) => {
+    localStorage.setItem(removalKey, marker);
+    await params.onBeforeSubmit();
+    mockBroadcast();
+  });
+  render(<SmartAccountPolicy />);
+  await openConfirmation();
+  await confirm();
+  await screen.findByRole('button', { name: CHECK });
+  expect(mockBroadcast).not.toHaveBeenCalled();
+  expect(localStorage.getItem(removalKey)).toBe(marker);
+});
+
+test('preparation failing after another window claims removal does not erase that marker', async () => {
+  render(<SmartAccountPolicy />);
+  await openConfirmation();
+  const marker = JSON.stringify({
+    accountAddress: ACCOUNT,
+    attemptId: 'other-window',
+    chainId: 57057,
+    moduleAddress: MODULE,
+  });
+  const emit = mockEmitter.getMockImplementation()!;
+  mockEmitter.mockImplementation(async (method: string[], ...args: any[]) => {
+    if (method[1] === 'hydrateSmartAccount') {
+      localStorage.setItem(removalKey, marker);
+      throw new Error('RPC unavailable');
+    }
+    return emit(method, ...args);
+  });
+  await act(async () => {
+    await mockModal.onClick();
+  });
+  await screen.findByRole('button', { name: CHECK });
+  expect(mockSubmit).not.toHaveBeenCalled();
+  expect(localStorage.getItem(removalKey)).toBe(marker);
+});
+
+test('post-broadcast storage failure cannot erase or rewrite the durable unknown marker', async () => {
+  const write = Storage.prototype.setItem;
+  let writes = 0;
+  jest
+    .spyOn(Storage.prototype, 'setItem')
+    .mockImplementation(function (key, value) {
+      if (key === removalKey && ++writes > 1) throw new Error('Storage full');
+      return write.call(this, key, value);
+    });
+  mockSubmit.mockImplementationOnce(async (params) => {
+    await params.onBeforeSubmit();
+    mockBroadcast();
+    throw new Error('Unknown submission result');
+  });
+  const view = render(<SmartAccountPolicy />);
+  await openConfirmation();
+  await confirm();
+  await screen.findByRole('button', { name: CHECK });
+  expect(mockBroadcast).toHaveBeenCalledTimes(1);
+  expect(writes).toBe(1);
+  expect(localStorage.getItem(removalKey)).not.toBeNull();
+  view.unmount();
+  render(<SmartAccountPolicy />);
+  await screen.findByRole('button', { name: CHECK });
+  expect(screen.queryByRole('button', { name: REMOVE })).toBeNull();
+});
+
+test('a failed storage write for a deliberate retry preserves the previous unknown attempt', async () => {
+  const previous = JSON.stringify({
+    accountAddress: ACCOUNT,
+    attemptId: 'original-unknown',
+    chainId: 57057,
+    moduleAddress: MODULE,
+  });
+  localStorage.setItem(removalKey, previous);
+  render(<SmartAccountPolicy />);
+  fireEvent.click(await screen.findByRole('button', { name: CHECK }));
+  fireEvent.click(
+    await screen.findByRole('button', {
+      name: 'settings.smartAccountGuardianRecoveryRetryRemoval',
+    })
+  );
+  await screen.findByRole('dialog', { name: CONFIRM });
+  jest.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+    throw new Error('Storage full');
+  });
+  await confirm();
+  await waitFor(() => expect(mockAlert.error).toHaveBeenCalled());
+  expect(mockBroadcast).not.toHaveBeenCalled();
+  expect(localStorage.getItem(removalKey)).toBe(previous);
+  await screen.findByRole('button', { name: CHECK });
+});
+
+test('unreadable cleanup after a failed retry cannot overwrite a newer window marker', async () => {
+  const previous = JSON.stringify({
+    accountAddress: ACCOUNT,
+    attemptId: 'original-unknown',
+    chainId: 57057,
+    moduleAddress: MODULE,
+  });
+  const newer = JSON.stringify({
+    accountAddress: ACCOUNT,
+    attemptId: 'newer-window',
+    chainId: 57057,
+    moduleAddress: MODULE,
+  });
+  localStorage.setItem(removalKey, previous);
+  const view = render(<SmartAccountPolicy />);
+  fireEvent.click(await screen.findByRole('button', { name: CHECK }));
+  fireEvent.click(
+    await screen.findByRole('button', {
+      name: 'settings.smartAccountGuardianRecoveryRetryRemoval',
+    })
+  );
+  await screen.findByRole('dialog', { name: CONFIRM });
+  const write = Storage.prototype.setItem;
+  const setSpy = jest.spyOn(Storage.prototype, 'setItem');
+  mockSubmit.mockImplementationOnce(async () => {
+    write.call(localStorage, removalKey, newer);
+    jest.spyOn(Storage.prototype, 'getItem').mockImplementationOnce(() => {
+      throw new Error('Storage read failed');
+    });
+    throw Object.assign(new Error('Approval rejected'), {
+      transactionNotBroadcast: true,
+    });
+  });
+  await confirm();
+  await waitFor(() => expect(mockAlert.error).toHaveBeenCalled());
+  expect(mockBroadcast).not.toHaveBeenCalled();
+  expect(setSpy).not.toHaveBeenCalled();
+  expect(localStorage.getItem(removalKey)).toBe(newer);
+  jest.restoreAllMocks();
+  view.unmount();
+  render(<SmartAccountPolicy />);
+  await screen.findByRole('button', { name: CHECK });
+  expect(localStorage.getItem(removalKey)).toBe(newer);
 });

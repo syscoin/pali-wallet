@@ -465,6 +465,7 @@
     "smartAccountGuardianRecoveryInvalidatesPending": "所有待处理的恢复请求都将失效。",
     "smartAccountGuardianRecoveryDisableConfirmDescription": "这将移除此账户的恢复守护者，并使所有待处理的恢复请求失效，包括在此钱包之外发起的请求。需要使用当前批准方式并支付网络费用。",
     "smartAccountGuardianRecoveryDisableFailed": "尚未确认已停用守护者恢复。请检查批准方式和网络费用余额后重试。",
+    "smartAccountGuardianRecoveryDisableStorageFailed": "钱包无法保存移除状态。本次尝试未提交交易。请检查本地存储是否可用，然后重试。",
     "smartAccountGuardianRecoveryDisableUnverified": "移除交易可能已提交，但尚未确认移除。发送另一笔交易前，请先检查链上状态。",
     "smartAccountGuardianRecoveryDisabled": "守护者恢复已停用。待处理的恢复请求已失效。",
     "smartAccountGuardianRecoveryAlreadyDisabled": "此账户已停用守护者恢复。",

@@ -465,6 +465,7 @@
     "smartAccountGuardianRecoveryInvalidatesPending": "대기 중인 모든 복구가 무효화됩니다.",
     "smartAccountGuardianRecoveryDisableConfirmDescription": "이 계정의 복구 가디언을 제거하고 이 지갑 밖에서 시작된 요청을 포함한 모든 대기 중인 복구를 무효화합니다. 현재 승인 방법과 네트워크 가스비가 필요합니다.",
     "smartAccountGuardianRecoveryDisableFailed": "비활성화가 확인되지 않았습니다. 승인 방법과 가스비 잔액을 확인한 후 다시 시도하세요.",
+    "smartAccountGuardianRecoveryDisableStorageFailed": "제거 상태를 저장하지 못했습니다. 이번 시도에서는 트랜잭션이 전송되지 않았습니다. 로컬 저장소를 확인한 후 다시 시도하세요.",
     "smartAccountGuardianRecoveryDisableUnverified": "제거 트랜잭션이 제출되었을 수 있으나 제거가 확인되지 않았습니다. 다른 트랜잭션을 보내기 전에 온체인 상태를 확인하세요.",
     "smartAccountGuardianRecoveryDisabled": "가디언 복구가 비활성화되었습니다. 대기 중인 복구 요청이 무효화되었습니다.",
     "smartAccountGuardianRecoveryAlreadyDisabled": "이 계정의 가디언 복구는 이미 비활성화되어 있습니다.",

@@ -465,6 +465,7 @@
     "smartAccountGuardianRecoveryInvalidatesPending": "Todas as recuperações pendentes serão invalidadas.",
     "smartAccountGuardianRecoveryDisableConfirmDescription": "Isso remove o guardião de recuperação desta conta e invalida todas as recuperações pendentes, incluindo solicitações iniciadas fora desta carteira. São necessários seu método de aprovação atual e gas da rede.",
     "smartAccountGuardianRecoveryDisableFailed": "A desativação não foi confirmada. Verifique seu método de aprovação e saldo para gas e tente novamente.",
+    "smartAccountGuardianRecoveryDisableStorageFailed": "Não foi possível salvar o estado da remoção. Esta tentativa não foi enviada. Verifique o armazenamento local e tente novamente.",
     "smartAccountGuardianRecoveryDisableUnverified": "Uma transação de remoção pode ter sido enviada, mas a remoção não está confirmada. Confira o estado na rede antes de enviar outra transação.",
     "smartAccountGuardianRecoveryDisabled": "A recuperação por guardião está desativada. As solicitações de recuperação pendentes foram invalidadas.",
     "smartAccountGuardianRecoveryAlreadyDisabled": "A recuperação por guardião já está desativada para esta conta.",

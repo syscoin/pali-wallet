@@ -465,6 +465,7 @@
     "smartAccountGuardianRecoveryInvalidatesPending": "Todas las recuperaciones pendientes se invalidarán.",
     "smartAccountGuardianRecoveryDisableConfirmDescription": "Esto elimina al guardián de recuperación de esta cuenta e invalida todas las recuperaciones pendientes, incluidas las iniciadas fuera de esta cartera. Se requieren tu método de aprobación actual y gas de red.",
     "smartAccountGuardianRecoveryDisableFailed": "No se ha confirmado la desactivación. Revisa tu método de aprobación y saldo para gas e inténtalo de nuevo.",
+    "smartAccountGuardianRecoveryDisableStorageFailed": "No se pudo guardar el estado de la eliminación. Este intento no se envió. Comprueba el almacenamiento local e inténtalo de nuevo.",
     "smartAccountGuardianRecoveryDisableUnverified": "Es posible que se haya enviado una transacción de eliminación, pero aún no está confirmada. Comprueba el estado en cadena antes de enviar otra transacción.",
     "smartAccountGuardianRecoveryDisabled": "La recuperación con guardián está desactivada. Las recuperaciones pendientes se han invalidado.",
     "smartAccountGuardianRecoveryAlreadyDisabled": "La recuperación con guardián ya está desactivada para esta cuenta.",

@@ -465,6 +465,7 @@
     "smartAccountGuardianRecoveryInvalidatesPending": "Alle ausstehenden Wiederherstellungen werden ungültig.",
     "smartAccountGuardianRecoveryDisableConfirmDescription": "Dadurch wird der Wiederherstellungswächter dieses Kontos entfernt. Alle ausstehenden Wiederherstellungen werden ungültig, auch Anfragen außerhalb dieser Wallet. Deine aktuelle Freigabemethode und Netzwerkgebühren sind erforderlich.",
     "smartAccountGuardianRecoveryDisableFailed": "Die Deaktivierung wurde nicht bestätigt. Prüfe deine Freigabemethode und dein Guthaben für Netzwerkgebühren und versuche es erneut.",
+    "smartAccountGuardianRecoveryDisableStorageFailed": "Der Status der Entfernung konnte nicht gespeichert werden. Dieser Versuch wurde nicht gesendet. Prüfe den lokalen Speicher und versuche es erneut.",
     "smartAccountGuardianRecoveryDisableUnverified": "Eine Entfernungstransaktion wurde möglicherweise gesendet, aber die Entfernung ist nicht bestätigt. Prüfe den On-Chain-Status, bevor du eine weitere Transaktion sendest.",
     "smartAccountGuardianRecoveryDisabled": "Die Wächter-Wiederherstellung ist deaktiviert. Ausstehende Wiederherstellungen wurden ungültig.",
     "smartAccountGuardianRecoveryAlreadyDisabled": "Die Wächter-Wiederherstellung ist für dieses Konto bereits deaktiviert.",
