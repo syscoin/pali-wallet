@@ -5,7 +5,10 @@ import path from 'path';
 
 import en from '../../source/assets/locales/en.json';
 import { E2E_CONFIG } from '../harness/config';
-import { dismissRejectedApproval } from '../harness/dismissRejectedApproval';
+import {
+  clickClosingPopup,
+  dismissRejectedApproval,
+} from '../harness/dismissRejectedApproval';
 import {
   createIsolatedVaultFixture,
   installIsolatedVaultRoutes,
@@ -239,8 +242,76 @@ test('ordinary dapp transaction review preserves every native-value decimal befo
           };
           const beforeEstimates = rpcReads.length;
           const id = await startRequest(dapp!, 'eth_sendTransaction', [tx]);
-          const popup = await popupFor(wallet!.context, dapp!, id);
+          let popup = await popupFor(wallet!.context, dapp!, id);
+          let warningContinued = false;
+          let warningEvidence:
+            | {
+                closed: boolean;
+                data: { eventName: string; host: string; requestCount: number };
+                pending: Awaited<ReturnType<typeof rpcObservation>>;
+                requestId: number;
+                route: string;
+              }
+            | undefined;
           try {
+            if (entry.name === 'whole-native-unit-control') {
+              const warning = popup;
+              expect(warning.url()).toContain('/external/spam-warning');
+              await expect(
+                warning.getByRole('heading', {
+                  name: en.spamWarning.title,
+                  exact: true,
+                })
+              ).toBeVisible();
+              const host = new URL(server.url).origin;
+              await expect(
+                warning.getByText(host, { exact: true })
+              ).toBeVisible();
+              const warningData = await warning.evaluate(() => {
+                const data = JSON.parse(
+                  new URL(location.href).searchParams.get('data')!
+                );
+                return {
+                  host: data.host,
+                  eventName: data.eventName,
+                  requestCount: data.requestCount,
+                };
+              });
+              expect(warningData).toEqual({
+                host,
+                eventName: 'spamWarningResponse',
+                requestCount: 3,
+              });
+              const pendingWarning = await rpcObservation(dapp!, id);
+              expect(pendingWarning.id).toBe(id);
+              expect(pendingWarning.method).toBe('eth_sendTransaction');
+              expect(pendingWarning.params).toEqual([tx]);
+              expect(pendingWarning.settled).not.toBe(true);
+              expect(pendingWarning.result).toBeUndefined();
+              expect(pendingWarning.error).toBeUndefined();
+              const warningRoute = warning.url();
+              await clickClosingPopup({
+                click: () =>
+                  warning
+                    .getByRole('button', {
+                      name: en.buttons.continue,
+                      exact: true,
+                    })
+                    .click(),
+                isClosed: () => warning.isClosed(),
+              });
+              await expect.poll(() => warning.isClosed()).toBe(true);
+              warningContinued = true;
+              warningEvidence = {
+                closed: warning.isClosed(),
+                data: warningData,
+                pending: pendingWarning,
+                requestId: id,
+                route: warningRoute,
+              };
+              popup = await popupFor(wallet!.context, dapp!, id);
+            }
+            expect(popup.url()).toContain('/external/tx/send/ethTx');
             await popup.setViewportSize({ width: 400, height: 620 });
             await expect(
               popup.getByRole('button', {
@@ -320,6 +391,8 @@ test('ordinary dapp transaction review preserves every native-value decimal befo
               name: entry.name,
               rawValueWei: entry.wei,
               rawDappValue: value,
+              warningContinued,
+              warning: warningEvidence,
               header: observedHeader,
               total: observedTotal,
               fee: observedFee,
