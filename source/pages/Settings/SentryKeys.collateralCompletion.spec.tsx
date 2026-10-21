@@ -232,7 +232,7 @@ it('returns an exact durable release receipt without a fallible postcommit setti
       password: 'synthetic-password',
       acknowledgeNodeStops: true,
     })
-  ).resolves.toEqual({ releasedReservation: RESERVATION });
+  ).resolves.toEqual(RESERVATION);
   expect(settingReads).toBe(0);
   expect(records[collateralKey]).toEqual([]);
   expect(writes).toBe(1);
@@ -273,7 +273,7 @@ it.each([undefined, { ...RESERVATION, vout: 2 }])(
     mockEmitter.mockImplementation((method) =>
       method[1] === 'getSentrySettings'
         ? controller.getSettings()
-        : Promise.resolve({ releasedReservation: receipt })
+        : Promise.resolve(receipt)
     );
     render(<SentryKeys />);
     await releaseForm();

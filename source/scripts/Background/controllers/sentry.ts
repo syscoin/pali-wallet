@@ -609,7 +609,7 @@ export class SentryController {
         reservation,
         assertCurrent: () => this.assertCurrent(scope),
       });
-      return { releasedReservation: reservation };
+      return reservation;
     });
   }
 

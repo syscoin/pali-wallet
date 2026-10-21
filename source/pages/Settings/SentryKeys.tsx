@@ -238,11 +238,8 @@ const SentryKeys = () => {
           ],
           30000,
           false
-        )) as { releasedReservation?: SentryCollateralReservation } | null;
-        if (
-          !released?.releasedReservation ||
-          !sameReservation(released.releasedReservation, release)
-        )
+        )) as SentryCollateralReservation | null;
+        if (!released || !sameReservation(released, release))
           throw new Error(t('sentry.unableToCompleteSentryOperation'));
         releasedReservation = release;
       }
