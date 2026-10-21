@@ -459,6 +459,18 @@
     "receipts": "レシート"
   },
   "settings": {
+    "smartAccountGuardianRecoveryDisable": "ガーディアン復元を無効にする",
+    "smartAccountGuardianRecoveryDisableConfirmButton": "無効にする",
+    "smartAccountGuardianRecoveryDisableConfirmTitle": "復元を無効にしますか？",
+    "smartAccountGuardianRecoveryInvalidatesPending": "保留中の復元はすべて無効になります。",
+    "smartAccountGuardianRecoveryDisableConfirmDescription": "このアカウントの復元ガーディアンを削除し、このウォレット外で開始されたものを含むすべての保留中の復元を無効にします。現在の承認方法とネットワーク手数料が必要です。",
+    "smartAccountGuardianRecoveryDisableFailed": "無効化を確認できませんでした。承認方法と手数料残高を確認し、もう一度お試しください。",
+    "smartAccountGuardianRecoveryDisableUnverified": "削除トランザクションが送信された可能性がありますが、削除は未確認です。別のトランザクションを送信する前にオンチェーンの状態を確認してください。",
+    "smartAccountGuardianRecoveryDisabled": "ガーディアン復元は無効です。保留中の復元リクエストは無効になりました。",
+    "smartAccountGuardianRecoveryAlreadyDisabled": "このアカウントのガーディアン復元はすでに無効です。",
+    "smartAccountGuardianRecoveryCheckRemoval": "削除状態を確認",
+    "smartAccountGuardianRecoveryRetryRemoval": "別の削除試行を確認",
+    "smartAccountGuardianRecoveryRetryWarning": "前のトランザクションが完了する可能性があります。ガーディアンがすでに削除されていても、再試行にはネットワーク手数料がかかる場合があります。",
     "smartAccountGuardianRecoveryDelayTestnet": "10分（テストネット）",
     "smartAccountGuardianRecoveryChooseDelay": "このポリシーを更新する前に、選択可能な待機期間を選んでください。設定済みのポリシーは変更されません。",
     "smartAccountRecoveryEmailAlerts": "Sysnodeのメール通知",

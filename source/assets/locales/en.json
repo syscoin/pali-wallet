@@ -459,6 +459,18 @@
     "receipts": "Receipts"
   },
   "settings": {
+    "smartAccountGuardianRecoveryDisable": "Disable guardian recovery",
+    "smartAccountGuardianRecoveryDisableConfirmButton": "Disable",
+    "smartAccountGuardianRecoveryDisableConfirmTitle": "Disable recovery?",
+    "smartAccountGuardianRecoveryInvalidatesPending": "All pending recoveries become invalid.",
+    "smartAccountGuardianRecoveryDisableConfirmDescription": "This removes the recovery guardian from this account and invalidates every pending recovery, including requests started outside this wallet. Your current approval method and network gas are required.",
+    "smartAccountGuardianRecoveryDisableFailed": "Guardian recovery was not confirmed disabled. Review your approval method and gas balance, then try again.",
+    "smartAccountGuardianRecoveryDisableUnverified": "A removal transaction may have been submitted, but removal is not confirmed. Check the on-chain status before sending another transaction.",
+    "smartAccountGuardianRecoveryDisabled": "Guardian recovery is disabled. Pending recovery requests were invalidated.",
+    "smartAccountGuardianRecoveryAlreadyDisabled": "Guardian recovery is already disabled for this account.",
+    "smartAccountGuardianRecoveryCheckRemoval": "Check removal status",
+    "smartAccountGuardianRecoveryRetryRemoval": "Review another removal attempt",
+    "smartAccountGuardianRecoveryRetryWarning": "The earlier transaction may still complete. Another attempt can cost network gas even if the guardian has already been removed.",
     "smartAccountGuardianRecoveryDelayTestnet": "10 min (testnet)",
     "smartAccountGuardianRecoveryChooseDelay": "Choose an available wait period before updating this policy. The installed policy is unchanged.",
     "smartAccountRecoveryEmailAlerts": "Email alerts in Sysnode",

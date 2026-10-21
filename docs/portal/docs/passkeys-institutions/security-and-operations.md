@@ -60,10 +60,12 @@ not an approval or cancellation action. Delivery can be delayed or fail, and an
 unavailable or lagging monitor is not evidence that the account is safe.
 
 If a recovery is unexpected and you still control the current approval method,
-open that smart account's **Modules** view in Pali. Uninstalling its recovery
-guardian module invalidates pending guardian recovery and disables that recovery
-path; review and set up trusted guardians again afterwards. This is an on-chain
-account action requiring the current approval method and gas, not an email action.
+open that smart account's recovery settings and choose **Disable guardian
+recovery**. After confirmation, Pali removes the recovery module, invalidating
+pending guardian recovery and disabling that recovery path. Review and set up
+trusted guardians again afterwards. This is an on-chain account action requiring
+the current approval method and gas, not an email action. If submission is
+uncertain, check its on-chain status before considering another attempt.
 
 New Pali recovery policies offer three- and seven-day waiting periods. The
 ten-minute option is restricted to known testnets. Existing policies are not

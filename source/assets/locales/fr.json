@@ -459,6 +459,18 @@
     "receipts": "Reçus"
   },
   "settings": {
+    "smartAccountGuardianRecoveryDisable": "Désactiver la récupération par gardien",
+    "smartAccountGuardianRecoveryDisableConfirmButton": "Désactiver",
+    "smartAccountGuardianRecoveryDisableConfirmTitle": "Désactiver la récupération ?",
+    "smartAccountGuardianRecoveryInvalidatesPending": "Toutes les récupérations en attente seront invalidées.",
+    "smartAccountGuardianRecoveryDisableConfirmDescription": "Le gardien de récupération sera retiré de ce compte et toutes les récupérations en attente seront invalidées, y compris celles lancées hors de ce portefeuille. Votre méthode d’approbation actuelle et des frais de réseau sont requis.",
+    "smartAccountGuardianRecoveryDisableFailed": "La désactivation n’a pas été confirmée. Vérifiez votre méthode d’approbation et votre solde pour les frais, puis réessayez.",
+    "smartAccountGuardianRecoveryDisableUnverified": "Une transaction de retrait a peut-être été envoyée, mais le retrait n’est pas confirmé. Vérifiez l’état sur la chaîne avant d’envoyer une autre transaction.",
+    "smartAccountGuardianRecoveryDisabled": "La récupération par gardien est désactivée. Les demandes en attente ont été invalidées.",
+    "smartAccountGuardianRecoveryAlreadyDisabled": "La récupération par gardien est déjà désactivée pour ce compte.",
+    "smartAccountGuardianRecoveryCheckRemoval": "Vérifier l’état du retrait",
+    "smartAccountGuardianRecoveryRetryRemoval": "Examiner une autre tentative de retrait",
+    "smartAccountGuardianRecoveryRetryWarning": "La transaction précédente peut encore aboutir. Une autre tentative peut entraîner des frais de réseau même si le gardien a déjà été retiré.",
     "smartAccountGuardianRecoveryDelayTestnet": "10 min (réseau de test)",
     "smartAccountGuardianRecoveryChooseDelay": "Choisissez un délai disponible avant de mettre à jour cette politique. La politique installée reste inchangée.",
     "smartAccountRecoveryEmailAlerts": "Alertes par e-mail dans Sysnode",

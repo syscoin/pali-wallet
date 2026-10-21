@@ -459,6 +459,18 @@
     "receipts": "Recibos"
   },
   "settings": {
+    "smartAccountGuardianRecoveryDisable": "Desativar recuperação por guardião",
+    "smartAccountGuardianRecoveryDisableConfirmButton": "Desativar",
+    "smartAccountGuardianRecoveryDisableConfirmTitle": "Desativar recuperação?",
+    "smartAccountGuardianRecoveryInvalidatesPending": "Todas as recuperações pendentes serão invalidadas.",
+    "smartAccountGuardianRecoveryDisableConfirmDescription": "Isso remove o guardião de recuperação desta conta e invalida todas as recuperações pendentes, incluindo solicitações iniciadas fora desta carteira. São necessários seu método de aprovação atual e gas da rede.",
+    "smartAccountGuardianRecoveryDisableFailed": "A desativação não foi confirmada. Verifique seu método de aprovação e saldo para gas e tente novamente.",
+    "smartAccountGuardianRecoveryDisableUnverified": "Uma transação de remoção pode ter sido enviada, mas a remoção não está confirmada. Confira o estado na rede antes de enviar outra transação.",
+    "smartAccountGuardianRecoveryDisabled": "A recuperação por guardião está desativada. As solicitações de recuperação pendentes foram invalidadas.",
+    "smartAccountGuardianRecoveryAlreadyDisabled": "A recuperação por guardião já está desativada para esta conta.",
+    "smartAccountGuardianRecoveryCheckRemoval": "Verificar estado da remoção",
+    "smartAccountGuardianRecoveryRetryRemoval": "Revisar outra tentativa de remoção",
+    "smartAccountGuardianRecoveryRetryWarning": "A transação anterior ainda pode ser concluída. Outra tentativa pode custar gas da rede mesmo que o guardião já tenha sido removido.",
     "smartAccountGuardianRecoveryDelayTestnet": "10 min (rede de teste)",
     "smartAccountGuardianRecoveryChooseDelay": "Escolha um período de espera disponível antes de atualizar esta política. A política instalada permanece inalterada.",
     "smartAccountRecoveryEmailAlerts": "Alertas por e-mail no Sysnode",

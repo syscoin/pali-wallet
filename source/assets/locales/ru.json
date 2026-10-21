@@ -459,6 +459,18 @@
     "receipts": "Квитанции"
   },
   "settings": {
+    "smartAccountGuardianRecoveryDisable": "Отключить восстановление через хранителя",
+    "smartAccountGuardianRecoveryDisableConfirmButton": "Отключить",
+    "smartAccountGuardianRecoveryDisableConfirmTitle": "Отключить восстановление?",
+    "smartAccountGuardianRecoveryInvalidatesPending": "Все ожидающие запросы восстановления станут недействительными.",
+    "smartAccountGuardianRecoveryDisableConfirmDescription": "Хранитель восстановления будет удалён из этого аккаунта, а все ожидающие запросы восстановления, включая созданные вне этого кошелька, станут недействительными. Требуются текущий способ подтверждения и средства на комиссию сети.",
+    "smartAccountGuardianRecoveryDisableFailed": "Отключение не подтверждено. Проверьте способ подтверждения и баланс для комиссии, затем повторите попытку.",
+    "smartAccountGuardianRecoveryDisableUnverified": "Транзакция удаления могла быть отправлена, но удаление не подтверждено. Проверьте состояние в сети перед отправкой новой транзакции.",
+    "smartAccountGuardianRecoveryDisabled": "Восстановление через хранителя отключено. Ожидающие запросы восстановления стали недействительными.",
+    "smartAccountGuardianRecoveryAlreadyDisabled": "Восстановление через хранителя уже отключено для этого аккаунта.",
+    "smartAccountGuardianRecoveryCheckRemoval": "Проверить состояние удаления",
+    "smartAccountGuardianRecoveryRetryRemoval": "Проверить новую попытку удаления",
+    "smartAccountGuardianRecoveryRetryWarning": "Предыдущая транзакция ещё может завершиться. Новая попытка может потребовать комиссию сети, даже если хранитель уже удалён.",
     "smartAccountGuardianRecoveryDelayTestnet": "10 мин (тестовая сеть)",
     "smartAccountGuardianRecoveryChooseDelay": "Выберите доступный период ожидания перед обновлением политики. Установленная политика не изменяется.",
     "smartAccountRecoveryEmailAlerts": "Оповещения по почте в Sysnode",

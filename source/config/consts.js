@@ -4,9 +4,9 @@ const MV2_OPTIONS = {
   name: 'Pali Wallet',
   version: '2.0.16',
   icons: {
-    16: 'assets/all_assets/favicon-16.png',
+    16: 'assets/all_assets/favicon-128.png',
     32: 'assets/all_assets/favicon-32.png',
-    48: 'assets/all_assets/favicon-48.png',
+    48: 'assets/all_assets/favicon-128.png',
     128: 'assets/all_assets/favicon-128.png',
   },
   description: 'A Non-Custodial Crypto Wallet',
@@ -28,9 +28,9 @@ const MV2_OPTIONS = {
   browser_action: {
     default_popup: 'app.html',
     default_icon: {
-      16: 'assets/all_assets/favicon-16.png',
+      16: 'assets/all_assets/favicon-128.png',
       32: 'assets/all_assets/favicon-32.png',
-      48: 'assets/all_assets/favicon-48.png',
+      48: 'assets/all_assets/favicon-128.png',
       128: 'assets/all_assets/favicon-128.png',
     },
     default_title: 'Pali Wallet',
@@ -59,9 +59,7 @@ const MV2_OPTIONS = {
     'js/inpage.bundle.js',
     'js/handleWindowProperties.bundle.js',
     'js/pali.bundle.js',
-    'assets/all_assets/favicon-16.png',
     'assets/all_assets/favicon-32.png',
-    'assets/all_assets/favicon-48.png',
     'assets/all_assets/favicon-128.png',
   ],
   commands: {
@@ -82,9 +80,9 @@ const MV3_OPTIONS = {
   name: 'Pali Wallet',
   version: '4.0.118',
   icons: {
-    16: 'assets/all_assets/favicon-16.png',
+    16: 'assets/all_assets/favicon-128.png',
     32: 'assets/all_assets/favicon-32.png',
-    48: 'assets/all_assets/favicon-48.png',
+    48: 'assets/all_assets/favicon-128.png',
     128: 'assets/all_assets/favicon-128.png',
   },
   description: 'A Non-Custodial Crypto Wallet',
@@ -115,9 +113,9 @@ const MV3_OPTIONS = {
   action: {
     default_popup: 'app.html',
     default_icon: {
-      16: 'assets/all_assets/favicon-16.png',
+      16: 'assets/all_assets/favicon-128.png',
       32: 'assets/all_assets/favicon-32.png',
-      48: 'assets/all_assets/favicon-48.png',
+      48: 'assets/all_assets/favicon-128.png',
       128: 'assets/all_assets/favicon-128.png',
     },
     default_title: 'Pali Wallet',
@@ -140,9 +138,7 @@ const MV3_OPTIONS = {
         'js/handleWindowProperties.bundle.js',
         'js/pali.bundle.js',
         'assets/all_assets/*',
-        'assets/all_assets/favicon-16.png',
         'assets/all_assets/favicon-32.png',
-        'assets/all_assets/favicon-48.png',
         'assets/all_assets/favicon-128.png',
       ],
       matches: ['<all_urls>'],
