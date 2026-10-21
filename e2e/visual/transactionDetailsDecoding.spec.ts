@@ -375,6 +375,25 @@ for (const mode of [
             ).toHaveCount(0);
             await parameter.hover();
             await expect(page.getByRole('tooltip')).toHaveText(amount);
+            await page.mouse.move(0, 0);
+            await expect(page.getByRole('tooltip')).toBeHidden();
+            const disclosure = parameter.locator('..');
+            await expect(disclosure).toHaveAttribute('tabindex', '0');
+            // Traverse the ordinary tab order; do not programmatically focus
+            // the value whose keyboard access is under test.
+            for (let index = 0; index < 80; index++) {
+              await page.keyboard.press('Tab');
+              if (
+                await disclosure.evaluate(
+                  (element) => element === document.activeElement
+                )
+              )
+                break;
+            }
+            await expect(disclosure).toBeFocused();
+            await expect(page.getByRole('tooltip')).toHaveText(amount);
+            await page.keyboard.press('Escape');
+            await expect(page.getByRole('tooltip')).toBeHidden();
           }
           if (mode === 'mixed-logs') {
             const heading = page.getByText(`${en.transactions.eventLogs} (2)`, {

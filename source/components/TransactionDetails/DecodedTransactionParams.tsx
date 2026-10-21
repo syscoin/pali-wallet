@@ -66,6 +66,15 @@ export const DecodedTransactionParams: React.FC<
     return String(value);
   };
 
+  const renderAddress = (address: string) => {
+    const display = formatAddress(address);
+    return (
+      <Tooltip content={address} focusable={display !== address}>
+        <span className="text-xs text-white font-mono">{display}</span>
+      </Tooltip>
+    );
+  };
+
   // Special formatting for approval transactions
   const renderApprovalDetails = () => {
     const approvalData = decodedData as any;
@@ -81,11 +90,7 @@ export const DecodedTransactionParams: React.FC<
             <span className="text-xs text-brand-gray200">
               {t('transactions.spender')}:
             </span>
-            <Tooltip content={approvalData.inputs[0]}>
-              <span className="text-xs text-white font-mono">
-                {formatAddress(approvalData.inputs[0])}
-              </span>
-            </Tooltip>
+            {renderAddress(approvalData.inputs[0])}
           </div>
           <div className="flex items-center justify-between">
             <span className="text-xs text-brand-gray200">
@@ -120,11 +125,7 @@ export const DecodedTransactionParams: React.FC<
             <span className="text-xs text-brand-gray200">
               {t('transactions.approvedTo')}:
             </span>
-            <Tooltip content={approvalData.inputs[0]}>
-              <span className="text-xs text-white font-mono">
-                {formatAddress(approvalData.inputs[0])}
-              </span>
-            </Tooltip>
+            {renderAddress(approvalData.inputs[0])}
           </div>
           <div className="flex items-center justify-between">
             <span className="text-xs text-brand-gray200">
@@ -145,11 +146,7 @@ export const DecodedTransactionParams: React.FC<
             <span className="text-xs text-brand-gray200">
               {t('transactions.operator')}:
             </span>
-            <Tooltip content={approvalData.inputs[0]}>
-              <span className="text-xs text-white font-mono">
-                {formatAddress(approvalData.inputs[0])}
-              </span>
-            </Tooltip>
+            {renderAddress(approvalData.inputs[0])}
           </div>
           <div className="flex items-center justify-between">
             <span className="text-xs text-brand-gray200">
@@ -185,30 +182,31 @@ export const DecodedTransactionParams: React.FC<
 
         {!isApproval && decodedData.inputs.length > 0 && (
           <div className="space-y-2">
-            {decodedData.inputs.map((input, index) => (
-              <div key={index} className="flex items-center justify-between">
-                <span className="text-xs text-brand-gray200">
-                  {decodedData.names[index] || `param${index}`}
-                  <span className="text-brand-gray400 ml-1">
-                    ({decodedData.types[index]})
+            {decodedData.inputs.map((input, index) => {
+              const value = formatValue(input, decodedData.types[index]);
+              const display =
+                decodedData.types[index] === 'address'
+                  ? formatAddress(input)
+                  : value.length > 20
+                  ? ellipsis(value, 10, 4)
+                  : value;
+              return (
+                <div key={index} className="flex items-center justify-between">
+                  <span className="text-xs text-brand-gray200">
+                    {decodedData.names[index] || `param${index}`}
+                    <span className="text-brand-gray400 ml-1">
+                      ({decodedData.types[index]})
+                    </span>
+                    :
                   </span>
-                  :
-                </span>
-                <Tooltip content={formatValue(input, decodedData.types[index])}>
-                  <span className="text-xs text-white font-mono">
-                    {decodedData.types[index] === 'address'
-                      ? formatAddress(input)
-                      : formatValue(input, decodedData.types[index]).length > 20
-                      ? ellipsis(
-                          formatValue(input, decodedData.types[index]),
-                          10,
-                          4
-                        )
-                      : formatValue(input, decodedData.types[index])}
-                  </span>
-                </Tooltip>
-              </div>
-            ))}
+                  <Tooltip content={value} focusable={display !== value}>
+                    <span className="text-xs text-white font-mono">
+                      {display}
+                    </span>
+                  </Tooltip>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
