@@ -61,3 +61,9 @@ Die Wiederherstellung von Pali Smart Accounts hängt von den installierten Modul
 Wenn eine Dapp `wallet_prepareSmartAccount` aufruft, erstellt Pali einen Smart Account und speichert dauerhafte Metadaten lokal, nachdem das Deployment und die gegebenenfalls angeforderte Validator-Einrichtung abgeschlossen sind. Pali bewahrt außerdem lokale Datensätze einer ausstehenden Passkey-Einrichtung bereits vor der Installation auf, damit eine unterbrochene Änderung diese Wiederherstellungsdetails nicht unbemerkt verwirft. Diese Datensätze ersetzen weder ein Seed-Backup noch den Zugriff auf den Passkey.
 
 Existiert ein Smart Account on-chain, fehlt aber lokal, verwenden Sie die Wallet-Wiederherstellung von Pali. Pali überspringt bereits lokal vorhandene Konten und lässt den Nutzer auswählen, welche übrigen Konten importiert werden sollen.
+
+:::tip Aktuelle Anleitung zu Guardian-Recovery
+
+Die [vollständige Anleitung](./smart-account-validators#guardian-recovery-guide) beschreibt Einrichtung, Start, Abschluss und **Disable guardian recovery**. Neue Richtlinien bieten 3 oder 7 Tage Wartezeit; 10 Minuten sind nur für bekannte Testnetze vorgesehen. Bestätigtes Deaktivieren erfordert die aktuelle Freigabemethode und Gas, verwirft ausstehende Wiederherstellungen und entfernt diesen Wiederherstellungsweg, macht aber keine abgeschlossene Wiederherstellung rückgängig. Bei unklarem Transaktionsstatus zuerst On-Chain prüfen. Optionale Sysnode-E-Mail-Hinweise erfordern eine verifizierte E-Mail-Adresse und eine Wallet-Signatur; sie erhalten keine Schlüssel und sind keine Zustellgarantie.
+
+:::

@@ -43,7 +43,7 @@ Der Composite-Richtlinieneditor benötigt mindestens zwei installierte Validator
 
 Ein Validatorwechsel ändert weder die Smart-Account-Adresse noch Guthaben oder Verlauf. Der Zugriff auf einen lokalen Signer setzt weiterhin voraus, dass sein Schlüssel oder Passkey verfügbar ist. Ein Richtlinienwechsel stellt keinen fehlenden Signierzustand wieder her und koordiniert die SLH-DSA-Nutzung nicht zwischen wiederhergestellten Geräten.
 
-Guardians sind bewusst **nicht** Teil dieser Liste. Ein Guardian kann niemals eine Transaktion freigeben; seine einzige Befugnis besteht darin, eine langsame, sichtbare Wiederherstellung zu starten, wenn Sie den Zugriff verlieren. Diese Trennung schützt vor Zugriffsverlust, ohne jemandem die alltägliche Kontrolle zu geben.
+Guardians sind eine separate, verzögerte Berechtigung und keine alltägliche Freigabemethode. Eine ausreichende Zahl von Guardian-Freigaben kann die Kontrolle über das Konto ändern. Wählen und schützen Sie Guardians entsprechend; die Wartezeit macht einen nicht vertrauenswürdigen Guardian nicht sicher.
 
 Pali kann ein gemeinsames Wallet-Passkey-Profil verwenden oder separate Passkey-Zugangsdaten für ein Konto erstellen. Gemeinsame Passkeys sind praktisch für Nutzer, die einen einzigen von der Wallet kontrollierten Passkey wünschen. Separate Passkeys können Zugangsdaten pro Dienst oder Richtlinie voneinander isolieren.
 
@@ -69,7 +69,7 @@ Eine langsame Einrichtung bietet die Aktion **Status prüfen**. Das Verlassen de
   <a className="pali-media-link" href="/img/screens/settings-smart-account-policy.png" target="_blank" rel="noreferrer">
   <img src="/img/screens/settings-smart-account-policy.png" alt="Pali-Einstellungen für Smart-Account-Richtlinien" />
 </a>
-  <figcaption>Der Richtlinienbildschirm des Smart Accounts zeigt installierte Module, Details zum aktiven Validator, Guardian-Recovery und Modulverwaltung.</figcaption>
+  <figcaption>Wenn das Konto noch nicht bereitgestellt ist, beginnen die Smart-Account-Einstellungen mit der Registrierung. Danach stehen hier Freigabe- und Recovery-Optionen bereit.</figcaption>
 </figure>
 
 Werden lokale Wallet-Daten gelöscht oder wird Pali auf einem neuen Gerät installiert, lassen sich deterministische Pali Smart Accounts aus Wallet-Metadaten und der Chain-Konfiguration rekonstruieren. Konten mit Passkey-Validatoren benötigen weiterhin Zugriff auf die zugehörigen Passkey-Zugangsdaten, um Aktionen freizugeben.
@@ -128,3 +128,27 @@ Pali Smart Accounts basieren auf öffentlichen Smart-Account-Standards:
 - [ERC-7579 modular smart accounts](https://eips.ethereum.org/EIPS/eip-7579) für Validator- und Executor-Module.
 - [ERC-1271 contract signature validation](https://eips.ethereum.org/EIPS/eip-1271) für Signaturen von Vertragskonten.
 - [WebAuthn Level 3](https://www.w3.org/TR/webauthn-3/) für Passkey-Freigaben.
+
+## Guardian-Recovery Schritt für Schritt {#guardian-recovery-guide}
+
+Das Wiederherstellen lokaler Wallet-Einträge und der Wechsel der Kontokontrolle sind verschieden. Eine Seed-Wiederherstellung umgeht keinen installierten Validator. Guardian-Recovery ändert nach einer Wartezeit die Freigabemethode desselben Smart Accounts.
+
+1. **Einrichten:** Öffnen Sie die Recovery-Einstellungen, solange Ihre aktuelle Freigabemethode funktioniert. Registrieren Sie das Konto zuerst, falls es noch nicht bereitgestellt ist. Wählen Sie einen separat kontrollierten Guardian und eine Wartezeit und bestätigen Sie die Einrichtung on-chain. Halten Sie den Gas-Zahler finanziert.
+2. **Starten:** Wählen Sie bei Zugriffsverlust eine neue Freigabemethode, deren Kontrolle Sie nachweisen können. Der konfigurierte Guardian signiert die genaue Recovery-Absicht. Die Übermittlung benötigt Gas; sie wechselt die Kontrolle noch nicht.
+3. **Warten und abschließen:** Die bisherige Freigabemethode bleibt aktiv, bis Recovery erfolgreich abgeschlossen ist. Kehren Sie nach der Wartezeit zum selben Konto und Netzwerk zurück. Nach der Wartezeit kann jeder den Abschluss der genauen, bereits von den Guardians genehmigten Wiederherstellung übermitteln, bevor sie abläuft. Danach kontrolliert die neue Methode dasselbe Konto; Adresse, Guthaben und Verlauf bleiben bestehen.
+
+Nach dem Abschluss autorisiert die ersetzte aktive Methode dieses Konto nicht mehr. Löschen Sie alte Schlüssel oder Passkeys erst, wenn andere Konten und Netzwerke sie nicht mehr benötigen. Eine vor dem Abschluss abgelaufene Anfrage benötigt einen neuen Recovery-Versuch.
+
+Neue Pali-Richtlinien bieten **3 oder 7 Tage** Wartezeit. **10 Minuten** sind nur auf bekannten Testnetzen verfügbar. Dies sind Pali-Einrichtungsoptionen, kein vertragsweiter Mindestwert. Bestehende On-Chain-Einstellungen gelten weiterhin. Die Wartezeit und das anschließende Zeitfenster zum Abschließen sind nicht identisch.
+
+### Unerwartete Recovery stoppen
+
+Wenn Sie die aktuelle Freigabemethode noch kontrollieren, wählen Sie in den Recovery-Einstellungen **Disable guardian recovery** (Guardian-Recovery deaktivieren). Prüfen Sie Konto und Netzwerk, bestätigen Sie und bezahlen Sie Gas. Die bestätigte Entfernung verwirft alle ausstehenden Recoveries, auch extern gestartete, und entfernt diesen Wiederherstellungsweg. Richten Sie danach vertrauenswürdige Guardians neu ein, wenn Sie ihn weiter nutzen möchten.
+
+Die Entfernung muss vor dem unerwünschten Abschluss bestätigt sein; sie macht keine bereits abgeschlossene Recovery rückgängig. Bei unklarem Ergebnis prüfen Sie zuerst den On-Chain-Status. Ein Fehler, Timeout oder Schließen des Fensters hebt eine gesendete Transaktion nicht auf. Nicht blind erneut senden.
+
+### Optionale E-Mail-Hinweise
+
+Der Link in den Einstellungen führt zu **Sysnode Account → Recovery alerts**. Nutzen Sie eine verifizierte E-Mail-Adresse, verbinden Sie den bereitgestellten Smart Account auf einem unterstützten Netzwerk und signieren Sie die Anmeldung mit seiner aktuellen Freigabemethode. Prüfen Sie, dass die Überwachung aktiv ist. Das ist optional und unabhängig von der Guardian-Einrichtung; Sysnode erhält keine privaten Schlüssel und kann weder Gelder bewegen noch Recovery abbrechen.
+
+Die Überwachung läuft auch bei geschlossenem Pali, hängt aber vom Dienst, dessen RPC und der E-Mail-Zustellung ab. Hinweise können verspätet eintreffen oder ausfallen; junge Chain-Beobachtungen können reorganisiert werden. Keine E-Mail beweist nicht, dass keine Recovery läuft. Prüfen Sie Hinweise im vertrauenswürdigen Wallet für das genaue Konto und Netzwerk.

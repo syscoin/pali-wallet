@@ -28,7 +28,7 @@ Pali 围绕一个理念构建：钱包应该是用户的安全边界，而不是
 - **标准优先的 dapp 集成。** Pali 遵循 dapp 已经使用的钱包 API：EIP-1193、EIP-6963、EIP-2255 permissions、EIP-5792 `wallet_sendCalls`、EIP-712 typed data，以及 MetaMask 兼容的 request behavior。Pali 智能账户使用 ERC-7579-style validator/executor modules 和 ERC-4337-style execution data。
 - **可编程授权。** 在 Pali 智能账户中，地址保持稳定，但签名策略可以演进。验证器决定谁可以批准操作；执行器添加 guardian recovery 等功能。团队可以从 passkey 切换到阈值策略，添加恢复，或采用新的验证器类型，而无需移动资金。
 - **面向未来更强签名设计。** 因为授权是模块化的，未来验证器可以支持 ECDSA 和 P-256 passkey 之外的方案，包括当目标 chain 上可行时的后量子签名设计。
-- **安全优先于便利。** Pali 串行化阻塞式批准，检查已连接站点和网络上下文，阻止发送和批准中的高风险 blacklist 命中，并将 guardian recovery 与交易签名分离。Guardians 可以在延迟后帮助恢复访问权；他们不能悄悄花费资金。
+- **安全优先于便利。** Pali 串行化阻塞式批准，检查已连接站点和网络上下文，阻止发送和批准中的高风险 blacklist 命中，并将 guardian recovery 与交易签名分离。守护者批准会在达到门槛和等待期条件后授予延迟的账户权限。请保护守护者，并在意外执行前采取措施。
 
 Pali 的方向是**为真实用户和真实 dapp 提供自托管可编程账户**：足够快，可用于日常钱包使用；足够标准，方便开发者；足够灵活，适合机构；也足够保守，让关键安全控制留在用户和链上。
 

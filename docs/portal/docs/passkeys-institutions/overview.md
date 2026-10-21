@@ -28,10 +28,10 @@ The factory creates the account with a bootstrap wallet-owned ECDSA validator fi
 
 ERC-7579 separates module roles, and Pali leans into that separation deliberately:
 
-- **Validators** are the signing authority. A validator decides whether a given approval (passkey proof, ECDSA signature, composite policy result) authorizes an account action. Only validators can approve transactions.
-- **Executors** add account behavior that is not a signature. Pali's guardian recovery module is an executor: guardians cannot sign or move funds, they can only schedule a timelocked replacement of the active validator.
+- **Validators** check signatures for normal account approvals, such as passkeys, ECDSA signatures, and composite policies.
+- **Executors** can execute account actions through an installed module. Pali's guardian module requires the configured guardian threshold and a delay. The guided wallet flow uses it to replace the active validator; the on-chain module is not limited to that UI action.
 
-Keeping these roles separate is what makes recovery safe to recommend. A guardian compromise does not give an attacker signing power — it gives them a delayed, visible, cancelable recovery attempt.
+Guardians are therefore a delayed account authority, not risk-free contacts. A compromised threshold can threaten account control and funds. The current owner can react during the delay, but must get a protective action confirmed before malicious execution. See the [guardian recovery guide](../users/smart-account-validators#guardian-recovery) for setup, **Disable guardian recovery**, and optional email alerts.
 
 ## Composite signing policies
 
@@ -41,13 +41,13 @@ The composite validator combines child validators under a threshold, which turns
 - **t-of-N** — a quorum must approve. The natural shape for shared treasuries, desks, and team-controlled accounts.
 - **N-of-N** — every configured validator must approve. Maximum-assurance accounts.
 
-Composites can nest: a child of a composite can itself be a composite, so hierarchical policies — for example, "the CFO key AND (any 2 of 3 desk passkeys)" — are expressible without custom contracts. Guardian recovery remains independent of whatever validator policy is active.
+Pali currently collects locally available builtin child approvals until the configured threshold is met. Nested composites and external or cross-device approval collection are not supported by this wallet version. Guardian recovery remains independent of the active validator policy. See [Smart accounts and validators](../users/smart-account-validators) for the supported policy shapes.
 
 ## Validator agility and post-quantum readiness
 
-Because authorization lives in replaceable modules, the account is not married to any signature scheme. Today Pali ships ECDSA (the wallet-owned default), P-256 WebAuthn passkeys, and the composite validator. When new validator types are deployed — including post-quantum signature schemes — they install onto the same account at the same address. At that point per-transaction authorization can run with no ECDSA in the loop at all. Funds, history, and integrations never move; only the signing authority evolves.
+On configured networks, Pali supports wallet-owned ECDSA, P-256 WebAuthn passkeys, SLH-DSA and composite validators. The relevant on-chain modules must be deployed and the required local keys or credentials available. Replaceable modules also allow later signature schemes to be adopted on the same account address. Changing the validator does not move its funds, history or integrations.
 
-The same agility extends to recovery. The guardian recovery module verifies approvals through standard signature checking — plain ECDSA for normal addresses, ERC-1271 for contract accounts — so a guardian can itself be a smart account governed by a composite, custom, or post-quantum validator. A deployed contract-account guardian makes the recovery path inherit that account's signature scheme, which is how both signing **and** recovery can eventually run with no classical-ECDSA dependency. Pali's current guardian UX collects key-based approvals; contract-account guardian flows can be added in the wallet later because the on-chain module already supports them.
+The same agility extends to recovery. The guardian module verifies ECDSA approvals from normal addresses and ERC-1271 approvals from contract accounts. Pali can collect approvals from local key-based guardians and deployed local smart-account guardians it can sign for, including SLH-DSA accounts. The guardian's own policy governs that signature; an external guardian unavailable as a local signing account needs an external approval flow.
 
 ## Why passkeys matter
 

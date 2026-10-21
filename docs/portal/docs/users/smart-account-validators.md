@@ -43,7 +43,7 @@ The composite builder requires at least two installed validators. The guided app
 
 Changing the validator does not change the smart-account address, balances, or history. Access to a local signer still depends on its key or passkey being available; changing the policy does not restore missing signer state or coordinate SLH-DSA usage across restored devices.
 
-Guardians are intentionally **not** part of this list. A guardian can never approve a transaction; their only power is to start a slow, visible recovery if you lose access. That separation protects you from lost access without giving anyone day-to-day control.
+Guardians are a separate, delayed authority rather than your everyday approval method. A sufficient set of guardian approvals can authorize recovery of account control, so choose and protect them accordingly. The delay gives the current owner time to react; it does not make an untrusted guardian safe. See [Guardian recovery](#guardian-recovery).
 
 Pali can use a shared wallet passkey profile or create a separate passkey credential for an account. Shared passkeys are convenient for users who want one wallet-controlled passkey. Separate passkeys can help isolate credentials per service or policy.
 
@@ -69,7 +69,7 @@ Slow setup exposes a **Check status** action. Leaving the page or switching netw
   <a className="pali-media-link" href="/img/screens/settings-smart-account-policy.png" target="_blank" rel="noreferrer">
   <img src="/img/screens/settings-smart-account-policy.png" alt="Pali smart-account policy settings screen" />
 </a>
-  <figcaption>The smart-account policy screen shows installed modules, active validator details, guardian recovery, and module management.</figcaption>
+  <figcaption>Smart-account settings begin with registration when the account is not yet deployed. Once registered, the same settings provide approval-method and recovery controls.</figcaption>
 </figure>
 
 If local wallet state is deleted or Pali is installed on a new device, deterministic Pali smart accounts can be reconstructed from wallet metadata and chain configuration. Accounts with passkey validators still need access to the relevant passkey credential to approve actions.
@@ -84,11 +84,32 @@ The recovery module verifies guardian approvals with standard signature checking
 
 Pali's guardian screens can collect approvals from local key-based guardians (wallet, imported, or hardware accounts) and local smart-account guardians that Pali can sign for, including SLH-DSA smart accounts. A smart-account guardian must already be deployed on-chain to answer ERC-1271 signature checks. An arbitrary external guardian that is not available as a local Pali signing account still needs an external recovery flow to produce its approval.
 
-Guardian recovery is not instant. Starting recovery creates a replacement recovery target, asks the configured guardian to sign the recovery intent, and submits a timelocked recovery request. After the wait period has passed, anyone can finalize the recovery transaction. The user can then operate the account with the replacement validator.
+### Set up, start, and finish recovery
+
+1. While your current approval method still works, open the smart account's **Recovery guardian** settings. Register the smart account first if it is not yet deployed. Choose a separately controlled guardian and a waiting period, then approve the on-chain setup. Keep the required gas payer funded.
+2. If that approval method is lost, use **Start recovery** to choose and prove control of a replacement approval method. The configured guardian signs the exact recovery intent. Starting the request needs gas and does not immediately replace the current owner.
+3. Wait until the on-chain recovery becomes executable. The current approval method remains active during this wait. Starting recovery does not move the account's funds or change its address.
+4. Return to the same account and network to finish the saved recovery. After the delay, anyone can submit finalization of the exact recovery already approved by the guardians, before it expires. The configured replacement then controls the same smart account; its address, assets, and history remain unchanged.
+
+After successful finalization, the old active approval method no longer authorizes that account through the replaced validator. Do not delete its key or passkey until you have checked whether other accounts or networks still need it. A request that expires before finalization needs a new recovery attempt.
+
+New Pali policies offer **3 days** or **7 days** of waiting. **10 minutes** is available only on known testnets for testing. These are Pali's setup choices, not an enforced contract-wide minimum; existing on-chain policies keep their actual settings. The waiting period is also distinct from the subsequent window in which finalization is allowed.
+
+### Stop an unexpected recovery
+
+If you still control the current approval method, open that account's recovery settings and choose **Disable guardian recovery**. Check the account and network in the confirmation, then approve and pay the network gas. Confirmed removal invalidates pending recovery requests, including ones started outside this wallet, and removes the guardian recovery path. Set up trusted guardians again if you want recovery protection afterwards.
+
+Act before the unwanted recovery is finalized. Disabling recovery cannot reverse a completed validator replacement. If Pali says the removal result is uncertain, use **Check removal status** before considering another attempt; closing the screen, an error, or a timeout does not cancel a submitted transaction. Do not send the same request again blindly.
+
+### Optional recovery email alerts
+
+The settings link opens **Sysnode Account → Recovery alerts**. Use a verified email address, connect this deployed smart account on a network supported by Sysnode, and approve the enrollment message with the account's current signing method. Check that monitoring is **active**. This is optional and separate from installing a guardian; Sysnode receives no private signing keys and cannot move funds or cancel recovery.
+
+Monitoring continues while Pali is closed, but depends on the service, its network RPC, and email delivery. Alerts can be delayed or fail, and recent chain observations can be reorganized. No email is not proof that no recovery was started. Treat an alert as a reason to inspect the exact account and network in your trusted wallet, not as an approval request. See [Recovery alerts and operational limits](../passkeys-institutions/security-and-operations#recovery-email-alerts).
 
 The guardian signature binds the chain, account address, recovery module, recovery salt, execution mode, and recovery calldata. Pali uses a fresh salt for each recovery attempt, and the module permits only one active recovery per account.
 
-Technical note: the guardian recovery executor stores a per-account guardian set, threshold, delay, expiration, and pending recovery. Pali currently exposes simple guardian flows for UX clarity, while the module supports threshold policies such as 1-of-N or M-of-N.
+Technical note: the guardian recovery executor stores a per-account guardian set, threshold, delay, expiration, and pending recovery. Pali currently exposes simple guardian flows for UX clarity, while the module supports threshold policies such as 1-of-N or M-of-N. The guided wallet flow builds validator replacement; the on-chain executor is not restricted to that UI action. A guardian threshold can sign delayed account execution, subject to any installed hook policy. Treat guardian compromise as a risk to the account and its funds, not merely to its label or login.
 
 ## Dapp-created accounts
 

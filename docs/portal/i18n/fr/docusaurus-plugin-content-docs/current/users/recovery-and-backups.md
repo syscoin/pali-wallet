@@ -61,3 +61,9 @@ La récupération des comptes intelligents Pali dépend des modules installés. 
 Lorsqu’une dapp appelle `wallet_prepareSmartAccount`, Pali crée un compte intelligent et enregistre localement des métadonnées durables une fois le déploiement et toute configuration de validateur demandée terminés. Pali conserve également des enregistrements locaux de la configuration des passkeys en attente avant leur installation, afin qu’un changement interrompu ne supprime pas silencieusement ces informations de récupération. Ces enregistrements ne remplacent ni une sauvegarde de la phrase de récupération ni l’accès à la passkey.
 
 Si un compte intelligent existe sur la chaîne mais est absent localement, utilisez le parcours de récupération du portefeuille de Pali. Pali ignore les comptes déjà présents et laisse l’utilisateur choisir lesquels importer parmi les comptes restants.
+
+:::tip Guide actuel de récupération par gardiens
+
+Le [guide complet](./smart-account-validators#guardian-recovery-guide) explique la configuration, le lancement, la finalisation et **Disable guardian recovery**. Les nouvelles politiques proposent 3 ou 7 jours d’attente ; 10 minutes est réservé aux testnets connus. La désactivation confirmée exige la méthode d’approbation actuelle et du gas, invalide les récupérations en attente et supprime cette voie de récupération, mais n’annule pas une récupération finalisée. En cas de transaction incertaine, vérifiez d’abord son état on-chain. Les alertes facultatives de Sysnode exigent un e-mail vérifié et une signature du portefeuille ; elles ne reçoivent aucune clé et ne garantissent pas la livraison.
+
+:::

@@ -43,7 +43,7 @@ El constructor de políticas compuestas requiere al menos dos validadores instal
 
 Cambiar el validador no cambia la dirección, los saldos ni el historial de la cuenta inteligente. El acceso a un firmante local sigue dependiendo de que su clave o passkey esté disponible; cambiar la política no restaura el estado de firma perdido ni coordina el uso de SLH-DSA entre dispositivos restaurados.
 
-Los guardianes intencionalmente **no** forman parte de esta lista. Un guardián nunca puede aprobar una transacción; su único poder es iniciar una recuperación lenta y visible si pierdes el acceso. Esa separación te protege ante la pérdida de acceso sin darle a nadie el control cotidiano.
+Los guardianes son una autoridad separada y diferida, no el método de aprobación cotidiano. Un número suficiente de aprobaciones de guardianes puede cambiar el control de la cuenta. Elige y protege a los guardianes en consecuencia: el tiempo de espera no convierte en seguro a un guardián no confiable.
 
 Pali puede usar un perfil de passkey compartido de la billetera o crear una credencial de passkey independiente para una cuenta. Las passkeys compartidas son prácticas para quienes quieren una sola passkey controlada por la billetera. Las passkeys independientes pueden ayudar a aislar las credenciales por servicio o política.
 
@@ -69,7 +69,7 @@ Una configuración lenta muestra la acción **Consultar estado**. Salir de la p�
   <a className="pali-media-link" href="/img/screens/settings-smart-account-policy.png" target="_blank" rel="noreferrer">
   <img src="/img/screens/settings-smart-account-policy.png" alt="Pantalla de ajustes de políticas de cuentas inteligentes de Pali" />
 </a>
-  <figcaption>La pantalla de políticas de la cuenta inteligente muestra los módulos instalados, los detalles del validador activo, la recuperación mediante guardianes y la gestión de módulos.</figcaption>
+  <figcaption>Los ajustes de la cuenta inteligente comienzan con el registro si aún no está desplegada. Tras registrarla, aquí se gestionan la aprobación y la recuperación.</figcaption>
 </figure>
 
 Si se eliminan los datos locales de la billetera o se instala Pali en un dispositivo nuevo, las cuentas inteligentes deterministas de Pali se pueden reconstruir a partir de los metadatos de la billetera y la configuración de la cadena. Las cuentas con validadores de passkey siguen necesitando acceso a la credencial de passkey correspondiente para aprobar acciones.
@@ -128,3 +128,27 @@ Las cuentas inteligentes de Pali se basan en estándares públicos de cuentas in
 - [Cuentas inteligentes modulares ERC-7579](https://eips.ethereum.org/EIPS/eip-7579) para módulos de validación y ejecución.
 - [Validación de firmas de contrato ERC-1271](https://eips.ethereum.org/EIPS/eip-1271) para firmas de cuentas de contrato.
 - [WebAuthn Nivel 3](https://www.w3.org/TR/webauthn-3/) para aprobaciones con passkeys.
+
+## Recuperación con guardianes paso a paso {#guardian-recovery-guide}
+
+Restaurar los registros locales de la wallet no es lo mismo que cambiar el control de una cuenta. Restaurar la seed no elude un validador instalado. La recuperación con guardianes cambia, tras una espera, el método de aprobación de la misma cuenta inteligente.
+
+1. **Configurar:** Abre los ajustes de recuperación mientras funcione el método de aprobación actual. Registra primero la cuenta si aún no está desplegada. Elige un guardián controlado por separado y un plazo, y confirma la configuración on-chain. Mantén financiado al pagador del gas.
+2. **Iniciar:** Si pierdes acceso, elige un método de aprobación nuevo cuyo control puedas demostrar. El guardián configurado firma la intención exacta de recuperación. Enviarla requiere gas; todavía no cambia el control.
+3. **Esperar y finalizar:** El método anterior sigue activo hasta que la recuperación finalice correctamente. Vuelve a la misma cuenta y red tras la espera. Tras la espera, cualquiera puede enviar la finalización de la recuperación exacta ya aprobada por los guardianes, antes de que venza. Después, el método nuevo controla la misma cuenta; dirección, fondos e historial se conservan.
+
+Tras finalizar, el método activo reemplazado ya no autoriza esa cuenta. No borres claves ni passkeys anteriores hasta comprobar que otras cuentas o redes no las necesitan. Si la solicitud vence antes de finalizar, necesitas un nuevo intento.
+
+Las políticas nuevas de Pali ofrecen **3 o 7 días** de espera. **10 minutos** solo está disponible en testnets conocidas. Son opciones de configuración de Pali, no un mínimo impuesto a todo el contrato. La configuración on-chain existente sigue siendo la autoridad. La espera no es lo mismo que el plazo posterior para finalizar.
+
+### Detener una recuperación inesperada
+
+Si aún controlas el método de aprobación actual, selecciona **Disable guardian recovery** (desactivar recuperación con guardianes) en los ajustes de recuperación. Comprueba cuenta y red, confirma y paga el gas. La eliminación confirmada invalida las recuperaciones pendientes, incluso las iniciadas fuera de esta wallet, y elimina esa vía. Configura de nuevo guardianes confiables si quieres seguir utilizándola.
+
+La eliminación debe confirmarse antes de la finalización no deseada; no revierte una recuperación ya completada. Si el resultado es incierto, comprueba primero el estado on-chain. Un error, un timeout o cerrar la ventana no cancela una transacción enviada. No la reenvíes a ciegas.
+
+### Alertas opcionales por correo
+
+El enlace de ajustes abre **Sysnode Account → Recovery alerts**. Usa un correo verificado, conecta la cuenta inteligente desplegada en una red compatible y firma la inscripción con su método de aprobación actual. Comprueba que la monitorización esté activa. Es opcional e independiente de configurar guardianes: Sysnode no recibe claves privadas ni puede mover fondos o cancelar la recuperación.
+
+La monitorización continúa con Pali cerrado, pero depende del servicio, su RPC y la entrega del correo. Las alertas pueden retrasarse o fallar, y las observaciones recientes de la cadena pueden reorganizarse. No recibir un correo no demuestra que no exista una recuperación. Revisa las alertas en tu wallet de confianza para la cuenta y red exactas.

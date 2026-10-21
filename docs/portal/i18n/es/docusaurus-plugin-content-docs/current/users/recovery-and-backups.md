@@ -61,3 +61,9 @@ La recuperación de cuentas inteligentes de Pali depende de los módulos instala
 Cuando una dapp llama `wallet_prepareSmartAccount`, Pali crea una cuenta inteligente y guarda metadatos duraderos localmente una vez completados el despliegue y la configuración de validadores solicitada. Pali también conserva registros locales de la configuración pendiente de passkeys antes de su instalación, para que un cambio interrumpido no descarte silenciosamente esos detalles de recuperación. Estos registros no sustituyen una copia de seguridad de la frase semilla ni el acceso a la passkey.
 
 Si una cuenta inteligente existe on-chain pero no aparece localmente, usa el flujo de recuperación de la billetera de Pali. Pali omite las cuentas que ya están presentes y permite al usuario elegir cuáles de las restantes desea importar.
+
+:::tip Guía actual de recuperación con guardianes
+
+La [guía completa](./smart-account-validators#guardian-recovery-guide) explica la configuración, el inicio, la finalización y **Disable guardian recovery**. Las políticas nuevas ofrecen esperas de 3 o 7 días; 10 minutos se limita a testnets conocidas. La desactivación confirmada requiere el método de aprobación actual y gas, invalida las recuperaciones pendientes y elimina esa vía de recuperación, pero no revierte una recuperación ya finalizada. Si una transacción es incierta, comprueba primero su estado on-chain. Las alertas opcionales de Sysnode requieren un correo verificado y una firma de la wallet; no reciben claves ni garantizan la entrega.
+
+:::

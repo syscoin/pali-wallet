@@ -47,6 +47,8 @@ Backup status is a signal to help you choose between convenience and security. I
 
 ## Recovering smart accounts
 
+**Restoring wallet records and replacing account control are different operations.** Restoring a seed or discovering an existing smart account brings records back into Pali; it does not bypass the account's current signing policy or undo a completed guardian recovery.
+
 Pali smart-account recovery depends on the installed modules. A passkey-controlled account needs the relevant WebAuthn credential to approve future actions. A guardian recovery module can replace the active validator after the configured timelock if the guardian threshold signs the recovery intent. The recovery flow may:
 
 1. Reconstruct deterministic Pali account records from wallet metadata.
@@ -55,6 +57,15 @@ Pali smart-account recovery depends on the installed modules. A passkey-controll
 4. Skip accounts already in the wallet.
 5. Show recoverable accounts with balance and activity hints where available.
 6. Import the accounts selected by the user.
+
+### Guardian recovery quick guide
+
+- Set up a separately controlled guardian while your current approval method still works. New policies offer 3- or 7-day waits; the 10-minute choice is for known testnets only. Existing on-chain settings remain authoritative.
+- Start recovery with the configured guardian and a replacement approval method you control. The old method remains active until the request is finalized on-chain. After the waiting period, finish recovery before its expiry; the account address and funds stay in place.
+- For an unexpected request, use **Disable guardian recovery** from that account's recovery settings while you still control its current approval method. Confirmed removal invalidates pending recovery and removes the recovery path; it cannot undo a recovery already finalized. This action needs gas. Check an uncertain transaction on-chain before retrying.
+- Optionally enroll the deployed smart account in **Sysnode Account → Recovery alerts** using a verified email and a wallet signature. No keys are shared, and email cannot cancel recovery. Verify that monitoring is active; a delayed or missing email is not evidence of safety.
+
+Follow the [complete guardian recovery guide](./smart-account-validators#guardian-recovery) for setup, finalization, ownership, and monitoring limits. Keep replacement credentials backed up; do not erase previous credentials that other accounts or networks may still use.
 
 ## Dapp creation and wallet recovery
 

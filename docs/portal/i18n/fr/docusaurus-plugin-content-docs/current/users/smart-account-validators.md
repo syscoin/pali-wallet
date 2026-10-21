@@ -43,7 +43,7 @@ Le constructeur de politiques composites nécessite au moins deux validateurs in
 
 Changer de validateur ne modifie ni l’adresse, ni les soldes, ni l’historique du compte intelligent. L’accès à un signataire local dépend toujours de la disponibilité de sa clé ou de sa passkey ; changer de politique ne restaure pas l’état de signature manquant et ne coordonne pas l’utilisation de SLH-DSA entre des appareils restaurés.
 
-Les gardiens ne font volontairement **pas** partie de cette liste. Un gardien ne peut jamais approuver une transaction ; son seul pouvoir est de lancer une récupération lente et visible si vous perdez l’accès. Cette séparation vous protège contre la perte d’accès sans donner à quiconque le contrôle au quotidien.
+Les gardiens constituent une autorité distincte et différée, pas la méthode d’approbation quotidienne. Un nombre suffisant d’approbations de gardiens peut changer le contrôle du compte. Choisissez et protégez-les en conséquence : le délai ne rend pas sûr un gardien non fiable.
 
 Pali peut utiliser un profil de passkey partagé par le portefeuille ou créer une information d’identification passkey distincte pour un compte. Les passkeys partagées sont pratiques pour les utilisateurs qui veulent une seule passkey contrôlée par le portefeuille. Des passkeys distinctes peuvent aider à isoler les informations d’identification par service ou politique.
 
@@ -69,7 +69,7 @@ Une configuration lente propose l’action **Vérifier le statut**. Quitter la p
   <a className="pali-media-link" href="/img/screens/settings-smart-account-policy.png" target="_blank" rel="noreferrer">
   <img src="/img/screens/settings-smart-account-policy.png" alt="Écran des réglages de politique des comptes intelligents Pali" />
 </a>
-  <figcaption>L’écran de politique du compte intelligent affiche les modules installés, les détails du validateur actif, la récupération par gardiens et la gestion des modules.</figcaption>
+  <figcaption>Les paramètres du compte intelligent commencent par l’enregistrement s’il n’est pas encore déployé. Ils donnent ensuite accès aux options d’approbation et de récupération.</figcaption>
 </figure>
 
 Si les données locales du portefeuille sont supprimées ou si Pali est installé sur un nouvel appareil, les comptes intelligents déterministes Pali peuvent être reconstruits à partir des métadonnées du portefeuille et de la configuration de la chaîne. Les comptes avec un validateur de passkey nécessitent toujours l’accès à l’information d’identification passkey correspondante pour approuver des actions.
@@ -128,3 +128,27 @@ Les comptes intelligents Pali reposent sur des standards publics de comptes inte
 - [Comptes intelligents modulaires ERC-7579](https://eips.ethereum.org/EIPS/eip-7579) pour les modules de validation et d’exécution.
 - [Validation de signatures de contrat ERC-1271](https://eips.ethereum.org/EIPS/eip-1271) pour les signatures de comptes de contrat.
 - [WebAuthn niveau 3](https://www.w3.org/TR/webauthn-3/) pour les approbations par passkey.
+
+## Récupération par gardiens, étape par étape {#guardian-recovery-guide}
+
+Restaurer les données locales du portefeuille et changer le contrôle d’un compte sont deux opérations différentes. Restaurer la seed ne contourne pas un validateur installé. La récupération par gardiens change, après un délai, la méthode d’approbation du même compte intelligent.
+
+1. **Configurer :** ouvrez les paramètres de récupération tant que la méthode d’approbation actuelle fonctionne. Enregistrez d’abord le compte s’il n’est pas encore déployé. Choisissez un gardien contrôlé séparément et un délai, puis confirmez la configuration on-chain. Gardez le payeur de gas approvisionné.
+2. **Lancer :** en cas de perte d’accès, choisissez une nouvelle méthode d’approbation dont vous pouvez prouver le contrôle. Le gardien configuré signe l’intention exacte de récupération. Son envoi coûte du gas ; il ne change pas encore le contrôle.
+3. **Attendre et finaliser :** l’ancienne méthode reste active jusqu’à la finalisation réussie. Revenez au même compte et au même réseau après le délai. Après le délai, toute personne peut envoyer la finalisation de la récupération exacte déjà approuvée par les gardiens, avant son expiration. La nouvelle méthode contrôle alors le même compte ; adresse, fonds et historique restent en place.
+
+Après finalisation, la méthode active remplacée n’autorise plus ce compte. Ne supprimez les anciennes clés ou passkeys qu’après avoir vérifié qu’aucun autre compte ou réseau n’en a besoin. Une demande expirée avant finalisation nécessite une nouvelle tentative.
+
+Les nouvelles politiques Pali proposent **3 ou 7 jours** d’attente. **10 minutes** est réservé aux testnets connus. Ce sont des choix de configuration Pali, pas un minimum imposé à tout le contrat. La configuration on-chain existante reste déterminante. Le délai d’attente est distinct de la fenêtre ultérieure de finalisation.
+
+### Arrêter une récupération inattendue
+
+Si vous contrôlez encore la méthode d’approbation actuelle, choisissez **Disable guardian recovery** (désactiver la récupération par gardiens) dans les paramètres de récupération. Vérifiez compte et réseau, confirmez et payez le gas. Le retrait confirmé invalide toutes les récupérations en attente, même lancées hors de ce portefeuille, et supprime cette voie. Reconfigurez ensuite des gardiens fiables si vous souhaitez la conserver.
+
+Le retrait doit être confirmé avant la finalisation indésirable ; il n’annule pas une récupération déjà achevée. Si le résultat est incertain, vérifiez d’abord l’état on-chain. Une erreur, un timeout ou la fermeture de la fenêtre n’annule pas une transaction envoyée. Ne la renvoyez pas à l’aveugle.
+
+### Alertes facultatives par e-mail
+
+Le lien des paramètres ouvre **Sysnode Account → Recovery alerts**. Utilisez un e-mail vérifié, connectez le compte intelligent déployé sur un réseau pris en charge et signez l’inscription avec sa méthode d’approbation actuelle. Vérifiez que la surveillance est active. C’est facultatif et indépendant de la configuration des gardiens : Sysnode ne reçoit aucune clé privée et ne peut ni déplacer des fonds ni annuler la récupération.
+
+La surveillance continue quand Pali est fermé, mais dépend du service, de son RPC et de l’acheminement des e-mails. Les alertes peuvent être retardées ou manquer, et les observations récentes de la chaîne peuvent être réorganisées. L’absence d’e-mail ne prouve pas l’absence de récupération. Vérifiez toute alerte dans votre portefeuille de confiance pour le compte et le réseau exacts.
