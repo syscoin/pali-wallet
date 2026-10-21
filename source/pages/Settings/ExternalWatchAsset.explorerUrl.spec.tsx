@@ -160,11 +160,11 @@ it.each([
       '?view=compact/',
   ],
   [
-    'query with SDK trailing-slash normalization',
+    'query preserved exactly by the SDK',
     'https://explorer.synthetic.invalid/public/?view=compact',
     'https://explorer.synthetic.invalid/public/address/' +
       TOKEN +
-      '?view=compact/',
+      '?view=compact',
   ],
   [
     'hash route',
@@ -210,9 +210,7 @@ it.each([
       false
     );
     const network = result.formattedNetwork;
-    expect(network.explorer).toBe(
-      explorer.endsWith('/') ? explorer : explorer + '/'
-    );
+    expect(network.explorer).toBe(explorer);
     mockState = {
       vault: {
         isBitcoinBased: false,
