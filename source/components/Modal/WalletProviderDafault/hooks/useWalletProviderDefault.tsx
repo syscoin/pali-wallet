@@ -30,38 +30,8 @@ export const useWalletProviderDefault = () => {
     if (changing.current) return;
     changing.current = true;
     try {
-      if (isEnabled) {
-        await controllerEmitter(['wallet', 'removeWindowEthProperty']);
-
-        try {
-          const response = await controllerEmitter(['dapp', 'getAll']);
-          const dapps = Object.values(response);
-
-          if (dapps.length) {
-            await Promise.all(
-              dapps.map(async (dapp: any) => {
-                const isConnected = await controllerEmitter(
-                  ['dapp', 'isConnected'],
-                  [dapp.host]
-                );
-                if (isConnected) {
-                  await controllerEmitter(['dapp', 'disconnect'], [dapp.host]);
-                }
-              })
-            );
-
-            // Now save once after all disconnects are complete
-            await controllerEmitter(
-              ['wallet', 'saveCurrentState'],
-              ['wallet-provider-disconnects']
-            );
-          }
-        } catch (error) {
-          console.error('Error disconnecting dapps:', error);
-        }
-      } else {
-        await controllerEmitter(['wallet', 'addWindowEthProperty']);
-      }
+      // This action is rendered only while Pali is not the default provider.
+      await controllerEmitter(['wallet', 'addWindowEthProperty']);
     } catch (error) {
       console.error('Error changing Ethereum provider:', error);
     } finally {
@@ -83,12 +53,13 @@ export const useWalletProviderDefault = () => {
       ) : (
         <span className="text-white text-sm ">
           <p>Metamask is in use and Pali is banned. </p>
-          <p
-            className="underline font-bold cursor-pointer"
+          <button
+            type="button"
+            className="underline font-bold cursor-pointer focus-visible:ring-2 focus-visible:ring-white"
             onClick={turnPaliAsDefault}
           >
             Set Pali as default wallet!
-          </p>
+          </button>
         </span>
       ),
     [isEnabled]
