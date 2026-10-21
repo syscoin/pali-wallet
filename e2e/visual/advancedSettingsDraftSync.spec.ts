@@ -202,19 +202,38 @@ test('advanced settings follow another window after undo while preserving a genu
       }
     );
     await wallet.step(
+      'advanced-draft-sync: an externally adopted draft follows later saved thirty-five',
+      async () => {
+        await autolock(page).fill('30');
+        await expect(save(page)).toBeEnabled();
+        await saveInB(30);
+        await expect(autolock(page)).toHaveValue('30');
+        await expect(save(page)).toBeDisabled();
+        await assertAMounted();
+        await reopenB(30);
+        observations.externallyAdoptedDraft = await snapshot();
+        await saveInB(35);
+        await expect(autolock(page)).toHaveValue('35');
+        await expect(save(page)).toBeDisabled();
+        await assertAMounted();
+        await reopenB(35);
+        observations.adoptedDraftFollowsLaterSave = await snapshot();
+      }
+    );
+    await wallet.step(
       'advanced-draft-sync: both views retain the durable final public preferences',
       async () => {
         await assertAMounted();
-        await expect(autolock(page)).toHaveValue('25');
+        await expect(autolock(page)).toHaveValue('35');
         await expect(save(page)).toBeDisabled();
-        await expect(autolock(other!)).toHaveValue('25');
+        await expect(autolock(other!)).toHaveValue('35');
         await expect(save(other!)).toBeDisabled();
         expect(await savedPreferences(page)).toEqual({
-          autolock: 25,
+          autolock: 35,
           refresh,
         });
         expect(await savedPreferences(other!)).toEqual({
-          autolock: 25,
+          autolock: 35,
           refresh,
         });
         expect(routes!.deniedWrites).toEqual([]);

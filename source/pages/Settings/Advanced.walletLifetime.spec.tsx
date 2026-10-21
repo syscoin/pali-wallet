@@ -428,4 +428,146 @@ describe('advanced Save ownership across wallet reset', () => {
       }
     }
   );
+
+  const mountAdvancedDocuments = () => {
+    const first = render(
+      <Provider store={store}>
+        <Advanced />
+      </Provider>
+    );
+    const frame = document.createElement('iframe');
+    document.body.appendChild(frame);
+    const mountSecond = () => {
+      const container = frame.contentDocument!.createElement('div');
+      frame.contentDocument!.body.appendChild(container);
+      return render(
+        <Provider store={store}>
+          <Advanced />
+        </Provider>,
+        { container }
+      );
+    };
+    let second = mountSecond();
+    const firstUi = within(first.container);
+    const firstInput = firstUi.getByLabelText(
+      'settings.enableAutolock'
+    ) as HTMLInputElement;
+    const firstSave = firstUi.getByRole('button', {
+      name: 'buttons.save',
+    }) as HTMLButtonElement;
+    const saveFromSecond = async (value: string) => {
+      const ui = within(second.container);
+      fireEvent.change(ui.getByLabelText('settings.enableAutolock'), {
+        target: { value },
+      });
+      fireEvent.click(ui.getByRole('button', { name: 'buttons.save' }));
+      await act(async () => {
+        if (mockEmitter.mock.calls.length === 1) {
+          await firstCommitted.promise;
+          deliverFirstResponse.resolve();
+        }
+        await flush();
+      });
+      expect(ui.getByRole('dialog').textContent).toBe(
+        'settings.advancedSettingsWasSet'
+      );
+      expect(store.getState().vaultGlobal.advancedSettings.autolock).toBe(
+        Number(value)
+      );
+      expect(persisted.state.vaultGlobal.advancedSettings.autolock).toBe(
+        Number(value)
+      );
+      // A subsequent Save comes from a freshly opened settings view.
+      second.unmount();
+      second = mountSecond();
+    };
+    return {
+      firstUi,
+      firstInput,
+      firstSave,
+      saveFromSecond,
+      secondUi: () => within(second.container),
+      close: () => {
+        second.unmount();
+        first.unmount();
+        frame.remove();
+      },
+    };
+  };
+
+  it.each([false, true])(
+    'follows a later external Save only after its draft was fully acknowledged=%s',
+    async (acknowledged) => {
+      const views = mountAdvancedDocuments();
+      try {
+        fireEvent.change(views.firstInput, { target: { value: '15' } });
+        expect(views.firstSave.disabled).toBe(false);
+        if (acknowledged) {
+          await views.saveFromSecond('15');
+          expect(views.firstInput.value).toBe('15');
+          expect(views.firstSave.disabled).toBe(true);
+        }
+        await views.saveFromSecond('20');
+        expect(mockEmitter).toHaveBeenCalledTimes(acknowledged ? 2 : 1);
+        expect(views.firstInput.value).toBe(acknowledged ? '20' : '15');
+        expect(views.firstSave.disabled).toBe(acknowledged);
+      } finally {
+        views.close();
+      }
+    }
+  );
+
+  it('preserves another draft field while an external Save only partially acknowledges it', async () => {
+    const views = mountAdvancedDocuments();
+    const secondWriting = deferred();
+    const releaseSecondWrite = deferred();
+    const normalWrite = storageWrite.getMockImplementation()!;
+    let writes = 0;
+    storageWrite.mockImplementation(async (...args: any[]) => {
+      writes += 1;
+      if (writes === 2) {
+        secondWriting.resolve();
+        await releaseSecondWrite.promise;
+      }
+      return normalWrite(...args);
+    });
+    try {
+      fireEvent.click(views.firstUi.getByLabelText('settings.enableRefresh'));
+      fireEvent.change(views.firstInput, { target: { value: '15' } });
+      const other = views.secondUi();
+      fireEvent.click(other.getByLabelText('settings.enableRefresh'));
+      fireEvent.change(other.getByLabelText('settings.enableAutolock'), {
+        target: { value: '20' },
+      });
+      fireEvent.click(other.getByRole('button', { name: 'buttons.save' }));
+      await act(async () => {
+        await secondWriting.promise;
+      });
+      expect(store.getState().vaultGlobal.advancedSettings).toMatchObject({
+        refresh: false,
+        autolock: 5,
+      });
+      expect(views.firstInput.value).toBe('15');
+      expect(views.firstSave.disabled).toBe(false);
+      await act(async () => {
+        releaseSecondWrite.resolve();
+        await firstCommitted.promise;
+        deliverFirstResponse.resolve();
+        await flush();
+      });
+      expect(mockEmitter).toHaveBeenCalledTimes(1);
+      expect(other.getByRole('dialog').textContent).toBe(
+        'settings.advancedSettingsWasSet'
+      );
+      expect(persisted.state.vaultGlobal.advancedSettings).toMatchObject({
+        refresh: false,
+        autolock: 20,
+      });
+      expect(views.firstInput.value).toBe('15');
+      expect(views.firstSave.disabled).toBe(false);
+    } finally {
+      releaseSecondWrite.resolve();
+      views.close();
+    }
+  });
 });

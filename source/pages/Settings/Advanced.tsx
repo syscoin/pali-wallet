@@ -81,7 +81,16 @@ const Advanced = () => {
   useEffect(() => {
     setSavedProperties({ ...advancedSettings });
     // Acknowledging one setting must not discard another unsaved change.
-    if (!draftEdited.current) setEnabledProperties({ ...advancedSettings });
+    if (
+      !draftEdited.current ||
+      (!submitting.current &&
+        ADVANCED_SETTINGS.every(
+          (prop) => enabledProperties[prop] === advancedSettings[prop]
+        ))
+    ) {
+      draftEdited.current = false;
+      setEnabledProperties({ ...advancedSettings });
+    }
   }, [advancedSettings]);
 
   // Check if there are unsaved changes
