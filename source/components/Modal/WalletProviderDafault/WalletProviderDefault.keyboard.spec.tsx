@@ -186,3 +186,37 @@ it('does not expose invisible controls for an initially enabled provider', async
   ).toBeNull();
   expect(mockEmitter).not.toHaveBeenCalled();
 });
+
+it('reveals the mounted widget when Pali is no longer the default provider', async () => {
+  const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+  const { store } = mount(true);
+  expect(
+    screen.queryByRole('button', { name: 'Set default wallet' })
+  ).toBeNull();
+  act(() => store.dispatch({ type: 'test/provider', payload: false }));
+  expect(opener()).toBeEnabled();
+  await user.tab();
+  expect(opener()).toHaveFocus();
+  await user.keyboard('{Enter}');
+  await user.tab();
+  expect(action()).toHaveFocus();
+  expect(mockEmitter).not.toHaveBeenCalled();
+});
+
+it('cancels a pending success-hide timer when the provider is disabled again', async () => {
+  const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+  const { store } = mount();
+  await user.tab();
+  await user.keyboard('{Enter}');
+  act(() => store.dispatch({ type: 'test/provider', payload: true }));
+  act(() => jest.advanceTimersByTime(500));
+  act(() => store.dispatch({ type: 'test/provider', payload: false }));
+  act(() => jest.advanceTimersByTime(1000));
+  expect(opener()).toBeEnabled();
+  expect(opener()).toHaveAttribute('aria-expanded', 'true');
+  expect(action()).toBeEnabled();
+  expect(
+    screen.queryByText('Pali was successfully set as the default wallet!')
+  ).toBeNull();
+  expect(mockEmitter).not.toHaveBeenCalled();
+});

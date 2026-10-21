@@ -73,6 +73,7 @@ export const useWalletProviderDefault = () => {
 
       return () => clearTimeout(timeoutId);
     }
+    setIsNotVisible(false);
   }, [isEnabled]);
 
   return {
