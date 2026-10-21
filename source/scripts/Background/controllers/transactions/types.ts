@@ -258,7 +258,8 @@ export interface ITransactionsManagerUtils {
     isRapidPolling?: boolean,
     forceRefresh?: boolean,
     requestScope?: string,
-    isCurrentRead?: () => boolean
+    isCurrentRead?: () => boolean,
+    bypassCompletedCache?: boolean
   ) => Promise<IEvmTransaction[] | ISysTransaction[]>;
 }
 export interface ITransactionsManager {

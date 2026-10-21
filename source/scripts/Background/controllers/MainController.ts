@@ -5135,8 +5135,10 @@ class MainController {
     isPolling = false,
     isRapidPolling = false,
     forceRefresh = false,
+    bypassCompletedCache = false,
   }: {
     activeNetwork: INetwork;
+    bypassCompletedCache?: boolean;
     forceRefresh?: boolean;
     isBitcoinBased: boolean;
     isPolling?: boolean;
@@ -5201,7 +5203,8 @@ class MainController {
                 isRapidPolling,
                 forceRefresh,
                 `${session}:${networkRequest}`,
-                isCurrentRead
+                isCurrentRead,
+                bypassCompletedCache
               );
 
             const latestVault = store.getState().vault;
@@ -7095,7 +7098,8 @@ class MainController {
     isPolling = false,
     forceUpdate = false, // Force update even if just unlocked
     isRapidPolling = false, // Skip expensive operations for rapid polling
-    skipHeavyUpdates = false
+    skipHeavyUpdates = false,
+    bypassHistoryCache = false
   ): Promise<boolean> {
     const session = this.walletSessionGeneration;
     const networkRequest = this.networkRequestGeneration;
@@ -7237,6 +7241,7 @@ class MainController {
           activeNetwork,
           isPolling: true, // background
           isRapidPolling,
+          bypassCompletedCache: bypassHistoryCache,
         }).catch((error) =>
           console.error(
             '[MainController] Background transaction refresh failed:',
