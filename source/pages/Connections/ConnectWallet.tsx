@@ -25,17 +25,18 @@ import { LoadingSvg } from 'components/Icon/Icon';
 import { Button, Icon, IconButton, Tooltip } from 'components/index';
 import { ListLoadMore } from 'components/Loading/ListLoadMore';
 import { ToastActionFooter } from 'components/ToastActionFooter';
-import { TokenIconStack } from 'components/TokenIcon';
+import { getAccountReviewTokens, TokenIconStack } from 'components/TokenIcon';
 import trustedApps from 'constants/trustedApps.json';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { useIncrementalList } from 'hooks/useIncrementalList';
+import { resolveDappAccount } from 'state/dapp/accountScope';
 import { RootState } from 'state/store';
 import { selectAccountAssets } from 'state/vault/selectors';
 import { KeyringAccountType } from 'types/network';
+import { isAccountCompatibleWithNetwork } from 'utils/accountCompatibility';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { isTrustedDappOrigin } from 'utils/dappOrigin';
-import { isHexString } from 'utils/ethersV6Compat';
 import { ellipsis } from 'utils/index';
 
 export const ConnectWallet = () => {
@@ -100,37 +101,14 @@ export const ConnectWallet = () => {
     [isBitcoinBased, isBridgeHost, accountType]
   );
 
-  // Helper function to get tokens for an account
-  const getAccountTokens = useCallback(
-    (account: any, accType: string) => {
-      const assets = accountAssets[accType]?.[account.id];
-      const allAssets = isBitcoinBased ? assets?.syscoin : assets?.ethereum;
-      const tokens = Array.isArray(allAssets)
-        ? allAssets.filter(
-            (asset: any) => asset.contractAddress && asset.balance > 0
-          )
-        : [];
-      return tokens;
-    },
-    [accountAssets, isBitcoinBased]
-  );
-
   const isAccountValidForNetwork = useCallback(
-    (account: any, keyringAccountType?: KeyringAccountType | string) => {
-      if (!account) return false;
-      if (keyringAccountType === KeyringAccountType.SmartAccount) {
-        return (
-          !isBitcoinBased &&
-          Number(account?.smartAccount?.chainId) ===
-            Number(activeNetwork.chainId)
-        );
-      }
-
-      return isBitcoinBased
-        ? !isHexString(account.address)
-        : isHexString(account.address);
-    },
-    [activeNetwork.chainId, isBitcoinBased]
+    (account: any, keyringAccountType: KeyringAccountType | string) =>
+      isAccountCompatibleWithNetwork(
+        account,
+        keyringAccountType,
+        activeNetwork
+      ),
+    [activeNetwork]
   );
 
   const handleConnect = useCallback(async () => {
@@ -228,8 +206,11 @@ export const ConnectWallet = () => {
         const latestActiveAccount = latestAccounts?.[activeType]?.[activeId];
 
         if (dapp) {
-          const dappAccount =
-            latestAccounts?.[dapp.accountType]?.[dapp.accountId];
+          const dappAccount = resolveDappAccount(
+            dapp,
+            latestAccounts,
+            activeNetwork
+          );
           if (isAccountValidForNetwork(dappAccount, dapp.accountType)) {
             setCurrentAccountId(dapp.accountId);
             setCurrentAccountType(dapp.accountType);
@@ -384,7 +365,12 @@ export const ConnectWallet = () => {
                         {keyringAccounts.map((acc) => {
                           const isSelected =
                             acc.id === accountId && accountType === keyringType;
-                          const tokens = getAccountTokens(acc, keyringType);
+                          const tokens = getAccountReviewTokens(
+                            accountAssets,
+                            isBitcoinBased,
+                            acc,
+                            keyringType
+                          );
 
                           return (
                             <div

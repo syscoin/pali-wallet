@@ -62,7 +62,11 @@ jest.mock('components/index', () => ({
 jest.mock('components/Loading/ListLoadMore', () => ({
   ListLoadMore: 'load-more',
 }));
-jest.mock('components/TokenIcon', () => ({ TokenIconStack: () => null }));
+jest.mock('components/TokenIcon', () => ({
+  getAccountReviewTokens: jest.requireActual('components/TokenIcon')
+    .getAccountReviewTokens,
+  TokenIconStack: () => null,
+}));
 jest.mock('components/ToastActionFooter', () => ({
   ToastActionFooter: ({ children }: any) => <div>{children}</div>,
 }));

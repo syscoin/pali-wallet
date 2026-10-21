@@ -250,6 +250,7 @@ describe('large account-change approval list', () => {
     mockState.dapp.dapps[mockQuery.host] = {
       accountId: 498,
       accountType: KeyringAccountType.HDAccount,
+      chain: mockState.vault.activeNetwork.kind,
     };
     expect(selected('Account 499')).toBe(true);
     search('Account 350');

@@ -14,10 +14,11 @@ import { LoadingSvg } from 'components/Icon/Icon';
 import { Button, Icon, IconButton, Tooltip } from 'components/index';
 import { ListLoadMore } from 'components/Loading/ListLoadMore';
 import { ToastActionFooter } from 'components/ToastActionFooter';
-import { TokenIconStack } from 'components/TokenIcon';
+import { getAccountReviewTokens, TokenIconStack } from 'components/TokenIcon';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { useIncrementalList } from 'hooks/useIncrementalList';
+import { resolveDappAccount } from 'state/dapp/accountScope';
 import { RootState } from 'state/store';
 import { selectAccountAssets } from 'state/vault/selectors';
 import { IDAppAccountSelectionContext } from 'types/controllers';
@@ -139,8 +140,7 @@ export const ChangeAccount = () => {
 
   // If not in query data, try dapp state
   if (currentAccountId === undefined && dapp[host]) {
-    const dappAccount =
-      accounts?.[dapp[host].accountType]?.[dapp[host].accountId];
+    const dappAccount = resolveDappAccount(dapp[host], accounts, activeNetwork);
     if (
       dappAccount &&
       isAccountValidForNetwork(dappAccount, dapp[host].accountType)
@@ -238,21 +238,6 @@ export const ChangeAccount = () => {
       isBridgeHost &&
       accountType === KeyringAccountType.Trezor,
     [isBitcoinBased, isBridgeHost, accountType]
-  );
-
-  // Helper function to get tokens for an account
-  const getAccountTokens = useCallback(
-    (account: any, accType: string) => {
-      const assets = accountAssets[accType]?.[account.id];
-      const allAssets = isBitcoinBased ? assets?.syscoin : assets?.ethereum;
-      const tokens = Array.isArray(allAssets)
-        ? allAssets.filter(
-            (asset: any) => asset.contractAddress && asset.balance > 0
-          )
-        : [];
-      return tokens;
-    },
-    [accountAssets, isBitcoinBased]
   );
 
   const eligibleAccounts = useMemo(() => {
@@ -474,7 +459,12 @@ export const ChangeAccount = () => {
                         const isCurrent =
                           acc.id === currentAccountId &&
                           currentAccountType === keyringType;
-                        const tokens = getAccountTokens(acc, keyringType);
+                        const tokens = getAccountReviewTokens(
+                          accountAssets,
+                          isBitcoinBased,
+                          acc,
+                          keyringType
+                        );
 
                         return (
                           <div

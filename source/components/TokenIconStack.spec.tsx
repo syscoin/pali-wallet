@@ -1,6 +1,6 @@
 import React from 'react';
 
-import { TokenIcon, TokenIconStack } from './TokenIcon';
+import { getAccountReviewTokens, TokenIcon, TokenIconStack } from './TokenIcon';
 
 jest.mock('components/Icon/Icon', () => ({ NftFallbackSvg: () => null }));
 jest.mock('components/Tooltip/Tooltip', () => ({ Tooltip: 'tooltip' }));
@@ -28,6 +28,32 @@ const tokens = [
   { id: 'h', logo: 'logo-h', symbol: 'H', name: 'Last logo' },
   { id: 'i', assetGuid: '7' },
 ];
+
+it('selects the same positive contract-token list for each account and network family without mutation', () => {
+  const visible = Object.freeze({ contractAddress: '7', balance: '1' });
+  const evm = Object.freeze({ contractAddress: '0xabc', balance: 2 });
+  const utxo = Object.freeze([
+    visible,
+    { contractAddress: '8', balance: 0 },
+    { contractAddress: '', balance: 3 },
+    { contractAddress: '9', balance: -1 },
+  ]);
+  const assets = { Imported: { 0: { syscoin: utxo, ethereum: [evm] } } } as any;
+  expect(getAccountReviewTokens(assets, true, { id: 0 }, 'Imported')).toEqual([
+    visible,
+  ]);
+  expect(getAccountReviewTokens(assets, false, { id: 0 }, 'Imported')).toEqual([
+    evm,
+  ]);
+  expect(getAccountReviewTokens(assets, true, null, 'Imported')).toEqual([]);
+  expect(getAccountReviewTokens(assets, true, { id: 1 }, 'Imported')).toEqual(
+    []
+  );
+  expect(getAccountReviewTokens(assets, true, { id: 0 }, 'HDAccount')).toEqual(
+    []
+  );
+  expect(utxo).toHaveLength(4);
+});
 // Expected visible identity order from the three existing approval renderers.
 // Logo-backed entries lead, while each category retains its original order.
 const orders = [

@@ -18,6 +18,7 @@ import { EditIconSvg } from 'components/Icon/Icon';
 import { Button, Icon, IconButton, PageActionFooter } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
+import { resolveDappAccount } from 'state/dapp/accountScope';
 import { IDApp } from 'state/dapp/types';
 import { RootState } from 'state/store';
 import { ellipsis } from 'utils/index';
@@ -49,12 +50,10 @@ const ConnectedSites = () => {
   const dappsList = Object.values(dapps);
   const [selectedHost, setSelectedHost] = useState<string>();
   const selected = dappsList.find((dapp) => dapp.host === selectedHost);
-  // Retained grants from another family remain removable, but their numeric
-  // account slot must never resolve against the currently loaded vault.
+  // Foreign vaults remain removable without borrowing their numeric slot's
+  // account label or address from the current vault.
   const accountFor = (dapp: IDApp) =>
-    dapp.chain === activeNetwork.kind
-      ? accounts[dapp.accountType]?.[dapp.accountId]
-      : undefined;
+    resolveDappAccount(dapp, accounts, activeNetwork);
   const accountLabel = (dapp: IDApp) =>
     accountFor(dapp)?.label || `Account ${dapp.accountId + 1}`;
   const selectedAccount = selected ? accountFor(selected) : undefined;
@@ -109,7 +108,7 @@ const ConnectedSites = () => {
                 <p className="truncate font-medium" title={_dapp.host}>
                   {_dapp.host}
                 </p>
-                {(_dapp.chain !== activeNetwork.kind ||
+                {(!accountFor(_dapp) ||
                   _dapp.accountType !== activeAccountMeta.type ||
                   _dapp.accountId !== activeAccountMeta.id) && (
                   <p

@@ -1,11 +1,11 @@
-import React, { useCallback, useState } from 'react';
+import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { LazyAccountBalance } from 'components/AccountBalance';
 import { AccountIdenticon } from 'components/AccountIdenticon';
 import { Button, Icon, PageActionFooter, Tooltip } from 'components/index';
-import { TokenIconStack } from 'components/TokenIcon';
+import { getAccountReviewTokens, TokenIconStack } from 'components/TokenIcon';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
@@ -30,23 +30,6 @@ export const ChangeConnectedAccount = () => {
   const [isChanging, setIsChanging] = useState(false);
   const [switchError, setSwitchError] = useState('');
 
-  // Helper function to get tokens for an account
-  const getAccountTokens = useCallback(
-    (account: any, accType: string) => {
-      if (!account) return [];
-
-      const assets = accountAssets[accType]?.[account.id];
-      const allAssets = isBitcoinBased ? assets?.syscoin : assets?.ethereum;
-      const tokens = Array.isArray(allAssets)
-        ? allAssets.filter(
-            (asset: any) => asset.contractAddress && asset.balance > 0
-          )
-        : [];
-      return tokens;
-    },
-    [accountAssets, isBitcoinBased]
-  );
-
   const handleAccept = async () => {
     setSwitchError('');
     setIsChanging(true);
@@ -70,11 +53,15 @@ export const ChangeConnectedAccount = () => {
   };
 
   // Get tokens for both accounts
-  const connectedAccountTokens = getAccountTokens(
+  const connectedAccountTokens = getAccountReviewTokens(
+    accountAssets,
+    isBitcoinBased,
     connectedAccount,
     accountType
   );
-  const activeAccountTokens = getAccountTokens(
+  const activeAccountTokens = getAccountReviewTokens(
+    accountAssets,
+    isBitcoinBased,
     activeAccount,
     activeAccountRef.type
   );

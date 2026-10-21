@@ -33,7 +33,7 @@ import {
 } from 'state/vault';
 import vaultCache from 'state/vaultCache';
 import { setActiveSlip44 } from 'state/vaultGlobal';
-import { KeyringAccountType } from 'types/network';
+import { INetworkType, KeyringAccountType } from 'types/network';
 import { AsyncMutex } from 'utils/asyncMutex';
 import { SYSCOIN_MAINNET_NETWORK } from 'utils/constants';
 
@@ -370,6 +370,14 @@ describe('wallet reset durable cleanup', () => {
             accountType: KeyringAccountType.HDAccount,
             chain: oldVault.activeNetwork.kind,
             chainId: oldVault.activeNetwork.chainId,
+            ...(oldVault.activeNetwork.kind === INetworkType.Syscoin
+              ? {
+                  utxoAccount: {
+                    slip44: oldVault.activeNetwork.slip44 ?? 57,
+                    xpub: 'public-old-xpub',
+                  },
+                }
+              : {}),
             date: 1,
           },
         },

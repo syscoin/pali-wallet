@@ -4,6 +4,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import PaliLogo from 'assets/all_assets/favicon-32.png';
 import { NftFallbackSvg } from 'components/Icon/Icon';
 import { Tooltip } from 'components/Tooltip/Tooltip';
+import { ISlip44State } from 'state/vault/types';
 import { NFT_FALLBACK_IMAGE } from 'utils/nftFallback';
 import { getKnownTokenLogo, sanitizeUtxoTokenLogo } from 'utils/tokens';
 
@@ -355,6 +356,21 @@ export const TokenIcon: React.FC<ITokenIconProps> = React.memo(
 );
 
 TokenIcon.displayName = 'TokenIcon';
+
+// The same display-only selection is used by all account approval views.
+export const getAccountReviewTokens = (
+  accountAssets: ISlip44State['accountAssets'],
+  isBitcoinBased: boolean,
+  account: { id: number } | null | undefined,
+  accountType: string
+) => {
+  if (!account) return [];
+  const assets = accountAssets[accountType]?.[account.id];
+  const tokens = isBitcoinBased ? assets?.syscoin : assets?.ethereum;
+  return Array.isArray(tokens)
+    ? tokens.filter((asset: any) => asset.contractAddress && asset.balance > 0)
+    : [];
+};
 
 // Shared across connection approvals; React.memo retains stable-prop skips.
 export const TokenIconStack = React.memo(

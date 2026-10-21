@@ -765,6 +765,14 @@ describe('per-site account notification disclosure', () => {
     state.vault.isBitcoinBased = true;
     state.dapp.dapps[originA].chain = INetworkType.Syscoin;
     state.dapp.dapps[originB].chain = INetworkType.Syscoin;
+    state.dapp.dapps[originA].utxoAccount = {
+      slip44: 57,
+      xpub: 'public-xpub-a',
+    };
+    state.dapp.dapps[originB].utxoAccount = {
+      slip44: 57,
+      xpub: 'public-xpub-b',
+    };
     state.vault.accounts.HDAccount[0].address = 'sys-account-a';
     state.vault.accounts.HDAccount[1].address = 'sys-account-b';
     const instance = controller();
