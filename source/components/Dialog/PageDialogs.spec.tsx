@@ -78,7 +78,11 @@ jest.mock('components/AccountBalance', () => ({
 jest.mock('components/Loading/ListLoadMore', () => ({
   ListLoadMore: () => null,
 }));
-jest.mock('components/TokenIcon', () => ({ TokenIcon: () => null }));
+jest.mock('components/TokenIcon', () => ({
+  getAccountReviewTokens: jest.requireActual('components/TokenIcon')
+    .getAccountReviewTokens,
+  TokenIcon: () => null,
+}));
 jest.mock('utils/browser', () => ({ dispatchBackgroundEvent: jest.fn() }));
 jest.mock('utils/index', () => ({
   truncate: (value: string) => value,
