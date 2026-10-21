@@ -13,6 +13,7 @@ import net from 'net';
 import path from 'path';
 
 import { E2E_CONFIG } from './config';
+import { clickClosingPopup } from './dismissRejectedApproval';
 import { PaliWallet } from './pali';
 
 // Public Anvil fixture. This mnemonic must never be used on a public network.
@@ -584,7 +585,10 @@ export async function approve(
     await expect(button).toBeVisible({ timeout: 10_000 });
     await expect(button).toBeEnabled({ timeout: 10_000 });
     await capture?.(popup);
-    await button.click();
+    await clickClosingPopup({
+      click: () => button.click(),
+      isClosed: () => popup.isClosed(),
+    });
     // Second untrusted-site confirmation may replace the first button.
     await expect
       .poll(
