@@ -1296,7 +1296,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
         id="send-form"
         onFinish={handleSubmit}
         autoComplete="off"
-        className="flex flex-col gap-2 items-center justify-center mt-6 text-center w-full"
+        className="flex flex-col gap-2 items-center justify-center mt-6 text-center w-full pb-20 md:pb-0"
         onValuesChange={handleFormValuesChange}
         initialValues={initialDraft.formValues}
       >
