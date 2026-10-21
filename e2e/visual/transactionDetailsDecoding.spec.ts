@@ -390,6 +390,48 @@ for (const mode of [
             await expect(methodTooltip).toHaveText(methodLabel);
             await page.mouse.move(0, 0);
             await expect(methodTooltip).toBeHidden();
+            const timestamp = await page.evaluate(
+              (seconds) => new Date(seconds * 1000).toLocaleString(),
+              Number(event.timeStamp)
+            );
+            expect(timestamp.length).toBeGreaterThanOrEqual(20);
+            const timestampValue = page
+              .getByText('Timestamp', { exact: true })
+              .locator('..')
+              .getByText(`${timestamp.slice(0, 2)}...${timestamp.slice(-4)}`, {
+                exact: true,
+              });
+            for (const [value, full] of [
+              [methodValue, methodLabel],
+              [timestampValue, timestamp],
+            ] as const) {
+              const disclosure = value.locator('..');
+              await expect(disclosure).toHaveAttribute('tabindex', '0');
+              for (let index = 0; index < 80; index++) {
+                await page.keyboard.press('Tab');
+                if (
+                  await disclosure.evaluate(
+                    (element) => element === document.activeElement
+                  )
+                )
+                  break;
+              }
+              await expect(disclosure).toBeFocused();
+              await expect(disclosure).toHaveAttribute(
+                'aria-describedby',
+                /\S/
+              );
+              const descriptionId = await disclosure.getAttribute(
+                'aria-describedby'
+              );
+              const tooltip = page
+                .locator(`[id="${descriptionId}"]`)
+                .getByRole('tooltip');
+              await expect(tooltip).toHaveText(full);
+              await page.keyboard.press('Escape');
+              await expect(tooltip).toBeHidden();
+              await expect(disclosure).toBeFocused();
+            }
           }
           if (
             mode === 'long-integer' ||
@@ -485,6 +527,8 @@ for (const mode of [
               mode,
               amount,
               byteParameters: mode === 'byte-parameters' ? byteParameters : [],
+              metadataKeyboard:
+                mode === 'byte-parameters' ? ['Method', 'Timestamp'] : [],
               status,
               runtime,
               explorerReads,
