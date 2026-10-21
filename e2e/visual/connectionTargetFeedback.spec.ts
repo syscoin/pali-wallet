@@ -483,11 +483,78 @@ test('a new network target receives fresh feedback deadlines after an old balanc
           })
           .toBe(true);
         await expect(page.locator('#home-balance')).toHaveText('2');
+        const completed = await publicState(page);
+        expect(completed.active?.url.replace(/\/$/, '')).toBe(TARGET_RPC);
+        expect(completed.account).toEqual(
+          (observations.prepared as typeof completed).account
+        );
+        expect(completed.quality?.lastBalanceLatency).toBeGreaterThanOrEqual(
+          CRITICAL_FEEDBACK_MS
+        );
+        expect(completed.quality?.hasSlowOperations).toBe(true);
+        expect(completed.quality?.hasCriticalErrors).toBe(false);
+        await expect(indicator).toHaveClass(/bg-orange-500/);
+        await indicator.hover();
+        await expect(tooltip).toHaveText(
+          en.networkConnection.networkQualitySlow.replace(
+            '{{latency}}',
+            String(completed.quality?.lastBalanceLatency) + 'ms'
+          )
+        );
+        observations.targetCompletedSlow = completed;
+      }
+    );
+    await wallet.step(
+      'connection-target: an ordinary fast refresh clears the measured slow result',
+      async () => {
+        const beforeReads = reads.filter(
+          (row) =>
+            row.network === 'target' &&
+            !row.held &&
+            row.methods.includes('eth_getBalance')
+        ).length;
+        // Wait only for the existing provider read-cache boundary before the
+        // normal UI refresh; require a new physical target balance request.
+        const completedAt = await page.evaluate(() => Date.now());
+        await page.waitForFunction(
+          ({ since, delay }) => Date.now() - since > delay,
+          { since: completedAt, delay: PROVIDER_READ_CACHE_MS }
+        );
+        await expect(refresh).toBeEnabled();
+        await refresh.click();
+        await expect
+          .poll(
+            () =>
+              reads.filter(
+                (row) =>
+                  row.network === 'target' &&
+                  !row.held &&
+                  row.methods.includes('eth_getBalance')
+              ).length
+          )
+          .toBeGreaterThan(beforeReads);
+        await expect
+          .poll(async () => {
+            const state = await publicState(page);
+            return (
+              state.active?.chainId === 570 &&
+              state.status === 'idle' &&
+              !state.loadingBalances &&
+              !state.postLoading &&
+              state.balance === '2.0' &&
+              state.quality?.hasSlowOperations === false &&
+              state.quality?.hasCriticalErrors === false
+            );
+          })
+          .toBe(true);
+        await expect(page.locator('#home-balance')).toHaveText('2');
         const final = await publicState(page);
         expect(final.active?.url.replace(/\/$/, '')).toBe(TARGET_RPC);
         expect(final.account).toEqual(
           (observations.prepared as typeof final).account
         );
+        expect(final.quality?.lastBalanceLatency).toBeGreaterThanOrEqual(0);
+        expect(final.quality?.lastBalanceLatency).toBeLessThanOrEqual(1000);
         expect(final.quality?.hasSlowOperations).toBe(false);
         expect(final.quality?.hasCriticalErrors).toBe(false);
         await expect(indicator).toHaveClass(/bg-green-500/);

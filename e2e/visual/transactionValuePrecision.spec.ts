@@ -248,7 +248,9 @@ test('ordinary dapp transaction review preserves every native-value decimal befo
                 exact: true,
               })
             ).toBeEnabled();
-            const header = popup.locator('p.text-base');
+            const header = popup.locator(
+              '.page-content p.text-white.text-base'
+            );
             await expect(header).toHaveCount(1);
             await expect(header).toHaveText(`${entry.amount} TSYS`);
             const details = popup.locator('#detailsTab');
