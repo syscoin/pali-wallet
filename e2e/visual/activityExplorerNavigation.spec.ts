@@ -25,9 +25,10 @@ const CHAIN_ID = 31337;
 const LABEL = 'Activity Explorer Fixture';
 const EXPLORER = 'https://activity-explorer.synthetic.invalid';
 const ROOT_EXPLORER = `${EXPLORER}/public/`;
-// It already ends in '/', so the installed SDK saves this input unchanged.
-// This case does not test or repair the separate SDK query-suffix behavior.
+// Preserve the original slash-valued query regression control.
 const QUERY_EXPLORER = `${ROOT_EXPLORER}?returnPath=/`;
+// This raw query does not end in '/': SDK 1.0.110 must preserve it exactly.
+const COMPACT_QUERY_EXPLORER = `${ROOT_EXPLORER}?view=compact`;
 
 const publicMetadata = (page: Page) =>
   page.evaluate(async (chainId) => {
@@ -489,6 +490,81 @@ test('Activity explorer navigation preserves a normally saved custom-network que
         observations.queryAfterClick = await publicMetadata(page);
       }
     );
+    await wallet.step(
+      'activity-explorer: save a non-slash query without changing its value',
+      async () => {
+        phase = 'compact-query-save';
+        await wallet!.gotoRoute('#/settings/networks/edit');
+        const row = page
+          .locator('li')
+          .filter({ has: page.getByText(`${LABEL} ...`, { exact: true }) });
+        await expect(row).toHaveCount(1);
+        await row.locator('button').first().click();
+        await expect(page).toHaveURL(/#\/settings\/networks\/custom-rpc$/);
+        await expect(page.locator('#rpc_explorer')).toHaveValue(QUERY_EXPLORER);
+        await page.locator('#rpc_explorer').fill(COMPACT_QUERY_EXPLORER);
+        await page
+          .getByRole('button', { name: en.buttons.save, exact: true })
+          .click();
+        await expect(page).toHaveURL(/#\/settings\/networks\/edit$/);
+        await expect
+          .poll(async () => {
+            const current = await publicMetadata(page);
+            return { live: current.live, saved: current.saved };
+          })
+          .toEqual({
+            live: expectedNetwork(COMPACT_QUERY_EXPLORER),
+            saved: expectedNetwork(COMPACT_QUERY_EXPLORER),
+          });
+        observations.compactQuerySaved = await publicMetadata(page);
+      }
+    );
+    await wallet.step(
+      'activity-explorer: reselect the exact non-slash query registration',
+      async () => {
+        phase = 'compact-query-selection';
+        await wallet!.gotoRoute('#/home');
+        await wallet!.ensureOnHome();
+        await page
+          .getByRole('button')
+          .filter({ hasText: /EVM/ })
+          .first()
+          .click();
+        const menu = page.getByRole('menu');
+        const group = menu.getByRole('menuitem', { name: /EVM Networks/i });
+        if ((await group.getAttribute('aria-expanded')) !== 'true')
+          await group.click();
+        await menu.getByRole('menuitem', { name: LABEL, exact: true }).click();
+        await expectActive(COMPACT_QUERY_EXPLORER);
+        expect((await publicMetadata(page)).account.address).toBe(address);
+        await page.locator('#activity-btn').click();
+        await expect(
+          page.getByRole('button', { name: en.home.seeAllTxs, exact: true })
+        ).toBeVisible();
+        observations.compactQueryActive = await publicMetadata(page);
+      }
+    );
+    await wallet.step(
+      'activity-explorer: retain the address route and exact compact query value',
+      async (capture) => {
+        phase = 'compact-query-navigation';
+        await capture(page);
+        await clickExplorer(
+          `${ROOT_EXPLORER}address/${encodeURIComponent(address)}?view=compact`
+        );
+        expect(navigationAttempts).toHaveLength(3);
+        expect(popupObservations).toHaveLength(3);
+        expect(new URL(navigationAttempts[2].url).search).toBe('?view=compact');
+        expect((await publicMetadata(page)).account.address).toBe(address);
+        expect(reads.some((read) => read.method === 'eth_getBalance')).toBe(
+          true
+        );
+        expect(deniedRequests).toEqual([]);
+        expect(routes!.deniedWrites).toEqual([]);
+        expect(pageErrors).toEqual([]);
+        observations.compactQueryAfterClick = await publicMetadata(page);
+      }
+    );
     status = 'passed';
   } catch (error) {
     observations.failure =
@@ -515,7 +591,7 @@ test('Activity explorer navigation preserves a normally saved custom-network que
           controllerStateReplaced: false,
           controllerResultsReplaced: false,
           signaturesOrBroadcastsRequested: false,
-          separateSdkQuerySuffixBehaviorExercised: false,
+          separateSdkQuerySuffixBehaviorExercised: true,
         }),
       });
     } finally {
