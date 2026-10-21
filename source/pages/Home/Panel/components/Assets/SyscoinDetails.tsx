@@ -20,12 +20,12 @@ import {
   truncate,
   camelCaseToText,
   syscoinKeysOfInterest,
-  adjustUrl,
   getKnownSyscoinAsset,
   getTokenLogo,
 } from 'utils/index';
 import { navigateBack } from 'utils/navigationState';
 import { retryableFetch } from 'utils/retryableFetch';
+import { buildExplorerUrl } from 'utils/strings';
 
 import { AssetMarketLinks } from './AssetMarketLinks';
 
@@ -527,9 +527,11 @@ export const SyscoinAssetDetails = ({
         <div className="w-full flex flex-col items-center justify-center gap-y-2 mb-6">
           <div className="text-brand-white hover:text-brand-deepPink100">
             <a
-              href={`${adjustUrl(
-                activeNetwork.explorer || activeNetwork.url
-              )}asset/${id}`}
+              href={buildExplorerUrl(
+                activeNetwork.explorer || activeNetwork.url,
+                'asset',
+                id
+              )}
               target="_blank"
               className="flex items-center justify-center gap-x-2"
               rel="noreferrer"

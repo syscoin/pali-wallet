@@ -28,12 +28,12 @@ import {
   getAssetBalance,
   ellipsis,
   MINIMUM_FEE,
-  adjustUrl,
   createNavigationContext,
   navigateWithContext,
   getWalletNavigationScope,
   removeScientificNotation,
 } from 'utils/index';
+import { buildExplorerUrl } from 'utils/strings';
 import {
   assertValidAssetAmount,
   isAssetAmountEqualToBalance,
@@ -454,9 +454,12 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
         : xpub!
       : accountAddress;
 
-    const base = adjustUrl(activeNetwork.explorer || activeNetwork.url);
     window.open(
-      `${base}${pathSegment}/${encodeURIComponent(identifier)}`,
+      buildExplorerUrl(
+        activeNetwork.explorer || activeNetwork.url,
+        pathSegment,
+        identifier
+      ),
       '_blank'
     );
   }, [

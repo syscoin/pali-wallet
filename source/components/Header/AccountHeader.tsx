@@ -18,12 +18,13 @@ import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { selectActiveAccount } from 'state/vault/selectors';
 import { IKeyringAccountState, KeyringAccountType } from 'types/network';
-import { ellipsis, adjustUrl } from 'utils/index';
+import { ellipsis } from 'utils/index';
 import { isUserCancellationError } from 'utils/isUserCancellationError';
 import {
   createBrowsingNavigationContext,
   navigateWithContext,
 } from 'utils/navigationState';
+import { buildExplorerUrl } from 'utils/strings';
 
 // A dialog/route may disappear while the device RPC is still pending. Keep
 // this latch at renderer-module scope so a new AccountHeader cannot start a
@@ -185,9 +186,14 @@ export const AccountHeader: React.FC = () => {
         : xpub!
       : accountAddress;
 
-    const base = adjustUrl(activeNetwork.explorer || activeNetwork.url);
-    const url = `${base}${pathSegment}/${encodeURIComponent(identifier)}`;
-    window.open(url, '_blank');
+    window.open(
+      buildExplorerUrl(
+        activeNetwork.explorer || activeNetwork.url,
+        pathSegment,
+        identifier
+      ),
+      '_blank'
+    );
   }, [
     currentAccount?.address,
     (currentAccount as any)?.xpub,

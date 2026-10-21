@@ -17,7 +17,6 @@ import { PaliWhiteSmallIconSvg, ArrowDownSvg } from 'components/Icon/Icon';
 import { Button, Icon, Tooltip } from 'components/index';
 import { ToastActionFooter } from 'components/ToastActionFooter';
 import { useUtils } from 'hooks/index';
-import { useAdjustedExplorer } from 'hooks/useAdjustedExplorer';
 import { useController } from 'hooks/useController';
 import { useRequestScope } from 'hooks/useRequestScope';
 import { RootState } from 'state/store';
@@ -38,13 +37,13 @@ import { getLocalEvmRecipients } from 'utils/evmRecipients';
 import {
   getAssetBalance,
   ellipsis,
-  adjustUrl,
   formatFullPrecisionBalance,
   createNavigationContext,
   getTokenTypeBadgeColor,
   navigateWithContext,
   getWalletNavigationScope,
 } from 'utils/index';
+import { buildExplorerUrl } from 'utils/strings';
 import { getDefaultGasLimit } from 'utils/transactionUtils';
 import { isValidEthereumAddress } from 'utils/validations';
 
@@ -133,8 +132,6 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
 
   // Lazy reverse ENS for typed addresses. Placed later to ensure dependencies are declared
   const reverseEnsTimeoutRef = useRef<NodeJS.Timeout>();
-
-  const adjustedExplorer = useAdjustedExplorer(activeNetwork.explorer);
 
   const hasAccountAssets = Boolean(activeAccountAssets?.ethereum);
   const isAccountImported = activeAccount?.isImported || false;
@@ -872,15 +869,19 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
     const accountAddress = activeAccount?.address;
     if (!accountAddress) return;
 
-    const base = adjustUrl(activeNetwork.explorer || activeNetwork.url);
-    const explorerUrl = `${base}address/${accountAddress}`;
-
-    window.open(explorerUrl, '_blank');
+    window.open(
+      buildExplorerUrl(
+        activeNetwork.explorer || activeNetwork.url,
+        'address',
+        accountAddress
+      ),
+      '_blank'
+    );
   }, [
     activeAccount?.address,
     isBitcoinBased,
     activeNetwork.url,
-    adjustedExplorer,
+    activeNetwork.explorer,
   ]);
 
   const calculateMaxAmount = (): string => {
