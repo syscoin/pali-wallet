@@ -32,6 +32,7 @@
     "test": "NODE_ENV=test jest",
     "test:silent": "NODE_ENV=test ENABLE_CHROME_LOGGING=false yarn test",
     "test:unit": "NODE_ENV=test jest source/ tests/unit",
+    "test:recovery-enrollment": "node tests/integration/recoveryEnrollment/run.cjs",
     "test:e2e": "NODE_ENV=test rm -rf user-data && playwright test",
     "test:e2e:silent": "NODE_ENV=test HEADLESS=true yarn test:e2e",
     "e2e:harness": "playwright test --config e2e/playwright.config.ts",

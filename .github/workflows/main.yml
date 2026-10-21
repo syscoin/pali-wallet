@@ -13,6 +13,50 @@ jobs:
           check-latest: true
       - run: yarn install
       - run: yarn test-all
+  recovery-enrollment:
+    name: Pali recovery enrollment interoperability
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '23.11.1'
+      - run: yarn install --frozen-lockfile
+      - name: Install pinned local EVM toolchain
+        uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1
+        with:
+          version: v1.7.1
+      - name: Check out reviewed recovery backend
+        uses: actions/checkout@v7
+        with:
+          repository: syscoin/sysnode-backend
+          ref: 47aab836f81e74a2ddb019b523b026da2882c07c
+          path: .recovery-backend-fixture
+          persist-credentials: false
+      - name: Install backend fixture dependencies
+        working-directory: .recovery-backend-fixture
+        env:
+          GIT_CONFIG_COUNT: '1'
+          GIT_CONFIG_KEY_0: url.https://github.com/.insteadOf
+          GIT_CONFIG_VALUE_0: ssh://git@github.com/
+        run: npm ci
+      - name: Verify actual Pali signing against real local ERC1271
+        env:
+          RECOVERY_BACKEND_ROOT: ${{ github.workspace }}/.recovery-backend-fixture
+          RECOVERY_ENROLLMENT_EVIDENCE_DIR: ${{ runner.temp }}/pali-recovery-enrollment
+        run: yarn test:recovery-enrollment
+      - name: Upload isolated integration evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: recovery-enrollment-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/pali-recovery-enrollment/
+          retention-days: 14
   visual:
     name: visual regression shard ${{ matrix.shard }}/2
     runs-on: ubuntu-latest

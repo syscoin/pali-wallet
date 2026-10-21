@@ -59,7 +59,7 @@ export const createNotification = async (
     type: options.type || 'basic',
     iconUrl:
       options.iconUrl ||
-      chrome.runtime.getURL('assets/all_assets/favicon-48.png'),
+      chrome.runtime.getURL('assets/all_assets/favicon-128.png'),
     title: options.title,
     message: options.message,
     priority: options.priority || 1,
@@ -128,7 +128,7 @@ export const showTransactionNotification = async (
     case 'pending':
       title = titlePrefix + 'Transaction Submitted';
       message = `Transaction pending on ${notification.network}`;
-      iconUrl = chrome.runtime.getURL('assets/all_assets/favicon-48.png');
+      iconUrl = chrome.runtime.getURL('assets/all_assets/favicon-128.png');
       break;
 
     case 'confirmed':
@@ -140,13 +140,13 @@ export const showTransactionNotification = async (
       message = value
         ? `Transaction confirmed on ${notification.network}: ${value}`
         : 'Transaction Confirmed';
-      iconUrl = chrome.runtime.getURL('assets/all_assets/favicon-48.png');
+      iconUrl = chrome.runtime.getURL('assets/all_assets/favicon-128.png');
       break;
 
     case 'failed':
       title = titlePrefix + 'Transaction Failed';
       message = `Transaction failed on ${notification.network}`;
-      iconUrl = chrome.runtime.getURL('assets/all_assets/favicon-48.png');
+      iconUrl = chrome.runtime.getURL('assets/all_assets/favicon-128.png');
       break;
 
     default:
