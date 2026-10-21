@@ -4,7 +4,6 @@ import React, {
   useCallback,
   useEffect,
   useId,
-  useMemo,
   useRef,
   useState,
 } from 'react';
@@ -42,11 +41,6 @@ const GlobeIcon = memo(() => (
   />
 ));
 GlobeIcon.displayName = 'GlobeIcon';
-
-const CheckIcon = memo(() => (
-  <Icon name="check" className="w-4" wrapperClassname="w-6" />
-));
-CheckIcon.displayName = 'CheckIcon';
 
 interface INetworkComponent {
   disabled?: boolean;
@@ -86,6 +80,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
   });
   const typeaheadInProgress = useRef(false);
   const typeaheadTimeout = useRef<ReturnType<typeof setTimeout>>();
+  const resetSearchOnOpen = useRef(false);
   const pointerPositions = useRef(new WeakMap<HTMLElement, [number, number]>());
   const resetTypeahead = useCallback(() => {
     clearTimeout(typeaheadTimeout.current);
@@ -111,27 +106,13 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
 
   const dapps = useSelector((state: RootState) => state.dapp.dapps);
 
-  // ✅ MEMOIZED: Computed values
-  const isNetworkChanging = useMemo(
-    () => networkStatus === 'switching',
-    [networkStatus]
-  );
-
-  const networkType = useMemo(
-    () => (isBitcoinBased ? INetworkType.Syscoin : INetworkType.Ethereum),
-    [isBitcoinBased]
-  );
-
-  const networkDisplayType = useMemo(
-    () => (isBitcoinBased ? 'UTXO' : 'EVM'),
-    [isBitcoinBased]
-  );
-
-  const bgColor = useMemo(
-    () =>
-      networkType === INetworkType.Syscoin ? 'bg-brand-pink' : 'bg-brand-blue',
-    [networkType]
-  );
+  const isNetworkChanging = networkStatus === 'switching';
+  const networkType = isBitcoinBased
+    ? INetworkType.Syscoin
+    : INetworkType.Ethereum;
+  const networkDisplayType = isBitcoinBased ? 'UTXO' : 'EVM';
+  const bgColor =
+    networkType === INetworkType.Syscoin ? 'bg-brand-pink' : 'bg-brand-blue';
 
   // ✅ MEMOIZED: Network validation function
   const activeNetworkValidator = useCallback(
@@ -143,34 +124,18 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
     [activeNetwork]
   );
 
-  // ✅ MEMOIZED: Dapp connection status
-  const hasConnectedDapps = useMemo(
-    () => Object.values(dapps).length > 0,
-    [dapps]
-  );
-
-  const connectedWebsiteTitle = useMemo(
-    () =>
-      hasConnectedDapps
-        ? t('networkMenu.viewConnected')
-        : t('networkMenu.noConnected'),
-    [hasConnectedDapps, t]
-  );
-
-  const currentBgColor = useMemo(
-    () => (hasConnectedDapps ? 'bg-brand-green' : 'bg-brand-red'),
-    [hasConnectedDapps]
-  );
-
-  const currentBdgColor = useMemo(
-    () =>
-      hasConnectedDapps ? 'border-warning-success' : 'border-warning-error',
-    [hasConnectedDapps]
-  );
+  const hasConnectedDapps = Object.values(dapps).length > 0;
+  const connectedWebsiteTitle = hasConnectedDapps
+    ? t('networkMenu.viewConnected')
+    : t('networkMenu.noConnected');
+  const currentBgColor = hasConnectedDapps ? 'bg-brand-green' : 'bg-brand-red';
+  const currentBdgColor = hasConnectedDapps
+    ? 'border-warning-success'
+    : 'border-warning-error';
 
   // ✅ MEMOIZED: Network change handler
   const handleChangeNetwork = useCallback(
-    async (network: INetwork, closeMenu?: () => void) => {
+    (network: INetwork, closeMenu?: () => void) => {
       if (disabled || isNetworkChanging) return;
       // Check if user is trying to switch to the same network that's already active
       if (activeNetworkValidator(network)) {
@@ -206,44 +171,14 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
   );
 
   // ✅ MEMOIZED: Navigation handlers
-  const handleConnectedSitesNavigation = useCallback(() => {
-    const returnContext = createBrowsingNavigationContext(location);
+  const handleSettingsNavigation = useCallback(
+    (pathname: string, state = {}) => {
+      const returnContext = createBrowsingNavigationContext(location);
 
-    navigateWithContext(
-      navigate,
-      '/settings/networks/connected-sites',
-      { fromMenu: true },
-      returnContext
-    );
-  }, [navigate, location]);
-
-  const handleTrustedSitesNavigation = useCallback(() => {
-    const returnContext = createBrowsingNavigationContext(location);
-
-    navigateWithContext(
-      navigate,
-      '/settings/networks/trusted-sites',
-      { fromMenu: true },
-      returnContext
-    );
-  }, [navigate, location]);
-
-  const handleCustomRpcNavigation = useCallback(() => {
-    const returnContext = createBrowsingNavigationContext(location);
-
-    navigateWithContext(
-      navigate,
-      '/settings/networks/custom-rpc',
-      { fromMenu: true },
-      returnContext
-    );
-  }, [navigate, location]);
-
-  const handleManageNetworksNavigation = useCallback(() => {
-    const returnContext = createBrowsingNavigationContext(location);
-
-    navigateWithContext(navigate, '/settings/networks/edit', {}, returnContext);
-  }, [navigate, location]);
+      navigateWithContext(navigate, pathname, state, returnContext);
+    },
+    [navigate, location]
+  );
 
   const handleGroupKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     // Headless UI 1.x accumulates printable keys for 350ms. Let it consume
@@ -478,6 +413,9 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
         <>
           <Menu.Button
             disabled={disabled}
+            onClick={() => {
+              resetSearchOnOpen.current = !menuprops.open;
+            }}
             className={`group relative inline-flex gap-x-2 items-center justify-start ml-2 w-max max-w-full text-white text-sm font-medium rounded-lg px-2 py-1.5 focus:outline-none transition-all duration-300 ease-in-out ${
               disabled
                 ? 'opacity-50 cursor-not-allowed'
@@ -536,7 +474,20 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
               as="div"
               onKeyDownCapture={handleGroupKeyDown}
               onFocusCapture={(event) => {
-                if (event.target !== event.currentTarget) resetTypeahead();
+                if (event.target !== event.currentTarget) {
+                  resetTypeahead();
+                  return;
+                }
+                if (!resetSearchOnOpen.current) return;
+                resetSearchOnOpen.current = false;
+                // Item focus clears Headless UI's retained typeahead query.
+                const menu = event.currentTarget;
+                menu
+                  .querySelector<HTMLElement>(
+                    '[role="menuitem"]:not([aria-disabled="true"])'
+                  )
+                  ?.focus({ preventScroll: true });
+                menu.focus({ preventScroll: true });
               }}
               className={`fixed overflow-x-hidden z-50 inset-x-0 top-8 bottom-0 w-full text-center text-brand-white font-poppins bg-brand-blue600 rounded-2xl focus:outline-none shadow-2xl ring-1 ring-black ring-opacity-5
               transform transition-all duration-100 ease-out ${
@@ -549,7 +500,14 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
               <div className="remove-scrollbar h-full overflow-y-auto overscroll-contain pt-5 pb-6">
                 <Menu.Item {...itemPointerHandlers}>
                   <li
-                    onClick={handleConnectedSitesNavigation}
+                    onClick={() =>
+                      handleSettingsNavigation(
+                        '/settings/networks/connected-sites',
+                        {
+                          fromMenu: true,
+                        }
+                      )
+                    }
                     className={`flex items-center justify-start mb-2 mx-3 px-2 py-1  text-base ${currentBgColor} hover:bg-opacity-70 border border-solid border-transparent hover:${currentBdgColor} rounded-full cursor-pointer transition-all duration-200`}
                   >
                     <GlobeIcon />
@@ -569,7 +527,14 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
 
                 <Menu.Item {...itemPointerHandlers}>
                   <li
-                    onClick={handleTrustedSitesNavigation}
+                    onClick={() =>
+                      handleSettingsNavigation(
+                        '/settings/networks/trusted-sites',
+                        {
+                          fromMenu: true,
+                        }
+                      )
+                    }
                     className="flex items-center justify-start mb-4 mx-3 px-2 py-1 text-base bg-brand-blue200 hover:bg-opacity-70 border border-solid border-brand-royalblue rounded-full cursor-pointer transition-all duration-200"
                   >
                     <WhiteSuccessIconSvg />
@@ -591,7 +556,14 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
 
                 <Menu.Item {...itemPointerHandlers}>
                   <li
-                    onClick={handleCustomRpcNavigation}
+                    onClick={() =>
+                      handleSettingsNavigation(
+                        '/settings/networks/custom-rpc',
+                        {
+                          fromMenu: true,
+                        }
+                      )
+                    }
                     className="flex px-5 py-2 w-full text-base hover:bg-brand-blue500 hover:bg-opacity-20 cursor-pointer transition-all duration-200"
                   >
                     <NetworkIconSvg />
@@ -604,7 +576,9 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
 
                 <Menu.Item {...itemPointerHandlers}>
                   <li
-                    onClick={handleManageNetworksNavigation}
+                    onClick={() =>
+                      handleSettingsNavigation('/settings/networks/edit')
+                    }
                     className="flex px-5 py-2 w-full text-base hover:bg-brand-blue500 hover:bg-opacity-20 cursor-pointer transition-all duration-200"
                   >
                     <EditIconSvg />
