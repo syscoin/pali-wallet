@@ -115,6 +115,7 @@ beforeEach(() => {
             accountType: type,
             chain: INetworkType.Syscoin,
             chainId: 57,
+            utxoAccount: { slip44: 57, xpub: account.xpub },
             date: 1,
           },
         },

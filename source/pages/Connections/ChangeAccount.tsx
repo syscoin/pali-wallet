@@ -18,6 +18,7 @@ import { TokenIconStack } from 'components/TokenIcon';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { useIncrementalList } from 'hooks/useIncrementalList';
+import { resolveDappAccount } from 'state/dapp/accountScope';
 import { RootState } from 'state/store';
 import { selectAccountAssets } from 'state/vault/selectors';
 import { IDAppAccountSelectionContext } from 'types/controllers';
@@ -139,8 +140,7 @@ export const ChangeAccount = () => {
 
   // If not in query data, try dapp state
   if (currentAccountId === undefined && dapp[host]) {
-    const dappAccount =
-      accounts?.[dapp[host].accountType]?.[dapp[host].accountId];
+    const dappAccount = resolveDappAccount(dapp[host], accounts, activeNetwork);
     if (
       dappAccount &&
       isAccountValidForNetwork(dappAccount, dapp[host].accountType)

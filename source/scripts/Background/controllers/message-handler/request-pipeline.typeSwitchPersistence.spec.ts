@@ -354,6 +354,14 @@ describe.each([true, false])(
               accountType: TYPE,
               chain: sourceNetwork.kind,
               chainId: 5700,
+              ...(fromUtxo
+                ? {
+                    utxoAccount: {
+                      slip44: sourceNetwork.slip44,
+                      xpub: `public-${sourceNetwork.kind}`,
+                    },
+                  }
+                : {}),
               date: 1,
             },
           },

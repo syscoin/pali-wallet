@@ -30,6 +30,7 @@ import trustedApps from 'constants/trustedApps.json';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { useIncrementalList } from 'hooks/useIncrementalList';
+import { resolveDappAccount } from 'state/dapp/accountScope';
 import { RootState } from 'state/store';
 import { selectAccountAssets } from 'state/vault/selectors';
 import { KeyringAccountType } from 'types/network';
@@ -228,8 +229,11 @@ export const ConnectWallet = () => {
         const latestActiveAccount = latestAccounts?.[activeType]?.[activeId];
 
         if (dapp) {
-          const dappAccount =
-            latestAccounts?.[dapp.accountType]?.[dapp.accountId];
+          const dappAccount = resolveDappAccount(
+            dapp,
+            latestAccounts,
+            activeNetwork
+          );
           if (isAccountValidForNetwork(dappAccount, dapp.accountType)) {
             setCurrentAccountId(dapp.accountId);
             setCurrentAccountType(dapp.accountType);

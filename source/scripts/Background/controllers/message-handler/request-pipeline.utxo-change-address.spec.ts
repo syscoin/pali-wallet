@@ -124,6 +124,7 @@ beforeEach(() => {
             accountType: KeyringAccountType.Imported,
             chain: INetworkType.Syscoin,
             chainId: 57,
+            utxoAccount: { slip44: 57, xpub: imported.xpub },
             date: 1,
           },
         },

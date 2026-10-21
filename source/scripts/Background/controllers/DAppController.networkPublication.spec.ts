@@ -138,12 +138,14 @@ const initializeSysFixture = async () => {
           accountId: 0,
           accountType: TYPE,
           chain: INetworkType.Syscoin,
+          utxoAccount: { slip44: 1, xpub: 'public-a' },
         },
         [OTHER]: {
           host: OTHER,
           accountId: 1,
           accountType: TYPE,
           chain: INetworkType.Syscoin,
+          utxoAccount: { slip44: 1, xpub: 'public-b' },
         },
       },
     } as any)

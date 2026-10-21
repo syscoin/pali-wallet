@@ -8,6 +8,9 @@ export interface IDApp {
   date: number;
   host: string;
   logo?: string;
+  // EVM grants remain network-compatible. UTXO grants require an approved
+  // vault and stable reference, not a reusable numeric account slot.
+  utxoAccount?: { slip44: number; xpub: string };
 }
 
 export interface IDAppState {

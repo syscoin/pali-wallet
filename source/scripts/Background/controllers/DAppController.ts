@@ -2,6 +2,7 @@ import { INetwork } from '@sidhujag/sysweb3-network';
 
 import { notificationManager } from '../notification-manager';
 import { addDApp, removeDApp, updateDAppAccount } from 'state/dapp';
+import { resolveDappAccount } from 'state/dapp/accountScope';
 import { IDApp } from 'state/dapp/types';
 import store, {
   persistDappPermissionGrant,
@@ -14,7 +15,7 @@ import {
   IDAppController,
   IDAppDisconnectOptions,
 } from 'types/controllers';
-import { KeyringAccountType } from 'types/network';
+import { INetworkType, KeyringAccountType } from 'types/network';
 import { removeSensitiveDataFromVault, removeXprv } from 'utils/account';
 import { isAccountCompatibleWithNetwork } from 'utils/accountCompatibility';
 import { getDappOrigin } from 'utils/dappOrigin';
@@ -99,9 +100,12 @@ const DAppController = (
   const currentConnection = (host: string) => {
     const { dapp, vault } = store.getState();
     const connection = dapp.dapps[host];
-    // Equal account slots across UTXO/EVM vaults are different identities.
-    // Retain raw grants for management, but never reuse them across families.
-    return connection?.chain && connection.chain === vault?.activeNetwork?.kind
+    // Keep raw foreign-vault grants manageable without resolving their slots
+    // against an unrelated account in the active vault.
+    return connection &&
+      connection.chain === vault?.activeNetwork?.kind &&
+      (connection.chain !== INetworkType.Syscoin ||
+        resolveDappAccount(connection, vault.accounts, vault.activeNetwork))
       ? connection
       : undefined;
   };
@@ -222,7 +226,7 @@ const DAppController = (
     const state = store.getState();
     const walletStateGeneration = getWalletStateGeneration();
     const existingDapp = state.dapp.dapps[host];
-    const grant = connectionDetails
+    const grant: IDApp = connectionDetails
       ? { ...connectionDetails }
       : existingDapp?.chain === network.kind
       ? { ...existingDapp, accountId, accountType, date }
@@ -236,6 +240,18 @@ const DAppController = (
         };
     const address = account.address;
     const xpub = account.xpub;
+    const slip44 = network.slip44 ?? 57;
+    if (
+      isBitcoinBased &&
+      (!Number.isSafeInteger(slip44) ||
+        typeof xpub !== 'string' ||
+        xpub.length === 0)
+    )
+      throw new Error('Account reference is not available');
+    // Only the validated background selection can mint this binding. Explicit
+    // reapproval replaces any previous or caller-supplied namespace/reference.
+    if (isBitcoinBased) grant.utxoAccount = { slip44, xpub };
+    else delete grant.utxoAccount;
     const selectedNetwork = { ...network };
     const attempt: NonNullable<ReturnType<typeof pendingGrants.get>> = {
       accountId,
@@ -251,6 +267,7 @@ const DAppController = (
         pendingGrants.get(host) === attempt &&
         current?.address === address &&
         current?.xpub === xpub &&
+        (!isBitcoinBased || (activeNetwork.slip44 ?? 57) === slip44) &&
         isAccountCompatibleWithNetwork(current, accountType, activeNetwork) &&
         // Initial connection approval also promises its advertised network.
         // An existing permission request admits the selected identity across
@@ -372,9 +389,18 @@ const DAppController = (
     accountType: KeyringAccountType
   ) => {
     const date = Date.now();
-    const { accounts, isBitcoinBased } = store.getState().vault;
+    const { accounts, isBitcoinBased, activeNetwork } = store.getState().vault;
     const account = accounts[accountType]?.[accountId];
     if (!account || !isConnected(host)) return;
+    if (
+      isBitcoinBased &&
+      !resolveDappAccount(
+        { ...get(host), accountId, accountType },
+        accounts,
+        activeNetwork
+      )
+    )
+      return;
 
     store.dispatch(updateDAppAccount({ host, accountId, date, accountType }));
 
@@ -672,9 +698,11 @@ const DAppController = (
     // never disclose another site's account, nor a revoked/locked connection.
     const { vault } = store.getState();
     const connection = currentConnection(host);
-    const account = connection
-      ? vault.accounts[connection.accountType]?.[connection.accountId]
-      : undefined;
+    const account = resolveDappAccount(
+      connection,
+      vault.accounts,
+      vault.activeNetwork
+    );
     const isUnlocked =
       isWalletUnlocked() &&
       (data.method !== PaliEvents.lockStateChanged ||
@@ -932,18 +960,9 @@ const DAppController = (
   const getAll = () => store.getState().dapp.dapps;
 
   const getAccount = (host: string) => {
-    const dapp = currentConnection(host);
-    const { accounts } = store.getState().vault;
-    if (!dapp) return null;
-
-    // Safely check if account type exists before accessing account
-    const accountsByType = accounts[dapp.accountType];
-    if (!accountsByType) return null;
-
-    const account = accountsByType[dapp.accountId];
-    if (!account) return null;
-
-    return removeXprv(account);
+    const { accounts, activeNetwork } = store.getState().vault;
+    const account = resolveDappAccount(get(host), accounts, activeNetwork);
+    return account ? removeXprv(account) : null;
   };
 
   const getState = (): IOmittedVault =>
