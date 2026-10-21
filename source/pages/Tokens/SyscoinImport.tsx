@@ -19,8 +19,10 @@ import {
   CloseCircleOutlined,
 } from 'components/Icon/Icon';
 import { ImportableAssetsList } from 'components/index';
+import { ListLoadMore } from 'components/Loading/ListLoadMore';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
+import { useIncrementalList } from 'hooks/useIncrementalList';
 import type { ISysTokensAssetReponse } from 'scripts/Background/controllers/assets/types';
 import { RootState } from 'state/store';
 import { ITokenSysProps } from 'types/tokens';
@@ -391,10 +393,15 @@ export const SyscoinImport: React.FC = () => {
     }
   };
 
-  // Prepare assets for the list
+  const {
+    visibleItems: visibleOwnedTokens,
+    hasMore: hasMoreOwnedAssets,
+    showMore: showMoreOwnedAssets,
+  } = useIncrementalList(ownedTokens, tokenImportScope);
+  // Keep complete discovery data, but only format and mount revealed rows.
   const ownedAssetsForList = useMemo(
-    () => convertToImportableAssets(ownedTokens),
-    [ownedTokens, convertToImportableAssets]
+    () => convertToImportableAssets(visibleOwnedTokens),
+    [visibleOwnedTokens, convertToImportableAssets]
   );
 
   const customAssetsForList = useMemo(
@@ -450,15 +457,24 @@ export const SyscoinImport: React.FC = () => {
             </button>
           </div>
         ) : activeTab === 'owned' ? (
-          <ImportableAssetsList
-            assets={ownedAssetsForList}
-            isLoading={isLoadingOwned}
-            onImport={handleImport}
-            onDetailsClick={handleDetailsClick}
-            importedAssetIds={importedAssetGuids}
-            currentlyImporting={currentlyImporting}
-            assetType="utxo"
-          />
+          <>
+            <ImportableAssetsList
+              assets={ownedAssetsForList}
+              isLoading={isLoadingOwned}
+              onImport={handleImport}
+              onDetailsClick={handleDetailsClick}
+              importedAssetIds={importedAssetGuids}
+              currentlyImporting={currentlyImporting}
+              assetType="utxo"
+            />
+            {!isLoadingOwned && hasMoreOwnedAssets && (
+              <ListLoadMore
+                onClick={showMoreOwnedAssets}
+                shown={visibleOwnedTokens.length}
+                total={ownedTokens.length}
+              />
+            )}
+          </>
         ) : (
           <div className="space-y-4">
             {/* Asset GUID Input */}
