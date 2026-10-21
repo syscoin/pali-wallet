@@ -197,9 +197,9 @@ const ExpandableSection: React.FC<{
         className="flex w-full items-center gap-2 text-left text-white text-sm hover:text-fields-input-borderfocus transition-colors mb-2 cursor-pointer"
       >
         {expanded ? (
-          <DownOutlined className="text-xs" />
+          <DownOutlined aria-hidden="true" className="text-xs" />
         ) : (
-          <RightOutlined className="text-xs" />
+          <RightOutlined aria-hidden="true" className="text-xs" />
         )}
         <span>
           {title} {count !== undefined && `(${count})`}

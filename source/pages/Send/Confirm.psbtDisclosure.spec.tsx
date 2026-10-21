@@ -72,13 +72,25 @@ jest.mock('components/index', () => ({
   ),
 }));
 jest.mock('components/Loading', () => ({ PqSigningOverlay: () => null }));
-jest.mock('components/Icon/Icon', () => ({
-  WarningOutlined: () => null,
-  CheckCircleOutlined: () => null,
-  ClockCircleOutlined: () => null,
-  DownOutlined: () => null,
-  RightOutlined: () => null,
-}));
+// Use the package's real CommonJS color helpers with Jest's CommonJS runtime.
+jest.mock('@ant-design/colors', () =>
+  jest.requireActual('@ant-design/colors/lib')
+);
+jest.mock('@ant-design/colors/es/generate', () =>
+  jest.requireActual('@ant-design/colors/lib/generate')
+);
+jest.mock('components/Icon/Icon', () => {
+  const { DownOutlined, RightOutlined } = jest.requireActual(
+    'components/Icon/Icon'
+  );
+  return {
+    WarningOutlined: () => null,
+    CheckCircleOutlined: () => null,
+    ClockCircleOutlined: () => null,
+    DownOutlined,
+    RightOutlined,
+  };
+});
 jest.mock('antd', () => ({
   Typography: { Text: ({ children }: any) => <span>{children}</span> },
 }));
@@ -280,6 +292,7 @@ it('opens and closes four inputs using normal Tab, Enter and Space', async () =>
   await tabTo(user, button);
   await user.keyboard('{Enter}');
   expect(button.getAttribute('aria-expanded')).toBe('true');
+  expect(screen.getByRole('button', { name: 'send.inputs (4)' })).toBe(button);
   expect(screen.getByText('Input #0')).toBeTruthy();
   expect(screen.getByText('Input #3')).toBeTruthy();
   await user.keyboard(' ');
@@ -295,6 +308,7 @@ it('opens and closes four outputs using normal Tab, Space and Enter', async () =
   await tabTo(user, button);
   await user.keyboard(' ');
   expect(button.getAttribute('aria-expanded')).toBe('true');
+  expect(screen.getByRole('button', { name: 'send.outputs (4)' })).toBe(button);
   expect(screen.getByText('Output #0')).toBeTruthy();
   expect(screen.getByText('Output #3')).toBeTruthy();
   await user.keyboard('{Enter}');
