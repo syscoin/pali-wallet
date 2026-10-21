@@ -48,6 +48,9 @@ import {
   getConfiguredAuthenticatorAddress,
   getPaliErc7739PersonalSignHash,
   getSmartAccountLocalOwnerContexts,
+  getGuardianRecoveryDelayOptions,
+  isGuardianRecoveryDelayAllowed,
+  SMART_ACCOUNT_GUARDIAN_DEFAULT_RECOVERY_DELAY_SECONDS,
   paliSmartAccountInterface,
   signAndSubmitSmartAccountExecutions,
   signSmartAccountActionHash,
@@ -156,6 +159,62 @@ type SLHDSAPreparedSignerRecord = {
 type PolicyApprovalScope = {
   assertCurrent: () => void;
   expectedContext: IEvmTransactionContext;
+};
+
+type GuardianDisablePending = {
+  accountAddress: string;
+  attemptId?: string;
+  chainId: number;
+  localRecoverySalt?: string;
+  moduleAddress: string;
+};
+
+type GuardianDisableConfirmation = GuardianDisablePending & {
+  accountLabel: string;
+  approval: PolicyApprovalScope;
+  networkLabel: string;
+  retryUnknown?: boolean;
+};
+
+const guardianDisablePendingKey = (account: string, chainId: number) =>
+  `pali-smart-account-recovery-disable:${chainId}:${account.toLowerCase()}`;
+const GUARDIAN_DISABLE_STORAGE_ERROR = 'PALI_RECOVERY_REMOVAL_STORAGE_FAILED';
+
+const sameGuardianDisableAttempt = (
+  first: GuardianDisablePending,
+  second: GuardianDisablePending
+) =>
+  first.attemptId === second.attemptId &&
+  first.chainId === second.chainId &&
+  first.accountAddress.toLowerCase() === second.accountAddress.toLowerCase() &&
+  first.moduleAddress.toLowerCase() === second.moduleAddress.toLowerCase() &&
+  first.localRecoverySalt === second.localRecoverySalt;
+
+const readGuardianDisablePending = (
+  account: string | undefined,
+  chainId: number,
+  requireReadable = false
+): GuardianDisablePending | null => {
+  if (!account) return null;
+  try {
+    const pending = JSON.parse(
+      localStorage.getItem(guardianDisablePendingKey(account, chainId)) ||
+        'null'
+    );
+    if (
+      pending?.chainId === chainId &&
+      getAddress(pending.accountAddress) === getAddress(account) &&
+      getAddress(pending.moduleAddress) &&
+      (pending.attemptId === undefined || typeof pending.attemptId === 'string')
+    )
+      return pending;
+    if (pending !== null && requireReadable)
+      throw new Error(GUARDIAN_DISABLE_STORAGE_ERROR);
+  } catch {
+    if (requireReadable) throw new Error(GUARDIAN_DISABLE_STORAGE_ERROR);
+    // A malformed local status marker cannot authorize an operation.
+  }
+  return null;
 };
 
 const guardianReplacementAuthenticatorKey = (
@@ -341,7 +400,16 @@ const SmartAccountPolicy = () => {
     useState<RecoveryAuthenticatorId>('p256-webauthn');
   const [replacementEcdsaOwner, setReplacementEcdsaOwner] = useState('');
   const [guardianAddress, setGuardianAddress] = useState('');
-  const [guardianDelaySeconds, setGuardianDelaySeconds] = useState(86400);
+  const [guardianDelaySeconds, setGuardianDelaySeconds] = useState(
+    SMART_ACCOUNT_GUARDIAN_DEFAULT_RECOVERY_DELAY_SECONDS
+  );
+  const guardianDelayOptions = getGuardianRecoveryDelayOptions(
+    activeNetwork.chainId
+  );
+  const guardianDelayAllowed = isGuardianRecoveryDelayAllowed(
+    activeNetwork.chainId,
+    guardianDelaySeconds
+  );
   const [isGuardianRecoveryScreenOpen, setIsGuardianRecoveryScreenOpen] =
     useState(routeState?.smartAccountPolicyView === 'recovery');
   useEffect(() => {
@@ -393,6 +461,19 @@ const SmartAccountPolicy = () => {
     isGuardianPolicyUpdateConfirmOpen,
     setIsGuardianPolicyUpdateConfirmOpen,
   ] = useState(false);
+  const [guardianDisableConfirmation, setGuardianDisableConfirmation] =
+    useState<GuardianDisableConfirmation | null>(null);
+  const [guardianDisablePending, setGuardianDisablePending] =
+    useState<GuardianDisablePending | null>(() =>
+      readGuardianDisablePending(account?.address, activeNetwork.chainId)
+    );
+  const [guardianDisableRetryReady, setGuardianDisableRetryReady] =
+    useState(false);
+  const guardianDisableConfirmationRef = useRef(guardianDisableConfirmation);
+  guardianDisableConfirmationRef.current = guardianDisableConfirmation;
+  const guardianDisablePendingRef = useRef(guardianDisablePending);
+  guardianDisablePendingRef.current = guardianDisablePending;
+  const guardianDisableInFlight = useRef(false);
   const [isPasskeyRecreateConfirmOpen, setIsPasskeyRecreateConfirmOpen] =
     useState(false);
   const [isSLHDSASetupConfirmOpen, setIsSLHDSASetupConfirmOpen] =
@@ -424,6 +505,15 @@ const SmartAccountPolicy = () => {
     setShouldFinalizeSLHDSASetup(false);
     setSlhDsaActionStartedAt(undefined);
     setIsGuardianPolicyUpdateConfirmOpen(false);
+    guardianDisableConfirmationRef.current = null;
+    setGuardianDisableConfirmation(null);
+    const pendingRemoval = readGuardianDisablePending(
+      account?.address,
+      activeNetwork.chainId
+    );
+    guardianDisablePendingRef.current = pendingRemoval;
+    setGuardianDisablePending(pendingRemoval);
+    setGuardianDisableRetryReady(false);
     setIsPasskeyRecreateConfirmOpen(false);
     setIsSLHDSASetupConfirmOpen(false);
     setReplacementEcdsaOwner('');
@@ -608,11 +698,13 @@ const SmartAccountPolicy = () => {
     Boolean(normalizedReplacementEcdsaOwner);
   const isStartGuardianRecoveryDisabled =
     guardianActionLoading ||
+    Boolean(guardianDisablePending) ||
     !guardianPolicyReady ||
     !isReplacementAuthenticatorReady ||
     Boolean(activeGuardianReplacement?.recoveryOperation);
   const isFinalizeGuardianRecoveryDisabled =
     guardianActionLoading ||
+    Boolean(guardianDisablePending) ||
     !activeGuardianReplacement?.recoveryOperation ||
     !guardianRecoveryReady;
   const hasPendingGuardianRecovery = Boolean(
@@ -885,7 +977,9 @@ const SmartAccountPolicy = () => {
     }
 
     setGuardianAddress('');
-    setGuardianDelaySeconds(86400);
+    setGuardianDelaySeconds(
+      SMART_ACCOUNT_GUARDIAN_DEFAULT_RECOVERY_DELAY_SECONDS
+    );
   }, [
     configuredGuardianAddress,
     configuredGuardianDelaySeconds,
@@ -931,7 +1025,10 @@ const SmartAccountPolicy = () => {
   const submitModuleExecutions = async (
     executions: Array<{ data: string; target: string; value: string }>,
     options: {
+      approval?: PolicyApprovalScope;
+      onBeforeSubmit?: () => void;
       refreshAfterSubmit?: boolean;
+      retrySignature?: boolean;
       useCachedMetadata?: boolean;
       waitForConfirmation?: boolean;
     } = {}
@@ -940,7 +1037,8 @@ const SmartAccountPolicy = () => {
       return;
     }
     const isCurrentUi = createUiGuard();
-    const approval = await capturePolicyApproval();
+    const approval = options.approval || (await capturePolicyApproval());
+    approval.assertCurrent();
     const submit = (
       smartAccount: ISmartAccountMetadata,
       useCachedMetadata?: boolean
@@ -953,7 +1051,10 @@ const SmartAccountPolicy = () => {
         executions,
         expectedContext: approval.expectedContext,
         onPrepared: approval.assertCurrent,
-        onBeforeSubmit: () => assertApprovalSession(approval),
+        onBeforeSubmit: async () => {
+          await assertApprovalSession(approval);
+          options.onBeforeSubmit?.();
+        },
         onAuthenticatorSigningResolved: (authenticatorId) => {
           if (authenticatorId === 'slh-dsa' && isCurrentUi()) {
             setIsSLHDSASigning(false);
@@ -972,10 +1073,14 @@ const SmartAccountPolicy = () => {
       });
 
     try {
+      let response;
       try {
-        await submit(metadata, options.useCachedMetadata);
+        response = await submit(metadata, options.useCachedMetadata);
       } catch (error) {
-        if (!isSmartAccountSignatureError(error)) {
+        if (
+          options.retrySignature === false ||
+          !isSmartAccountSignatureError(error)
+        ) {
           throw error;
         }
         const hydrated = await refreshMetadata(approval);
@@ -983,7 +1088,7 @@ const SmartAccountPolicy = () => {
           throw error;
         }
         try {
-          await submit(hydrated, true);
+          response = await submit(hydrated, true);
         } catch (retryError) {
           if (isSmartAccountSignatureError(retryError)) {
             throw new Error('PALI_SMART_ACCOUNT_SIGNATURE_ERROR');
@@ -996,6 +1101,7 @@ const SmartAccountPolicy = () => {
         // turn that outcome into a retryable signing failure.
         await refreshMetadata(approval, false).catch(() => null);
       }
+      return response;
     } finally {
       if (isCurrentUi(false)) setIsSLHDSASigning(false);
     }
@@ -1596,6 +1702,10 @@ const SmartAccountPolicy = () => {
       alert.error(t('settings.invalidSmartAccountGuardianAddress'));
       return;
     }
+    if (!guardianDelayAllowed) {
+      alert.error(t('settings.smartAccountGuardianRecoveryChooseDelay'));
+      return;
+    }
     if (hasGuardianRecovery && !guardianPolicyChanged) {
       return;
     }
@@ -1716,6 +1826,357 @@ const SmartAccountPolicy = () => {
     }
 
     installGuardianRecovery();
+  };
+
+  const showGuardianDisablePending = (pending: GuardianDisablePending) => {
+    if (createUiGuard()()) {
+      guardianDisablePendingRef.current = pending;
+      setGuardianDisablePending(pending);
+    }
+  };
+
+  const rememberGuardianDisable = (
+    target: GuardianDisablePending,
+    requireDurable = false
+  ) => {
+    const pending: GuardianDisablePending = {
+      accountAddress: target.accountAddress,
+      ...(target.attemptId ? { attemptId: target.attemptId } : {}),
+      chainId: target.chainId,
+      localRecoverySalt: target.localRecoverySalt,
+      moduleAddress: target.moduleAddress,
+    };
+    try {
+      const key = guardianDisablePendingKey(
+        target.accountAddress,
+        target.chainId
+      );
+      const serialized = JSON.stringify(pending);
+      localStorage.setItem(key, serialized);
+      if (localStorage.getItem(key) !== serialized)
+        throw new Error(GUARDIAN_DISABLE_STORAGE_ERROR);
+    } catch {
+      if (requireDurable) throw new Error(GUARDIAN_DISABLE_STORAGE_ERROR);
+    }
+    showGuardianDisablePending(pending);
+  };
+
+  const clearGuardianDisable = (
+    target: GuardianDisablePending,
+    clearRecoveryOperation: boolean
+  ) => {
+    try {
+      const storedPending = readGuardianDisablePending(
+        target.accountAddress,
+        target.chainId,
+        true
+      );
+      if (storedPending && !sameGuardianDisableAttempt(storedPending, target)) {
+        showGuardianDisablePending(storedPending);
+        return;
+      }
+      localStorage.removeItem(
+        guardianDisablePendingKey(target.accountAddress, target.chainId)
+      );
+      if (clearRecoveryOperation && target.localRecoverySalt) {
+        const key = guardianReplacementAuthenticatorKey(
+          target.accountAddress,
+          target.chainId
+        );
+        const stored = JSON.parse(localStorage.getItem(key) || 'null');
+        // Never remove a newer recovery or its replacement signing credential.
+        if (
+          stored?.recoveryOperation?.salt === target.localRecoverySalt &&
+          stored.recoveryOperation.account?.toLowerCase() ===
+            target.accountAddress.toLowerCase() &&
+          stored.recoveryOperation.chainId === target.chainId
+        ) {
+          localStorage.setItem(
+            key,
+            JSON.stringify({ ...stored, recoveryOperation: undefined })
+          );
+        }
+      }
+    } catch {
+      // The chain result is not changed by a local-storage failure.
+    }
+    if (createUiGuard()()) {
+      guardianDisablePendingRef.current = null;
+      setGuardianDisablePending(null);
+      setGuardianReplacementStorageVersion((version) => version + 1);
+    }
+  };
+
+  const guardianRemovalConfirmed = (
+    target: GuardianDisablePending,
+    hydrated: ISmartAccountMetadata | null
+  ) =>
+    hydrated?.chainId === target.chainId &&
+    hydrated?.isDeployed === true &&
+    Array.isArray(hydrated.installedModules) &&
+    !hydrated.installedModules.some(
+      (module) =>
+        module.address.toLowerCase() === target.moduleAddress.toLowerCase() ||
+        (module.id === 'guardian-recovery' && module.type === 'executor')
+    );
+
+  const requestGuardianDisable = async (retryUnknown = false) => {
+    const previousPending =
+      guardianDisablePendingRef.current ||
+      readGuardianDisablePending(account?.address, activeNetwork.chainId);
+    if (previousPending && !retryUnknown) {
+      guardianDisablePendingRef.current = previousPending;
+      setGuardianDisablePending(previousPending);
+    }
+    if (
+      guardianDisableInFlight.current ||
+      guardianActionLoading ||
+      (previousPending && !(retryUnknown && guardianDisableRetryReady)) ||
+      !installedGuardianRecovery
+    )
+      return;
+    guardianDisableInFlight.current = true;
+    const isCurrentUi = createUiGuard();
+    setLoading(true);
+    try {
+      const approval = await capturePolicyApproval();
+      const hydrated = await refreshMetadata(approval);
+      approval.assertCurrent();
+      if (
+        hydrated?.chainId !== activeNetwork.chainId ||
+        hydrated?.isDeployed !== true ||
+        !Array.isArray(hydrated.installedModules)
+      )
+        throw new Error('Smart account metadata unavailable');
+      const installed = hydrated?.installedModules?.find(
+        (module) =>
+          module.id === 'guardian-recovery' && module.type === 'executor'
+      );
+      if (!installed) {
+        if (
+          previousPending &&
+          guardianRemovalConfirmed(previousPending, hydrated)
+        ) {
+          clearGuardianDisable(previousPending, true);
+        }
+        alert.info(t('settings.smartAccountGuardianRecoveryAlreadyDisabled'));
+        return;
+      }
+      const confirmation: GuardianDisableConfirmation = {
+        accountAddress: getAddress(account.address),
+        attemptId: uuidv4(),
+        accountLabel:
+          typeof account.label === 'string' && account.label
+            ? account.label
+            : typeof account.name === 'string' && account.name
+            ? account.name
+            : t('receive.smartAccount'),
+        approval,
+        chainId: activeNetwork.chainId,
+        localRecoverySalt: activeGuardianReplacement?.recoveryOperation?.salt,
+        moduleAddress: getAddress(installed.address),
+        networkLabel: activeNetwork.label || '',
+        retryUnknown: Boolean(previousPending && retryUnknown),
+      };
+      guardianDisableConfirmationRef.current = confirmation;
+      setGuardianDisableConfirmation(confirmation);
+    } catch (error) {
+      if (isCurrentUi() && !handleWalletLockedError(error)) {
+        alert.error(t('settings.smartAccountGuardianRecoveryDisableFailed'));
+      }
+    } finally {
+      guardianDisableInFlight.current = false;
+      if (isCurrentUi(false)) setLoading(false);
+    }
+  };
+
+  const disableGuardianRecovery = async () => {
+    const target = guardianDisableConfirmation;
+    const isCurrentUi = createUiGuard();
+    if (
+      !target ||
+      guardianDisableConfirmationRef.current !== target ||
+      !isCurrentUi() ||
+      guardianDisableInFlight.current ||
+      (guardianDisablePendingRef.current && !target.retryUnknown)
+    )
+      return;
+    const recordedPending = readGuardianDisablePending(
+      target.accountAddress,
+      target.chainId
+    );
+    if (recordedPending && !target.retryUnknown) {
+      guardianDisablePendingRef.current = recordedPending;
+      setGuardianDisablePending(recordedPending);
+      guardianDisableConfirmationRef.current = null;
+      setGuardianDisableConfirmation(null);
+      return;
+    }
+    guardianDisableInFlight.current = true;
+    const previousPending = guardianDisablePendingRef.current;
+    let otherPending: GuardianDisablePending | null = null;
+    setGuardianDisableRetryReady(false);
+    let submissionAttempted = false;
+    setLoading(true);
+    setModuleActionKey('guardian-recovery:disable');
+    try {
+      await assertApprovalSession(target.approval);
+      const current = await refreshMetadata(target.approval);
+      target.approval.assertCurrent();
+      if (
+        current?.chainId !== target.chainId ||
+        current?.isDeployed !== true ||
+        !current?.installedModules?.some(
+          (module) =>
+            module.type === 'executor' &&
+            module.id === 'guardian-recovery' &&
+            module.address.toLowerCase() === target.moduleAddress.toLowerCase()
+        )
+      ) {
+        throw new Error('PALI_TRANSACTION_CONTEXT_CHANGED');
+      }
+      await submitModuleExecutions(
+        [
+          {
+            data: paliSmartAccountInterface.encodeFunctionData(
+              'uninstallModule',
+              [ERC7579_MODULE_TYPE_EXECUTOR, target.moduleAddress, '0x']
+            ),
+            target: target.accountAddress,
+            value: '0x0',
+          },
+        ],
+        {
+          approval: target.approval,
+          onBeforeSubmit: () => {
+            // This synchronous checkpoint follows asynchronous preparation and
+            // signing. Do not replace a different window's newer attempt.
+            const latest = readGuardianDisablePending(
+              target.accountAddress,
+              target.chainId,
+              true
+            );
+            if (
+              latest &&
+              (!previousPending ||
+                !sameGuardianDisableAttempt(latest, previousPending))
+            ) {
+              otherPending = latest;
+              showGuardianDisablePending(latest);
+              throw new Error('PALI_TRANSACTION_CONTEXT_CHANGED');
+            }
+            rememberGuardianDisable(target, true);
+            submissionAttempted = true;
+          },
+          refreshAfterSubmit: false,
+          retrySignature: false,
+          useCachedMetadata: true,
+          waitForConfirmation: true,
+        }
+      );
+      const hydrated = await refreshMetadata(target.approval, false).catch(
+        () => null
+      );
+      if (guardianRemovalConfirmed(target, hydrated)) {
+        clearGuardianDisable(target, true);
+        if (isCurrentUi()) {
+          setGuardianStatus(null);
+          alert.success(t('settings.smartAccountGuardianRecoveryDisabled'));
+        }
+      } else if (isCurrentUi()) {
+        alert.info(t('settings.smartAccountGuardianRecoveryDisableUnverified'));
+      }
+    } catch (error: any) {
+      const definitelyNotApplied =
+        !submissionAttempted ||
+        error?.transactionNotBroadcast === true ||
+        error?.code === 4001 ||
+        error?.receipt?.status === 0;
+      if (otherPending) showGuardianDisablePending(otherPending);
+      else if (definitelyNotApplied && !previousPending)
+        clearGuardianDisable(target, false);
+      else if (definitelyNotApplied && previousPending) {
+        try {
+          const latest = readGuardianDisablePending(
+            target.accountAddress,
+            target.chainId,
+            true
+          );
+          if (latest && !sameGuardianDisableAttempt(latest, target))
+            showGuardianDisablePending(latest);
+          else rememberGuardianDisable(previousPending);
+        } catch {
+          // Without a readable ownership marker, never overwrite storage.
+          showGuardianDisablePending(previousPending);
+        }
+      }
+      // An unknown post-submit result already has its verified durable marker.
+      // Rewriting it here could lose a newer observation or fail needlessly.
+      if (isCurrentUi() && !handleWalletLockedError(error)) {
+        alert.error(
+          t(
+            error?.message === GUARDIAN_DISABLE_STORAGE_ERROR
+              ? 'settings.smartAccountGuardianRecoveryDisableStorageFailed'
+              : definitelyNotApplied
+              ? 'settings.smartAccountGuardianRecoveryDisableFailed'
+              : 'settings.smartAccountGuardianRecoveryDisableUnverified'
+          )
+        );
+      }
+    } finally {
+      guardianDisableInFlight.current = false;
+      if (isCurrentUi(false)) {
+        guardianDisableConfirmationRef.current = null;
+        setGuardianDisableConfirmation(null);
+        setModuleActionKey('');
+        setLoading(false);
+      }
+    }
+  };
+
+  const checkGuardianDisable = async () => {
+    const target = guardianDisablePending;
+    const isCurrentUi = createUiGuard();
+    if (
+      !target ||
+      guardianDisablePendingRef.current !== target ||
+      !isCurrentUi() ||
+      guardianDisableInFlight.current ||
+      guardianActionLoading
+    )
+      return;
+    guardianDisableInFlight.current = true;
+    setLoading(true);
+    setGuardianDisableRetryReady(false);
+    try {
+      const hydrated = await refreshMetadata();
+      if (!isCurrentUi()) return;
+      if (guardianRemovalConfirmed(target, hydrated)) {
+        clearGuardianDisable(target, true);
+        setGuardianStatus(null);
+        alert.success(t('settings.smartAccountGuardianRecoveryDisabled'));
+      } else {
+        if (
+          hydrated?.chainId === target.chainId &&
+          hydrated?.isDeployed === true &&
+          hydrated.installedModules?.some(
+            (module) =>
+              module.type === 'executor' &&
+              module.id === 'guardian-recovery' &&
+              module.address.toLowerCase() ===
+                target.moduleAddress.toLowerCase()
+          )
+        )
+          setGuardianDisableRetryReady(true);
+        alert.info(t('settings.smartAccountGuardianRecoveryDisableUnverified'));
+      }
+    } catch {
+      if (isCurrentUi())
+        alert.info(t('settings.smartAccountGuardianRecoveryDisableUnverified'));
+    } finally {
+      guardianDisableInFlight.current = false;
+      if (isCurrentUi(false)) setLoading(false);
+    }
   };
 
   const startGuardianRecovery = async () => {
@@ -2165,6 +2626,87 @@ const SmartAccountPolicy = () => {
       alert.error(t('transactions.copyFailed'));
     }
   };
+  const guardianDisableControls = guardianDisablePending ? (
+    <div className="rounded-2xl border border-brand-yellowInfo p-3 text-xs leading-5 text-brand-yellowInfo">
+      <p role="status">
+        {t('settings.smartAccountGuardianRecoveryDisableUnverified')}
+      </p>
+      {renderModuleAction(
+        checkGuardianDisable,
+        guardianActionLoading,
+        loading,
+        t('settings.smartAccountGuardianRecoveryCheckRemoval')
+      )}
+      {guardianDisableRetryReady &&
+        renderModuleAction(
+          () => requestGuardianDisable(true),
+          guardianActionLoading,
+          false,
+          t('settings.smartAccountGuardianRecoveryRetryRemoval')
+        )}
+    </div>
+  ) : hasGuardianRecovery ? (
+    renderModuleAction(
+      () => requestGuardianDisable(),
+      guardianActionLoading,
+      moduleActionKey === 'guardian-recovery:disable',
+      t('settings.smartAccountGuardianRecoveryDisable')
+    )
+  ) : null;
+  const guardianDisableDialog = (
+    <ConfirmationModal
+      show={Boolean(guardianDisableConfirmation)}
+      title={t('settings.smartAccountGuardianRecoveryDisableConfirmTitle')}
+      buttonText={t(
+        'settings.smartAccountGuardianRecoveryDisableConfirmButton'
+      )}
+      isButtonLoading={loading}
+      onClick={disableGuardianRecovery}
+      onClose={() => {
+        if (!guardianDisableInFlight.current) {
+          guardianDisableConfirmationRef.current = null;
+          setGuardianDisableConfirmation(null);
+        }
+      }}
+    >
+      {guardianDisableConfirmation && (
+        <>
+          <dl className="min-w-0 space-y-1 rounded-2xl bg-alpha-whiteAlpha100 p-2 text-left text-xs">
+            <div className="min-w-0">
+              <dt
+                className="truncate text-brand-graylight"
+                title={guardianDisableConfirmation.accountLabel}
+              >
+                {guardianDisableConfirmation.accountLabel}
+              </dt>
+              <dd className="mt-1 break-all font-mono text-white">
+                {guardianDisableConfirmation.accountAddress}
+              </dd>
+            </div>
+            <div className="min-w-0">
+              <dt className="sr-only">{t('nftDetails.network')}</dt>
+              <dd className="mt-1 break-words text-white">
+                {guardianDisableConfirmation.networkLabel
+                  ? `${guardianDisableConfirmation.networkLabel} (${guardianDisableConfirmation.chainId})`
+                  : guardianDisableConfirmation.chainId}
+              </dd>
+            </div>
+          </dl>
+          <p className="mt-2 text-xs leading-4 text-brand-yellowInfo">
+            {t('settings.smartAccountGuardianRecoveryInvalidatesPending')}
+          </p>
+          <p className="mt-4">
+            {t(
+              'settings.smartAccountGuardianRecoveryDisableConfirmDescription'
+            )}
+            {guardianDisableConfirmation.retryUnknown
+              ? ` ${t('settings.smartAccountGuardianRecoveryRetryWarning')}`
+              : ''}
+          </p>
+        </>
+      )}
+    </ConfirmationModal>
+  );
 
   if (!isEntryMetadataReady) {
     const failed =
@@ -2204,6 +2746,7 @@ const SmartAccountPolicy = () => {
         data-navigation-scroll="smart-account-policy-recovery"
         className="remove-scrollbar flex h-full w-full flex-col items-center overflow-y-auto px-4 pb-24 text-left"
       >
+        {guardianDisableDialog}
         <PqSigningOverlay
           expectedSeconds={60}
           show={isSLHDSASigning}
@@ -2212,6 +2755,7 @@ const SmartAccountPolicy = () => {
           warningSeconds={90}
         />
         <div className="flex w-full max-w-[352px] flex-col gap-4">
+          {guardianDisableControls}
           <button
             type="button"
             className="self-start rounded-full border border-alpha-whiteAlpha300 bg-alpha-whiteAlpha100 px-3 py-2 text-xs font-medium text-white transition-all duration-200 hover:bg-brand-blue500 hover:bg-opacity-20 disabled:cursor-not-allowed disabled:opacity-60"
@@ -2512,7 +3056,8 @@ const SmartAccountPolicy = () => {
                 const isCurrentSLHDSASetupRunning =
                   module.id === 'slh-dsa' && isSLHDSASetupRunning;
                 const canManageGuardianRecovery =
-                  module.id === 'guardian-recovery' && module.supported;
+                  module.id === 'guardian-recovery' &&
+                  (module.supported || Boolean(installedModule));
                 const paliWalletOwnerAddress =
                   installedModule?.type === 'validator' &&
                   installedModule.id === 'ecdsa'
@@ -2647,45 +3192,49 @@ const SmartAccountPolicy = () => {
                               }
                             />
                           </Form.Item>
-                          <div className="grid grid-cols-3 gap-2">
-                            {[
-                              {
-                                label: '10 min',
-                                value: 600,
-                              },
-                              {
-                                label: t(
-                                  'settings.smartAccountGuardianRecoveryDelayThreeDays'
-                                ),
-                                value: 259200,
-                              },
-                              {
-                                label: t(
-                                  'settings.smartAccountGuardianRecoveryDelaySevenDays'
-                                ),
-                                value: 604800,
-                              },
-                            ].map((option) => (
+                          <div
+                            className={`grid gap-2 ${
+                              guardianDelayOptions.length === 3
+                                ? 'grid-cols-3'
+                                : 'grid-cols-2'
+                            }`}
+                          >
+                            {guardianDelayOptions.map((delaySeconds) => (
                               <button
-                                key={option.value}
+                                key={delaySeconds}
                                 type="button"
                                 className={`rounded-full border px-2 py-2 text-[11px] font-medium transition-all duration-200 ${
-                                  guardianDelaySeconds === option.value
+                                  guardianDelaySeconds === delaySeconds
                                     ? 'border-brand-blue500 bg-brand-blue500 bg-opacity-20 text-brand-blue100'
                                     : 'border-alpha-whiteAlpha300 bg-alpha-whiteAlpha100 text-white'
                                 }`}
                                 disabled={loading}
                                 onClick={() =>
-                                  setGuardianDelaySeconds(option.value)
+                                  setGuardianDelaySeconds(delaySeconds)
                                 }
                               >
-                                {option.label}
+                                {t(
+                                  delaySeconds === 600
+                                    ? 'settings.smartAccountGuardianRecoveryDelayTestnet'
+                                    : delaySeconds === 259200
+                                    ? 'settings.smartAccountGuardianRecoveryDelayThreeDays'
+                                    : 'settings.smartAccountGuardianRecoveryDelaySevenDays'
+                                )}
                               </button>
                             ))}
                           </div>
+                          {!guardianDelayAllowed && (
+                            <p className="text-xs leading-5 text-brand-yellowInfo">
+                              {t(
+                                'settings.smartAccountGuardianRecoveryChooseDelay'
+                              )}
+                            </p>
+                          )}
                           {renderModuleAction(
                             requestGuardianPolicyUpdate,
                             loading ||
+                              Boolean(guardianDisablePending) ||
+                              !guardianDelayAllowed ||
                               !normalizedGuardianAddress ||
                               (installed && !guardianPolicyChanged),
                             moduleActionKey === 'guardian-recovery:update',
@@ -2699,6 +3248,7 @@ const SmartAccountPolicy = () => {
                                   )}
                             </span>
                           )}
+                          {guardianDisableControls}
                           {installed && (
                             <div className="rounded-2xl bg-alpha-whiteAlpha100 p-3 text-xs text-brand-graylight">
                               <div className="flex items-center justify-between gap-3">
@@ -2751,6 +3301,24 @@ const SmartAccountPolicy = () => {
                               </button>
                             </div>
                           )}
+                          {installed && (
+                            <div className="rounded-2xl border border-alpha-whiteAlpha300 p-3">
+                              <p className="text-xs leading-5 text-brand-graylight">
+                                {t(
+                                  'settings.smartAccountRecoveryEmailAlertsDescription'
+                                )}
+                              </p>
+                              <a
+                                href="https://sysnode.info/account#recovery-alerts"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="mt-2 inline-flex max-w-full items-center gap-2 rounded text-xs font-semibold text-brand-blue100 underline underline-offset-4 transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue500"
+                              >
+                                {t('settings.smartAccountRecoveryEmailAlerts')}
+                                <span aria-hidden="true">↗</span>
+                              </a>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -2770,6 +3338,7 @@ const SmartAccountPolicy = () => {
         onClick={installGuardianRecovery}
         onClose={() => setIsGuardianPolicyUpdateConfirmOpen(false)}
       />
+      {guardianDisableDialog}
       <ConfirmationModal
         show={isPasskeyRecreateConfirmOpen}
         title={t('settings.smartAccountPasskeyRecreateConfirmTitle')}

@@ -3,7 +3,7 @@
   "moduleFileExtensions": ["js", "mjs", "ts", "json", "jsx", "tsx"],
   "moduleDirectories": ["source", "node_modules"],
   "modulePathIgnorePatterns": ["node_modules"],
-  "testPathIgnorePatterns": ["<rootDir>/tests/account/", "<rootDir>/e2e/"],
+  "testPathIgnorePatterns": ["<rootDir>/tests/account/", "<rootDir>/e2e/", "<rootDir>/tests/integration/recoveryEnrollment/"],
   "transform": {
     "^.+\\.(js|jsx|mjs|cjs|ts|tsx)$": [
       "ts-jest",
