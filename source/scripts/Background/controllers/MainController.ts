@@ -8106,13 +8106,18 @@ class MainController {
     // Always dispatch startSwitchNetwork to ensure we're in the correct state
     store.dispatch(startSwitchNetwork(network));
 
-    // Only reset network quality when switching to a different network
+    // Quality measurements belong to the provider and vault that produced them.
     const currentNetwork = store.getState().vault.activeNetwork;
-    if (currentNetwork && currentNetwork.chainId !== network.chainId) {
-      // Switching to a different network - reset quality tracking
+    if (
+      currentNetwork &&
+      (currentNetwork.kind !== network.kind ||
+        currentNetwork.chainId !== network.chainId ||
+        currentNetwork.url !== network.url ||
+        currentNetwork.slip44 !== network.slip44)
+    ) {
       store.dispatch(resetNetworkQualityForNewNetwork());
     } else {
-      // Same network - preserve quality state but clear stale data
+      // Same provider - preserve recent quality across reconnects or metadata edits.
       store.dispatch(clearNetworkQualityIfStale());
     }
 
