@@ -26,7 +26,10 @@ import {
 } from 'utils/addressPoisoning';
 import { formatMethodName } from 'utils/commonMethodSignatures';
 import { formatUnits } from 'utils/ethersV6Compat';
-import { parseEvmInteger } from 'utils/evmNonce';
+import {
+  EVM_TRANSACTION_HISTORY_SOURCE,
+  parseEvmInteger,
+} from 'utils/evmNonce';
 import {
   buildEvmMinedNonceIndex,
   getEvmSettlementStatus,
@@ -693,10 +696,15 @@ export const EvmTransactionDetailsEnhanced = ({
 
     transactionTx = txLocal as any;
 
+    const directionFrom =
+      !displayContext.isOperation &&
+      (usableSummary as any)?.historySource ===
+        EVM_TRANSACTION_HISTORY_SOURCE.ExplorerTokenTransfer
+        ? usableSummary.from
+        : displayTransaction?.from;
     isTxSent =
-      typeof displayTransaction?.from === 'string' &&
-      displayTransaction.from.toLowerCase() ===
-        currentAccount?.address?.toLowerCase();
+      typeof directionFrom === 'string' &&
+      directionFrom.toLowerCase() === currentAccount?.address?.toLowerCase();
 
     const mergedTx = txLocal;
     if (displayContext.isOperation) {
