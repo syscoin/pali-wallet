@@ -678,6 +678,7 @@ export const ImportToken: React.FC = () => {
 
   // Handle tab change
   const handleTabChange = (tab: 'owned' | 'custom') => {
+    if (tab === activeTab) return;
     setRequestedTab(tab);
     updateTabInUrl(tab);
     if (tab === 'custom') {

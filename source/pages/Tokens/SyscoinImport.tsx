@@ -383,6 +383,7 @@ export const SyscoinImport: React.FC = () => {
 
   // Handle tab change
   const handleTabChange = (tab: 'owned' | 'custom') => {
+    if (tab === activeTab) return;
     setActiveTab(tab);
     const next = new URLSearchParams(searchParams);
     next.set('tab', tab);
