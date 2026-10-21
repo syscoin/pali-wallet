@@ -374,9 +374,9 @@ const EvmAssetsController = (): IEvmAssetsController => {
         const priceData = await priceResponse.json();
         const tokenData = priceData[network.coingeckoId];
 
-        if (tokenData) {
+        if (tokenData && Number.isFinite(tokenData[currency])) {
           const result = {
-            price: tokenData[currency] || 0,
+            price: tokenData[currency],
             priceChange24h: tokenData[`${currency}_24h_change`],
           };
 

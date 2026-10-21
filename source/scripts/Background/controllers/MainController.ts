@@ -9394,7 +9394,12 @@ class MainController {
       );
       const currencies = await response.json();
 
-      if (currencies && currencies.rates && currencies.rates[currency]) {
+      if (
+        currencies &&
+        currencies.rates &&
+        currencies.rates[currency] &&
+        Number.isFinite(currencies.rates[currency])
+      ) {
         const result = {
           price: currencies.rates[currency],
           priceChange24h: undefined, // Backend doesn't provide 24h change for UTXO yet
