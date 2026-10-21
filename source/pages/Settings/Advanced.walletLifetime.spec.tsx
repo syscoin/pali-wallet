@@ -8,6 +8,7 @@ import {
   fireEvent,
   render,
   screen,
+  within,
 } from '@testing-library/react';
 import React from 'react';
 import { Provider } from 'react-redux';
@@ -359,6 +360,72 @@ describe('advanced Save ownership across wallet reset', () => {
         refresh: true,
         autolock: 5,
       });
+    }
+  );
+
+  it.each([
+    ['untouched', [], '10', true],
+    ['fully undone', ['15', '5'], '10', true],
+    ['genuinely unsaved', ['15'], '15', false],
+  ] as const)(
+    'reconciles an %s draft after another Advanced document saves',
+    async (_label, edits, expectedValue, expectedDisabled) => {
+      const first = render(
+        <Provider store={store}>
+          <Advanced />
+        </Provider>
+      );
+      const firstUi = within(first.container);
+      const firstInput = firstUi.getByLabelText(
+        'settings.enableAutolock'
+      ) as HTMLInputElement;
+      for (const value of edits) {
+        fireEvent.change(firstInput, { target: { value } });
+      }
+      const firstSave = firstUi.getByRole('button', {
+        name: 'buttons.save',
+      }) as HTMLButtonElement;
+      expect(firstSave.disabled).toBe(expectedDisabled);
+
+      // Separate documents model two open wallet views without duplicate IDs.
+      const frame = document.createElement('iframe');
+      document.body.appendChild(frame);
+      let second: ReturnType<typeof render> | undefined;
+      try {
+        second = render(
+          <Provider store={store}>
+            <Advanced />
+          </Provider>,
+          { container: frame.contentDocument!.body }
+        );
+        const secondUi = within(second.container);
+        fireEvent.change(secondUi.getByLabelText('settings.enableAutolock'), {
+          target: { value: '10' },
+        });
+        fireEvent.click(secondUi.getByRole('button', { name: 'buttons.save' }));
+        await act(async () => {
+          await firstCommitted.promise;
+          deliverFirstResponse.resolve();
+          await flush();
+        });
+
+        expect(mockEmitter).toHaveBeenCalledTimes(1);
+        expect(mockEmitter).toHaveBeenCalledWith(
+          ['wallet', 'saveAdvancedSettings'],
+          [{ refresh: true, autolock: 10 }, getWalletNavigationScope()]
+        );
+        expect(store.getState().vaultGlobal.advancedSettings.autolock).toBe(10);
+        expect(persisted.state.vaultGlobal.advancedSettings.autolock).toBe(10);
+        expect(secondUi.getByRole('dialog').textContent).toBe(
+          'settings.advancedSettingsWasSet'
+        );
+        expect(firstInput.value).toBe(expectedValue);
+        expect(firstSave.disabled).toBe(expectedDisabled);
+      } finally {
+        second?.unmount();
+        first.unmount();
+        frame.remove();
+      }
     }
   );
 });

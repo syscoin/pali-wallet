@@ -94,6 +94,18 @@ const Advanced = () => {
     Number.isInteger(autolock) &&
     (autolock === 0 || (autolock >= 5 && autolock <= 120));
 
+  const updateDraft = (
+    property: string,
+    value: boolean | number | undefined
+  ) => {
+    const next = { ...enabledProperties, [property]: value };
+    // Protect outstanding edits, not input activity that has been fully undone.
+    draftEdited.current = ADVANCED_SETTINGS.some(
+      (prop) => next[prop] !== savedProperties[prop]
+    );
+    setEnabledProperties(next);
+  };
+
   const handleSwitchChange = (checked: boolean, advancedProperty: string) => {
     // Only handle confirmation for boolean settings that have warnings
     if (settingsWarnings[advancedProperty]) {
@@ -105,28 +117,16 @@ const Advanced = () => {
         setIsOpenConfirmationModal(true);
       } else {
         // If disabling, update directly
-        draftEdited.current = true;
-        setEnabledProperties((prevState) => ({
-          ...prevState,
-          [advancedProperty]: checked,
-        }));
+        updateDraft(advancedProperty, checked);
       }
     } else {
       // For settings without warnings, update directly
-      draftEdited.current = true;
-      setEnabledProperties((prevState) => ({
-        ...prevState,
-        [advancedProperty]: checked,
-      }));
+      updateDraft(advancedProperty, checked);
     }
   };
 
   const handleConfirmEnable = () => {
-    draftEdited.current = true;
-    setEnabledProperties((prevState) => ({
-      ...prevState,
-      [currentAdvancedProperty]: true,
-    }));
+    updateDraft(currentAdvancedProperty, true);
     setIsOpenConfirmationModal(false);
   };
 
@@ -239,22 +239,15 @@ const Advanced = () => {
                           : (enabledProperties.autolock as number)
                       }
                       onChange={(e) => {
-                        draftEdited.current = true;
                         const value = e.target.value;
                         if (value === '') {
                           // Allow empty state
-                          setEnabledProperties((prevState) => ({
-                            ...prevState,
-                            autolock: undefined,
-                          }));
+                          updateDraft('autolock', undefined);
                           return;
                         }
                         const numValue = Number(value);
                         if (!isNaN(numValue)) {
-                          setEnabledProperties((prevState) => ({
-                            ...prevState,
-                            autolock: numValue,
-                          }));
+                          updateDraft('autolock', numValue);
                         }
                       }}
                       onBlur={(e) => {
@@ -265,7 +258,6 @@ const Advanced = () => {
                           return;
                         }
                         // Only constrain if there's an actual value
-                        draftEdited.current = true;
                         const numValue = Number(value);
                         // Allow 0 to disable, or 5-120 minutes
                         let constrainedValue = numValue;
@@ -275,10 +267,7 @@ const Advanced = () => {
                             Math.min(120, Math.round(numValue))
                           );
                         }
-                        setEnabledProperties((prevState) => ({
-                          ...prevState,
-                          autolock: constrainedValue,
-                        }));
+                        updateDraft('autolock', constrainedValue);
                       }}
                       min={0}
                       max={120}
