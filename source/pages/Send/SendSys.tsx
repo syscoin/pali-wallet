@@ -939,7 +939,6 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
             ]}
           >
             <Input
-              type="text"
               placeholder={t('send.receiver')}
               onBlur={handleFieldBlur}
             />
@@ -973,7 +972,6 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
                       </Menu.Button>
 
                       <Menu.Items
-                        as="div"
                         className={`scrollbar-styled absolute z-10 left-0 mt-2 py-3 w-56 h-56 text-brand-white font-poppins bg-brand-blue800 border border-fields-input-border focus:border-fields-input-borderfocus rounded-2xl shadow-2xl overflow-auto origin-top-right
                           transform transition-all duration-100 ease-out ${
                             open

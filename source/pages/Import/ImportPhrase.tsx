@@ -132,7 +132,6 @@ const ImportPhrase: React.FC = () => {
           // User edits supersede any pending submission. Programmatic phrase
           // normalization via setFieldsValue does not trigger this callback.
           requestGeneration.current += 1;
-          validationRequest.current += 1;
           submissionPending.current = false;
           setSeedIsValid(false);
         }}

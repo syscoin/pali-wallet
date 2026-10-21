@@ -196,7 +196,9 @@ const open = async (
   symbol = 'SYS'
 ) => {
   await user.click(trigger(symbol));
-  return screen.getByRole('menu');
+  const menu = screen.getByRole('menu');
+  await waitFor(() => expect(menu).toHaveFocus());
+  return menu;
 };
 const optionButton = (name: string) => {
   const item = screen.getByRole('menuitem', { name });
@@ -227,7 +229,12 @@ afterEach(() => {
 
 it('registers one native button per current-chain asset and excludes other chains', async () => {
   const user = await mount();
-  await open(user);
+  const menu = await open(user);
+  expect(menu.tagName).toBe('DIV');
+  expect(screen.getByPlaceholderText('send.receiver')).toHaveProperty(
+    'type',
+    'text'
+  );
   const items = screen.getAllByRole('menuitem');
   expect(items).toHaveLength(3);
   for (const item of items) {
@@ -257,6 +264,12 @@ it.each(['{Enter}', ' '])('selects a highlighted SPT using %s', async (key) => {
   trigger().focus();
   await user.keyboard('{ArrowDown}');
   const menu = screen.getByRole('menu');
+  await waitFor(() => {
+    expect(menu).toHaveFocus();
+    expect(
+      document.getElementById(menu.getAttribute('aria-activedescendant')!)
+    ).toHaveTextContent('SYS');
+  });
   await user.keyboard('{Home}{ArrowDown}');
   const active = document.getElementById(
     menu.getAttribute('aria-activedescendant')!
