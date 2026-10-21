@@ -25,6 +25,7 @@ import {
   navigateWithContext,
 } from 'utils/navigationState';
 import { navigateBack } from 'utils/navigationState';
+import { getNftQuantity } from 'utils/nftQuantity';
 import { buildExplorerUrl } from 'utils/strings';
 import { getTokenTypeBadgeColor } from 'utils/tokens';
 
@@ -145,6 +146,7 @@ export const EvmAssetDetails = ({
 
   const isNft = !!currentAsset?.isNft;
   const isErc721 = isNft && currentAsset?.tokenStandard === 'ERC-721';
+  const { exactQuantity, quantity, isSingle } = getNftQuantity(currentAsset);
 
   // Get the actual token standard from the saved data
   const tokenStandard =
@@ -346,12 +348,14 @@ export const EvmAssetDetails = ({
                 {tokenStandard}
               </span>
             </div>
-            {isErc721 && (
+            {(isErc721 || (isNft && is1155)) && (
               <div className="text-right">
                 <span className="text-gray-400 text-xs block">Owned</span>
-                <span className="text-white font-medium text-xs">
-                  {currentAsset.balance}{' '}
-                  {currentAsset.balance === 1 ? 'NFT' : 'NFTs'}
+                <span
+                  className="text-white font-medium text-xs"
+                  title={exactQuantity}
+                >
+                  {quantity} {isSingle ? 'NFT' : 'NFTs'}
                 </span>
               </div>
             )}

@@ -12,7 +12,13 @@ import {
 } from '@testing-library/react';
 import React from 'react';
 import { Provider } from 'react-redux';
-import { MemoryRouter, useLocation } from 'react-router-dom';
+import {
+  MemoryRouter,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+} from 'react-router-dom';
 
 import { AddToken } from '../../../../Tokens/AddToken';
 import { DetailsView } from '../Details';
@@ -29,7 +35,7 @@ import {
   setNetworkStatus,
 } from 'state/vaultGlobal';
 import { INetworkType, KeyringAccountType } from 'types/network';
-import { getWalletNavigationScope } from 'utils/navigationState';
+import { getWalletNavigationScope, navigateBack } from 'utils/navigationState';
 
 import { EvmNftsList } from './EvmNftsList';
 import { NftsDetails } from './NftsDetails';
@@ -130,6 +136,7 @@ const originalFetch = global.fetch;
 let wallet: any;
 let records: Record<string, any>;
 let rawBalance: string | string[] = '0';
+let discoveredStandard = 'ERC-1155';
 let testCase = 0;
 let routeState: any;
 const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value));
@@ -137,6 +144,12 @@ const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value));
 const NavigationObserver = () => {
   routeState = useLocation().state;
   return null;
+};
+
+const NavigationBackControl = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
+  return <button onClick={() => navigateBack(navigate, location)}>Back</button>;
 };
 
 const renderPage = (page: React.ReactNode, state?: any) =>
@@ -159,6 +172,7 @@ beforeEach(() => {
   jest.spyOn(console, 'error').mockImplementation();
   records = {};
   routeState = undefined;
+  discoveredStandard = 'ERC-1155';
   global.chrome = {
     runtime: { id: 'nft-quantity-synthetic' },
     storage: {
@@ -190,7 +204,7 @@ beforeEach(() => {
         result: (Array.isArray(rawBalance) ? rawBalance : [rawBalance]).map(
           (balance, index) => ({
             contractAddress: CONTRACT,
-            type: 'ERC-1155',
+            type: discoveredStandard,
             id: String(index + 7),
             name: 'Exact collection',
             symbol: Array.isArray(rawBalance) ? `EXACT${index}` : 'EXACT',
@@ -248,6 +262,7 @@ beforeEach(() => {
       return assets.getUserOwnedTokens(args[0]);
     if (method === 'saveTokenInfo') return wallet.saveTokenInfo(...args);
     if (method === 'getOnlyMarketData') return null;
+    if (method === 'fetchNftTokenIds') return [];
     throw new Error(`Unexpected controller call: ${method}`);
   });
 });
@@ -258,6 +273,154 @@ afterEach(() => {
   global.chrome = originalChrome;
   jest.restoreAllMocks();
 });
+
+const openImportedNftRow = async (
+  standard: 'ERC-721' | 'ERC-1155',
+  quantity: string
+) => {
+  discoveredStandard = standard;
+  rawBalance = quantity;
+  const imported = renderPage(<AddToken />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Import EXACT token' })
+  );
+  await waitFor(() => expect(mockAlerts.success).toHaveBeenCalledTimes(1));
+  const saved = store.getState().vault.accountAssets[TYPE][0].ethereum[0];
+  expect(saved.balance).toBe(Number(quantity));
+  expect(saved.tokenStandard).toBe(standard);
+  imported.unmount();
+
+  render(
+    <Provider store={store}>
+      <MemoryRouter initialEntries={['/home?tab=assets']}>
+        <NavigationObserver />
+        <NavigationBackControl />
+        <Routes>
+          <Route
+            path="/home"
+            element={
+              <EvmNftsList
+                scope="owned-quantity-navigation"
+                state={{
+                  isCoinSelected: false,
+                  searchValue: '',
+                  sortByValue: '',
+                }}
+              />
+            }
+          />
+          <Route path="/home/details" element={<DetailsView />} />
+        </Routes>
+      </MemoryRouter>
+    </Provider>
+  );
+  const details = await screen.findByRole('button', {
+    name: 'View details for EXACT collection',
+  });
+  const rowQuantity = details
+    .closest('li')!
+    .querySelector('span.text-brand-white');
+  expect(rowQuantity).toHaveTextContent(
+    new RegExp(`nftDetails\\.${quantity === '1' ? 'item' : 'items'}$`)
+  );
+  if (standard === 'ERC-1155')
+    expect(rowQuantity).toHaveAttribute('title', quantity);
+  fireEvent.click(details);
+  await screen.findByRole('button', { name: 'send.viewCollectionItems' });
+  expect(routeState.id).toBe(saved.id);
+  expect(screen.getByText('NFT Information')).toBeInTheDocument();
+};
+
+it.each(['0', '1', '42'])(
+  'retains the imported ERC721 quantity %s on asset details',
+  async (quantity) => {
+    await openImportedNftRow('ERC-721', quantity);
+    expect(screen.getByText('Owned').nextElementSibling).toHaveTextContent(
+      `${quantity} ${quantity === '1' ? 'NFT' : 'NFTs'}`
+    );
+  }
+);
+
+it.each([
+  '0',
+  '1',
+  '42',
+  '9007199254740993',
+  '115792089237316195423570985008687907853269984665640564039457584007913129639935',
+])(
+  'retains the exact ERC1155 quantity %s through list, asset, collection and Back',
+  async (quantity) => {
+    await openImportedNftRow('ERC-1155', quantity);
+    const checkOwned = () => {
+      const owned = screen.getByText('Owned').nextElementSibling!;
+      expect(owned).toHaveAttribute('title', quantity);
+      expect(owned).toHaveTextContent(
+        new RegExp(` ${quantity === '1' ? 'NFT' : 'NFTs'}$`)
+      );
+      if (quantity.length > 15) {
+        expect(owned.textContent).not.toContain(quantity);
+        expect(owned.textContent!.length).toBeLessThan(30);
+      } else {
+        expect(owned).toHaveTextContent(quantity);
+      }
+    };
+    checkOwned();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'send.viewCollectionItems' })
+    );
+    expect(screen.getByText(/• ERC-1155/)).toHaveAttribute('title', quantity);
+    expect(
+      screen.getByText('Amount', { exact: true }).parentElement
+    ).toHaveAttribute('title', quantity);
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    await screen.findByRole('button', { name: 'send.viewCollectionItems' });
+    checkOwned();
+    fireEvent.click(screen.getByRole('button', { name: 'buttons.close' }));
+    const details = await screen.findByRole('button', {
+      name: 'View details for EXACT collection',
+    });
+    expect(
+      details.closest('li')!.querySelector('span.text-brand-white')
+    ).toHaveAttribute('title', quantity);
+    fireEvent.click(details);
+    await screen.findByRole('button', { name: 'send.viewCollectionItems' });
+    checkOwned();
+  }
+);
+
+it.each([
+  { isNft: true, tokenStandard: undefined },
+  { isNft: true, tokenStandard: 'ERC-404' },
+  { isNft: false, tokenStandard: 'ERC-1155' },
+])(
+  'does not label unsupported NFT metadata $isNft / $tokenStandard as Owned',
+  (asset) => {
+    const id = `${CONTRACT}-5700`;
+    store.dispatch(
+      setAccountAssets({
+        accountType: TYPE,
+        accountId: 0,
+        property: 'ethereum',
+        value: [
+          {
+            id,
+            contractAddress: CONTRACT,
+            chainId: 5700,
+            name: 'Unsupported standard',
+            tokenSymbol: 'UNKNOWN',
+            balance: 42,
+            ...asset,
+          },
+        ] as any,
+      })
+    );
+    renderPage(<DetailsView />, {
+      id,
+      walletScope: getWalletNavigationScope(),
+    });
+    expect(screen.queryByText('Owned')).not.toBeInTheDocument();
+  }
+);
 
 it.each([
   '0',
