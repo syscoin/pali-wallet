@@ -66,6 +66,13 @@ export const DecodedTransactionParams: React.FC<
     return String(value);
   };
 
+  const renderDetail = (label: string, content: React.ReactNode) => (
+    <div className="flex items-center justify-between">
+      <span className="text-xs text-brand-gray200">{label}:</span>
+      {content}
+    </div>
+  );
+
   const renderAddress = (address: string) => {
     const display = formatAddress(address);
     return (
@@ -86,16 +93,12 @@ export const DecodedTransactionParams: React.FC<
 
       return (
         <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-brand-gray200">
-              {t('transactions.spender')}:
-            </span>
-            {renderAddress(approvalData.inputs[0])}
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-brand-gray200">
-              {t('transactions.approvalAmount')}:
-            </span>
+          {renderDetail(
+            t('transactions.spender'),
+            renderAddress(approvalData.inputs[0])
+          )}
+          {renderDetail(
+            t('transactions.approvalAmount'),
             <span
               className={`text-xs font-medium ${
                 isUnlimited ? 'text-warning-error' : 'text-white'
@@ -103,17 +106,14 @@ export const DecodedTransactionParams: React.FC<
             >
               {isUnlimited ? `⚠️ ${t('transactions.unlimited')}` : amountStr}
             </span>
-          </div>
-          {approvalData.tokenStandard && (
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-brand-gray200">
-                {t('transactions.tokenStandard')}:
-              </span>
+          )}
+          {approvalData.tokenStandard &&
+            renderDetail(
+              t('transactions.tokenStandard'),
               <span className="text-xs text-white">
                 {approvalData.tokenStandard}
               </span>
-            </div>
-          )}
+            )}
         </div>
       );
     }
@@ -121,20 +121,16 @@ export const DecodedTransactionParams: React.FC<
     if (approvalData.approvalType === 'erc721-single') {
       return (
         <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-brand-gray200">
-              {t('transactions.approvedTo')}:
-            </span>
-            {renderAddress(approvalData.inputs[0])}
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-brand-gray200">
-              {t('send.tokenId')}:
-            </span>
+          {renderDetail(
+            t('transactions.approvedTo'),
+            renderAddress(approvalData.inputs[0])
+          )}
+          {renderDetail(
+            t('send.tokenId'),
             <span className="text-xs text-white">
               #{approvalData.inputs[1].toString()}
             </span>
-          </div>
+          )}
         </div>
       );
     }
@@ -142,16 +138,12 @@ export const DecodedTransactionParams: React.FC<
     if (approvalData.approvalType === 'nft-all') {
       return (
         <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-brand-gray200">
-              {t('transactions.operator')}:
-            </span>
-            {renderAddress(approvalData.inputs[0])}
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-brand-gray200">
-              {t('transactions.approvalStatus')}:
-            </span>
+          {renderDetail(
+            t('transactions.operator'),
+            renderAddress(approvalData.inputs[0])
+          )}
+          {renderDetail(
+            t('transactions.approvalStatus'),
             <span
               className={`text-xs font-medium ${
                 approvalData.inputs[1]
@@ -163,7 +155,7 @@ export const DecodedTransactionParams: React.FC<
                 ? `✓ ${t('transactions.approved')}`
                 : `✗ ${t('transactions.revoked')}`}
             </span>
-          </div>
+          )}
         </div>
       );
     }
