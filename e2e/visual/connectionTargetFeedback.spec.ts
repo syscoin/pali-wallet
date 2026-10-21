@@ -374,12 +374,37 @@ test('a new network target receives fresh feedback deadlines after an old balanc
         await expect
           .poll(() => reads.some((row) => row.network === 'target' && row.held))
           .toBe(true);
+        // The actual EVM provider configuration completes before its account
+        // reads. Holding balance/count keeps post-switch hydration pending,
+        // not the earlier networkTarget/switching phase.
         await expect
-          .poll(async () => (await publicState(page)).target?.chainId)
-          .toBe(570);
+          .poll(async () => {
+            const state = await publicState(page);
+            return {
+              active: state.active,
+              target: state.target,
+              status: state.status,
+              loadingBalances: state.loadingBalances,
+              postLoading: state.postLoading,
+              quality: state.quality,
+            };
+          })
+          .toEqual({
+            active: {
+              chainId: 570,
+              kind: 'ethereum',
+              url: TARGET_RPC,
+              label: 'Rollux',
+            },
+            target: null,
+            status: 'idle',
+            loadingBalances: true,
+            postLoading: true,
+            quality: null,
+          });
         await indicator.hover();
         await expect(indicator).toHaveClass(/bg-brand-blue500/);
-        await expect(tooltip).toHaveText(en.networkConnection.switchingNetwork);
+        await expect(tooltip).toHaveText(en.networkConnection.updatingBalances);
         const targetPendingAt = await page.evaluate(() => Date.now());
         observations.targetPendingAt = targetPendingAt;
         observations.targetFresh = await publicState(page);
@@ -398,10 +423,21 @@ test('a new network target receives fresh feedback deadlines after an old balanc
           await page.evaluate((since) => Date.now() - since, targetPendingAt)
         ).toBeLessThan(SLOW_FEEDBACK_MS);
         await expect(indicator).toHaveClass(/bg-brand-blue500/);
-        observations.afterOldResponse = await publicState(page);
-        expect((await publicState(page)).target?.chainId).toBe(570);
-        expect((await publicState(page)).status).toBe('switching');
-        expect((await publicState(page)).quality).toBeNull();
+        const afterOldResponse = await publicState(page);
+        observations.afterOldResponse = afterOldResponse;
+        expect(afterOldResponse).toMatchObject({
+          active: {
+            chainId: 570,
+            kind: 'ethereum',
+            url: TARGET_RPC,
+            label: 'Rollux',
+          },
+          target: null,
+          status: 'idle',
+          loadingBalances: true,
+          postLoading: true,
+          quality: null,
+        });
         await page.waitForFunction(
           ({ since, delay }) => Date.now() - since >= delay,
           { since: targetPendingAt, delay: SLOW_FEEDBACK_MS }

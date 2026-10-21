@@ -218,7 +218,7 @@ test('ordinary dapp transaction review preserves every native-value decimal befo
           capture
         );
         expect(connected.error).toBeUndefined();
-        expect(connected.result).toEqual([from]);
+        expect(connected.result).toEqual([from.toLowerCase()]);
       }
     );
     for (const entry of CASES) {
