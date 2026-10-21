@@ -17,7 +17,7 @@ export const Tooltip: React.FC<ITooltip> = ({
   childrenClassName,
   className,
   content,
-  focusable = false,
+  focusable,
   placement = 'top',
 }) =>
   content ? (
@@ -30,7 +30,10 @@ export const Tooltip: React.FC<ITooltip> = ({
       aria={focusable ? { content: 'describedby', expanded: false } : undefined}
       content={
         <div
-          className={`p-3 text-xs bg-bkg-1 border border-bkg-3 rounded-lg leading-5 shadow-md text-brand-white outline-none focus:outline-none 
+          style={
+            focusable ? { maxHeight: '50vh', overflowY: 'auto' } : undefined
+          }
+          className={`p-3 text-xs bg-bkg-1 border border-bkg-3 rounded-lg leading-5 shadow-md text-brand-white
           ${className} 
           ${
             String(content).length >= 20 &&
@@ -53,11 +56,28 @@ export const Tooltip: React.FC<ITooltip> = ({
             ? (event) => {
                 const tooltip = (event.currentTarget as ReferenceElement)
                   ._tippy;
-                if (event.key === 'Escape' && tooltip?.state.isVisible) {
-                  tooltip.hide();
-                  event.preventDefault();
-                  event.stopPropagation();
+                if (!tooltip || !tooltip.state.isVisible) return;
+                if (event.key === 'Escape') tooltip.hide();
+                else {
+                  const region = tooltip.popper.querySelector<HTMLElement>(
+                    '.tippy-content > div > div'
+                  );
+                  if (!region) return;
+                  const { scrollHeight, clientHeight } = region;
+                  if (scrollHeight <= clientHeight) return;
+                  const offset = {
+                    ArrowUp: -40,
+                    ArrowDown: 40,
+                    PageUp: -clientHeight,
+                    PageDown: clientHeight,
+                    Home: -scrollHeight,
+                    End: scrollHeight,
+                  }[event.key];
+                  if (offset === undefined) return;
+                  region.scrollTop += offset;
                 }
+                event.preventDefault();
+                event.stopPropagation();
               }
             : undefined
         }
