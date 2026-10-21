@@ -8,13 +8,15 @@ export function buildExplorerUrl(
   identifier: string
 ) {
   const url = new URL(explorer);
-  const route = url.hash.startsWith('#/')
-    ? new URL(url.hash.slice(1), url)
+  const prefix = url.hash.startsWith('#!/') ? '#!' : '#';
+  const route = url.hash.startsWith(`${prefix}/`)
+    ? new URL(url.hash.slice(prefix.length), url)
     : url;
   route.pathname = `${route.pathname.replace(
     /\/?$/,
     '/'
   )}${resource}/${encodeURIComponent(identifier)}`;
-  if (route !== url) url.hash = route.pathname + route.search + route.hash;
+  if (route !== url)
+    url.hash = prefix + route.pathname + route.search + route.hash;
   return url.href;
 }

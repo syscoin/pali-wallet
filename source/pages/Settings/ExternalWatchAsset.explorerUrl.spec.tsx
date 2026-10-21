@@ -179,6 +179,18 @@ it.each([
       '?inner=2/',
   ],
   [
+    'hashbang route',
+    'https://explorer.synthetic.invalid/#!/public/',
+    'https://explorer.synthetic.invalid/#!/public/address/' + TOKEN,
+  ],
+  [
+    'hashbang route with outer and inner queries and an anchor',
+    'https://explorer.synthetic.invalid/?outer=a%2Fb#!/public/?inner=x%2Fy#section/',
+    'https://explorer.synthetic.invalid/?outer=a%2Fb#!/public/address/' +
+      TOKEN +
+      '?inner=x%2Fy#section/',
+  ],
+  [
     'ordinary fragment',
     'https://explorer.synthetic.invalid/public/#overview/',
     'https://explorer.synthetic.invalid/public/address/' + TOKEN + '#overview/',
