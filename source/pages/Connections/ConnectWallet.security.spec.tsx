@@ -187,6 +187,26 @@ describe('large connection approval account selection', () => {
     expect(rows()).toHaveLength(101);
   });
 
+  it('shows only the matching coin account in a UTXO connection approval', async () => {
+    mockState.vault.activeNetwork = {
+      kind: 'syscoin',
+      chainId: 57,
+      slip44: 57,
+      url: 'syscoin-fixture',
+    };
+    mockState.vault.isBitcoinBased = true;
+    mockState.vault.activeAccount.id = 0;
+    mockState.vault.accounts.HDAccount = {
+      0: { id: 0, label: 'Current coin', address: 'sys1current', slip44: 57 },
+      1: { id: 1, label: 'Other coin', address: 'bc1other', slip44: 0 },
+      2: { id: 2, label: 'Missing address', address: '', slip44: 57 },
+    };
+    const view = await initialize();
+    expect(row('Current coin', view)).toBeDefined();
+    expect(row('Other coin', view)).toBeUndefined();
+    expect(row('Missing address', view)).toBeUndefined();
+  });
+
   it('searches every account and keeps selection after clearing the search', async () => {
     await initialize();
     search('Account 350');

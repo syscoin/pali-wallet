@@ -34,9 +34,9 @@ import { resolveDappAccount } from 'state/dapp/accountScope';
 import { RootState } from 'state/store';
 import { selectAccountAssets } from 'state/vault/selectors';
 import { KeyringAccountType } from 'types/network';
+import { isAccountCompatibleWithNetwork } from 'utils/accountCompatibility';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { isTrustedDappOrigin } from 'utils/dappOrigin';
-import { isHexString } from 'utils/ethersV6Compat';
 import { ellipsis } from 'utils/index';
 
 export const ConnectWallet = () => {
@@ -117,21 +117,13 @@ export const ConnectWallet = () => {
   );
 
   const isAccountValidForNetwork = useCallback(
-    (account: any, keyringAccountType?: KeyringAccountType | string) => {
-      if (!account) return false;
-      if (keyringAccountType === KeyringAccountType.SmartAccount) {
-        return (
-          !isBitcoinBased &&
-          Number(account?.smartAccount?.chainId) ===
-            Number(activeNetwork.chainId)
-        );
-      }
-
-      return isBitcoinBased
-        ? !isHexString(account.address)
-        : isHexString(account.address);
-    },
-    [activeNetwork.chainId, isBitcoinBased]
+    (account: any, keyringAccountType: KeyringAccountType | string) =>
+      isAccountCompatibleWithNetwork(
+        account,
+        keyringAccountType,
+        activeNetwork
+      ),
+    [activeNetwork]
   );
 
   const handleConnect = useCallback(async () => {
