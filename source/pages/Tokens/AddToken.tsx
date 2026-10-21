@@ -17,13 +17,9 @@ export const AddToken: FC = () => {
     activeNetwork,
     isBitcoinBased
   );
-  return (
-    <>
-      {isBitcoinBased ? (
-        <SyscoinImport key={scope} />
-      ) : (
-        <ImportToken key={scope} />
-      )}
-    </>
+  return isBitcoinBased ? (
+    <SyscoinImport key={scope} />
+  ) : (
+    <ImportToken key={scope} />
   );
 };
