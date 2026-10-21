@@ -404,6 +404,12 @@ test('token details preserve a normally saved explorer subpath and compact query
         .click();
     };
     const editExplorer = async (from: string, next: string) => {
+      // Global network actions are intentionally disabled on Details.
+      await page
+        .getByRole('button', { name: en.buttons.back, exact: true })
+        .click();
+      await expect(page).toHaveURL(/#\/home(?:\?.*)?$/);
+      await expect(networkMenu()).toBeEnabled();
       await networkMenu().click();
       await page
         .getByRole('menu')
