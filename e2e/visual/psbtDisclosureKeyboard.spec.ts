@@ -76,10 +76,10 @@ test('ordinary unsigned Send exposes every PSBT input to keyboard review', async
         await advanced.focus();
         await page.keyboard.press('Enter');
         await expect(
-          page.getByRole('button', { name: /Inputs \(4\)$/ })
+          page.getByRole('button', { name: 'Inputs (4)', exact: true })
         ).toHaveAttribute('aria-expanded', 'false');
         await expect(
-          page.getByRole('button', { name: /Inputs \(4\)$/ })
+          page.getByRole('button', { name: 'Inputs (4)', exact: true })
         ).toHaveText('Inputs (4)');
         await expect(page.getByText('Input #3', { exact: true })).toHaveCount(
           0
@@ -88,7 +88,8 @@ test('ordinary unsigned Send exposes every PSBT input to keyboard review', async
     );
 
     const inputs = page.getByRole('button', {
-      name: /Inputs \(4\)$/,
+      name: 'Inputs (4)',
+      exact: true,
     });
     await wallet.step(
       'Tab reaches inputs and Enter exposes all four rows',
@@ -131,10 +132,10 @@ test('ordinary unsigned Send exposes every PSBT input to keyboard review', async
         await inputs.click();
         await expect(inputs).toHaveAttribute('aria-expanded', 'false');
         await expect(
-          page.getByRole('button', { name: /Outputs \(2\)$/ })
+          page.getByRole('button', { name: 'Outputs (2)', exact: true })
         ).toHaveAttribute('aria-expanded', 'true');
         await expect(
-          page.getByRole('button', { name: /Outputs \(2\)$/ })
+          page.getByRole('button', { name: 'Outputs (2)', exact: true })
         ).toHaveText('Outputs (2)');
         await expect(
           page.getByRole('button', { name: 'Confirm', exact: true })

@@ -391,9 +391,17 @@ for (const mode of [
                 break;
             }
             await expect(disclosure).toBeFocused();
-            await expect(page.getByRole('tooltip')).toHaveText(amount);
+            await expect(disclosure).toHaveAttribute('aria-describedby', /\S/);
+            const descriptionId = await disclosure.getAttribute(
+              'aria-describedby'
+            );
+            const ownedTooltip = page
+              .locator(`[id="${descriptionId}"]`)
+              .getByRole('tooltip');
+            await expect(ownedTooltip).toHaveText(amount);
             await page.keyboard.press('Escape');
-            await expect(page.getByRole('tooltip')).toBeHidden();
+            await expect(ownedTooltip).toBeHidden();
+            await expect(disclosure).toBeFocused();
           }
           if (mode === 'mixed-logs') {
             const heading = page.getByText(`${en.transactions.eventLogs} (2)`, {
