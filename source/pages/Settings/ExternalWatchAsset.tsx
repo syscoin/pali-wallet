@@ -8,13 +8,13 @@ import { ToastActionFooter } from 'components/ToastActionFooter';
 import { TokenIcon } from 'components/TokenIcon';
 import { getControllerStatus } from 'hooks/controllerStatus';
 import { useQueryData, useUtils } from 'hooks/index';
-import { useAdjustedExplorer } from 'hooks/useAdjustedExplorer';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { ITokenDetails } from 'types/tokens';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { formatCurrency } from 'utils/index';
 import { getWalletNavigationScope } from 'utils/navigationState';
+import { buildExplorerUrl } from 'utils/strings';
 
 const ExternalWatchAsset = () => {
   const { host, ...data } = useQueryData();
@@ -59,9 +59,6 @@ const ExternalWatchAsset = () => {
   );
   const userCurrency = (fiat.asset || 'usd').toLowerCase();
   const currencySymbol = getSymbolFromCurrency(userCurrency.toUpperCase());
-
-  // Get adjusted explorer URL
-  const adjustedExplorer = useAdjustedExplorer(activeNetwork.explorer);
 
   function formatAssetData(asset: any) {
     // Handle null/undefined asset
@@ -332,7 +329,11 @@ const ExternalWatchAsset = () => {
                     {t('settings.contractAddress')}
                     <button
                       onClick={() => {
-                        const explorerUrl = `${adjustedExplorer}address/${assetInfo.contractAddress}`;
+                        const explorerUrl = buildExplorerUrl(
+                          activeNetwork.explorer,
+                          'address',
+                          assetInfo.contractAddress
+                        );
                         window.open(explorerUrl, '_blank');
                       }}
                       className="text-brand-royalblue text-xs hover:text-brand-deepPink100 cursor-pointer underline text-left transition-colors duration-200"
