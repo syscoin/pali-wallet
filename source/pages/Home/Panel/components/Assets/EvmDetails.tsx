@@ -10,7 +10,7 @@ import {
 } from 'components/Icon/Icon';
 import { Button, Icon } from 'components/index';
 import { TokenIcon } from 'components/TokenIcon';
-import { useAdjustedExplorer, useUtils } from 'hooks/index';
+import { useUtils } from 'hooks/index';
 import { useContextualState } from 'hooks/useContextualState';
 import { useController } from 'hooks/useController';
 import { getHomeBrowsingScope } from 'pages/Home/useHomeBrowsingState';
@@ -25,6 +25,7 @@ import {
   navigateWithContext,
 } from 'utils/navigationState';
 import { navigateBack } from 'utils/navigationState';
+import { buildExplorerUrl } from 'utils/strings';
 import { getTokenTypeBadgeColor } from 'utils/tokens';
 
 import { AssetMarketLinks } from './AssetMarketLinks';
@@ -73,9 +74,6 @@ export const EvmAssetDetails = ({
   const copyContextRef = useRef({ active: true, scope: marketDataScope });
   copyContextRef.current.scope = marketDataScope;
   const copySequenceRef = useRef(0);
-
-  // All hooks must be called before any early returns
-  const adjustedExplorer = useAdjustedExplorer(activeNetwork.explorer);
 
   // Define variables that will be used in hooks
   const is1155 = currentAsset?.tokenStandard === 'ERC-1155';
@@ -576,7 +574,11 @@ export const EvmAssetDetails = ({
 
           <div className="w-full flex items-center justify-center text-brand-white hover:text-brand-deepPink100 mb-6">
             <a
-              href={`${adjustedExplorer}token/${currentAsset.contractAddress}`}
+              href={buildExplorerUrl(
+                activeNetwork.explorer || activeNetwork.url,
+                'token',
+                currentAsset.contractAddress
+              )}
               target="_blank"
               className="flex items-center justify-center gap-x-2"
               rel="noreferrer"
