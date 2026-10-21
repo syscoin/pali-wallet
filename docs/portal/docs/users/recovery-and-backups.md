@@ -72,3 +72,34 @@ Follow the [complete guardian recovery guide](./smart-account-validators#guardia
 When a dapp calls `wallet_prepareSmartAccount`, Pali creates a smart account and saves durable metadata locally after deployment and any requested validator setup completes. Pali also keeps local records of pending passkey setup before installation, so an interrupted change does not silently discard those recovery details. These records do not replace a seed backup or access to the passkey.
 
 If a smart account exists on-chain and is missing locally, use Pali's wallet recovery flow. Pali skips accounts already present locally and lets the user choose which remaining accounts to import.
+
+## Recovery screens
+
+These screenshots use the English interface and example accounts. Labels and networks may differ in your wallet.
+
+### Choose a guardian
+
+<figure>
+  <a className="pali-media-link" href="/img/screens/settings-smart-account-recover.png" target="_blank" rel="noreferrer">
+    <img src="/img/screens/settings-smart-account-recover.png" alt="Pali guardian address and recovery waiting-period choices" />
+  </a>
+  <figcaption>Choose the guardian address and waiting period before approving setup. The 10-minute option shown is for testnets; new production policies offer 3 or 7 days.</figcaption>
+</figure>
+
+### Review recovery removal
+
+<figure>
+  <a className="pali-media-link" href="/img/screens/guardian-recovery-disable.png" target="_blank" rel="noreferrer" style={{ maxWidth: 400, margin: '0 auto' }}>
+    <img src="/img/screens/guardian-recovery-disable.png" alt="Pali confirmation for disabling guardian recovery" />
+  </a>
+  <figcaption>Review the account, network, and warning before confirming. This removes guardian recovery on-chain; it does not just disable emails.</figcaption>
+</figure>
+
+### Verify alert monitoring
+
+<figure>
+  <a className="pali-media-link" href="/img/screens/sysnode-recovery-enrollment.png" target="_blank" rel="noreferrer" style={{ maxWidth: 400, margin: '0 auto' }}>
+    <img src="/img/screens/sysnode-recovery-enrollment.png" alt="Sysnode linked recovery-alert account awaiting initial chain checks" />
+  </a>
+  <figcaption>Linking an account is not enough: this example is still checking chain history. Wait for active monitoring, and remember that alerts can be delayed.</figcaption>
+</figure>

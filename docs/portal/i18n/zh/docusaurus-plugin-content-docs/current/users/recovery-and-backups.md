@@ -67,3 +67,34 @@ Pali 智能账户的恢复方式取决于已安装的模块。由通行密钥控
 [完整指南](./smart-account-validators#guardian-recovery-guide)介绍设置、开始、完成及 **Disable guardian recovery**。新策略提供 3 天或 7 天等待期；10 分钟仅限已知测试网。确认停用需要当前批准方式和 gas，会使待处理恢复失效并移除此恢复途径，但不能撤销已完成的恢复。交易结果不确定时，请先检查链上状态再考虑重试。可选的 Sysnode 提醒需要已验证邮箱和钱包签名；不会获取密钥，也不保证邮件送达。
 
 :::
+
+## 恢复界面示例
+
+这些截图使用英文界面和示例账户。你的钱包中的标签和网络可能有所不同。
+
+### 选择守护者
+
+<figure>
+  <a className="pali-media-link" href="/img/screens/settings-smart-account-recover.png" target="_blank" rel="noreferrer">
+    <img src="/img/screens/settings-smart-account-recover.png" alt="Pali 中的守护者地址及恢复等待期选项" />
+  </a>
+  <figcaption>批准设置前，请选择守护者地址和等待期。图中的 10 分钟选项仅用于测试网；新的生产环境策略提供 3 天或 7 天选项。</figcaption>
+</figure>
+
+### 检查移除恢复的确认
+
+<figure>
+  <a className="pali-media-link" href="/img/screens/guardian-recovery-disable.png" target="_blank" rel="noreferrer" style={{ maxWidth: 400, margin: '0 auto' }}>
+    <img src="/img/screens/guardian-recovery-disable.png" alt="Pali 停用守护者恢复的确认界面" />
+  </a>
+  <figcaption>确认前请检查账户、网络和警告。这项操作会在链上移除守护者恢复，而不只是关闭邮件。</figcaption>
+</figure>
+
+### 核实提醒监控状态
+
+<figure>
+  <a className="pali-media-link" href="/img/screens/sysnode-recovery-enrollment.png" target="_blank" rel="noreferrer" style={{ maxWidth: 400, margin: '0 auto' }}>
+    <img src="/img/screens/sysnode-recovery-enrollment.png" alt="已关联 Sysnode 恢复提醒的账户正在等待初始链上检查" />
+  </a>
+  <figcaption>仅关联账户还不够：此示例仍在检查链历史。请等待监控变为活动状态，并记住提醒可能延迟。</figcaption>
+</figure>

@@ -67,3 +67,34 @@ Existiert ein Smart Account on-chain, fehlt aber lokal, verwenden Sie die Wallet
 Die [vollständige Anleitung](./smart-account-validators#guardian-recovery-guide) beschreibt Einrichtung, Start, Abschluss und **Disable guardian recovery**. Neue Richtlinien bieten 3 oder 7 Tage Wartezeit; 10 Minuten sind nur für bekannte Testnetze vorgesehen. Bestätigtes Deaktivieren erfordert die aktuelle Freigabemethode und Gas, verwirft ausstehende Wiederherstellungen und entfernt diesen Wiederherstellungsweg, macht aber keine abgeschlossene Wiederherstellung rückgängig. Bei unklarem Transaktionsstatus zuerst On-Chain prüfen. Optionale Sysnode-E-Mail-Hinweise erfordern eine verifizierte E-Mail-Adresse und eine Wallet-Signatur; sie erhalten keine Schlüssel und sind keine Zustellgarantie.
 
 :::
+
+## Ansichten zur Wiederherstellung
+
+Diese Bildschirmfotos zeigen die englische Oberfläche und Beispielkonten. Bezeichnungen und Netzwerke können in Ihrer Wallet abweichen.
+
+### Einen Guardian auswählen
+
+<figure>
+  <a className="pali-media-link" href="/img/screens/settings-smart-account-recover.png" target="_blank" rel="noreferrer">
+    <img src="/img/screens/settings-smart-account-recover.png" alt="Guardian-Adresse und Auswahl der Wiederherstellungswartezeit in Pali" />
+  </a>
+  <figcaption>Wählen Sie die Guardian-Adresse und die Wartezeit, bevor Sie die Einrichtung bestätigen. Die gezeigte 10-Minuten-Option gilt für Testnetze; neue Produktionsrichtlinien bieten 3 oder 7 Tage.</figcaption>
+</figure>
+
+### Entfernen der Wiederherstellung prüfen
+
+<figure>
+  <a className="pali-media-link" href="/img/screens/guardian-recovery-disable.png" target="_blank" rel="noreferrer" style={{ maxWidth: 400, margin: '0 auto' }}>
+    <img src="/img/screens/guardian-recovery-disable.png" alt="Pali-Bestätigung zum Deaktivieren der Guardian-Recovery" />
+  </a>
+  <figcaption>Prüfen Sie Konto, Netzwerk und Warnung vor dem Bestätigen. Diese Aktion entfernt die Guardian-Recovery on-chain; sie schaltet nicht nur E-Mails ab.</figcaption>
+</figure>
+
+### Überwachung der Hinweise prüfen
+
+<figure>
+  <a className="pali-media-link" href="/img/screens/sysnode-recovery-enrollment.png" target="_blank" rel="noreferrer" style={{ maxWidth: 400, margin: '0 auto' }}>
+    <img src="/img/screens/sysnode-recovery-enrollment.png" alt="Mit Sysnode-Wiederherstellungshinweisen verknüpftes Konto wartet auf erste Blockchain-Prüfungen" />
+  </a>
+  <figcaption>Das Verknüpfen allein reicht nicht: In diesem Beispiel wird der Blockchain-Verlauf noch geprüft. Warten Sie auf eine aktive Überwachung und beachten Sie, dass Hinweise verspätet eintreffen können.</figcaption>
+</figure>

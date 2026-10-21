@@ -67,3 +67,34 @@ dappが`wallet_prepareSmartAccount`を呼び出すと、Paliはスマートア�
 [完全ガイド](./smart-account-validators#guardian-recovery-guide)では、設定、開始、完了、**Disable guardian recovery**を説明しています。新しいポリシーの待機時間は3日または7日で、10分は既知のテストネット専用です。無効化の確定には現在の承認方法とガスが必要です。保留中の復旧を無効にして復旧経路を削除しますが、完了済みの復旧を元に戻すことはできません。結果が不明な取引は、再送前にオンチェーンで確認してください。任意のSysnode通知には確認済みメールとウォレット署名が必要です。鍵は渡さず、配信も保証されません。
 
 :::
+
+## 復旧画面の例
+
+スクリーンショットは英語の画面とサンプルアカウントを使用しています。お使いのウォレットでは、表示名やネットワークが異なる場合があります。
+
+### ガーディアンを選ぶ
+
+<figure>
+  <a className="pali-media-link" href="/img/screens/settings-smart-account-recover.png" target="_blank" rel="noreferrer">
+    <img src="/img/screens/settings-smart-account-recover.png" alt="Paliのガーディアンアドレスと復旧待機期間の選択肢" />
+  </a>
+  <figcaption>設定を承認する前に、ガーディアンアドレスと待機期間を選びます。表示されている10分の選択肢はテストネット用で、新しい本番環境のポリシーでは3日または7日を選べます。</figcaption>
+</figure>
+
+### 復旧機能の削除を確認する
+
+<figure>
+  <a className="pali-media-link" href="/img/screens/guardian-recovery-disable.png" target="_blank" rel="noreferrer" style={{ maxWidth: 400, margin: '0 auto' }}>
+    <img src="/img/screens/guardian-recovery-disable.png" alt="Paliでガーディアン復旧を無効にする確認画面" />
+  </a>
+  <figcaption>確定する前に、アカウント、ネットワーク、警告を確認してください。この操作はガーディアン復旧をオンチェーンで削除するもので、メールを停止するだけではありません。</figcaption>
+</figure>
+
+### 通知の監視状態を確認する
+
+<figure>
+  <a className="pali-media-link" href="/img/screens/sysnode-recovery-enrollment.png" target="_blank" rel="noreferrer" style={{ maxWidth: 400, margin: '0 auto' }}>
+    <img src="/img/screens/sysnode-recovery-enrollment.png" alt="Sysnodeの復旧通知に関連付けたアカウントが初回のチェーン確認を待っている画面" />
+  </a>
+  <figcaption>アカウントを関連付けるだけでは不十分です。この例ではチェーン履歴をまだ確認しています。監視が有効になるまで待ち、通知が遅れる可能性も忘れないでください。</figcaption>
+</figure>

@@ -67,3 +67,34 @@ Se uma conta inteligente existe on-chain, mas está ausente localmente, use o fl
 O [guia completo](./smart-account-validators#guardian-recovery-guide) explica configuração, início, conclusão e **Disable guardian recovery**. Novas políticas oferecem espera de 3 ou 7 dias; 10 minutos é restrito a testnets conhecidas. A desativação confirmada exige o método de aprovação atual e gas, invalida recuperações pendentes e remove essa via de recuperação, mas não desfaz uma recuperação concluída. Se uma transação for incerta, confira primeiro o estado on-chain. Alertas opcionais do Sysnode exigem e-mail verificado e assinatura da carteira; não recebem chaves nem garantem a entrega.
 
 :::
+
+## Telas de recuperação
+
+Estas capturas mostram a interface em inglês e contas de exemplo. Os rótulos e as redes podem ser diferentes na sua carteira.
+
+### Escolher um guardião
+
+<figure>
+  <a className="pali-media-link" href="/img/screens/settings-smart-account-recover.png" target="_blank" rel="noreferrer">
+    <img src="/img/screens/settings-smart-account-recover.png" alt="Endereço do guardião e opções do período de espera de recuperação no Pali" />
+  </a>
+  <figcaption>Escolha o endereço do guardião e o período de espera antes de aprovar a configuração. A opção de 10 minutos mostrada é para testnets; novas políticas de produção oferecem 3 ou 7 dias.</figcaption>
+</figure>
+
+### Revisar a remoção da recuperação
+
+<figure>
+  <a className="pali-media-link" href="/img/screens/guardian-recovery-disable.png" target="_blank" rel="noreferrer" style={{ maxWidth: 400, margin: '0 auto' }}>
+    <img src="/img/screens/guardian-recovery-disable.png" alt="Confirmação do Pali para desativar a recuperação com guardiões" />
+  </a>
+  <figcaption>Revise a conta, a rede e o aviso antes de confirmar. Essa ação remove a recuperação com guardiões on-chain; não desativa apenas os e-mails.</figcaption>
+</figure>
+
+### Verificar o monitoramento de alertas
+
+<figure>
+  <a className="pali-media-link" href="/img/screens/sysnode-recovery-enrollment.png" target="_blank" rel="noreferrer" style={{ maxWidth: 400, margin: '0 auto' }}>
+    <img src="/img/screens/sysnode-recovery-enrollment.png" alt="Conta vinculada aos alertas de recuperação do Sysnode aguardando as verificações iniciais da rede" />
+  </a>
+  <figcaption>Vincular uma conta não basta: este exemplo ainda está verificando o histórico da rede. Aguarde o monitoramento ativo e lembre-se de que os alertas podem atrasar.</figcaption>
+</figure>

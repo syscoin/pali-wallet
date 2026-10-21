@@ -67,3 +67,34 @@ Si un compte intelligent existe sur la chaîne mais est absent localement, utili
 Le [guide complet](./smart-account-validators#guardian-recovery-guide) explique la configuration, le lancement, la finalisation et **Disable guardian recovery**. Les nouvelles politiques proposent 3 ou 7 jours d’attente ; 10 minutes est réservé aux testnets connus. La désactivation confirmée exige la méthode d’approbation actuelle et du gas, invalide les récupérations en attente et supprime cette voie de récupération, mais n’annule pas une récupération finalisée. En cas de transaction incertaine, vérifiez d’abord son état on-chain. Les alertes facultatives de Sysnode exigent un e-mail vérifié et une signature du portefeuille ; elles ne reçoivent aucune clé et ne garantissent pas la livraison.
 
 :::
+
+## Écrans de récupération
+
+Ces captures présentent l’interface en anglais et des comptes d’exemple. Les libellés et les réseaux peuvent être différents dans votre portefeuille.
+
+### Choisir un gardien
+
+<figure>
+  <a className="pali-media-link" href="/img/screens/settings-smart-account-recover.png" target="_blank" rel="noreferrer">
+    <img src="/img/screens/settings-smart-account-recover.png" alt="Adresse du gardien et choix du délai de récupération dans Pali" />
+  </a>
+  <figcaption>Choisissez l’adresse du gardien et le délai avant d’approuver la configuration. L’option de 10 minutes affichée concerne les testnets ; les nouvelles politiques de production proposent 3 ou 7 jours.</figcaption>
+</figure>
+
+### Vérifier la suppression de la récupération
+
+<figure>
+  <a className="pali-media-link" href="/img/screens/guardian-recovery-disable.png" target="_blank" rel="noreferrer" style={{ maxWidth: 400, margin: '0 auto' }}>
+    <img src="/img/screens/guardian-recovery-disable.png" alt="Confirmation Pali pour désactiver la récupération par gardiens" />
+  </a>
+  <figcaption>Vérifiez le compte, le réseau et l’avertissement avant de confirmer. Cette action supprime la récupération par gardiens on-chain ; elle ne désactive pas seulement les e-mails.</figcaption>
+</figure>
+
+### Vérifier la surveillance des alertes
+
+<figure>
+  <a className="pali-media-link" href="/img/screens/sysnode-recovery-enrollment.png" target="_blank" rel="noreferrer" style={{ maxWidth: 400, margin: '0 auto' }}>
+    <img src="/img/screens/sysnode-recovery-enrollment.png" alt="Compte lié aux alertes de récupération Sysnode en attente des premières vérifications de la chaîne" />
+  </a>
+  <figcaption>Lier un compte ne suffit pas : cet exemple vérifie encore l’historique de la chaîne. Attendez que la surveillance soit active et gardez à l’esprit que les alertes peuvent être retardées.</figcaption>
+</figure>
