@@ -107,7 +107,8 @@ test('ordinary menu actions show their keyboard selection in narrow and standard
               'data-headlessui-state',
               'active'
             );
-            expect((await appearance(first)).background).toBe(
+            await expect(first).toHaveCSS(
+              'background-color',
               'rgba(30, 54, 92, 0.3)'
             );
             if (action.last) await page.keyboard.press('End');
