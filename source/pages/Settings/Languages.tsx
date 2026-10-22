@@ -12,17 +12,19 @@ import { chromeStorage } from 'utils/storageAPI';
 import { PaliLanguages } from 'utils/types';
 
 const Languages = () => {
+  const { t, i18n } = useTranslation();
+  // Until storage responds, use this document's active locale, not an
+  // assumed saved English preference.
+  const initialLang = (i18n.resolvedLanguage ||
+    PaliLanguages.EN) as PaliLanguages;
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(false);
   const savingRef = useRef(false);
   const draftEdited = useRef(false);
   const saveRevision = useRef(0);
-  const [savedLang, setSavedLang] = useState<PaliLanguages>(PaliLanguages.EN); // Actually saved language
-  const [selectedLang, setSelectedLang] = useState<PaliLanguages>(
-    PaliLanguages.EN
-  ); // Preview selection
-  const { t } = useTranslation();
+  const [savedLang, setSavedLang] = useState<PaliLanguages>(initialLang);
+  const [selectedLang, setSelectedLang] = useState<PaliLanguages>(initialLang); // Preview selection
 
   useEffect(() => {
     let active = true;

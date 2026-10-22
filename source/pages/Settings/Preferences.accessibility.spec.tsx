@@ -32,7 +32,10 @@ jest.mock('react-redux', () => ({
   useSelector: (select: any) => select(mockState),
 }));
 jest.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({
+    t: (key: string) => key,
+    i18n: { resolvedLanguage: 'en' },
+  }),
 }));
 jest.mock('react-router-dom', () => ({
   useNavigate: () => mockNavigate,
