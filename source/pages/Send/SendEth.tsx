@@ -1440,7 +1440,6 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
           <div className="flex md:max-w-md">
             <Form.Item
               name="asset"
-              className=""
               rules={[
                 {
                   required: false,
