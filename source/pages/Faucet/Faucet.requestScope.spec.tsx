@@ -480,6 +480,7 @@ it.each([
     });
     expect(copy.textContent).toBe(HASH);
     expect(copy.getAttribute('type')).toBe('button');
+    expect(copy.parentElement?.classList.contains('max-w-full')).toBe(true);
     for (let i = 0; i < 20 && document.activeElement !== copy; i++)
       await user.tab();
     expect(document.activeElement).toBe(copy);
@@ -498,6 +499,7 @@ it('faucet hash copy leaves the request contract noninteractive', async () => {
     mockTranslate('send.smartContract')
   ).nextElementSibling;
   expect(contract?.tagName).toBe('P');
+  expect(contract?.parentElement?.classList.contains('max-w-full')).toBe(true);
   expect(contract?.getAttribute('role')).toBeNull();
   expect((contract as HTMLElement).tabIndex).toBe(-1);
   expect(
