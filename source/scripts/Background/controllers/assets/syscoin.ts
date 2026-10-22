@@ -242,10 +242,12 @@ const SysAssetsControler = (): ISysAssetsController => {
           // Convert from satoshis to display format and aggregate across all UTXOs
           const decimals = assetData.decimals ?? 8;
 
-          // Sum up balances from all UTXOs for this asset
+          // Match owned discovery/refresh: holdings include signed pending deltas.
           const rawBalance = matchingTokens.reduce(
             (total: bigint, token: any) =>
-              total + BigInt(String(token.balance || 0)),
+              total +
+              BigInt(String(token.balance || 0)) +
+              BigInt(String(token.unconfirmedBalance || 0)),
             BigInt(0)
           );
           balance = formatUnits(rawBalance.toString(), decimals);
