@@ -395,21 +395,24 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
     if (!response || !response.ok) {
       // Graceful degradation: if tokentx succeeded, return token transfers only
       try {
-        const tokenOnly: any[] = [];
         if (token20Response && token20Response.ok) {
           const token20Data = await token20Response.json();
           if (Array.isArray(token20Data?.result)) {
-            for (const ev of token20Data.result) {
-              tokenOnly.push(mapTokenTransfer(ev, chainId));
-            }
+            return {
+              transactions: token20Data.result.map((ev: any) =>
+                mapTokenTransfer(ev, chainId)
+              ),
+              error: undefined,
+              hasMore: false,
+            };
           }
         }
-        return { transactions: tokenOnly, error: undefined, hasMore: false };
-      } catch (e) {
-        const errorStatus = response ? `${response.status}` : 'unknown';
-        const errorMsg = `Explorer API request failed with status ${errorStatus}`;
-        return { transactions: null, error: errorMsg };
+      } catch {
+        // A malformed token fallback is not a successful empty history read.
       }
+      const errorStatus = response ? `${response.status}` : 'unknown';
+      const errorMsg = `Explorer API request failed with status ${errorStatus}`;
+      return { transactions: null, error: errorMsg };
     }
 
     // Parse all responses in parallel (gate optional ones by ok)
