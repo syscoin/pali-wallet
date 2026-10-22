@@ -12,6 +12,7 @@ import {
   getSLHDSAKeyId,
 } from 'utils/slhDsa';
 import { getPaliErc7739PersonalSignHash } from 'utils/smartAccount';
+import { getPaliModuleAddress } from 'utils/smartAccount/contracts';
 
 import SmartAccountPolicy from './SmartAccountPolicy';
 
@@ -53,6 +54,7 @@ const GUARDIAN = '0x2222222222222222222222222222222222222222';
 const OWNER = '0x3333333333333333333333333333333333333333';
 const VALIDATOR = '0x4444444444444444444444444444444444444444';
 const CHAIN_ID = 57057;
+const GUARDIAN_MODULE = getPaliModuleAddress(CHAIN_ID, 'guardian-recovery');
 const OPERATION = {
   account: ACCOUNT,
   chainId: CHAIN_ID,
@@ -63,6 +65,20 @@ const OPERATION = {
   salt: `0x${'66'.repeat(32)}`,
 };
 const SIGNATURE = `0x${'77'.repeat(65)}`;
+const guardianObservation = () => ({
+  account: ACCOUNT,
+  chainId: CHAIN_ID,
+  moduleAddress: GUARDIAN_MODULE,
+  exists: true,
+  delay: '60',
+  guardians: [GUARDIAN],
+  threshold: 1,
+  policyEpoch: '7',
+  observedBlock: { number: 1, timestamp: 1, hash: OPERATION.hash },
+  active: null,
+  pending: null,
+  knownOperation: null,
+});
 const smartGuardian = {
   auth: { data: '0x', module: 'ecdsa', validator: VALIDATOR },
   chainId: CHAIN_ID,
@@ -131,6 +147,14 @@ describe('SmartAccountPolicy guardian approval', () => {
       const index = hookIndex++;
       if (!(index in hookStates)) {
         hookStates[index] = typeof initial === 'function' ? initial() : initial;
+        // This handler-only harness suppresses effects. Model the verified
+        // guardian observation; mounted observation/failure tests exercise the
+        // real read lifecycle separately.
+        if (index === 6)
+          hookStates[index] = {
+            ...hookStates[index],
+            snapshot: guardianObservation(),
+          };
         // This handler-only harness suppresses effects; model the successful
         // entry read. Real pending/failure behavior is tested in lifetime.spec.
         if (
@@ -148,6 +172,7 @@ describe('SmartAccountPolicy guardian approval', () => {
       ] as any;
     });
     jest.spyOn(React, 'useMemo').mockImplementation((factory) => factory());
+    jest.spyOn(React, 'useCallback').mockImplementation((callback) => callback);
     jest
       .spyOn(React, 'useRef')
       .mockImplementation((value) => ({ current: value }));
@@ -165,6 +190,8 @@ describe('SmartAccountPolicy guardian approval', () => {
     });
     controllerEmitter = jest.fn(async ([, method]: string[]) => {
       switch (method) {
+        case 'getSmartAccountGuardianRecoveryStatus':
+          return guardianObservation();
         case 'getWalletSessionGeneration':
           return 7;
         case 'prepareSmartAccountGuardianStartRecovery':
@@ -196,7 +223,7 @@ describe('SmartAccountPolicy guardian approval', () => {
               installedModules: [
                 ...smartGuardian.installedModules,
                 {
-                  address: '0x8888888888888888888888888888888888888888',
+                  address: GUARDIAN_MODULE,
                   config: {
                     delaySeconds: 60,
                     guardians: [GUARDIAN],
@@ -460,6 +487,7 @@ describe('SmartAccountPolicy guardian approval', () => {
         .map(([[, method]]) => method)
         .filter((method) => method !== 'getWalletSessionGeneration')
     ).toEqual([
+      'getSmartAccountGuardianRecoveryStatus',
       'prepareSmartAccountGuardianStartRecovery',
       'submitPreparedSmartAccountGuardianStartRecovery',
     ]);
@@ -598,6 +626,7 @@ describe('SmartAccountPolicy guardian approval', () => {
         .map(([[, method]]) => method)
         .filter((method) => method !== 'getWalletSessionGeneration')
     ).toEqual([
+      'getSmartAccountGuardianRecoveryStatus',
       'prepareSmartAccountGuardianStartRecovery',
       'validateSmartAccountGuardianRecoveryOperation',
     ]);

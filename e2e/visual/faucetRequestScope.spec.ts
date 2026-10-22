@@ -19,6 +19,7 @@ import {
 const ORIGINAL_HASH = '0x' + 'ad'.repeat(32);
 const CURRENT_HASH = '0x' + 'be'.repeat(32);
 const ROLLUX_RPC = 'https://rpc.rollux.com';
+const ROLLUX_EXPLORER = 'https://explorer.rollux.com';
 const CLAIM_ORIGIN = 'https://chains.tools';
 async function tabTo(page: Page, target: Locator) {
   for (let index = 0; index < 32; index++) {
@@ -159,6 +160,12 @@ test('faucet feedback and eligibility follow a network switch in another normal 
   const deniedClaims: string[] = [];
   const deniedRollux: unknown[] = [];
   const rolluxReads: string[] = [];
+  const deniedRolluxExplorer: string[] = [];
+  const rolluxExplorerReads: Array<{
+    action: string;
+    address: string;
+    status: number;
+  }> = [];
   try {
     server = await startUtxoFixtureServer();
     Object.assign(E2E_CONFIG, {
@@ -264,6 +271,49 @@ test('faucet feedback and eligibility follow a network switch in another normal 
         contentType: 'application/json',
         body: JSON.stringify(Array.isArray(payload) ? replies : replies[0]),
       });
+    });
+    // Ordinary Rollux history uses its configured explorer before RPC scanning.
+    // An unavailable explorer is not a successful empty history; explicitly
+    // serve only the healthy, empty account feeds needed by this fixture.
+    await wallet.context.route(ROLLUX_EXPLORER + '/**', async (route) => {
+      const url = new URL(route.request().url());
+      const action = url.searchParams.get('action') || '';
+      const address = fixture.evmAddresses.find(
+        (owner) =>
+          owner.toLowerCase() === url.searchParams.get('address')?.toLowerCase()
+      );
+      const pending = action === 'pendingtxlist';
+      const paged =
+        url.searchParams.has('page') || url.searchParams.has('offset');
+      const expectedKeys = pending
+        ? ['action', 'address', 'module']
+        : paged
+        ? ['action', 'address', 'module', 'offset', 'page', 'sort']
+        : ['action', 'address', 'module', 'sort'];
+      if (
+        route.request().method() !== 'GET' ||
+        url.origin !== ROLLUX_EXPLORER ||
+        url.pathname !== '/api' ||
+        url.searchParams.get('module') !== 'account' ||
+        !['txlist', 'tokentx', 'pendingtxlist'].includes(action) ||
+        !address ||
+        [...url.searchParams.keys()].sort().join(',') !==
+          expectedKeys.join(',') ||
+        (!pending && url.searchParams.get('sort') !== 'desc') ||
+        (paged &&
+          (url.searchParams.get('page') !== '1' ||
+            url.searchParams.get('offset') !== '30'))
+      ) {
+        deniedRolluxExplorer.push(url.href);
+        return route.abort('blockedbyclient');
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        headers: { 'access-control-allow-origin': '*' },
+        body: JSON.stringify({ status: '1', message: 'OK', result: [] }),
+      });
+      rolluxExplorerReads.push({ action, address, status: 200 });
     });
     // Never forwards a faucet request: this handler owns each exact GET and
     // resolves it only with a locally authored response after the UI action.
@@ -398,6 +448,35 @@ test('faucet feedback and eligibility follow a network switch in another normal 
           })
         ).toBeEnabled();
         observations.afterSwitch = await state(wallet!.page);
+        const address = (observations.afterSwitch as any).address;
+        // Observe the actual first healthy history read and finite RPC scan.
+        // No direct controller refresh, fabricated head read or sleep is used.
+        await expect
+          .poll(() => rolluxExplorerReads)
+          .toEqual(
+            expect.arrayContaining(
+              ['txlist', 'tokentx', 'pendingtxlist'].map((action) => ({
+                action,
+                address,
+                status: 200,
+              }))
+            )
+          );
+        await expect
+          .poll(() => rolluxReads)
+          .toEqual(
+            expect.arrayContaining([
+              'eth_getBalance',
+              'eth_getTransactionCount',
+              'eth_blockNumber',
+              'eth_getBlockByNumber',
+            ])
+          );
+        observations.rolluxHistory = {
+          address,
+          explorerReads: rolluxExplorerReads.slice(),
+          rpcReads: rolluxReads.slice(),
+        };
         await capture(other!);
       }
     );
@@ -732,10 +811,12 @@ test('faucet feedback and eligibility follow a network switch in another normal 
       async () => {
         expect(deniedClaims).toEqual([]);
         expect(deniedRollux).toEqual([]);
+        expect(deniedRolluxExplorer).toEqual([]);
         expect(routes!.deniedWrites).toEqual([]);
         // The configured static provider need not request eth_chainId. The
         // selected chain/address and both exact claim targets are asserted
-        // above; require the actual read-only refresh traffic here.
+        // above. Balance/nonce reads and the first healthy empty-history RPC
+        // scan are observed above; block scanning is not a per-claim promise.
         expect(rolluxReads).toEqual(
           expect.arrayContaining([
             'eth_getBalance',
@@ -743,6 +824,22 @@ test('faucet feedback and eligibility follow a network switch in another normal 
             'eth_blockNumber',
           ])
         );
+        expect(rolluxExplorerReads).toEqual(
+          expect.arrayContaining(
+            ['txlist', 'tokentx', 'pendingtxlist'].map((action) => ({
+              action,
+              address: (observations.afterSwitch as any).address,
+              status: 200,
+            }))
+          )
+        );
+        expect(
+          rolluxExplorerReads.every(
+            (read) =>
+              read.address === (observations.afterSwitch as any).address &&
+              read.status === 200
+          )
+        ).toBe(true);
         expect(extensionEvidence()).toEqual(runtime);
         expect(
           createHash('sha256').update(fs.readFileSync(__filename)).digest('hex')
@@ -771,6 +868,8 @@ test('faucet feedback and eligibility follow a network switch in another normal 
             deniedClaims,
             rolluxReads,
             deniedRollux,
+            rolluxExplorerReads,
+            deniedRolluxExplorer,
             deniedWrites: routes?.deniedWrites,
             proxyBlocked: server?.blocked,
           },

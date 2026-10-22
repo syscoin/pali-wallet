@@ -101,6 +101,7 @@ import {
   resetNetworkQualityForNewNetwork,
   setPostNetworkSwitchLoading,
   setEnsName,
+  setTransactionHistoryStatus,
 } from 'state/vaultGlobal';
 import {
   INetworkType,
@@ -309,6 +310,11 @@ class MainController {
   private assetUpdateRequestId = 0;
   private transactionUpdateRequestId = 0;
   private transactionUpdateCommitId = 0;
+  private historyRetry?: {
+    generation: string;
+    promise: Promise<void>;
+    scope: IWalletNavigationScope;
+  };
   private latestUpdate?: object;
   private isNetworkSwitchMainStateDirty = false;
   private smartAccount: SmartAccountController;
@@ -3144,6 +3150,7 @@ class MainController {
 
   public async getSmartAccountGuardianRecoveryStatus(params: {
     account: string;
+    knownOperationId?: string;
   }) {
     return this.smartAccount.getSmartAccountGuardianRecoveryStatus(params);
   }
@@ -5137,6 +5144,39 @@ class MainController {
       : 'confirmed';
   }
 
+  public refreshTransactionHistory(expectedScope: IWalletNavigationScope) {
+    this.assertWalletReadyForSigning();
+    const scope = getWalletNavigationScope();
+    const { vault, vaultGlobal } = store.getState();
+    if (
+      !this.isUnlocked() ||
+      !vault.isBitcoinBased ||
+      vaultGlobal.isSwitchingAccount ||
+      vaultGlobal.networkStatus === 'switching' ||
+      vaultGlobal.networkStatus === 'connecting' ||
+      expectedScope?.account !== scope.account ||
+      expectedScope?.network !== scope.network
+    )
+      throw new Error('Transaction history context changed');
+    const generation = `${this.walletSessionGeneration}:${this.networkRequestGeneration}`;
+    if (
+      this.historyRetry?.generation === generation &&
+      this.historyRetry.scope.account === scope.account &&
+      this.historyRetry.scope.network === scope.network
+    )
+      return this.historyRetry.promise;
+    const promise = this.updateUserTransactionsState({
+      isBitcoinBased: true,
+      activeNetwork: vault.activeNetwork,
+      forceRefresh: true,
+      bypassCompletedCache: true,
+    }).finally(() => {
+      if (this.historyRetry?.promise === promise) this.historyRetry = undefined;
+    });
+    this.historyRetry = { scope, generation, promise };
+    return promise;
+  }
+
   public updateUserTransactionsState({
     isBitcoinBased,
     activeNetwork,
@@ -5176,6 +5216,7 @@ class MainController {
     const identityOf = (account?: IKeyringAccountState) =>
       isBitcoinBased ? account?.xpub : account?.address?.toLowerCase();
     const accountIdentity = identityOf(currentAccount);
+    const scope = getWalletNavigationScope();
     let cancelled = false;
     const isCurrentRead = () => {
       const latest = store.getState().vault;
@@ -5195,6 +5236,34 @@ class MainController {
     };
     const currentAccountTxs =
       accountTransactions[activeAccount.type]?.[activeAccount.id];
+    const setHistoryStatus = (state: 'pending' | 'ready' | 'error') => {
+      if (!isBitcoinBased) return;
+      const status = store.getState().vaultGlobal.transactionHistoryStatus;
+      const currentScope = getWalletNavigationScope();
+      if (
+        isCurrentRead() &&
+        currentScope.account === scope.account &&
+        currentScope.network === scope.network &&
+        (state === 'pending' || status?.requestId === requestId)
+      )
+        store.dispatch(
+          setTransactionHistoryStatus({
+            scope,
+            requestId,
+            // A routine poll does not invalidate an already verified empty
+            // view. An explicit retry after an error remains visibly pending.
+            state:
+              state === 'pending' &&
+              isPolling &&
+              status?.state === 'ready' &&
+              status.scope.account === scope.account &&
+              status.scope.network === scope.network
+                ? 'ready'
+                : state,
+          })
+        );
+    };
+    setHistoryStatus('pending');
     const { currentPromise: transactionPromise, cancel } =
       this.cancellablePromises.createCancellablePromise<void>(
         async (resolve, reject) => {
@@ -5226,6 +5295,9 @@ class MainController {
               resolve();
               return;
             }
+
+            if (isBitcoinBased && !Array.isArray(txs))
+              throw new Error('Invalid transaction history');
 
             // UTXO history distinguishes a valid empty result from read errors.
             // Preserve the existing EVM empty/partial-result behavior.
@@ -5330,6 +5402,7 @@ class MainController {
                 })
               );
               this.transactionUpdateCommitId = requestId;
+              setHistoryStatus('ready');
 
               // Update pending transaction badge
               notificationManager.updatePendingTransactionBadge(updatedTxs);
@@ -5353,6 +5426,7 @@ class MainController {
             // No-op for loading flags; transactions update fully in background
             resolve();
           } catch (error) {
+            setHistoryStatus('error');
             reject(error);
             // Don't clear loading state on error - let it stay until successful update
           }
@@ -5362,6 +5436,15 @@ class MainController {
     this.cancellablePromises.setPromise(PromiseTargets.TRANSACTION, {
       transactionPromise,
       cancel: () => {
+        const status = isBitcoinBased
+          ? store.getState().vaultGlobal.transactionHistoryStatus
+          : undefined;
+        if (
+          status?.requestId === requestId &&
+          status.scope.account === scope.account &&
+          status.scope.network === scope.network
+        )
+          store.dispatch(setTransactionHistoryStatus(undefined));
         cancelled = true;
         cancel();
       },

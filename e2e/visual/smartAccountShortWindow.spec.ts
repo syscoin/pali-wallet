@@ -28,7 +28,11 @@ test.beforeAll(async () => {
     import { getPaliModuleAddress } from ${JSON.stringify(
       path.join(root, 'source/utils/smartAccount')
     )};
+    import { getGuardianRecoveryOperationId } from ${JSON.stringify(
+      path.join(root, 'source/utils/smartAccount/guardianStatus')
+    )};
     export const ACCOUNT='0x1111111111111111111111111111111111111111';
+    export const RECOVERY_MODULE=getPaliModuleAddress(57057,'guardian-recovery');
     const OWNER='0x2222222222222222222222222222222222222222', GUARDIAN='0x3333333333333333333333333333333333333333';
     export const metadata={chainId:57057,isDeployed:true,auth:{data:'0x',module:'ecdsa',validator:getPaliModuleAddress(57057,'ecdsa')},installedModules:[
       {address:getPaliModuleAddress(57057,'ecdsa'),config:{owners:[OWNER],threshold:1},id:'ecdsa',type:'validator'},
@@ -37,10 +41,17 @@ test.beforeAll(async () => {
     export default {getState:()=>state};
     export const useSelector=(fn:any)=>fn(state);
     const forbidden=(...args:any[])=>{(window as any).__forbidden.push(args);throw new Error('Synthetic layout fixture forbids wallet mutation');};
+    const readRecovery=()=>{
+      const saved=JSON.parse(localStorage.getItem('pali-smart-account-recovery-replacement:57057:'+ACCOUNT)||'null');
+      const op=saved?.recoveryOperation;
+      const now=Number((window as any).__guardianChainTime??1800000000);
+      const pending=op?{operationId:getGuardianRecoveryOperationId(op),scheduledAt:op.readyAt-60,executableAt:op.readyAt,expiresAt:op.readyAt+1200,status:now>=op.readyAt?'ready':'pending'}:null;
+      return{account:ACCOUNT,chainId:57057,moduleAddress:getPaliModuleAddress(57057,'guardian-recovery'),delay:'60',delaySeconds:60,expirationSeconds:1200,exists:true,guardians:[GUARDIAN],guardianCount:'1',threshold:1,policyEpoch:'1',observedBlock:{number:now,hash:'0x'+now.toString(16).padStart(64,'0'),timestamp:now},active:pending,pending,knownOperation:pending};
+    };
     const emitter=async([,method]:string[])=>{
       if(method==='getWalletSessionGeneration')return 7;
       if(method==='hydrateSmartAccount')return metadata;
-      if(method==='getSmartAccountGuardianRecoveryStatus')return{delay:'60',exists:true,guardians:[GUARDIAN],threshold:1};
+      if(method==='getSmartAccountGuardianRecoveryStatus')return readRecovery();
       if(method==='getSLHDSASmartAccountSetupStatus')return null;
       return forbidden(method);
     };
@@ -85,15 +96,18 @@ test.beforeAll(async () => {
     import Policy from ${JSON.stringify(
       path.join(root, 'source/pages/Settings/SmartAccountPolicy')
     )};
-    import {ACCOUNT} from ${JSON.stringify(support)};
+    import {ACCOUNT,RECOVERY_MODULE} from ${JSON.stringify(support)};
     import ${JSON.stringify(path.join(root, 'source/assets/styles/index.css'))};
     import ${JSON.stringify(path.join(root, 'source/assets/fonts/index.css'))};
     (window as any).__forbidden=[];
     const query=new URLSearchParams(location.search), mode=query.get('mode'), locale=query.get('locale')||'en';
-    if(mode==='recovery-deadline')localStorage.setItem('pali-smart-account-recovery-replacement:57057:'+ACCOUNT,JSON.stringify({
+    if(mode==='recovery-deadline'){
+      (window as any).__guardianChainTime=Number(query.get('chainTime')||Math.floor(Date.now()/1000));
+      localStorage.setItem('pali-smart-account-recovery-replacement:57057:'+ACCOUNT,JSON.stringify({
       authenticator:{id:'ecdsa',config:{owners:['0x2222222222222222222222222222222222222222'],threshold:1}},kind:'ecdsa',
-      recoveryOperation:{account:ACCOUNT,chainId:57057,executionCalldata:'0x1234',mode:'0x'+'00'.repeat(32),readyAt:Number(query.get('readyAt')),salt:'0x'+'66'.repeat(32)}
-    }));
+      recoveryOperation:{account:ACCOUNT,chainId:57057,recoveryModule:RECOVERY_MODULE,policyEpoch:'1',executionCalldata:'0x1234',mode:'0x'+'00'.repeat(32),readyAt:Number(query.get('readyAt')),salt:'0x'+'66'.repeat(32)}
+      }));
+    }
     i18next.init({lng:locale,initImmediate:false,resources:{en:{translation:en},de:{translation:de}},interpolation:{escapeValue:false}});
     (window as any).__changeLocale=(lng:string)=>i18next.changeLanguage(lng);
     createRoot(document.getElementById('root')!).render(<I18nextProvider i18n={i18next}><MemoryRouter initialEntries={[{pathname:'/settings/account/smart-account-policy',state:{id:1,accountType:'SmartAccount',smartAccountPolicyView:'recovery'}}]}><main className="h-screen w-full overflow-y-auto bg-bkg-3 text-white">{mode==='prepare'?<PrepareSmartAccount/>:<Policy/>}</main></MemoryRouter></I18nextProvider>);
@@ -414,7 +428,7 @@ test('synthetic smart-account creation error and recovery controls fit short win
     }
 });
 
-test('synthetic guardian recovery enables at its deadline without remounting', async ({
+test('synthetic guardian recovery requires a fresh ready chain observation without remounting', async ({
   page,
 }, info) => {
   await page.route('**/*', (route) =>
@@ -444,6 +458,16 @@ test('synthetic guardian recovery enables at its deadline without remounting', a
     contentType: 'image/png',
   });
   await page.clock.fastForward(1);
+  await expect(finalize).toBeDisabled();
+  await page.evaluate((timestamp) => {
+    (window as any).__guardianChainTime = timestamp;
+  }, readyAt);
+  await page
+    .getByRole('button', {
+      name: en.settings.smartAccountGuardianRefreshStatus,
+      exact: true,
+    })
+    .click();
   await expect(finalize).toBeEnabled();
   expect(await originalButton!.evaluate((button) => button.isConnected)).toBe(
     true
@@ -471,7 +495,7 @@ test('synthetic guardian recovery enables at its deadline without remounting', a
   expect(await page.evaluate(() => (window as any).__forbidden)).toEqual([]);
 });
 
-test('synthetic recovery rechecks forward and backward wall-clock changes', async ({
+test('synthetic recovery readiness follows chain observations rather than wall-clock changes', async ({
   page,
 }, info) => {
   await page.route('**/*', (route) =>
@@ -504,6 +528,16 @@ test('synthetic recovery rechecks forward and backward wall-clock changes', asyn
 
   await page.clock.setSystemTime(new Date(now.getTime() + 8 * 86400000));
   await page.clock.fastForward(1000);
+  await expect(finalize).toBeDisabled();
+  await page.evaluate((timestamp) => {
+    (window as any).__guardianChainTime = timestamp;
+  }, readyAt);
+  await page
+    .getByRole('button', {
+      name: en.settings.smartAccountGuardianRefreshStatus,
+      exact: true,
+    })
+    .click();
   await expect(finalize).toBeEnabled();
   expect(await originalButton!.evaluate((button) => button.isConnected)).toBe(
     true
@@ -513,17 +547,37 @@ test('synthetic recovery rechecks forward and backward wall-clock changes', asyn
     contentType: 'image/png',
   });
 
-  // A locale context change is a read-only fixture rerender. It exercises
-  // ready -> pending timer re-arming without invoking wallet mutations.
+  // Neither the local clock nor a locale rerender overrides an observed chain
+  // result. A new pending chain observation must disable the action again.
   await page.clock.setSystemTime(now);
   await page.evaluate(() => (window as any).__changeLocale('de'));
   const localizedFinalize = page.getByRole('button', {
     name: de.settings.smartAccountGuardianRecoveryFinalize,
     exact: true,
   });
+  await expect(localizedFinalize).toBeEnabled();
+  await page.evaluate((timestamp) => {
+    (window as any).__guardianChainTime = timestamp;
+  }, now.getTime() / 1000);
+  await page
+    .getByRole('button', {
+      name: de.settings.smartAccountGuardianRefreshStatus,
+      exact: true,
+    })
+    .click();
   await expect(localizedFinalize).toBeDisabled();
   await page.clock.setSystemTime(new Date(now.getTime() + 8 * 86400000));
   await page.clock.fastForward(1000);
+  await expect(localizedFinalize).toBeDisabled();
+  await page.evaluate((timestamp) => {
+    (window as any).__guardianChainTime = timestamp;
+  }, readyAt);
+  await page
+    .getByRole('button', {
+      name: de.settings.smartAccountGuardianRefreshStatus,
+      exact: true,
+    })
+    .click();
   await expect(localizedFinalize).toBeEnabled();
   expect(await originalButton!.evaluate((button) => button.isConnected)).toBe(
     true
@@ -532,6 +586,6 @@ test('synthetic recovery rechecks forward and backward wall-clock changes', asyn
     body: await page.screenshot(),
     contentType: 'image/png',
   });
-  // UI readiness only; chain validation is authoritative and remains uncalled.
+  // Synthetic read-only observations only; no signing/submission is invoked.
   expect(await page.evaluate(() => (window as any).__forbidden)).toEqual([]);
 });

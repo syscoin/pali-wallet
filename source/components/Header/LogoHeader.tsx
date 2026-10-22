@@ -1,6 +1,6 @@
 import React from 'react';
 
-import favicon128 from 'assets/all_assets/favicon-128.png';
+import paliIcon from 'assets/all_assets/favicon-32.png';
 import { IconButton, Icon } from 'components/index';
 import { useUtils } from 'hooks/index';
 
@@ -10,7 +10,7 @@ export const LogoHeader: React.FC = () => {
   return (
     <div className="relative w-full max-w-[25rem]">
       <img
-        src={favicon128}
+        src={paliIcon}
         className="max-w-40 mt-4 mx-auto w-40 h-40"
         alt="Pali Wallet"
       />

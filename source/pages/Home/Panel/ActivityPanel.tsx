@@ -4,6 +4,8 @@ import { useSelector } from 'react-redux';
 
 import { ExternalLinkSvg } from 'components/Icon/Icon';
 import SkeletonLoader from 'components/Loader/SkeletonLoader';
+import { useRequestScope } from 'hooks/useRequestScope';
+import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 import { RootState } from 'state/store';
 import {
   selectActiveAccountWithTransactions,
@@ -14,6 +16,7 @@ import type {
   ITransactionInfoEvm,
   ITransactionInfoUtxo,
 } from 'types/useTransactionsInfo';
+import { getWalletNavigationScope } from 'utils/navigationState';
 import { buildExplorerUrl } from 'utils/strings';
 
 import { EvmTransactionsList } from './components/Transactions/EVM/EvmList';
@@ -27,6 +30,36 @@ export const TransactionsPanel = () => {
     useSelector(selectVaultCoreData);
 
   const { t } = useTranslation();
+  const historyStatus = useSelector(
+    (state: RootState) => state.vaultGlobal.transactionHistoryStatus
+  );
+  const scope = useSelector(getWalletNavigationScope);
+  const historyState =
+    historyStatus?.scope.account === scope.account &&
+    historyStatus?.scope.network === scope.network
+      ? historyStatus.state
+      : undefined;
+  const scopeKey = `${scope.account}:${scope.network}`;
+  const beginRetry = useRequestScope(scopeKey);
+  const retryPending = useRef<() => boolean>();
+  const [retryScope, setRetryScope] = useState<string>();
+  const isRetrying = retryScope === scopeKey && retryPending.current?.();
+  const retryHistory = async () => {
+    if (retryPending.current?.()) return;
+    const isCurrent = beginRetry();
+    retryPending.current = isCurrent;
+    setRetryScope(scopeKey);
+    try {
+      await controllerEmitter(['wallet', 'refreshTransactionHistory'], [scope]);
+    } catch {
+      // The scoped background status owns the error; keep the retry visible.
+    } finally {
+      if (isCurrent()) {
+        retryPending.current = undefined;
+        setRetryScope(undefined);
+      }
+    }
+  };
 
   const utxoTransactions = useMemo<ITransactionInfoUtxo[]>(() => {
     if (!isBitcoinBased) {
@@ -148,11 +181,8 @@ export const TransactionsPanel = () => {
     t,
   ]);
 
-  // Show the skeleton until the first transaction fetch for this
-  // account/network has settled, instead of flashing the empty state.
-  // Empty fetches don't dispatch anything, so we treat either incoming
-  // transactions or a completed background poll cycle as the settle signal
-  // (with a short safety timeout so zero-tx accounts don't wait forever).
+  // Keep the existing EVM settle behavior. UTXO empty history requires an
+  // actual successful, scoped history read rather than a balance poll/timer.
   const isPollingUpdate = useSelector(
     (state: RootState) => state.vaultGlobal.isPollingUpdate
   );
@@ -189,19 +219,44 @@ export const TransactionsPanel = () => {
   }, [settleKey, hasSettled]);
 
   const isLoading = useMemo(
-    () => isSwitchingAccount || (!hasSettled && !hasTransactions),
-    [isSwitchingAccount, hasSettled, hasTransactions]
+    () =>
+      isSwitchingAccount ||
+      (!hasTransactions &&
+        (isBitcoinBased
+          ? historyState !== 'ready' && historyState !== 'error'
+          : !hasSettled)),
+    [
+      isSwitchingAccount,
+      hasSettled,
+      hasTransactions,
+      isBitcoinBased,
+      historyState,
+    ]
   );
+  const historyUnavailable = isBitcoinBased && historyState === 'error';
 
   return (
     <>
       {isLoading && !hasTransactions && TransactionSkeleton}
+      {isBitcoinBased && historyState !== 'ready' && (
+        <div className="mt-8 text-center text-sm text-brand-gray200">
+          {historyUnavailable && <p role="status">{t('send.unableToLoad')}</p>}
+          <button
+            type="button"
+            className="underline"
+            disabled={historyState === 'pending' || isRetrying}
+            onClick={retryHistory}
+          >
+            {t('receive.retry')}
+          </button>
+        </div>
+      )}
       {!isLoading && !hasTransactions && (
         <div
           id="activity-panel-empty"
           className="w-full mt-8 text-white bg-brand-blue600"
         >
-          {NoTransactionsComponent}
+          {!historyUnavailable && NoTransactionsComponent}
           {OpenTransactionExplorer}
           {/* <Fullscreen /> */}
         </div>
