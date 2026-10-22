@@ -31,15 +31,20 @@ export const FaucetApiFeedback: React.FC<FaucetApiFeedbackProps> = ({
       />
       <div className="gap-1 w-[352px] h-[76px] flex flex-col mt-6 rounded-[20px] p-4 border border-dashed border-alpha-whiteAlpha300 bg-alpha-whiteAlpha100">
         <h1 className="text-white text-sm">{apiTitle}</h1>
-        <p
-          onClick={() => (status ? handleCopyToClipboard() : null)}
-          className="text-white text-sm underline overflow-hidden"
-          style={{
-            cursor: status ? 'pointer' : 'default',
-          }}
-        >
-          {apiResponse}
-        </p>
+        {status ? (
+          <button
+            type="button"
+            aria-label={t('buttons.copy')}
+            onClick={handleCopyToClipboard}
+            className="text-white text-sm underline overflow-hidden text-left cursor-pointer"
+          >
+            {apiResponse}
+          </button>
+        ) : (
+          <p className="text-white text-sm underline overflow-hidden cursor-default">
+            {apiResponse}
+          </p>
+        )}
       </div>
     </>
   );

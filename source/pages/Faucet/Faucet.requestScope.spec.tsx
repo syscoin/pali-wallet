@@ -7,6 +7,7 @@ import {
   render,
   screen,
 } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import axios from 'axios';
 import React from 'react';
 import { Provider } from 'react-redux';
@@ -459,6 +460,74 @@ it('healthy: matching network/address success keeps the exact hash, wording and 
   expect(mockAlarms).toHaveBeenCalledWith(
     expect.objectContaining({ delayInSeconds: 10 })
   );
+});
+
+// The existing clipboard-hook boundary records action reachability and exact
+// payload, not OS clipboard acceptance or success-modal timing.
+it.each([
+  ['Enter', '{Enter}'],
+  ['Space', ' '],
+])(
+  'faucet hash copy is reachable by Tab and activated with %s',
+  async (_, key) => {
+    const user = userEvent.setup();
+    await mount();
+    const finish = deferred();
+    request();
+    await finish();
+    const copy = screen.getByRole('button', {
+      name: mockTranslate('buttons.copy'),
+    });
+    expect(copy.textContent).toBe(HASH);
+    expect(copy.getAttribute('type')).toBe('button');
+    for (let i = 0; i < 20 && document.activeElement !== copy; i++)
+      await user.tab();
+    expect(document.activeElement).toBe(copy);
+    expect(mockCopy).not.toHaveBeenCalled();
+    await user.keyboard(key);
+    expect(mockCopy).toHaveBeenCalledTimes(1);
+    expect(mockCopy).toHaveBeenCalledWith(HASH);
+    expect(axios.get).toHaveBeenCalledTimes(1);
+  }
+);
+
+it('faucet hash copy leaves the request contract noninteractive', async () => {
+  const user = userEvent.setup();
+  await mount();
+  const contract = screen.getByText(
+    mockTranslate('send.smartContract')
+  ).nextElementSibling;
+  expect(contract?.tagName).toBe('P');
+  expect(contract?.getAttribute('role')).toBeNull();
+  expect((contract as HTMLElement).tabIndex).toBe(-1);
+  expect(
+    screen.queryByRole('button', { name: mockTranslate('buttons.copy') })
+  ).toBeNull();
+  await user.click(contract as HTMLElement);
+  for (let i = 0; i < 8; i++) {
+    await user.tab();
+    expect(document.activeElement).not.toBe(contract);
+  }
+  expect(mockCopy).not.toHaveBeenCalled();
+  expect(axios.get).not.toHaveBeenCalled();
+});
+
+it('faucet success retains native keyboard Close navigation without copying', async () => {
+  const user = userEvent.setup();
+  await mount();
+  const finish = deferred();
+  request();
+  await finish();
+  const close = screen
+    .getAllByRole('button', { name: 'Close', exact: true })
+    .at(-1)!;
+  for (let i = 0; i < 20 && document.activeElement !== close; i++)
+    await user.tab();
+  expect(document.activeElement).toBe(close);
+  await user.keyboard('{Enter}');
+  expect(screen.getByText('Home after normal Close')).toBeTruthy();
+  expect(mockCopy).not.toHaveBeenCalled();
+  expect(axios.get).toHaveBeenCalledTimes(1);
 });
 
 it('healthy: a completed supported-network change before request uses the latest target', async () => {
