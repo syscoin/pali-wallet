@@ -220,6 +220,7 @@ const ManageNetworkView = () => {
 
             <div className="flex gap-x-3 items-center justify-between">
               <IconButton
+                aria-label={`${t('buttons.edit')}: ${network.label}`}
                 onClick={() =>
                   editNetwork({
                     selected: network,
@@ -244,6 +245,7 @@ const ManageNetworkView = () => {
                   }
                 >
                   <IconButton
+                    aria-label={`${t('buttons.remove')}: ${network.label}`}
                     onClick={() => removeNetwork(INetworkType.Syscoin, network)}
                     type="primary"
                     shape="circle"
@@ -299,6 +301,7 @@ const ManageNetworkView = () => {
 
             <div className="flex gap-x-3 items-center justify-between">
               <IconButton
+                aria-label={`${t('buttons.edit')}: ${network.label}`}
                 onClick={() =>
                   editNetwork({
                     selected: network,
@@ -324,6 +327,7 @@ const ManageNetworkView = () => {
                   }
                 >
                   <IconButton
+                    aria-label={`${t('buttons.remove')}: ${network.label}`}
                     onClick={() =>
                       removeNetwork(INetworkType.Ethereum, network)
                     }

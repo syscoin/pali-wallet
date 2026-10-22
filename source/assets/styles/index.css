@@ -11,6 +11,13 @@
 /* Import gradient banner animation */
 @import './gradient-banner-animation.css';
 
+/* Headless UI focuses the menu container, not its arrow-selected action.
+ * Account-selection/copy buttons retain their existing 30% active styling. */
+.pali-menu:focus-visible
+  :is(li, .menu-action)[data-headlessui-state~='active'] {
+  @apply bg-brand-blue500 bg-opacity-20 outline outline-2 outline-brand-royalblue -outline-offset-2;
+}
+
 /* Fill spare page space before the shared action, including nested forms.
  * Only footer-bearing wrappers stretch; unrelated rows and form internals do
  * not change layout. Keep the document's intrinsic toolbar height untouched. */

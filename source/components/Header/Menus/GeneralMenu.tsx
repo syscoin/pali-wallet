@@ -28,8 +28,6 @@ import {
 
 const MENU_ITEM_CLASS_NAME =
   'gap-2 py-1.5 cursor-pointer px-5 w-full backface-visibility-hidden flex items-center justify-start text-white text-sm font-medium hover:bg-brand-blue500 hover:bg-opacity-20 active:bg-opacity-40 focus:outline-none transition-colors duration-200';
-const SEED_AND_FORGET_ITEM_CLASS_NAME =
-  'py-1.5 cursor-pointer px-5 w-full backface-visibility-hidden gap-2 flex items-center justify-start text-white text-sm font-medium hover:bg-brand-blue500 hover:bg-opacity-20 active:bg-opacity-40 focus:outline-none transition-colors duration-200';
 
 interface IGeneralMenuProps {
   disabled?: boolean;
@@ -187,7 +185,7 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
                   ?.focus({ preventScroll: true });
                 menu.focus({ preventScroll: true });
               }}
-              className={`fixed overflow-x-hidden z-50 inset-x-0 top-8 bottom-0 w-full text-center text-brand-white font-poppins bg-brand-blue600 rounded-2xl focus:outline-none shadow-2xl ring-1 ring-black ring-opacity-5
+              className={`pali-menu fixed overflow-x-hidden z-50 inset-x-0 top-8 bottom-0 w-full text-center text-brand-white font-poppins bg-brand-blue600 rounded-2xl focus:outline-none shadow-2xl ring-1 ring-black ring-opacity-5
               transform transition-all duration-100 ease-out ${
                 open
                   ? 'opacity-100 scale-100 pointer-events-auto'
@@ -240,7 +238,7 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
                       onClick={() =>
                         handleSettingsNavigation('/settings/sentry')
                       }
-                      className="flex min-h-11 w-full items-center gap-2 px-5 text-left text-sm text-white hover:bg-brand-blue500 hover:bg-opacity-20 focus-visible:outline focus-visible:outline-2"
+                      className="menu-action flex min-h-11 w-full items-center gap-2 px-5 text-left text-sm text-white hover:bg-brand-blue500 hover:bg-opacity-20 focus-visible:outline focus-visible:outline-2"
                     >
                       <KeySvg className="text-brand-white" />
                       <span>{t('sentry.sentryOperators')}</span>
@@ -250,7 +248,7 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
                   <Menu.Item>
                     <li
                       onClick={() => handleSettingsNavigation('/settings/seed')}
-                      className={SEED_AND_FORGET_ITEM_CLASS_NAME}
+                      className={MENU_ITEM_CLASS_NAME}
                     >
                       <KeySvg className="mb-1 text-brand-white" />
 
@@ -265,7 +263,7 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
                       onClick={() =>
                         handleSettingsNavigation('/settings/forget-wallet')
                       }
-                      className={SEED_AND_FORGET_ITEM_CLASS_NAME}
+                      className={MENU_ITEM_CLASS_NAME}
                     >
                       <TrashIconSvg className="mb-1 text-brand-white" />
 
