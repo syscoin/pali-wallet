@@ -382,6 +382,9 @@ it('places the full unknown-calldata disclosure in native keyboard focus order',
   const { container } = await openReview();
   const { summary, details, bytes } = disclosure(container);
   expect(summary.tagName).toBe('SUMMARY');
+  expect(summary.style.scrollMarginBottom).toBe(
+    'var(--pali-toast-footer-clearance)'
+  );
   const user = userEvent.setup();
   await user.tab();
   expect(summary).toHaveFocus();

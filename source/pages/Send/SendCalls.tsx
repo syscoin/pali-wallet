@@ -1461,6 +1461,10 @@ export const SendCalls = () => {
                             <details className="mt-1">
                               <summary
                                 tabIndex={0}
+                                style={{
+                                  scrollMarginBottom:
+                                    'var(--pali-toast-footer-clearance)',
+                                }}
                                 className="cursor-pointer text-xs text-brand-gray200 font-mono break-all"
                               >
                                 {t('send.hex')}: {ellipsis(call.data, 20, 4)}
