@@ -74,7 +74,8 @@ jobs:
         if: always()
         run: sudo rm -f /etc/apt/apt.conf.d/99pali-playwright-cache
       - name: Verify downloaded archives before publishing the shared cache
-        run: bash .github/scripts/verify-playwright-apt-cache.sh
+        # APT creates root-owned archives; its permission repair needs the same authority.
+        run: sudo bash .github/scripts/verify-playwright-apt-cache.sh
       - name: Save Playwright OS package downloads
         if: success() && steps.apt-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0

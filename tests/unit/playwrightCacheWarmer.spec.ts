@@ -15,7 +15,7 @@ const main = readWorkflow('main.yml');
 const warm = workflow.split('\n  warm:\n')[1];
 const steps = warm.split(/\n(?=      - )/);
 const aptPath = '          path: /var/cache/pali-playwright-apt/*.deb';
-const verifier = 'run: bash .github/scripts/verify-playwright-apt-cache.sh';
+const verifier = 'bash .github/scripts/verify-playwright-apt-cache.sh';
 
 it('warms only the trusted master repository on push, manual dispatch or a daily schedule', () => {
   const triggers = workflow.split('\non:\n')[1].split('\npermissions:')[0];
@@ -97,6 +97,10 @@ it('keeps real apt sandbox access and verifies restored and downloaded archives 
   expect(checks[0]).toBeLessThan(install);
   expect(install).toBeLessThan(checks[1]);
   expect(checks[1]).toBeLessThan(save);
+  expect(steps[checks[0]]).toContain(`run: ${verifier}`);
+  // sudo APT leaves root-owned downloads: even chmod-to-the-current-mode
+  // fails as the runner. Keep the trusted post-install repair privileged.
+  expect(steps[checks[1]]).toContain(`run: sudo ${verifier}`);
   expect(steps[install]).not.toContain('if:');
   expect(workflow).not.toMatch(
     /Sandbox::User|RUNNER_TEMP.*chmod|continue-on-error:/
