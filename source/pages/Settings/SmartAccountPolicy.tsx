@@ -55,6 +55,10 @@ import {
   signAndSubmitSmartAccountExecutions,
   signSmartAccountActionHash,
 } from 'utils/smartAccount';
+import {
+  getGuardianRecoveryOperationId,
+  GuardianRecoveryObservation,
+} from 'utils/smartAccount/guardianStatus';
 import type {
   PaliRecoveryTarget,
   PaliSmartAccountAuthenticatorSetup,
@@ -106,14 +110,7 @@ const moduleHintKey = (id: string, capability?: string) => {
 };
 
 type RecoveryAuthenticatorId = 'ecdsa' | 'p256-webauthn';
-type GuardianRecoveryStatus = {
-  delay: string;
-  exists: boolean;
-  guardianCount: string;
-  guardians: string[];
-  moduleAddress: string;
-  threshold: number | string;
-} | null;
+type GuardianRecoveryStatus = GuardianRecoveryObservation | null;
 
 type GuardianReplacementCredential = {
   authenticator: PaliSmartAccountAuthenticatorSetup;
@@ -270,6 +267,11 @@ const SmartAccountPolicy = () => {
     location.key,
     metadataAvailability.current.revision,
   ]);
+  const guardianObservationScope = JSON.stringify([
+    metadataEntryKey,
+    activeNetwork.url,
+    activeSlip44,
+  ]);
   const [metadataEntry, setMetadataEntry] = useState<{
     key: string;
     status: 'pending' | 'ready' | 'failed';
@@ -389,9 +391,19 @@ const SmartAccountPolicy = () => {
   const [moduleActionKey, setModuleActionKey] = useState('');
   const [guardianLoading, setGuardianLoading] = useState(false);
   const [guardianStep, setGuardianStep] = useState('');
-  const [guardianStatus, setGuardianStatus] =
-    useState<GuardianRecoveryStatus>(null);
+  const [guardianRead, setGuardianRead] = useState<{
+    scope: string;
+    snapshot: GuardianRecoveryStatus;
+    error: boolean;
+  }>({ scope: guardianObservationScope, snapshot: null, error: false });
+  const setGuardianStatus = (snapshot: GuardianRecoveryStatus) =>
+    setGuardianRead({
+      scope: guardianObservationScope,
+      snapshot,
+      error: false,
+    });
   const [guardianStatusLoading, setGuardianStatusLoading] = useState(false);
+  const [guardianStatusRefresh, setGuardianStatusRefresh] = useState(0);
   const [
     guardianReplacementStorageVersion,
     setGuardianReplacementStorageVersion,
@@ -539,6 +551,16 @@ const SmartAccountPolicy = () => {
     (module) => module.id === 'guardian-recovery' && module.type === 'executor'
   );
   const hasGuardianRecovery = Boolean(installedGuardianRecovery);
+  const guardianStatusError =
+    guardianRead.scope === guardianObservationScope && guardianRead.error;
+  const guardianStatus =
+    guardianRead.scope === guardianObservationScope &&
+    guardianRead.snapshot &&
+    guardianRead.snapshot.chainId === activeNetwork.chainId &&
+    guardianRead.snapshot.account?.toLowerCase() ===
+      account?.address?.toLowerCase()
+      ? guardianRead.snapshot
+      : null;
   const configuredGuardianAddress = (() => {
     try {
       const address =
@@ -579,7 +601,58 @@ const SmartAccountPolicy = () => {
     activeNetwork.chainId,
     guardianReplacementStorageVersion,
   ]);
-  const activeGuardianReplacement = storedGuardianReplacement;
+  const localRecoveryOperation = storedGuardianReplacement?.recoveryOperation;
+  const localRecoveryOperationId = (() => {
+    try {
+      return localRecoveryOperation &&
+        getAddress(localRecoveryOperation.account) === smartAccountAddress &&
+        localRecoveryOperation.chainId === activeNetwork.chainId
+        ? getGuardianRecoveryOperationId(localRecoveryOperation)
+        : undefined;
+    } catch {
+      return undefined;
+    }
+  })();
+  const knownLocalObservation =
+    !guardianStatusError &&
+    localRecoveryOperationId &&
+    guardianStatus?.knownOperation?.operationId === localRecoveryOperationId
+      ? guardianStatus.knownOperation
+      : null;
+  const localRecoveryResolved = Boolean(
+    knownLocalObservation &&
+      ['executed', 'canceled', 'expired', 'inactive'].includes(
+        knownLocalObservation.status
+      )
+  );
+  // Observations affect the displayed/action state only. Never erase a saved
+  // replacement credential or unresolved intent as a side effect of a read.
+  const activeGuardianReplacement =
+    localRecoveryResolved && storedGuardianReplacement
+      ? { ...storedGuardianReplacement, recoveryOperation: undefined }
+      : storedGuardianReplacement;
+  const onChainPending = !guardianStatusError ? guardianStatus?.pending : null;
+  const localRecoveryMatches = (() => {
+    try {
+      return Boolean(
+        localRecoveryOperation &&
+          localRecoveryOperationId &&
+          onChainPending &&
+          onChainPending.operationId === localRecoveryOperationId &&
+          guardianStatus?.policyEpoch === localRecoveryOperation.policyEpoch &&
+          guardianStatus?.account === smartAccountAddress &&
+          guardianStatus?.chainId === activeNetwork.chainId &&
+          localRecoveryOperation.recoveryModule &&
+          getAddress(localRecoveryOperation.recoveryModule) ===
+            getAddress(guardianStatus.moduleAddress)
+      );
+    } catch {
+      return false;
+    }
+  })();
+  const externalRecoveryPending = Boolean(
+    onChainPending && !localRecoveryMatches
+  );
   const pendingReplacementKind = activeGuardianReplacement?.recoveryOperation
     ? activeGuardianReplacement.kind
     : null;
@@ -597,41 +670,8 @@ const SmartAccountPolicy = () => {
       guardianStatus?.guardians?.[0] ||
         installedGuardianRecovery?.config.guardians?.[0]
     );
-  const recoveryReadyAt = Number(
-    activeGuardianReplacement?.recoveryOperation?.readyAt
-  );
   const guardianRecoveryReady =
-    Number.isFinite(recoveryReadyAt) &&
-    recoveryReadyAt > 0 &&
-    recoveryReadyAt <= Math.floor(Date.now() / 1000);
-  const [, wakeRecoveryDeadline] = useState(0);
-  useEffect(() => {
-    if (
-      !Number.isFinite(recoveryReadyAt) ||
-      recoveryReadyAt <= 0 ||
-      guardianRecoveryReady
-    )
-      return;
-    let timer: ReturnType<typeof setTimeout>;
-    const wake = () => {
-      const remaining = recoveryReadyAt * 1000 - Date.now();
-      if (remaining > 0) {
-        // Timers are monotonic; recheck wall time without rendering so a
-        // system clock adjustment cannot strand a ready recovery.
-        timer = setTimeout(wake, Math.min(remaining, 1000));
-      } else {
-        wakeRecoveryDeadline((version) => version + 1);
-      }
-    };
-    wake();
-    return () => clearTimeout(timer);
-  }, [
-    recoveryReadyAt,
-    guardianRecoveryReady,
-    smartAccountAddress,
-    activeNetwork.chainId,
-    scopeKey,
-  ]);
+    localRecoveryMatches && onChainPending?.status === 'ready';
   const replacementAuthenticatorLabel = (kind?: RecoveryAuthenticatorId) => {
     switch (kind) {
       case 'ecdsa':
@@ -691,24 +731,98 @@ const SmartAccountPolicy = () => {
       metadata.auth?.validator?.toLowerCase() === module.address.toLowerCase()
   );
   const isActiveSLHDSAApproval = activeValidatorModule?.id === 'slh-dsa';
-  const guardianActionLoading =
-    loading || guardianLoading || guardianStatusLoading;
+  const guardianActionLoading = loading || guardianLoading;
   const isReplacementAuthenticatorReady =
     replacementAuthenticator === 'p256-webauthn' ||
     Boolean(normalizedReplacementEcdsaOwner);
   const isStartGuardianRecoveryDisabled =
     guardianActionLoading ||
+    guardianStatusLoading ||
+    guardianStatusError ||
+    !guardianStatus?.observedBlock ||
+    !guardianStatus.exists ||
+    Boolean(onChainPending) ||
     Boolean(guardianDisablePending) ||
     !guardianPolicyReady ||
     !isReplacementAuthenticatorReady ||
     Boolean(activeGuardianReplacement?.recoveryOperation);
   const isFinalizeGuardianRecoveryDisabled =
     guardianActionLoading ||
+    guardianStatusLoading ||
     Boolean(guardianDisablePending) ||
     !activeGuardianReplacement?.recoveryOperation ||
     !guardianRecoveryReady;
   const hasPendingGuardianRecovery = Boolean(
-    activeGuardianReplacement?.recoveryOperation
+    onChainPending || activeGuardianReplacement?.recoveryOperation
+  );
+  const guardianStatusLabel =
+    guardianStatusLoading && !guardianStatus?.observedBlock
+      ? 'settings.smartAccountGuardianStatusChecking'
+      : guardianStatusError || !guardianStatus?.observedBlock
+      ? 'settings.smartAccountGuardianStatusUnavailable'
+      : onChainPending
+      ? 'settings.smartAccountGuardianRecoveryPending'
+      : localRecoveryOperation && !localRecoveryResolved
+      ? 'settings.smartAccountGuardianLocalUnresolved'
+      : guardianStatus.exists
+      ? 'settings.smartAccountGuardianRecoveryConnectedStatus'
+      : 'settings.smartAccountGuardianRecoveryNotConnected';
+  const guardianObservationPanel = (
+    <div
+      className="space-y-2 text-xs leading-5"
+      data-testid="guardian-chain-status"
+    >
+      {guardianStatusError && guardianStatus?.pending && (
+        <p className="text-brand-yellowInfo">
+          {t('settings.smartAccountGuardianLastKnownPending')}
+        </p>
+      )}
+      {externalRecoveryPending && (
+        <>
+          <p className="font-semibold text-brand-yellowInfo">
+            {t('settings.smartAccountGuardianExternalPending')}
+          </p>
+          <p className="break-all text-white">{smartAccountAddress}</p>
+          <p>{t('settings.smartAccountGuardianExternalDescription')}</p>
+        </>
+      )}
+      {onChainPending && (
+        <>
+          <p>
+            {t('settings.smartAccountGuardianRecoveryReadyAt', {
+              time: new Date(
+                onChainPending.executableAt * 1000
+              ).toLocaleString(),
+            })}
+          </p>
+          <p>
+            {t('settings.smartAccountGuardianExpiresAt', {
+              time: new Date(onChainPending.expiresAt * 1000).toLocaleString(),
+            })}
+          </p>
+        </>
+      )}
+      {localRecoveryResolved && (
+        <p>{t('settings.smartAccountGuardianLocalResolved')}</p>
+      )}
+      {guardianStatus?.observedBlock && (
+        <p className="text-brand-graylight">
+          {t('settings.smartAccountGuardianObservedAt', {
+            time: new Date(
+              guardianStatus.observedBlock.timestamp * 1000
+            ).toLocaleString(),
+          })}
+        </p>
+      )}
+      <button
+        type="button"
+        disabled={guardianStatusLoading}
+        onClick={() => setGuardianStatusRefresh((value) => value + 1)}
+        className="rounded underline underline-offset-4 transition-colors hover:text-white focus-visible:ring-2 focus-visible:ring-brand-blue500 disabled:opacity-60"
+      >
+        {t('settings.smartAccountGuardianRefreshStatus')}
+      </button>
+    </div>
   );
   const walletManagementAddress = (() => {
     try {
@@ -918,8 +1032,13 @@ const SmartAccountPolicy = () => {
 
   useEffect(() => {
     let cancelled = false;
+    let running = false;
     const isCurrentUi = createUiGuard();
-    setGuardianStatus(null);
+    setGuardianRead((previous) =>
+      previous.scope === guardianObservationScope
+        ? previous
+        : { scope: guardianObservationScope, snapshot: null, error: false }
+    );
     if (
       !controllerReady ||
       !account?.isSmartAccount ||
@@ -932,39 +1051,69 @@ const SmartAccountPolicy = () => {
       };
     }
 
-    setGuardianStatusLoading(true);
-    controllerEmitter(
-      ['wallet', 'getSmartAccountGuardianRecoveryStatus'],
-      [{ account: smartAccountAddress }],
-      300000
-    )
-      .then((status) => {
+    const refresh = async () => {
+      if (
+        cancelled ||
+        running ||
+        document.visibilityState === 'hidden' ||
+        !isCurrentUi()
+      )
+        return;
+      running = true;
+      setGuardianStatusLoading(true);
+      try {
+        const status = await controllerEmitter(
+          ['wallet', 'getSmartAccountGuardianRecoveryStatus'],
+          [
+            {
+              account: smartAccountAddress,
+              knownOperationId: localRecoveryOperationId,
+            },
+          ],
+          30000
+        );
         if (!cancelled && isCurrentUi()) {
           setGuardianStatus(status as GuardianRecoveryStatus);
         }
-      })
-      .catch(() => {
+      } catch {
         if (!cancelled && isCurrentUi()) {
-          setGuardianStatus(null);
+          setGuardianRead((previous) => ({
+            scope: guardianObservationScope,
+            snapshot:
+              previous.scope === guardianObservationScope
+                ? previous.snapshot
+                : null,
+            error: true,
+          }));
         }
-      })
-      .finally(() => {
-        if (!cancelled && isCurrentUi(false)) {
-          setGuardianStatusLoading(false);
-        }
-      });
+      } finally {
+        running = false;
+        if (!cancelled && isCurrentUi(false)) setGuardianStatusLoading(false);
+      }
+    };
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 30000);
+    const onVisible = () => void refresh();
+    window.addEventListener('focus', onVisible);
+    document.addEventListener('visibilitychange', onVisible);
 
     return () => {
       cancelled = true;
+      window.clearInterval(timer);
+      window.removeEventListener('focus', onVisible);
+      document.removeEventListener('visibilitychange', onVisible);
     };
   }, [
     account?.isSmartAccount,
     controllerReady,
     controllerEmitter,
     hasGuardianRecovery,
+    guardianStatusRefresh,
+    localRecoveryOperationId,
     location.key,
     smartAccountAddress,
     scopeKey,
+    guardianObservationScope,
   ]);
 
   useEffect(() => {
@@ -1765,26 +1914,8 @@ const SmartAccountPolicy = () => {
         });
       }
       if (!isCurrentUi()) return;
-      setGuardianStatus((currentStatus) =>
-        currentStatus
-          ? {
-              ...currentStatus,
-              delay: String(guardianDelaySeconds),
-              exists: true,
-              guardianCount: '1',
-              guardians: [normalizedGuardianAddress],
-              moduleAddress: getAddress(guardianRecoveryModule),
-              threshold: 1,
-            }
-          : {
-              delay: String(guardianDelaySeconds),
-              exists: true,
-              guardianCount: '1',
-              guardians: [normalizedGuardianAddress],
-              moduleAddress: getAddress(guardianRecoveryModule),
-              threshold: 1,
-            }
-      );
+      setGuardianStatus(null);
+      setGuardianStatusRefresh((value) => value + 1);
       alert.success(
         hasGuardianRecovery
           ? t('settings.smartAccountGuardianRecoveryPolicyUpdated')
@@ -2462,9 +2593,30 @@ const SmartAccountPolicy = () => {
     }
     setGuardianLoading(true);
     try {
+      const recoveryOperation = activeGuardianReplacement.recoveryOperation;
+      const operationId = getGuardianRecoveryOperationId(recoveryOperation);
+      const current = (await controllerEmitter(
+        ['wallet', 'getSmartAccountGuardianRecoveryStatus'],
+        [{ account: smartAccountAddress, knownOperationId: operationId }],
+        30000
+      )) as GuardianRecoveryObservation;
+      if (!isCurrentUi()) return;
+      setGuardianStatus(current);
+      if (
+        !current?.pending ||
+        current.pending.status !== 'ready' ||
+        current.pending.operationId !== operationId ||
+        current.policyEpoch !== recoveryOperation.policyEpoch ||
+        current.account !== smartAccountAddress ||
+        current.chainId !== activeNetwork.chainId ||
+        !recoveryOperation.recoveryModule ||
+        getAddress(current.moduleAddress) !==
+          getAddress(recoveryOperation.recoveryModule)
+      ) {
+        throw new Error(t('settings.smartAccountGuardianStatusUnavailable'));
+      }
       const approval = await capturePolicyApproval(false);
       setGuardianStep(t('settings.smartAccountGuardianRecoveryStepFinalize'));
-      const recoveryOperation = activeGuardianReplacement.recoveryOperation;
       if (
         getAddress(recoveryOperation.account) !== smartAccountAddress ||
         recoveryOperation.chainId !== activeNetwork.chainId
@@ -2776,10 +2928,11 @@ const SmartAccountPolicy = () => {
 
           <div className="rounded-2xl border border-brand-blue500 bg-brand-blue500 bg-opacity-10 p-4 text-xs text-brand-graylight">
             <div className="flex items-center justify-between gap-3">
-              <span className="font-semibold text-white">
-                {hasPendingGuardianRecovery
-                  ? t('settings.smartAccountGuardianRecoveryPending')
-                  : t('settings.smartAccountGuardianRecoveryConnectedStatus')}
+              <span
+                role={guardianStatusError ? 'alert' : 'status'}
+                className="font-semibold text-white"
+              >
+                {t(guardianStatusLabel)}
               </span>
               <button
                 type="button"
@@ -2789,24 +2942,19 @@ const SmartAccountPolicy = () => {
                 {shortAddress(displayedGuardianAddress)}
               </button>
             </div>
-            {activeGuardianReplacement?.recoveryOperation?.readyAt && (
-              <div className="mt-3 space-y-1 text-brand-yellowInfo">
-                <p>
-                  {t('settings.smartAccountGuardianRecoveryPendingTarget', {
-                    authenticator: replacementAuthenticatorLabel(
-                      activeGuardianReplacement.kind
-                    ),
-                  })}
-                </p>
-                <p>
-                  {t('settings.smartAccountGuardianRecoveryReadyAt', {
-                    time: new Date(
-                      activeGuardianReplacement.recoveryOperation.readyAt * 1000
-                    ).toLocaleString(),
-                  })}
-                </p>
-              </div>
-            )}
+            {guardianObservationPanel}
+            {activeGuardianReplacement?.recoveryOperation?.readyAt &&
+              localRecoveryMatches && (
+                <div className="mt-3 space-y-1 text-brand-yellowInfo">
+                  <p>
+                    {t('settings.smartAccountGuardianRecoveryPendingTarget', {
+                      authenticator: replacementAuthenticatorLabel(
+                        activeGuardianReplacement.kind
+                      ),
+                    })}
+                  </p>
+                </div>
+              )}
           </div>
 
           <div className="space-y-2">
@@ -3252,14 +3400,13 @@ const SmartAccountPolicy = () => {
                           {installed && (
                             <div className="rounded-2xl bg-alpha-whiteAlpha100 p-3 text-xs text-brand-graylight">
                               <div className="flex items-center justify-between gap-3">
-                                <span className="font-semibold text-white">
-                                  {hasPendingGuardianRecovery
-                                    ? t(
-                                        'settings.smartAccountGuardianRecoveryPending'
-                                      )
-                                    : t(
-                                        'settings.smartAccountGuardianRecoveryConnectedStatus'
-                                      )}
+                                <span
+                                  role={
+                                    guardianStatusError ? 'alert' : 'status'
+                                  }
+                                  className="font-semibold text-white"
+                                >
+                                  {t(guardianStatusLabel)}
                                 </span>
                                 <button
                                   type="button"
@@ -3271,20 +3418,7 @@ const SmartAccountPolicy = () => {
                                   {shortAddress(displayedGuardianAddress)}
                                 </button>
                               </div>
-                              {activeGuardianReplacement?.recoveryOperation
-                                ?.readyAt && (
-                                <p className="mt-2 text-brand-yellowInfo">
-                                  {t(
-                                    'settings.smartAccountGuardianRecoveryReadyAt',
-                                    {
-                                      time: new Date(
-                                        activeGuardianReplacement
-                                          .recoveryOperation.readyAt * 1000
-                                      ).toLocaleString(),
-                                    }
-                                  )}
-                                </p>
-                              )}
+                              {guardianObservationPanel}
                               <button
                                 type="button"
                                 className="mt-3 w-full rounded-full border border-alpha-whiteAlpha300 bg-alpha-whiteAlpha100 px-3 py-2 text-xs font-medium text-white transition-all duration-200 hover:bg-brand-blue500 hover:bg-opacity-20 disabled:cursor-not-allowed disabled:opacity-60"

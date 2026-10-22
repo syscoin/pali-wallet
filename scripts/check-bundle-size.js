@@ -13,9 +13,10 @@ const budget = {
   // Count every mandatory MV3 warm chunk below, including the optional feature.
   background: 4400000,
   contentScript: 16000,
-  // Current recovery packaging measured 8,557,224 bytes with review guards.
-  // Retain the saving with a rounded ceiling and a small platform buffer.
-  package: 8558000,
+  // On-chain recovery observation and its nine localized status views add
+  // 19,590 bytes to the 8,558,031-byte baseline (8,577,621 total). Keep a
+  // rounded package ceiling; all mandatory startup budgets stay unchanged.
+  package: 8580000,
 };
 const allFiles = (root) =>
   fs.readdirSync(root, { withFileTypes: true }).flatMap((entry) => {

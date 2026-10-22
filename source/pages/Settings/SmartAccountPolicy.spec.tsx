@@ -131,6 +131,27 @@ describe('SmartAccountPolicy guardian approval', () => {
       const index = hookIndex++;
       if (!(index in hookStates)) {
         hookStates[index] = typeof initial === 'function' ? initial() : initial;
+        // This handler-only harness suppresses effects. Model the verified
+        // guardian observation; mounted observation/failure tests exercise the
+        // real read lifecycle separately.
+        if (index === 6)
+          hookStates[index] = {
+            ...hookStates[index],
+            snapshot: {
+              account: ACCOUNT,
+              chainId: CHAIN_ID,
+              moduleAddress: '0x8888888888888888888888888888888888888888',
+              exists: true,
+              delay: '60',
+              guardians: [GUARDIAN],
+              threshold: 1,
+              policyEpoch: '7',
+              observedBlock: { number: 1, timestamp: 1, hash: OPERATION.hash },
+              active: null,
+              pending: null,
+              knownOperation: null,
+            },
+          };
         // This handler-only harness suppresses effects; model the successful
         // entry read. Real pending/failure behavior is tested in lifetime.spec.
         if (
