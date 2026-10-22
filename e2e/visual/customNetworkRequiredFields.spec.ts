@@ -312,7 +312,10 @@ test('custom network required fields refuse blank text and preserve meaningful p
           .click();
         const row = page
           .locator('li')
-          .filter({ has: page.getByText(LABEL.trim(), { exact: true }) });
+          // Manage Networks displays the existing 25-character truncated label.
+          .filter({
+            has: page.getByText('Required fields fixture ...', { exact: true }),
+          });
         await expect(row).toHaveCount(1);
         await row.locator('button').first().click();
         await expect(page).toHaveURL(/#\/settings\/networks\/custom-rpc$/);
