@@ -64,7 +64,11 @@ Pali 智能账户的恢复方式取决于已安装的模块。由通行密钥控
 
 :::tip 最新守护者恢复指南
 
-[完整指南](./smart-account-validators#guardian-recovery-guide)介绍设置、开始、完成及 **Disable guardian recovery**。新策略提供 3 天或 7 天等待期；10 分钟仅限已知测试网。确认停用需要当前批准方式和 gas，会使待处理恢复失效并移除此恢复途径，但不能撤销已完成的恢复。交易结果不确定时，请先检查链上状态再考虑重试。可选的 Sysnode 提醒需要已验证邮箱和钱包签名；不会获取密钥，也不保证邮件送达。
+[完整指南](./smart-account-validators#guardian-recovery-guide)介绍设置、开始、完成及 **Disable guardian recovery**。新策略提供 3 天或 7 天等待期；10 分钟仅限已知测试网。确认停用需要当前批准方式和 gas，会使待处理恢复失效并移除此恢复途径，但不能撤销已完成的恢复。交易结果不确定时，请先检查链上状态再考虑重试。
+
+如需使用外部服务 Sysnode 提供的可选邮件监控，请使用已验证的邮箱登录 [Sysnode 账户 → 恢复提醒](https://sysnode.info/account#recovery-alerts)，连接已部署的智能账户，并在钱包中批准签名。签名密钥仍保留在您的钱包中。邮件无法取消恢复。
+
+邮件提醒可能延迟或无法送达。您可以直接在 Pali 中查看恢复状态。
 
 :::
 
@@ -96,5 +100,5 @@ Pali 智能账户的恢复方式取决于已安装的模块。由通行密钥控
   <a className="pali-media-link" href="/img/screens/sysnode-recovery-enrollment.png" target="_blank" rel="noreferrer" style={{ maxWidth: 400, margin: '0 auto' }}>
     <img src="/img/screens/sysnode-recovery-enrollment.png" alt="已关联 Sysnode 恢复提醒的账户正在等待初始链上检查" />
   </a>
-  <figcaption>仅关联账户还不够：此示例仍在检查链历史。请等待监控变为活动状态，并记住提醒可能延迟。</figcaption>
+  <figcaption>Sysnode 显示每个已关联账户的恢复和监控状态。此示例仍在检查链上历史记录。</figcaption>
 </figure>

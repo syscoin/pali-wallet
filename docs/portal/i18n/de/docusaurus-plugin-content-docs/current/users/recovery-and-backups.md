@@ -64,7 +64,11 @@ Existiert ein Smart Account on-chain, fehlt aber lokal, verwenden Sie die Wallet
 
 :::tip Aktuelle Anleitung zu Guardian-Recovery
 
-Die [vollständige Anleitung](./smart-account-validators#guardian-recovery-guide) beschreibt Einrichtung, Start, Abschluss und **Disable guardian recovery**. Neue Richtlinien bieten 3 oder 7 Tage Wartezeit; 10 Minuten sind nur für bekannte Testnetze vorgesehen. Bestätigtes Deaktivieren erfordert die aktuelle Freigabemethode und Gas, verwirft ausstehende Wiederherstellungen und entfernt diesen Wiederherstellungsweg, macht aber keine abgeschlossene Wiederherstellung rückgängig. Bei unklarem Transaktionsstatus zuerst On-Chain prüfen. Optionale Sysnode-E-Mail-Hinweise erfordern eine verifizierte E-Mail-Adresse und eine Wallet-Signatur; sie erhalten keine Schlüssel und sind keine Zustellgarantie.
+Die [vollständige Anleitung](./smart-account-validators#guardian-recovery-guide) beschreibt Einrichtung, Start, Abschluss und **Disable guardian recovery**. Neue Richtlinien bieten 3 oder 7 Tage Wartezeit; 10 Minuten sind nur für bekannte Testnetze vorgesehen. Bestätigtes Deaktivieren erfordert die aktuelle Freigabemethode und Gas, verwirft ausstehende Wiederherstellungen und entfernt diesen Wiederherstellungsweg, macht aber keine abgeschlossene Wiederherstellung rückgängig. Bei unklarem Transaktionsstatus zuerst On-Chain prüfen.
+
+Für optionale E-Mail-Hinweise durch den externen Dienst Sysnode melden Sie sich mit einer verifizierten E-Mail-Adresse bei [Sysnode-Konto → Wiederherstellungshinweise](https://sysnode.info/account#recovery-alerts) an, verbinden den bereitgestellten Smart Account und bestätigen die Wallet-Signatur. Ihre Signaturschlüssel bleiben in der Wallet. E-Mails können keine Wiederherstellung abbrechen.
+
+E-Mail-Hinweise können verspätet eintreffen oder ausbleiben. Sie können den Wiederherstellungsstatus direkt in Pali prüfen.
 
 :::
 
@@ -96,5 +100,5 @@ Diese Bildschirmfotos zeigen die englische Oberfläche und Beispielkonten. Bezei
   <a className="pali-media-link" href="/img/screens/sysnode-recovery-enrollment.png" target="_blank" rel="noreferrer" style={{ maxWidth: 400, margin: '0 auto' }}>
     <img src="/img/screens/sysnode-recovery-enrollment.png" alt="Mit Sysnode-Wiederherstellungshinweisen verknüpftes Konto wartet auf erste Blockchain-Prüfungen" />
   </a>
-  <figcaption>Das Verknüpfen allein reicht nicht: In diesem Beispiel wird der Blockchain-Verlauf noch geprüft. Warten Sie auf eine aktive Überwachung und beachten Sie, dass Hinweise verspätet eintreffen können.</figcaption>
+  <figcaption>Sysnode zeigt für jedes verknüpfte Konto den Wiederherstellungs- und Überwachungsstatus an. In diesem Beispiel wird der Blockchain-Verlauf noch geprüft.</figcaption>
 </figure>

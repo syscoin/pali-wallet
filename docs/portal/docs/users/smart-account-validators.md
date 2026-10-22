@@ -103,7 +103,7 @@ Act before the unwanted recovery is finalized. Disabling recovery cannot reverse
 
 ### Optional recovery email alerts
 
-The settings link opens **Sysnode Account → Recovery alerts**. Use a verified email address, connect this deployed smart account on a network supported by Sysnode, and approve the enrollment message with the account's current signing method. Check that monitoring is **active**. This is optional and separate from installing a guardian; Sysnode receives no private signing keys and cannot move funds or cancel recovery.
+The settings link opens **Sysnode Account → Recovery alerts**. Use a verified email address, connect this deployed smart account on a network supported by Sysnode, and approve the enrollment message with the account's current signing method. This is optional and separate from installing a guardian; Sysnode receives no private signing keys and cannot move funds or cancel recovery.
 
 Monitoring continues while Pali is closed, but depends on the service, its network RPC, and email delivery. Alerts can be delayed or fail, and recent chain observations can be reorganized. No email is not proof that no recovery was started. Treat an alert as a reason to inspect the exact account and network in your trusted wallet, not as an approval request. See [Recovery alerts and operational limits](../passkeys-institutions/security-and-operations#recovery-email-alerts).
 
