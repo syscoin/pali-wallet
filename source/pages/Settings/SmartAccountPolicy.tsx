@@ -2845,7 +2845,15 @@ const SmartAccountPolicy = () => {
       () => requestGuardianDisable(),
       guardianActionLoading,
       moduleActionKey === 'guardian-recovery:disable',
-      t('settings.smartAccountGuardianRecoveryDisable')
+      <>
+        <span
+          aria-hidden="true"
+          className="inline-flex shrink-0 text-brand-yellowInfo"
+        >
+          <Icon name="warning" size={14} />
+        </span>
+        <span>{t('settings.smartAccountGuardianRecoveryDisable')}</span>
+      </>
     )
   ) : null;
   const guardianDisableDialog = (

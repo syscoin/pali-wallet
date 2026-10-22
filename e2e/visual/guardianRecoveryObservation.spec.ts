@@ -43,6 +43,22 @@ async function reachable(page: Page, control: Locator) {
   expect(box!.y + box!.height).toBeLessThanOrEqual(viewport.height + 1);
 }
 
+async function disableCaution(control: Locator) {
+  await expect(control).toHaveAccessibleName(
+    en.settings.smartAccountGuardianRecoveryDisable
+  );
+  await expect(control).toHaveAttribute('type', 'button');
+  await expect(control).toHaveClass(/\bborder-brand-blue500\b/);
+  const cue = control.locator('span[aria-hidden="true"]');
+  await expect(cue).toHaveClass(/\btext-brand-yellowInfo\b/);
+  await expect(cue.locator('svg')).toBeVisible();
+  await expect(control.getByRole('img')).toHaveCount(0);
+  return cue.evaluate((element) => ({
+    color: getComputedStyle(element).color,
+    decorative: element.getAttribute('aria-hidden') === 'true',
+  }));
+}
+
 test('guardian recovery observes external requests without a local intent and fails closed on unavailable reads', async ({}, info) => {
   expect(process.env.PALI_TEST_DAPP_REVISION).toMatch(/^[a-f0-9]{40}$/);
   expect(path.isAbsolute(E2E_CONFIG.extensionPath)).toBe(true);
@@ -155,6 +171,34 @@ test('guardian recovery observes external requests without a local intent and fa
       }
     );
     await wallet.step(
+      'show a subtle Disable warning without changing the blue action or confirmation',
+      async (capture) => {
+        const disable = page.getByRole('button', {
+          name: en.settings.smartAccountGuardianRecoveryDisable,
+          exact: true,
+        });
+        await reachable(page, disable);
+        evidence.disableCaution400 = await disableCaution(disable);
+        await capture(page);
+        await disable.click();
+        const dialog = page.getByRole('dialog').filter({
+          hasText: en.settings.smartAccountGuardianRecoveryDisableConfirmTitle,
+        });
+        await expect(dialog).toBeVisible();
+        await expect(dialog).toContainText(fixture.base.smartAccountAddress);
+        await expect(dialog).toContainText('zkTanenbaum (57057)');
+        await expect(dialog).toContainText(
+          en.settings.smartAccountGuardianRecoveryInvalidatesPending
+        );
+        expect(fixture.audit.deniedWrites).toEqual([]);
+        await dialog
+          .getByRole('button', { name: en.buttons.cancel, exact: true })
+          .click();
+        await expect(dialog).toBeHidden();
+        expect(fixture.audit.deniedWrites).toEqual([]);
+      }
+    );
+    await wallet.step(
       'keep the error and owner intervention reachable at 320 pixels without claiming no recovery',
       async (capture) => {
         await page.setViewportSize({ width: 320, height: 420 });
@@ -189,7 +233,19 @@ test('guardian recovery observes external requests without a local intent and fa
           exact: true,
         });
         await reachable(page, disable);
-        await disable.click();
+        evidence.disableCaution320 = await disableCaution(disable);
+        await capture(page);
+        for (let index = 0; index < 32; index++) {
+          await page.keyboard.press('Tab');
+          if (
+            await disable.evaluate(
+              (element) => element === document.activeElement
+            )
+          )
+            break;
+        }
+        await expect(disable).toBeFocused();
+        await page.keyboard.press('Enter');
         const dialog = page.getByRole('dialog').filter({
           hasText: en.settings.smartAccountGuardianRecoveryDisableConfirmTitle,
         });
