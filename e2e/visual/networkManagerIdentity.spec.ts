@@ -90,11 +90,14 @@ const evmRead = (call: any): unknown | undefined => {
         ? []
         : undefined;
     case 'eth_getBlockByNumber':
-      return call.params.length === 2 && call.params[1] === false
+      return call.params.length === 2 &&
+        ['latest', '0x0', '0x1'].includes(call.params[0]) &&
+        typeof call.params[1] === 'boolean'
         ? {
-            number: '0x1',
-            hash: '0x' + '12'.repeat(32),
-            parentHash: '0x' + '11'.repeat(32),
+            number: call.params[0] === '0x0' ? '0x0' : '0x1',
+            hash: '0x' + (call.params[0] === '0x0' ? '11' : '12').repeat(32),
+            parentHash:
+              '0x' + (call.params[0] === '0x0' ? '00' : '11').repeat(32),
             nonce: '0x0000000000000000',
             timestamp: '0x1',
             difficulty: '0x0',
@@ -132,11 +135,14 @@ test('network manager distinguishes active UTXO and EVM registrations sharing an
   const server = await startUtxoFixtureServer({
     readJson: (url) => {
       if (url.origin !== origin) return undefined;
-      const result = sptFixtureRead(
-        fixture.utxo,
-        'https://blockbook-dev.syscoin.org' + url.pathname + url.search,
-        'GET'
-      );
+      const result =
+        url.pathname === '/api/v2/tickers/currency' && !url.search
+          ? { ts: 1, rates: { usd: 1 } }
+          : sptFixtureRead(
+              fixture.utxo,
+              'https://blockbook-dev.syscoin.org' + url.pathname + url.search,
+              'GET'
+            );
       if (result !== undefined)
         reads.push({ family: 'syscoin', method: 'GET', url: url.href });
       return result;
@@ -185,6 +191,7 @@ test('network manager distinguishes active UTXO and EVM registrations sharing an
       if (request.method() === 'GET') {
         if (
           url.pathname === '/' ||
+          (url.pathname === '/api/v2/tickers/currency' && !url.search) ||
           sptFixtureRead(
             fixture.utxo,
             'https://blockbook-dev.syscoin.org' + url.pathname + url.search,
