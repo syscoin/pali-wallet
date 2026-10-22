@@ -933,7 +933,7 @@ const EthSign: React.FC<ISign> = () => {
         }
 
         // Check for other potentially dangerous addresses in typed data
-        if (message) {
+        if (typedMessage) {
           // Check common fields that might contain addresses that receive funds/permissions
           const addressFields = [
             'to',
@@ -945,18 +945,18 @@ const EthSign: React.FC<ISign> = () => {
 
           for (const field of addressFields) {
             if (
-              message[field] &&
-              typeof message[field] === 'string' &&
-              message[field].startsWith('0x')
+              typedMessage[field] &&
+              typeof typedMessage[field] === 'string' &&
+              typedMessage[field].startsWith('0x')
             ) {
               const result = (await controllerEmitter(
                 ['wallet', 'checkAddressBlacklist'],
-                [message[field]]
+                [typedMessage[field]]
               )) as IBlacklistCheckResult;
               if (result.isBlacklisted) {
                 foundBlacklisted.push({
                   field,
-                  address: message[field],
+                  address: typedMessage[field],
                   reason: result.reason,
                   severity: result.severity,
                 });
@@ -969,7 +969,7 @@ const EthSign: React.FC<ISign> = () => {
                   showModal = true;
                   setBlacklistWarning({
                     show: true,
-                    address: message[field],
+                    address: typedMessage[field],
                     reason: result.reason,
                     severity: result.severity,
                     fieldName: field,

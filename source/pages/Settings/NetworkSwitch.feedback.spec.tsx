@@ -140,10 +140,7 @@ describe.each([
         INetworkType.Syscoin
       );
       expect(icons[1]).toHaveAttribute('data-chain-id', '5700');
-      expect(icons[1]).toHaveAttribute(
-        'data-network-kind',
-        label === 'Ethereum' ? INetworkType.Ethereum : INetworkType.Syscoin
-      );
+      expect(icons[1]).toHaveAttribute('data-network-kind', target.kind);
       for (const icon of icons)
         expect(icon).toHaveAttribute(
           'data-size',
