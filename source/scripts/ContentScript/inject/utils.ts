@@ -1,4 +1,4 @@
-import paliIcon from 'assets/all_assets/favicon-128.png?inline';
+import paliIcon from 'assets/all_assets/favicon-32.png?inline';
 
 export interface IEIP6963ProviderInfo {
   icon: string;

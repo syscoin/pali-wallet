@@ -13,9 +13,9 @@ const budget = {
   // Count every mandatory MV3 warm chunk below, including the optional feature.
   background: 4400000,
   contentScript: 16000,
-  // Serialized hydration and localized stale-context feedback measure
-  // 8,558,260 bytes. Keep a rounded ceiling with 740 bytes of platform buffer.
-  package: 8559000,
+  // Share the byte-identical favicon payload while retaining scoped history
+  // recovery. Keep the savings under a rounded, small-buffer ceiling.
+  package: 8551000,
 };
 const allFiles = (root) =>
   fs.readdirSync(root, { withFileTypes: true }).flatMap((entry) => {

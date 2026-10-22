@@ -19,9 +19,9 @@ import {
 
 const tabTo = async (page: Page, control: Locator) => {
   for (let index = 0; index < 30; index += 1) {
+    await page.keyboard.press('Tab');
     if (await control.evaluate((element) => element === document.activeElement))
       return;
-    await page.keyboard.press('Tab');
   }
   await expect(control).toBeFocused();
 };
@@ -225,9 +225,9 @@ test('UTXO Activity distinguishes pending and failed history from a verified emp
           await new Promise<void>((resolve) => releases.add(resolve));
         record.releasedAt = Date.now();
         if (mode === 'held-error' || mode === 'error') {
-          record.status = 503;
+          record.status = 500;
           return route.fulfill({
-            status: 503,
+            status: 500,
             contentType: 'application/json',
             headers: { 'access-control-allow-origin': '*' },
             body: JSON.stringify({ error: 'Synthetic history unavailable' }),
@@ -407,7 +407,7 @@ test('UTXO Activity distinguishes pending and failed history from a verified emp
         expect(
           historyReads
             .filter((read) => read.accountId === 1)
-            .every((read) => read.status === 503)
+            .every((read) => read.status === 500)
         ).toBe(true);
         for (const viewport of [
           { width: 400, height: 620 },
