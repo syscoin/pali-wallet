@@ -206,6 +206,7 @@ test('external transaction review exposes exact Data and Hex through keyboard ta
           (window as any).__reviewCopies = [];
           (window as any).__finishReviewCopies = [];
           (window as any).__lastClipboardRefusalAt = 0;
+          (window as any).__lastClipboardAcceptanceAt = 0;
           Object.defineProperty(navigator, 'clipboard', {
             configurable: true,
             value: {
@@ -214,7 +215,11 @@ test('external transaction review exposes exact Data and Hex through keyboard ta
                   (window as any).__reviewCopies.push(text);
                   (window as any).__finishReviewCopies.push(
                     (accepted: boolean) => {
-                      if (accepted) return resolve();
+                      if (accepted) {
+                        (window as any).__lastClipboardAcceptanceAt =
+                          Date.now();
+                        return resolve();
+                      }
                       (window as any).__lastClipboardRefusalAt = Date.now();
                       reject(
                         new DOMException(
@@ -288,8 +293,20 @@ test('external transaction review exposes exact Data and Hex through keyboard ta
     });
     const readCopies = () =>
       popup.evaluate(() => (window as any).__reviewCopies as string[]);
-    const finishCopy = (index: number, accepted: boolean) =>
-      popup.evaluate(
+    const finishCopy = async (index: number, accepted: boolean) => {
+      if (accepted) {
+        // Every accepted write, including a deliberately retired one, gets a
+        // fresh message window: dedup must neither hide a stale regression nor
+        // suppress the subsequent healthy current-copy acknowledgement.
+        await expect
+          .poll(() =>
+            popup.evaluate(
+              () => Date.now() - (window as any).__lastClipboardAcceptanceAt
+            )
+          )
+          .toBeGreaterThanOrEqual(2000);
+      }
+      return popup.evaluate(
         async ({ index, accepted }) => {
           (window as any).__finishReviewCopies[index](accepted);
           // Drain the native promise and the separately queued toast delivery.
@@ -300,6 +317,7 @@ test('external transaction review exposes exact Data and Hex through keyboard ta
         },
         { index, accepted }
       );
+    };
     const focusHexCopy = async (expectedData: string) => {
       await hex.click();
       await expect(hex).toBeFocused();
