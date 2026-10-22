@@ -263,9 +263,12 @@ test('manual ERC1155 import and Send MAX retain the exact verified quantity', as
           observedDetailsOwnedText = await owned.innerText();
           await expect(owned).toHaveAttribute('title', QUANTITY);
           await expect(owned).toHaveText('1.16e77 NFTs');
-          await page
+          const close = page
             .getByRole('button', { name: en.buttons.close, exact: true })
-            .click();
+            .filter({ hasText: en.buttons.close });
+          await expect(close).toHaveCount(1);
+          await expect(close).toHaveText(en.buttons.close);
+          await close.click();
           await expect(page).toHaveURL(/#\/tokens\/add(?:\?|$)/);
           await expect(page.locator('#custom-token-contract')).toHaveValue(
             CONTRACT
