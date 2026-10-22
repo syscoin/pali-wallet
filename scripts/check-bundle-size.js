@@ -13,11 +13,11 @@ const budget = {
   // Count every mandatory MV3 warm chunk below, including the optional feature.
   background: 4400000,
   contentScript: 16000,
-  // On-chain recovery observation and its nine localized status views add
-  // 22,400 bytes to the 8,558,031-byte baseline (8,580,431 total), including
-  // demand-driven batching and action freshness checks. Keep a rounded package
-  // ceiling; all mandatory startup budgets stay unchanged.
-  package: 8581000,
+  // The combined recovery/status and network-validation build adds 22,861
+  // bytes to the 8,558,031-byte baseline (8,580,892 locally). Allow a rounded
+  // package ceiling for this integrated build and platform variation; CI still
+  // measures its own shipped artifact. Mandatory startup budgets are unchanged.
+  package: 8582000,
 };
 const allFiles = (root) =>
   fs.readdirSync(root, { withFileTypes: true }).flatMap((entry) => {

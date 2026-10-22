@@ -1,5 +1,11 @@
 import { Form, Input } from 'antd';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
@@ -396,12 +402,19 @@ const SmartAccountPolicy = () => {
     snapshot: GuardianRecoveryStatus;
     error: boolean;
   }>({ scope: guardianObservationScope, snapshot: null, error: false });
-  const setGuardianStatus = (snapshot: GuardianRecoveryStatus) =>
-    setGuardianRead({
-      scope: guardianObservationScope,
-      snapshot,
-      error: false,
-    });
+  const setGuardianStatus = useCallback(
+    (snapshot: GuardianRecoveryStatus, unavailable = false) =>
+      setGuardianRead((previous) => ({
+        scope: guardianObservationScope,
+        snapshot: unavailable
+          ? previous.scope === guardianObservationScope
+            ? previous.snapshot
+            : null
+          : snapshot,
+        error: unavailable,
+      })),
+    [guardianObservationScope]
+  );
   const [guardianStatusLoading, setGuardianStatusLoading] = useState(false);
   const [guardianStatusRefresh, setGuardianStatusRefresh] = useState(0);
   const [
@@ -578,6 +591,15 @@ const SmartAccountPolicy = () => {
   const smartAccountAddress = account?.address
     ? getAddress(account.address)
     : '';
+  const readGuardianStatus = useCallback(
+    (params: { knownOperationId?: string } = {}) =>
+      controllerEmitter(
+        ['wallet', 'getSmartAccountGuardianRecoveryStatus'],
+        [{ account: smartAccountAddress, ...params }],
+        30000
+      ) as Promise<GuardianRecoveryObservation>,
+    [controllerEmitter, smartAccountAddress]
+  );
   const displayedGuardianAddress =
     guardianStatus?.guardians?.[0] ||
     installedGuardianRecovery?.config.guardians?.[0] ||
@@ -1062,29 +1084,15 @@ const SmartAccountPolicy = () => {
       running = true;
       setGuardianStatusLoading(true);
       try {
-        const status = await controllerEmitter(
-          ['wallet', 'getSmartAccountGuardianRecoveryStatus'],
-          [
-            {
-              account: smartAccountAddress,
-              knownOperationId: localRecoveryOperationId,
-            },
-          ],
-          30000
-        );
+        const status = await readGuardianStatus({
+          knownOperationId: localRecoveryOperationId,
+        });
         if (!cancelled && isCurrentUi()) {
           setGuardianStatus(status as GuardianRecoveryStatus);
         }
       } catch {
         if (!cancelled && isCurrentUi()) {
-          setGuardianRead((previous) => ({
-            scope: guardianObservationScope,
-            snapshot:
-              previous.scope === guardianObservationScope
-                ? previous.snapshot
-                : null,
-            error: true,
-          }));
+          setGuardianStatus(null, true);
         }
       } finally {
         running = false;
@@ -1105,6 +1113,8 @@ const SmartAccountPolicy = () => {
     account?.isSmartAccount,
     controllerReady,
     controllerEmitter,
+    readGuardianStatus,
+    setGuardianStatus,
     hasGuardianRecovery,
     guardianStatusRefresh,
     localRecoveryOperationId,
@@ -2319,11 +2329,7 @@ const SmartAccountPolicy = () => {
     try {
       // A displayed observation is informational, not authorization. Re-read
       // before creating a replacement key or asking any signer to approve it.
-      const current = (await controllerEmitter(
-        ['wallet', 'getSmartAccountGuardianRecoveryStatus'],
-        [{ account: smartAccountAddress }],
-        30000
-      )) as GuardianRecoveryObservation;
+      const current = await readGuardianStatus();
       if (!isCurrentUi()) return;
       const configuredModule = getConfiguredAuthenticatorAddress(
         activeNetwork.chainId,
@@ -2597,14 +2603,7 @@ const SmartAccountPolicy = () => {
     } catch (error: any) {
       if (!isCurrentUi()) return;
       if (!hasFreshObservation) {
-        setGuardianRead((previous) => ({
-          scope: guardianObservationScope,
-          snapshot:
-            previous.scope === guardianObservationScope
-              ? previous.snapshot
-              : null,
-          error: true,
-        }));
+        setGuardianStatus(null, true);
       }
       const wasHandled = handleWalletLockedError(error);
       if (!wasHandled) {
@@ -2641,11 +2640,9 @@ const SmartAccountPolicy = () => {
     try {
       const recoveryOperation = activeGuardianReplacement.recoveryOperation;
       const operationId = getGuardianRecoveryOperationId(recoveryOperation);
-      const current = (await controllerEmitter(
-        ['wallet', 'getSmartAccountGuardianRecoveryStatus'],
-        [{ account: smartAccountAddress, knownOperationId: operationId }],
-        30000
-      )) as GuardianRecoveryObservation;
+      const current = await readGuardianStatus({
+        knownOperationId: operationId,
+      });
       if (!isCurrentUi()) return;
       setGuardianStatus(current);
       if (
