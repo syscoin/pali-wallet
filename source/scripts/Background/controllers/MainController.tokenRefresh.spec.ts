@@ -212,8 +212,8 @@ it('refreshes every account copy when the active imported address also exists as
   await jest.advanceTimersByTimeAsync(100);
   expect(state.vault.accountAssets[imported][0].ethereum[0].balance).toBe(9);
   expect(state.vault.accountAssets[type][0].ethereum[0].balance).toBe(9);
-  expect(state.vault.accounts[imported][0].nativeBalance).toBe(1);
-  expect(state.vault.accounts[type][0].nativeBalance).toBe(1);
+  expect(state.vault.accounts[imported][0].nativeBalance).toBe('1.0');
+  expect(state.vault.accounts[type][0].nativeBalance).toBe('1.0');
   expect(balanceOf).toHaveBeenCalledTimes(2);
   expect(provider.getBalance).toHaveBeenCalledTimes(2);
 });
@@ -1058,7 +1058,7 @@ it('allows a later-started regular native read to finish after a receipt read', 
   });
   receiptDone(BigInt('1000000000000000000'));
   await jest.advanceTimersByTimeAsync(0);
-  expect(state.vault.accounts[type][0].nativeBalance).toBe(1);
+  expect(state.vault.accounts[type][0].nativeBalance).toBe('1.0');
   regularDone(2);
   await regular;
   expect(state.vault.accounts[type][0].nativeBalance).toBe(2);
@@ -1389,7 +1389,7 @@ it('does not discard a regular native read when another account receipt starts',
   expect(state.vault.accounts[type][0].nativeBalance).toBe(2);
   targetDone(BigInt('1000000000000000000'));
   await jest.advanceTimersByTimeAsync(0);
-  expect(state.vault.accounts[type][1].nativeBalance).toBe(1);
+  expect(state.vault.accounts[type][1].nativeBalance).toBe('1.0');
 });
 
 it('protects a newer same-account native receipt from an earlier normal read', async () => {
@@ -1421,7 +1421,7 @@ it('protects a newer same-account native receipt from an earlier normal read', a
   expect(state.vault.accounts[type][0].nativeBalance).toBeUndefined();
   targetDone(BigInt('1000000000000000000'));
   await jest.advanceTimersByTimeAsync(0);
-  expect(state.vault.accounts[type][0].nativeBalance).toBe(1);
+  expect(state.vault.accounts[type][0].nativeBalance).toBe('1.0');
 });
 
 it('updates every token across repeated normal polls larger than the marker bound', async () => {

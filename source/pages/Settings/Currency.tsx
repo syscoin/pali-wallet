@@ -366,11 +366,14 @@ const CurrencyView = () => {
             </span>
             {activeNetwork.chainId === 5700 ? (
               <div className="flex flex-col items-start min-w-0 w-full">
-                <div className="flex gap-x-1 items-baseline min-w-0 w-full">
-                  <p className="font-poppins text-2xl font-medium text-white truncate">
+                <div className="flex flex-wrap gap-x-1 items-baseline min-w-0 w-full">
+                  <p className="font-poppins text-2xl font-medium text-white truncate max-w-full">
                     {formatNumber(Number(actualBalance) || 0)}
                   </p>
-                  <p className="font-poppins text-sm text-brand-gray300">
+                  <p
+                    className="font-poppins text-sm text-brand-gray300 min-w-0 max-w-full break-all text-left"
+                    title={activeNetwork.currency?.toUpperCase() || ''}
+                  >
                     {activeNetwork.currency
                       ? activeNetwork.currency.toUpperCase()
                       : ''}
@@ -382,11 +385,14 @@ const CurrencyView = () => {
               </div>
             ) : (
               <div className="flex flex-col items-start min-w-0 w-full">
-                <div className="flex gap-x-1 items-baseline min-w-0 w-full">
-                  <p className="font-poppins text-2xl font-medium text-white truncate">
+                <div className="flex flex-wrap gap-x-1 items-baseline min-w-0 w-full">
+                  <p className="font-poppins text-2xl font-medium text-white truncate max-w-full">
                     {formatNumber(actualBalance || 0)}
                   </p>
-                  <p className="font-poppins text-sm text-brand-gray300">
+                  <p
+                    className="font-poppins text-sm text-brand-gray300 min-w-0 max-w-full break-all text-left"
+                    title={activeNetwork.currency?.toUpperCase() || ''}
+                  >
                     {activeNetwork.currency
                       ? activeNetwork.currency.toUpperCase()
                       : ''}

@@ -61,10 +61,20 @@ const scenarios = [
 async function installNativeRpc(
   context: BrowserContext,
   sender: string,
-  recipient: string
+  recipient: string,
+  options: {
+    baseFeeWei?: string;
+    feeWei?: string;
+    initialBalanceWei?: string;
+  } = {}
 ) {
   let phase = 'onboarding';
-  let balanceWei = INITIAL_WEI;
+  const initialBalanceWei = options.initialBalanceWei ?? INITIAL_WEI;
+  const feeQuantity =
+    '0x' + BigInt(options.feeWei ?? '1000000000').toString(16);
+  const baseFeeQuantity =
+    '0x' + BigInt(options.baseFeeWei ?? '1000000000').toString(16);
+  let balanceWei = initialBalanceWei;
   const reads: { method: string; phase: string }[] = [];
   const balanceReads: {
     address: string;
@@ -98,7 +108,7 @@ async function installNativeRpc(
     miner: '0x' + '00'.repeat(20),
     extraData: '0x',
     transactions: [],
-    baseFeePerGas: '0x3b9aca00',
+    baseFeePerGas: baseFeeQuantity,
   };
   const genesis = {
     ...block,
@@ -119,7 +129,7 @@ async function installNativeRpc(
         return '0x1';
       case 'eth_gasPrice':
       case 'eth_maxPriorityFeePerGas':
-        return '0x3b9aca00';
+        return feeQuantity;
       case 'eth_getBalance': {
         if (!accounts.has(lower(params[0]))) break;
         const value = lower(params[0]) === lower(sender) ? balanceWei : '0';
@@ -159,9 +169,9 @@ async function installNativeRpc(
       case 'eth_feeHistory':
         return {
           oldestBlock: '0x1',
-          baseFeePerGas: ['0x3b9aca00', '0x3b9aca00'],
+          baseFeePerGas: [baseFeeQuantity, baseFeeQuantity],
           gasUsedRatio: [0.5],
-          reward: [['0x3b9aca00']],
+          reward: [[feeQuantity]],
         };
       case 'eth_estimateGas': {
         const tx = params[0];
@@ -171,7 +181,7 @@ async function installNativeRpc(
           (!tx.from || lower(tx.from) === lower(sender)) &&
           (!tx.data || tx.data === '0x') &&
           /^(?:0x[0-9a-f]+|[0-9]+)$/i.test(String(tx.value ?? '0x0')) &&
-          BigInt(tx.value ?? '0x0') <= BigInt(INITIAL_WEI)
+          BigInt(tx.value ?? '0x0') <= BigInt(initialBalanceWei)
         )
           return '0x5208';
         break;
@@ -556,6 +566,184 @@ test('native MAX revalidates a live balance change without rewriting the reviewe
         )
       );
       await info.attach('native-max-balance-evidence', {
+        path: evidence,
+        contentType: 'application/json',
+      });
+    } finally {
+      try {
+        await wallet?.dispose(status);
+      } finally {
+        try {
+          await server.close();
+        } finally {
+          Object.assign(E2E_CONFIG, previous);
+        }
+      }
+    }
+  }
+});
+
+// This is an ordinary balance-RPC consumer check. The native controller tests
+// separately prove that receipt refreshes publish this same exact decimal text.
+test('native MAX preserves a small exact decimal balance through unsigned review', async ({}, info) => {
+  expect(process.env.PALI_TEST_DAPP_REVISION).toMatch(/^[a-f0-9]{40}$/);
+  expect(path.isAbsolute(process.env.PALI_TEST_DAPP_EXTENSION_PATH || '')).toBe(
+    true
+  );
+  expect(E2E_CONFIG.extensionPath).toBe(
+    process.env.PALI_TEST_DAPP_EXTENSION_PATH
+  );
+  const previous = { ...E2E_CONFIG };
+  const runtime = extensionEvidence();
+  expect(runtime.version).toBe(packageJson.version);
+  const fixture = createIsolatedVaultFixture();
+  const server = await startUtxoFixtureServer();
+  const initialBalanceWei = '100000000000';
+  const exactAmount = '0.0000001';
+  Object.assign(E2E_CONFIG, {
+    seedPhrase: UTXO_FIXTURE_SEED,
+    password: 'NativeMaxSmallBalanceSyntheticOnly!2026',
+    chainId: CHAIN,
+    networkLabel: 'Syscoin NEVM Testnet',
+    rpcUrl: server.url,
+  });
+  let wallet: PaliWallet | undefined;
+  let routes:
+    | Awaited<ReturnType<typeof installIsolatedVaultRoutes>>
+    | undefined;
+  let rpc: Awaited<ReturnType<typeof installNativeRpc>> | undefined;
+  let status: 'passed' | 'failed' = 'failed';
+  let before: Awaited<ReturnType<typeof publicNativeState>> | undefined;
+  let tx: Record<string, unknown> | undefined;
+  try {
+    wallet = await PaliWallet.launch('native-max-small-balance', {
+      offlineHttpProxy: server.url,
+      viewport: { width: 400, height: 620 },
+    });
+    routes = await installIsolatedVaultRoutes(
+      wallet.context,
+      fixture,
+      server.url
+    );
+    rpc = await installNativeRpc(
+      wallet.context,
+      fixture.evmAddresses[0],
+      fixture.evmAddresses[1],
+      { initialBalanceWei, feeWei: '1', baseFeeWei: '0' }
+    );
+    const page = wallet.page;
+    await wallet.step('native-max-small-balance-open-and-review', async () => {
+      await wallet!.importSeedAndCreatePassword();
+      await wallet!.switchNetwork('Syscoin NEVM Testnet', 'EVM');
+      await expect
+        .poll(async () => {
+          const state = await publicNativeState(page);
+          return !state.loading && state.balance;
+        })
+        .toBe(exactAmount);
+      before = await publicNativeState(page);
+      expect(before).toMatchObject({
+        address: fixture.evmAddresses[0],
+        chainId: CHAIN,
+        rpcUrl: RPC,
+      });
+      await page.locator('#send-btn').click();
+      await expect(page).toHaveURL(/#\/send\/eth$/);
+      await page
+        .getByPlaceholder(en.send.receiver, { exact: true })
+        .fill(fixture.evmAddresses[1]);
+      await expect(page.locator('#send-eth-next-btn')).toBeEnabled();
+      await page.getByRole('button', { name: 'MAX', exact: true }).click();
+      await expect(
+        page.getByPlaceholder(en.send.amount, { exact: true })
+      ).toHaveValue(exactAmount);
+      await page.locator('#send-eth-next-btn').click();
+      await expect(page).toHaveURL(/#\/send\/confirm$/);
+      tx = await page.evaluate(() => {
+        const value = history.state?.usr?.tx;
+        return {
+          amount: value?.amount,
+          isMax: value?.isMax,
+          sender: value?.sender,
+          receivingAddress: value?.receivingAddress,
+          transactionType: value?.transactionType,
+        };
+      });
+      expect(tx).toMatchObject({
+        amount: exactAmount,
+        isMax: true,
+        sender: fixture.evmAddresses[0],
+        receivingAddress: fixture.evmAddresses[1],
+        transactionType: 'NATIVE_ETH',
+      });
+      await expect(
+        page.getByRole('button', { name: en.buttons.confirm, exact: true })
+      ).toBeEnabled();
+      // Never confirm: the real SDK fee/preview path is exercised without signing.
+      await page
+        .getByRole('button', { name: en.buttons.cancel, exact: true })
+        .click();
+      await expect(page).toHaveURL(/#\/send\/eth$/);
+    });
+    await wallet.step('native-max-small-balance-read-only-audit', async () => {
+      expect(
+        rpc!.balanceReads.some(
+          (entry) =>
+            entry.address === fixture.evmAddresses[0].toLowerCase() &&
+            entry.balanceWei === initialBalanceWei
+        )
+      ).toBe(true);
+      expect(
+        rpc!.reads.some((entry) => entry.method === 'eth_maxPriorityFeePerGas')
+      ).toBe(true);
+      expect(
+        rpc!.reads.some((entry) => entry.method === 'eth_estimateGas')
+      ).toBe(true);
+      expect(rpc!.deniedWrites).toEqual([]);
+      expect(rpc!.deniedUnknown).toEqual([]);
+      expect(routes!.deniedWrites).toEqual([]);
+    });
+    status = 'passed';
+  } finally {
+    try {
+      const evidence = info.outputPath(
+        'native-max-small-balance-evidence.json'
+      );
+      fs.writeFileSync(
+        evidence,
+        JSON.stringify(
+          {
+            runtime,
+            testSourceSha256: createHash('sha256')
+              .update(fs.readFileSync(info.file))
+              .digest('hex'),
+            syntheticPublicRpcOnly: true,
+            balanceSource: 'ordinary eth_getBalance; not a receipt injection',
+            feeFixture: {
+              gasPriceWei: '1',
+              priorityFeeWei: '1',
+              baseFeeWei: '0',
+            },
+            controllerStateReplaced: false,
+            controllerResultsReplaced: false,
+            transactionConfirmClicked: false,
+            before,
+            tx,
+            unsignedReviewOnly: true,
+            reads: rpc?.reads || [],
+            balanceReads: rpc?.balanceReads || [],
+            deniedUnknown: rpc?.deniedUnknown || [],
+            deniedWrites: [
+              ...(rpc?.deniedWrites || []),
+              ...(routes?.deniedWrites || []),
+            ],
+            proxyDeniedConnections: server.blocked.length,
+          },
+          null,
+          2
+        )
+      );
+      await info.attach('native-max-small-balance-evidence', {
         path: evidence,
         contentType: 'application/json',
       });
