@@ -304,7 +304,6 @@ it.each([
     await user.click(
       within(screen.getByRole('group', { name: group })).getByRole('menuitem', {
         name: target.label,
-        exact: true,
       })
     );
     await waitFor(() =>
