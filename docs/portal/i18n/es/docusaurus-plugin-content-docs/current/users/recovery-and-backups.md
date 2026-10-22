@@ -64,7 +64,11 @@ Si una cuenta inteligente existe on-chain pero no aparece localmente, usa el flu
 
 :::tip Guía actual de recuperación con guardianes
 
-La [guía completa](./smart-account-validators#guardian-recovery-guide) explica la configuración, el inicio, la finalización y **Disable guardian recovery**. Las políticas nuevas ofrecen esperas de 3 o 7 días; 10 minutos se limita a testnets conocidas. La desactivación confirmada requiere el método de aprobación actual y gas, invalida las recuperaciones pendientes y elimina esa vía de recuperación, pero no revierte una recuperación ya finalizada. Si una transacción es incierta, comprueba primero su estado on-chain. Las alertas opcionales de Sysnode requieren un correo verificado y una firma de la wallet; no reciben claves ni garantizan la entrega.
+La [guía completa](./smart-account-validators#guardian-recovery-guide) explica la configuración, el inicio, la finalización y **Disable guardian recovery**. Las políticas nuevas ofrecen esperas de 3 o 7 días; 10 minutos se limita a testnets conocidas. La desactivación confirmada requiere el método de aprobación actual y gas, invalida las recuperaciones pendientes y elimina esa vía de recuperación, pero no revierte una recuperación ya finalizada. Si una transacción es incierta, comprueba primero su estado on-chain.
+
+Para recibir alertas opcionales por correo del servicio externo Sysnode, inicia sesión en [Cuenta de Sysnode → Alertas de recuperación](https://sysnode.info/account#recovery-alerts) con un correo verificado, conecta la cuenta inteligente desplegada y aprueba la firma en la wallet. Las claves de firma permanecen en tu wallet. El correo no puede cancelar una recuperación.
+
+Las alertas por correo pueden llegar tarde o no llegar. Puedes consultar el estado de la recuperación directamente en Pali.
 
 :::
 
@@ -96,5 +100,5 @@ Estas capturas muestran la interfaz en inglés y cuentas de ejemplo. Las etiquet
   <a className="pali-media-link" href="/img/screens/sysnode-recovery-enrollment.png" target="_blank" rel="noreferrer" style={{ maxWidth: 400, margin: '0 auto' }}>
     <img src="/img/screens/sysnode-recovery-enrollment.png" alt="Cuenta vinculada a alertas de recuperación de Sysnode esperando las comprobaciones iniciales de la cadena" />
   </a>
-  <figcaption>Vincular una cuenta no basta: este ejemplo todavía está comprobando el historial de la cadena. Espera a que la supervisión esté activa y recuerda que las alertas pueden retrasarse.</figcaption>
+  <figcaption>Sysnode muestra el estado de recuperación y supervisión de cada cuenta vinculada. En este ejemplo todavía se está comprobando el historial de la cadena.</figcaption>
 </figure>

@@ -64,7 +64,11 @@ Se uma conta inteligente existe on-chain, mas está ausente localmente, use o fl
 
 :::tip Guia atual de recuperação com guardiões
 
-O [guia completo](./smart-account-validators#guardian-recovery-guide) explica configuração, início, conclusão e **Disable guardian recovery**. Novas políticas oferecem espera de 3 ou 7 dias; 10 minutos é restrito a testnets conhecidas. A desativação confirmada exige o método de aprovação atual e gas, invalida recuperações pendentes e remove essa via de recuperação, mas não desfaz uma recuperação concluída. Se uma transação for incerta, confira primeiro o estado on-chain. Alertas opcionais do Sysnode exigem e-mail verificado e assinatura da carteira; não recebem chaves nem garantem a entrega.
+O [guia completo](./smart-account-validators#guardian-recovery-guide) explica configuração, início, conclusão e **Disable guardian recovery**. Novas políticas oferecem espera de 3 ou 7 dias; 10 minutos é restrito a testnets conhecidas. A desativação confirmada exige o método de aprovação atual e gas, invalida recuperações pendentes e remove essa via de recuperação, mas não desfaz uma recuperação concluída. Se uma transação for incerta, confira primeiro o estado on-chain.
+
+Para usar o monitoramento opcional por e-mail do serviço externo Sysnode, entre em [Conta Sysnode → Alertas de recuperação](https://sysnode.info/account#recovery-alerts) com um e-mail verificado, conecte a conta inteligente implantada e aprove a assinatura na carteira. As chaves de assinatura permanecem na sua carteira. O e-mail não pode cancelar uma recuperação.
+
+Os alertas por e-mail podem atrasar ou não ser entregues. Você pode conferir o estado da recuperação diretamente no Pali.
 
 :::
 
@@ -96,5 +100,5 @@ Estas capturas mostram a interface em inglês e contas de exemplo. Os rótulos e
   <a className="pali-media-link" href="/img/screens/sysnode-recovery-enrollment.png" target="_blank" rel="noreferrer" style={{ maxWidth: 400, margin: '0 auto' }}>
     <img src="/img/screens/sysnode-recovery-enrollment.png" alt="Conta vinculada aos alertas de recuperação do Sysnode aguardando as verificações iniciais da rede" />
   </a>
-  <figcaption>Vincular uma conta não basta: este exemplo ainda está verificando o histórico da rede. Aguarde o monitoramento ativo e lembre-se de que os alertas podem atrasar.</figcaption>
+  <figcaption>O Sysnode mostra o estado de recuperação e de monitoramento de cada conta vinculada. Neste exemplo, o histórico da rede ainda está sendo verificado.</figcaption>
 </figure>
