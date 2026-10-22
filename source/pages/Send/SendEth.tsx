@@ -53,6 +53,9 @@ import {
   useSendPreparationGuard,
 } from './useSendDraftWriter';
 
+const ASSET_OPTION_CLASS_SUFFIX =
+  'w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300';
+
 const renderVerificationSpinner = (className: string) => (
   <svg
     className={className}
@@ -1469,7 +1472,10 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                         <button
                           type="button"
                           onClick={() => handleSelectedAsset('-1')}
-                          className="group flex items-center justify-between p-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
+                          className={
+                            'group flex items-center justify-between p-2 ' +
+                            ASSET_OPTION_CLASS_SUFFIX
+                          }
                         >
                           <div className="flex flex-col items-start flex-1 overflow-hidden">
                             <p className="truncate max-w-[100px]">
@@ -1493,7 +1499,10 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                                   <button
                                     type="button"
                                     onClick={() => handleSelectedAsset(item.id)}
-                                    className="group flex items-center justify-between px-2 py-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
+                                    className={
+                                      'group flex items-center justify-between px-2 py-2 ' +
+                                      ASSET_OPTION_CLASS_SUFFIX
+                                    }
                                   >
                                     <div className="flex flex-col items-start flex-1 overflow-hidden">
                                       <p className="truncate max-w-[100px]">
@@ -1963,7 +1972,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
             </div>
           )}
 
-        <ToastActionFooter className="fixed bottom-4 left-4 right-4 md:relative md:bottom-auto md:left-auto md:right-auto md:mt-3 md:w-[96%]">
+        <ToastActionFooter className="fixed z-10 bottom-4 left-4 right-4 md:relative md:bottom-auto md:left-auto md:right-auto md:mt-3 md:w-[96%]">
           <Button
             id="send-eth-next-btn"
             variant="neutral"
