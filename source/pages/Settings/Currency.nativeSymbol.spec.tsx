@@ -30,6 +30,7 @@ import { restoreVaultSnapshot } from 'state/vault';
 import vaultCache from 'state/vaultCache';
 import * as actions from 'state/vaultGlobal';
 import { INetworkType } from 'types/network';
+import { formatNumber } from 'utils/format';
 
 let mockWallet: any;
 const mockEmitter = jest.fn();
@@ -507,6 +508,35 @@ it('keeps the custom symbol on a newly registered non-5700 EVM network', async (
   ).toBeVisible();
   expect(within(balanceCard()).queryByText('TSYS', { exact: true })).toBeNull();
 });
+
+it.each([5700, 31337])(
+  'retains the complete 32-letter native unit and amount after normal registration on chain %i',
+  async (chainId) => {
+    const symbol = 'ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEF';
+    await saveAndActivateSymbol(chainId, symbol);
+    renderPage(<Currency />, '/settings/currency');
+
+    const card = balanceCard();
+    const nativeUnit = within(card).getByText(symbol, { exact: true });
+    expect(nativeUnit).toBeVisible();
+    expect(nativeUnit).toHaveAttribute('title', symbol);
+    const { accounts, activeAccount, isBitcoinBased } = store.getState().vault;
+    const { balances } = accounts[activeAccount.type][activeAccount.id];
+    const balance = isBitcoinBased ? balances.syscoin : balances.ethereum;
+    expect(nativeUnit.previousElementSibling?.textContent).toBe(
+      formatNumber(Number(balance) || 0)
+    );
+    expect(card).toHaveTextContent('USD');
+    expect(card).not.toHaveTextContent('NaN');
+    expect(store.getState().vault.activeNetwork.currency).toBe(
+      symbol.toLowerCase()
+    );
+
+    // Native DOM assertions preserve the full unit/amount and exact title.
+    // Actual 320px overflow and wrapping are qualified in the browser; jsdom
+    // does not establish CSS geometry or that the amount remains on-screen.
+  }
+);
 
 it('does not change the saved fiat units when the native symbol is customized', async () => {
   await saveAndActivateSymbol(5700, 'XPAY');
