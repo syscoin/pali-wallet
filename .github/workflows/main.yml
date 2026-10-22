@@ -86,7 +86,7 @@ jobs:
         run: |
           . /etc/os-release
           echo "platform=${ID}-${VERSION_ID}-$(dpkg --print-architecture)" >> "$GITHUB_OUTPUT"
-          # No restore prefix: a new week/dependency/image starts a fresh archive set.
+          # No restore-keys fallback across week/dependency/image boundaries.
           echo "week=$(date -u +%G-%V)" >> "$GITHUB_OUTPUT"
           echo "image=${ImageVersion}" >> "$GITHUB_OUTPUT"
       - name: Restore Playwright OS package downloads
@@ -96,11 +96,12 @@ jobs:
           path: ${{ runner.temp }}/pali-playwright-apt/*.deb
           key: playwright-apt-v1-${{ steps.apt-cache-key.outputs.platform }}-${{ steps.apt-cache-key.outputs.image }}-${{ steps.playwright-version.outputs.version }}-${{ hashFiles('yarn.lock', 'package.json', '.github/workflows/main.yml') }}-${{ steps.apt-cache-key.outputs.week }}
       - name: Verify restored archives against fresh apt metadata
-        if: steps.apt-cache.outputs.cache-hit == 'true'
         run: |
-          sudo apt-get update -o APT::Update::Error-Mode=any
           shopt -s nullglob
-          for archive in "${RUNNER_TEMP}/pali-playwright-apt/"*.deb; do
+          archives=("${RUNNER_TEMP}/pali-playwright-apt/"*.deb)
+          if [ "${#archives[@]}" -eq 0 ]; then exit 0; fi
+          sudo apt-get update -o APT::Update::Error-Mode=any
+          for archive in "${archives[@]}"; do
             # apt may trust a pre-existing archive's size; require its SHA256
             # from signed repository metadata before allowing cached reuse.
             if [ -f "$archive" ] && [ ! -L "$archive" ] &&
