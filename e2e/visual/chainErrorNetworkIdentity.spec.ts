@@ -183,6 +183,14 @@ test('a same-ID cross-family storage failure shows both networks and a healthy r
           activeSlip44: 1,
           status: 'error',
         });
+        const errorDialog = page
+          .getByRole('dialog')
+          .filter({ hasText: FAILURE });
+        await expect(errorDialog).toBeVisible();
+        await errorDialog
+          .getByRole('button', { name: en.buttons.ok, exact: true })
+          .click();
+        await expect(errorDialog).toBeHidden();
         await page
           .locator('div.rounded-full.bg-red-600.cursor-pointer')
           .click();
