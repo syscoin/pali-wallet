@@ -89,6 +89,9 @@ it('copies the exact displayed calldata with the ordinary mouse control', async 
   render(contents());
   expect(copyButton()).toHaveAttribute('type', 'button');
   expect(copyButton()).toHaveTextContent(DATA_A);
+  expect(copyButton()).toHaveStyle({
+    scrollMarginBottom: 'var(--pali-toast-footer-clearance)',
+  });
   clickCopy();
   await flush();
   expect(mockWrite).toHaveBeenCalledTimes(1);
