@@ -205,6 +205,7 @@ test('external transaction review exposes exact Data and Hex through keyboard ta
         await popup.evaluate(() => {
           (window as any).__reviewCopies = [];
           (window as any).__finishReviewCopies = [];
+          (window as any).__lastClipboardRefusalAt = 0;
           Object.defineProperty(navigator, 'clipboard', {
             configurable: true,
             value: {
@@ -212,15 +213,16 @@ test('external transaction review exposes exact Data and Hex through keyboard ta
                 new Promise<void>((resolve, reject) => {
                   (window as any).__reviewCopies.push(text);
                   (window as any).__finishReviewCopies.push(
-                    (accepted: boolean) =>
-                      accepted
-                        ? resolve()
-                        : reject(
-                            new DOMException(
-                              'Synthetic clipboard refusal',
-                              'NotAllowedError'
-                            )
-                          )
+                    (accepted: boolean) => {
+                      if (accepted) return resolve();
+                      (window as any).__lastClipboardRefusalAt = Date.now();
+                      reject(
+                        new DOMException(
+                          'Synthetic clipboard refusal',
+                          'NotAllowedError'
+                        )
+                      );
+                    }
                   );
                 }),
             },
@@ -356,6 +358,15 @@ test('external transaction review exposes exact Data and Hex through keyboard ta
           await expect.poll(readCopies).toHaveLength(index + 1);
           expect((await readCopies())[index]).toBe(reviewedData);
           await expect(copiedNotice).toHaveCount(0);
+          // Address and Hex refusals share the real 2-second message dedup.
+          // A replaced/hidden notice does not prove that cooldown has elapsed.
+          await expect
+            .poll(() =>
+              popup.evaluate(
+                () => Date.now() - (window as any).__lastClipboardRefusalAt
+              )
+            )
+            .toBeGreaterThanOrEqual(2000);
           await finishCopy(index, false);
           await expect(refusedNotice).toBeVisible();
           await expect(copiedNotice).toHaveCount(0);
