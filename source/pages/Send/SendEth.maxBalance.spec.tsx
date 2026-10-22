@@ -233,6 +233,23 @@ const mountMax = async () => {
 };
 
 describe('native MAX classification after balance changes', () => {
+  it('preserves a small decimal receipt balance through affordable native MAX', async () => {
+    // Receipt refresh, like the ordinary balance reader, publishes decimal text.
+    changeBalance('0.0000001');
+    setFeeReader(() =>
+      Promise.resolve({ maxFeePerGas: '1', maxPriorityFeePerGas: '1' })
+    );
+    await mountMax();
+    expect(
+      (screen.getByPlaceholderText('send.amount') as HTMLInputElement).value
+    ).toBe('0.0000001');
+    expect(await submitPreview()).toMatchObject({
+      amount: '0.0000001',
+      isMax: true,
+      receivingAddress: RECIPIENT,
+    });
+  });
+
   it.each([
     ['equal', '10'],
     ['one wei', '10.000000000000000001'],

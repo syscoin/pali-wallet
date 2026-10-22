@@ -38,7 +38,7 @@ const CreateAccount = () => {
     try {
       const { address: newAddress } = (await controllerEmitter(
         ['wallet', 'createAccount'],
-        [label]
+        [label?.trim() ? label : undefined]
       )) as any;
 
       setAddress(newAddress);
@@ -72,7 +72,7 @@ const CreateAccount = () => {
     try {
       const account = (await controllerEmitter(
         ['wallet', 'createSmartAccount'],
-        [{ label: accountName || undefined }],
+        [{ label: accountName.trim() ? accountName : undefined }],
         300000
       )) as any;
 

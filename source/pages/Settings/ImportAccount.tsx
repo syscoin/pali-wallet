@@ -92,15 +92,17 @@ const ImportAccountView = () => {
     try {
       const values = await form.validateFields(['privKey']);
       if (!isCurrent() || values.privKey !== inputValue) return;
+      const label: string | undefined = form.getFieldValue('label');
+      const optionalLabel = label?.trim() ? label : undefined;
       const account = await controllerEmitter(
         watchOnly
           ? ['wallet', 'importWatchOnlyFromController']
           : ['wallet', 'importAccountFromPrivateKey'],
         watchOnly
-          ? [inputValue, form.getFieldValue('label')]
+          ? [inputValue, optionalLabel]
           : [
               inputValue,
-              form.getFieldValue('label'),
+              optionalLabel,
               isBitcoinBased
                 ? { utxoAddressType: selectedUtxoAddressType }
                 : undefined,
