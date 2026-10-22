@@ -514,7 +514,7 @@ const CustomRPCView = () => {
       if (!isSyscoinRpc && !state?.selected && formData?.chainId) {
         const chainIdString = String(formData.chainId).trim();
         if (chainIdString) {
-          const userProvidedChainId = parseInt(chainIdString, 10);
+          const userProvidedChainId = Number(chainIdString);
           if (
             !isNaN(userProvidedChainId) &&
             network.chainId !== userProvidedChainId
@@ -602,15 +602,10 @@ const CustomRPCView = () => {
       // Allow user to specify a public explorer; fallback to URL if empty
       data.explorer = (data.explorer || '').trim() || data.url;
       data.apiUrl = ''; // UTXO networks don't use separate API URLs
-      // Preserve user-provided chainId for UTXO networks, don't override to 0
-      if (typeof data.chainId === 'string') {
-        data.chainId = parseInt(data.chainId, 10);
-      }
-    } else {
-      // For EVM networks, ensure chainId is a number
-      if (typeof data.chainId === 'string') {
-        data.chainId = parseInt(data.chainId, 10);
-      }
+    }
+    // Convert the complete validated value, never a numeric prefix.
+    if (typeof data.chainId === 'string') {
+      data.chainId = Number(data.chainId);
     }
 
     // Validate RPC URL and get network configuration
@@ -1544,11 +1539,16 @@ const CustomRPCView = () => {
               ? [
                   {
                     validator: (_, value) => {
-                      if (!value || value.trim() === '') {
+                      const text = String(value ?? '').trim();
+                      if (!text) {
                         return Promise.resolve();
                       }
-                      const chainId = parseInt(value.trim());
-                      if (isNaN(chainId) || chainId <= 0) {
+                      const chainId = Number(text);
+                      if (
+                        !/^\d+$/.test(text) ||
+                        !Number.isSafeInteger(chainId) ||
+                        chainId <= 0
+                      ) {
                         return Promise.reject(
                           new Error('Chain ID must be a positive number')
                         );
