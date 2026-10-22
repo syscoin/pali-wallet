@@ -246,10 +246,25 @@ test('smart-account dialogs, policy and long dapp approvals fit narrow and short
               return reply(null);
             if (method === 'getSmartAccountGuardianRecoveryStatus')
               return reply({
+                account: accountAddress,
+                chainId: 57057,
+                moduleAddress: '0x' + (4).toString(16).padStart(40, '0'),
                 exists: true,
                 guardians: ['0x' + (80).toString(16).padStart(40, '0')],
+                guardianCount: '1',
                 threshold: 1,
                 delay: '60',
+                delaySeconds: 60,
+                expirationSeconds: 1200,
+                policyEpoch: '1',
+                observedBlock: {
+                  number: 100,
+                  hash: '0x' + '11'.repeat(32),
+                  timestamp: 1800000000,
+                },
+                active: null,
+                pending: null,
+                knownOperation: null,
               });
             if (method === 'getWalletSessionGeneration') return reply(1);
             if (
