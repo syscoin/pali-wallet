@@ -14,7 +14,6 @@ import {
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
-import { INetworkType } from 'types/network';
 import { navigateBack } from 'utils/navigationState';
 
 const ForgetWalletView = () => {
@@ -22,9 +21,6 @@ const ForgetWalletView = () => {
   const location = useLocation();
   const { t } = useTranslation();
   const { controllerEmitter } = useController();
-  const isBitcoinBased = useSelector(
-    (state: RootState) => state.vault.isBitcoinBased
-  );
   const { accounts, activeAccount: activeAccountMeta } = useSelector(
     (state: RootState) => state.vault
   );
@@ -32,10 +28,12 @@ const ForgetWalletView = () => {
 
   if (!activeAccount) throw new Error('No active account');
 
-  const hasAccountFunds =
-    (isBitcoinBased
-      ? activeAccount.balances[INetworkType.Syscoin]
-      : activeAccount.balances[INetworkType.Ethereum]) > 0;
+  // Forgetting removes the whole wallet, not only the selected account.
+  const hasAccountFunds = Object.values(accounts).some((group) =>
+    Object.values(group).some((account) =>
+      Object.values(account.balances).some((balance) => balance > 0)
+    )
+  );
 
   // Loading state for submit action
   const [isSubmitting, setIsSubmitting] = useState(false);
