@@ -100,5 +100,5 @@ Estas capturas muestran la interfaz en inglés y cuentas de ejemplo. Las etiquet
   <a className="pali-media-link" href="/img/screens/sysnode-recovery-enrollment.png" target="_blank" rel="noreferrer" style={{ maxWidth: 400, margin: '0 auto' }}>
     <img src="/img/screens/sysnode-recovery-enrollment.png" alt="Cuenta vinculada a alertas de recuperación de Sysnode esperando las comprobaciones iniciales de la cadena" />
   </a>
-  <figcaption>Sysnode te guía para vincular tu cuenta y muestra su estado de supervisión.</figcaption>
+  <figcaption>Sysnode muestra el estado de recuperación y supervisión de cada cuenta vinculada. En este ejemplo todavía se está comprobando el historial de la cadena.</figcaption>
 </figure>

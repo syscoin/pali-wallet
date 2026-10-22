@@ -100,5 +100,5 @@ Pali 智能账户的恢复方式取决于已安装的模块。由通行密钥控
   <a className="pali-media-link" href="/img/screens/sysnode-recovery-enrollment.png" target="_blank" rel="noreferrer" style={{ maxWidth: 400, margin: '0 auto' }}>
     <img src="/img/screens/sysnode-recovery-enrollment.png" alt="已关联 Sysnode 恢复提醒的账户正在等待初始链上检查" />
   </a>
-  <figcaption>Sysnode 会引导您关联账户，并显示监控状态。</figcaption>
+  <figcaption>Sysnode 显示每个已关联账户的恢复和监控状态。此示例仍在检查链上历史记录。</figcaption>
 </figure>

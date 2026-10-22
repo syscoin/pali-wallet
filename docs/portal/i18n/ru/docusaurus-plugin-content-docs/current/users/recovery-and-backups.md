@@ -100,5 +100,5 @@ Passkey с облачной синхронизацией остаются без
   <a className="pali-media-link" href="/img/screens/sysnode-recovery-enrollment.png" target="_blank" rel="noreferrer" style={{ maxWidth: 400, margin: '0 auto' }}>
     <img src="/img/screens/sysnode-recovery-enrollment.png" alt="Аккаунт, подключённый к уведомлениям о восстановлении Sysnode, ожидает начальных проверок сети" />
   </a>
-  <figcaption>Sysnode помогает подключить аккаунт и показывает статус мониторинга.</figcaption>
+  <figcaption>Sysnode показывает статус восстановления и мониторинга для каждого подключённого аккаунта. В этом примере проверка истории сети ещё идёт.</figcaption>
 </figure>

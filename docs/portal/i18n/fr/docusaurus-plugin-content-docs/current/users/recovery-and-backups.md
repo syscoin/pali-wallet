@@ -100,5 +100,5 @@ Ces captures présentent l’interface en anglais et des comptes d’exemple. Le
   <a className="pali-media-link" href="/img/screens/sysnode-recovery-enrollment.png" target="_blank" rel="noreferrer" style={{ maxWidth: 400, margin: '0 auto' }}>
     <img src="/img/screens/sysnode-recovery-enrollment.png" alt="Compte lié aux alertes de récupération Sysnode en attente des premières vérifications de la chaîne" />
   </a>
-  <figcaption>Sysnode vous guide pour lier votre compte et affiche son état de surveillance.</figcaption>
+  <figcaption>Sysnode affiche l’état de récupération et de surveillance de chaque compte lié. Dans cet exemple, la vérification de l’historique de la chaîne est encore en cours.</figcaption>
 </figure>

@@ -100,5 +100,5 @@ dapp이 `wallet_prepareSmartAccount`를 호출하면 Pali는 스마트 계정을
   <a className="pali-media-link" href="/img/screens/sysnode-recovery-enrollment.png" target="_blank" rel="noreferrer" style={{ maxWidth: 400, margin: '0 auto' }}>
     <img src="/img/screens/sysnode-recovery-enrollment.png" alt="Sysnode 복구 알림에 연결된 계정이 초기 체인 확인을 기다리는 화면" />
   </a>
-  <figcaption>Sysnode가 계정 연결 과정을 안내하고 모니터링 상태를 표시합니다.</figcaption>
+  <figcaption>Sysnode는 연결된 각 계정의 복구 및 모니터링 상태를 표시합니다. 이 예시에서는 아직 체인 기록을 확인하고 있습니다.</figcaption>
 </figure>

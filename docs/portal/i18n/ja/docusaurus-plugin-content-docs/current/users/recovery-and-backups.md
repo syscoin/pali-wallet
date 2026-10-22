@@ -100,5 +100,5 @@ dappが`wallet_prepareSmartAccount`を呼び出すと、Paliはスマートア�
   <a className="pali-media-link" href="/img/screens/sysnode-recovery-enrollment.png" target="_blank" rel="noreferrer" style={{ maxWidth: 400, margin: '0 auto' }}>
     <img src="/img/screens/sysnode-recovery-enrollment.png" alt="Sysnodeの復旧通知に関連付けたアカウントが初回のチェーン確認を待っている画面" />
   </a>
-  <figcaption>Sysnodeがアカウントの連携手順を案内し、監視状態を表示します。</figcaption>
+  <figcaption>Sysnodeは連携済みアカウントごとに復旧と監視の状態を表示します。この例では、チェーン履歴をまだ確認しています。</figcaption>
 </figure>

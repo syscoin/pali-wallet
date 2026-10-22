@@ -100,5 +100,5 @@ Diese Bildschirmfotos zeigen die englische Oberfläche und Beispielkonten. Bezei
   <a className="pali-media-link" href="/img/screens/sysnode-recovery-enrollment.png" target="_blank" rel="noreferrer" style={{ maxWidth: 400, margin: '0 auto' }}>
     <img src="/img/screens/sysnode-recovery-enrollment.png" alt="Mit Sysnode-Wiederherstellungshinweisen verknüpftes Konto wartet auf erste Blockchain-Prüfungen" />
   </a>
-  <figcaption>Sysnode führt Sie durch das Verknüpfen Ihres Kontos und zeigt den Überwachungsstatus an.</figcaption>
+  <figcaption>Sysnode zeigt für jedes verknüpfte Konto den Wiederherstellungs- und Überwachungsstatus an. In diesem Beispiel wird der Blockchain-Verlauf noch geprüft.</figcaption>
 </figure>

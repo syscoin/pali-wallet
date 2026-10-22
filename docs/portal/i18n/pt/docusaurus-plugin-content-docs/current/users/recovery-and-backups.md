@@ -100,5 +100,5 @@ Estas capturas mostram a interface em inglês e contas de exemplo. Os rótulos e
   <a className="pali-media-link" href="/img/screens/sysnode-recovery-enrollment.png" target="_blank" rel="noreferrer" style={{ maxWidth: 400, margin: '0 auto' }}>
     <img src="/img/screens/sysnode-recovery-enrollment.png" alt="Conta vinculada aos alertas de recuperação do Sysnode aguardando as verificações iniciais da rede" />
   </a>
-  <figcaption>O Sysnode orienta você a vincular sua conta e mostra o estado do monitoramento.</figcaption>
+  <figcaption>O Sysnode mostra o estado de recuperação e de monitoramento de cada conta vinculada. Neste exemplo, o histórico da rede ainda está sendo verificado.</figcaption>
 </figure>

@@ -103,5 +103,5 @@ These screenshots use the English interface and example accounts. Labels and net
   <a className="pali-media-link" href="/img/screens/sysnode-recovery-enrollment.png" target="_blank" rel="noreferrer" style={{ maxWidth: 400, margin: '0 auto' }}>
     <img src="/img/screens/sysnode-recovery-enrollment.png" alt="Sysnode linked recovery-alert account awaiting initial chain checks" />
   </a>
-  <figcaption>Sysnode guides you through linking your account and shows its monitoring status.</figcaption>
+  <figcaption>Sysnode shows the recovery and monitoring status of each linked account. This example is still checking chain history.</figcaption>
 </figure>
