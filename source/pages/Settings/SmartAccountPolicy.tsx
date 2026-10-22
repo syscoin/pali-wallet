@@ -1092,14 +1092,12 @@ const SmartAccountPolicy = () => {
       }
     };
     void refresh();
-    const timer = window.setInterval(() => void refresh(), 30000);
     const onVisible = () => void refresh();
     window.addEventListener('focus', onVisible);
     document.addEventListener('visibilitychange', onVisible);
 
     return () => {
       cancelled = true;
-      window.clearInterval(timer);
       window.removeEventListener('focus', onVisible);
       document.removeEventListener('visibilitychange', onVisible);
     };
@@ -2312,17 +2310,60 @@ const SmartAccountPolicy = () => {
 
   const startGuardianRecovery = async () => {
     const isCurrentUi = createUiGuard();
-    if (!smartAccountAddress || !guardianPolicyReady) {
+    if (!smartAccountAddress || !installedGuardianRecovery) {
       alert.error(t('settings.smartAccountGuardianRecoveryNotConnected'));
       return;
     }
-    const guardian = getAddress(
-      guardianStatus?.guardians?.[0] ||
-        installedGuardianRecovery?.config.guardians?.[0] ||
-        ''
-    );
     setGuardianLoading(true);
+    let hasFreshObservation = false;
     try {
+      // A displayed observation is informational, not authorization. Re-read
+      // before creating a replacement key or asking any signer to approve it.
+      const current = (await controllerEmitter(
+        ['wallet', 'getSmartAccountGuardianRecoveryStatus'],
+        [{ account: smartAccountAddress }],
+        30000
+      )) as GuardianRecoveryObservation;
+      if (!isCurrentUi()) return;
+      const configuredModule = getConfiguredAuthenticatorAddress(
+        activeNetwork.chainId,
+        'guardian-recovery'
+      );
+      if (
+        !current?.observedBlock ||
+        current.chainId !== activeNetwork.chainId ||
+        getAddress(current.account) !== smartAccountAddress ||
+        !configuredModule ||
+        getAddress(current.moduleAddress) !== getAddress(configuredModule) ||
+        getAddress(installedGuardianRecovery.address) !==
+          getAddress(current.moduleAddress)
+      ) {
+        throw new Error(t('settings.smartAccountGuardianStatusUnavailable'));
+      }
+      const guardian =
+        current.guardians?.length === 1 ? getAddress(current.guardians[0]) : '';
+      const delaySeconds = Number(current.delay);
+      if (
+        !current.exists ||
+        current.threshold !== 1 ||
+        !guardian ||
+        guardian === '0x0000000000000000000000000000000000000000' ||
+        !Number.isSafeInteger(delaySeconds) ||
+        delaySeconds <= 0
+      ) {
+        throw new Error(t('settings.smartAccountGuardianStatusUnavailable'));
+      }
+      setGuardianStatus(current);
+      hasFreshObservation = true;
+      if (
+        current.pending ||
+        current.active?.status === 'pending' ||
+        current.active?.status === 'ready'
+      ) {
+        throw new Error(
+          t('settings.smartAccountGuardianRecoveryAlreadyStarted')
+        );
+      }
       const policyApproval = await capturePolicyApproval(false);
       setGuardianStep(
         t('settings.smartAccountGuardianRecoveryStepAuthenticator')
@@ -2533,11 +2574,6 @@ const SmartAccountPolicy = () => {
         ],
         300000
       )) as any;
-      const delaySeconds = Number(
-        guardianStatus?.delay ||
-          installedGuardianRecovery?.config.delaySeconds ||
-          0
-      );
       const recoveryOperation = recoveryResponse?.operation
         ? {
             account: recoveryResponse.operation.account,
@@ -2560,6 +2596,16 @@ const SmartAccountPolicy = () => {
       }
     } catch (error: any) {
       if (!isCurrentUi()) return;
+      if (!hasFreshObservation) {
+        setGuardianRead((previous) => ({
+          scope: guardianObservationScope,
+          snapshot:
+            previous.scope === guardianObservationScope
+              ? previous.snapshot
+              : null,
+          error: true,
+        }));
+      }
       const wasHandled = handleWalletLockedError(error);
       if (!wasHandled) {
         // Keep the stored replacement credential: it has no recovery

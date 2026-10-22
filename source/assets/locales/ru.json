@@ -720,7 +720,7 @@
     "smartAccountPasskeyRecreateConfirmButton": "Создать новый passkey",
     "smartAccountPasskeyRecreateConfirmDescription": "Pali не удалось проверить passkey, ранее привязанный к этому аккаунту — возможно, он был удалён с устройства или запрос был отменён. Создать новый passkey для этого аккаунта?",
     "smartAccountPasskeyRecreateConfirmTitle": "Существующий passkey не подтверждён",
-    "smartAccountGuardianRecoveryConnectedStatus": "Подключено",
+    "smartAccountGuardianRecoveryConnectedStatus": "Включено",
     "smartAccountGuardianRecoveryNotConnected": "Не подключено",
     "smartAccountGuardianRecoveryPending": "Восстановление ожидает",
     "smartAccountGuardianRecoveryPendingTarget": "Новый способ подтверждения: {{authenticator}}",

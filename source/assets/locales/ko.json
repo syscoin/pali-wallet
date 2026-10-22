@@ -720,7 +720,7 @@
     "smartAccountPasskeyRecreateConfirmButton": "새 패스키 만들기",
     "smartAccountPasskeyRecreateConfirmDescription": "이 계정에 이전에 연결된 패스키를 확인할 수 없습니다. 기기에서 제거되었거나 확인이 취소되었을 수 있습니다. 대신 이 계정용 새 패스키를 만드시겠습니까?",
     "smartAccountPasskeyRecreateConfirmTitle": "기존 패스키를 확인할 수 없음",
-    "smartAccountGuardianRecoveryConnectedStatus": "연결됨",
+    "smartAccountGuardianRecoveryConnectedStatus": "사용 중",
     "smartAccountGuardianRecoveryNotConnected": "연결되지 않음",
     "smartAccountGuardianRecoveryPending": "복구 대기 중",
     "smartAccountGuardianRecoveryPendingTarget": "새 승인 방법: {{authenticator}}",

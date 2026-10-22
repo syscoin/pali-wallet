@@ -720,7 +720,7 @@
     "smartAccountPasskeyRecreateConfirmButton": "创建新通行密钥",
     "smartAccountPasskeyRecreateConfirmDescription": "Pali 无法验证之前与此账户关联的通行密钥——它可能已从您的设备中删除，或验证提示被取消。要为此账户创建新的通行密钥吗？",
     "smartAccountPasskeyRecreateConfirmTitle": "无法验证现有通行密钥",
-    "smartAccountGuardianRecoveryConnectedStatus": "已连接",
+    "smartAccountGuardianRecoveryConnectedStatus": "已启用",
     "smartAccountGuardianRecoveryNotConnected": "未连接",
     "smartAccountGuardianRecoveryPending": "恢复待处理",
     "smartAccountGuardianRecoveryPendingTarget": "新的批准方式：{{authenticator}}",
