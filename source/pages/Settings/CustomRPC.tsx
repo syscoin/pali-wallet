@@ -779,6 +779,10 @@ const CustomRPCView = () => {
   // Simplified - no conditional save logic
 
   const isInputDisableByEditMode = state?.isEditing ? state.isDefault : false;
+  const needsLabelRepair =
+    state?.isEditing &&
+    currentNetwork &&
+    (typeof currentNetwork.label !== 'string' || !currentNetwork.label.trim());
 
   // Preload chains based on network type for instant searching
   useEffect(() => {
@@ -1360,7 +1364,13 @@ const CustomRPCView = () => {
                 <Form.Item
                   name="label"
                   noStyle
-                  rules={[{ required: true, message: '' }]}
+                  rules={[
+                    {
+                      required: true,
+                      whitespace: true,
+                      message: t('settings.networkNameRequired'),
+                    },
+                  ]}
                 >
                   <Input
                     role="combobox"
@@ -1487,10 +1497,25 @@ const CustomRPCView = () => {
           </>
         )}
 
-        {/* Hidden label field for editing mode - needed for form data but not displayed */}
+        {/* Existing valid names stay hidden; let users repair a blank saved name. */}
         {state?.isEditing && (
-          <Form.Item name="label" style={{ display: 'none' }}>
-            <Input type="hidden" />
+          <Form.Item
+            name="label"
+            className="w-full"
+            style={{ display: needsLabelRepair ? undefined : 'none' }}
+            rules={[
+              {
+                required: true,
+                whitespace: true,
+                message: t('settings.networkNameRequired'),
+              },
+            ]}
+          >
+            <Input
+              type={needsLabelRepair ? 'text' : 'hidden'}
+              placeholder={t('settings.label')}
+              className={NETWORK_INPUT_CLASS}
+            />
           </Form.Item>
         )}
         <Form.Item
@@ -1586,6 +1611,7 @@ const CustomRPCView = () => {
           rules={[
             {
               required: true,
+              whitespace: true,
               message: t('settings.symbolRequired'),
             },
           ]}

@@ -136,6 +136,146 @@ it('freezes the reviewed fields during submission and preserves their submitted 
   });
 });
 
+const urlInput = (field: 'url' | 'explorer' | 'apiUrl') =>
+  document.querySelector<HTMLInputElement>('#rpc_' + field)!;
+const addButton = () =>
+  screen.getByRole('button', { name: 'buttons.addNetwork' });
+
+describe.each(['url', 'explorer', 'apiUrl'] as const)(
+  '%s URL format rule',
+  (field) => {
+    it.each(['not-a-url', 'ftp://unsupported.invalid/path'])(
+      'rejects %s before adding or switching',
+      async (value) => {
+        mount();
+        const user = userEvent.setup();
+        const input = urlInput(field);
+        await user.clear(input);
+        await user.type(input, value);
+        await user.click(addButton());
+        expect(
+          await screen.findByText('settings.validUrlRequired')
+        ).toBeVisible();
+        expect(input).toHaveValue(value);
+        expect(addButton()).toBeEnabled();
+        expect(calls('addCustomRpc')).toHaveLength(0);
+        expect(calls('setActiveNetwork')).toHaveLength(0);
+        expect(mockAlert.success).not.toHaveBeenCalled();
+        expect(window.close).not.toHaveBeenCalled();
+      }
+    );
+  }
+);
+
+it.each(['', '   ', '\u00a0\u00a0'])(
+  'accepts blank optional URL fields %j without an API probe',
+  async (value) => {
+    mount();
+    const user = userEvent.setup();
+    for (const field of ['explorer', 'apiUrl'] as const) {
+      await user.clear(urlInput(field));
+      if (value) await user.type(urlInput(field), value);
+    }
+    await user.click(addButton());
+    await waitFor(() => expect(calls('addCustomRpc')).toHaveLength(1));
+    expect(calls('getRpc')).toEqual([
+      [
+        ['wallet', 'getRpc'],
+        [expect.objectContaining({ url: rpcA, explorer: rpcA, apiUrl: value })],
+      ],
+    ]);
+    expect(calls('testExplorerApi')).toHaveLength(0);
+    expect(calls('setActiveNetwork')).toHaveLength(1);
+    expect(urlInput('explorer')).toHaveValue(value);
+    expect(urlInput('apiUrl')).toHaveValue(value);
+    expect(screen.queryByText('settings.validUrlRequired')).toBeNull();
+    await waitFor(() => expect(window.close).toHaveBeenCalledTimes(1), {
+      timeout: 3000,
+    });
+  }
+);
+
+it('keeps the RPC URL required while optional URL fields can be empty', async () => {
+  mount();
+  const user = userEvent.setup();
+  await user.clear(urlInput('url'));
+  await user.click(addButton());
+  expect(await screen.findByText('settings.rpcUrlRequired')).toBeVisible();
+  expect(urlInput('url')).toHaveValue('');
+  expect(calls('addCustomRpc')).toHaveLength(0);
+  expect(calls('setActiveNetwork')).toHaveLength(0);
+  expect(mockAlert.success).not.toHaveBeenCalled();
+  expect(window.close).not.toHaveBeenCalled();
+});
+
+it('accepts padded valid URLs and preserves the existing submission callbacks', async () => {
+  mount();
+  const user = userEvent.setup();
+  const values = {
+    url: '  https://changed-rpc.invalid/path  ',
+    explorer: '  https://changed-explorer.invalid/path  ',
+    apiUrl: '  https://changed-api.invalid/path  ',
+  };
+  for (const field of ['url', 'explorer', 'apiUrl'] as const) {
+    await user.clear(urlInput(field));
+    await user.type(urlInput(field), values[field]);
+  }
+  await user.click(addButton());
+  await waitFor(() => expect(calls('addCustomRpc')).toHaveLength(1));
+  const rpcCalls = calls('getRpc');
+  expect(rpcCalls[rpcCalls.length - 1]).toEqual([
+    ['wallet', 'getRpc'],
+    [
+      expect.objectContaining({
+        url: values.url.trim(),
+        explorer: values.explorer.trim(),
+        apiUrl: values.apiUrl,
+      }),
+    ],
+  ]);
+  const apiCalls = calls('testExplorerApi');
+  expect(apiCalls.length).toBeGreaterThan(0);
+  expect(apiCalls.every((call) => call[1][0] === values.apiUrl.trim())).toBe(
+    true
+  );
+  expect(calls('setActiveNetwork')).toHaveLength(1);
+  for (const field of ['url', 'explorer', 'apiUrl'] as const)
+    expect(urlInput(field)).toHaveValue(values[field]);
+  expect(screen.queryByText('settings.validUrlRequired')).toBeNull();
+  await waitFor(() => expect(window.close).toHaveBeenCalledTimes(1), {
+    timeout: 3000,
+  });
+});
+
+it('keeps RPC and API blur probes without adding or switching a network', async () => {
+  mount();
+  const user = userEvent.setup();
+  const rpc = '  https://blur-rpc.invalid/path  ';
+  const api = '  https://blur-api.invalid/path  ';
+  await user.clear(urlInput('url'));
+  await user.type(urlInput('url'), rpc);
+  await user.tab();
+  await waitFor(() => expect(calls('getRpc')).toHaveLength(1));
+  expect(calls('getRpc')[0]).toEqual([
+    ['wallet', 'getRpc'],
+    [expect.objectContaining({ url: rpc.trim() })],
+  ]);
+  await user.clear(urlInput('apiUrl'));
+  await user.type(urlInput('apiUrl'), api);
+  await user.tab();
+  await waitFor(() => expect(calls('testExplorerApi')).toHaveLength(1));
+  expect(calls('testExplorerApi')[0]).toEqual([
+    ['wallet', 'testExplorerApi'],
+    [api.trim()],
+  ]);
+  expect(urlInput('url')).toHaveValue(rpc);
+  expect(urlInput('apiUrl')).toHaveValue(api);
+  expect(calls('addCustomRpc')).toHaveLength(0);
+  expect(calls('setActiveNetwork')).toHaveLength(0);
+  expect(mockAlert.success).not.toHaveBeenCalled();
+  expect(window.close).not.toHaveBeenCalled();
+});
+
 it('unlocks fields after a rejected submission and saves the corrected retry', async () => {
   let rejected = false;
   const normal = mockEmitter.getMockImplementation()!;

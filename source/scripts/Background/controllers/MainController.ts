@@ -3908,6 +3908,14 @@ class MainController {
     const previous =
       store.getState().vaultGlobal.networks[family]?.[network.chainId];
     const assertCurrent = () => {
+      // Validate required display fields without rewriting user text.
+      if (
+        typeof network.label !== 'string' ||
+        !network.label.trim() ||
+        typeof network.currency !== 'string' ||
+        !network.currency.trim()
+      )
+        throw new Error('Missing required network configuration fields');
       if (generation !== this.walletStateGeneration)
         throw new Error('Wallet state changed before saving network');
       if (this.isRemovingNetwork)
