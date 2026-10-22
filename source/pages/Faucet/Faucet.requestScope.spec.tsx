@@ -519,7 +519,7 @@ it('faucet success retains native keyboard Close navigation without copying', as
   request();
   await finish();
   const close = screen
-    .getAllByRole('button', { name: 'Close', exact: true })
+    .getAllByRole('button', { name: /^Close$/ })
     .at(-1)!;
   for (let i = 0; i < 20 && document.activeElement !== close; i++)
     await user.tab();
