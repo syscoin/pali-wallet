@@ -1,8 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+archive_dir=/var/cache/pali-playwright-apt
+# Check the sandbox identity through every parent, including on a cold cache.
+sudo -u _apt test -x "$archive_dir"
+sudo -u _apt sh -ec 'probe=$(mktemp "$1/partial/.access-check.XXXXXX"); rm -f -- "$probe"' sh "$archive_dir"
+echo 'Verified _apt cache traversal and sandboxed partial-file creation'
+
 shopt -s nullglob
-archives=("${RUNNER_TEMP}/pali-playwright-apt/"*.deb)
+archives=("$archive_dir/"*.deb)
 if [ "${#archives[@]}" -eq 0 ]; then exit 0; fi
 sudo apt-get update -o APT::Update::Error-Mode=any
 for archive in "${archives[@]}"; do
@@ -20,6 +26,9 @@ for archive in "${archives[@]}"; do
     [ -n "$hashes" ]; then
     actual="$(sha256sum "$archive" | cut -d ' ' -f 1)"
     if grep -Fxq "$actual" <<< "$hashes"; then
+      chmod 0644 -- "$archive"
+      sudo -u _apt test -r "$archive"
+      printf 'Verified cached archive: %s (%s bytes)\n' "$(basename "$archive")" "$(stat -c %s "$archive")"
       continue
     fi
   fi

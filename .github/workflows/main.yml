@@ -89,21 +89,25 @@ jobs:
           # No restore-keys fallback across week/dependency/image boundaries.
           echo "week=$(date -u +%G-%V)" >> "$GITHUB_OUTPUT"
           echo "image=${ImageVersion}" >> "$GITHUB_OUTPUT"
+      - name: Prepare sandboxed apt download archive
+        run: |
+          # Restrict permission changes to this cache, never RUNNER_TEMP or its parents.
+          sudo install -d -o "$(id -u)" -g "$(id -g)" -m 0711 /var/cache/pali-playwright-apt
+          sudo install -d -o _apt -g root -m 0700 /var/cache/pali-playwright-apt/partial
       - name: Restore Playwright OS package downloads
         id: apt-cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ${{ runner.temp }}/pali-playwright-apt/*.deb
+          path: /var/cache/pali-playwright-apt/*.deb
           key: playwright-apt-v1-${{ steps.apt-cache-key.outputs.platform }}-${{ steps.apt-cache-key.outputs.image }}-${{ steps.playwright-version.outputs.version }}-${{ hashFiles('yarn.lock', 'package.json', '.github/workflows/main.yml', '.github/scripts/verify-playwright-apt-cache.sh') }}-${{ steps.apt-cache-key.outputs.week }}
       - name: Verify restored archives against fresh apt metadata
         run: bash .github/scripts/verify-playwright-apt-cache.sh
       - name: Configure temporary apt download archive
         run: |
-          mkdir -p "${RUNNER_TEMP}/pali-playwright-apt"
           # Cache only package archives, never apt lists or installed dpkg state.
           # A separate directory also avoids image hooks cleaning /var/cache/apt/archives.
           printf 'Dir::Cache::archives "%s";\nAPT::Keep-Downloaded-Packages "true";\nBinary::apt::APT::Keep-Downloaded-Packages "true";\n' \
-            "${RUNNER_TEMP}/pali-playwright-apt" | sudo tee /etc/apt/apt.conf.d/99pali-playwright-cache >/dev/null
+            /var/cache/pali-playwright-apt | sudo tee /etc/apt/apt.conf.d/99pali-playwright-cache >/dev/null
       # Still refreshes signed apt indexes and installs current dependencies on
       # every runner. Cache hits do not skip package installation or verification.
       - run: npx playwright install --with-deps chromium
@@ -116,7 +120,7 @@ jobs:
         if: success() && matrix.shard == 1 && steps.apt-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ${{ runner.temp }}/pali-playwright-apt/*.deb
+          path: /var/cache/pali-playwright-apt/*.deb
           key: ${{ steps.apt-cache.outputs.cache-primary-key }}
       - name: Build extension
         run: yarn build:chrome
@@ -189,21 +193,25 @@ jobs:
           # No restore-keys fallback across week/dependency/image boundaries.
           echo "week=$(date -u +%G-%V)" >> "$GITHUB_OUTPUT"
           echo "image=${ImageVersion}" >> "$GITHUB_OUTPUT"
+      - name: Prepare sandboxed apt download archive
+        run: |
+          # Restrict permission changes to this cache, never RUNNER_TEMP or its parents.
+          sudo install -d -o "$(id -u)" -g "$(id -g)" -m 0711 /var/cache/pali-playwright-apt
+          sudo install -d -o _apt -g root -m 0700 /var/cache/pali-playwright-apt/partial
       - name: Restore Playwright OS package downloads
         id: apt-cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ${{ runner.temp }}/pali-playwright-apt/*.deb
+          path: /var/cache/pali-playwright-apt/*.deb
           key: playwright-apt-v1-${{ steps.apt-cache-key.outputs.platform }}-${{ steps.apt-cache-key.outputs.image }}-${{ steps.playwright-version.outputs.version }}-${{ hashFiles('yarn.lock', 'package.json', '.github/workflows/main.yml', '.github/scripts/verify-playwright-apt-cache.sh') }}-${{ steps.apt-cache-key.outputs.week }}
       - name: Verify restored archives against fresh apt metadata
         run: bash .github/scripts/verify-playwright-apt-cache.sh
       - name: Configure temporary apt download archive
         run: |
-          mkdir -p "${RUNNER_TEMP}/pali-playwright-apt"
           # Cache only package archives, never apt lists or installed dpkg state.
           # A separate directory also avoids image hooks cleaning /var/cache/apt/archives.
           printf 'Dir::Cache::archives "%s";\nAPT::Keep-Downloaded-Packages "true";\nBinary::apt::APT::Keep-Downloaded-Packages "true";\n' \
-            "${RUNNER_TEMP}/pali-playwright-apt" | sudo tee /etc/apt/apt.conf.d/99pali-playwright-cache >/dev/null
+            /var/cache/pali-playwright-apt | sudo tee /etc/apt/apt.conf.d/99pali-playwright-cache >/dev/null
       # Still refreshes signed apt indexes and installs current dependencies on
       # every runner. Cache hits do not skip package installation or verification.
       - run: npx playwright install --with-deps chromium
