@@ -33,8 +33,10 @@ const PrivateKeyView = () => {
   const isWatchOnlyAccount =
     activeAccountMeta.type === KeyringAccountType.Imported &&
     !activeAccount?.xprv;
+  // A signing WIF import also stores its public address in xpub. Public
+  // identifier shape is separate from private-key authentication capability.
   const isPublicAddress =
-    isWatchOnlyAccount &&
+    activeAccountMeta.type === KeyringAccountType.Imported &&
     (!isBitcoinBased || activeAccount?.xpub === activeAccount?.address);
   const isPublicDescriptor =
     isWatchOnlyAccount && /^[a-z_]+\s*\(/i.test(activeAccount?.xpub || '');
@@ -125,7 +127,7 @@ const PrivateKeyView = () => {
 
   return (
     <>
-      {isBitcoinBased && !isWatchOnlyAccount && (
+      {isBitcoinBased && !isWatchOnlyAccount && !isPublicAddress && (
         <Card type="info">
           <p>
             <b className="text-warning-info">{t('settings.forgetWarning')}: </b>
