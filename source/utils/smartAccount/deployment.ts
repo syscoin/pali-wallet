@@ -64,6 +64,7 @@ export type PaliInfrastructureContract = {
   // Optional contracts are deployed by the infrastructure flow when missing
   // but do not gate smart-account readiness (they are pure optimizations).
   optional?: boolean;
+  runtimeCodeHash?: string;
   salt: string;
 };
 
@@ -223,6 +224,11 @@ export const PALI_INFRASTRUCTURE_CONTRACTS: PaliInfrastructureContract[] = [
     displayName: 'Guardian recovery module',
     id: 'guardianRecoveryModule',
     moduleId: 'guardian-recovery',
+    // Exact solc 0.8.28/Cancun runtime, via-IR, optimizer 200, metadata disabled.
+    // Unlike bytecodeHash (creation code), this attests the deployed code before
+    // reading its active-operation slot 3 and packed schedule mapping at slot 4.
+    runtimeCodeHash:
+      '0x542ee89b55395aad286ed856bfad874594ed7ae5b5066d93a52cb2e178e9d446',
     salt: guardianRecoveryModuleSalt,
   },
   {
