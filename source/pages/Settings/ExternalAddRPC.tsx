@@ -314,6 +314,15 @@ const CustomRPCExternal = () => {
     }
   };
 
+  const urlFormatRule = () => ({
+    validator(_, value) {
+      if (!value || value.trim() === '' || validateUrl(value.trim())) {
+        return Promise.resolve();
+      }
+      return Promise.reject(new Error(t('settings.validUrlRequired')));
+    },
+  });
+
   return (
     <div className="flex flex-col items-center justify-center w-full h-full bg-bkg-3">
       <div className="flex flex-col pb-4 pt-4 w-full border-b border-t border-dashed border-dashed-dark">
@@ -348,6 +357,7 @@ const CustomRPCExternal = () => {
           rules={[
             {
               required: true,
+              whitespace: true,
               message: t('settings.networkNameRequired'),
             },
           ]}
@@ -368,20 +378,7 @@ const CustomRPCExternal = () => {
               required: true,
               message: t('settings.rpcUrlRequired'),
             },
-            () => ({
-              validator(_, value) {
-                if (!value || value.trim() === '') {
-                  return Promise.resolve();
-                }
-                // Basic URL format validation only
-                if (validateUrl(value.trim())) {
-                  return Promise.resolve();
-                }
-                return Promise.reject(
-                  new Error(t('settings.validUrlRequired'))
-                );
-              },
-            }),
+            urlFormatRule,
           ]}
         >
           <Input
@@ -420,6 +417,7 @@ const CustomRPCExternal = () => {
           rules={[
             {
               required: true,
+              whitespace: true,
               message: t('settings.symbolRequired'),
             },
           ]}
@@ -446,19 +444,7 @@ const CustomRPCExternal = () => {
               required: false,
               message: t('settings.explorerUrlRequired'),
             },
-            () => ({
-              validator(_, value) {
-                if (!value || value.trim() === '') {
-                  return Promise.resolve();
-                }
-                if (validateUrl(value.trim())) {
-                  return Promise.resolve();
-                }
-                return Promise.reject(
-                  new Error(t('settings.validUrlRequired'))
-                );
-              },
-            }),
+            urlFormatRule,
           ]}
         >
           <Input
@@ -478,20 +464,7 @@ const CustomRPCExternal = () => {
                 required: false,
                 message: '',
               },
-              () => ({
-                validator(_, value) {
-                  if (!value || value.trim() === '') {
-                    return Promise.resolve();
-                  }
-                  // Only validate URL format here, API validation happens on blur
-                  if (validateUrl(value.trim())) {
-                    return Promise.resolve();
-                  }
-                  return Promise.reject(
-                    new Error(t('settings.validUrlRequired'))
-                  );
-                },
-              }),
+              urlFormatRule,
             ]}
           >
             <Input
