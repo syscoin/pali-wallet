@@ -7763,7 +7763,7 @@ class MainController {
                   if (!isCurrentRead(current) || !latestRead()) return;
                   store.dispatch(
                     setAccountBalanceForNetwork({
-                      balance: Number(formatUnits(raw, 18)),
+                      balance: formatUnits(raw, 18),
                       id: accountId,
                       network,
                       type,
