@@ -229,7 +229,7 @@ test('ERC20 balance verification exposes a scoped explicit retry without losing 
     const receiver = page.getByPlaceholder(en.send.receiver, { exact: true });
     const max = page.getByRole('button', { name: 'MAX', exact: true });
     const retry = page.getByRole('button', {
-      name: en.buttons.retry,
+      name: en.receive.retry,
       exact: true,
     });
     const selectAsset = async (symbol: string) => {

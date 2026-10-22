@@ -189,7 +189,7 @@ const recipient = '0x2222222222222222222222222222222222222222';
 const amount = () =>
   screen.getByPlaceholderText('send.amount') as HTMLInputElement;
 const next = () => screen.getByRole('button', { name: 'buttons.next' });
-const retry = () => screen.getByRole('button', { name: 'buttons.retry' });
+const retry = () => screen.getByRole('button', { name: 'receive.retry' });
 const tokenReads = () =>
   mockEmitter.mock.calls.filter(
     ([path]) => path.at(-1) === 'getERC20TokenInfo'

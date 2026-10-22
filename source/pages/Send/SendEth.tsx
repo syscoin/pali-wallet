@@ -1824,7 +1824,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                                   );
                               }}
                             >
-                              {t('buttons.retry')}
+                              {t('receive.retry')}
                             </button>
                           </>
                         ) : verifiedERC20Balance === null ? (
