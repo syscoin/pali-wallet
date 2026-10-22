@@ -223,13 +223,27 @@ afterEach(() => {
   jest.useRealTimers();
 });
 
-it('enables Finalize only after a fresh chain observation reaches the deadline', async () => {
+it('enables Finalize only after an explicit refresh observes the chain deadline', async () => {
   render(<SmartAccountPolicy />);
   await settle();
   expect(finalize().disabled).toBe(true);
+  const reads = () =>
+    mockEmitter.mock.calls.filter(
+      ([[, name]]) => name === 'getSmartAccountGuardianRecoveryStatus'
+    ).length;
+  const initialReads = reads();
   mockChainTimestamp += 60;
   await advance(30000);
   await settle();
+  expect(finalize().disabled).toBe(true);
+  expect(reads()).toBe(initialReads);
+  fireEvent.click(
+    screen.getByRole('button', {
+      name: 'settings.smartAccountGuardianRefreshStatus',
+    })
+  );
+  await settle();
+  expect(reads()).toBe(initialReads + 1);
   expect(finalize().disabled).toBe(false);
   fireEvent.click(finalize());
   await settle();
@@ -247,6 +261,20 @@ it('keeps a pending chain recovery disabled after a large local clock jump', asy
   jest.setSystemTime(NOW.getTime() + 8 * 86400000);
   await advance(30000);
   await settle();
+  const initialReads = mockEmitter.mock.calls.filter(
+    ([[, name]]) => name === 'getSmartAccountGuardianRecoveryStatus'
+  ).length;
+  fireEvent.click(
+    screen.getByRole('button', {
+      name: 'settings.smartAccountGuardianRefreshStatus',
+    })
+  );
+  await settle();
+  expect(
+    mockEmitter.mock.calls.filter(
+      ([[, name]]) => name === 'getSmartAccountGuardianRecoveryStatus'
+    )
+  ).toHaveLength(initialReads + 1);
   expect(finalize().disabled).toBe(true);
   expect(
     mockEmitter.mock.calls.some(
@@ -294,7 +322,7 @@ it('rechecks current chain state before finalization and preserves credentials i
 });
 
 it.each(['account', 'network', 'unmount'])(
-  'retires old read-only polling after %s',
+  'retires old read-only refreshes after %s',
   async (change) => {
     const view = render(<SmartAccountPolicy />);
     await settle();
@@ -322,7 +350,7 @@ it.each(['account', 'network', 'unmount'])(
   }
 );
 
-it('does not poll hidden pages and refreshes on becoming visible', async () => {
+it('does not read hidden pages and refreshes on becoming visible', async () => {
   let visibility = 'hidden';
   jest
     .spyOn(document, 'visibilityState', 'get')
