@@ -114,10 +114,16 @@ export function restoreSourceVaultAfterUncommittedSwitch(
 
 let lastPersistedState: any | null = null;
 
+const getPersistedGlobalState = (state: IGlobalState) => {
+  const persisted = { ...state };
+  delete persisted.transactionHistoryStatus;
+  return persisted;
+};
+
 const getMainStateForStorage = (state: ReturnType<typeof store.getState>) => ({
   dapp: state.dapp,
   price: state.price,
-  vaultGlobal: state.vaultGlobal,
+  vaultGlobal: getPersistedGlobalState(state.vaultGlobal),
 });
 
 const isMainStateUnchanged = (state: ReturnType<typeof store.getState>) =>
@@ -125,7 +131,10 @@ const isMainStateUnchanged = (state: ReturnType<typeof store.getState>) =>
     lastPersistedState &&
       isEqual(lastPersistedState.dapp, state.dapp) &&
       isEqual(lastPersistedState.price, state.price) &&
-      isEqual(lastPersistedState.vaultGlobal, state.vaultGlobal)
+      isEqual(
+        getPersistedGlobalState(lastPersistedState.vaultGlobal),
+        getPersistedGlobalState(state.vaultGlobal)
+      )
   );
 
 // Initialize cache once on startup.
@@ -251,7 +260,10 @@ export async function persistHasEthProperty(enabled: boolean): Promise<void> {
     const state = store.getState();
     const mainState = {
       ...getMainStateForStorage(state),
-      vaultGlobal: { ...state.vaultGlobal, hasEthProperty: enabled },
+      vaultGlobal: {
+        ...getPersistedGlobalState(state.vaultGlobal),
+        hasEthProperty: enabled,
+      },
     };
     // This boundary must reject storage failure, unlike legacy best-effort saves.
     await chromeStorage.setItem('state', mainState);

@@ -10,6 +10,7 @@ import {
   INetworkType,
 } from 'types/network';
 import { ITokenEthProps, ITokenSysProps } from 'types/tokens';
+import type { IWalletNavigationScope } from 'utils/navigationState';
 
 // Clean account assets structure - NFTs are included in ethereum array as assets with isNft: true
 export interface IAccountAssets {
@@ -74,6 +75,12 @@ export interface IGlobalState {
 
   // Global networks - shared across all vaults
   networks: INetworksVault;
+
+  transactionHistoryStatus?: {
+    requestId: number;
+    scope: IWalletNavigationScope;
+    state: 'pending' | 'ready' | 'error';
+  };
 }
 
 // Slip44-specific state (per network type) - this is what IVaultState represents

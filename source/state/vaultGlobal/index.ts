@@ -83,6 +83,13 @@ const vaultGlobalSlice = createSlice({
       state.loadingStates = {
         isLoadingBalances: false,
       };
+      delete state.transactionHistoryStatus;
+    },
+    setTransactionHistoryStatus(
+      state: IGlobalState,
+      action: PayloadAction<IGlobalState['transactionHistoryStatus']>
+    ) {
+      state.transactionHistoryStatus = action.payload;
     },
     setIsLoadingBalances(state: IGlobalState, action: PayloadAction<boolean>) {
       state.loadingStates.isLoadingBalances = action.payload;
@@ -234,6 +241,7 @@ const vaultGlobalSlice = createSlice({
     },
     setHasEncryptedVault(state: IGlobalState, action: PayloadAction<boolean>) {
       state.hasEncryptedVault = action.payload;
+      if (!action.payload) delete state.transactionHistoryStatus;
     },
     setHasEthProperty(state: IGlobalState, action: PayloadAction<boolean>) {
       state.hasEthProperty = action.payload;
@@ -408,6 +416,7 @@ const vaultGlobalSlice = createSlice({
 export const {
   rehydrate,
   resetLoadingStates,
+  setTransactionHistoryStatus,
   setIsLoadingBalances,
   setActiveSlip44,
   setAdvancedSettings,

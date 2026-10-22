@@ -259,9 +259,13 @@ module.exports = {
           from: 'source/assets/all_assets',
           to: 'assets/all_assets',
           globOptions: {
-            // These files are byte-identical to favicon-128.png. Manifest and
-            // notification icons share that payload instead of shipping copies.
-            ignore: ['**/favicon-16.png', '**/favicon-48.png'],
+            // These files are byte-identical to favicon-32.png. Keep the
+            // canonical path used by saved token logos and share its payload.
+            ignore: [
+              '**/favicon-16.png',
+              '**/favicon-48.png',
+              '**/favicon-128.png',
+            ],
           },
         },
         // Locale JSON is already emitted by i18n's static/dynamic imports.
