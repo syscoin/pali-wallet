@@ -172,6 +172,7 @@ describe('SmartAccountPolicy guardian approval', () => {
       ] as any;
     });
     jest.spyOn(React, 'useMemo').mockImplementation((factory) => factory());
+    jest.spyOn(React, 'useCallback').mockImplementation((callback) => callback);
     jest
       .spyOn(React, 'useRef')
       .mockImplementation((value) => ({ current: value }));
