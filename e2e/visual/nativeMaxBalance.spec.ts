@@ -1,7 +1,13 @@
 // The production form, refresh path and fee reads remain unmodified.
-import { expect, test, type BrowserContext, type Page } from '@playwright/test';
+import {
+  expect,
+  test,
+  type BrowserContext,
+  type Locator,
+  type Page,
+} from '@playwright/test';
 import { createHash } from 'crypto';
-import { parseEther } from 'ethers';
+import { formatEther, parseEther, parseUnits } from 'ethers';
 import fs from 'fs';
 import path from 'path';
 
@@ -315,8 +321,35 @@ async function publicNativeState(page: Page) {
   );
 }
 
+async function exposeTarget(page: Page, target: Locator) {
+  await target.scrollIntoViewIfNeeded();
+  const box = await target.boundingBox();
+  expect(box).not.toBeNull();
+  const viewport = page.viewportSize()!;
+  expect(box!.x).toBeGreaterThanOrEqual(0);
+  expect(box!.y).toBeGreaterThanOrEqual(0);
+  expect(box!.x + box!.width).toBeLessThanOrEqual(viewport.width);
+  expect(box!.y + box!.height).toBeLessThanOrEqual(viewport.height);
+  expect(
+    await target.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      return [
+        [rect.left + 2, rect.top + rect.height / 2],
+        [rect.right - 2, rect.top + rect.height / 2],
+        [rect.left + rect.width / 2, rect.top + 2],
+        [rect.left + rect.width / 2, rect.bottom - 2],
+      ].every(([x, y]) => {
+        const hit = document.elementFromPoint(x, y);
+        return !!hit && (hit === element || element.contains(hit));
+      });
+    })
+  ).toBe(true);
+  return box;
+}
+
 test('native MAX revalidates a live balance change without rewriting the reviewed amount', async ({}, info) => {
   test.setTimeout(180_000);
+  expect(info.config.workers).toBe(1);
   expect(process.env.PALI_TEST_DAPP_REVISION).toMatch(/^[a-f0-9]{40}$/);
   expect(path.isAbsolute(process.env.PALI_TEST_DAPP_EXTENSION_PATH || '')).toBe(
     true
@@ -327,6 +360,9 @@ test('native MAX revalidates a live balance change without rewriting the reviewe
   const previous = { ...E2E_CONFIG };
   const runtime = extensionEvidence();
   expect(runtime.version).toBe(packageJson.version);
+  const testSourceSha256 = createHash('sha256')
+    .update(fs.readFileSync(info.file))
+    .digest('hex');
   const fixture = createIsolatedVaultFixture();
   const server = await startUtxoFixtureServer();
   Object.assign(E2E_CONFIG, {
@@ -343,6 +379,7 @@ test('native MAX revalidates a live balance change without rewriting the reviewe
   let rpc: Awaited<ReturnType<typeof installNativeRpc>> | undefined;
   let status: 'passed' | 'failed' = 'failed';
   const observations: Record<string, unknown>[] = [];
+  const feeReviewObservations: Record<string, unknown>[] = [];
   try {
     wallet = await PaliWallet.launch('native-max-balance', {
       offlineHttpProxy: server.url,
@@ -514,11 +551,163 @@ test('native MAX revalidates a live balance change without rewriting the reviewe
               tx,
               unsignedReviewOnly: true,
             });
+            const headline = page
+              .getByText(en.buttons.send, { exact: true })
+              .locator('..')
+              .locator('p')
+              .nth(1);
+            if (!scenario.isMax) await expect(headline).toHaveText('10.0 TSYS');
+            if (scenario.id === 'unchanged') {
+              const edit = page.getByRole('button', {
+                name: en.send.editFee,
+                exact: true,
+              });
+              const dialog = page.getByRole('dialog', {
+                name: en.send.editFee,
+                exact: true,
+              });
+              const gas = dialog.getByLabel(en.send.gasLimit, { exact: true });
+              const cap = dialog.getByLabel(en.send.maxFee + ' (GWEI)', {
+                exact: true,
+              });
+              const tip = dialog.getByLabel(en.send.maxPriority + ' (GWEI)', {
+                exact: true,
+              });
+              const openFee = async () => {
+                await expect(edit).toBeEnabled();
+                await exposeTarget(page, edit);
+                await edit.click();
+                await expect(dialog).toBeVisible();
+              };
+              const closeFee = async (save: boolean) => {
+                const button = dialog.getByRole('button', {
+                  name: save ? en.buttons.save : en.buttons.cancel,
+                  exact: true,
+                });
+                await expect(button).toBeEnabled();
+                await exposeTarget(page, button);
+                await button.click();
+                await expect(dialog).toHaveCount(0);
+              };
+              const fillFee = async (maximum: string, gasLimit: string) => {
+                for (const [field, value] of [
+                  [tip, '1'],
+                  [cap, maximum],
+                  [gas, gasLimit],
+                ] as const) {
+                  await exposeTarget(page, field);
+                  await field.fill(value);
+                  await expect(field).toHaveValue(value);
+                }
+              };
+              const expectedNet = (gasLimit: string, maximum: string) =>
+                formatEther(
+                  BigInt(INITIAL_WEI) -
+                    BigInt(gasLimit) * parseUnits(maximum, 'gwei') -
+                    parseEther('0.000001')
+                ).replace(/\.0$/, '');
+              for (const viewport of [
+                { width: 400, height: 620 },
+                { width: 320, height: 360 },
+              ]) {
+                await page.setViewportSize(viewport);
+                await wallet!.step(
+                  `native-max-fee-${viewport.width}-initial-exact-review`,
+                  async (capture) => {
+                    await openFee();
+                    const selectedGas = await gas.inputValue();
+                    const selectedCap = await cap.inputValue();
+                    const selectedTip = await tip.inputValue();
+                    expect(selectedGas).toBe(
+                      viewport.width === 400 ? '25200' : '40000'
+                    );
+                    expect(selectedCap).toBe(
+                      viewport.width === 400 ? '3.5' : '4'
+                    );
+                    await closeFee(false);
+                    const net = expectedNet(selectedGas, selectedCap);
+                    await expect(headline).toHaveText(net + ' TSYS');
+                    const box = await exposeTarget(page, headline);
+                    feeReviewObservations.push({
+                      viewport,
+                      phase: 'initial-review',
+                      grossWei: INITIAL_WEI,
+                      gasLimit: selectedGas,
+                      maximumGwei: selectedCap,
+                      priorityGwei: selectedTip,
+                      net,
+                      box,
+                    });
+                    await capture(page);
+                  }
+                );
+                await wallet!.step(
+                  `native-max-fee-${viewport.width}-save-and-cancel`,
+                  async (capture) => {
+                    await openFee();
+                    await fillFee('3', '30000');
+                    await closeFee(true);
+                    await expect(headline).toHaveText('9.999909 TSYS');
+                    await exposeTarget(page, headline);
+                    await openFee();
+                    await fillFee('4', '40000');
+                    await closeFee(false);
+                    await expect(headline).toHaveText('9.999909 TSYS');
+                    await openFee();
+                    await expect(cap).toHaveValue('3');
+                    await expect(gas).toHaveValue('30000');
+                    await closeFee(false);
+                    const box = await exposeTarget(page, headline);
+                    feeReviewObservations.push({
+                      viewport,
+                      phase: 'save-then-cancel-draft',
+                      grossWei: INITIAL_WEI,
+                      gasLimit: '30000',
+                      maximumGwei: '3',
+                      priorityGwei: '1',
+                      net: '9.999909',
+                      box,
+                    });
+                    await capture(page);
+                  }
+                );
+                await wallet!.step(
+                  `native-max-fee-${viewport.width}-save-new-gas-and-cap`,
+                  async (capture) => {
+                    await openFee();
+                    await fillFee('4', '40000');
+                    await closeFee(true);
+                    await expect(headline).toHaveText('9.999839 TSYS');
+                    const box = await exposeTarget(page, headline);
+                    feeReviewObservations.push({
+                      viewport,
+                      phase: 'saved-new-fee',
+                      grossWei: INITIAL_WEI,
+                      gasLimit: '40000',
+                      maximumGwei: '4',
+                      priorityGwei: '1',
+                      net: '9.999839',
+                      box,
+                    });
+                    await capture(page);
+                  }
+                );
+              }
+              await page.setViewportSize({ width: 400, height: 620 });
+              const unchanged = await page.evaluate(
+                () => history.state?.usr?.tx
+              );
+              expect(unchanged.amount).toBe(tx.amount);
+              expect(unchanged.isMax).toBe(true);
+            }
             // Deliberately never click transaction Confirm: no signing or send.
             await page
               .getByRole('button', { name: en.buttons.cancel, exact: true })
               .click();
             await expect(page).toHaveURL(/#\/send\/eth$/);
+            await expect(
+              page.getByPlaceholder(en.send.amount, { exact: true })
+            ).toHaveValue('10.0');
           }
         }
       );
@@ -533,6 +722,10 @@ test('native MAX revalidates a live balance change without rewriting the reviewe
       expect(rpc!.deniedWrites).toEqual([]);
       expect(rpc!.deniedUnknown).toEqual([]);
       expect(routes!.deniedWrites).toEqual([]);
+      expect(extensionEvidence()).toEqual(runtime);
+      expect(
+        createHash('sha256').update(fs.readFileSync(info.file)).digest('hex')
+      ).toBe(testSourceSha256);
     });
     status = 'passed';
   } finally {
@@ -543,15 +736,14 @@ test('native MAX revalidates a live balance change without rewriting the reviewe
         JSON.stringify(
           {
             runtime,
-            testSourceSha256: createHash('sha256')
-              .update(fs.readFileSync(info.file))
-              .digest('hex'),
+            testSourceSha256,
             syntheticPublicRpcOnly: true,
             controllerStateReplaced: false,
             controllerResultsReplaced: false,
             directRefreshControllerCalls: false,
             transactionConfirmClicked: false,
             observations,
+            feeReviewObservations,
             reads: rpc?.reads || [],
             balanceReads: rpc?.balanceReads || [],
             deniedUnknown: rpc?.deniedUnknown || [],
