@@ -10,6 +10,7 @@ import React from 'react';
 
 import { KeyringAccountType } from 'types/network';
 import { getPaliModuleAddress } from 'utils/smartAccount/contracts';
+import { getGuardianRecoveryOperationId } from 'utils/smartAccount/guardianStatus';
 
 import SmartAccountPolicy from './SmartAccountPolicy';
 
@@ -18,10 +19,10 @@ const ACCOUNT = '0x1111111111111111111111111111111111111111';
 const OWNER = '0x2222222222222222222222222222222222222222';
 const GUARDIAN = '0x3333333333333333333333333333333333333333';
 const CHAIN_ID = 57057;
-const MAX_TIMER_DELAY = 2147483647;
 const STORAGE_KEY = `pali-smart-account-recovery-replacement:${CHAIN_ID}:${ACCOUNT}`;
 let mockVault: any;
 let mockScope: string;
+let mockChainTimestamp: number;
 const mockEmitter = jest.fn();
 const mockLocation = {
   hash: '',
@@ -94,6 +95,8 @@ const storeRecovery = (readyAt: unknown) => {
       recoveryOperation: {
         account: ACCOUNT,
         chainId: CHAIN_ID,
+        policyEpoch: '7',
+        recoveryModule: getPaliModuleAddress(CHAIN_ID, 'guardian-recovery'),
         executionCalldata: '0x1234',
         mode: `0x${'00'.repeat(32)}`,
         readyAt,
@@ -118,17 +121,13 @@ const finalize = () =>
   screen.getByRole('button', {
     name: 'settings.smartAccountGuardianRecoveryFinalize',
   }) as HTMLButtonElement;
-const suppressStatusPolling = () =>
-  jest
-    .spyOn(window, 'setInterval')
-    .mockReturnValue(123 as unknown as ReturnType<typeof window.setInterval>);
-
 beforeEach(() => {
   jest.useFakeTimers();
   jest.setSystemTime(NOW);
   jest.clearAllMocks();
   localStorage.clear();
   mockScope = 'account:1-network:57057';
+  mockChainTimestamp = NOW.getTime() / 1000;
   window.history.replaceState(
     { key: 'policy-entry' },
     '',
@@ -175,13 +174,42 @@ beforeEach(() => {
   mockEmitter.mockImplementation(async ([, method]: string[]) => {
     if (method === 'getWalletSessionGeneration') return 7;
     if (method === 'getSLHDSASmartAccountSetupStatus') return null;
-    if (method === 'getSmartAccountGuardianRecoveryStatus')
+    if (method === 'getSmartAccountGuardianRecoveryStatus') {
+      const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
+      const operationId = stored?.recoveryOperation
+        ? getGuardianRecoveryOperationId(stored.recoveryOperation)
+        : null;
+      const pending = operationId
+        ? {
+            operationId,
+            scheduledAt: NOW.getTime() / 1000,
+            executableAt: NOW.getTime() / 1000 + 60,
+            expiresAt: NOW.getTime() / 1000 + 60 + 604800,
+            status:
+              mockChainTimestamp >= NOW.getTime() / 1000 + 60
+                ? 'ready'
+                : 'pending',
+          }
+        : null;
       return {
+        account: ACCOUNT,
+        chainId: CHAIN_ID,
+        moduleAddress: getPaliModuleAddress(CHAIN_ID, 'guardian-recovery'),
+        policyEpoch: '7',
+        observedBlock: {
+          number: 1,
+          hash: `0x${'aa'.repeat(32)}`,
+          timestamp: mockChainTimestamp,
+        },
+        active: pending,
+        pending,
+        knownOperation: pending,
         delay: '60',
         exists: true,
         guardians: [GUARDIAN],
         threshold: 1,
       };
+    }
     if (method === 'hydrateSmartAccount') return metadata;
     if (method === 'finalizeSmartAccountGuardianRecovery') return {};
     throw new Error(`Unexpected controller method ${method}`);
@@ -195,21 +223,30 @@ afterEach(() => {
   jest.useRealTimers();
 });
 
-it('enables Finalize at the deadline without a Redux update, never before it', async () => {
+it('enables Finalize only after an explicit refresh observes the chain deadline', async () => {
   render(<SmartAccountPolicy />);
   await settle();
   expect(finalize().disabled).toBe(true);
-  for (let tick = 0; tick < 19; tick++) await advance(3000);
-  await advance(2999);
-  expect(finalize().disabled).toBe(true);
-  expect(
+  const reads = () =>
     mockEmitter.mock.calls.filter(
-      ([[, name]]) => name === 'getSLHDSASmartAccountSetupStatus'
-    )
-  ).toHaveLength(20);
-  await advance(1);
+      ([[, name]]) => name === 'getSmartAccountGuardianRecoveryStatus'
+    ).length;
+  const initialReads = reads();
+  mockChainTimestamp += 60;
+  await advance(30000);
+  await settle();
+  expect(finalize().disabled).toBe(true);
+  expect(reads()).toBe(initialReads);
+  fireEvent.click(
+    screen.getByRole('button', {
+      name: 'settings.smartAccountGuardianRefreshStatus',
+    })
+  );
+  await settle();
+  expect(reads()).toBe(initialReads + 1);
   expect(finalize().disabled).toBe(false);
   fireEvent.click(finalize());
+  await settle();
   await settle();
   expect(mockEmitter).toHaveBeenCalledWith(
     ['wallet', 'finalizeSmartAccountGuardianRecovery'],
@@ -218,164 +255,117 @@ it('enables Finalize at the deadline without a Redux update, never before it', a
   );
 });
 
-it('enables an already-ready recovery immediately without retaining a deadline timer', async () => {
-  suppressStatusPolling();
-  jest.setSystemTime(NOW.getTime() + 63000);
+it('keeps a pending chain recovery disabled after a large local clock jump', async () => {
   render(<SmartAccountPolicy />);
   await settle();
-  expect(finalize().disabled).toBe(false);
-  expect(jest.getTimerCount()).toBe(0);
-});
-
-it('bounds distant deadline checks without enabling early or overflowing timers', async () => {
-  suppressStatusPolling();
-  const delay = MAX_TIMER_DELAY + 6353;
-  storeRecovery((NOW.getTime() + delay) / 1000);
-  render(<SmartAccountPolicy />);
-  await settle();
-  expect(jest.getTimerCount()).toBe(1);
-  await advance(1000);
-  expect(finalize().disabled).toBe(true);
-  expect(jest.getTimerCount()).toBe(1);
-  jest.setSystemTime(NOW.getTime() + delay - 1000);
-  await advance(999);
-  expect(finalize().disabled).toBe(true);
-  await advance(1);
-  expect(finalize().disabled).toBe(false);
-  expect(jest.getTimerCount()).toBe(0);
-});
-
-it('notices a forward wall-clock adjustment within one second without an unrelated render', async () => {
-  suppressStatusPolling();
-  storeRecovery(NOW.getTime() / 1000 + 7 * 86400);
-  render(<SmartAccountPolicy />);
-  await settle();
-  expect(finalize().disabled).toBe(true);
   jest.setSystemTime(NOW.getTime() + 8 * 86400000);
-  await advance(1000);
-  expect(finalize().disabled).toBe(false);
-  expect(jest.getTimerCount()).toBe(0);
+  await advance(30000);
+  await settle();
+  const initialReads = mockEmitter.mock.calls.filter(
+    ([[, name]]) => name === 'getSmartAccountGuardianRecoveryStatus'
+  ).length;
+  fireEvent.click(
+    screen.getByRole('button', {
+      name: 'settings.smartAccountGuardianRefreshStatus',
+    })
+  );
+  await settle();
+  expect(
+    mockEmitter.mock.calls.filter(
+      ([[, name]]) => name === 'getSmartAccountGuardianRecoveryStatus'
+    )
+  ).toHaveLength(initialReads + 1);
+  expect(finalize().disabled).toBe(true);
+  expect(
+    mockEmitter.mock.calls.some(
+      ([[, name]]) => name === 'finalizeSmartAccountGuardianRecovery'
+    )
+  ).toBe(false);
 });
 
-it('keeps recovery disabled until the deadline after a backward wall-clock adjustment', async () => {
-  suppressStatusPolling();
+it('allows a chain-ready recovery despite a backward local clock adjustment', async () => {
+  mockChainTimestamp += 60;
+  jest.setSystemTime(NOW.getTime() - 120000);
   render(<SmartAccountPolicy />);
   await settle();
-  jest.setSystemTime(NOW.getTime() - 120000);
-  await advance(60000);
-  expect(finalize().disabled).toBe(true);
-  await advance(119999);
-  expect(finalize().disabled).toBe(true);
-  await advance(1);
   expect(finalize().disabled).toBe(false);
-  expect(jest.getTimerCount()).toBe(0);
 });
 
-const readyThenRejectedAfterClockCorrection = async () => {
-  suppressStatusPolling();
-  const original = mockEmitter.getMockImplementation()!;
-  mockEmitter.mockImplementation((path: string[], ...args: any[]) =>
-    path[1] === 'finalizeSmartAccountGuardianRecovery'
-      ? Promise.reject(new Error('PALI_GUARDIAN_RECOVERY_NOT_READY'))
-      : original(path, ...args)
-  );
-  const view = render(<SmartAccountPolicy />);
-  await settle();
-  expect(finalize().disabled).toBe(true);
-  jest.setSystemTime(NOW.getTime() + 61000);
-  await advance(1000);
-  expect(finalize().disabled).toBe(false);
-  expect(jest.getTimerCount()).toBe(0);
+it.each([null, '', -1, 'Infinity', 'NaN', 999999999999])(
+  'uses chain readiness rather than the saved local readyAt estimate %s',
+  async (readyAt) => {
+    storeRecovery(readyAt);
+    mockChainTimestamp += 60;
+    render(<SmartAccountPolicy />);
+    await settle();
+    expect(finalize().disabled).toBe(false);
+  }
+);
 
-  // The chain did not advance with the incorrect local clock. The real
-  // NotReady error path keeps the pending operation after clock correction.
-  jest.setSystemTime(NOW);
+it('rechecks current chain state before finalization and preserves credentials if no longer ready', async () => {
+  mockChainTimestamp += 60;
+  render(<SmartAccountPolicy />);
+  await settle();
+  expect(finalize().disabled).toBe(false);
+  const saved = localStorage.getItem(STORAGE_KEY);
+  mockChainTimestamp -= 60;
   fireEvent.click(finalize());
   await settle();
   await settle();
   expect(
-    mockEmitter.mock.calls.filter(
+    mockEmitter.mock.calls.some(
       ([[, name]]) => name === 'finalizeSmartAccountGuardianRecovery'
     )
-  ).toHaveLength(1);
+  ).toBe(false);
+  expect(localStorage.getItem(STORAGE_KEY)).toBe(saved);
   expect(finalize().disabled).toBe(true);
-  expect(
-    JSON.parse(localStorage.getItem(STORAGE_KEY)!).recoveryOperation
-  ).toBeDefined();
-  return view;
-};
-
-it('re-arms the timer when a NotReady response makes the displayed recovery pending again', async () => {
-  await readyThenRejectedAfterClockCorrection();
-  expect(jest.getTimerCount()).toBe(1);
-  await advance(59999);
-  expect(finalize().disabled).toBe(true);
-  await advance(1);
-  expect(finalize().disabled).toBe(false);
-  expect(jest.getTimerCount()).toBe(0);
 });
 
-it('cleans a re-armed timer and enables the same recovery when reopened at its real deadline', async () => {
-  const view = await readyThenRejectedAfterClockCorrection();
-  view.unmount();
-  expect(jest.getTimerCount()).toBe(0);
-  jest.setSystemTime(NOW.getTime() + 60000);
-  render(<SmartAccountPolicy />);
-  await settle();
-  expect(finalize().disabled).toBe(false);
-  expect(jest.getTimerCount()).toBe(0);
-});
-
-it.each([null, '', -1, 'Infinity', 'NaN'])(
-  'keeps invalid recovery deadline %s disabled without a timer',
-  async (readyAt) => {
-    suppressStatusPolling();
-    storeRecovery(readyAt);
-    render(<SmartAccountPolicy />);
-    await settle();
-    expect(finalize().disabled).toBe(true);
-    expect(jest.getTimerCount()).toBe(0);
-  }
-);
-
-it.each(['account', 'network', 'removal', 'unmount'])(
-  'cleans the old deadline timer after %s',
+it.each(['account', 'network', 'unmount'])(
+  'retires old read-only refreshes after %s',
   async (change) => {
-    suppressStatusPolling();
     const view = render(<SmartAccountPolicy />);
     await settle();
-    expect(jest.getTimerCount()).toBe(1);
-    if (change === 'unmount') {
-      view.unmount();
-    } else {
-      if (change === 'account') {
-        mockVault.accounts.SmartAccount[1] = {
-          ...mockVault.accounts.SmartAccount[1],
-          address: GUARDIAN,
-        };
-      }
-      if (change === 'network') {
-        mockScope = 'account:1-network:other';
-        mockVault.activeNetwork = {
-          ...mockVault.activeNetwork,
-          chainId: 1,
-        };
-      }
-      if (change === 'removal') {
-        localStorage.removeItem(STORAGE_KEY);
-        // A remount represents reopening the recovery view after an accepted
-        // finalization removed the persistent operation.
-        view.unmount();
-        render(<SmartAccountPolicy />);
-      } else view.rerender(<SmartAccountPolicy />);
-    }
+    if (change === 'account') {
+      mockVault.accounts.SmartAccount[1] = {
+        ...mockVault.accounts.SmartAccount[1],
+        address: GUARDIAN,
+      };
+      view.rerender(<SmartAccountPolicy />);
+    } else if (change === 'network') {
+      mockScope = 'account:1-network:other';
+      mockVault.activeNetwork = { ...mockVault.activeNetwork, chainId: 1 };
+      view.rerender(<SmartAccountPolicy />);
+    } else view.unmount();
     await settle();
-    expect(jest.getTimerCount()).toBe(0);
     await advance(60000);
+    await settle();
     expect(
       mockEmitter.mock.calls.some(
         ([[, name]]) => name === 'finalizeSmartAccountGuardianRecovery'
       )
     ).toBe(false);
+    view.unmount();
+    expect(jest.getTimerCount()).toBe(0);
   }
 );
+
+it('does not read hidden pages and refreshes on becoming visible', async () => {
+  let visibility = 'hidden';
+  jest
+    .spyOn(document, 'visibilityState', 'get')
+    .mockImplementation(() => visibility as DocumentVisibilityState);
+  render(<SmartAccountPolicy />);
+  await settle();
+  await advance(60000);
+  expect(
+    mockEmitter.mock.calls.filter(
+      ([[, name]]) => name === 'getSmartAccountGuardianRecoveryStatus'
+    )
+  ).toHaveLength(0);
+  mockChainTimestamp += 60;
+  visibility = 'visible';
+  fireEvent(document, new Event('visibilitychange'));
+  await settle();
+  expect(finalize().disabled).toBe(false);
+});

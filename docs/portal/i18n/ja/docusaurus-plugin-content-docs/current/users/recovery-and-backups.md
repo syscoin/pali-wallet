@@ -64,7 +64,11 @@ dappが`wallet_prepareSmartAccount`を呼び出すと、Paliはスマートア�
 
 :::tip 最新のガーディアン復旧ガイド
 
-[完全ガイド](./smart-account-validators#guardian-recovery-guide)では、設定、開始、完了、**Disable guardian recovery**を説明しています。新しいポリシーの待機時間は3日または7日で、10分は既知のテストネット専用です。無効化の確定には現在の承認方法とガスが必要です。保留中の復旧を無効にして復旧経路を削除しますが、完了済みの復旧を元に戻すことはできません。結果が不明な取引は、再送前にオンチェーンで確認してください。任意のSysnode通知には確認済みメールとウォレット署名が必要です。鍵は渡さず、配信も保証されません。
+[完全ガイド](./smart-account-validators#guardian-recovery-guide)では、設定、開始、完了、**Disable guardian recovery**を説明しています。新しいポリシーの待機時間は3日または7日で、10分は既知のテストネット専用です。無効化の確定には現在の承認方法とガスが必要です。保留中の復旧を無効にして復旧経路を削除しますが、完了済みの復旧を元に戻すことはできません。結果が不明な取引は、再送前にオンチェーンで確認してください。
+
+外部サービスSysnodeによる任意のメール監視を利用するには、確認済みメールアドレスで[Sysnodeアカウント → 復旧通知](https://sysnode.info/account#recovery-alerts)にサインインし、デプロイ済みのスマートアカウントを接続してウォレット署名を承認します。署名鍵はウォレット内に保持されます。メールで復旧を取り消すことはできません。
+
+メール通知は遅れたり、届かなかったりすることがあります。復旧の状態はPaliで直接確認できます。
 
 :::
 
@@ -96,5 +100,5 @@ dappが`wallet_prepareSmartAccount`を呼び出すと、Paliはスマートア�
   <a className="pali-media-link" href="/img/screens/sysnode-recovery-enrollment.png" target="_blank" rel="noreferrer" style={{ maxWidth: 400, margin: '0 auto' }}>
     <img src="/img/screens/sysnode-recovery-enrollment.png" alt="Sysnodeの復旧通知に関連付けたアカウントが初回のチェーン確認を待っている画面" />
   </a>
-  <figcaption>アカウントを関連付けるだけでは不十分です。この例ではチェーン履歴をまだ確認しています。監視が有効になるまで待ち、通知が遅れる可能性も忘れないでください。</figcaption>
+  <figcaption>Sysnodeは連携済みアカウントごとに復旧と監視の状態を表示します。この例では、チェーン履歴をまだ確認しています。</figcaption>
 </figure>

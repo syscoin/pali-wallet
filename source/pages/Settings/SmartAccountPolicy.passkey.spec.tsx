@@ -274,6 +274,7 @@ describe('SmartAccountPolicy passkey preservation', () => {
       ] as any;
     });
     jest.spyOn(React, 'useMemo').mockImplementation((factory) => factory());
+    jest.spyOn(React, 'useCallback').mockImplementation((callback) => callback);
     jest.spyOn(React, 'useEffect').mockImplementation(() => undefined);
     jest.spyOn(React, 'useRef').mockImplementation((value) => {
       const i = refIndex++;

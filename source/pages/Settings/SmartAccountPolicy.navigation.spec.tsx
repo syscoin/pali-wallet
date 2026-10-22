@@ -12,6 +12,8 @@ import React from 'react';
 import { HashRouter, useLocation, useNavigate } from 'react-router-dom';
 
 import { KeyringAccountType } from 'types/network';
+import { getPaliModuleAddress } from 'utils/smartAccount/contracts';
+import { getGuardianRecoveryOperationId } from 'utils/smartAccount/guardianStatus';
 
 import SmartAccountPolicy from './SmartAccountPolicy';
 
@@ -36,7 +38,7 @@ const METADATA = {
       type: 'validator',
     },
     {
-      address: '0x8888888888888888888888888888888888888888',
+      address: getPaliModuleAddress(57057, 'guardian-recovery'),
       config: { delaySeconds: 60, guardians: [GUARDIAN], threshold: 1 },
       id: 'guardian-recovery',
       type: 'executor',
@@ -51,6 +53,7 @@ const OPERATION = {
   hash: `0x${'55'.repeat(32)}`,
   mode: `0x${'00'.repeat(32)}`,
   policyEpoch: '7',
+  recoveryModule: getPaliModuleAddress(57057, 'guardian-recovery'),
   salt: `0x${'66'.repeat(32)}`,
 };
 
@@ -169,8 +172,40 @@ beforeEach(() => {
   mockEmitter.mockImplementation(async ([, method]: string[]) => {
     if (method === 'hydrateSmartAccount') return METADATA;
     if (method === 'getWalletSessionGeneration') return 7;
-    if (method === 'getSmartAccountGuardianRecoveryStatus')
-      return { exists: true, delay: 60, guardians: [GUARDIAN], threshold: 1 };
+    if (method === 'getSmartAccountGuardianRecoveryStatus') {
+      const operation = JSON.parse(
+        localStorage.getItem(
+          `pali-smart-account-recovery-replacement:57057:${ACCOUNT}`
+        ) || 'null'
+      )?.recoveryOperation;
+      const pending = operation
+        ? {
+            operationId: getGuardianRecoveryOperationId(operation),
+            status: 'ready',
+            scheduledAt: Math.floor(Date.now() / 1000) - 120,
+            executableAt: Math.floor(Date.now() / 1000) - 60,
+            expiresAt: Math.floor(Date.now() / 1000) + 604800,
+          }
+        : null;
+      return {
+        account: ACCOUNT,
+        chainId: 57057,
+        exists: true,
+        delay: '60',
+        guardians: [GUARDIAN],
+        threshold: 1,
+        moduleAddress: getPaliModuleAddress(57057, 'guardian-recovery'),
+        policyEpoch: '7',
+        observedBlock: {
+          number: 1,
+          timestamp: Math.floor(Date.now() / 1000),
+          hash: `0x${'ab'.repeat(32)}`,
+        },
+        active: pending,
+        pending,
+        knownOperation: pending,
+      };
+    }
     if (method === 'prepareSmartAccountGuardianStartRecovery')
       return {
         approval: { guardian: GUARDIAN, signature: '0x1234' },

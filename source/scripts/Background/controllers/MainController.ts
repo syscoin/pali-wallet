@@ -3150,6 +3150,7 @@ class MainController {
 
   public async getSmartAccountGuardianRecoveryStatus(params: {
     account: string;
+    knownOperationId?: string;
   }) {
     return this.smartAccount.getSmartAccountGuardianRecoveryStatus(params);
   }

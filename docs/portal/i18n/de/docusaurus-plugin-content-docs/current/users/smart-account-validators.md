@@ -149,6 +149,6 @@ Die Entfernung muss vor dem unerwünschten Abschluss bestätigt sein; sie macht 
 
 ### Optionale E-Mail-Hinweise
 
-Der Link in den Einstellungen führt zu **Sysnode Account → Recovery alerts**. Nutzen Sie eine verifizierte E-Mail-Adresse, verbinden Sie den bereitgestellten Smart Account auf einem unterstützten Netzwerk und signieren Sie die Anmeldung mit seiner aktuellen Freigabemethode. Prüfen Sie, dass die Überwachung aktiv ist. Das ist optional und unabhängig von der Guardian-Einrichtung; Sysnode erhält keine privaten Schlüssel und kann weder Gelder bewegen noch Recovery abbrechen.
+Der Link in den Einstellungen führt zu **Sysnode Account → Recovery alerts**. Nutzen Sie eine verifizierte E-Mail-Adresse, verbinden Sie den bereitgestellten Smart Account auf einem unterstützten Netzwerk und signieren Sie die Anmeldung mit seiner aktuellen Freigabemethode. Das ist optional und unabhängig von der Guardian-Einrichtung; Sysnode erhält keine privaten Schlüssel und kann weder Gelder bewegen noch Recovery abbrechen.
 
 Die Überwachung läuft auch bei geschlossenem Pali, hängt aber vom Dienst, dessen RPC und der E-Mail-Zustellung ab. Hinweise können verspätet eintreffen oder ausfallen; junge Chain-Beobachtungen können reorganisiert werden. Keine E-Mail beweist nicht, dass keine Recovery läuft. Prüfen Sie Hinweise im vertrauenswürdigen Wallet für das genaue Konto und Netzwerk.
