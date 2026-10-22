@@ -2,6 +2,7 @@ import { expect, test, type Locator } from '@playwright/test';
 import { createHash } from 'crypto';
 import { Interface, formatEther } from 'ethers';
 import fs from 'fs';
+import http from 'http';
 import path from 'path';
 
 import en from '../../source/assets/locales/en.json';
@@ -91,10 +92,28 @@ test('send calls review exposes its real origin and exact known and unknown call
     // Reuse the existing inert local fixture document. Only its served origin
     // changes, so the real runtime sender supplies a long origin to the UI.
     // This request is to the explicitly started loopback server, never public.
-    const localDocument = await wallet.context.request.get(`${server.url}/`);
-    expect(localDocument.status()).toBe(200);
-    expect(localDocument.headers()['content-type']).toContain('text/html');
-    const documentBody = await localDocument.text();
+    // APIRequestContext shares the browser's deny proxy and tunnels even this
+    // fixture read. Fetch the exact started loopback document directly instead;
+    // the browser's launch-time proxy and route fences remain unchanged.
+    const documentBody = await new Promise<string>((resolve, reject) => {
+      const request = http.get(`${server.url}/`, (response) => {
+        if (
+          response.statusCode !== 200 ||
+          !response.headers['content-type']?.includes('text/html')
+        ) {
+          response.resume();
+          reject(new Error('Local fixture document unavailable'));
+          return;
+        }
+        const chunks: Buffer[] = [];
+        response.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
+        response.on('end', () =>
+          resolve(Buffer.concat(chunks).toString('utf8'))
+        );
+        response.on('error', reject);
+      });
+      request.on('error', reject);
+    });
     await wallet.context.route(`${ORIGIN}/`, async (route) => {
       expect(route.request().method()).toBe('GET');
       await route.fulfill({
