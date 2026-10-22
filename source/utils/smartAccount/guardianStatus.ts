@@ -4,11 +4,8 @@ import {
   paliGuardianRecoveryModuleInterface,
   paliSmartAccountInterface,
 } from './contracts';
+import { PALI_INFRASTRUCTURE_BY_ID } from './deployment';
 
-// PaliGuardianRecoveryModule, solc 0.8.28/Cancun, via-IR, optimizer 200,
-// metadata disabled. Storage decoding is valid only for this exact runtime.
-export const PALI_GUARDIAN_RECOVERY_RUNTIME_HASH =
-  '0x542ee89b55395aad286ed856bfad874594ed7ae5b5066d93a52cb2e178e9d446';
 const ZERO = `0x${'00'.repeat(32)}`;
 const MAX_BLOCK_AGE_MS = 420000;
 
@@ -138,7 +135,8 @@ export async function readGuardianRecoveryObservation({
   if (
     typeof code !== 'string' ||
     !/^0x(?:[0-9a-f]{2})+$/i.test(code) ||
-    keccak256(code) !== PALI_GUARDIAN_RECOVERY_RUNTIME_HASH
+    keccak256(code) !==
+      PALI_INFRASTRUCTURE_BY_ID.guardianRecoveryModule.runtimeCodeHash
   )
     throw new Error('Guardian recovery module runtime is unsupported');
   const call = async (

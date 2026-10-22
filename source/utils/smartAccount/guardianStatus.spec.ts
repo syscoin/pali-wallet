@@ -7,7 +7,6 @@ import {
 import { PALI_INFRASTRUCTURE_BY_ID } from './deployment';
 import {
   getGuardianRecoveryOperationId,
-  PALI_GUARDIAN_RECOVERY_RUNTIME_HASH,
   readGuardianRecoveryObservation,
 } from './guardianStatus';
 
@@ -95,7 +94,9 @@ function fixture() {
 }
 
 test('pins the actual compiled canonical runtime before interpreting storage', () => {
-  expect(keccak256(CODE)).toBe(PALI_GUARDIAN_RECOVERY_RUNTIME_HASH);
+  const contract = PALI_INFRASTRUCTURE_BY_ID.guardianRecoveryModule;
+  expect(keccak256(CODE)).toBe(contract.runtimeCodeHash);
+  expect(contract.runtimeCodeHash).not.toBe(contract.bytecodeHash);
 });
 
 test('discovers an external recovery without a local intent at one block', async () => {

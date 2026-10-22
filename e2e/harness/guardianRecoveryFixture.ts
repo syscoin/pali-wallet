@@ -2,7 +2,6 @@ import { AbiCoder, keccak256 } from 'ethers';
 
 import { paliGuardianRecoveryModuleInterface } from '../../source/utils/smartAccount/contracts';
 import { PALI_INFRASTRUCTURE_BY_ID } from '../../source/utils/smartAccount/deployment';
-import { PALI_GUARDIAN_RECOVERY_RUNTIME_HASH } from '../../source/utils/smartAccount/guardianStatus';
 
 import { createSmartAccountHydrationFixture } from './smartAccountHydrationFixture';
 import { VISUAL_FIXTURE_RPC, type VisualRead } from './visualFixture';
@@ -19,7 +18,10 @@ const word = (value: bigint | number) =>
 
 /** Real wallet with synthetic, runtime-attested chain reads; no local recovery intent. */
 export function createGuardianRecoveryFixture() {
-  if (keccak256(runtime) !== PALI_GUARDIAN_RECOVERY_RUNTIME_HASH)
+  if (
+    keccak256(runtime) !==
+    PALI_INFRASTRUCTURE_BY_ID.guardianRecoveryModule.runtimeCodeHash
+  )
     throw new Error(
       'Guardian fixture runtime does not match the pinned module'
     );

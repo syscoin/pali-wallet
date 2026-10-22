@@ -14,7 +14,7 @@ const budget = {
   background: 4400000,
   contentScript: 16000,
   // On-chain recovery observation and its nine localized status views add
-  // 19,590 bytes to the 8,558,031-byte baseline (8,577,621 total). Keep a
+  // 19,742 bytes to the 8,558,031-byte baseline (8,577,773 total). Keep a
   // rounded package ceiling; all mandatory startup budgets stay unchanged.
   package: 8580000,
 };

@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { AbiCoder, keccak256 } from 'ethers';
 
-import { PALI_GUARDIAN_RECOVERY_RUNTIME_HASH } from '../../source/utils/smartAccount/guardianStatus';
+import { PALI_INFRASTRUCTURE_BY_ID } from '../../source/utils/smartAccount/deployment';
 import { createGuardianRecoveryFixture } from '../harness/guardianRecoveryFixture';
 import { VISUAL_FIXTURE_RPC } from '../harness/visualFixture';
 
@@ -14,7 +14,9 @@ const request = (method: string, params: unknown[]) => ({
 
 test('guardian observation fixture supplies the exact pinned runtime and packed external schedule', async () => {
   const fixture = createGuardianRecoveryFixture();
-  expect(keccak256(fixture.runtime)).toBe(PALI_GUARDIAN_RECOVERY_RUNTIME_HASH);
+  expect(keccak256(fixture.runtime)).toBe(
+    PALI_INFRASTRUCTURE_BY_ID.guardianRecoveryModule.runtimeCodeHash
+  );
   const activeSlot = keccak256(
     AbiCoder.defaultAbiCoder().encode(
       ['address', 'uint256'],
