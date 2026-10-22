@@ -66,7 +66,9 @@ Se uma conta inteligente existe on-chain, mas está ausente localmente, use o fl
 
 O [guia completo](./smart-account-validators#guardian-recovery-guide) explica configuração, início, conclusão e **Disable guardian recovery**. Novas políticas oferecem espera de 3 ou 7 dias; 10 minutos é restrito a testnets conhecidas. A desativação confirmada exige o método de aprovação atual e gas, invalida recuperações pendentes e remove essa via de recuperação, mas não desfaz uma recuperação concluída. Se uma transação for incerta, confira primeiro o estado on-chain.
 
-Para usar o monitoramento opcional por e-mail do serviço externo Sysnode, entre em [Conta Sysnode → Alertas de recuperação](https://sysnode.info/account#recovery-alerts) com um e-mail verificado, conecte a conta inteligente implantada e aprove a assinatura na carteira. As chaves de assinatura permanecem na sua carteira. O e-mail não pode cancelar uma recuperação; confira se o monitoramento está ativo e lembre-se de que a entrega não é garantida.
+Para usar o monitoramento opcional por e-mail do serviço externo Sysnode, entre em [Conta Sysnode → Alertas de recuperação](https://sysnode.info/account#recovery-alerts) com um e-mail verificado, conecte a conta inteligente implantada e aprove a assinatura na carteira. As chaves de assinatura permanecem na sua carteira. O e-mail não pode cancelar uma recuperação.
+
+Espere até que o Sysnode mostre **Monitoring active**. Os e-mails podem chegar atrasados ou não chegar. Confira no Pali se há uma recuperação pendente.
 
 :::
 
