@@ -244,7 +244,7 @@ const EditAccountView = () => {
             },
             () => ({
               async validator(_, value) {
-                if (value && value.length > 0 && value !== state.label) {
+                if (value && value.trim().length > 0 && value !== state.label) {
                   return Promise.resolve();
                 }
 

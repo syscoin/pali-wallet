@@ -3,7 +3,13 @@ import '@testing-library/jest-dom';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
-import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
+import {
+  MemoryRouter,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+} from 'react-router-dom';
 
 import EditAccount from './EditAccount';
 import ManageAccounts from './ManageAccounts';
@@ -142,8 +148,10 @@ afterEach(() => {
 });
 const Shell = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   return (
     <>
+      <output data-testid="current-route">{location.pathname}</output>
       <button type="button" onClick={() => navigate(-1)}>
         Back to accounts
       </button>
@@ -299,4 +307,45 @@ it('does not lock a different account entry while an earlier entry Save complete
     0,
     'HDAccount',
   ]);
+});
+
+it.each([
+  ['spaces', '   '],
+  ['non-breaking spaces', '\u00a0\u00a0'],
+])('rejects an account label containing only %s', async (_kind, label) => {
+  const { user, input } = await mountAndEdit();
+  await typeLabel(user, input, label);
+  await user.click(screen.getByRole('button', { name: 'buttons.save' }));
+
+  expect(
+    await screen.findByText(
+      'Label must be non-empty and different from current label'
+    )
+  ).toBeVisible();
+  expect(input).toHaveValue(label);
+  expect(screen.getByTestId('current-route')).toHaveTextContent(
+    '/settings/edit-account'
+  );
+  expect(mockEmitter).not.toHaveBeenCalled();
+  expect(mockAlert.success).not.toHaveBeenCalled();
+  expect(mockState.vault.accounts.HDAccount[1].label).toBe('Second account');
+});
+
+it('preserves meaningful leading and trailing spaces when saving by Enter', async () => {
+  const { user, input } = await mountAndEdit();
+  const label = '  Family savings  ';
+  await typeLabel(user, input, label);
+  await user.keyboard('{Enter}');
+
+  expect(
+    await screen.findByRole('button', { name: 'buttons.edit: Family savings' })
+  ).toBeVisible();
+  expect(mockEmitter).toHaveBeenCalledTimes(1);
+  expect(mockEmitter.mock.calls[0][1].slice(0, 3)).toEqual([
+    label,
+    1,
+    'HDAccount',
+  ]);
+  expect(mockState.vault.accounts.HDAccount[1].label).toBe(label);
+  expect(mockAlert.success).toHaveBeenCalledTimes(1);
 });
