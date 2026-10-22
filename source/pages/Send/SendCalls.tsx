@@ -1314,6 +1314,7 @@ export const SendCalls = () => {
     <div className="h-screen flex flex-col">
       {/* Header */}
       <div className="bg-brand-blue600 p-4">
+        <p className="text-sm text-brand-white break-all">{host}</p>
         <p className="text-sm text-brand-white break-all">
           {t('send.from')}: {approvedContext.account.address}
         </p>
@@ -1481,20 +1482,14 @@ export const SendCalls = () => {
                       </p>
                       {(() => {
                         const decodedCallData = decodeCommonCallData(call.data);
-                        if (!decodedCallData) {
-                          return (
-                            <p className="text-sm text-brand-white font-mono">
-                              {ellipsis(call.data, 20, 4)}
-                            </p>
-                          );
-                        }
-
                         return (
                           <div>
-                            <p className="text-sm text-brand-white">
-                              {decodedCallData.name}
-                            </p>
-                            {decodedCallData.params && (
+                            {decodedCallData && (
+                              <p className="text-sm text-brand-white">
+                                {decodedCallData.name}
+                              </p>
+                            )}
+                            {decodedCallData?.params && (
                               <div className="mt-1 space-y-1">
                                 {Object.entries(decodedCallData.params).map(
                                   ([key, value]) => (
@@ -1509,11 +1504,17 @@ export const SendCalls = () => {
                                 )}
                               </div>
                             )}
-                            <Tooltip content={call.data}>
-                              <p className="text-xs text-brand-gray200 font-mono mt-1">
-                                {ellipsis(call.data, 20, 4)}
-                              </p>
-                            </Tooltip>
+                            <details className="mt-1">
+                              <summary
+                                tabIndex={0}
+                                className="cursor-pointer text-xs text-brand-gray200 font-mono break-all"
+                              >
+                                {t('send.hex')}: {ellipsis(call.data, 20, 4)}
+                              </summary>
+                              <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all text-xs text-brand-gray200 font-mono">
+                                {call.data}
+                              </pre>
+                            </details>
                           </div>
                         );
                       })()}
