@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* eslint-disable @typescript-eslint/no-var-requires */
 
 const { execFileSync } = require('node:child_process');
 const fs = require('node:fs');
@@ -75,6 +76,45 @@ const artifactBytecode = (sourceName, contractName, deployed = false) => {
 const runCast = (...castArgs) =>
   execFileSync(cast, castArgs, { encoding: 'utf8' }).trim();
 const keccak = (data) => runCast('keccak', data).toLowerCase();
+
+// This pin also attests the private storage layout used by the recovery reader.
+// A changed runtime needs a manual layout review, even in --write mode.
+const deploymentCode = originalSource.replace(
+  /("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`)|(\/\/[^\r\n]*|\/\*[\s\S]*?\*\/)/g,
+  (_match, quoted) => quoted || ' '
+);
+const guardianRecords = [...deploymentCode.matchAll(/\{([^{}]*)\}/g)].filter(
+  (record) => /\bid\s*:\s*'guardianRecoveryModule'\s*,/.test(record[1])
+);
+const guardianRecord = guardianRecords.length === 1 && guardianRecords[0][1];
+const hasOneField = (name) =>
+  guardianRecord &&
+  [
+    ...guardianRecord.matchAll(
+      new RegExp(`(?:\\b${name}|['"]${name}['"])\\s*:`, 'g')
+    ),
+  ].length === 1;
+const guardianRuntimePin =
+  hasOneField('id') &&
+  hasOneField('salt') &&
+  hasOneField('runtimeCodeHash') &&
+  /\bsalt\s*:\s*guardianRecoveryModuleSalt\s*,/.test(guardianRecord) &&
+  guardianRecord.match(/\bruntimeCodeHash\s*:\s*'(0x[0-9a-fA-F]{64})'\s*,/);
+if (!guardianRuntimePin) {
+  throw new Error('Missing explicit guardian recovery runtimeCodeHash pin');
+}
+const guardianRuntimeHash = keccak(
+  artifactBytecode(
+    'PaliGuardianRecoveryModule',
+    'PaliGuardianRecoveryModule',
+    true
+  )
+);
+if (guardianRuntimeHash !== guardianRuntimePin[1].toLowerCase()) {
+  throw new Error(
+    'Guardian recovery runtime changed; review its storage layout and runtimeCodeHash pin before regenerating deployment metadata'
+  );
+}
 const abiAddress = (address) =>
   address.slice(2).padStart(64, '0').toLowerCase();
 const appendAddresses = (bytecode, ...addresses) =>

@@ -58,14 +58,14 @@ jobs:
           path: ${{ runner.temp }}/pali-recovery-enrollment/
           retention-days: 14
   visual:
-    name: visual regression shard ${{ matrix.shard }}/2
+    name: visual regression shard ${{ matrix.shard }}/3
     runs-on: ubuntu-latest
     # Isolated runners retain one worker and all evidence without raising the limit.
     timeout-minutes: 35
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2]
+        shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -104,7 +104,7 @@ jobs:
         # A screen without a committed baseline FAILS the job but writes the
         # generated baseline into the artifact below: download it, commit the
         # new linux png(s), and re-run. Changed screens fail with a diff.
-        run: yarn e2e:visual --update-snapshots=missing --shard=${{ matrix.shard }}/2 --workers=1
+        run: yarn e2e:visual --update-snapshots=missing --shard=${{ matrix.shard }}/3 --workers=1
       - name: Require completed visual journey summaries
         run: node e2e/scripts/check-summary-completion.cjs "e2e/artifacts/pr-visual-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard }}"
       - name: Upload visual artifacts (diffs + new baselines)

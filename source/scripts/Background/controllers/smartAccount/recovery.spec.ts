@@ -219,7 +219,7 @@ describe('guardian recovery installed policy discovery', () => {
   it('does not query an uninstalled recovery module', async () => {
     aggregate.mockResolvedValueOnce([{ success: true, result: [false] }]);
     await expect(
-      controller.getSmartAccountGuardianRecoveryStatus({ account: ACCOUNT })
+      controller.getGuardianRecoveryStatusForAccount(ACCOUNT)
     ).resolves.toBeNull();
     expect(aggregate).toHaveBeenCalledTimes(1);
   });
@@ -227,7 +227,7 @@ describe('guardian recovery installed policy discovery', () => {
   it('propagates failed installation checks', async () => {
     aggregate.mockResolvedValueOnce([{ success: false }]);
     await expect(
-      controller.getSmartAccountGuardianRecoveryStatus({ account: ACCOUNT })
+      controller.getGuardianRecoveryStatusForAccount(ACCOUNT)
     ).rejects.toThrow('installation');
   });
 
@@ -235,7 +235,7 @@ describe('guardian recovery installed policy discovery', () => {
     aggregate.mockResolvedValueOnce([{ success: true, result: [true] }]);
     aggregate.mockResolvedValueOnce([{ success: false }, { success: false }]);
     await expect(
-      controller.getSmartAccountGuardianRecoveryStatus({ account: ACCOUNT })
+      controller.getGuardianRecoveryStatusForAccount(ACCOUNT)
     ).rejects.toThrow('config');
   });
 });

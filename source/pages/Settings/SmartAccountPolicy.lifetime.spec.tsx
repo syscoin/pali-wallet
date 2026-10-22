@@ -16,6 +16,7 @@ import {
   signP256WebAuthnActionHash,
 } from 'utils/passkey';
 import { getPaliModuleAddress } from 'utils/smartAccount/contracts';
+import { getGuardianRecoveryOperationId } from 'utils/smartAccount/guardianStatus';
 
 import SmartAccountPolicy from './SmartAccountPolicy';
 
@@ -179,7 +180,31 @@ describe('SmartAccountPolicy async UI lifetime', () => {
       if (method === 'getWalletSessionGeneration') return mockGeneration;
       if (method === 'getSLHDSASmartAccountSetupStatus') return null;
       if (method === 'getSmartAccountGuardianRecoveryStatus') {
+        const local = JSON.parse(
+          localStorage.getItem(REPLACEMENT_KEY) || 'null'
+        )?.recoveryOperation;
+        const pending = local?.policyEpoch
+          ? {
+              operationId: getGuardianRecoveryOperationId(local),
+              status: 'ready',
+              scheduledAt: Math.floor(Date.now() / 1000) - 120,
+              executableAt: Math.floor(Date.now() / 1000) - 60,
+              expiresAt: Math.floor(Date.now() / 1000) + 604800,
+            }
+          : null;
         return {
+          account: ACCOUNT,
+          chainId: CHAIN_ID,
+          moduleAddress: getPaliModuleAddress(CHAIN_ID, 'guardian-recovery'),
+          policyEpoch: '7',
+          observedBlock: {
+            number: 1,
+            timestamp: Math.floor(Date.now() / 1000),
+            hash: `0x${'ab'.repeat(32)}`,
+          },
+          active: pending,
+          pending,
+          knownOperation: pending,
           delay: '60',
           exists: true,
           guardians: [GUARDIAN],
@@ -211,6 +236,8 @@ describe('SmartAccountPolicy async UI lifetime', () => {
         recoveryOperation: {
           account: ACCOUNT,
           chainId: CHAIN_ID,
+          policyEpoch: '7',
+          recoveryModule: getPaliModuleAddress(CHAIN_ID, 'guardian-recovery'),
           executionCalldata: '0x1234',
           mode: `0x${'00'.repeat(32)}`,
           readyAt: Math.floor(Date.now() / 1000) - 60,
@@ -381,7 +408,7 @@ describe('SmartAccountPolicy async UI lifetime', () => {
             name: 'settings.smartAccountGuardianRecoveryShowOptions',
           })
           .hasAttribute('disabled')
-      ).toBe(true);
+      ).toBe(false);
       mockStatus = { ...mockStatus, connectionUnavailable: true };
       view.rerender(<SmartAccountPolicy />);
       await act(async () => undefined);

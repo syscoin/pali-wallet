@@ -64,7 +64,11 @@ dapp이 `wallet_prepareSmartAccount`를 호출하면 Pali는 스마트 계정을
 
 :::tip 최신 가디언 복구 안내
 
-[전체 안내](./smart-account-validators#guardian-recovery-guide)는 설정, 시작, 완료 및 **Disable guardian recovery**를 설명합니다. 새 정책은 3일 또는 7일 대기를 제공하며 10분은 알려진 테스트넷 전용입니다. 비활성화 확정에는 현재 승인 방식과 가스가 필요합니다. 대기 중인 복구를 무효화하고 복구 경로를 제거하지만 완료된 복구를 되돌릴 수는 없습니다. 결과가 불확실한 거래는 다시 보내기 전에 온체인 상태를 확인하세요. 선택적인 Sysnode 알림에는 확인된 이메일과 지갑 서명이 필요하며, 키를 전달하지 않고 알림 전달도 보장되지 않습니다.
+[전체 안내](./smart-account-validators#guardian-recovery-guide)는 설정, 시작, 완료 및 **Disable guardian recovery**를 설명합니다. 새 정책은 3일 또는 7일 대기를 제공하며 10분은 알려진 테스트넷 전용입니다. 비활성화 확정에는 현재 승인 방식과 가스가 필요합니다. 대기 중인 복구를 무효화하고 복구 경로를 제거하지만 완료된 복구를 되돌릴 수는 없습니다. 결과가 불확실한 거래는 다시 보내기 전에 온체인 상태를 확인하세요.
+
+외부 서비스인 Sysnode의 선택적 이메일 모니터링을 이용하려면 확인된 이메일 주소로 [Sysnode 계정 → 복구 알림](https://sysnode.info/account#recovery-alerts)에 로그인하고, 배포된 스마트 계정을 연결한 뒤 지갑 서명을 승인하세요. 서명 키는 지갑에 그대로 보관됩니다. 이메일로 복구를 취소할 수는 없습니다.
+
+이메일 알림이 늦게 도착하거나 전달되지 않을 수 있습니다. 복구 상태는 Pali에서 직접 확인할 수 있습니다.
 
 :::
 
@@ -96,5 +100,5 @@ dapp이 `wallet_prepareSmartAccount`를 호출하면 Pali는 스마트 계정을
   <a className="pali-media-link" href="/img/screens/sysnode-recovery-enrollment.png" target="_blank" rel="noreferrer" style={{ maxWidth: 400, margin: '0 auto' }}>
     <img src="/img/screens/sysnode-recovery-enrollment.png" alt="Sysnode 복구 알림에 연결된 계정이 초기 체인 확인을 기다리는 화면" />
   </a>
-  <figcaption>계정을 연결하는 것만으로는 충분하지 않습니다. 이 예시는 아직 체인 기록을 확인하고 있습니다. 모니터링이 활성화될 때까지 기다리고 알림이 지연될 수 있다는 점을 기억하세요.</figcaption>
+  <figcaption>Sysnode는 연결된 각 계정의 복구 및 모니터링 상태를 표시합니다. 이 예시에서는 아직 체인 기록을 확인하고 있습니다.</figcaption>
 </figure>

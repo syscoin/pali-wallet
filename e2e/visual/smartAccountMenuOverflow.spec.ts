@@ -187,7 +187,27 @@ test('long smart-account chooser and module hub keep final actions reachable in 
             if (method === 'getSLHDSASmartAccountSetupStatus')
               return reply(null);
             if (method === 'getSmartAccountGuardianRecoveryStatus')
-              return reply({ exists: false });
+              return reply({
+                account: message.data.params?.[0]?.account || address(100),
+                chainId: 57057,
+                moduleAddress: '0x8F919FC9A92da490d305054BfD862379D2760F84',
+                exists: false,
+                delay: '0',
+                delaySeconds: 0,
+                expirationSeconds: 0,
+                guardians: [],
+                guardianCount: '0',
+                threshold: 0,
+                policyEpoch: '0',
+                observedBlock: {
+                  number: 100,
+                  hash: '0x' + '11'.repeat(32),
+                  timestamp: 1800000000,
+                },
+                active: null,
+                pending: null,
+                knownOperation: null,
+              });
             if (
               /^(?:sign|send|deploy|install|uninstall|rotate|add|remove|register|start|finalize|prepare|setAccount|create)/i.test(
                 method
