@@ -2,6 +2,7 @@ import { configureStore } from '@reduxjs/toolkit';
 
 import { notificationManager } from '..';
 import vaultReducer, { setActiveAccount, setActiveNetwork } from 'state/vault';
+import vaultGlobalReducer from 'state/vaultGlobal';
 import { KeyringAccountType } from 'types/network';
 
 import MainController from './MainController';
@@ -84,7 +85,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   const initial = vaultReducer(undefined, { type: 'test/init' });
   mockStore = configureStore({
-    reducer: { vault: vaultReducer },
+    reducer: { vault: vaultReducer, vaultGlobal: vaultGlobalReducer },
     preloadedState: {
       vault: {
         ...initial,
