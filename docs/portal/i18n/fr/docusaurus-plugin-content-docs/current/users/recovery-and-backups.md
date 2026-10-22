@@ -64,7 +64,9 @@ Si un compte intelligent existe sur la chaîne mais est absent localement, utili
 
 :::tip Guide actuel de récupération par gardiens
 
-Le [guide complet](./smart-account-validators#guardian-recovery-guide) explique la configuration, le lancement, la finalisation et **Disable guardian recovery**. Les nouvelles politiques proposent 3 ou 7 jours d’attente ; 10 minutes est réservé aux testnets connus. La désactivation confirmée exige la méthode d’approbation actuelle et du gas, invalide les récupérations en attente et supprime cette voie de récupération, mais n’annule pas une récupération finalisée. En cas de transaction incertaine, vérifiez d’abord son état on-chain. Les alertes facultatives de Sysnode exigent un e-mail vérifié et une signature du portefeuille ; elles ne reçoivent aucune clé et ne garantissent pas la livraison.
+Le [guide complet](./smart-account-validators#guardian-recovery-guide) explique la configuration, le lancement, la finalisation et **Disable guardian recovery**. Les nouvelles politiques proposent 3 ou 7 jours d’attente ; 10 minutes est réservé aux testnets connus. La désactivation confirmée exige la méthode d’approbation actuelle et du gas, invalide les récupérations en attente et supprime cette voie de récupération, mais n’annule pas une récupération finalisée. En cas de transaction incertaine, vérifiez d’abord son état on-chain.
+
+Pour recevoir les alertes facultatives par e-mail du service externe Sysnode, connectez-vous à [Compte Sysnode → Alertes de récupération](https://sysnode.info/account#recovery-alerts) avec une adresse e-mail vérifiée, connectez le compte intelligent déployé et approuvez la signature dans le portefeuille. Les clés de signature restent dans votre portefeuille. Un e-mail ne peut pas annuler une récupération ; vérifiez que la surveillance est active et n’oubliez pas que la livraison n’est pas garantie.
 
 :::
 

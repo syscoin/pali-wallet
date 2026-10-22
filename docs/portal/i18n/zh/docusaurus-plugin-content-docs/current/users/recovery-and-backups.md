@@ -64,7 +64,9 @@ Pali 智能账户的恢复方式取决于已安装的模块。由通行密钥控
 
 :::tip 最新守护者恢复指南
 
-[完整指南](./smart-account-validators#guardian-recovery-guide)介绍设置、开始、完成及 **Disable guardian recovery**。新策略提供 3 天或 7 天等待期；10 分钟仅限已知测试网。确认停用需要当前批准方式和 gas，会使待处理恢复失效并移除此恢复途径，但不能撤销已完成的恢复。交易结果不确定时，请先检查链上状态再考虑重试。可选的 Sysnode 提醒需要已验证邮箱和钱包签名；不会获取密钥，也不保证邮件送达。
+[完整指南](./smart-account-validators#guardian-recovery-guide)介绍设置、开始、完成及 **Disable guardian recovery**。新策略提供 3 天或 7 天等待期；10 分钟仅限已知测试网。确认停用需要当前批准方式和 gas，会使待处理恢复失效并移除此恢复途径，但不能撤销已完成的恢复。交易结果不确定时，请先检查链上状态再考虑重试。
+
+如需使用外部服务 Sysnode 提供的可选邮件监控，请使用已验证的邮箱登录 [Sysnode 账户 → 恢复提醒](https://sysnode.info/account#recovery-alerts)，连接已部署的智能账户，并在钱包中批准签名。签名密钥仍保留在您的钱包中。邮件无法取消恢复；请确认监控已启用，并注意邮件送达没有保证。
 
 :::
 

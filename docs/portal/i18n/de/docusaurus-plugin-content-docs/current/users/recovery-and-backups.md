@@ -64,7 +64,9 @@ Existiert ein Smart Account on-chain, fehlt aber lokal, verwenden Sie die Wallet
 
 :::tip Aktuelle Anleitung zu Guardian-Recovery
 
-Die [vollständige Anleitung](./smart-account-validators#guardian-recovery-guide) beschreibt Einrichtung, Start, Abschluss und **Disable guardian recovery**. Neue Richtlinien bieten 3 oder 7 Tage Wartezeit; 10 Minuten sind nur für bekannte Testnetze vorgesehen. Bestätigtes Deaktivieren erfordert die aktuelle Freigabemethode und Gas, verwirft ausstehende Wiederherstellungen und entfernt diesen Wiederherstellungsweg, macht aber keine abgeschlossene Wiederherstellung rückgängig. Bei unklarem Transaktionsstatus zuerst On-Chain prüfen. Optionale Sysnode-E-Mail-Hinweise erfordern eine verifizierte E-Mail-Adresse und eine Wallet-Signatur; sie erhalten keine Schlüssel und sind keine Zustellgarantie.
+Die [vollständige Anleitung](./smart-account-validators#guardian-recovery-guide) beschreibt Einrichtung, Start, Abschluss und **Disable guardian recovery**. Neue Richtlinien bieten 3 oder 7 Tage Wartezeit; 10 Minuten sind nur für bekannte Testnetze vorgesehen. Bestätigtes Deaktivieren erfordert die aktuelle Freigabemethode und Gas, verwirft ausstehende Wiederherstellungen und entfernt diesen Wiederherstellungsweg, macht aber keine abgeschlossene Wiederherstellung rückgängig. Bei unklarem Transaktionsstatus zuerst On-Chain prüfen.
+
+Für optionale E-Mail-Hinweise durch den externen Dienst Sysnode melden Sie sich mit einer verifizierten E-Mail-Adresse bei [Sysnode-Konto → Wiederherstellungshinweise](https://sysnode.info/account#recovery-alerts) an, verbinden den bereitgestellten Smart Account und bestätigen die Wallet-Signatur. Ihre Signaturschlüssel bleiben in der Wallet. E-Mails können keine Wiederherstellung abbrechen; prüfen Sie, ob die Überwachung aktiv ist, und verlassen Sie sich nicht auf eine garantierte Zustellung.
 
 :::
 
