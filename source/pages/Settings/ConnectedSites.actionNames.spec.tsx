@@ -123,8 +123,8 @@ it.each([
     for (const host of mockHosts) {
       expect(
         screen.getByRole('button', {
-          name: `${messages.settings.editConnection}: ${host}`,
-          exact: true,
+          name: (name) =>
+            name === `${messages.settings.editConnection}: ${host}`,
         })
       ).toBeEnabled();
     }
@@ -142,8 +142,7 @@ it('retains the full site in the action name when the visible row uses truncatio
   );
   expect(
     screen.getByRole('button', {
-      name: `${en.settings.editConnection}: ${host}`,
-      exact: true,
+      name: (name) => name === `${en.settings.editConnection}: ${host}`,
     })
   ).toBeEnabled();
 });
@@ -160,8 +159,7 @@ it('healthy pointer review and Close keep the chosen second site and all permiss
   expect(within(dialog).getByText(mockAccount.label)).toBeVisible();
   await user.click(
     within(dialog.querySelector('footer')!).getByRole('button', {
-      name: en.buttons.close,
-      exact: true,
+      name: (name) => name === en.buttons.close,
     })
   );
   expect(screen.queryByRole('dialog')).toBeNull();
@@ -192,7 +190,7 @@ it('healthy empty state has no connection action and keeps the page Close contro
   mount();
   expect(screen.getAllByRole('button')).toHaveLength(1);
   expect(
-    screen.getByRole('button', { name: en.buttons.close, exact: true })
+    screen.getByRole('button', { name: (name) => name === en.buttons.close })
   ).toBeEnabled();
   expect(
     screen.getByText('No sites are connected to Pali Wallet')
