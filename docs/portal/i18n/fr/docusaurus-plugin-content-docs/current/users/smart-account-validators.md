@@ -149,6 +149,6 @@ Le retrait doit être confirmé avant la finalisation indésirable ; il n’annu
 
 ### Alertes facultatives par e-mail
 
-Le lien des paramètres ouvre **Sysnode Account → Recovery alerts**. Utilisez un e-mail vérifié, connectez le compte intelligent déployé sur un réseau pris en charge et signez l’inscription avec sa méthode d’approbation actuelle. Vérifiez que la surveillance est active. C’est facultatif et indépendant de la configuration des gardiens : Sysnode ne reçoit aucune clé privée et ne peut ni déplacer des fonds ni annuler la récupération.
+Le lien des paramètres ouvre **Sysnode Account → Recovery alerts**. Utilisez un e-mail vérifié, connectez le compte intelligent déployé sur un réseau pris en charge et signez l’inscription avec sa méthode d’approbation actuelle. C’est facultatif et indépendant de la configuration des gardiens : Sysnode ne reçoit aucune clé privée et ne peut ni déplacer des fonds ni annuler la récupération.
 
 La surveillance continue quand Pali est fermé, mais dépend du service, de son RPC et de l’acheminement des e-mails. Les alertes peuvent être retardées ou manquer, et les observations récentes de la chaîne peuvent être réorganisées. L’absence d’e-mail ne prouve pas l’absence de récupération. Vérifiez toute alerte dans votre portefeuille de confiance pour le compte et le réseau exacts.

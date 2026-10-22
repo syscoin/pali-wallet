@@ -89,6 +89,8 @@ import {
   toPaliSmartAccount,
 } from 'utils/smartAccount';
 import { GuardianRecoveryPolicyChangedError } from 'utils/smartAccountErrors';
+import { readGuardianRecoveryObservation } from 'utils/smartAccount/guardianStatus';
+import { guardianStatusProvider } from 'utils/smartAccount/guardianStatusProvider';
 
 import {
   infrastructurePendingIdentity,
@@ -166,7 +168,6 @@ type GuardianRecoveryStatusForAccount = {
   guardianCount: string;
   guardians: string[];
   moduleAddress: string;
-  pending: null;
   threshold: number;
 };
 
@@ -417,6 +418,13 @@ class SmartAccountController {
   private readonly inflightHydrations = new Map<
     string,
     Promise<ISmartAccountMetadata>
+  >();
+  private readonly guardianObservations = new Map<
+    string,
+    {
+      context: ReturnType<SmartAccountController['infrastructureContext']>;
+      promise: ReturnType<typeof readGuardianRecoveryObservation>;
+    }
   >();
   private readonly explicitHydrations = new Map<
     string,
@@ -2501,8 +2509,41 @@ class SmartAccountController {
 
   public async getSmartAccountGuardianRecoveryStatus(params: {
     account: string;
+    knownOperationId?: string;
   }) {
-    return this.getGuardianRecoveryStatusForAccount(params.account);
+    const context = this.infrastructureContext();
+    const account = getAddress(params.account);
+    const knownOperationId = params.knownOperationId?.toLowerCase();
+    if (knownOperationId && !/^0x[0-9a-f]{64}$/.test(knownOperationId))
+      throw new Error('Invalid guardian recovery operation ID');
+    const key = `${account.toLowerCase()}:${knownOperationId || ''}`;
+    for (const [pendingKey, entry] of this.guardianObservations) {
+      if (!this.sameInfrastructureContext(context, entry.context))
+        this.guardianObservations.delete(pendingKey);
+    }
+    const current = this.guardianObservations.get(key);
+    if (current) return current.promise;
+    const moduleAddress = getConfiguredAuthenticatorAddress(
+      context.chainId,
+      'guardian-recovery'
+    );
+    const entry = {
+      context,
+      promise: null as ReturnType<typeof readGuardianRecoveryObservation>,
+    };
+    entry.promise = readGuardianRecoveryObservation({
+      account,
+      chainId: context.chainId,
+      moduleAddress,
+      knownOperationId,
+      provider: guardianStatusProvider(context.provider),
+      assertCurrent: () => this.assertInfrastructureContext(context),
+    }).finally(() => {
+      if (this.guardianObservations.get(key) === entry)
+        this.guardianObservations.delete(key);
+    });
+    this.guardianObservations.set(key, entry);
+    return entry.promise;
   }
 
   public async prepareSmartAccountGuardianPolicyUpdate(params: unknown) {
@@ -3585,7 +3626,6 @@ class SmartAccountController {
       guardianCount: String(guardians.length),
       guardians,
       moduleAddress,
-      pending: null,
       threshold,
     };
   }

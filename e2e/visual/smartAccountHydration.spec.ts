@@ -246,7 +246,7 @@ test('smart-account policy refresh serializes with real message signing and reje
       }
     );
     await wallet.step(
-      'an actual account switch rejects the pending signing hydration before any signature',
+      'a controlled real-controller account change rejects pending signing hydration before any signature',
       async (capture) => {
         await wallet!.gotoRoute('#/home');
         await wallet!.ensureOnHome();
@@ -265,15 +265,29 @@ test('smart-account policy refresh serializes with real message signing and reje
         await expect(confirm).toBeDisabled();
         await fixture.waitForRead(1);
         const { hdAccount } = await publicState(page);
-        // Use the already-open main document's actual account menu. A newly
-        // opened main document is deliberately blocked while approval is open.
-        await page.locator('#general-settings-button').locator('..').click();
-        await page
-          .getByRole('menuitem', {
-            name: `${hdAccount.label} (${hdAccount.address})`,
+        // Recheck the real main-window guard independently of popup event timing.
+        await page.reload();
+        await wallet!.waitAppReady();
+        await expect(
+          page.getByRole('heading', {
+            name: 'Pali is Currently Active',
             exact: true,
           })
-          .click();
+        ).toBeVisible();
+        // The account menu is intentionally unavailable during approval. Exercise
+        // its production controller operation without replacing state or results.
+        const switchResponse = await page.evaluate(async (expectedAddress) => {
+          const result = await chrome.runtime.sendMessage({
+            type: 'CONTROLLER_ACTION',
+            data: {
+              methods: ['wallet', 'setAccount'],
+              params: [0, 'HDAccount', false, expectedAddress],
+            },
+          });
+          return result ?? null;
+        }, hdAccount.address);
+        // setAccount returns void; structured controller failures are not success.
+        expect(switchResponse).toBeNull();
         await expect
           .poll(() => publicState(page))
           .toMatchObject({
@@ -295,10 +309,12 @@ test('smart-account policy refresh serializes with real message signing and reje
         expect(response.error).toBeDefined();
         expect(fixture.metadataReadCount).toBe(1);
         expect(fixture.audit.deniedWrites).toEqual([]);
-        observations.changedAccountRejected = {
-          selected: hdAccount.address,
-          metadataReads: fixture.metadataReadCount,
+        observations.controlledRealControllerAccountChangeRejected = {
           error: response.error,
+          mainWindowBlocked: true,
+          metadataReads: fixture.metadataReadCount,
+          operation: 'wallet.setAccount via CONTROLLER_ACTION',
+          selected: hdAccount.address,
         };
         fixture.releaseAll();
       }
