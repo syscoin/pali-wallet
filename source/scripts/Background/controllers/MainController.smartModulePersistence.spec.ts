@@ -478,3 +478,366 @@ it('rejects a stale reviewed account before any persistence attempt', async () =
   expect(vaultWrites).toBe(0);
   expect(modules(await loadSlip44State(60))).toEqual([]);
 });
+
+it('serializes same-account forced read and commit without reusing an older snapshot', async () => {
+  // Model the post-disable refresh and SignEth's simultaneous forced refresh.
+  // Both observe the same post-removal state; no account/authority/session moves.
+  const original = store.getState().vault.accounts.SmartAccount[0];
+  const descriptor = { accountIndex: 0, deploymentSalt: 'synthetic-stable' };
+  const authoritative = {
+    ...original.smartAccount,
+    descriptor,
+    isDeployed: true,
+    auth: { module: 'ecdsa', validator: MODULE, data: '0x' },
+    installedModules: [
+      {
+        id: 'ecdsa',
+        type: 'validator',
+        address: MODULE,
+        data: '0x',
+        config: { owners: [ACCOUNT], threshold: 1 },
+      },
+    ],
+  };
+  store.dispatch(
+    setAccountPropertyByIdAndType({
+      id: 0,
+      type: KeyringAccountType.SmartAccount,
+      property: 'smartAccount',
+      value: {
+        ...authoritative,
+        installedModules: [
+          ...authoritative.installedModules,
+          {
+            id: 'guardian-recovery',
+            type: 'executor',
+            address: record.address,
+          },
+        ],
+      },
+    })
+  );
+  const finish: Array<(value: any) => void> = [];
+  const fetch = jest
+    .spyOn(wallet.smartAccount, 'fetchSmartAccountMetadata')
+    .mockImplementation(() => new Promise((resolve) => finish.push(resolve)));
+  const pending = [
+    wallet.hydrateSmartAccount(0),
+    wallet.hydrateSmartAccount(0),
+  ];
+  expect(fetch).toHaveBeenCalledTimes(1);
+  finish[0]({ ...authoritative });
+  await expect(pending[0]).resolves.toEqual(authoritative);
+  expect(fetch).toHaveBeenCalledTimes(2);
+  // The queued call performs its own fresh read after the first commit.
+  expect((fetch.mock.calls[1][0] as any).smartAccount).toEqual(authoritative);
+  finish[1]({ ...authoritative });
+  await expect(pending[1]).resolves.toEqual(authoritative);
+  const saved = store.getState().vault.accounts.SmartAccount[0].smartAccount;
+  expect(saved).toEqual(authoritative);
+  expect(store.getState().vault.activeAccount).toEqual({
+    id: 0,
+    type: KeyringAccountType.SmartAccount,
+  });
+  expect(wallet.walletSessionGeneration).toBe(0);
+  expect(wallet.walletStateGeneration).toBe(0);
+  // A subsequent explicit request succeeds after both refreshes settle.
+  fetch.mockResolvedValueOnce({ ...authoritative });
+  await expect(wallet.hydrateSmartAccount(0)).resolves.toEqual(authoritative);
+  expect(wallet.smartAccount.explicitHydrations.size).toBe(0);
+});
+
+it('cleans up a failed refresh and starts a fresh queued read without retrying it', async () => {
+  const current = store.getState().vault.accounts.SmartAccount[0].smartAccount;
+  let fail!: (error: Error) => void;
+  const fetch = jest
+    .spyOn(wallet.smartAccount, 'fetchSmartAccountMetadata')
+    .mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          fail = reject;
+        })
+    )
+    .mockResolvedValueOnce({ ...current, isDeployed: true });
+  const first = wallet.hydrateSmartAccount(0);
+  const rejected = expect(first).rejects.toThrow('Read failed');
+  const second = wallet.hydrateSmartAccount(0);
+  expect(fetch).toHaveBeenCalledTimes(1);
+  fail(new Error('Read failed'));
+  await rejected;
+  await expect(second).resolves.toMatchObject({ isDeployed: true });
+  expect(fetch).toHaveBeenCalledTimes(2);
+  expect(wallet.smartAccount.explicitHydrations.size).toBe(0);
+});
+
+it.each([
+  'session',
+  'wallet',
+  'payer',
+  'address',
+  'target id',
+  'target type',
+  'target chain',
+  'descriptor',
+  'authority',
+  'deleted',
+  'recreated',
+  'rpc',
+  'provider',
+])(
+  'does not retarget a queued refresh after its captured %s changes',
+  async (axis) => {
+    let fail!: (error: Error) => void;
+    const fetch = jest
+      .spyOn(wallet.smartAccount, 'fetchSmartAccountMetadata')
+      .mockImplementationOnce(
+        () =>
+          new Promise((_resolve, reject) => {
+            fail = reject;
+          })
+      );
+    const first = wallet.hydrateSmartAccount(0);
+    const firstRejected = expect(first).rejects.toThrow('Read failed');
+    const second = wallet.hydrateSmartAccount(0);
+    const secondRejected = expect(second).rejects.toThrow();
+    if (axis === 'session') wallet.walletSessionGeneration++;
+    if (axis === 'wallet') wallet.walletStateGeneration++;
+    if (axis === 'payer')
+      store.dispatch(
+        setActiveAccount({ id: 1, type: KeyringAccountType.HDAccount })
+      );
+    if (axis === 'provider') transaction.web3Provider = {};
+    if (axis === 'rpc') {
+      const snapshot = store.getState().vault;
+      store.dispatch(
+        restoreVaultSnapshot({
+          ...snapshot,
+          activeNetwork: {
+            ...snapshot.activeNetwork,
+            url: 'https://changed.invalid',
+          },
+        })
+      );
+    }
+    if (axis === 'deleted' || axis === 'recreated') {
+      const snapshot = store.getState().vault;
+      const original = snapshot.accounts.SmartAccount[0];
+      store.dispatch(
+        restoreVaultSnapshot({
+          ...snapshot,
+          accounts: {
+            ...snapshot.accounts,
+            SmartAccount:
+              axis === 'deleted'
+                ? {}
+                : {
+                    0: {
+                      ...original,
+                      smartAccount: {
+                        ...original.smartAccount,
+                        descriptor: { ...original.smartAccount.descriptor },
+                      },
+                    },
+                  },
+          },
+        })
+      );
+    }
+    if (['address', 'target id', 'target type'].includes(axis)) {
+      const property =
+        axis === 'address' ? 'address' : axis === 'target id' ? 'id' : 'type';
+      const value =
+        axis === 'address'
+          ? MODULE
+          : axis === 'target id'
+          ? 2
+          : KeyringAccountType.HDAccount;
+      store.dispatch(
+        setAccountPropertyByIdAndType({
+          id: 0,
+          type: KeyringAccountType.SmartAccount,
+          property,
+          value,
+        })
+      );
+    }
+    if (['descriptor', 'authority', 'target chain'].includes(axis)) {
+      const original = store.getState().vault.accounts.SmartAccount[0];
+      store.dispatch(
+        setAccountPropertyByIdAndType({
+          id: 0,
+          type: KeyringAccountType.SmartAccount,
+          property: 'smartAccount',
+          value: {
+            ...original.smartAccount,
+            ...(axis === 'descriptor'
+              ? { descriptor: { accountIndex: 9 } }
+              : axis === 'target chain'
+              ? { chainId: 57057 }
+              : {
+                  auth: { module: 'ecdsa', validator: MODULE, data: '0xabcd' },
+                }),
+          },
+        })
+      );
+    }
+    fail(new Error('Read failed'));
+    await firstRejected;
+    await secondRejected;
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(wallet.smartAccount.explicitHydrations.size).toBe(0);
+  }
+);
+
+it('waits for the preceding metadata write before starting its fresh RPC read', async () => {
+  const original = store.getState().vault.accounts.SmartAccount[0].smartAccount;
+  const fetch = jest
+    .spyOn(wallet.smartAccount, 'fetchSmartAccountMetadata')
+    .mockResolvedValue({ ...original, isDeployed: true });
+  const held = holdWrite();
+  const first = wallet.hydrateSmartAccount(0);
+  await held.started;
+  const second = wallet.hydrateSmartAccount(0);
+  expect(fetch).toHaveBeenCalledTimes(1);
+  expect(
+    store.getState().vault.accounts.SmartAccount[0].smartAccount.isDeployed
+  ).toBeUndefined();
+  held.release();
+  await expect(first).resolves.toMatchObject({ isDeployed: true });
+  await expect(second).resolves.toMatchObject({ isDeployed: true });
+  expect(fetch).toHaveBeenCalledTimes(2);
+  expect(wallet.smartAccount.explicitHydrations.size).toBe(0);
+});
+
+it('does not weaken the active read CAS when guardian metadata changes mid-read', async () => {
+  let finish!: (value: any) => void;
+  jest
+    .spyOn(wallet.smartAccount, 'fetchSmartAccountMetadata')
+    .mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        })
+    );
+  const original = store.getState().vault.accounts.SmartAccount[0].smartAccount;
+  const pending = wallet.hydrateSmartAccount(0);
+  const rejected = expect(pending).rejects.toThrow(
+    'PALI_TRANSACTION_CONTEXT_CHANGED'
+  );
+  const updated = {
+    ...original,
+    installedModules: [
+      { id: 'guardian-recovery', type: 'executor', address: MODULE },
+    ],
+  };
+  store.dispatch(
+    setAccountPropertyByIdAndType({
+      id: 0,
+      type: KeyringAccountType.SmartAccount,
+      property: 'smartAccount',
+      value: updated,
+    })
+  );
+  finish({ ...original, isDeployed: true });
+  await rejected;
+  expect(store.getState().vault.accounts.SmartAccount[0].smartAccount).toEqual(
+    updated
+  );
+  expect(wallet.smartAccount.explicitHydrations.size).toBe(0);
+});
+
+it('does not serialize unrelated target accounts behind one another', async () => {
+  const snapshot = store.getState().vault;
+  const existing = snapshot.accounts.SmartAccount[0];
+  store.dispatch(
+    restoreVaultSnapshot({
+      ...snapshot,
+      accounts: {
+        ...snapshot.accounts,
+        SmartAccount: {
+          ...snapshot.accounts.SmartAccount,
+          2: {
+            ...existing,
+            id: 2,
+            address: MODULE,
+            smartAccount: { ...existing.smartAccount },
+          },
+        },
+      },
+    })
+  );
+  const finish: Array<(value: any) => void> = [];
+  const fetch = jest
+    .spyOn(wallet.smartAccount, 'fetchSmartAccountMetadata')
+    .mockImplementation(() => new Promise((resolve) => finish.push(resolve)));
+  const first = wallet.hydrateSmartAccount(0);
+  const second = wallet.hydrateSmartAccount(2);
+  expect(fetch).toHaveBeenCalledTimes(2);
+  finish[0]({ ...existing.smartAccount, isDeployed: true });
+  finish[1]({ ...existing.smartAccount, isDeployed: true });
+  await expect(first).resolves.toMatchObject({ isDeployed: true });
+  await expect(second).resolves.toMatchObject({ isDeployed: true });
+  expect(wallet.smartAccount.explicitHydrations.size).toBe(0);
+});
+
+it('does not retarget an old queued approval when the preceding read discovers new owners', async () => {
+  const original = store.getState().vault.accounts.SmartAccount[0].smartAccount;
+  const oldAuth = { module: 'ecdsa', validator: MODULE, data: '0x1111' };
+  const changed = { ...original, auth: { ...oldAuth, data: '0x2222' } };
+  store.dispatch(
+    setAccountPropertyByIdAndType({
+      id: 0,
+      type: KeyringAccountType.SmartAccount,
+      property: 'smartAccount',
+      value: { ...original, auth: oldAuth },
+    })
+  );
+  let finish!: (value: any) => void;
+  const fetch = jest
+    .spyOn(wallet.smartAccount, 'fetchSmartAccountMetadata')
+    .mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        })
+    );
+  const first = wallet.hydrateSmartAccount(0);
+  const second = wallet.hydrateSmartAccount(0);
+  const rejected = expect(second).rejects.toThrow(
+    'PALI_TRANSACTION_CONTEXT_CHANGED'
+  );
+  finish(changed);
+  await expect(first).resolves.toEqual(changed);
+  await rejected;
+  expect(fetch).toHaveBeenCalledTimes(1);
+  expect(
+    store.getState().vault.accounts.SmartAccount[0].smartAccount.auth
+  ).toEqual(changed.auth);
+  expect(wallet.smartAccount.explicitHydrations.size).toBe(0);
+});
+
+it('lets a new provider context finish before a retired read and preserves its newer queue entry', async () => {
+  const original = store.getState().vault.accounts.SmartAccount[0].smartAccount;
+  const finish: Array<(value: any) => void> = [];
+  const fetch = jest
+    .spyOn(wallet.smartAccount, 'fetchSmartAccountMetadata')
+    .mockImplementation(() => new Promise((resolve) => finish.push(resolve)));
+  const old = wallet.hydrateSmartAccount(0);
+  const oldRejected = expect(old).rejects.toThrow();
+  transaction.web3Provider = {};
+  const fresh = wallet.hydrateSmartAccount(0);
+  expect(fetch).toHaveBeenCalledTimes(2);
+  finish[1]({ ...original, isDeployed: true });
+  await expect(fresh).resolves.toMatchObject({ isDeployed: true });
+  const latest = wallet.hydrateSmartAccount(0);
+  expect(fetch).toHaveBeenCalledTimes(3);
+  finish[0]({ ...original, isDeployed: false });
+  await oldRejected;
+  expect(wallet.smartAccount.explicitHydrations.size).toBe(1);
+  expect(
+    store.getState().vault.accounts.SmartAccount[0].smartAccount.isDeployed
+  ).toBe(true);
+  finish[2]({ ...original, isDeployed: true });
+  await expect(latest).resolves.toMatchObject({ isDeployed: true });
+  expect(wallet.smartAccount.explicitHydrations.size).toBe(0);
+});

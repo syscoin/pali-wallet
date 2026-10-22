@@ -93,6 +93,8 @@ jobs:
           PACKAGE_VERSION="$(node -p "require('./package.json').version")"
           unzip -q "build/pali-wallet-production-chrome-${PACKAGE_VERSION}.zip" -d "$PACKAGE_DIR"
           node scripts/check-bundle-size.js "$PACKAGE_DIR"
+      - name: Require smart-account hydration browser regression discovery
+        run: yarn e2e:visual --list smartAccountHydration.spec.ts
       - name: Run visual baselines
         env:
           PALI_E2E_RUN_ID: pr-visual-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard }}
