@@ -1,5 +1,6 @@
 /** @jest-environment jsdom */
 import '@testing-library/jest-dom';
+import { getErc20Abi, getErc21Abi, getErc55Abi } from '@sidhujag/sysweb3-utils';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
@@ -147,7 +148,12 @@ beforeEach(() => {
     wallet: {
       isUnlocked: () => true,
       getWalletSessionGeneration: () => 1,
-      ethereumTransaction: { web3Provider: {} },
+      getErc20Abi,
+      getErc721Abi: getErc21Abi,
+      getErc1155Abi: getErc55Abi,
+      ethereumTransaction: {
+        web3Provider: { call: async () => `0x${'0'.repeat(64)}` },
+      },
     },
     dapp: {
       isConnected: () => true,
@@ -208,6 +214,145 @@ const disclosure = (container: HTMLElement, index = 0) => {
   const bytes = details.querySelector('pre')!;
   return { details, summary, bytes };
 };
+
+const MAX_UINT256 =
+  '115792089237316195423570985008687907853269984665640564039457584007913129639935';
+const selectorVectors: Array<{
+  args: unknown[];
+  fields: Record<string, string>;
+  method: string;
+  selector: string;
+  signature: string;
+}> = [
+  {
+    selector: '0x095ea7b3',
+    signature: 'approve(address,uint256)',
+    method: 'approve',
+    args: [RECIPIENT, MAX_UINT256],
+    fields: { spender: RECIPIENT, amount: MAX_UINT256 },
+  },
+  {
+    selector: '0xa9059cbb',
+    signature: 'transfer(address,uint256)',
+    method: 'transfer',
+    args: [RECIPIENT, '17'],
+    fields: { to: RECIPIENT, amount: '17' },
+  },
+  {
+    selector: '0x23b872dd',
+    signature: 'transferFrom(address,address,uint256)',
+    method: 'transferFrom',
+    args: [ACCOUNT, RECIPIENT, '0'],
+    fields: { from: ACCOUNT, to: RECIPIENT, amountOrTokenId: '0' },
+  },
+  {
+    selector: '0x39509351',
+    signature: 'increaseAllowance(address,uint256)',
+    method: 'increaseAllowance',
+    args: [RECIPIENT, MAX_UINT256],
+    fields: { spender: RECIPIENT, addedValue: MAX_UINT256 },
+  },
+  {
+    selector: '0xa457c2d7',
+    signature: 'decreaseAllowance(address,uint256)',
+    method: 'decreaseAllowance',
+    args: [RECIPIENT, '3'],
+    fields: { spender: RECIPIENT, subtractedValue: '3' },
+  },
+  ...[false, true].map((approved) => ({
+    selector: '0xa22cb465',
+    signature: 'setApprovalForAll(address,bool)',
+    method: 'setApprovalForAll',
+    args: [RECIPIENT, approved],
+    fields: { operator: RECIPIENT, approved: String(approved) },
+  })),
+  {
+    selector: '0x42842e0e',
+    signature: 'safeTransferFrom(address,address,uint256)',
+    method: 'safeTransferFrom',
+    args: [ACCOUNT, RECIPIENT, MAX_UINT256],
+    fields: { from: ACCOUNT, to: RECIPIENT, tokenId: MAX_UINT256 },
+  },
+  {
+    selector: '0xb88d4fde',
+    signature: 'safeTransferFrom(address,address,uint256,bytes)',
+    method: 'safeTransferFrom',
+    args: [ACCOUNT, RECIPIENT, '9', '0x123456'],
+    fields: { from: ACCOUNT, to: RECIPIENT, tokenId: '9' },
+  },
+  {
+    selector: '0xf242432a',
+    signature: 'safeTransferFrom(address,address,uint256,uint256,bytes)',
+    method: 'safeTransferFrom',
+    args: [ACCOUNT, RECIPIENT, MAX_UINT256, '2', '0xaabb'],
+    fields: { from: ACCOUNT, to: RECIPIENT, id: MAX_UINT256, amount: '2' },
+  },
+  {
+    selector: '0x2eb2c2d6',
+    signature:
+      'safeBatchTransferFrom(address,address,uint256[],uint256[],bytes)',
+    method: 'safeBatchTransferFrom',
+    args: [ACCOUNT, RECIPIENT, [], [], '0x'],
+    fields: { from: ACCOUNT, to: RECIPIENT, ids: '[]', amounts: '[]' },
+  },
+  {
+    selector: '0x2eb2c2d6',
+    signature:
+      'safeBatchTransferFrom(address,address,uint256[],uint256[],bytes)',
+    method: 'safeBatchTransferFrom',
+    args: [ACCOUNT, RECIPIENT, ['0', MAX_UINT256], ['3', '0'], '0xabcd'],
+    fields: {
+      from: ACCOUNT,
+      to: RECIPIENT,
+      ids: `[0, ${MAX_UINT256}]`,
+      amounts: '[3, 0]',
+    },
+  },
+];
+
+it.each(selectorVectors)(
+  'preserves $signature decoded field order and exact values',
+  async ({ selector, signature, method, args, fields }) => {
+    const data = new Interface([`function ${signature}`]).encodeFunctionData(
+      signature,
+      args
+    );
+    expect(data.slice(0, 10)).toBe(selector);
+    const { container } = await openReview([call(data)]);
+    expect(screen.getByText(method, { exact: true })).toBeVisible();
+    expect(
+      Array.from(container.querySelectorAll('p.font-mono')).map(
+        (element) => element.textContent
+      )
+    ).toEqual(
+      Object.entries(fields).map(([name, value]) => `${name}: ${value}`)
+    );
+    const { summary, bytes } = disclosure(container);
+    fireEvent.click(summary);
+    expect(bytes).toBeVisible();
+    // Trailing bytes remain inspectable even when not separately decoded.
+    expect(bytes.textContent).toBe(data);
+  }
+);
+
+it.each(
+  selectorVectors.filter(
+    ({ selector }, index, entries) =>
+      entries.findIndex((entry) => entry.selector === selector) === index
+  )
+)(
+  'retains method-only and full raw fallback for malformed $selector calldata',
+  async ({ selector, method }) => {
+    const data = `${selector}deadbeef`;
+    const { container } = await openReview([call(data)]);
+    expect(screen.getByText(method, { exact: true })).toBeVisible();
+    expect(container.querySelectorAll('p.font-mono')).toHaveLength(0);
+    const { summary, bytes } = disclosure(container);
+    fireEvent.click(summary);
+    expect(bytes.textContent).toBe(data);
+    expect(bytes).toBeVisible();
+  }
+);
 
 it.each([HOST, `https://${'a'.repeat(60)}.synthetic.invalid`])(
   'shows the trusted requesting origin %s from the real runtime pipeline',
