@@ -45,6 +45,11 @@ test('ERC20 balance verification exposes a scoped explicit retry without losing 
     outcome: 'failed' | 'held' | 'success';
     phase: string;
   }[] = [];
+  const protocolProbes: {
+    account: string;
+    balance: string;
+    phase: string;
+  }[] = [];
   const held: (() => void)[] = [];
   const writes: string[] = [];
   const unexpected: string[] = [];
@@ -136,6 +141,17 @@ test('ERC20 balance verification exposes a scoped explicit retry without losing 
                 ['address'],
                 '0x' + String(call.params[0].data).slice(10)
               );
+              // Normal token-standard detection probes the contract itself,
+              // not the selected owner's balance. Keep that import-only read
+              // separate from the failure/retry evidence below.
+              if (phase === 'import' && account.toLowerCase() === CONTRACT) {
+                protocolProbes.push({ account: CONTRACT, balance: '0', phase });
+                return {
+                  jsonrpc: '2.0',
+                  id: call.id,
+                  result: abi.encode(['uint256'], ['0']),
+                };
+              }
               if (
                 account.toLowerCase() !== fixture.evmAddresses[0].toLowerCase()
               ) {
@@ -427,6 +443,14 @@ test('ERC20 balance verification exposes a scoped explicit retry without losing 
       async () => {
         expect(writes).toEqual([]);
         expect(unexpected).toEqual([]);
+        expect(protocolProbes.length).toBeGreaterThan(0);
+        for (const probe of protocolProbes) {
+          expect(probe).toEqual({
+            account: CONTRACT,
+            balance: '0',
+            phase: 'import',
+          });
+        }
         expect(routes.deniedWrites).toEqual([]);
         expect(held).toHaveLength(0);
         expect(observations).toHaveLength(2);
@@ -452,6 +476,7 @@ test('ERC20 balance verification exposes a scoped explicit retry without losing 
             observations,
             reads,
             balanceReads,
+            protocolProbes,
             writes,
             unexpected,
             deniedWrites: routes?.deniedWrites || [],

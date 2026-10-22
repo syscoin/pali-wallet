@@ -1182,10 +1182,10 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
       } as any);
   }, []);
 
+  const isErc1155Selection =
+    selectedAsset?.isNft && selectedAsset?.tokenStandard === 'ERC-1155';
   const isAmountDisabled =
-    (selectedAsset?.isNft &&
-      selectedAsset?.tokenStandard === 'ERC-1155' &&
-      verifiedTokenBalance === null) ||
+    (isErc1155Selection && verifiedTokenBalance === null) ||
     (!selectedAsset?.isNft && selectedAsset && verifiedERC20Balance === null) ||
     isVerifyingERC20 ||
     isVerifyingTokenId;
@@ -1264,21 +1264,17 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
               </span>
             )}
           {/* ERC-1155 verification indicators */}
-          {selectedAsset?.isNft &&
-            selectedAsset?.tokenStandard === 'ERC-1155' &&
-            isVerifyingTokenId && (
-              <span className="text-brand-royalblue text-xs ml-1">🔄</span>
-            )}
-          {selectedAsset?.isNft &&
-            selectedAsset?.tokenStandard === 'ERC-1155' &&
-            verifiedTokenBalance !== null && (
-              <span
-                className="text-green-400 text-xs ml-1"
-                title={t('send.tokenOwnershipVerified')}
-              >
-                ✓
-              </span>
-            )}
+          {isErc1155Selection && isVerifyingTokenId && (
+            <span className="text-brand-royalblue text-xs ml-1">🔄</span>
+          )}
+          {isErc1155Selection && verifiedTokenBalance !== null && (
+            <span
+              className="text-green-400 text-xs ml-1"
+              title={t('send.tokenOwnershipVerified')}
+            >
+              ✓
+            </span>
+          )}
         </div>
       </div>
       <Form
@@ -1740,8 +1736,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                     id="with-max-button"
                     type="number"
                     step={
-                      selectedAsset?.isNft &&
-                      selectedAsset?.tokenStandard === 'ERC-1155'
+                      isErc1155Selection
                         ? '1'
                         : selectedAsset &&
                           !selectedAsset.isNft &&
@@ -1751,9 +1746,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                     }
                     min={selectedAsset?.isNft ? '1' : undefined}
                     max={
-                      selectedAsset?.isNft &&
-                      selectedAsset?.tokenStandard === 'ERC-1155' &&
-                      verifiedTokenBalance !== null
+                      isErc1155Selection && verifiedTokenBalance !== null
                         ? String(verifiedTokenBalance)
                         : undefined
                     }
@@ -1762,8 +1755,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                       isAmountDisabled
                     }
                     placeholder={
-                      selectedAsset?.isNft &&
-                      selectedAsset?.tokenStandard === 'ERC-1155'
+                      isErc1155Selection
                         ? verifiedTokenBalance !== null &&
                           BigNumber.from(verifiedTokenBalance).gt(1)
                           ? `Amount (1-${verifiedTokenBalance})`
