@@ -68,7 +68,7 @@ Die [vollständige Anleitung](./smart-account-validators#guardian-recovery-guide
 
 Für optionale E-Mail-Hinweise durch den externen Dienst Sysnode melden Sie sich mit einer verifizierten E-Mail-Adresse bei [Sysnode-Konto → Wiederherstellungshinweise](https://sysnode.info/account#recovery-alerts) an, verbinden den bereitgestellten Smart Account und bestätigen die Wallet-Signatur. Ihre Signaturschlüssel bleiben in der Wallet. E-Mails können keine Wiederherstellung abbrechen.
 
-Warten Sie, bis Sysnode **Monitoring active** anzeigt. E-Mails können verspätet eintreffen oder ausbleiben. Prüfen Sie in Pali, ob eine Wiederherstellung aussteht.
+E-Mail-Hinweise können verspätet eintreffen oder ausbleiben. Sie können den Wiederherstellungsstatus direkt in Pali prüfen.
 
 :::
 
@@ -100,5 +100,5 @@ Diese Bildschirmfotos zeigen die englische Oberfläche und Beispielkonten. Bezei
   <a className="pali-media-link" href="/img/screens/sysnode-recovery-enrollment.png" target="_blank" rel="noreferrer" style={{ maxWidth: 400, margin: '0 auto' }}>
     <img src="/img/screens/sysnode-recovery-enrollment.png" alt="Mit Sysnode-Wiederherstellungshinweisen verknüpftes Konto wartet auf erste Blockchain-Prüfungen" />
   </a>
-  <figcaption>Das Verknüpfen allein reicht nicht: In diesem Beispiel wird der Blockchain-Verlauf noch geprüft. Warten Sie auf eine aktive Überwachung und beachten Sie, dass Hinweise verspätet eintreffen können.</figcaption>
+  <figcaption>Sysnode führt Sie durch das Verknüpfen Ihres Kontos und zeigt den Überwachungsstatus an.</figcaption>
 </figure>

@@ -68,7 +68,7 @@ Pali 智能账户的恢复方式取决于已安装的模块。由通行密钥控
 
 如需使用外部服务 Sysnode 提供的可选邮件监控，请使用已验证的邮箱登录 [Sysnode 账户 → 恢复提醒](https://sysnode.info/account#recovery-alerts)，连接已部署的智能账户，并在钱包中批准签名。签名密钥仍保留在您的钱包中。邮件无法取消恢复。
 
-请等待 Sysnode 显示 **Monitoring active**。邮件可能延迟，也可能无法送达。请在 Pali 中检查是否有待处理的恢复。
+邮件提醒可能延迟或无法送达。您可以直接在 Pali 中查看恢复状态。
 
 :::
 
@@ -100,5 +100,5 @@ Pali 智能账户的恢复方式取决于已安装的模块。由通行密钥控
   <a className="pali-media-link" href="/img/screens/sysnode-recovery-enrollment.png" target="_blank" rel="noreferrer" style={{ maxWidth: 400, margin: '0 auto' }}>
     <img src="/img/screens/sysnode-recovery-enrollment.png" alt="已关联 Sysnode 恢复提醒的账户正在等待初始链上检查" />
   </a>
-  <figcaption>仅关联账户还不够：此示例仍在检查链历史。请等待监控变为活动状态，并记住提醒可能延迟。</figcaption>
+  <figcaption>Sysnode 会引导您关联账户，并显示监控状态。</figcaption>
 </figure>

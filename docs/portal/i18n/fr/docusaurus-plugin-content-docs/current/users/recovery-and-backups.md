@@ -68,7 +68,7 @@ Le [guide complet](./smart-account-validators#guardian-recovery-guide) explique 
 
 Pour recevoir les alertes facultatives par e-mail du service externe Sysnode, connectez-vous à [Compte Sysnode → Alertes de récupération](https://sysnode.info/account#recovery-alerts) avec une adresse e-mail vérifiée, connectez le compte intelligent déployé et approuvez la signature dans le portefeuille. Les clés de signature restent dans votre portefeuille. Un e-mail ne peut pas annuler une récupération.
 
-Attendez que Sysnode affiche **Monitoring active**. Les e-mails peuvent arriver en retard ou ne pas arriver. Vérifiez dans Pali si une récupération est en attente.
+Les alertes par e-mail peuvent arriver en retard ou ne pas être livrées. Vous pouvez vérifier l’état de la récupération directement dans Pali.
 
 :::
 
@@ -100,5 +100,5 @@ Ces captures présentent l’interface en anglais et des comptes d’exemple. Le
   <a className="pali-media-link" href="/img/screens/sysnode-recovery-enrollment.png" target="_blank" rel="noreferrer" style={{ maxWidth: 400, margin: '0 auto' }}>
     <img src="/img/screens/sysnode-recovery-enrollment.png" alt="Compte lié aux alertes de récupération Sysnode en attente des premières vérifications de la chaîne" />
   </a>
-  <figcaption>Lier un compte ne suffit pas : cet exemple vérifie encore l’historique de la chaîne. Attendez que la surveillance soit active et gardez à l’esprit que les alertes peuvent être retardées.</figcaption>
+  <figcaption>Sysnode vous guide pour lier votre compte et affiche son état de surveillance.</figcaption>
 </figure>

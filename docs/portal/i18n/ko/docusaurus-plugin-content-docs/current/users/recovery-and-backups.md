@@ -68,7 +68,7 @@ dapp이 `wallet_prepareSmartAccount`를 호출하면 Pali는 스마트 계정을
 
 외부 서비스인 Sysnode의 선택적 이메일 모니터링을 이용하려면 확인된 이메일 주소로 [Sysnode 계정 → 복구 알림](https://sysnode.info/account#recovery-alerts)에 로그인하고, 배포된 스마트 계정을 연결한 뒤 지갑 서명을 승인하세요. 서명 키는 지갑에 그대로 보관됩니다. 이메일로 복구를 취소할 수는 없습니다.
 
-Sysnode에 **Monitoring active**가 표시될 때까지 기다리세요. 이메일이 늦게 도착하거나 도착하지 않을 수 있습니다. 대기 중인 복구가 있는지는 Pali에서 확인하세요.
+이메일 알림이 늦게 도착하거나 전달되지 않을 수 있습니다. 복구 상태는 Pali에서 직접 확인할 수 있습니다.
 
 :::
 
@@ -100,5 +100,5 @@ Sysnode에 **Monitoring active**가 표시될 때까지 기다리세요. 이메�
   <a className="pali-media-link" href="/img/screens/sysnode-recovery-enrollment.png" target="_blank" rel="noreferrer" style={{ maxWidth: 400, margin: '0 auto' }}>
     <img src="/img/screens/sysnode-recovery-enrollment.png" alt="Sysnode 복구 알림에 연결된 계정이 초기 체인 확인을 기다리는 화면" />
   </a>
-  <figcaption>계정을 연결하는 것만으로는 충분하지 않습니다. 이 예시는 아직 체인 기록을 확인하고 있습니다. 모니터링이 활성화될 때까지 기다리고 알림이 지연될 수 있다는 점을 기억하세요.</figcaption>
+  <figcaption>Sysnode가 계정 연결 과정을 안내하고 모니터링 상태를 표시합니다.</figcaption>
 </figure>

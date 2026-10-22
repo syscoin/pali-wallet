@@ -68,7 +68,7 @@ dappが`wallet_prepareSmartAccount`を呼び出すと、Paliはスマートア�
 
 外部サービスSysnodeによる任意のメール監視を利用するには、確認済みメールアドレスで[Sysnodeアカウント → 復旧通知](https://sysnode.info/account#recovery-alerts)にサインインし、デプロイ済みのスマートアカウントを接続してウォレット署名を承認します。署名鍵はウォレット内に保持されます。メールで復旧を取り消すことはできません。
 
-Sysnodeに **Monitoring active** と表示されるまで待ってください。メールは遅れたり、届かなかったりすることがあります。復旧リクエストが保留中かどうかはPaliで確認してください。
+メール通知は遅れたり、届かなかったりすることがあります。復旧の状態はPaliで直接確認できます。
 
 :::
 
@@ -100,5 +100,5 @@ Sysnodeに **Monitoring active** と表示されるまで待ってください�
   <a className="pali-media-link" href="/img/screens/sysnode-recovery-enrollment.png" target="_blank" rel="noreferrer" style={{ maxWidth: 400, margin: '0 auto' }}>
     <img src="/img/screens/sysnode-recovery-enrollment.png" alt="Sysnodeの復旧通知に関連付けたアカウントが初回のチェーン確認を待っている画面" />
   </a>
-  <figcaption>アカウントを関連付けるだけでは不十分です。この例ではチェーン履歴をまだ確認しています。監視が有効になるまで待ち、通知が遅れる可能性も忘れないでください。</figcaption>
+  <figcaption>Sysnodeがアカウントの連携手順を案内し、監視状態を表示します。</figcaption>
 </figure>

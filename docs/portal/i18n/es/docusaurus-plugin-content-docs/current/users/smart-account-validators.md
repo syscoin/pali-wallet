@@ -149,6 +149,6 @@ La eliminación debe confirmarse antes de la finalización no deseada; no revier
 
 ### Alertas opcionales por correo
 
-El enlace de ajustes abre **Sysnode Account → Recovery alerts**. Usa un correo verificado, conecta la cuenta inteligente desplegada en una red compatible y firma la inscripción con su método de aprobación actual. Comprueba que la monitorización esté activa. Es opcional e independiente de configurar guardianes: Sysnode no recibe claves privadas ni puede mover fondos o cancelar la recuperación.
+El enlace de ajustes abre **Sysnode Account → Recovery alerts**. Usa un correo verificado, conecta la cuenta inteligente desplegada en una red compatible y firma la inscripción con su método de aprobación actual. Es opcional e independiente de configurar guardianes: Sysnode no recibe claves privadas ni puede mover fondos o cancelar la recuperación.
 
 La monitorización continúa con Pali cerrado, pero depende del servicio, su RPC y la entrega del correo. Las alertas pueden retrasarse o fallar, y las observaciones recientes de la cadena pueden reorganizarse. No recibir un correo no demuestra que no exista una recuperación. Revisa las alertas en tu wallet de confianza para la cuenta y red exactas.

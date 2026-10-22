@@ -68,7 +68,7 @@ La [guía completa](./smart-account-validators#guardian-recovery-guide) explica 
 
 Para recibir alertas opcionales por correo del servicio externo Sysnode, inicia sesión en [Cuenta de Sysnode → Alertas de recuperación](https://sysnode.info/account#recovery-alerts) con un correo verificado, conecta la cuenta inteligente desplegada y aprueba la firma en la wallet. Las claves de firma permanecen en tu wallet. El correo no puede cancelar una recuperación.
 
-Espera hasta que Sysnode muestre **Monitoring active**. Los correos pueden llegar tarde o no llegar. Comprueba en Pali si hay una recuperación pendiente.
+Las alertas por correo pueden llegar tarde o no llegar. Puedes consultar el estado de la recuperación directamente en Pali.
 
 :::
 
@@ -100,5 +100,5 @@ Estas capturas muestran la interfaz en inglés y cuentas de ejemplo. Las etiquet
   <a className="pali-media-link" href="/img/screens/sysnode-recovery-enrollment.png" target="_blank" rel="noreferrer" style={{ maxWidth: 400, margin: '0 auto' }}>
     <img src="/img/screens/sysnode-recovery-enrollment.png" alt="Cuenta vinculada a alertas de recuperación de Sysnode esperando las comprobaciones iniciales de la cadena" />
   </a>
-  <figcaption>Vincular una cuenta no basta: este ejemplo todavía está comprobando el historial de la cadena. Espera a que la supervisión esté activa y recuerda que las alertas pueden retrasarse.</figcaption>
+  <figcaption>Sysnode te guía para vincular tu cuenta y muestra su estado de supervisión.</figcaption>
 </figure>

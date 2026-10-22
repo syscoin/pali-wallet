@@ -68,7 +68,7 @@ O [guia completo](./smart-account-validators#guardian-recovery-guide) explica co
 
 Para usar o monitoramento opcional por e-mail do serviço externo Sysnode, entre em [Conta Sysnode → Alertas de recuperação](https://sysnode.info/account#recovery-alerts) com um e-mail verificado, conecte a conta inteligente implantada e aprove a assinatura na carteira. As chaves de assinatura permanecem na sua carteira. O e-mail não pode cancelar uma recuperação.
 
-Espere até que o Sysnode mostre **Monitoring active**. Os e-mails podem chegar atrasados ou não chegar. Confira no Pali se há uma recuperação pendente.
+Os alertas por e-mail podem atrasar ou não ser entregues. Você pode conferir o estado da recuperação diretamente no Pali.
 
 :::
 
@@ -100,5 +100,5 @@ Estas capturas mostram a interface em inglês e contas de exemplo. Os rótulos e
   <a className="pali-media-link" href="/img/screens/sysnode-recovery-enrollment.png" target="_blank" rel="noreferrer" style={{ maxWidth: 400, margin: '0 auto' }}>
     <img src="/img/screens/sysnode-recovery-enrollment.png" alt="Conta vinculada aos alertas de recuperação do Sysnode aguardando as verificações iniciais da rede" />
   </a>
-  <figcaption>Vincular uma conta não basta: este exemplo ainda está verificando o histórico da rede. Aguarde o monitoramento ativo e lembre-se de que os alertas podem atrasar.</figcaption>
+  <figcaption>O Sysnode orienta você a vincular sua conta e mostra o estado do monitoramento.</figcaption>
 </figure>

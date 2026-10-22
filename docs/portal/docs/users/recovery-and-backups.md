@@ -65,7 +65,7 @@ Pali smart-account recovery depends on the installed modules. A passkey-controll
 - For an unexpected request, use **Disable guardian recovery** from that account's recovery settings while you still control its current approval method. Confirmed removal invalidates pending recovery and removes the recovery path; it cannot undo a recovery already finalized. This action needs gas. Check an uncertain transaction on-chain before retrying.
 - For optional email monitoring through the external Sysnode service, sign in to [Sysnode Account → Recovery alerts](https://sysnode.info/account#recovery-alerts) with a verified email address, then connect the deployed smart account and approve a wallet signature. Signing keys remain in your wallet; email cannot cancel recovery.
 
-Wait until Sysnode shows **Monitoring active**. Emails can arrive late or fail to arrive. Check Pali to see whether recovery is pending.
+Email alerts may be delayed or not delivered. You can check recovery status directly in Pali.
 
 Follow the [complete guardian recovery guide](./smart-account-validators#guardian-recovery) for setup, finalization, ownership, and monitoring limits. Keep replacement credentials backed up; do not erase previous credentials that other accounts or networks may still use.
 
@@ -103,5 +103,5 @@ These screenshots use the English interface and example accounts. Labels and net
   <a className="pali-media-link" href="/img/screens/sysnode-recovery-enrollment.png" target="_blank" rel="noreferrer" style={{ maxWidth: 400, margin: '0 auto' }}>
     <img src="/img/screens/sysnode-recovery-enrollment.png" alt="Sysnode linked recovery-alert account awaiting initial chain checks" />
   </a>
-  <figcaption>Linking an account is not enough: this example is still checking chain history. Wait for active monitoring, and remember that alerts can be delayed.</figcaption>
+  <figcaption>Sysnode guides you through linking your account and shows its monitoring status.</figcaption>
 </figure>
