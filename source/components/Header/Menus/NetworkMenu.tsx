@@ -64,6 +64,9 @@ const networkConfigurationFields: Array<keyof INetwork> = [
   'coingeckoPlatformId',
 ];
 
+const NETWORK_SETTINGS_ACTION_CLASS_NAME =
+  'flex px-5 py-2 w-full text-base hover:bg-brand-blue500 hover:bg-opacity-20 cursor-pointer transition-all duration-200';
+
 export const NetworkMenu: React.FC<INetworkComponent> = (
   props: INetworkComponent
 ) => {
@@ -489,7 +492,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                   ?.focus({ preventScroll: true });
                 menu.focus({ preventScroll: true });
               }}
-              className={`fixed overflow-x-hidden z-50 inset-x-0 top-8 bottom-0 w-full text-center text-brand-white font-poppins bg-brand-blue600 rounded-2xl focus:outline-none shadow-2xl ring-1 ring-black ring-opacity-5
+              className={`pali-menu-focus fixed overflow-x-hidden z-50 inset-x-0 top-8 bottom-0 w-full text-center text-brand-white font-poppins bg-brand-blue600 rounded-2xl focus:outline-none shadow-2xl ring-1 ring-black ring-opacity-5
               transform transition-all duration-100 ease-out ${
                 menuprops.open
                   ? 'opacity-100 scale-100 pointer-events-auto'
@@ -564,7 +567,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                         }
                       )
                     }
-                    className="flex px-5 py-2 w-full text-base hover:bg-brand-blue500 hover:bg-opacity-20 cursor-pointer transition-all duration-200"
+                    className={NETWORK_SETTINGS_ACTION_CLASS_NAME}
                   >
                     <NetworkIconSvg />
 
@@ -579,7 +582,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                     onClick={() =>
                       handleSettingsNavigation('/settings/networks/edit')
                     }
-                    className="flex px-5 py-2 w-full text-base hover:bg-brand-blue500 hover:bg-opacity-20 cursor-pointer transition-all duration-200"
+                    className={NETWORK_SETTINGS_ACTION_CLASS_NAME}
                   >
                     <EditIconSvg />
 

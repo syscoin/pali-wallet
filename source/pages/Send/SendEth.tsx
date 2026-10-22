@@ -53,6 +53,9 @@ import {
   useSendPreparationGuard,
 } from './useSendDraftWriter';
 
+const ASSET_OPTION_CLASS_SUFFIX =
+  'w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300';
+
 const renderVerificationSpinner = (className: string) => (
   <svg
     className={className}
@@ -968,7 +971,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
         } else {
           setVerifiedTokenBalance('0');
           setVerificationError(
-            balance === '0'
+            tokenInfo.verified && balance === '0'
               ? t('send.youDontOwnThisToken')
               : t('send.tokenVerificationFailed')
           );
@@ -1295,7 +1298,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
             rules={[
               {
                 required: true,
-                message: '',
+                message: t('send.addressRequired'),
               },
               () => ({
                 async validator(_, value) {
@@ -1437,7 +1440,6 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
           <div className="flex md:max-w-md">
             <Form.Item
               name="asset"
-              className=""
               rules={[
                 {
                   required: false,
@@ -1457,7 +1459,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
 
                     <Menu.Items
                       as="div"
-                      className={`scrollbar-styled absolute z-10 left-0 mt-2 py-3 w-56 h-56 text-brand-white font-poppins bg-brand-blue800 border border-fields-input-border focus:border-fields-input-borderfocus rounded-2xl shadow-2xl overflow-auto origin-top-right
+                      className={`scrollbar-styled absolute z-20 left-0 mt-2 py-3 w-56 h-56 text-brand-white font-poppins bg-brand-blue800 border border-fields-input-border focus:border-fields-input-borderfocus rounded-2xl shadow-2xl overflow-auto origin-top-right
                           transform transition-all duration-100 ease-out ${
                             open
                               ? 'opacity-100 scale-100 pointer-events-auto'
@@ -1469,7 +1471,10 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                         <button
                           type="button"
                           onClick={() => handleSelectedAsset('-1')}
-                          className="group flex items-center justify-between p-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
+                          className={
+                            'group flex items-center justify-between p-2 ' +
+                            ASSET_OPTION_CLASS_SUFFIX
+                          }
                         >
                           <div className="flex flex-col items-start flex-1 overflow-hidden">
                             <p className="truncate max-w-[100px]">
@@ -1493,7 +1498,10 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                                   <button
                                     type="button"
                                     onClick={() => handleSelectedAsset(item.id)}
-                                    className="group flex items-center justify-between px-2 py-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
+                                    className={
+                                      'group flex items-center justify-between px-2 py-2 ' +
+                                      ASSET_OPTION_CLASS_SUFFIX
+                                    }
                                   >
                                     <div className="flex flex-col items-start flex-1 overflow-hidden">
                                       <p className="truncate max-w-[100px]">
@@ -1571,7 +1579,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                       async validator(_, value) {
                         // Check if value is empty
                         if (!value || value === '') {
-                          return Promise.reject('');
+                          return Promise.reject(t('send.amountRequired'));
                         }
 
                         // Fungible amounts use the token's verified decimal
@@ -1601,7 +1609,8 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                           } catch {
                             return Promise.reject(t('send.invalidAmount'));
                           }
-                          if (tokenValue.lte(0)) return Promise.reject('');
+                          if (tokenValue.lte(0))
+                            return Promise.reject(t('send.invalidAmount'));
                           if (tokenValue.gt(atomic)) {
                             return Promise.reject(
                               t('send.insufficientFundsVerified', {
@@ -1653,9 +1662,10 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                         try {
                           valueBN = parseEther(String(value));
                         } catch {
-                          return Promise.reject('');
+                          return Promise.reject(t('send.invalidAmount'));
                         }
-                        if (valueBN.lte(0)) return Promise.reject('');
+                        if (valueBN.lte(0))
+                          return Promise.reject(t('send.invalidAmount'));
 
                         // For native currency, use BigNumber comparison
                         try {
@@ -1961,7 +1971,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
             </div>
           )}
 
-        <ToastActionFooter className="fixed bottom-4 left-4 right-4 md:relative md:bottom-auto md:left-auto md:right-auto md:mt-3 md:w-[96%]">
+        <ToastActionFooter className="fixed z-10 bottom-4 left-4 right-4 md:relative md:bottom-auto md:left-auto md:right-auto md:mt-3 md:w-[96%]">
           <Button
             id="send-eth-next-btn"
             variant="neutral"

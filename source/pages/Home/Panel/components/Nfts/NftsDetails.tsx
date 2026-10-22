@@ -190,7 +190,7 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
             setVerificationError(
               !tokenInfo
                 ? t('send.tokenNotFound')
-                : tokenInfo.balance === 0
+                : tokenInfo.verified && tokenInfo.balance === 0
                 ? t('send.youDontOwnThisToken')
                 : t('send.tokenVerificationFailed')
             );

@@ -56,7 +56,8 @@ const change = async (value: string, delay = 500) => {
 const complete = async (id: string, owned: boolean) => {
   expect(pending.has(id)).toBe(true);
   await act(async () =>
-    pending.get(id)!([{ tokenId: id, verified: owned, balance: owned ? 1 : 0 }])
+    // This fixture completes a successful ownership read, including another owner.
+    pending.get(id)!([{ tokenId: id, verified: true, balance: owned ? 1 : 0 }])
   );
 };
 

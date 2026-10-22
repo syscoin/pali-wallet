@@ -154,7 +154,7 @@ it.each(['0', MAX_UINT256])(
   }
 );
 
-it('does not report ERC721 ownership for another owner or an unminted token', async () => {
+it('distinguishes a confirmed other owner from an unverified unminted ERC721 token', async () => {
   expect(
     await verifyERC721OwnershipHelper(
       CONTRACT,
@@ -164,7 +164,7 @@ it('does not report ERC721 ownership for another owner or an unminted token', as
     )
   ).toEqual([
     { tokenId: '7', balance: 0, verified: true },
-    { tokenId: '8', balance: 0, verified: true },
+    { tokenId: '8', balance: 0, verified: false },
   ]);
 });
 

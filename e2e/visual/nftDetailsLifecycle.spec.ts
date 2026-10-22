@@ -121,7 +121,7 @@ test('NFT detail ownership follows the latest edit and cancels reads on Back in 
           const reply = qa.pending.get(id);
           if (!reply) throw new Error(`No pending read for ${id}`);
           qa.pending.delete(id);
-          reply([{ tokenId: id, verified: owned, balance: owned ? 1 : 0 }]);
+          reply([{ tokenId: id, verified: true, balance: owned ? 1 : 0 }]);
         },
       };
       (window as any).__qa117Nft = qa;

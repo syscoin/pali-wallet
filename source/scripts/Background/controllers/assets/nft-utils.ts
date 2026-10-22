@@ -147,12 +147,14 @@ export async function verifyERC721OwnershipHelper(
           return {
             tokenId,
             isOwner: owner.toLowerCase() === ownerAddress.toLowerCase(),
+            verified: true,
           };
         } catch {
-          // Token doesn't exist or other error
+          // A reverted, unavailable or malformed read does not attest ownership.
           return {
             tokenId,
             isOwner: false,
+            verified: false,
           };
         }
       });
@@ -163,7 +165,7 @@ export async function verifyERC721OwnershipHelper(
         results.push({
           tokenId: result.tokenId,
           balance: result.isOwner ? 1 : 0,
-          verified: true,
+          verified: result.verified,
         });
       });
     }
