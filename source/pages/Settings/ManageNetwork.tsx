@@ -39,6 +39,10 @@ const ManageNetworkView = () => {
   const { controllerEmitter, connectionUnavailable } = useController();
   const { isContextChanging } = usePageLoadingState();
   const networkActionsBlocked = isContextChanging || connectionUnavailable;
+  const isActiveNetwork = (network: INetwork) =>
+    network.kind === activeNetwork.kind &&
+    network.chainId === activeNetwork.chainId &&
+    network.url === activeNetwork.url;
   const isNetworkActionBlocked = () => {
     const { networkStatus, isSwitchingAccount } = store.getState().vaultGlobal;
     return (
@@ -203,15 +207,14 @@ const ManageNetworkView = () => {
               />
               <div className="flex flex-col items-start">
                 <span>{truncate(network.label || 'Unknown Network', 25)}</span>
-                {network.chainId === activeNetwork.chainId &&
-                  network.url === activeNetwork.url && (
-                    <div className="flex items-center gap-1 mt-1">
-                      <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                      <span className="text-xs text-green-400">
-                        {t('components.activeStatus')}
-                      </span>
-                    </div>
-                  )}
+                {isActiveNetwork(network) && (
+                  <div className="flex items-center gap-1 mt-1">
+                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                    <span className="text-xs text-green-400">
+                      {t('components.activeStatus')}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -235,8 +238,7 @@ const ManageNetworkView = () => {
               {!network.default && (
                 <Tooltip
                   content={
-                    network.chainId === activeNetwork.chainId &&
-                    network.url === activeNetwork.url
+                    isActiveNetwork(network)
                       ? t('settings.youCannotRemoveActiveNetwork')
                       : ''
                   }
@@ -245,20 +247,13 @@ const ManageNetworkView = () => {
                     onClick={() => removeNetwork(INetworkType.Syscoin, network)}
                     type="primary"
                     shape="circle"
-                    disabled={
-                      network.chainId === activeNetwork.chainId &&
-                      network.url === activeNetwork.url
-                    }
+                    disabled={isActiveNetwork(network)}
                   >
                     <Icon
                       name="trash"
-                      disabled={
-                        network.chainId === activeNetwork.chainId &&
-                        network.url === activeNetwork.url
-                      }
+                      disabled={isActiveNetwork(network)}
                       className={
-                        network.chainId === activeNetwork.chainId &&
-                        network.url === activeNetwork.url
+                        isActiveNetwork(network)
                           ? 'text-xl'
                           : 'hover:text-brand-royalblue text-xl'
                       }
@@ -291,15 +286,14 @@ const ManageNetworkView = () => {
               />
               <div className="flex flex-col items-start">
                 <span>{truncate(network.label || 'Unknown Network', 25)}</span>
-                {network.chainId === activeNetwork.chainId &&
-                  network.url === activeNetwork.url && (
-                    <div className="flex items-center gap-1 mt-1">
-                      <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                      <span className="text-xs text-green-400">
-                        {t('components.activeStatus')}
-                      </span>
-                    </div>
-                  )}
+                {isActiveNetwork(network) && (
+                  <div className="flex items-center gap-1 mt-1">
+                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                    <span className="text-xs text-green-400">
+                      {t('components.activeStatus')}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -324,8 +318,7 @@ const ManageNetworkView = () => {
               {!network.default && (
                 <Tooltip
                   content={
-                    network.chainId === activeNetwork.chainId &&
-                    network.url === activeNetwork.url
+                    isActiveNetwork(network)
                       ? t('settings.youCannotRemoveActiveNetwork')
                       : ''
                   }
@@ -336,20 +329,13 @@ const ManageNetworkView = () => {
                     }
                     type="primary"
                     shape="circle"
-                    disabled={
-                      network.chainId === activeNetwork.chainId &&
-                      network.url === activeNetwork.url
-                    }
+                    disabled={isActiveNetwork(network)}
                   >
                     <Icon
                       name="trash"
-                      disabled={
-                        network.chainId === activeNetwork.chainId &&
-                        network.url === activeNetwork.url
-                      }
+                      disabled={isActiveNetwork(network)}
                       className={
-                        network.chainId === activeNetwork.chainId &&
-                        network.url === activeNetwork.url
+                        isActiveNetwork(network)
                           ? 'text-xl'
                           : 'hover:text-brand-royalblue text-xl'
                       }
