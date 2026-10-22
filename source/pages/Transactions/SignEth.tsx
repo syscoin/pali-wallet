@@ -23,6 +23,7 @@ import { dispatchBackgroundEvent } from 'utils/browser';
 import { handleTransactionError } from 'utils/errorHandling';
 import { hashMessage } from 'utils/ethersV6Compat';
 import { arrayify, isHexString } from 'utils/ethersV6Compat';
+import { EVM_TRANSACTION_CONTEXT_CHANGED } from 'utils/evmTransactionContext';
 import { getNetworkChain } from 'utils/network';
 import {
   getPersonalSignParams,
@@ -521,7 +522,11 @@ const EthSign: React.FC<ISign> = () => {
       if (!wasHandledSpecifically) {
         // Fallback for non-structured errors
         console.log(error);
-        setErrorMsg(error.message);
+        setErrorMsg(
+          error?.message === EVM_TRANSACTION_CONTEXT_CHANGED
+            ? t('transactions.psbtSigningContextChanged')
+            : error.message
+        );
       }
 
       setLoading(false);
