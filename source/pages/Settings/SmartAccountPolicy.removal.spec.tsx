@@ -224,6 +224,45 @@ async function confirm() {
   await waitFor(() => expect(mockSubmit).toHaveBeenCalledTimes(1));
 }
 
+test('adds a decorative amber Disable warning without changing its label, blue shell or confirmation gate', async () => {
+  const icon = jest.spyOn(jest.requireMock('components/index'), 'Icon');
+  render(<SmartAccountPolicy />);
+  const disable = await screen.findByRole('button', {
+    name: REMOVE,
+    exact: true,
+  });
+  expect(disable.textContent).toBe(REMOVE);
+  for (const className of [
+    'border-brand-blue500',
+    'bg-brand-blue500',
+    'text-brand-blue100',
+  ])
+    expect(disable.classList.contains(className)).toBe(true);
+  const cue = disable.querySelector('[aria-hidden="true"]');
+  expect(cue).not.toBeNull();
+  expect(cue!.classList.contains('text-brand-yellowInfo')).toBe(true);
+  expect(cue!.classList.contains('shrink-0')).toBe(true);
+  expect(
+    icon.mock.calls.some(
+      ([props]) => props.name === 'warning' && props.size === 14
+    )
+  ).toBe(true);
+
+  fireEvent.click(disable);
+  const dialog = await screen.findByRole('dialog', { name: CONFIRM });
+  expect(dialog.textContent).toContain(ACCOUNT);
+  expect(dialog.textContent).toContain(
+    'settings.smartAccountGuardianRecoveryDisableConfirmButton'
+  );
+  expect(mockSubmit).not.toHaveBeenCalled();
+  expect(mockBroadcast).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Close confirmation' }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  expect(mockSubmit).not.toHaveBeenCalled();
+  expect(mockBroadcast).not.toHaveBeenCalled();
+  expect(localStorage.getItem(removalKey)).toBeNull();
+});
+
 test('requires explicit confirmation and freezes exact account, network and installed module', async () => {
   render(<SmartAccountPolicy />);
   await openConfirmation();
