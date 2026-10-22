@@ -25,9 +25,8 @@ test('external transaction review exposes exact Data and Hex through keyboard ta
   const fixture = createIsolatedVaultFixture();
   const contract = '0x000000000000000000000000000000000000ed6e';
   const spender = `0x${'11'.repeat(20)}`;
-  const data = new Interface([
-    'function approve(address,uint256)',
-  ]).encodeFunctionData('approve', [spender, 42]);
+  const approveInterface = new Interface(['function approve(address,uint256)']);
+  const data = approveInterface.encodeFunctionData('approve', [spender, 42]);
   const abi = AbiCoder.defaultAbiCoder();
   const metadata = new Map([
     [id('name()').slice(0, 10), abi.encode(['string'], ['Review Token'])],
@@ -146,18 +145,18 @@ test('external transaction review exposes exact Data and Hex through keyboard ta
       name: en.send.hex,
       exact: true,
     });
-    const assertData = async () => {
+    const assertData = async (rawAmount = '42') => {
       await expect(dataTab).toHaveAttribute('aria-selected', 'true');
       await expect(dataPanel).toBeVisible();
       const decoded = JSON.parse(await dataPanel.locator('pre').innerText());
       expect(decoded.method).toBe('approve');
-      expect(decoded.inputs).toEqual([spender, '42']);
+      expect(decoded.inputs).toEqual([spender, rawAmount]);
       return decoded;
     };
-    const assertHex = async () => {
+    const assertHex = async (expectedData = data) => {
       await expect(hex).toHaveAttribute('aria-selected', 'true');
       await expect(hexPanel).toBeVisible();
-      expect((await hexPanel.innerText()).trim()).toBe(data);
+      expect((await hexPanel.innerText()).trim()).toBe(expectedData);
     };
     const focusOrder: string[] = [];
     await wallet.step(
@@ -205,21 +204,24 @@ test('external transaction review exposes exact Data and Hex through keyboard ta
       async (capture) => {
         await popup.evaluate(() => {
           (window as any).__reviewCopies = [];
+          (window as any).__finishReviewCopies = [];
           Object.defineProperty(navigator, 'clipboard', {
             configurable: true,
             value: {
               writeText: (text: string) =>
                 new Promise<void>((resolve, reject) => {
                   (window as any).__reviewCopies.push(text);
-                  (window as any).__finishReviewCopy = (accepted: boolean) =>
-                    accepted
-                      ? resolve()
-                      : reject(
-                          new DOMException(
-                            'Synthetic clipboard refusal',
-                            'NotAllowedError'
+                  (window as any).__finishReviewCopies.push(
+                    (accepted: boolean) =>
+                      accepted
+                        ? resolve()
+                        : reject(
+                            new DOMException(
+                              'Synthetic clipboard refusal',
+                              'NotAllowedError'
+                            )
                           )
-                        );
+                  );
                 }),
             },
           });
@@ -232,7 +234,9 @@ test('external transaction review exposes exact Data and Hex through keyboard ta
         await expect(
           popup.getByText(en.home.addressCopied, { exact: true })
         ).toHaveCount(0);
-        await popup.evaluate(() => (window as any).__finishReviewCopy(false));
+        await popup.evaluate(() =>
+          (window as any).__finishReviewCopies[0](false)
+        );
         await expect(
           popup.getByText(en.transactions.copyFailed, { exact: true })
         ).toBeVisible();
@@ -240,7 +244,9 @@ test('external transaction review exposes exact Data and Hex through keyboard ta
           popup.getByText(en.home.addressCopied, { exact: true })
         ).toHaveCount(0);
         await copyFrom.click();
-        await popup.evaluate(() => (window as any).__finishReviewCopy(true));
+        await popup.evaluate(() =>
+          (window as any).__finishReviewCopies[1](true)
+        );
         await expect(
           popup.getByText(en.home.addressCopied, { exact: true })
         ).toBeVisible();
@@ -265,6 +271,182 @@ test('external transaction review exposes exact Data and Hex through keyboard ta
         });
       }
     );
+    await expect(
+      popup.getByText(en.home.addressCopied, { exact: true })
+    ).toBeHidden();
+    const hexCopy = hexPanel.getByRole('button', {
+      name: en.buttons.copy,
+      exact: true,
+    });
+    const copiedNotice = popup.getByText(en.send.hexDataCopied, {
+      exact: true,
+    });
+    const refusedNotice = popup.getByText(en.transactions.copyFailed, {
+      exact: true,
+    });
+    const readCopies = () =>
+      popup.evaluate(() => (window as any).__reviewCopies as string[]);
+    const finishCopy = (index: number, accepted: boolean) =>
+      popup.evaluate(
+        async ({ index, accepted }) => {
+          (window as any).__finishReviewCopies[index](accepted);
+          // Drain the native promise and the separately queued toast delivery.
+          await new Promise<void>((resolve) => setTimeout(resolve, 0));
+          await new Promise<void>((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+          );
+        },
+        { index, accepted }
+      );
+    const focusHexCopy = async (expectedData: string) => {
+      await hex.click();
+      await expect(hex).toBeFocused();
+      await assertHex(expectedData);
+      // This is native focus traversal from the selected tab, not a direct
+      // focus/click injected into the control under test.
+      await popup.keyboard.press('Tab');
+      await expect(hexCopy).toBeFocused();
+      await expect(hexCopy).toHaveAttribute('type', 'button');
+      await expect(hexCopy).toHaveText(expectedData);
+      const bounds = await hexCopy.boundingBox();
+      expect(bounds).not.toBeNull();
+      const viewport = popup.viewportSize()!;
+      expect(bounds!.x).toBeGreaterThanOrEqual(0);
+      expect(bounds!.y).toBeGreaterThanOrEqual(0);
+      expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(viewport.width);
+      expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(viewport.height);
+      expect(
+        await hexCopy.evaluate((element) => {
+          const b = element.getBoundingClientRect();
+          return [
+            [b.left + 2, b.top + b.height / 2],
+            [b.right - 2, b.top + b.height / 2],
+            [b.left + b.width / 2, b.top + 2],
+            [b.left + b.width / 2, b.bottom - 2],
+          ].every(([x, y]) => {
+            const hit = document.elementFromPoint(x, y);
+            return !!hit && (hit === element || element.contains(hit));
+          });
+        }),
+        'Native Tab exposes the entire copy control above the fixed footer'
+      ).toBe(true);
+      return bounds;
+    };
+    const copyObservations: unknown[] = [];
+    let reviewedData = data;
+    for (const { viewport, amount, rawAmount } of [
+      {
+        viewport: { width: 400, height: 620 },
+        amount: '1.23456789',
+        rawAmount: '123456789',
+      },
+      {
+        viewport: { width: 320, height: 360 },
+        amount: '2.00000001',
+        rawAmount: '200000001',
+      },
+    ]) {
+      await popup.setViewportSize(viewport);
+      await wallet.step(
+        `keyboard Hex copy waits for native acceptance at ${viewport.width}x${viewport.height}`,
+        async (capture) => {
+          await focusHexCopy(reviewedData);
+          const index = (await readCopies()).length;
+          await popup.keyboard.press('Enter');
+          await expect.poll(readCopies).toHaveLength(index + 1);
+          expect((await readCopies())[index]).toBe(reviewedData);
+          await expect(copiedNotice).toHaveCount(0);
+          await finishCopy(index, false);
+          await expect(refusedNotice).toBeVisible();
+          await expect(copiedNotice).toHaveCount(0);
+          await capture(popup);
+          // Observe the ordinary notice lifecycle rather than advancing clocks
+          // or hiding feedback that could obscure a stale completion.
+          await expect(refusedNotice).toBeHidden();
+        }
+      );
+      await wallet.step(
+        `retire pending Hex copy after an ordinary allowance edit at ${viewport.width}x${viewport.height}`,
+        async (capture) => {
+          const originalData = reviewedData;
+          const bounds = await focusHexCopy(originalData);
+          const pendingIndex = (await readCopies()).length;
+          await popup.keyboard.press('Space');
+          await expect.poll(readCopies).toHaveLength(pendingIndex + 1);
+          expect((await readCopies())[pendingIndex]).toBe(originalData);
+          await expect(copiedNotice).toHaveCount(0);
+          await details.click();
+          await popup
+            .getByRole('button', { name: en.send.editPermission, exact: true })
+            .click();
+          const dialog = popup.getByRole('dialog');
+          await dialog
+            .getByRole('radio', {
+              name: en.send.customSpendingLimit,
+              exact: true,
+            })
+            .check();
+          await dialog
+            .getByRole('textbox', {
+              name: en.send.enterAMaximumSpendingLimit,
+              exact: true,
+            })
+            .fill(amount);
+          await dialog
+            .getByRole('button', { name: en.buttons.save, exact: true })
+            .click();
+          await expect(dialog).toBeHidden();
+          await expect(
+            popup.getByText(`${amount} REVIEW`, { exact: true })
+          ).toBeVisible();
+          await dataTab.click();
+          const decoded = await assertData(rawAmount);
+          reviewedData = approveInterface.encodeFunctionData('approve', [
+            spender,
+            BigInt(rawAmount),
+          ]);
+          expect(reviewedData).not.toBe(originalData);
+          await hex.click();
+          await assertHex(reviewedData);
+          await finishCopy(pendingIndex, true);
+          await expect(copiedNotice).toHaveCount(0);
+          await expect(refusedNotice).toHaveCount(0);
+          await capture(popup);
+          await focusHexCopy(reviewedData);
+          const currentIndex = (await readCopies()).length;
+          await popup.keyboard.press('Enter');
+          await expect.poll(readCopies).toHaveLength(currentIndex + 1);
+          expect((await readCopies())[currentIndex]).toBe(reviewedData);
+          await expect(copiedNotice).toHaveCount(0);
+          await finishCopy(currentIndex, true);
+          await expect(copiedNotice).toBeVisible();
+          await expect(refusedNotice).toHaveCount(0);
+          await capture(popup);
+          copyObservations.push({
+            viewport,
+            bounds,
+            originalData,
+            editedData: reviewedData,
+            decoded,
+            copies: (await readCopies()).slice(pendingIndex, currentIndex + 1),
+            inputMethod: [
+              'Tab',
+              'Space',
+              'ordinary Edit permission form',
+              'Tab',
+              'Enter',
+            ],
+            staleSuccessShown: false,
+            currentSuccessShown: true,
+          });
+          await expect(copiedNotice).toBeHidden();
+        }
+      );
+    }
+    await info.attach('transaction-hex-copy-observations', {
+      body: JSON.stringify(copyObservations, null, 2),
+      contentType: 'application/json',
+    });
     const canceled = await dismissRejectedApproval({
       click: () =>
         popup

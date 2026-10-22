@@ -5,7 +5,6 @@ import { useUtils } from 'hooks/useUtils';
 
 interface ITransactionHexProps {
   dataHex: string;
-  methodName: string;
 }
 
 export const TransactionHexComponent = (props: ITransactionHexProps) => {
@@ -14,31 +13,33 @@ export const TransactionHexComponent = (props: ITransactionHexProps) => {
 
   const { useCopyClipboard, alert } = useUtils();
 
-  const [copied, copy] = useCopyClipboard();
+  const [copied, copy, isCurrentCopy] = useCopyClipboard(1000, dataHex);
 
   useEffect(() => {
     if (!copied) return;
 
-    alert.info(t('send.hexDataCopied'));
-  }, [copied, alert, t]);
+    alert.info(t('send.hexDataCopied'), undefined, isCurrentCopy);
+  }, [copied, alert, t, isCurrentCopy]);
 
   return (
     <div className="bg-brand-blue600 w-full max-w-[400px] mx-auto flex flex-col items-center justify-center p-6 rounded-[20px]">
-      <div
-        className="cursor-pointer remove-scrollbar w-full max-h-32 text-xs rounded-xl overflow-y-auto hover:opacity-60"
+      <button
+        type="button"
+        aria-label={t('buttons.copy')}
+        className="cursor-pointer remove-scrollbar w-full max-h-32 text-left text-xs rounded-xl overflow-y-auto hover:opacity-60"
         style={{ backgroundColor: 'rgba(22, 39, 66, 1)' }}
         onClick={() => copy(dataHex)}
       >
-        <p
-          className="w-full text-xs"
+        <span
+          className="block w-full text-xs"
           style={{
             overflowWrap: 'break-word',
             wordBreak: 'break-all',
           }}
         >
           {dataHex}
-        </p>
-      </div>
+        </span>
+      </button>
     </div>
   );
 };
