@@ -81,9 +81,47 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: playwright-chromium-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright-version.outputs.version }}
-      # The installer reuses complete cached binaries and repairs missing ones;
-      # Linux system dependencies still need installation on every runner.
+      - name: Resolve OS package cache key
+        id: apt-cache-key
+        run: |
+          . /etc/os-release
+          echo "platform=${ID}-${VERSION_ID}-$(dpkg --print-architecture)" >> "$GITHUB_OUTPUT"
+          # No restore-keys fallback across week/dependency/image boundaries.
+          echo "week=$(date -u +%G-%V)" >> "$GITHUB_OUTPUT"
+          echo "image=${ImageVersion}" >> "$GITHUB_OUTPUT"
+      - name: Prepare sandboxed apt download archive
+        run: |
+          # Restrict permission changes to this cache, never RUNNER_TEMP or its parents.
+          sudo install -d -o "$(id -u)" -g "$(id -g)" -m 0711 /var/cache/pali-playwright-apt
+          sudo install -d -o _apt -g root -m 0700 /var/cache/pali-playwright-apt/partial
+      - name: Restore Playwright OS package downloads
+        id: apt-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: /var/cache/pali-playwright-apt/*.deb
+          key: playwright-apt-v1-${{ steps.apt-cache-key.outputs.platform }}-${{ steps.apt-cache-key.outputs.image }}-${{ steps.playwright-version.outputs.version }}-${{ hashFiles('yarn.lock', 'package.json', '.github/workflows/main.yml', '.github/scripts/verify-playwright-apt-cache.sh') }}-${{ steps.apt-cache-key.outputs.week }}
+      - name: Verify restored archives against fresh apt metadata
+        run: bash .github/scripts/verify-playwright-apt-cache.sh
+      - name: Configure temporary apt download archive
+        run: |
+          # Cache only package archives, never apt lists or installed dpkg state.
+          # A separate directory also avoids image hooks cleaning /var/cache/apt/archives.
+          printf 'Dir::Cache::archives "%s";\nAPT::Keep-Downloaded-Packages "true";\nBinary::apt::APT::Keep-Downloaded-Packages "true";\n' \
+            /var/cache/pali-playwright-apt | sudo tee /etc/apt/apt.conf.d/99pali-playwright-cache >/dev/null
+      # Still refreshes signed apt indexes and installs current dependencies on
+      # every runner. Cache hits do not skip package installation or verification.
       - run: npx playwright install --with-deps chromium
+      - name: Remove temporary apt configuration
+        if: always()
+        run: sudo rm -f /etc/apt/apt.conf.d/99pali-playwright-cache
+      - name: Save Playwright OS package downloads
+        # One immutable-cache writer avoids shard races. PR caches remain scoped
+        # to their merge ref; no privileged trigger or shared writable cache.
+        if: success() && matrix.shard == 1 && steps.apt-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: /var/cache/pali-playwright-apt/*.deb
+          key: ${{ steps.apt-cache.outputs.cache-primary-key }}
       - name: Build extension
         run: yarn build:chrome
       - name: Enforce production bundle budgets
@@ -143,7 +181,43 @@ jobs:
           node-version: '23.11.1'
           check-latest: true
       - run: yarn install --frozen-lockfile
+      - name: Resolve Playwright browser version
+        id: playwright-version
+        run: echo "version=$(node -p "require('playwright-core/package.json').version")" >> "$GITHUB_OUTPUT"
+      # Reuse the same verified download cache; visual shard 1 is the only writer.
+      - name: Resolve OS package cache key
+        id: apt-cache-key
+        run: |
+          . /etc/os-release
+          echo "platform=${ID}-${VERSION_ID}-$(dpkg --print-architecture)" >> "$GITHUB_OUTPUT"
+          # No restore-keys fallback across week/dependency/image boundaries.
+          echo "week=$(date -u +%G-%V)" >> "$GITHUB_OUTPUT"
+          echo "image=${ImageVersion}" >> "$GITHUB_OUTPUT"
+      - name: Prepare sandboxed apt download archive
+        run: |
+          # Restrict permission changes to this cache, never RUNNER_TEMP or its parents.
+          sudo install -d -o "$(id -u)" -g "$(id -g)" -m 0711 /var/cache/pali-playwright-apt
+          sudo install -d -o _apt -g root -m 0700 /var/cache/pali-playwright-apt/partial
+      - name: Restore Playwright OS package downloads
+        id: apt-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: /var/cache/pali-playwright-apt/*.deb
+          key: playwright-apt-v1-${{ steps.apt-cache-key.outputs.platform }}-${{ steps.apt-cache-key.outputs.image }}-${{ steps.playwright-version.outputs.version }}-${{ hashFiles('yarn.lock', 'package.json', '.github/workflows/main.yml', '.github/scripts/verify-playwright-apt-cache.sh') }}-${{ steps.apt-cache-key.outputs.week }}
+      - name: Verify restored archives against fresh apt metadata
+        run: bash .github/scripts/verify-playwright-apt-cache.sh
+      - name: Configure temporary apt download archive
+        run: |
+          # Cache only package archives, never apt lists or installed dpkg state.
+          # A separate directory also avoids image hooks cleaning /var/cache/apt/archives.
+          printf 'Dir::Cache::archives "%s";\nAPT::Keep-Downloaded-Packages "true";\nBinary::apt::APT::Keep-Downloaded-Packages "true";\n' \
+            /var/cache/pali-playwright-apt | sudo tee /etc/apt/apt.conf.d/99pali-playwright-cache >/dev/null
+      # Still refreshes signed apt indexes and installs current dependencies on
+      # every runner. Cache hits do not skip package installation or verification.
       - run: npx playwright install --with-deps chromium
+      - name: Remove temporary apt configuration
+        if: always()
+        run: sudo rm -f /etc/apt/apt.conf.d/99pali-playwright-cache
       - name: Install local conformance chain fixture
         uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1
         with:
