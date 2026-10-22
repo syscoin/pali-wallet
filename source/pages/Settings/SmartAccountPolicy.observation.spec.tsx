@@ -9,6 +9,10 @@ import {
 } from '@testing-library/react';
 import React from 'react';
 
+import {
+  createPasskeyCredential,
+  signP256WebAuthnActionHash,
+} from 'utils/passkey';
 import { getPaliModuleAddress } from 'utils/smartAccount/contracts';
 import { getGuardianRecoveryOperationId } from 'utils/smartAccount/guardianStatus';
 
@@ -80,6 +84,11 @@ jest.mock('react-i18next', () => ({
 jest.mock('utils/navigationState', () => ({
   ...jest.requireActual('utils/navigationState'),
   getWalletNavigationScope: () => mockScope,
+}));
+jest.mock('utils/passkey', () => ({
+  ...jest.requireActual('utils/passkey'),
+  createPasskeyCredential: jest.fn(),
+  signP256WebAuthnActionHash: jest.fn(),
 }));
 
 const ACCOUNT = `0x${'11'.repeat(20)}`;
@@ -337,7 +346,7 @@ test('retires an old-scope response after changing networks', async () => {
   expect(screen.queryByText(external)).toBeNull();
 });
 
-test('visible polling detects later recovery without overlapping a pending read', async () => {
+test('entry and focus detect recovery without idle polling or overlapping a pending read', async () => {
   jest.useFakeTimers();
   let release!: (value: any) => void;
   mockRead = () =>
@@ -349,14 +358,228 @@ test('visible polling detects later recovery without overlapping a pending read'
   expect(statusCalls()).toHaveLength(1);
   await act(async () => jest.advanceTimersByTime(60000));
   expect(statusCalls()).toHaveLength(1);
+  await act(async () => {
+    fireEvent.focus(window);
+    fireEvent(document, new Event('visibilitychange'));
+  });
+  expect(statusCalls()).toHaveLength(1);
   await act(async () => release(observation()));
   mockRead = async () => ({
     ...observation(),
     active: pending(),
     pending: pending(),
   });
-  await act(async () => jest.advanceTimersByTime(30000));
+  await act(async () => jest.advanceTimersByTime(300000));
+  expect(statusCalls()).toHaveLength(1);
+  await act(async () => fireEvent.focus(window));
+  expect(statusCalls()).toHaveLength(2);
   expect(screen.getByText(external)).not.toBeNull();
+});
+
+test('manual and visible-entry refreshes read once, while hidden pages make no request', async () => {
+  const visibility = jest
+    .spyOn(document, 'visibilityState', 'get')
+    .mockReturnValue('hidden');
+  render(<SmartAccountPolicy />);
+  await act(async () => undefined);
+  expect(statusCalls()).toHaveLength(0);
+  await act(async () => {
+    fireEvent.focus(window);
+    fireEvent(document, new Event('visibilitychange'));
+  });
+  expect(statusCalls()).toHaveLength(0);
+  visibility.mockReturnValue('visible');
+  await act(async () => fireEvent(document, new Event('visibilitychange')));
+  await screen.findByText(connected);
+  expect(statusCalls()).toHaveLength(1);
+  await act(async () => {
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'settings.smartAccountGuardianRefreshStatus',
+      })
+    );
+  });
+  expect(statusCalls()).toHaveLength(2);
+  visibility.mockReturnValue('hidden');
+  await act(async () => {
+    fireEvent.focus(window);
+    fireEvent(document, new Event('visibilitychange'));
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'settings.smartAccountGuardianRefreshStatus',
+      })
+    );
+  });
+  expect(statusCalls()).toHaveLength(2);
+  visibility.mockReturnValue('visible');
+  await act(async () => fireEvent(document, new Event('visibilitychange')));
+  expect(statusCalls()).toHaveLength(3);
+});
+
+test.each([
+  'pending',
+  'active without pending',
+  'failed',
+  'account',
+  'chain',
+  'module',
+  'uninstalled',
+  'threshold',
+  'guardians',
+  'zero guardian',
+  'invalid delay',
+])(
+  'Start rejects a fresh %s observation before approval or passkey creation',
+  async (kind) => {
+    render(<SmartAccountPolicy />);
+    await screen.findByText(connected);
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'settings.smartAccountGuardianRecoveryShowOptions',
+      })
+    );
+    const next = observation();
+    if (kind === 'pending') next.active = next.pending = pending() as any;
+    if (kind === 'active without pending') next.active = pending() as any;
+    if (kind === 'account') next.account = OWNER;
+    if (kind === 'chain') next.chainId = 1;
+    if (kind === 'module') next.moduleAddress = OWNER;
+    if (kind === 'uninstalled') next.exists = false;
+    if (kind === 'threshold') next.threshold = 2;
+    if (kind === 'guardians') next.guardians = [OWNER, ACCOUNT];
+    if (kind === 'zero guardian')
+      next.guardians = ['0x0000000000000000000000000000000000000000'];
+    if (kind === 'invalid delay') next.delay = 'NaN';
+    mockRead = async () => {
+      if (kind === 'failed') throw new Error('offline');
+      return next;
+    };
+    mockEmitter.mockClear();
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'settings.smartAccountGuardianRecoveryStart',
+      })
+    );
+    await waitFor(() => expect(mockAlert.error).toHaveBeenCalled());
+    expect(statusCalls()).toHaveLength(1);
+    expect(
+      mockEmitter.mock.calls.some(
+        (call) => call[0][1] === 'getWalletSessionGeneration'
+      )
+    ).toBe(false);
+    expect(
+      mockEmitter.mock.calls.some((call) =>
+        /^(prepare|submit|sign)/.test(call[0][1])
+      )
+    ).toBe(false);
+    expect(createPasskeyCredential).not.toHaveBeenCalled();
+    expect(signP256WebAuthnActionHash).not.toHaveBeenCalled();
+    expect(localStorage.getItem(STORAGE)).toBeNull();
+    if (kind === 'pending') expect(screen.getByText(external)).not.toBeNull();
+    else if (kind === 'active without pending')
+      expect(mockAlert.error).toHaveBeenCalledWith(
+        'settings.smartAccountGuardianRecoveryAlreadyStarted'
+      );
+    else expect(screen.getByText(unavailable)).not.toBeNull();
+  }
+);
+
+test('Start uses the freshly read guardian and delay instead of the displayed policy', async () => {
+  render(<SmartAccountPolicy />);
+  await screen.findByText(connected);
+  fireEvent.click(
+    screen.getByRole('button', {
+      name: 'settings.smartAccountGuardianRecoveryShowOptions',
+    })
+  );
+  fireEvent.click(
+    screen.getByRole('button', { name: /settings.ecdsaAuthenticator/ })
+  );
+  fireEvent.change(
+    screen.getByPlaceholderText('settings.recoveryAuthenticatorEcdsaOwner'),
+    { target: { value: OWNER } }
+  );
+  const freshGuardian = `0x${'44'.repeat(20)}`;
+  mockRead = async () => ({
+    ...observation(),
+    guardians: [freshGuardian],
+    delay: '7200',
+    delaySeconds: 7200,
+  });
+  const original = mockEmitter.getMockImplementation()!;
+  const operation = local().recoveryOperation;
+  mockEmitter.mockImplementation(async (path: string[], ...args: any[]) => {
+    if (path[1] === 'prepareSmartAccountGuardianStartRecovery')
+      return {
+        approval: { guardian: freshGuardian, signature: '0x1234' },
+        operation,
+      };
+    if (path[1] === 'submitPreparedSmartAccountGuardianStartRecovery')
+      return { operation };
+    return original(path, ...args);
+  });
+  mockEmitter.mockClear();
+  const before = Math.floor(Date.now() / 1000);
+  fireEvent.click(
+    screen.getByRole('button', {
+      name: 'settings.smartAccountGuardianRecoveryStart',
+    })
+  );
+  await waitFor(() =>
+    expect(mockAlert.success).toHaveBeenCalledWith(
+      'settings.smartAccountGuardianRecoveryStarted'
+    )
+  );
+  const methods = mockEmitter.mock.calls.map((call) => call[0][1]);
+  expect(methods[0]).toBe('getSmartAccountGuardianRecoveryStatus');
+  expect(methods[1]).toBe('getWalletSessionGeneration');
+  for (const method of [
+    'prepareSmartAccountGuardianStartRecovery',
+    'submitPreparedSmartAccountGuardianStartRecovery',
+  ]) {
+    expect(
+      mockEmitter.mock.calls.find((call) => call[0][1] === method)?.[1][0]
+        .guardian
+    ).toBe(freshGuardian);
+  }
+  const saved = JSON.parse(localStorage.getItem(STORAGE)!);
+  expect(saved.recoveryOperation.readyAt).toBeGreaterThanOrEqual(before + 7200);
+  expect(saved.recoveryOperation.readyAt).toBeLessThanOrEqual(
+    Math.floor(Date.now() / 1000) + 7200
+  );
+  expect(createPasskeyCredential).not.toHaveBeenCalled();
+});
+
+test('Start ignores a fresh observation if the account changes while it is in flight', async () => {
+  const view = render(<SmartAccountPolicy />);
+  await screen.findByText(connected);
+  fireEvent.click(
+    screen.getByRole('button', {
+      name: 'settings.smartAccountGuardianRecoveryShowOptions',
+    })
+  );
+  let release!: (value: any) => void;
+  mockRead = () => new Promise((resolve) => (release = resolve));
+  mockEmitter.mockClear();
+  fireEvent.click(
+    screen.getByRole('button', {
+      name: 'settings.smartAccountGuardianRecoveryStart',
+    })
+  );
+  await waitFor(() => expect(statusCalls()).toHaveLength(1));
+  const completeStartRead = release;
+  mockScope = { account: 'account:2', network: 'network:57057' };
+  mockVault.accounts.SmartAccount[1].address = OWNER;
+  view.rerender(<SmartAccountPolicy />);
+  await act(async () => completeStartRead(observation()));
+  expect(
+    mockEmitter.mock.calls.some(
+      (call) => call[0][1] === 'getWalletSessionGeneration'
+    )
+  ).toBe(false);
+  expect(createPasskeyCredential).not.toHaveBeenCalled();
+  expect(signP256WebAuthnActionHash).not.toHaveBeenCalled();
+  expect(localStorage.getItem(STORAGE)).toBeNull();
 });
 
 test('owner disable remains available while the status read is unresolved', async () => {

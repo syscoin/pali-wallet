@@ -14,9 +14,10 @@ const budget = {
   background: 4400000,
   contentScript: 16000,
   // On-chain recovery observation and its nine localized status views add
-  // 19,742 bytes to the 8,558,031-byte baseline (8,577,773 total). Keep a
-  // rounded package ceiling; all mandatory startup budgets stay unchanged.
-  package: 8580000,
+  // 22,400 bytes to the 8,558,031-byte baseline (8,580,431 total), including
+  // demand-driven batching and action freshness checks. Keep a rounded package
+  // ceiling; all mandatory startup budgets stay unchanged.
+  package: 8581000,
 };
 const allFiles = (root) =>
   fs.readdirSync(root, { withFileTypes: true }).flatMap((entry) => {

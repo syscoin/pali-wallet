@@ -38,7 +38,7 @@ const METADATA = {
       type: 'validator',
     },
     {
-      address: '0x8888888888888888888888888888888888888888',
+      address: getPaliModuleAddress(57057, 'guardian-recovery'),
       config: { delaySeconds: 60, guardians: [GUARDIAN], threshold: 1 },
       id: 'guardian-recovery',
       type: 'executor',

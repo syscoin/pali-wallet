@@ -720,7 +720,7 @@
     "smartAccountPasskeyRecreateConfirmButton": "新しいパスキーを作成",
     "smartAccountPasskeyRecreateConfirmDescription": "このアカウントに以前リンクされていたパスキーを確認できませんでした。デバイスから削除されたか、確認がキャンセルされた可能性があります。代わりにこのアカウント用の新しいパスキーを作成しますか？",
     "smartAccountPasskeyRecreateConfirmTitle": "既存のパスキーを確認できません",
-    "smartAccountGuardianRecoveryConnectedStatus": "接続済み",
+    "smartAccountGuardianRecoveryConnectedStatus": "有効",
     "smartAccountGuardianRecoveryNotConnected": "未接続",
     "smartAccountGuardianRecoveryPending": "復旧保留中",
     "smartAccountGuardianRecoveryPendingTarget": "新しい承認方法: {{authenticator}}",

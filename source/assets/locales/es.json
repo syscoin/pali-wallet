@@ -720,7 +720,7 @@
     "smartAccountPasskeyRecreateConfirmButton": "Crear nueva passkey",
     "smartAccountPasskeyRecreateConfirmDescription": "Pali no pudo verificar la passkey vinculada anteriormente a esta cuenta — puede que se haya eliminado de tu dispositivo o que se haya cancelado la solicitud. ¿Crear una nueva passkey para esta cuenta?",
     "smartAccountPasskeyRecreateConfirmTitle": "Passkey existente no verificada",
-    "smartAccountGuardianRecoveryConnectedStatus": "Conectado",
+    "smartAccountGuardianRecoveryConnectedStatus": "Activada",
     "smartAccountGuardianRecoveryNotConnected": "No conectado",
     "smartAccountGuardianRecoveryPending": "Recuperación pendiente",
     "smartAccountGuardianRecoveryPendingTarget": "Nuevo método de aprobación: {{authenticator}}",

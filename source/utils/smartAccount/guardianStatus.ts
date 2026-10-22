@@ -9,6 +9,11 @@ import { PALI_INFRASTRUCTURE_BY_ID } from './deployment';
 const ZERO = `0x${'00'.repeat(32)}`;
 const MAX_BLOCK_AGE_MS = 420000;
 
+export type GuardianRpcRequest = {
+  method: string;
+  params: unknown[];
+};
+
 export type GuardianOperationObservation = {
   executableAt: number;
   expiresAt: number;
@@ -100,19 +105,37 @@ export async function readGuardianRecoveryObservation({
   knownOperationId?: string;
   moduleAddress: string;
   now?: () => number;
-  provider: { send: (method: string, params: unknown[]) => Promise<unknown> };
+  provider: {
+    batch?: (requests: GuardianRpcRequest[]) => Promise<unknown[]>;
+    send: (method: string, params: unknown[]) => Promise<unknown>;
+  };
 }): Promise<GuardianRecoveryObservation> {
   account = getAddress(account);
   moduleAddress = getAddress(moduleAddress);
   if (knownOperationId) knownOperationId = word(knownOperationId);
-  const read = async (method: string, params: unknown[]) => {
+  const batch = async (requests: GuardianRpcRequest[]) => {
     assertCurrent();
-    const result = await provider.send(method, params);
+    // Production uses one validated JSON-RPC batch. The send-only path is for
+    // explicit native/test providers, never a retry after a batch fails.
+    if (provider.batch) {
+      const results = await provider.batch(requests);
+      assertCurrent();
+      if (!Array.isArray(results) || results.length !== requests.length)
+        throw new Error('Invalid guardian recovery batch response');
+      return results;
+    }
+    const settled = await Promise.allSettled(
+      requests.map(({ method, params }) => provider.send(method, params))
+    );
     assertCurrent();
-    return result;
+    const failed = settled.find((result) => result.status === 'rejected');
+    if (failed?.status === 'rejected') throw failed.reason;
+    return settled.map(
+      (result) => (result as PromiseFulfilledResult<any>).value
+    );
   };
-  const assertChain = async () => {
-    if (quantity(await read('eth_chainId', [])) !== chainId)
+  const assertChain = (value: unknown) => {
+    if (quantity(value) !== chainId)
       throw new Error('Guardian recovery network changed');
   };
   const parseBlock = (value: any) => {
@@ -123,37 +146,34 @@ export async function readGuardianRecoveryObservation({
       hash: word(value.hash),
     };
   };
-  await assertChain();
-  const block = parseBlock(
-    await read('eth_getBlockByNumber', ['latest', false])
-  );
+  const [chainBefore, latestBlock] = await batch([
+    { method: 'eth_chainId', params: [] },
+    { method: 'eth_getBlockByNumber', params: ['latest', false] },
+  ]);
+  assertChain(chainBefore);
+  const block = parseBlock(latestBlock);
   const age = now() - block.timestamp * 1000;
   if (age < -30000 || age > MAX_BLOCK_AGE_MS)
     throw new Error('Guardian recovery chain data is stale');
   const tag = `0x${block.number.toString(16)}`;
-  const code = await read('eth_getCode', [moduleAddress, tag]);
-  if (
-    typeof code !== 'string' ||
-    !/^0x(?:[0-9a-f]{2})+$/i.test(code) ||
-    keccak256(code) !==
-      PALI_INFRASTRUCTURE_BY_ID.guardianRecoveryModule.runtimeCodeHash
-  )
-    throw new Error('Guardian recovery module runtime is unsupported');
-  const call = async (
+  const call = (
     target: string,
     iface: any,
     fn: string,
     args: unknown[]
-  ) => {
-    const data = await read('eth_call', [
-      { to: target, data: iface.encodeFunctionData(fn, args) },
-      tag,
-    ]);
-    if (typeof data !== 'string')
-      throw new Error('Invalid guardian recovery response');
-    return iface.decodeFunctionResult(fn, data);
-  };
-  const reads = await Promise.allSettled([
+  ): GuardianRpcRequest => ({
+    method: 'eth_call',
+    params: [{ to: target, data: iface.encodeFunctionData(fn, args) }, tag],
+  });
+  const [
+    code,
+    installedData,
+    configData,
+    guardiansData,
+    epochData,
+    activeWord,
+  ] = await batch([
+    { method: 'eth_getCode', params: [moduleAddress, tag] },
     call(account, paliSmartAccountInterface, 'isModuleInstalled', [
       2,
       moduleAddress,
@@ -168,16 +188,45 @@ export async function readGuardianRecoveryObservation({
     call(moduleAddress, paliGuardianRecoveryModuleInterface, 'policyEpoch', [
       account,
     ]),
-    read('eth_getStorageAt', [
-      moduleAddress,
-      storageSlot('address', account, 3),
-      tag,
-    ]),
+    {
+      method: 'eth_getStorageAt',
+      params: [moduleAddress, storageSlot('address', account, 3), tag],
+    },
   ]);
-  const failed = reads.find((result) => result.status === 'rejected');
-  if (failed?.status === 'rejected') throw failed.reason;
-  const [installed, configResult, guardiansResult, epochResult, activeWord] =
-    reads.map((result) => (result as PromiseFulfilledResult<any>).value);
+  // Do not interpret the ABI or private storage until this exact runtime is
+  // attested, even though their network reads share one round trip.
+  if (
+    typeof code !== 'string' ||
+    !/^0x(?:[0-9a-f]{2})+$/i.test(code) ||
+    keccak256(code) !==
+      PALI_INFRASTRUCTURE_BY_ID.guardianRecoveryModule.runtimeCodeHash
+  )
+    throw new Error('Guardian recovery module runtime is unsupported');
+  const decode = (iface: any, fn: string, data: unknown) => {
+    if (typeof data !== 'string')
+      throw new Error('Invalid guardian recovery response');
+    return iface.decodeFunctionResult(fn, data);
+  };
+  const installed = decode(
+    paliSmartAccountInterface,
+    'isModuleInstalled',
+    installedData
+  );
+  const configResult = decode(
+    paliGuardianRecoveryModuleInterface,
+    'config',
+    configData
+  );
+  const guardiansResult = decode(
+    paliGuardianRecoveryModuleInterface,
+    'guardians',
+    guardiansData
+  );
+  const epochResult = decode(
+    paliGuardianRecoveryModuleInterface,
+    'policyEpoch',
+    epochData
+  );
   const config = configResult[0];
   const exists = Boolean(installed[0] && config.installed);
   const delaySeconds = Number(config.delay);
@@ -204,16 +253,16 @@ export async function readGuardianRecoveryObservation({
     ),
   ];
   const observations = new Map<string, GuardianOperationObservation>();
-  for (const operationId of ids) {
-    const raw = BigInt(
-      word(
-        await read('eth_getStorageAt', [
-          moduleAddress,
-          storageSlot('bytes32', operationId, 4),
-          tag,
-        ])
+  const schedules = ids.length
+    ? await batch(
+        ids.map((operationId) => ({
+          method: 'eth_getStorageAt',
+          params: [moduleAddress, storageSlot('bytes32', operationId, 4), tag],
+        }))
       )
-    );
+    : [];
+  for (const [index, operationId] of ids.entries()) {
+    const raw = BigInt(word(schedules[index]));
     const scheduledAt = Number(raw & ((BigInt(1) << BigInt(48)) - BigInt(1)));
     const executed = (raw >> BigInt(48)) & BigInt(255);
     const canceled = (raw >> BigInt(56)) & BigInt(255);
@@ -254,14 +303,20 @@ export async function readGuardianRecoveryObservation({
       status,
     });
   }
-  const after = parseBlock(await read('eth_getBlockByNumber', [tag, false]));
+  // This final batch must be dispatched AFTER every schedule read settles.
+  // Combining it with the preceding batch could miss a reorg between items.
+  const [anchoredBlock, chainAfter] = await batch([
+    { method: 'eth_getBlockByNumber', params: [tag, false] },
+    { method: 'eth_chainId', params: [] },
+  ]);
+  const after = parseBlock(anchoredBlock);
   if (
     after.number !== block.number ||
     after.hash !== block.hash ||
     after.timestamp !== block.timestamp
   )
     throw new Error('Guardian recovery block changed');
-  await assertChain();
+  assertChain(chainAfter);
   const completedAge = now() - block.timestamp * 1000;
   if (completedAge < -30000 || completedAge > MAX_BLOCK_AGE_MS)
     throw new Error('Guardian recovery chain data is stale');
