@@ -363,7 +363,8 @@ test('connection selection stays on the reviewed account until real switch and g
         );
         const result = await settle(dapp, requestId);
         expect(result.error).toBeUndefined();
-        expect(result.result).toEqual([reviewed!.address]);
+        // The provider returns the same EVM identity in lowercase.
+        expect(result.result).toEqual([reviewed!.address.toLowerCase()]);
         expect(approval.isClosed()).toBe(true);
         const current = await publicState(page);
         expect(current.active.address).toBe(reviewed!.address);
