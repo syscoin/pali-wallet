@@ -312,7 +312,7 @@ it('does not admit a manual ID while ownership verification is pending', async (
   expect(mockNavigate).toHaveBeenCalledTimes(1);
 });
 
-it.each(['RPC failure', 'refused verification'])(
+it.each(['nonexistent token', 'refused verification'])(
   'does not admit a manual ID after %s',
   async (scenario) => {
     if (scenario === 'refused verification') {
@@ -322,7 +322,31 @@ it.each(['RPC failure', 'refused verification'])(
     }
     await prepare();
     await verify('9');
-    expect(screen.getByText(/send.youDontOwnThisToken/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/send.tokenVerificationFailed/)
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/send.youDontOwnThisToken/)).toBeNull();
+    await next();
+    expect(mockNavigate).not.toHaveBeenCalled();
+  }
+);
+
+it.each(['NETWORK_ERROR', 'BAD_DATA', 'CALL_EXCEPTION'])(
+  'does not call a failed %s read proof of nonownership or admit the manual ID',
+  async (code) => {
+    mockOwnerOf.mockImplementation((id: string) => {
+      if (id === '7')
+        throw Object.assign(new Error('Synthetic ownership read failed'), {
+          code,
+        });
+      throw new Error('ERC721: invalid token ID');
+    });
+    await prepare();
+    await verify('7');
+    expect(
+      screen.getByText(/send.tokenVerificationFailed/)
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/send.youDontOwnThisToken/)).toBeNull();
     await next();
     expect(mockNavigate).not.toHaveBeenCalled();
   }

@@ -208,7 +208,7 @@ const Languages = () => {
 
                 <Menu.Items
                   as="div"
-                  className={`scrollbar-styled absolute z-10 px-4 py-5 w-full max-h-80 text-brand-white font-poppins bg-brand-blue600 border border-fields-input-border rounded-[10px] shadow-2xl overflow-auto origin-top-right
+                  className={`pali-menu-focus scrollbar-styled absolute z-10 px-4 py-5 w-full max-h-80 text-brand-white font-poppins bg-brand-blue600 border border-fields-input-border rounded-[10px] shadow-2xl overflow-auto origin-top-right
                   transform transition-all duration-100 ease-out ${
                     open
                       ? 'opacity-100 scale-100 pointer-events-auto'

@@ -968,7 +968,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
         } else {
           setVerifiedTokenBalance('0');
           setVerificationError(
-            balance === '0'
+            tokenInfo.verified && balance === '0'
               ? t('send.youDontOwnThisToken')
               : t('send.tokenVerificationFailed')
           );
@@ -1295,7 +1295,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
             rules={[
               {
                 required: true,
-                message: '',
+                message: t('send.addressRequired'),
               },
               () => ({
                 async validator(_, value) {
@@ -1571,7 +1571,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                       async validator(_, value) {
                         // Check if value is empty
                         if (!value || value === '') {
-                          return Promise.reject('');
+                          return Promise.reject(t('send.amountRequired'));
                         }
 
                         // Fungible amounts use the token's verified decimal
@@ -1601,7 +1601,8 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                           } catch {
                             return Promise.reject(t('send.invalidAmount'));
                           }
-                          if (tokenValue.lte(0)) return Promise.reject('');
+                          if (tokenValue.lte(0))
+                            return Promise.reject(t('send.invalidAmount'));
                           if (tokenValue.gt(atomic)) {
                             return Promise.reject(
                               t('send.insufficientFundsVerified', {
@@ -1653,9 +1654,10 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                         try {
                           valueBN = parseEther(String(value));
                         } catch {
-                          return Promise.reject('');
+                          return Promise.reject(t('send.invalidAmount'));
                         }
-                        if (valueBN.lte(0)) return Promise.reject('');
+                        if (valueBN.lte(0))
+                          return Promise.reject(t('send.invalidAmount'));
 
                         // For native currency, use BigNumber comparison
                         try {
