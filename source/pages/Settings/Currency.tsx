@@ -371,7 +371,9 @@ const CurrencyView = () => {
                     {formatNumber(Number(actualBalance) || 0)}
                   </p>
                   <p className="font-poppins text-sm text-brand-gray300">
-                    TSYS
+                    {activeNetwork.currency
+                      ? activeNetwork.currency.toUpperCase()
+                      : ''}
                   </p>
                 </div>
                 <p className="text-brand-gray200 text-sm mt-1 font-medium">
