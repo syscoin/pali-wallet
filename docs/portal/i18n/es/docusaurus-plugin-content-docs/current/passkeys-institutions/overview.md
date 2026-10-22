@@ -21,10 +21,10 @@ La cuenta se despliega primero con un validador ECDSA controlado por la wallet. 
 
 ERC-7579 separa los roles de los módulos, y Pali aprovecha deliberadamente esa separación:
 
-- **Los validadores** son la autoridad de firma. Un validador decide si una aprobación dada (prueba de passkey, firma ECDSA, resultado de una política composite) autoriza una acción de la cuenta. Solo los validadores pueden aprobar transacciones.
-- **Los ejecutores** agregan comportamiento de cuenta que no es una firma. El módulo de guardian recovery de Pali es un ejecutor: los guardianes no pueden firmar ni mover fondos, solo pueden programar un reemplazo con timelock del validador activo.
+- **Los validadores** comprueban firmas para las aprobaciones normales de la cuenta, como passkeys, ECDSA y políticas compuestas.
+- **Los ejecutores** pueden ejecutar acciones mediante un módulo instalado. El módulo de guardianes de Pali exige el umbral configurado y un plazo de espera. El flujo guiado sustituye al validador activo; el módulo on-chain no se limita a esa acción de la interfaz.
 
-Mantener estos roles separados es lo que hace que la recuperación sea segura de recomendar. Comprometer a un guardián no le da a un atacante poder de firma — le da un intento de recuperación demorado, visible y cancelable.
+Los guardianes tienen, por tanto, autoridad diferida sobre la cuenta. Un umbral comprometido pone en riesgo el control y los fondos. El propietario actual puede actuar durante la espera, pero debe confirmar la acción protectora antes de una ejecución maliciosa. Consulta [Recuperación con guardianes](../users/smart-account-validators).
 
 ## Políticas de firma composite
 
@@ -34,13 +34,13 @@ El validador composite combina validadores hijos bajo un threshold, lo que convi
 - **t-of-N** — debe aprobar un quórum. La forma natural para tesorerías compartidas, mesas de trading y cuentas controladas por equipos.
 - **N-of-N** — todos los validadores configurados deben aprobar. Cuentas de máxima garantía.
 
-Los composites pueden anidarse: un hijo de un composite puede ser a su vez un composite, de modo que las políticas jerárquicas — por ejemplo, "la clave del CFO Y (2 cualesquiera de 3 passkeys de la mesa)" — son expresables sin contratos personalizados. Guardian recovery permanece independiente de la política de validadores que esté activa.
+Pali recopila actualmente aprobaciones de validadores hijos integrados disponibles localmente hasta alcanzar el umbral. Esta versión no admite compuestos anidados ni la recopilación de aprobaciones externas o entre dispositivos. La recuperación con guardianes sigue siendo independiente de la política del validador activo.
 
 ## Agilidad de validadores y preparación post-cuántica
 
-Como la autorización vive en módulos reemplazables, la cuenta no está casada con ningún esquema de firma. Hoy Pali incluye ECDSA (el predeterminado controlado por la wallet), passkeys P-256 WebAuthn y el validador composite. Cuando se desplieguen nuevos tipos de validador — incluidos esquemas de firma post-cuánticos — se instalarán en la misma cuenta con la misma dirección. En ese punto, la autorización por transacción puede ejecutarse sin ningún ECDSA involucrado. Los fondos, el historial y las integraciones nunca se mueven; solo evoluciona la autoridad de firma.
+En redes configuradas, Pali admite ECDSA controlado por la wallet, passkeys P-256 WebAuthn, SLH-DSA y validadores compuestos. Los módulos on-chain correspondientes deben estar desplegados y las claves o credenciales locales necesarias disponibles. Los módulos reemplazables permiten adoptar después otros esquemas de firma en la misma dirección. Cambiar el validador no mueve fondos, historial ni integraciones.
 
-La misma agilidad se extiende a la recuperación. El módulo de guardian recovery verifica las aprobaciones con comprobación de firma estándar — ECDSA simple para direcciones normales, ERC-1271 para cuentas de contrato — de modo que un guardián puede ser a su vez una cuenta inteligente gobernada por un validador composite, personalizado o post-cuántico. Un guardián de cuenta de contrato desplegado hace que la ruta de recuperación herede el esquema de firma de esa cuenta; así, tanto la firma **como** la recuperación pueden llegar a funcionar sin ninguna dependencia de ECDSA clásico. La UX actual de guardianes de Pali recopila aprobaciones basadas en claves; los flujos para guardianes de cuenta de contrato pueden añadirse a la wallet más adelante porque el módulo on-chain ya los soporta.
+El módulo de guardianes verifica aprobaciones ECDSA de direcciones normales y ERC-1271 de cuentas de contrato. Pali puede usar guardianes locales basados en claves y cuentas inteligentes locales ya desplegadas para las que puede firmar, incluidas cuentas SLH-DSA. Un guardián externo no disponible como firmante local requiere un flujo de aprobación externo.
 
 ## Para instituciones y equipos
 

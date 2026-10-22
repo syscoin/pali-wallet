@@ -21,10 +21,10 @@ A conta é implantada primeiro com um validador ECDSA controlado pela carteira. 
 
 O ERC-7579 separa os papéis dos módulos, e a Pali adota essa separação deliberadamente:
 
-- **Validadores** são a autoridade de assinatura. Um validador decide se uma determinada aprovação (prova de passkey, assinatura ECDSA, resultado de uma política composta) autoriza uma ação da conta. Apenas validadores podem aprovar transações.
-- **Executores** adicionam comportamentos de conta que não são uma assinatura. O módulo de guardian recovery da Pali é um executor: guardiões não podem assinar nem mover fundos, eles só podem agendar uma substituição com espera do validador ativo.
+- **Validadores** verificam assinaturas para aprovações normais da conta, como passkeys, ECDSA e políticas compostas.
+- **Executores** podem executar ações por meio de um módulo instalado. O módulo de guardiões da Pali exige o limite configurado e um prazo de espera. O fluxo guiado substitui o validador ativo; o módulo on-chain não se limita a essa ação da interface.
 
-Manter esses papéis separados é o que torna a recuperação segura de recomendar. Um guardião comprometido não dá poder de assinatura a um atacante — dá a ele uma tentativa de recuperação atrasada, visível e cancelável.
+Os guardiões têm, portanto, autoridade adiada sobre a conta. Um limite comprometido coloca o controle e os fundos em risco. O proprietário atual pode agir durante a espera, mas a ação protetora deve ser confirmada antes de uma execução maliciosa. Consulte [Recuperação com guardiões](../users/smart-account-validators).
 
 ## Políticas de assinatura compostas
 
@@ -34,13 +34,13 @@ O validador composite combina validadores filhos sob um threshold, o que transfo
 - **t-of-N** — um quórum precisa aprovar. O formato natural para tesourarias compartilhadas, desks e contas controladas por equipes.
 - **N-of-N** — todos os validadores configurados precisam aprovar. Contas de máxima garantia.
 
-Composites podem ser aninhados: um filho de um composite pode ser ele próprio um composite, então políticas hierárquicas — por exemplo, "a chave do CFO E (quaisquer 2 de 3 passkeys do desk)" — podem ser expressas sem contratos personalizados. A guardian recovery permanece independente de qualquer que seja a política de validador ativa.
+A Pali atualmente coleta aprovações de validadores filhos integrados disponíveis localmente até atingir o limite. Esta versão não oferece suporte a compostos aninhados nem à coleta de aprovações externas ou entre dispositivos. A recuperação com guardiões permanece independente da política do validador ativo.
 
 ## Agilidade de validadores e preparação pós-quântica
 
-Como a autorização vive em módulos substituíveis, a conta não fica presa a nenhum esquema de assinatura. Hoje a Pali oferece ECDSA (o padrão controlado pela carteira), passkeys P-256 WebAuthn e o validador composite. Quando novos tipos de validador forem implantados — incluindo esquemas de assinatura pós-quânticos — eles são instalados na mesma conta, no mesmo endereço. Nesse ponto, a autorização de cada transação pode funcionar sem nenhum ECDSA no circuito. Fundos, histórico e integrações nunca se movem; apenas a autoridade de assinatura evolui.
+Em redes configuradas, a Pali suporta ECDSA controlado pela carteira, passkeys P-256 WebAuthn, SLH-DSA e validadores compostos. Os módulos on-chain correspondentes precisam estar implantados e as chaves ou credenciais locais necessárias devem estar disponíveis. Módulos substituíveis também permitem adotar novos esquemas de assinatura no mesmo endereço. Trocar o validador não move fundos, histórico ou integrações.
 
-A mesma agilidade se estende à recuperação. O módulo de guardian recovery verifica aprovações com checagem de assinatura padrão — ECDSA simples para endereços normais, ERC-1271 para contas de contrato — de modo que um guardião pode ser, ele próprio, uma smart account governada por um validador composite, personalizado ou pós-quântico. Um guardião de conta de contrato implantado faz o caminho de recuperação herdar o esquema de assinatura daquela conta; é assim que tanto a assinatura **quanto** a recuperação podem um dia funcionar sem nenhuma dependência de ECDSA clássico. A UX atual de guardiões da Pali coleta aprovações baseadas em chaves; fluxos para guardiões de conta de contrato podem ser adicionados à carteira depois, porque o módulo on-chain já os suporta.
+O módulo de guardiões verifica aprovações ECDSA de endereços normais e ERC-1271 de contas de contrato. A Pali pode usar guardiões locais baseados em chaves e contas inteligentes locais já implantadas para as quais pode assinar, incluindo SLH-DSA. Um guardião externo indisponível como assinador local precisa de um fluxo de aprovação externo.
 
 ## Para instituições e equipes
 

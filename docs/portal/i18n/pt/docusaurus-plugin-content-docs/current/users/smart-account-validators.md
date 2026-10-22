@@ -43,7 +43,7 @@ O construtor de políticas compostas exige pelo menos dois validadores instalado
 
 Mudar o validador não altera o endereço, os saldos nem o histórico da conta inteligente. O acesso a um assinador local ainda depende da disponibilidade da chave ou passkey; mudar a política não restaura o estado de assinatura perdido nem coordena o uso de SLH-DSA entre dispositivos restaurados.
 
-Os guardiões intencionalmente **não** fazem parte desta lista. Um guardião nunca pode aprovar uma transação; seu único poder é iniciar uma recuperação lenta e visível se você perder o acesso. Essa separação protege você contra a perda de acesso sem dar a ninguém o controle do dia a dia.
+Os guardiões são uma autoridade separada e adiada, não o método de aprovação cotidiano. Um número suficiente de aprovações de guardiões pode mudar o controle da conta. Escolha e proteja os guardiões de acordo com isso: o prazo de espera não torna seguro um guardião não confiável.
 
 A Pali pode usar um perfil de passkey compartilhado da carteira ou criar uma credencial de passkey separada para uma conta. Passkeys compartilhadas são convenientes para quem quer uma única passkey controlada pela carteira. Passkeys separadas podem ajudar a isolar credenciais por serviço ou política.
 
@@ -69,7 +69,7 @@ Uma configuração demorada mostra a ação **Verificar estado**. Sair da págin
   <a className="pali-media-link" href="/img/screens/settings-smart-account-policy.png" target="_blank" rel="noreferrer">
   <img src="/img/screens/settings-smart-account-policy.png" alt="Tela de configurações de políticas de contas inteligentes da Pali" />
 </a>
-  <figcaption>A tela de políticas da conta inteligente mostra os módulos instalados, os detalhes do validador ativo, a recuperação por guardiões e o gerenciamento de módulos.</figcaption>
+  <figcaption>As configurações da conta inteligente começam pelo registro se ela ainda não foi implantada. Após o registro, aqui ficam as opções de aprovação e recuperação.</figcaption>
 </figure>
 
 Se os dados locais da carteira forem excluídos ou a Pali for instalada em um novo dispositivo, as contas inteligentes determinísticas da Pali poderão ser reconstruídas a partir dos metadados da carteira e da configuração da chain. Contas com validadores de passkey ainda precisam de acesso à credencial de passkey correspondente para aprovar ações.
@@ -128,3 +128,27 @@ As contas inteligentes da Pali são baseadas em padrões públicos de contas int
 - [Contas inteligentes modulares ERC-7579](https://eips.ethereum.org/EIPS/eip-7579) para módulos validadores e executores.
 - [Validação de assinaturas de contrato ERC-1271](https://eips.ethereum.org/EIPS/eip-1271) para assinaturas de contas de contrato.
 - [WebAuthn Nível 3](https://www.w3.org/TR/webauthn-3/) para aprovações com passkeys.
+
+## Recuperação com guardiões passo a passo {#guardian-recovery-guide}
+
+Restaurar registros locais da carteira é diferente de mudar o controle da conta. Restaurar a seed não contorna um validador instalado. A recuperação com guardiões muda, após uma espera, o método de aprovação da mesma conta inteligente.
+
+1. **Configurar:** Abra as configurações de recuperação enquanto o método de aprovação atual funcionar. Registre primeiro a conta se ainda não estiver implantada. Escolha um guardião controlado separadamente e um prazo, e confirme a configuração on-chain. Mantenha o pagador do gas financiado.
+2. **Iniciar:** Se perder acesso, escolha um novo método de aprovação cujo controle possa comprovar. O guardião configurado assina a intenção exata de recuperação. O envio custa gas; ainda não muda o controle.
+3. **Esperar e concluir:** O método anterior continua ativo até a recuperação ser concluída com sucesso. Volte à mesma conta e rede após a espera. Após a espera, qualquer pessoa pode enviar a conclusão da recuperação exata já aprovada pelos guardiões, antes de expirar. Depois, o método novo controla a mesma conta; endereço, fundos e histórico permanecem.
+
+Após a conclusão, o método ativo substituído não autoriza mais essa conta. Não apague chaves ou passkeys antigas antes de verificar se outras contas e redes ainda precisam delas. Uma solicitação que expira antes da conclusão exige nova tentativa.
+
+Novas políticas da Pali oferecem **3 ou 7 dias** de espera. **10 minutos** é restrito a testnets conhecidas. São opções de configuração da Pali, não um mínimo imposto a todo o contrato. As configurações on-chain existentes continuam sendo a referência. A espera é diferente da janela posterior em que a recuperação pode ser concluída.
+
+### Parar uma recuperação inesperada
+
+Se ainda controla o método de aprovação atual, escolha **Disable guardian recovery** (desativar recuperação com guardiões) nas configurações de recuperação. Confira conta e rede, confirme e pague o gas. A remoção confirmada invalida todas as recuperações pendentes, inclusive as iniciadas fora desta carteira, e remove essa via. Configure novamente guardiões confiáveis se quiser continuar usando-a.
+
+A remoção deve ser confirmada antes da conclusão indesejada; não desfaz uma recuperação já concluída. Se o resultado for incerto, confira primeiro o estado on-chain. Erro, timeout ou fechar a janela não cancela uma transação enviada. Não a reenvie às cegas.
+
+### Alertas opcionais por e-mail
+
+O link nas configurações abre **Sysnode Account → Recovery alerts**. Use um e-mail verificado, conecte a conta inteligente implantada em uma rede compatível e assine a inscrição com o método de aprovação atual. Confira se o monitoramento está ativo. Isso é opcional e separado da configuração dos guardiões; a Sysnode não recebe chaves privadas nem pode mover fundos ou cancelar a recuperação.
+
+O monitoramento continua com a Pali fechada, mas depende do serviço, do RPC e da entrega dos e-mails. Alertas podem atrasar ou falhar, e observações recentes da cadeia podem sofrer reorganização. A ausência de e-mail não prova que não existe recuperação. Revise alertas na carteira confiável para a conta e rede exatas.

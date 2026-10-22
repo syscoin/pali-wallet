@@ -61,3 +61,40 @@ La récupération des comptes intelligents Pali dépend des modules installés. 
 Lorsqu’une dapp appelle `wallet_prepareSmartAccount`, Pali crée un compte intelligent et enregistre localement des métadonnées durables une fois le déploiement et toute configuration de validateur demandée terminés. Pali conserve également des enregistrements locaux de la configuration des passkeys en attente avant leur installation, afin qu’un changement interrompu ne supprime pas silencieusement ces informations de récupération. Ces enregistrements ne remplacent ni une sauvegarde de la phrase de récupération ni l’accès à la passkey.
 
 Si un compte intelligent existe sur la chaîne mais est absent localement, utilisez le parcours de récupération du portefeuille de Pali. Pali ignore les comptes déjà présents et laisse l’utilisateur choisir lesquels importer parmi les comptes restants.
+
+:::tip Guide actuel de récupération par gardiens
+
+Le [guide complet](./smart-account-validators#guardian-recovery-guide) explique la configuration, le lancement, la finalisation et **Disable guardian recovery**. Les nouvelles politiques proposent 3 ou 7 jours d’attente ; 10 minutes est réservé aux testnets connus. La désactivation confirmée exige la méthode d’approbation actuelle et du gas, invalide les récupérations en attente et supprime cette voie de récupération, mais n’annule pas une récupération finalisée. En cas de transaction incertaine, vérifiez d’abord son état on-chain. Les alertes facultatives de Sysnode exigent un e-mail vérifié et une signature du portefeuille ; elles ne reçoivent aucune clé et ne garantissent pas la livraison.
+
+:::
+
+## Écrans de récupération
+
+Ces captures présentent l’interface en anglais et des comptes d’exemple. Les libellés et les réseaux peuvent être différents dans votre portefeuille.
+
+### Choisir un gardien
+
+<figure>
+  <a className="pali-media-link" href="/img/screens/settings-smart-account-recover.png" target="_blank" rel="noreferrer">
+    <img src="/img/screens/settings-smart-account-recover.png" alt="Adresse du gardien et choix du délai de récupération dans Pali" />
+  </a>
+  <figcaption>Choisissez l’adresse du gardien et le délai avant d’approuver la configuration. L’option de 10 minutes affichée concerne les testnets ; les nouvelles politiques de production proposent 3 ou 7 jours.</figcaption>
+</figure>
+
+### Vérifier la suppression de la récupération
+
+<figure>
+  <a className="pali-media-link" href="/img/screens/guardian-recovery-disable.png" target="_blank" rel="noreferrer" style={{ maxWidth: 400, margin: '0 auto' }}>
+    <img src="/img/screens/guardian-recovery-disable.png" alt="Confirmation Pali pour désactiver la récupération par gardiens" />
+  </a>
+  <figcaption>Vérifiez le compte, le réseau et l’avertissement avant de confirmer. Cette action supprime la récupération par gardiens on-chain ; elle ne désactive pas seulement les e-mails.</figcaption>
+</figure>
+
+### Vérifier la surveillance des alertes
+
+<figure>
+  <a className="pali-media-link" href="/img/screens/sysnode-recovery-enrollment.png" target="_blank" rel="noreferrer" style={{ maxWidth: 400, margin: '0 auto' }}>
+    <img src="/img/screens/sysnode-recovery-enrollment.png" alt="Compte lié aux alertes de récupération Sysnode en attente des premières vérifications de la chaîne" />
+  </a>
+  <figcaption>Lier un compte ne suffit pas : cet exemple vérifie encore l’historique de la chaîne. Attendez que la surveillance soit active et gardez à l’esprit que les alertes peuvent être retardées.</figcaption>
+</figure>

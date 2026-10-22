@@ -19,10 +19,10 @@ Pali 스마트 계정은 Pali가 사용자를 위해 생성, 연결, 실행할 �
 
 ERC-7579는 module 역할을 분리하며, Pali는 이 분리를 의도적으로 활용합니다.
 
-- **Validator**는 서명 권한입니다. validator는 특정 승인(passkey proof, ECDSA signature, composite policy 결과)이 계정 action을 인가하는지 결정합니다. transaction을 승인할 수 있는 것은 validator뿐입니다.
-- **Executor**는 서명이 아닌 계정 동작을 추가합니다. Pali의 guardian recovery module은 executor입니다. guardian은 서명하거나 자금을 이동할 수 없으며, active validator의 timelock 교체를 schedule할 수만 있습니다.
+- **Validator**는 패스키, ECDSA, 복합 정책 등 일반적인 계정 승인의 서명을 검증합니다.
+- **Executor**는 설치된 모듈을 통해 계정 작업을 실행할 수 있습니다. Pali의 가디언 모듈에는 설정된 임계값과 대기 시간이 필요합니다. 안내형 지갑 흐름은 활성 검증기를 교체하지만 온체인 모듈은 해당 UI 작업으로만 제한되지 않습니다.
 
-이 역할 분리가 recovery를 안심하고 권장할 수 있는 이유입니다. guardian이 침해되더라도 공격자에게 서명 권한이 주어지지 않습니다. 공격자가 얻는 것은 지연되고, 눈에 보이며, 취소 가능한 recovery 시도뿐입니다.
+따라서 가디언은 계정에 대한 지연된 권한을 갖습니다. 임계값을 충족하는 가디언이 침해되면 제어권과 자금이 위험해집니다. 현재 소유자는 대기 중에 대응할 수 있지만 악의적인 실행 전에 보호 작업이 확정되어야 합니다. [가디언 복구](../users/smart-account-validators)를 참고하세요.
 
 ## Composite 서명 policy
 
@@ -32,13 +32,13 @@ composite validator는 자식 validator를 threshold 아래에서 결합하여 �
 - **t-of-N** — 정족수가 승인해야 합니다. 공유 treasury, 데스크, 팀이 관리하는 계정에 자연스러운 형태입니다.
 - **N-of-N** — 설정된 모든 validator가 승인해야 합니다. 최대 보증이 필요한 계정용입니다.
 
-composite는 중첩될 수 있습니다. composite의 자식이 그 자체로 composite일 수 있으므로, 예를 들어 "CFO 키 AND (데스크 passkey 3개 중 임의의 2개)" 같은 계층적 policy를 custom contract 없이 표현할 수 있습니다. guardian recovery는 어떤 validator policy가 활성화되어 있든 독립적으로 유지됩니다.
+현재 Pali는 로컬에서 사용 가능한 내장 자식 검증기의 승인을 임계값까지 수집합니다. 이 버전은 중첩된 복합 정책이나 외부·다른 기기의 승인 수집을 지원하지 않습니다. 가디언 복구는 활성 검증기 정책과 독립적입니다.
 
 ## Validator 민첩성과 post-quantum 대비
 
-인가가 교체 가능한 module 안에 있기 때문에 계정은 특정 signature scheme에 묶이지 않습니다. 현재 Pali는 ECDSA(지갑 소유 기본값), P-256 WebAuthn passkey, composite validator를 제공합니다. post-quantum 서명 방식을 포함한 새로운 validator 유형이 배포되면 같은 주소의 같은 계정에 설치됩니다. 그 시점부터는 트랜잭션별 인가를 ECDSA가 전혀 관여하지 않는 방식으로 실행할 수 있습니다. 자금, 내역, 통합은 전혀 이동하지 않으며 서명 권한만 진화합니다.
+설정된 네트워크에서 Pali는 지갑 소유 ECDSA, P-256 WebAuthn 패스키, SLH-DSA 및 복합 검증기를 지원합니다. 해당 온체인 모듈이 배포되어 있고 필요한 로컬 키나 자격 증명을 사용할 수 있어야 합니다. 교체 가능한 모듈을 통해 향후 서명 방식도 같은 계정 주소에 도입할 수 있습니다. 검증기를 바꿔도 자금, 기록, 연동은 이동하지 않습니다.
 
-같은 민첩성은 recovery에도 적용됩니다. guardian recovery module은 표준 서명 검증으로 승인을 확인합니다. 일반 주소에는 순수 ECDSA, contract account에는 ERC-1271을 사용하므로, guardian 자체가 composite·custom·post-quantum validator로 관리되는 스마트 계정일 수도 있습니다. 배포된 contract account guardian을 쓰면 recovery 경로가 그 계정의 signature scheme을 상속합니다. 그래서 서명과 **recovery 모두** 궁극적으로 고전 ECDSA 의존 없이 운영될 수 있습니다. 현재 Pali의 guardian UX는 키 기반 승인을 수집하지만, on-chain module이 이미 지원하므로 contract account guardian 플로우는 나중에 지갑에 추가할 수 있습니다.
+가디언 모듈은 일반 주소의 ECDSA 승인과 계약 계정의 ERC-1271 승인을 검증합니다. Pali는 로컬 키 기반 가디언과 서명 가능한 배포된 로컬 스마트 계정 가디언(SLH-DSA 포함)을 사용할 수 있습니다. 로컬에서 서명할 수 없는 외부 가디언에는 외부 승인 흐름이 필요합니다.
 
 ## 기관과 팀을 위해
 

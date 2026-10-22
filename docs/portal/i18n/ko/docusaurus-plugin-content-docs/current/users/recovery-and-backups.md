@@ -61,3 +61,40 @@ Pali 스마트 계정의 복구 방식은 설치된 모듈에 따라 다릅니�
 dapp이 `wallet_prepareSmartAccount`를 호출하면 Pali는 스마트 계정을 만들고, 배포와 요청된 검증기 설정이 모두 끝난 뒤 영구 메타데이터를 로컬에 저장합니다. Pali는 패스키를 설치하기 전에 대기 중인 설정 정보도 로컬에 기록하므로, 변경이 중단되어도 복구에 필요한 정보가 아무 알림 없이 사라지지 않습니다. 이 기록은 시드 백업이나 패스키에 대한 접근을 대신하지 않습니다.
 
 스마트 계정이 온체인에는 존재하지만 로컬에 없다면 Pali의 지갑 복구 흐름을 사용하세요. Pali는 로컬에 이미 있는 계정을 건너뛰고, 나머지 중 어떤 계정을 가져올지 사용자가 선택하게 합니다.
+
+:::tip 최신 가디언 복구 안내
+
+[전체 안내](./smart-account-validators#guardian-recovery-guide)는 설정, 시작, 완료 및 **Disable guardian recovery**를 설명합니다. 새 정책은 3일 또는 7일 대기를 제공하며 10분은 알려진 테스트넷 전용입니다. 비활성화 확정에는 현재 승인 방식과 가스가 필요합니다. 대기 중인 복구를 무효화하고 복구 경로를 제거하지만 완료된 복구를 되돌릴 수는 없습니다. 결과가 불확실한 거래는 다시 보내기 전에 온체인 상태를 확인하세요. 선택적인 Sysnode 알림에는 확인된 이메일과 지갑 서명이 필요하며, 키를 전달하지 않고 알림 전달도 보장되지 않습니다.
+
+:::
+
+## 복구 화면 예시
+
+스크린샷은 영어 인터페이스와 예시 계정을 사용합니다. 지갑에 따라 표시 이름이나 네트워크가 다를 수 있습니다.
+
+### 가디언 선택
+
+<figure>
+  <a className="pali-media-link" href="/img/screens/settings-smart-account-recover.png" target="_blank" rel="noreferrer">
+    <img src="/img/screens/settings-smart-account-recover.png" alt="Pali의 가디언 주소와 복구 대기 기간 선택 항목" />
+  </a>
+  <figcaption>설정을 승인하기 전에 가디언 주소와 대기 기간을 선택하세요. 표시된 10분 옵션은 테스트넷용이며, 새 운영 환경 정책에서는 3일 또는 7일을 선택할 수 있습니다.</figcaption>
+</figure>
+
+### 복구 제거 확인
+
+<figure>
+  <a className="pali-media-link" href="/img/screens/guardian-recovery-disable.png" target="_blank" rel="noreferrer" style={{ maxWidth: 400, margin: '0 auto' }}>
+    <img src="/img/screens/guardian-recovery-disable.png" alt="Pali에서 가디언 복구를 비활성화하는 확인 화면" />
+  </a>
+  <figcaption>확정하기 전에 계정, 네트워크, 경고를 확인하세요. 이 작업은 가디언 복구를 온체인에서 제거하며, 단순히 이메일만 끄는 것이 아닙니다.</figcaption>
+</figure>
+
+### 알림 모니터링 확인
+
+<figure>
+  <a className="pali-media-link" href="/img/screens/sysnode-recovery-enrollment.png" target="_blank" rel="noreferrer" style={{ maxWidth: 400, margin: '0 auto' }}>
+    <img src="/img/screens/sysnode-recovery-enrollment.png" alt="Sysnode 복구 알림에 연결된 계정이 초기 체인 확인을 기다리는 화면" />
+  </a>
+  <figcaption>계정을 연결하는 것만으로는 충분하지 않습니다. 이 예시는 아직 체인 기록을 확인하고 있습니다. 모니터링이 활성화될 때까지 기다리고 알림이 지연될 수 있다는 점을 기억하세요.</figcaption>
+</figure>

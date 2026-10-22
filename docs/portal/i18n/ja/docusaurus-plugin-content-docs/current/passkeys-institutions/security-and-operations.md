@@ -12,8 +12,14 @@ Paliスマートアカウントはアカウント基盤として扱う必要が�
 - gas payerに資金を入れておく。
 - failed deployment、failed module install、expired recoveryを監視する。
 
-composite validatorは子validatorをthreshold（1-of-N、t-of-N、N-of-N）の下で組み合わせられ、子自体もcompositeにできるため、階層的なpolicyを構成できます。
+現在のPaliは、ローカルで利用可能な組み込みの子validatorの承認を閾値まで集めます。このバージョンでは、入れ子のcompositeや外部・別デバイスからの承認収集はサポートしていません。guardian recoveryは有効なvalidator policyから独立しています。
 
 composite policyを設計するときは、thresholdの根拠を文書化してください。1-of-Nは可用性を、N-of-Nは保証を最適化し、t-of-Nは両者のバランスを取ります。validatorは置き換え可能なモジュールであるため、policy（さらには将来のポスト量子validatorを含む署名方式そのもの）を、アカウントアドレスを変えずに後からアップグレードできます。guardianはexecutorロールのモジュールであり、どのvalidator policyがアクティブであっても独立したままです。
 
-Guardian recoveryは遅延付きvalidator置換です。Paliは各試行で新しいsaltを使い、モジュールはアカウントごとに1つのactive recoveryのみ許可します。
+Paliの案内付きガーディアン復旧は、待機時間後に有効なバリデーターを置き換えます。完了が確認されるまで、以前の承認方法は有効です。ただしオンチェーンのエグゼキューターは、ガーディアンが承認したアカウント操作を実行でき、画面上のバリデーター置換だけには限定されません。インストール済みフックが追加の制約を設ける場合があります。閾値を満たすガーディアンの侵害は、制御権や資金を危険にさらします。インストール済みモジュールは有効な承認を要求し、Paliは試行ごとに新しいsaltを使い、コントラクトは期限内の有効な復旧をアカウントごとに1件だけ許可します。
+
+:::tip 最新のガーディアン復旧ガイド
+
+[完全ガイド](../users/smart-account-validators#guardian-recovery-guide)では、設定、開始、完了、**Disable guardian recovery**を説明しています。新しいポリシーの待機時間は3日または7日で、10分は既知のテストネット専用です。無効化の確定には現在の承認方法とガスが必要です。保留中の復旧を無効にして復旧経路を削除しますが、完了済みの復旧を元に戻すことはできません。結果が不明な取引は、再送前にオンチェーンで確認してください。任意のSysnode通知には確認済みメールとウォレット署名が必要です。鍵は渡さず、配信も保証されません。
+
+:::

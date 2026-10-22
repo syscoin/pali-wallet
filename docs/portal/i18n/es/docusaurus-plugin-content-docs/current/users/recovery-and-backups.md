@@ -61,3 +61,40 @@ La recuperación de cuentas inteligentes de Pali depende de los módulos instala
 Cuando una dapp llama `wallet_prepareSmartAccount`, Pali crea una cuenta inteligente y guarda metadatos duraderos localmente una vez completados el despliegue y la configuración de validadores solicitada. Pali también conserva registros locales de la configuración pendiente de passkeys antes de su instalación, para que un cambio interrumpido no descarte silenciosamente esos detalles de recuperación. Estos registros no sustituyen una copia de seguridad de la frase semilla ni el acceso a la passkey.
 
 Si una cuenta inteligente existe on-chain pero no aparece localmente, usa el flujo de recuperación de la billetera de Pali. Pali omite las cuentas que ya están presentes y permite al usuario elegir cuáles de las restantes desea importar.
+
+:::tip Guía actual de recuperación con guardianes
+
+La [guía completa](./smart-account-validators#guardian-recovery-guide) explica la configuración, el inicio, la finalización y **Disable guardian recovery**. Las políticas nuevas ofrecen esperas de 3 o 7 días; 10 minutos se limita a testnets conocidas. La desactivación confirmada requiere el método de aprobación actual y gas, invalida las recuperaciones pendientes y elimina esa vía de recuperación, pero no revierte una recuperación ya finalizada. Si una transacción es incierta, comprueba primero su estado on-chain. Las alertas opcionales de Sysnode requieren un correo verificado y una firma de la wallet; no reciben claves ni garantizan la entrega.
+
+:::
+
+## Pantallas de recuperación
+
+Estas capturas muestran la interfaz en inglés y cuentas de ejemplo. Las etiquetas y las redes pueden ser distintas en tu wallet.
+
+### Elegir un guardián
+
+<figure>
+  <a className="pali-media-link" href="/img/screens/settings-smart-account-recover.png" target="_blank" rel="noreferrer">
+    <img src="/img/screens/settings-smart-account-recover.png" alt="Dirección del guardián y opciones del periodo de espera de recuperación en Pali" />
+  </a>
+  <figcaption>Elige la dirección del guardián y el periodo de espera antes de aprobar la configuración. La opción de 10 minutos que aparece es para testnets; las políticas nuevas de producción ofrecen 3 o 7 días.</figcaption>
+</figure>
+
+### Revisar la eliminación de la recuperación
+
+<figure>
+  <a className="pali-media-link" href="/img/screens/guardian-recovery-disable.png" target="_blank" rel="noreferrer" style={{ maxWidth: 400, margin: '0 auto' }}>
+    <img src="/img/screens/guardian-recovery-disable.png" alt="Confirmación de Pali para desactivar la recuperación con guardianes" />
+  </a>
+  <figcaption>Revisa la cuenta, la red y la advertencia antes de confirmar. Esta acción elimina la recuperación con guardianes on-chain; no se limita a desactivar correos.</figcaption>
+</figure>
+
+### Verificar la supervisión de alertas
+
+<figure>
+  <a className="pali-media-link" href="/img/screens/sysnode-recovery-enrollment.png" target="_blank" rel="noreferrer" style={{ maxWidth: 400, margin: '0 auto' }}>
+    <img src="/img/screens/sysnode-recovery-enrollment.png" alt="Cuenta vinculada a alertas de recuperación de Sysnode esperando las comprobaciones iniciales de la cadena" />
+  </a>
+  <figcaption>Vincular una cuenta no basta: este ejemplo todavía está comprobando el historial de la cadena. Espera a que la supervisión esté activa y recuerda que las alertas pueden retrasarse.</figcaption>
+</figure>

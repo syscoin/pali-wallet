@@ -6,25 +6,25 @@ Les comptes intelligents Pali sont des comptes de contrat que Pali peut créer, 
 
 ## Idée simple
 
-- Una sola dirección mantiene los fondos y es la dirección que ven las dapps.
-- La cuenta puede usar passkey, ECDSA o una política compuesta.
-- Guardian recovery puede reemplazar el validador activo después de una demora.
-- `wallet_sendCalls` puede ejecutar varios calls como una sola acción atómica.
+- Une seule adresse conserve les fonds et reste celle que voient les dapps.
+- Le compte peut utiliser une passkey, ECDSA ou une politique composite.
+- Le parcours de récupération par gardiens peut remplacer le validateur actif après un délai.
+- `wallet_sendCalls` peut exécuter plusieurs appels dans une seule opération atomique.
 
 ## Modèle technique
 
-`PaliSmartAccount` ejecuta calls y valida firmas mediante módulos estilo ERC-7579. `PaliSmartAccountFactory` deriva direcciones deterministas y despliega cuentas. Pali prepara las ejecuciones con codificación estilo ERC-4337 y usa EIP-1271 para firmas de contrato.
+`PaliSmartAccount` exécute les appels et vérifie les signatures via des modules de type ERC-7579. `PaliSmartAccountFactory` calcule des adresses déterministes et déploie les comptes. Pali prépare les exécutions au format ERC-4337 et utilise ERC-1271 pour les signatures des comptes de contrat.
 
-La cuenta se despliega primero con un validador ECDSA controlado por la wallet. Si la dapp pidió passkey u otro validador soportado, Pali instala el validador solicitado y elimina el bootstrap validator con una ejecución de la cuenta.
+Le compte est d’abord déployé avec un validateur ECDSA contrôlé par le portefeuille. Si la dapp demande une passkey ou un autre validateur pris en charge, Pali installe ce validateur et retire le validateur initial par une exécution du compte.
 
 ## Deux rôles : les validateurs signent, les gardiens récupèrent
 
 ERC-7579 sépare les rôles des modules, et Pali s'appuie délibérément sur cette séparation :
 
-- **Les validateurs** sont l'autorité de signature. Un validateur décide si une approbation donnée (preuve de passkey, signature ECDSA, résultat d'une politique composite) autorise une action du compte. Seuls les validateurs peuvent approuver des transactions.
-- **Les exécuteurs** ajoutent au compte des comportements qui ne sont pas une signature. Le module de récupération par gardiens de Pali est un exécuteur : les gardiens ne peuvent ni signer ni déplacer des fonds, ils peuvent seulement programmer un remplacement du validateur actif soumis à un délai.
+- **Les validateurs** vérifient les signatures des approbations normales du compte, notamment les passkeys, ECDSA et les politiques composites.
+- **Les exécuteurs** peuvent exécuter des actions via un module installé. Le module de gardiens de Pali exige le seuil configuré et un délai. Le parcours guidé remplace le validateur actif ; le module on-chain n’est pas limité à cette action de l’interface.
 
-Garder ces rôles séparés est ce qui rend la récupération sûre à recommander. La compromission d'un gardien ne donne pas à un attaquant le pouvoir de signer — elle lui donne une tentative de récupération retardée, visible et annulable.
+Les gardiens disposent donc d’une autorité différée sur le compte. Un seuil compromis menace son contrôle et ses fonds. Le propriétaire actuel peut agir pendant le délai, mais doit faire confirmer sa protection avant une exécution malveillante. Voir [Récupération par gardiens](../users/smart-account-validators).
 
 ## Politiques de signature composites
 
@@ -34,19 +34,19 @@ Le validateur composite combine des validateurs enfants sous un seuil, ce qui tr
 - **t-of-N** — un quorum doit approuver. La forme naturelle pour les trésoreries partagées, les desks et les comptes contrôlés par une équipe.
 - **N-of-N** — chaque validateur configuré doit approuver. Pour les comptes à assurance maximale.
 
-Les composites peuvent s'imbriquer : un enfant d'un composite peut lui-même être un composite, donc des politiques hiérarchiques — par exemple « la clé du CFO ET (2 quelconques des 3 passkeys du desk) » — sont exprimables sans contrats personnalisés. La récupération par gardiens reste indépendante de la politique de validateurs active.
+Pali collecte actuellement les approbations des validateurs enfants intégrés disponibles localement jusqu’au seuil. Cette version ne prend pas en charge les composites imbriqués ni la collecte d’approbations externes ou entre appareils. La récupération par gardiens reste indépendante de la politique du validateur actif.
 
 ## Agilité des validateurs et préparation post-quantique
 
-Parce que l'autorisation vit dans des modules remplaçables, le compte n'est marié à aucun schéma de signature. Aujourd'hui, Pali fournit ECDSA (le validateur par défaut détenu par le portefeuille), les passkeys P-256 WebAuthn et le validateur composite. Quand de nouveaux types de validateurs seront déployés — y compris des schémas de signature post-quantiques — ils s'installeront sur le même compte à la même adresse. À ce stade, l'autorisation de chaque transaction peut fonctionner sans aucun ECDSA dans la boucle. Les fonds, l'historique et les intégrations ne bougent jamais ; seule l'autorité de signature évolue.
+Sur les réseaux configurés, Pali prend en charge ECDSA contrôlé par le portefeuille, les passkeys P-256 WebAuthn, SLH-DSA et les validateurs composites. Les modules on-chain correspondants doivent être déployés et les clés ou identifiants locaux nécessaires disponibles. Les modules remplaçables permettent aussi d’adopter plus tard d’autres schémas de signature sur la même adresse. Un changement de validateur ne déplace ni fonds, ni historique, ni intégrations.
 
-La même agilité s'étend à la récupération. Le module de guardian recovery vérifie les approbations via une vérification de signature standard — ECDSA simple pour les adresses normales, ERC-1271 pour les comptes de contrat — de sorte qu'un gardien peut lui-même être un compte intelligent gouverné par un validateur composite, personnalisé ou post-quantique. Un gardien de type compte de contrat déployé fait hériter au chemin de récupération le schéma de signature de ce compte ; c'est ainsi que la signature **et** la récupération pourront un jour fonctionner sans aucune dépendance à l'ECDSA classique. L'UX actuelle des gardiens de Pali collecte des approbations basées sur des clés ; les flux pour gardiens de type compte de contrat pourront être ajoutés plus tard au portefeuille, car le module on-chain les prend déjà en charge.
+Le module de gardiens vérifie les approbations ECDSA des adresses normales et ERC-1271 des comptes de contrat. Pali peut utiliser les gardiens locaux à clés et les comptes intelligents locaux déjà déployés pour lesquels il peut signer, y compris SLH-DSA. Un gardien externe indisponible comme signataire local nécessite un parcours d’approbation externe.
 
 ## Pour les institutions et les équipes
 
-Las instituciones deberían tratar estas cuentas como infraestructura de cuenta, no solo como login con passkey. Usen passkeys para onboarding más sencillo, ECDSA o validadores compuestos para controles de equipo o hardware wallet, guardian recovery para reemplazo con demora, y cuentas de gas financiadas para despliegue y ejecución. Documenten quién controla cada validador, quiénes son los guardianes y qué significa la demora de recuperación.
+Les institutions doivent traiter ces comptes comme une infrastructure de compte, pas seulement comme une connexion par passkey. Utilisez les passkeys pour simplifier l’accueil, ECDSA ou des validateurs composites pour les contrôles d’équipe ou de portefeuille matériel, la récupération par gardiens pour un remplacement différé, et des payeurs de gas approvisionnés pour le déploiement et l’exécution. Documentez qui contrôle chaque validateur, qui sont les gardiens et ce que signifie le délai de récupération.
 
-Pali muestra una advertencia especial si una dapp solicita owners ECDSA externos, porque esas direcciones pueden aprobar acciones futuras de la cuenta.
+Pali affiche un avertissement particulier si une dapp demande des propriétaires ECDSA externes, car ces adresses pourront approuver des actions futures du compte.
 
 ## Méthode dapp
 
@@ -57,7 +57,7 @@ const account = await window.ethereum.request({
 });
 ```
 
-Si no se pasa `authenticator`, Pali usa passkey por defecto.
+Si `authenticator` n’est pas fourni, Pali utilise une passkey par défaut.
 
 ## Réseaux pris en charge
 

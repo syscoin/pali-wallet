@@ -28,7 +28,7 @@ Pali는 한 가지 생각을 중심으로 만들어졌습니다. 보안 경계�
 - **Standards-first dapp integration.** Pali는 dapp이 이미 사용하는 wallet API를 따릅니다. EIP-1193, EIP-6963, EIP-2255 permission, EIP-5792 `wallet_sendCalls`, EIP-712 typed data, MetaMask-compatible request behavior입니다. Pali smart account는 ERC-7579-style validator/executor module과 ERC-4337-style execution data를 사용합니다.
 - **Programmable authorization.** Pali smart account에서는 주소가 안정적으로 유지되지만 signer policy는 진화할 수 있습니다. Validator는 누가 action을 승인할 수 있는지 결정하고, executor는 guardian recovery 같은 기능을 추가합니다. 팀은 자금을 옮기지 않고 passkey에서 threshold policy로 이동하거나 recovery를 추가하거나 새로운 validator type을 채택할 수 있습니다.
 - **미래의 더 강한 서명을 위한 설계.** Authorization이 modular하기 때문에 미래의 validator는 ECDSA와 P-256 passkey를 넘어서는 scheme, target chain에서 실용적인 post-quantum signature design도 지원할 수 있습니다.
-- **편의성보다 안전성.** Pali는 blocking approval을 직렬화하고, 연결된 site와 network context를 확인하며, send와 approval의 high-risk blacklist hit를 차단하고, guardian recovery를 transaction signing과 분리합니다. Guardian은 delay 이후 access recovery를 도울 수 있지만 몰래 자금을 사용할 수는 없습니다.
+- **편의성보다 안전성.** Pali는 blocking approval을 직렬화하고, 연결된 site와 network context를 확인하며, send와 approval의 high-risk blacklist hit를 차단하고, guardian recovery를 transaction signing과 분리합니다. 가디언 승인은 임계값과 대기 시간 조건이 충족되면 지연된 계정 권한을 부여합니다. 가디언을 보호하고 원치 않는 실행 전에 대응하세요.
 
 Pali의 방향은 **실제 사용자와 실제 dapp을 위한 self-custodial programmable account**입니다. 일상적인 지갑 사용에 충분히 빠르고, 개발자에게 충분히 표준적이며, 기관에 충분히 유연하고, 보안상 중요한 control이 사용자와 chain에 남도록 충분히 보수적입니다.
 

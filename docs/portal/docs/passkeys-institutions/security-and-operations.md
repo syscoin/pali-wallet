@@ -33,7 +33,7 @@ Validators are the account's authorization boundary:
 
 - A P-256 WebAuthn validator means the passkey proof authorizes actions.
 - An ECDSA validator means the configured owner addresses authorize actions.
-- A composite validator can combine child validators under a threshold — 1-of-N, t-of-N, or N-of-N — and children can themselves be composites, so hierarchical policies are possible.
+- A composite validator combines locally signable builtin child validators under a threshold: 1-of-N, t-of-N, or N-of-N. This Pali version does not support nested composites or collecting external or cross-device approvals.
 
 When designing a composite policy, document the threshold rationale: 1-of-N optimizes availability, N-of-N optimizes assurance, and t-of-N balances both. Validators are replaceable modules, so the policy (and even the signature scheme — including future post-quantum validators) can be upgraded later without changing the account address. Guardians are an executor-role module and stay independent of whichever validator policy is active.
 
@@ -41,9 +41,9 @@ Installing a malicious validator is equivalent to giving that validator control 
 
 ## Guardian recovery assumptions
 
-Guardian recovery is a delayed validator replacement path. A guardian signature schedules recovery to a new recovery target. After the delay has passed, anyone can finalize the recovery transaction. Pali uses a fresh recovery salt per attempt and the contract permits only one active recovery schedule per account, so a stale guardian signature cannot be replayed forever and parallel active recoveries are blocked.
+Pali's guided guardian recovery flow is delayed validator replacement. Guardian approvals bind the exact account, chain, module, policy epoch, salt, and execution data. The current validator remains active until successful on-chain finalization. After the delay, anyone can submit finalization of the exact recovery already approved by the guardians, before it expires. The same account address and assets remain in place. Pali uses a fresh recovery salt per attempt, and the contract permits only one unexpired active schedule per account.
 
-Guardian recovery is not a custodial backdoor. It only works if the module is installed and the configured guardian threshold signs the recovery intent.
+Guardian recovery is not a server-controlled backdoor: it requires the installed module and the configured guardian threshold. It is nevertheless a powerful delayed account authority. The on-chain executor accepts guardian-approved execution, not only the validator-replacement action constructed by Pali's UI; installed hook policies may impose further restrictions. Treat a compromised guardian threshold as a risk to account control and funds. Follow the [user recovery guide](../users/smart-account-validators#guardian-recovery) for setup, finalization, and owner intervention.
 
 ### Recovery email alerts
 
@@ -54,10 +54,11 @@ address to that public account; it does not give Sysnode any signing keys or
 permission to move funds or cancel recovery.
 
 Check that Sysnode reports monitoring as active. It monitors independently of
-Pali being open and displays the on-chain execution deadline for a pending
-recovery. An email is a prompt to review the account in your trusted wallet,
+Pali being open and displays when a pending on-chain recovery becomes executable.
+An email is a prompt to review the account in your trusted wallet,
 not an approval or cancellation action. Delivery can be delayed or fail, and an
-unavailable or lagging monitor is not evidence that the account is safe.
+unavailable or lagging monitor is not evidence that the account is safe. The
+service depends on its configured RPC; recent chain observations can reorganize.
 
 If a recovery is unexpected and you still control the current approval method,
 open that smart account's recovery settings and choose **Disable guardian
@@ -65,7 +66,10 @@ recovery**. After confirmation, Pali removes the recovery module, invalidating
 pending guardian recovery and disabling that recovery path. Review and set up
 trusted guardians again afterwards. This is an on-chain account action requiring
 the current approval method and gas, not an email action. If submission is
-uncertain, check its on-chain status before considering another attempt.
+uncertain, check its on-chain status before considering another attempt. Removal
+must be confirmed before an unwanted recovery is finalized; it cannot reverse a
+completed change of control. Keep replacement credentials safe, and retain old
+credentials if other accounts or networks still use them.
 
 New Pali recovery policies offer three- and seven-day waiting periods. The
 ten-minute option is restricted to known testnets. Existing policies are not
