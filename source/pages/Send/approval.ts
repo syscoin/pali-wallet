@@ -90,20 +90,20 @@ export const getApprovalAmountDisplay = ({
   customAmount,
   formattedAmount,
   isCustom,
-  isRequestedUnlimited,
+  isEffectiveUnlimited,
 }: {
   canEdit: boolean;
   customAmount?: string | null;
   formattedAmount?: string;
   isCustom: boolean;
-  isRequestedUnlimited: boolean;
+  isEffectiveUnlimited: boolean;
 }): { amount?: string; isUnlimited: boolean } => {
   const hasCustomAmount =
     canEdit && isCustom && customAmount !== null && customAmount !== undefined;
 
   return {
     amount: hasCustomAmount ? String(customAmount) : formattedAmount,
-    isUnlimited: !hasCustomAmount && isRequestedUnlimited,
+    isUnlimited: isEffectiveUnlimited,
   };
 };
 

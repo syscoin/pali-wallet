@@ -688,8 +688,12 @@ export const SendTransaction = () => {
       customAmount: customApprovedAllowanceAmount.customAllowanceValue,
       formattedAmount: formattedApprovalAmount,
       isCustom: customApprovedAllowanceAmount.isCustom,
-      isRequestedUnlimited:
-        decodedTxData?.method === 'approve' && isMaxUint256(rawApprovalAmount),
+      isEffectiveUnlimited:
+        approvalType === 'erc20-amount' &&
+        effectiveApprovalData?.decodedTx?.method === 'approve' &&
+        isMaxUint256(
+          convertBigNumberToString(effectiveApprovalData.decodedTx.inputs?.[1])
+        ),
     });
 
   const invalidatePendingClose = () => {
