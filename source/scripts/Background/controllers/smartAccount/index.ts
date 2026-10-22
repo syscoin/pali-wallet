@@ -418,6 +418,14 @@ class SmartAccountController {
     string,
     Promise<ISmartAccountMetadata>
   >();
+  private readonly explicitHydrations = new Map<
+    string,
+    {
+      context: ReturnType<SmartAccountController['infrastructureContext']>;
+      promise: Promise<ISmartAccountMetadata>;
+      walletGeneration: number;
+    }
+  >();
 
   constructor(private readonly deps: ISmartAccountControllerDependencies) {}
 
@@ -463,20 +471,26 @@ class SmartAccountController {
     };
   }
 
+  private sameInfrastructureContext(
+    current: ReturnType<SmartAccountController['infrastructureContext']>,
+    context: ReturnType<SmartAccountController['infrastructureContext']>
+  ): boolean {
+    return (
+      current.key === context.key &&
+      current.provider === context.provider &&
+      current.transaction === context.transaction &&
+      current.slip44 === context.slip44 &&
+      current.generation === context.generation &&
+      current.account.id === context.account.id &&
+      current.account.type === context.account.type &&
+      current.address === context.address
+    );
+  }
+
   private assertInfrastructureContext(
     context: ReturnType<SmartAccountController['infrastructureContext']>
   ) {
-    const current = this.infrastructureContext();
-    if (
-      current.key !== context.key ||
-      current.provider !== context.provider ||
-      current.transaction !== context.transaction ||
-      current.slip44 !== context.slip44 ||
-      current.generation !== context.generation ||
-      current.account.id !== context.account.id ||
-      current.account.type !== context.account.type ||
-      current.address !== context.address
-    )
+    if (!this.sameInfrastructureContext(this.infrastructureContext(), context))
       throw new Error(
         'Wallet context changed. Reopen deployment on the selected network.'
       );
@@ -1499,30 +1513,73 @@ class SmartAccountController {
     expectedContext?: IEvmTransactionContext
   ): Promise<ISmartAccountMetadata> {
     const context = this.infrastructureContext();
+    const walletGeneration = this.deps.getWalletStateGeneration();
     if (expectedContext)
       this.assertExpectedExecutionContext(expectedContext, undefined, false);
-    const active = this.getSmartAccountById(accountId);
-    getAddress(active.account.address);
+    const requested = this.getSmartAccountById(accountId);
+    getAddress(requested.account.address);
     if (
-      active.account.id !== accountId ||
-      active.metadata.chainId !== context.chainId
+      requested.account.id !== accountId ||
+      requested.metadata.chainId !== context.chainId
     )
       throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
-    // Explicit hydration requests (UI refresh, post-action flows) bypass the
-    // short-lived metadata cache.
-    const metadata = await this.hydrateSmartAccountMetadata(active.account, {
-      forceRefresh: true,
-    });
-    this.assertInfrastructureContext(context);
-    if (expectedContext)
-      this.assertExpectedExecutionContext(expectedContext, undefined, false);
-    await this.persistSmartAccountMetadata(
-      accountId,
-      metadata,
-      expectedContext,
-      active
-    );
-    return metadata;
+    const authKey = ({ auth }: ISmartAccountMetadata) =>
+      auth
+        ? JSON.stringify([
+            auth.module,
+            auth.validator?.toLowerCase(),
+            auth.data?.toLowerCase(),
+          ])
+        : '[null,null,null]';
+    const requestedAuth = authKey(requested.metadata);
+    const assertRequest = () => {
+      this.assertInfrastructureContext(context);
+      if (expectedContext)
+        this.assertExpectedExecutionContext(expectedContext, undefined, false);
+      const current = this.getSmartAccountById(accountId);
+      if (
+        this.deps.getWalletStateGeneration() !== walletGeneration ||
+        !this.sameSmartAccountTarget(current, requested) ||
+        current.metadata.chainId !== requested.metadata.chainId ||
+        authKey(current.metadata) !== requestedAuth
+      )
+        throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+      return current;
+    };
+    const key = this.getHydrationKey(requested.account);
+    const previousEntry = this.explicitHydrations.get(key);
+    const previous =
+      previousEntry &&
+      previousEntry.walletGeneration === walletGeneration &&
+      this.sameInfrastructureContext(previousEntry.context, context)
+        ? previousEntry.promise
+        : undefined;
+    const hydration = (async () => {
+      // Serialize the complete read+commit, not only the RPC fetch. Joining a
+      // prior read could reuse pre-change state; overlapping commits otherwise
+      // reject a harmless second refresh on metadata identity alone.
+      if (previous) await previous.catch(() => undefined);
+      const active = assertRequest();
+      const metadata = await this.hydrateSmartAccountMetadata(active.account, {
+        forceRefresh: true,
+      });
+      assertRequest();
+      await this.persistSmartAccountMetadata(
+        accountId,
+        metadata,
+        expectedContext,
+        active
+      );
+      return metadata;
+    })();
+    const entry = { context, walletGeneration, promise: hydration };
+    this.explicitHydrations.set(key, entry);
+    try {
+      return await hydration;
+    } finally {
+      if (this.explicitHydrations.get(key) === entry)
+        this.explicitHydrations.delete(key);
+    }
   }
 
   /**
@@ -3042,6 +3099,18 @@ class SmartAccountController {
     );
   }
 
+  private sameSmartAccountTarget(
+    current: ReturnType<SmartAccountController['getSmartAccountById']>,
+    target: ReturnType<SmartAccountController['getSmartAccountById']>
+  ): boolean {
+    return (
+      current.account.id === target.account.id &&
+      current.account.type === target.account.type &&
+      current.account.address === target.account.address &&
+      current.metadata.descriptor === target.metadata.descriptor
+    );
+  }
+
   private async persistSmartAccountMetadata(
     accountId: number,
     update:
@@ -3076,11 +3145,8 @@ class SmartAccountController {
       const current = this.getSmartAccountById(accountId);
       if (
         !isSameWallet() ||
-        current.account.id !== target.account.id ||
-        current.account.type !== target.account.type ||
-        current.account.address !== target.account.address ||
+        !this.sameSmartAccountTarget(current, target) ||
         current.metadata.chainId !== context.chainId ||
-        current.metadata.descriptor !== target.metadata.descriptor ||
         (expectedTarget && current.metadata !== target.metadata)
       )
         throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
