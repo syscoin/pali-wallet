@@ -204,7 +204,9 @@ export const ChainErrorPage = () => {
     // If we're not switching networks (just reconnecting), or if we're switching to the same chain
     // Only show two icons if we're actually switching to a different chain
     const isSameChain =
-      !networkTarget || activeNetwork.chainId === displayNetwork.chainId;
+      !networkTarget ||
+      (activeNetwork.kind === displayNetwork.kind &&
+        activeNetwork.chainId === displayNetwork.chainId);
 
     return (
       <div
