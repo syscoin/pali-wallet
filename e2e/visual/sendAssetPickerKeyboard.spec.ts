@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { AbiCoder, id } from 'ethers';
 import { createHash } from 'crypto';
+import { AbiCoder, id } from 'ethers';
 import fs from 'fs';
 import path from 'path';
 
@@ -329,6 +329,38 @@ test('Send asset picker has one keyboard stop per asset and excludes its closed 
             .pages()
             .some((candidate) => candidate.url().includes('/external'))
         ).toBe(false);
+        await capture(page);
+      }
+    );
+    await wallet.step(
+      'short-window pointer selection reaches the second token above the send footer',
+      async (capture) => {
+        await page.setViewportSize({ width: 320, height: 360 });
+        await expect(picker('TSYS')).toBeVisible();
+        await picker('TSYS').click();
+        await expect(menu).toBeVisible();
+        await expect(menu.getByRole('menuitem')).toHaveCount(3);
+        await item(tokens[1].symbol).click();
+        await expect(picker(tokens[1].symbol)).toBeVisible();
+        await expect(menu).toHaveCount(0);
+        await expect(max).toBeEnabled();
+        await max.click();
+        await expect(amount).toHaveValue(tokens[1].amount);
+        const tokenMax = await amount.inputValue();
+        await picker(tokens[1].symbol).click();
+        await item('TSYS').click();
+        await expect(picker('TSYS')).toBeVisible();
+        await expect(menu).toHaveCount(0);
+        await expect(max).toBeEnabled();
+        await max.click();
+        await expect(amount).toHaveValue('1.0');
+        observations.shortWindowPointerSelection = {
+          viewport: page.viewportSize(),
+          token: tokens[1].symbol,
+          tokenMax,
+          nativeMax: await amount.inputValue(),
+        };
+        await expect(page).toHaveURL(/#\/send\/eth$/);
         await capture(page);
       }
     );
