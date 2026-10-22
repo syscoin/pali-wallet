@@ -18,6 +18,7 @@ import {
 
 const FIRST_LABEL = 'Pending label A';
 const NEXT_LABEL = 'Current label B';
+const PADDED_LABEL = '  Family savings  ';
 
 const publicAccount = (page: Page) =>
   page.evaluate(async () => {
@@ -110,6 +111,7 @@ test('account label input stays locked until its genuine completed Save is ackno
             let receivedAt = 0;
             const evidence = {
               matchingRequests: 0,
+              labelRequests: 0,
               received: false,
               released: false,
               transportError: false,
@@ -120,10 +122,13 @@ test('account label input stays locked until its genuine completed Save is ackno
               const [message, callback] = args;
               const methods = message?.data?.methods;
               const params = message?.data?.params;
-              const matching =
+              const isLabelRequest =
                 message?.type === 'CONTROLLER_ACTION' &&
                 JSON.stringify(methods) ===
-                  JSON.stringify(['wallet', 'editAccountLabel']) &&
+                  JSON.stringify(['wallet', 'editAccountLabel']);
+              if (isLabelRequest) evidence.labelRequests += 1;
+              const matching =
+                isLabelRequest &&
                 params?.[0] === firstLabel &&
                 params?.[1] === target.id &&
                 params?.[2] === target.type;
@@ -242,6 +247,76 @@ test('account label input stays locked until its genuine completed Save is ackno
         expect(current.saved.label).toBe(NEXT_LABEL);
         expect(current.live).toEqual(current.saved);
         observations.current = current;
+        expect(routes!.deniedWrites).toEqual([]);
+        expect(extensionEvidence()).toEqual(runtime);
+        expect(
+          createHash('sha256').update(fs.readFileSync(info.file)).digest('hex')
+        ).toBe(sourceHash);
+      }
+    );
+
+    await wallet.step(
+      'blank and non-breaking-space labels stay editable without saving or navigating',
+      async () => {
+        const before = await publicAccount(page);
+        const requestsBefore = await page.evaluate(
+          () => (window as any).__pendingLabelSave.snapshot().labelRequests
+        );
+        await page
+          .getByRole('button', {
+            name: `${en.buttons.edit}: ${NEXT_LABEL}`,
+            exact: true,
+          })
+          .click();
+        await expect(input).toHaveValue(NEXT_LABEL);
+        const rejected: Array<{ kind: string; labelRequests: number }> = [];
+        for (const [kind, label] of [
+          ['spaces', '   '],
+          ['non-breaking spaces', '\u00a0\u00a0'],
+        ]) {
+          await input.fill(label);
+          await save.click();
+          await expect(
+            page.getByText(
+              'Label must be non-empty and different from current label',
+              { exact: true }
+            )
+          ).toBeVisible();
+          await expect(input).toHaveValue(label);
+          await expect(input).toBeEnabled();
+          await expect(page).toHaveURL(/#\/settings\/edit-account$/);
+          expect(await publicAccount(page)).toEqual(before);
+          const labelRequests = await page.evaluate(
+            () => (window as any).__pendingLabelSave.snapshot().labelRequests
+          );
+          expect(labelRequests).toBe(requestsBefore);
+          rejected.push({ kind, labelRequests });
+        }
+        observations.rejectedBlankLabels = rejected;
+      }
+    );
+
+    await wallet.step(
+      'a meaningful padded label is saved by Enter with its exact spelling retained',
+      async () => {
+        await input.fill(PADDED_LABEL);
+        await input.press('Enter');
+        await expect(page).toHaveURL(/#\/settings\/manage-accounts$/);
+        const edited = page.getByRole('button', {
+          name: `${en.buttons.edit}: Family savings`,
+          exact: true,
+        });
+        await expect(edited).toBeVisible();
+        await expect(edited).toHaveAttribute(
+          'aria-label',
+          `${en.buttons.edit}: ${PADDED_LABEL}`
+        );
+        const current = await publicAccount(page);
+        expect(current.active).toEqual({ id: 0, type: 'HDAccount' });
+        expect(current.live.label).toBe(PADDED_LABEL);
+        expect(current.saved.label).toBe(PADDED_LABEL);
+        expect(current.live).toEqual(current.saved);
+        observations.paddedLabel = current;
         expect(routes!.deniedWrites).toEqual([]);
         expect(extensionEvidence()).toEqual(runtime);
         expect(

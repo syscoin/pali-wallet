@@ -182,6 +182,32 @@ it('loads an isolated card through the real balance adapter and reuses its fresh
   expect(provider.getBalance).toHaveBeenCalledWith(A);
 });
 
+it.each([
+  ['100000000000', '0.0000001'],
+  ['1000000000000000001', '1.000000000000000001'],
+])(
+  'preserves the exact decimal string from a receipt refresh of %s wei',
+  async (raw, expected) => {
+    receiptProvider.getBalance.mockResolvedValueOnce(BigInt(raw));
+    controller.refreshBalancesAfterReceipt({
+      from: A,
+      to: `0x${'33'.repeat(20)}`,
+      blockNumber: 10,
+      chainId: network.chainId,
+      value: '0',
+    });
+    await jest.advanceTimersByTimeAsync(100);
+
+    expect(receiptProvider.getBalance).toHaveBeenCalledWith(A, 11);
+    const live = account().balances.ethereum;
+    const cached = getFreshNativeBalance(account(), network)?.balance;
+    expect(typeof live).toBe('string');
+    expect(typeof cached).toBe('string');
+    expect(live).toBe(expected);
+    expect(cached).toBe(expected);
+  }
+);
+
 it('does not let a different account refresh invalidate an in-flight card', async () => {
   const old = deferred<bigint>();
   provider.getBalance.mockReturnValueOnce(old.promise);
@@ -221,12 +247,12 @@ it('does not overwrite a newer receipt-targeted native balance', async () => {
   await jest.advanceTimersByTimeAsync(100);
   expect(receiptProvider.send).toHaveBeenCalledWith('eth_blockNumber', []);
   expect(receiptProvider.getBalance).toHaveBeenCalledWith(A, 11);
-  expectBalance('3');
+  expectBalance('3.0');
   const fresh = getFreshNativeBalance(account(), network);
   jest.setSystemTime(1_000_500);
   old.resolve(BigInt('1000000000000000000'));
-  await expect(pending).resolves.toBe('3');
-  expectBalance('3');
+  await expect(pending).resolves.toBe('3.0');
+  expectBalance('3.0');
   expect(getFreshNativeBalance(account(), network)).toEqual(fresh);
 });
 
@@ -345,7 +371,7 @@ it('refuses a superseded card when the newer receipt read has no result yet', as
   expect(getFreshNativeBalance(account(), network)).toBeNull();
   receipt.resolve(BigInt('3000000000000000000'));
   await jest.advanceTimersByTimeAsync(0);
-  expectBalance('3');
+  expectBalance('3.0');
 });
 
 it.each([false, true])(

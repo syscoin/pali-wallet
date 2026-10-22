@@ -382,8 +382,10 @@ export const ConnectWallet = () => {
                                     : 'border-brand-gray300 bg-bkg-2 hover:bg-bkg-3 hover:border-brand-gray200'
                                 }`}
                               role="button"
-                              tabIndex={0}
+                              aria-disabled={isConnecting}
+                              tabIndex={isConnecting ? -1 : 0}
                               onClick={() => {
+                                if (isConnecting) return;
                                 setAccountId(acc.id);
                                 setAccountType(
                                   keyringType as KeyringAccountType
@@ -393,6 +395,7 @@ export const ConnectWallet = () => {
                                 if (e.target !== e.currentTarget) return;
                                 if (e.key === 'Enter' || e.key === ' ') {
                                   e.preventDefault();
+                                  if (isConnecting) return;
                                   setAccountId(acc.id);
                                   setAccountType(
                                     keyringType as KeyringAccountType
@@ -425,6 +428,7 @@ export const ConnectWallet = () => {
                                         className="inline-flex flex-shrink-0 items-center relative z-20"
                                       >
                                         <IconButton
+                                          disabled={isConnecting}
                                           aria-label={t(
                                             'transactions.copyAddress'
                                           )}

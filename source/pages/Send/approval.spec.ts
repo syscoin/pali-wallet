@@ -72,7 +72,7 @@ describe('approval editing', () => {
         formattedAmount:
           '115792089237316195423570985008687907853269984665640564039457584007913129639935',
         isCustom: true,
-        isRequestedUnlimited: true,
+        isEffectiveUnlimited: false,
       })
     ).toEqual({ amount: '1.5', isUnlimited: false });
   });
