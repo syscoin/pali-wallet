@@ -1,14 +1,19 @@
-name: Warm Playwright browser cache
+name: Warm Playwright download caches
 
 # Pull-request caches are isolated to their merge refs. Populate the default
-# branch cache so later PRs can reuse the same browser download.
+# branch caches so later PRs can reuse verified downloads, never installed state.
 on:
   push:
     branches: [master]
     paths:
       - package.json
       - yarn.lock
+      - .github/workflows/main.yml
       - .github/workflows/browser-cache.yml
+      - .github/scripts/verify-playwright-apt-cache.sh
+  # Refresh the strict image/week key even when dependency files do not change.
+  schedule:
+    - cron: '23 6 * * *'
   workflow_dispatch:
 
 permissions:
@@ -16,10 +21,17 @@ permissions:
 
 jobs:
   warm:
+    # Manual dispatch on another ref must never publish a shared trusted cache.
+    if: github.repository == 'syscoin/pali-wallet' && github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    concurrency:
+      group: playwright-download-caches-master
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v7
         with:
           node-version: '23.11.1'
@@ -33,5 +45,40 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: playwright-chromium-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright-version.outputs.version }}
-      # This job only downloads binaries; it never launches a wallet/browser.
-      - run: npx playwright install chromium
+      - name: Resolve OS package cache key
+        id: apt-cache-key
+        run: |
+          . /etc/os-release
+          echo "platform=${ID}-${VERSION_ID}-$(dpkg --print-architecture)" >> "$GITHUB_OUTPUT"
+          echo "week=$(date -u +%G-%V)" >> "$GITHUB_OUTPUT"
+          echo "image=${ImageVersion}" >> "$GITHUB_OUTPUT"
+      - name: Prepare sandboxed apt download archive
+        run: |
+          sudo install -d -o "$(id -u)" -g "$(id -g)" -m 0711 /var/cache/pali-playwright-apt
+          sudo install -d -o _apt -g root -m 0700 /var/cache/pali-playwright-apt/partial
+      - name: Restore Playwright OS package downloads
+        id: apt-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: /var/cache/pali-playwright-apt/*.deb
+          key: playwright-apt-v1-${{ steps.apt-cache-key.outputs.platform }}-${{ steps.apt-cache-key.outputs.image }}-${{ steps.playwright-version.outputs.version }}-${{ hashFiles('yarn.lock', 'package.json', '.github/workflows/main.yml', '.github/scripts/verify-playwright-apt-cache.sh') }}-${{ steps.apt-cache-key.outputs.week }}
+      - name: Verify restored archives against fresh apt metadata
+        run: bash .github/scripts/verify-playwright-apt-cache.sh
+      - name: Configure temporary apt download archive
+        run: |
+          printf 'Dir::Cache::archives "%s";\nAPT::Keep-Downloaded-Packages "true";\nBinary::apt::APT::Keep-Downloaded-Packages "true";\n' \
+            /var/cache/pali-playwright-apt | sudo tee /etc/apt/apt.conf.d/99pali-playwright-cache >/dev/null
+      # Installs dependencies normally; no wallet/browser is launched.
+      - run: npx playwright install --with-deps chromium
+      - name: Remove temporary apt configuration
+        if: always()
+        run: sudo rm -f /etc/apt/apt.conf.d/99pali-playwright-cache
+      - name: Verify downloaded archives before publishing the shared cache
+        # APT creates root-owned archives; its permission repair needs the same authority.
+        run: sudo bash .github/scripts/verify-playwright-apt-cache.sh
+      - name: Save Playwright OS package downloads
+        if: success() && steps.apt-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: /var/cache/pali-playwright-apt/*.deb
+          key: ${{ steps.apt-cache.outputs.cache-primary-key }}
