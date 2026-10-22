@@ -27,18 +27,14 @@ export const TransactionHexComponent = (props: ITransactionHexProps) => {
         type="button"
         aria-label={t('buttons.copy')}
         className="cursor-pointer remove-scrollbar w-full max-h-32 text-left text-xs rounded-xl overflow-y-auto hover:opacity-60"
-        style={{ backgroundColor: 'rgba(22, 39, 66, 1)' }}
+        style={{
+          backgroundColor: 'rgba(22, 39, 66, 1)',
+          overflowWrap: 'break-word',
+          wordBreak: 'break-all',
+        }}
         onClick={() => copy(dataHex)}
       >
-        <span
-          className="block w-full text-xs"
-          style={{
-            overflowWrap: 'break-word',
-            wordBreak: 'break-all',
-          }}
-        >
-          {dataHex}
-        </span>
+        {dataHex}
       </button>
     </div>
   );
