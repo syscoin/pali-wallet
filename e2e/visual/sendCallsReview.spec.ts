@@ -221,10 +221,8 @@ test('send calls review exposes its real origin and exact known and unknown call
     const focusOrder: string[] = [];
     const focusSummary = async (target: Locator) => {
       for (let index = 0; index < 20; index += 1) {
-        if (
-          await target.evaluate((element) => element === document.activeElement)
-        )
-          break;
+        // Always traverse natively. The previous pointer check can leave this
+        // summary focused while the overview scrolls back to the origin.
         await popup.keyboard.press('Tab');
         focusOrder.push(
           await popup.evaluate(() => {
@@ -234,6 +232,10 @@ test('send calls review exposes its real origin and exact known and unknown call
             }`;
           })
         );
+        if (
+          await target.evaluate((element) => element === document.activeElement)
+        )
+          break;
       }
       await expect(target).toBeFocused();
     };
