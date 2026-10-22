@@ -229,7 +229,6 @@ test('adds a decorative amber Disable warning without changing its label, blue s
   render(<SmartAccountPolicy />);
   const disable = await screen.findByRole('button', {
     name: REMOVE,
-    exact: true,
   });
   expect(disable.textContent).toBe(REMOVE);
   for (const className of [
@@ -242,11 +241,9 @@ test('adds a decorative amber Disable warning without changing its label, blue s
   expect(cue).not.toBeNull();
   expect(cue!.classList.contains('text-brand-yellowInfo')).toBe(true);
   expect(cue!.classList.contains('shrink-0')).toBe(true);
-  expect(
-    icon.mock.calls.some(
-      ([props]) => props.name === 'warning' && props.size === 14
-    )
-  ).toBe(true);
+  expect(icon.mock.calls.map(([props]) => props)).toContainEqual(
+    expect.objectContaining({ name: 'warning', size: 14 })
+  );
 
   fireEvent.click(disable);
   const dialog = await screen.findByRole('dialog', { name: CONFIRM });
