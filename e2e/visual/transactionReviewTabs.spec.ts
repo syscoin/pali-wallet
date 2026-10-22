@@ -449,6 +449,11 @@ test('external transaction review exposes exact Data and Hex through keyboard ta
           await expect(copiedNotice).toHaveCount(0);
           await finishCopy(currentIndex, true);
           await expect(copiedNotice).toBeVisible();
+          // Start the next dedup window after the notice is actually visible,
+          // not before React's queued toast delivery has run.
+          await popup.evaluate(() => {
+            (window as any).__lastClipboardAcceptanceAt = Date.now();
+          });
           await expect(refusedNotice).toHaveCount(0);
           await capture(popup);
           copyObservations.push({
