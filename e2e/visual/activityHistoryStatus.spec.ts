@@ -417,6 +417,7 @@ test('UTXO Activity distinguishes pending and failed history from a verified emp
           await notEmpty();
           observations[`initial-error-${viewport.width}`] = {
             state: await publicHistory(page),
+            status: await visibleControlBounds(page, error),
             retry: await visibleControlBounds(page, retry),
           };
           await info.attach(`activity-initial-error-${viewport.width}`, {
@@ -512,6 +513,7 @@ test('UTXO Activity distinguishes pending and failed history from a verified emp
           await page.setViewportSize(viewport);
           observations[`cached-error-${viewport.width}`] = {
             state: await publicHistory(page),
+            status: await visibleControlBounds(page, error),
             retry: await visibleControlBounds(page, retry),
           };
           await info.attach(`activity-cached-error-${viewport.width}`, {

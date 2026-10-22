@@ -239,7 +239,7 @@ export const TransactionsPanel = () => {
     <>
       {isLoading && !hasTransactions && TransactionSkeleton}
       {isBitcoinBased && historyState !== 'ready' && (
-        <div className="mt-3 text-center text-sm text-brand-gray200">
+        <div className="mt-8 text-center text-sm text-brand-gray200">
           {historyUnavailable && <p role="status">{t('send.unableToLoad')}</p>}
           <button
             type="button"
