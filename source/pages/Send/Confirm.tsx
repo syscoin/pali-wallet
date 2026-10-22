@@ -2032,7 +2032,7 @@ export const SendConfirm = () => {
                   <p className="text-brand-gray200 text-xs mb-1">
                     {t('buttons.send')}
                   </p>
-                  <p className="text-white text-2xl font-semibold mb-2">
+                  <p className="text-white text-2xl font-semibold mb-2 break-all">
                     {displayedAmount}{' '}
                     {basicTxValues.token
                       ? basicTxValues.token.symbol
