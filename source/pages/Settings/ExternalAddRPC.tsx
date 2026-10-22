@@ -348,6 +348,7 @@ const CustomRPCExternal = () => {
           rules={[
             {
               required: true,
+              whitespace: true,
               message: t('settings.networkNameRequired'),
             },
           ]}
@@ -420,6 +421,7 @@ const CustomRPCExternal = () => {
           rules={[
             {
               required: true,
+              whitespace: true,
               message: t('settings.symbolRequired'),
             },
           ]}
