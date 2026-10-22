@@ -54,9 +54,10 @@ function word(value: unknown): string {
 }
 
 function quantity(value: unknown): number {
-  if (typeof value !== 'string' || !/^0x[0-9a-f]+$/i.test(value))
-    throw new Error('Invalid guardian recovery block');
-  const result = Number(BigInt(value));
+  const result =
+    typeof value === 'string' && /^0x[0-9a-f]+$/i.test(value)
+      ? Number(BigInt(value))
+      : NaN;
   if (!Number.isSafeInteger(result) || result < 0)
     throw new Error('Invalid guardian recovery block');
   return result;
@@ -152,9 +153,12 @@ export async function readGuardianRecoveryObservation({
   ]);
   assertChain(chainBefore);
   const block = parseBlock(latestBlock);
-  const age = now() - block.timestamp * 1000;
-  if (age < -30000 || age > MAX_BLOCK_AGE_MS)
-    throw new Error('Guardian recovery chain data is stale');
+  const assertFresh = () => {
+    const age = now() - block.timestamp * 1000;
+    if (age < -30000 || age > MAX_BLOCK_AGE_MS)
+      throw new Error('Guardian recovery chain data is stale');
+  };
+  assertFresh();
   const tag = `0x${block.number.toString(16)}`;
   const call = (
     target: string,
@@ -317,9 +321,7 @@ export async function readGuardianRecoveryObservation({
   )
     throw new Error('Guardian recovery block changed');
   assertChain(chainAfter);
-  const completedAge = now() - block.timestamp * 1000;
-  if (completedAge < -30000 || completedAge > MAX_BLOCK_AGE_MS)
-    throw new Error('Guardian recovery chain data is stale');
+  assertFresh();
   const active = observations.get(activeId) || null;
   return {
     account,

@@ -220,6 +220,33 @@ test('deduplicates a matching local ID and uses the persisted policy epoch', asy
   ).toHaveLength(2);
 });
 
+describe.each(['chain', 'number', 'timestamp'] as const)(
+  'validates the RPC %s quantity',
+  (field) => {
+    test.each([
+      ['non-string', 57057],
+      ['empty hexadecimal', '0x'],
+      ['malformed hexadecimal', '0xgg'],
+      ['unsafe integer', '0x20000000000000'],
+    ])(
+      'rejects a %s value before reading contract state',
+      async (_kind, value) => {
+        const f = fixture();
+        if (field === 'chain') Object.assign(f.state, { chain: value });
+        else Object.assign(f.state.block, { [field]: value });
+        await expect(f.read()).rejects.toThrow(
+          'Invalid guardian recovery block'
+        );
+        expect(
+          f.send.mock.calls.some(([method]) =>
+            ['eth_getCode', 'eth_call', 'eth_getStorageAt'].includes(method)
+          )
+        ).toBe(false);
+      }
+    );
+  }
+);
+
 test.each([
   'runtime',
   'chain',
@@ -279,3 +306,16 @@ test.each(['future schedule', 'both flags', 'zero epoch', 'completion stale'])(
     ).rejects.toThrow();
   }
 );
+
+test('rejects a backward clock jump beyond thirty seconds at completion', async () => {
+  const f = fixture();
+  const now = jest
+    .fn()
+    .mockReturnValueOnce(TIME * 1000)
+    .mockReturnValueOnce((TIME - 31) * 1000);
+  await expect(f.read({ now })).rejects.toThrow(
+    'Guardian recovery chain data is stale'
+  );
+  expect(now).toHaveBeenCalledTimes(2);
+  expect(f.send).toHaveBeenCalledWith('eth_getBlockByNumber', ['0x64', false]);
+});
