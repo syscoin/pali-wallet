@@ -513,9 +513,15 @@ test('official test dapp: isolated standard provider conformance', async () => {
           .getByText('Hex', { exact: true })
           .click();
         await expect(popup.locator('#hexTab')).toBeVisible();
-        expect(await popup.locator('#hexTab p').textContent()).toBe(
-          submitted.data
-        );
+        expect(
+          await popup
+            .locator('#hexTab')
+            .getByRole('button', {
+              name: enTranslations.buttons.copy,
+              exact: true,
+            })
+            .textContent()
+        ).toBe(submitted.data);
         await popup.screenshot({
           path: path.join(
             E2E_CONFIG.artifactsDir,

@@ -1903,7 +1903,6 @@ export const SendTransaction = () => {
                     />
                   ) : component.component === 'hex' && effectiveApprovalData ? (
                     <TransactionHexComponent
-                      methodName={decodedTxData.method}
                       dataHex={effectiveApprovalData?.data}
                     />
                   ) : null}
