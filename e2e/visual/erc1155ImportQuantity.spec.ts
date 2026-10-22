@@ -55,6 +55,7 @@ test('manual ERC1155 import and Send MAX retain the exact verified quantity', as
   let wallet: PaliWallet | undefined;
   let status: 'passed' | 'failed' = 'failed';
   let observedPreviewText: string | null = null;
+  let observedDetailsOwnedText: string | null = null;
   try {
     wallet = await PaliWallet.launch('erc1155-import-quantity', {
       offlineHttpProxy: server.url,
@@ -232,6 +233,45 @@ test('manual ERC1155 import and Send MAX retain the exact verified quantity', as
             tokenIds: [TOKEN_ID],
             balances: [QUANTITY],
           });
+          expect([...deniedWrites, ...routes!.deniedWrites]).toEqual([]);
+        } finally {
+          if (!page.isClosed()) await capture(page);
+        }
+      }
+    );
+    await wallet.step(
+      'retain verified custom ownership through the ordinary View Details action',
+      async (capture) => {
+        try {
+          const importToken = page.getByRole('button', {
+            name: `Import ${SYMBOL} token`,
+            exact: true,
+          });
+          const row = page.getByRole('listitem').filter({ has: importToken });
+          await row
+            .getByRole('button', {
+              name: en.tokens.viewTokenDetails.replace('{{symbol}}', SYMBOL),
+              exact: true,
+            })
+            .click();
+          await expect(page).toHaveURL(/#\/home\/details$/);
+          const owned = page
+            .getByText('Owned', { exact: true })
+            .locator('..')
+            .locator('span')
+            .last();
+          observedDetailsOwnedText = await owned.innerText();
+          await expect(owned).toHaveAttribute('title', QUANTITY);
+          await expect(owned).toHaveText('1.16e77 NFTs');
+          await page
+            .getByRole('button', { name: en.buttons.close, exact: true })
+            .click();
+          await expect(page).toHaveURL(/#\/tokens\/add(?:\?|$)/);
+          await expect(page.locator('#custom-token-contract')).toHaveValue(
+            CONTRACT
+          );
+          await expect(page.locator('#custom-token-id')).toHaveValue(TOKEN_ID);
+          await expect(importToken).toBeEnabled();
           expect([...deniedWrites, ...routes!.deniedWrites]).toEqual([]);
         } finally {
           if (!page.isClosed()) await capture(page);
@@ -449,6 +489,7 @@ test('manual ERC1155 import and Send MAX retain the exact verified quantity', as
             quantity: QUANTITY,
             expectedCompactPreview: '1.16e77',
             observedPreviewText,
+            observedDetailsOwnedText,
             reads,
             ownershipReads,
             deniedWrites: [...deniedWrites, ...(routes?.deniedWrites ?? [])],
