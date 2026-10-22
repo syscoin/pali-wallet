@@ -884,18 +884,6 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
     activeNetwork.explorer,
   ]);
 
-  const calculateMaxAmount = (): string => {
-    if (selectedAsset) {
-      // For tokens, use full balance as fees are paid in native token
-      return String(selectedAsset.balance);
-    }
-
-    // For native ETH, return the full balance
-    // The backend will handle gas deduction for MAX sends
-    const balanceEth = activeAccount?.balances?.ethereum || 0;
-    return String(balanceEth);
-  };
-
   const handleMaxButton = () => {
     // Only work with verified balances - no fallbacks
     let fullBalance: string;
@@ -923,7 +911,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
         alert.error(t('send.maxUnavailablePendingTx'));
         return;
       }
-      fullBalance = calculateMaxAmount();
+      fullBalance = String(activeAccount?.balances?.ethereum || 0);
     }
 
     form.setFieldValue('amount', fullBalance);
@@ -1033,6 +1021,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
     setVerifiedERC20Balance(null);
     setIsVerifyingERC20(false);
     if (!selectedAsset || selectedAsset.isNft || !activeAccount.address) return;
+    setVerificationError(null);
 
     const timeoutId = setTimeout(async () => {
       setIsVerifyingERC20(true);
@@ -1041,8 +1030,9 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
           ['wallet', 'getERC20TokenInfo'],
           [selectedAsset.contractAddress, activeAccount.address]
         )) as { balance: string; decimals: number };
-        if (current && result) {
+        if (current) {
           if (
+            !result ||
             typeof result.balance !== 'string' ||
             !/^\d+$/.test(result.balance) ||
             !Number.isInteger(result.decimals) ||
@@ -1059,6 +1049,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
         }
       } catch (error) {
         if (current) {
+          setVerificationError(t('send.tokenVerificationFailed'));
           console.error('Error verifying ERC-20 balance:', error);
         }
       } finally {
@@ -1191,10 +1182,10 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
       } as any);
   }, []);
 
+  const isErc1155Selection =
+    selectedAsset?.isNft && selectedAsset?.tokenStandard === 'ERC-1155';
   const isAmountDisabled =
-    (selectedAsset?.isNft &&
-      selectedAsset?.tokenStandard === 'ERC-1155' &&
-      verifiedTokenBalance === null) ||
+    (isErc1155Selection && verifiedTokenBalance === null) ||
     (!selectedAsset?.isNft && selectedAsset && verifiedERC20Balance === null) ||
     isVerifyingERC20 ||
     isVerifyingTokenId;
@@ -1273,21 +1264,17 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
               </span>
             )}
           {/* ERC-1155 verification indicators */}
-          {selectedAsset?.isNft &&
-            selectedAsset?.tokenStandard === 'ERC-1155' &&
-            isVerifyingTokenId && (
-              <span className="text-brand-royalblue text-xs ml-1">🔄</span>
-            )}
-          {selectedAsset?.isNft &&
-            selectedAsset?.tokenStandard === 'ERC-1155' &&
-            verifiedTokenBalance !== null && (
-              <span
-                className="text-green-400 text-xs ml-1"
-                title={t('send.tokenOwnershipVerified')}
-              >
-                ✓
-              </span>
-            )}
+          {isErc1155Selection && isVerifyingTokenId && (
+            <span className="text-brand-royalblue text-xs ml-1">🔄</span>
+          )}
+          {isErc1155Selection && verifiedTokenBalance !== null && (
+            <span
+              className="text-green-400 text-xs ml-1"
+              title={t('send.tokenOwnershipVerified')}
+            >
+              ✓
+            </span>
+          )}
         </div>
       </div>
       <Form
@@ -1514,25 +1501,20 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                                           ? item.tokenSymbol.slice(0, 8) + '...'
                                           : item.tokenSymbol}
                                       </p>
-                                      {item.isNft ? (
-                                        <span className="text-[10px] text-brand-gray200 font-mono">
-                                          {ellipsis(item.contractAddress, 4, 4)}
-                                          {item.tokenStandard === 'ERC-1155' &&
-                                            item.tokenId && (
-                                              <>
-                                                {' '}
-                                                • #
-                                                {item.tokenId.length > 8
-                                                  ? ellipsis(item.tokenId, 4, 3)
-                                                  : item.tokenId}
-                                              </>
-                                            )}
-                                        </span>
-                                      ) : (
-                                        <span className="text-[10px] text-brand-gray200 font-mono">
-                                          {ellipsis(item.contractAddress, 4, 4)}
-                                        </span>
-                                      )}
+                                      <span className="text-[10px] text-brand-gray200 font-mono">
+                                        {ellipsis(item.contractAddress, 4, 4)}
+                                        {item.isNft &&
+                                          item.tokenStandard === 'ERC-1155' &&
+                                          item.tokenId && (
+                                            <>
+                                              {' '}
+                                              • #
+                                              {item.tokenId.length > 8
+                                                ? ellipsis(item.tokenId, 4, 3)
+                                                : item.tokenId}
+                                            </>
+                                          )}
+                                      </span>
                                     </div>
                                     <div className="flex flex-col items-end">
                                       <span
@@ -1754,8 +1736,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                     id="with-max-button"
                     type="number"
                     step={
-                      selectedAsset?.isNft &&
-                      selectedAsset?.tokenStandard === 'ERC-1155'
+                      isErc1155Selection
                         ? '1'
                         : selectedAsset &&
                           !selectedAsset.isNft &&
@@ -1765,9 +1746,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                     }
                     min={selectedAsset?.isNft ? '1' : undefined}
                     max={
-                      selectedAsset?.isNft &&
-                      selectedAsset?.tokenStandard === 'ERC-1155' &&
-                      verifiedTokenBalance !== null
+                      isErc1155Selection && verifiedTokenBalance !== null
                         ? String(verifiedTokenBalance)
                         : undefined
                     }
@@ -1776,8 +1755,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                       isAmountDisabled
                     }
                     placeholder={
-                      selectedAsset?.isNft &&
-                      selectedAsset?.tokenStandard === 'ERC-1155'
+                      isErc1155Selection
                         ? verifiedTokenBalance !== null &&
                           BigNumber.from(verifiedTokenBalance).gt(1)
                           ? `Amount (1-${verifiedTokenBalance})`
@@ -1822,6 +1800,24 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                             <p className="text-brand-royalblue text-[10px]">
                               {t('send.verifyingBalance')}
                             </p>
+                          </>
+                        ) : verificationError ? (
+                          <>
+                            <p className="text-warning-error text-[10px]">
+                              {verificationError}
+                            </p>
+                            <button
+                              type="button"
+                              className="text-brand-royalblue text-[10px] underline"
+                              onClick={() => {
+                                if (isCurrentForm())
+                                  setSelectedAsset((asset) =>
+                                    asset ? { ...asset } : null
+                                  );
+                              }}
+                            >
+                              {t('receive.retry')}
+                            </button>
                           </>
                         ) : verifiedERC20Balance === null ? (
                           <p className="text-brand-gray200 text-[10px]">
