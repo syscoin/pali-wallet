@@ -79,6 +79,20 @@ import { useConfirmSubmission } from './useConfirmSubmission';
 const SMART_ACCOUNT_MAX_SEND_BUFFER_WEI = parseUnits('0.000001', 'ether');
 const NATIVE_EVM_MAX_SEND_BUFFER_WEI = parseUnits('0.000001', 'ether');
 const NATIVE_EVM_MAX_SEND_INITIAL_GAS_RESERVE = BigNumber.from(500_000);
+const nativeMaxSendValue = (
+  balance: string | number,
+  gasLimit: BigNumber,
+  feeRate: BigNumber
+) => {
+  const [whole, fraction] = String(balance).split('.');
+  const balanceWei = parseUnits(
+    fraction ? `${whole}.${fraction.slice(0, 18)}` : whole,
+    'ether'
+  );
+  return balanceWei
+    .sub(gasLimit.mul(feeRate))
+    .sub(NATIVE_EVM_MAX_SEND_BUFFER_WEI);
+};
 const transactionReviewDivider = (
   <div className="border-dashed border-alpha-whiteAlpha300 border my-3  w-full h-full" />
 );
@@ -283,33 +297,6 @@ export const SendConfirm = () => {
     : sptReview.key === sptReviewKey
     ? sptReview.error
     : 'Transaction details are loading';
-  const displayedAmount = useMemo(() => {
-    if (isSmartAccountSend && !basicTxValues?.token && basicTxValues?.isMax)
-      return smartAccountQuote
-        ? formatEther(smartAccountQuote.executions[0].value)
-        : t('send.calculating');
-    if (!isBitcoinBased || basicTxValues?.token || !basicTxValues?.isMax) {
-      return basicTxValues?.amount;
-    }
-    try {
-      // UTXO MAX keeps the gross balance in navigation state; the prepared
-      // transaction deducts its quoted fee from the recipient output.
-      const gross = parseUnits(
-        String(removeScientificNotation(basicTxValues.amount)),
-        8
-      );
-      const quotedFee = parseUnits(
-        String(removeScientificNotation(basicTxValues.fee)),
-        8
-      );
-      if (gross.lt(0) || quotedFee.lt(0) || quotedFee.gt(gross)) {
-        return t('send.calculating');
-      }
-      return formatSyscoinValue(gross.sub(quotedFee));
-    } catch {
-      return t('send.calculating');
-    }
-  }, [basicTxValues, isBitcoinBased, isSmartAccountSend, smartAccountQuote, t]);
   const nativeTotal = useMemo(() => {
     if (!isBitcoinBased || basicTxValues?.token) {
       return undefined;
@@ -464,6 +451,73 @@ export const SendConfirm = () => {
         : quotedEvmFeeMode === isEIP1559Compatible));
   const confirmationFeeReadyRef = useRef(confirmationFeeReady);
   confirmationFeeReadyRef.current = confirmationFeeReady;
+
+  const displayedAmount = useMemo(() => {
+    if (isSmartAccountSend && !basicTxValues?.token && basicTxValues?.isMax)
+      return smartAccountQuote
+        ? formatEther(smartAccountQuote.executions[0].value)
+        : t('send.calculating');
+    if (basicTxValues?.token || !basicTxValues?.isMax)
+      return basicTxValues?.amount;
+    try {
+      if (!isBitcoinBased) {
+        if (!confirmationFeeReady) return t('send.calculating');
+        const gasLimit = BigNumber.from(
+          validateCustomGasLimit ? customFee.gasLimit : fee.gasLimit
+        );
+        const feeRate = isEIP1559Compatible
+          ? parseUnits(
+              safeToFixed(
+                customFee.isCustom && customFee.maxFeePerGas > 0
+                  ? customFee.maxFeePerGas
+                  : fee.maxFeePerGas
+              ),
+              9
+            )
+          : BigNumber.from(gasPrice);
+        if (gasLimit.lte(0) || feeRate.lte(0)) return t('send.calculating');
+        // The live selected account supplies the review estimate. Submission
+        // uses the same arithmetic after its existing fresh balance read.
+        const net = nativeMaxSendValue(
+          activeAccount.balances.ethereum,
+          gasLimit,
+          feeRate
+        );
+        return net.gt(0)
+          ? formatEther(net).replace(/\.0$/, '')
+          : t('send.calculating');
+      }
+      // UTXO MAX keeps the gross balance in navigation state; the prepared
+      // transaction deducts its quoted fee from the recipient output.
+      const gross = parseUnits(
+        String(removeScientificNotation(basicTxValues.amount)),
+        8
+      );
+      const quotedFee = parseUnits(
+        String(removeScientificNotation(basicTxValues.fee)),
+        8
+      );
+      if (gross.lt(0) || quotedFee.lt(0) || quotedFee.gt(gross)) {
+        return t('send.calculating');
+      }
+      return formatSyscoinValue(gross.sub(quotedFee));
+    } catch {
+      return t('send.calculating');
+    }
+  }, [
+    basicTxValues,
+    isBitcoinBased,
+    isSmartAccountSend,
+    smartAccountQuote,
+    t,
+    confirmationFeeReady,
+    validateCustomGasLimit,
+    customFee,
+    fee,
+    isEIP1559Compatible,
+    gasPrice,
+    activeAccount.balances.ethereum,
+  ]);
 
   useEffect(() => {
     if (
@@ -1080,23 +1134,11 @@ export const SendConfirm = () => {
           // For MAX sends we must use the same minimum, otherwise MAX value deduction
           // can overshoot once the tx is bumped at send time.
           let maxSendGasLimit: BigNumber | null = null;
-          const floorToDecimals = (num: string | number, decimals: number) => {
-            const s = String(num);
-            const parts = s.split('.');
-            if (parts.length === 1) return s;
-            const [intPart, fracPart] = parts;
-            const truncated = fracPart.slice(0, decimals); // floor, do not round
-            return truncated.length > 0 ? `${intPart}.${truncated}` : intPart;
-          };
-
           try {
             // For MAX sends, use the actual balance instead of parsed amount to avoid rounding errors
             // The amount from basicTxValues might be rounded for display, causing precision issues
             if (basicTxValues.isMax) {
               // Use the already-fetched EVM balance (ETH units)
-              const actualBalanceEth = balance;
-              const balanceStrFloored = floorToDecimals(actualBalanceEth, 18);
-              value = parseUnits(balanceStrFloored, 'ether');
               const gasLimitCandidate = BigNumber.from(
                 validateCustomGasLimit ? customFee.gasLimit : fee.gasLimit
               );
@@ -1107,24 +1149,15 @@ export const SendConfirm = () => {
               // between estimation and execution. We intentionally send slightly less than MAX.
               // Keep this as a small *absolute* reserve (not a %), since these extra costs are
               // typically additive rather than proportional to L2 execution gas.
-              const maxSendBufferWei = NATIVE_EVM_MAX_SEND_BUFFER_WEI;
-
-              if (isEIP1559Compatible) {
-                // EIP-1559 transaction
-                const maxFeePerGasWei = parseUnits(
-                  Boolean(customFee.isCustom && customFee.maxFeePerGas > 0)
-                    ? safeToFixed(customFee.maxFeePerGas)
-                    : safeToFixed(fee.maxFeePerGas),
-                  9
-                );
-                const maxGasFeeWei = maxSendGasLimit.mul(maxFeePerGasWei);
-                value = value.sub(maxGasFeeWei).sub(maxSendBufferWei);
-              } else {
-                // Legacy transaction
-                const gasPriceWei = BigNumber.from(gasPrice);
-                const gasFeeWei = maxSendGasLimit.mul(gasPriceWei);
-                value = value.sub(gasFeeWei).sub(maxSendBufferWei);
-              }
+              const feeRate = isEIP1559Compatible
+                ? parseUnits(
+                    Boolean(customFee.isCustom && customFee.maxFeePerGas > 0)
+                      ? safeToFixed(customFee.maxFeePerGas)
+                      : safeToFixed(fee.maxFeePerGas),
+                    9
+                  )
+                : BigNumber.from(gasPrice);
+              value = nativeMaxSendValue(balance, maxSendGasLimit, feeRate);
 
               // Ensure value doesn't go negative
               if (value.lt(0)) {
@@ -1999,7 +2032,7 @@ export const SendConfirm = () => {
                   <p className="text-brand-gray200 text-xs mb-1">
                     {t('buttons.send')}
                   </p>
-                  <p className="text-white text-2xl font-semibold mb-2">
+                  <p className="text-white text-2xl font-semibold mb-2 break-all">
                     {displayedAmount}{' '}
                     {basicTxValues.token
                       ? basicTxValues.token.symbol
