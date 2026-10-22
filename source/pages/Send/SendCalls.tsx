@@ -67,94 +67,48 @@ const formatDecodedCallValue = (value: any): string => {
   return String(value);
 };
 
+// ABI inputs and displayed field names share one decoder. Some methods carry
+// trailing bytes that must decode successfully but are reviewed as raw data.
+const COMMON_CALL_FIELDS: Record<string, [string, string]> = {
+  '0x095ea7b3': ['address,uint256', 'spender,amount'],
+  '0xa9059cbb': ['address,uint256', 'to,amount'],
+  '0x23b872dd': ['address,address,uint256', 'from,to,amountOrTokenId'],
+  '0x39509351': ['address,uint256', 'spender,addedValue'],
+  '0xa457c2d7': ['address,uint256', 'spender,subtractedValue'],
+  '0xa22cb465': ['address,bool', 'operator,approved'],
+  '0x42842e0e': ['address,address,uint256', 'from,to,tokenId'],
+  '0xb88d4fde': ['address,address,uint256,bytes', 'from,to,tokenId'],
+  '0xf242432a': ['address,address,uint256,uint256,bytes', 'from,to,id,amount'],
+  '0x2eb2c2d6': [
+    'address,address,uint256[],uint256[],bytes',
+    'from,to,ids,amounts',
+  ],
+};
+
 const decodeCommonCallData = (data?: string) => {
   if (!data || data === '0x' || data.length < 10) {
     return null;
   }
 
   const selector = data.slice(0, 10).toLowerCase();
-  const calldata = `0x${data.slice(10)}`;
   const fallbackName = getMethodName(selector);
+  const fallback = fallbackName ? { name: fallbackName, params: null } : null;
+  const fields = COMMON_CALL_FIELDS[selector];
+  if (!fields) return fallback;
 
   try {
-    switch (selector) {
-      case '0x095ea7b3': {
-        const [spender, amount] = defaultAbiCoder.decode(
-          ['address', 'uint256'],
-          calldata
-        );
-        return { name: 'approve', params: { spender, amount } };
-      }
-      case '0xa9059cbb': {
-        const [to, amount] = defaultAbiCoder.decode(
-          ['address', 'uint256'],
-          calldata
-        );
-        return { name: 'transfer', params: { to, amount } };
-      }
-      case '0x23b872dd': {
-        const [from, to, amountOrTokenId] = defaultAbiCoder.decode(
-          ['address', 'address', 'uint256'],
-          calldata
-        );
-        return { name: 'transferFrom', params: { from, to, amountOrTokenId } };
-      }
-      case '0x39509351': {
-        const [spender, addedValue] = defaultAbiCoder.decode(
-          ['address', 'uint256'],
-          calldata
-        );
-        return { name: 'increaseAllowance', params: { spender, addedValue } };
-      }
-      case '0xa457c2d7': {
-        const [spender, subtractedValue] = defaultAbiCoder.decode(
-          ['address', 'uint256'],
-          calldata
-        );
-        return {
-          name: 'decreaseAllowance',
-          params: { spender, subtractedValue },
-        };
-      }
-      case '0xa22cb465': {
-        const [operator, approved] = defaultAbiCoder.decode(
-          ['address', 'bool'],
-          calldata
-        );
-        return { name: 'setApprovalForAll', params: { operator, approved } };
-      }
-      case '0x42842e0e':
-      case '0xb88d4fde': {
-        const [from, to, tokenId] = defaultAbiCoder.decode(
-          selector === '0x42842e0e'
-            ? ['address', 'address', 'uint256']
-            : ['address', 'address', 'uint256', 'bytes'],
-          calldata
-        );
-        return { name: 'safeTransferFrom', params: { from, to, tokenId } };
-      }
-      case '0xf242432a': {
-        const [from, to, id, amount] = defaultAbiCoder.decode(
-          ['address', 'address', 'uint256', 'uint256', 'bytes'],
-          calldata
-        );
-        return { name: 'safeTransferFrom', params: { from, to, id, amount } };
-      }
-      case '0x2eb2c2d6': {
-        const [from, to, ids, amounts] = defaultAbiCoder.decode(
-          ['address', 'address', 'uint256[]', 'uint256[]', 'bytes'],
-          calldata
-        );
-        return {
-          name: 'safeBatchTransferFrom',
-          params: { from, to, ids, amounts },
-        };
-      }
-      default:
-        return fallbackName ? { name: fallbackName, params: null } : null;
-    }
+    const values = defaultAbiCoder.decode(
+      fields[0].split(','),
+      `0x${data.slice(10)}`
+    );
+    return {
+      name: fallbackName,
+      params: Object.fromEntries(
+        fields[1].split(',').map((name, index) => [name, values[index]])
+      ),
+    };
   } catch {
-    return fallbackName ? { name: fallbackName, params: null } : null;
+    return fallback;
   }
 };
 
@@ -1314,6 +1268,7 @@ export const SendCalls = () => {
     <div className="h-screen flex flex-col">
       {/* Header */}
       <div className="bg-brand-blue600 p-4">
+        <p className="text-sm text-brand-white break-all">{host}</p>
         <p className="text-sm text-brand-white break-all">
           {t('send.from')}: {approvedContext.account.address}
         </p>
@@ -1481,20 +1436,14 @@ export const SendCalls = () => {
                       </p>
                       {(() => {
                         const decodedCallData = decodeCommonCallData(call.data);
-                        if (!decodedCallData) {
-                          return (
-                            <p className="text-sm text-brand-white font-mono">
-                              {ellipsis(call.data, 20, 4)}
-                            </p>
-                          );
-                        }
-
                         return (
                           <div>
-                            <p className="text-sm text-brand-white">
-                              {decodedCallData.name}
-                            </p>
-                            {decodedCallData.params && (
+                            {decodedCallData && (
+                              <p className="text-sm text-brand-white">
+                                {decodedCallData.name}
+                              </p>
+                            )}
+                            {decodedCallData?.params && (
                               <div className="mt-1 space-y-1">
                                 {Object.entries(decodedCallData.params).map(
                                   ([key, value]) => (
@@ -1509,11 +1458,21 @@ export const SendCalls = () => {
                                 )}
                               </div>
                             )}
-                            <Tooltip content={call.data}>
-                              <p className="text-xs text-brand-gray200 font-mono mt-1">
-                                {ellipsis(call.data, 20, 4)}
-                              </p>
-                            </Tooltip>
+                            <details className="mt-1">
+                              <summary
+                                tabIndex={0}
+                                style={{
+                                  scrollMarginBottom:
+                                    'var(--pali-toast-footer-clearance)',
+                                }}
+                                className="cursor-pointer text-xs text-brand-gray200 font-mono break-all"
+                              >
+                                {t('send.hex')}: {ellipsis(call.data, 20, 4)}
+                              </summary>
+                              <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all text-xs text-brand-gray200 font-mono">
+                                {call.data}
+                              </pre>
+                            </details>
                           </div>
                         );
                       })()}

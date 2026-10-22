@@ -1,7 +1,13 @@
 // The production form, refresh path and fee reads remain unmodified.
-import { expect, test, type BrowserContext, type Page } from '@playwright/test';
+import {
+  expect,
+  test,
+  type BrowserContext,
+  type Locator,
+  type Page,
+} from '@playwright/test';
 import { createHash } from 'crypto';
-import { parseEther } from 'ethers';
+import { formatEther, parseEther, parseUnits } from 'ethers';
 import fs from 'fs';
 import path from 'path';
 
@@ -315,8 +321,35 @@ async function publicNativeState(page: Page) {
   );
 }
 
+async function exposeTarget(page: Page, target: Locator) {
+  await target.scrollIntoViewIfNeeded();
+  const box = await target.boundingBox();
+  expect(box).not.toBeNull();
+  const viewport = page.viewportSize()!;
+  expect(box!.x).toBeGreaterThanOrEqual(0);
+  expect(box!.y).toBeGreaterThanOrEqual(0);
+  expect(box!.x + box!.width).toBeLessThanOrEqual(viewport.width);
+  expect(box!.y + box!.height).toBeLessThanOrEqual(viewport.height);
+  expect(
+    await target.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      return [
+        [rect.left + 2, rect.top + rect.height / 2],
+        [rect.right - 2, rect.top + rect.height / 2],
+        [rect.left + rect.width / 2, rect.top + 2],
+        [rect.left + rect.width / 2, rect.bottom - 2],
+      ].every(([x, y]) => {
+        const hit = document.elementFromPoint(x, y);
+        return !!hit && (hit === element || element.contains(hit));
+      });
+    })
+  ).toBe(true);
+  return box;
+}
+
 test('native MAX revalidates a live balance change without rewriting the reviewed amount', async ({}, info) => {
   test.setTimeout(180_000);
+  expect(info.config.workers).toBe(1);
   expect(process.env.PALI_TEST_DAPP_REVISION).toMatch(/^[a-f0-9]{40}$/);
   expect(path.isAbsolute(process.env.PALI_TEST_DAPP_EXTENSION_PATH || '')).toBe(
     true
@@ -327,6 +360,9 @@ test('native MAX revalidates a live balance change without rewriting the reviewe
   const previous = { ...E2E_CONFIG };
   const runtime = extensionEvidence();
   expect(runtime.version).toBe(packageJson.version);
+  const testSourceSha256 = createHash('sha256')
+    .update(fs.readFileSync(info.file))
+    .digest('hex');
   const fixture = createIsolatedVaultFixture();
   const server = await startUtxoFixtureServer();
   Object.assign(E2E_CONFIG, {
@@ -343,6 +379,7 @@ test('native MAX revalidates a live balance change without rewriting the reviewe
   let rpc: Awaited<ReturnType<typeof installNativeRpc>> | undefined;
   let status: 'passed' | 'failed' = 'failed';
   const observations: Record<string, unknown>[] = [];
+  const feeReviewObservations: Record<string, unknown>[] = [];
   try {
     wallet = await PaliWallet.launch('native-max-balance', {
       offlineHttpProxy: server.url,
@@ -514,11 +551,163 @@ test('native MAX revalidates a live balance change without rewriting the reviewe
               tx,
               unsignedReviewOnly: true,
             });
+            const headline = page
+              .getByText(en.buttons.send, { exact: true })
+              .locator('..')
+              .locator('p')
+              .nth(1);
+            if (!scenario.isMax) await expect(headline).toHaveText('10.0 TSYS');
+            if (scenario.id === 'unchanged') {
+              const edit = page.getByRole('button', {
+                name: en.send.editFee,
+                exact: true,
+              });
+              const dialog = page.getByRole('dialog', {
+                name: en.send.editFee,
+                exact: true,
+              });
+              const gas = dialog.getByLabel(en.send.gasLimit, { exact: true });
+              const cap = dialog.getByLabel(en.send.maxFee + ' (GWEI)', {
+                exact: true,
+              });
+              const tip = dialog.getByLabel(en.send.maxPriority + ' (GWEI)', {
+                exact: true,
+              });
+              const openFee = async () => {
+                await expect(edit).toBeEnabled();
+                await exposeTarget(page, edit);
+                await edit.click();
+                await expect(dialog).toBeVisible();
+              };
+              const closeFee = async (save: boolean) => {
+                const button = dialog.getByRole('button', {
+                  name: save ? en.buttons.save : en.buttons.cancel,
+                  exact: true,
+                });
+                await expect(button).toBeEnabled();
+                await exposeTarget(page, button);
+                await button.click();
+                await expect(dialog).toHaveCount(0);
+              };
+              const fillFee = async (maximum: string, gasLimit: string) => {
+                for (const [field, value] of [
+                  [tip, '1'],
+                  [cap, maximum],
+                  [gas, gasLimit],
+                ] as const) {
+                  await exposeTarget(page, field);
+                  await field.fill(value);
+                  await expect(field).toHaveValue(value);
+                }
+              };
+              const expectedNet = (gasLimit: string, maximum: string) =>
+                formatEther(
+                  BigInt(INITIAL_WEI) -
+                    BigInt(gasLimit) * parseUnits(maximum, 'gwei') -
+                    parseEther('0.000001')
+                ).replace(/\.0$/, '');
+              for (const viewport of [
+                { width: 400, height: 620 },
+                { width: 320, height: 360 },
+              ]) {
+                await page.setViewportSize(viewport);
+                await wallet!.step(
+                  `native-max-fee-${viewport.width}-initial-exact-review`,
+                  async (capture) => {
+                    await openFee();
+                    const selectedGas = await gas.inputValue();
+                    const selectedCap = await cap.inputValue();
+                    const selectedTip = await tip.inputValue();
+                    expect(selectedGas).toBe(
+                      viewport.width === 400 ? '25200' : '40000'
+                    );
+                    expect(selectedCap).toBe(
+                      viewport.width === 400 ? '3.5' : '4'
+                    );
+                    await closeFee(false);
+                    const net = expectedNet(selectedGas, selectedCap);
+                    await expect(headline).toHaveText(net + ' TSYS');
+                    const box = await exposeTarget(page, headline);
+                    feeReviewObservations.push({
+                      viewport,
+                      phase: 'initial-review',
+                      grossWei: INITIAL_WEI,
+                      gasLimit: selectedGas,
+                      maximumGwei: selectedCap,
+                      priorityGwei: selectedTip,
+                      net,
+                      box,
+                    });
+                    await capture(page);
+                  }
+                );
+                await wallet!.step(
+                  `native-max-fee-${viewport.width}-save-and-cancel`,
+                  async (capture) => {
+                    await openFee();
+                    await fillFee('3', '30000');
+                    await closeFee(true);
+                    await expect(headline).toHaveText('9.999909 TSYS');
+                    await exposeTarget(page, headline);
+                    await openFee();
+                    await fillFee('4', '40000');
+                    await closeFee(false);
+                    await expect(headline).toHaveText('9.999909 TSYS');
+                    await openFee();
+                    await expect(cap).toHaveValue('3');
+                    await expect(gas).toHaveValue('30000');
+                    await closeFee(false);
+                    const box = await exposeTarget(page, headline);
+                    feeReviewObservations.push({
+                      viewport,
+                      phase: 'save-then-cancel-draft',
+                      grossWei: INITIAL_WEI,
+                      gasLimit: '30000',
+                      maximumGwei: '3',
+                      priorityGwei: '1',
+                      net: '9.999909',
+                      box,
+                    });
+                    await capture(page);
+                  }
+                );
+                await wallet!.step(
+                  `native-max-fee-${viewport.width}-save-new-gas-and-cap`,
+                  async (capture) => {
+                    await openFee();
+                    await fillFee('4', '40000');
+                    await closeFee(true);
+                    await expect(headline).toHaveText('9.999839 TSYS');
+                    const box = await exposeTarget(page, headline);
+                    feeReviewObservations.push({
+                      viewport,
+                      phase: 'saved-new-fee',
+                      grossWei: INITIAL_WEI,
+                      gasLimit: '40000',
+                      maximumGwei: '4',
+                      priorityGwei: '1',
+                      net: '9.999839',
+                      box,
+                    });
+                    await capture(page);
+                  }
+                );
+              }
+              await page.setViewportSize({ width: 400, height: 620 });
+              const unchanged = await page.evaluate(
+                () => history.state?.usr?.tx
+              );
+              expect(unchanged.amount).toBe(tx.amount);
+              expect(unchanged.isMax).toBe(true);
+            }
             // Deliberately never click transaction Confirm: no signing or send.
             await page
               .getByRole('button', { name: en.buttons.cancel, exact: true })
               .click();
             await expect(page).toHaveURL(/#\/send\/eth$/);
+            await expect(
+              page.getByPlaceholder(en.send.amount, { exact: true })
+            ).toHaveValue('10.0');
           }
         }
       );
@@ -533,6 +722,10 @@ test('native MAX revalidates a live balance change without rewriting the reviewe
       expect(rpc!.deniedWrites).toEqual([]);
       expect(rpc!.deniedUnknown).toEqual([]);
       expect(routes!.deniedWrites).toEqual([]);
+      expect(extensionEvidence()).toEqual(runtime);
+      expect(
+        createHash('sha256').update(fs.readFileSync(info.file)).digest('hex')
+      ).toBe(testSourceSha256);
     });
     status = 'passed';
   } finally {
@@ -543,15 +736,14 @@ test('native MAX revalidates a live balance change without rewriting the reviewe
         JSON.stringify(
           {
             runtime,
-            testSourceSha256: createHash('sha256')
-              .update(fs.readFileSync(info.file))
-              .digest('hex'),
+            testSourceSha256,
             syntheticPublicRpcOnly: true,
             controllerStateReplaced: false,
             controllerResultsReplaced: false,
             directRefreshControllerCalls: false,
             transactionConfirmClicked: false,
             observations,
+            feeReviewObservations,
             reads: rpc?.reads || [],
             balanceReads: rpc?.balanceReads || [],
             deniedUnknown: rpc?.deniedUnknown || [],
@@ -744,6 +936,317 @@ test('native MAX preserves a small exact decimal balance through unsigned review
         )
       );
       await info.attach('native-max-small-balance-evidence', {
+        path: evidence,
+        contentType: 'application/json',
+      });
+    } finally {
+      try {
+        await wallet?.dispose(status);
+      } finally {
+        try {
+          await server.close();
+        } finally {
+          Object.assign(E2E_CONFIG, previous);
+        }
+      }
+    }
+  }
+});
+
+// The ordinary legacy fee quote must leave the full-precision MAX review readable.
+test('native MAX keeps high precision unsigned review inside the popup', async ({}, info) => {
+  expect(process.env.PALI_TEST_DAPP_REVISION).toMatch(/^[a-f0-9]{40}$/);
+  expect(path.isAbsolute(process.env.PALI_TEST_DAPP_EXTENSION_PATH || '')).toBe(
+    true
+  );
+  expect(E2E_CONFIG.extensionPath).toBe(
+    process.env.PALI_TEST_DAPP_EXTENSION_PATH
+  );
+  const previous = { ...E2E_CONFIG };
+  const runtime = extensionEvidence();
+  expect(runtime.version).toBe(packageJson.version);
+  const testSourceSha256 = createHash('sha256')
+    .update(fs.readFileSync(info.file))
+    .digest('hex');
+  const fixture = createIsolatedVaultFixture();
+  const server = await startUtxoFixtureServer();
+  const initialBalanceWei = '1123456789123456789';
+  const exactAmount = '1.123456789123456789';
+  const expectedNet = '1.123455789123431589';
+  const geometry: Record<string, unknown>[] = [];
+  expect(info.config.workers).toBe(1);
+  Object.assign(E2E_CONFIG, {
+    seedPhrase: UTXO_FIXTURE_SEED,
+    password: 'NativeMaxHighPrecisionSyntheticOnly!2026',
+    chainId: CHAIN,
+    networkLabel: 'Syscoin NEVM Testnet',
+    rpcUrl: server.url,
+  });
+  let wallet: PaliWallet | undefined;
+  let routes:
+    | Awaited<ReturnType<typeof installIsolatedVaultRoutes>>
+    | undefined;
+  let rpc: Awaited<ReturnType<typeof installNativeRpc>> | undefined;
+  let status: 'passed' | 'failed' = 'failed';
+  let before: Awaited<ReturnType<typeof publicNativeState>> | undefined;
+  let tx: Record<string, unknown> | undefined;
+  try {
+    wallet = await PaliWallet.launch('native-max-high-precision-layout', {
+      offlineHttpProxy: server.url,
+      viewport: { width: 400, height: 620 },
+    });
+    routes = await installIsolatedVaultRoutes(
+      wallet.context,
+      fixture,
+      server.url
+    );
+    rpc = await installNativeRpc(
+      wallet.context,
+      fixture.evmAddresses[0],
+      fixture.evmAddresses[1],
+      { initialBalanceWei, feeWei: '1', baseFeeWei: '0' }
+    );
+    const page = wallet.page;
+    await wallet.step(
+      'native-max-high-precision-layout-open-and-review',
+      async () => {
+        await wallet!.importSeedAndCreatePassword();
+        await wallet!.switchNetwork('Syscoin NEVM Testnet', 'EVM');
+        await expect
+          .poll(async () => {
+            const state = await publicNativeState(page);
+            return !state.loading && state.balance;
+          })
+          .toBe(exactAmount);
+        before = await publicNativeState(page);
+        expect(before).toMatchObject({
+          address: fixture.evmAddresses[0],
+          chainId: CHAIN,
+          rpcUrl: RPC,
+        });
+        await page.locator('#send-btn').click();
+        await expect(page).toHaveURL(/#\/send\/eth$/);
+        await page
+          .getByPlaceholder(en.send.receiver, { exact: true })
+          .fill(fixture.evmAddresses[1]);
+        await expect(page.locator('#send-eth-next-btn')).toBeEnabled();
+        await page.getByRole('button', { name: 'MAX', exact: true }).click();
+        await expect(
+          page.getByPlaceholder(en.send.amount, { exact: true })
+        ).toHaveValue(exactAmount);
+        await page.locator('#send-eth-next-btn').click();
+        await expect(page).toHaveURL(/#\/send\/confirm$/);
+        tx = await page.evaluate(() => {
+          const value = history.state?.usr?.tx;
+          return {
+            amount: value?.amount,
+            isMax: value?.isMax,
+            sender: value?.sender,
+            receivingAddress: value?.receivingAddress,
+            transactionType: value?.transactionType,
+          };
+        });
+        expect(tx).toMatchObject({
+          amount: exactAmount,
+          isMax: true,
+          sender: fixture.evmAddresses[0],
+          receivingAddress: fixture.evmAddresses[1],
+          transactionType: 'NATIVE_ETH',
+        });
+        await expect(
+          page.getByRole('button', { name: en.buttons.confirm, exact: true })
+        ).toBeEnabled();
+        const headline = page
+          .getByText(en.buttons.send, { exact: true })
+          .locator('..')
+          .locator('p')
+          .nth(1);
+        const card = headline.locator('..').locator('..');
+        await wallet!.step(
+          'native-max-high-precision-read-quoted-legacy-fee',
+          async () => {
+            // This unchanged public fixture has baseFee=0, so Pali intentionally
+            // takes its legacy path and does not offer the EIP-1559 editor.
+            const expectedFee = formatEther(BigInt('25200'));
+            const fee = page.getByText(expectedFee + ' TSYS', { exact: true });
+            await expect(fee).toBeVisible();
+            const visibleFee = await fee.innerText();
+            const quotedFeeWei = parseEther(visibleFee.split(' ')[0]);
+            const gasPriceWei = BigInt('1');
+            expect(quotedFeeWei.toString()).toBe('25200');
+            expect(quotedFeeWei % gasPriceWei).toBe(BigInt(0));
+            const observedGasLimit = quotedFeeWei / gasPriceWei;
+            expect(observedGasLimit.toString()).toBe('25200');
+            expect(
+              formatEther(
+                BigInt(initialBalanceWei) -
+                  quotedFeeWei -
+                  parseEther('0.000001')
+              )
+            ).toBe(expectedNet);
+            await expect(
+              page.getByRole('button', { name: en.send.editFee, exact: true })
+            ).toHaveCount(0);
+            geometry.push({
+              phase: 'quoted-legacy-fee',
+              visibleFee,
+              quotedFeeWei: quotedFeeWei.toString(),
+              gasLimit: observedGasLimit.toString(),
+              gasLimitSource:
+                'exact visible quoted fee divided by unchanged 1-wei public RPC rate',
+              gasPriceWei: gasPriceWei.toString(),
+              baseFeeWei: '0',
+              expectedNet,
+              reserveWei: '1000000000000',
+            });
+          }
+        );
+        for (const viewport of [
+          { width: 400, height: 620 },
+          { width: 320, height: 360 },
+        ]) {
+          await wallet!.step(
+            'native-max-high-precision-' + viewport.width + '-geometry',
+            async (capture) => {
+              await page.setViewportSize(viewport);
+              await expect(headline).toHaveText(expectedNet + ' TSYS');
+              await headline.scrollIntoViewIfNeeded();
+              const measured = await headline.evaluate((element) => {
+                const cardElement = element.parentElement!.parentElement!;
+                const bounds = (node: Element) => {
+                  const rect = node.getBoundingClientRect();
+                  return {
+                    x: rect.x,
+                    y: rect.y,
+                    width: rect.width,
+                    height: rect.height,
+                    right: rect.right,
+                    bottom: rect.bottom,
+                  };
+                };
+                const range = document.createRange();
+                range.selectNodeContents(element);
+                return {
+                  headline: bounds(element),
+                  card: bounds(cardElement),
+                  headlineScrollWidth: element.scrollWidth,
+                  headlineClientWidth: element.clientWidth,
+                  cardScrollWidth: cardElement.scrollWidth,
+                  cardClientWidth: cardElement.clientWidth,
+                  glyphRects: Array.from(range.getClientRects(), (rect) => ({
+                    x: rect.x,
+                    y: rect.y,
+                    right: rect.right,
+                    bottom: rect.bottom,
+                    width: rect.width,
+                    height: rect.height,
+                  })),
+                  exactText: element.textContent,
+                };
+              });
+              geometry.push({ phase: 'geometry', viewport, ...measured });
+              await capture(page);
+              expect(measured.headlineScrollWidth).toBeLessThanOrEqual(
+                measured.headlineClientWidth
+              );
+              expect(measured.cardScrollWidth).toBeLessThanOrEqual(
+                measured.cardClientWidth
+              );
+              expect(measured.glyphRects.length).toBeGreaterThan(0);
+              for (const rect of measured.glyphRects) {
+                expect(rect.x).toBeGreaterThanOrEqual(0);
+                expect(rect.right).toBeLessThanOrEqual(viewport.width);
+                expect(rect.y).toBeGreaterThanOrEqual(0);
+                expect(rect.bottom).toBeLessThanOrEqual(viewport.height);
+                expect(rect.x).toBeGreaterThanOrEqual(measured.headline.x);
+                expect(rect.right).toBeLessThanOrEqual(measured.headline.right);
+                expect(rect.x).toBeGreaterThanOrEqual(measured.card.x);
+                expect(rect.right).toBeLessThanOrEqual(measured.card.right);
+              }
+              await exposeTarget(page, headline);
+              await exposeTarget(page, card);
+            }
+          );
+        }
+        await page.setViewportSize({ width: 400, height: 620 });
+        // Never confirm: the real SDK fee/preview path is exercised without signing.
+        await page
+          .getByRole('button', { name: en.buttons.cancel, exact: true })
+          .click();
+        await expect(page).toHaveURL(/#\/send\/eth$/);
+        await expect(
+          page.getByPlaceholder(en.send.amount, { exact: true })
+        ).toHaveValue(exactAmount);
+      }
+    );
+    await wallet.step(
+      'native-max-high-precision-layout-read-only-audit',
+      async () => {
+        expect(
+          rpc!.balanceReads.some(
+            (entry) =>
+              entry.address === fixture.evmAddresses[0].toLowerCase() &&
+              entry.balanceWei === initialBalanceWei
+          )
+        ).toBe(true);
+        expect(
+          rpc!.reads.some(
+            (entry) => entry.method === 'eth_maxPriorityFeePerGas'
+          )
+        ).toBe(true);
+        expect(
+          rpc!.reads.some((entry) => entry.method === 'eth_estimateGas')
+        ).toBe(true);
+        expect(rpc!.deniedWrites).toEqual([]);
+        expect(rpc!.deniedUnknown).toEqual([]);
+        expect(routes!.deniedWrites).toEqual([]);
+        expect(extensionEvidence()).toEqual(runtime);
+        expect(
+          createHash('sha256').update(fs.readFileSync(info.file)).digest('hex')
+        ).toBe(testSourceSha256);
+      }
+    );
+    status = 'passed';
+  } finally {
+    try {
+      const evidence = info.outputPath(
+        'native-max-high-precision-layout-evidence.json'
+      );
+      fs.writeFileSync(
+        evidence,
+        JSON.stringify(
+          {
+            runtime,
+            testSourceSha256,
+            syntheticPublicRpcOnly: true,
+            balanceSource: 'ordinary eth_getBalance; not a receipt injection',
+            expectedNet,
+            geometry,
+            feeFixture: {
+              gasPriceWei: '1',
+              priorityFeeWei: '1',
+              baseFeeWei: '0',
+            },
+            controllerStateReplaced: false,
+            controllerResultsReplaced: false,
+            transactionConfirmClicked: false,
+            before,
+            tx,
+            unsignedReviewOnly: true,
+            reads: rpc?.reads || [],
+            balanceReads: rpc?.balanceReads || [],
+            deniedUnknown: rpc?.deniedUnknown || [],
+            deniedWrites: [
+              ...(rpc?.deniedWrites || []),
+              ...(routes?.deniedWrites || []),
+            ],
+            proxyDeniedConnections: server.blocked.length,
+          },
+          null,
+          2
+        )
+      );
+      await info.attach('native-max-high-precision-layout-evidence', {
         path: evidence,
         contentType: 'application/json',
       });

@@ -1916,17 +1916,30 @@ it.each([false, true])(
 );
 
 it.each([
-  { isBitcoinBased: true, isMax: false, token: null, symbol: 'SYS' },
+  {
+    isBitcoinBased: true,
+    isMax: false,
+    token: null,
+    symbol: 'SYS',
+    amount: '0.001',
+  },
   {
     isBitcoinBased: true,
     isMax: true,
     token: { symbol: 'SPT', guid: '123', decimals: 8 },
     symbol: 'SPT',
+    amount: '0.001',
   },
-  { isBitcoinBased: false, isMax: true, token: null, symbol: 'SYS' },
+  {
+    isBitcoinBased: false,
+    isMax: true,
+    token: null,
+    symbol: 'SYS',
+    amount: 'send.calculating',
+  },
 ])(
-  'native MAX display leaves other headlines unchanged: %j',
-  async ({ isBitcoinBased, isMax, token, symbol }) => {
+  'native MAX preserves other headlines and waits for an EOA quote: %j',
+  async ({ isBitcoinBased, isMax, token, symbol, amount }) => {
     mockState.vault.isBitcoinBased = isBitcoinBased;
     mockLocation.state.tx = {
       ...mockLocation.state.tx,
@@ -1940,7 +1953,7 @@ it.each([
     });
     const headline = screen.getByText('buttons.send').parentElement!;
     expect(headline.querySelectorAll('p')[1].textContent?.trim()).toBe(
-      `0.001 ${symbol}`
+      `${amount} ${symbol}`
     );
   }
 );

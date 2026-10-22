@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { createHash } from 'crypto';
 import fs from 'fs';
 import path from 'path';
@@ -20,6 +20,40 @@ const ORIGINAL_HASH = '0x' + 'ad'.repeat(32);
 const CURRENT_HASH = '0x' + 'be'.repeat(32);
 const ROLLUX_RPC = 'https://rpc.rollux.com';
 const CLAIM_ORIGIN = 'https://chains.tools';
+async function tabTo(page: Page, target: Locator) {
+  for (let index = 0; index < 32; index++) {
+    await page.keyboard.press('Tab');
+    if (await target.evaluate((element) => element === document.activeElement))
+      break;
+  }
+  await expect(target).toBeFocused();
+}
+
+async function exposed(page: Page, target: Locator) {
+  const box = await target.boundingBox();
+  expect(box).not.toBeNull();
+  const viewport = page.viewportSize()!;
+  expect(box!.x).toBeGreaterThanOrEqual(0);
+  expect(box!.y).toBeGreaterThanOrEqual(0);
+  expect(box!.x + box!.width).toBeLessThanOrEqual(viewport.width);
+  expect(box!.y + box!.height).toBeLessThanOrEqual(viewport.height);
+  expect(
+    await target.evaluate((element) => {
+      const bounds = element.getBoundingClientRect();
+      return [
+        [bounds.left + 2, bounds.top + bounds.height / 2],
+        [bounds.right - 2, bounds.top + bounds.height / 2],
+        [bounds.left + bounds.width / 2, bounds.top + 2],
+        [bounds.left + bounds.width / 2, bounds.bottom - 2],
+      ].every(([x, y]) => {
+        const hit = document.elementFromPoint(x, y);
+        return !!hit && (hit === element || element.contains(hit));
+      });
+    })
+  ).toBe(true);
+  return box;
+}
+
 const state = (page: Page) =>
   page.evaluate(async () => {
     const current = await chrome.runtime.sendMessage({
@@ -306,6 +340,12 @@ test('faucet feedback and eligibility follow a network switch in another normal 
             exact: true,
           })
         ).toBeEnabled();
+        await expect(
+          wallet!.page.getByRole('button', {
+            name: en.buttons.copy,
+            exact: true,
+          })
+        ).toHaveCount(0);
         observations.initial = before;
         await wallet!.page.evaluate((hash) => {
           const observed = { oldHashSeen: false };
@@ -392,6 +432,277 @@ test('faucet feedback and eligibility follow a network switch in another normal 
         expect(observations.dom).toEqual({ oldHashSeen: false });
       }
     );
+    // Observe only this synthetic public hash at the clipboard boundary. An
+    // accepted write calls the real native method within the user gesture;
+    // only completion delivery is held. Refusal deliberately never writes.
+    await wallet.page.evaluate((hash) => {
+      const descriptor = Object.getOwnPropertyDescriptor(
+        navigator.clipboard,
+        'writeText'
+      );
+      const original = navigator.clipboard.writeText.bind(navigator.clipboard);
+      const writes: Array<{
+        failed: boolean;
+        nativeCompleted: boolean;
+        settled: boolean;
+        text: string;
+      }> = [];
+      let next: 'accept' | 'refuse' | undefined;
+      let held:
+        | {
+            outcome: 'accept' | 'refuse';
+            reject: (error: Error) => void;
+            resolve: () => void;
+          }
+        | undefined;
+      Object.defineProperty(navigator.clipboard, 'writeText', {
+        configurable: true,
+        value: async (text: string) => {
+          if (text !== hash) throw new Error('Unexpected non-fixture copy');
+          const entry = {
+            text,
+            nativeCompleted: false,
+            settled: false,
+            failed: false,
+          };
+          writes.push(entry);
+          const outcome = next;
+          next = undefined;
+          const gate = outcome
+            ? new Promise<void>((resolve, reject) => {
+                held = { outcome, resolve, reject };
+              })
+            : undefined;
+          try {
+            if (outcome !== 'refuse') {
+              await original(text);
+              entry.nativeCompleted = true;
+            }
+            if (gate) await gate;
+          } catch (error) {
+            entry.failed = true;
+            throw error;
+          } finally {
+            entry.settled = true;
+          }
+        },
+      });
+      (window as any).__faucetCopy = {
+        snapshot: () => ({ writes, held: !!held }),
+        hold: (outcome: 'accept' | 'refuse') => {
+          if (held) throw new Error('A clipboard completion is already held');
+          next = outcome;
+        },
+        release: () => {
+          if (!held) throw new Error('No clipboard completion is held');
+          const pending = held;
+          held = undefined;
+          if (pending.outcome === 'accept') pending.resolve();
+          else pending.reject(new Error('Synthetic native clipboard refusal'));
+        },
+        restore: () => {
+          if (descriptor)
+            Object.defineProperty(navigator.clipboard, 'writeText', descriptor);
+          else delete (navigator.clipboard as any).writeText;
+          held?.resolve();
+          held = undefined;
+        },
+      };
+    }, CURRENT_HASH);
+    const page = wallet.page;
+    const copy = page.getByRole('button', {
+      name: en.buttons.copy,
+      exact: true,
+    });
+    const copied = page.getByRole('dialog', {
+      name: en.settings.successfullyCopied,
+      exact: true,
+    });
+    const copyFailure = page.getByText(en.transactions.copyFailed, {
+      exact: true,
+    });
+    const clipboard = () =>
+      page.evaluate(() => (window as any).__faucetCopy.snapshot());
+    const waitForCopied = async () => {
+      await expect(copied).toBeVisible();
+      await expect(page).toHaveURL(/#\/faucet$/);
+      expect(claims).toHaveLength(2);
+      // The existing status modal auto-dismisses. Its header Close must not
+      // activate the underlying faucet's distinct navigation action.
+      await copied
+        .getByRole('button', { name: en.buttons.close, exact: true })
+        .click();
+      await expect(page).toHaveURL(/#\/faucet$/);
+      await expect(copied).toHaveCount(0);
+      await expect(copy).toHaveText(CURRENT_HASH);
+    };
+    for (const viewport of [
+      { width: 400, height: 620 },
+      { width: 320, height: 360 },
+    ]) {
+      await page.setViewportSize(viewport);
+      await wallet.step(
+        `faucet copy: native Tab and Enter waits for accepted completion at ${viewport.width}x${viewport.height}`,
+        async (capture) => {
+          await expect(copy).toHaveAttribute('type', 'button');
+          await expect(copy).toHaveText(CURRENT_HASH);
+          await tabTo(page, copy);
+          await capture(page);
+          const targetBox = await exposed(page, copy);
+          const cardBox = await exposed(page, copy.locator('..'));
+          const before = (await clipboard()).writes.length;
+          await page.evaluate(() =>
+            (window as any).__faucetCopy.hold('accept')
+          );
+          await page.keyboard.press('Enter');
+          await expect
+            .poll(async () => {
+              const current = await clipboard();
+              return {
+                held: current.held,
+                count: current.writes.length,
+                last: current.writes.at(-1),
+              };
+            })
+            .toEqual({
+              held: true,
+              count: before + 1,
+              last: {
+                text: CURRENT_HASH,
+                nativeCompleted: true,
+                settled: false,
+                failed: false,
+              },
+            });
+          await expect(copied).toHaveCount(0);
+          await expect(copyFailure).toHaveCount(0);
+          await page.evaluate(() => (window as any).__faucetCopy.release());
+          await waitForCopied();
+          observations[`copy-enter-${viewport.width}`] = {
+            viewport,
+            targetBox,
+            cardBox,
+            clipboard: await clipboard(),
+          };
+        }
+      );
+      await wallet.step(
+        `faucet copy: native Space and pointer retain exact-hash copying at ${viewport.width}x${viewport.height}`,
+        async (capture) => {
+          let before = (await clipboard()).writes.length;
+          await tabTo(page, copy);
+          await exposed(page, copy);
+          await page.keyboard.press('Space');
+          await waitForCopied();
+          expect((await clipboard()).writes).toHaveLength(before + 1);
+          before += 1;
+          await copy.scrollIntoViewIfNeeded();
+          await exposed(page, copy);
+          await copy.click();
+          await waitForCopied();
+          expect((await clipboard()).writes).toHaveLength(before + 1);
+          await capture(page);
+        }
+      );
+      await wallet.step(
+        `faucet copy: pending refusal has no success and remains retryable at ${viewport.width}x${viewport.height}`,
+        async (capture) => {
+          await page.evaluate(() =>
+            (window as any).__faucetCopy.hold('refuse')
+          );
+          await tabTo(page, copy);
+          await exposed(page, copy);
+          await page.keyboard.press('Enter');
+          await expect.poll(clipboard).toMatchObject({ held: true });
+          expect((await clipboard()).writes.at(-1)).toEqual({
+            text: CURRENT_HASH,
+            nativeCompleted: false,
+            settled: false,
+            failed: false,
+          });
+          await expect(copied).toHaveCount(0);
+          await page.evaluate(() => (window as any).__faucetCopy.release());
+          await expect(copyFailure).toBeVisible();
+          await expect(copied).toHaveCount(0);
+          await expect(copy).toBeEnabled();
+          await capture(page);
+          observations[`copy-refusal-${viewport.width}`] = await clipboard();
+          await expect(copyFailure).toBeHidden();
+          await tabTo(page, copy);
+          await page.keyboard.press('Space');
+          await waitForCopied();
+          expect((await clipboard()).writes.at(-1)).toEqual({
+            text: CURRENT_HASH,
+            nativeCompleted: true,
+            settled: true,
+            failed: false,
+          });
+        }
+      );
+    }
+    await wallet.step(
+      'faucet copy: main Close still returns Home and a fresh failed claim shows only error feedback',
+      async (capture) => {
+        observations.clipboard = await clipboard();
+        expect(observations.clipboard).toEqual({
+          held: false,
+          writes: [
+            ...Array.from({ length: 2 }, () => [
+              ...Array.from({ length: 3 }, () => ({
+                text: CURRENT_HASH,
+                nativeCompleted: true,
+                settled: true,
+                failed: false,
+              })),
+              {
+                text: CURRENT_HASH,
+                nativeCompleted: false,
+                settled: true,
+                failed: true,
+              },
+              {
+                text: CURRENT_HASH,
+                nativeCompleted: true,
+                settled: true,
+                failed: false,
+              },
+            ]).flat(),
+          ],
+        });
+        const mainClose = page
+          .locator('[data-page-action-footer]')
+          .getByRole('button', { name: en.faucet.Close, exact: true });
+        await tabTo(page, mainClose);
+        await exposed(page, mainClose);
+        await page.keyboard.press('Space');
+        await expect(page).toHaveURL(/#\/home(?:\?.*)?$/);
+        await page
+          .getByRole('button', {
+            name: en.faucet.grabTextTwo.replace('{{token}}', 'SYS'),
+            exact: true,
+          })
+          .click();
+        await expect(page).toHaveURL(/#\/faucet$/);
+        await expect(copy).toHaveCount(0);
+        await page
+          .getByRole('button', { name: en.faucet.requestNow, exact: true })
+          .click();
+        await expect.poll(() => claims.length).toBe(3);
+        expect(claims[2]).toEqual(claims[1]);
+        await releases[2](false);
+        await expect(
+          page.getByText('Synthetic cancelled response', { exact: true })
+        ).toBeVisible();
+        await expect(copy).toHaveCount(0);
+        await expect(copied).toHaveCount(0);
+        await expect(
+          page
+            .locator('[data-page-action-footer]')
+            .getByRole('button', { name: en.faucet.grabTokens, exact: true })
+        ).toBeEnabled();
+        await capture(page);
+      }
+    );
     await wallet.step(
       'faucet-scope: a normal UTXO switch removes unsupported faucet actions',
       async (capture) => {
@@ -406,7 +717,7 @@ test('faucet feedback and eligibility follow a network switch in another normal 
         await expect(
           wallet!.page.getByText(CURRENT_HASH, { exact: true })
         ).toHaveCount(0);
-        expect(claims).toHaveLength(2);
+        expect(claims).toHaveLength(3);
         observations.unsupported = await state(wallet!.page);
         expect(observations.unsupported).toMatchObject({
           chainId: 5700,
@@ -453,6 +764,8 @@ test('faucet feedback and eligibility follow a network switch in another normal 
             controllerMutationsInjected: false,
             controllerResultsReplaced: false,
             chromeApisReplaced: false,
+            clipboardBoundary:
+              'Public synthetic hash only. Accepted writes call native writeText; only their completion is held. Refusal is injected at that boundary without a native write. No clipboard reads.',
             observations,
             claims,
             deniedClaims,
@@ -475,6 +788,10 @@ test('faucet feedback and eligibility follow a network switch in another normal 
         );
       } finally {
         try {
+          if (wallet && !wallet.page.isClosed())
+            await wallet.page
+              .evaluate(() => (window as any).__faucetCopy?.restore())
+              .catch(() => undefined);
           await wallet?.dispose(status);
         } finally {
           try {
