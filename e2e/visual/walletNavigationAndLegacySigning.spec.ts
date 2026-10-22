@@ -417,7 +417,10 @@ test('connected-site attribution distinguishes matching IDs across actual accoun
       ).toBeVisible();
       await capture(page, info, 'connected-account-type-attribution');
       await page
-        .getByRole('button', { name: en.settings.editConnection, exact: true })
+        .getByRole('button', {
+          name: `${en.settings.editConnection}: ${origin}`,
+          exact: true,
+        })
         .click();
       const dialog = page.getByRole('dialog', {
         name: en.settings.editConnection,

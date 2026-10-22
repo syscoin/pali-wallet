@@ -379,7 +379,7 @@ test('UTXO connection grants do not follow an equal Imported account slot into a
         ).toHaveCount(0);
         await page
           .getByRole('button', {
-            name: en.settings.editConnection,
+            name: `${en.settings.editConnection}: ${host}`,
             exact: true,
           })
           .click();

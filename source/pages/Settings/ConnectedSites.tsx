@@ -26,6 +26,9 @@ import { navigateBack } from 'utils/navigationState';
 
 import { NetworkTypeBadge } from './NetworkTypeBadge';
 
+const connectionActionClassName =
+  'flex h-10 w-10 shrink-0 items-center justify-center rounded-full hover:bg-alpha-whiteAlpha200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white';
+
 const ConnectedSites = () => {
   const { controllerEmitter } = useController();
   const { navigate } = useUtils();
@@ -121,8 +124,8 @@ const ConnectedSites = () => {
               </div>
 
               <IconButton
-                aria-label={t('settings.editConnection')}
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full hover:bg-alpha-whiteAlpha200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+                aria-label={`${t('settings.editConnection')}: ${_dapp.host}`}
+                className={connectionActionClassName}
                 disabled={disconnectingHost === _dapp.host}
                 onClick={() => setSelectedHost(_dapp.host)}
               >
@@ -154,7 +157,7 @@ const ConnectedSites = () => {
 
                   <IconButton
                     aria-label={t('settings.deleteConnected')}
-                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full hover:bg-alpha-whiteAlpha200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+                    className={connectionActionClassName}
                     disabled={disconnectingHost === selected.host}
                     onClick={disconnectSelected}
                   >

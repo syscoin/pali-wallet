@@ -180,6 +180,10 @@ test.use({ trace: 'off' });
               .getByRole('button', { name: 'Show', exact: true })
               .click();
             await expect(words).toHaveCount(12);
+            await expect(page.getByRole('combobox')).toHaveAccessibleName(
+              'Words'
+            );
+            observations.wordCountAccessibleName = 'Words';
             await expect(checkbox).not.toBeChecked();
             await expect(next).toBeDisabled();
             observations.initialCount = await words.count();
@@ -200,6 +204,9 @@ test.use({ trace: 'off' });
               if (mode === 'older') await generate.click();
             }
             await page.getByRole('combobox').selectOption('24');
+            await expect(page.getByRole('combobox')).toHaveAccessibleName(
+              'Words'
+            );
             if (mode !== 'healthy')
               await expect
                 .poll(() =>
@@ -282,7 +289,7 @@ test.use({ trace: 'off' });
                 ariaHiddenSeedContainer: true,
                 traceDisabled: true,
               },
-              layoutOrAccessibilityQualification: false,
+              seedPresentationLayoutOrAccessibilityQualification: false,
               phraseTextExported: false,
               observations,
               delivery,

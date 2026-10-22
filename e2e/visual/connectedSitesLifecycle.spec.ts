@@ -87,7 +87,7 @@ test('connection settings follow external revocation and reconnection without re
       async () => {
         await page
           .getByRole('button', {
-            name: en.settings.editConnection,
+            name: `${en.settings.editConnection}: ${origin}`,
             exact: true,
           })
           .click();
@@ -157,7 +157,7 @@ test('connection settings follow external revocation and reconnection without re
         }, origin);
         await page
           .getByRole('button', {
-            name: en.settings.editConnection,
+            name: `${en.settings.editConnection}: ${origin}`,
             exact: true,
           })
           .click();
@@ -220,7 +220,7 @@ test('connection settings follow external revocation and reconnection without re
       async () => {
         await page
           .getByRole('button', {
-            name: en.settings.editConnection,
+            name: `${en.settings.editConnection}: ${origin}`,
             exact: true,
           })
           .click();
@@ -269,7 +269,7 @@ test('connection settings follow external revocation and reconnection without re
           page.getByText('1 site is connected to Pali Wallet', { exact: true })
         ).toBeVisible();
         const edit = page.getByRole('button', {
-          name: en.settings.editConnection,
+          name: `${en.settings.editConnection}: ${origin}`,
           exact: true,
         });
         await expect(edit).toBeEnabled();

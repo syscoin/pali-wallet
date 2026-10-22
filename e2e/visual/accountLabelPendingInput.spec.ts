@@ -103,6 +103,28 @@ test('account label input stays locked until its genuine completed Save is ackno
         await expect(page).toHaveURL(/#\/settings\/edit-account$/);
         await expect(input).toHaveValue(before.live.label);
         await expect(input).toBeEnabled();
+        await expect(input).toHaveAccessibleName(en.settings.accountLabel);
+        const accessibility = await wallet!.context.newCDPSession(page);
+        try {
+          const { root } = await accessibility.send('DOM.getDocument', {
+            depth: 0,
+          });
+          const { nodeId } = await accessibility.send('DOM.querySelector', {
+            nodeId: root.nodeId,
+            selector: '#edit-account input',
+          });
+          expect(nodeId).toBeGreaterThan(0);
+          const { nodes } = await accessibility.send(
+            'Accessibility.getPartialAXTree',
+            { nodeId, fetchRelatives: false }
+          );
+          const name = nodes.find((node) => node.role?.value === 'textbox')
+            ?.name?.value;
+          expect(name).toBe(en.settings.accountLabel);
+          observations.nativeBrowserAccountLabelName = name;
+        } finally {
+          await accessibility.detach();
+        }
         await page.evaluate(
           ({ firstLabel, target }) => {
             const original = chrome.runtime.sendMessage;
@@ -176,6 +198,7 @@ test('account label input stays locked until its genuine completed Save is ackno
       'the real Save commits but its still-pending UI cannot accept a replacement draft',
       async (capture) => {
         await input.fill(FIRST_LABEL);
+        await expect(input).toHaveAccessibleName(en.settings.accountLabel);
         await save.click();
         await expect
           .poll(() =>
