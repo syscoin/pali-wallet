@@ -101,6 +101,7 @@ export const CreatePhrase = () => {
         <div className="flex items-center gap-3 w-full justify-center">
           <span className="text-brand-gray200 text-xs">Words:</span>
           <select
+            aria-label="Words"
             className="bg-fields-input-primary border border-fields-input-border rounded-md text-brand-white text-sm px-2 py-1"
             value={wordCount}
             onChange={(e) => setWordCount(parseInt(e.target.value))}

@@ -613,7 +613,9 @@ describe.each([true, false])(
         screen.getByRole('button', { name: 'settings.connectedSites' })
       );
       await user.click(
-        screen.getByRole('button', { name: 'settings.editConnection' })
+        screen.getByRole('button', {
+          name: `settings.editConnection: ${HOST}`,
+        })
       );
       const sourceDialog = screen.getByRole('dialog');
       expect(
@@ -661,7 +663,9 @@ describe.each([true, false])(
         screen.getByRole('button', { name: 'settings.connectedSites' })
       );
       await user.click(
-        screen.getByRole('button', { name: 'settings.editConnection' })
+        screen.getByRole('button', {
+          name: `settings.editConnection: ${HOST}`,
+        })
       );
       const foreignDialog = screen.getByRole('dialog');
       expect(within(foreignDialog).getByText(HOST)).toBeVisible();

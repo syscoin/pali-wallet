@@ -119,6 +119,7 @@ const mount = () =>
     </MemoryRouter>
   );
 const connection = () => mockState.dapp.dapps.connected;
+const editName = () => `Edit connection: ${connection()?.host || host}`;
 const rerenderPage = (view: ReturnType<typeof mount>) =>
   view.rerender(
     <MemoryRouter>
@@ -166,7 +167,7 @@ it('uses the account-number fallback when the connected account is missing', asy
   expect(screen.queryByText('Connected to: Active HD account')).toBeNull();
   await userEvent
     .setup()
-    .click(screen.getByRole('button', { name: 'Edit connection' }));
+    .click(screen.getByRole('button', { name: editName() }));
   expect(
     within(screen.getByRole('dialog')).getByText('Unavailable')
   ).toBeVisible();
@@ -186,7 +187,7 @@ it.each([INetworkType.Syscoin, INetworkType.Ethereum])(
     const user = userEvent.setup();
     mount();
     expect(screen.getByText('Connected to: Account 1')).toBeVisible();
-    await user.click(screen.getByRole('button', { name: 'Edit connection' }));
+    await user.click(screen.getByRole('button', { name: editName() }));
     const dialog = screen.getByRole('dialog');
     expect(within(dialog).getByText('Account 1')).toBeVisible();
     expect(within(dialog).getByText('Unavailable')).toBeVisible();
@@ -208,7 +209,7 @@ it.each([undefined, 'unrecognized'])(
     mount();
     await userEvent
       .setup()
-      .click(screen.getByRole('button', { name: 'Edit connection' }));
+      .click(screen.getByRole('button', { name: editName() }));
     const dialog = screen.getByRole('dialog');
     expect(within(dialog).getByText('Unavailable')).toBeVisible();
     expect(within(dialog).queryByText('Imported signer')).toBeNull();
@@ -237,7 +238,7 @@ it('constrains long inactive-account labels and hosts without dropping their acc
   expect(site).toHaveClass('truncate');
   expect(content).toHaveClass('min-w-0', 'flex-1');
   expect(content?.parentElement).toHaveClass('flex', 'gap-3');
-  expect(screen.getByRole('button', { name: 'Edit connection' })).toHaveClass(
+  expect(screen.getByRole('button', { name: editName() })).toHaveClass(
     'h-10',
     'w-10',
     'shrink-0'
@@ -250,7 +251,7 @@ it('keeps the selected account attribution and disconnects the exact host', asyn
     mockState.dapp.dapps = {};
   });
   mount();
-  await user.click(screen.getByRole('button', { name: 'Edit connection' }));
+  await user.click(screen.getByRole('button', { name: editName() }));
   const dialog = screen.getByRole('dialog', { name: 'Edit connection' });
   expect(within(dialog).getByText('Imported signer')).toBeVisible();
   expect(within(dialog).getByText('imported-address')).toBeVisible();
@@ -275,7 +276,7 @@ it('shows a newly approved connection after disconnecting the same host without 
     mockState.dapp.dapps = {};
   });
   const view = mount();
-  await user.click(screen.getByRole('button', { name: 'Edit connection' }));
+  await user.click(screen.getByRole('button', { name: editName() }));
   await user.click(
     screen.getByRole('button', { name: 'Delete connected site' })
   );
@@ -287,13 +288,13 @@ it('shows a newly approved connection after disconnecting the same host without 
   expect(screen.getByText(host)).toBeVisible();
   expect(screen.getByText('Connected to: Ledger signer')).toBeVisible();
   expect(screen.getByText('1 site is connected to Pali Wallet')).toBeVisible();
-  expect(screen.getByRole('button', { name: 'Edit connection' })).toBeEnabled();
+  expect(screen.getByRole('button', { name: editName() })).toBeEnabled();
 });
 
 it('keeps an open connection review attributed to the live connected account', async () => {
   const user = userEvent.setup();
   const view = mount();
-  await user.click(screen.getByRole('button', { name: 'Edit connection' }));
+  await user.click(screen.getByRole('button', { name: editName() }));
   mockState.dapp.dapps = {
     connected: {
       ...connection(),
@@ -312,7 +313,7 @@ it('closes an externally removed connection review and does not reopen it on rec
   const user = userEvent.setup();
   const previous = connection();
   const view = mount();
-  await user.click(screen.getByRole('button', { name: 'Edit connection' }));
+  await user.click(screen.getByRole('button', { name: editName() }));
   mockState.dapp.dapps = {};
   rerenderPage(view);
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
@@ -329,20 +330,18 @@ it('restores access after a rejected disconnect without hiding the still-connect
   const errors = jest.spyOn(console, 'error').mockImplementation();
   try {
     mount();
-    await user.click(screen.getByRole('button', { name: 'Edit connection' }));
+    await user.click(screen.getByRole('button', { name: editName() }));
     await user.click(
       screen.getByRole('button', { name: 'Delete connected site' })
     );
     await act(async () => reject(new Error('Controller unavailable')));
     expect(screen.getByText(host)).toBeVisible();
-    expect(
-      screen.getByRole('button', { name: 'Edit connection' })
-    ).toBeEnabled();
+    expect(screen.getByRole('button', { name: editName() })).toBeEnabled();
     expect(screen.getByRole('alert')).toHaveTextContent(
       'Controller unavailable'
     );
 
-    await user.click(screen.getByRole('button', { name: 'Edit connection' }));
+    await user.click(screen.getByRole('button', { name: editName() }));
     mockEmitter.mockImplementationOnce(async () => {
       mockState.dapp.dapps = {};
     });
@@ -367,15 +366,13 @@ it('uses translated fallback feedback when a disconnect error has no message', a
   const errors = jest.spyOn(console, 'error').mockImplementation();
   try {
     mount();
-    await user.click(screen.getByRole('button', { name: 'Edit connection' }));
+    await user.click(screen.getByRole('button', { name: editName() }));
     await user.click(
       screen.getByRole('button', { name: 'Delete connected site' })
     );
     expect(await screen.findByRole('alert')).toHaveTextContent('Failed');
     expect(screen.getByText(host)).toBeVisible();
-    expect(
-      screen.getByRole('button', { name: 'Edit connection' })
-    ).toBeEnabled();
+    expect(screen.getByRole('button', { name: editName() })).toBeEnabled();
   } finally {
     errors.mockRestore();
   }
@@ -388,7 +385,7 @@ it('does not carry a late disconnect error into a reopened settings page', async
   const errors = jest.spyOn(console, 'error').mockImplementation();
   try {
     const view = mount();
-    await user.click(screen.getByRole('button', { name: 'Edit connection' }));
+    await user.click(screen.getByRole('button', { name: editName() }));
     await user.click(
       screen.getByRole('button', { name: 'Delete connected site' })
     );
@@ -397,9 +394,7 @@ it('does not carry a late disconnect error into a reopened settings page', async
     await act(async () => reject(new Error('Earlier disconnect failed')));
     expect(screen.queryByRole('alert')).toBeNull();
     expect(screen.getByText(host)).toBeVisible();
-    expect(
-      screen.getByRole('button', { name: 'Edit connection' })
-    ).toBeEnabled();
+    expect(screen.getByRole('button', { name: editName() })).toBeEnabled();
   } finally {
     errors.mockRestore();
   }

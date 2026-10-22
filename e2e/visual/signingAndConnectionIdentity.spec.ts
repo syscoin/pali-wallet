@@ -236,7 +236,7 @@ test('long connected-account labels retain visible edit and disconnect controls'
         page.getByText(`Connected to: ${label}`, { exact: true })
       ).toBeVisible();
       const button = page.getByRole('button', {
-        name: en.settings.editConnection,
+        name: `${en.settings.editConnection}: ${origin}`,
         exact: true,
       });
       const exposed = await button.evaluate((element) => {
@@ -258,7 +258,10 @@ test('long connected-account labels retain visible edit and disconnect controls'
       await capture(page, info, `connected-label-${viewport.width}`);
     }
     await page
-      .getByRole('button', { name: en.settings.editConnection, exact: true })
+      .getByRole('button', {
+        name: `${en.settings.editConnection}: ${origin}`,
+        exact: true,
+      })
       .click();
     await expect(page.getByRole('dialog')).toBeVisible();
     await page

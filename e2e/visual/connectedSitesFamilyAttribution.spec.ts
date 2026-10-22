@@ -116,8 +116,17 @@ test('Connected Sites keeps a foreign-family grant separate from the current acc
       await expect(page.getByTitle(origin, { exact: true })).toBeVisible();
     };
     const openReview = async () => {
+      const row = page.getByRole('listitem').filter({
+        has: page.getByTitle(origin, { exact: true }),
+      });
+      await expect(row.getByRole('button')).toHaveAccessibleName(
+        `${en.settings.editConnection}: ${origin}`
+      );
       await page
-        .getByRole('button', { name: en.settings.editConnection, exact: true })
+        .getByRole('button', {
+          name: `${en.settings.editConnection}: ${origin}`,
+          exact: true,
+        })
         .click();
       const review = page.getByRole('dialog', {
         name: en.settings.editConnection,

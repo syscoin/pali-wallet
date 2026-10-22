@@ -1,5 +1,6 @@
 /** @jest-environment jsdom */
 
+import '@testing-library/jest-dom';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import React from 'react';
 import {
@@ -105,6 +106,22 @@ const acknowledgeAndNext = () => {
 };
 beforeEach(() => {
   mockEmitter.mockReset().mockResolvedValueOnce(TWELVE);
+});
+
+it('names the phrase word-count selector through ordinary regeneration', async () => {
+  mockEmitter.mockResolvedValueOnce(TWENTY_FOUR);
+  await begin();
+  const selector = screen.getByRole('combobox');
+  expect(selector).toHaveValue('12');
+  expect(selector).toHaveAccessibleName('Words');
+  fireEvent.change(selector, { target: { value: '24' } });
+  await screen.findByText(TWENTY_FOUR);
+  expect(selector).toHaveValue('24');
+  expect(selector).toHaveAccessibleName('Words');
+  expect(mockEmitter).toHaveBeenLastCalledWith(
+    ['wallet', 'createNewSeed'],
+    [24]
+  );
 });
 
 it('cannot confirm a previous twelve-word phrase while the selected twenty-four-word generation is pending', async () => {

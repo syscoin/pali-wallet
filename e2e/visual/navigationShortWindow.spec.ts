@@ -277,7 +277,10 @@ test('short-window navigation keeps actions, instructions and errors unobscured'
       await listPage.mouse.wheel(0, 4000);
       await listPage.waitForTimeout(150);
       const lastEdit = list
-        .getByRole('button', { name: en.settings.editConnection })
+        .getByRole('button', {
+          name: `${en.settings.editConnection}: https://synthetic-23.example`,
+          exact: true,
+        })
         .last();
       await reveal(listPage, lastEdit);
       expect(

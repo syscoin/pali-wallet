@@ -195,7 +195,7 @@ const removeFromSettings = async (waitForWrite = true) => {
   const previousWrites = stateWrites.length;
   const user = userEvent.setup();
   await user.click(
-    screen.getByRole('button', { name: 'settings.editConnection' })
+    screen.getByRole('button', { name: `settings.editConnection: ${HOST}` })
   );
   await user.click(
     within(screen.getByRole('dialog')).getByRole('button', {
@@ -292,7 +292,7 @@ it('keeps a failed removal reviewable after closing and reopening Settings', asy
   page.unmount();
   mount();
   expect(
-    screen.getByRole('button', { name: 'settings.editConnection' })
+    screen.getByRole('button', { name: `settings.editConnection: ${HOST}` })
   ).toBeVisible();
   expect(controller.isConnected(HOST)).toBe(true);
   expect(records.state.dapp.dapps[HOST]).toEqual(grant);
@@ -321,7 +321,7 @@ it('does not offer an old retry that can revoke a newly approved connection', as
     );
   });
   expect(
-    screen.getByRole('button', { name: 'settings.editConnection' })
+    screen.getByRole('button', { name: `settings.editConnection: ${HOST}` })
   ).toBeVisible();
   expect(
     screen.queryByRole('button', { name: `receive.retry: ${HOST}` })
@@ -359,7 +359,7 @@ it.each(['success', 'failure', 'cancel'] as const)(
     page.unmount();
     mount();
     expect(
-      screen.getByRole('button', { name: 'settings.editConnection' })
+      screen.getByRole('button', { name: `settings.editConnection: ${HOST}` })
     ).toBeVisible();
     const expectedDate = outcome === 'success' ? 2 : 1;
     const expectedAccountId = outcome === 'success' ? 1 : 0;
@@ -407,7 +407,7 @@ it('never restores the old permission into a replacement wallet after a delayed 
   );
   expect(controller.isConnected(HOST)).toBe(false);
   expect(
-    screen.queryByRole('button', { name: 'settings.editConnection' })
+    screen.queryByRole('button', { name: `settings.editConnection: ${HOST}` })
   ).toBeNull();
 });
 

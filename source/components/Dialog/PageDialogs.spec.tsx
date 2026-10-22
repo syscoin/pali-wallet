@@ -202,7 +202,11 @@ it('names connection actions and retains the exact disconnect operation', async 
       <ConnectedSites />
     </MemoryRouter>
   );
-  await user.click(screen.getByRole('button', { name: 'Edit connection' }));
+  await user.click(
+    screen.getByRole('button', {
+      name: 'Edit connection: https://untrusted.example',
+    })
+  );
   const dialog = screen.getByRole('dialog', { name: 'Edit connection' });
   expect(dialog.className).not.toMatch(/\bz-10\b/);
   expect(dialog.getAttribute('aria-describedby')).toBeTruthy();
@@ -226,7 +230,11 @@ it('closes the connection editor with Escape without disconnecting', async () =>
       <ConnectedSites />
     </MemoryRouter>
   );
-  await user.click(screen.getByRole('button', { name: 'Edit connection' }));
+  await user.click(
+    screen.getByRole('button', {
+      name: 'Edit connection: https://untrusted.example',
+    })
+  );
   await user.keyboard('{Escape}');
   expect(screen.queryByRole('dialog')).toBeNull();
   expect(mockEmitter).not.toHaveBeenCalled();
