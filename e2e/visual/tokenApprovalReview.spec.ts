@@ -1,5 +1,5 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test';
-import { AbiCoder, Interface, id } from 'ethers';
+import { AbiCoder, Interface, formatUnits, id } from 'ethers';
 
 import en from '../../source/assets/locales/en.json';
 import { E2E_CONFIG } from '../harness/config';
@@ -74,9 +74,11 @@ async function captureOpenApproval(
 
 async function withWallet(
   name: string,
-  run: (wallet: PaliWallet, origin: string) => Promise<void>
+  run: (wallet: PaliWallet, origin: string) => Promise<void>,
+  decimals = 8
 ) {
   const previous = { ...E2E_CONFIG };
+  const stepPrefix = decimals === 8 ? '' : `${name}: `;
   const server = await startUtxoFixtureServer();
   Object.assign(E2E_CONFIG, {
     seedPhrase: UTXO_FIXTURE_SEED,
@@ -99,7 +101,7 @@ async function withWallet(
     const metadata = new Map([
       [id('name()').slice(0, 10), abi.encode(['string'], ['Review Token'])],
       [id('symbol()').slice(0, 10), abi.encode(['string'], ['REVIEW'])],
-      [id('decimals()').slice(0, 10), abi.encode(['uint8'], [8])],
+      [id('decimals()').slice(0, 10), abi.encode(['uint8'], [decimals])],
       [id('balanceOf(address)').slice(0, 10), abi.encode(['uint256'], [0])],
       [id('totalSupply()').slice(0, 10), abi.encode(['uint256'], [0])],
       [
@@ -143,13 +145,19 @@ async function withWallet(
         body: JSON.stringify(Array.isArray(rpc) ? replies : replies[0]),
       });
     });
-    await wallet.step('import disposable synthetic wallet', async () => {
-      await wallet!.importSeedAndCreatePassword();
-    });
-    await wallet.step('select fixture EVM network and open home', async () => {
-      await wallet!.switchNetwork('Syscoin NEVM Testnet', 'EVM');
-      await wallet!.ensureOnHome();
-    });
+    await wallet.step(
+      `${stepPrefix}import disposable synthetic wallet`,
+      async () => {
+        await wallet!.importSeedAndCreatePassword();
+      }
+    );
+    await wallet.step(
+      `${stepPrefix}select fixture EVM network and open home`,
+      async () => {
+        await wallet!.switchNetwork('Syscoin NEVM Testnet', 'EVM');
+        await wallet!.ensureOnHome();
+      }
+    );
     await run(wallet, server.url);
     expect(routes.deniedWrites).toEqual([]);
     status = 'passed';
@@ -160,9 +168,9 @@ async function withWallet(
   }
 }
 
-async function connect(wallet: PaliWallet, origin: string) {
+async function connect(wallet: PaliWallet, origin: string, name = '') {
   return wallet.step(
-    'connect the local fixture dapp',
+    `${name ? name + ': ' : ''}connect the local fixture dapp`,
     async (captureApproval) => {
       await wallet.page.goto('about:blank');
       const dapp = await wallet.context.newPage();
@@ -354,6 +362,197 @@ test('token approval review restores discarded drafts and shows the edited calld
     );
   });
 });
+
+for (const decimals of [0, 18]) {
+  test(`custom uint256 maximum retains its approval warning with ${decimals} decimals`, async ({}, info) => {
+    await withWallet(
+      `token-approval-unlimited-${decimals}`,
+      async (wallet, origin) => {
+        const { dapp, address } = await connect(
+          wallet,
+          origin,
+          `token-approval-unlimited-${decimals}`
+        );
+        const maximum = (BigInt(1) << BigInt(256)) - BigInt(1);
+        const maximumHuman = formatUnits(maximum, decimals);
+        const approveInterface = new Interface([
+          'function approve(address,uint256)',
+        ]);
+        const requestedData = approveInterface.encodeFunctionData('approve', [
+          spender,
+          maximum,
+        ]);
+        const { request, popup } = await wallet.step(
+          `request maximum approval with ${decimals} decimals`,
+          async (captureApproval) => {
+            const requestId = await startRequest(dapp, 'eth_sendTransaction', [
+              { from: address, to: token, value: '0x0', data: requestedData },
+            ]);
+            const approvalPopup = await popupFor(
+              wallet.context,
+              dapp,
+              requestId
+            );
+            await captureApproval(approvalPopup);
+            return { request: requestId, popup: approvalPopup };
+          }
+        );
+        const edit = popup.getByRole('button', {
+          name: en.send.editPermission,
+          exact: true,
+        });
+        const dialog = popup.getByRole('dialog');
+        const input = dialog.getByRole('textbox', {
+          name: en.send.enterAMaximumSpendingLimit,
+          exact: true,
+        });
+        const warning = popup.getByText(`⚠️ ${en.transactions.unlimited}`, {
+          exact: true,
+        });
+        const verifyEncoding = async (rawAmount: bigint, label: string) => {
+          const expectedData = approveInterface.encodeFunctionData('approve', [
+            spender,
+            rawAmount,
+          ]);
+          await popup
+            .locator('#tabExample')
+            .getByText(en.send.data, { exact: true })
+            .click();
+          const displayedData = await popup
+            .locator('#tabContentExample pre:visible')
+            .innerText();
+          expect(JSON.parse(displayedData).inputs).toEqual([
+            spender,
+            rawAmount.toString(),
+          ]);
+          await popup
+            .locator('#tabExample')
+            .getByText(en.send.hex, { exact: true })
+            .click();
+          const displayedHex = await popup
+            .locator('#tabContentExample [role=tabpanel]:visible')
+            .innerText();
+          expect(displayedHex.trim()).toBe(expectedData);
+          await capture(popup, info, `approval-${decimals}-${label}`, {
+            decimals,
+            rawAmount: rawAmount.toString(),
+            expectedData,
+            displayedData,
+            displayedHex,
+            runtime: extensionEvidence(),
+            controllerResultsReplaced: false,
+            signingApproved: false,
+          });
+          await popup
+            .locator('#tabExample')
+            .getByText(en.send.details, { exact: true })
+            .click();
+        };
+
+        await expect(edit).toBeVisible();
+        await expect(warning).toBeVisible();
+        for (const amount of [maximumHuman, '0', '1']) {
+          const isMaximum = amount === maximumHuman;
+          await popupStep(
+            wallet,
+            popup,
+            `save ${
+              isMaximum ? 'maximum' : amount
+            } allowance with ${decimals} decimals`,
+            async () => {
+              await edit.click();
+              await dialog
+                .getByRole('radio', {
+                  name: en.send.customSpendingLimit,
+                  exact: true,
+                })
+                .check();
+              await input.fill(amount);
+              await dialog
+                .getByRole('button', { name: en.buttons.save, exact: true })
+                .click();
+              await expect(dialog).toBeHidden();
+              if (isMaximum) {
+                await expect(warning).toBeVisible();
+                await expect(warning).toHaveClass(/text-warning-error/);
+              } else {
+                await expect(warning).toHaveCount(0);
+                await expect(
+                  popup.getByText(`${amount} REVIEW`, { exact: true })
+                ).toBeVisible();
+              }
+              await verifyEncoding(
+                isMaximum
+                  ? maximum
+                  : BigInt(amount) * BigInt('1' + '0'.repeat(decimals)),
+                isMaximum ? 'custom-maximum' : `finite-${amount}`
+              );
+            }
+          );
+        }
+        await popupStep(
+          wallet,
+          popup,
+          `discard a maximum draft and restore proposed allowance with ${decimals} decimals`,
+          async () => {
+            await edit.click();
+            await expect(input).toHaveValue('1');
+            await input.fill(maximumHuman);
+            if (decimals === 18) await popup.keyboard.press('Escape');
+            else
+              await dialog
+                .getByRole('button', {
+                  name: en.buttons.cancel,
+                  exact: true,
+                })
+                .click();
+            await expect(dialog).toBeHidden();
+            await expect(warning).toHaveCount(0);
+            await expect(
+              popup.getByText('1 REVIEW', { exact: true })
+            ).toBeVisible();
+            await verifyEncoding(
+              BigInt('1' + '0'.repeat(decimals)),
+              'discarded-maximum'
+            );
+            await edit.click();
+            await expect(input).toHaveValue('1');
+            await dialog
+              .getByRole('radio', {
+                name: en.send.proposedApprovalLimit,
+                exact: true,
+              })
+              .check();
+            await dialog
+              .getByRole('button', { name: en.buttons.save, exact: true })
+              .click();
+            await expect(dialog).toBeHidden();
+            await expect(warning).toBeVisible();
+            await verifyEncoding(maximum, 'restored-proposed');
+          }
+        );
+        await popupStep(
+          wallet,
+          popup,
+          `cancel maximum approval without signing with ${decimals} decimals`,
+          async () => {
+            const rejected = await dismissRejectedApproval({
+              click: () =>
+                popup
+                  .getByRole('button', { name: en.buttons.cancel, exact: true })
+                  .click(),
+              isClosed: () => popup.isClosed(),
+              settle: () => settle(dapp, request),
+            });
+            expect(rejected.error?.code).toBe(4001);
+            expect(rejected.result).toBeUndefined();
+          }
+        );
+      },
+      decimals
+    );
+  });
+}
 
 test('approval metadata from a retired wallet context cannot supply allowance units', async ({}, info) => {
   test.setTimeout(120000);

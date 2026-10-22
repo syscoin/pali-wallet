@@ -8,7 +8,7 @@ import {
 } from '@testing-library/react';
 import React from 'react';
 
-import { BigNumber, Interface } from 'utils/ethersV6Compat';
+import { BigNumber, formatUnits, Interface } from 'utils/ethersV6Compat';
 import { saveNavigationState } from 'utils/navigationState';
 
 import { SendTransaction } from './SendTransaction';
@@ -115,7 +115,9 @@ jest.mock('components/Loading', () => ({
   PqSigningOverlay: () => null,
 }));
 jest.mock('./components', () => ({
-  ApprovalDetails: () => null,
+  ApprovalDetails: (props: any) => (
+    <pre data-testid="approval-details">{JSON.stringify(props)}</pre>
+  ),
   TransactionDetailsComponent: ({
     tx,
     customFee,
@@ -877,6 +879,115 @@ function approvedContextForTest() {
   };
 }
 
+it.each([0, 6, 18])(
+  'classifies the effective approval bytes as unlimited after edits with %i decimals',
+  async (decimals) => {
+    const maximum = ((BigInt(1) << BigInt(256)) - BigInt(1)).toString();
+    const spender = `0x${'33'.repeat(20)}`;
+    const abi = new Interface(['function approve(address,uint256)']);
+    mockQuery.tx.data = abi.encodeFunctionData('approve', [spender, maximum]);
+    mockQuery.decodedTx = {
+      method: 'approve',
+      inputs: [spender, maximum],
+      names: ['spender', 'amount'],
+      types: ['address', 'uint256'],
+    };
+    mockQuery.txMetadata = { isApproval: true, approvalType: 'erc20-amount' };
+    const invoke = mockEmitter.getMockImplementation()!;
+    mockEmitter.mockImplementation(async (path, args) =>
+      path[1] === 'getERC20TokenInfo'
+        ? { name: 'Synthetic', symbol: 'UNIT', decimals, balance: '10' }
+        : path[1] === 'isContractAddress'
+        ? true
+        : invoke(path, args)
+    );
+    await prepare();
+    const details = () =>
+      JSON.parse(screen.getByTestId('approval-details').textContent!);
+    await waitFor(() => expect(details().isUnlimited).toBe(true));
+
+    // The existing lifecycle harness supplies the modal's committed public
+    // value; the companion modal test exercises actual Form/Input and Save.
+    mockAllowanceValue = formatUnits('1', decimals);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'edit-synthetic-allowance' })
+    );
+    await waitFor(() => {
+      expect(details().isUnlimited).toBe(false);
+      const data = screen.getByTestId('transaction-hex').textContent!;
+      expect(abi.decodeFunctionData('approve', data)[1].toString()).toBe('1');
+    });
+
+    mockAllowanceValue = formatUnits(maximum, decimals);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'edit-synthetic-allowance' })
+    );
+    await waitFor(() => {
+      expect(details().isUnlimited).toBe(true);
+      const data = screen.getByTestId('transaction-hex').textContent!;
+      expect(abi.decodeFunctionData('approve', data)[0]).toBe(spender);
+      expect(abi.decodeFunctionData('approve', data)[1].toString()).toBe(
+        maximum
+      );
+    });
+    expect(
+      mockEmitter.mock.calls.some(
+        ([path]) => path[1] === 'sendAndSaveEthTransaction'
+      )
+    ).toBe(false);
+    expect(mockSmartSubmit).not.toHaveBeenCalled();
+  }
+);
+
+it('does not classify an ERC721 maximum token ID as an unlimited ERC20 allowance', async () => {
+  const maximum = ((BigInt(1) << BigInt(256)) - BigInt(1)).toString();
+  const approvedTo = `0x${'33'.repeat(20)}`;
+  const abi = new Interface(['function approve(address,uint256)']);
+  mockQuery.tx.data = abi.encodeFunctionData('approve', [approvedTo, maximum]);
+  mockQuery.decodedTx = {
+    method: 'approve',
+    inputs: [approvedTo, maximum],
+    names: ['to', 'tokenId'],
+    types: ['address', 'uint256'],
+  };
+  mockQuery.txMetadata = {
+    isApproval: true,
+    approvalType: 'erc721-single',
+    tokenStandard: 'ERC-721',
+  };
+  const invoke = mockEmitter.getMockImplementation()!;
+  mockEmitter.mockImplementation(async (path, args) =>
+    path[1] === 'getTokenDetails'
+      ? { name: 'Synthetic collection', symbol: 'NFT' }
+      : path[1] === 'isContractAddress'
+      ? true
+      : invoke(path, args)
+  );
+  await prepare();
+  await waitFor(() =>
+    expect(
+      JSON.parse(screen.getByTestId('approval-details').textContent!)
+    ).toMatchObject({ approvalType: 'erc721-single', isUnlimited: false })
+  );
+  expect(
+    abi
+      .decodeFunctionData(
+        'approve',
+        screen.getByTestId('transaction-hex').textContent!
+      )[1]
+      .toString()
+  ).toBe(maximum);
+  expect(
+    screen.queryByRole('button', { name: 'edit-synthetic-allowance' })
+  ).toBeNull();
+  expect(mockSmartSubmit).not.toHaveBeenCalled();
+  expect(
+    mockEmitter.mock.calls.some(
+      ([path]) => path[1] === 'sendAndSaveEthTransaction'
+    )
+  ).toBe(false);
+});
+
 it('binds EOA quotes to custom and restored proposed approvals and ignores superseded quotes', async () => {
   const spender = `0x${'33'.repeat(20)}`;
   const abi = new Interface(['function approve(address,uint256)']);
@@ -1003,7 +1114,7 @@ it('binds EOA quotes to custom and restored proposed approvals and ignores super
       ).disabled
     ).toBe(false)
   );
-  let resolveBalance!: (result: any) => void;
+  let resolveBalance!: (value: any) => void;
   mockEmitter.mockImplementationOnce(
     () =>
       new Promise((resolve) => {
