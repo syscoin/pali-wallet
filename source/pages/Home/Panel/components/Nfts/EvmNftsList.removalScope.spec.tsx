@@ -160,6 +160,13 @@ it.each(TOKEN_IDS)(
     expect(dialog).toHaveTextContent(
       `${en.settings.contractAddress}: ${CONTRACT}`
     );
+    expect(dialog.querySelector('p')?.textContent).toBe(
+      `${
+        en.settings.contractAddress
+      }: ${CONTRACT} ${en.nftDetails.removeTokenIdConfirm
+        .replace('{{name}}', SYMBOL)
+        .replace('{{tokenId}}', tokenId)}`
+    );
     const text = dialog.textContent || '';
     const selectedToken = new RegExp(
       `(?:#|Token ID\\s*:?\\s*)${tokenId}\\b`,
@@ -219,6 +226,14 @@ it('retains the healthy ERC721 whole-collection confirmation and Cancel boundary
   );
   expect(dialog).toHaveTextContent(
     `${en.settings.contractAddress}: ${CONTRACT}`
+  );
+  expect(dialog.querySelector('p')?.textContent).toBe(
+    `${
+      en.settings.contractAddress
+    }: ${CONTRACT} ${en.send.deleteCollectionConfirm.replace(
+      '{{name}}',
+      SYMBOL
+    )}`
   );
   await user.click(
     within(dialog).getByRole('button', { name: en.buttons.cancel })

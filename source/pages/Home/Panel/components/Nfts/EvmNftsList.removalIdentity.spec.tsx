@@ -266,6 +266,14 @@ it.each(['different', 'same'] as const)(
       expect(screen.getByRole('dialog')).toHaveTextContent(
         en.settings.contractAddress + ': ' + contract
       );
+      expect(screen.getByRole('dialog').querySelector('p')?.textContent).toBe(
+        `${
+          en.settings.contractAddress
+        }: ${contract} ${en.send.deleteCollectionConfirm.replace(
+          '{{name}}',
+          symbols[CONTRACTS.indexOf(contract)]
+        )}`
+      );
       expect(screen.getByRole('dialog')).not.toHaveTextContent(
         CONTRACTS.find((candidate) => candidate !== contract)!
       );

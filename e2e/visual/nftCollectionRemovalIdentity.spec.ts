@@ -780,6 +780,84 @@ for (const scenario of ['different-symbol', 'same-symbol'] as const) {
                   observations.dialogs[
                     observations.dialogs.length - 1
                   ].contractExposure = await contractExposure(dialog, contract);
+                  if (cancellation === 'keyboard') {
+                    const paragraph = dialog
+                      .locator('p')
+                      .filter({ hasText: contract });
+                    const body = paragraph.locator('..');
+                    const scrollable = await body.evaluate(
+                      (element) =>
+                        element.scrollHeight > element.clientHeight + 1
+                    );
+                    const originalCopy =
+                      en.send.deleteCollectionConfirm.replace(
+                        '{{name}}',
+                        symbols[CONTRACTS.indexOf(contract)]
+                      );
+                    const warning = originalCopy
+                      .slice(originalCopy.indexOf('?') + 1)
+                      .trim();
+                    await expect(paragraph).toContainText(originalCopy);
+                    if (scrollable) {
+                      await expect(body).toHaveAttribute('tabindex', '0');
+                      for (let count = 0; count < 12; count++) {
+                        if (
+                          await body.evaluate(
+                            (element) => element === document.activeElement
+                          )
+                        )
+                          break;
+                        await page.keyboard.press('Tab');
+                      }
+                      await expect(body).toBeFocused();
+                      await page.keyboard.press('End');
+                    }
+                    await expect
+                      .poll(
+                        async () =>
+                          (
+                            await contractExposure(dialog, warning)
+                          ).fullyVisible
+                      )
+                      .toBe(true);
+                    await expect(dialog.getByRole('heading')).toBeInViewport();
+                    await expect(
+                      dialog.getByRole('button', {
+                        name: en.buttons.cancel,
+                        exact: true,
+                      })
+                    ).toBeInViewport();
+                    await expect(
+                      dialog.getByRole('button', {
+                        name: en.buttons.delete,
+                        exact: true,
+                      })
+                    ).toBeInViewport();
+                    await expect(paragraph).toContainText(contract);
+                    observations.dialogs[
+                      observations.dialogs.length - 1
+                    ].warningRead = {
+                      scrollable,
+                      warning: await contractExposure(dialog, warning),
+                      paragraphText: await paragraph.innerText(),
+                    };
+                    await info.attach(
+                      `${scenario}-${viewport.width}-${contract}-keyboard-warning`,
+                      {
+                        contentType: 'image/png',
+                        body: await page.screenshot({ animations: 'disabled' }),
+                      }
+                    );
+                    if (scrollable) await page.keyboard.press('Home');
+                    await expect
+                      .poll(
+                        async () =>
+                          (
+                            await contractExposure(dialog, contract)
+                          ).fullyVisible
+                      )
+                      .toBe(true);
+                  }
                   const cancel = dialog.getByRole('button', {
                     name: en.buttons.cancel,
                     exact: true,
