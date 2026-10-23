@@ -282,12 +282,12 @@ it('retains pointer selection and exact SPT and native MAX', async () => {
   // The actual pointer action remains on the button even before wrapper repair.
   await user.click(optionButton('SPTONE SPT'));
   expect(trigger('SPTONE')).toBeInTheDocument();
-  await user.click(screen.getByRole('button', { name: 'MAX' }));
+  await user.click(screen.getByRole('button', { name: 'send.max' }));
   expect(amount().value).toBe('2.5');
   await open(user, 'SPTONE');
   await user.click(optionButton('SYS send.native'));
   expect(trigger()).toBeInTheDocument();
-  await user.click(screen.getByRole('button', { name: 'MAX' }));
+  await user.click(screen.getByRole('button', { name: 'send.max' }));
   expect(amount().value).toBe('1.25');
 });
 
@@ -309,7 +309,7 @@ it.each(['{Enter}', ' '])('selects a highlighted SPT using %s', async (key) => {
   expect(active).toHaveTextContent('SPTONE');
   await user.keyboard(key);
   await waitFor(() => expect(trigger('SPTONE')).toBeInTheDocument());
-  await user.click(screen.getByRole('button', { name: 'MAX' }));
+  await user.click(screen.getByRole('button', { name: 'send.max' }));
   expect(amount().value).toBe('2.5');
 });
 
@@ -324,7 +324,7 @@ it('moves once per asset with ArrowDown and ArrowUp before selecting the exact s
   expect(selected()).toHaveTextContent('SPTONE');
   await user.keyboard('{ArrowDown}{Enter}');
   await waitFor(() => expect(trigger('SPTTWO')).toBeInTheDocument());
-  await user.click(screen.getByRole('button', { name: 'MAX' }));
+  await user.click(screen.getByRole('button', { name: 'send.max' }));
   expect(amount().value).toBe('0.00000001');
 });
 
@@ -336,7 +336,7 @@ it('excludes the closed selector from accessibility and Tab order', async () => 
   await waitFor(() => expect(trigger()).toHaveFocus());
   expect(screen.queryByRole('menu')).toBeNull();
   await user.tab();
-  expect(screen.getByRole('button', { name: 'MAX' })).toHaveFocus();
+  expect(screen.getByRole('button', { name: 'send.max' })).toHaveFocus();
 });
 
 it('preserves the selected asset and typed amount when Escape dismisses another highlighted option', async () => {

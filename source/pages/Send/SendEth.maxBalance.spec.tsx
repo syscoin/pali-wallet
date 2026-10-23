@@ -211,7 +211,7 @@ const setRecipient = () =>
     target: { value: RECIPIENT },
   });
 const clickMax = () =>
-  fireEvent.click(screen.getByRole('button', { name: 'MAX' }));
+  fireEvent.click(screen.getByRole('button', { name: 'send.max' }));
 const submitPreview = async () => {
   fireEvent.click(next());
   await waitFor(() => expect(mockNavigateWithContext).toHaveBeenCalledTimes(1));
@@ -395,11 +395,11 @@ describe('native MAX classification after balance changes', () => {
       await flush();
       setRecipient();
       fireEvent.click(screen.getByRole('button', { name: /TOKEN.*ERC-20/ }));
-      expect(screen.getByRole('button', { name: 'MAX' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'send.max' })).toBeDisabled();
       await act(async () => {
         await jest.advanceTimersByTimeAsync(999);
       });
-      expect(screen.getByRole('button', { name: 'MAX' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'send.max' })).toBeDisabled();
       expect(
         mockEmitter.mock.calls.filter(
           ([path]) => path.at(-1) === 'getERC20TokenInfo'
@@ -418,14 +418,14 @@ describe('native MAX classification after balance changes', () => {
           ['0x4444444444444444444444444444444444444444', account().address],
         ],
       ]);
-      expect(screen.getByRole('button', { name: 'MAX' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'send.max' })).toBeDisabled();
       await act(async () => {
         resolveTokenInfo({
           balance: '1000000000000000000000001',
           decimals: 24,
         });
       });
-      expect(screen.getByRole('button', { name: 'MAX' })).toBeEnabled();
+      expect(screen.getByRole('button', { name: 'send.max' })).toBeEnabled();
       clickMax();
       expect(await submitPreview()).toMatchObject({
         amount: '1.000000000000000000000001',

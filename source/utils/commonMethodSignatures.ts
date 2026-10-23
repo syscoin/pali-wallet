@@ -171,7 +171,10 @@ export const formatMethodName = (
   if (methodName === 'Contract Interaction') {
     return t('transactions.contractInteraction');
   }
-  if (methodName === 'Contract Deploy') {
+  if (
+    methodName === 'Contract Deploy' ||
+    methodName === 'Contract Deployment'
+  ) {
     return t('transactions.contractDeploy');
   }
   if (methodName === 'Send') {

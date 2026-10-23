@@ -420,7 +420,7 @@ describe('NFT send lookup lifetime', () => {
     render(<SendEth />);
     fireEvent.click(screen.getByRole('button', { name: /COLLB.*ERC-1155/ }));
     await act(async () => first.resolve(ownedReply('11', 99)));
-    fireEvent.click(screen.getByRole('button', { name: 'MAX' }));
+    fireEvent.click(screen.getByRole('button', { name: 'send.max' }));
     expect(
       (screen.getByPlaceholderText('Amount (1-3)') as HTMLInputElement).value
     ).toBe('3');

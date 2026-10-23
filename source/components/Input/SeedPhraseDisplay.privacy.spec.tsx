@@ -28,11 +28,17 @@ it.each(displayModes)(
       <SeedPhraseDisplay displayMode={displayMode} seedPhrase={seed} />
     );
     expect(renderedPhrase(container, displayMode)).toBe(mask);
-    fireEvent.click(screen.getByRole('button', { name: 'Show' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'import.showSeedPhrase' })
+    );
     expect(renderedPhrase(container, displayMode)).toBe(seed);
-    fireEvent.click(screen.getByRole('button', { name: 'Hide' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'import.hideSeedPhrase' })
+    );
     expect(renderedPhrase(container, displayMode)).toBe(mask);
-    expect(screen.getByRole('button', { name: 'Show' })).toBeEnabled();
+    expect(
+      screen.getByRole('button', { name: 'import.showSeedPhrase' })
+    ).toBeEnabled();
   }
 );
 
@@ -47,7 +53,7 @@ it.each(displayModes)(
       />
     );
     expect(renderedPhrase(view.container, displayMode)).toBe(mask);
-    const show = screen.getByRole('button', { name: 'Show' });
+    const show = screen.getByRole('button', { name: 'import.showSeedPhrase' });
     expect(show).toBeDisabled();
     fireEvent.click(show);
     expect(renderedPhrase(view.container, displayMode)).toBe(mask);
@@ -63,17 +69,25 @@ it.each(displayModes)(
   (displayMode) => {
     const props = { displayMode, seedPhrase: seed, isEnabled: true };
     const view = render(<SeedPhraseDisplay {...props} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Show' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'import.showSeedPhrase' })
+    );
     expect(renderedPhrase(view.container, displayMode)).toBe(seed);
     view.rerender(<SeedPhraseDisplay {...props} isEnabled={false} />);
     expect(renderedPhrase(view.container, displayMode)).toBe(mask);
-    expect(screen.getByRole('button', { name: 'Show' })).toBeDisabled();
+    expect(
+      screen.getByRole('button', { name: 'import.showSeedPhrase' })
+    ).toBeDisabled();
     view.rerender(<SeedPhraseDisplay {...props} />);
     expect(renderedPhrase(view.container, displayMode)).toBe(mask);
-    fireEvent.click(screen.getByRole('button', { name: 'Show' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'import.showSeedPhrase' })
+    );
     view.rerender(<SeedPhraseDisplay {...props} seedPhrase={replacement} />);
     expect(renderedPhrase(view.container, displayMode)).toBe(mask);
-    fireEvent.click(screen.getByRole('button', { name: 'Show' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'import.showSeedPhrase' })
+    );
     expect(renderedPhrase(view.container, displayMode)).toBe(replacement);
     view.rerender(<SeedPhraseDisplay {...props} />);
     expect(renderedPhrase(view.container, displayMode)).toBe(mask);
@@ -86,14 +100,18 @@ it.each(displayModes)(
     const view = render(
       <SeedPhraseDisplay displayMode={displayMode} seedPhrase={seed} />
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Show' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'import.showSeedPhrase' })
+    );
     view.rerender(<SeedPhraseDisplay displayMode={displayMode} />);
     expect(screen.queryByRole('button')).toBeNull();
     expect(renderedPhrase(view.container, displayMode)).toBe(mask);
     view.rerender(
       <SeedPhraseDisplay displayMode={displayMode} seedPhrase={seed} />
     );
-    expect(screen.getByRole('button', { name: 'Show' })).toBeVisible();
+    expect(
+      screen.getByRole('button', { name: 'import.showSeedPhrase' })
+    ).toBeVisible();
     expect(renderedPhrase(view.container, displayMode)).toBe(mask);
     if (displayMode === 'textarea')
       expect(screen.getByRole('textbox')).toHaveClass('blur-sm');

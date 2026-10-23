@@ -100,7 +100,7 @@ export const EvmNftsList = ({
       nftAssets.map((nft) => ({
         id: nft.id, // Include the original asset id for navigation
         contractAddress: nft.contractAddress,
-        name: nft.name || 'NFT Collection',
+        name: nft.name || t('send.nftCollection'),
         symbol: nft.tokenSymbol || 'NFT', // Use tokenSymbol for display
         tokenStandard: nft.tokenStandard || 'ERC-721',
         chainId: nft.chainId,
@@ -109,7 +109,7 @@ export const EvmNftsList = ({
         logo: nft.logo, // Include logo if available
         ...getNftQuantity(nft),
       })),
-    [nftAssets]
+    [nftAssets, t]
   );
 
   const filteredCollections = useMemo(() => {
@@ -261,7 +261,9 @@ export const EvmNftsList = ({
               <IconButton
                 onClick={() => handleNftClick(collection)}
                 className="p-2 hover:bg-brand-royalbluemedium/20 rounded-full transition-colors duration-200"
-                aria-label={`View details for ${collection.symbol} collection`}
+                aria-label={t('nftDetails.viewNamedCollection', {
+                  symbol: collection.symbol,
+                })}
               >
                 <DetailsIcon
                   size={16}
@@ -280,7 +282,9 @@ export const EvmNftsList = ({
                   )
                 }
                 className="p-2 hover:bg-red-500/20 rounded-full transition-colors duration-200"
-                aria-label={`Delete ${collection.symbol} collection`}
+                aria-label={t('nftDetails.deleteNamedCollection', {
+                  symbol: collection.symbol,
+                })}
               >
                 <DeleteIcon
                   size={16}
@@ -310,7 +314,7 @@ export const EvmNftsList = ({
         description={t('send.deleteCollectionConfirm', {
           name: itemToDelete?.name,
         })}
-        buttonText="Delete"
+        buttonText={t('buttons.delete')}
         isButtonLoading={removal.pending}
       />
     </>

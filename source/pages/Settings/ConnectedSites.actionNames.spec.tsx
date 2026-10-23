@@ -49,10 +49,19 @@ jest.mock('react-redux', () => ({
 }));
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string) =>
-      key
-        .split('.')
-        .reduce((entry: any, part) => entry?.[part], mockMessages) || key,
+    t: (key: string, values?: Record<string, string | number>) => {
+      const resource =
+        key === 'settings.connectedSiteCount' && values?.count === 0
+          ? `${key}_zero`
+          : key;
+      const message =
+        resource
+          .split('.')
+          .reduce((entry: any, part) => entry?.[part], mockMessages) || key;
+      return message.replace(/{{(\w+)}}/g, (_match: string, name: string) =>
+        String(values?.[name] ?? `{{${name}}}`)
+      );
+    },
   }),
 }));
 jest.mock('hooks/index', () => ({
@@ -192,7 +201,5 @@ it('healthy empty state has no connection action and keeps the page Close contro
   expect(
     screen.getByRole('button', { name: (name) => name === en.buttons.close })
   ).toBeEnabled();
-  expect(
-    screen.getByText('No sites are connected to Pali Wallet')
-  ).toBeVisible();
+  expect(screen.getByText(en.settings.connectedSiteCount_zero)).toBeVisible();
 });

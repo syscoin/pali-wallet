@@ -40,9 +40,7 @@ const Unlock: React.FC<{
       );
       if (unlocked !== true) throw new Error(t('start.wrongPassword'));
       if (!(await refreshControllerStatus())) {
-        throw new Error(
-          'Wallet unlock could not be confirmed. Please try again.'
-        );
+        throw new Error(t('start.unlockConfirmationFailed'));
       }
 
       setErrorMessage(null);

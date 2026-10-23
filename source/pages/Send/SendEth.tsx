@@ -1564,7 +1564,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                       : 'cursor-pointer hover:bg-alpha-whiteAlpha200'
                   }`}
                 >
-                  MAX
+                  {t('send.max')}
                 </button>
                 <Form.Item
                   name="amount"
@@ -1768,7 +1768,9 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                       isErc1155Selection
                         ? verifiedTokenBalance !== null &&
                           BigNumber.from(verifiedTokenBalance).gt(1)
-                          ? `Amount (1-${verifiedTokenBalance})`
+                          ? t('send.nftAmountRange', {
+                              balance: verifiedTokenBalance,
+                            })
                           : t('send.amount')
                         : t('send.amount')
                     }

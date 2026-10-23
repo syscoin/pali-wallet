@@ -3,8 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { Button, DeviceWaitingBanner, ErrorModal } from 'components/index';
-import { PageActionFooter } from 'components/PageActionFooter';
 import { LoadingComponent } from 'components/Loading';
+import { PageActionFooter } from 'components/PageActionFooter';
 import { SyscoinTransactionDetailsFromPSBT } from 'components/TransactionDetails';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
@@ -264,7 +264,7 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
         title={t('transactions.signatureFailed')}
         description={t('transactions.sorryWeCould')}
         log={errorMsg || '...'}
-        buttonText="Ok"
+        buttonText={t('buttons.ok')}
       />
 
       {initialLoading ? (
@@ -284,7 +284,7 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
                 <img
                   className="absolute inset-0 w-full h-full p-4"
                   src="/assets/all_assets/signature.svg"
-                  alt="Signature"
+                  alt=""
                 />
               </div>
               <h1 className="text-xl font-semibold text-white mb-2">
@@ -295,7 +295,7 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
               </p>
               {host && (
                 <p className="text-xs text-gray-400 text-center mt-1">
-                  from <span className="font-medium">{host}</span>
+                  {t('send.from')} <span className="font-medium">{host}</span>
                 </p>
               )}
             </div>

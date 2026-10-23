@@ -119,7 +119,13 @@ export const AssetsHeader = ({
                 isSortByOpen
                   ? t('tooltip.closeSortOptions')
                   : currentSortBy
-                  ? `${t('assetsHeader.sortedBy')} ${currentSortBy}`
+                  ? `${t('assetsHeader.sortedBy')} ${
+                      currentSortBy === 'Balance'
+                        ? t('send.balance')
+                        : currentSortBy === 'Name'
+                        ? t('assetsHeader.name')
+                        : currentSortBy
+                    }`
                   : t('tooltip.sortAssets')
               }
             >

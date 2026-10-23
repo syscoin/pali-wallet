@@ -7,7 +7,7 @@ import { useUtils } from 'hooks/useUtils';
 
 const GetStarted: React.FC = () => {
   const { navigate } = useUtils();
-  const { i18n } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { language } = i18n;
   const [isLoading, setIsLoading] = useState(false);
 
@@ -25,7 +25,7 @@ const GetStarted: React.FC = () => {
         className="bg-brand-deepPink100 w-[17.5rem] mt-3 h-10 text-white text-base font-base font-medium rounded-2xl"
         loading={isLoading}
       >
-        Get started
+        {t('start.getStarted')}
       </Button>
       <Link
         className={`mt-9 hover:text-brand-graylight text-[#A2A5AB] ${
@@ -34,7 +34,7 @@ const GetStarted: React.FC = () => {
         to="/import"
         id="import-wallet-link"
       >
-        Import using wallet seed phrase
+        {t('start.importWalletSeedPhrase')}
       </Link>
     </>
   );

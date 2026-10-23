@@ -30,6 +30,7 @@ import {
 import { navigateBack } from 'utils/navigationState';
 import { retryableFetch } from 'utils/retryableFetch';
 import { buildExplorerUrl } from 'utils/strings';
+import { translateTransactionLabel } from 'utils/transactionDisplay';
 
 import { AssetMarketLinks } from './AssetMarketLinks';
 
@@ -67,6 +68,8 @@ export const SyscoinAssetDetails = ({
     (sysAsset: any) =>
       sysAsset.assetGuid === id && sysAsset.chainId === activeNetwork.chainId
   );
+  const previewMissingSymbol =
+    !asset && navigationState?.isImportPreview && !navigationState.symbol;
 
   // If asset not found in store and this is an import preview, create a temporary asset object
   if (!asset && navigationState?.isImportPreview) {
@@ -126,6 +129,9 @@ export const SyscoinAssetDetails = ({
     const symbol = formatted.find((item) => item.key === 'Symbol');
     return { formattedAsset: formatted, assetSymbol: symbol };
   }, [asset]);
+  const displayedAssetSymbol = previewMissingSymbol
+    ? t('components.unknown')
+    : assetSymbol?.value;
 
   // Trigger fresh data fetch for newly imported assets
   useEffect(() => {
@@ -223,7 +229,7 @@ export const SyscoinAssetDetails = ({
   if (!asset) {
     return (
       <div className="flex items-center justify-center py-8">
-        <p className="text-brand-gray200">Asset not found</p>
+        <p className="text-brand-gray200">{t('tokens.assetNotFound')}</p>
       </div>
     );
   }
@@ -466,10 +472,10 @@ export const SyscoinAssetDetails = ({
 
           <div className="flex flex-col items-center justify-center gap-y-0.5">
             <span className="text-xs font-light text-brand-gray200">
-              {assetSymbol?.value}
+              {displayedAssetSymbol}
             </span>
             <span className="font-normal text-base text-brand-white">
-              {assetSymbol?.value} ({activeNetwork.label})
+              {displayedAssetSymbol} ({activeNetwork.label})
             </span>
           </div>
         </div>
@@ -495,7 +501,9 @@ export const SyscoinAssetDetails = ({
                   index + 1 === totalArray.length && 'border-none'
                 } `}
               >
-                <p className="font-normal text-xs">{item.key}</p>
+                <p className="font-normal text-xs">
+                  {translateTransactionLabel(item.key, t)}
+                </p>
                 {item.originalKey === 'contract' ? (
                   <div className="flex items-center gap-x-2">
                     <span className="text-brand-white text-xs">
@@ -526,7 +534,7 @@ export const SyscoinAssetDetails = ({
                     </span>
 
                     <span className="text-brand-royalbluemedium">
-                      {assetSymbol.value}
+                      {displayedAssetSymbol}
                     </span>
                   </p>
                 )}
@@ -548,7 +556,7 @@ export const SyscoinAssetDetails = ({
             >
               <ExternalLinkIcon size={16} />
               <span className="font-normal font-poppins underline text-sm">
-                View on Syscoin Explorer
+                {t('home.viewOnNamedExplorer', { explorer: 'Syscoin' })}
               </span>
             </a>
           </div>
@@ -566,11 +574,12 @@ export const SyscoinAssetDetails = ({
               >
                 <ExternalLinkIcon size={16} />
                 <span className="font-normal font-poppins underline text-sm">
-                  View on{' '}
-                  {nevmNetwork === SYSCOIN_MAINNET_NETWORK
-                    ? 'NEVM'
-                    : 'Tanenbaum'}{' '}
-                  Explorer
+                  {t('home.viewOnNamedExplorer', {
+                    explorer:
+                      nevmNetwork === SYSCOIN_MAINNET_NETWORK
+                        ? 'NEVM'
+                        : 'Tanenbaum',
+                  })}
                 </span>
               </a>
             </div>

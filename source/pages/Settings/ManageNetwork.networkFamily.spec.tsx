@@ -138,7 +138,9 @@ const registerBothFamilies = async () => {
   expect(store.getState().vaultGlobal.networks.syscoin[2]).toBeUndefined();
   expect(store.getState().vaultGlobal.networks.ethereum[2]).toBeUndefined();
   renderPage(<CustomRPC />);
-  await user.click(screen.getByRole('switch', { name: 'Syscoin Network' }));
+  await user.click(
+    screen.getByRole('switch', { name: 'settings.networkFamilyLabel' })
+  );
   await user.type(screen.getByRole('combobox'), 'Multiplex Litecoin');
   await user.type(
     screen.getByPlaceholderText('settings.blockbookUrlPlaceholder'),
@@ -164,7 +166,7 @@ const registerBothFamilies = async () => {
 
   renderPage(<CustomRPC />);
   expect(
-    screen.getByRole('switch', { name: 'Syscoin Network' })
+    screen.getByRole('switch', { name: 'settings.networkFamilyLabel' })
   ).toHaveAttribute('aria-checked', 'false');
   await user.type(screen.getByRole('combobox'), 'Multiplex EVM');
   await user.type(

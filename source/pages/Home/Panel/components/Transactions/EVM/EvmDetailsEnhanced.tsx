@@ -44,6 +44,7 @@ import {
   paliEntryPointInterface,
 } from 'utils/smartAccount/contracts';
 import { isRoutescanApiUrl } from 'utils/tokenDiscovery';
+import { translateTransactionType } from 'utils/transactionDisplay';
 import {
   getTransactionDisplayInfo,
   getSmartAccountDisplayTransaction,
@@ -796,9 +797,8 @@ export const EvmTransactionDetailsEnhanced = ({
           : 'N/A';
       } else if (key === 'method' && finalValue) {
         // Apply translation for method names
-        formattedValue.value = formatMethodName(
-          String(finalValue),
-          currency.toUpperCase(),
+        formattedValue.value = translateTransactionType(
+          formatMethodName(String(finalValue), currency.toUpperCase(), t),
           t
         );
       }

@@ -1,5 +1,6 @@
 /* eslint-disable react/prop-types */
 import React, { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import PaliLogo from 'assets/all_assets/favicon-32.png';
 import { NftFallbackSvg } from 'components/Icon/Icon';
@@ -71,6 +72,7 @@ export const TokenIcon: React.FC<ITokenIconProps> = React.memo(
     size = 24,
     symbol,
   }) => {
+    const { t } = useTranslation();
     const knownLogo = getKnownTokenLogo(symbol, contractAddress, assetGuid);
     const safeProvidedLogo =
       assetGuid !== undefined ? sanitizeUtxoTokenLogo(logo, assetGuid) : logo;
@@ -306,7 +308,7 @@ export const TokenIcon: React.FC<ITokenIconProps> = React.memo(
       return (
         <img
           src={PaliLogo}
-          alt="Token"
+          alt={t('tokens.genericToken')}
           className={`${fallbackClassName} ${className}`}
           style={iconStyle}
           loading="lazy"
@@ -320,7 +322,7 @@ export const TokenIcon: React.FC<ITokenIconProps> = React.memo(
       <img
         key={cacheKey}
         src={imageToRender}
-        alt={symbol || 'Token'}
+        alt={symbol || t('tokens.genericToken')}
         className={`${fallbackClassName} ${className}`}
         style={iconStyle}
         loading="lazy"

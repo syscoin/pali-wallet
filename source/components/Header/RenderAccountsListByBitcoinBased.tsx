@@ -227,6 +227,11 @@ const RenderAccountsListByBitcoinBased =
       ) => {
         const badgeInfo = BADGE_INFO_MAP[accountType];
         const isSmartAccount = accountType === KeyringAccountType.SmartAccount;
+        const badgeLabel = isSmartAccount
+          ? t('receive.smartAccount')
+          : accountType === KeyringAccountType.Imported
+          ? t('components.imported')
+          : badgeInfo.label;
         const key = `${accountType}-${account.id}`;
         return (
           <li
@@ -244,7 +249,7 @@ const RenderAccountsListByBitcoinBased =
                 <button
                   type="button"
                   aria-label={`${account.label} (${account.address})${
-                    isSmartAccount ? `, ${badgeInfo.label}` : ''
+                    isSmartAccount ? `, ${badgeLabel}` : ''
                   }`}
                   aria-current={
                     isAccountActive(account.id, accountType)
@@ -282,7 +287,7 @@ const RenderAccountsListByBitcoinBased =
                     />
                   ) : (
                     <span
-                      title={isSmartAccount ? badgeInfo.label : undefined}
+                      title={isSmartAccount ? badgeLabel : undefined}
                       className={`inline-flex h-[20px] flex-shrink-0 items-center gap-1 ${
                         isSmartAccount ? 'px-1' : 'px-2'
                       } text-xs leading-none text-white ${
@@ -297,7 +302,9 @@ const RenderAccountsListByBitcoinBased =
                         />
                       )}
                       <span className="leading-none">
-                        {isSmartAccount ? 'Smart' : badgeInfo.label}
+                        {isSmartAccount
+                          ? t('smartAccountHub.badge')
+                          : badgeLabel}
                       </span>
                     </span>
                   )}

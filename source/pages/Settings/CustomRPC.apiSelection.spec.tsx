@@ -358,7 +358,9 @@ const save = async (
 const discoverUtxoAndReturn = async (
   user: ReturnType<typeof userEvent.setup>
 ) => {
-  await user.click(screen.getByRole('switch', { name: 'Syscoin Network' }));
+  await user.click(
+    screen.getByRole('switch', { name: 'settings.networkFamilyLabel' })
+  );
   expect(
     screen.queryByPlaceholderText('https://api.example.com/api')
   ).toBeNull();
@@ -384,7 +386,9 @@ const discoverUtxoAndReturn = async (
     method: 'blockbook-info',
     url: `${BLOCKBOOK}/api/v2`,
   });
-  await user.click(screen.getByRole('switch', { name: 'Syscoin Network' }));
+  await user.click(
+    screen.getByRole('switch', { name: 'settings.networkFamilyLabel' })
+  );
 };
 
 it('does not inherit Alpha API when the ordinary catalogue selection changes to Beta', async () => {

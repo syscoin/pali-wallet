@@ -1,4 +1,5 @@
 import { checkIfPopupIsOpen } from './checkPopupOpen';
+import { getNotificationTranslator } from './notificationLocale';
 
 export interface INotificationOptions {
   buttons?: Array<{
@@ -115,42 +116,64 @@ export const clearAllNotifications = async (): Promise<void> =>
 export const showTransactionNotification = async (
   notification: ITransactionNotification
 ): Promise<string | null> => {
+  const notify = await getNotificationTranslator();
   let title: string;
   let message: string;
   let iconUrl: string;
 
   // Add transaction type to title if available
-  const titlePrefix = notification.transactionType
-    ? `${notification.transactionType}: `
-    : '';
+  const typeKeys: Record<string, string> = {
+    'SPT Transfer': 'notifications.sptTransfer',
+    'Bridge to NEVM': 'notifications.bridgeToNevm',
+    'Mint from NEVM': 'notifications.mintFromNevm',
+    'NEVM Data': 'notifications.nevmData',
+    Transaction: 'notifications.transaction',
+  };
 
   switch (notification.type) {
     case 'pending':
-      title = titlePrefix + 'Transaction Submitted';
-      message = `Transaction pending on ${notification.network}`;
+      title = notify('notifications.submitted');
+      message = notify('notifications.pendingOn', {
+        network: notification.network,
+      });
       iconUrl = chrome.runtime.getURL('assets/all_assets/favicon-32.png');
       break;
 
     case 'confirmed':
-      title = titlePrefix + 'Transaction Confirmed';
+      title = notify('notifications.confirmed');
       const value =
         notification.value && notification.tokenSymbol
           ? `${notification.value} ${notification.tokenSymbol}`
           : '';
       message = value
-        ? `Transaction confirmed on ${notification.network}: ${value}`
-        : 'Transaction Confirmed';
+        ? notify('notifications.confirmedOn', {
+            network: notification.network,
+            value,
+          })
+        : notify('notifications.confirmed');
       iconUrl = chrome.runtime.getURL('assets/all_assets/favicon-32.png');
       break;
 
     case 'failed':
-      title = titlePrefix + 'Transaction Failed';
-      message = `Transaction failed on ${notification.network}`;
+      title = notify('notifications.failed');
+      message = notify('notifications.failedOn', {
+        network: notification.network,
+      });
       iconUrl = chrome.runtime.getURL('assets/all_assets/favicon-32.png');
       break;
 
     default:
       return null;
+  }
+
+  if (notification.transactionType) {
+    const type = Object.prototype.hasOwnProperty.call(
+      typeKeys,
+      notification.transactionType
+    )
+      ? notify(typeKeys[notification.transactionType])
+      : notification.transactionType;
+    title = notify('notifications.typedTitle', { type, title });
   }
 
   // Shorten addresses for display
@@ -159,10 +182,14 @@ export const showTransactionNotification = async (
 
   if (notification.from || notification.to) {
     const fromText = notification.from
-      ? `From: ${shortenAddress(notification.from)}`
+      ? notify('notifications.fromAddress', {
+          address: shortenAddress(notification.from),
+        })
       : '';
     const toText = notification.to
-      ? `To: ${shortenAddress(notification.to)}`
+      ? notify('notifications.toAddress', {
+          address: shortenAddress(notification.to),
+        })
       : '';
     message += `\n${fromText}${fromText && toText ? '\n' : ''}${toText}`;
   }
@@ -184,25 +211,30 @@ export const showTransactionNotification = async (
 // Network change notification
 export const showNetworkChangeNotification = async (
   toNetwork: string
-): Promise<string | null> =>
-  createNotification({
-    title: 'Network Changed',
-    message: `Switched to ${toNetwork}`,
+): Promise<string | null> => {
+  const notify = await getNotificationTranslator();
+  return createNotification({
+    title: notify('notifications.networkChanged'),
+    message: notify('notifications.switchedTo', { network: toNetwork }),
     type: 'basic',
     priority: 0,
   });
+};
 
 // Account change notification
 export const showAccountChangeNotification = async (
   newAccount: string,
   accountLabel?: string
 ): Promise<string | null> => {
+  const notify = await getNotificationTranslator();
   const shortenAddress = (addr: string) =>
     `${addr.slice(0, 6)}...${addr.slice(-4)}`;
 
   return createNotification({
-    title: 'Account Changed',
-    message: `Active account: ${accountLabel || shortenAddress(newAccount)}`,
+    title: notify('notifications.accountChanged'),
+    message: notify('notifications.activeAccount', {
+      account: accountLabel || shortenAddress(newAccount),
+    }),
     type: 'basic',
     priority: 0,
   });
@@ -226,13 +258,18 @@ export const showDappConnectionNotification = async (
   dappUrl: string,
   approved: boolean
 ): Promise<string | null> => {
+  const notify = await getNotificationTranslator();
   const hostname = getHostnameFromUrl(dappUrl);
 
   return createNotification({
-    title: approved ? 'Site Connected' : 'Connection Rejected',
+    title: notify(
+      approved
+        ? 'notifications.siteConnected'
+        : 'notifications.connectionRejected'
+    ),
     message: approved
-      ? `${hostname} is now connected to Pali Wallet`
-      : `Connection request from ${hostname} was rejected`,
+      ? notify('notifications.connectedSite', { hostname })
+      : notify('notifications.rejectedSite', { hostname }),
     type: 'basic',
     priority: 1,
   });
@@ -242,21 +279,23 @@ export const showDappConnectionNotification = async (
 export const showErrorNotification = async (
   error: string,
   context?: string
-): Promise<string | null> =>
-  createNotification({
-    title: 'Error',
+): Promise<string | null> => {
+  const notify = await getNotificationTranslator();
+  return createNotification({
+    title: notify('notifications.error'),
     message: context
-      ? `An error occurred: ${error}: ${context}`
-      : `An error occurred: ${error}`,
+      ? notify('notifications.errorWithContext', { error, context })
+      : notify('notifications.errorDetails', { error }),
     type: 'basic',
     priority: 2,
     requireInteraction: true,
     buttons: [
       {
-        title: 'Click to view details',
+        title: notify('notifications.viewDetails'),
       },
     ],
   });
+};
 
 // Set up notification click handler (call this in background script)
 export const setupNotificationListeners = (): void => {

@@ -270,7 +270,7 @@ it('shows a settled failure and explicitly retries once without losing the resto
   await tick();
   expect(screen.getByText('send.tokenVerificationFailed')).toBeVisible();
   expect(amount()).toBeDisabled();
-  expect(screen.getByRole('button', { name: 'MAX' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'send.max' })).toBeDisabled();
   expect(amount()).toHaveValue(1.234567);
   expect(screen.getByPlaceholderText('send.receiver')).toHaveValue(recipient);
   await act(async () => fireEvent.click(next()));
@@ -320,7 +320,7 @@ it.each([
     await tick();
     expect(screen.getByText('send.tokenVerificationFailed')).toBeVisible();
     expect(amount()).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'MAX' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'send.max' })).toBeDisabled();
     expect(mockNavigate).not.toHaveBeenCalled();
     fireEvent.click(retry());
     await tick();

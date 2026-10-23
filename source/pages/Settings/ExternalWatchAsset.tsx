@@ -98,7 +98,7 @@ const ExternalWatchAsset = () => {
   useEffect(() => {
     // Only validate if we have data.asset
     if (!data.asset) {
-      setFormatError('Asset parameter is required');
+      setFormatError('settings.assetParameterRequired');
       setReceivedAsset(null);
       return;
     }
@@ -109,7 +109,7 @@ const ExternalWatchAsset = () => {
       setFormatError(null);
       setAssetError(null);
     } catch (error) {
-      setFormatError(error.message);
+      setFormatError('settings.invalidAssetRequestFormat');
       setReceivedAsset(null);
       setAssetError(null);
     }
@@ -177,7 +177,7 @@ const ExternalWatchAsset = () => {
       } catch (error) {
         if (!current || !isCurrent()) return;
         // If asset info fetching fails, show asset error instead of loading forever
-        setAssetError(error.message || 'Failed to fetch asset information');
+        setAssetError(error.message || 'settings.assetInfoLoadFailed');
         setAssetInfo(null);
         setFormatError(null);
       }
@@ -201,10 +201,10 @@ const ExternalWatchAsset = () => {
               </div>
 
               <h2 className="text-lg font-semibold text-brand-white mb-2">
-                Invalid Request Format
+                {t('settings.invalidRequestFormat')}
               </h2>
 
-              <p className="text-sm text-gray-400 mb-6">{formatError}</p>
+              <p className="text-sm text-gray-400 mb-6">{t(formatError)}</p>
 
               <div className="text-xs text-gray-500 mb-6 p-4 bg-gray-800/50 rounded-lg">
                 <p className="mb-2">{t('components.expectedFormat')}</p>
@@ -239,12 +239,14 @@ const ExternalWatchAsset = () => {
               </div>
 
               <h2 className="text-lg font-semibold text-brand-white mb-2">
-                Asset Not Found
+                {t('settings.assetNotFound')}
               </h2>
 
               <p className="text-sm text-gray-400 mb-6">
                 {contextChanged.current
                   ? t('transactions.psbtSigningContextChanged')
+                  : assetError === 'settings.assetInfoLoadFailed'
+                  ? t('settings.assetInfoLoadFailed')
                   : assetError}
               </p>
 
@@ -253,12 +255,8 @@ const ExternalWatchAsset = () => {
                 <ul className="text-left mt-2 space-y-1">
                   <li>{t('components.contractAddressCorrect')}</li>
                   <li>{t('components.assetExistsOnNetwork')}</li>
-                  <li>
-                    • The contract is a valid ERC-20, ERC-721, or ERC-1155 token
-                  </li>
-                  <li>
-                    • The asset type matches the contract (ERC20/ERC721/ERC1155)
-                  </li>
+                  <li>{t('settings.validTokenContract')}</li>
+                  <li>{t('settings.matchingTokenType')}</li>
                 </ul>
               </div>
             </div>
@@ -379,7 +377,7 @@ const ExternalWatchAsset = () => {
                   {/* Market Data Display */}
                   {assetInfo.market_data?.current_price?.[userCurrency] && (
                     <p className={DETAIL_FIELD_CLASS}>
-                      Current Price
+                      {t('tokens.currentPrice')}
                       <span className={DETAIL_VALUE_CLASS}>
                         {currencySymbol || ''}
                         {formatCurrency(
@@ -415,7 +413,7 @@ const ExternalWatchAsset = () => {
 
                   {assetInfo.market_data?.market_cap?.[userCurrency] && (
                     <p className={DETAIL_FIELD_CLASS}>
-                      Market Cap
+                      {t('tokens.marketCap')}
                       <span className={DETAIL_VALUE_CLASS}>
                         {currencySymbol || ''}
                         {formatCurrency(

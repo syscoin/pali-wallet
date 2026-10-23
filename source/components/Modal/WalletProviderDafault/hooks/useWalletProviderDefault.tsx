@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import {
@@ -10,6 +11,7 @@ import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 
 export const useWalletProviderDefault = () => {
+  const { t } = useTranslation();
   const { controllerEmitter } = useController();
   const { hasEthProperty } = useSelector(
     (state: RootState) => state.vaultGlobal
@@ -48,21 +50,21 @@ export const useWalletProviderDefault = () => {
     () =>
       isEnabled ? (
         <span className="text-white text-sm">
-          <p>Pali was successfully set as the default wallet!</p>
+          <p>{t('providerDefault.defaultEnabled')}</p>
         </span>
       ) : (
         <span className="text-white text-sm ">
-          <p>Metamask is in use and Pali is banned. </p>
+          <p>{t('providerDefault.otherWalletInUse')}</p>
           <button
             type="button"
             className="underline font-bold cursor-pointer focus-visible:ring-2 focus-visible:ring-white"
             onClick={turnPaliAsDefault}
           >
-            Set Pali as default wallet!
+            {t('providerDefault.setPaliDefault')}
           </button>
         </span>
       ),
-    [isEnabled]
+    [isEnabled, t]
   );
 
   useEffect(() => {

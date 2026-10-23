@@ -38,7 +38,14 @@ jest.mock('react-redux', () => ({
   useSelector: (select: any) => select(mockState),
 }));
 jest.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string) => key, i18n: { language: 'en' } }),
+  useTranslation: () => ({
+    t: (copyKey: string, copyValues?: any) =>
+      jest
+        .requireActual('../../../../../../../tests/helpers/localizedUiCopy')
+        .localizedUiCopy(copyKey, copyValues) ??
+      (((key: string) => key) as any)(copyKey, copyValues),
+    i18n: { language: 'en' },
+  }),
 }));
 jest.mock('hooks/useController', () => ({
   useController: () => ({ controllerEmitter: mockEmitter }),
@@ -155,9 +162,9 @@ const mountHydratedDetails = async (transaction: ISysTransaction) => {
   return view;
 };
 const currentHashCopyButton = () => {
-  const button = within(screen.getByText('Txid').parentElement!).getByRole(
-    'button'
-  );
+  const button = within(
+    screen.getByText('Transaction ID').parentElement!
+  ).getByRole('button');
   expect(button.isConnected).toBe(true);
   return button;
 };

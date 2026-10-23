@@ -10,7 +10,10 @@ const ACCOUNT = `0x${'11'.repeat(20)}`;
 const RECIPIENT = `0x${'22'.repeat(20)}`;
 const CONTRACT = `0x${'33'.repeat(20)}`;
 const mockAlert = { success: jest.fn(), warning: jest.fn(), error: jest.fn() };
-const mockTranslate = (key: string) => key;
+const mockTranslate = (copyKey: string, copyValues?: any) =>
+  jest
+    .requireActual('../../../../../../../tests/helpers/localizedUiCopy')
+    .localizedUiCopy(copyKey, copyValues) ?? copyKey;
 const mockNavigate = jest.fn();
 const mockFiat = () => '0 USD';
 const mockIcons = () => null;

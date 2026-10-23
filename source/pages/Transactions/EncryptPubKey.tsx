@@ -78,7 +78,9 @@ const EncryptPubKey: React.FC<ISign> = () => {
         typeof data[0] !== 'string' ||
         data[0].toLowerCase() !== address.toLowerCase()
       )
-        throw new Error('Requested account is not active');
+        throw Object.assign(new Error('Requested account is not active'), {
+          code: 'PALI_REQUESTED_ACCOUNT_NOT_ACTIVE',
+        });
       const response = await controllerEmitter(
         ['wallet', 'getEncryptionPublicKeyForAccount'],
         [data[0]]
@@ -91,7 +93,11 @@ const EncryptPubKey: React.FC<ISign> = () => {
       window.close();
     } catch (error: any) {
       if (!copyContext.current.active) return;
-      setErrorMsg(error.message || 'Failed to get encryption key');
+      setErrorMsg(
+        error.code === 'PALI_REQUESTED_ACCOUNT_NOT_ACTIVE'
+          ? t('transactions.requestedAccountNotActive')
+          : error.message || t('transactions.encryptionKeyFailed')
+      );
       setLoading(false);
     }
   };

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { LoadingSvg } from 'components/Icon/Icon';
 
@@ -30,6 +31,7 @@ export const PqOperationStatus = ({
   title,
   warningSeconds = expectedSeconds,
 }: PqOperationStatusProps) => {
+  const { t } = useTranslation();
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
   useEffect(() => {
@@ -78,10 +80,14 @@ export const PqOperationStatus = ({
         />
       </div>
       <p className="text-xs text-brand-graylight">
-        Elapsed {formatDuration(elapsedSeconds)}.{' '}
+        {t('send.pqSigningElapsed', {
+          duration: formatDuration(elapsedSeconds),
+        })}{' '}
         {isPastExpected
-          ? 'Still working locally; this can take longer on slower machines.'
-          : `Expected around ${formatDuration(expectedSeconds)}.`}
+          ? t('send.pqSigningWorking')
+          : t('send.pqSigningExpected', {
+              duration: formatDuration(expectedSeconds),
+            })}
         {progressLabel ? ` ${progressLabel}` : ''}
       </p>
     </div>

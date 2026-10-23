@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 
 import {
   EthChainDarkBlueSvg,
@@ -35,14 +36,15 @@ export const useNetworkInfo = ({
   isBitcoinBased?: boolean;
   selectedNetwork?: string;
 }): INetworkInfo => {
+  const { t } = useTranslation();
   // For switching context (what you need to switch TO)
   const utxoSwitchingInfo: INetworkInfo = {
     connectedNetwork: INetworkType.Syscoin,
     networkThatNeedsChanging: 'EVM',
     connectedColor: PINK_COLOR,
     networkNeedsChangingColor: BLUE_COLOR,
-    networkDescription: 'Ethereum Virtual Machine',
-    selectedNetworkText: 'Select an EVM network:',
+    networkDescription: t('switchNetworkPage.evmDescription'),
+    selectedNetworkText: t('switchNetworkPage.selectEvmNetwork'),
     leftLogo: EthChainDarkBlueSvg,
     rightLogo: RolluxChainWhiteSvg,
   };
@@ -52,8 +54,8 @@ export const useNetworkInfo = ({
     networkThatNeedsChanging: 'UTXO',
     connectedColor: BLUE_COLOR,
     networkNeedsChangingColor: PINK_COLOR,
-    networkDescription: 'Unspent Transaction Output',
-    selectedNetworkText: 'Select a UTXO network:',
+    networkDescription: t('switchNetworkPage.utxoDescription'),
+    selectedNetworkText: t('switchNetworkPage.selectUtxoNetwork'),
     leftLogo: PinkBitcoinSvg,
     rightLogo: SysChainWhiteSvg,
   };
@@ -64,8 +66,8 @@ export const useNetworkInfo = ({
     networkThatNeedsChanging: 'UTXO',
     connectedColor: PINK_COLOR,
     networkNeedsChangingColor: PINK_COLOR,
-    networkDescription: 'Unspent Transaction Output',
-    selectedNetworkText: 'Select a UTXO network:',
+    networkDescription: t('switchNetworkPage.utxoDescription'),
+    selectedNetworkText: t('switchNetworkPage.selectUtxoNetwork'),
     leftLogo: PinkBitcoinSvg,
     rightLogo: SysChainWhiteSvg,
   };
@@ -75,8 +77,8 @@ export const useNetworkInfo = ({
     networkThatNeedsChanging: 'EVM',
     connectedColor: BLUE_COLOR,
     networkNeedsChangingColor: BLUE_COLOR,
-    networkDescription: 'Ethereum Virtual Machine',
-    selectedNetworkText: 'Select an EVM network:',
+    networkDescription: t('switchNetworkPage.evmDescription'),
+    selectedNetworkText: t('switchNetworkPage.selectEvmNetwork'),
     leftLogo: EthChainDarkBlueSvg,
     rightLogo: RolluxChainWhiteSvg,
   };

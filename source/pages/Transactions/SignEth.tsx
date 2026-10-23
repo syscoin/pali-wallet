@@ -1205,7 +1205,7 @@ const EthSign: React.FC<ISign> = () => {
         title={t('transactions.signatureFailed')}
         description={t('transactions.sorryWeCould')}
         log={errorMsg || typedOrderRequest?.error || '...'}
-        buttonText="Ok"
+        buttonText={t('buttons.ok')}
       />
 
       <WarningModal
@@ -1249,7 +1249,7 @@ const EthSign: React.FC<ISign> = () => {
         })()}
         warningMessage={`${
           blacklistWarning.reason || t('blacklist.blacklistDefaultWarning')
-        }\n\nAddress: ${blacklistWarning.address}\n\n${t(
+        }\n\n${t('send.address')}${blacklistWarning.address}\n\n${t(
           'blacklist.blacklistWarningDiscouraged'
         )}`}
         buttonText={t('settings.gotIt')}
@@ -1269,7 +1269,7 @@ const EthSign: React.FC<ISign> = () => {
                 <img
                   className="absolute inset-0 w-full h-full p-4"
                   src="/assets/all_assets/signature.svg"
-                  alt="Signature"
+                  alt=""
                 />
               </div>
               <h1 className="text-xl font-semibold text-white mb-2">
@@ -1279,7 +1279,7 @@ const EthSign: React.FC<ISign> = () => {
                 {getMessageDescription()}
               </p>
               <p className="w-full min-w-0 text-center text-xs text-gray-400 [overflow-wrap:anywhere]">
-                from <span className="font-medium">{host}</span>
+                {t('send.from')} <span className="font-medium">{host}</span>
               </p>
               {activeAccount.isSmartAccount && (
                 <div className="mt-4 rounded-lg border border-brand-blue500 bg-brand-blue500 bg-opacity-10 px-4 py-3 text-center">
@@ -1380,35 +1380,39 @@ const EthSign: React.FC<ISign> = () => {
                           {(() => {
                             // Handle special field descriptions
                             if (item.field === 'spender')
-                              return 'Spender address (can access your tokens)';
+                              return t('blacklist.spenderDescription');
                             if (item.field === 'maker')
-                              return 'Maker address (order creator)';
+                              return t('blacklist.makerDescription');
                             if (item.field === 'taker')
-                              return 'Taker address (who can fulfill this order)';
+                              return t('blacklist.takerDescription');
                             if (item.field === 'offerer')
-                              return 'Offerer address (Seaport order creator)';
+                              return t('blacklist.offererDescription');
                             if (item.field === 'zone')
-                              return 'Zone address (additional validation contract)';
+                              return t('blacklist.zoneDescription');
                             if (item.field.startsWith('fees['))
-                              return 'Fee recipient address';
+                              return t('blacklist.feeRecipientDescription');
                             if (item.field.startsWith('consideration['))
-                              return 'Consideration recipient (who receives assets)';
+                              return t(
+                                'blacklist.considerationRecipientDescription'
+                              );
                             if (item.field === 'to')
-                              return 'To address (recipient)';
+                              return t('blacklist.toDescription');
                             if (item.field === 'recipient')
-                              return 'Recipient address';
+                              return t('blacklist.recipientDescription');
                             if (item.field === 'operator')
-                              return 'Operator address (can manage assets)';
+                              return t('blacklist.operatorDescription');
                             if (item.field === 'approved')
-                              return 'Approved address';
+                              return t('blacklist.approvedDescription');
                             if (item.field === 'delegate')
-                              return 'Delegate address';
+                              return t('blacklist.delegateDescription');
 
                             // Default fallback
-                            return `${
-                              item.field.charAt(0).toUpperCase() +
-                              item.field.slice(1)
-                            } address`;
+                            return t('blacklist.fieldAddress', {
+                              field:
+                                item.field.charAt(0).toUpperCase() +
+                                item.field.slice(1),
+                              interpolation: { escapeValue: false },
+                            });
                           })()}
                         </div>
                         <div className="font-mono text-xs text-white bg-black/30 rounded px-2 py-1 break-all">
@@ -1416,7 +1420,9 @@ const EthSign: React.FC<ISign> = () => {
                         </div>
                         {item.reason && (
                           <div className="text-xs text-gray-400 mt-1">
-                            <span className="font-medium">Reason:</span>{' '}
+                            <span className="font-medium">
+                              {t('blacklist.reason')}:
+                            </span>{' '}
                             {item.reason}
                           </div>
                         )}
@@ -1477,7 +1483,7 @@ const EthSign: React.FC<ISign> = () => {
                         : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
                     }`}
                   >
-                    {name}
+                    {t(name === 'Details' ? 'send.details' : 'send.data')}
                   </button>
                 ))}
               </div>

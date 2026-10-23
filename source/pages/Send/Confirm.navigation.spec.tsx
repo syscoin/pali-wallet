@@ -1863,9 +1863,9 @@ it('native MAX display leaves the total as gross debit and displays the quoted f
     isMax: true,
   };
   render(<SendConfirm />);
-  expect(screen.getByText('Total (send.amountAndFee)').textContent).toContain(
-    '0.00100000 SYS'
-  );
+  expect(
+    screen.getByText('send.total (send.amountAndFee)').textContent
+  ).toContain('0.00100000 SYS');
   expect(screen.getByText('send.networkFee').textContent).toContain(
     '0.00000113 SYS'
   );
@@ -1882,9 +1882,9 @@ it.each([
     const tx = { ...mockLocation.state.tx, amount, fee, isMax: false };
     mockLocation.state.tx = tx;
     render(<SendConfirm />);
-    expect(screen.getByText('Total (send.amountAndFee)').textContent).toContain(
-      `${total} SYS`
-    );
+    expect(
+      screen.getByText('send.total (send.amountAndFee)').textContent
+    ).toContain(`${total} SYS`);
     expect(
       screen.getByText('buttons.send').parentElement?.textContent
     ).toContain(`${amount} SYS`);
@@ -1909,9 +1909,9 @@ it.each([false, true])(
     await act(async () => {
       render(<SendConfirm />);
     });
-    expect(screen.getByText('Total (send.amountAndFee)').textContent).toContain(
-      token ? '0.001 SPTsend.plusGasFee' : '0.00100113 SYS'
-    );
+    expect(
+      screen.getByText('send.total (send.amountAndFee)').textContent
+    ).toContain(token ? '0.001 SPTsend.plusGasFee' : '0.00100113 SYS');
   }
 );
 

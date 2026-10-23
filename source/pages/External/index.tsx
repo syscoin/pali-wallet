@@ -2,6 +2,7 @@
 
 import React, { PropsWithChildren, useEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
+import { useTranslation } from 'react-i18next';
 import { Provider } from 'react-redux';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
@@ -9,7 +10,10 @@ import 'react-toastify/dist/ReactToastify.css';
 import { AntdProvider } from 'components/AntdProvider';
 import { WalletBootstrap } from 'components/WalletBootstrap/WalletBootstrap';
 import store from 'state/store';
-import { connectApprovalClient } from 'utils/approvalClient';
+import {
+  connectApprovalClient,
+  translateApprovalGuidance,
+} from 'utils/approvalClient';
 import { startupFeedbackDelay } from 'utils/requestWalletState';
 import 'assets/styles/index.css';
 import 'assets/styles/antd-overrides.css';
@@ -26,6 +30,7 @@ const externalRootElement = document.getElementById('external-root');
 // Complete the document binding while the URL is still external.html. Routing
 // may then change its path without making legitimate approval replies stale.
 const ApprovalClientBootstrap = ({ children }: PropsWithChildren) => {
+  const { t } = useTranslation();
   const [attempt, setAttempt] = useState(0);
   const [status, setStatus] = useState<'connecting' | 'ready' | 'error'>(
     'connecting'
@@ -68,10 +73,10 @@ const ApprovalClientBootstrap = ({ children }: PropsWithChildren) => {
       <h1 className="mb-5 font-poppins text-3xl text-[#4DA2CF]">Pali Wallet</h1>
       <p role="status" aria-live="polite" className="mb-4 text-sm">
         {status === 'error'
-          ? error
+          ? translateApprovalGuidance(error, t)
           : isSlow
-          ? 'Your approval is taking longer to connect. You can retry or close this window.'
-          : 'Connecting your approval…'}
+          ? t('app.approvalConnectionSlow')
+          : t('app.approvalConnecting')}
       </p>
       {(status === 'error' || isSlow) && (
         <div className="flex gap-4">
@@ -80,14 +85,14 @@ const ApprovalClientBootstrap = ({ children }: PropsWithChildren) => {
             onClick={() => setAttempt((value) => value + 1)}
             className="rounded-lg bg-[#4DA2CF] px-5 py-3 font-medium text-[#061120]"
           >
-            Retry connection
+            {t('buttons.retryConnect')}
           </button>
           <button
             type="button"
             onClick={() => window.close()}
             className="rounded-lg border border-white px-5 py-3"
           >
-            Close
+            {t('buttons.close')}
           </button>
         </div>
       )}

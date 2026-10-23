@@ -11,7 +11,13 @@ import { KeyringAccountType } from 'types/network';
 import { SyscoinAssetDetails } from './SyscoinDetails';
 
 jest.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({
+    t: (copyKey: string, copyValues?: any) =>
+      jest
+        .requireActual('../../../../../../tests/helpers/localizedUiCopy')
+        .localizedUiCopy(copyKey, copyValues) ??
+      (((key: string) => key) as any)(copyKey, copyValues),
+  }),
 }));
 jest.mock('react-router-dom', () => ({
   useLocation: () => ({ pathname: '/home/details', state: null }),
@@ -155,4 +161,38 @@ it('keeps import previews available even when another chain has the GUID', () =>
   expect(screen.getByText('PREVIEW (Syscoin Testnet)')).toBeInTheDocument();
   expect(screen.getByText('4')).toBeInTheDocument();
   expect(screen.queryByText('MAIN (Syscoin Testnet)')).not.toBeInTheDocument();
+});
+
+it('localizes a genuinely missing import-preview symbol without persisting the synthetic placeholder', () => {
+  const store = mount([], {
+    isImportPreview: true,
+    assetGuid: guid,
+    balance: '4',
+    decimals: 2,
+  });
+  expect(
+    screen.getByText('components.unknown (Syscoin Testnet)')
+  ).toBeInTheDocument();
+  expect(store.getState().vault.accountAssets.HDAccount[0].syscoin).toEqual([]);
+});
+
+it('does not translate a real preview token whose supplied symbol is Unknown', () => {
+  mount([], {
+    isImportPreview: true,
+    assetGuid: guid,
+    symbol: 'Unknown',
+    balance: '4',
+    decimals: 2,
+  });
+  expect(screen.getByText('Unknown (Syscoin Testnet)')).toBeInTheDocument();
+  expect(screen.queryByText('components.unknown (Syscoin Testnet)')).toBeNull();
+});
+
+it('keeps a stored Unknown symbol authoritative over an incomplete preview draft', () => {
+  const stored = { ...testnet, symbol: 'Unknown' };
+  const store = mount([stored], { isImportPreview: true, assetGuid: guid });
+  expect(screen.getByText('Unknown (Syscoin Testnet)')).toBeInTheDocument();
+  expect(store.getState().vault.accountAssets.HDAccount[0].syscoin).toEqual([
+    stored,
+  ]);
 });

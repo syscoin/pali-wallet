@@ -124,7 +124,7 @@ it('associates the watch-only label and gives each import field a unique accessi
   });
   const privateKey = screen.getByLabelText('settings.yourPrivateKey');
   const watchOnly = screen.getByRole('checkbox', {
-    name: 'Watch-only',
+    name: 'settings.watchOnly',
   }) as HTMLInputElement;
   expect(label.id).toBe('account-name-input');
   expect(privateKey.id).toBe('import-account-identifier');
@@ -136,10 +136,10 @@ it('associates the watch-only label and gives each import field a unique accessi
     (element) => element.id
   );
   expect(new Set(ids).size).toBe(ids.length);
-  fireEvent.click(screen.getByText('Watch-only'));
+  fireEvent.click(screen.getByText('settings.watchOnly'));
   expect(watchOnly.checked).toBe(true);
   expect(
-    screen.getByRole('textbox', { name: 'Address / XPUB / Descriptor' }).id
+    screen.getByRole('textbox', { name: 'settings.publicIdentifierInput' }).id
   ).toBe('import-account-identifier');
 });
 
@@ -185,7 +185,7 @@ it('does not expose a private draft when switching modes, including a previously
   );
   fireEvent.click(screen.getByRole('checkbox'));
   const publicInput = screen.getByLabelText(
-    'Address / XPUB / Descriptor'
+    'settings.publicIdentifierInput'
   ) as HTMLInputElement;
   expect(publicInput.type).toBe('password');
   expect(publicInput.value).toBe('synthetic-private-input');
@@ -278,7 +278,9 @@ it('imports the validated current private input with its selected address type',
   await waitFor(() =>
     expect(importButton().hasAttribute('disabled')).toBe(false)
   );
-  fireEvent.click(screen.getByRole('radio', { name: 'Legacy (P2PKH)' }));
+  fireEvent.click(
+    screen.getByRole('radio', { name: 'settings.legacyAddressType' })
+  );
   fireEvent.click(importButton());
   await waitFor(() =>
     expect(mockEmitter).toHaveBeenCalledWith(
@@ -308,9 +310,12 @@ it('submits the valid form through the same guarded private-key import action', 
 it('submits a watch-only form without invoking private-key import', async () => {
   const { container } = render(<ImportAccount />);
   fireEvent.click(screen.getByRole('checkbox'));
-  fireEvent.change(screen.getByPlaceholderText('Address / XPUB / Descriptor'), {
-    target: { value: PUBLIC_ADDRESS },
-  });
+  fireEvent.change(
+    screen.getByPlaceholderText('settings.publicIdentifierInput'),
+    {
+      target: { value: PUBLIC_ADDRESS },
+    }
+  );
   await waitFor(() =>
     expect(importButton().hasAttribute('disabled')).toBe(false)
   );
@@ -395,7 +400,7 @@ it.each([
     render(<ImportAccount />);
     fireEvent.click(screen.getByRole('checkbox'));
     fireEvent.change(
-      screen.getByPlaceholderText('Address / XPUB / Descriptor'),
+      screen.getByPlaceholderText('settings.publicIdentifierInput'),
       {
         target: { value },
       }
@@ -428,7 +433,7 @@ it('ignores late successful background validation after the public input changes
   render(<ImportAccount />);
   fireEvent.click(screen.getByRole('checkbox'));
   const publicInput = screen.getByPlaceholderText(
-    'Address / XPUB / Descriptor'
+    'settings.publicIdentifierInput'
   );
   fireEvent.change(publicInput, { target: { value: PUBLIC_ADDRESS } });
   await waitFor(() =>

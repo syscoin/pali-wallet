@@ -109,7 +109,9 @@ const Decrypt: React.FC<ISign> = () => {
       typeof data[1] !== 'string' ||
       data[1].toLowerCase() !== address.toLowerCase()
     )
-      throw new Error('Requested account is not active');
+      throw Object.assign(new Error('Requested account is not active'), {
+        code: 'PALI_REQUESTED_ACCOUNT_NOT_ACTIVE',
+      });
     return [data[0], data[1]];
   };
 
@@ -123,13 +125,18 @@ const Decrypt: React.FC<ISign> = () => {
       previewRequest.current === request;
     setErrorMsg(null);
     if (isBitcoinBased) {
-      setErrorMsg('Message decryption is not available on UTXO networks');
+      setErrorMsg(t('transactions.decryptionUnavailableUtxo'));
       return;
     }
 
     // Validate address
     if (!address || !address.startsWith('0x') || address.length !== 42) {
-      setErrorMsg(`Invalid active account address: ${address}`);
+      setErrorMsg(
+        t('transactions.invalidActiveAddress', {
+          address,
+          interpolation: { escapeValue: false },
+        })
+      );
       return;
     }
 
@@ -143,7 +150,11 @@ const Decrypt: React.FC<ISign> = () => {
         setPreview({ message: decrypted as string, scope: previewScope });
     } catch (error: any) {
       if (isCurrent())
-        setErrorMsg(error.message || 'Failed to decrypt message');
+        setErrorMsg(
+          error.code === 'PALI_REQUESTED_ACCOUNT_NOT_ACTIVE'
+            ? t('transactions.requestedAccountNotActive')
+            : error.message || t('transactions.decryptFailed')
+        );
     } finally {
       if (isCurrent()) setIsDecrypting(false);
     }
@@ -157,7 +168,7 @@ const Decrypt: React.FC<ISign> = () => {
 
     // Safety check: decryption is only for EVM networks
     if (isBitcoinBased) {
-      setErrorMsg('Message decryption is not available on UTXO networks');
+      setErrorMsg(t('transactions.decryptionUnavailableUtxo'));
       createTemporaryAlarm({
         delayInSeconds: 40,
         callback: () => window.close(),
@@ -180,7 +191,11 @@ const Decrypt: React.FC<ISign> = () => {
       window.close();
     } catch (error: any) {
       if (!mounted.current) return;
-      setErrorMsg(error.message || 'Failed to decrypt message');
+      setErrorMsg(
+        error.code === 'PALI_REQUESTED_ACCOUNT_NOT_ACTIVE'
+          ? t('transactions.requestedAccountNotActive')
+          : error.message || t('transactions.decryptFailed')
+      );
       setLoading(false);
     }
   };

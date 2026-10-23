@@ -11,6 +11,18 @@ import {
 
 import WalletErrorBoundary from './WalletErrorBoundary';
 
+jest.mock('react-i18next', () => ({
+  useTranslation: () => ({
+    t: (key: string) =>
+      key
+        .split('.')
+        .reduce(
+          (value: any, part: string) => value?.[part],
+          jest.requireActual('assets/locales/en.json')
+        ) || key,
+  }),
+}));
+
 const lockedErrors = [
   'Target keyring is locked',
   'Wallet must be unlocked',

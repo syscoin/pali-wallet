@@ -61,16 +61,16 @@ import {
   signAndSubmitSmartAccountExecutions,
   signSmartAccountActionHash,
 } from 'utils/smartAccount';
-import {
-  getGuardianRecoveryOperationId,
-  GuardianRecoveryObservation,
-} from 'utils/smartAccount/guardianStatus';
 import type {
   PaliRecoveryTarget,
   PaliSmartAccountAuthenticatorSetup,
   SmartAccountAuthenticatorBuildResult,
   SmartAccountGuardianRecoveryDigestContext,
 } from 'utils/smartAccount';
+import {
+  getGuardianRecoveryOperationId,
+  GuardianRecoveryObservation,
+} from 'utils/smartAccount/guardianStatus';
 import {
   getSmartAccountActionErrorMessage,
   isGuardianRecoveryAlreadyScheduledError,
@@ -398,9 +398,9 @@ const SmartAccountPolicy = () => {
   const [guardianLoading, setGuardianLoading] = useState(false);
   const [guardianStep, setGuardianStep] = useState('');
   const [guardianRead, setGuardianRead] = useState<{
+    error: boolean;
     scope: string;
     snapshot: GuardianRecoveryStatus;
-    error: boolean;
   }>({ scope: guardianObservationScope, snapshot: null, error: false });
   const setGuardianStatus = useCallback(
     (snapshot: GuardianRecoveryStatus, unavailable = false) =>
@@ -2610,14 +2610,19 @@ const SmartAccountPolicy = () => {
         // Keep the stored replacement credential: it has no recovery
         // operation attached yet, so it does not block the UI, and a retry
         // reuses the already-created passkey instead of minting another.
-        const errorMessage = isGuardianRecoveryAlreadyScheduledError(error)
-          ? t('settings.smartAccountGuardianRecoveryAlreadyStarted')
-          : getSmartAccountActionErrorMessage(
-              error,
-              t('settings.smartAccountGuardianRecoveryStartFailed'),
-              t('settings.smartAccountGuardianRecoveryGuardianNeedsGas'),
-              t('settings.slhDsaLocalSignerMissing')
-            );
+        const errorMessage =
+          error?.message === 'Local smart-account guardian was not found'
+            ? t('settings.localSmartAccountGuardianMissing')
+            : error?.message === 'P-256/WebAuthn validator is not configured'
+            ? t('settings.recoveryValidatorNotConfigured')
+            : isGuardianRecoveryAlreadyScheduledError(error)
+            ? t('settings.smartAccountGuardianRecoveryAlreadyStarted')
+            : getSmartAccountActionErrorMessage(
+                error,
+                t('settings.smartAccountGuardianRecoveryStartFailed'),
+                t('settings.smartAccountGuardianRecoveryGuardianNeedsGas'),
+                t('settings.slhDsaLocalSignerMissing')
+              );
 
         alert.error(errorMessage);
       }
@@ -2750,21 +2755,25 @@ const SmartAccountPolicy = () => {
           alert.error(t('settings.smartAccountGuardianRecoveryExpired'));
           return;
         }
-        const errorMessage = isGuardianRecoveryNotReadyError(error)
-          ? activeGuardianReplacement.recoveryOperation.readyAt * 1000 <=
-            Date.now()
-            ? t('settings.smartAccountGuardianRecoveryNetworkCatchingUp')
-            : t('settings.smartAccountGuardianRecoveryReadyAt', {
-                time: new Date(
-                  activeGuardianReplacement.recoveryOperation.readyAt * 1000
-                ).toLocaleString(),
-              })
-          : getSmartAccountActionErrorMessage(
-              error,
-              t('settings.smartAccountGuardianRecoveryFinalizeFailed'),
-              t('send.insufficientFundsForGas'),
-              t('settings.slhDsaLocalSignerMissing')
-            );
+        const errorMessage =
+          error?.message ===
+          'Recovery intent belongs to a different account or network'
+            ? t('transactions.psbtSigningContextChanged')
+            : isGuardianRecoveryNotReadyError(error)
+            ? activeGuardianReplacement.recoveryOperation.readyAt * 1000 <=
+              Date.now()
+              ? t('settings.smartAccountGuardianRecoveryNetworkCatchingUp')
+              : t('settings.smartAccountGuardianRecoveryReadyAt', {
+                  time: new Date(
+                    activeGuardianReplacement.recoveryOperation.readyAt * 1000
+                  ).toLocaleString(),
+                })
+            : getSmartAccountActionErrorMessage(
+                error,
+                t('settings.smartAccountGuardianRecoveryFinalizeFailed'),
+                t('send.insufficientFundsForGas'),
+                t('settings.slhDsaLocalSignerMissing')
+              );
 
         alert.error(errorMessage);
       }
@@ -3164,7 +3173,9 @@ const SmartAccountPolicy = () => {
                     expectedSeconds={180}
                     progressLabel={
                       slhDsaProgress
-                        ? `XMSS level ${slhDsaProgress.level}/22.`
+                        ? t('settings.xmssProgressLevel', {
+                            level: slhDsaProgress.level,
+                          })
                         : undefined
                     }
                     progressPercent={
@@ -3333,7 +3344,9 @@ const SmartAccountPolicy = () => {
                             expectedSeconds={360}
                             progressLabel={
                               slhDsaProgress
-                                ? `XMSS level ${slhDsaProgress.level}/22.`
+                                ? t('settings.xmssProgressLevel', {
+                                    level: slhDsaProgress.level,
+                                  })
                                 : undefined
                             }
                             progressPercent={

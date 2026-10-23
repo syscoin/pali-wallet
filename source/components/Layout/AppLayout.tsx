@@ -149,7 +149,7 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
         activeNetwork?.currency?.toUpperCase() || ''
       }`;
     if (path === '/send/confirm') return t('send.confirm');
-    if (path === '/faucet') return activeNetwork?.label || 'Faucet';
+    if (path === '/faucet') return activeNetwork?.label || t('faucet.title');
     if (path === '/tokens/add') return t('buttons.addToken');
     if (path === '/chain-fail-to-connect') return t('chainError.errorTitle');
     if (path === '/switch-network') return t('settings.switchChain');
@@ -197,7 +197,7 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
       if (path === '/settings/about')
         return t('generalMenu.infoHelp').toUpperCase();
       if (path === '/settings/advanced') return t('settings.advancedTitle');
-      if (path === '/settings/languages') return 'Languages';
+      if (path === '/settings/languages') return t('generalMenu.languages');
       if (path === '/settings/currency') return t('settings.fiatCurrency');
       if (path === '/settings/forget-wallet') return t('generalMenu.forget');
       if (path === '/settings/seed') return t('settings.walletSeedPhrase');
@@ -395,9 +395,7 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
       <p role="status">{message || t('buttons.loading')}</p>
     ) : connectionUnavailable &&
       SECRET_VIEW_ROUTES.has(normalizeWalletPathname(location.pathname)) ? (
-      <p role="status">
-        Reconnect to your wallet to view sensitive information.
-      </p>
+      <p role="status">{t('components.reconnectForSensitiveInformation')}</p>
     ) : (
       children || <Outlet />
     );
@@ -414,7 +412,7 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
         isLoading={isLoading || connectionUnavailable}
         message={
           connectionUnavailable
-            ? 'Wallet service is unavailable. Reconnecting…'
+            ? t('components.walletServiceReconnecting')
             : message
         }
         nonBlocking={connectionUnavailable}
@@ -433,7 +431,7 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
         >
           <img
             src={dotsImage}
-            alt="Image description"
+            alt=""
             className="absolute object-cover bg-repeat-x w-full h-full"
           />
 

@@ -33,7 +33,17 @@ jest.mock('hooks/useController', () => ({
   useController: () => ({ controllerEmitter: mockEmitter }),
 }));
 jest.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({
+    t: (key: string, values?: { wallet?: string }) =>
+      key === 'settings.setWalletAsDefault'
+        ? jest
+            .requireActual('../../assets/locales/en.json')
+            .settings.setWalletAsDefault.replace(
+              '{{wallet}}',
+              values?.wallet || ''
+            )
+        : key,
+  }),
 }));
 jest.mock('scripts/Background', () => ({ getController: jest.fn() }));
 jest.mock(

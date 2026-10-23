@@ -195,19 +195,21 @@ const PrivateKeyView = () => {
                   type="button"
                   onClick={() => setIsPrivateKeyVisible(!isPrivateKeyVisible)}
                   className="p-1 rounded hover:bg-gray-700 transition-colors duration-200"
-                  title={isPrivateKeyVisible ? 'Hide' : 'Show'}
+                  title={t(
+                    isPrivateKeyVisible ? 'buttons.hide' : 'buttons.show'
+                  )}
                 >
                   {isPrivateKeyVisible ? (
                     <img
                       className="w-[18px] max-w-none cursor-pointer hover:cursor-pointer z-20"
                       src="/assets/all_assets/visibleEye.svg"
-                      alt="Hide"
+                      alt={t('buttons.hide')}
                     />
                   ) : (
                     <img
                       className="w-[18px] max-w-none cursor-pointer hover:cursor-pointer z-20"
                       src="/assets/all_assets/notVisibleEye.svg"
-                      alt="Show"
+                      alt={t('buttons.show')}
                     />
                   )}
                 </button>

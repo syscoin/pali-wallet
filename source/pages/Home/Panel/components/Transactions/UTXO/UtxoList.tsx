@@ -39,6 +39,10 @@ import {
   formatSyscoinConfirmationETA,
   normalizeSyscoinTransactionType,
 } from 'utils/syscoinTransactionUtils';
+import {
+  translateConfirmationEta,
+  translateTransactionType,
+} from 'utils/transactionDisplay';
 import { isTransactionInBlock } from 'utils/transactionUtils';
 
 import {
@@ -220,6 +224,7 @@ const UtxoTransactionsListComponentBase = ({
             <IconButton
               className="p-0.5 hover:bg-brand-royalbluemedium/20 rounded transition-all duration-200"
               onClick={handleCopyTxId}
+              aria-label={t('buttons.copy')}
             >
               <Icon
                 name="Copy"
@@ -233,7 +238,9 @@ const UtxoTransactionsListComponentBase = ({
             <Tooltip
               content={
                 confirmationETA
-                  ? `Estimated block confirmation: ${confirmationETA}`
+                  ? t('transactions.estimatedBlockConfirmation', {
+                      eta: translateConfirmationEta(confirmationETA, t),
+                    })
                   : null
               }
             >
@@ -272,7 +279,9 @@ const UtxoTransactionsListComponentBase = ({
             <Tooltip
               content={
                 confirmationETA
-                  ? `Estimated confirmation: ${confirmationETA}`
+                  ? t('transactions.estimatedConfirmation', {
+                      eta: translateConfirmationEta(confirmationETA, t),
+                    })
                   : null
               }
             >
@@ -280,7 +289,7 @@ const UtxoTransactionsListComponentBase = ({
                 {getTxStatus(false, isConfirmed)}
                 {confirmationETA && (
                   <p className="text-[10px] font-normal text-brand-gray300">
-                    ~ {confirmationETA}
+                    ~ {translateConfirmationEta(confirmationETA, t)}
                   </p>
                 )}
               </div>
@@ -298,7 +307,7 @@ const UtxoTransactionsListComponentBase = ({
           >
             <span className="text-xs">{sptInfo.icon}</span>
             <span className="text-[10px] font-medium text-white">
-              {sptInfo.label}
+              {translateTransactionType(sptInfo.label, t)}
             </span>
           </div>
         )}

@@ -1,4 +1,5 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { NavigateFunction } from 'react-router-dom';
 
 interface IProps {
@@ -20,6 +21,29 @@ const isWalletLockedError = (error: Error | null): boolean => {
     message.includes('Wallet is locked') ||
     message.includes('Please unlock the wallet first') ||
     message.includes('No unlocked keyring found')
+  );
+};
+
+const WalletErrorFallback = () => {
+  const { t } = useTranslation();
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-bkg-1">
+      <div className="text-center p-6">
+        <h2 className="text-xl font-semibold text-white mb-4">
+          {t('components.unexpectedErrorTitle')}
+        </h2>
+        <p className="text-gray-300 mb-4">
+          {t('components.unexpectedErrorDescription')}
+        </p>
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          className="bg-brand-deepPink100 text-white px-4 py-2 rounded-lg hover:bg-brand-deepPink200 transition-colors"
+        >
+          {t('components.refreshPage')}
+        </button>
+      </div>
+    </div>
   );
 };
 
@@ -65,25 +89,7 @@ class WalletErrorBoundary extends Component<IProps, IState> {
     if (this.state.hasError) {
       // Retain visible recovery while the redirect has not committed, or if
       // the root route itself fails. Never replace an error with a blank view.
-      return (
-        <div className="min-h-screen flex items-center justify-center bg-bkg-1">
-          <div className="text-center p-6">
-            <h2 className="text-xl font-semibold text-white mb-4">
-              Something went wrong
-            </h2>
-            <p className="text-gray-300 mb-4">
-              An unexpected error occurred. Please try refreshing the page.
-            </p>
-            <button
-              type="button"
-              onClick={() => window.location.reload()}
-              className="bg-brand-deepPink100 text-white px-4 py-2 rounded-lg hover:bg-brand-deepPink200 transition-colors"
-            >
-              Refresh Page
-            </button>
-          </div>
-        </div>
-      );
+      return <WalletErrorFallback />;
     }
 
     return this.props.children;

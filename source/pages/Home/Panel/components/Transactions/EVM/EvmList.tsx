@@ -275,7 +275,7 @@ const EvmTransactionItem = React.memo(
             : '')
         : '';
       const amountStr = displayInfo.hasUnknownDecimals
-        ? `${finalSymbol} Transfer`
+        ? t('transactions.symbolTransfer', { symbol: finalSymbol })
         : isNftWithId
         ? `${
             nftQuantity ? `${nftQuantity} ` : ''
@@ -453,7 +453,7 @@ const EvmTransactionItem = React.memo(
                     content={
                       <div className="flex flex-col gap-1">
                         <span className="text-xs font-medium text-white">
-                          Contract Address
+                          {t('settings.contractAddress')}
                         </span>
                         <span className="text-xs font-mono text-brand-gray300">
                           {/* For smart-account executions, show the decoded
@@ -485,7 +485,7 @@ const EvmTransactionItem = React.memo(
                         />
                       </svg>
                       <span className="text-brand-blue text-[10px] font-medium">
-                        Contract
+                        {t('transactions.contract')}
                       </span>
                     </span>
                   </Tooltip>

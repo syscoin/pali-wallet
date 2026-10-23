@@ -99,9 +99,11 @@ export const CreatePhrase = () => {
     <OnboardingLayout title={t('createPhrase.recoveryPhrase')}>
       <div className="flex flex-col gap-4 items-center justify-center max-w-xs md:max-w-lg pb-36 md:pb-48">
         <div className="flex items-center gap-3 w-full justify-center">
-          <span className="text-brand-gray200 text-xs">Words:</span>
+          <span className="text-brand-gray200 text-xs">
+            {t('seedConfirm.words')}:
+          </span>
           <select
-            aria-label="Words"
+            aria-label={t('seedConfirm.words')}
             className="bg-fields-input-primary border border-fields-input-border rounded-md text-brand-white text-sm px-2 py-1"
             value={wordCount}
             onChange={(e) => setWordCount(parseInt(e.target.value))}
@@ -141,9 +143,7 @@ export const CreatePhrase = () => {
               }
             />
             <span className="text-brand-gray200 text-xs font-normal w-60">
-              I'm aware that this word combination is unique to identify my
-              wallet, and I have to save this information properly to not lose
-              my wallet and funds in the future.
+              {t('seedConfirm.backupAcknowledgement')}
             </span>
           </label>
         </div>

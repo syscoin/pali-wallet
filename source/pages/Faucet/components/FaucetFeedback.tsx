@@ -20,7 +20,7 @@ export const FaucetFeedback: React.FC<FaucetFeedbackProps> = ({
 }) => (
   <div className="flex flex-col items-center">
     {icon ? (
-      <img className="w-[50px] h-[50px]" src={icon} alt="Faucet status" />
+      <img className="w-[50px] h-[50px]" src={icon} alt="" />
     ) : chainId ? (
       <div className="w-[50px] h-[50px] flex items-center justify-center">
         <ChainIcon chainId={chainId} size={50} networkKind={networkKind} />

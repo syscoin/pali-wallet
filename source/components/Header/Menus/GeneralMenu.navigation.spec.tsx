@@ -32,7 +32,13 @@ jest.mock('react-redux', () => ({
   useSelector: (select: any) => select(mockState),
 }));
 jest.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({
+    t: (copyKey: string, copyValues?: any) =>
+      jest
+        .requireActual('../../../../tests/helpers/localizedUiCopy')
+        .localizedUiCopy(copyKey, copyValues) ??
+      (((key: string) => key) as any)(copyKey, copyValues),
+  }),
 }));
 jest.mock('hooks/index', () => ({
   useUtils: () => ({

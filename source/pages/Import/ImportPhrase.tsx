@@ -165,7 +165,11 @@ const ImportPhrase: React.FC = () => {
                     seedLengthError: true,
                   });
                   return Promise.reject(
-                    new Error('Invalid seed phrase length')
+                    new Error(
+                      t('import.importModalSeed', {
+                        seedLength: value.seedLength,
+                      })
+                    )
                   );
                 }
                 form.setFieldsValue({ phrase: value });
@@ -188,7 +192,7 @@ const ImportPhrase: React.FC = () => {
                   if (isSeedValid) {
                     return Promise.resolve();
                   }
-                  return Promise.reject(new Error('Invalid seed phrase'));
+                  return Promise.reject(new Error(t('seedConfirm.seedError')));
                 });
               },
             }),

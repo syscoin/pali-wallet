@@ -1,4 +1,7 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
+
+import { translateTransactionType } from 'utils/transactionDisplay';
 
 interface ITransactionHeaderProps {
   displayInfo: {
@@ -21,6 +24,7 @@ export const TransactionHeader: React.FC<ITransactionHeaderProps> = ({
   txStatus,
   isLoading = false,
 }) => {
+  const { t } = useTranslation();
   const formatDisplayValue = () => {
     if (!displayInfo) return '...';
 
@@ -38,7 +42,9 @@ export const TransactionHeader: React.FC<ITransactionHeaderProps> = ({
   return (
     <div className="flex flex-col justify-center items-center w-full mb-2">
       {statusIcon}
-      <p className="text-brand-gray200 text-xs font-light">{txType}</p>
+      <p className="text-brand-gray200 text-xs font-light">
+        {translateTransactionType(txType, t)}
+      </p>
       <p className="text-white text-base">{formatDisplayValue()}</p>
       <div>{txStatus}</div>
       {isLoading && (

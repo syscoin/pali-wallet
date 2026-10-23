@@ -153,7 +153,7 @@ describe.each(['eth_signTypedData_v3', 'eth_signTypedData_v4'])(
             }) as HTMLButtonElement
           ).disabled
         ).toBe(true);
-        fireEvent.click(screen.getByText('Data'));
+        fireEvent.click(screen.getByText('send.data'));
         expect(screen.getByText('send.rawParameters')).toBeTruthy();
         expect(screen.getByRole('alert').textContent).toBe(
           'send.invalidApprovalDetails'
@@ -171,7 +171,7 @@ describe.each(['eth_signTypedData_v3', 'eth_signTypedData_v4'])(
         mockQuery.eventName = method;
         const payload = ` \n ${JSON.stringify(fixtures.OrderComponents)}`;
         await prepare(payload, reversed);
-        fireEvent.click(screen.getByText('Data'));
+        fireEvent.click(screen.getByText('send.data'));
         expect(screen.queryByRole('alert')).toBeNull();
         fireEvent.click(
           screen.getByRole('button', { name: 'buttons.confirm' })
@@ -189,7 +189,7 @@ describe.each(['eth_signTypedData_v3', 'eth_signTypedData_v4'])(
     it('does not crash Data review after the signer account changes', async () => {
       mockQuery.eventName = method;
       const view = await prepare(JSON.stringify(fixtures.OrderComponents));
-      fireEvent.click(screen.getByText('Data'));
+      fireEvent.click(screen.getByText('send.data'));
       const staleConfirm = mockConfirm;
       mockState.vault.accounts.HDAccount[0].address = `0x${'22'.repeat(20)}`;
       view.rerender(<EthSign />);
@@ -259,7 +259,7 @@ it.each([false, true])(
         Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy();
     expect((confirm as HTMLButtonElement).disabled).toBe(false);
-    fireEvent.click(screen.getByText('Data'));
+    fireEvent.click(screen.getByText('send.data'));
     expect(screen.getByText('send.nftOrderNoReturn')).toBeTruthy();
     fireEvent.click(confirm);
     await waitFor(() => expect(signCalls()).toHaveLength(1));

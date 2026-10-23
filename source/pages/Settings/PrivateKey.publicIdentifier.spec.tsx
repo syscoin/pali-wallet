@@ -141,7 +141,7 @@ it('retains the signing WIF password form without exposing or requesting a key',
   ).toBeVisible();
   expect(screen.getByText('settings.yourPrivateKey')).toBeVisible();
   expect(screen.queryByText('settings.watchOnlyNoPrivateKey')).toBeNull();
-  expect(screen.queryByRole('button', { name: 'Show' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'buttons.show' })).toBeNull();
   expect(screen.queryByText('non-decryptable-test-presence-marker')).toBeNull();
 });
 

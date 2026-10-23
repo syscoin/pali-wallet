@@ -1,6 +1,32 @@
+import type { TFunction } from 'i18next';
+
 export const APPROVAL_REGISTER = 'PALI_APPROVAL_REGISTER';
 export const APPROVAL_CLIENT_READY = 'pali-approval-client-ready';
 export const APPROVAL_HANDSHAKE_TIMEOUT_MS = 1800;
+
+const approvalGuidance: Record<string, string> = {
+  'This approval has expired. Close this window and request it again.':
+    'app.approvalExpired',
+  'Could not read this approval. Close this window and request it again.':
+    'app.approvalReadFailed',
+  'Approval connection cancelled.': 'app.approvalCancelled',
+  'Approval connection timed out. Retry or close this window and request it again.':
+    'app.approvalTimedOut',
+  'This approval is no longer available. Close this window and request it again.':
+    'app.approvalUnavailable',
+  'Could not connect this approval. Retry or close this window.':
+    'app.approvalConnectionFailed',
+};
+
+// Project only our own guidance at render time. Error identity, handshake
+// state and any unknown diagnostic remain unchanged.
+export const translateApprovalGuidance = (
+  message: string,
+  t: TFunction
+): string =>
+  Object.prototype.hasOwnProperty.call(approvalGuidance, message)
+    ? t(approvalGuidance[message])
+    : message;
 
 /** Bind the initial approval document before BrowserRouter changes its URL. */
 export const connectApprovalClient = (

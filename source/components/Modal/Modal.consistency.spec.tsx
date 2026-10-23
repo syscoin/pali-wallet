@@ -44,6 +44,7 @@ jest.mock('react-i18next', () => ({
         'buttons.close': 'Close',
         'buttons.cancel': 'Cancel',
         'buttons.ok': 'OK',
+        'buttons.report': 'Report',
         'buttons.unlock': 'Unlock',
         'buttons.errorDescription': 'Error',
       }[key] || key),
@@ -80,7 +81,7 @@ it('keeps the default dialog named and its existing dismissal ID', async () => {
   );
   const dialog = screen.getByRole('dialog', { name: 'Notice' });
   expect(within(dialog).getByText('Readable detail')).toBeDefined();
-  const button = within(dialog).getByRole('button', { name: 'Ok' });
+  const button = within(dialog).getByRole('button', { name: 'OK' });
   expect(button.id).toBe('got-it-btn');
   fireEvent.click(button);
   expect(onClose).toHaveBeenCalledTimes(1);
@@ -169,7 +170,7 @@ it('gives error dialogs their visible accessible title and preserves report/clos
     within(dialog).getByText('public diagnostic', { exact: false })
   ).toBeDefined();
   expect(within(dialog).getByRole('button', { name: /Report/ })).toBeDefined();
-  fireEvent.click(within(dialog).getByRole('button', { name: 'Ok' }));
+  fireEvent.click(within(dialog).getByRole('button', { name: 'OK' }));
   expect(onClose).toHaveBeenCalledTimes(1);
 });
 

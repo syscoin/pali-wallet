@@ -133,18 +133,16 @@ export const NetworkList = ({
         errorMessage.includes('timeout') ||
         errorMessage.includes('timed out')
       ) {
-        alert.error(
-          `Network connection timed out. The network might be slow or unresponsive.`
-        );
+        alert.error(t('switchNetworkPage.connectionTimedOut'));
       } else if (
         errorMessage.includes('rate limit') ||
         errorMessage.includes('429')
       ) {
-        alert.error(
-          `The network is rate limiting requests. Please wait a moment and try again.`
-        );
+        alert.error(t('switchNetworkPage.rateLimited'));
       } else {
-        alert.error(errorMessage);
+        alert.error(
+          networkError?.message || t('switchNetworkPage.changeFailed')
+        );
       }
 
       // Don't navigate away on error, let user try again
@@ -188,7 +186,7 @@ export const NetworkList = ({
             }
           }}
         >
-          UTXO {isUtxoDisabled && '(Current)'}
+          UTXO {isUtxoDisabled && `(${t('components.current')})`}
         </button>
         <button
           type="button"
@@ -206,7 +204,7 @@ export const NetworkList = ({
             }
           }}
         >
-          EVM {isEvmDisabled && '(Current)'}
+          EVM {isEvmDisabled && `(${t('components.current')})`}
         </button>
       </div>
       <div className="rounded-[20px] bg-brand-blue500 p-5 h-max w-full max-w-[22rem]">
@@ -246,7 +244,10 @@ export const NetworkList = ({
                 type="button"
                 aria-pressed={isSelected}
                 title={
-                  currentNetworks.label || `Chain ${currentNetworks.chainId}`
+                  currentNetworks.label ||
+                  t('switchNetworkPage.chainFallback', {
+                    chainId: currentNetworks.chainId,
+                  })
                 }
                 className={`${
                   isSelected ? 'bg-brand-blue800' : 'bg-brand-blue600'
@@ -267,11 +268,13 @@ export const NetworkList = ({
                   <span className="flex items-center gap-2 flex-1 min-w-0">
                     <span className="truncate">
                       {currentNetworks.label ||
-                        `Chain ${currentNetworks.chainId}`}
+                        t('switchNetworkPage.chainFallback', {
+                          chainId: currentNetworks.chainId,
+                        })}
                     </span>
                     {isActive && (
                       <span className="text-xs text-green-400 flex-shrink-0">
-                        (Active)
+                        ({t('components.activeStatus')})
                       </span>
                     )}
                   </span>

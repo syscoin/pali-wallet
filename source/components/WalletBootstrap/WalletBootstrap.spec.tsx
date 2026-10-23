@@ -110,7 +110,7 @@ describe('authoritative wallet bootstrap recovery boundary', () => {
     );
 
     expect(screen.getByRole('status').textContent).toBe(
-      'Connecting to your wallet…'
+      'components.connectingWallet'
     );
     expect(childMounted).not.toHaveBeenCalled();
     await act(async () => {
@@ -145,7 +145,9 @@ describe('authoritative wallet bootstrap recovery boundary', () => {
 
     expect(childMounted).not.toHaveBeenCalled();
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Retry connection' }));
+      fireEvent.click(
+        screen.getByRole('button', { name: 'buttons.retryConnect' })
+      );
     });
     expect(requestWalletState).toHaveBeenCalledTimes(2);
     expect(

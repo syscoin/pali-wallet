@@ -1656,7 +1656,10 @@ export const SendTransaction = () => {
                           {t('send.grantAccess')}{' '}
                           <span className="text-brand-royalblue font-semibold">
                             {approvedTokenInfos?.tokenSymbol ||
-                              `Unknown Token (${dataTx?.to?.slice(0, 8)}...)`}
+                              t('send.unknownToken', {
+                                address: dataTx?.to?.slice(0, 8),
+                                interpolation: { escapeValue: false },
+                              })}
                           </span>
                         </span>
                       </>
@@ -1670,7 +1673,10 @@ export const SendTransaction = () => {
                         <span className="text-brand-graylight text-sm">
                           {t('send.allowTransferOf')}{' '}
                           {approvedTokenInfos?.tokenSymbol ||
-                            `Unknown NFT (${dataTx?.to?.slice(0, 8)}...)`}{' '}
+                            t('send.unknownNft', {
+                              address: dataTx?.to?.slice(0, 8),
+                              interpolation: { escapeValue: false },
+                            })}{' '}
                           #{nftInfo?.tokenId || '...'}
                         </span>
                       </>
@@ -1685,12 +1691,18 @@ export const SendTransaction = () => {
                         </span>
                         <span className="text-brand-graylight text-sm">
                           {decodedTxData?.inputs?.[1]
-                            ? `${t('send.grantCompleteControl')} ${
-                                approvedTokenInfos?.tokenSymbol || tokenStandard
-                              } tokens`
-                            : `${t('send.revokeAccessTo')} ${
-                                approvedTokenInfos?.tokenSymbol || tokenStandard
-                              } collection`}
+                            ? t('send.grantCollectionControl', {
+                                token:
+                                  approvedTokenInfos?.tokenSymbol ||
+                                  tokenStandard,
+                                interpolation: { escapeValue: false },
+                              })
+                            : t('send.revokeCollectionAccessDescription', {
+                                token:
+                                  approvedTokenInfos?.tokenSymbol ||
+                                  tokenStandard,
+                                interpolation: { escapeValue: false },
+                              })}
                         </span>
                         {decodedTxData?.inputs?.[1] && (
                           <div className="mt-2 p-3 bg-red-900/20 border border-red-500 rounded-lg">
@@ -1737,10 +1749,11 @@ export const SendTransaction = () => {
                     {approvalType === 'erc721-single' && (
                       <div className="mt-2 text-center">
                         <p className="text-brand-white text-sm">
-                          {`Token ID: ${
-                            nftInfo?.tokenId ||
-                            convertBigNumberToString(decodedTxData?.inputs?.[1])
-                          }`}
+                          {t('send.tokenId')}:{' '}
+                          {nftInfo?.tokenId ||
+                            convertBigNumberToString(
+                              decodedTxData?.inputs?.[1]
+                            )}
                         </p>
                       </div>
                     )}
@@ -1755,7 +1768,7 @@ export const SendTransaction = () => {
                     <img
                       className="relative w-[30px] h-[30px]"
                       src={'/assets/all_assets/ArrowUp.svg'}
-                      alt="Icon"
+                      alt=""
                     />
                   </div>
                   <p className="text-brand-gray200 text-xs font-light">

@@ -99,15 +99,17 @@ it('resets private-key reveal on password change and requires a fresh reveal aft
   const password = screen.getByPlaceholderText('settings.enterYourPassword');
   fireEvent.change(password, { target: { value: 'correct' } });
   fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
-  fireEvent.click(await screen.findByRole('button', { name: 'Show' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'buttons.show' }));
   expect(screen.getByText('synthetic-private-key')).toBeVisible();
   fireEvent.change(password, { target: { value: '' } });
   expect(screen.queryByText('synthetic-private-key')).toBeNull();
-  expect(screen.queryByRole('button', { name: 'Hide' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'buttons.hide' })).toBeNull();
   fireEvent.change(password, { target: { value: 'correct' } });
   fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
-  expect(await screen.findByRole('button', { name: 'Show' })).toBeVisible();
-  expect(screen.queryByRole('button', { name: 'Hide' })).toBeNull();
+  expect(
+    await screen.findByRole('button', { name: 'buttons.show' })
+  ).toBeVisible();
+  expect(screen.queryByRole('button', { name: 'buttons.hide' })).toBeNull();
   expect(mockEmitter).toHaveBeenCalledTimes(2);
 });
 
@@ -122,12 +124,12 @@ it.each([
   expect(view.container.textContent).not.toContain(tail);
   fireEvent.change(password, { target: { value: 'correct' } });
   fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
-  const show = await screen.findByRole('button', { name: 'Show' });
+  const show = await screen.findByRole('button', { name: 'buttons.show' });
   expect(view.container.textContent).not.toContain(tail);
   expect(view.container.textContent).not.toContain(key);
   fireEvent.click(show);
   expect(screen.getByText(key)).toBeVisible();
-  fireEvent.click(screen.getByRole('button', { name: 'Hide' }));
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.hide' }));
   expect(view.container.textContent).not.toContain(tail);
   expect(view.container.textContent).not.toContain(key);
 });

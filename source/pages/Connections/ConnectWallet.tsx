@@ -303,7 +303,7 @@ export const ConnectWallet = () => {
             {/* Header section */}
             <div className="text-center px-6 py-6 border-b border-brand-gray300">
               <h3 className="text-xs text-brand-graylight uppercase tracking-wider mb-2">
-                Connect Request
+                {t('connections.connectRequest')}
               </h3>
               <div className="flex items-center justify-center gap-2">
                 <div className="w-8 h-8 rounded-full bg-gradient-to-br from-brand-royalblue to-brand-deepPurple flex items-center justify-center">
@@ -315,13 +315,13 @@ export const ConnectWallet = () => {
               {connectedAccount && (
                 <div className="mt-3 p-2 bg-bkg-4 rounded-lg">
                   <p className="text-xs text-brand-graylight">
-                    Currently connected to:{' '}
+                    {t('connections.currentlyConnected')}:{' '}
                     <span className="text-brand-white font-medium">
                       {connectedAccount.label}
                     </span>
                   </p>
                   <p className="text-[10px] text-brand-graylight mt-1">
-                    Selecting a different account will switch the connection
+                    {t('connections.selectDifferentAccountHint')}
                   </p>
                 </div>
               )}
@@ -329,7 +329,7 @@ export const ConnectWallet = () => {
               {showTrezorUtxoDisclaimer && (
                 <div className="mt-3 p-3 bg-red-900/20 border border-red-500 rounded-lg">
                   <p className="text-red-400 text-xs">
-                    Trezor is not supported for UTXO accounts on Syscoin Bridge.
+                    {t('connections.trezorUtxoBridgeUnsupported')}
                   </p>
                 </div>
               )}
@@ -356,9 +356,9 @@ export const ConnectWallet = () => {
                     <div key={keyringType}>
                       <h4 className="text-xs font-medium text-brand-graylight uppercase tracking-wider mb-3 px-2">
                         {keyringType === KeyringAccountType.HDAccount
-                          ? 'HD Account'
+                          ? t('receive.hdAccount')
                           : keyringType === KeyringAccountType.Imported
-                          ? 'Imported'
+                          ? t('components.imported')
                           : keyringType}
                       </h4>
                       <div className="space-y-2">
@@ -420,7 +420,7 @@ export const ConnectWallet = () => {
                                         <p className="text-xs text-brand-graylight">
                                           {acc.address
                                             ? ellipsis(acc.address, 8, 4)
-                                            : 'No address'}
+                                            : t('connections.noAddress')}
                                         </p>
                                       </Tooltip>
                                       <div
@@ -529,7 +529,9 @@ export const ConnectWallet = () => {
           </>
         ) : (
           <div className="flex items-center justify-center h-full">
-            <p className="text-brand-graylight">No accounts available</p>
+            <p className="text-brand-graylight">
+              {t('connections.noAccountsAvailable')}
+            </p>
           </div>
         )}
       </div>

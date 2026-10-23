@@ -29,7 +29,19 @@ jest.mock('react-router-dom', () => ({
   useLocation: () => ({}),
 }));
 jest.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (value: string) => value }),
+  useTranslation: () => ({
+    t: (key: string, values?: { wallet?: string }) => {
+      const messages = jest.requireActual('../../assets/locales/en.json');
+      if (key === 'settings.setWalletAsDefault')
+        return messages.settings.setWalletAsDefault.replace(
+          '{{wallet}}',
+          values?.wallet || ''
+        );
+      if (key.startsWith('providerDefault.'))
+        return messages.providerDefault[key.split('.')[1]];
+      return key;
+    },
+  }),
 }));
 jest.mock('components/index', () => ({
   Button: ({ children }: any) => <button>{children}</button>,

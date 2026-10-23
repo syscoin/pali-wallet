@@ -194,7 +194,8 @@ export const Fee = ({
                     if (!estimatedFiat) return null;
                     return (
                       <span className="text-xs text-brand-gray200 whitespace-nowrap">
-                        ~ {estimatedFiat} est.
+                        ~ {estimatedFiat}{' '}
+                        {t('components.estimatedAbbreviation')}
                       </span>
                     );
                   })()}

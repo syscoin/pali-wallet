@@ -113,11 +113,11 @@ it('names the phrase word-count selector through ordinary regeneration', async (
   await begin();
   const selector = screen.getByRole('combobox');
   expect(selector).toHaveValue('12');
-  expect(selector).toHaveAccessibleName('Words');
+  expect(selector).toHaveAccessibleName('seedConfirm.words');
   fireEvent.change(selector, { target: { value: '24' } });
   await screen.findByText(TWENTY_FOUR);
   expect(selector).toHaveValue('24');
-  expect(selector).toHaveAccessibleName('Words');
+  expect(selector).toHaveAccessibleName('seedConfirm.words');
   expect(mockEmitter).toHaveBeenLastCalledWith(
     ['wallet', 'createNewSeed'],
     [24]

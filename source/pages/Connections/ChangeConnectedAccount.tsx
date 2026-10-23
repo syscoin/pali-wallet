@@ -79,7 +79,7 @@ export const ChangeConnectedAccount = () => {
         <h4 className="text-xs font-medium text-brand-graylight uppercase tracking-wider">
           {required
             ? t('connections.requiredAccount')
-            : 'Current Active Account'}
+            : t('connections.currentActiveAccount')}
         </h4>
         <div
           className={`w-full p-4 rounded-lg border ${

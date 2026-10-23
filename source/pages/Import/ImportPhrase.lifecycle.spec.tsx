@@ -111,7 +111,7 @@ it('rejects an invalid word count without sending an object to the controller', 
   render(<Tree />);
   await act(async () => {
     await expect(mockValidator(undefined, 'one two')).rejects.toThrow(
-      'Invalid seed phrase length'
+      'import.importModalSeed'
     );
   });
   expect(mockEmitter).not.toHaveBeenCalled();
@@ -142,7 +142,7 @@ it('disables import again when a previously valid phrase fails validation', asyn
   await act(async () => {
     await expect(
       mockValidator(undefined, 'invalid checksum phrase')
-    ).rejects.toThrow('Invalid seed phrase');
+    ).rejects.toThrow('seedConfirm.seedError');
   });
   expect(
     screen
@@ -165,7 +165,7 @@ it('does not let an older valid reply re-enable a newer invalid phrase', async (
   });
   await act(async () => {
     await expect(mockValidator(undefined, 'one two')).rejects.toThrow(
-      'Invalid seed phrase length'
+      'import.importModalSeed'
     );
     response.resolve(true);
     await olderValidation;

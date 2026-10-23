@@ -9,6 +9,7 @@ import 'assets/styles/antd-overrides.css';
 import 'assets/styles/custom-checkbox.css';
 
 // Import React and dependencies statically to enable webpack optimization
+import i18next from 'i18next';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { Provider } from 'react-redux';
@@ -83,8 +84,12 @@ if (window.__PALI_OFFSCREEN__) {
         console.log('[App] React app rendered');
       } catch (error) {
         console.error('[App] Failed to initialize app:', error);
-        appRootElement.innerHTML =
-          '<div style="color: white; padding: 20px;">Failed to load wallet. Please refresh.</div>';
+        const feedback = document.createElement('div');
+        feedback.style.cssText = 'color: white; padding: 20px;';
+        feedback.textContent = i18next.t('app.failedToLoad', {
+          defaultValue: 'Failed to load wallet. Please refresh.',
+        });
+        appRootElement.replaceChildren(feedback);
       }
     };
 

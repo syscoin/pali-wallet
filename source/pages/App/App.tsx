@@ -64,54 +64,55 @@ const MainApp: FC = () => {
 };
 
 // Component to show when external window is open
-const ExternalActiveMessage: FC = () => (
-  <div className="flex flex-col items-center bg-no-repeat bg-[url('../../../source/assets/all_assets/GET_STARTED2.webp')] justify-center min-w-full h-screen login-animated-bg">
-    {/* Subtle twinkling particles */}
-    <div className="particle-1"></div>
-    <div className="particle-2"></div>
-    <div className="particle-3"></div>
-    <div className="particle-4"></div>
-    <div className="particle-5"></div>
-    <div className="particle-6"></div>
+const ExternalActiveMessage: FC = () => {
+  const { t } = useTranslation();
+  return (
+    <div className="flex flex-col items-center bg-no-repeat bg-[url('../../../source/assets/all_assets/GET_STARTED2.webp')] justify-center min-w-full h-screen login-animated-bg">
+      {/* Subtle twinkling particles */}
+      <div className="particle-1"></div>
+      <div className="particle-2"></div>
+      <div className="particle-3"></div>
+      <div className="particle-4"></div>
+      <div className="particle-5"></div>
+      <div className="particle-6"></div>
 
-    <div className="relative z-10 flex flex-col items-center text-center max-w-md mx-auto px-6">
-      <div className="flex flex-row gap-3 mb-8">
-        <h1 className="text-[#4DA2CF] text-justify font-poppins text-[37.87px] font-bold leading-[37.87px] tracking-[0.379px]">
-          Pali
-        </h1>
-        <h1 className="text-[#4DA2CF] font-poppins text-[37.87px] font-light leading-[37.87px] tracking-[0.379px]">
-          Wallet
-        </h1>
-      </div>
-
-      <div className="bg-bkg-4/80 backdrop-blur-sm rounded-2xl p-6 border border-brand-royalblue/20">
-        <div className="w-16 h-16 mx-auto mb-4 bg-warning-error/20 rounded-full flex items-center justify-center">
-          <svg
-            className="w-8 h-8 text-warning-error"
-            fill="currentColor"
-            viewBox="0 0 20 20"
-          >
-            <path
-              fillRule="evenodd"
-              d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
-              clipRule="evenodd"
-            />
-          </svg>
+      <div className="relative z-10 flex flex-col items-center text-center max-w-md mx-auto px-6">
+        <div className="flex flex-row gap-3 mb-8">
+          <h1 className="text-[#4DA2CF] text-justify font-poppins text-[37.87px] font-bold leading-[37.87px] tracking-[0.379px]">
+            Pali
+          </h1>
+          <h1 className="text-[#4DA2CF] font-poppins text-[37.87px] font-light leading-[37.87px] tracking-[0.379px]">
+            Wallet
+          </h1>
         </div>
 
-        <h2 className="text-white text-lg font-medium mb-3">
-          Pali is Currently Active
-        </h2>
+        <div className="bg-bkg-4/80 backdrop-blur-sm rounded-2xl p-6 border border-brand-royalblue/20">
+          <div className="w-16 h-16 mx-auto mb-4 bg-warning-error/20 rounded-full flex items-center justify-center">
+            <svg
+              className="w-8 h-8 text-warning-error"
+              fill="currentColor"
+              viewBox="0 0 20 20"
+            >
+              <path
+                fillRule="evenodd"
+                d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
+                clipRule="evenodd"
+              />
+            </svg>
+          </div>
 
-        <p className="text-brand-graylight text-sm leading-relaxed">
-          Pali Wallet is currently being used for a DApp connection. Please
-          complete or close the DApp interaction before opening the main wallet
-          interface.
-        </p>
+          <h2 className="text-white text-lg font-medium mb-3">
+            {t('app.externalActiveTitle')}
+          </h2>
+
+          <p className="text-brand-graylight text-sm leading-relaxed">
+            {t('app.externalActiveDescription')}
+          </p>
+        </div>
       </div>
     </div>
-  </div>
-);
+  );
+};
 
 const App: FC = () => {
   const { t } = useTranslation();

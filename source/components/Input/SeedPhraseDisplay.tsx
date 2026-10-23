@@ -91,19 +91,21 @@ export const SeedPhraseDisplay: React.FC<ISeedPhraseDisplayProps> = ({
                 disabled={!isEnabled}
                 onClick={toggleVisible}
                 className="p-1 rounded hover:bg-gray-700 transition-colors duration-200"
-                title={visible ? 'Hide' : 'Show'}
+                title={t(
+                  visible ? 'import.hideSeedPhrase' : 'import.showSeedPhrase'
+                )}
               >
                 {visible ? (
                   <img
                     className="w-[18px] max-w-none cursor-pointer hover:cursor-pointer z-20"
                     src="/assets/all_assets/visibleEye.svg"
-                    alt="Hide"
+                    alt={t('import.hideSeedPhrase')}
                   />
                 ) : (
                   <img
                     className="w-[18px] max-w-none cursor-pointer hover:cursor-pointer z-20"
                     src="/assets/all_assets/notVisibleEye.svg"
-                    alt="Show"
+                    alt={t('import.showSeedPhrase')}
                   />
                 )}
               </button>
@@ -140,19 +142,21 @@ export const SeedPhraseDisplay: React.FC<ISeedPhraseDisplayProps> = ({
               disabled={!isEnabled}
               onClick={toggleVisible}
               className="p-1 rounded hover:bg-gray-700 transition-colors duration-200"
-              title={visible ? 'Hide' : 'Show'}
+              title={t(
+                visible ? 'import.hideSeedPhrase' : 'import.showSeedPhrase'
+              )}
             >
               {visible ? (
                 <img
                   className="w-[18px] h-[18px] max-w-none cursor-pointer hover:cursor-pointer z-20"
                   src="/assets/all_assets/visibleEye.svg"
-                  alt="Hide"
+                  alt={t('import.hideSeedPhrase')}
                 />
               ) : (
                 <img
                   className="w-[18px] h-[18px] max-w-none cursor-pointer hover:cursor-pointer z-20"
                   src="/assets/all_assets/notVisibleEye.svg"
-                  alt="Show"
+                  alt={t('import.showSeedPhrase')}
                 />
               )}
             </button>

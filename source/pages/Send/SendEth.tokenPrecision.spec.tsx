@@ -228,7 +228,7 @@ it.each([
   'keeps ERC20 MAX exact at $decimals decimals: $raw',
   async ({ raw, decimals, expected }) => {
     await prepare(raw, decimals);
-    fireEvent.click(screen.getByRole('button', { name: 'MAX' }));
+    fireEvent.click(screen.getByRole('button', { name: 'send.max' }));
     expect(amount().value).toBe(expected);
     fireEvent.click(next());
     await waitFor(() => expect(mockNavigate).toHaveBeenCalledTimes(1));
@@ -313,7 +313,7 @@ it.each([
           { timeout: 2500 }
         );
         expect(screen.getByText('42 ETH')).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: 'MAX' })).toBeDisabled();
+        expect(screen.getByRole('button', { name: 'send.max' })).toBeDisabled();
       }
     } finally {
       consoleError.mockRestore();
@@ -381,7 +381,7 @@ it.each([false, true])(
   async (restored) => {
     const rawBalance = '9007199254740993';
     await prepareERC1155(rawBalance, Number.MAX_SAFE_INTEGER, restored);
-    fireEvent.click(screen.getByRole('button', { name: 'MAX' }));
+    fireEvent.click(screen.getByRole('button', { name: 'send.max' }));
     expect(nftAmount().value).toBe(rawBalance);
     fireEvent.click(next());
     await waitFor(() => expect(mockNavigate).toHaveBeenCalledTimes(1));
@@ -428,7 +428,7 @@ it.each([
     ];
     view.rerender(<SendEth />);
     await act(async () => void (await Promise.resolve()));
-    fireEvent.click(screen.getByRole('button', { name: 'MAX' }));
+    fireEvent.click(screen.getByRole('button', { name: 'send.max' }));
     expect(nftAmount().value).toBe(after);
     fireEvent.click(next());
     await waitFor(() => expect(mockNavigate).toHaveBeenCalledTimes(1));
@@ -443,7 +443,7 @@ it.each([undefined, null])(
     mockAssets = [{ ...mockAssets[0], chainId, balance: 41, rawBalance: '41' }];
     view.rerender(<SendEth />);
     await act(async () => void (await Promise.resolve()));
-    fireEvent.click(screen.getByRole('button', { name: 'MAX' }));
+    fireEvent.click(screen.getByRole('button', { name: 'send.max' }));
     expect(nftAmount().value).toBe('42');
     expect(screen.getByText('42 QTY')).toBeInTheDocument();
   }
@@ -491,7 +491,7 @@ it.each([undefined, null])(
     render(<SendEth />);
     await act(async () => void (await Promise.resolve()));
     expect(screen.getByText('42 QTY')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'MAX' }));
+    fireEvent.click(screen.getByRole('button', { name: 'send.max' }));
     expect(nftAmount().value).toBe('42');
   }
 );
@@ -499,7 +499,7 @@ it.each([undefined, null])(
 it('supports safe legacy ERC1155 balances without raw metadata', async () => {
   await prepareERC1155(undefined, 42);
   expect(screen.getByText('42 QTY')).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'MAX' }));
+  fireEvent.click(screen.getByRole('button', { name: 'send.max' }));
   expect(nftAmount().value).toBe('42');
   fireEvent.click(next());
   await waitFor(() => expect(mockNavigate).toHaveBeenCalledTimes(1));
@@ -512,7 +512,7 @@ it('compacts a uint256 ERC1155 header while keeping MAX and confirmation exact',
   await prepareERC1155(rawBalance, Number.MAX_SAFE_INTEGER);
   expect(screen.getByText('1.16e77 QTY')).toHaveAttribute('title', rawBalance);
   expect(screen.queryByText(`${rawBalance} QTY`)).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'MAX' }));
+  fireEvent.click(screen.getByRole('button', { name: 'send.max' }));
   expect(nftAmount().value).toBe(rawBalance);
   fireEvent.click(next());
   await waitFor(() => expect(mockNavigate).toHaveBeenCalledTimes(1));
@@ -527,7 +527,7 @@ it.each([
   'does not use an inexact or malformed ERC1155 balance: %p',
   async (asset) => {
     await prepareERC1155(asset.rawBalance, asset.balance);
-    expect(screen.getByRole('button', { name: 'MAX' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'send.max' })).toBeDisabled();
     expect(nftAmount()).toBeDisabled();
   }
 );
@@ -538,15 +538,15 @@ it('keeps a refreshed ERC1155 balance when an older restored ownership read reso
     resolve = done;
   });
   const view = await prepareERC1155('42', 42, true, ownershipReply);
-  expect(screen.getByRole('button', { name: 'MAX' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'send.max' })).toBeDisabled();
   mockAssets = [{ ...mockAssets[0], balance: 41, rawBalance: '41' }];
   view.rerender(<SendEth />);
   await act(async () => void (await Promise.resolve()));
-  fireEvent.click(screen.getByRole('button', { name: 'MAX' }));
+  fireEvent.click(screen.getByRole('button', { name: 'send.max' }));
   expect(nftAmount().value).toBe('41');
   await act(async () =>
     resolve([{ tokenId: '7', balance: 42, rawBalance: '42', verified: true }])
   );
-  fireEvent.click(screen.getByRole('button', { name: 'MAX' }));
+  fireEvent.click(screen.getByRole('button', { name: 'send.max' }));
   expect(nftAmount().value).toBe('41');
 });

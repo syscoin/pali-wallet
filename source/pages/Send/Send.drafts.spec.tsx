@@ -409,7 +409,7 @@ describe('send forms across wallet navigation', () => {
         </form>
       );
       const max = screen.getByRole('button', {
-        name: 'MAX',
+        name: 'send.max',
       }) as HTMLButtonElement;
       expect(max.type).toBe('button');
       expect(max.className).toContain('w-[41px]');
@@ -451,7 +451,7 @@ describe('send forms across wallet navigation', () => {
       };
       render(<SendEth />);
       const max = screen.getByRole('button', {
-        name: 'MAX',
+        name: 'send.max',
       }) as HTMLButtonElement;
       expect(max.disabled).toBe(true);
       const amount = screen.getByPlaceholderText(
@@ -1175,7 +1175,7 @@ describe('send forms across wallet navigation', () => {
           `${expected} SYS`
         );
         expect(
-          screen.getByText('Total (send.amountAndFee)').textContent
+          screen.getByText('send.total (send.amountAndFee)').textContent
         ).toContain(
           isMax ? '90,071,992.54740993 SYS' : '90,071,992.54740994 SYS'
         );
@@ -1438,7 +1438,7 @@ describe('send forms across wallet navigation', () => {
       mockValidateRealAmount = true;
       render(<SendSys />);
       await act(async () => {
-        fireEvent.click(screen.getByText('MAX'));
+        fireEvent.click(screen.getByText('send.max'));
       });
       expect(mockAmountValidationErrors).toHaveLength(1);
       expect(
@@ -1497,7 +1497,7 @@ describe('send forms across wallet navigation', () => {
     expect(screen.queryByRole('button', { name: 'UNSCOPED SPT' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'CURRENT SPT' }));
     await act(async () => {
-      fireEvent.click(screen.getByText('MAX'));
+      fireEvent.click(screen.getByText('send.max'));
     });
     expect(
       (screen.getByPlaceholderText('send.amount') as HTMLInputElement).value
@@ -1586,7 +1586,7 @@ describe('send forms across wallet navigation', () => {
     };
     const view = render(<SendSys />);
     await act(async () => {
-      fireEvent.click(screen.getByText('MAX'));
+      fireEvent.click(screen.getByText('send.max'));
     });
     expect(
       (screen.getByPlaceholderText('send.amount') as HTMLInputElement).value
@@ -1597,7 +1597,7 @@ describe('send forms across wallet navigation', () => {
     };
     view.rerender(<SendSys />);
     await act(async () => {
-      fireEvent.click(screen.getByText('MAX'));
+      fireEvent.click(screen.getByText('send.max'));
     });
     expect(
       (screen.getByPlaceholderText('send.amount') as HTMLInputElement).value
@@ -2020,7 +2020,7 @@ describe('send forms across wallet navigation', () => {
       );
       render(<SendSys />);
       await act(async () => undefined);
-      fireEvent.click(screen.getByText('MAX'));
+      fireEvent.click(screen.getByText('send.max'));
       await act(async () => {
         await mockSubmitForm();
       });
@@ -2114,7 +2114,7 @@ describe('send forms across wallet navigation', () => {
     );
     render(<SendSys />);
     await act(async () => undefined);
-    fireEvent.click(screen.getByText('MAX'));
+    fireEvent.click(screen.getByText('send.max'));
     let pending!: Promise<void>;
     act(() => {
       pending = mockSubmitForm();
@@ -2184,7 +2184,7 @@ describe('send forms across wallet navigation', () => {
       );
       render(<SendSys />);
       await act(async () => undefined);
-      fireEvent.click(screen.getByText('MAX'));
+      fireEvent.click(screen.getByText('send.max'));
       await act(async () => {
         await mockSubmitForm();
       });
@@ -2217,7 +2217,7 @@ describe('send forms across wallet navigation', () => {
     );
     const view = render(<SendSys />);
     await act(async () => undefined);
-    fireEvent.click(screen.getByText('MAX'));
+    fireEvent.click(screen.getByText('send.max'));
     expect(
       (screen.getByPlaceholderText('send.amount') as HTMLInputElement).value
     ).toBe('0.09889168');
@@ -2257,7 +2257,7 @@ describe('send forms across wallet navigation', () => {
       mockState.vault.accounts.HDAccount[0].balances.syscoin = '0.09889168';
       mockLocation = { ...mockLocation, pathname: '/send/sys' };
       const view = render(<SendSys />);
-      fireEvent.click(screen.getByText('MAX'));
+      fireEvent.click(screen.getByText('send.max'));
       fireEvent.change(screen.getByPlaceholderText('send.amount'), {
         target: { value: '' },
       });
@@ -2323,7 +2323,7 @@ describe('send forms across wallet navigation', () => {
     mockState.vault.accounts.HDAccount[0].balances.syscoin = '0.09889168';
     mockLocation = { ...mockLocation, pathname: '/send/sys' };
     const view = render(<SendSys />);
-    fireEvent.click(screen.getByText('MAX'));
+    fireEvent.click(screen.getByText('send.max'));
     mockSave.mockClear();
     mockStatus.connectionUnavailable = true;
     mockState.vault.accounts.HDAccount[0].balances = {
@@ -2367,7 +2367,7 @@ describe('send forms across wallet navigation', () => {
     );
     const view = render(<SendSys />);
     await act(async () => undefined);
-    fireEvent.click(screen.getByText('MAX'));
+    fireEvent.click(screen.getByText('send.max'));
     let pending!: Promise<void>;
     act(() => {
       pending = mockSubmitForm();
@@ -2527,12 +2527,12 @@ describe('send forms across wallet navigation', () => {
         jest.advanceTimersByTime(1000);
       });
       expect(
-        (screen.getByRole('button', { name: 'MAX' }) as HTMLButtonElement)
+        (screen.getByRole('button', { name: 'send.max' }) as HTMLButtonElement)
           .disabled
       ).toBe(false);
       fireEvent.click(screen.getByRole('button', { name: /TOKB.*ERC-20/ }));
       expect(
-        (screen.getByRole('button', { name: 'MAX' }) as HTMLButtonElement)
+        (screen.getByRole('button', { name: 'send.max' }) as HTMLButtonElement)
           .disabled
       ).toBe(true);
       expect(screen.queryByTitle('send.balanceVerified')).toBeNull();
@@ -2595,7 +2595,7 @@ describe('send forms across wallet navigation', () => {
         await act(async () => {
           finishSecond({ balance: '2000000000000000000', decimals: 18 });
         });
-        fireEvent.click(screen.getByRole('button', { name: 'MAX' }));
+        fireEvent.click(screen.getByRole('button', { name: 'send.max' }));
         expect(
           (screen.getByPlaceholderText('send.amount') as HTMLInputElement).value
         ).toBe('2');
@@ -2604,10 +2604,13 @@ describe('send forms across wallet navigation', () => {
           else finishFirst({ balance: '5000000000000000000', decimals: 18 });
         });
         expect(
-          (screen.getByRole('button', { name: 'MAX' }) as HTMLButtonElement)
-            .disabled
+          (
+            screen.getByRole('button', {
+              name: 'send.max',
+            }) as HTMLButtonElement
+          ).disabled
         ).toBe(false);
-        fireEvent.click(screen.getByRole('button', { name: 'MAX' }));
+        fireEvent.click(screen.getByRole('button', { name: 'send.max' }));
         expect(
           (screen.getByPlaceholderText('send.amount') as HTMLInputElement).value
         ).toBe('2');

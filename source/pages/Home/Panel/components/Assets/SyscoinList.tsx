@@ -200,7 +200,9 @@ export const SyscoinAssetsList = ({
                 <IconButton
                   onClick={() => handleAssetClick(asset)}
                   className="p-2 hover:bg-brand-royalbluemedium/20 rounded-full transition-colors duration-200"
-                  aria-label={`View details for ${asset.symbol} token`}
+                  aria-label={t('tokens.viewTokenDetails', {
+                    symbol: asset.symbol,
+                  })}
                 >
                   <ShareIcon
                     size={16}
@@ -213,7 +215,7 @@ export const SyscoinAssetsList = ({
                 <IconButton
                   onClick={() => removal.open(asset)}
                   className="p-2 hover:bg-red-500/20 rounded-full transition-colors duration-200"
-                  aria-label={`Delete ${asset.symbol} token`}
+                  aria-label={t('tokens.deleteToken', { symbol: asset.symbol })}
                 >
                   <DeleteIcon
                     size={16}
@@ -273,10 +275,10 @@ export const SyscoinAssetsList = ({
         onClick={handleConfirmDelete}
         onClose={removal.close}
         title={t('tokens.deleteToken', {
-          symbol: assetToDelete?.symbol || 'SPT Asset',
+          symbol: assetToDelete?.symbol || t('tokens.sptAsset'),
         })}
         description={t('tokens.confirmDeleteTokenSpt', {
-          symbol: assetToDelete?.symbol || 'this SPT asset',
+          symbol: assetToDelete?.symbol || t('tokens.thisSptAsset'),
         })}
         buttonText={t('buttons.delete')}
         isButtonLoading={removal.pending}

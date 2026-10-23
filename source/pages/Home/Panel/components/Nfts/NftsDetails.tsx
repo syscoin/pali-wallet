@@ -357,7 +357,9 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
                     value={manualTokenId}
                     onChange={(e) => handleManualTokenIdChange(e.target.value)}
                     placeholder={
-                      isLoadingTokenIds ? 'Loading...' : t('send.enterTokenId')
+                      isLoadingTokenIds
+                        ? t('buttons.loading')
+                        : t('send.enterTokenId')
                     }
                     disabled={isLoadingTokenIds}
                     className="w-full px-3 py-2 pr-12 bg-bkg-2 border border-bkg-4 rounded-lg text-brand-white text-sm
@@ -425,11 +427,11 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
               >
                 {quantity}
                 <span className="text-sm font-normal text-brand-gray200">
-                  Amount
+                  {t('send.amount')}
                 </span>
               </p>
               <p className="flex flex-col items-center justify-evenly h-full font-medium text-base text-brand-white">
-                {'No info'}
+                {t('components.noInformation')}
                 <span className="text-sm font-normal text-brand-gray200">
                   {t('nftDetails.lastPrice')}
                 </span>
@@ -502,7 +504,7 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
 
                 {renderCopyRow(
                   'flex items-center justify-between my-1 pl-0 pr-3 py-2 w-full text-xs  cursor-default transition-all duration-300  border-none',
-                  'Contract Address',
+                  t('settings.contractAddress'),
                   ellipsis(currentNft.contractAddress),
                   t('send.copyContractAddress'),
                   () =>
@@ -531,7 +533,9 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
           </div>
         </div>
       ) : (
-        <p className="py-8 text-center text-brand-gray200">Asset not found</p>
+        <p className="py-8 text-center text-brand-gray200">
+          {t('tokens.assetNotFound')}
+        </p>
       )}
     </>
   );

@@ -58,11 +58,17 @@ jest.mock('hooks/index', () => ({
 }));
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string) =>
-      ({
-        'networkMenu.evmNetworks': 'EVM networks',
-        'networkMenu.utxoNetworks': 'UTXO networks',
-      }[key] || key),
+    t: (copyKey: string, copyValues?: any) =>
+      jest
+        .requireActual('../../tests/helpers/localizedUiCopy')
+        .localizedUiCopy(copyKey, copyValues) ??
+      (
+        ((key: string) =>
+          ({
+            'networkMenu.evmNetworks': 'EVM networks',
+            'networkMenu.utxoNetworks': 'UTXO networks',
+          }[key] || key)) as any
+      )(copyKey, copyValues),
     i18n: { language: 'en' },
   }),
 }));
