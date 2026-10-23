@@ -73,34 +73,48 @@ it('keeps a delayed authenticated seed masked until Show and masks it again on H
   render(<PhraseView />);
   enterPassword();
   confirmPassword();
-  expect(screen.queryByRole('button', { name: 'Show' })).toBeNull();
+  expect(
+    screen.queryByRole('button', { name: 'import.showSeedPhrase' })
+  ).toBeNull();
   expect(screen.getByRole('textbox')).not.toHaveValue(seed);
   await act(async () => resolve(seed));
   expect(mockEmitter).toHaveBeenCalledWith(
     ['wallet', 'getSeed'],
     ['synthetic password']
   );
-  const show = await screen.findByRole('button', { name: 'Show' });
+  const show = await screen.findByRole('button', {
+    name: 'import.showSeedPhrase',
+  });
   expect(screen.getByRole('textbox')).not.toHaveValue(seed);
   fireEvent.click(show);
   expect(screen.getByRole('textbox')).toHaveValue(seed);
-  fireEvent.click(screen.getByRole('button', { name: 'Hide' }));
+  fireEvent.click(
+    screen.getByRole('button', { name: 'import.hideSeedPhrase' })
+  );
   expect(screen.getByRole('textbox')).not.toHaveValue(seed);
-  expect(screen.getByRole('button', { name: 'Show' })).toBeVisible();
+  expect(
+    screen.getByRole('button', { name: 'import.showSeedPhrase' })
+  ).toBeVisible();
 });
 
 it('clears a revealed seed on password edit and requires a fresh Show after reauthentication', async () => {
   render(<PhraseView />);
   enterPassword();
   confirmPassword();
-  fireEvent.click(await screen.findByRole('button', { name: 'Show' }));
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'import.showSeedPhrase' })
+  );
   expect(screen.getByRole('textbox')).toHaveValue(seed);
   enterPassword('');
   expect(screen.getByRole('textbox')).not.toHaveValue(seed);
-  expect(screen.queryByRole('button', { name: 'Show' })).toBeNull();
+  expect(
+    screen.queryByRole('button', { name: 'import.showSeedPhrase' })
+  ).toBeNull();
   enterPassword();
   confirmPassword();
-  const show = await screen.findByRole('button', { name: 'Show' });
+  const show = await screen.findByRole('button', {
+    name: 'import.showSeedPhrase',
+  });
   expect(screen.getByRole('textbox')).not.toHaveValue(seed);
   fireEvent.click(show);
   expect(screen.getByRole('textbox')).toHaveValue(seed);

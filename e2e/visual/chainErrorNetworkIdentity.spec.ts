@@ -192,7 +192,10 @@ test('a same-ID cross-family storage failure shows both networks and a healthy r
           .click();
         await expect(errorDialog).toBeHidden();
         await page
-          .locator('div.rounded-full.bg-red-600.cursor-pointer')
+          .getByRole('button', {
+            name: en.networkConnection.networkError,
+            exact: true,
+          })
           .click();
         await expect(page).toHaveURL(/#\/chain-fail-to-connect$/);
         const edit = page.getByRole('button', {

@@ -37,7 +37,14 @@ jest.mock('utils/navigationState', () => ({
 }));
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string) => (key === 'notifications.clickToView' ? 'Details' : key),
+    t: (copyKey: string, copyValues?: any) =>
+      jest
+        .requireActual('../../../../../../../tests/helpers/localizedUiCopy')
+        .localizedUiCopy(copyKey, copyValues) ??
+      (
+        ((key: string) =>
+          key === 'notifications.clickToView' ? 'Details' : key) as any
+      )(copyKey, copyValues),
   }),
 }));
 jest.mock('state/vault/selectors', () => ({

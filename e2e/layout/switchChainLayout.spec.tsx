@@ -52,16 +52,23 @@ jest.mock('react-redux', () => ({
 }));
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string) =>
-      ({
-        'settings.switchChain': 'Switch Chain',
-        'send.allow': 'Allow',
-        'settings.toSwitchNetwork': 'to switch the network',
-        'settings.thisWillSwitch':
-          'This will switch the selected network within Pali to a previously added network',
-        'buttons.reject': 'Reject',
-        'buttons.confirm': 'Confirm',
-      }[key] || key),
+    t: (key: string, values?: { chainId?: number }) =>
+      key === 'components.chainWithId'
+        ? jest
+            .requireActual('../../source/assets/locales/en.json')
+            .components.chainWithId.replace(
+              '{{chainId}}',
+              String(values?.chainId)
+            )
+        : {
+            'settings.switchChain': 'Switch Chain',
+            'send.allow': 'Allow',
+            'settings.toSwitchNetwork': 'to switch the network',
+            'settings.thisWillSwitch':
+              'This will switch the selected network within Pali to a previously added network',
+            'buttons.reject': 'Reject',
+            'buttons.confirm': 'Confirm',
+          }[key] || key,
   }),
 }));
 jest.mock('react-router-dom', () => ({
@@ -146,7 +153,7 @@ beforeAll(async () => {
   );
   artwork = Object.fromEntries(
     Object.entries({
-      'Image description': 'dotsHeader.png',
+      '': 'dotsHeader.png',
       'Chain 57057': 'zksys-icon.svg',
       arrowright: 'ArrowRight.svg',
     }).map(([alt, filename]) => [
@@ -180,7 +187,7 @@ it.each([
       // Jest's generic asset mock supplies URLs, not bytes. Reattach only the
       // genuine local artwork; geometry/classes and hit targets are untouched.
       const markup = renderToStaticMarkup(<External />).replace(
-        /src="test-file-stub"([^>]*alt="([^"]+)"[^>]*)/g,
+        /src="test-file-stub"([^>]*alt="([^"]*)"[^>]*)/g,
         (_match, attributes: string, alt: string) => {
           if (!artwork[alt]) throw new Error(`Unexpected local image: ${alt}`);
           return `src="${artwork[alt]}"${attributes}`;

@@ -15,7 +15,7 @@ const mockLocation = { pathname: '/settings/networks/custom-rpc', state: {} };
 const originalMessageChannel = globalThis.MessageChannel;
 const originalFetch = globalThis.fetch;
 const rpcUrl = 'https://public-rpc.invalid';
-const validationMessage = 'Chain ID must be a positive number';
+const validationMessage = 'settings.positiveChainId';
 
 jest.mock('react-redux', () => ({
   useSelector: (select: any) =>
@@ -192,7 +192,7 @@ it('still rejects a valid integer that differs from the RPC chain ID', async () 
   await user.click(save);
   await waitFor(() =>
     expect(mockAlert.error).toHaveBeenCalledWith(
-      'Chain ID mismatch: RPC reports 31337, but you entered 31338',
+      'settings.chainIdMismatch',
       expect.objectContaining({ autoClose: 4000 })
     )
   );

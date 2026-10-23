@@ -77,7 +77,7 @@ const pending = () => {
   return { promise, resolve, reject };
 };
 const tooltip = () => screen.getByTestId('indicator-tooltip');
-const indicator = () => tooltip().querySelector('div')!;
+const indicator = () => tooltip().querySelector('button')!;
 const advance = async (ms: number) =>
   act(async () => {
     await jest.advanceTimersByTimeAsync(ms);

@@ -535,9 +535,17 @@ test('provider edges: exact RPC results, capabilities and ordinary asset watch',
           );
           const popup = await ordinaryPopup(requestId);
           await expect(
-            popup.getByRole('heading', {
-              name: /^(invalid request format|asset not found)$/i,
-            })
+            popup
+              .getByRole('heading', {
+                name: en.settings.invalidRequestFormat,
+                exact: true,
+              })
+              .or(
+                popup.getByRole('heading', {
+                  name: en.settings.assetNotFound,
+                  exact: true,
+                })
+              )
           ).toBeVisible();
           await expect(
             popup.getByRole('button', { name: /^add token$/i })

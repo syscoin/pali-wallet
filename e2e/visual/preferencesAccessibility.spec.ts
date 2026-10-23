@@ -362,7 +362,7 @@ test('offline onboarding and preferences remain keyboard accessible with localiz
 
     await wallet.gotoRoute('#/settings/account/import');
     const watchOnly = page.getByRole('checkbox', {
-      name: 'Watch-only',
+      name: de.settings.watchOnly,
       exact: true,
     });
     await expect(watchOnly).toHaveAttribute('id', 'import-account-watch-only');
@@ -371,14 +371,19 @@ test('offline onboarding and preferences remain keyboard accessible with localiz
         name: `${de.settings.label} (${de.settings.optional})`,
       })
     ).toHaveAttribute('id', 'account-name-input');
-    await expect(
-      page.getByRole('textbox', { name: de.settings.yourPrivateKey })
-    ).toHaveAttribute('id', 'import-account-identifier');
+    const privateIdentifier = page.getByLabel(de.settings.yourPrivateKey, {
+      exact: true,
+    });
+    await expect(privateIdentifier).toHaveAttribute(
+      'id',
+      'import-account-identifier'
+    );
+    await expect(privateIdentifier).toHaveAttribute('type', 'password');
     expect(await page.locator('#account-name-input').count()).toBe(1);
     await page.locator('label[for="import-account-watch-only"]').click();
     await expect(watchOnly).toBeChecked();
     await expect(
-      page.getByRole('textbox', { name: 'Address / XPUB / Descriptor' })
+      page.getByLabel(de.settings.publicIdentifierInput, { exact: true })
     ).toHaveAttribute('id', 'import-account-identifier');
     await capture(page, 'import-account-named-german-400x480');
     expect(pageErrors).toEqual([]);

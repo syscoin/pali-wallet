@@ -131,12 +131,12 @@ describe.each(['ordinary', 'smart', 'private import', 'watch import'])(
         if (importing) {
           if (mode === 'watch import')
             fireEvent.click(
-              screen.getByRole('checkbox', { name: 'Watch-only' })
+              screen.getByRole('checkbox', { name: 'settings.watchOnly' })
             );
           fireEvent.change(
             screen.getByLabelText(
               mode === 'watch import'
-                ? 'Address / XPUB / Descriptor'
+                ? 'settings.publicIdentifierInput'
                 : 'settings.yourPrivateKey'
             ),
             {

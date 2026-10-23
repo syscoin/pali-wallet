@@ -12,7 +12,17 @@ jest.mock('react-redux', () => ({
   useSelector: (select: any) => select(mockState),
 }));
 jest.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({
+    t: (key: string, values?: { symbol?: string }) => {
+      const en = jest.requireActual('../../../../../assets/locales/en.json');
+      if (key === 'nftDetails.deleteNamedCollection')
+        return en.nftDetails.deleteNamedCollection.replace(
+          '{{symbol}}',
+          String(values?.symbol)
+        );
+      return key === 'buttons.delete' ? en.buttons.delete : key;
+    },
+  }),
 }));
 jest.mock('hooks/useController', () => ({
   useController: () => ({ controllerEmitter: mockEmitter }),

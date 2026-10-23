@@ -78,8 +78,8 @@ export const WalletBootstrap = ({ children }: PropsWithChildren) => {
         {recoveryRequired
           ? t('settings.walletRecoveryRestartRequired')
           : status === 'loading' && !isSlow
-          ? 'Connecting to your wallet…'
-          : 'Your wallet is taking longer to respond. You can retry while it connects.'}
+          ? t('components.connectingWallet')
+          : t('components.connectingWalletSlow')}
       </p>
       {!recoveryRequired && (isSlow || status === 'error') && (
         <button
@@ -102,7 +102,7 @@ export const WalletBootstrap = ({ children }: PropsWithChildren) => {
           }}
           className="rounded-lg bg-[#4DA2CF] px-5 py-3 font-medium text-[#061120] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white"
         >
-          Retry connection
+          {t('buttons.retryConnect')}
         </button>
       )}
     </div>

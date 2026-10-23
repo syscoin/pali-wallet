@@ -68,10 +68,16 @@ jest.mock(
 );
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string, values?: { symbol?: string }) =>
-      key === 'tokens.importNamedToken'
-        ? `Import ${values?.symbol} token`
-        : key,
+    t: (copyKey: string, copyValues?: any) =>
+      jest
+        .requireActual('../../../../../../tests/helpers/localizedUiCopy')
+        .localizedUiCopy(copyKey, copyValues) ??
+      (
+        ((key: string, values?: { symbol?: string }) =>
+          key === 'tokens.importNamedToken'
+            ? `Import ${values?.symbol} token`
+            : key) as any
+      )(copyKey, copyValues),
     i18n: { language: 'en' },
   }),
 }));

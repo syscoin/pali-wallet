@@ -206,7 +206,9 @@ const ManageNetworkView = () => {
                 className="flex-shrink-0"
               />
               <div className="flex flex-col items-start">
-                <span>{truncate(network.label || 'Unknown Network', 25)}</span>
+                <span>
+                  {truncate(network.label || t('settings.unknownNetwork'), 25)}
+                </span>
                 {isActiveNetwork(network) && (
                   <div className="flex items-center gap-1 mt-1">
                     <div className="w-2 h-2 bg-green-500 rounded-full"></div>
@@ -287,7 +289,9 @@ const ManageNetworkView = () => {
                 className="flex-shrink-0"
               />
               <div className="flex flex-col items-start">
-                <span>{truncate(network.label || 'Unknown Network', 25)}</span>
+                <span>
+                  {truncate(network.label || t('settings.unknownNetwork'), 25)}
+                </span>
                 {isActiveNetwork(network) && (
                   <div className="flex items-center gap-1 mt-1">
                     <div className="w-2 h-2 bg-green-500 rounded-full"></div>

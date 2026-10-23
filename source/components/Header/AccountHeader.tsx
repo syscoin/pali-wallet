@@ -379,6 +379,7 @@ export const AccountHeader: React.FC = () => {
               </Tooltip>
               <IconButton
                 onClick={copyAddress}
+                aria-label={t('buttons.copy')}
                 type="primary"
                 shape="circle"
                 className="ml-2 shrink-0"

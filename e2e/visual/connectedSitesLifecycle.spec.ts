@@ -74,7 +74,10 @@ test('connection settings follow external revocation and reconnection without re
         await wallet!.gotoRoute('#/settings/networks/connected-sites');
         await expect(page.getByText(origin, { exact: true })).toBeVisible();
         await expect(
-          page.getByText('1 site is connected to Pali Wallet', { exact: true })
+          page.getByText(
+            en.settings.connectedSiteCount_one.replace('{{count}}', '1'),
+            { exact: true }
+          )
         ).toBeVisible();
         expect(await providerRequest(dapp, 'eth_accounts')).toEqual([
           originalAddress,
@@ -234,7 +237,7 @@ test('connection settings follow external revocation and reconnection without re
           .click();
         await expect(page.getByText(origin, { exact: true })).toHaveCount(0);
         await expect(
-          page.getByText('No sites are connected to Pali Wallet', {
+          page.getByText(en.settings.connectedSiteCount_zero, {
             exact: true,
           })
         ).toBeVisible();
@@ -266,7 +269,10 @@ test('connection settings follow external revocation and reconnection without re
         ]);
         await expect(page.getByText(origin, { exact: true })).toBeVisible();
         await expect(
-          page.getByText('1 site is connected to Pali Wallet', { exact: true })
+          page.getByText(
+            en.settings.connectedSiteCount_one.replace('{{count}}', '1'),
+            { exact: true }
+          )
         ).toBeVisible();
         const edit = page.getByRole('button', {
           name: `${en.settings.editConnection}: ${origin}`,

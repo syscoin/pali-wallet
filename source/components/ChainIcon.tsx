@@ -1,5 +1,6 @@
 /* eslint-disable react/prop-types */
 import React, { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import ArbitrumIcon from '../assets/all_assets/arbitrum-icon.svg';
 import BaseIcon from '../assets/all_assets/base-icon.svg';
@@ -147,6 +148,7 @@ export const ChainIcon: React.FC<IChainIconProps> = React.memo(
     fallbackClassName = 'rounded-full',
     networkKind,
   }) => {
+    const { t } = useTranslation();
     // Keep omitted-kind callers' existing lookup behavior, without letting
     // their result poison an explicitly selected network family's cache.
     const key = `${networkKind ?? 'unspecified'}:${chainId}`;
@@ -246,7 +248,7 @@ export const ChainIcon: React.FC<IChainIconProps> = React.memo(
       <img
         key={scope.revision}
         src={iconUrl}
-        alt={`Chain ${chainId}`}
+        alt={t('components.chainWithId', { chainId })}
         className={`rounded-full ${className}`}
         style={dimensions}
         onError={() => {

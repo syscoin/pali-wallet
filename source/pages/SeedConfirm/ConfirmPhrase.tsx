@@ -105,7 +105,7 @@ export const ConfirmPhrase = ({
         {showModal && !passed && (
           <StatusModal
             show={showModal}
-            title={'Error'}
+            title={t('buttons.error')}
             description={t('seedConfirm.seedError')}
             onClose={closeModal}
             status="error"

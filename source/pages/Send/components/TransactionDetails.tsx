@@ -279,7 +279,7 @@ export const TransactionDetailsComponent = (
       </div>
 
       <p className="flex flex-col pt-2 w-full text-brand-gray200 font-poppins font-thin">
-        Total ({t('send.amountAndFee')})
+        {t('send.total')} ({t('send.amountAndFee')})
         <span className="text-white text-xs">
           {formatEther(
             BigNumber.from(currentTxValue).add(totalFeeWeiBN)

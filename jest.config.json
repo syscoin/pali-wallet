@@ -3,7 +3,11 @@
   "moduleFileExtensions": ["js", "mjs", "ts", "json", "jsx", "tsx"],
   "moduleDirectories": ["source", "node_modules"],
   "modulePathIgnorePatterns": ["node_modules"],
-  "testPathIgnorePatterns": ["<rootDir>/tests/account/", "<rootDir>/e2e/", "<rootDir>/tests/integration/recoveryEnrollment/"],
+  "testPathIgnorePatterns": [
+    "<rootDir>/tests/account/",
+    "<rootDir>/e2e/",
+    "<rootDir>/tests/integration/recoveryEnrollment/"
+  ],
   "transform": {
     "^.+\\.(js|jsx|mjs|cjs|ts|tsx)$": [
       "ts-jest",
@@ -19,6 +23,7 @@
   "testRegex": "(/__tests__/.*|(\\.|/)(test|spec))\\.[jt]sx?$",
   "setupFilesAfterEnv": ["./jest.setup.js", "./tests/assets/setupMocks.ts"],
   "moduleNameMapper": {
+    "^assets/(.*\\.json)\\?notificationMessages$": "<rootDir>/source/assets/$1",
     "^assets/.*\\.(jpg|jpeg|png|gif|svg)(\\?inline)?$": "<rootDir>/tests/__mocks__/fileMock.js",
     "\\.(jpg|jpeg|png|gif|eot|otf|webp|svg|ttf|woff|woff2|mp4|webm|wav|mp3|m4a|aac|oga)$": "<rootDir>/tests/__mocks__/fileMock.js",
     "^assets/(.*)$": "<rootDir>/source/assets/$1",

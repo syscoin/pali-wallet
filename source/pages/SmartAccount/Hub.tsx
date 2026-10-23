@@ -360,7 +360,9 @@ const SmartAccountHub = () => {
         !Number.isSafeInteger(sessionGeneration) ||
         sessionGeneration < 0
       )
-        throw new Error('Invalid wallet session');
+        throw Object.assign(new Error('Invalid wallet session'), {
+          code: 'PALI_INVALID_WALLET_SESSION',
+        });
       return {
         ...scope,
         expectedContext: {
@@ -1355,7 +1357,7 @@ const SmartAccountHub = () => {
                           state ? { ...state, name: event.target.value } : state
                         )
                       }
-                      placeholder="My validator"
+                      placeholder={t('smartAccountHub.moduleNamePlaceholder')}
                     />
                   </Form.Item>
                   <Form.Item

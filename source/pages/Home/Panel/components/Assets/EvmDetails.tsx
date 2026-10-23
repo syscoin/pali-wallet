@@ -137,7 +137,7 @@ export const EvmAssetDetails = ({
   if (!currentAsset) {
     return (
       <div className="flex items-center justify-center py-8">
-        <p className="text-brand-gray200">Asset not found</p>
+        <p className="text-brand-gray200">{t('tokens.assetNotFound')}</p>
       </div>
     );
   }
@@ -329,7 +329,9 @@ export const EvmAssetDetails = ({
     return (
       <div className="mt-4 mb-4 p-4 bg-gray-900 rounded-lg border border-gray-700">
         <div className="flex items-center justify-between mb-3">
-          <h4 className="text-white font-medium text-sm">NFT Information</h4>
+          <h4 className="text-white font-medium text-sm">
+            {t('nftDetails.information')}
+          </h4>
           <span
             className={`px-2 py-1 bg-opacity-80 text-xs rounded ${getTokenTypeBadgeColor(
               tokenStandard
@@ -343,14 +345,18 @@ export const EvmAssetDetails = ({
           {/* Token Standard */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <span className="text-gray-400 text-xs block">Standard</span>
+              <span className="text-gray-400 text-xs block">
+                {t('nftDetails.standard')}
+              </span>
               <span className="text-white font-medium text-xs">
                 {tokenStandard}
               </span>
             </div>
             {(isErc721 || (isNft && is1155)) && (
               <div className="text-right">
-                <span className="text-gray-400 text-xs block">Owned</span>
+                <span className="text-gray-400 text-xs block">
+                  {t('nftDetails.owned')}
+                </span>
                 <span
                   className="text-white font-medium text-xs"
                   title={exactQuantity}
@@ -363,7 +369,9 @@ export const EvmAssetDetails = ({
 
           {/* Contract Verification */}
           <div className="flex items-center justify-between pt-2 border-t border-gray-700">
-            <span className="text-gray-400 text-xs">Contract Status</span>
+            <span className="text-gray-400 text-xs">
+              {t('tokens.contractStatus')}
+            </span>
             <span className="px-2 py-1 bg-gray-500 bg-opacity-20 text-gray-400 text-xs rounded">
               {t('tokens.standardContract')}
             </span>
@@ -390,6 +398,7 @@ export const EvmAssetDetails = ({
                 );
               }}
               className="w-full py-2 px-4 bg-brand-royalblue bg-opacity-20 text-brand-royalblue text-sm font-medium rounded-lg hover:bg-opacity-30 transition-all duration-200 flex items-center justify-center gap-2"
+              aria-label={t('send.viewCollectionItems')}
             >
               <Icon name="eye" size={16} />
               {t('send.viewCollectionItems')}

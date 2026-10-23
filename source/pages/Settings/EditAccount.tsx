@@ -108,16 +108,16 @@ const EditAccountView = () => {
 
   const getWalletType = useMemo(() => {
     if (isSmartAccount) {
-      return 'Smart Account';
+      return t('receive.smartAccount');
     } else if (state.isTrezorWallet) {
       return HardWallets.TREZOR;
     } else if (state.isLedgerWallet) {
       return HardWallets.LEDGER;
     } else if (state.isImported) {
-      return 'Imported';
+      return t('components.imported');
     }
     return 'Pali';
-  }, [isSmartAccount, state]);
+  }, [isSmartAccount, state, t]);
 
   const walletTypeBadgeClassName = isSmartAccount
     ? 'bg-purple-500 text-white'

@@ -25,6 +25,11 @@ import {
 } from 'utils/syscoinPsbtReview';
 import { getSyscoinTransactionTypeLabel } from 'utils/syscoinTransactionUtils';
 import { SYSX_ASSET_GUID } from 'utils/tokens';
+import {
+  translatePsbtReviewError,
+  translateTransactionLabel,
+  translateTransactionType,
+} from 'utils/transactionDisplay';
 
 export interface IDecodedTransaction {
   error?: string;
@@ -140,14 +145,15 @@ const CopyableField: React.FC<{
   labelClassName = '',
   valueClassName = '',
 }) => {
+  const { t } = useTranslation();
   const { useCopyClipboard, alert } = useUtils();
   const [copied, copy] = useCopyClipboard();
 
   useEffect(() => {
     if (copied) {
-      alert.info(copyMessage || `${label} copied to clipboard`);
+      alert.info(copyMessage || t('transactions.labelCopied', { label }));
     }
-  }, [copied, alert, copyMessage, label]);
+  }, [copied, alert, copyMessage, label, t]);
 
   return (
     <div className={`flex justify-between items-center gap-4 ${className}`}>
@@ -166,7 +172,7 @@ const CopyableField: React.FC<{
             {displayValue || value}
           </Typography.Text>
         </Tooltip>
-        <IconButton onClick={() => copy(value)}>
+        <IconButton onClick={() => copy(value)} aria-label={t('buttons.copy')}>
           <Icon
             wrapperClassname="flex items-center justify-center"
             name="Copy"
@@ -368,7 +374,9 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
         <div className="flex items-center gap-2">
           <WarningOutlined className="text-warning-error" />
           <Typography.Text className="text-warning-error text-sm">
-            {decodedTx.error}
+            {decodedTx.error === 'Failed to decode transaction details'
+              ? t('transactions.decodeDetailsFailed')
+              : decodedTx.error}
           </Typography.Text>
         </div>
       </div>
@@ -388,27 +396,27 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
       {showTransactionOptions && transaction && (
         <div className="bg-brand-blue800 rounded-lg p-4 space-y-3">
           <Typography.Text strong className="text-white text-sm block">
-            Transaction Options
+            {t('transactions.transactionOptions')}
           </Typography.Text>
 
           {/* RBF Status */}
           <div className="flex justify-between items-center">
             <Typography.Text className="text-brand-gray200 text-xs">
-              Replace-by-Fee (RBF):
+              {t('transactions.rbfLabel')}
             </Typography.Text>
             <div className="flex items-center gap-1">
               {transaction.rbf === false ? (
                 <>
                   <WarningOutlined className="text-warning-error text-xs" />
                   <Typography.Text className="text-warning-error text-xs">
-                    Disabled
+                    {t('components.disabled')}
                   </Typography.Text>
                 </>
               ) : (
                 <>
                   <CheckCircleOutlined className="text-warning-success text-xs" />
                   <Typography.Text className="text-warning-success text-xs">
-                    Enabled
+                    {t('components.enabled')}
                   </Typography.Text>
                 </>
               )}
@@ -419,21 +427,21 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
           {isToken && (
             <div className="flex justify-between items-center">
               <Typography.Text className="text-brand-gray200 text-xs">
-                Zero-conf Protection (zDAG):
+                {t('transactions.zdagProtectionLabel')}
               </Typography.Text>
               <div className="flex items-center gap-1">
                 {transaction.rbf === false ? (
                   <>
                     <CheckCircleOutlined className="text-warning-success text-xs" />
                     <Typography.Text className="text-warning-success text-xs">
-                      Enabled
+                      {t('components.enabled')}
                     </Typography.Text>
                   </>
                 ) : (
                   <>
                     <ClockCircleOutlined className="text-warning-error text-xs" />
                     <Typography.Text className="text-warning-error text-xs">
-                      Disabled
+                      {t('components.disabled')}
                     </Typography.Text>
                   </>
                 )}
@@ -445,7 +453,7 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
           {transaction.feeRate && (
             <div className="flex justify-between items-center">
               <Typography.Text className="text-brand-gray200 text-xs">
-                Fee Rate:
+                {t('transactions.feeRateLabel')}
               </Typography.Text>
               <Typography.Text className="text-white text-xs">
                 {transaction.feeRate.toFixed(8)}{' '}
@@ -486,7 +494,8 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
             <button
               onClick={handleCopyAsJson}
               className="text-xs text-brand-gray200 hover:text-white flex items-center gap-1 transition-colors px-2 py-1 rounded hover:bg-alpha-whiteAlpha100"
-              title="Copy complete transaction details as JSON"
+              title={t('transactions.copyDetailsAsJson')}
+              aria-label={t('transactions.copyDetails')}
             >
               <Icon
                 wrapperClassname="flex items-center justify-center"
@@ -494,7 +503,7 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
                 isSvg
                 className="w-3 h-3"
               />
-              <span>Copy Details</span>
+              <span>{t('transactions.copyDetails')}</span>
             </button>
           </div>
         </div>
@@ -503,12 +512,15 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
         {decodedTx.syscoin?.txtype && (
           <div className="flex justify-between items-center gap-2">
             <Typography.Text className="text-brand-gray200 text-xs sm:text-sm flex-shrink-0">
-              Type:
+              {t('components.type')}
             </Typography.Text>
             <Typography.Text className="text-white text-xs sm:text-sm font-medium text-right">
               {decodedTx.sentry
                 ? t('sentry.feeType')
-                : getTransactionTypeText(decodedTx.syscoin.txtype)}
+                : translateTransactionType(
+                    getTransactionTypeText(decodedTx.syscoin.txtype),
+                    t
+                  )}
             </Typography.Text>
           </div>
         )}
@@ -630,7 +642,7 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
           <div className="flex items-start gap-2">
             <WarningOutlined className="text-warning-error mt-0.5" />
             <Typography.Text className="text-warning-error text-xs sm:text-sm">
-              {reviewError}
+              {translatePsbtReviewError(reviewError, t)}
             </Typography.Text>
           </div>
         </div>
@@ -639,7 +651,7 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
       {decodedTx.vout && decodedTx.vout.length > 0 && (
         <div className="bg-brand-blue800 rounded-lg p-4 space-y-3">
           <Typography.Text className="text-white text-sm font-medium block">
-            Transaction outputs
+            {t('transactions.outputsHeading')}
           </Typography.Text>
           {decodedTx.vout.map((output) => {
             const outputType = output.scriptPubKey?.type;
@@ -662,7 +674,7 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
               >
                 <div className="flex justify-between items-center gap-3">
                   <Typography.Text className="text-brand-gray200 text-xs sm:text-sm">
-                    Output #{output.n}:
+                    {t('transactions.outputNumber', { index: output.n })}:
                   </Typography.Text>
                   <Typography.Text className="text-white text-xs sm:text-sm font-semibold text-right">
                     {rawValue !== undefined
@@ -673,7 +685,7 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
                 </div>
                 {recipient ? (
                   <CopyableField
-                    label="Recipient"
+                    label={t('transactions.recipient')}
                     value={recipient}
                     displayValue={ellipsis(recipient, 10, 10)}
                     monospace
@@ -686,14 +698,14 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
                   <>
                     <div className="flex justify-between items-center gap-3">
                       <Typography.Text className="text-brand-gray200 text-xs sm:text-sm">
-                        Output type:
+                        {t('transactions.outputType')}
                       </Typography.Text>
                       <Typography.Text className="text-white text-xs sm:text-sm text-right">
-                        {outputType || 'Unknown'}
+                        {outputType || t('components.unknown')}
                       </Typography.Text>
                     </div>
                     <CopyableField
-                      label="Output script"
+                      label={t('transactions.outputScript')}
                       value={output.scriptPubKey?.hex || ''}
                       monospace
                       copyMessage={t('home.addressCopied')}
@@ -724,7 +736,7 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
                   symbol:
                     primaryAsset.assetGuid === SYSX_ASSET_GUID
                       ? 'SYSX'
-                      : 'Unknown',
+                      : t('components.unknown'),
                   decimals: 8,
                 };
 
@@ -762,7 +774,7 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
                       {assetInfo.assetType && (
                         <div className="flex justify-between items-center gap-3">
                           <Typography.Text className="text-brand-gray200 text-xs sm:text-sm">
-                            Standard:
+                            {t('transactions.standard')}
                           </Typography.Text>
                           <Typography.Text className="text-white text-xs sm:text-sm font-semibold text-right">
                             {assetInfo.assetType}
@@ -772,7 +784,7 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
 
                       {assetInfo.contract && (
                         <CopyableField
-                          label="Origin contract"
+                          label={t('transactions.originContract')}
                           value={assetInfo.contract}
                           displayValue={ellipsis(assetInfo.contract, 10, 10)}
                           monospace
@@ -785,7 +797,7 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
 
                       {assetInfo.tokenId && (
                         <CopyableField
-                          label="Token ID"
+                          label={t('send.tokenId')}
                           value={assetInfo.tokenId}
                           displayValue={ellipsis(assetInfo.tokenId, 10, 10)}
                           monospace
@@ -806,7 +818,10 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
                           >
                             <div className="flex justify-between items-center gap-3">
                               <Typography.Text className="text-brand-gray200 text-xs sm:text-sm">
-                                {row.isBurn ? 'Burn amount:' : 'Amount:'}
+                                {row.isBurn
+                                  ? t('transactions.burnAmount')
+                                  : t('send.amount')}
+                                :
                               </Typography.Text>
                               <Typography.Text className="text-white text-xs sm:text-sm font-semibold text-right">
                                 {row.amount} {row.symbol}
@@ -814,7 +829,7 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
                             </div>
                             {row.recipient && (
                               <CopyableField
-                                label="Recipient"
+                                label={t('transactions.recipient')}
                                 value={row.recipient}
                                 displayValue={ellipsis(row.recipient, 10, 10)}
                                 monospace
@@ -848,7 +863,7 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
                   symbol:
                     inputAsset.assetGuid === SYSX_ASSET_GUID
                       ? 'SYSX'
-                      : 'Unknown',
+                      : t('components.unknown'),
                 };
 
                 return (
@@ -943,7 +958,7 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
                         symbol:
                           asset.assetGuid === SYSX_ASSET_GUID
                             ? 'SYSX'
-                            : 'Unknown',
+                            : t('components.unknown'),
                         decimals: 8,
                       };
                       assetAmount = formatSyscoinValue(
@@ -963,7 +978,7 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
                       {/* Output header with index */}
                       <div className="flex items-center justify-between gap-2">
                         <Typography.Text className="text-brand-gray200 text-xs sm:text-sm flex-shrink-0">
-                          Output #{index}
+                          {t('transactions.outputNumber', { index })}
                         </Typography.Text>
                         <div className="text-right">
                           <Typography.Text className="text-white text-xs sm:text-sm font-medium block">
@@ -982,7 +997,7 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
                       {output.scriptPubKey?.addresses?.[0] ? (
                         <div className="flex items-center justify-between bg-brand-blue900 p-2 rounded gap-2">
                           <Typography.Text className="text-brand-gray200 text-xs sm:text-sm flex-shrink-0">
-                            Address:
+                            {t('send.address')}
                           </Typography.Text>
                           <div className="flex items-center gap-1">
                             <Tooltip content={output.scriptPubKey.addresses[0]}>
@@ -995,6 +1010,7 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
                               </Typography.Text>
                             </Tooltip>
                             <IconButton
+                              aria-label={t('buttons.copy')}
                               onClick={() =>
                                 copyAddress(output.scriptPubKey.addresses[0])
                               }
@@ -1012,12 +1028,13 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
                       ) : (
                         <div className="flex items-center justify-between bg-brand-blue900 p-2 rounded gap-2">
                           <Typography.Text className="text-brand-gray200 text-xs sm:text-sm flex-shrink-0">
-                            Type:
+                            {t('components.type')}
                           </Typography.Text>
                           <Typography.Text className="text-white text-xs sm:text-sm text-right">
                             {output.scriptPubKey?.type === 'nulldata'
-                              ? 'OP_RETURN (Data)'
-                              : output.scriptPubKey?.type || 'Unknown'}
+                              ? t('transactions.opReturnData')
+                              : output.scriptPubKey?.type ||
+                                t('components.unknown')}
                           </Typography.Text>
                         </div>
                       )}
@@ -1036,10 +1053,10 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
           {decodedTx.syscoin.burn?.ethaddress && (
             <div className="bg-brand-blue800 rounded-lg p-4 space-y-2">
               <Typography.Text className="text-white text-sm sm:text-base block font-medium">
-                Bridge to NEVM
+                {t('transactions.bridgeToNevm')}
               </Typography.Text>
               <CopyableField
-                label="NEVM Address"
+                label={t('transactions.nevmAddress')}
                 value={decodedTx.syscoin.burn.ethaddress}
                 displayValue={ellipsis(decodedTx.syscoin.burn.ethaddress, 8, 8)}
                 monospace
@@ -1054,12 +1071,12 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
           {decodedTx.syscoin.mint && (
             <div className="bg-brand-blue800 rounded-lg p-4 space-y-2">
               <Typography.Text className="text-white text-sm block font-medium">
-                Bridge from NEVM
+                {t('transactions.bridgeFromNevm')}
               </Typography.Text>
 
               {decodedTx.syscoin.mint.ethtxid && (
                 <CopyableField
-                  label="NEVM TXID"
+                  label={t('transactions.nevmTxid')}
                   value={decodedTx.syscoin.mint.ethtxid}
                   displayValue={ellipsis(decodedTx.syscoin.mint.ethtxid, 8, 8)}
                   monospace
@@ -1069,7 +1086,7 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
 
               {decodedTx.syscoin.mint.blockhash && (
                 <CopyableField
-                  label="Block Hash"
+                  label={translateTransactionLabel('Block Hash', t)}
                   value={decodedTx.syscoin.mint.blockhash}
                   displayValue={ellipsis(
                     decodedTx.syscoin.mint.blockhash,
@@ -1087,10 +1104,10 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
           {decodedTx.syscoin.poda && (
             <div className="bg-brand-blue800 rounded-lg p-4 space-y-2">
               <Typography.Text className="text-white text-sm block font-medium">
-                PoDA (Proof of Data Availability):
+                {t('transactions.podaHeading')}
               </Typography.Text>
               <CopyableField
-                label="Blob Hash"
+                label={t('transactions.blobHash')}
                 value={decodedTx.syscoin.poda.blobHash}
                 displayValue={ellipsis(decodedTx.syscoin.poda.blobHash, 10, 10)}
                 monospace
@@ -1108,13 +1125,13 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
 
           <div className="space-y-3">
             <Typography.Text className="text-white text-sm block font-medium">
-              Technical Details:
+              {t('transactions.technicalDetails')}
             </Typography.Text>
 
             <div className="space-y-2">
               <div className="flex justify-between items-center">
                 <Typography.Text className="text-brand-gray200 text-xs">
-                  Version:
+                  {t('transactions.version')}
                 </Typography.Text>
                 <Typography.Text className="text-white text-xs">
                   {decodedTx.version}
@@ -1135,7 +1152,7 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
               {decodedTx.weight && (
                 <div className="flex justify-between items-center">
                   <Typography.Text className="text-brand-gray200 text-xs">
-                    Weight:
+                    {t('transactions.weight')}
                   </Typography.Text>
                   <Typography.Text className="text-white text-xs">
                     {decodedTx.weight} WU
@@ -1146,7 +1163,7 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
               {decodedTx.locktime !== undefined && (
                 <div className="flex justify-between items-center">
                   <Typography.Text className="text-brand-gray200 text-xs">
-                    Lock Time:
+                    {t('transactions.lockTime')}
                   </Typography.Text>
                   <Typography.Text className="text-white text-xs">
                     {decodedTx.locktime}
@@ -1171,7 +1188,7 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
                       {/* Input header with index and asset amount if available */}
                       <div className="flex items-center justify-between mb-2">
                         <Typography.Text className="text-brand-gray200 text-xs">
-                          Input #{index}
+                          {t('transactions.inputNumber', { index })}
                         </Typography.Text>
                         <div className="text-right">
                           {input.value !== undefined && (
@@ -1199,7 +1216,7 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
 
                       {input.txid ? (
                         <CopyableField
-                          label="TXID"
+                          label={t('send.transactionId')}
                           value={input.txid}
                           displayValue={ellipsis(input.txid, 12, 12)}
                           monospace
@@ -1208,7 +1225,7 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
                       ) : (
                         <div className="flex justify-between items-center">
                           <Typography.Text className="text-brand-gray200 text-xs">
-                            Type:
+                            {t('components.type')}
                           </Typography.Text>
                           <Typography.Text className="text-white text-xs">
                             Coinbase
@@ -1219,7 +1236,7 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
                       {input.vout !== undefined && (
                         <div className="flex justify-between items-center">
                           <Typography.Text className="text-brand-gray200 text-xs">
-                            Output:
+                            {t('transactions.output')}
                           </Typography.Text>
                           <Typography.Text className="text-white text-xs">
                             {input.vout}
@@ -1230,7 +1247,7 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
                       {input.sequence !== undefined && (
                         <div className="flex justify-between items-center">
                           <Typography.Text className="text-brand-gray200 text-xs">
-                            Sequence:
+                            {t('transactions.sequence')}
                           </Typography.Text>
                           <Typography.Text className="text-white text-xs font-mono">
                             {input.sequence.toString(16).padStart(8, '0')}

@@ -157,7 +157,7 @@ test('a delayed inactive-network edit cannot replace another window saved regist
             async () =>
               !page.url().endsWith('#/settings/networks/custom-rpc') ||
               (await page
-                .getByText('Network changed. Please save it again.', {
+                .getByText(en.settings.networkChangedRetry, {
                   exact: true,
                 })
                 .isVisible())
@@ -170,7 +170,7 @@ test('a delayed inactive-network edit cannot replace another window saved regist
           active: initial.active,
         });
         await expect(
-          page.getByText('Network changed. Please save it again.', {
+          page.getByText(en.settings.networkChangedRetry, {
             exact: true,
           })
         ).toBeVisible();
@@ -185,7 +185,7 @@ test('a delayed inactive-network edit cannot replace another window saved regist
         });
         await page.keyboard.press('Escape');
         await expect(
-          page.getByText('Network changed. Please save it again.', {
+          page.getByText(en.settings.networkChangedRetry, {
             exact: true,
           })
         ).not.toBeVisible();

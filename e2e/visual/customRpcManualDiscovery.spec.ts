@@ -292,7 +292,10 @@ for (const scenario of scenarios) {
             .click();
           await expect(page).toHaveURL(/#\/settings\/networks\/custom-rpc$/);
           const toggle = page.getByRole('switch', {
-            name: 'Syscoin Network',
+            name: en.settings.networkFamilyLabel.replace(
+              '{{family}}',
+              'Syscoin'
+            ),
             exact: true,
           });
           await expect(toggle).toHaveAttribute('aria-checked', 'false');

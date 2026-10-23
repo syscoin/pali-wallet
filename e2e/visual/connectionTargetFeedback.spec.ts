@@ -279,7 +279,7 @@ test('a new network target receives fresh feedback deadlines after an old balanc
     const page = wallet.page;
     page.on('pageerror', (error) => pageErrors.push(error.message));
     const indicator = page.locator(
-      'div[style*="width: 8px"][style*="height: 8px"] div.w-2.h-2'
+      'div[style*="width: 8px"][style*="height: 8px"] button.w-2.h-2'
     );
     const tooltip = page.getByRole('tooltip');
     const refresh = page.getByRole('button', {

@@ -73,70 +73,76 @@ export const Modal = ({
 );
 
 export const DefaultModal = ({
-  buttonText = 'Ok',
+  buttonText,
   description = '',
   onClose,
   show,
   title = '',
-}: IDefaultModal) => (
-  <Modal show={show} onClose={onClose}>
-    <CenterPanel padded={false} scroll={false} className="flex flex-col">
-      <DialogHeader
-        title={title}
-        icon={<InformationCircleIcon />}
-        onClose={onClose}
-      />
-      <DialogBody>
-        <p>{description}</p>
-      </DialogBody>
-      <DialogFooter>
-        <DialogActions>
-          <DialogActionButton type="button" onClick={onClose} id="got-it-btn">
-            {buttonText}
-          </DialogActionButton>
-        </DialogActions>
-      </DialogFooter>
-    </CenterPanel>
-  </Modal>
-);
+}: IDefaultModal) => {
+  const { t } = useTranslation();
+  return (
+    <Modal show={show} onClose={onClose}>
+      <CenterPanel padded={false} scroll={false} className="flex flex-col">
+        <DialogHeader
+          title={title}
+          icon={<InformationCircleIcon />}
+          onClose={onClose}
+        />
+        <DialogBody>
+          <p>{description}</p>
+        </DialogBody>
+        <DialogFooter>
+          <DialogActions>
+            <DialogActionButton type="button" onClick={onClose} id="got-it-btn">
+              {buttonText === undefined ? t('buttons.ok') : buttonText}
+            </DialogActionButton>
+          </DialogActions>
+        </DialogFooter>
+      </CenterPanel>
+    </Modal>
+  );
+};
 
 export const WarningModal = ({
-  buttonText = 'Ok',
+  buttonText,
   description = '',
   warningMessage = '',
   onClose,
   show,
   title = '',
-}: IWarningModal) => (
-  <Modal show={show} onClose={onClose}>
-    <CenterPanel padded={false} scroll={false} className="flex flex-col">
-      <DialogHeader
-        title={title}
-        icon={<ExclamationIcon />}
-        onClose={onClose}
-      />
-      <DialogBody>
-        <p>{description}</p>
+}: IWarningModal) => {
+  const { t } = useTranslation();
+  return (
+    <Modal show={show} onClose={onClose}>
+      <CenterPanel padded={false} scroll={false} className="flex flex-col">
+        <DialogHeader
+          title={title}
+          icon={<ExclamationIcon />}
+          onClose={onClose}
+        />
+        <DialogBody>
+          <p>{description}</p>
 
-        {!!warningMessage && (
-          <div className="mt-2">
-            <p className="text-white text-xs disabled">{warningMessage}</p>
-          </div>
-        )}
-      </DialogBody>
-      <DialogFooter>
-        <DialogActions>
-          <DialogActionButton type="button" onClick={onClose} id="got-it-btn">
-            {buttonText}
-          </DialogActionButton>
-        </DialogActions>
-      </DialogFooter>
-    </CenterPanel>
-  </Modal>
-);
+          {!!warningMessage && (
+            <div className="mt-2">
+              <p className="text-white text-xs disabled">{warningMessage}</p>
+            </div>
+          )}
+        </DialogBody>
+        <DialogFooter>
+          <DialogActions>
+            <DialogActionButton type="button" onClick={onClose} id="got-it-btn">
+              {buttonText === undefined ? t('buttons.ok') : buttonText}
+            </DialogActionButton>
+          </DialogActions>
+        </DialogFooter>
+      </CenterPanel>
+    </Modal>
+  );
+};
 
 export const ConfirmationModal = ({
-  buttonText = 'Ok',
+  buttonText,
   children,
   description = '',
   onClose,
@@ -192,7 +198,7 @@ export const ConfirmationModal = ({
               id="confirm-btn"
               loading={isButtonLoading}
             >
-              {buttonText}
+              {buttonText === undefined ? t('buttons.ok') : buttonText}
             </DialogActionButton>
           </DialogActions>
         </DialogFooter>
@@ -202,7 +208,7 @@ export const ConfirmationModal = ({
 };
 
 export const ErrorModal = ({
-  buttonText = 'Ok',
+  buttonText,
   description = '',
   log,
   onClose,
@@ -252,12 +258,12 @@ export const ErrorModal = ({
               }
             >
               <MdBugReport size={20} />
-              Report
+              {t('buttons.report')}
             </DialogActionButton>
 
             <DialogActionButton type="button" onClick={onClose}>
               <img src={CheckIcon} alt="" aria-hidden="true" />
-              {buttonText}
+              {buttonText === undefined ? t('buttons.ok') : buttonText}
             </DialogActionButton>
           </DialogActions>
         </DialogFooter>

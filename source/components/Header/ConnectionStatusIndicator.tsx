@@ -174,7 +174,10 @@ export const ConnectionStatusIndicator = memo(
       if (hasCriticalErrors && !isNetworkActivity) {
         const latencyMs = networkQuality?.lastBalanceLatency || 0;
         tooltipContent = t('networkConnection.networkCriticalError', {
-          latency: latencyMs >= 10000 ? 'timeout' : `${latencyMs}ms`,
+          latency:
+            latencyMs >= 10000
+              ? t('networkConnection.timeout')
+              : `${latencyMs}ms`,
         });
       } else {
         tooltipContent = t('networkConnection.networkError');
@@ -228,7 +231,10 @@ export const ConnectionStatusIndicator = memo(
         statusColor = 'bg-red-600';
         const latencyMs = networkQuality?.lastBalanceLatency || 0;
         tooltipContent = t('networkConnection.operationCompletedCritical', {
-          latency: latencyMs >= 10000 ? 'timeout' : `${latencyMs}ms`,
+          latency:
+            latencyMs >= 10000
+              ? t('networkConnection.timeout')
+              : `${latencyMs}ms`,
         });
       } else {
         statusColor = 'bg-orange-500';
@@ -244,7 +250,9 @@ export const ConnectionStatusIndicator = memo(
         tooltipContent = t('networkConnection.switchingNetwork');
       } else if (networkStatus === 'connecting') {
         const targetNetworkName =
-          networkTarget?.label || activeNetwork?.label || 'network';
+          networkTarget?.label ||
+          activeNetwork?.label ||
+          t('nftDetails.network');
         tooltipContent = t('networkConnection.connecting', {
           network: targetNetworkName,
         });
@@ -264,7 +272,10 @@ export const ConnectionStatusIndicator = memo(
           placement="bottom"
           childrenClassName="flex items-center justify-center"
         >
-          <div
+          <button
+            type="button"
+            disabled={!isClickable}
+            aria-label={shouldShowIndicator ? tooltipContent : undefined}
             className={`w-2 h-2 rounded-full shadow-sm border transition-opacity duration-200 flex-shrink-0 ${
               shouldShowIndicator
                 ? `${statusColor} ${pulseClass} border-white/20 opacity-100`

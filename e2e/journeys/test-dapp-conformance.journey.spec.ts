@@ -507,7 +507,9 @@ test('official test dapp: isolated standard provider conformance', async () => {
           ),
         });
         const approvalBody = await popup.locator('body').innerText();
-        expect(approvalBody).toContain('Contract Deployment');
+        expect(approvalBody).toContain(
+          enTranslations.transactions.contractDeploy
+        );
         await popup
           .locator('#tabExample')
           .getByText('Hex', { exact: true })

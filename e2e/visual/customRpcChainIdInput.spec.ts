@@ -16,7 +16,7 @@ import { UTXO_FIXTURE_SEED } from '../harness/utxoFixture';
 
 const CHAIN_ID = 31337;
 const LABEL = 'Chain ID Validation Local';
-const INVALID_CHAIN_ID = 'Chain ID must be a positive number';
+const INVALID_CHAIN_ID = en.settings.positiveChainId;
 
 // Same localhost-only transport boundary as customNetworkDurability. It never
 // forwards; these inert reads also permit selecting the saved synthetic chain.
@@ -362,7 +362,9 @@ test('custom RPC rejects malformed chain ID text and saves only the corrected ma
         await expect(
           page
             .getByText(
-              'Chain ID mismatch: RPC reports 31337, but you entered 31338',
+              en.settings.chainIdMismatch
+                .replace('{{actual}}', String(CHAIN_ID))
+                .replace('{{expected}}', '31338'),
               { exact: true }
             )
             .first()

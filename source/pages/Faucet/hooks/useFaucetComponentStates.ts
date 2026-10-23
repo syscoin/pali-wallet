@@ -148,10 +148,12 @@ export const useFaucetComponentStates = () => {
     try {
       const data = await claimFaucet(activeNetwork.chainId, account.address);
       if (!isCurrent()) return;
-      if (!data?.data?.status)
-        throw new Error(
-          data?.data?.message || data?.message || 'Unknown error'
-        );
+      if (!data?.data?.status) {
+        const message = data?.data?.message || data?.message;
+        throw Object.assign(new Error(message || 'Unknown error'), {
+          code: message ? undefined : 'PALI_FAUCET_NO_MESSAGE',
+        });
+      }
       setState({
         ...initialState,
         revision,
@@ -179,10 +181,13 @@ export const useFaucetComponentStates = () => {
           ...initialState,
           revision,
           status: FaucetStatusResponse.ERROR,
-          errorMessage: error.message || 'An error occurred',
+          errorMessage:
+            error.message && error.code !== 'PALI_FAUCET_NO_MESSAGE'
+              ? error.message
+              : t('send.failed'),
         });
     }
-  }, [scope, activeNetwork.chainId, account?.address, controllerEmitter]);
+  }, [scope, activeNetwork.chainId, account?.address, controllerEmitter, t]);
 
   const handleFaucetButton = useCallback(() => {
     const live = getFaucetContext(store.getState());

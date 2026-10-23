@@ -36,7 +36,14 @@ jest.mock('react-redux', () => ({
   useSelector: (selector: any) => selector(mockState),
 }));
 jest.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string) => key, i18n: { language: 'en' } }),
+  useTranslation: () => ({
+    t: (copyKey: string, copyValues?: any) =>
+      jest
+        .requireActual('../../../../../../../tests/helpers/localizedUiCopy')
+        .localizedUiCopy(copyKey, copyValues) ??
+      (((key: string) => key) as any)(copyKey, copyValues),
+    i18n: { language: 'en' },
+  }),
 }));
 jest.mock('state/store', () => ({
   __esModule: true,

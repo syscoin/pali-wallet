@@ -99,7 +99,7 @@ export const CallsStatus: React.FC = () => {
             </span>
           </div>
           <div className="flex justify-between text-sm">
-            <span className="text-brand-gray200">Chain ID</span>
+            <span className="text-brand-gray200">{t('send.chainId')}</span>
             <span className="text-brand-white">{callsStatus.chainId}</span>
           </div>
           <div className="flex justify-between text-sm">
@@ -107,11 +107,13 @@ export const CallsStatus: React.FC = () => {
               {t('send.batchTransaction')}
             </span>
             <span className="text-brand-white">
-              {callsStatus.atomic ? 'atomic' : 'sequential'}
+              {t(
+                callsStatus.atomic ? 'send.atomicMode' : 'send.sequentialMode'
+              )}
             </span>
           </div>
           <div className="flex justify-between text-sm">
-            <span className="text-brand-gray200">ID</span>
+            <span className="text-brand-gray200">{t('send.batchId')}</span>
             <span className="text-brand-white" title={callsStatus.id}>
               {ellipsis(callsStatus.id, 10, 6)}
             </span>
@@ -127,7 +129,9 @@ export const CallsStatus: React.FC = () => {
                 className="bg-bkg-3 rounded-lg p-3 space-y-1 text-xs"
               >
                 <div className="flex justify-between">
-                  <span className="text-brand-gray200">Tx</span>
+                  <span className="text-brand-gray200">
+                    {t('send.transaction')}
+                  </span>
                   <span
                     className="text-brand-white"
                     title={receipt.transactionHash}
@@ -150,13 +154,13 @@ export const CallsStatus: React.FC = () => {
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-brand-gray200">Block</span>
+                  <span className="text-brand-gray200">{t('send.block')}</span>
                   <span className="text-brand-white">
                     {parseInt(receipt.blockNumber, 16)}
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-brand-gray200">Gas</span>
+                  <span className="text-brand-gray200">{t('send.gas')}</span>
                   <span className="text-brand-white">
                     {parseInt(receipt.gasUsed, 16)}
                   </span>

@@ -417,7 +417,7 @@ export const ChangeAccount = () => {
           {showTrezorUtxoDisclaimer && (
             <div className="mt-3 p-3 bg-red-900/20 border border-red-500 rounded-lg">
               <p className="text-red-400 text-xs">
-                Trezor is not supported for UTXO accounts on Syscoin Bridge.
+                {t('connections.trezorUtxoBridgeUnsupported')}
               </p>
             </div>
           )}
@@ -445,9 +445,9 @@ export const ChangeAccount = () => {
                   <div key={keyringType}>
                     <h4 className="text-xs font-medium text-brand-graylight uppercase tracking-wider mb-3 px-2">
                       {keyringType === KeyringAccountType.HDAccount
-                        ? 'HD Account'
+                        ? t('receive.hdAccount')
                         : keyringType === KeyringAccountType.Imported
-                        ? 'Imported'
+                        ? t('components.imported')
                         : keyringType}
                     </h4>
                     <div className="space-y-2">

@@ -16,6 +16,10 @@ declare module '*.svg' {
 declare module '*.xlsx';
 declare module '*.xls';
 declare module '*.csv';
+declare module '*.json?notificationMessages' {
+  const value: { notifications: Record<string, string> };
+  export default value;
+}
 declare module 'react-notifications-component';
 
 declare const TARGET_BROWSER: 'chrome' | 'firefox' | 'opera' | string;

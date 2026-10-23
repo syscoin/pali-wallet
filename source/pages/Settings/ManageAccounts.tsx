@@ -119,6 +119,15 @@ const ManageAccountsView = React.memo(() => {
   const { controllerEmitter, connectionUnavailable } = useController();
   const { isContextChanging } = usePageLoadingState();
   const { t } = useTranslation();
+  const accountTypeLabel = useCallback(
+    (accountType: KeyringAccountType) =>
+      accountType === KeyringAccountType.Imported
+        ? t('components.imported')
+        : accountType === KeyringAccountType.SmartAccount
+        ? t('receive.smartAccount')
+        : ACCOUNT_TYPE_CONFIG[accountType].label,
+    [t]
+  );
   const location = useLocation();
 
   // Ref for the scrollable ul element
@@ -331,9 +340,9 @@ const ManageAccountsView = React.memo(() => {
 
     return t('settings.removeAccountConfirmation', {
       accountName: accountToRemove.account.label,
-      accountType: ACCOUNT_TYPE_CONFIG[accountToRemove.accountType].label,
+      accountType: accountTypeLabel(accountToRemove.accountType),
     });
-  }, [accountToRemove, t]);
+  }, [accountToRemove, accountTypeLabel, t]);
 
   // Memoized unified account rendering
   const renderAccount = useCallback(
@@ -358,7 +367,7 @@ const ManageAccountsView = React.memo(() => {
             <span
               className={`text-xs px-2 py-0.5 text-white ${config.bgColor} rounded-full flex-shrink-0`}
             >
-              {config.label}
+              {accountTypeLabel(accountType)}
             </span>
             {isActiveAccount(account, accountType) && (
               <Icon name="greenCheck" isSvg className="w-4 flex-shrink-0" />
@@ -399,7 +408,14 @@ const ManageAccountsView = React.memo(() => {
         </li>
       );
     },
-    [editAccount, isActiveAccount, canRemoveAccount, handleRemoveClick, t]
+    [
+      editAccount,
+      isActiveAccount,
+      canRemoveAccount,
+      handleRemoveClick,
+      accountTypeLabel,
+      t,
+    ]
   );
 
   // Memoize the account list computation

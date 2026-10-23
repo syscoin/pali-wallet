@@ -58,7 +58,8 @@ const ConnectedSites = () => {
   const accountFor = (dapp: IDApp) =>
     resolveDappAccount(dapp, accounts, activeNetwork);
   const accountLabel = (dapp: IDApp) =>
-    accountFor(dapp)?.label || `Account ${dapp.accountId + 1}`;
+    accountFor(dapp)?.label ||
+    t('settings.accountNumber', { number: dapp.accountId + 1 });
   const selectedAccount = selected ? accountFor(selected) : undefined;
   useEffect(() => {
     if (selectedHost && !selected) setSelectedHost(undefined);
@@ -89,11 +90,7 @@ const ConnectedSites = () => {
   return (
     <>
       <p className="w-full text-white text-sm md:max-w-md">
-        {dappsList.length > 0
-          ? `${dappsList.length} ${
-              dappsList.length === 1 ? 'site is' : 'sites are'
-            } connected to Pali Wallet`
-          : 'No sites are connected to Pali Wallet'}
+        {t('settings.connectedSiteCount', { count: dappsList.length })}
       </p>
 
       <div className="flex flex-col items-center justify-center w-full">
@@ -118,7 +115,10 @@ const ConnectedSites = () => {
                     className="truncate text-brand-graylight text-[10px] mt-1"
                     title={accountLabel(_dapp)}
                   >
-                    Connected to: {accountLabel(_dapp)}
+                    {t('settings.connectedToAccount', {
+                      account: accountLabel(_dapp),
+                      interpolation: { escapeValue: false },
+                    })}
                   </p>
                 )}
               </div>

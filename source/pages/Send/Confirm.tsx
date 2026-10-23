@@ -297,6 +297,10 @@ export const SendConfirm = () => {
     : sptReview.key === sptReviewKey
     ? sptReview.error
     : 'Transaction details are loading';
+  const sptReviewMessage =
+    sptReviewError === 'Transaction details are loading'
+      ? t('transactions.detailsLoading')
+      : sptReviewError;
   const nativeTotal = useMemo(() => {
     if (!isBitcoinBased || basicTxValues?.token) {
       return undefined;
@@ -876,7 +880,7 @@ export const SendConfirm = () => {
   const performConfirm = async () => {
     if (isSmartAccountSend && !smartAccountQuoteReady) return;
     if (sptReviewError) {
-      alert.error(sptReviewError);
+      alert.error(sptReviewMessage);
       return;
     }
     const submitEmitter = submission.controllerEmitter;
@@ -1029,12 +1033,19 @@ export const SendConfirm = () => {
           (blacklistResult.severity === 'critical' ||
             blacklistResult.severity === 'high')
         ) {
-          throw new Error(
-            `Token transfer blocked: ${
-              blacklistResult.reason || 'The recipient address is blacklisted'
-            }. Severity: ${
-              blacklistResult.severity
-            }. Please verify the token recipient address before proceeding.`
+          throw Object.assign(
+            new Error(
+              `Token transfer blocked: ${
+                blacklistResult.reason || 'The recipient address is blacklisted'
+              }. Severity: ${
+                blacklistResult.severity
+              }. Please verify the token recipient address before proceeding.`
+            ),
+            {
+              code: 'PALI_TOKEN_RECIPIENT_BLOCKED',
+              recipientBlockReason: blacklistResult.reason,
+              recipientBlockSeverity: blacklistResult.severity,
+            }
           );
         }
       };
@@ -1440,7 +1451,7 @@ export const SendConfirm = () => {
 
   const handleConfirm = () => {
     if (sptReviewError) {
-      alert.error(sptReviewError);
+      alert.error(sptReviewMessage);
       return;
     }
     if (recipientWrongNetwork) {
@@ -2064,7 +2075,7 @@ export const SendConfirm = () => {
                         isBitcoinBased
                           ? basicTxValues.token.guid ||
                               basicTxValues.token.assetGuid ||
-                              'N/A'
+                              t('send.notAvailable')
                           : ellipsis(basicTxValues.token.contractAddress, 8, 6)
                       )}
                     </div>
@@ -2075,7 +2086,7 @@ export const SendConfirm = () => {
                         {t('settings.decimals')}
                       </p>
                       <div className="text-white text-sm font-mono">
-                        {basicTxValues.token.decimals ?? 'N/A'}
+                        {basicTxValues.token.decimals ?? t('send.notAvailable')}
                       </div>
                     </div>
                   </>
@@ -2233,7 +2244,7 @@ export const SendConfirm = () => {
             <div className="flex flex-col w-full text-xs text-brand-gray200 font-poppins font-normal">
               {!basicTxValues.token?.isNft ? (
                 <>
-                  Total ({t('send.amountAndFee')})
+                  {t('send.total')} ({t('send.amountAndFee')})
                   <span className="text-white text-xs">
                     {(() => {
                       // For ERC20 tokens, handle differently since we can't combine token amount + ETH fee into single fiat value
@@ -2395,7 +2406,7 @@ export const SendConfirm = () => {
 
               {requiresSptReview && !showAdvancedDetails && sptReviewError && (
                 <p role="status" className="mt-2 text-warning-error text-sm">
-                  {sptReviewError}
+                  {sptReviewMessage}
                 </p>
               )}
 

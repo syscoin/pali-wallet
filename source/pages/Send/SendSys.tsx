@@ -68,6 +68,19 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
     connectionUnavailable,
   } = useController();
   const { t } = useTranslation();
+  const preparationErrorMessage = (error: unknown) => {
+    const message = sanitizeErrorMessage(error);
+    switch (message) {
+      case 'Invalid native MAX quote':
+        return t('send.invalidNativeMaxQuote');
+      case 'Failed to create transaction PSBT':
+        return t('send.psbtCreationFailed');
+      case 'Failed to create token transaction PSBT':
+        return t('send.tokenPsbtCreationFailed');
+      default:
+        return message;
+    }
+  };
   const { alert, navigate } = useUtils();
   const location = useLocation();
   const isCurrentForm = useSendPreparationGuard(scopeKey, location.pathname);
@@ -623,7 +636,7 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
 
           if (!wasHandledSpecifically) {
             // Fallback for non-structured errors
-            const sanitizedMessage = sanitizeErrorMessage(error);
+            const sanitizedMessage = preparationErrorMessage(error);
             alert.error(
               t('send.transactionCreationFailed', {
                 error: sanitizedMessage,
@@ -750,7 +763,7 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
 
           if (!wasHandledSpecifically) {
             // Fallback for non-structured errors
-            const sanitizedMessage = sanitizeErrorMessage(error);
+            const sanitizedMessage = preparationErrorMessage(error);
             alert.error(
               t('send.transactionCreationFailed', {
                 error: sanitizedMessage,
@@ -1050,7 +1063,7 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
                 onClick={handleMaxButton}
                 className="absolute left-[15px] top-5 transform -translate-y-1/2 text-xs h-[18px] border border-alpha-whiteAlpha300 px-2 py-[2px] w-[41px] flex items-center justify-center rounded-pill cursor-pointer hover:bg-alpha-whiteAlpha200 z-10 focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-bkg-1"
               >
-                MAX
+                {t('send.max')}
               </button>
               <Form.Item
                 name="amount"

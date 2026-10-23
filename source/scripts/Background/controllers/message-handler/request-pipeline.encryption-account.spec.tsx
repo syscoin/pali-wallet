@@ -81,7 +81,13 @@ jest.mock('react-redux', () => ({
   useSelector: (select: any) => select(mockState),
 }));
 jest.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({
+    t: (key: string) =>
+      key === 'transactions.requestedAccountNotActive'
+        ? jest.requireActual('../../../../assets/locales/en.json').transactions
+            .requestedAccountNotActive
+        : key,
+  }),
 }));
 jest.mock('scripts/Background', () => ({
   getController: () => mockController,

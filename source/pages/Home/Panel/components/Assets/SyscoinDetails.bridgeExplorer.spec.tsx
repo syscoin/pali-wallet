@@ -34,7 +34,13 @@ jest.mock('scripts/Background/controllers/controllerEmitter', () => ({
   controllerEmitter: (...args: any[]) => mockController(...args),
 }));
 jest.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({
+    t: (copyKey: string, copyValues?: any) =>
+      jest
+        .requireActual('../../../../../../tests/helpers/localizedUiCopy')
+        .localizedUiCopy(copyKey, copyValues) ??
+      (((key: string) => key) as any)(copyKey, copyValues),
+  }),
 }));
 jest.mock('react-router-dom', () => ({
   useLocation: () => ({ pathname: '/home/details', state: null }),

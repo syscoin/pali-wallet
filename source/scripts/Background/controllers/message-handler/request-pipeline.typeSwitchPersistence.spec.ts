@@ -21,7 +21,18 @@ jest.mock('hooks/useController', () => ({
   }),
 }));
 jest.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string) => key, i18n: { language: 'en' } }),
+  useTranslation: () => ({
+    t: (key: string, values?: { number?: number }) =>
+      key === 'settings.accountNumber'
+        ? jest
+            .requireActual('../../../../assets/locales/en.json')
+            .settings.accountNumber.replace(
+              '{{number}}',
+              String(values?.number)
+            )
+        : key,
+    i18n: { language: 'en' },
+  }),
 }));
 jest.mock('components/ChainIcon', () => ({ ChainIcon: () => null }));
 jest.mock('components/Icon/Icon', () => ({

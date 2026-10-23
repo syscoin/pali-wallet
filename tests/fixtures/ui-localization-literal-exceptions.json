@@ -1,0 +1,349 @@
+{
+  "schema": "pali-ui-localization-literal-exceptions-v1",
+  "scope": "Exact normalized JSX word-copy and direct visible string props in production components/pages TSX. This is not callback-error, dynamic-text or all-source localization coverage.",
+  "exceptions": [
+    {
+      "file": "source/components/Fullscreen/Fullscreen.tsx",
+      "kind": "jsx-text",
+      "text": "Fullscreen mode",
+      "count": 1,
+      "reason": "Dormant component: only barrel exports remain; ActivityPanel has only a commented-out Fullscreen element and no production consumer renders it. Reaudit before enabling it."
+    },
+    {
+      "file": "source/components/Header/LogoHeader.tsx",
+      "kind": "prop:alt",
+      "text": "Pali Wallet",
+      "count": 1,
+      "reason": "Exact product name in the logo alternative text, not an English instruction."
+    },
+    {
+      "file": "source/components/Icon/Icon.tsx",
+      "kind": "jsx-text",
+      "text": "NFT",
+      "count": 1,
+      "reason": "Protocol-standard NFT acronym inside its icon; its meaning is not locale-dependent prose."
+    },
+    {
+      "file": "source/components/Loader/AppLoadingSkeleton.tsx",
+      "kind": "jsx-text",
+      "text": "Pali",
+      "count": 1,
+      "reason": "First half of the existing Pali Wallet product wordmark, not a status message."
+    },
+    {
+      "file": "source/components/Loader/AppLoadingSkeleton.tsx",
+      "kind": "jsx-text",
+      "text": "Wallet",
+      "count": 1,
+      "reason": "Second half of the existing Pali Wallet product wordmark, not a separate English field label."
+    },
+    {
+      "file": "source/components/TransactionDetails/SyscoinTransactionDetailsFromPSBT.tsx",
+      "kind": "jsx-text",
+      "text": "/vbyte",
+      "count": 1,
+      "reason": "Bitcoin fee-rate unit suffix per virtual byte; the surrounding fee label is translated separately."
+    },
+    {
+      "file": "source/components/TransactionDetails/SyscoinTransactionDetailsFromPSBT.tsx",
+      "kind": "jsx-text",
+      "text": "vbytes",
+      "count": 1,
+      "reason": "Bitcoin virtual-byte technical size unit next to a numeric fee/size value."
+    },
+    {
+      "file": "source/components/TransactionDetails/SyscoinTransactionDetailsFromPSBT.tsx",
+      "kind": "jsx-text",
+      "text": "bytes",
+      "count": 1,
+      "reason": "Technical byte-size unit next to the raw transaction byte count, not an instruction."
+    },
+    {
+      "file": "source/components/TransactionDetails/SyscoinTransactionDetailsFromPSBT.tsx",
+      "kind": "jsx-text",
+      "text": "WU",
+      "count": 1,
+      "reason": "Bitcoin weight-unit acronym adjacent to its numeric transaction weight."
+    },
+    {
+      "file": "source/components/TransactionDetails/SyscoinTransactionDetailsFromPSBT.tsx",
+      "kind": "jsx-text",
+      "text": "Coinbase",
+      "count": 1,
+      "reason": "Bitcoin protocol coinbase-input type, not the exchange brand or a user guidance sentence."
+    },
+    {
+      "file": "source/components/WalletBootstrap/WalletBootstrap.tsx",
+      "kind": "jsx-text",
+      "text": "Pali Wallet",
+      "count": 1,
+      "reason": "Exact product wordmark; loading and recovery guidance below it are translated."
+    },
+    {
+      "file": "source/pages/App/App.tsx",
+      "kind": "jsx-text",
+      "text": "Pali",
+      "count": 1,
+      "reason": "First half of the Pali Wallet wordmark in the active-external-window notice."
+    },
+    {
+      "file": "source/pages/App/App.tsx",
+      "kind": "jsx-text",
+      "text": "Wallet",
+      "count": 1,
+      "reason": "Second half of the Pali Wallet wordmark; notice title and explanation are translated separately."
+    },
+    {
+      "file": "source/pages/Chain/ChainErrorPage.tsx",
+      "kind": "jsx-text",
+      "text": "s)",
+      "count": 1,
+      "reason": "Technical seconds suffix and closing delimiter after the retry countdown; the retry guidance is already translated."
+    },
+    {
+      "file": "source/pages/External/index.tsx",
+      "kind": "jsx-text",
+      "text": "Pali Wallet",
+      "count": 1,
+      "reason": "Exact product name above the now-translated approval connection status and actions."
+    },
+    {
+      "file": "source/pages/Home/Home.tsx",
+      "kind": "jsx-text",
+      "text": "% (24h)",
+      "count": 1,
+      "reason": "Percentage and 24-hour market interval units, not an untranslated English sentence."
+    },
+    {
+      "file": "source/pages/Home/Panel/components/Assets/AssetMarketLinks.tsx",
+      "kind": "prop:alt",
+      "text": "CoinGecko",
+      "count": 1,
+      "reason": "Proper name of the linked market-data service in its logo alternative text."
+    },
+    {
+      "file": "source/pages/Home/Panel/components/Assets/EvmDetails.tsx",
+      "kind": "prop:alt",
+      "text": "CoinGecko",
+      "count": 1,
+      "reason": "Proper market-data service name for the CoinGecko logo alternative text."
+    },
+    {
+      "file": "source/pages/Home/Panel/components/Assets/EvmDetails.tsx",
+      "kind": "jsx-text",
+      "text": "CoinGecko",
+      "count": 1,
+      "reason": "Proper name of the linked CoinGecko service; surrounding market labels are translated."
+    },
+    {
+      "file": "source/pages/Home/Panel/components/Assets/EvmDetails.tsx",
+      "kind": "jsx-text",
+      "text": "% (24h)",
+      "count": 1,
+      "reason": "Percentage and 24-hour market interval units beside the numeric price change."
+    },
+    {
+      "file": "source/pages/Home/Panel/components/Assets/SyscoinDetails.tsx",
+      "kind": "prop:alt",
+      "text": "CoinGecko",
+      "count": 1,
+      "reason": "Proper name of the CoinGecko market-data logo, not a description or instruction."
+    },
+    {
+      "file": "source/pages/Home/Panel/components/Assets/SyscoinDetails.tsx",
+      "kind": "jsx-text",
+      "text": "CoinGecko",
+      "count": 1,
+      "reason": "Proper name of the linked CoinGecko service; market headings are localized separately."
+    },
+    {
+      "file": "source/pages/Home/Panel/components/Assets/SyscoinDetails.tsx",
+      "kind": "jsx-text",
+      "text": "% (24h)",
+      "count": 1,
+      "reason": "Percentage and 24-hour interval unit suffix for numeric market change."
+    },
+    {
+      "file": "source/pages/Home/Panel/components/Assets/SyscoinList.tsx",
+      "kind": "jsx-text",
+      "text": "NEVM",
+      "count": 1,
+      "reason": "Syscoin NEVM technical network acronym, not English user guidance."
+    },
+    {
+      "file": "source/pages/Home/Panel/components/Nfts/EvmNftsList.tsx",
+      "kind": "jsx-text",
+      "text": "NFT",
+      "count": 1,
+      "reason": "Protocol-standard nonfungible-token acronym in the collection display."
+    },
+    {
+      "file": "source/pages/Home/Panel/components/Transactions/UTXO/UtxoList.tsx",
+      "kind": "prop:title",
+      "text": "Z-DAG",
+      "count": 1,
+      "reason": "Exact Syscoin Z-DAG protocol name in the protocol-status title."
+    },
+    {
+      "file": "source/pages/Home/Panel/components/Transactions/UTXO/UtxoList.tsx",
+      "kind": "jsx-text",
+      "text": "Z-DAG",
+      "count": 1,
+      "reason": "Exact Syscoin Z-DAG protocol label, not an English status sentence."
+    },
+    {
+      "file": "source/pages/Send/EditPriority.tsx",
+      "kind": "jsx-text",
+      "text": "(GWEI)",
+      "count": 3,
+      "reason": "The same EVM gas-price denomination appears on each of the three translated fee-priority controls."
+    },
+    {
+      "file": "source/pages/Send/SendSys.tsx",
+      "kind": "jsx-text",
+      "text": "GUID:",
+      "count": 1,
+      "reason": "Technical asset GUID identifier prefix before the raw asset identifier."
+    },
+    {
+      "file": "source/pages/Settings/About.tsx",
+      "kind": "jsx-text",
+      "text": "Pali API",
+      "count": 1,
+      "reason": "Proper name of the Pali API reference link, not natural-language instructions."
+    },
+    {
+      "file": "source/pages/Settings/About.tsx",
+      "kind": "jsx-text",
+      "text": "https://discord.com/invite/syscoin",
+      "count": 1,
+      "reason": "Literal public community destination URL, which must not be translated."
+    },
+    {
+      "file": "source/pages/Settings/ConnectHardwareWallet.tsx",
+      "kind": "jsx-text",
+      "text": "Trezor",
+      "count": 1,
+      "reason": "Proper name of the Trezor hardware-wallet manufacturer."
+    },
+    {
+      "file": "source/pages/Settings/ConnectHardwareWallet.tsx",
+      "kind": "jsx-text",
+      "text": "Ledger",
+      "count": 1,
+      "reason": "Proper name of the Ledger hardware-wallet manufacturer."
+    },
+    {
+      "file": "source/pages/Settings/ConnectedSites.tsx",
+      "kind": "jsx-text",
+      "text": "Removing...",
+      "count": 1,
+      "reason": "Unreachable pending-dialog child: disconnectHost synchronously clears selectedHost before awaiting removal, and the row remains disabled until completion. Reaudit if that dialog lifecycle changes."
+    },
+    {
+      "file": "source/pages/Settings/CustomRPC.tsx",
+      "kind": "jsx-text",
+      "text": "EVM",
+      "count": 1,
+      "reason": "Ethereum Virtual Machine protocol-family acronym on the family selector."
+    },
+    {
+      "file": "source/pages/Settings/CustomRPC.tsx",
+      "kind": "jsx-text",
+      "text": "UTXO",
+      "count": 1,
+      "reason": "Unspent-transaction-output protocol-family acronym on the family selector."
+    },
+    {
+      "file": "source/pages/Settings/CustomRPC.tsx",
+      "kind": "prop:placeholder",
+      "text": "https://api.example.com/api",
+      "count": 1,
+      "reason": "Syntactic example API URL for the endpoint field, not untranslated guidance."
+    },
+    {
+      "file": "source/pages/Settings/ExternalWatchAsset.tsx",
+      "kind": "jsx-expression",
+      "text": "// ERC-20 Token { type: \"ERC20\", options: { address: \"0x...\", symbol: \"TOKEN\", decimals: 18 } } // NFT Collection { type: \"ERC721\", options: { address: \"0x...\", symbol: \"NFT\" } }",
+      "count": 1,
+      "reason": "Exact protocol-schema code example: ERC token standard names, schema keys, literal symbols and address placeholders remain copyable code; the Expected format heading and invalid-format guidance are translated."
+    },
+    {
+      "file": "source/pages/Settings/ExternalWatchAsset.tsx",
+      "kind": "jsx-text",
+      "text": "M",
+      "count": 1,
+      "reason": "Compact million-value unit after the numeric market-cap display, not a word label."
+    },
+    {
+      "file": "source/pages/Settings/ImportAccount.tsx",
+      "kind": "jsx-text",
+      "text": "SegWit (P2WPKH)",
+      "count": 1,
+      "reason": "Exact Bitcoin SegWit and P2WPKH script-standard names in the account-type selector."
+    },
+    {
+      "file": "source/pages/Settings/ImportAccount.tsx",
+      "kind": "jsx-text",
+      "text": "Taproot (P2TR)",
+      "count": 1,
+      "reason": "Exact Bitcoin Taproot and P2TR script-standard names in the account-type selector."
+    },
+    {
+      "file": "source/pages/Settings/ManageNetwork.tsx",
+      "kind": "jsx-text",
+      "text": "UTXO",
+      "count": 1,
+      "reason": "UTXO protocol-family acronym for the network list section."
+    },
+    {
+      "file": "source/pages/Settings/ManageNetwork.tsx",
+      "kind": "jsx-text",
+      "text": "EVM",
+      "count": 1,
+      "reason": "EVM protocol-family acronym for the network list section."
+    },
+    {
+      "file": "source/pages/Settings/RemoveEth.tsx",
+      "kind": "jsx-text",
+      "text": "Pali",
+      "count": 1,
+      "reason": "Exact product name in the asset-removal illustration; removal guidance is localized."
+    },
+    {
+      "file": "source/pages/SmartAccount/Hub.tsx",
+      "kind": "prop:placeholder",
+      "text": "0x...",
+      "count": 1,
+      "reason": "Literal hexadecimal address-format hint for the public guardian account field."
+    },
+    {
+      "file": "source/pages/SmartAccount/Hub.tsx",
+      "kind": "prop:placeholder",
+      "text": "0x",
+      "count": 1,
+      "reason": "Literal hexadecimal calldata prefix, not a natural-language placeholder."
+    },
+    {
+      "file": "source/pages/SwitchNetwork/NetworkList.tsx",
+      "kind": "jsx-text",
+      "text": "UTXO",
+      "count": 1,
+      "reason": "UTXO protocol-family acronym for the network category filter."
+    },
+    {
+      "file": "source/pages/SwitchNetwork/NetworkList.tsx",
+      "kind": "jsx-text",
+      "text": "EVM",
+      "count": 1,
+      "reason": "EVM protocol-family acronym for the network category filter."
+    },
+    {
+      "file": "source/pages/Transactions/SignEth.tsx",
+      "kind": "jsx-text",
+      "text": "params[",
+      "count": 1,
+      "reason": "Technical params[index] notation before the displayed raw request-parameter index, not an English instruction."
+    }
+  ]
+}

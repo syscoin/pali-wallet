@@ -147,32 +147,65 @@ test('backup and private key require fresh reveal after reauthentication', async
           });
           await authenticate(page);
           await expect(
-            page.getByRole('button', { name: 'Show', exact: true })
+            page.getByRole('button', {
+              name: en.import.showSeedPhrase,
+              exact: true,
+            })
           ).toBeVisible();
           await expect.poll(() => isBackupPhraseMasked(page)).toBe(true);
           observations.backupMaskedAfterAuthentication =
             await isBackupPhraseMasked(page);
-          await page.getByRole('button', { name: 'Show', exact: true }).click();
+          await page
+            .getByRole('button', {
+              name: en.import.showSeedPhrase,
+              exact: true,
+            })
+            .click();
           await expect(
-            page.getByRole('button', { name: 'Hide', exact: true })
+            page.getByRole('button', {
+              name: en.import.hideSeedPhrase,
+              exact: true,
+            })
           ).toBeVisible();
-          await page.getByRole('button', { name: 'Hide', exact: true }).click();
+          await page
+            .getByRole('button', {
+              name: en.import.hideSeedPhrase,
+              exact: true,
+            })
+            .click();
           await expect.poll(() => isBackupPhraseMasked(page)).toBe(true);
           observations.backupMaskedAfterHide = await isBackupPhraseMasked(page);
-          await page.getByRole('button', { name: 'Show', exact: true }).click();
+          await page
+            .getByRole('button', {
+              name: en.import.showSeedPhrase,
+              exact: true,
+            })
+            .click();
           await expect(
-            page.getByRole('button', { name: 'Hide', exact: true })
+            page.getByRole('button', {
+              name: en.import.hideSeedPhrase,
+              exact: true,
+            })
           ).toBeVisible();
           await page.locator('#phraseview_password').fill('');
           await expect(
-            page.getByRole('button', { name: 'Hide', exact: true })
+            page.getByRole('button', {
+              name: en.import.hideSeedPhrase,
+              exact: true,
+            })
           ).toHaveCount(0);
           await authenticate(page);
           await expect(
-            page.getByRole('button', { name: 'Show', exact: true })
+            page.getByRole('button', {
+              name: en.import.showSeedPhrase,
+              exact: true,
+            })
           ).toBeVisible();
           await expect(
-            page.getByRole('button', { name: 'Hide', exact: true })
+            page.getByRole('button', {
+              name: en.import.hideSeedPhrase,
+              exact: true,
+            })
           ).toHaveCount(0);
           await expect(page.locator('textarea')).toHaveClass(/blur-sm/);
           await expect.poll(() => isBackupPhraseMasked(page)).toBe(true);
@@ -180,7 +213,10 @@ test('backup and private key require fresh reveal after reauthentication', async
             await isBackupPhraseMasked(page);
           observations.backupHiddenAfterReauthentication =
             (await page
-              .getByRole('button', { name: 'Show', exact: true })
+              .getByRole('button', {
+                name: en.import.showSeedPhrase,
+                exact: true,
+              })
               .count()) === 1;
           await capture(page, info, 'backup-after-reauthentication');
         }

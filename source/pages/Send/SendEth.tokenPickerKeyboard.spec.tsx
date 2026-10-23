@@ -346,26 +346,28 @@ it('removes the closed selector from accessibility and skips it while tabbing to
   await waitFor(() => expect(trigger).toHaveFocus());
   expect(screen.queryByRole('menu')).toBeNull();
   await user.tab();
-  expect(screen.getByRole('button', { name: 'MAX' })).toHaveFocus();
+  expect(screen.getByRole('button', { name: 'send.max' })).toHaveFocus();
 });
 it('preserves native MAX and exact verified ERC20 MAX across asset selection', async () => {
   const user = await mount();
   const amount = () =>
     screen.getByPlaceholderText('send.amount') as HTMLInputElement;
-  await user.click(screen.getByRole('button', { name: 'MAX' }));
+  await user.click(screen.getByRole('button', { name: 'send.max' }));
   expect(amount().value).toBe('10');
   await selectWithPointer(user, 'PRECISE');
   await waitFor(
-    () => expect(screen.getByRole('button', { name: 'MAX' })).toBeEnabled(),
+    () =>
+      expect(screen.getByRole('button', { name: 'send.max' })).toBeEnabled(),
     { timeout: 2500 }
   );
-  await user.click(screen.getByRole('button', { name: 'MAX' }));
+  await user.click(screen.getByRole('button', { name: 'send.max' }));
   expect(amount().value).toBe('0.999999999999999999');
   await selectWithPointer(user, 'SECOND', 'PRECISE');
   await waitFor(
-    () => expect(screen.getByRole('button', { name: 'MAX' })).toBeEnabled(),
+    () =>
+      expect(screen.getByRole('button', { name: 'send.max' })).toBeEnabled(),
     { timeout: 2500 }
   );
-  await user.click(screen.getByRole('button', { name: 'MAX' }));
+  await user.click(screen.getByRole('button', { name: 'send.max' }));
   expect(amount().value).toBe('1.234567');
 });

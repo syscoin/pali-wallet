@@ -190,7 +190,9 @@ const DefaultEvmAssets = React.memo(
                 <IconButton
                   onClick={() => handleAssetClick(token)}
                   className="p-2 hover:bg-brand-royalbluemedium/20 rounded-full transition-colors duration-200"
-                  aria-label={`View details for ${token.tokenSymbol} token`}
+                  aria-label={t('tokens.viewTokenDetails', {
+                    symbol: token.tokenSymbol,
+                  })}
                 >
                   <DetailsIcon
                     size={16}
@@ -203,7 +205,9 @@ const DefaultEvmAssets = React.memo(
                 <IconButton
                   onClick={() => removal.open(token)}
                   className="p-2 hover:bg-red-500/20 rounded-full transition-colors duration-200"
-                  aria-label={`Delete ${token.tokenSymbol} token`}
+                  aria-label={t('tokens.deleteToken', {
+                    symbol: token.tokenSymbol,
+                  })}
                 >
                   <DeleteIcon
                     size={16}
@@ -230,10 +234,10 @@ const DefaultEvmAssets = React.memo(
           onClick={handleConfirmDelete}
           onClose={removal.close}
           title={t('tokens.deleteToken', {
-            symbol: tokenToDelete?.tokenSymbol || 'Token',
+            symbol: tokenToDelete?.tokenSymbol || t('tokens.genericToken'),
           })}
           description={t('tokens.confirmDeleteTokenEvm', {
-            symbol: tokenToDelete?.tokenSymbol || 'this token',
+            symbol: tokenToDelete?.tokenSymbol || t('tokens.thisToken'),
           })}
           buttonText={t('buttons.delete')}
           isButtonLoading={removal.pending}

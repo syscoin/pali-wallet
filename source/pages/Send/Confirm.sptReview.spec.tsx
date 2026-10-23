@@ -282,7 +282,7 @@ it('keeps Confirm disabled until mandatory SPT review finishes, then reuses it w
   ).length;
   expect(beforeExpansion).toBe(1);
   fireEvent.click(screen.getByRole('button', { name: 'send.advancedDetails' }));
-  expect(screen.getByText('Transaction outputs')).toBeTruthy();
+  expect(screen.getByText('transactions.outputsHeading')).toBeTruthy();
   expect(
     mockEmitter.mock.calls.filter(
       ([[, method]]) => method === 'decodeRawTransaction'
@@ -308,7 +308,7 @@ it('does not decode an ordinary native preview until Advanced is opened', async 
   );
   fireEvent.click(screen.getByRole('button', { name: 'send.advancedDetails' }));
   await waitFor(() =>
-    expect(screen.getByText('Transaction outputs')).toBeTruthy()
+    expect(screen.getByText('transactions.outputsHeading')).toBeTruthy()
   );
 });
 

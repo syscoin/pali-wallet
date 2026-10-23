@@ -251,9 +251,10 @@ test('network-error recovery edit action is reachable by keyboard', async ({}, i
     const page = wallet.page;
     // Mainnet is intentionally offline in this synthetic fixture. Enter its
     // genuine failure screen through the visible red connection indicator.
-    const failureIndicator = page.locator(
-      'div.rounded-full.bg-red-600.cursor-pointer'
-    );
+    const failureIndicator = page.getByRole('button', {
+      name: en.networkConnection.networkError,
+      exact: true,
+    });
     await expect(failureIndicator).toHaveCount(1);
     await failureIndicator.click();
     await expect(page).toHaveURL(/#\/chain-fail-to-connect$/);

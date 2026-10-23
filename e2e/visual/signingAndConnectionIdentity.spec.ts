@@ -269,7 +269,7 @@ test('long connected-account labels retain visible edit and disconnect controls'
       .getByRole('button', { name: en.settings.deleteConnected, exact: true })
       .click();
     await expect(
-      page.getByText('No sites are connected to Pali Wallet', { exact: true })
+      page.getByText(en.settings.connectedSiteCount_zero, { exact: true })
     ).toBeVisible();
   });
 });

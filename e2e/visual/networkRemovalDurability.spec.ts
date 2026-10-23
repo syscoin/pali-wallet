@@ -206,7 +206,7 @@ test('inactive custom UTXO network removal retains its vault after storage refus
         await wallet!.switchNetwork('Syscoin Testnet', 'UTXO');
         await wallet!.gotoRoute('#/settings/networks/custom-rpc');
         const kind = page.getByRole('switch', {
-          name: 'Syscoin Network',
+          name: en.settings.networkFamilyLabel.replace('{{family}}', 'Syscoin'),
           exact: true,
         });
         if ((await kind.getAttribute('aria-checked')) !== 'true')

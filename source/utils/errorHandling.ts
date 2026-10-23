@@ -241,7 +241,7 @@ export const handleTransactionError = (
       case 'INVALID_ASSET_ALLOCATION':
         alert.error(
           t('send.invalidAssetAllocation', {
-            guid: sanitizedError.details || 'Unknown',
+            guid: sanitizedError.details || t('components.unknown'),
           })
         );
         return true;
@@ -256,9 +256,10 @@ export const handleTransactionError = (
             const errorDetails = JSON.parse(detailsMatch[1]);
             if (errorDetails.error && sanitizeErrorMessage) {
               // Re-sanitize the extracted error in case it contains unsafe content
-              errorMsg = `Transaction failed: ${sanitizeErrorMessage(
-                errorDetails.error
-              )}`;
+              errorMsg = t('send.transactionFailureDetails', {
+                message: sanitizeErrorMessage(errorDetails.error),
+                interpolation: { escapeValue: false },
+              });
             }
           }
         } catch (e) {
@@ -280,8 +281,14 @@ export const handleTransactionError = (
             )}`
           );
         } else {
-          // Bypass i18n interpolation to prevent additional encoding
-          const confirmErrorMessage = `Transaction creation failed (${sanitizedError.code}): ${sanitizedError.message}`;
+          const confirmErrorMessage = t(
+            'send.transactionCreationFailureDetails',
+            {
+              code: sanitizedError.code,
+              message: sanitizedError.message,
+              interpolation: { escapeValue: false },
+            }
+          );
           alert.error(confirmErrorMessage);
         }
         return true;
@@ -290,7 +297,16 @@ export const handleTransactionError = (
 
   // Handle blacklist errors with specific messages
   if (isBlacklistError(error)) {
-    alert.error(error.message);
+    alert.error(
+      error.code === 'PALI_TOKEN_RECIPIENT_BLOCKED'
+        ? t('blacklist.tokenRecipientBlocked', {
+            reason:
+              error.recipientBlockReason || t('blacklist.recipientBlacklisted'),
+            severity: error.recipientBlockSeverity,
+            interpolation: { escapeValue: false },
+          })
+        : error.message
+    );
     return true;
   }
 

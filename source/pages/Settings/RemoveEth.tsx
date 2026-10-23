@@ -96,12 +96,14 @@ const RemoveEthView = () => {
             isSvg
           />
           {!isEnabled ? (
-            <p className="text-sm text-white">You are using another wallet!</p>
+            <p className="text-sm text-white">
+              {t('settings.usingAnotherWallet')}
+            </p>
           ) : (
             <>
               <p className="text-sm text-white">Pali</p>
               <p className="text-sm text-brand-gray200">
-                is the default wallet
+                {t('settings.defaultWalletStatus')}
               </p>
             </>
           )}
@@ -110,11 +112,10 @@ const RemoveEthView = () => {
         {isEnabled && (
           <div className="flex p-4 rounded-[20px] flex-col gap-[11px] w-full border-dashed border-alpha-whiteAlpha300 bg-alpha-whiteAlpha100">
             <p className="text-xs font-medium text-white">
-              How can I set other wallet as default?
+              {t('settings.otherDefaultWalletHelpTitle')}
             </p>
             <p className="text-xs font-normal text-white">
-              Some wallets offer this option internally. The browser will always
-              consider as default the last wallet installed or activated.
+              {t('settings.otherDefaultWalletHelp')}
             </p>
           </div>
         )}
@@ -131,9 +132,9 @@ const RemoveEthView = () => {
                 {icon}
               </span>
               <span className="min-w-0 whitespace-normal break-words">
-                {isEnabled
-                  ? 'Set Metamask as default wallet'
-                  : 'Set Pali as default wallet'}
+                {t('settings.setWalletAsDefault', {
+                  wallet: isEnabled ? 'Metamask' : 'Pali',
+                })}
               </span>
             </button>
             <Button

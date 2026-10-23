@@ -151,7 +151,7 @@ test('a new UI refresh retires prior success while its balance read is pending',
     });
     // This is the actual existing 8px header indicator, not an injected marker.
     const indicator = page.locator(
-      'div[style*="width: 8px"][style*="height: 8px"] div.w-2.h-2'
+      'div[style*="width: 8px"][style*="height: 8px"] button.w-2.h-2'
     );
     const tooltip = page.getByRole('tooltip');
     await wallet.step(

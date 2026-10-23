@@ -246,7 +246,7 @@ test('stale network removal confirmation preserves a same-URL replacement until 
     const add = async (target: Page, label: string, explorer: string) => {
       await target.goto(wallet!.appUrl('#/settings/networks/custom-rpc'));
       const kind = target.getByRole('switch', {
-        name: 'Syscoin Network',
+        name: en.settings.networkFamilyLabel.replace('{{family}}', 'Syscoin'),
         exact: true,
       });
       await expect(kind).toHaveAttribute('aria-checked', 'false');

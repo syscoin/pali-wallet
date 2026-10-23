@@ -116,7 +116,9 @@ const ImportAccountView = () => {
       const wasHandled = handleWalletLockedError(error);
       if (!wasHandled) {
         // If not a wallet locked error, show the original error message
-        alert.error(extractErrorMessage(error, 'Import failed'));
+        alert.error(
+          extractErrorMessage(error, t('settings.accountImportFailed'))
+        );
       }
     } finally {
       importInFlight.current = false;
@@ -213,7 +215,9 @@ const ImportAccountView = () => {
                     checked={selectedUtxoAddressType === 'p2pkh'}
                     onChange={() => setSelectedUtxoAddressType('p2pkh')}
                   />
-                  <span className="text-white text-sm">Legacy (P2PKH)</span>
+                  <span className="text-white text-sm">
+                    {t('settings.legacyAddressType')}
+                  </span>
                 </label>
                 <label className="inline-flex items-center gap-2 cursor-pointer">
                   <input
@@ -233,7 +237,7 @@ const ImportAccountView = () => {
               className="text-white text-sm"
               htmlFor="import-account-watch-only"
             >
-              Watch-only
+              {t('settings.watchOnly')}
             </label>
             <input
               id="import-account-watch-only"
@@ -369,12 +373,12 @@ const ImportAccountView = () => {
               }
               placeholder={
                 watchOnly
-                  ? 'Address / XPUB / Descriptor'
+                  ? t('settings.publicIdentifierInput')
                   : t('settings.yourPrivateKey')
               }
               aria-label={
                 watchOnly
-                  ? 'Address / XPUB / Descriptor'
+                  ? t('settings.publicIdentifierInput')
                   : t('settings.yourPrivateKey')
               }
               id="import-account-identifier"

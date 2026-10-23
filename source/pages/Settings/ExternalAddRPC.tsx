@@ -108,6 +108,7 @@ const CustomRPCExternal = () => {
       },
     ]);
 
+    let ownValidationMessage: string | undefined;
     try {
       const rpcParams = {
         url: rpcUrl.trim(),
@@ -125,6 +126,7 @@ const CustomRPCExternal = () => {
       )) as INetwork;
 
       if (!network) {
+        ownValidationMessage = t('settings.failedValidateRpc');
         throw new Error('Failed to get network configuration from RPC');
       }
 
@@ -140,6 +142,10 @@ const CustomRPCExternal = () => {
 
       // Verify chainId matches what was requested
       if (formData?.chainId && network.chainId !== formData.chainId) {
+        ownValidationMessage = t('settings.chainIdMismatch', {
+          actual: network.chainId,
+          expected: formData.chainId,
+        });
         throw new Error(
           `Chain ID mismatch: RPC reports ${network.chainId}, but expected ${formData.chainId}`
         );
@@ -148,10 +154,9 @@ const CustomRPCExternal = () => {
       return network;
     } catch (error) {
       // Extract the actual error message from the thrown error
-      const errorMessage = extractErrorMessage(
-        error,
-        t('settings.failedValidateRpc')
-      );
+      const errorMessage =
+        ownValidationMessage ||
+        extractErrorMessage(error, t('settings.failedValidateRpc'));
 
       // Set error state
       setFieldErrors('url', [errorMessage]);
@@ -185,7 +190,7 @@ const CustomRPCExternal = () => {
       const typedApiResult = apiResult as { error?: string; success?: boolean };
 
       if (!typedApiResult?.success) {
-        const apiError = typedApiResult?.error || 'Failed to validate API URL';
+        const apiError = typedApiResult?.error || t('settings.apiFormatError');
 
         // Set error state
         setFieldErrors('apiUrl', [apiError]);
@@ -200,7 +205,7 @@ const CustomRPCExternal = () => {
     } catch (error) {
       const errorMessage = extractErrorMessage(
         error,
-        'Failed to validate API URL'
+        t('settings.apiConnectionError')
       );
 
       // Set error state
@@ -286,7 +291,10 @@ const CustomRPCExternal = () => {
       setSwitchingNetwork(false);
       setConfirmed(false);
 
-      const errorMessage = extractErrorMessage(error, 'Failed to add network');
+      const errorMessage = extractErrorMessage(
+        error,
+        t('settings.networkAdditionFailed')
+      );
 
       // Show error alert prominently
       alert.error(errorMessage, {

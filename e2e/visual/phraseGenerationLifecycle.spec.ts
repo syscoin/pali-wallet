@@ -177,7 +177,10 @@ test.use({ trace: 'off' });
             await expect(page).toHaveURL(/#\/phrase$/);
             await expect(checkbox).toBeEnabled();
             await page
-              .getByRole('button', { name: 'Show', exact: true })
+              .getByRole('button', {
+                name: en.import.showSeedPhrase,
+                exact: true,
+              })
               .click();
             await expect(words).toHaveCount(12);
             await expect(page.getByRole('combobox')).toHaveAccessibleName(
@@ -234,7 +237,10 @@ test.use({ trace: 'off' });
             // reset before counting, without accepting the concealed mask as
             // a generated phrase or changing the held-response timing checks.
             await page
-              .getByRole('button', { name: 'Show', exact: true })
+              .getByRole('button', {
+                name: en.import.showSeedPhrase,
+                exact: true,
+              })
               .click();
             await expect(words).toHaveCount(24);
             if (mode === 'older') {

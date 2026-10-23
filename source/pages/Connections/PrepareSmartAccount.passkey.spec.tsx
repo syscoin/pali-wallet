@@ -1,6 +1,7 @@
 jest.unmock('crypto');
 
 import { webcrypto } from 'crypto';
+import { createInstance } from 'i18next';
 import React from 'react';
 import { useSelector } from 'react-redux';
 
@@ -22,6 +23,8 @@ import { getPaliModuleAddress } from 'utils/smartAccount/contracts';
 
 import { PrepareSmartAccount } from './PrepareSmartAccount';
 
+let mockTranslate = (key: string) => key;
+
 jest.mock('components/Icon/Icon', () => ({
   LoadingSvg: 'span',
   DropdownArrowSvg: 'span',
@@ -36,7 +39,7 @@ jest.mock('hooks/useController', () => ({ useController: jest.fn() }));
 jest.mock('hooks/index', () => ({ useQueryData: jest.fn() }));
 jest.mock('react-redux', () => ({ useSelector: jest.fn() }));
 jest.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({ t: (key: string) => mockTranslate(key) }),
 }));
 jest.mock('utils/browser', () => ({ dispatchBackgroundEvent: jest.fn() }));
 jest.mock('utils/passkey', () => ({
@@ -113,6 +116,7 @@ describe('smart-account creation passkey ownership and retention', () => {
   };
 
   beforeEach(() => {
+    mockTranslate = (key: string) => key;
     states = [];
     records = new Map();
     failHydration = false;
@@ -551,4 +555,44 @@ describe('smart-account creation passkey ownership and retention', () => {
     );
     expect(createPasskeyCredential).not.toHaveBeenCalled();
   });
+  it.each(['en', 'es', 'pt', 'fr', 'de', 'zh', 'ja', 'ko', 'ru'])(
+    '%s keeps the pre-existing pending creation name stable across a language choice',
+    async (lng) => {
+      // Resource-only lookup; production i18n startup/storage is not replaced.
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const translations = require(`assets/locales/${lng}.json`);
+      const i18n = createInstance();
+      await i18n.init({
+        lng,
+        initImmediate: false,
+        fallbackLng: false,
+        resources: { [lng]: { translation: translations } },
+      });
+      mockTranslate = (key) => i18n.t(key);
+      (useQueryData as jest.Mock).mockReturnValue({
+        host: 'example.test',
+        request: { authenticator: { id: 'p256-webauthn' } },
+      });
+      setPendingCreationPasskey({
+        ...CREDENTIAL,
+        publicKey: PUBLIC_KEY,
+        passkeyName: 'example.test Smart Account',
+      });
+      const button = find(
+        render(),
+        (element) =>
+          element.type === 'button' &&
+          element.props.children === i18n.t('buttons.confirm')
+      );
+      expect(button).toBeDefined();
+      await button!.props.onClick();
+      expect(signP256WebAuthnActionHash).toHaveBeenCalledWith(
+        expect.objectContaining({
+          expectedCredentialIdHash: CREDENTIAL.credentialIdHash,
+          expectedPublicKey: PUBLIC_KEY,
+        })
+      );
+      expect(createPasskeyCredential).not.toHaveBeenCalled();
+    }
+  );
 });

@@ -125,7 +125,9 @@ const manualUtxo = async (chainId: number, label?: string) => {
     return undefined;
   });
   const view = render(<CustomRPC />);
-  await user.click(screen.getByRole('switch', { name: 'Syscoin Network' }));
+  await user.click(
+    screen.getByRole('switch', { name: 'settings.networkFamilyLabel' })
+  );
   await waitFor(() =>
     expect(mockEmitter).toHaveBeenCalledWith(
       ['wallet', 'getChainData'],
@@ -201,7 +203,9 @@ it.each([false, true])(
     const user = userEvent.setup();
     const view = render(<CustomRPC />);
     if (utxo)
-      await user.click(screen.getByRole('switch', { name: 'Syscoin Network' }));
+      await user.click(
+        screen.getByRole('switch', { name: 'settings.networkFamilyLabel' })
+      );
     const inputs = Array.from(
       view.container.querySelectorAll<HTMLInputElement>('input')
     );

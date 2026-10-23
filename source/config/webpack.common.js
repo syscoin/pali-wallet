@@ -89,6 +89,27 @@ module.exports = {
   module: {
     rules: [
       {
+        test: /\.json$/,
+        include: join(sourcePath, 'assets/locales'),
+        resourceQuery: /^$/,
+        type: 'javascript/auto',
+        use: join(__dirname, 'loaders/compactLocaleJson.js'),
+      },
+      {
+        test: /\.json$/,
+        include: join(sourcePath, 'assets/locales'),
+        resourceQuery: /^\?localeStructure$/,
+        type: 'javascript/auto',
+        use: join(__dirname, 'loaders/localeStructure.js'),
+      },
+      {
+        test: /\.json$/,
+        include: join(sourcePath, 'assets/locales'),
+        resourceQuery: /^\?notificationMessages$/,
+        type: 'json',
+        use: join(__dirname, 'loaders/notificationLocale.js'),
+      },
+      {
         test: (filename) =>
           filename
             .split(String.fromCharCode(92))
@@ -321,6 +342,24 @@ module.exports = {
   optimization: {
     splitChunks: {
       cacheGroups: {
+        // Only UI locale imports reference this structure/restorer. Worker
+        // notifications use their separate, small JSON projection above.
+        localeCatalog: {
+          test(module) {
+            const resource = (module.resource || '')
+              .split(String.fromCharCode(92))
+              .join('/');
+            return (
+              resource.endsWith('/source/utils/restoreLocale.ts') ||
+              resource.endsWith(
+                '/source/assets/locales/en.json?localeStructure'
+              )
+            );
+          },
+          chunks: 'all',
+          name: 'locale-catalog',
+          enforce: true,
+        },
         // Share copies used by lazy account/approval routes. Initial worker
         // modules stay static, preserving its separate chunk policy.
         accountReview: {

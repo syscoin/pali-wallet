@@ -29,6 +29,11 @@ import {
   normalizeSyscoinTransactionType,
 } from 'utils/syscoinTransactionUtils';
 import { getTokenLogo } from 'utils/tokens';
+import {
+  translateConfirmationEta,
+  translateTransactionLabel,
+  translateTransactionType,
+} from 'utils/transactionDisplay';
 import { isTransactionInBlock } from 'utils/transactionUtils';
 
 import {
@@ -510,9 +515,12 @@ export const SyscoinTransactionDetails = ({
     <>
       <div className="flex flex-col justify-center items-center w-full mb-2">
         <p className="text-brand-gray200 text-xs font-light">
-          {accountTransaction
-            ? getTxType(rawTransaction, isTxSent)
-            : getSyscoinTransactionTypeLabel(rawTransaction?.tokenType)}
+          {translateTransactionType(
+            accountTransaction
+              ? getTxType(rawTransaction, isTxSent)
+              : getSyscoinTransactionTypeLabel(rawTransaction?.tokenType),
+            t
+          )}
         </p>
 
         {(accountTransaction || isSyscoinTokenOperation(rawTransaction)) && (
@@ -618,12 +626,14 @@ export const SyscoinTransactionDetails = ({
               <Tooltip
                 content={
                   confirmationETA
-                    ? `Estimated block confirmation: ${confirmationETA}`
+                    ? t('transactions.estimatedBlockConfirmation', {
+                        eta: translateConfirmationEta(confirmationETA, t),
+                      })
                     : null
                 }
               >
                 <p className="text-xs font-normal text-brand-green">
-                  Z-DAG confirmed
+                  {t('transactions.zdagConfirmed')}
                 </p>
               </Tooltip>
             );
@@ -633,7 +643,9 @@ export const SyscoinTransactionDetails = ({
             <Tooltip
               content={
                 confirmationETA
-                  ? `Estimated confirmation: ${confirmationETA}`
+                  ? t('transactions.estimatedConfirmation', {
+                      eta: translateConfirmationEta(confirmationETA, t),
+                    })
                   : null
               }
             >
@@ -646,7 +658,9 @@ export const SyscoinTransactionDetails = ({
       {/* Add token type as a detail if present */}
       {tokenType && (
         <div className="flex items-center justify-between my-1 pl-0 pr-3 py-2 w-full text-xs border-b border-dashed border-[#FFFFFF29] cursor-default transition-all duration-300">
-          <p className="text-xs font-normal text-white">Transaction Type</p>
+          <p className="text-xs font-normal text-white">
+            {translateTransactionLabel('Transaction Type', t)}
+          </p>
           {(() => {
             const sptInfo = getSyscoinTransactionTypeStyle(tokenType);
             return (
@@ -656,7 +670,7 @@ export const SyscoinTransactionDetails = ({
               >
                 <span className="text-xs">{sptInfo.icon}</span>
                 <span className="text-xs font-medium text-white">
-                  {sptInfo.label}
+                  {translateTransactionType(sptInfo.label, t)}
                 </span>
               </div>
             );
@@ -681,6 +695,7 @@ export const SyscoinTransactionDetails = ({
                         : transfer.token}
                     </p>
                     <IconButton
+                      aria-label={t('buttons.copy')}
                       onClick={() =>
                         handleCopyWithMessage(transfer.token, 'Asset Guid')
                       }
@@ -699,7 +714,9 @@ export const SyscoinTransactionDetails = ({
           <Fragment key={`${hash}-${label}-${index}`}>
             {label.length > 0 && value !== undefined && (
               <div className="flex items-center justify-between my-1 pl-0 pr-3 py-2 w-full text-xs border-b border-dashed border-[#FFFFFF29] cursor-default transition-all duration-300">
-                <p className="text-xs font-normal text-white">{label}</p>
+                <p className="text-xs font-normal text-white">
+                  {translateTransactionLabel(label, t)}
+                </p>
                 <span>
                   {value.length >= 20 && canCopy ? (
                     <Tooltip content={value} childrenClassName="flex">
@@ -708,6 +725,7 @@ export const SyscoinTransactionDetails = ({
                       </p>
                       {canCopy && (
                         <IconButton
+                          aria-label={t('buttons.copy')}
                           onClick={() => handleCopyWithMessage(value, label)}
                         >
                           <CopyIcon />
@@ -715,7 +733,11 @@ export const SyscoinTransactionDetails = ({
                       )}
                     </Tooltip>
                   ) : (
-                    <p className="text-xs font-normal text-white">{value}</p>
+                    <p className="text-xs font-normal text-white">
+                      {label === 'Estimated Confirmation'
+                        ? translateConfirmationEta(String(value), t)
+                        : value}
+                    </p>
                   )}
                 </span>
               </div>

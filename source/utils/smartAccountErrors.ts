@@ -224,6 +224,7 @@ export const getSmartAccountActionErrorMessage = (
   gasMessage: string,
   slhDsaLocalSignerMessage = fallback
 ): string => {
+  if ((error as any)?.code === 'PALI_INVALID_WALLET_SESSION') return fallback;
   if (isSmartAccountPrefundError(error) || isNativeGasError(error)) {
     return gasMessage;
   }

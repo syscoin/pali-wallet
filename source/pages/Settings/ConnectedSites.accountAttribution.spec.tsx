@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { MemoryRouter } from 'react-router-dom';
 
+import en from 'assets/locales/en.json';
 import { INetworkType, KeyringAccountType } from 'types/network';
 
 import ConnectedSites from './ConnectedSites';
@@ -19,11 +20,24 @@ jest.mock('react-redux', () => ({
 }));
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string) => {
+    t: (key: string, values?: Record<string, string | number>) => {
       const messages = jest.requireActual('../../assets/locales/en.json');
-      return (
-        key.split('.').reduce((entry: any, part) => entry?.[part], messages) ||
-        key
+      const resource =
+        key === 'settings.connectedSiteCount'
+          ? `${key}_${
+              values?.count === 0
+                ? 'zero'
+                : values?.count === 1
+                ? 'one'
+                : 'other'
+            }`
+          : key;
+      const message =
+        resource
+          .split('.')
+          .reduce((entry: any, part) => entry?.[part], messages) || key;
+      return message.replace(/{{(\w+)}}/g, (_match: string, name: string) =>
+        String(values?.[name] ?? `{{${name}}}`)
       );
     },
   }),
@@ -287,7 +301,11 @@ it('shows a newly approved connection after disconnecting the same host without 
   rerenderPage(view);
   expect(screen.getByText(host)).toBeVisible();
   expect(screen.getByText('Connected to: Ledger signer')).toBeVisible();
-  expect(screen.getByText('1 site is connected to Pali Wallet')).toBeVisible();
+  expect(
+    screen.getByText(
+      en.settings.connectedSiteCount_one.replace('{{count}}', '1')
+    )
+  ).toBeVisible();
   expect(screen.getByRole('button', { name: editName() })).toBeEnabled();
 });
 

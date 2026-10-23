@@ -327,7 +327,11 @@ for (const locale of locales) {
             })
             .click();
           await expect(page).toHaveURL(/#\/home\/details/);
-          await expect(page.getByText('Txid', { exact: true })).toBeVisible();
+          await expect(
+            page.getByText(locale.translations.send.transactionId, {
+              exact: true,
+            })
+          ).toBeVisible();
           const scope = await publicScope(page);
           expect(scope.active).toEqual({ id: 0, type: 'HDAccount' });
           expect(scope.language).toBe(locale.code);

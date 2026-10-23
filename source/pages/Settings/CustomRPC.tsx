@@ -186,7 +186,7 @@ const CustomRPCView = () => {
     );
     setLoading(false);
     setShowModal(true);
-    setErrorModalMessage('Network changed. Please save it again.');
+    setErrorModalMessage(t('settings.networkChangedRetry'));
     return true;
   };
   const isCurrentRoute = (origin: typeof location) => {
@@ -318,12 +318,12 @@ const CustomRPCView = () => {
       }
 
       // Fallback for unexpected response format
-      return { success: Boolean(result), error: 'Unexpected response format' };
+      return { success: Boolean(result), error: t('settings.apiFormatError') };
     } catch (error) {
       console.log('API test failed:', error);
       return {
         success: false,
-        error: error?.message || 'Unable to test API',
+        error: error?.message || t('settings.apiConnectionError'),
       };
     }
   };
@@ -364,16 +364,15 @@ const CustomRPCView = () => {
             result.error.includes('SyntaxError') ||
             result.error.includes('Unexpected token')
           ) {
-            errorMessage =
-              'API returned HTML instead of JSON - likely a 404 or server error';
+            errorMessage = t('settings.apiReturnedHtml');
           } else if (result.error.includes('404')) {
-            errorMessage = 'API endpoint not found (404)';
+            errorMessage = t('settings.apiNotFound');
           } else if (result.error.includes('403')) {
-            errorMessage = 'Access forbidden (403) - check API key';
+            errorMessage = t('settings.apiForbidden');
           } else if (result.error.includes('500')) {
-            errorMessage = 'Server error (500)';
+            errorMessage = t('settings.apiServerError');
           } else if (result.error.includes('timeout')) {
-            errorMessage = 'Request timeout - API may be slow or unreachable';
+            errorMessage = t('settings.apiTimeout');
           }
         }
 
@@ -408,14 +407,16 @@ const CustomRPCView = () => {
       if (error && typeof error === 'object' && 'message' in error) {
         const msg = (error as Error).message;
         if (msg.includes('SyntaxError') || msg.includes('Unexpected token')) {
-          errorMessage =
-            'API returned HTML instead of JSON - likely a 404 or server error';
+          errorMessage = t('settings.apiReturnedHtml');
         } else if (msg.includes('NetworkError') || msg.includes('fetch')) {
-          errorMessage = 'Network error - unable to reach API';
+          errorMessage = t('settings.apiNetworkError');
         } else if (msg.includes('timeout')) {
-          errorMessage = 'Request timeout - API may be slow or unreachable';
+          errorMessage = t('settings.apiTimeout');
         } else {
-          errorMessage = `API error: ${msg}`;
+          errorMessage = t('settings.apiErrorDetail', {
+            message: msg,
+            interpolation: { escapeValue: false },
+          });
         }
       }
 
@@ -451,6 +452,7 @@ const CustomRPCView = () => {
       return null; // Required field validation will handle empty case
     }
 
+    let ownValidationMessage: string | undefined;
     try {
       // Use getRpc from controller which handles all validation and returns the network
       const rpcParams = {
@@ -471,6 +473,7 @@ const CustomRPCView = () => {
       if (!canApply()) return null;
 
       if (!network) {
+        ownValidationMessage = t('settings.failedValidateRpc');
         throw new Error('Failed to get network configuration from RPC');
       }
 
@@ -519,6 +522,10 @@ const CustomRPCView = () => {
             !isNaN(userProvidedChainId) &&
             network.chainId !== userProvidedChainId
           ) {
+            ownValidationMessage = t('settings.chainIdMismatch', {
+              actual: network.chainId,
+              expected: userProvidedChainId,
+            });
             throw new Error(
               `Chain ID mismatch: RPC reports ${network.chainId}, but you entered ${userProvidedChainId}`
             );
@@ -530,10 +537,16 @@ const CustomRPCView = () => {
     } catch (error) {
       if (!canApply()) return null;
       // Extract the actual error message from the thrown error
-      let errorMessage = t('settings.failedValidateRpc');
-      if (error && typeof error === 'object' && 'message' in error) {
+      let errorMessage =
+        ownValidationMessage || t('settings.failedValidateRpc');
+      if (
+        !ownValidationMessage &&
+        error &&
+        typeof error === 'object' &&
+        'message' in error
+      ) {
         errorMessage = (error as Error).message;
-      } else if (typeof error === 'string') {
+      } else if (!ownValidationMessage && typeof error === 'string') {
         errorMessage = error;
       }
 
@@ -587,7 +600,7 @@ const CustomRPCView = () => {
       let errorMessage = t('settings.fixValidationErrors');
       if (errorFields.length > 0) {
         const firstError = errorFields[0];
-        errorMessage = `${firstError.name[0]}: ${firstError.errors[0]}`;
+        errorMessage = firstError.errors[0];
       }
 
       alert.error(errorMessage, {
@@ -655,7 +668,8 @@ const CustomRPCView = () => {
           const isTestnet = network.slip44 === 1;
           const networkType = isTestnet ? 'testnet' : 'mainnet';
           const existingNetworkName =
-            blockchainConflict.label || `Chain ${blockchainConflict.chainId}`;
+            blockchainConflict.label ||
+            t('settings.chainNumber', { chainId: blockchainConflict.chainId });
 
           throw new Error(
             t('settings.utxoNetworkConflict', {
@@ -1070,7 +1084,12 @@ const CustomRPCView = () => {
             'latency' in result && result.latency
               ? ` (${result.latency}ms)`
               : '';
-          const successMessage = `Connected to ${chain.name} via ${hostname}${latencyInfo}`;
+          const successMessage = t('settings.rpcConnectedVia', {
+            network: chain.name,
+            host: hostname,
+            latency: latencyInfo,
+            interpolation: { escapeValue: false },
+          });
 
           alert.success(successMessage, {
             autoClose: 3000,
@@ -1279,7 +1298,7 @@ const CustomRPCView = () => {
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
                 <span className="font-bold text-white truncate text-xl group-hover:text-brand-royalbluemedium transition-colors duration-200">
-                  {currentNetwork.label || 'Unknown Network'}
+                  {currentNetwork.label || t('settings.unknownNetwork')}
                 </span>
                 <span className={NETWORK_BADGE_CLASS}>
                   {currentNetwork.kind === INetworkType.Syscoin || isSyscoinRpc
@@ -1290,9 +1309,12 @@ const CustomRPCView = () => {
               <div className="text-sm text-brand-gray200 mt-1 font-medium group-hover:text-white transition-colors duration-200">
                 {'$'}
                 {(currentNetwork.currency || 'sys').toUpperCase()} •{' '}
-                {currentNetwork.kind === INetworkType.Syscoin || isSyscoinRpc
-                  ? 'UTXO Network'
-                  : 'EVM Network'}
+                {t('settings.networkFamilyLabel', {
+                  family:
+                    currentNetwork.kind === INetworkType.Syscoin || isSyscoinRpc
+                      ? 'UTXO'
+                      : 'EVM',
+                })}
               </div>
             </div>
           </div>
@@ -1347,7 +1369,9 @@ const CustomRPCView = () => {
                     className="relative inline-flex items-center w-9 h-4 border border-white rounded-full"
                     disabled={state?.isEditing}
                   >
-                    <span className="sr-only">Syscoin Network</span>
+                    <span className="sr-only">
+                      {t('settings.networkFamilyLabel', { family: 'Syscoin' })}
+                    </span>
                     <span
                       className={`${switchBallStyle} inline-block w-2 h-2 transform rounded-full`}
                     />
@@ -1581,7 +1605,7 @@ const CustomRPCView = () => {
                         chainId <= 0
                       ) {
                         return Promise.reject(
-                          new Error('Chain ID must be a positive number')
+                          new Error(t('settings.positiveChainId'))
                         );
                       }
                       return Promise.resolve();

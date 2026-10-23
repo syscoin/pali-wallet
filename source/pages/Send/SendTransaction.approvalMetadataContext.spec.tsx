@@ -44,7 +44,12 @@ jest.mock('react-redux', () => ({
 }));
 jest.mock('react-router-dom', () => ({ useLocation: () => mockLocation }));
 jest.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({
+    t: (key: string) =>
+      key === 'send.tokenId'
+        ? jest.requireActual('../../assets/locales/en.json').send.tokenId
+        : key,
+  }),
 }));
 jest.mock('hooks/index', () => ({
   useQueryData: () => mockQuery,

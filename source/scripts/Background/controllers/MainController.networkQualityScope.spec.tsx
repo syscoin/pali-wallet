@@ -151,7 +151,7 @@ let hydrationSpy: jest.SpyInstance;
 let pendingSwitch: Promise<unknown> | undefined;
 let nextChain = OLD.chainId;
 const tooltip = () => screen.getByTestId('quality-tooltip');
-const indicator = () => tooltip().querySelector('div')!;
+const indicator = () => tooltip().querySelector('button')!;
 const advance = async (ms: number) =>
   act(async () => {
     await jest.advanceTimersByTimeAsync(ms);

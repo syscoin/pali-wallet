@@ -12,7 +12,14 @@ jest.mock('react-redux', () => ({
   useSelector: (select: any) => select(mockState),
 }));
 jest.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({
+    t: (key: string, values?: { symbol?: string }) =>
+      key === 'tokens.deleteToken'
+        ? jest
+            .requireActual('../../../../../assets/locales/en.json')
+            .tokens.deleteToken.replace('{{symbol}}', String(values?.symbol))
+        : key,
+  }),
 }));
 jest.mock('hooks/useController', () => ({
   useController: () => ({ controllerEmitter: mockEmitter }),

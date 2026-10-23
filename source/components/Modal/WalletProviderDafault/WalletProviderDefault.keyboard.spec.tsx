@@ -18,6 +18,11 @@ jest.mock('react-i18next', () => ({
       ({
         'generalMenu.manageEth': 'Set default wallet',
         'buttons.close': 'Close',
+        'providerDefault.defaultEnabled':
+          'Pali was successfully set as the default wallet!',
+        'providerDefault.otherWalletInUse':
+          'MetaMask is in use and Pali is disabled.',
+        'providerDefault.setPaliDefault': 'Set Pali as default wallet!',
       }[key] || key),
   }),
 }));
