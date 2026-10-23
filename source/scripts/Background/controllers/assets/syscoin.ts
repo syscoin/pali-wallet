@@ -205,6 +205,8 @@ const SysAssetsControler = (): ISysAssetsController => {
         throw new Error('Invalid asset GUID format');
       }
 
+      assetGuid = assetGuid.replace(/^0+(?=\d)/, '');
+
       // Fetch asset metadata
       const assetData = await getAssetCached(networkUrl, assetGuid);
 
