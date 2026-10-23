@@ -75,10 +75,24 @@ test('encryption requests preserve the requested account and require selection c
       });
       return state.vault.accounts.HDAccount[1].address as string;
     });
+    const requestedAccount = await wallet.page.evaluate(async () => {
+      const state = await chrome.runtime.sendMessage({
+        type: 'getCurrentState',
+      });
+      const account = state.vault.accounts.HDAccount[0];
+      return { id: account.id, label: account.label, address: account.address };
+    });
+    expect(requestedAccount.id).toBe(0);
+    expect(requestedAccount.address.toLowerCase()).toBe(
+      fixture.address.toLowerCase()
+    );
     await wallet.page.locator('#general-settings-button').locator('..').click();
-    await wallet.page
-      .getByRole('menuitem', { name: new RegExp(fixture.address, 'i') })
-      .click();
+    const requestedSelection = wallet.page.getByRole('menuitem', {
+      name: `${requestedAccount.label} (${requestedAccount.address})`,
+      exact: true,
+    });
+    await expect(requestedSelection).toHaveCount(1);
+    await requestedSelection.click();
     const dapp = await wallet.context.newPage();
     await dapp.goto(server.url);
     await dapp.waitForFunction(() => Boolean((window as any).pali?.request));
