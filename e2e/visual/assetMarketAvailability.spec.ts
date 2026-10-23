@@ -23,14 +23,27 @@ const tokens = new Map([
   [COMPLETE, 'COMPLETE'],
   [PARTIAL, 'PARTIAL'],
 ]);
+const categoryLabels = [
+  'Payments',
+  'Layer 2',
+  'Infrastructure',
+  'Smart Contracts',
+  'Scaling',
+  'Interoperability',
+  'Governance',
+  'Privacy',
+];
 
 async function marketAvailability(
   malformedCategories: boolean,
   malformedDescription: boolean,
   malformedIdentity: boolean,
-  info: TestInfo
+  info: TestInfo,
+  categoryCounts?: readonly [number, number]
 ) {
-  const variant = malformedCategories
+  const variant = categoryCounts
+    ? `category-counts-${categoryCounts.join('-')}`
+    : malformedCategories
     ? 'malformed-categories'
     : malformedDescription
     ? 'malformed-descriptions'
@@ -47,6 +60,11 @@ async function marketAvailability(
   const abi = AbiCoder.defaultAbiCoder();
   const contractReads: string[] = [];
   const marketResponses: { address: string; body: unknown }[] = [];
+  const categoryObservations: {
+    count: number;
+    keyboardFocused: string[];
+    symbol: string;
+  }[] = [];
   const deniedWrites: string[] = [];
   const pageErrors: string[] = [];
   let routes:
@@ -197,7 +215,9 @@ async function marketAvailability(
             : `synthetic-${tokens.get(address)!.toLowerCase()}`,
           symbol: tokens.get(address),
           name: tokens.get(address),
-          categories: malformedCategories
+          categories: categoryCounts
+            ? categoryLabels.slice(0, categoryCounts[complete ? 0 : 1])
+            : malformedCategories
             ? complete
               ? 'Payments'
               : ['Payments', null]
@@ -261,6 +281,60 @@ async function marketAvailability(
           if (!page.isClosed()) await capture(page);
         }
       });
+    const checkVisibleCategories = async (count: number, symbol: string) => {
+      const categories = categoryLabels.slice(0, count);
+      await expect(
+        page.locator('a[href^="https://www.coingecko.com/en/categories/"]')
+      ).toHaveCount(count);
+      await expect(
+        page.getByText(en.tokens.categories, { exact: true })
+      ).toHaveCount(count ? 1 : 0);
+      const keyboardFocused: string[] = [];
+      for (const category of categories) {
+        const link = page.getByRole('link', {
+          name: category,
+          exact: true,
+        });
+        await expect(link).toBeVisible();
+        await expect(link).toHaveAttribute(
+          'href',
+          `https://www.coingecko.com/en/categories/${category
+            .toLowerCase()
+            .replace(/\s+/g, '-')}`
+        );
+        await expect(link).toHaveAttribute('target', '_blank');
+        await expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+      }
+      if (categories.length) {
+        const first = page.getByRole('link', {
+          name: categories[0],
+          exact: true,
+        });
+        // Traverse the actual browser tab order; do not synthesize focus or
+        // activate external links. Focus must also scroll each link into view.
+        for (let tabs = 0; tabs < 40; tabs += 1) {
+          if (
+            await first.evaluate(
+              (element) => element === document.activeElement
+            )
+          )
+            break;
+          await page.keyboard.press('Tab');
+        }
+        for (const [index, category] of categories.entries()) {
+          const link = page.getByRole('link', {
+            name: category,
+            exact: true,
+          });
+          await expect(link).toBeFocused();
+          await expect(link).toBeInViewport();
+          keyboardFocused.push(category);
+          if (index < categories.length - 1) await page.keyboard.press('Tab');
+        }
+      }
+      await expect(page.getByText(/^\+\d+\s+\S.*$/)).toHaveCount(0);
+      categoryObservations.push({ count, symbol, keyboardFocused });
+    };
     await step(
       'import a disposable wallet with fenced Ethereum reads',
       async () => {
@@ -323,10 +397,10 @@ async function marketAvailability(
         }
         await expect(
           page.getByRole('link', { name: 'Payments', exact: true })
-        ).toHaveCount(malformedCategories ? 0 : 1);
+        ).toHaveCount(malformedCategories || categoryCounts?.[0] === 0 ? 0 : 1);
         await expect(
           page.getByText(en.tokens.categories, { exact: true })
-        ).toHaveCount(malformedCategories ? 0 : 1);
+        ).toHaveCount(malformedCategories || categoryCounts?.[0] === 0 ? 0 : 1);
         const history = page.getByRole('link', {
           name: en.tokens.historicalData,
           exact: true,
@@ -364,6 +438,8 @@ async function marketAvailability(
               })
           )
           .toBe(1);
+        if (categoryCounts)
+          await checkVisibleCategories(categoryCounts[0], 'COMPLETE');
         await info.attach('complete-market-details', {
           body: await page.screenshot(),
           contentType: 'image/png',
@@ -423,6 +499,8 @@ async function marketAvailability(
           })
           .filter({ hasText: en.buttons.close });
         await expect(close).toBeEnabled();
+        if (categoryCounts)
+          await checkVisibleCategories(categoryCounts[1], 'PARTIAL');
         expect(pageErrors).toEqual([]);
         expect(deniedWrites).toEqual([]);
         expect(routes!.deniedWrites).toEqual([]);
@@ -453,6 +531,8 @@ async function marketAvailability(
             controllerResultReplaced: false,
             contractReads,
             marketResponses,
+            categoryCounts,
+            categoryObservations,
             pageErrors,
             deniedWrites,
             routeDeniedWrites: routes?.deniedWrites ?? [],
@@ -474,6 +554,16 @@ async function marketAvailability(
       }
     }
   }
+}
+
+for (const categoryCounts of [
+  [6, 8],
+  [0, 5],
+] as const) {
+  test(`ERC20 market details show every category without a phantom count (${categoryCounts.join(
+    ' and '
+  )} categories)`, async ({}, info) =>
+    marketAvailability(false, false, false, info, categoryCounts));
 }
 
 for (const [malformedCategories, malformedDescription, malformedIdentity] of [

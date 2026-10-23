@@ -54,6 +54,7 @@ const ImportableAssetsListComponent: React.FC<IImportableAssetsListProps> = ({
   const [localImportedIds, setLocalImportedIds] = useState<Set<string>>(
     new Set(importedAssetIds)
   );
+  const isImportBusy = currentlyImporting !== null;
 
   // Update local imported IDs when prop changes
   useEffect(() => {
@@ -220,28 +221,26 @@ const ImportableAssetsListComponent: React.FC<IImportableAssetsListProps> = ({
                 >
                   <div
                     className={`relative ${
-                      isImported || isImporting
+                      isImported || isImportBusy
                         ? 'cursor-not-allowed'
                         : 'cursor-pointer'
                     }`}
                   >
                     <IconButton
                       onClick={() => {
-                        if (!isImported && !isImporting) {
+                        if (!isImported && !isImportBusy) {
                           handleImport(asset);
                         }
                       }}
                       className={`p-2 rounded-full transition-colors duration-200 ${
-                        isImported
-                          ? 'cursor-not-allowed'
-                          : isImporting
+                        isImported || isImportBusy
                           ? 'cursor-not-allowed'
                           : 'hover:bg-brand-royalblue/20'
                       }`}
                       aria-label={t('tokens.importNamedToken', {
                         symbol: asset.symbol,
                       })}
-                      disabled={isImported || isImporting}
+                      disabled={isImported || isImportBusy}
                     >
                       <ImportIcon
                         className={`transition-all duration-200 ${
@@ -249,6 +248,8 @@ const ImportableAssetsListComponent: React.FC<IImportableAssetsListProps> = ({
                             ? 'text-gray-500'
                             : isImporting
                             ? 'text-brand-royalblue animate-pulse'
+                            : isImportBusy
+                            ? 'text-gray-500'
                             : 'text-brand-white hover:text-brand-royalblue'
                         }`}
                         size={16}

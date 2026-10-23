@@ -48,7 +48,7 @@ it.each(['Payments', 7, {}, [null, 3, {}]])(
   }
 );
 
-it('filters invalid category members while preserving valid labels, links and counts', () => {
+it('filters invalid category members while preserving every valid category link', () => {
   const categories = [
     'Payments',
     null,
@@ -65,10 +65,10 @@ it('filters invalid category members while preserving valid labels, links and co
   expect(
     screen.getByRole('link', { name: 'Layer 2' }).getAttribute('href')
   ).toBe('https://www.coingecko.com/en/categories/layer-2');
-  expect(screen.getByText('+1 translated:tokens.more')).toBeTruthy();
+  expect(screen.queryByText(/^\+\d+\s+\S.*$/)).toBeNull();
 });
 
-it('preserves every category and the existing additional-count label beyond five', () => {
+it('preserves every category without a phantom additional-count label beyond five', () => {
   const categories = [
     'Layer 2 Protocols',
     'Two',
@@ -89,7 +89,7 @@ it('preserves every category and the existing additional-count label beyond five
     expect(link.getAttribute('target')).toBe('_blank');
     expect(link.getAttribute('rel')).toBe('noopener noreferrer');
   }
-  expect(screen.getByText('+1 translated:tokens.more')).toBeTruthy();
+  expect(screen.queryByText(/^\+\d+\s+\S.*$/)).toBeNull();
   expect(screen.getByText('translated:tokens.categories')).toBeTruthy();
   expect(screen.queryByText('translated:tokens.viewOnCoinGecko')).toBeNull();
 });
