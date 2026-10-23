@@ -209,6 +209,10 @@ import {
   assertPublicWatchOnlyIdentifier,
   isPublicWatchOnlyIdentifier,
 } from 'utils/watchOnlyIdentifier';
+import {
+  WATCH_ONLY_VALIDATION_TIMEOUT,
+  WATCH_ONLY_VALIDATION_TIMEOUT_MS,
+} from 'utils/watchOnlyImport';
 
 import EthAccountController, { IEthAccountController } from './account/evm';
 import SysAccountController, { ISysAccountController } from './account/syscoin';
@@ -4428,10 +4432,20 @@ class MainController {
   ) {
     const { keyring, assertCurrent } = this.accountMutationContext();
     assertPublicWatchOnlyIdentifier(identifier);
-    const importedAccount = await (keyring as any).importWatchOnly(
-      identifier,
-      label
-    );
+    // The SDK only validates and constructs public account metadata here.
+    // Abandon a late result before the guarded durable creation below.
+    let validationTimer: ReturnType<typeof setTimeout> | undefined;
+    const importedAccount = await Promise.race([
+      (keyring as any).importWatchOnly(identifier, label),
+      new Promise<never>((_, reject) => {
+        validationTimer = setTimeout(
+          () => reject(new Error(WATCH_ONLY_VALIDATION_TIMEOUT)),
+          WATCH_ONLY_VALIDATION_TIMEOUT_MS
+        );
+      }),
+    ]).finally(() => {
+      if (validationTimer !== undefined) clearTimeout(validationTimer);
+    });
     assertCurrent();
     await this.storeCreatedAccount(
       importedAccount,

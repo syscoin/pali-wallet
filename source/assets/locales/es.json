@@ -612,6 +612,7 @@
     "validTokenContract": "• El contrato es un token ERC-20, ERC-721 o ERC-1155 válido.",
     "matchingTokenType": "• El tipo de token coincide con el contrato (ERC20/ERC721/ERC1155).",
     "accountImportFailed": "No se pudo importar la cuenta.",
+    "watchOnlyValidationTimedOut": "La validación de solo lectura tardó demasiado. No se importó nada. Inténtalo de nuevo.",
     "watchOnly": "Solo lectura",
     "publicIdentifierInput": "Dirección / XPUB / Descriptor",
     "usingAnotherWallet": "Estás usando otra cartera.",
