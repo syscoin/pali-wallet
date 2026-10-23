@@ -28,6 +28,7 @@ export const TransactionsPanel = () => {
     useSelector(selectActiveAccountWithTransactions);
   const { activeNetwork, isBitcoinBased, isSwitchingAccount } =
     useSelector(selectVaultCoreData);
+  const hasHistoryStatus = isBitcoinBased || Boolean(activeNetwork.apiUrl);
 
   const { t } = useTranslation();
   const historyStatus = useSelector(
@@ -181,8 +182,8 @@ export const TransactionsPanel = () => {
     t,
   ]);
 
-  // Keep the existing EVM settle behavior. UTXO empty history requires an
-  // actual successful, scoped history read rather than a balance poll/timer.
+  // Configured explorer history, like UTXO, requires an actual scoped read.
+  // Networks without an explorer retain the existing RPC settle behavior.
   const isPollingUpdate = useSelector(
     (state: RootState) => state.vaultGlobal.isPollingUpdate
   );
@@ -222,23 +223,23 @@ export const TransactionsPanel = () => {
     () =>
       isSwitchingAccount ||
       (!hasTransactions &&
-        (isBitcoinBased
+        (hasHistoryStatus
           ? historyState !== 'ready' && historyState !== 'error'
           : !hasSettled)),
     [
       isSwitchingAccount,
       hasSettled,
       hasTransactions,
-      isBitcoinBased,
+      hasHistoryStatus,
       historyState,
     ]
   );
-  const historyUnavailable = isBitcoinBased && historyState === 'error';
+  const historyUnavailable = hasHistoryStatus && historyState === 'error';
 
   return (
     <>
       {isLoading && !hasTransactions && TransactionSkeleton}
-      {isBitcoinBased && historyState !== 'ready' && (
+      {hasHistoryStatus && historyState !== 'ready' && (
         <div className="mt-8 text-center text-sm text-brand-gray200">
           {historyUnavailable && <p role="status">{t('send.unableToLoad')}</p>}
           <button

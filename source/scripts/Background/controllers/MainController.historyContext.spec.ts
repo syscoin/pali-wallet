@@ -2,8 +2,11 @@ import { configureStore } from '@reduxjs/toolkit';
 
 import { notificationManager } from '..';
 import vaultReducer, { setActiveAccount, setActiveNetwork } from 'state/vault';
-import vaultGlobalReducer from 'state/vaultGlobal';
+import vaultGlobalReducer, {
+  setTransactionHistoryStatus,
+} from 'state/vaultGlobal';
 import { KeyringAccountType } from 'types/network';
+import { getWalletNavigationScope } from 'utils/navigationState';
 
 import MainController from './MainController';
 import { CancellablePromises } from './promises/cancellablesPromises';
@@ -80,6 +83,17 @@ const deferred = () => {
   return { promise, resolve };
 };
 const flushExecutor = () => new Promise((resolve) => setImmediate(resolve));
+const expectOnlyHistoryStatus = (
+  scope: ReturnType<typeof getWalletNavigationScope>,
+  states: Array<'pending' | 'ready' | undefined>
+) =>
+  expect(mockDispatch.mock.calls.map(([action]) => action)).toEqual(
+    states.map((state) =>
+      setTransactionHistoryStatus(
+        state === undefined ? undefined : { scope, requestId: 1, state }
+      )
+    )
+  );
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -145,10 +159,11 @@ it('commits a healthy current explorer response through the real vault reducer',
 });
 
 it('keeps cached EVM history when its reader returns an empty result', async () => {
+  const scope = getWalletNavigationScope();
   fetchHistory.mockResolvedValue([]);
   await refresh();
   expect(rows()).toEqual([existing]);
-  expect(mockDispatch).not.toHaveBeenCalled();
+  expectOnlyHistoryStatus(scope, ['pending', 'ready']);
   expect(
     notificationManager.updatePendingTransactionBadge
   ).toHaveBeenCalledTimes(1);
@@ -280,6 +295,7 @@ it('retires a cancelled old explorer reply after an API-only switch without over
 it.each(['account', 'rpc'] as const)(
   'already retires a cancelled history reply after a changed %s',
   async (changed) => {
+    const scope = getWalletNavigationScope();
     const old = deferred();
     fetchHistory.mockReturnValueOnce(old.promise);
     const cancelled = refresh().catch((error: unknown) => error);
@@ -298,7 +314,7 @@ it.each(['account', 'rpc'] as const)(
     old.resolve([existing, recent]);
     await flushExecutor();
     expect(rows()).toEqual([existing]);
-    expect(mockDispatch).not.toHaveBeenCalled();
+    expectOnlyHistoryStatus(scope, ['pending', undefined]);
     expect(
       notificationManager.updatePendingTransactionBadge
     ).not.toHaveBeenCalled();
@@ -313,6 +329,7 @@ it.each([
   'retires an old response when the explorer API is %s',
   async (_name, before, after) => {
     mockStore.dispatch(setActiveNetwork({ ...network, apiUrl: before } as any));
+    const scope = getWalletNavigationScope();
     const old = deferred();
     fetchHistory.mockReturnValueOnce(old.promise);
     const pending = refresh();
@@ -320,7 +337,7 @@ it.each([
     old.resolve([existing, recent]);
     await pending;
     expect(rows()).toEqual([existing]);
-    expect(mockDispatch).not.toHaveBeenCalled();
+    expectOnlyHistoryStatus(scope, before ? ['pending'] : []);
     expect(
       notificationManager.updatePendingTransactionBadge
     ).not.toHaveBeenCalled();
