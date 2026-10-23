@@ -7,6 +7,7 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import React from 'react';
 
 import { verifyERC721OwnershipHelper } from 'scripts/Background/controllers/assets/nft-utils';
@@ -280,6 +281,38 @@ it('admits an explicitly selected ID from multiple discovered owned NFTs', async
   expect(mockNavigate).toHaveBeenCalledTimes(1);
   expect(mockNavigate.mock.calls[0][2].tx.token.tokenId).toBe('10');
 });
+
+it.each([
+  '7',
+  '115792089237316195423570985008687907853269984665640564039457584007913129639935',
+])(
+  'keeps discovered ERC721 ID %s whole and keyboard-selectable within its wrapping chip',
+  async (tokenId) => {
+    mockDiscovered = [{ tokenId, balance: 1, verified: true }];
+    const before = JSON.stringify({ state: mockState, asset: mockAsset });
+    await prepare();
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    const chip = screen.getByRole('button', { name: `#${tokenId}` });
+    expect(chip.textContent?.trim()).toBe(`#${tokenId}`);
+    expect(chip).toBeEnabled();
+    chip.focus();
+    expect(chip).toHaveFocus();
+    await user.keyboard('{Enter}');
+    expect(screen.getByPlaceholderText('send.enterTokenId')).toHaveValue(
+      tokenId
+    );
+    await next();
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledTimes(1));
+    const tx = mockNavigate.mock.calls[0][2].tx;
+    expect(tx.token.tokenId).toBe(tokenId);
+    expect(tx.token.contractAddress).toBe(CONTRACT);
+    expect(tx.receivingAddress).toBe(RECIPIENT);
+    expect(JSON.stringify({ state: mockState, asset: mockAsset })).toBe(before);
+    // Exact value/selection controls precede the regression's CSS contract.
+    // JSDOM cannot prove pixels; the real 320/400 browser case owns geometry.
+    if (tokenId.length > 20) expect(chip).toHaveClass('max-w-full break-all');
+  }
+);
 
 it('does not admit a manual ID after ownerOf proves it belongs to another account', async () => {
   await prepare();

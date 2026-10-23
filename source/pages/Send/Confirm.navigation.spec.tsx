@@ -8,6 +8,7 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import React from 'react';
 
 import { INetworkType } from 'types/network';
@@ -547,6 +548,72 @@ it.each(
     expect(submitted[1][1].gasLimit.toString()).toBe('21000');
     expect(submitted[1][1].maxFeePerGas.toString()).toBe('0');
     expect(submitted[1][1].maxPriorityFeePerGas.toString()).toBe('0');
+  }
+);
+
+it.each([
+  '1',
+  '42',
+  '115792089237316195423570985008687907853269984665640564039457584007913129639935',
+])(
+  'keeps the reviewed ERC1155 quantity %s exact in a wrapping amount row and on keyboard Cancel',
+  async (amount) => {
+    prepareEvmRecipientConfirmation(
+      '0x2222222222222222222222222222222222222222'
+    );
+    mockLocation.state.tx.transactionType = TransactionType.ERC1155;
+    mockLocation.state.tx.amount = amount;
+    mockLocation.state.tx.token = {
+      contractAddress: '0x5555555555555555555555555555555555555555',
+      tokenId: '7',
+      decimals: 0,
+      name: 'Synthetic quantity NFT',
+      symbol: 'QTY',
+      tokenStandard: 'ERC-1155',
+      isNft: true,
+    };
+    const txBefore = JSON.stringify(mockLocation.state.tx);
+    const contextBefore = JSON.stringify(mockLocation.state.returnContext);
+    const identityBefore = JSON.stringify(mockState.vault);
+    const user = userEvent.setup();
+    render(<SendConfirm />);
+    const heading = screen.getByRole('heading', {
+      name: 'Synthetic quantity NFT',
+    });
+    const card = heading.closest('.bg-bkg-2')!;
+    const amountRow = Array.from(card.querySelectorAll('p')).find(
+      (element) => element.textContent === 'send.amount'
+    )!.parentElement!;
+    const displayedAmount = amountRow.querySelector('p.text-lg')!;
+    expect(displayedAmount.textContent).toBe(amount);
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'buttons.confirm' })
+      ).toBeEnabled()
+    );
+    const cancel = screen.getByRole('button', { name: 'buttons.cancel' });
+    cancel.focus();
+    expect(cancel).toHaveFocus();
+    await user.keyboard('{Enter}');
+    expect(mockNavigateBack).toHaveBeenCalledWith(mockNavigate, {
+      state: { returnContext: mockLocation.state.returnContext },
+    });
+    expect(mockNavigate).toHaveBeenCalledWith('/send/eth');
+    expect(JSON.stringify(mockLocation.state.tx)).toBe(txBefore);
+    expect(JSON.stringify(mockLocation.state.returnContext)).toBe(
+      contextBefore
+    );
+    expect(JSON.stringify(mockState.vault)).toBe(identityBefore);
+    expect(
+      mockControllerEmitter.mock.calls.some(([methods]) =>
+        /^(?:send|sign|broadcast)/i.test(methods.at(-1))
+      )
+    ).toBe(false);
+    expect(signAndSubmitSmartAccountExecutions).not.toHaveBeenCalled();
+    expect(mockClearNavigationState).not.toHaveBeenCalled();
+    // Preserve the exact raw amount; only its display may wrap. Browser
+    // geometry separately proves this stays within the actual narrow card.
+    if (amount.length > 20) expect(displayedAmount).toHaveClass('break-all');
   }
 );
 
