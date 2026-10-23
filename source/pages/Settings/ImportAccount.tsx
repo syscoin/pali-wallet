@@ -13,6 +13,7 @@ import { RootState } from 'state/store';
 import { extractErrorMessage } from 'utils/index';
 import { navigateBack } from 'utils/navigationState';
 import { validatePrivateKeyValue } from 'utils/validatePrivateKey';
+import { WATCH_ONLY_VALIDATION_TIMEOUT } from 'utils/watchOnlyImport';
 
 const ImportAccountView = () => {
   const { controllerEmitter, handleWalletLockedError } = useController();
@@ -116,8 +117,14 @@ const ImportAccountView = () => {
       const wasHandled = handleWalletLockedError(error);
       if (!wasHandled) {
         // If not a wallet locked error, show the original error message
+        const message = extractErrorMessage(
+          error,
+          t('settings.accountImportFailed')
+        );
         alert.error(
-          extractErrorMessage(error, t('settings.accountImportFailed'))
+          message === WATCH_ONLY_VALIDATION_TIMEOUT
+            ? t('settings.watchOnlyValidationTimedOut')
+            : message
         );
       }
     } finally {

@@ -18,6 +18,7 @@ import ko from 'assets/locales/ko.json';
 import pt from 'assets/locales/pt.json';
 import ru from 'assets/locales/ru.json';
 import zh from 'assets/locales/zh.json';
+import { WATCH_ONLY_VALIDATION_TIMEOUT } from 'utils/watchOnlyImport';
 
 import ImportAccount from './ImportAccount';
 
@@ -54,7 +55,7 @@ jest.mock('hooks/index', () => ({
   useUtils: () => ({ navigate: mockNavigate, alert: mockAlert }),
 }));
 jest.mock('utils/index', () => ({
-  extractErrorMessage: (_error: unknown, fallback: string) => fallback,
+  extractErrorMessage: jest.requireActual('utils/index').extractErrorMessage,
 }));
 jest.mock('utils/validatePrivateKey', () => ({
   // Presentation boundary only: never perform a backend read/private import.
@@ -364,6 +365,192 @@ it.each(locales)(
       ).toBeNull();
     expect(mockEmitter).not.toHaveBeenCalled();
     expect(mockAlert.error).not.toHaveBeenCalled();
+    expect(mockNavigate).not.toHaveBeenCalled();
+    expect(dispatch).not.toHaveBeenCalled();
+    expect(JSON.stringify(store.getState())).toBe(snapshot);
+    await act(async () => undefined);
+  }
+);
+
+it.each(locales)(
+  'localizes a watch-only validation timeout in %s and retries the retained public draft',
+  async (locale) => {
+    const translation = resources[locale];
+    const instance = createInstance();
+    await instance.use(initReactI18next).init({
+      initImmediate: false,
+      lng: locale,
+      fallbackLng: 'en',
+      react: { useSuspense: false },
+      resources: Object.fromEntries(
+        Object.entries(resources).map(([language, dictionary]) => [
+          language,
+          { translation: dictionary },
+        ])
+      ),
+    });
+    const state = {
+      vault: {
+        activeAccount: { type: 'HDAccount', id: 0 },
+        accounts: {
+          HDAccount: {
+            0: {
+              id: 0,
+              label: 'Public fixture account',
+              address: PUBLIC_IDENTIFIER,
+            },
+          },
+        },
+        activeNetwork: {
+          kind: 'ethereum',
+          chainId: 1,
+          url: 'https://rpc.synthetic.invalid',
+        },
+        isBitcoinBased: false,
+      },
+    };
+    const store = createStore(() => state);
+    const dispatch = jest.spyOn(store, 'dispatch');
+    const snapshot = JSON.stringify(store.getState());
+    const publicLabel = 'Watch-only retry fixture';
+    let rejectImport!: (reason: Error) => void;
+    const firstImport = new Promise<never>((_resolve, reject) => {
+      rejectImport = reject;
+    });
+    let importAttempts = 0;
+    mockEmitter.mockImplementation((methods: string[], args: unknown[]) => {
+      const method = methods.join('.');
+      if (method === 'wallet.validateWatchOnlyIdentifier')
+        return Promise.resolve(args[0] === PUBLIC_IDENTIFIER);
+      if (method === 'wallet.importWatchOnlyFromController') {
+        importAttempts += 1;
+        return importAttempts === 1
+          ? firstImport
+          : Promise.resolve({ id: 1, address: PUBLIC_IDENTIFIER });
+      }
+      throw new Error('No private import or unrelated operation is allowed');
+    });
+    const user = userEvent.setup();
+    render(
+      <I18nextProvider i18n={instance}>
+        <Provider store={store}>
+          <MemoryRouter
+            future={{
+              ['v7_startTransition']: true,
+              ['v7_relativeSplatPath']: true,
+            }}
+            initialEntries={['/settings/account/import']}
+          >
+            <RouteObservation />
+            <ImportAccount />
+          </MemoryRouter>
+        </Provider>
+      </I18nextProvider>
+    );
+    expect(instance.resolvedLanguage).toBe(locale);
+    expect(
+      screen.getByText(translation.settings.importAccountsWont, { exact: true })
+    ).toBeVisible();
+    const label = screen.getByRole('textbox', {
+      name: `${translation.settings.label} (${translation.settings.optional})`,
+    });
+    await user.type(label, publicLabel);
+    const checkbox = screen.getByRole('checkbox', {
+      name: translation.settings.watchOnly,
+    });
+    await user.click(checkbox);
+    const identifier = screen.getByRole('textbox', {
+      name: translation.settings.publicIdentifierInput,
+    });
+    await user.type(identifier, PUBLIC_IDENTIFIER);
+    const submit = screen.getByRole('button', {
+      name: translation.buttons.import,
+    }) as HTMLButtonElement;
+    expect(submit).toHaveAttribute('type', 'submit');
+    expect(submit.form).toBe((identifier as HTMLInputElement).form);
+    await waitFor(() => expect(submit).toBeEnabled());
+
+    // Use the real native submit control and AntD validation. Only the public
+    // controller transport response is controlled; the deadline itself is
+    // covered by the controller and genuine HTTP regressions.
+    await user.click(submit);
+    await waitFor(() => expect(importAttempts).toBe(1));
+    expect(submit).toBeDisabled();
+    expect(submit).toHaveAttribute('aria-busy', 'true');
+    expect(identifier).toBeDisabled();
+    expect(checkbox).toBeDisabled();
+    expect(screen.queryByText('Unexpected import')).toBeNull();
+    expect(mockAlert.error).not.toHaveBeenCalled();
+    await act(async () => {
+      rejectImport(new Error(WATCH_ONLY_VALIDATION_TIMEOUT));
+    });
+
+    await waitFor(() =>
+      expect(mockAlert.error).toHaveBeenCalledWith(
+        translation.settings.watchOnlyValidationTimedOut
+      )
+    );
+    expect(mockAlert.error).toHaveBeenCalledTimes(1);
+    expect(mockAlert.error).not.toHaveBeenCalledWith(
+      WATCH_ONLY_VALIDATION_TIMEOUT
+    );
+    if (locale !== 'en')
+      expect(mockAlert.error).not.toHaveBeenCalledWith(
+        en.settings.watchOnlyValidationTimedOut
+      );
+    expect(identifier).toHaveValue(PUBLIC_IDENTIFIER);
+    expect(label).toHaveValue(publicLabel);
+    expect(checkbox).toBeChecked();
+    expect(identifier).toBeEnabled();
+    expect(checkbox).toBeEnabled();
+    expect(submit).toBeEnabled();
+    expect(submit).not.toHaveAttribute('aria-busy', 'true');
+    expect(screen.queryByText('Unexpected import')).toBeNull();
+    expect(mockNavigate).not.toHaveBeenCalled();
+    expect(dispatch).not.toHaveBeenCalled();
+    expect(JSON.stringify(store.getState())).toBe(snapshot);
+    expect(screen.getByLabelText('Public route')).toHaveTextContent(
+      '/settings/account/import'
+    );
+
+    // A genuine keyboard retry must pass the same public identifier and label
+    // through the form without editing or routing through private-key import.
+    submit.focus();
+    expect(submit).toHaveFocus();
+    await user.keyboard('{Enter}');
+    expect(await screen.findByText('Unexpected import')).toHaveAttribute(
+      'role',
+      'status'
+    );
+    expect(importAttempts).toBe(2);
+    const imports = mockEmitter.mock.calls.filter(
+      ([methods]) =>
+        methods.join('.') === 'wallet.importWatchOnlyFromController'
+    );
+    expect(imports).toEqual([
+      [
+        ['wallet', 'importWatchOnlyFromController'],
+        [PUBLIC_IDENTIFIER, publicLabel],
+      ],
+      [
+        ['wallet', 'importWatchOnlyFromController'],
+        [PUBLIC_IDENTIFIER, publicLabel],
+      ],
+    ]);
+    expect(
+      mockEmitter.mock.calls.every(([methods, args]) =>
+        methods.join('.') === 'wallet.validateWatchOnlyIdentifier'
+          ? typeof args[0] === 'string' && PUBLIC_IDENTIFIER.startsWith(args[0])
+          : methods.join('.') === 'wallet.importWatchOnlyFromController'
+      )
+    ).toBe(true);
+    expect(
+      mockEmitter.mock.calls.some(
+        ([methods]) =>
+          methods.join('.') === 'wallet.importAccountFromPrivateKey'
+      )
+    ).toBe(false);
+    expect(mockAlert.error).toHaveBeenCalledTimes(1);
     expect(mockNavigate).not.toHaveBeenCalled();
     expect(dispatch).not.toHaveBeenCalled();
     expect(JSON.stringify(store.getState())).toBe(snapshot);

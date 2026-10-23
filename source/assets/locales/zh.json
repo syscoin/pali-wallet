@@ -612,6 +612,7 @@
     "validTokenContract": "• 合约是有效的 ERC-20、ERC-721 或 ERC-1155 代币。",
     "matchingTokenType": "• 代币类型与合约匹配（ERC20/ERC721/ERC1155）。",
     "accountImportFailed": "无法导入账户。",
+    "watchOnlyValidationTimedOut": "仅观察账户验证超时。未导入任何内容。请重试。",
     "watchOnly": "仅观察",
     "publicIdentifierInput": "地址 / XPUB / 描述符",
     "usingAnotherWallet": "您正在使用其他钱包。",

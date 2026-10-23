@@ -612,6 +612,7 @@
     "validTokenContract": "• Контракт является токеном ERC-20, ERC-721 или ERC-1155.",
     "matchingTokenType": "• Тип токена соответствует контракту (ERC20/ERC721/ERC1155).",
     "accountImportFailed": "Не удалось импортировать аккаунт.",
+    "watchOnlyValidationTimedOut": "Проверка счёта только для просмотра заняла слишком много времени. Ничего не импортировано. Повторите попытку.",
     "watchOnly": "Только просмотр",
     "publicIdentifierInput": "Адрес / XPUB / Дескриптор",
     "usingAnotherWallet": "Вы используете другой кошелёк.",

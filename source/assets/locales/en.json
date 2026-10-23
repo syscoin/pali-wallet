@@ -612,6 +612,7 @@
     "validTokenContract": "• The contract is a valid ERC-20, ERC-721 or ERC-1155 token.",
     "matchingTokenType": "• The token type matches the contract (ERC20/ERC721/ERC1155).",
     "accountImportFailed": "Could not import the account.",
+    "watchOnlyValidationTimedOut": "Watch-only validation took too long. Nothing was imported. Please try again.",
     "watchOnly": "Watch-only",
     "publicIdentifierInput": "Address / XPUB / Descriptor",
     "usingAnotherWallet": "You are using another wallet.",

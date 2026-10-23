@@ -612,6 +612,7 @@
     "validTokenContract": "• コントラクトが有効なERC-20、ERC-721、ERC-1155トークンであること。",
     "matchingTokenType": "• トークンの種類がコントラクトと一致すること（ERC20/ERC721/ERC1155）。",
     "accountImportFailed": "アカウントをインポートできませんでした。",
+    "watchOnlyValidationTimedOut": "ウォッチ専用アカウントの検証がタイムアウトしました。何もインポートされていません。もう一度お試しください。",
     "watchOnly": "ウォッチ専用",
     "publicIdentifierInput": "アドレス / XPUB / ディスクリプター",
     "usingAnotherWallet": "別のウォレットを使用しています。",

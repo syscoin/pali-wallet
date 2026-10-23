@@ -612,6 +612,7 @@
     "validTokenContract": "• Le contrat est un jeton ERC-20, ERC-721 ou ERC-1155 valide.",
     "matchingTokenType": "• Le type de jeton correspond au contrat (ERC20/ERC721/ERC1155).",
     "accountImportFailed": "Impossible d’importer le compte.",
+    "watchOnlyValidationTimedOut": "La validation en lecture seule a pris trop de temps. Rien n’a été importé. Veuillez réessayer.",
     "watchOnly": "Lecture seule",
     "publicIdentifierInput": "Adresse / XPUB / Descripteur",
     "usingAnotherWallet": "Vous utilisez un autre portefeuille.",
