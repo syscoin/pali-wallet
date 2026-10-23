@@ -9,6 +9,7 @@ import { IconButton } from 'components/index';
 import { TokenIcon } from 'components/TokenIcon';
 import { Tooltip } from 'components/Tooltip';
 import { truncate, formatFullPrecisionBalance, ellipsis } from 'utils/index';
+import { isErc721BalanceAvailable } from 'utils/nftQuantity';
 import { isSptBalanceAvailable } from 'utils/sptBalance';
 import { getTokenTypeBadgeColor } from 'utils/tokens';
 
@@ -146,8 +147,10 @@ const ImportableAssetsListComponent: React.FC<IImportableAssetsListProps> = ({
                 <div className="flex flex-col flex-1 min-w-0">
                   <p className="flex flex-wrap items-center gap-x-2">
                     <span className="text-brand-white font-medium">
-                      {assetType === 'utxo' &&
-                      !isSptBalanceAvailable(asset.balance)
+                      {(assetType === 'utxo' &&
+                        !isSptBalanceAvailable(asset.balance)) ||
+                      (asset.tokenStandard === 'ERC-721' &&
+                        !isErc721BalanceAvailable(asset.balance))
                         ? t('settings.unavailable')
                         : asset.balance === 0
                         ? '—'

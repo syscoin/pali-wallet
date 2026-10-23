@@ -162,6 +162,33 @@ const loadMarketPreview = async (change?: number | null) => {
   return loadPreview();
 };
 
+it.each([undefined, 0, 3])(
+  'keeps ERC721 watch balance %s distinct without disabling metadata import',
+  async (balance) => {
+    mockRequest.asset = {
+      type: 'ERC721',
+      options: { address: preview.contractAddress },
+    };
+    const nft = { ...preview, tokenStandard: 'ERC-721', isNft: true } as any;
+    if (balance === undefined) delete nft.balance;
+    else nft.balance = balance;
+    mockEmitter.mockImplementation(async ([, method]) =>
+      method === 'getAssetInfo' ? nft : true
+    );
+    await loadPreview();
+    const caption = screen.getByText('send.balance').parentElement!;
+    expect(caption.textContent).toContain(
+      balance === undefined ? 'settings.unavailable' : String(balance)
+    );
+    expect(
+      screen.getByRole('button', { name: 'buttons.addToken' })
+    ).toBeEnabled();
+    expect(
+      screen.getByRole('button', { name: 'buttons.cancel' })
+    ).toBeEnabled();
+  }
+);
+
 it.each([undefined, null, NaN, Infinity, -Infinity])(
   'keeps token approval usable when the price exists with unavailable 24-hour change %s',
   async (change) => {

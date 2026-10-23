@@ -361,7 +361,9 @@ export const EvmAssetDetails = ({
                   className="text-white font-medium text-xs"
                   title={exactQuantity}
                 >
-                  {quantity} {isSingle ? 'NFT' : 'NFTs'}
+                  {quantity === undefined
+                    ? t('settings.unavailable')
+                    : `${quantity} ${isSingle ? 'NFT' : 'NFTs'}`}
                 </span>
               </div>
             )}

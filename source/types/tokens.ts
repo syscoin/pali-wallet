@@ -1,6 +1,6 @@
 /** A saved account asset is always scoped to its EVM chain. */
 export interface ITokenEthProps {
-  balance: number;
+  balance?: number;
   chainId: number;
   contractAddress: string;
   decimals: string | number;
@@ -16,7 +16,7 @@ export interface ITokenEthProps {
 
 // CoinGecko-aligned interface as source of truth
 export interface ITokenDetails {
-  balance: number;
+  balance?: number;
   categories?: string[];
   chainId?: number;
   contractAddress: string;

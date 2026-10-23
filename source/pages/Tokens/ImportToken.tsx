@@ -34,6 +34,7 @@ import {
   createBrowsingNavigationContext,
   navigateWithContext,
 } from 'utils/navigationState';
+import { isErc721BalanceAvailable } from 'utils/nftQuantity';
 import { normalizeNftTokenId } from 'utils/nftTokenId';
 
 import { useTokenImportNavigation } from './useTokenImportNavigation';
@@ -455,7 +456,10 @@ export const ImportToken: React.FC = () => {
           id,
           symbol: token.symbol,
           name: token.name, // Keep names intact - they can have spaces
-          balance: token.balance || 0,
+          ...(tokenStandard === 'ERC-721' &&
+          !isErc721BalanceAvailable(token.balance)
+            ? {}
+            : { balance: token.balance || 0 }),
           decimals: token.decimals,
           logo: imageUrl || PaliLogo, // Always provide a logo - fallback to Pali logo
           contractAddress: normalizedAddress,
@@ -583,10 +587,15 @@ export const ImportToken: React.FC = () => {
           isNft:
             asset.isNft ??
             ['ERC-721', 'ERC-1155'].includes(asset.tokenStandard || 'ERC-20'),
-          balance:
-            asset.tokenStandard === 'ERC-1155' && activeTab === 'custom'
-              ? verifiedTokenBalance ?? 0 // Use verified balance for custom ERC-1155 tokens
-              : asset.balance || 0, // Use asset balance for owned tokens or non-ERC-1155
+          ...(asset.tokenStandard === 'ERC-721' &&
+          !isErc721BalanceAvailable(asset.balance)
+            ? {}
+            : {
+                balance:
+                  asset.tokenStandard === 'ERC-1155' && activeTab === 'custom'
+                    ? verifiedTokenBalance ?? 0 // Use verified balance for custom ERC-1155 tokens
+                    : asset.balance || 0,
+              }), // Use asset balance for owned tokens or non-ERC-1155
           chainId: activeNetwork.chainId,
           name: asset.name || asset.symbol,
           logo: tokenLogo,

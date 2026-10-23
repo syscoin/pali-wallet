@@ -892,7 +892,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
 
       // For NFTs, get balance from NFT-specific methods
       if (basicDetails.isNft) {
-        let balance = 0;
+        let balance: number | undefined;
         try {
           if (basicDetails.tokenStandard === 'ERC-721') {
             // For ERC-721, we can get the total count of NFTs owned
@@ -901,7 +901,12 @@ const EvmAssetsController = (): IEvmAssetsController => {
               walletAddress,
               w3Provider
             );
-            balance = Number(nftBalance) || 0;
+            if (
+              typeof nftBalance === 'number' &&
+              Number.isFinite(nftBalance) &&
+              nftBalance >= 0
+            )
+              balance = nftBalance;
           } else if (basicDetails.tokenStandard === 'ERC-1155') {
             // For ERC-1155, we can't get total balance without knowing token IDs
             // Set balance to 0 and let the user know they need to use an API
@@ -918,10 +923,11 @@ const EvmAssetsController = (): IEvmAssetsController => {
         }
 
         if (!contextIsCurrent(context.key)) return null;
-        return {
-          ...basicDetails,
-          balance,
-        };
+        // Basic metadata carries a placeholder zero, not a completed read.
+        const details = { ...basicDetails };
+        if (balance === undefined) delete details.balance;
+        else details.balance = balance;
+        return details;
       }
 
       // For ERC-20 tokens, get fresh balance
@@ -977,10 +983,11 @@ const EvmAssetsController = (): IEvmAssetsController => {
         console.log(
           `[EvmAssetsController] Using cached market data for ${contractAddress}`
         );
-        return {
-          ...cached.details,
-          balance: detailsWithBalance.balance, // Use fresh balance
-        };
+        // Cached metadata must not supply a balance after a failed fresh read.
+        const details = { ...cached.details };
+        if (detailsWithBalance.balance === undefined) delete details.balance;
+        else details.balance = detailsWithBalance.balance;
+        return details;
       }
 
       // Try to enhance with CoinGecko market data
@@ -1300,7 +1307,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
           contractAddress,
           walletAddress,
           w3Provider
-        );
+        ).catch(() => undefined);
 
         nftDetails = {
           id: `${contractAddress.toLowerCase()}-${activeNetwork.chainId}`,
@@ -1310,7 +1317,11 @@ const EvmAssetsController = (): IEvmAssetsController => {
             cleanTokenSymbol(nftMetadata.symbol).toUpperCase(), // Use name if available, fallback to symbol
           contractAddress,
           decimals: 0, // NFTs always have 0 decimals
-          balance: Number(balance) || 0,
+          ...(typeof balance === 'number' &&
+          Number.isFinite(balance) &&
+          balance >= 0
+            ? { balance }
+            : {}),
           chainId: activeNetwork.chainId,
           tokenStandard: contractType as any,
           isNft: true,
@@ -1341,8 +1352,10 @@ const EvmAssetsController = (): IEvmAssetsController => {
           const [name, symbol, balance] = await Promise.all([
             contract.name().catch(() => 'NFT Collection'),
             contract.symbol().catch(() => 'NFT'),
-            contract.balanceOf(walletAddress).catch(() => 0),
+            contract.balanceOf(walletAddress).catch(() => undefined),
           ]);
+          const numericBalance =
+            balance === undefined ? undefined : Number(balance);
 
           nftDetails = {
             id: `${contractAddress.toLowerCase()}-${activeNetwork.chainId}`,
@@ -1350,7 +1363,11 @@ const EvmAssetsController = (): IEvmAssetsController => {
             name: name || cleanTokenSymbol(symbol).toUpperCase(), // Keep names intact - they can have spaces
             contractAddress,
             decimals: 0,
-            balance: Number(balance) || 0,
+            ...(typeof numericBalance === 'number' &&
+            Number.isFinite(numericBalance) &&
+            numericBalance >= 0
+              ? { balance: numericBalance }
+              : {}),
             chainId: activeNetwork.chainId,
             tokenStandard: contractType as any,
             isNft: true,
@@ -1372,7 +1389,6 @@ const EvmAssetsController = (): IEvmAssetsController => {
             name: 'NFT Collection',
             contractAddress,
             decimals: 0,
-            balance: 0,
             chainId: activeNetwork.chainId,
             tokenStandard: contractType as any,
             isNft: true,
