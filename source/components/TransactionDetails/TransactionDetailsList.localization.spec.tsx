@@ -67,10 +67,15 @@ it.each(locales)(
       resources[locale].transactionDisplay.blockHash
     ).parentElement!;
     const copyName = resources[locale].buttons.copy;
-    const firstCopy = within(fromRow).getByRole('button', { name: copyName });
-    expect(firstCopy).toHaveAccessibleName(copyName);
+    const fromCopyName = `${copyName}: ${resources[locale].send.from}`;
+    const firstCopy = within(fromRow).getByRole('button', {
+      name: fromCopyName,
+    });
+    expect(firstCopy).toHaveAccessibleName(fromCopyName);
     await userEvent.click(firstCopy);
-    const hashCopy = within(hashRow).getByRole('button', { name: copyName });
+    const hashCopy = within(hashRow).getByRole('button', {
+      name: `${copyName}: ${resources[locale].transactionDisplay.blockHash}`,
+    });
     hashCopy.focus();
     expect(hashCopy).toHaveFocus();
     await userEvent.keyboard('{Enter}');
@@ -138,13 +143,13 @@ it.each(locales)(
     expect(within(timestampRow).getByText('N/A')).toBeVisible();
     expect(within(rawStatusRow).getByText('N/A')).toBeVisible();
     const copyButton = within(revertRow).getByRole('button', {
-      name: resources[locale].buttons.copy,
+      name: `${resources[locale].buttons.copy}: ${resources[locale].transactionDisplay.revertReason}`,
     });
     copyButton.focus();
     expect(copyButton).toHaveFocus();
     await userEvent.keyboard('{Enter}');
     const statusCopy = within(rawStatusRow).getByRole('button', {
-      name: resources[locale].buttons.copy,
+      name: `${resources[locale].buttons.copy}: ${resources[locale].buttons.success}`,
     });
     statusCopy.focus();
     expect(statusCopy).toHaveFocus();

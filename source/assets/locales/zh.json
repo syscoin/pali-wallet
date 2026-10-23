@@ -723,6 +723,7 @@
     "validUrlRequired": "请输入有效的URL",
     "networkMismatch": "网络不匹配 - chainId不匹配",
     "failedValidateRpc": "验证RPC URL失败",
+    "rpcAuthenticationRequired": "此 RPC 端点需要身份验证。请使用包含 API 密钥的 RPC URL，或选择其他提供商。",
     "unableToConnectToNetwork": "无法连接到{{networkName}}。所有测试的{{rpcType}}都需要身份验证或未通过质量检查。请尝试自定义URL。",
     "searchNetworksPlaceholder": "开始输入以搜索{{networkType}}网络",
     "blockbookUrlPlaceholder": "Blockbook URL（例如：https://btc1.trezor.io）",

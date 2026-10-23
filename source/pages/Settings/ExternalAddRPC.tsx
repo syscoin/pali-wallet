@@ -12,6 +12,7 @@ import { INetwork } from 'types/network';
 import { ICustomRpcParams } from 'types/transactions';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { extractErrorMessage } from 'utils/index';
+import { translateRpcValidationError } from 'utils/rpcValidationError';
 
 const networkKey = (network?: INetwork) =>
   network &&
@@ -156,7 +157,10 @@ const CustomRPCExternal = () => {
       // Extract the actual error message from the thrown error
       const errorMessage =
         ownValidationMessage ||
-        extractErrorMessage(error, t('settings.failedValidateRpc'));
+        translateRpcValidationError(
+          extractErrorMessage(error, t('settings.failedValidateRpc')),
+          t
+        );
 
       // Set error state
       setFieldErrors('url', [errorMessage]);

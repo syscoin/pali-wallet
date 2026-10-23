@@ -63,7 +63,9 @@ export const TransactionDetailsList: React.FC<ITransactionDetailsListProps> = ({
                       </p>
                       {canCopy && (
                         <IconButton
-                          aria-label={t('buttons.copy')}
+                          aria-label={`${t(
+                            'buttons.copy'
+                          )}: ${translateTransactionLabel(label, t)}`}
                           onClick={() =>
                             onCopy(copyValue ?? value ?? '', label)
                           }
@@ -92,7 +94,9 @@ export const TransactionDetailsList: React.FC<ITransactionDetailsListProps> = ({
                       </p>
                       {canCopy && (
                         <IconButton
-                          aria-label={t('buttons.copy')}
+                          aria-label={`${t(
+                            'buttons.copy'
+                          )}: ${translateTransactionLabel(label, t)}`}
                           onClick={() =>
                             onCopy(copyValue ?? value ?? '', label)
                           }

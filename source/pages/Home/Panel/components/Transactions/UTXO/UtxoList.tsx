@@ -224,7 +224,9 @@ const UtxoTransactionsListComponentBase = ({
             <IconButton
               className="p-0.5 hover:bg-brand-royalbluemedium/20 rounded transition-all duration-200"
               onClick={handleCopyTxId}
-              aria-label={t('buttons.copy')}
+              aria-label={`${t('buttons.copy')}: ${t('send.transactionId')} ${
+                tx.txid
+              }`}
             >
               <Icon
                 name="Copy"

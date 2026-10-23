@@ -723,6 +723,7 @@
     "validUrlRequired": "Please enter a valid URL",
     "networkMismatch": "Network mismatch - chainId does not match",
     "failedValidateRpc": "Failed to validate RPC URL",
+    "rpcAuthenticationRequired": "This RPC endpoint requires authentication. Please use an RPC URL that includes your API key or choose a different provider.",
     "unableToConnectToNetwork": "Unable to connect to {{networkName}}. All tested {{rpcType}} either require authentication or failed quality checks. Please try a custom URL.",
     "searchNetworksPlaceholder": "Start typing to search {{networkType}} networks",
     "blockbookUrlPlaceholder": "Blockbook URL (e.g. https://btc1.trezor.io)",
