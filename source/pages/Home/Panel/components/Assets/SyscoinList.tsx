@@ -29,6 +29,7 @@ import {
   createBrowsingNavigationContext,
   navigateWithContext,
 } from 'utils/navigationState';
+import { isSptBalanceAvailable } from 'utils/sptBalance';
 import { hasNonZeroAssetDelta } from 'utils/syscoinAssetAmount';
 
 import { AssetRemovalStart, useAssetRemoval } from './useAssetRemoval';
@@ -146,12 +147,18 @@ export const SyscoinAssetsList = ({
                 <div className="flex items-center gap-x-2">
                   <span
                     className="text-brand-white font-semibold"
-                    title={String(asset.balance ?? 0)}
+                    title={
+                      isSptBalanceAvailable(asset.balance)
+                        ? String(asset.balance)
+                        : t('settings.unavailable')
+                    }
                   >
-                    {formatFullPrecisionBalance(
-                      asset.balance ?? 0,
-                      Math.min(asset.decimals ?? 8, 4)
-                    )}
+                    {isSptBalanceAvailable(asset.balance)
+                      ? formatFullPrecisionBalance(
+                          asset.balance,
+                          Math.min(asset.decimals ?? 8, 4)
+                        )
+                      : t('settings.unavailable')}
                   </span>
 
                   <span

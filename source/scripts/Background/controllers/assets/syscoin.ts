@@ -220,7 +220,7 @@ const SysAssetsControler = (): ISysAssetsController => {
       }
 
       // Get user's balance for this asset (optional)
-      let balance = '0';
+      let balance: string | undefined;
       try {
         // Blockbook doesn't support filtering by assetGuid, so we fetch all tokens
         const requestOptions = 'details=tokenBalances&tokens=nonzero';
@@ -231,33 +231,16 @@ const SysAssetsControler = (): ISysAssetsController => {
           true
         );
 
-        // IMPORTANT: For SPT tokens, we should ONLY use tokensAsset array
-        // tokens array contains regular UTXO addresses without assetGuid
-        const tokens = accountData.tokensAsset || [];
-
-        // Find ALL tokens with this assetGuid to aggregate balances
-        const matchingTokens = tokens.filter(
-          (t: any) => t.assetGuid?.toString() === assetGuid
+        const inventory = aggregateTokenInventory(
+          accountData,
+          store.getState().vault.activeNetwork.chainId
         );
-
-        if (matchingTokens.length > 0) {
-          // Convert from satoshis to display format and aggregate across all UTXOs
-          const decimals = assetData.decimals ?? 8;
-
-          // Match owned discovery/refresh: holdings include signed pending deltas.
-          const rawBalance = matchingTokens.reduce(
-            (total: bigint, token: any) =>
-              total +
-              BigInt(String(token.balance || 0)) +
-              BigInt(String(token.unconfirmedBalance || 0)),
-            BigInt(0)
-          );
-          balance = formatUnits(rawBalance.toString(), decimals);
-
-          console.log(
-            `[SysAssetsController] Found ${matchingTokens.length} UTXOs for asset ${assetGuid}, total balance: ${balance}`
-          );
+        const holding = inventory.get(assetGuid);
+        if (holding && holding.decimals !== assetData.decimals) {
+          throw new Error('SPT token balance decimals do not match metadata');
         }
+        // Only a complete, valid inventory can establish an explicit zero.
+        balance = holding ? String(holding.balance) : '0';
       } catch (balanceError) {
         console.warn(
           '[SysAssetsController] Could not fetch balance:',
@@ -273,7 +256,7 @@ const SysAssetsControler = (): ISysAssetsController => {
         symbol: cleanTokenSymbol(assetData.symbol),
         name: cleanTokenSymbol(assetData.symbol), // Syscoin assets often use symbol as name - keep intact
         decimals: assetData.decimals,
-        balance: balance,
+        ...(balance !== undefined ? { balance } : {}),
         maxSupply: assetData.maxSupply,
         totalSupply: assetData.totalSupply,
         description: assetData.metaData || '',
@@ -314,22 +297,12 @@ const SysAssetsControler = (): ISysAssetsController => {
     return sysAssetToAdd;
   };
 
-  const getSysAssetsByXpub = async (
-    xpubOrAddress: string,
-    networkUrl: string,
-    networkChainId: number,
-    existingAssets: ITokenSysProps[] = []
-  ): Promise<ISysTokensAssetReponse[]> => {
-    // Refresh persisted/imported assets from all used SPT entries so zero-balance
-    // tokens still keep their historical sent/received counters.
-    const requestOptions = 'details=tokenBalances&tokens=used';
-
-    const accountData = await fetchBackendAccountCached(
-      ensureTrailingSlash(networkUrl),
-      xpubOrAddress,
-      requestOptions,
-      true
-    );
+  // Share the strict complete-inventory contract between refresh and the
+  // optional balance lookup during metadata-only custom imports.
+  const aggregateTokenInventory = (
+    accountData: any,
+    networkChainId: number
+  ): Map<string, ISysTokensAssetReponse> => {
     const invalidInventory = () =>
       new Error('SPT token inventory is unavailable or invalid');
     const readInteger = (
@@ -456,8 +429,29 @@ const SysAssetsControler = (): ISysAssetsController => {
       });
     });
 
-    // Use aggregated tokens map for lookups
-    const blockchainTokensMap = aggregatedTokensMap;
+    return aggregatedTokensMap;
+  };
+
+  const getSysAssetsByXpub = async (
+    xpubOrAddress: string,
+    networkUrl: string,
+    networkChainId: number,
+    existingAssets: ITokenSysProps[] = []
+  ): Promise<ISysTokensAssetReponse[]> => {
+    // Refresh persisted/imported assets from all used SPT entries so zero-balance
+    // tokens still keep their historical sent/received counters.
+    const requestOptions = 'details=tokenBalances&tokens=used';
+
+    const accountData = await fetchBackendAccountCached(
+      ensureTrailingSlash(networkUrl),
+      xpubOrAddress,
+      requestOptions,
+      true
+    );
+    const blockchainTokensMap = aggregateTokenInventory(
+      accountData,
+      networkChainId
+    );
 
     // Update all manually imported tokens
     const updatedTokens: ISysTokensAssetReponse[] = existingAssets

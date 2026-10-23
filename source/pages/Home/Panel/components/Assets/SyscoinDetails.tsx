@@ -29,6 +29,7 @@ import {
 } from 'utils/index';
 import { navigateBack } from 'utils/navigationState';
 import { retryableFetch } from 'utils/retryableFetch';
+import { isSptBalanceAvailable } from 'utils/sptBalance';
 import { buildExplorerUrl } from 'utils/strings';
 import { translateTransactionLabel } from 'utils/transactionDisplay';
 
@@ -78,7 +79,9 @@ export const SyscoinAssetDetails = ({
       assetGuid: navigationState.assetGuid || id,
       symbol: navigationState.symbol || 'Unknown',
       name: navigationState.name || navigationState.symbol || 'Unknown Token',
-      balance: navigationState.balance || 0,
+      ...(isSptBalanceAvailable(navigationState.balance)
+        ? { balance: navigationState.balance }
+        : {}),
       decimals: navigationState.decimals ?? 8,
       chainId: activeNetwork.chainId,
       type: navigationState.type || 'SPTAllocated',
@@ -105,13 +108,19 @@ export const SyscoinAssetDetails = ({
   const { formattedAsset, assetSymbol } = useMemo(() => {
     const formatted = [];
     if (asset) {
-      for (const [key, value] of Object.entries(asset)) {
+      // Metadata-only imports still need an explicit Balance row when their
+      // optional balance has not been observed yet.
+      for (const [key, value] of Object.entries({
+        ...asset,
+        balance: asset.balance,
+      })) {
         // Check if the key is one of the keys of interest
         if (!syscoinKeysOfInterest.includes(key)) continue;
 
         const formattedKey = camelCaseToText(key);
         const isValid =
-          typeof value !== 'object' && value !== null && value !== '';
+          key === 'balance' ||
+          (typeof value !== 'object' && value !== null && value !== '');
 
         if (isValid) {
           // Create an object with the key and value and unshift it into the array
@@ -525,12 +534,20 @@ export const SyscoinAssetDetails = ({
                   <p className="flex items-center font-normal gap-x-1.5 text-xs">
                     <span
                       className="text-brand-white"
-                      title={String(item.value)}
+                      title={
+                        item.originalKey === 'balance' &&
+                        !isSptBalanceAvailable(item.value)
+                          ? t('settings.unavailable')
+                          : String(item.value)
+                      }
                     >
-                      {formatFullPrecisionBalance(
-                        String(item.value),
-                        Math.min(assetDecimals.value, 4)
-                      )}
+                      {item.originalKey === 'balance' &&
+                      !isSptBalanceAvailable(item.value)
+                        ? t('settings.unavailable')
+                        : formatFullPrecisionBalance(
+                            String(item.value),
+                            Math.min(assetDecimals.value, 4)
+                          )}
                     </span>
 
                     <span className="text-brand-royalbluemedium">

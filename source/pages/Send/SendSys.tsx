@@ -33,6 +33,7 @@ import {
   getWalletNavigationScope,
   removeScientificNotation,
 } from 'utils/index';
+import { isSptBalanceAvailable } from 'utils/sptBalance';
 import { buildExplorerUrl } from 'utils/strings';
 import {
   assertValidAssetAmount,
@@ -118,11 +119,12 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
   const initialIsMaxSend =
     initialDraft.isMaxSend === true &&
     (!initialSelectedAsset ||
-      isAssetAmountEqualToBalance(
-        String(initialDraft.formValues?.amount ?? ''),
-        String(initialSelectedAsset.balance ?? '0'),
-        initialSelectedAsset.decimals ?? 8
-      ));
+      (isSptBalanceAvailable(initialSelectedAsset.balance) &&
+        isAssetAmountEqualToBalance(
+          String(initialDraft.formValues?.amount ?? ''),
+          String(initialSelectedAsset.balance),
+          initialSelectedAsset.decimals ?? 8
+        )));
 
   const [selectedAsset, setSelectedAsset] = useState<ITokenSysProps | null>(
     initialSelectedAsset
@@ -293,10 +295,14 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
   );
 
   // Keep balance as string to preserve precision
+  const isBalanceAvailable =
+    !selectedAsset || isSptBalanceAvailable(selectedAsset.balance);
   const balanceStr = useMemo(
     () =>
       selectedAsset
-        ? String(selectedAsset.balance ?? '0')
+        ? isSptBalanceAvailable(selectedAsset.balance)
+          ? String(selectedAsset.balance)
+          : ''
         : activeAccount?.balances[INetworkType.Syscoin] || '0',
     [selectedAsset, activeAccount?.balances]
   );
@@ -305,13 +311,18 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
 
   const handleMaxButton = useCallback(() => {
     if (!isCurrentForm()) return;
-    maxIntentRevision.current += 1;
     const current = maxSelection.current;
+    if (
+      current.selectedAsset &&
+      !isSptBalanceAvailable(current.selectedAsset.balance)
+    )
+      return;
+    maxIntentRevision.current += 1;
     nativeMaxIntent.current = !current.selectedAsset;
     // Simply fill in the full balance
     form.setFieldValue('amount', current.balanceStr);
     setIsMaxSend(true);
-    // Validation still updates the field error; an invalid zero/unknown balance
+    // Validation still updates the field error; an invalid zero balance
     // is not an unhandled asynchronous failure of this click handler.
     void form.validateFields(['amount']).catch(() => undefined);
   }, [form, isCurrentForm]);
@@ -368,6 +379,17 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
 
   // Watch the amount field for changes
   const watchedAmount = Form.useWatch('amount', form);
+
+  // A retained manual amount must be checked again when an optional balance
+  // becomes known (including zero), or a previously known balance is lost.
+  useEffect(() => {
+    if (
+      isCurrentForm() &&
+      selectedAsset &&
+      String(form.getFieldValue('amount') ?? '').trim()
+    )
+      void form.validateFields(['amount']).catch(() => undefined);
+  }, [selectedAsset, form, isCurrentForm]);
 
   // Rebase explicit native MAX before rechecking asset equality. The amount change
   // also invalidates any unsigned preparation started with the old balance.
@@ -498,6 +520,13 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
 
   const nextStep = async ({ receiver, amount }: any) => {
     if (!isCurrentForm()) return;
+    if (
+      preparationOptions.current.selectedAsset &&
+      !isSptBalanceAvailable(preparationOptions.current.selectedAsset.balance)
+    ) {
+      form.setFields([{ name: 'amount', errors: [t('settings.unavailable')] }]);
+      return;
+    }
     // Prevent submission during restoration
     if (isRestoringRef.current) {
       console.log('[SendSys] Preventing submission during restoration');
@@ -897,7 +926,9 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
           </p>
           <p className="text-white text-xs font-semibold">
             {selectedAsset
-              ? getAssetBalance(selectedAsset, true)
+              ? isBalanceAvailable
+                ? getAssetBalance(selectedAsset, true)
+                : t('settings.unavailable')
               : `${activeAccount.balances[INetworkType.Syscoin]} ${
                   activeNetwork.currency
                 }`}
@@ -1060,7 +1091,8 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
               <button
                 type="button"
                 onClick={handleMaxButton}
-                className="absolute left-[15px] top-5 transform -translate-y-1/2 text-xs h-[18px] border border-alpha-whiteAlpha300 px-2 py-[2px] w-[41px] flex items-center justify-center rounded-pill cursor-pointer hover:bg-alpha-whiteAlpha200 z-10 focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-bkg-1"
+                disabled={!isBalanceAvailable}
+                className="absolute left-[15px] top-5 transform -translate-y-1/2 text-xs h-[18px] border border-alpha-whiteAlpha300 px-2 py-[2px] w-[41px] flex items-center justify-center rounded-pill cursor-pointer hover:bg-alpha-whiteAlpha200 z-10 disabled:opacity-50 disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-bkg-1"
               >
                 {t('send.max')}
               </button>
@@ -1088,6 +1120,11 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
                       }
 
                       if (selectedAsset) {
+                        if (!isSptBalanceAvailable(selectedAsset.balance)) {
+                          return Promise.reject(
+                            new Error(t('settings.unavailable'))
+                          );
+                        }
                         try {
                           assertValidAssetAmount(
                             inputAmount,
@@ -1103,7 +1140,7 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
                         if (
                           !isAssetAmountWithinBalance(
                             inputAmount,
-                            String(selectedAsset.balance ?? '0'),
+                            String(selectedAsset.balance),
                             assetDecimals
                           )
                         ) {

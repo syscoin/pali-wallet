@@ -1,5 +1,7 @@
 import { ITokenSysProps } from 'types/tokens';
 
+import { isSptBalanceAvailable } from './sptBalance';
+
 export const getRefreshedSyscoinAssetSelection = (
   selectedAsset: ITokenSysProps,
   accountAssets: ITokenSysProps[],
@@ -24,7 +26,9 @@ export const getRefreshedSyscoinAssetSelection = (
     const refreshedValue = (refreshedAsset as Record<string, unknown>)[field];
 
     return field === 'balance'
-      ? String(selectedValue ?? 0) !== String(refreshedValue ?? 0)
+      ? isSptBalanceAvailable(selectedValue) !==
+          isSptBalanceAvailable(refreshedValue) ||
+          String(selectedValue ?? '') !== String(refreshedValue ?? '')
       : selectedValue !== refreshedValue;
   });
 

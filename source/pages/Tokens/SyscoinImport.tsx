@@ -32,6 +32,7 @@ import {
   getCurrentTab,
 } from 'utils/index';
 import { getWalletNavigationScope } from 'utils/navigationState';
+import { isSptBalanceAvailable } from 'utils/sptBalance';
 import { getTokenLogo } from 'utils/tokens';
 
 import { useTokenImportNavigation } from './useTokenImportNavigation';
@@ -279,13 +280,13 @@ export const SyscoinImport: React.FC = () => {
 
         // The balance field is already in display units (e.g., 0.02 means 0.02 tokens)
         // No need to convert from satoshis since the API returns display values
-        const displayBalance = token.balance || 0;
-
         return {
           id: token.assetGuid || '',
           symbol: token.symbol || '',
           name: token.name || token.symbol || '',
-          balance: displayBalance,
+          ...(isSptBalanceAvailable(token.balance)
+            ? { balance: token.balance }
+            : {}),
           decimals: decimals,
           logo: getTokenLogo(token.symbol || '', true, token.assetGuid),
           assetGuid: token.assetGuid || '',
@@ -322,7 +323,9 @@ export const SyscoinImport: React.FC = () => {
         symbol: asset.symbol,
         name: asset.name || asset.symbol,
         decimals: asset.decimals,
-        balance: asset.balance,
+        ...(isSptBalanceAvailable(asset.balance)
+          ? { balance: asset.balance }
+          : {}),
         assetType: asset.assetType,
         contract: asset.contract,
         originDecimals: asset.originDecimals,

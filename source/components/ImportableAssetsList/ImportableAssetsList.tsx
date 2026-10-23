@@ -9,12 +9,13 @@ import { IconButton } from 'components/index';
 import { TokenIcon } from 'components/TokenIcon';
 import { Tooltip } from 'components/Tooltip';
 import { truncate, formatFullPrecisionBalance, ellipsis } from 'utils/index';
+import { isSptBalanceAvailable } from 'utils/sptBalance';
 import { getTokenTypeBadgeColor } from 'utils/tokens';
 
 interface IImportableAsset {
   assetGuid?: string;
   assetType?: 'SYSX' | 'ERC20' | 'ERC721' | 'ERC1155';
-  balance: number | string;
+  balance?: number | string;
   chainId?: number;
   contractAddress?: string;
   decimals?: number;
@@ -145,7 +146,10 @@ const ImportableAssetsListComponent: React.FC<IImportableAssetsListProps> = ({
                 <div className="flex flex-col flex-1 min-w-0">
                   <p className="flex items-center gap-x-2">
                     <span className="text-brand-white font-medium">
-                      {asset.balance === 0
+                      {assetType === 'utxo' &&
+                      !isSptBalanceAvailable(asset.balance)
+                        ? t('settings.unavailable')
+                        : asset.balance === 0
                         ? '—'
                         : formatFullPrecisionBalance(
                             asset.balance || 0,
