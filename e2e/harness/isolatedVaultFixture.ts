@@ -110,7 +110,8 @@ function evmResult(method: string): unknown | undefined {
 export async function installIsolatedVaultRoutes(
   context: BrowserContext,
   fixture: Fixture,
-  localOrigin: string
+  localOrigin: string,
+  resolveGet?: (url: URL) => unknown | undefined
 ) {
   const reads: string[] = [],
     deniedWrites: string[] = [];
@@ -131,17 +132,21 @@ export async function installIsolatedVaultRoutes(
       /* ordinary REST */
     }
     const calls = Array.isArray(rpc) ? rpc : [rpc];
-    if (
+    const isWrite =
       /\/sendtx(?:\/|$)/i.test(url.pathname) ||
       calls.some((call) =>
         /^(?:eth_send|sendrawtransaction|sys_sign|wallet_sendCalls)/i.test(
           call?.method || ''
         )
-      )
-    )
-      deniedWrites.push('attempted-write');
-    let body: unknown;
-    if (
+      );
+    if (isWrite) deniedWrites.push('attempted-write');
+    // Install exact auxiliary GET replies with this first deny handler so
+    // startup reads cannot race a later, separately registered route.
+    let body: unknown =
+      !isWrite && request.method() === 'GET' ? resolveGet?.(url) : undefined;
+    if (body !== undefined) {
+      reads.push('synthetic-get:' + url.href);
+    } else if (
       request.method() === 'POST' &&
       url.origin === 'https://rpc.tanenbaum.io' &&
       url.pathname === '/'

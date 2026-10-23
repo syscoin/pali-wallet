@@ -111,8 +111,14 @@ jest.mock('components/index', () => ({
     <span role="img" aria-label={name === 'trash' ? 'delete' : name} />
   ),
   Tooltip: ({ children }: any) => children,
-  ConfirmationModal: ({ show, title }: any) =>
-    show ? <div role="dialog" aria-label={title} /> : null,
+  ConfirmationModal: ({ show, title, description, children }: any) =>
+    show ? (
+      <div role="dialog" aria-labelledby="network-removal-test-title">
+        <h2 id="network-removal-test-title">{title}</h2>
+        <p>{description}</p>
+        {children}
+      </div>
+    ) : null,
 }));
 jest.mock('utils/index', () => ({
   truncate: jest.requireActual('utils/format').truncate,

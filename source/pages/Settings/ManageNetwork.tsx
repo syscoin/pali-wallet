@@ -406,20 +406,29 @@ const ManageNetworkView = () => {
 
       <ConfirmationModal
         show={showConfirmModal && !networkActionsBlocked}
-        title={t('settings.confirmRemoveNetwork', {
-          networkName: networkToRemove
-            ? networkIdentity(networkToRemove.chain, networkToRemove)
-            : '',
-        })}
-        description={
-          networkToRemove
-            ? chainIdentity(networkToRemove.chain, networkToRemove.chainId)
-            : ''
+        title={
+          <>
+            <span aria-hidden="true">{t('buttons.remove')}</span>
+            <span className="sr-only">
+              {t('settings.confirmRemoveNetwork', {
+                networkName: networkToRemove
+                  ? networkIdentity(networkToRemove.chain, networkToRemove)
+                  : '',
+              })}
+            </span>
+          </>
         }
+        description={networkToRemove?.label || ''}
         buttonText={t('buttons.remove')}
         onClose={handleCancelRemoval}
         onClick={handleConfirmRemoval}
-      />
+      >
+        {networkToRemove && (
+          <p className="mt-2 text-content-muted">
+            {chainIdentity(networkToRemove.chain, networkToRemove.chainId)}
+          </p>
+        )}
+      </ConfirmationModal>
     </>
   );
 };

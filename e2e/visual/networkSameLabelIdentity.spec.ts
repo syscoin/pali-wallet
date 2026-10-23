@@ -363,6 +363,67 @@ async function rowGeometry(row: Locator, expectedChain: string) {
   }, expectedChain);
 }
 
+async function confirmationPresentation(
+  dialog: Locator,
+  label: string,
+  identity: string
+) {
+  const header = dialog.locator('header');
+  const heading = header.getByRole('heading', {
+    name: en.settings.confirmRemoveNetwork.replace('{{networkName}}', identity),
+    exact: true,
+  });
+  const visibleTitle = heading.locator('span[aria-hidden="true"]');
+  const bodyLabel = dialog.getByText(label, { exact: true });
+  await expect(visibleTitle).toHaveText(en.buttons.remove);
+  await expect(visibleTitle).toBeVisible();
+  await expect(bodyLabel).toBeVisible();
+  await expect(header.getByText(label, { exact: true })).toHaveCount(0);
+  const geometry = await heading.evaluate((element) => ({
+    bounds: element.getBoundingClientRect().toJSON(),
+    clientHeight: element.clientHeight,
+    scrollHeight: element.scrollHeight,
+    clientWidth: element.clientWidth,
+    scrollWidth: element.scrollWidth,
+    scrollTop: element.scrollTop,
+    tabIndex: (element as HTMLElement).tabIndex,
+  }));
+  const labelGeometry = await bodyLabel.evaluate((element) => ({
+    tagName: element.tagName,
+    inHeader: element.closest('header') !== null,
+    text: element.textContent,
+    bounds: element.getBoundingClientRect().toJSON(),
+    scrollWidth: element.scrollWidth,
+    clientWidth: element.clientWidth,
+  }));
+  expect(geometry.scrollHeight).toBeLessThanOrEqual(geometry.clientHeight);
+  expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.clientWidth);
+  expect(geometry.scrollTop).toBe(0);
+  expect(geometry.tabIndex).toBe(-1);
+  expect(labelGeometry.tagName).toBe('P');
+  expect(labelGeometry.inHeader).toBe(false);
+  expect(labelGeometry.text).toBe(label);
+  expect(labelGeometry.scrollWidth).toBeLessThanOrEqual(
+    labelGeometry.clientWidth
+  );
+  const titleExposure = await exposedGeometry(visibleTitle);
+  expect(titleExposure.contained).toBe(true);
+  expect(titleExposure.hitPoints).toEqual([true, true, true]);
+  const headingExposure = await exposedGeometry(heading);
+  expect(headingExposure.contained).toBe(true);
+  expect(headingExposure.hitPoints).toEqual([true, true, true]);
+  const labelExposure = await exposedGeometry(bodyLabel);
+  expect(labelExposure.contained).toBe(true);
+  expect(labelExposure.hitPoints).toEqual([true, true, true]);
+  return {
+    heading: geometry,
+    label: labelGeometry,
+    titleExposure,
+    headingExposure,
+    labelExposure,
+  };
+}
+
 for (const scenario of [
   { name: 'distinct labels', labels: ['Goerli control', 'Sepolia control'] },
   {
@@ -806,6 +867,12 @@ for (const scenario of [
               await expect(
                 dialog.getByText(chainText, { exact: true })
               ).toBeVisible();
+              await settleMotion(dialog);
+              const presentation = await confirmationPresentation(
+                dialog,
+                scenario.labels[index],
+                identity
+              );
               const dialogIdentity = await visibleIdentity(dialog);
               await capture(page);
               const cancel = dialog.getByRole('button', {
@@ -826,6 +893,7 @@ for (const scenario of [
                 dialog: dialogIdentity,
                 editTarget: route,
                 geometry,
+                presentation,
               });
             }
           );
@@ -861,6 +929,11 @@ for (const scenario of [
             const identityGeometry = await exposedGeometry(shortIdentity);
             expect(identityGeometry.contained).toBe(true);
             expect(identityGeometry.hitPoints).toEqual([true, true, true]);
+            const presentation = await confirmationPresentation(
+              dialog,
+              scenario.labels[index],
+              identity
+            );
             const actionGeometry = [];
             for (const actionName of [en.buttons.cancel, en.buttons.remove]) {
               const action = dialog.getByRole('button', {
@@ -877,6 +950,7 @@ for (const scenario of [
               chainId,
               identityGeometry,
               actionGeometry,
+              presentation,
               identity: await visibleIdentity(dialog),
             });
             await capture(page);
