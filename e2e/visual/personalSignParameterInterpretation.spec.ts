@@ -97,15 +97,45 @@ async function messageRowGeometry(page: Page, row: Locator) {
       const box = element.getBoundingClientRect();
       const footer = document.querySelector('.fixed.bottom-0');
       if (!footer) throw new Error('Missing actual approval action footer');
+      const footerTop = footer.getBoundingClientRect().top;
+      let surface = element.parentElement;
+      while (surface) {
+        if (
+          /^(auto|scroll)$/.test(getComputedStyle(surface).overflowY) &&
+          surface.scrollHeight > surface.clientHeight
+        )
+          break;
+        surface = surface.parentElement;
+      }
+      if (!surface)
+        throw new Error('Missing actual overflowing review surface');
+      const surfaceBounds = surface.getBoundingClientRect();
+      const left = Math.max(0, surfaceBounds.left);
+      const right = Math.min(innerWidth, surfaceBounds.right);
+      const top = Math.max(0, surfaceBounds.top);
+      const bottom = Math.min(innerHeight, footerTop, surfaceBounds.bottom);
+      if (right <= left || bottom <= top)
+        throw new Error('Review scroll surface has no exposed viewport');
+      const wheelPoint = { x: (left + right) / 2, y: (top + bottom) / 2 };
+      const wheelTarget = document.elementFromPoint(wheelPoint.x, wheelPoint.y);
       const hit = (x: number, y: number) => {
         const node = document.elementFromPoint(x, y);
         return !!node && (node === element || element.contains(node));
       };
       return {
         bounds: box.toJSON(),
-        footerTop: footer.getBoundingClientRect().top,
+        footerTop,
         viewport: { width: innerWidth, height: innerHeight },
         documentWidth: document.documentElement.scrollWidth,
+        scrollSurface: {
+          className: surface.className,
+          bounds: surfaceBounds.toJSON(),
+          clientHeight: surface.clientHeight,
+          scrollHeight: surface.scrollHeight,
+          scrollTop: surface.scrollTop,
+          wheelPoint,
+          receivesWheel: !!wheelTarget && surface.contains(wheelTarget),
+        },
         hits: [
           hit(box.left + box.width / 2, box.top + box.height / 2),
           hit(box.left + 1, box.top + box.height / 2),
@@ -116,10 +146,16 @@ async function messageRowGeometry(page: Page, row: Locator) {
       };
     });
   const before = await read();
-  if (before.bounds.bottom > before.footerTop || !before.hits.every(Boolean)) {
-    // Wheel over the real scroll surface, above the fixed actions. No DOM,
-    // styles or scroll positions are replaced to manufacture row visibility.
-    await page.mouse.move(before.viewport.width - 10, before.footerTop - 16);
+  const needsScroll =
+    before.bounds.bottom > before.footerTop || !before.hits.every(Boolean);
+  if (needsScroll) {
+    // Native wheel over the measured inner scroll surface, not the outer page.
+    // No DOM, styles or scroll positions are replaced to expose the row.
+    expect(before.scrollSurface.receivesWheel).toBe(true);
+    await page.mouse.move(
+      before.scrollSurface.wheelPoint.x,
+      before.scrollSurface.wheelPoint.y
+    );
     await page.mouse.wheel(
       0,
       Math.max(40, before.bounds.bottom - before.footerTop + 16)
@@ -142,7 +178,7 @@ async function messageRowGeometry(page: Page, row: Locator) {
   expect(geometry.bounds.right).toBeLessThanOrEqual(geometry.viewport.width);
   expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.viewport.width);
   expect(geometry.hits).toEqual([true, true, true, true, true]);
-  return geometry;
+  return { ...geometry, beforeScroll: before, usedNativeWheel: needsScroll };
 }
 
 for (const viewport of viewports) {
