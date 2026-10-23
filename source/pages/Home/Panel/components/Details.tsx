@@ -105,11 +105,7 @@ export const DetailsView = () => {
 
   const openExplorer = () => {
     window.open(
-      buildExplorerUrl(
-        activeNetwork.explorer || activeNetwork.url,
-        isAsset ? (isBitcoinBased ? 'asset' : 'address') : 'tx',
-        isAsset ? id : hash
-      ),
+      buildExplorerUrl(activeNetwork.explorer || activeNetwork.url, 'tx', hash),
       '_blank'
     );
   };
