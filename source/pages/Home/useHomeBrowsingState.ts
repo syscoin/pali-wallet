@@ -24,10 +24,25 @@ export const useHomeBrowsingState = <T extends Record<string, any>>(
   const [value, setValue] = useContextualState<T>(scope, restored);
 
   useEffect(() => {
+    const path = `${location.pathname}${location.search}${location.hash}`;
+    const nativeRoute = window.location.hash.startsWith('#/')
+      ? window.location.hash.slice(1)
+      : undefined;
+    const nativeKey = window.history.state?.key;
+    // A pending lazy transition can leave this list mounted after navigation.
+    // Its late data must not replace another native route or same-path entry.
+    if (
+      nativeRoute &&
+      (nativeRoute !== path ||
+        (typeof nativeKey === 'string' &&
+          typeof location.key === 'string' &&
+          nativeKey !== location.key))
+    )
+      return;
     const snapshot = { scope, value };
     if (JSON.stringify(saved) === JSON.stringify(snapshot)) return;
     // Replace this entry so editing a filter never adds a Back step.
-    navigate(`${location.pathname}${location.search}${location.hash}`, {
+    navigate(path, {
       replace: true,
       state: { ...location.state, [key]: snapshot },
     });
