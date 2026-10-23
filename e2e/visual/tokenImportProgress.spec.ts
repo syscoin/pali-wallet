@@ -194,6 +194,7 @@ for (const family of ['evm', 'utxo'] as const) {
       | undefined;
     let status: 'passed' | 'failed' = 'failed';
     let delivery: any;
+    let importEntryUrl = '';
     try {
       wallet = await PaliWallet.launch(`token-import-progress-${family}`, {
         offlineHttpProxy: server.url,
@@ -321,6 +322,8 @@ for (const family of ['evm', 'utxo'] as const) {
             .click();
           await expect(importAction(0)).toBeEnabled();
           await expect(importAction(1)).toBeEnabled();
+          importEntryUrl = page.url();
+          observations.importEntryUrl = importEntryUrl;
           expect(
             discoveryReads.some((read) =>
               family === 'evm'
@@ -456,7 +459,7 @@ for (const family of ['evm', 'utxo'] as const) {
           await page
             .getByRole('button', { name: en.buttons.back, exact: true })
             .click();
-          await expect(page).toHaveURL(/#\/tokens\/add\?tab=owned$/);
+          await expect(page).toHaveURL(importEntryUrl);
           await expect(importAction(1)).toBeEnabled();
           await importAction(1).click();
           await expect.poll(snapshot).toMatchObject({
