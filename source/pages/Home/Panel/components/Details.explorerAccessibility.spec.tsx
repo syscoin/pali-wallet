@@ -6,6 +6,9 @@ import React from 'react';
 import { DetailsView } from './Details';
 
 let mockIsBitcoinBased = false;
+jest.mock('react-i18next', () => ({
+  useTranslation: () => ({ t: (key: string) => key }),
+}));
 jest.mock('react-redux', () => ({
   shallowEqual: jest.fn(),
   useSelector: (selector: any) =>
@@ -64,7 +67,9 @@ it.each([
         <DetailsView />
       </form>
     );
-    const explorer = screen.getByRole('button', { name: 'View on Explorer' });
+    const explorer = screen.getByRole('button', {
+      name: 'home.viewOnExplorer',
+    });
     await user.tab();
     expect(document.activeElement).toBe(explorer);
     await user.keyboard(activation as string);

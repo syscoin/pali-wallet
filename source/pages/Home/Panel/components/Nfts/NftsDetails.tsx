@@ -525,7 +525,7 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
             >
               <ExternalLinkIcon size={16} />
               <span className="font-normal font-poppins underline text-sm">
-                View on Explorer
+                {t('home.viewOnExplorer')}
               </span>
             </a>
           </div>
