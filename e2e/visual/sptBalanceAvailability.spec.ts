@@ -449,55 +449,78 @@ for (const scenario of [
           });
         }
       );
-      observations.workerIdentity = await verifyExecutingWorker(
-        wallet.context,
-        wallet.extensionId,
-        E2E_CONFIG.extensionPath,
-        (value) => {
-          observations.workerIdentity = value;
+      await wallet.step(
+        `${mode}/${recovery}: verify the executing fenced wallet`,
+        async () => {
+          observations.workerIdentity = await verifyExecutingWorker(
+            wallet.context,
+            wallet.extensionId,
+            E2E_CONFIG.extensionPath,
+            (value) => {
+              observations.workerIdentity = value;
+            }
+          );
         }
       );
       const page = wallet.page;
       page.on('pageerror', (error) => pageErrors.push(error.message));
-      await wallet.importSeedAndCreatePassword();
-      await wallet.switchNetwork('Syscoin Testnet', 'UTXO');
-      await wallet.ensureOnHome();
-      // Enable the existing manual Refresh control through ordinary settings.
-      await page
-        .getByRole('button', {
-          name: en.generalMenu.generalOptions,
-          exact: true,
-        })
-        .click();
-      await page
-        .getByRole('menuitem', { name: en.generalMenu.advanced, exact: true })
-        .click();
-      await page.locator('#advanced-refresh').click();
-      await page.getByRole('dialog').locator('#confirm-btn').click();
-      await page
-        .getByRole('button', { name: en.buttons.save, exact: true })
-        .click();
-      await page
-        .getByRole('dialog')
-        .getByRole('button', { name: en.buttons.ok, exact: true })
-        .click();
-      await wallet.ensureOnHome();
+      await wallet.step(
+        `${mode}/${recovery}: import the disposable wallet and select testnet`,
+        async () => {
+          await wallet.importSeedAndCreatePassword();
+          await wallet.switchNetwork('Syscoin Testnet', 'UTXO');
+          await wallet.ensureOnHome();
+        }
+      );
       const refresh = page.getByRole('button', {
         name: en.header.refresh,
         exact: true,
       });
-      await expect(refresh).toBeEnabled();
-      observations.initial = await publicAssets(page);
-      expect(observations.initial.network).toMatchObject({ chainId: 5700 });
-      expect(targetHoldings(observations.initial.live)).toEqual([]);
-      await page.locator('#assets-btn').click();
-      await page
-        .getByRole('button', { name: en.home.importToken, exact: true })
-        .click();
-      await page
-        .getByRole('button', { name: en.tokens.addCustomTab, exact: true })
-        .click();
-      await expect.poll(() => lastSetupInventoryAt).toBeGreaterThan(0);
+      await wallet.step(
+        `${mode}/${recovery}: enable manual Refresh and verify empty initial holdings`,
+        async () => {
+          // Enable the existing manual Refresh control through ordinary settings.
+          await page
+            .getByRole('button', {
+              name: en.generalMenu.generalOptions,
+              exact: true,
+            })
+            .click();
+          await page
+            .getByRole('menuitem', {
+              name: en.generalMenu.advanced,
+              exact: true,
+            })
+            .click();
+          await page.locator('#advanced-refresh').click();
+          await page.getByRole('dialog').locator('#confirm-btn').click();
+          await page
+            .getByRole('button', { name: en.buttons.save, exact: true })
+            .click();
+          await page
+            .getByRole('dialog')
+            .getByRole('button', { name: en.buttons.ok, exact: true })
+            .click();
+          await wallet.ensureOnHome();
+          await expect(refresh).toBeEnabled();
+          observations.initial = await publicAssets(page);
+          expect(observations.initial.network).toMatchObject({ chainId: 5700 });
+          expect(targetHoldings(observations.initial.live)).toEqual([]);
+        }
+      );
+      await wallet.step(
+        `${mode}/${recovery}: open the custom SPT import form`,
+        async () => {
+          await page.locator('#assets-btn').click();
+          await page
+            .getByRole('button', { name: en.home.importToken, exact: true })
+            .click();
+          await page
+            .getByRole('button', { name: en.tokens.addCustomTab, exact: true })
+            .click();
+          await expect.poll(() => lastSetupInventoryAt).toBeGreaterThan(0);
+        }
+      );
       const input = page.getByRole('textbox', {
         name: en.tokens.assetGuid,
         exact: true,
@@ -516,240 +539,285 @@ for (const scenario of [
           persisted: targetHoldings(state.persisted),
         };
       };
-      inventoryMode = mode;
-      scenarioArmedAt = Date.now();
-      observations.scenarioArmedAt = scenarioArmedAt;
-      observations.lastSetupInventoryAt = lastSetupInventoryAt;
-      await input.fill(SPT_GUID);
-      // The only added delay is the real fixture HTTP metadata response above.
-      // Keep the harness's existing action/expect budgets unchanged.
-      await action.waitFor({ state: 'visible' });
-      await expect(action).toBeEnabled();
-      await expect
-        .poll(() =>
-          actualHttpResponses.some(
-            (response) =>
-              response.at >= scenarioArmedAt &&
-              response.status === (mode === 'unavailable' ? 500 : 200) &&
-              response.query.includes('tokens=nonzero')
-          )
-        )
-        .toBe(true);
-      expect(
-        reads.some(
-          (read) =>
-            read.family === 'metadata' &&
-            read.phase === mode &&
-            Number(read.releasedAt) - Number(read.lastSetupInventoryAt) >
-              ACCOUNT_REQUEST_CACHE_TTL_MS
-        )
-      ).toBe(true);
-      observations.preview = {
-        balance: await preview.innerText(),
-        ...(await previewEvidence(page)),
-      };
-      observations.beforeImport = await project();
-      expect(observations.beforeImport).toEqual({ live: [], persisted: [] });
+      await wallet.step(
+        `${mode}/${recovery}: validate the custom preview against fresh inventory`,
+        async (capture) => {
+          inventoryMode = mode;
+          scenarioArmedAt = Date.now();
+          observations.scenarioArmedAt = scenarioArmedAt;
+          observations.lastSetupInventoryAt = lastSetupInventoryAt;
+          await input.fill(SPT_GUID);
+          // The only added delay is the real fixture HTTP metadata response above.
+          // Keep the harness's existing action/expect budgets unchanged.
+          await action.waitFor({ state: 'visible' });
+          await expect(action).toBeEnabled();
+          await expect
+            .poll(() =>
+              actualHttpResponses.some(
+                (response) =>
+                  response.at >= scenarioArmedAt &&
+                  response.status === (mode === 'unavailable' ? 500 : 200) &&
+                  response.query.includes('tokens=nonzero')
+              )
+            )
+            .toBe(true);
+          expect(
+            reads.some(
+              (read) =>
+                read.family === 'metadata' &&
+                read.phase === mode &&
+                Number(read.releasedAt) - Number(read.lastSetupInventoryAt) >
+                  ACCOUNT_REQUEST_CACHE_TTL_MS
+            )
+          ).toBe(true);
+          observations.preview = {
+            balance: await preview.innerText(),
+            ...(await previewEvidence(page)),
+          };
+          observations.beforeImport = await project();
+          expect(observations.beforeImport).toEqual({
+            live: [],
+            persisted: [],
+          });
 
-      if (mode === 'held') await expect(preview).toHaveText('25');
-      else if (mode === 'empty') await expect(preview).toHaveText('0');
-      else {
-        await expect(preview).toHaveText(en.settings.unavailable);
-        await wallet.step(
-          `${recovery}: unavailable custom preview`,
-          async (capture) => {
+          if (mode === 'held') await expect(preview).toHaveText('25');
+          else if (mode === 'empty') await expect(preview).toHaveText('0');
+          else {
+            await expect(preview).toHaveText(en.settings.unavailable);
             await capture(page);
           }
-        );
-      }
+        }
+      );
 
-      await action.click();
-      await expect(action).toBeDisabled();
-      await expect
-        .poll(async () => {
-          const state = await project();
-          return { live: state.live.length, persisted: state.persisted.length };
-        })
-        .toEqual({ live: 1, persisted: 1 });
-      observations.afterImport = await project();
-      const expectedInitial = [
-        {
-          guid: SPT_GUID,
-          hasBalance: true,
-          balance: mode === 'held' ? '25.0' : '0',
-          chainId: 5700,
-        },
-      ];
-      if (mode !== 'unavailable') {
-        expect(observations.afterImport).toEqual({
-          live: expectedInitial,
-          persisted: expectedInitial,
-        });
-      } else {
-        expect(observations.afterImport.live).toEqual([
-          { guid: SPT_GUID, hasBalance: false, balance: null, chainId: 5700 },
-        ]);
-        expect(observations.afterImport.persisted).toEqual(
-          observations.afterImport.live
-        );
-      }
-      observations.milestones.manualImportPreserved = true;
-      await page
-        .getByRole('button', { name: en.buttons.back, exact: true })
-        .click();
-      await wallet.ensureOnHome();
+      await wallet.step(
+        `${mode}/${recovery}: import once and verify live and durable token state`,
+        async () => {
+          await action.click();
+          await expect(action).toBeDisabled();
+          await expect
+            .poll(async () => {
+              const state = await project();
+              return {
+                live: state.live.length,
+                persisted: state.persisted.length,
+              };
+            })
+            .toEqual({ live: 1, persisted: 1 });
+          observations.afterImport = await project();
+          const expectedInitial = [
+            {
+              guid: SPT_GUID,
+              hasBalance: true,
+              balance: mode === 'held' ? '25.0' : '0',
+              chainId: 5700,
+            },
+          ];
+          if (mode !== 'unavailable') {
+            expect(observations.afterImport).toEqual({
+              live: expectedInitial,
+              persisted: expectedInitial,
+            });
+          } else {
+            expect(observations.afterImport.live).toEqual([
+              {
+                guid: SPT_GUID,
+                hasBalance: false,
+                balance: null,
+                chainId: 5700,
+              },
+            ]);
+            expect(observations.afterImport.persisted).toEqual(
+              observations.afterImport.live
+            );
+          }
+          observations.milestones.manualImportPreserved = true;
+        }
+      );
+      await wallet.step(
+        `${mode}/${recovery}: return to Home after import`,
+        async () => {
+          await page
+            .getByRole('button', { name: en.buttons.back, exact: true })
+            .click();
+          await wallet.ensureOnHome();
+        }
+      );
 
       if (mode === 'unavailable') {
-        await page.locator('#assets-btn').click();
-        const homeRow = page
-          .getByText(SPT_SYMBOL, { exact: true })
-          .locator('xpath=ancestor::li');
-        await expect(
-          homeRow.getByText(en.settings.unavailable, { exact: true })
-        ).toBeVisible();
-        await homeRow.getByText(SPT_SYMBOL, { exact: true }).click();
-        await expect(page).toHaveURL(/#\/home\/details/);
-        await expect(
-          page.getByText(en.settings.unavailable, { exact: true })
-        ).toBeVisible();
         await wallet.step(
-          `${recovery}: unavailable saved details`,
+          `${recovery}: unavailable saved asset and details remain truthful`,
           async (capture) => {
+            await page.locator('#assets-btn').click();
+            const homeRow = page
+              .getByText(SPT_SYMBOL, { exact: true })
+              .locator('xpath=ancestor::li');
+            await expect(
+              homeRow.getByText(en.settings.unavailable, { exact: true })
+            ).toBeVisible();
+            await homeRow.getByText(SPT_SYMBOL, { exact: true }).click();
+            await expect(page).toHaveURL(/#\/home\/details/);
+            await expect(
+              page.getByText(en.settings.unavailable, { exact: true })
+            ).toBeVisible();
             await capture(page);
+            await page
+              .getByRole('button', { name: en.buttons.back, exact: true })
+              .click();
+            await wallet.ensureOnHome();
           }
         );
-        await page
-          .getByRole('button', { name: en.buttons.back, exact: true })
-          .click();
-        await wallet.ensureOnHome();
-        await page.locator('#send-btn').click();
-        await expect(page).toHaveURL(/#\/send\/sys$/);
-        const picker = page.locator('#send-form button[aria-haspopup="menu"]');
-        await picker.click();
-        await page
-          .getByRole('menuitem')
-          .filter({ hasText: SPT_SYMBOL })
-          .click();
         const amount = page.locator('#with-max-button');
         const max = page.getByRole('button', {
           name: en.send.max,
           exact: true,
         });
-        await expect(max).toBeDisabled();
-        await expect(
-          page.getByText(en.settings.unavailable, { exact: true })
-        ).toBeVisible();
-        await amount.fill('1');
-        await page
-          .getByPlaceholder(en.send.receiver, { exact: true })
-          .fill(fixture.utxo.userAddress);
-        const next = page.getByRole('button', {
-          name: en.buttons.next,
-          exact: true,
-        });
-        await next.click();
-        await expect(page).toHaveURL(/#\/send\/sys$/);
-        await expect(amount).toHaveValue('1');
-        await amount.press('Enter');
-        await expect(page).toHaveURL(/#\/send\/sys$/);
-        expect(
-          wallet.context
-            .pages()
-            .some((candidate) => candidate.url().includes('/external'))
-        ).toBe(false);
         await wallet.step(
-          `${recovery}: unavailable Send refuses progression`,
+          `${recovery}: unavailable Send refuses pointer and Enter progression`,
           async (capture) => {
+            await page.locator('#send-btn').click();
+            await expect(page).toHaveURL(/#\/send\/sys$/);
+            const picker = page.locator(
+              '#send-form button[aria-haspopup="menu"]'
+            );
+            await picker.click();
+            await page
+              .getByRole('menuitem')
+              .filter({ hasText: SPT_SYMBOL })
+              .click();
+            await expect(max).toBeDisabled();
+            await expect(
+              page.getByText(en.settings.unavailable, { exact: true })
+            ).toBeVisible();
+            await amount.fill('1');
+            await page
+              .getByPlaceholder(en.send.receiver, { exact: true })
+              .fill(fixture.utxo.userAddress);
+            const next = page.getByRole('button', {
+              name: en.buttons.next,
+              exact: true,
+            });
+            await next.click();
+            await expect(page).toHaveURL(/#\/send\/sys$/);
+            await expect(amount).toHaveValue('1');
+            await amount.press('Enter');
+            await expect(page).toHaveURL(/#\/send\/sys$/);
+            expect(
+              wallet.context
+                .pages()
+                .some((candidate) => candidate.url().includes('/external'))
+            ).toBe(false);
             await capture(page);
           }
         );
-        const lastFailure = [...reads]
-          .reverse()
-          .find((read) => read.family === 'inventory' && read.status === 500);
-        expect(lastFailure).toBeDefined();
-        const failedReadAt = Number(lastFailure!.at);
-        await new Promise((resolve) =>
-          setTimeout(
-            resolve,
-            Math.max(
-              0,
-              failedReadAt + ACCOUNT_REQUEST_CACHE_TTL_MS + 1 - Date.now()
-            )
-          )
+        await wallet.step(
+          `${recovery}: fresh healthy inventory recovers the retained manual Send amount`,
+          async () => {
+            const lastFailure = [...reads]
+              .reverse()
+              .find(
+                (read) => read.family === 'inventory' && read.status === 500
+              );
+            expect(lastFailure).toBeDefined();
+            const failedReadAt = Number(lastFailure!.at);
+            await new Promise((resolve) =>
+              setTimeout(
+                resolve,
+                Math.max(
+                  0,
+                  failedReadAt + ACCOUNT_REQUEST_CACHE_TTL_MS + 1 - Date.now()
+                )
+              )
+            );
+            // Do not let a cached failed reply stand in for the fresh healthy read.
+            // A new background failure during this wait is a fixture precondition
+            // failure, not a reason to retry or alter the wallet cache.
+            expect(
+              [...reads]
+                .reverse()
+                .find(
+                  (read) => read.family === 'inventory' && read.status === 500
+                )?.at
+            ).toBe(failedReadAt);
+            expect(Date.now() - failedReadAt).toBeGreaterThan(
+              ACCOUNT_REQUEST_CACHE_TTL_MS
+            );
+            const recoveredAt = Date.now();
+            inventoryMode = recovery;
+            observations.recoveredAt = recoveredAt;
+            await refresh.click();
+            await expect
+              .poll(() =>
+                actualHttpResponses.some(
+                  (response) =>
+                    response.at >= recoveredAt &&
+                    response.status === 200 &&
+                    response.query.includes('tokens=used')
+                )
+              )
+              .toBe(true);
+            const recovered = [
+              {
+                guid: SPT_GUID,
+                hasBalance: true,
+                balance: recovery === 'held' ? '25.0' : '0',
+                chainId: 5700,
+              },
+            ];
+            await expect
+              .poll(async () => (await project()).live)
+              .toEqual(recovered);
+            observations.afterNormalRefresh = await project();
+            await expect(amount).toHaveValue('1');
+            await expect(max).toBeEnabled();
+            await expect(
+              page.getByText(en.settings.unavailable, { exact: true })
+            ).toHaveCount(0);
+            // Refreshing availability must not turn a retained manual amount into
+            // a live MAX draft. A user can choose MAX explicitly after recovery.
+            await max.click();
+            await expect(amount).toHaveValue(
+              recovery === 'held' ? '25.0' : '0'
+            );
+            observations.milestones.normalRefreshRecoveredBalance = true;
+          }
         );
-        // Do not let a cached failed reply stand in for the fresh healthy read.
-        // A new background failure during this wait is a fixture precondition
-        // failure, not a reason to retry or alter the wallet cache.
-        expect(
-          [...reads]
-            .reverse()
-            .find((read) => read.family === 'inventory' && read.status === 500)
-            ?.at
-        ).toBe(failedReadAt);
-        expect(Date.now() - failedReadAt).toBeGreaterThan(
-          ACCOUNT_REQUEST_CACHE_TTL_MS
-        );
-        const recoveredAt = Date.now();
-        inventoryMode = recovery;
-        observations.recoveredAt = recoveredAt;
-        await refresh.click();
-        await expect
-          .poll(() =>
-            actualHttpResponses.some(
-              (response) =>
-                response.at >= recoveredAt &&
-                response.status === 200 &&
-                response.query.includes('tokens=used')
-            )
-          )
-          .toBe(true);
-        const recovered = [
-          {
-            guid: SPT_GUID,
-            hasBalance: true,
-            balance: recovery === 'held' ? '25.0' : '0',
-            chainId: 5700,
-          },
-        ];
-        await expect
-          .poll(async () => (await project()).live)
-          .toEqual(recovered);
-        observations.afterNormalRefresh = await project();
-        await expect(amount).toHaveValue('1');
-        await expect(max).toBeEnabled();
-        await expect(
-          page.getByText(en.settings.unavailable, { exact: true })
-        ).toHaveCount(0);
-        // Refreshing availability must not turn a retained manual amount into
-        // a live MAX draft. A user can choose MAX explicitly after recovery.
-        await max.click();
-        await expect(amount).toHaveValue(recovery === 'held' ? '25.0' : '0');
-        observations.milestones.normalRefreshRecoveredBalance = true;
       }
-      const beforeReload = await project();
-      // Refresh publishes balances to the live store without a vault write.
-      // Reload ends MainApp's real popup-connection port; its background
-      // disconnect handler persists the live vault through emergencySave.
-      // Check durability after that ordinary lifecycle boundary, not before it.
-      await page.reload();
-      await wallet.ensureOnHome();
-      await expect.poll(project).toEqual({
-        live: beforeReload.live,
-        persisted: beforeReload.live,
-      });
-      observations.afterReload = await project();
-      observations.milestones.reloadPreservedActualState = true;
-      expect(reads.some((read) => read.family === 'metadata')).toBe(true);
-      expect(reads.some((read) => read.family === 'inventory')).toBe(true);
-      expect(routes.deniedWrites).toEqual([]);
-      expect(forbiddenRequests).toEqual([]);
-      expect(unexpectedWalletHttpFailures).toEqual([]);
-      expect(pageErrors).toEqual([]);
-      expect(extensionEvidence()).toEqual(runtime);
-      expect(
-        createHash('sha256').update(fs.readFileSync(info.file)).digest('hex')
-      ).toBe(sourceSha256);
-      observations.milestones.safetyHealthy = true;
+      await wallet.step(
+        `${mode}/${recovery}: reload and verify persisted holdings match the live state`,
+        async () => {
+          const beforeReload = await project();
+          // Refresh publishes balances to the live store without a vault write.
+          // Reload ends MainApp's real popup-connection port; its background
+          // disconnect handler persists the live vault through emergencySave.
+          // Check durability after that ordinary lifecycle boundary, not before it.
+          await page.reload();
+          await wallet.ensureOnHome();
+          await expect.poll(project).toEqual({
+            live: beforeReload.live,
+            persisted: beforeReload.live,
+          });
+          observations.afterReload = await project();
+          observations.milestones.reloadPreservedActualState = true;
+        }
+      );
+      await wallet.step(
+        `${mode}/${recovery}: verify read-only fences and immutable runtime`,
+        async () => {
+          expect(reads.some((read) => read.family === 'metadata')).toBe(true);
+          expect(reads.some((read) => read.family === 'inventory')).toBe(true);
+          expect(routes.deniedWrites).toEqual([]);
+          expect(forbiddenRequests).toEqual([]);
+          expect(unexpectedWalletHttpFailures).toEqual([]);
+          expect(pageErrors).toEqual([]);
+          expect(extensionEvidence()).toEqual(runtime);
+          expect(
+            createHash('sha256')
+              .update(fs.readFileSync(info.file))
+              .digest('hex')
+          ).toBe(sourceSha256);
+          observations.milestones.safetyHealthy = true;
+        }
+      );
       status = info.errors.length ? 'failed' : 'passed';
     } finally {
       try {
