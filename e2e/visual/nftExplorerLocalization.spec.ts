@@ -290,7 +290,10 @@ for (const locale of cases) {
             })
             .click();
           const collection = page.getByRole('button', {
-            name: `View details for ${SYMBOL} collection`,
+            name: locale.translations.nftDetails.viewNamedCollection.replace(
+              '{{symbol}}',
+              SYMBOL
+            ),
             exact: true,
           });
           await expect(
@@ -303,7 +306,7 @@ for (const locale of cases) {
           await page
             .locator('[data-navigation-scroll="asset-details"]')
             .getByRole('button', {
-              name: `eye ${locale.translations.send.viewCollectionItems}`,
+              name: locale.translations.send.viewCollectionItems,
               exact: true,
             })
             .click();

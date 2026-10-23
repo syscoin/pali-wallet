@@ -6,6 +6,7 @@ import { execFileSync } from 'child_process';
 import path from 'path';
 import { pathToFileURL } from 'url';
 
+import en from '../../source/assets/locales/en.json';
 import { E2E_CONFIG } from '../harness/config';
 import { PaliWallet } from '../harness/pali';
 import {
@@ -344,7 +345,7 @@ test('BLS management links the node and preserves operator authorization through
         const popup = await popupFor(wallet!.context, page, id);
         await popup.setViewportSize({ width: 320, height: 360 });
         const error = popup.getByText(
-          'Unsupported Syscoin transaction type: unknown',
+          en.psbtReview.unsupportedType.replace('{{type}}', 'unknown'),
           { exact: true }
         );
         await expect(error).toBeVisible();

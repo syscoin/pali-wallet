@@ -337,7 +337,7 @@ test('network suggestions reset reopened typeahead and do not carry an EVM explo
       async () => {
         phase = 'litecoin-suggestion';
         const toggle = page.getByRole('switch', {
-          name: 'Syscoin Network',
+          name: en.settings.networkFamilyLabel.replace('{{family}}', 'Syscoin'),
           exact: true,
         });
         await expect(toggle).toHaveAttribute('aria-checked', 'false');

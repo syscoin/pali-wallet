@@ -402,7 +402,7 @@ test('manual ERC1155 import and Send MAX retain the exact verified quantity', as
             .click();
           await page
             .getByRole('button', {
-              name: `eye ${en.send.viewCollectionItems}`,
+              name: en.send.viewCollectionItems,
               exact: true,
             })
             .click();

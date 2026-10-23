@@ -307,7 +307,7 @@ test('Connected Sites keeps a foreign-family grant separate from the current acc
         await expect(page.getByRole('dialog')).toHaveCount(0);
         await expect(page.getByTitle(origin, { exact: true })).toHaveCount(0);
         await expect(
-          page.getByText('No sites are connected to Pali Wallet', {
+          page.getByText(en.settings.connectedSiteCount_zero, {
             exact: true,
           })
         ).toBeVisible();

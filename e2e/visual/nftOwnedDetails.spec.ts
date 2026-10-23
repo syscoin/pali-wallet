@@ -322,7 +322,7 @@ for (const scenario of [
           await page
             .locator('[data-navigation-scroll="asset-details"]')
             .getByRole('button', {
-              name: `eye ${en.send.viewCollectionItems}`,
+              name: en.send.viewCollectionItems,
               exact: true,
             })
             .click();

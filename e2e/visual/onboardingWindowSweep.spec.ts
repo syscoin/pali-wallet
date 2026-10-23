@@ -2,6 +2,7 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 import fs from 'fs';
 import path from 'path';
 
+import en from '../../source/assets/locales/en.json';
 import { E2E_CONFIG } from '../harness/config';
 import { launchExtension } from '../harness/launch';
 import { PaliWallet } from '../harness/pali';
@@ -459,7 +460,9 @@ test('new-wallet 24-word backup and confirmation have no inaccessible controls',
     await expect(page).toHaveURL(/#\/phrase$/);
     await page.getByRole('combobox').selectOption('24');
     await expect(page.locator('input[type="checkbox"]')).toBeEnabled();
-    await page.getByRole('button', { name: 'Show', exact: true }).click();
+    await page
+      .getByRole('button', { name: en.import.showSeedPhrase, exact: true })
+      .click();
     await expect(page.locator('div.select-none p')).toHaveCount(24);
     for (const size of sizes) {
       await page.setViewportSize(size);
