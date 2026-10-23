@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { shallowEqual, useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
@@ -16,6 +17,7 @@ import { TransactionDetails } from './TransactionDetails';
 import { replacementHash } from './Transactions/EVM/replacementWinner';
 
 export const DetailsView = () => {
+  const { t } = useTranslation();
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
@@ -103,11 +105,7 @@ export const DetailsView = () => {
 
   const openExplorer = () => {
     window.open(
-      buildExplorerUrl(
-        activeNetwork.explorer || activeNetwork.url,
-        isAsset ? (isBitcoinBased ? 'asset' : 'address') : 'tx',
-        isAsset ? id : hash
-      ),
+      buildExplorerUrl(activeNetwork.explorer || activeNetwork.url, 'tx', hash),
       '_blank'
     );
   };
@@ -144,7 +142,7 @@ export const DetailsView = () => {
           >
             <ExternalLinkSvg className="w-4 h-4" />
             <span className="text-sm text-white underline">
-              View on Explorer
+              {t('home.viewOnExplorer')}
             </span>
           </button>
         </li>

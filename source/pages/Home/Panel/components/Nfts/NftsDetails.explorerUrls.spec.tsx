@@ -127,7 +127,7 @@ describe.each(bases)('%s explorer', (_label, explorer, prefix) => {
     await mount();
     const href = (
       screen.getByRole('link', {
-        name: 'View on Explorer',
+        name: 'home.viewOnExplorer',
       }) as HTMLAnchorElement
     ).href;
     const url = new URL(href);
@@ -182,7 +182,7 @@ it.each(['contract', 'collection'])(
       );
     } else {
       expect(
-        screen.getByRole('link', { name: 'View on Explorer' })
+        screen.getByRole('link', { name: 'home.viewOnExplorer' })
       ).toHaveAttribute('href', RPC + '/address/' + CONTRACT);
     }
     expect(network).toEqual(originalNetwork);

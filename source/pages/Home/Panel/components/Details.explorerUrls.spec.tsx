@@ -199,7 +199,7 @@ describe.each([true, false])(
           render(<DetailsView />);
         }
         fireEvent.click(
-          screen.getByRole('button', { name: 'View on Explorer' })
+          screen.getByRole('button', { name: 'home.viewOnExplorer' })
         );
         expect(open).toHaveBeenCalledTimes(1);
         expect(open).toHaveBeenCalledWith(expected, '_blank');
@@ -219,7 +219,9 @@ describe.each([true, false])(
       };
       const open = jest.spyOn(window, 'open').mockReturnValue(null);
       render(<DetailsView />);
-      fireEvent.click(screen.getByRole('button', { name: 'View on Explorer' }));
+      fireEvent.click(
+        screen.getByRole('button', { name: 'home.viewOnExplorer' })
+      );
       expect(open).toHaveBeenCalledWith(
         'https://blockbook.synthetic.invalid/tx/' + TXID,
         '_blank'
