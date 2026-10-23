@@ -524,10 +524,15 @@ export const EvmTransactionDetailsEnhanced = ({
         let enhancedData = null;
         // Routescan's Etherscan API has no Blockscout gettxinfo action.
         if (apiUrl && !isRoutescanApiUrl(apiUrl, chainId)) {
-          enhancedData = await controllerEmitter(
-            ['wallet', 'getEvmTransactionFromAPI'],
-            [hash, apiUrl]
-          );
+          try {
+            enhancedData = await controllerEmitter(
+              ['wallet', 'getEvmTransactionFromAPI'],
+              [hash, apiUrl]
+            );
+          } catch {
+            // A failed or timed-out explorer read must still try the RPC.
+            // The current-scope check below also applies after rejection.
+          }
         }
         if (!isCurrent()) return;
         if (!usableLookup(enhancedData)) {
