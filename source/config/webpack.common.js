@@ -265,6 +265,9 @@ module.exports = {
               '**/favicon-16.png',
               '**/favicon-48.png',
               '**/favicon-128.png',
+              // Only the unused NftImage component imports this old fallback.
+              // A future real import still emits it through asset/resource.
+              '**/placeholder.png',
             ],
           },
         },

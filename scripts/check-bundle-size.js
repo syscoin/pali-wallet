@@ -13,10 +13,10 @@ const budget = {
   // Count every mandatory MV3 warm chunk below, including the optional feature.
   background: 4400000,
   contentScript: 16000,
-  // Retain the shared-favicon savings on top of the integrated guardian/status
-  // feature. Keep a rounded, small-buffer ceiling below its package allowance;
+  // Retain the shared-favicon and unused NFT-placeholder copy savings.
+  // Keep a rounded, small-buffer ceiling below its package allowance;
   // CI measures the actual shipped artifact. Startup budgets stay unchanged.
-  package: 8573000,
+  package: 8565000,
 };
 const allFiles = (root) =>
   fs.readdirSync(root, { withFileTypes: true }).flatMap((entry) => {
