@@ -2032,7 +2032,7 @@ export const SendConfirm = () => {
                       <p className="text-brand-gray200 text-xs mb-1">
                         {t('send.amount')}
                       </p>
-                      <p className="text-white font-medium text-lg">
+                      <p className="text-white font-medium text-lg break-all">
                         {basicTxValues.amount}
                       </p>
                     </div>

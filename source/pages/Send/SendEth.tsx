@@ -1874,7 +1874,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                         setVerifiedTokenBalance(getExactNftBalance(nft));
                         setVerificationError(null);
                       }}
-                      className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+                      className={`max-w-full break-all px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
                         selectedNftTokenId === nft.tokenId
                           ? 'bg-brand-royalblue text-white'
                           : 'bg-fields-input-primary border border-fields-input-border text-brand-gray200 hover:border-brand-royalblue hover:text-white'
