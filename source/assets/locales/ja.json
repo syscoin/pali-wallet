@@ -424,6 +424,7 @@
     "networkCatchingUp": "ネットワークが前のトランザクションを更新しています。しばらくしてから再試行してください。",
     "balance": "残高",
     "receiver": "受信者",
+    "recentRecipient": "最近",
     "native": "ネイティブ",
     "amount": "金額",
     "tokenId": "トークンID",

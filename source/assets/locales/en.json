@@ -424,6 +424,7 @@
     "networkCatchingUp": "The network is still updating your previous transaction. Please try again shortly.",
     "balance": "Balance",
     "receiver": "Receiver",
+    "recentRecipient": "Recent",
     "native": "Native",
     "amount": "Amount",
     "tokenId": "Token ID",

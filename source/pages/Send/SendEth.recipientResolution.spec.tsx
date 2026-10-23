@@ -377,10 +377,14 @@ describe('reverse ENS suggestion query ownership', () => {
   };
   const displayedSuggestions = () => ({
     original: Boolean(
-      screen.queryByRole('button', { name: 'Synthetic account account' })
+      screen.queryByRole('button', {
+        name: `Synthetic account, ${originalAddress}, transactions.account`,
+      })
     ),
     current: Boolean(
-      screen.queryByRole('button', { name: `${currentLabel} account` })
+      screen.queryByRole('button', {
+        name: `${currentLabel}, ${RECIPIENT}, transactions.account`,
+      })
     ),
   });
 
