@@ -502,6 +502,45 @@ for (const scenario of [
         name: en.tokens.assetGuid,
         exact: true,
       });
+      if (recovery === 'empty')
+        await page.setViewportSize({ width: 320, height: 620 });
+      const checkStatusGeometry = async (
+        kind: 'loading' | 'check-circle' | 'close-circle'
+      ) => {
+        const indicator = input.locator('..').locator('div.absolute');
+        await expect(indicator.locator(`.anticon-${kind}`)).toBeVisible();
+        const fieldBox = await input.boundingBox();
+        const statusBox = await indicator.boundingBox();
+        expect(fieldBox).not.toBeNull();
+        expect(statusBox).not.toBeNull();
+        const offset = Math.abs(
+          fieldBox!.y +
+            fieldBox!.height / 2 -
+            (statusBox!.y + statusBox!.height / 2)
+        );
+        observations.statusGeometry ??= [];
+        observations.statusGeometry.push({
+          kind,
+          viewport: page.viewportSize(),
+          fieldBox,
+          statusBox,
+          centerOffset: offset,
+        });
+        expect(offset).toBeLessThanOrEqual(1);
+        expect(statusBox!.x).toBeGreaterThan(fieldBox!.x);
+        expect(statusBox!.x + statusBox!.width).toBeLessThan(
+          fieldBox!.x + fieldBox!.width
+        );
+        if (mode !== 'unavailable')
+          await wallet!.step(
+            `${mode}: centered ${kind} indicator`,
+            async (capture) => {
+              await capture(page);
+            }
+          );
+      };
+      await input.fill('invalid');
+      await checkStatusGeometry('close-circle');
       const action = page.getByRole('button', {
         name: en.tokens.importNamedToken.replace('{{symbol}}', SPT_SYMBOL),
         exact: true,
@@ -521,10 +560,12 @@ for (const scenario of [
       observations.scenarioArmedAt = scenarioArmedAt;
       observations.lastSetupInventoryAt = lastSetupInventoryAt;
       await input.fill(SPT_GUID);
+      await checkStatusGeometry('loading');
       // The only added delay is the real fixture HTTP metadata response above.
       // Keep the harness's existing action/expect budgets unchanged.
       await action.waitFor({ state: 'visible' });
       await expect(action).toBeEnabled();
+      await checkStatusGeometry('check-circle');
       await expect
         .poll(() =>
           actualHttpResponses.some(
