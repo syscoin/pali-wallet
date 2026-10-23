@@ -218,7 +218,10 @@ test('optional account names use native defaults without trimming meaningful nam
         '[data-navigation-scroll="settings-manage-accounts"]'
       );
       const expected = [...state.live.HDAccount, ...state.live.Imported]
-        .map((account) => `${en.buttons.edit}: ${account.label}`)
+        .map(
+          (account) =>
+            `${en.buttons.edit}: ${account.label} (${account.address})`
+        )
         .sort();
       const readNames = () =>
         list.locator('button').evaluateAll(
