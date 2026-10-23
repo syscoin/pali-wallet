@@ -1267,6 +1267,8 @@
     "owned": "所有数",
     "viewNamedCollection": "{{symbol}} コレクションの詳細を表示",
     "deleteNamedCollection": "{{symbol}} コレクションを削除",
+    "removeNamedTokenId": "{{symbol}} #{{tokenId}}を削除",
+    "removeTokenIdConfirm": "このウォレットから{{name}}のトークンID #{{tokenId}}を削除しますか？このコレクションの他のトークンIDは残ります。",
     "collectionInfo": "コレクション情報",
     "about": "について",
     "technicalInfo": "技術情報",

@@ -1267,6 +1267,8 @@
     "owned": "Im Besitz",
     "viewNamedCollection": "Details zur Sammlung {{symbol}} anzeigen",
     "deleteNamedCollection": "Sammlung {{symbol}} löschen",
+    "removeNamedTokenId": "{{symbol}} #{{tokenId}} entfernen",
+    "removeTokenIdConfirm": "Token-ID #{{tokenId}} von {{name}} aus dieser Wallet entfernen? Andere Token-IDs dieser Sammlung bleiben erhalten.",
     "collectionInfo": "Sammlungsinformationen",
     "about": "Über",
     "technicalInfo": "Technische Informationen",

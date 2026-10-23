@@ -3989,13 +3989,20 @@ class MainController {
 
     // Auto-detect CoinGecko IDs for EVM networks
     if (network.kind === INetworkType.Ethereum) {
+      let metadataTimer: ReturnType<typeof setTimeout> | undefined;
       try {
         console.log(
           `[MainController] Auto-detecting CoinGecko IDs for chainId ${network.chainId}`
         );
-        const coinGeckoIds = await this.evmAssetsController.detectCoinGeckoIds(
-          network.chainId
-        );
+        // Optional enrichment must leave time for the actual registry commit
+        // within the caller's deadline. A late result may warm its read cache,
+        // but must not perform another registration or change this saved record.
+        const coinGeckoIds = await Promise.race([
+          this.evmAssetsController.detectCoinGeckoIds(network.chainId),
+          new Promise<null>((resolve) => {
+            metadataTimer = setTimeout(() => resolve(null), 1000);
+          }),
+        ]);
 
         if (coinGeckoIds) {
           networkWithCustomParams = {
@@ -4026,6 +4033,8 @@ class MainController {
           error
         );
         // Continue without CoinGecko IDs - network will still work for basic functionality
+      } finally {
+        if (metadataTimer !== undefined) clearTimeout(metadataTimer);
       }
     }
 

@@ -1267,6 +1267,8 @@
     "owned": "Détenu",
     "viewNamedCollection": "Voir les détails de la collection {{symbol}}",
     "deleteNamedCollection": "Supprimer la collection {{symbol}}",
+    "removeNamedTokenId": "Retirer {{symbol}} n° {{tokenId}}",
+    "removeTokenIdConfirm": "Retirer le token n° {{tokenId}} de {{name}} de ce portefeuille ? Les autres identifiants de token de cette collection seront conservés.",
     "collectionInfo": "Informations sur la collection",
     "about": "À propos",
     "technicalInfo": "Informations techniques",

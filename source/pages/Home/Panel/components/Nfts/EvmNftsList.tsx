@@ -63,6 +63,10 @@ export const EvmNftsList = ({
     tokenId?: string;
   }>(scope, onDeleteStart);
   const itemToDelete = removal.item;
+  const getRemovalLabel = (symbol?: string, tokenId?: string) =>
+    tokenId
+      ? t('nftDetails.removeNamedTokenId', { symbol, tokenId })
+      : t('nftDetails.deleteNamedCollection', { symbol });
 
   // NFTs now come through regular asset updates, no need for separate fetching
 
@@ -272,7 +276,13 @@ export const EvmNftsList = ({
               </IconButton>
             </Tooltip>
 
-            <Tooltip content={t('send.deleteCollection')}>
+            <Tooltip
+              content={
+                collection.tokenId
+                  ? getRemovalLabel(collection.symbol, collection.tokenId)
+                  : t('send.deleteCollection')
+              }
+            >
               <IconButton
                 onClick={() =>
                   handleDeleteCollection(
@@ -282,9 +292,10 @@ export const EvmNftsList = ({
                   )
                 }
                 className="p-2 hover:bg-red-500/20 rounded-full transition-colors duration-200"
-                aria-label={t('nftDetails.deleteNamedCollection', {
-                  symbol: collection.symbol,
-                })}
+                aria-label={getRemovalLabel(
+                  collection.symbol,
+                  collection.tokenId
+                )}
               >
                 <DeleteIcon
                   size={16}
@@ -310,10 +321,21 @@ export const EvmNftsList = ({
         show={Boolean(itemToDelete)}
         onClick={handleConfirmDelete}
         onClose={removal.close}
-        title={t('send.deleteCollection')}
-        description={t('send.deleteCollectionConfirm', {
-          name: itemToDelete?.name,
-        })}
+        title={
+          itemToDelete?.tokenId
+            ? getRemovalLabel(itemToDelete.name, itemToDelete.tokenId)
+            : t('send.deleteCollection')
+        }
+        description={
+          itemToDelete?.tokenId
+            ? t('nftDetails.removeTokenIdConfirm', {
+                name: itemToDelete.name,
+                tokenId: itemToDelete.tokenId,
+              })
+            : t('send.deleteCollectionConfirm', {
+                name: itemToDelete?.name,
+              })
+        }
         buttonText={t('buttons.delete')}
         isButtonLoading={removal.pending}
       />
