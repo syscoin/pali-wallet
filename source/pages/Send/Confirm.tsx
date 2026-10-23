@@ -743,7 +743,7 @@ export const SendConfirm = () => {
         return estimatedGasLimit;
       } catch (error) {
         logError('error estimating native EVM gas limit', 'Transaction', error);
-        return fallbackGasLimit;
+        throw error;
       }
     },
     [basicTxValues, controllerEmitter, resolvedToAddress, isSmartAccountSend]
@@ -1631,6 +1631,7 @@ export const SendConfirm = () => {
                 'Transaction',
                 error
               );
+              setFeeCalculationError(t('send.feeCalculationFailedRetry'));
             })
             .finally(() => {
               setIsCalculatingFees(false);
@@ -1882,6 +1883,7 @@ export const SendConfirm = () => {
       </span>
       <button
         type="button"
+        aria-label={t('buttons.copy')}
         onClick={() => copy(value)}
         className="text-brand-gray200 hover:text-white transition-colors"
       >
@@ -1919,7 +1921,10 @@ export const SendConfirm = () => {
       <span className="text-white text-xs">
         <Tooltip content={address} childrenClassName="flex">
           {display}
-          <IconButton onClick={() => copy(address ?? '')}>
+          <IconButton
+            aria-label={t('buttons.copy')}
+            onClick={() => copy(address ?? '')}
+          >
             <Icon
               wrapperClassname="flex items-center justify-center"
               name="Copy"
