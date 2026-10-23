@@ -101,6 +101,32 @@ const tabTo = async (page: Page, target: Locator, reverse = false) => {
 const readableGeometry = async (target: Locator, interactive = false) => {
   await expect(target).toBeVisible();
   await target.scrollIntoViewIfNeeded();
+  const paintedCenter = () =>
+    target.evaluate((element) => {
+      const box = element.getBoundingClientRect();
+      const hit = document.elementFromPoint(
+        box.left + box.width / 2,
+        box.top + box.height / 2
+      );
+      return !!hit && (hit === element || element.contains(hit));
+    });
+  if (!(await paintedCenter())) {
+    // scrollIntoViewIfNeeded does not account for a fixed action footer.
+    // Use the same native wheel movement available to a user, then require
+    // the text itself to be painted above the footer before capturing it.
+    const position = await target.evaluate((element) => {
+      const box = element.getBoundingClientRect();
+      return {
+        x: innerWidth / 2,
+        y: innerHeight / 2,
+        delta: box.top + box.height / 2 - innerHeight / 2,
+      };
+    });
+    await target.page().mouse.move(position.x, position.y);
+    await target.page().mouse.wheel(0, position.delta);
+    await expect.poll(paintedCenter).toBe(true);
+  }
+  expect(await paintedCenter()).toBe(true);
   const geometry = await target.evaluate((element, hitTest) => {
     const box = element.getBoundingClientRect();
     const range = document.createRange();
