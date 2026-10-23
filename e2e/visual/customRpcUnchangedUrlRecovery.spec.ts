@@ -379,11 +379,7 @@ for (const scenario of ['edited-url', 'same-url'] as const) {
           viewport: { width: 400, height: 620 },
         }
       );
-      routes = await installIsolatedVaultRoutes(
-        wallet.context,
-        fixture,
-        server.origin
-      );
+      const page = wallet.page;
       wallet.context.on('request', (request) => {
         const url = new URL(request.url());
         if (['http:', 'https:'].includes(url.protocol))
@@ -407,6 +403,35 @@ for (const scenario of ['edited-url', 'same-url'] as const) {
         if (/^https?:/.test(request.url()))
           httpFailures.push({ method: request.method(), url: request.url() });
       });
+      page.on('pageerror', (error) => pageErrors.push(error.message));
+      routes = await installIsolatedVaultRoutes(
+        wallet.context,
+        fixture,
+        server.origin,
+        (url) => {
+          if (auxiliary.has(requestKey(url)))
+            return auxiliary.get(requestKey(url));
+          if (
+            url.origin === 'https://blockbook.syscoin.org' &&
+            url.pathname === `/api/v2/xpub/${initialXpub}` &&
+            startupQueries.has(url.searchParams.toString())
+          )
+            return {
+              address: initialXpub,
+              balance: '0',
+              unconfirmedBalance: '0',
+              totalReceived: '0',
+              totalSent: '0',
+              txs: 0,
+              unconfirmedTxs: 0,
+              usedTokens: 0,
+              tokens: [],
+              tokensAsset: [],
+              transactions: [],
+            };
+          return undefined;
+        }
+      );
       await wallet.context.route(`${server.origin}/**`, (route) => {
         const request = route.request(),
           url = new URL(request.url());
@@ -417,40 +442,6 @@ for (const scenario of ['edited-url', 'same-url'] as const) {
           ? route.continue()
           : route.fallback();
       });
-      await wallet.context.route(
-        (url) =>
-          auxiliary.has(requestKey(url)) ||
-          (url.origin === 'https://blockbook.syscoin.org' &&
-            url.pathname === `/api/v2/xpub/${initialXpub}` &&
-            startupQueries.has(url.searchParams.toString())),
-        async (route) => {
-          if (route.request().method() !== 'GET') return route.fallback();
-          const url = new URL(route.request().url());
-          const body = auxiliary.has(requestKey(url))
-            ? auxiliary.get(requestKey(url))
-            : {
-                address: initialXpub,
-                balance: '0',
-                unconfirmedBalance: '0',
-                totalReceived: '0',
-                totalSent: '0',
-                txs: 0,
-                unconfirmedTxs: 0,
-                usedTokens: 0,
-                tokens: [],
-                tokensAsset: [],
-                transactions: [],
-              };
-          return route.fulfill({
-            status: 200,
-            contentType: 'application/json',
-            headers: { 'access-control-allow-origin': '*' },
-            body: JSON.stringify(body),
-          });
-        }
-      );
-      const page = wallet.page;
-      page.on('pageerror', (error) => pageErrors.push(error.message));
       const step: PaliWallet['step'] = (name, action) =>
         wallet!.step(`${scenario}: ${name}`, action);
       const urlInput = page.locator('#rpc_url');
