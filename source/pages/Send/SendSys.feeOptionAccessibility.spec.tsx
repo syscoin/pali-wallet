@@ -161,7 +161,7 @@ const mount = async () => {
   return user;
 };
 const selectSpt = async (user: ReturnType<typeof userEvent.setup>) => {
-  await user.click(screen.getByRole('button', { name: 'SYS', exact: true }));
+  await user.click(screen.getByRole('button', { name: 'SYS' }));
   await user.click(screen.getByRole('menuitem', { name: 'SPT SPT' }));
   expect(screen.getByText('Z-DAG', { exact: true })).toBeVisible();
 };
@@ -206,7 +206,7 @@ it('names the ordinary native fee-option switch from its visible RBF label', asy
   await mount();
   expect(screen.getByRole('switch')).toHaveAccessibleName('RBF');
   expect(
-    screen.getByRole('switch', { name: 'RBF', exact: true })
+    screen.getByRole('switch', { name: 'RBF' })
   ).toBeChecked();
 });
 
@@ -215,6 +215,6 @@ it('names the ordinary SPT fee-option switch from its visible Z-DAG label', asyn
   await selectSpt(user);
   expect(screen.getByRole('switch')).toHaveAccessibleName('Z-DAG');
   expect(
-    screen.getByRole('switch', { name: 'Z-DAG', exact: true })
+    screen.getByRole('switch', { name: 'Z-DAG' })
   ).not.toBeChecked();
 });
