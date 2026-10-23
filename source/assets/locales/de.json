@@ -41,6 +41,7 @@
   "components": {
     "newPassword": "Neues Passwort (min. 12 Zeichen)",
     "confirmPassword": "Passwort bestätigen",
+    "passwordMismatch": "Die Passwörter stimmen nicht überein.",
     "atLeast": "Mindestens 12 Zeichen, 1 Großbuchstabe, 1 Kleinbuchstabe, 1 Ziffer und 1 Sonderzeichen (!@#$%^&*...).",
     "suggestPassword": "Ein merkbares Passwort vorschlagen",
     "memorablePasswordHelp": "Dies ist dein Passwort zum Entsperren, nicht deine geheime Wiederherstellungsphrase. Speichere es in deinem Passwortmanager.",
