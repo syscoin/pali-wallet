@@ -161,6 +161,59 @@ for (const locale of locales) {
       );
       const page = wallet.page;
       page.on('pageerror', (error) => pageErrors.push(error.message));
+      // Forward every call to the native Clipboard method. Record completed
+      // public fixture values only; never substitute a clipboard result.
+      await page.evaluate(
+        (allowed) => {
+          const descriptor = Object.getOwnPropertyDescriptor(
+            navigator.clipboard,
+            'writeText'
+          );
+          const original = navigator.clipboard.writeText.bind(
+            navigator.clipboard
+          );
+          const audit = {
+            writes: [] as string[],
+            failures: 0,
+            unexpectedValues: 0,
+          };
+          Object.defineProperty(navigator.clipboard, 'writeText', {
+            configurable: true,
+            value: async (text: string) => {
+              try {
+                await original(text);
+                if (
+                  allowed.some(
+                    (value) => value.toLowerCase() === text.toLowerCase()
+                  )
+                )
+                  audit.writes.push(text);
+                else audit.unexpectedValues += 1;
+              } catch (error) {
+                audit.failures += 1;
+                throw error;
+              }
+            },
+          });
+          (window as any).__confirmPublicCopyAudit = {
+            snapshot: () => ({ ...audit, writes: [...audit.writes] }),
+            restore: () => {
+              if (descriptor)
+                Object.defineProperty(
+                  navigator.clipboard,
+                  'writeText',
+                  descriptor
+                );
+              else delete (navigator.clipboard as any).writeText;
+            },
+          };
+        },
+        [fixture.evmAddresses[0], fixture.evmAddresses[1], CONTRACT]
+      );
+      const copyAudit = () =>
+        page.evaluate(() =>
+          (window as any).__confirmPublicCopyAudit.snapshot()
+        );
       // Change only allowlisted public HTTP/JSON-RPC read replies. Never replace
       // Chrome APIs, controller results, Redux, navigation or DOM form state.
       await wallet.context.route(RPC, async (route) => {
@@ -458,6 +511,71 @@ for (const locale of locales) {
           }
         );
         await wallet.step(
+          `${locale.code} ${asset}: localized native Copy actions preserve exact public identifiers`,
+          async () => {
+            const copyButtons = page.locator('button').filter({
+              has: page.getByRole('img', { name: 'Copy', exact: true }),
+            });
+            const identifier =
+              asset === 'token'
+                ? await page.evaluate(async (contract) => {
+                    const { vault } = await chrome.runtime.sendMessage({
+                      type: 'getCurrentState',
+                    });
+                    const ref = vault.activeAccount;
+                    const tokens = Object.values(
+                      vault.accountAssets?.[ref.type]?.[ref.id]?.ethereum || {}
+                    ) as any[];
+                    return tokens.find(
+                      (token) =>
+                        token.contractAddress.toLowerCase() === contract
+                    )?.contractAddress as string | undefined;
+                  }, CONTRACT)
+                : undefined;
+            if (asset === 'token') {
+              expect(identifier).toBeTruthy();
+              expect(identifier!.toLowerCase()).toBe(CONTRACT);
+            }
+            const targets = [
+              ...(identifier ? [identifier] : []),
+              fixture.evmAddresses[0],
+              fixture.evmAddresses[1],
+            ];
+            await expect(copyButtons).toHaveCount(targets.length);
+            const start = (await copyAudit()).writes.length;
+            const geometry = [];
+            for (let index = 0; index < targets.length; index++) {
+              const action = copyButtons.nth(index);
+              await expect(action).toHaveAttribute('type', 'button');
+              await expect(action).toHaveAccessibleName(
+                locale.text.buttons.copy
+              );
+              geometry.push(await actionGeometry(page, action));
+              if (index % 2 === 0) {
+                await tabTo(page, action);
+                await page.keyboard.press('Enter');
+              } else await action.click();
+              await expect
+                .poll(async () => (await copyAudit()).writes.length)
+                .toBe(start + index + 1);
+            }
+            const clipboard = await copyAudit();
+            expect(clipboard.writes.slice(start)).toEqual(targets);
+            expect(clipboard.failures).toBe(0);
+            expect(clipboard.unexpectedValues).toBe(0);
+            expect(await publicState(page)).toEqual(baseline);
+            expect(routes!.deniedWrites).toEqual([]);
+            expect(deniedWrites).toEqual([]);
+            observations.push({
+              phase: asset + '-copy',
+              targets,
+              clipboard,
+              geometry,
+              publicState: await publicState(page),
+            });
+          }
+        );
+        await wallet.step(
           `${locale.code} ${asset}: Cancel preserves exact unsigned draft and account context`,
           async () => {
             await page
@@ -481,6 +599,9 @@ for (const locale of locales) {
       expect(routes.deniedWrites).toEqual([]);
       expect(deniedWrites).toEqual([]);
       expect(pageErrors).toEqual([]);
+      expect((await copyAudit()).writes).toHaveLength(5);
+      expect((await copyAudit()).failures).toBe(0);
+      expect((await copyAudit()).unexpectedValues).toBe(0);
       status = 'passed';
     } finally {
       try {
@@ -507,6 +628,9 @@ for (const locale of locales) {
         });
       } finally {
         try {
+          await wallet?.page
+            .evaluate(() => (window as any).__confirmPublicCopyAudit?.restore())
+            .catch(() => undefined);
           await wallet?.dispose(status);
         } finally {
           await server.close();
