@@ -484,39 +484,41 @@ export const SyscoinImport: React.FC = () => {
         ) : (
           <div className="space-y-4">
             {/* Asset GUID Input */}
-            <div className="relative max-w-lg mx-auto">
+            <div className="max-w-lg mx-auto">
               <label
                 className="block mb-2 text-sm font-medium text-brand-white"
                 htmlFor="custom-spt-guid"
               >
                 {t('tokens.assetGuid')}
               </label>
-              <input
-                id="custom-spt-guid"
-                className="w-full h-12 px-6 pr-12 bg-brand-blue800 border border-bkg-white200/30 
+              <div className="relative">
+                <input
+                  id="custom-spt-guid"
+                  className="w-full h-12 px-6 pr-12 bg-brand-blue800 border border-bkg-white200/30
                           rounded-full text-brand-white placeholder-brand-gray200/70 text-sm font-poppins
                           focus:border-brand-royalblue/50 focus:outline-none focus:ring-2 focus:ring-brand-royalblue/20
                           transition-all duration-200"
-                placeholder={t('tokens.enterAssetGuid')}
-                value={customAssetGuid}
-                onChange={(e) => {
-                  validationRequestRef.current += 1;
-                  debouncedValidationRef.current?.(e.target.value.trim());
-                  setCustomAssetGuid(e.target.value);
-                  setCustomTokenDetails(null);
-                  setIsValidatingCustom(Boolean(e.target.value.trim()));
-                }}
-              />
-              <div className="absolute right-4 top-1/2 transform -translate-y-1/2 flex items-center justify-center w-6 h-6">
-                {isValidatingCustom ? (
-                  <LoadingOutlined className="text-brand-royalblue animate-spin text-base" />
-                ) : customTokenDetails && customAssetGuid ? (
-                  <CheckCircleOutlined className="text-warning-success text-base" />
-                ) : customAssetGuid &&
-                  !customTokenDetails &&
-                  !isValidatingCustom ? (
-                  <CloseCircleOutlined className="text-warning-error text-base" />
-                ) : null}
+                  placeholder={t('tokens.enterAssetGuid')}
+                  value={customAssetGuid}
+                  onChange={(e) => {
+                    validationRequestRef.current += 1;
+                    debouncedValidationRef.current?.(e.target.value.trim());
+                    setCustomAssetGuid(e.target.value);
+                    setCustomTokenDetails(null);
+                    setIsValidatingCustom(Boolean(e.target.value.trim()));
+                  }}
+                />
+                <div className="absolute right-4 top-1/2 transform -translate-y-1/2 flex items-center justify-center w-6 h-6">
+                  {isValidatingCustom ? (
+                    <LoadingOutlined className="text-brand-royalblue animate-spin text-base" />
+                  ) : customTokenDetails && customAssetGuid ? (
+                    <CheckCircleOutlined className="text-warning-success text-base" />
+                  ) : customAssetGuid &&
+                    !customTokenDetails &&
+                    !isValidatingCustom ? (
+                    <CloseCircleOutlined className="text-warning-error text-base" />
+                  ) : null}
+                </div>
               </div>
             </div>
 

@@ -36,6 +36,7 @@ import {
 } from 'utils/navigationState';
 import { normalizeNftTokenId } from 'utils/nftTokenId';
 
+import { CustomTokenResultRegion } from './CustomTokenResultRegion';
 import { useTokenImportNavigation } from './useTokenImportNavigation';
 
 export const ImportToken: React.FC = () => {
@@ -784,6 +785,19 @@ export const ImportToken: React.FC = () => {
     </div>
   );
 
+  const customAssetList = (
+    <ImportableAssetsList
+      assets={customAssetsForList}
+      isLoading={tokenIdValidationPending}
+      onImport={handleImport}
+      onDetailsClick={handleDetailsClick}
+      importedAssetIds={importedAssetIds}
+      currentlyImporting={currentlyImporting}
+      fetchingLogos={fetchingLogos}
+      assetType="evm"
+    />
+  );
+
   return (
     <div className="flex min-w-0 w-full flex-col h-full bg-bkg-3 text-brand-white font-poppins">
       {/* Tab Navigation */}
@@ -985,18 +999,19 @@ export const ImportToken: React.FC = () => {
 
             {/* Custom token details */}
             {customTokenDetails &&
-              (customAssetsForList.length > 0 || tokenIdValidationPending) && (
-                <ImportableAssetsList
-                  assets={customAssetsForList}
-                  isLoading={tokenIdValidationPending}
-                  onImport={handleImport}
-                  onDetailsClick={handleDetailsClick}
-                  importedAssetIds={importedAssetIds}
-                  currentlyImporting={currentlyImporting}
-                  fetchingLogos={fetchingLogos}
-                  assetType="evm"
-                />
-              )}
+              (customAssetsForList.length > 0 || tokenIdValidationPending) &&
+              (customTokenDetails.tokenStandard === 'ERC-1155' ? (
+                <CustomTokenResultRegion
+                  scope={`${tokenImportScope}:${customTokenDetails.contractAddress
+                    .trim()
+                    .toLowerCase()}`}
+                  isPending={tokenIdValidationPending}
+                >
+                  {customAssetList}
+                </CustomTokenResultRegion>
+              ) : (
+                customAssetList
+              ))}
           </div>
         )}
       </div>
