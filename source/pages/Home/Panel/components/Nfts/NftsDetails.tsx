@@ -281,9 +281,15 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
                 {currentNft.name || t('send.nftCollection')}
               </h3>
               <p className="text-brand-gray200 text-sm" title={exactQuantity}>
-                {quantity}{' '}
-                {isSingle ? t('nftDetails.item') : t('nftDetails.items')} •{' '}
-                {currentNft.tokenStandard || 'ERC-721'}
+                {quantity === undefined ? (
+                  t('settings.unavailable')
+                ) : (
+                  <>
+                    {quantity}{' '}
+                    {isSingle ? t('nftDetails.item') : t('nftDetails.items')}
+                  </>
+                )}{' '}
+                • {currentNft.tokenStandard || 'ERC-721'}
               </p>
             </div>
 
@@ -425,7 +431,7 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
                 className="flex flex-col items-center justify-evenly h-full font-medium text-base text-brand-white"
                 title={exactQuantity}
               >
-                {quantity}
+                {quantity ?? t('settings.unavailable')}
                 <span className="text-sm font-normal text-brand-gray200">
                   {t('send.amount')}
                 </span>

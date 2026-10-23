@@ -3762,7 +3762,9 @@ class MainController {
         contractAddress: assetPreview.contractAddress,
         decimals: assetPreview.decimals,
         isNft: assetPreview.isNft || false,
-        balance: assetPreview.balance,
+        ...(assetPreview.balance !== undefined
+          ? { balance: assetPreview.balance }
+          : {}),
         logo:
           assetPreview.image?.large ||
           assetPreview.image?.small ||

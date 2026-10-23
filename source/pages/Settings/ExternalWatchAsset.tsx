@@ -363,6 +363,9 @@ const ExternalWatchAsset = () => {
                     <span className="text-brand-royalblue text-xs break-all">
                       {assetInfo.tokenStandard === 'ERC-1155'
                         ? assetInfo.rawBalance
+                        : assetInfo.tokenStandard === 'ERC-721' &&
+                          assetInfo.balance === undefined
+                        ? t('settings.unavailable')
                         : assetInfo.balance}
                     </span>
                   </p>

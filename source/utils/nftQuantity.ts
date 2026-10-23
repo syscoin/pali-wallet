@@ -3,6 +3,9 @@ import { formatFullPrecisionBalance } from './format';
 const MAX_NFT_QUANTITY =
   '115792089237316195423570985008687907853269984665640564039457584007913129639935';
 
+export const isErc721BalanceAvailable = (balance: unknown): balance is number =>
+  typeof balance === 'number' && Number.isFinite(balance) && balance >= 0;
+
 export const getNftQuantity = (nft?: {
   balance?: number;
   rawBalance?: unknown;
@@ -23,7 +26,9 @@ export const getNftQuantity = (nft?: {
   return {
     exactQuantity,
     quantity:
-      exactQuantity === undefined
+      nft?.tokenStandard === 'ERC-721' && !isErc721BalanceAvailable(nft.balance)
+        ? undefined
+        : exactQuantity === undefined
         ? nft?.tokenStandard === 'ERC-1155' &&
           (!Number.isSafeInteger(nft.balance) || nft.balance < 0)
           ? '—'

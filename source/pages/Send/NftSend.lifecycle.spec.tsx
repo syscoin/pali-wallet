@@ -329,6 +329,29 @@ describe('NFT send lookup lifetime', () => {
     jest.useRealTimers();
   });
 
+  it('keeps an unknown collection caption unavailable while verifying the exact token normally', async () => {
+    const unknown = { ...firstNft, balance: undefined };
+    mockState.testAssets.ethereum = [unknown];
+    mockLocation.state = {
+      walletScope: getWalletNavigationScope(),
+      selectedAsset: unknown,
+      selectedNftTokenId: '11',
+      formValues: { receiver: 'recipient', amount: '1', nftTokenId: '11' },
+    };
+    const ownership = deferred();
+    mockEmitter.mockImplementation(([, method]) =>
+      method === 'verifyERC721Ownership'
+        ? ownership.promise
+        : new Promise(() => undefined)
+    );
+    render(<SendEth />);
+    expect(screen.getByText('settings.unavailable')).toBeTruthy();
+    await act(async () => ownership.resolve(ownedReply('11')));
+    expect(screen.getByText(/send.youOwnThisToken/)).toBeTruthy();
+    expect(screen.getByText('settings.unavailable')).toBeTruthy();
+    expect(navigateWithContext).not.toHaveBeenCalled();
+  });
+
   it('keeps the selected collection token ID when an older collection enumeration resolves', async () => {
     const first = deferred();
     const second = deferred();

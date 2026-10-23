@@ -220,10 +220,16 @@ export const EvmNftsList = ({
                   className="text-brand-white"
                   title={collection.exactQuantity}
                 >
-                  {collection.quantity}{' '}
-                  {collection.isSingle
-                    ? t('nftDetails.item')
-                    : t('nftDetails.items')}
+                  {collection.quantity === undefined ? (
+                    t('settings.unavailable')
+                  ) : (
+                    <>
+                      {collection.quantity}{' '}
+                      {collection.isSingle
+                        ? t('nftDetails.item')
+                        : t('nftDetails.items')}
+                    </>
+                  )}
                 </span>
                 <span
                   className="text-brand-royalbluemedium hover:text-brand-deepPink100 cursor-pointer underline transition-colors duration-200"

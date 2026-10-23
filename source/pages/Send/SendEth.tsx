@@ -43,6 +43,7 @@ import {
   navigateWithContext,
   getWalletNavigationScope,
 } from 'utils/index';
+import { isErc721BalanceAvailable } from 'utils/nftQuantity';
 import { buildExplorerUrl } from 'utils/strings';
 import { getDefaultGasLimit } from 'utils/transactionUtils';
 import { isValidEthereumAddress } from 'utils/validations';
@@ -80,7 +81,7 @@ const renderVerificationSpinner = (className: string) => (
 );
 
 const getExactNftBalance = (token: {
-  balance: number;
+  balance?: number;
   rawBalance?: string;
 }): string | null => {
   if (
@@ -865,6 +866,11 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
       }
 
       // For NFTs and unverified tokens, use stored balance
+      if (
+        selectedAsset.tokenStandard === 'ERC-721' &&
+        !isErc721BalanceAvailable(selectedAsset.balance)
+      )
+        return t('settings.unavailable');
       return getAssetBalance(selectedAsset, false);
     }
 
