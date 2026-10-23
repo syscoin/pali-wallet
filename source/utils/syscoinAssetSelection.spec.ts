@@ -75,4 +75,30 @@ describe('Syscoin selected asset refresh', () => {
       getRefreshedSyscoinAssetSelection(selected, [current], 5700)
     ).toBeNull();
   });
+
+  it.each([undefined, null, '', ' '])(
+    'replaces an unavailable balance %p when a known zero arrives',
+    (balance) => {
+      const selected = { assetGuid: '123', chainId: 5700, balance };
+      const refreshed = { ...selected, balance: '0' };
+      expect(
+        getRefreshedSyscoinAssetSelection(selected, [refreshed], 5700)
+      ).toBe(refreshed);
+    }
+  );
+
+  it('retains number/string zero equivalence and notices when zero is lost', () => {
+    const selected = { assetGuid: '123', chainId: 5700, balance: 0 };
+    expect(
+      getRefreshedSyscoinAssetSelection(
+        selected,
+        [{ ...selected, balance: '0' }],
+        5700
+      )
+    ).toBeNull();
+    const refreshed = { ...selected, balance: undefined };
+    expect(getRefreshedSyscoinAssetSelection(selected, [refreshed], 5700)).toBe(
+      refreshed
+    );
+  });
 });

@@ -58,12 +58,13 @@ const SysAccountController = (
     const ipfsUrl = description.startsWith('https://ipfs.io/ipfs/')
       ? description
       : '';
+    const { balance, ...tokenMetadata } = token;
     const assetInfos = {
-      ...token,
+      ...tokenMetadata,
+      ...(balance !== undefined ? { balance } : {}),
       chainId: activeNetwork.chainId,
       description,
       image: '',
-      balance: token.balance || 0, // Balance is already in correct format, don't convert
     };
     if (!isEmpty(ipfsUrl)) {
       const { data } = await axios.get(ipfsUrl, config);
