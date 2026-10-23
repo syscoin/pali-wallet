@@ -582,6 +582,7 @@
     "accountLabelEditedSuccessfully": "账户标签编辑成功！",
     "editAccount": "编辑账户",
     "accountLabel": "账户标签",
+    "newLabel": "请输入新标签。",
     "rpcSuccessfullyAdded": "RPC成功添加。",
     "toAddNetwork": "添加网络",
     "thisWillAllow": "这将允许在Pali中使用此网络。",

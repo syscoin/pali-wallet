@@ -582,6 +582,7 @@
     "accountLabelEditedSuccessfully": "アカウントラベルが正常に編集されました！",
     "editAccount": "アカウントを編集",
     "accountLabel": "アカウントラベル",
+    "newLabel": "新しいラベルを入力してください。",
     "rpcSuccessfullyAdded": "RPCが正常に追加されました。",
     "toAddNetwork": "ネットワークを追加",
     "thisWillAllow": "これにより、このネットワークをPali内で使用できるようになります。",

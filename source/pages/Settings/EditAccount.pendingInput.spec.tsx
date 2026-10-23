@@ -317,11 +317,7 @@ it.each([
   await typeLabel(user, input, label);
   await user.click(screen.getByRole('button', { name: 'buttons.save' }));
 
-  expect(
-    await screen.findByText(
-      'Label must be non-empty and different from current label'
-    )
-  ).toBeVisible();
+  expect(await screen.findByText('settings.newLabel')).toBeVisible();
   expect(input).toHaveValue(label);
   expect(screen.getByTestId('current-route')).toHaveTextContent(
     '/settings/edit-account'

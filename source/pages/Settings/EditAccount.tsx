@@ -248,11 +248,7 @@ const EditAccountView = () => {
                   return Promise.resolve();
                 }
 
-                return Promise.reject(
-                  new Error(
-                    'Label must be non-empty and different from current label'
-                  )
-                );
+                return Promise.reject(new Error(t('settings.newLabel')));
               },
             }),
           ]}
