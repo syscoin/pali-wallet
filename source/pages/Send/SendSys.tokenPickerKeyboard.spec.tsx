@@ -242,7 +242,11 @@ const selectPointer = async (
   current = 'SYS'
 ) => {
   await open(user, current);
-  await user.click(optionButton(symbol + ' SPT'));
+  const asset = mockAssets.find((item) => item.symbol === symbol);
+  expect(asset).toBeDefined();
+  await user.click(
+    optionButton(`${symbol} tokens.assetGuid: ${asset!.assetGuid} SPT`)
+  );
 };
 afterEach(() => {
   expect(
@@ -280,7 +284,7 @@ it('retains pointer selection and exact SPT and native MAX', async () => {
   const user = await mount();
   await open(user);
   // The actual pointer action remains on the button even before wrapper repair.
-  await user.click(optionButton('SPTONE SPT'));
+  await user.click(optionButton('SPTONE tokens.assetGuid: 123 SPT'));
   expect(trigger('SPTONE')).toBeInTheDocument();
   await user.click(screen.getByRole('button', { name: 'send.max' }));
   expect(amount().value).toBe('2.5');

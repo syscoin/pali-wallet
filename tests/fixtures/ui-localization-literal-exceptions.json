@@ -199,13 +199,6 @@
       "reason": "The same EVM gas-price denomination appears on each of the three translated fee-priority controls."
     },
     {
-      "file": "source/pages/Send/SendSys.tsx",
-      "kind": "jsx-text",
-      "text": "GUID:",
-      "count": 1,
-      "reason": "Technical asset GUID identifier prefix before the raw asset identifier."
-    },
-    {
       "file": "source/pages/Settings/About.tsx",
       "kind": "jsx-text",
       "text": "Pali API",
