@@ -245,7 +245,10 @@ for (const scenario of scenarios) {
             const confirmation = page.getByRole('dialog', {
               name: en.settings.confirmRemoveNetwork.replace(
                 '{{networkName}}',
-                'Bitcoin'
+                `Bitcoin (UTXO · ${en.settings.chainNumber.replace(
+                  '{{chainId}}',
+                  '0'
+                )})`
               ),
               exact: true,
             });

@@ -76,6 +76,11 @@ jest.mock('react-i18next', () => ({
     t: (key: string, values?: any) => {
       if (key === 'buttons.edit') return fr.buttons.edit;
       if (key === 'buttons.remove') return fr.buttons.remove;
+      if (key === 'settings.chainNumber')
+        return fr.settings.chainNumber.replace(
+          '{{chainId}}',
+          String(values?.chainId)
+        );
       return values?.networkName ? `${key}: ${values.networkName}` : key;
     },
   }),
@@ -128,6 +133,17 @@ afterEach(() => {
 
 const row = (label: string) =>
   within(screen.getByText(truncate(label, 25), { exact: true }).closest('li')!);
+const identity = (network: {
+  chainId: number;
+  kind: INetworkType;
+  label: string;
+}) =>
+  `${network.label} (${
+    network.kind === INetworkType.Syscoin ? 'UTXO' : 'EVM'
+  } · ${fr.settings.chainNumber.replace(
+    '{{chainId}}',
+    String(network.chainId)
+  )})`;
 
 it('names every edit action with its localized purpose and network identity', () => {
   render(<ManageNetwork />);
@@ -137,7 +153,7 @@ it('names every edit action with its localized purpose and network identity', ()
   ]) {
     expect(
       screen.getByRole('button', {
-        name: `${fr.buttons.edit}: ${network.label}`,
+        name: `${fr.buttons.edit}: ${identity(network)}`,
       })
     ).toBeEnabled();
   }
@@ -145,10 +161,13 @@ it('names every edit action with its localized purpose and network identity', ()
 
 it('distinguishes removable network actions in the accessible button list', () => {
   render(<ManageNetwork />);
-  for (const label of ['Custom UTXO', longLabel]) {
+  for (const network of [
+    mockState.vaultGlobal.networks.syscoin.customUtxo,
+    mockState.vaultGlobal.networks.ethereum.customEvm,
+  ]) {
     expect(
       screen.getByRole('button', {
-        name: `${fr.buttons.remove}: ${label}`,
+        name: `${fr.buttons.remove}: ${identity(network)}`,
       })
     ).toBeEnabled();
   }
@@ -161,7 +180,9 @@ it('retains the full accessible network identity when the row text is truncated'
   for (const action of [fr.buttons.edit, fr.buttons.remove]) {
     expect(
       screen.getByRole('button', {
-        name: `${action}: ${longLabel}`,
+        name: `${action}: ${identity(
+          mockState.vaultGlobal.networks.ethereum.customEvm
+        )}`,
       })
     ).toBeEnabled();
   }
@@ -174,8 +195,13 @@ it.each([
   'healthy edit of %s still targets the exact normal registration',
   (label, kind, key, chainId) => {
     render(<ManageNetwork />);
+    const network = { label, kind, chainId } as {
+      chainId: number;
+      kind: INetworkType;
+      label: string;
+    };
     const action = row(label as string).getByRole('button', {
-      name: `${fr.buttons.edit}: ${label}`,
+      name: `${fr.buttons.edit}: ${identity(network)}`,
     });
     expect(action).toBeEnabled();
     fireEvent.click(action);
@@ -197,12 +223,12 @@ it('healthy default network does not offer a removal action', () => {
   render(<ManageNetwork />);
   expect(
     row(utxo.label).getByRole('button', {
-      name: `${fr.buttons.edit}: ${utxo.label}`,
+      name: `${fr.buttons.edit}: ${identity(utxo)}`,
     })
   ).toBeEnabled();
   expect(
     row(utxo.label).queryByRole('button', {
-      name: `${fr.buttons.remove}: ${utxo.label}`,
+      name: `${fr.buttons.remove}: ${identity(utxo)}`,
     })
   ).toBeNull();
 });
@@ -211,12 +237,16 @@ it('healthy remove review still identifies the chosen network without mutation',
   render(<ManageNetwork />);
   fireEvent.click(
     row('Custom UTXO').getByRole('button', {
-      name: `${fr.buttons.remove}: Custom UTXO`,
+      name: `${fr.buttons.remove}: ${identity(
+        mockState.vaultGlobal.networks.syscoin.customUtxo
+      )}`,
     })
   );
   expect(
     screen.getByRole('dialog', {
-      name: 'settings.confirmRemoveNetwork: Custom UTXO',
+      name: `settings.confirmRemoveNetwork: ${identity(
+        mockState.vaultGlobal.networks.syscoin.customUtxo
+      )}`,
     })
   ).toBeInTheDocument();
 });

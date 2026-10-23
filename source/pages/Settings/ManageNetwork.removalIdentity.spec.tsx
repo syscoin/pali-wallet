@@ -51,6 +51,8 @@ jest.mock('react-i18next', () => ({
     t: (key: string, values?: any) =>
       key === 'settings.confirmRemoveNetwork'
         ? `Remove ${values.networkName}?`
+        : key === 'settings.chainNumber'
+        ? `Chain ${values.chainId}`
         : key,
   }),
 }));
@@ -124,6 +126,10 @@ let nativeWrites: any[];
 const current = () => store.getState().vaultGlobal.networks.ethereum[31337];
 const saved = async () =>
   (await loadState()).vaultGlobal.networks.ethereum[31337];
+const removalTitle = (network: INetwork) =>
+  `Remove ${network.label} (${
+    network.kind === INetworkType.Syscoin ? 'UTXO' : 'EVM'
+  } · Chain ${network.chainId})?`;
 const remove = (network: INetwork) =>
   wallet.removeKeyringNetwork(
     network.kind,
@@ -226,7 +232,8 @@ const openConfirmation = async () => {
   const row = screen.getByText(target.label).closest('li')!;
   fireEvent.click(within(row).getByRole('button', { name: 'trash' }));
   const dialog = await screen.findByRole('dialog');
-  expect(dialog).toHaveTextContent(`Remove ${target.label}?`);
+  expect(dialog).toHaveTextContent(removalTitle(target));
+  expect(dialog).toHaveTextContent(`EVM · Chain ${target.chainId}`);
   return dialog;
 };
 
@@ -264,7 +271,7 @@ it('healthy: a different-URL replacement rejects the stale confirmation', async 
   const dialog = await openConfirmation();
   const next = { ...replacement, url: 'https://different.synthetic.invalid' };
   await replaceFromSecondWindow(next);
-  expect(dialog).toHaveTextContent(`Remove ${target.label}?`);
+  expect(dialog).toHaveTextContent(removalTitle(target));
   fireEvent.click(
     within(dialog).getByRole('button', { name: 'buttons.remove' })
   );
@@ -280,7 +287,7 @@ it('healthy: a different-URL replacement rejects the stale confirmation', async 
 it('same-URL replacement must survive a confirmation that still names the old registration', async () => {
   const dialog = await openConfirmation();
   await replaceFromSecondWindow(replacement);
-  expect(dialog).toHaveTextContent(`Remove ${target.label}?`);
+  expect(dialog).toHaveTextContent(removalTitle(target));
   expect(dialog).not.toHaveTextContent(replacement.label);
   const writesBeforeConfirmation = nativeWrites.length;
   fireEvent.click(
@@ -326,7 +333,7 @@ it('healthy: opening a fresh confirmation after replacement removes that display
   const row = screen.getByText(replacement.label).closest('li')!;
   fireEvent.click(within(row).getByRole('button', { name: 'trash' }));
   const dialog = await screen.findByRole('dialog');
-  expect(dialog).toHaveTextContent(`Remove ${replacement.label}?`);
+  expect(dialog).toHaveTextContent(removalTitle(replacement));
   fireEvent.click(
     within(dialog).getByRole('button', { name: 'buttons.remove' })
   );
@@ -463,7 +470,8 @@ it('removes a healthy inactive UTXO registration with its explicit fingerprint',
   const row = screen.getByText(utxo.label).closest('li')!;
   fireEvent.click(within(row).getByRole('button', { name: 'trash' }));
   const dialog = await screen.findByRole('dialog');
-  expect(dialog).toHaveTextContent('Remove UTXO public fixture?');
+  expect(dialog).toHaveTextContent(removalTitle(utxo));
+  expect(dialog).toHaveTextContent(`UTXO · Chain ${utxo.chainId}`);
   fireEvent.click(
     within(dialog).getByRole('button', { name: 'buttons.remove' })
   );

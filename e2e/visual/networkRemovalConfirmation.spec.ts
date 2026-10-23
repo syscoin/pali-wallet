@@ -220,7 +220,13 @@ test('stale network removal confirmation preserves a same-URL replacement until 
     });
     const page = wallet.page;
     const title = (label: string) =>
-      en.settings.confirmRemoveNetwork.replace('{{networkName}}', label);
+      en.settings.confirmRemoveNetwork.replace(
+        '{{networkName}}',
+        `${label} (EVM · ${en.settings.chainNumber.replace(
+          '{{chainId}}',
+          String(CHAIN_ID)
+        )})`
+      );
     const row = (target: Page, label: string) =>
       target.locator('li').filter({
         has: target.getByText(label, { exact: true }),

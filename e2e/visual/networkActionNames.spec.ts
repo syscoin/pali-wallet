@@ -46,15 +46,24 @@ test('network-management icon actions expose their purpose and full network iden
               Object.values(family).map((network: any) => ({
                 label: network.label,
                 default: network.default,
+                chainId: network.chainId,
+                kind: network.kind,
               }))
           );
         });
         expect(networks.length).toBeGreaterThan(1);
+        const identity = (network: (typeof networks)[number]) =>
+          `${network.label} (${
+            network.kind === 'syscoin' ? 'UTXO' : 'EVM'
+          } · ${en.settings.chainNumber.replace(
+            '{{chainId}}',
+            String(network.chainId)
+          )})`;
         for (const network of networks) {
           expect(
             await page
               .getByRole('button', {
-                name: `${en.buttons.edit}: ${network.label}`,
+                name: `${en.buttons.edit}: ${identity(network)}`,
                 exact: true,
               })
               .count()
@@ -63,15 +72,16 @@ test('network-management icon actions expose their purpose and full network iden
             expect(
               await page
                 .getByRole('button', {
-                  name: `${en.buttons.remove}: ${network.label}`,
+                  name: `${en.buttons.remove}: ${identity(network)}`,
                   exact: true,
                 })
                 .count()
             ).toBeGreaterThan(0);
         }
-        const first = page
-          .getByRole('button', { name: new RegExp(`^${en.buttons.edit}: `) })
-          .first();
+        const first = page.getByRole('button', {
+          name: `${en.buttons.edit}: ${identity(networks[0])}`,
+          exact: true,
+        });
         await first.scrollIntoViewIfNeeded();
         await first.click();
         await expect(page).toHaveURL(/#\/settings\/networks\/custom-rpc$/);

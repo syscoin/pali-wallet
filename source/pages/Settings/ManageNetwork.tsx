@@ -34,6 +34,19 @@ const ManageNetworkView = () => {
   );
   const { t } = useTranslation();
   const location = useLocation();
+  const chainIdentity = (chain: INetworkType, chainId: number) =>
+    `${chain === INetworkType.Syscoin ? 'UTXO' : 'EVM'} · ${t(
+      'settings.chainNumber',
+      { chainId }
+    )}`;
+  const networkIdentity = (
+    chain: INetworkType,
+    network: { chainId: number; label: string }
+  ) =>
+    `${network.label || t('settings.unknownNetwork')} (${chainIdentity(
+      chain,
+      network.chainId
+    )})`;
 
   const { navigate, alert } = useUtils();
   const { controllerEmitter, connectionUnavailable } = useController();
@@ -196,18 +209,24 @@ const ManageNetworkView = () => {
                 ? network.key
                 : `${(network.label || 'unknown').trim()}-${network.chainId}`
             }
-            className={`my-3 py-1 w-full flex justify-between items-center transition-all duration-300 border-b border-alpha-whiteAlpha300 cursor-default`}
+            className={`my-3 py-1 w-full flex gap-x-3 justify-between items-center transition-all duration-300 border-b border-alpha-whiteAlpha300 cursor-default`}
           >
-            <div className="flex gap-x-3 items-center justify-start text-xs">
+            <div className="flex min-w-0 flex-1 gap-x-3 items-center justify-start text-xs">
               <ChainIcon
                 chainId={network.chainId}
                 size={24}
                 networkKind={INetworkType.Syscoin}
                 className="flex-shrink-0"
               />
-              <div className="flex flex-col items-start">
-                <span>
+              <div className="flex min-w-0 flex-col items-start">
+                <span
+                  className="max-w-full truncate"
+                  title={networkIdentity(INetworkType.Syscoin, network)}
+                >
                   {truncate(network.label || t('settings.unknownNetwork'), 25)}
+                </span>
+                <span className="mt-1 text-content-muted">
+                  {chainIdentity(INetworkType.Syscoin, network.chainId)}
                 </span>
                 {isActiveNetwork(network) && (
                   <div className="flex items-center gap-1 mt-1">
@@ -220,9 +239,12 @@ const ManageNetworkView = () => {
               </div>
             </div>
 
-            <div className="flex gap-x-3 items-center justify-between">
+            <div className="flex shrink-0 gap-x-3 items-center justify-between">
               <IconButton
-                aria-label={`${t('buttons.edit')}: ${network.label}`}
+                aria-label={`${t('buttons.edit')}: ${networkIdentity(
+                  INetworkType.Syscoin,
+                  network
+                )}`}
                 onClick={() =>
                   editNetwork({
                     selected: network,
@@ -247,7 +269,10 @@ const ManageNetworkView = () => {
                   }
                 >
                   <IconButton
-                    aria-label={`${t('buttons.remove')}: ${network.label}`}
+                    aria-label={`${t('buttons.remove')}: ${networkIdentity(
+                      INetworkType.Syscoin,
+                      network
+                    )}`}
                     onClick={() => removeNetwork(INetworkType.Syscoin, network)}
                     type="primary"
                     shape="circle"
@@ -279,18 +304,24 @@ const ManageNetworkView = () => {
                 ? network.key
                 : `${(network.label || 'unknown').trim()}-${network.chainId}`
             }
-            className={`my-3 py-1 w-full flex justify-between items-center transition-all duration-300 border-b border-dashed border-alpha-whiteAlpha300 cursor-default`}
+            className={`my-3 py-1 w-full flex gap-x-3 justify-between items-center transition-all duration-300 border-b border-dashed border-alpha-whiteAlpha300 cursor-default`}
           >
-            <div className="flex gap-x-3 items-center justify-start text-xs">
+            <div className="flex min-w-0 flex-1 gap-x-3 items-center justify-start text-xs">
               <ChainIcon
                 chainId={network.chainId}
                 size={24}
                 networkKind={INetworkType.Ethereum}
                 className="flex-shrink-0"
               />
-              <div className="flex flex-col items-start">
-                <span>
+              <div className="flex min-w-0 flex-col items-start">
+                <span
+                  className="max-w-full truncate"
+                  title={networkIdentity(INetworkType.Ethereum, network)}
+                >
                   {truncate(network.label || t('settings.unknownNetwork'), 25)}
+                </span>
+                <span className="mt-1 text-content-muted">
+                  {chainIdentity(INetworkType.Ethereum, network.chainId)}
                 </span>
                 {isActiveNetwork(network) && (
                   <div className="flex items-center gap-1 mt-1">
@@ -303,9 +334,12 @@ const ManageNetworkView = () => {
               </div>
             </div>
 
-            <div className="flex gap-x-3 items-center justify-between">
+            <div className="flex shrink-0 gap-x-3 items-center justify-between">
               <IconButton
-                aria-label={`${t('buttons.edit')}: ${network.label}`}
+                aria-label={`${t('buttons.edit')}: ${networkIdentity(
+                  INetworkType.Ethereum,
+                  network
+                )}`}
                 onClick={() =>
                   editNetwork({
                     selected: network,
@@ -331,7 +365,10 @@ const ManageNetworkView = () => {
                   }
                 >
                   <IconButton
-                    aria-label={`${t('buttons.remove')}: ${network.label}`}
+                    aria-label={`${t('buttons.remove')}: ${networkIdentity(
+                      INetworkType.Ethereum,
+                      network
+                    )}`}
                     onClick={() =>
                       removeNetwork(INetworkType.Ethereum, network)
                     }
@@ -370,9 +407,15 @@ const ManageNetworkView = () => {
       <ConfirmationModal
         show={showConfirmModal && !networkActionsBlocked}
         title={t('settings.confirmRemoveNetwork', {
-          networkName: networkToRemove?.label || '',
+          networkName: networkToRemove
+            ? networkIdentity(networkToRemove.chain, networkToRemove)
+            : '',
         })}
-        description=""
+        description={
+          networkToRemove
+            ? chainIdentity(networkToRemove.chain, networkToRemove.chainId)
+            : ''
+        }
         buttonText={t('buttons.remove')}
         onClose={handleCancelRemoval}
         onClick={handleConfirmRemoval}
