@@ -408,7 +408,9 @@ const ManageNetworkView = () => {
         show={showConfirmModal && !networkActionsBlocked}
         title={
           <>
-            <span aria-hidden="true">{t('buttons.remove')}</span>
+            <span aria-hidden="true" className="block">
+              {t('buttons.remove')}
+            </span>
             <span className="sr-only">
               {t('settings.confirmRemoveNetwork', {
                 networkName: networkToRemove
