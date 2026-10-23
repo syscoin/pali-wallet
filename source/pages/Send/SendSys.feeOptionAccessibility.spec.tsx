@@ -205,16 +205,12 @@ it('healthy ordinary SPT selection retains the inverse Z-DAG/RBF draft semantics
 it('names the ordinary native fee-option switch from its visible RBF label', async () => {
   await mount();
   expect(screen.getByRole('switch')).toHaveAccessibleName('RBF');
-  expect(
-    screen.getByRole('switch', { name: 'RBF' })
-  ).toBeChecked();
+  expect(screen.getByRole('switch', { name: 'RBF' })).toBeChecked();
 });
 
 it('names the ordinary SPT fee-option switch from its visible Z-DAG label', async () => {
   const user = await mount();
   await selectSpt(user);
   expect(screen.getByRole('switch')).toHaveAccessibleName('Z-DAG');
-  expect(
-    screen.getByRole('switch', { name: 'Z-DAG' })
-  ).not.toBeChecked();
+  expect(screen.getByRole('switch', { name: 'Z-DAG' })).not.toBeChecked();
 });

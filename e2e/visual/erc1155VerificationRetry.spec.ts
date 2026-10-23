@@ -25,7 +25,7 @@ test('manual ERC1155 verification distinguishes failed reads and retries the unc
   const server = await startUtxoFixtureServer();
   const abi = AbiCoder.defaultAbiCoder();
   const selector = (signature: string) => id(signature).slice(0, 10);
-  const ownershipReads: Array<{ ids: string[]; failed: boolean }> = [];
+  const ownershipReads: Array<{ failed: boolean; ids: string[] }> = [];
   const deniedWrites: string[] = [];
   const observations: Record<string, unknown> = {};
   let failed = true;
