@@ -1001,15 +1001,15 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
                 <Menu>
                   {({ open }) => (
                     <div className="relative inline-block text-left">
-                      <Menu.Button className="inline-flex items-center w-[100px] gap-4  justify-center border border-alpha-whiteAlpha300 px-5 py-[7px]  bg-brand-blue800 hover:bg-opacity-30 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75">
-                        <p className="w-full uppercase text-white text-xs font-normal">
+                      <Menu.Button className="inline-flex items-center w-[100px] gap-2 justify-center border border-alpha-whiteAlpha300 px-3 py-[7px] bg-brand-blue800 hover:bg-opacity-30 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75">
+                        <p className="min-w-0 flex-1 truncate uppercase text-white text-xs font-normal">
                           {String(
                             selectedAsset?.symbol
                               ? selectedAsset?.symbol
                               : activeNetwork.currency
                           )}
                         </p>
-                        <ArrowDownSvg />
+                        <ArrowDownSvg className="shrink-0" />
                       </Menu.Button>
 
                       <Menu.Items
