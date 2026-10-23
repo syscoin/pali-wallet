@@ -50,6 +50,7 @@ export const ConnectWallet = () => {
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
+  const { kind, chainId: networkChainId, slip44 } = activeNetwork;
   const isBitcoinBased = useSelector(
     (state: RootState) => state.vault.isBitcoinBased
   );
@@ -103,12 +104,14 @@ export const ConnectWallet = () => {
 
   const isAccountValidForNetwork = useCallback(
     (account: any, keyringAccountType: KeyringAccountType | string) =>
-      isAccountCompatibleWithNetwork(
-        account,
-        keyringAccountType,
-        activeNetwork
-      ),
-    [activeNetwork]
+      isAccountCompatibleWithNetwork(account, keyringAccountType, {
+        kind,
+        chainId: networkChainId,
+        slip44,
+      }),
+    // Full background snapshots clone the network even for price-only updates.
+    // Reinitialize consent only when its actual compatibility context changes.
+    [kind, networkChainId, slip44]
   );
 
   const handleConnect = useCallback(async () => {

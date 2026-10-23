@@ -17,7 +17,7 @@ type AccountForCompatibility = Pick<IKeyringAccountState, 'address'> &
 export const isAccountCompatibleWithNetwork = (
   account: AccountForCompatibility | null | undefined,
   type: KeyringAccountType | string,
-  network: INetwork
+  network: Pick<INetwork, 'kind' | 'chainId' | 'slip44'>
 ): boolean => {
   if (!account) return false;
 
