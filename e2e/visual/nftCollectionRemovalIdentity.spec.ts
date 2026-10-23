@@ -780,6 +780,11 @@ for (const scenario of ['different-symbol', 'same-symbol'] as const) {
                   observations.dialogs[
                     observations.dialogs.length - 1
                   ].contractExposure = await contractExposure(dialog, contract);
+                  observations.dialogs[
+                    observations.dialogs.length - 1
+                  ].bodyParagraphs = await dialog
+                    .locator('p')
+                    .allTextContents();
                   if (cancellation === 'keyboard') {
                     const paragraph = dialog
                       .locator('p')
@@ -794,10 +799,13 @@ for (const scenario of ['different-symbol', 'same-symbol'] as const) {
                         '{{name}}',
                         symbols[CONTRACTS.indexOf(contract)]
                       );
+                    const warningParagraph = body
+                      .locator(':scope > p')
+                      .filter({ hasText: originalCopy });
                     const warning = originalCopy
                       .slice(originalCopy.indexOf('?') + 1)
                       .trim();
-                    await expect(paragraph).toContainText(originalCopy);
+                    await expect(warningParagraph).toHaveText(originalCopy);
                     if (scrollable) {
                       await expect(body).toHaveAttribute('tabindex', '0');
                       for (let count = 0; count < 12; count++) {
@@ -840,6 +848,7 @@ for (const scenario of ['different-symbol', 'same-symbol'] as const) {
                       scrollable,
                       warning: await contractExposure(dialog, warning),
                       paragraphText: await paragraph.innerText(),
+                      warningText: await warningParagraph.innerText(),
                     };
                     await info.attach(
                       `${scenario}-${viewport.width}-${contract}-keyboard-warning`,
@@ -971,6 +980,14 @@ for (const scenario of ['different-symbol', 'same-symbol'] as const) {
               ).not.toBe(selected[1].identity.semanticSignature);
             }
             for (const dialog of observations.dialogs) {
+              expect(dialog.bodyParagraphs.filter(Boolean)).toEqual([
+                en.settings.contractAddress,
+                dialog.contract,
+                en.send.deleteCollectionConfirm.replace(
+                  '{{name}}',
+                  symbols[CONTRACTS.indexOf(dialog.contract)]
+                ),
+              ]);
               expect(dialog.identity.dom.text).toContain(dialog.contract);
               expect(dialog.bodyText).toContain(dialog.contract);
               expect(dialog.contractExposure).toMatchObject({

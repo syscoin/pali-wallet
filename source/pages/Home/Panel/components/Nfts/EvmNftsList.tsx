@@ -332,21 +332,27 @@ export const EvmNftsList = ({
             ? getRemovalLabel(itemToDelete.name, itemToDelete.tokenId)
             : t('send.deleteCollection')
         }
-        description={`${t('settings.contractAddress')}: ${
-          itemToDelete?.contractAddress || ''
-        } ${
-          itemToDelete?.tokenId
+        description=""
+        buttonText={t('buttons.delete')}
+        isButtonLoading={removal.pending}
+      >
+        <p className="text-xs font-medium text-brand-gray200">
+          {t('settings.contractAddress')}
+        </p>
+        <p className="mt-1 font-mono text-xs text-brand-white [overflow-wrap:anywhere]">
+          {itemToDelete?.contractAddress || ''}
+        </p>
+        <p className="mt-2 [overflow-wrap:anywhere]">
+          {itemToDelete?.tokenId
             ? t('nftDetails.removeTokenIdConfirm', {
                 name: itemToDelete.name,
                 tokenId: itemToDelete.tokenId,
               })
             : t('send.deleteCollectionConfirm', {
                 name: itemToDelete?.name,
-              })
-        }`}
-        buttonText={t('buttons.delete')}
-        isButtonLoading={removal.pending}
-      />
+              })}
+        </p>
+      </ConfirmationModal>
     </>
   );
 };

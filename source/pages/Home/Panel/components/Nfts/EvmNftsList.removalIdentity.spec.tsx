@@ -263,16 +263,20 @@ it.each(['different', 'same'] as const)(
     for (const contract of CONTRACTS) {
       expect(rowFor(contract)).toHaveTextContent(ellipsis(contract, 4, 4));
       fireEvent.click(deleteButton(contract));
-      expect(screen.getByRole('dialog')).toHaveTextContent(
-        en.settings.contractAddress + ': ' + contract
-      );
-      expect(screen.getByRole('dialog').querySelector('p')?.textContent).toBe(
-        `${
-          en.settings.contractAddress
-        }: ${contract} ${en.send.deleteCollectionConfirm.replace(
+      const bodyParagraphs = Array.from(
+        screen.getByRole('dialog').querySelectorAll('p'),
+        (paragraph) => paragraph.textContent
+      ).filter(Boolean);
+      expect(bodyParagraphs).toEqual([
+        en.settings.contractAddress,
+        contract,
+        en.send.deleteCollectionConfirm.replace(
           '{{name}}',
           symbols[CONTRACTS.indexOf(contract)]
-        )}`
+        ),
+      ]);
+      expect(screen.getByText(contract, { exact: true })).toHaveClass(
+        'font-mono'
       );
       expect(screen.getByRole('dialog')).not.toHaveTextContent(
         CONTRACTS.find((candidate) => candidate !== contract)!

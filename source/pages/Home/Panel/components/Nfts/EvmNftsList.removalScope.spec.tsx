@@ -110,6 +110,21 @@ const setTokenInventory = (tokenId: string) => {
 };
 const removalButton = (row: HTMLElement) =>
   within(row).getByRole('button', { name: /^(?:Delete|Remove) / });
+const expectRemovalBody = (
+  dialog: HTMLElement,
+  contract: string,
+  warning: string
+) => {
+  expect(
+    Array.from(
+      dialog.querySelectorAll('p'),
+      (paragraph) => paragraph.textContent
+    ).filter(Boolean)
+  ).toEqual([en.settings.contractAddress, contract, warning]);
+  expect(within(dialog).getByText(contract, { exact: true })).toHaveClass(
+    'font-mono'
+  );
+};
 const originalResizeObserver = globalThis.ResizeObserver;
 beforeAll(() => {
   globalThis.ResizeObserver = class {
@@ -157,15 +172,12 @@ it.each(TOKEN_IDS)(
         .replace('{{name}}', SYMBOL)
         .replace('{{tokenId}}', tokenId)
     );
-    expect(dialog).toHaveTextContent(
-      `${en.settings.contractAddress}: ${CONTRACT}`
-    );
-    expect(dialog.querySelector('p')?.textContent).toBe(
-      `${
-        en.settings.contractAddress
-      }: ${CONTRACT} ${en.nftDetails.removeTokenIdConfirm
+    expectRemovalBody(
+      dialog,
+      CONTRACT,
+      en.nftDetails.removeTokenIdConfirm
         .replace('{{name}}', SYMBOL)
-        .replace('{{tokenId}}', tokenId)}`
+        .replace('{{tokenId}}', tokenId)
     );
     const text = dialog.textContent || '';
     const selectedToken = new RegExp(
@@ -224,16 +236,10 @@ it('retains the healthy ERC721 whole-collection confirmation and Cancel boundary
   expect(dialog).toHaveTextContent(
     en.send.deleteCollectionConfirm.replace('{{name}}', SYMBOL)
   );
-  expect(dialog).toHaveTextContent(
-    `${en.settings.contractAddress}: ${CONTRACT}`
-  );
-  expect(dialog.querySelector('p')?.textContent).toBe(
-    `${
-      en.settings.contractAddress
-    }: ${CONTRACT} ${en.send.deleteCollectionConfirm.replace(
-      '{{name}}',
-      SYMBOL
-    )}`
+  expectRemovalBody(
+    dialog,
+    CONTRACT,
+    en.send.deleteCollectionConfirm.replace('{{name}}', SYMBOL)
   );
   await user.click(
     within(dialog).getByRole('button', { name: en.buttons.cancel })
@@ -284,8 +290,12 @@ it('distinguishes same-symbol and same-token-ID ERC1155 contracts without wideni
         .replace('{{name}}', SYMBOL)
         .replace('{{tokenId}}', '7')
     );
-    expect(dialog).toHaveTextContent(
-      `${en.settings.contractAddress}: ${contract}`
+    expectRemovalBody(
+      dialog,
+      contract,
+      en.nftDetails.removeTokenIdConfirm
+        .replace('{{name}}', SYMBOL)
+        .replace('{{tokenId}}', '7')
     );
     expect(dialog).not.toHaveTextContent(
       contract === CONTRACT ? otherContract : CONTRACT
