@@ -310,6 +310,10 @@ it('offers visible same-ID recovery after an unavailable ownership read', async 
   ]);
   expect(importButton()).toBeNull();
   expect(screen.getByRole('button', { name: 'receive.retry' })).toBeVisible();
+  expect(screen.getByRole('button', { name: 'receive.retry' })).toHaveClass(
+    'text-brand-royalbluemedium',
+    'underline'
+  );
 });
 
 it('retries the unchanged valid ID through the actual helper and restores exact quantity', async () => {

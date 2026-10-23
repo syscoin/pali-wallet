@@ -238,6 +238,46 @@ test('manual ERC1155 verification distinguishes failed reads and retries the unc
         await expect(
           page.getByRole('button', { name: en.receive.retry, exact: true })
         ).toBeEnabled();
+        const retryContrast = await page
+          .getByRole('button', { name: en.receive.retry, exact: true })
+          .evaluate((element) => {
+            const luminance = (color: string) =>
+              color
+                .match(/[\d.]+/g)!
+                .slice(0, 3)
+                .map(Number)
+                .reduce((total, value, index) => {
+                  const channel = value / 255;
+                  return (
+                    total +
+                    (channel <= 0.04045
+                      ? channel / 12.92
+                      : ((channel + 0.055) / 1.055) ** 2.4) *
+                      [0.2126, 0.7152, 0.0722][index]
+                  );
+                }, 0);
+            let ancestor: Element | null = element;
+            let background = 'rgb(255, 255, 255)';
+            while (ancestor) {
+              const candidate = getComputedStyle(ancestor).backgroundColor;
+              if (
+                candidate !== 'rgba(0, 0, 0, 0)' &&
+                candidate !== 'transparent'
+              ) {
+                background = candidate;
+                break;
+              }
+              ancestor = ancestor.parentElement;
+            }
+            const foreground = luminance(getComputedStyle(element).color);
+            const behind = luminance(background);
+            return (
+              (Math.max(foreground, behind) + 0.05) /
+              (Math.min(foreground, behind) + 0.05)
+            );
+          });
+        observations.retryContrast = retryContrast;
+        expect(retryContrast).toBeGreaterThanOrEqual(4.5);
       }
     );
     await step(
