@@ -338,10 +338,16 @@ const ManageAccountsView = React.memo(() => {
   const removeAccountDescription = useMemo(() => {
     if (!accountToRemove) return '';
 
-    return t('settings.removeAccountConfirmation', {
+    const confirmation = t('settings.removeAccountConfirmation', {
       accountName: accountToRemove.account.label,
       accountType: accountTypeLabel(accountToRemove.accountType),
     });
+    const hasImportedPrivateKey =
+      accountToRemove.accountType === KeyringAccountType.Imported &&
+      Boolean(accountToRemove.account.xprv);
+    return hasImportedPrivateKey
+      ? `${confirmation} ${t('settings.importedAccountRemovalWarning')}`
+      : confirmation;
   }, [accountToRemove, accountTypeLabel, t]);
 
   // Memoized unified account rendering
