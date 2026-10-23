@@ -192,7 +192,10 @@ test('inactive custom UTXO network removal retains its vault after storage refus
       await row().locator('button').last().click();
       const title = en.settings.confirmRemoveNetwork.replace(
         '{{networkName}}',
-        LABEL
+        `${LABEL} (UTXO · ${en.settings.chainNumber.replace(
+          '{{chainId}}',
+          String(CHAIN_ID)
+        )})`
       );
       const dialog = page.getByRole('dialog', { name: title, exact: true });
       await expect(dialog).toBeVisible();

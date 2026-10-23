@@ -348,7 +348,12 @@ test('network manager distinguishes active UTXO and EVM registrations sharing an
           const dialog = page.getByRole('dialog', {
             name: en.settings.confirmRemoveNetwork.replace(
               '{{networkName}}',
-              otherLabel
+              `${otherLabel} (${
+                family === 'syscoin' ? 'EVM' : 'UTXO'
+              } · ${en.settings.chainNumber.replace(
+                '{{chainId}}',
+                String(CHAIN_ID)
+              )})`
             ),
             exact: true,
           });

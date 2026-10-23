@@ -45,9 +45,10 @@ interface IWarningModal extends IDefaultModal {
   warningMessage?: string;
 }
 
-interface IConfirmationModal extends IDefaultModal {
+interface IConfirmationModal extends Omit<IDefaultModal, 'title'> {
   allowCloseWhileLoading?: boolean;
   onClick: () => void;
+  title: ReactNode;
 }
 
 interface IErrorModal extends IDefaultModal {

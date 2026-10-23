@@ -531,16 +531,148 @@ test('long network labels and populated menus stay bounded and keyboard reachabl
     await expect(title).toContainText(
       'Synthetic 17 regional development network with a very long display name'
     );
-    await expect(title).toHaveAttribute('tabindex', '0');
-    await title.focus();
-    await page.keyboard.press('End');
-    await expect
-      .poll(() => title.evaluate((element) => element.scrollTop))
-      .toBeGreaterThan(0);
-    await page.keyboard.press('Home');
-    await expect
-      .poll(() => title.evaluate((element) => element.scrollTop))
-      .toBe(0);
+    await wallet.step(
+      'network-labels: review compact title and full body identity',
+      async (capture) => {
+        const name =
+          'Synthetic 17 regional development network with a very long display name';
+        const chain = `UTXO · ${en.settings.chainNumber.replace(
+          '{{chainId}}',
+          '91017'
+        )}`;
+        await expect(dialog).toHaveAccessibleName(
+          en.settings.confirmRemoveNetwork.replace(
+            '{{networkName}}',
+            `${name} (${chain})`
+          )
+        );
+        const visibleTitle = title.locator('[aria-hidden="true"]');
+        await expect(visibleTitle).toHaveText(en.buttons.remove);
+        const body = dialog.locator('header + div');
+        const identity = body.locator(':scope > p');
+        await expect(identity).toHaveText([name, chain]);
+        const textExposure = (target: Locator) =>
+          target.evaluate((element) => {
+            const range = document.createRange();
+            range.selectNodeContents(element);
+            const lines = [...range.getClientRects()].filter(
+              (line) => line.width > 0 && line.height > 0
+            );
+            const clip = {
+              left: 0,
+              right: innerWidth,
+              top: 0,
+              bottom: innerHeight,
+            };
+            for (
+              let node: Element | null = element;
+              node;
+              node = node.parentElement
+            ) {
+              const style = getComputedStyle(node);
+              const box = node.getBoundingClientRect();
+              if (/auto|hidden|scroll|clip/.test(style.overflowX)) {
+                clip.left = Math.max(clip.left, box.left + node.clientLeft);
+                clip.right = Math.min(
+                  clip.right,
+                  box.left + node.clientLeft + node.clientWidth
+                );
+              }
+              if (/auto|hidden|scroll|clip/.test(style.overflowY)) {
+                clip.top = Math.max(clip.top, box.top + node.clientTop);
+                clip.bottom = Math.min(
+                  clip.bottom,
+                  box.top + node.clientTop + node.clientHeight
+                );
+              }
+            }
+            const vertical = (line: DOMRect) =>
+              line.top >= clip.top - 0.5 && line.bottom <= clip.bottom + 0.5;
+            return {
+              horizontal:
+                lines.length > 0 &&
+                lines.every(
+                  (line) =>
+                    line.left >= clip.left - 0.5 &&
+                    line.right <= clip.right + 0.5
+                ),
+              allVisible: lines.length > 0 && lines.every(vertical),
+              firstVisible: lines.length > 0 && vertical(lines[0]),
+              lastVisible:
+                lines.length > 0 && vertical(lines[lines.length - 1]),
+            };
+          });
+        const fixedControlsFit = async () => {
+          expect(await exposed(visibleTitle)).toBe(true);
+          expect(await textExposure(visibleTitle)).toMatchObject({
+            horizontal: true,
+            allVisible: true,
+          });
+          for (const action of await dialog.getByRole('button').all())
+            expect(await exposed(action)).toBe(true);
+        };
+        await fixedControlsFit();
+        // The long identity is in the body, not the compact visible heading.
+        expect(
+          await title.evaluate(
+            (element) => element.scrollHeight <= element.clientHeight + 1
+          )
+        ).toBe(true);
+        const geometry = await body.evaluate((element) => ({
+          scrollHeight: element.scrollHeight,
+          clientHeight: element.clientHeight,
+        }));
+        for (const paragraph of await identity.all())
+          expect((await textExposure(paragraph)).horizontal).toBe(true);
+        if (geometry.scrollHeight > geometry.clientHeight + 1) {
+          await expect(body).toHaveAttribute('tabindex', '0');
+          for (
+            let index = 0;
+            index < 8 &&
+            !(await body.evaluate(
+              (element) => element === document.activeElement
+            ));
+            index += 1
+          )
+            await page.keyboard.press('Tab');
+          await expect(body).toBeFocused();
+          await page.keyboard.press('End');
+          await expect
+            .poll(() =>
+              body.evaluate(
+                (element) =>
+                  element.scrollHeight -
+                  element.clientHeight -
+                  element.scrollTop
+              )
+            )
+            .toBeLessThanOrEqual(1);
+          expect((await textExposure(identity.last())).lastVisible).toBe(true);
+          await fixedControlsFit();
+          await page.keyboard.press('Home');
+          await expect
+            .poll(() => body.evaluate((element) => element.scrollTop))
+            .toBe(0);
+          expect((await textExposure(identity.first())).firstVisible).toBe(
+            true
+          );
+          await fixedControlsFit();
+        } else {
+          for (const paragraph of await identity.all())
+            expect((await textExposure(paragraph)).allVisible).toBe(true);
+        }
+        expect(
+          await page.evaluate(
+            () => document.documentElement.scrollWidth - innerWidth
+          )
+        ).toBe(0);
+        await info.attach('network-labels-confirmation-body-geometry', {
+          body: JSON.stringify(geometry),
+          contentType: 'application/json',
+        });
+        await capture(page);
+      }
+    );
     await page.keyboard.press('Escape');
     await expect(dialog).toHaveCount(0);
     await page.close();
