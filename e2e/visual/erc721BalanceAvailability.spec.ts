@@ -515,7 +515,7 @@ for (const { mode, width } of availabilityCases) {
       };
 
       await wallet.step(
-        'create the isolated wallet and enable normal Refresh',
+        `${mode}-${width}px: create the isolated wallet and enable normal Refresh`,
         async () => {
           await wallet!.importSeedAndCreatePassword();
           await wallet!.switchNetwork('Syscoin NEVM Testnet', 'EVM');
@@ -555,7 +555,7 @@ for (const { mode, width } of availabilityCases) {
       );
       phase = 'preview';
       await wallet.step(
-        'use ordinary manual import and read its real preview',
+        `${mode}-${width}px: use ordinary manual import and read its real preview`,
         async (capture) => {
           await openImport();
           await expect
@@ -619,7 +619,7 @@ for (const { mode, width } of availabilityCases) {
       );
       phase = 'import';
       await wallet.step(
-        'import through the real wallet and preserve exact identity on disk',
+        `${mode}-${width}px: import through the real wallet and preserve exact identity on disk`,
         async () => {
           await openImport();
           const add = page.getByRole('button', {
@@ -666,7 +666,7 @@ for (const { mode, width } of availabilityCases) {
       if (mode === 'unavailable') {
         phase = 'recovery';
         await wallet.step(
-          'recover by normal Refresh then persist at the real popup reload boundary',
+          `${mode}-${width}px: recover by normal Refresh then persist at the real popup reload boundary`,
           async () => {
             const recoveryAt = Date.now();
             failureEnabled = false;
@@ -699,7 +699,7 @@ for (const { mode, width } of availabilityCases) {
         );
       }
       await wallet.step(
-        'reload preserves the recovered or healthy imported collection',
+        `${mode}-${width}px: reload preserves the recovered or healthy imported collection`,
         async () => {
           const beforeReload = await publicAssets(page);
           // MainApp disconnect triggers the existing emergency vault save.
@@ -714,7 +714,7 @@ for (const { mode, width } of availabilityCases) {
         }
       );
       await wallet.step(
-        'verify read-only fences and immutable runtime',
+        `${mode}-${width}px: verify read-only fences and immutable runtime`,
         async () => {
           expect(unsupported).toEqual([]);
           expect(forbidden).toEqual([]);
@@ -733,7 +733,7 @@ for (const { mode, width } of availabilityCases) {
       );
       if (mode === 'unavailable') {
         await wallet.step(
-          'failed balance reads never claim known zero holdings',
+          `${mode}-${width}px: failed balance reads never claim known zero holdings`,
           async () => {
             const previewClaimsZero =
               /\b0 NFTs\b/.test(observations.preview.ownedText) &&
