@@ -34,7 +34,22 @@ jest.mock('react-redux', () => ({
   useSelector: (select: any) => select(mockState),
 }));
 jest.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({
+    t: (key: string) => {
+      if (
+        key !== 'receive.smartAccount' &&
+        key !== 'smartAccountHub.badge' &&
+        key !== 'components.imported'
+      )
+        return key;
+      return key
+        .split('.')
+        .reduce(
+          (value: any, part: string) => value[part],
+          jest.requireActual('../../assets/locales/en.json')
+        );
+    },
+  }),
 }));
 jest.mock('state/vault', () => ({
   selectActiveAccountRef: (state: any) => state.vault.activeAccount,

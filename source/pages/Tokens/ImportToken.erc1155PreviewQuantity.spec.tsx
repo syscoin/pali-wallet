@@ -42,7 +42,10 @@ jest.mock('hooks/useUtils', () => ({
 }));
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string) => key,
+    t: (key: string) =>
+      key === 'nftDetails.owned'
+        ? jest.requireActual('../../assets/locales/en.json').nftDetails.owned
+        : key,
     i18n: { language: 'en' },
   }),
 }));

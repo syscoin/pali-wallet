@@ -33,7 +33,14 @@ jest.mock('react-router-dom', () => ({
   Outlet: () => null,
 }));
 jest.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({
+    t: (key: string, values?: { balance?: string | number }) =>
+      key === 'send.nftAmountRange'
+        ? jest
+            .requireActual('../../assets/locales/en.json')
+            .send.nftAmountRange.replace('{{balance}}', String(values?.balance))
+        : key,
+  }),
 }));
 jest.mock('hooks/controllerStatus', () => ({
   getControllerStatus: () => mockStatus,

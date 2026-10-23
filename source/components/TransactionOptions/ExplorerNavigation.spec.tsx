@@ -41,7 +41,17 @@ jest.mock('react-redux', () => ({
   useSelector: (select: any) => select(mockState),
 }));
 jest.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({
+    t: (key: string, values?: { explorer?: string }) =>
+      key === 'home.viewOnNamedExplorer'
+        ? jest
+            .requireActual('../../assets/locales/en.json')
+            .home.viewOnNamedExplorer.replace(
+              '{{explorer}}',
+              String(values?.explorer)
+            )
+        : key,
+  }),
 }));
 jest.mock('state/store', () => ({
   __esModule: true,

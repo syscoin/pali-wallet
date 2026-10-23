@@ -327,6 +327,11 @@ for (const locale of locales) {
               .locator('.ant-form-item')
               .filter({ has: identifier })
               .locator('.ant-form-item-explain-error');
+            // Ant Design retains the leaving private-key error during the
+            // native validation transition. Assert one settled error before
+            // checking its exact localized guidance; do not select an arbitrary
+            // first/last item or relax the text/admission checks.
+            await expect(error).toHaveCount(1);
             await expect(error).toHaveText(
               translations.settings.invalidWatchOnlyIdentifier
             );
@@ -394,6 +399,7 @@ for (const locale of locales) {
                 exact: true,
               })
               .click();
+            await expect(error).toHaveCount(1);
             await expect(error).toHaveText(
               translations.settings.positiveChainId
             );
@@ -420,6 +426,7 @@ for (const locale of locales) {
                 exact: true,
               })
               .click();
+            await expect(error).toHaveCount(1);
             await expect(error).toHaveText(
               translations.settings.chainIdRequired
             );
@@ -481,6 +488,7 @@ for (const locale of locales) {
           const input = page.locator('#import-wallet-input');
           const error = page.locator('.ant-form-item-explain-error');
           await input.fill(BAD_CHECKSUM);
+          await expect(error).toHaveCount(1);
           await expect(error).toHaveText(translations.seedConfirm.seedError);
           await expect(page.locator('#import-wallet-action')).toBeDisabled();
           await expect(page.locator('#create-password')).toHaveCount(0);
@@ -500,6 +508,7 @@ for (const locale of locales) {
             '{{seedLength}}',
             '2'
           );
+          await expect(error).toHaveCount(1);
           await expect(error).toHaveText(guidance);
           await expect(page.locator('#import-wallet-action')).toBeDisabled();
           observations.length320 = await readableGeometry(error);

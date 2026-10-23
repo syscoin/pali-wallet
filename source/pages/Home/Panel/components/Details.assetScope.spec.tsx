@@ -53,7 +53,13 @@ jest.mock('hooks/useAdjustedExplorer', () => ({
   useAdjustedExplorer: (explorer: string) => explorer,
 }));
 jest.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({
+    t: (key: string) =>
+      key === 'tokens.assetNotFound'
+        ? jest.requireActual('../../../../assets/locales/en.json').tokens
+            .assetNotFound
+        : key,
+  }),
 }));
 jest.mock('hooks/index', () => ({
   useUtils: () => ({
