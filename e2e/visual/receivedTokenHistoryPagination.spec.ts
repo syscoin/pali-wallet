@@ -430,7 +430,7 @@ for (const mode of ['reload', 'received', 'mixed', 'partial'] as const) {
                   )
                   .toBe(true);
                 await expect(
-                  page.getByText('Hash', { exact: true })
+                  page.getByText(en.send.transactionId, { exact: true })
                 ).toBeVisible();
                 observations.openedOlderHash = oldest;
               } finally {

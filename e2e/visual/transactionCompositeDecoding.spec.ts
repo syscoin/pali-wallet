@@ -353,7 +353,7 @@ for (const mode of ['empty', 'singleton-zero'] as const) {
             page.getByText(en.transactions.decodedData, { exact: true })
           ).toBeVisible();
           const hashValue = page
-            .getByText('Hash', { exact: true })
+            .getByText(en.send.transactionId, { exact: true })
             .locator('..')
             .locator('span p')
             .first();

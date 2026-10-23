@@ -180,7 +180,9 @@ test('public explorer transaction links preserve a saved query', async ({}, info
           })
           .click();
         await expect(page).toHaveURL(/#\/home\/details/);
-        await expect(page.getByText('Txid', { exact: true })).toBeVisible();
+        await expect(
+          page.getByText(en.send.transactionId, { exact: true })
+        ).toBeVisible();
         const publicState = await page.evaluate(async () => {
           const state = await chrome.runtime.sendMessage({
             type: 'getCurrentState',

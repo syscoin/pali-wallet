@@ -463,7 +463,7 @@ for (const direction of ['outgoing', 'incoming'] as const) {
             )
             .toBe(true);
           // The provider-only gas field proves enrichment has rendered, not just started.
-          await expect(field('Gas Limit')).toHaveText('50,000');
+          await expect(field(en.send.gasLimit)).toHaveText('50,000');
           const details = page.locator('#details-view-content');
           await expect(
             details.getByText(expectedDirection, { exact: true })
@@ -488,13 +488,13 @@ for (const direction of ['outgoing', 'incoming'] as const) {
           observations.details = {
             from: await fullField('From', SPENDER),
             to: await fullField('To', recipient),
-            hash: await fullField('Hash', hash),
+            hash: await fullField(en.send.transactionId, hash),
             input: await fullField('Input', input),
           };
           for (const [label, expected] of [
             ['Gas Price', '20.00 Gwei'],
             ['Gas Used', '45,000'],
-            ['Gas Limit', '50,000'],
+            [en.send.gasLimit, '50,000'],
             ['Success', 'Success'],
           ]) {
             await expect(field(label)).toHaveText(expected);
@@ -502,7 +502,7 @@ for (const direction of ['outgoing', 'incoming'] as const) {
           observations.provider = {
             gasPrice: await field('Gas Price').innerText(),
             gasUsed: await field('Gas Used').innerText(),
-            gasLimit: await field('Gas Limit').innerText(),
+            gasLimit: await field(en.send.gasLimit).innerText(),
             success: await field('Success').innerText(),
             state: await publicHistoryState(page, hash),
           };

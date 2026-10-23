@@ -443,7 +443,7 @@ test('transaction details preserve low positive gas prices and ordinary controls
               )
               .toBe(true);
             const hashRow = page
-              .getByText('Hash', { exact: true })
+              .getByText(en.send.transactionId, { exact: true })
               .locator('..');
             await expect(hashRow.locator('span p').first()).toHaveText(
               `0x...${scenario.hash.slice(-4)}`
@@ -462,7 +462,7 @@ test('transaction details preserve low positive gas prices and ordinary controls
             ]) {
               await expect(value(label)).toHaveText(scenario.expected);
             }
-            await expect(value('Gas Limit')).toHaveText('21,000');
+            await expect(value(en.send.gasLimit)).toHaveText('21,000');
             await expect(value('Gas Used')).toHaveText('21,000');
             const screenshot = info.outputPath(
               `gas-display-${scenario.name}.png`

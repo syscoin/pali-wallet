@@ -162,7 +162,7 @@ test('UTXO Details keeps the focused Txid Copy control when its full HTTP read c
     const page = wallet.page;
     const field = (label: string) =>
       page.getByText(label, { exact: true }).locator('..');
-    const copy = field('Txid').getByRole('button');
+    const copy = field(en.send.transactionId).getByRole('button');
     const clipboard = () =>
       page.evaluate(() => (window as any).__utxoDetailsCopyAudit.snapshot());
     let baseline: Awaited<ReturnType<typeof publicContext>>;
