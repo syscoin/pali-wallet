@@ -42,11 +42,6 @@ export const AssetMarketLinks = ({
                 </a>
               );
             })}
-            {categories.length > 5 && (
-              <span className="px-2 py-1 bg-gray-700 bg-opacity-20 text-gray-400 text-xs rounded">
-                +{categories.length - 5} {t('tokens.more')}
-              </span>
-            )}
           </div>
         </div>
       )}

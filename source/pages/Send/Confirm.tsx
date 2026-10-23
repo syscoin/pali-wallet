@@ -1942,6 +1942,7 @@ export const SendConfirm = () => {
       </div>
       <Tooltip content={feeCalculationError}>
         <IconButton
+          aria-label={t('receive.retry')}
           onClick={retryFeeCalculation}
           className="p-1 hover:bg-brand-blue600 rounded-full transition-all duration-200"
         >
@@ -2272,6 +2273,7 @@ export const SendConfirm = () => {
                                   </span>
                                 </div>
                                 <IconButton
+                                  aria-label={t('receive.retry')}
                                   onClick={retryFeeCalculation}
                                   className="p-0.5 hover:bg-brand-blue600 rounded-full transition-all duration-200"
                                 >
