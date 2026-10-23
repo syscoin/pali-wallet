@@ -332,6 +332,7 @@ class MainController {
   private isRemovingNetwork = false;
   private walletSessionGeneration = 0;
   private fiatQuoteGeneration = 0;
+  private fiatPreferenceGeneration = 0;
   // Session changes cancel in-flight work; only reset invalidates valid queued
   // source-vault saves across ordinary network changes and locks.
   private walletStateGeneration = 0;
@@ -1919,26 +1920,33 @@ class MainController {
 
   // Fiat price fetching functionality moved from ControllerUtils
 
-  public saveFiatCurrency(currency: string): Promise<void> {
-    return this.setFiat(currency, true);
-  }
-
-  public async setFiat(
-    currency?: string,
-    savePreference = false
-  ): Promise<void> {
+  public async saveFiatCurrency(currency: string): Promise<void> {
     const generation = this.fiatQuoteGeneration;
     const walletGeneration = this.walletStateGeneration;
+    // Saving a preference must not wait for the quote service or its mutex.
+    // Only acknowledge the guarded durable write; refresh the display separately.
+    await persistFiatCurrency(
+      currency,
+      () => walletGeneration === this.walletStateGeneration
+    );
+    this.fiatPreferenceGeneration += 1;
+    if (generation !== this.fiatQuoteGeneration) return;
+    void this.setFiat().catch((error) =>
+      console.error('[MainController] Failed to refresh saved currency:', error)
+    );
+  }
+
+  public async setFiat(currency?: string): Promise<void> {
+    const generation = this.fiatQuoteGeneration;
+    const preferenceGeneration = this.fiatPreferenceGeneration;
     // Use AsyncMutex for cross-context synchronization
     // This ensures only one price update runs at a time across all contexts
     return fiatPriceMutex.runExclusive(async () => {
-      if (savePreference && currency) {
-        await persistFiatCurrency(
-          currency,
-          () => walletGeneration === this.walletStateGeneration
-        );
-      }
-      if (generation !== this.fiatQuoteGeneration) return;
+      if (
+        generation !== this.fiatQuoteGeneration ||
+        preferenceGeneration !== this.fiatPreferenceGeneration
+      )
+        return;
       if (!currency) {
         const storeCurrency = store.getState().price.fiat.asset;
         currency = storeCurrency || 'usd';
@@ -1959,6 +1967,8 @@ class MainController {
       const sourceId = priceSource();
       const isCurrent = () =>
         generation === this.fiatQuoteGeneration &&
+        preferenceGeneration === this.fiatPreferenceGeneration &&
+        currency === store.getState().price.fiat.asset &&
         networkKey === fiatNetworkKey(store.getState().vault.activeNetwork) &&
         sourceId === priceSource();
 
