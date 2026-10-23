@@ -231,11 +231,17 @@ async function copyBoth(page: Page, buttons: Locator, addresses: string[]) {
     await expect
       .poll(async () => (await clipboardAudit(page)).writes)
       .toHaveLength(index * 2 + 1);
+    // Observe the real scheduled feedback before awaiting its removal below.
+    // Otherwise a zero-count check can precede the toast's insertion.
+    await expect(page.locator('.Toastify__toast')).toHaveCount(1);
     await tabTo(page, button);
     await page.keyboard.press('Enter');
     await expect
       .poll(async () => (await clipboardAudit(page)).writes)
       .toHaveLength(index * 2 + 2);
+    // Keep the next Copy target and same-request resize free of a preceding
+    // success notice without hiding feedback or relaxing the hitpoint checks.
+    await expect(page.locator('.Toastify__toast')).toHaveCount(0);
   }
   const audit = await clipboardAudit(page);
   expect(audit).toEqual({
