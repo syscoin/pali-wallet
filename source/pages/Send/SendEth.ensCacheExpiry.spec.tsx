@@ -248,7 +248,9 @@ describe.each(['typed', 'suggestion', 'held-suggestion'] as const)(
         if (entry !== 'typed')
           await act(async () => {
             fireEvent.click(
-              screen.getByRole('button', { name: `${NAME} (ENS) ens` })
+              screen.getByRole('button', {
+                name: `${NAME} (ENS), ${NAME}, ENS`,
+              })
             );
           });
         fireEvent.click(next);
@@ -297,7 +299,9 @@ describe.each(['next', 'suggestion'] as const)(
           if (entry === 'next') fireEvent.click(next);
           else
             fireEvent.click(
-              screen.getByRole('button', { name: `${NAME} (ENS) ens` })
+              screen.getByRole('button', {
+                name: `${NAME} (ENS), ${NAME}, ENS`,
+              })
             );
         });
         expect(receiver).toHaveValue(NAME);
@@ -330,7 +334,9 @@ it('preserves the ENS name in a saved draft and resolves it again after reopenin
   const receiver = screen.getByPlaceholderText('send.receiver');
   fireEvent.change(receiver, { target: { value: NAME } });
   await act(async () => {
-    fireEvent.click(screen.getByRole('button', { name: `${NAME} (ENS) ens` }));
+    fireEvent.click(
+      screen.getByRole('button', { name: `${NAME} (ENS), ${NAME}, ENS` })
+    );
   });
   fireEvent.blur(receiver);
   await waitFor(() =>
