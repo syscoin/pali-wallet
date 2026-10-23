@@ -121,7 +121,7 @@ const open = async () => {
   await user.click(trigger);
   return { user, trigger };
 };
-const expectActive = async (name: RegExp) => {
+const expectActive = async (name: string) => {
   const item = screen.getByRole('menuitem', { name });
   await waitFor(() =>
     expect(screen.getByRole('menu').getAttribute('aria-activedescendant')).toBe(
@@ -141,14 +141,14 @@ const expectBetaSelected = async () => {
 it('selects an account from fresh pointer-opened menu typeahead', async () => {
   const { user, trigger } = await open();
   await user.keyboard('Beta');
-  await expectActive(/Beta.*tsys1qbeta/);
+  await expectActive('Beta (tsys1qbeta)');
   await user.keyboard('{Enter}');
   await expectBetaSelected();
   expect(screen.queryByRole('menu')).toBeNull();
   await user.click(trigger);
   expect(
     screen
-      .getByRole('menuitem', { name: /Beta.*tsys1qbeta/ })
+      .getByRole('menuitem', { name: 'Beta (tsys1qbeta)' })
       .getAttribute('aria-current')
   ).toBe('true');
 });
@@ -158,14 +158,14 @@ it.each(['Escape', 'Tab'])(
   async (dismissal) => {
     const { user, trigger } = await open();
     await user.keyboard('Alpha');
-    await expectActive(/Alpha.*tsys1qalpha/);
+    await expectActive('Alpha (tsys1qalpha)');
     await user.keyboard(`{${dismissal}}`);
     expect(screen.queryByRole('menu')).toBeNull();
     expect(mockEmitter).not.toHaveBeenCalled();
     await act(async () => new Promise((resolve) => setTimeout(resolve, 400)));
     await user.click(trigger);
     await user.keyboard('Beta');
-    const beta = screen.getByRole('menuitem', { name: /Beta.*tsys1qbeta/ });
+    const beta = screen.getByRole('menuitem', { name: 'Beta (tsys1qbeta)' });
     const activeId = screen
       .getByRole('menu')
       .getAttribute('aria-activedescendant');
@@ -190,13 +190,13 @@ it.each(['Escape', 'Tab'])(
 it('starts account typeahead after outside dismissal and the native query timeout', async () => {
   const { user, trigger } = await open();
   await user.keyboard('Alpha');
-  await expectActive(/Alpha.*tsys1qalpha/);
+  await expectActive('Alpha (tsys1qalpha)');
   await user.click(screen.getByRole('button', { name: 'After header' }));
   expect(screen.queryByRole('menu')).toBeNull();
   await act(async () => new Promise((resolve) => setTimeout(resolve, 400)));
   await user.click(trigger);
   await user.keyboard('Beta');
-  await expectActive(/Beta.*tsys1qbeta/);
+  await expectActive('Beta (tsys1qbeta)');
   await user.keyboard('{Enter}');
   await expectBetaSelected();
 });
@@ -206,9 +206,9 @@ it('starts fresh account typeahead when keyboard reopening focuses the first ite
   await user.keyboard('Alpha{Escape}');
   await waitFor(() => expect(document.activeElement).toBe(trigger));
   await user.keyboard('{Enter}');
-  await expectActive(/Alpha.*tsys1qalpha/);
+  await expectActive('Alpha (tsys1qalpha)');
   await user.keyboard('Beta');
-  await expectActive(/Beta.*tsys1qbeta/);
+  await expectActive('Beta (tsys1qbeta)');
   await user.keyboard('{Enter}');
   await expectBetaSelected();
 });
@@ -217,7 +217,7 @@ it('keeps direct pointer account selection usable after Escape dismissal', async
   const { user, trigger } = await open();
   await user.keyboard('Alpha{Escape}');
   await user.click(trigger);
-  await user.click(screen.getByRole('menuitem', { name: /Beta.*tsys1qbeta/ }));
+  await user.click(screen.getByRole('menuitem', { name: 'Beta (tsys1qbeta)' }));
   await expectBetaSelected();
   expect(screen.queryByRole('menu')).toBeNull();
 });
@@ -248,7 +248,7 @@ it('starts fresh account typeahead after a zero-detail opening click', async () 
   await waitFor(() => expect(document.activeElement).toBe(trigger));
   fireEvent.click(trigger, { detail: 0 });
   await user.keyboard('Beta');
-  await expectActive(/Beta.*tsys1qbeta/);
+  await expectActive('Beta (tsys1qbeta)');
   await user.keyboard('{Enter}');
   await expectBetaSelected();
   expect(screen.queryByRole('menu')).toBeNull();

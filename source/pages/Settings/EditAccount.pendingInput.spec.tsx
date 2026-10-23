@@ -171,7 +171,9 @@ const mountAndEdit = async () => {
     </MemoryRouter>
   );
   await user.click(
-    screen.getByRole('button', { name: 'buttons.edit: Second account' })
+    screen.getByRole('button', {
+      name: 'buttons.edit: Second account (0x2222222222222222222222222222222222222222)',
+    })
   );
   const input = screen.getByPlaceholderText('settings.accountLabel');
   expect(input).toHaveProperty('type', 'text');
@@ -218,7 +220,9 @@ it('locks only the current label input while its captured Save is pending', asyn
   expect(mockEmitter.mock.calls[0][1][0]).toBe('Saved A');
   await act(async () => pending.resolve());
   expect(
-    await screen.findByRole('button', { name: 'buttons.edit: Saved A' })
+    await screen.findByRole('button', {
+      name: 'buttons.edit: Saved A (0x2222222222222222222222222222222222222222)',
+    })
   ).toBeVisible();
   expect(mockAlert.success).toHaveBeenCalledTimes(1);
 });
@@ -231,7 +235,9 @@ it('lets an unchanged delayed Save return normally to Manage Accounts', async ()
   await waitFor(() => expect(mockEmitter).toHaveBeenCalledTimes(1));
   await act(async () => pending.resolve());
   expect(
-    await screen.findByRole('button', { name: 'buttons.edit: Stable label' })
+    await screen.findByRole('button', {
+      name: 'buttons.edit: Stable label (0x2222222222222222222222222222222222222222)',
+    })
   ).toBeVisible();
   expect(mockAlert.success).toHaveBeenCalledWith(
     'settings.accountLabelEditedSuccessfully'
@@ -243,7 +249,9 @@ it('submits native Enter with the exact edited account and label', async () => {
   await typeLabel(user, input, 'Keyboard target');
   await user.keyboard('{Enter}');
   expect(
-    await screen.findByRole('button', { name: 'buttons.edit: Keyboard target' })
+    await screen.findByRole('button', {
+      name: 'buttons.edit: Keyboard target (0x2222222222222222222222222222222222222222)',
+    })
   ).toBeVisible();
   expect(mockEmitter).toHaveBeenCalledWith(
     ['wallet', 'editAccountLabel'],
@@ -275,7 +283,9 @@ it('re-enables the label after a failed Save and allows editing and retry', asyn
   await typeLabel(user, input, 'Retried B');
   await user.click(screen.getByRole('button', { name: 'buttons.save' }));
   expect(
-    await screen.findByRole('button', { name: 'buttons.edit: Retried B' })
+    await screen.findByRole('button', {
+      name: 'buttons.edit: Retried B (0x2222222222222222222222222222222222222222)',
+    })
   ).toBeVisible();
   expect(mockEmitter).toHaveBeenCalledTimes(2);
   expect(mockEmitter.mock.calls[1][1][0]).toBe('Retried B');
@@ -289,7 +299,9 @@ it('does not lock a different account entry while an earlier entry Save complete
   await waitFor(() => expect(mockEmitter).toHaveBeenCalledTimes(1));
   await user.click(screen.getByRole('button', { name: 'Back to accounts' }));
   await user.click(
-    screen.getByRole('button', { name: 'buttons.edit: Reserve' })
+    screen.getByRole('button', {
+      name: 'buttons.edit: Reserve (0x1111111111111111111111111111111111111111)',
+    })
   );
   const current = screen.getByPlaceholderText('settings.accountLabel');
   expect(current).toBeEnabled();
@@ -300,7 +312,9 @@ it('does not lock a different account entry while an earlier entry Save complete
   expect(mockAlert.success).not.toHaveBeenCalled();
   await user.click(screen.getByRole('button', { name: 'buttons.save' }));
   expect(
-    await screen.findByRole('button', { name: 'buttons.edit: Reserve B' })
+    await screen.findByRole('button', {
+      name: 'buttons.edit: Reserve B (0x1111111111111111111111111111111111111111)',
+    })
   ).toBeVisible();
   expect(mockEmitter.mock.calls[1][1].slice(0, 3)).toEqual([
     'Reserve B',
@@ -334,7 +348,9 @@ it('preserves meaningful leading and trailing spaces when saving by Enter', asyn
   await user.keyboard('{Enter}');
 
   expect(
-    await screen.findByRole('button', { name: 'buttons.edit: Family savings' })
+    await screen.findByRole('button', {
+      name: 'buttons.edit: Family savings (0x2222222222222222222222222222222222222222)',
+    })
   ).toBeVisible();
   expect(mockEmitter).toHaveBeenCalledTimes(1);
   expect(mockEmitter.mock.calls[0][1].slice(0, 3)).toEqual([

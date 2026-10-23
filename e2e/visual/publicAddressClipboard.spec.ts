@@ -79,7 +79,10 @@ for (const view of ['header', 'receive', 'edit'] as const) {
       if (view === 'edit') {
         await wallet.gotoRoute('#/settings/manage-accounts');
         await page
-          .getByRole('button', { name: `Edit: ${original.label}`, exact: true })
+          .getByRole('button', {
+            name: `Edit: ${original.label} (${original.address})`,
+            exact: true,
+          })
           .click();
         await expect(page).toHaveURL(/settings\/edit-account/);
       }

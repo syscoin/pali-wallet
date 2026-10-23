@@ -120,7 +120,9 @@ const openRemoval = () => {
     </Provider>
   );
   fireEvent.click(
-    screen.getByRole('button', { name: 'buttons.remove: Old wallet account' })
+    screen.getByRole('button', {
+      name: `buttons.remove: Old wallet account (${TARGET})`,
+    })
   );
   const dialog = screen.getByRole('dialog', { name: 'settings.removeAccount' });
   fireEvent.click(

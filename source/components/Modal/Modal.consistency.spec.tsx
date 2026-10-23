@@ -1,4 +1,5 @@
 /** @jest-environment jsdom */
+import '@testing-library/jest-dom';
 import {
   fireEvent,
   render,
@@ -254,4 +255,49 @@ it('keeps successful account sheet callbacks and removes fixed-width action over
   expect(button.className).not.toContain('w-[22rem]');
   fireEvent.click(button);
   expect(onClose).toHaveBeenCalledTimes(1);
+});
+
+it('permits wrapping an unbroken public identity without changing text, sibling content or confirmation actions', async () => {
+  const publicAddress = '0x2222222222222222222222222222222222222222';
+  const description = `Remove the Pali account "Daily (${publicAddress})"?`;
+  const onClose = jest.fn();
+  const onClick = jest.fn();
+  const user = userEvent.setup();
+  render(
+    <ConfirmationModal
+      show
+      title="Remove Account"
+      description={description}
+      buttonText="Remove"
+      onClose={onClose}
+      onClick={onClick}
+    >
+      <p data-testid="caller-content" className="caller-content">
+        Independently styled caller content
+      </p>
+    </ConfirmationModal>
+  );
+  const dialog = screen.getByRole('dialog', { name: 'Remove Account' });
+  const paragraph = within(dialog).getByText(description, { exact: true });
+  expect(paragraph.tagName).toBe('P');
+  expect(paragraph).toHaveClass('[overflow-wrap:anywhere]');
+  // No inserted soft breaks, truncation or altered address bytes.
+  expect(paragraph.textContent).toBe(description);
+  const callerContent = within(dialog).getByTestId('caller-content');
+  expect(callerContent).toHaveClass('caller-content');
+  expect(callerContent).not.toHaveClass('[overflow-wrap:anywhere]');
+  expect(paragraph).not.toContainElement(callerContent);
+  const cancel = within(dialog).getByRole('button', { name: 'Cancel' });
+  const confirm = within(dialog).getByRole('button', { name: 'Remove' });
+  expect(cancel).toHaveAttribute('id', 'cancel-btn');
+  expect(confirm).toHaveAttribute('id', 'confirm-btn');
+  expect(cancel).toBeEnabled();
+  expect(confirm).toBeEnabled();
+  await user.click(cancel);
+  expect(onClose).toHaveBeenCalledTimes(1);
+  expect(onClick).not.toHaveBeenCalled();
+  // This controlled test keeps show=true after the callback, so the unchanged
+  // ordinary Confirm handler remains directly testable without a remount.
+  await user.click(confirm);
+  expect(onClick).toHaveBeenCalledTimes(1);
 });

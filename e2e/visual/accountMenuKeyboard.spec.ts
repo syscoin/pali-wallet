@@ -153,7 +153,7 @@ test('account dropdown supports keyboard selection and separate copy actions in 
       await expect.poll(() => isActiveMenuItem(menu, firstAccount)).toBe(true);
       await expect.poll(() => exposed(firstAccount)).toBe(true);
       const copyOriginal = menu.getByRole('menuitem', {
-        name: `${en.buttons.copy}: ${original.label}`,
+        name: `${en.buttons.copy}: ${original.label} (${original.address})`,
         exact: true,
       });
       await expect.poll(() => exposed(copyOriginal)).toBe(true);
@@ -258,7 +258,7 @@ test('account dropdown supports keyboard selection and separate copy actions in 
       await expect.poll(() => isActiveMenuItem(menu, firstAccount)).toBe(true);
       await page.keyboard.press('ArrowDown');
       const copyFirst = menu.getByRole('menuitem', {
-        name: `${en.buttons.copy}: ${original.label}`,
+        name: `${en.buttons.copy}: ${original.label} (${original.address})`,
         exact: true,
       });
       await expect.poll(() => isActiveMenuItem(menu, copyFirst)).toBe(true);

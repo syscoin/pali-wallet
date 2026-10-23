@@ -316,8 +316,12 @@ const RenderAccountsListByBitcoinBased =
                 <button
                   type="button"
                   disabled={busy}
-                  title={t('buttons.copy')}
-                  aria-label={`${t('buttons.copy')}: ${account.label}`}
+                  title={`${t('buttons.copy')}: ${account.label} (${
+                    account.address
+                  })`}
+                  aria-label={`${t('buttons.copy')}: ${account.label} (${
+                    account.address
+                  })`}
                   className={`flex items-center justify-center flex-shrink-0 min-w-[44px] min-h-[38px] rounded-lg text-brand-gray300 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue ${
                     active
                       ? 'bg-brand-blue500/30 text-white'

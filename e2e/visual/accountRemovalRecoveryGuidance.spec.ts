@@ -175,7 +175,7 @@ test('account removal explains private-import backup needs and Cancel preserves 
       expect(before.persisted).toContainEqual(target!);
       await page
         .getByRole('button', {
-          name: `${en.buttons.remove}: ${label}`,
+          name: `${en.buttons.remove}: ${label} (${target!.address})`,
           exact: true,
         })
         .click();
@@ -185,7 +185,7 @@ test('account removal explains private-import backup needs and Cancel preserves 
       });
       await expect(dialog).toBeVisible();
       const copy = await dialog.innerText();
-      expect(copy).toContain(label);
+      expect(copy).toContain(`${label} (${target!.address})`);
       if (kind === 'Imported') {
         expect(target!.hasSigningRecord).toBe(true);
         expect(target!.imported).toBe(true);

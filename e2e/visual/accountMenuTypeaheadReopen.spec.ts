@@ -347,7 +347,7 @@ for (const dismissal of ['Escape', 'Tab'] as const) {
           const first = await expectExposed(accountItem(original));
           await page.keyboard.press('ArrowDown');
           const copy = menu.getByRole('menuitem', {
-            name: `${en.buttons.copy}: ${original.label}`,
+            name: `${en.buttons.copy}: ${original.label} (${original.address})`,
             exact: true,
           });
           await expect.poll(() => activeItem(menu, copy)).toBe(true);

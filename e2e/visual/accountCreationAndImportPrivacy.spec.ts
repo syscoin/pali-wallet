@@ -281,6 +281,24 @@ test('account actions are distinct and reachable; private import stays masked ac
               .getByRole('button', { name: en.buttons.ok, exact: true })
               .click();
           }
+          const accountIdentities = await page.evaluate(async () => {
+            const state = await chrome.runtime.sendMessage({
+              type: 'getCurrentState',
+            });
+            return [1, 2].map((id) => {
+              const account = state.vault.accounts.HDAccount[id];
+              return {
+                id: account.id,
+                label: account.label,
+                address: account.address,
+              };
+            });
+          });
+          expect(accountIdentities).toMatchObject([
+            { id: 1, label: 'Family savings — travel and rainy-day fund 2026' },
+            { id: 2, label: 'Spending account' },
+          ]);
+          const [savings, spending] = accountIdentities;
           await wallet.gotoRoute('#/settings/manage-accounts');
           for (const width of [320, 400]) {
             await page.setViewportSize({
@@ -304,13 +322,13 @@ test('account actions are distinct and reachable; private import stays masked ac
             }
             await expect(
               page.getByRole('button', {
-                name: `${en.buttons.edit}: Family savings — travel and rainy-day fund 2026`,
+                name: `${en.buttons.edit}: ${savings.label} (${savings.address})`,
                 exact: true,
               })
             ).toHaveCount(1);
             await expect(
               page.getByRole('button', {
-                name: `${en.buttons.remove}: Family savings — travel and rainy-day fund 2026`,
+                name: `${en.buttons.remove}: ${savings.label} (${savings.address})`,
                 exact: true,
               })
             ).toHaveCount(1);
@@ -318,20 +336,20 @@ test('account actions are distinct and reachable; private import stays masked ac
             // retain their removal protection even though editing is allowed.
             await expect(
               page.getByRole('button', {
-                name: `${en.buttons.edit}: Spending account`,
+                name: `${en.buttons.edit}: ${spending.label} (${spending.address})`,
                 exact: true,
               })
             ).toHaveCount(1);
             await expect(
               page.getByRole('button', {
-                name: `${en.buttons.remove}: Spending account`,
+                name: `${en.buttons.remove}: ${spending.label} (${spending.address})`,
                 exact: true,
               })
             ).toHaveCount(0);
             const targets = [];
             for (const name of [
-              `${en.buttons.edit}: Family savings — travel and rainy-day fund 2026`,
-              `${en.buttons.remove}: Family savings — travel and rainy-day fund 2026`,
+              `${en.buttons.edit}: ${savings.label} (${savings.address})`,
+              `${en.buttons.remove}: ${savings.label} (${savings.address})`,
             ]) {
               targets.push(
                 await visibleAction(
@@ -345,7 +363,7 @@ test('account actions are distinct and reachable; private import stays masked ac
               await visibleAction(
                 page,
                 page.getByRole('button', {
-                  name: `${en.buttons.edit}: Spending account`,
+                  name: `${en.buttons.edit}: ${spending.label} (${spending.address})`,
                   exact: true,
                 })
               )
@@ -357,7 +375,7 @@ test('account actions are distinct and reachable; private import stays masked ac
             };
           }
           const edit = page.getByRole('button', {
-            name: `${en.buttons.edit}: Family savings — travel and rainy-day fund 2026`,
+            name: `${en.buttons.edit}: ${savings.label} (${savings.address})`,
             exact: true,
           });
           await edit.focus();

@@ -57,6 +57,14 @@ test('account lists remain compact with 44px actions and seven accounts', async 
     const list = page.locator(
       '[data-navigation-scroll="settings-manage-accounts"]'
     );
+    const finalAccount = await page.evaluate(async () => {
+      const state = await chrome.runtime.sendMessage({
+        type: 'getCurrentState',
+      });
+      const account = state.vault.accounts.HDAccount[6];
+      return { id: account.id, label: account.label, address: account.address };
+    });
+    expect(finalAccount).toMatchObject({ id: 6, label: 'Density account 6' });
     await wallet.step('open all seven managed accounts', async () => {
       await wallet!.gotoRoute('#/settings/manage-accounts');
       await expect(list.locator('li')).toHaveCount(7);
@@ -112,7 +120,7 @@ test('account lists remain compact with 44px actions and seven accounts', async 
         `reach the final account at ${viewport.width}x${viewport.height}`,
         async () => {
           const last = page.getByRole('button', {
-            name: 'Edit: Density account 6',
+            name: `Edit: ${finalAccount.label} (${finalAccount.address})`,
             exact: true,
           });
           await last.scrollIntoViewIfNeeded();

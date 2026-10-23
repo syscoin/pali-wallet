@@ -76,6 +76,7 @@ test('account label input stays locked until its genuine completed Save is ackno
       server.url
     );
     const page = wallet.page;
+    let accountAddress = '';
     const input = page.getByPlaceholder(en.settings.accountLabel, {
       exact: true,
     });
@@ -92,11 +93,12 @@ test('account label input stays locked until its genuine completed Save is ackno
         const before = await publicAccount(page);
         expect(before.active).toEqual({ id: 0, type: 'HDAccount' });
         expect(before.live).toEqual(before.saved);
+        accountAddress = before.live.address;
         observations.before = before;
         await wallet!.gotoRoute('#/settings/manage-accounts');
         await page
           .getByRole('button', {
-            name: `${en.buttons.edit}: ${before.live.label}`,
+            name: `${en.buttons.edit}: ${before.live.label} (${accountAddress})`,
             exact: true,
           })
           .click();
@@ -231,7 +233,7 @@ test('account label input stays locked until its genuine completed Save is ackno
         await expect(page).toHaveURL(/#\/settings\/manage-accounts$/);
         await expect(
           page.getByRole('button', {
-            name: `${en.buttons.edit}: ${FIRST_LABEL}`,
+            name: `${en.buttons.edit}: ${FIRST_LABEL} (${accountAddress})`,
             exact: true,
           })
         ).toBeVisible();
@@ -249,7 +251,7 @@ test('account label input stays locked until its genuine completed Save is ackno
       async () => {
         await page
           .getByRole('button', {
-            name: `${en.buttons.edit}: ${FIRST_LABEL}`,
+            name: `${en.buttons.edit}: ${FIRST_LABEL} (${accountAddress})`,
             exact: true,
           })
           .click();
@@ -260,7 +262,7 @@ test('account label input stays locked until its genuine completed Save is ackno
         await expect(page).toHaveURL(/#\/settings\/manage-accounts$/);
         await expect(
           page.getByRole('button', {
-            name: `${en.buttons.edit}: ${NEXT_LABEL}`,
+            name: `${en.buttons.edit}: ${NEXT_LABEL} (${accountAddress})`,
             exact: true,
           })
         ).toBeVisible();
@@ -287,7 +289,7 @@ test('account label input stays locked until its genuine completed Save is ackno
         );
         await page
           .getByRole('button', {
-            name: `${en.buttons.edit}: ${NEXT_LABEL}`,
+            name: `${en.buttons.edit}: ${NEXT_LABEL} (${accountAddress})`,
             exact: true,
           })
           .click();
@@ -323,13 +325,13 @@ test('account label input stays locked until its genuine completed Save is ackno
         await input.press('Enter');
         await expect(page).toHaveURL(/#\/settings\/manage-accounts$/);
         const edited = page.getByRole('button', {
-          name: `${en.buttons.edit}: Family savings`,
+          name: `${en.buttons.edit}: Family savings (${accountAddress})`,
           exact: true,
         });
         await expect(edited).toBeVisible();
         await expect(edited).toHaveAttribute(
           'aria-label',
-          `${en.buttons.edit}: ${PADDED_LABEL}`
+          `${en.buttons.edit}: ${PADDED_LABEL} (${accountAddress})`
         );
         const current = await publicAccount(page);
         expect(current.active).toEqual({ id: 0, type: 'HDAccount' });

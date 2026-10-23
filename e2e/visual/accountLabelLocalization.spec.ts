@@ -204,7 +204,7 @@ for (const locale of locales) {
           await expect(page).toHaveURL(/#\/settings\/manage-accounts$/);
           await page
             .getByRole('button', {
-              name: `${locale.translations.buttons.edit}: ${before.live.label}`,
+              name: `${locale.translations.buttons.edit}: ${before.live.label} (${before.live.address})`,
               exact: true,
             })
             .click();
@@ -253,7 +253,7 @@ for (const locale of locales) {
           await input.press('Enter');
           await expect(page).toHaveURL(/#\/settings\/manage-accounts$/);
           const edit = page.getByRole('button', {
-            name: `${locale.translations.buttons.edit}: ${locale.nextLabel}`,
+            name: `${locale.translations.buttons.edit}: ${locale.nextLabel} (${before.live.address})`,
             exact: true,
           });
           await expect(edit).toBeVisible();

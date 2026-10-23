@@ -189,11 +189,15 @@ test('recipient suggestions distinguish identical editable labels and use the sa
         .click();
       await page.getByRole('menuitem', { name: action, exact: true }).click();
     };
-    const rename = async (oldLabel: string, newLabel: string) => {
+    const rename = async (id: number, oldLabel: string, newLabel: string) => {
       await openGeneral(en.accountMenu.manageAccounts);
+      const target = (await publicAccounts(page)).accounts.find(
+        (account) => account.id === id
+      );
+      expect(target?.label).toBe(oldLabel);
       await page
         .getByRole('button', {
-          name: `${en.buttons.edit}: ${oldLabel}`,
+          name: `${en.buttons.edit}: ${oldLabel} (${target!.address})`,
           exact: true,
         })
         .click();
@@ -238,7 +242,11 @@ test('recipient suggestions distinguish identical editable labels and use the sa
         await wallet!.ensureOnHome();
         const initial = await publicAccounts(page);
         expect(initial.accounts).toHaveLength(1);
-        await rename(initial.accounts[0].label, 'Daily recipient');
+        await rename(
+          initial.accounts[0].id,
+          initial.accounts[0].label,
+          'Daily recipient'
+        );
         await openGeneral(en.accountMenu.createNewAccount);
         await page.locator('#account-name-input').fill('Savings recipient');
         await page.locator('#create-btn').click();
@@ -276,8 +284,8 @@ test('recipient suggestions distinguish identical editable labels and use the sa
     await wallet.step(
       'ordinary edits permit two accounts to share the same label',
       async () => {
-        await rename('Daily recipient', SHARED_LABEL);
-        await rename('Savings recipient', SHARED_LABEL);
+        await rename(0, 'Daily recipient', SHARED_LABEL);
+        await rename(1, 'Savings recipient', SHARED_LABEL);
         const renamed = await publicAccounts(page);
         expect(renamed.accounts.map((a) => a.label)).toEqual([
           SHARED_LABEL,

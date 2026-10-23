@@ -167,17 +167,23 @@ describe('account removal confirmation context', () => {
 
   it('names edit and removal controls for their account and keeps 44px targets', () => {
     const view = render();
-    for (const label of ['Anchor', 'Selected']) {
+    for (const [label, address] of [
+      ['Anchor', 'anchor-address'],
+      ['Selected', 'selected-address'],
+    ]) {
       const edit = findElement(
         view,
-        (element) => element.props['aria-label'] === `buttons.edit: ${label}`
+        (element) =>
+          element.props['aria-label'] === `buttons.edit: ${label} (${address})`
       )!;
       expect(edit).toBeDefined();
       expect(edit.props.className).toContain('h-11 w-11');
     }
     const remove = findElement(
       view,
-      (element) => element.props['aria-label'] === 'buttons.remove: Selected'
+      (element) =>
+        element.props['aria-label'] ===
+        'buttons.remove: Selected (selected-address)'
     )!;
     expect(remove).toBeDefined();
     expect(remove.props.className).toContain('h-11 w-11');
@@ -192,7 +198,8 @@ describe('account removal confirmation context', () => {
     expect(row.props.className).not.toContain('py-2');
     const action = findElement(
       row,
-      (element) => element.props['aria-label'] === 'buttons.edit: Anchor'
+      (element) =>
+        element.props['aria-label'] === 'buttons.edit: Anchor (anchor-address)'
     )!;
     expect(action.props.className).toContain('h-11 w-11');
   });

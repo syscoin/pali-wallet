@@ -249,9 +249,12 @@ it.each(cases)(
     );
     const before = mockStore.getState() as any;
     expect(before.vault.accounts[kind][id].label).toBe(label);
+    const accountIdentity = `${label} (${before.vault.accounts[kind][id].address})`;
     const user = userEvent.setup();
     await user.click(
-      screen.getByRole('button', { name: `${copy.buttons.remove}: ${label}` })
+      screen.getByRole('button', {
+        name: `${copy.buttons.remove}: ${accountIdentity}`,
+      })
     );
     const dialog = screen.getByRole('dialog', {
       name: copy.settings.removeAccount,
@@ -265,7 +268,7 @@ it.each(cases)(
         ? 'Pali'
         : kind;
     const question = i18n.t('settings.removeAccountConfirmation', {
-      accountName: label,
+      accountName: accountIdentity,
       accountType,
     });
     const warning = copy.settings.importedAccountRemovalWarning;
