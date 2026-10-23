@@ -582,6 +582,7 @@
     "accountLabelEditedSuccessfully": "Étiquette de compte modifiée avec succès !",
     "editAccount": "MODIFIER LE COMPTE",
     "accountLabel": "Étiquette du compte",
+    "newLabel": "Entrez un nouveau nom.",
     "rpcSuccessfullyAdded": "RPC ajouté avec succès.",
     "toAddNetwork": "pour ajouter un réseau",
     "thisWillAllow": "Cela permettra d'utiliser ce réseau dans Pali.",

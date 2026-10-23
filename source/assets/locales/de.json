@@ -582,6 +582,7 @@
     "accountLabelEditedSuccessfully": "Konto-Bezeichnung erfolgreich bearbeitet!",
     "editAccount": "KONTO BEARBEITEN",
     "accountLabel": "Konto-Bezeichnung",
+    "newLabel": "Neuen Namen eingeben.",
     "rpcSuccessfullyAdded": "RPC erfolgreich hinzugefügt.",
     "toAddNetwork": "Netzwerk hinzufügen",
     "thisWillAllow": "Dies ermöglicht die Verwendung dieses Netzwerks in Pali.",

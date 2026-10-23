@@ -582,6 +582,7 @@
     "accountLabelEditedSuccessfully": "Rótulo da conta editado com sucesso!",
     "editAccount": "EDITAR CONTA",
     "accountLabel": "Rótulo da Conta",
+    "newLabel": "Insira um novo rótulo.",
     "rpcSuccessfullyAdded": "RPC adicionado com sucesso.",
     "toAddNetwork": "para adicionar uma rede",
     "thisWillAllow": "Isso permitirá que esta rede seja usada no Pali.",

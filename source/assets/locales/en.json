@@ -582,6 +582,7 @@
     "accountLabelEditedSuccessfully": "Account label edited successfully!",
     "editAccount": "EDIT ACCOUNT",
     "accountLabel": "Account Label",
+    "newLabel": "Enter a new label.",
     "rpcSuccessfullyAdded": "RPC successfully added.",
     "toAddNetwork": "to add a network",
     "thisWillAllow": "This will allow this network to be used within Pali.",

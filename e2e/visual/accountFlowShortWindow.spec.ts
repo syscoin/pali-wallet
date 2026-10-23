@@ -104,10 +104,7 @@ test('account label validation remains visible at short heights', async ({}, inf
       });
       await wheelTo(page, save);
       await save.click();
-      const error = page.getByText(
-        'Label must be non-empty and different from current label',
-        { exact: true }
-      );
+      const error = page.getByText(en.settings.newLabel, { exact: true });
       await expect(error).toBeVisible();
       await info.attach(`account-label-error-${height}`, {
         body: await page.screenshot({ animations: 'disabled' }),

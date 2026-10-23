@@ -245,14 +245,10 @@ const EditAccountView = () => {
             () => ({
               async validator(_, value) {
                 if (value && value.trim().length > 0 && value !== state.label) {
-                  return Promise.resolve();
+                  return;
                 }
 
-                return Promise.reject(
-                  new Error(
-                    'Label must be non-empty and different from current label'
-                  )
-                );
+                throw new Error(t('settings.newLabel'));
               },
             }),
           ]}

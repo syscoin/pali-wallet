@@ -300,10 +300,7 @@ test('account label input stays locked until its genuine completed Save is ackno
           await input.fill(label);
           await save.click();
           await expect(
-            page.getByText(
-              'Label must be non-empty and different from current label',
-              { exact: true }
-            )
+            page.getByText(en.settings.newLabel, { exact: true })
           ).toBeVisible();
           await expect(input).toHaveValue(label);
           await expect(input).toBeEnabled();

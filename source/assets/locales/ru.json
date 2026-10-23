@@ -582,6 +582,7 @@
     "accountLabelEditedSuccessfully": "Метка аккаунта успешно отредактирована!",
     "editAccount": "РЕДАКТИРОВАТЬ АККАУНТ",
     "accountLabel": "Метка аккаунта",
+    "newLabel": "Введите новую метку.",
     "rpcSuccessfullyAdded": "RPC успешно добавлен.",
     "toAddNetwork": "добавить сеть",
     "thisWillAllow": "Это позволит использовать эту сеть в Pali.",
