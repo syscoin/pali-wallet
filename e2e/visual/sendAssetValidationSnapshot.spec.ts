@@ -624,9 +624,17 @@ test('Send keeps asset validation bound to the request while genuine ENS HTTP re
         await page
           .getByRole('button', { name: en.home.importToken, exact: true })
           .click();
-        await page
-          .getByRole('button', { name: en.tokens.addCustomTab, exact: true })
-          .click();
+        const addCustomButtons = page.getByRole('button', {
+          name: en.tokens.addCustomTab,
+          exact: true,
+        });
+        const customTab = addCustomButtons.and(
+          page.locator('button[aria-pressed]')
+        );
+        await expect(customTab).toHaveCount(1);
+        await expect(customTab).toHaveAttribute('aria-pressed', 'false');
+        await customTab.click();
+        await expect(customTab).toHaveAttribute('aria-pressed', 'true');
         await page.locator('#custom-token-contract').fill(TOKEN);
         const importToken = page.getByRole('button', {
           name: `Import ${SYMBOL} token`,
