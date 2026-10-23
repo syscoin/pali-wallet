@@ -5150,7 +5150,7 @@ class MainController {
     const { vault, vaultGlobal } = store.getState();
     if (
       !this.isUnlocked() ||
-      !vault.isBitcoinBased ||
+      (!vault.isBitcoinBased && !vault.activeNetwork.apiUrl) ||
       vaultGlobal.isSwitchingAccount ||
       vaultGlobal.networkStatus === 'switching' ||
       vaultGlobal.networkStatus === 'connecting' ||
@@ -5166,7 +5166,7 @@ class MainController {
     )
       return this.historyRetry.promise;
     const promise = this.updateUserTransactionsState({
-      isBitcoinBased: true,
+      isBitcoinBased: vault.isBitcoinBased,
       activeNetwork: vault.activeNetwork,
       forceRefresh: true,
       bypassCompletedCache: true,
@@ -5237,7 +5237,7 @@ class MainController {
     const currentAccountTxs =
       accountTransactions[activeAccount.type]?.[activeAccount.id];
     const setHistoryStatus = (state: 'pending' | 'ready' | 'error') => {
-      if (!isBitcoinBased) return;
+      if (!isBitcoinBased && !activeNetwork.apiUrl) return;
       const status = store.getState().vaultGlobal.transactionHistoryStatus;
       const currentScope = getWalletNavigationScope();
       if (
@@ -5414,6 +5414,7 @@ class MainController {
                   activeAccount.id
                 ]?.ethereum?.[activeNetwork.chainId] || []
               );
+              setHistoryStatus('ready');
             }
 
             if (!isBitcoinBased) {
@@ -5436,9 +5437,10 @@ class MainController {
     this.cancellablePromises.setPromise(PromiseTargets.TRANSACTION, {
       transactionPromise,
       cancel: () => {
-        const status = isBitcoinBased
-          ? store.getState().vaultGlobal.transactionHistoryStatus
-          : undefined;
+        const status =
+          isBitcoinBased || activeNetwork.apiUrl
+            ? store.getState().vaultGlobal.transactionHistoryStatus
+            : undefined;
         if (
           status?.requestId === requestId &&
           status.scope.account === scope.account &&

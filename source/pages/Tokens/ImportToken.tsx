@@ -96,6 +96,7 @@ export const ImportToken: React.FC = () => {
     customTokenId,
   });
   const [isVerifyingTokenId, setIsVerifyingTokenId] = useState(false);
+  const [tokenIdRetry, setTokenIdRetry] = useState(0);
   const [tokenIdResult, setTokenIdResult] = useState<{
     balance: number;
     key: string;
@@ -111,6 +112,14 @@ export const ImportToken: React.FC = () => {
     tokenIdResult?.key === tokenIdKey ? tokenIdResult.balance : null;
   const verifiedTokenRawBalance =
     tokenIdResult?.key === tokenIdKey ? tokenIdResult.rawBalance : null;
+  const tokenIdFormatValid = useMemo(() => {
+    try {
+      normalizeNftTokenId(customTokenId.trim());
+      return true;
+    } catch {
+      return false;
+    }
+  }, [customTokenId]);
   // Invalidate stale data immediately, but retain the loading region before
   // deferred verification starts instead of briefly removing the preview.
   const tokenIdValidationPending =
@@ -397,6 +406,7 @@ export const ImportToken: React.FC = () => {
     deferredTokenId,
     customTokenId,
     tokenIdKey,
+    tokenIdRetry,
   ]);
 
   // Convert token data to ImportableAsset format
@@ -939,10 +949,31 @@ export const ImportToken: React.FC = () => {
                   ) : (
                     <CloseCircleOutlined
                       className="text-warning-error text-sm"
-                      title={t('send.invalidTokenId')}
+                      title={t(
+                        tokenIdFormatValid
+                          ? 'send.unableToLoad'
+                          : 'send.invalidTokenId'
+                      )}
                     />
                   )
-                ) : null
+                ) : null,
+                !tokenIdValidationPending &&
+                  verifiedTokenBalance === -1 &&
+                  tokenIdFormatValid && (
+                    <div role="alert" className="mt-2 px-5 text-sm">
+                      <p>{t('send.unableToLoad')}</p>
+                      <button
+                        className="mt-2 text-brand-royalbluemedium underline"
+                        type="button"
+                        onClick={() => {
+                          setTokenIdResult(null);
+                          setTokenIdRetry((attempt) => attempt + 1);
+                        }}
+                      >
+                        {t('receive.retry')}
+                      </button>
+                    </div>
+                  )
               )}
             {customTokenDetails?.tokenStandard === 'ERC-1155' &&
               customTokenId &&

@@ -1190,6 +1190,7 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
           >
             <div className="flex items-center gap-2">
               <Switch
+                aria-label={selectedAsset ? 'Z-DAG' : 'RBF'}
                 checked={selectedAsset ? !RBF : RBF}
                 onChange={RBFOnChange}
                 className="relative inline-flex items-center w-9 h-4 border border-white rounded-full"
