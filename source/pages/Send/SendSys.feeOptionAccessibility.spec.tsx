@@ -162,7 +162,9 @@ const mount = async () => {
 };
 const selectSpt = async (user: ReturnType<typeof userEvent.setup>) => {
   await user.click(screen.getByRole('button', { name: 'SYS' }));
-  await user.click(screen.getByRole('menuitem', { name: 'SPT SPT' }));
+  await user.click(
+    screen.getByRole('menuitem', { name: 'SPT tokens.assetGuid: 123 SPT' })
+  );
   expect(screen.getByText('Z-DAG', { exact: true })).toBeVisible();
 };
 const savedRbf = () =>

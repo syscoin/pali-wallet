@@ -1492,10 +1492,22 @@ describe('send forms across wallet navigation', () => {
       ],
     };
     render(<SendSys />);
-    expect(screen.queryByRole('button', { name: 'FOREIGN SPT' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'OTHER SPT' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'UNSCOPED SPT' })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'CURRENT SPT' }));
+    expect(
+      screen.queryByRole('button', {
+        name: 'FOREIGN tokens.assetGuid: 123 SPT',
+      })
+    ).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'OTHER tokens.assetGuid: 456 SPT' })
+    ).toBeNull();
+    expect(
+      screen.queryByRole('button', {
+        name: 'UNSCOPED tokens.assetGuid: 789 SPT',
+      })
+    ).toBeNull();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'CURRENT tokens.assetGuid: 123 SPT' })
+    );
     await act(async () => {
       fireEvent.click(screen.getByText('send.max'));
     });
