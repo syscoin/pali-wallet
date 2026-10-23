@@ -660,6 +660,8 @@ for (const { mode, width } of availabilityCases) {
             expect(observations.homeRowText).toContain(
               `${quantity} ${en.nftDetails.items}`
             );
+          // Let the normal success toast finish before the recorded Home view.
+          await expect(page.locator('.Toastify__toast')).toHaveCount(0);
           observations.milestones.manualImportPersisted = true;
         }
       );
