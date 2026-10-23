@@ -131,12 +131,43 @@ async function mount(locale: Locale = 'en', duplicate = true) {
       </I18nextProvider>
     </Provider>
   );
-  const open = async () => {
-    await user.click(screen.getByRole('button', { name: 'Accounts' }));
-    await screen.findByRole('menu');
+  const trigger = screen.getByRole('button', { name: 'Accounts' });
+  let openCount = 0;
+  const waitForClosed = async (stage: string) => {
+    // Headless UI 1.7 schedules Escape/Enter focus restoration through two
+    // animation frames. A missing menu alone does not mean that work is done.
+    await waitFor(
+      () => {
+        expect(screen.queryByRole('menu')).toBeNull();
+        expect(trigger).toHaveAttribute('aria-expanded', 'false');
+        expect(trigger).toHaveFocus();
+      },
+      { onTimeout: (error) => new Error(`${stage}: ${error.message}`) }
+    );
+  };
+  const open = async (stage = 'initial open') => {
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    await user.click(trigger);
+    await waitFor(
+      () => {
+        expect(trigger).toHaveAttribute('aria-expanded', 'true');
+        expect(screen.getByRole('menu')).toHaveFocus();
+      },
+      { onTimeout: (error) => new Error(`${stage}: ${error.message}`) }
+    );
+    openCount += 1;
   };
   await open();
-  return { user, open, store, i18n, copy: resources[locale] };
+  return {
+    user,
+    open,
+    waitForClosed,
+    getOpenCount: () => openCount,
+    store,
+    i18n,
+    copy: resources[locale],
+  };
 }
 const rowFor = (value: string) =>
   screen
@@ -186,8 +217,10 @@ it.each(Object.keys(resources) as Locale[])(
 );
 
 it('pointer and native Enter Copy retain exact public bytes for each duplicate-label account and never select it', async () => {
-  const { user, open, store, copy } = await mount();
+  const { user, open, waitForClosed, getOpenCount, store, copy } =
+    await mount();
   const before = store.getState();
+  const completedStages: string[] = [];
   const write = jest
     .spyOn(navigator.clipboard, 'writeText')
     .mockResolvedValue();
@@ -197,18 +230,30 @@ it('pointer and native Enter Copy retain exact public bytes for each duplicate-l
       await waitFor(() => expect(write).toHaveBeenCalledTimes(index * 2 + 1));
       expect(write).toHaveBeenLastCalledWith(value);
       await user.keyboard('{Escape}');
-      await open();
+      await waitForClosed(`account ${index}: pointer Copy then Escape`);
+      completedStages.push(`pointer:${index}`);
+      await open(`account ${index}: reopen for keyboard Copy`);
       // Real Headless UI active-descendant keyboard path, not onClick called
       // manually: two accounts give selection/Copy pairs in source order.
-      screen.getByRole('menu').focus();
-      await user.keyboard(
-        index === 0 ? '{Home}{ArrowDown}{Enter}' : '{End}{Enter}'
-      );
+      const menu = screen.getByRole('menu');
+      const target = copyIn(rowFor(value), copy.buttons.copy);
+      expect(menu).toHaveFocus();
+      await user.keyboard(index === 0 ? '{Home}{ArrowDown}' : '{End}');
+      expect(menu).toHaveAttribute('aria-activedescendant', target.id);
+      await user.keyboard('{Enter}');
       await waitFor(() => expect(write).toHaveBeenCalledTimes(index * 2 + 2));
       expect(write).toHaveBeenLastCalledWith(value);
-      expect(screen.queryByRole('menu')).toBeNull();
-      if (index === 0) await open();
+      await waitForClosed(`account ${index}: keyboard Copy`);
+      completedStages.push(`keyboard:${index}`);
+      if (index === 0) await open('reopen for second account pointer Copy');
     }
+    expect(completedStages).toEqual([
+      'pointer:0',
+      'keyboard:0',
+      'pointer:1',
+      'keyboard:1',
+    ]);
+    expect(getOpenCount()).toBe(4);
     expect(write.mock.calls).toEqual([[A], [A], [B], [B]]);
     expect(mockSetActiveAccount).not.toHaveBeenCalled();
     expect(mockAlert.info).toHaveBeenCalledTimes(4);

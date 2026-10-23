@@ -462,6 +462,24 @@ test('account actions and removal dialogs distinguish duplicate editable labels'
               dialog.getByRole('button', { name, exact: true })
             ).toBeInViewport();
           const text = await dialog.innerText();
+          const layout = await dialog
+            .locator('p')
+            .first()
+            .evaluate((paragraph) => {
+              const body = paragraph.parentElement!;
+              return {
+                paragraphWidth: paragraph.clientWidth,
+                paragraphScrollWidth: paragraph.scrollWidth,
+                bodyWidth: body.clientWidth,
+                bodyScrollWidth: body.scrollWidth,
+              };
+            });
+          expect
+            .soft(layout.paragraphScrollWidth)
+            .toBeLessThanOrEqual(layout.paragraphWidth);
+          expect
+            .soft(layout.bodyScrollWidth)
+            .toBeLessThanOrEqual(layout.bodyWidth);
           const ax = await nativeAX(
             wallet!.context,
             page,
@@ -491,6 +509,7 @@ test('account actions and removal dialogs distinguish duplicate editable labels'
           dialogs.push({
             account,
             text,
+            layout,
             ax,
             activation:
               index === 1

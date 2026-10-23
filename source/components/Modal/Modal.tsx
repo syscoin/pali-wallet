@@ -175,7 +175,7 @@ export const ConfirmationModal = ({
           disabled={dismissalBlocked}
         />
         <DialogBody>
-          <p>{description}</p>
+          <p className="[overflow-wrap:anywhere]">{description}</p>
           {children}
         </DialogBody>
 
