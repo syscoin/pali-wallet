@@ -20,7 +20,7 @@ import {
 const tokens = [
   {
     contract: '0x000000000000000000000000000000000000ba11',
-    symbol: 'PRECISE',
+    symbol: 'LONGCOIN',
     decimals: 18,
     rawBalance: '999999999999999999',
     amount: '0.999999999999999999',
@@ -48,6 +48,96 @@ const isActive = async (menu: Locator, item: Locator) => {
   const activeId = await menu.getAttribute('aria-activedescendant');
   return Boolean(activeId) && activeId === (await item.getAttribute('id'));
 };
+
+// Inspect the actual painted SVG without changing DOM, styles or wallet state.
+async function collapsedPickerGeometry(picker: Locator) {
+  return picker.evaluate((button) => {
+    const svg = button.querySelector('svg');
+    const arrow = svg?.querySelector('path');
+    if (!svg || !arrow) throw new Error('Actual picker ArrowDownSvg missing');
+    const rect = (value: DOMRect) => ({
+      x: value.x,
+      y: value.y,
+      width: value.width,
+      height: value.height,
+      left: value.left,
+      top: value.top,
+      right: value.right,
+      bottom: value.bottom,
+    });
+    const buttonBox = button.getBoundingClientRect();
+    const svgBox = svg.getBoundingClientRect();
+    const paintedBox = arrow.getBoundingClientRect();
+    const rawBox = arrow.getBBox();
+    const matrix = arrow.getScreenCTM();
+    let sample: DOMPoint | undefined;
+    // The bounding-box center can be the transparent opening of the V shape.
+    // Find an actual interior filled point before testing screen occlusion.
+    for (let row = 1; row < 8 && !sample; row++) {
+      for (let column = 1; column < 8 && !sample; column++) {
+        const point = new DOMPoint(
+          rawBox.x + (rawBox.width * column) / 8,
+          rawBox.y + (rawBox.height * row) / 8
+        );
+        if (arrow.isPointInFill(point)) sample = point;
+      }
+    }
+    const screenPoint =
+      sample && matrix ? sample.matrixTransform(matrix) : null;
+    const hit = screenPoint
+      ? document.elementFromPoint(screenPoint.x, screenPoint.y)
+      : null;
+    const ancestors = [];
+    for (let node: Element | null = arrow; node; node = node.parentElement) {
+      const style = getComputedStyle(node);
+      ancestors.push({
+        display: style.display,
+        visibility: style.visibility,
+        opacity: style.opacity,
+      });
+    }
+    const within = (inner: DOMRect, outer: DOMRect) =>
+      inner.left >= outer.left - 0.5 &&
+      inner.right <= outer.right + 0.5 &&
+      inner.top >= outer.top - 0.5 &&
+      inner.bottom <= outer.bottom + 0.5;
+    const paintFullyVisible =
+      paintedBox.width > 0 &&
+      paintedBox.height > 0 &&
+      within(paintedBox, svgBox) &&
+      within(paintedBox, buttonBox) &&
+      paintedBox.left >= 0 &&
+      paintedBox.right <= window.innerWidth &&
+      paintedBox.top >= 0 &&
+      paintedBox.bottom <= window.innerHeight &&
+      ancestors.every(
+        (style) =>
+          style.display !== 'none' &&
+          !['hidden', 'collapse'].includes(style.visibility) &&
+          Number(style.opacity) > 0
+      ) &&
+      Boolean(hit && svg.contains(hit));
+    const viewBox = svg.viewBox.baseVal;
+    return {
+      text: button.textContent?.trim(),
+      expanded: button.getAttribute('aria-expanded'),
+      button: rect(buttonBox),
+      svg: rect(svgBox),
+      paint: rect(paintedBox),
+      viewBox: [viewBox.x, viewBox.y, viewBox.width, viewBox.height],
+      rawPathBox: {
+        x: rawBox.x,
+        y: rawBox.y,
+        width: rawBox.width,
+        height: rawBox.height,
+      },
+      screenPoint: screenPoint ? { x: screenPoint.x, y: screenPoint.y } : null,
+      sampleHitsActualSvg: Boolean(hit && svg.contains(hit)),
+      ancestors,
+      paintFullyVisible,
+    };
+  });
+}
 
 const publicTokens = (page: Page) =>
   page.evaluate(async () => {
@@ -364,12 +454,94 @@ test('Send asset picker has one keyboard stop per asset and excludes its closed 
         await capture(page);
       }
     );
+    const geometryObservations: {
+      chosen: Awaited<ReturnType<typeof collapsedPickerGeometry>>;
+      short: Awaited<ReturnType<typeof collapsedPickerGeometry>>;
+      width: number;
+    }[] = [];
+    observations.collapsedPickerGeometry = geometryObservations;
+    try {
+      for (const width of [320, 400]) {
+        await wallet.step(
+          `erc20-long-symbol-${width}px: record collapsed picker arrow`,
+          async (capture) => {
+            await page.setViewportSize({ width, height: 620 });
+            const before = await publicTokens(page);
+            await expect(picker('TSYS')).toBeVisible();
+            await expect(menu).toHaveCount(0);
+            await expect(amount).toHaveValue('1.0');
+            const short = await collapsedPickerGeometry(picker('TSYS'));
+            // Hard setup control: the native short-symbol arrow is painted.
+            expect(short.viewBox).toEqual([0, 0, 24, 25]);
+            expect(short.paintFullyVisible).toBe(true);
+            expect(short.expanded).toBe('false');
+
+            await picker('TSYS').click();
+            await item(tokens[0].symbol).click();
+            await expect(picker(tokens[0].symbol)).toBeVisible();
+            await expect(menu).toHaveCount(0);
+            await expect(max).toBeEnabled();
+            await max.click();
+            await expect(amount).toHaveValue(tokens[0].amount);
+            const chosen = await collapsedPickerGeometry(
+              picker(tokens[0].symbol)
+            );
+            expect(chosen.viewBox).toEqual(short.viewBox);
+            expect(chosen.text).toBe(tokens[0].symbol);
+            expect(chosen.expanded).toBe('false');
+            geometryObservations.push({ width, short, chosen });
+            await capture(page);
+
+            // Restore the exact healthy native selection through the real menu.
+            await picker(tokens[0].symbol).click();
+            await item('TSYS').click();
+            await expect(picker('TSYS')).toBeVisible();
+            await expect(menu).toHaveCount(0);
+            await expect(max).toBeEnabled();
+            await max.click();
+            await expect(amount).toHaveValue('1.0');
+            expect(await publicTokens(page)).toEqual(before);
+          }
+        );
+      }
+    } finally {
+      await wallet.step(
+        'erc20-long-symbol-320-and-400px: restore the original viewport',
+        async () => {
+          await page.setViewportSize({ width: 400, height: 620 });
+        }
+      );
+    }
     expect(deniedWrites).toEqual([]);
     expect(routes.deniedWrites).toEqual([]);
     expect(extensionEvidence()).toEqual(runtime);
     expect(
       createHash('sha256').update(fs.readFileSync(info.file)).digest('hex')
     ).toBe(sourceSha256);
+    await wallet.step(
+      'erc20-long-symbol-320-and-400px: verify arrows after all healthy controls',
+      async () => {
+        expect(
+          geometryObservations.map(({ width, short, chosen }) => ({
+            width,
+            paintFullyVisible: chosen.paintFullyVisible,
+            svgNoNarrowerThanShort: chosen.svg.width >= short.svg.width - 0.5,
+            paintNoNarrowerThanShort:
+              chosen.paint.width >= short.paint.width - 0.5,
+            paintNoShorterThanShort:
+              chosen.paint.height >= short.paint.height - 0.5,
+          }))
+        ).toEqual(
+          [320, 400].map((width) => ({
+            width,
+            paintFullyVisible: true,
+            svgNoNarrowerThanShort: true,
+            paintNoNarrowerThanShort: true,
+            paintNoShorterThanShort: true,
+          }))
+        );
+      }
+    );
     status = 'passed';
   } finally {
     try {

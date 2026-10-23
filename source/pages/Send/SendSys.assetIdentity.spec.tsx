@@ -53,9 +53,17 @@ jest.mock('hooks/useController', () => ({
 jest.mock('hooks/index', () => ({
   useUtils: () => ({ alert: mockAlert, navigate: mockNavigate }),
 }));
+// Use the package's real CJS color helpers so Jest can load the real registry
+// SVG. No glyph, form, selection or layout result is replaced.
+jest.mock('@ant-design/colors', () =>
+  jest.requireActual('@ant-design/colors/lib')
+);
+jest.mock('@ant-design/colors/es/generate', () =>
+  jest.requireActual('@ant-design/colors/lib/generate')
+);
 jest.mock('components/Icon/Icon', () => ({
   PaliWhiteSmallIconSvg: () => null,
-  ArrowDownSvg: () => null,
+  ArrowDownSvg: jest.requireActual('components/Icon/Icon').ArrowDownSvg,
 }));
 jest.mock('components/ToastActionFooter', () => ({
   ToastActionFooter: ({ children }: any) => <div>{children}</div>,
@@ -238,6 +246,22 @@ const savedGuid = () => {
 };
 const expectSavedGuid = async (guid: string | null) =>
   waitFor(() => expect(savedGuid()).toBe(guid));
+const expectCollapsedLayout = (symbol: string) => {
+  const button = trigger();
+  expect(button).toHaveAccessibleName(symbol);
+  expect(button).toHaveClass('w-[100px]', 'gap-2', 'px-3');
+  expect(button.querySelector('p')).toHaveClass(
+    'min-w-0',
+    'flex-1',
+    'truncate'
+  );
+  expect(button.querySelector('p')).toHaveTextContent(symbol);
+  const arrow = button.querySelector('svg');
+  expect(arrow).toHaveAttribute('viewBox', '0 0 24 25');
+  expect(arrow).toHaveAttribute('width', '24');
+  expect(arrow).toHaveAttribute('height', '25');
+  expect(arrow).toHaveClass('shrink-0');
+};
 const semantics = (option: HTMLElement) => {
   let name = '';
   let description = '';
@@ -319,6 +343,21 @@ it('healthy unique-symbol controls retain exact GUID selection and token/native 
   await user.click(screen.getByRole('button', { name: 'send.max' }));
   expect(amount().value).toBe('1.25');
 });
+
+it.each(['DUP', 'ABCDEFGH1', 'VERYLONGTOKEN123456789'])(
+  'reserves the actual collapsed icon while preserving full SPT name and selection for %s',
+  async (symbol) => {
+    await addAssets([symbol, 'PEER']);
+    const user = await mount();
+    expectCollapsedLayout(NETWORK.currency);
+    await open(user);
+    await user.click(assetOptions()[0]);
+    await expectSavedGuid('123');
+    expectCollapsedLayout(symbol);
+    await user.click(screen.getByRole('button', { name: 'send.max' }));
+    expect(amount().value).toBe('2.5');
+  }
+);
 
 it('healthy same-symbol controls still select the exact GUID with pointer and native keyboard', async () => {
   await addAssets(['DUP', 'DUP']);

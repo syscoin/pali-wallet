@@ -78,9 +78,17 @@ jest.mock('state/vault/selectors', () => ({
   selectValidEnsCache: () => ({}),
   selectEnsNameToAddress: () => ({}),
 }));
+// Use the package's real CJS color helpers so Jest can load the real registry
+// SVG. No glyph, form, selection or layout result is replaced.
+jest.mock('@ant-design/colors', () =>
+  jest.requireActual('@ant-design/colors/lib')
+);
+jest.mock('@ant-design/colors/es/generate', () =>
+  jest.requireActual('@ant-design/colors/lib/generate')
+);
 jest.mock('components/Icon/Icon', () => ({
   PaliWhiteSmallIconSvg: () => null,
-  ArrowDownSvg: () => null,
+  ArrowDownSvg: jest.requireActual('components/Icon/Icon').ArrowDownSvg,
   LoadingSvg: () => null,
 }));
 jest.mock('components/index', () => ({
@@ -293,6 +301,46 @@ const selectWithPointer = async (
     expect(screen.getByRole('button', { name: label })).toBeInTheDocument()
   );
 };
+const expectCollapsedLayout = (symbol: string) => {
+  const button = screen.getByRole('button', { name: symbol });
+  expect(button).toHaveAccessibleName(symbol);
+  expect(button).toHaveClass('w-[100px]', 'gap-2', 'px-3');
+  expect(button.querySelector('p')).toHaveClass(
+    'min-w-0',
+    'flex-1',
+    'truncate'
+  );
+  expect(button.querySelector('p')).toHaveTextContent(symbol);
+  const arrow = button.querySelector('svg');
+  expect(arrow).toHaveAttribute('viewBox', '0 0 24 25');
+  expect(arrow).toHaveAttribute('width', '24');
+  expect(arrow).toHaveAttribute('height', '25');
+  expect(arrow).toHaveClass('shrink-0');
+};
+
+it.each(['DUP', 'ABCDEFGH1', 'VERYLONGTOKEN123456789'])(
+  'reserves the actual collapsed icon while preserving full ERC20 name and selection for %s',
+  async (symbol) => {
+    mockAssets[0].tokenSymbol = symbol;
+    const user = await mount();
+    expectCollapsedLayout('ETH');
+    await open(user);
+    await user.click(screen.getAllByRole('menuitem')[1]);
+    await waitFor(() => expectCollapsedLayout(symbol));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'send.max' })).toBeEnabled()
+    );
+    await user.click(screen.getByRole('button', { name: 'send.max' }));
+    expect(
+      (screen.getByPlaceholderText('send.amount') as HTMLInputElement).value
+    ).toBe('0.999999999999999999');
+    expect(mockEmitter).toHaveBeenCalledWith(
+      ['wallet', 'getERC20TokenInfo'],
+      [PRECISE, mockState.vault.accounts.HDAccount[0].address]
+    );
+  }
+);
+
 it('exposes one actionable item per current-chain asset and filters other chains', async () => {
   const user = await mount();
   await open(user);
