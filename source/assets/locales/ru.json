@@ -1267,6 +1267,8 @@
     "owned": "В наличии",
     "viewNamedCollection": "Сведения о коллекции {{symbol}}",
     "deleteNamedCollection": "Удалить коллекцию {{symbol}}",
+    "removeNamedTokenId": "Удалить {{symbol}} #{{tokenId}}",
+    "removeTokenIdConfirm": "Удалить из этого кошелька токен с ID #{{tokenId}} коллекции {{name}}? Другие ID токенов этой коллекции останутся.",
     "collectionInfo": "Информация о коллекции",
     "about": "О коллекции",
     "technicalInfo": "Техническая информация",

@@ -1267,6 +1267,8 @@
     "owned": "Owned",
     "viewNamedCollection": "View details for {{symbol}} collection",
     "deleteNamedCollection": "Delete {{symbol}} collection",
+    "removeNamedTokenId": "Remove {{symbol}} #{{tokenId}}",
+    "removeTokenIdConfirm": "Remove token ID #{{tokenId}} of {{name}} from this wallet? Other token IDs in this collection will remain.",
     "collectionInfo": "Collection Info",
     "about": "About",
     "technicalInfo": "Technical Info",

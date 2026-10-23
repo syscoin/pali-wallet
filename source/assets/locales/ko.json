@@ -1267,6 +1267,8 @@
     "owned": "보유",
     "viewNamedCollection": "{{symbol}} 컬렉션 세부 정보 보기",
     "deleteNamedCollection": "{{symbol}} 컬렉션 삭제",
+    "removeNamedTokenId": "{{symbol}} #{{tokenId}} 제거",
+    "removeTokenIdConfirm": "이 지갑에서 {{name}}의 토큰 ID #{{tokenId}}을(를) 제거하시겠습니까? 이 컬렉션의 다른 토큰 ID는 유지됩니다.",
     "collectionInfo": "컬렉션 정보",
     "about": "정보",
     "technicalInfo": "기술 정보",

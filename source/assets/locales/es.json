@@ -1267,6 +1267,8 @@
     "owned": "En propiedad",
     "viewNamedCollection": "Ver detalles de la colección {{symbol}}",
     "deleteNamedCollection": "Eliminar colección {{symbol}}",
+    "removeNamedTokenId": "Eliminar {{symbol}} #{{tokenId}}",
+    "removeTokenIdConfirm": "¿Eliminar el ID de token #{{tokenId}} de {{name}} de esta cartera? Los demás ID de token de esta colección se conservarán.",
     "collectionInfo": "Información de la colección",
     "about": "Acerca de",
     "technicalInfo": "Información técnica",

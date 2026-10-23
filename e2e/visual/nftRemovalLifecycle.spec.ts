@@ -21,6 +21,10 @@ const CONTRACT = '0x000000000000000000000000000000000000e115';
 const SYMBOL = 'REMOVE1155';
 const TOKEN_IDS = ['7', '8'];
 const QUANTITY = '1';
+const removalLabel = (tokenId: string) =>
+  en.nftDetails.removeNamedTokenId
+    .replace('{{symbol}}', SYMBOL)
+    .replace('{{tokenId}}', tokenId);
 
 test('NFT removal waits for one genuine callback and preserves the remaining token ID', async ({}, info) => {
   test.setTimeout(120_000);
@@ -172,10 +176,9 @@ test('NFT removal waits for one genuine callback and preserves the remaining tok
       exact: true,
     });
     const rows = page.getByRole('listitem').filter({
-      has: page.getByRole('button', {
-        name: 'Delete ' + SYMBOL + ' collection',
-        exact: true,
-      }),
+      has: page
+        .getByRole('button', { name: removalLabel('7'), exact: true })
+        .or(page.getByRole('button', { name: removalLabel('8'), exact: true })),
     });
     await wallet.step(
       'import a disposable wallet and select the EVM fixture',
@@ -344,14 +347,28 @@ test('NFT removal waits for one genuine callback and preserves the remaining tok
           await rows
             .filter({ hasText: /#7(?:\s|$)/ })
             .getByRole('button', {
-              name: 'Delete ' + SYMBOL + ' collection',
+              name: removalLabel('7'),
               exact: true,
             })
             .click();
           const dialog = page.getByRole('dialog', {
-            name: en.send.deleteCollection,
+            name: removalLabel('7'),
             exact: true,
           });
+          const confirmationText = await dialog.innerText();
+          observations.firstConfirmation = {
+            text: confirmationText,
+            selectedTokenId: '7',
+            preservedTokenId: '8',
+          };
+          // The operation below removes only ID 7. Its confirmation must name
+          // that edition and must not promise removal of the entire collection.
+          expect.soft(confirmationText).toContain('#7');
+          expect
+            .soft(confirmationText)
+            .not.toContain(
+              en.send.deleteCollectionConfirm.replace('{{name}}', SYMBOL)
+            );
           const confirm = dialog.getByRole('button', {
             name: en.buttons.delete,
             exact: true,
@@ -408,13 +425,13 @@ test('NFT removal waits for one genuine callback and preserves the remaining tok
         try {
           await rows
             .getByRole('button', {
-              name: 'Delete ' + SYMBOL + ' collection',
+              name: removalLabel('8'),
               exact: true,
             })
             .click();
           await page
             .getByRole('dialog', {
-              name: en.send.deleteCollection,
+              name: removalLabel('8'),
               exact: true,
             })
             .getByRole('button', { name: en.buttons.delete, exact: true })

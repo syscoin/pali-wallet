@@ -1267,6 +1267,8 @@
     "owned": "持有",
     "viewNamedCollection": "查看 {{symbol}} 合集详情",
     "deleteNamedCollection": "删除 {{symbol}} 合集",
+    "removeNamedTokenId": "移除{{symbol}} #{{tokenId}}",
+    "removeTokenIdConfirm": "要从此钱包中移除{{name}}的代币ID #{{tokenId}}吗？此收藏中的其他代币ID将保留。",
     "collectionInfo": "收藏信息",
     "about": "关于",
     "technicalInfo": "技术信息",
