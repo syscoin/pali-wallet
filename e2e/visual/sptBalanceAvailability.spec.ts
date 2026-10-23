@@ -85,10 +85,10 @@ const publicAssets = (page: Page) =>
 
 const targetHoldings = (
   assets: Array<{
-    guid: string;
-    hasBalance: boolean;
     balance: string | null;
     chainId: number;
+    guid: string;
+    hasBalance: boolean;
   }>
 ) => assets.filter((asset) => asset.guid === SPT_GUID);
 
