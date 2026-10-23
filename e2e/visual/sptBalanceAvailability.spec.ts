@@ -24,6 +24,15 @@ import {
 // removes any older request at its existing 5s CACHE_TTL. Hold only fixture
 // metadata past that source-owned upper bound; never mutate a wallet cache.
 const ACCOUNT_REQUEST_CACHE_TTL_MS = 5000;
+const waitPastCacheExpiry = async (startedAt: number) => {
+  const expiresAt = startedAt + ACCOUNT_REQUEST_CACHE_TTL_MS + 1;
+  // Timers may wake just before their deadline. Observe the actual cache
+  // boundary instead of treating a nominal timeout as proof it elapsed.
+  while (Date.now() < expiresAt)
+    await new Promise((resolve) =>
+      setTimeout(resolve, Math.max(1, expiresAt - Date.now()))
+    );
+};
 const origins = [
   'https://blockbook-dev.syscoin.org',
   'https://explorer-blockbook-dev.syscoin.org',
@@ -360,11 +369,7 @@ for (const scenario of [
             // Request-cache insertion precedes its HTTP arrival at this route.
             // At release, cleanupCache in the actual validator's subsequent
             // holdings read cannot reuse any pre-arm successful entry.
-            const expiryAt =
-              lastSetupInventoryAt + ACCOUNT_REQUEST_CACHE_TTL_MS + 1;
-            await new Promise((resolve) =>
-              setTimeout(resolve, Math.max(0, expiryAt - Date.now()))
-            );
+            await waitPastCacheExpiry(lastSetupInventoryAt);
             const releasedAt = Date.now();
             expect(releasedAt - lastSetupInventoryAt).toBeGreaterThan(
               ACCOUNT_REQUEST_CACHE_TTL_MS
@@ -566,6 +571,42 @@ for (const scenario of [
       await action.waitFor({ state: 'visible' });
       await expect(action).toBeEnabled();
       await checkStatusGeometry('check-circle');
+      const rowGeometry = await action
+        .locator('xpath=ancestor::li')
+        .evaluate((row, text) => {
+          const identity = Array.from(row.querySelectorAll('p')).find(
+            (element) => element.textContent === text
+          );
+          if (!identity) throw new Error('Missing full asset identifier');
+          const range = document.createRange();
+          range.selectNodeContents(identity);
+          const rect = identity.getBoundingClientRect();
+          const rowRect = row.getBoundingClientRect();
+          const actions = Array.from(row.querySelectorAll('button')).map(
+            (button) => {
+              const box = button.getBoundingClientRect();
+              return {
+                x: box.x,
+                right: box.right,
+                y: box.y,
+                bottom: box.bottom,
+              };
+            }
+          );
+          return {
+            identifierLines: range.getClientRects().length,
+            identifierRight: rect.right,
+            actions,
+            row: { x: rowRect.x, right: rowRect.right },
+          };
+        }, `${en.tokens.assetGuid}: ${SPT_GUID}`);
+      expect(rowGeometry.identifierLines).toBe(1);
+      expect(rowGeometry.actions).toHaveLength(2);
+      for (const button of rowGeometry.actions) {
+        expect(button.x).toBeGreaterThanOrEqual(rowGeometry.identifierRight);
+        expect(button.right).toBeLessThanOrEqual(rowGeometry.row.right);
+      }
+      observations.rowGeometry = rowGeometry;
       await expect
         .poll(() =>
           actualHttpResponses.some(
@@ -709,15 +750,7 @@ for (const scenario of [
           .find((read) => read.family === 'inventory' && read.status === 500);
         expect(lastFailure).toBeDefined();
         const failedReadAt = Number(lastFailure!.at);
-        await new Promise((resolve) =>
-          setTimeout(
-            resolve,
-            Math.max(
-              0,
-              failedReadAt + ACCOUNT_REQUEST_CACHE_TTL_MS + 1 - Date.now()
-            )
-          )
-        );
+        await waitPastCacheExpiry(failedReadAt);
         // Do not let a cached failed reply stand in for the fresh healthy read.
         // A new background failure during this wait is a fixture precondition
         // failure, not a reason to retry or alter the wallet cache.

@@ -144,7 +144,7 @@ const ImportableAssetsListComponent: React.FC<IImportableAssetsListProps> = ({
                 {getAssetLogo(asset)}
 
                 <div className="flex flex-col flex-1 min-w-0">
-                  <p className="flex items-center gap-x-2">
+                  <p className="flex flex-wrap items-center gap-x-2">
                     <span className="text-brand-white font-medium">
                       {assetType === 'utxo' &&
                       !isSptBalanceAvailable(asset.balance)
@@ -163,12 +163,25 @@ const ImportableAssetsListComponent: React.FC<IImportableAssetsListProps> = ({
                       {truncate(asset.symbol, 10).toUpperCase()}
                     </span>
                   </p>
-                  {identifier && (
-                    <p className="text-brand-gray200 text-xs mt-0.5">
-                      {assetType === 'evm'
-                        ? truncate(identifier, 8, true)
-                        : `${t('tokens.assetGuid')}: ${identifier}`}
-                    </p>
+                  {(identifier || (asset.type && assetType === 'utxo')) && (
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-0.5">
+                      {identifier && (
+                        <p className="text-brand-gray200 text-xs break-all">
+                          {assetType === 'evm'
+                            ? truncate(identifier, 8, true)
+                            : `${t('tokens.assetGuid')}: ${identifier}`}
+                        </p>
+                      )}
+                      {asset.type && assetType === 'utxo' && (
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[10px] font-medium shrink-0 ${getTokenTypeBadgeColor(
+                            asset.assetType || asset.type
+                          )}`}
+                        >
+                          {asset.assetType || 'SPT'}
+                        </span>
+                      )}
+                    </div>
                   )}
                   {asset.tokenStandard === 'ERC-1155' && asset.tokenId && (
                     <p className="text-brand-gray200 text-xs font-mono mt-0.5">
@@ -187,15 +200,6 @@ const ImportableAssetsListComponent: React.FC<IImportableAssetsListProps> = ({
                                 ${getTokenTypeBadgeColor(asset.tokenStandard)}`}
                   >
                     {asset.tokenStandard}
-                  </div>
-                )}
-                {asset.type && assetType === 'utxo' && (
-                  <div
-                    className={`px-2 py-0.5 rounded-full text-[10px] font-medium flex-shrink-0 mr-4 ${getTokenTypeBadgeColor(
-                      asset.assetType || asset.type
-                    )}`}
-                  >
-                    {asset.assetType || 'SPT'}
                   </div>
                 )}
               </div>
