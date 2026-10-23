@@ -110,6 +110,21 @@ const setTokenInventory = (tokenId: string) => {
 };
 const removalButton = (row: HTMLElement) =>
   within(row).getByRole('button', { name: /^(?:Delete|Remove) / });
+const expectRemovalBody = (
+  dialog: HTMLElement,
+  contract: string,
+  warning: string
+) => {
+  expect(
+    Array.from(
+      dialog.querySelectorAll('p'),
+      (paragraph) => paragraph.textContent
+    ).filter(Boolean)
+  ).toEqual([en.settings.contractAddress, contract, warning]);
+  expect(within(dialog).getByText(contract, { exact: true })).toHaveClass(
+    'font-mono'
+  );
+};
 const originalResizeObserver = globalThis.ResizeObserver;
 beforeAll(() => {
   globalThis.ResizeObserver = class {
@@ -153,6 +168,13 @@ it.each(TOKEN_IDS)(
       name: removalLabel(tokenId),
     });
     expect(dialog).toHaveTextContent(
+      en.nftDetails.removeTokenIdConfirm
+        .replace('{{name}}', SYMBOL)
+        .replace('{{tokenId}}', tokenId)
+    );
+    expectRemovalBody(
+      dialog,
+      CONTRACT,
       en.nftDetails.removeTokenIdConfirm
         .replace('{{name}}', SYMBOL)
         .replace('{{tokenId}}', tokenId)
@@ -214,6 +236,11 @@ it('retains the healthy ERC721 whole-collection confirmation and Cancel boundary
   expect(dialog).toHaveTextContent(
     en.send.deleteCollectionConfirm.replace('{{name}}', SYMBOL)
   );
+  expectRemovalBody(
+    dialog,
+    CONTRACT,
+    en.send.deleteCollectionConfirm.replace('{{name}}', SYMBOL)
+  );
   await user.click(
     within(dialog).getByRole('button', { name: en.buttons.cancel })
   );
@@ -238,4 +265,57 @@ it('keeps healthy ERC721 removal whole-contract scoped with no token ID', async 
     [CONTRACT, 5700, undefined, MUTATION_SCOPE]
   );
   expect(screen.queryByRole('dialog')).toBeNull();
+});
+
+it('distinguishes same-symbol and same-token-ID ERC1155 contracts without widening removal', async () => {
+  const otherContract = '0x222222222222222222222222222222222222e115';
+  mockState.vault.accountAssets.HDAccount[0].ethereum = [
+    asset('7'),
+    {
+      ...asset('7'),
+      id: `${otherContract}-5700-7`,
+      contractAddress: otherContract,
+    },
+  ];
+  const user = userEvent.setup();
+  mount();
+  const before = JSON.stringify(inventory());
+  for (const contract of [CONTRACT, otherContract]) {
+    const hint = `${contract.slice(0, 4)}...${contract.slice(-4)} • #7`;
+    const row = screen.getByText(hint).closest('li')!;
+    await user.click(removalButton(row));
+    const dialog = screen.getByRole('dialog', { name: removalLabel('7') });
+    expect(dialog).toHaveTextContent(
+      en.nftDetails.removeTokenIdConfirm
+        .replace('{{name}}', SYMBOL)
+        .replace('{{tokenId}}', '7')
+    );
+    expectRemovalBody(
+      dialog,
+      contract,
+      en.nftDetails.removeTokenIdConfirm
+        .replace('{{name}}', SYMBOL)
+        .replace('{{tokenId}}', '7')
+    );
+    expect(dialog).not.toHaveTextContent(
+      contract === CONTRACT ? otherContract : CONTRACT
+    );
+    await user.click(
+      within(dialog).getByRole('button', { name: en.buttons.cancel })
+    );
+    expect(mockEmitter).not.toHaveBeenCalled();
+    expect(JSON.stringify(inventory())).toBe(before);
+  }
+  const hint = `${otherContract.slice(0, 4)}...${otherContract.slice(-4)} • #7`;
+  await user.click(removalButton(screen.getByText(hint).closest('li')!));
+  await user.click(
+    within(screen.getByRole('dialog')).getByRole('button', {
+      name: en.buttons.delete,
+    })
+  );
+  expect(mockEmitter).toHaveBeenCalledTimes(1);
+  expect(mockEmitter).toHaveBeenCalledWith(
+    ['wallet', 'deleteTokenInfo'],
+    [otherContract, 5700, '7', MUTATION_SCOPE]
+  );
 });
