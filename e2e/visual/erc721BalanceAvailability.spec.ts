@@ -280,19 +280,6 @@ for (const { mode, width } of availabilityCases) {
           viewport: { width, height: 620 },
         }
       );
-      routes = await installIsolatedVaultRoutes(
-        wallet.context,
-        fixture,
-        server.url
-      );
-      observations.workerIdentity = await verifyExecutingWorker(
-        wallet.context,
-        wallet.extensionId,
-        E2E_CONFIG.extensionPath,
-        (value) => {
-          observations.workerIdentity = value;
-        }
-      );
       const page = wallet.page;
       page.on('pageerror', (error) => pageErrors.push(error.message));
       wallet.context.on('request', (request) => {
@@ -329,30 +316,6 @@ for (const { mode, width } of availabilityCases) {
             error: request.failure()?.errorText,
           });
       });
-      await wallet.context.route(
-        (url) =>
-          BLACKLIST_FEEDS.has(url.href) ||
-          auxiliaryReplies.has(requestKey(url)),
-        async (route) => {
-          const request = route.request();
-          if (request.method() !== 'GET') return route.fallback();
-          const url = new URL(request.url());
-          const reply = BLACKLIST_FEEDS.has(url.href)
-            ? { family: 'blacklist-feed', body: BLACKLIST_FEEDS.get(url.href) }
-            : auxiliaryReplies.get(requestKey(url))!;
-          auxiliaryReads.push({
-            family: reply.family,
-            method: request.method(),
-            url: request.url(),
-          });
-          return route.fulfill({
-            status: 200,
-            contentType: 'application/json',
-            headers: { 'access-control-allow-origin': '*' },
-            body: JSON.stringify(reply.body),
-          });
-        }
-      );
       wallet.context.on('response', async (response) => {
         if (
           response.url() !== RPC_URL ||
@@ -395,6 +358,23 @@ for (const { mode, width } of availabilityCases) {
           responseErrors.push(String(error));
         }
       });
+      routes = await installIsolatedVaultRoutes(
+        wallet.context,
+        fixture,
+        server.url,
+        (url) => {
+          const reply = BLACKLIST_FEEDS.has(url.href)
+            ? { family: 'blacklist-feed', body: BLACKLIST_FEEDS.get(url.href) }
+            : auxiliaryReplies.get(requestKey(url));
+          if (!reply) return undefined;
+          auxiliaryReads.push({
+            family: reply.family,
+            method: 'GET',
+            url: url.href,
+          });
+          return reply.body;
+        }
+      );
       // The shipped Contract/SDK/controller receive genuine JSON-RPC replies.
       // Only this allowlisted NFT's eth_call balance read can fail by scenario.
       await wallet.context.route(RPC_URL, async (route) => {
@@ -476,6 +456,15 @@ for (const { mode, width } of availabilityCases) {
           body: JSON.stringify(Array.isArray(rpc) ? replies : replies[0]),
         });
       });
+
+      observations.workerIdentity = await verifyExecutingWorker(
+        wallet.context,
+        wallet.extensionId,
+        E2E_CONFIG.extensionPath,
+        (value) => {
+          observations.workerIdentity = value;
+        }
+      );
 
       const openImport = async () => {
         await page.locator('#assets-btn').click();
