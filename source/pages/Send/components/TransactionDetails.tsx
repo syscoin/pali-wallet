@@ -170,7 +170,10 @@ export const TransactionDetailsComponent = (
           <Tooltip content={tx.from} childrenClassName="flex">
             {ellipsis(tx.from, 7, 15)}
             {
-              <IconButton onClick={() => copy(tx.from ?? '')}>
+              <IconButton
+                aria-label={t('buttons.copy')}
+                onClick={() => copy(tx.from ?? '')}
+              >
                 <CopyIcon />
               </IconButton>
             }
@@ -189,7 +192,10 @@ export const TransactionDetailsComponent = (
               return ellipsis(label, 7, 15);
             })()}
             {
-              <IconButton onClick={() => copy(tx.to ?? '')}>
+              <IconButton
+                aria-label={t('buttons.copy')}
+                onClick={() => copy(tx.to ?? '')}
+              >
                 <CopyIcon />
               </IconButton>
             }
@@ -259,6 +265,7 @@ export const TransactionDetailsComponent = (
         <div className="text-white text-xs">
           <Input
             type="number"
+            aria-label={t('send.customNonce')}
             inputMode="numeric"
             disabled={editingDisabled}
             min={0}

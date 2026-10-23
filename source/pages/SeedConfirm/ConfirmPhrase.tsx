@@ -93,6 +93,7 @@ export const ConfirmPhrase = ({
                   orgList.length ? 'opacity-60' : 'opacity-100'
                 } w-[17.5rem] h-10 text-white text-base font-base font-medium rounded-2xl`}
                 type="button"
+                disabled={orgList.length > 0}
                 onClick={() => {
                   !orgList?.length ? handleValidate() : null;
                 }}
