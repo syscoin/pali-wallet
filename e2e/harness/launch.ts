@@ -16,6 +16,9 @@ export type LaunchOptions = {
   // Fixture-only HTTP(S) egress fence, installed before the MV3 worker starts.
   // The loopback proxy must reject CONNECT rather than forward public traffic.
   offlineHttpProxy?: string;
+  // Sensitive onboarding checks retain count-only evidence, not phrase video.
+  // Opting out is limited to launch-time fenced disposable fixtures.
+  recordVideo?: false;
   // Cold-restart fixtures may reopen only a direct child of this run's profiles.
   resumeProfileDir?: string;
   videoSize?: { height: number; width: number };
@@ -35,6 +38,9 @@ export const launchExtension = async (
       `Extension build not found at ${E2E_CONFIG.extensionPath}. Run "yarn build" first.`
     );
   }
+
+  if (options.recordVideo === false && !options.offlineHttpProxy)
+    throw new Error('Disabling video requires the launch-time deny proxy');
 
   // Unique suffix so a relaunch (e.g. Playwright restarting the worker after
   // a failed test re-runs beforeAll) never inherits vault state from the
@@ -108,10 +114,14 @@ export const launchExtension = async (
       : {}),
     deviceScaleFactor: options.deviceScaleFactor,
     headless: false,
-    recordVideo: {
-      dir: path.join(E2E_CONFIG.artifactsDir, 'videos'),
-      size: options.videoSize ?? viewport,
-    },
+    ...(options.recordVideo === false
+      ? {}
+      : {
+          recordVideo: {
+            dir: path.join(E2E_CONFIG.artifactsDir, 'videos'),
+            size: options.videoSize ?? viewport,
+          },
+        }),
     viewport,
   });
 
