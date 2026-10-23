@@ -723,6 +723,7 @@
     "validUrlRequired": "有効なURLを入力してください",
     "networkMismatch": "ネットワークの不一致 - chainIdが一致しません",
     "failedValidateRpc": "RPC URLの検証に失敗しました",
+    "rpcAuthenticationRequired": "このRPCエンドポイントには認証が必要です。APIキーを含むRPC URLを使用するか、別のプロバイダーを選択してください。",
     "unableToConnectToNetwork": "{{networkName}}に接続できません。テストしたすべての{{rpcType}}で認証が必要であるか、品質チェックに失敗しました。カスタムURLをお試しください。",
     "searchNetworksPlaceholder": "{{networkType}}ネットワークを検索",
     "blockbookUrlPlaceholder": "Blockbook URL",

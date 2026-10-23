@@ -695,7 +695,9 @@ export const SyscoinTransactionDetails = ({
                         : transfer.token}
                     </p>
                     <IconButton
-                      aria-label={t('buttons.copy')}
+                      aria-label={`${t('buttons.copy')}: ${t(
+                        'send.assetGuid'
+                      )}`}
                       onClick={() =>
                         handleCopyWithMessage(transfer.token, 'Asset Guid')
                       }
@@ -725,7 +727,9 @@ export const SyscoinTransactionDetails = ({
                       </p>
                       {canCopy && (
                         <IconButton
-                          aria-label={t('buttons.copy')}
+                          aria-label={`${t(
+                            'buttons.copy'
+                          )}: ${translateTransactionLabel(label, t)}`}
                           onClick={() => handleCopyWithMessage(value, label)}
                         >
                           <CopyIcon />

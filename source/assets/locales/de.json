@@ -723,6 +723,7 @@
     "validUrlRequired": "Bitte geben Sie eine gültige URL ein",
     "networkMismatch": "Netzwerk-Unstimmigkeit - chainId stimmt nicht überein",
     "failedValidateRpc": "Validierung der RPC-URL fehlgeschlagen",
+    "rpcAuthenticationRequired": "Dieser RPC-Endpunkt erfordert eine Authentifizierung. Verwenden Sie eine RPC-URL mit Ihrem API-Schlüssel oder wählen Sie einen anderen Anbieter.",
     "unableToConnectToNetwork": "Verbindung zu {{networkName}} nicht möglich. Alle getesteten {{rpcType}} erfordern eine Authentifizierung oder haben Qualitätsprüfungen nicht bestanden. Bitte versuchen Sie eine benutzerdefinierte URL.",
     "searchNetworksPlaceholder": "Tippen für {{networkType}}-Suche",
     "blockbookUrlPlaceholder": "Blockbook-URL",

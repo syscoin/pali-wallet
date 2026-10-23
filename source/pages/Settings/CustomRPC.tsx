@@ -21,6 +21,7 @@ import { INetworkType, INetwork } from 'types/network';
 import { ICustomRpcParams } from 'types/transactions';
 import { getWalletNavigationScope, navigateBack } from 'utils/navigationState';
 import { networkRegistrationFingerprint } from 'utils/networkRegistration';
+import { translateRpcValidationError } from 'utils/rpcValidationError';
 
 import {
   discardCustomRpcDraft,
@@ -549,6 +550,9 @@ const CustomRPCView = () => {
       } else if (!ownValidationMessage && typeof error === 'string') {
         errorMessage = error;
       }
+
+      if (!ownValidationMessage)
+        errorMessage = translateRpcValidationError(errorMessage, t);
 
       form.setFields([
         {

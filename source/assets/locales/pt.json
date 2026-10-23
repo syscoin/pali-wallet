@@ -723,6 +723,7 @@
     "validUrlRequired": "Por favor, insira uma URL válida",
     "networkMismatch": "Incompatibilidade de rede - chainId não coincide",
     "failedValidateRpc": "Falha ao validar URL do RPC",
+    "rpcAuthenticationRequired": "Este endpoint RPC requer autenticação. Use uma URL de RPC que inclua sua chave de API ou escolha outro provedor.",
     "unableToConnectToNetwork": "Não é possível conectar-se a {{networkName}}. Todos os {{rpcType}} testados exigem autenticação ou falharam nas verificações de qualidade. Por favor, tente uma URL personalizada.",
     "searchNetworksPlaceholder": "Pesquisar redes {{networkType}}",
     "blockbookUrlPlaceholder": "URL do Blockbook",
