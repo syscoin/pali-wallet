@@ -6,7 +6,10 @@ import path from 'path';
 
 import en from '../../source/assets/locales/en.json';
 import { E2E_CONFIG } from '../harness/config';
-import { dismissRejectedApproval } from '../harness/dismissRejectedApproval';
+import {
+  clickClosingPopup,
+  dismissRejectedApproval,
+} from '../harness/dismissRejectedApproval';
 import {
   createIsolatedVaultFixture,
   installIsolatedVaultRoutes,
@@ -84,6 +87,61 @@ async function actionGeometry(target: Locator) {
   expect(geometry.bounds.bottom).toBeLessThanOrEqual(geometry.viewport.height);
   expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.viewport.width);
   expect(geometry.exposed).toBe(true);
+  return geometry;
+}
+
+async function messageRowGeometry(page: Page, row: Locator) {
+  await row.scrollIntoViewIfNeeded();
+  const read = () =>
+    row.evaluate((element) => {
+      const box = element.getBoundingClientRect();
+      const footer = document.querySelector('.fixed.bottom-0');
+      if (!footer) throw new Error('Missing actual approval action footer');
+      const hit = (x: number, y: number) => {
+        const node = document.elementFromPoint(x, y);
+        return !!node && (node === element || element.contains(node));
+      };
+      return {
+        bounds: box.toJSON(),
+        footerTop: footer.getBoundingClientRect().top,
+        viewport: { width: innerWidth, height: innerHeight },
+        documentWidth: document.documentElement.scrollWidth,
+        hits: [
+          hit(box.left + box.width / 2, box.top + box.height / 2),
+          hit(box.left + 1, box.top + box.height / 2),
+          hit(box.right - 1, box.top + box.height / 2),
+          hit(box.left + box.width / 2, box.top + 1),
+          hit(box.left + box.width / 2, box.bottom - 1),
+        ],
+      };
+    });
+  const before = await read();
+  if (before.bounds.bottom > before.footerTop || !before.hits.every(Boolean)) {
+    // Wheel over the real scroll surface, above the fixed actions. No DOM,
+    // styles or scroll positions are replaced to manufacture row visibility.
+    await page.mouse.move(before.viewport.width - 10, before.footerTop - 16);
+    await page.mouse.wheel(
+      0,
+      Math.max(40, before.bounds.bottom - before.footerTop + 16)
+    );
+  }
+  await expect
+    .poll(async () => {
+      const current = await read();
+      return (
+        current.bounds.top >= 0 &&
+        current.bounds.bottom <= current.footerTop &&
+        current.hits.every(Boolean)
+      );
+    })
+    .toBe(true);
+  const geometry = await read();
+  expect(geometry.bounds.width).toBeGreaterThan(0);
+  expect(geometry.bounds.height).toBeGreaterThan(0);
+  expect(geometry.bounds.left).toBeGreaterThanOrEqual(0);
+  expect(geometry.bounds.right).toBeLessThanOrEqual(geometry.viewport.width);
+  expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.viewport.width);
+  expect(geometry.hits).toEqual([true, true, true, true, true]);
   return geometry;
 }
 
@@ -223,7 +281,86 @@ for (const viewport of viewports) {
               'personal_sign',
               scenario.params
             );
-            const popup = await popupFor(wallet!.context, dapp!, id);
+            let popup = await popupFor(wallet!.context, dapp!, id);
+            let warning:
+              | {
+                  closed: boolean;
+                  data: {
+                    eventName: string;
+                    host: string;
+                    requestCount: number;
+                  };
+                  requestId: number;
+                }
+              | undefined;
+            if (new URL(popup.url()).pathname === '/external/spam-warning') {
+              // Rejected prompts legitimately accumulate. Continue this real
+              // warning instead of resetting policy or inventing an allow reply.
+              const spamPopup = popup;
+              await expect(
+                spamPopup.getByRole('heading', {
+                  name: en.spamWarning.title,
+                  exact: true,
+                })
+              ).toBeVisible();
+              await expect(
+                spamPopup.getByText(server.url, { exact: true })
+              ).toBeVisible();
+              const data = await spamPopup.evaluate(() => {
+                const value = JSON.parse(
+                  new URL(location.href).searchParams.get('data')!
+                );
+                return {
+                  host: value.host,
+                  eventName: value.eventName,
+                  requestCount: value.requestCount,
+                };
+              });
+              expect(data).toEqual({
+                host: server.url,
+                eventName: 'spamWarningResponse',
+                requestCount: 3,
+              });
+              const pending = await rpcObservation(dapp!, id);
+              expect(pending.id).toBe(id);
+              expect(pending.method).toBe('personal_sign');
+              expect(pending.params).toEqual(scenario.params);
+              expect(pending.settled).not.toBe(true);
+              expect(pending.error).toBeUndefined();
+              expect(pending.result).toBeUndefined();
+              const warningImage = info.outputPath(
+                `${scenario.name}-spam-warning-${viewport.width}.png`
+              );
+              await spamPopup.screenshot({
+                path: warningImage,
+                animations: 'disabled',
+              });
+              await info.attach(
+                `${scenario.name}-spam-warning-${viewport.width}`,
+                { path: warningImage, contentType: 'image/png' }
+              );
+              await clickClosingPopup({
+                click: () =>
+                  spamPopup
+                    .getByRole('button', {
+                      name: en.buttons.continue,
+                      exact: true,
+                    })
+                    .click(),
+                isClosed: () => spamPopup.isClosed(),
+              });
+              await expect.poll(() => spamPopup.isClosed()).toBe(true);
+              const continued = await rpcObservation(dapp!, id);
+              expect(continued.id).toBe(id);
+              expect(continued.method).toBe('personal_sign');
+              expect(continued.params).toEqual(scenario.params);
+              expect(continued.settled).not.toBe(true);
+              expect(continued.error).toBeUndefined();
+              expect(continued.result).toBeUndefined();
+              warning = { closed: spamPopup.isClosed(), data, requestId: id };
+              popup = await popupFor(wallet!.context, dapp!, id);
+            }
+            expect(new URL(popup.url()).pathname).toBe('/external/tx/ethSign');
             await popup.setViewportSize(viewport);
             const data = popup.getByRole('button', {
               name: en.send.data,
@@ -285,6 +422,21 @@ for (const viewport of viewports) {
               path: image,
               contentType: 'image/png',
             });
+            const messageRow = interpretation
+              .getByText(`${en.send.message}:`, { exact: true })
+              .locator('xpath=..');
+            const messageGeometry = await messageRowGeometry(popup, messageRow);
+            const messageImage = info.outputPath(
+              `${scenario.name}-message-row-${viewport.width}.png`
+            );
+            await popup.screenshot({
+              path: messageImage,
+              animations: 'disabled',
+            });
+            await info.attach(
+              `${scenario.name}-message-row-${viewport.width}`,
+              { path: messageImage, contentType: 'image/png' }
+            );
             const cancel = popup.getByRole('button', {
               name: en.buttons.cancel,
               exact: true,
@@ -305,11 +457,13 @@ for (const viewport of viewports) {
               name: scenario.name,
               viewport,
               requestId: id,
+              warning,
               raw,
               interpreted,
               routeParams: [routeRequest[0], routeRequest[1]],
               preview,
               dataGeometry,
+              messageGeometry,
               cancelGeometry,
               cancellation: {
                 code: canceled.error?.code,
