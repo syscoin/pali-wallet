@@ -326,6 +326,15 @@ async function exercise(labels: readonly string[]) {
         identity(labels[index], ids[index])
       )
     );
+    const heading = within(dialog).getByRole('heading', {
+      name: en.settings.confirmRemoveNetwork.replace(
+        '{{networkName}}',
+        identity(labels[index], ids[index])
+      ),
+    });
+    const visibleTitle = heading.querySelector('span[aria-hidden="true"]');
+    expect(visibleTitle).toHaveTextContent(en.buttons.remove);
+    observation.visibleTitleClass = visibleTitle?.getAttribute('class');
     expect(within(dialog).getByText(`EVM · Chain ${ids[index]}`)).toBeVisible();
     observation.dialogText = dialog.textContent;
     const cancel = within(dialog).getByRole('button', {
@@ -364,6 +373,11 @@ it('healthy distinct labels remain distinguishable and Edit/keyboard Cancel pres
   expect(new Set(result.map((row) => row.rowText)).size).toBe(2);
   expect(new Set(result.map((row) => row.editName)).size).toBe(2);
   expect(new Set(result.map((row) => row.dialogName)).size).toBe(2);
+  // Native structure contract only; the real browser proves box containment.
+  expect(result.map((row) => row.visibleTitleClass)).toEqual([
+    'block',
+    'block',
+  ]);
 });
 
 it('same-label known-icon registrations remain distinguishable after all exact Edit and Cancel controls', async () => {
@@ -383,4 +397,8 @@ it('same-label known-icon registrations remain distinguishable after all exact E
       )
     ).size
   ).toBe(2);
+  expect(result.map((row) => row.visibleTitleClass)).toEqual([
+    'block',
+    'block',
+  ]);
 });
