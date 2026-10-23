@@ -105,6 +105,7 @@ const ImportPhrase: React.FC = () => {
 
   const handleKeypress = (event) => {
     if (event.key === 'Enter') {
+      event.preventDefault();
       form.submit();
     }
   };
