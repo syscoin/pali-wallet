@@ -41,6 +41,7 @@
   "components": {
     "newPassword": "Nouveau mot de passe (12 caractères min.)",
     "confirmPassword": "Confirmer le mot de passe",
+    "passwordMismatch": "Les mots de passe ne correspondent pas",
     "atLeast": "Au moins 12 caractères, 1 majuscule, 1 minuscule, 1 chiffre et 1 caractère spécial (!@#$%^&*...).",
     "suggestPassword": "Suggérer un mot de passe mémorisable",
     "memorablePasswordHelp": "Ceci est votre mot de passe de déverrouillage, pas votre phrase de récupération secrète. Enregistrez-le dans votre gestionnaire de mots de passe.",

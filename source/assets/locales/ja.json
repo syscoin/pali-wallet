@@ -41,6 +41,7 @@
   "components": {
     "newPassword": "新しいパスワード（最低12文字）",
     "confirmPassword": "パスワードを確認",
+    "passwordMismatch": "パスワードが一致しません",
     "atLeast": "最低12文字、大文字1文字、小文字1文字、数字1文字、特殊文字1文字（!@#$%^&*...）。",
     "suggestPassword": "覚えやすいパスワードを提案",
     "memorablePasswordHelp": "これはロック解除用パスワードであり、シークレットリカバリーフレーズではありません。パスワードマネージャーに保存してください。",

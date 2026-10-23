@@ -133,7 +133,9 @@ export const PasswordForm: React.FC<IPasswordForm> = ({ onSubmit }) => {
                 if (!value || getFieldValue('password') === value) {
                   return Promise.resolve();
                 }
-                return Promise.reject(new Error('Passwords do not match'));
+                return Promise.reject(
+                  new Error(t('components.passwordMismatch'))
+                );
               },
             }),
           ]}
