@@ -940,6 +940,7 @@ const CustomRPCView = () => {
     closeSuggestions();
     setNetworkQuery(chain.name);
 
+    const previous = form.getFieldsValue();
     // Fill form fields immediately for instant UX, always updating symbol like chainId
     const formValues: any = {
       label: chain.name,
@@ -948,6 +949,10 @@ const CustomRPCView = () => {
       // A new suggestion must not inherit another chain's explorer.
       // UTXO keeps its existing fallback to the RPC that passes validation.
       explorer: isSyscoinRpc ? '' : chain.explorers?.[0]?.url || '',
+      apiUrl:
+        !isSyscoinRpc && Number(previous.chainId) === chain.chainId
+          ? previous.apiUrl
+          : '',
     };
 
     form.setFieldsValue(formValues);
@@ -1336,6 +1341,7 @@ const CustomRPCView = () => {
                     checked={isSyscoinRpc}
                     onChange={(checked) => {
                       invalidatePendingChecks();
+                      form.setFieldsValue({ apiUrl: '' });
                       setIsSyscoinRpc(checked);
                     }}
                     className="relative inline-flex items-center w-9 h-4 border border-white rounded-full"
