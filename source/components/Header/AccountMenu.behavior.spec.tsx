@@ -112,12 +112,15 @@ beforeEach(() => {
 it('keeps compact 38px account rows with an independent 44px-wide copy target', async () => {
   await openAccounts();
 
-  for (const label of ['Alpha', 'Beta']) {
+  for (const [label, address] of [
+    ['Alpha', 'tsys1qalpha'],
+    ['Beta', 'tsys1qbeta'],
+  ]) {
     const account = screen.getByRole('menuitem', {
-      name: new RegExp(`${label}.*tsys1q`),
+      name: `${label} (${address})`,
     });
     const copy = screen.getByRole('menuitem', {
-      name: `buttons.copy: ${label}`,
+      name: `buttons.copy: ${label} (${address})`,
     });
     const row = account.closest('li');
 
@@ -135,9 +138,12 @@ it('keeps compact 38px account rows with an independent 44px-wide copy target', 
 it('centers badge text and the active check inside explicit local boxes', async () => {
   await openAccounts();
 
-  for (const label of ['Alpha', 'Beta']) {
+  for (const [label, address] of [
+    ['Alpha', 'tsys1qalpha'],
+    ['Beta', 'tsys1qbeta'],
+  ]) {
     const account = screen.getByRole('menuitem', {
-      name: new RegExp(`${label}.*tsys1q`),
+      name: `${label} (${address})`,
     });
     const badgeLabel = within(account).getByText('Pali');
     const badge = badgeLabel.parentElement;
@@ -154,7 +160,7 @@ it('centers badge text and the active check inside explicit local boxes', async 
   }
 
   const activeAccount = screen.getByRole('menuitem', {
-    name: /Alpha.*tsys1qalpha/,
+    name: 'Alpha (tsys1qalpha)',
   });
   const check = within(activeAccount).getByTestId('icon-check');
   const checkBox = check.parentElement;
@@ -191,7 +197,7 @@ it('compacts the Smart badge without shrinking text or losing its full accessibl
   await openAccounts();
 
   const account = screen.getByRole('menuitem', {
-    name: /My longer smart account name.*Smart Account/,
+    name: `My longer smart account name (${address}), Smart Account`,
   });
   expect(account.getAttribute('aria-label')).toContain(address);
   const badge = within(account).getByTitle('Smart Account');
@@ -227,7 +233,7 @@ it('compacts the Smart badge without shrinking text or losing its full accessibl
     expect.arrayContaining(['block', 'h-[12px]', 'w-[12px]'])
   );
   const copy = screen.getByRole('menuitem', {
-    name: 'buttons.copy: My longer smart account name',
+    name: `buttons.copy: My longer smart account name (${address})`,
   });
   expect(account.classList.contains('min-h-[38px]')).toBe(true);
   expect(copy.classList.contains('min-h-[38px]')).toBe(true);
@@ -255,7 +261,7 @@ it.each([
   await openAccounts();
 
   const account = screen.getByRole('menuitem', {
-    name: /Unchanged account.*tsys1qunchanged/,
+    name: 'Unchanged account (tsys1qunchanged)',
   });
   const badge = within(account).getByText(label).parentElement;
   expect(Array.from(badge?.classList || [])).toEqual(
@@ -267,7 +273,7 @@ it.each([
 it('keeps reopened account controls disabled during a background switch', async () => {
   mockState.vaultGlobal.isSwitchingAccount = true;
   const { setActiveAccount } = await openAccounts();
-  const account = screen.getByRole('menuitem', { name: /Beta.*tsys1qbeta/ });
+  const account = screen.getByRole('menuitem', { name: 'Beta (tsys1qbeta)' });
   expect((account as HTMLButtonElement).disabled).toBe(true);
   account.click();
   expect(setActiveAccount).not.toHaveBeenCalled();
@@ -276,7 +282,7 @@ it('keeps reopened account controls disabled during a background switch', async 
 it('registers each account and copy action as independent keyboard menu items', async () => {
   const { user, setActiveAccount } = await openAccounts();
   expect(screen.getAllByRole('menuitem')).toHaveLength(4);
-  const beta = screen.getByRole('menuitem', { name: /Beta.*tsys1qbeta/ });
+  const beta = screen.getByRole('menuitem', { name: 'Beta (tsys1qbeta)' });
   expect(beta.closest('li')?.id).toBe('account-HDAccount-1');
   await user.keyboard('Beta');
   await waitFor(() =>
@@ -296,7 +302,7 @@ it('keeps copy separate from selection and reports clipboard rejection', async (
     .mockRejectedValue(new Error('denied'));
   try {
     await user.click(
-      screen.getByRole('menuitem', { name: 'buttons.copy: Beta' })
+      screen.getByRole('menuitem', { name: 'buttons.copy: Beta (tsys1qbeta)' })
     );
     await waitFor(() =>
       expect(mockAlert.error).toHaveBeenCalledWith('transactions.copyFailed')
@@ -332,8 +338,8 @@ it('coalesces repeated selection while its first account switch is pending', asy
   });
   const setActiveAccount = jest.fn().mockReturnValue(pending);
   const { user } = await openAccounts(setActiveAccount);
-  const alpha = screen.getByRole('menuitem', { name: /Alpha.*tsys1qalpha/ });
-  const beta = screen.getByRole('menuitem', { name: /Beta.*tsys1qbeta/ });
+  const alpha = screen.getByRole('menuitem', { name: 'Alpha (tsys1qalpha)' });
+  const beta = screen.getByRole('menuitem', { name: 'Beta (tsys1qbeta)' });
   await act(async () => {
     alpha.click();
     beta.click();

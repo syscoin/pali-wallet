@@ -188,7 +188,7 @@ test('account removal preserves a refused commit and a retry survives a cold wor
         await wallet!.gotoRoute('#/settings/manage-accounts');
         await page
           .getByRole('button', {
-            name: `${en.buttons.remove}: ${LABEL}`,
+            name: `${en.buttons.remove}: ${LABEL} (${fixture.watchAddress})`,
             exact: true,
           })
           .click();
@@ -238,7 +238,7 @@ test('account removal preserves a refused commit and a retry survives a cold wor
           .toEqual({ live: null, saved: null });
         await expect(
           page.getByRole('button', {
-            name: `${en.buttons.remove}: ${LABEL}`,
+            name: `${en.buttons.remove}: ${LABEL} (${fixture.watchAddress})`,
             exact: true,
           })
         ).toHaveCount(0);
@@ -295,7 +295,7 @@ test('account removal preserves a refused commit and a retry survives a cold wor
         await wallet!.gotoRoute('#/settings/manage-accounts');
         await expect(
           page.getByRole('button', {
-            name: `${en.buttons.remove}: ${LABEL}`,
+            name: `${en.buttons.remove}: ${LABEL} (${fixture.watchAddress})`,
             exact: true,
           })
         ).toHaveCount(0);

@@ -339,7 +339,7 @@ const ManageAccountsView = React.memo(() => {
     if (!accountToRemove) return '';
 
     const confirmation = t('settings.removeAccountConfirmation', {
-      accountName: accountToRemove.account.label,
+      accountName: `${accountToRemove.account.label} (${accountToRemove.account.address})`,
       accountType: accountTypeLabel(accountToRemove.accountType),
     });
     const hasImportedPrivateKey =
@@ -366,7 +366,10 @@ const ManageAccountsView = React.memo(() => {
               <div className="transform group-hover:scale-110 transition-transform duration-300 ease-out flex-shrink-0">
                 <IconComponent />
               </div>
-              <span className="truncate">
+              <span
+                className="truncate"
+                title={`${account.label} (${account.address})`}
+              >
                 {account.label} ({ellipsis(account.address, 4, 4)})
               </span>
             </div>
@@ -382,7 +385,9 @@ const ManageAccountsView = React.memo(() => {
 
           <div className="flex gap-x-2 items-center flex-shrink-0">
             <IconButton
-              aria-label={`${t('buttons.edit')}: ${account.label}`}
+              aria-label={`${t('buttons.edit')}: ${account.label} (${
+                account.address
+              })`}
               className="flex h-11 w-11 items-center justify-center rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-royalblue"
               onClick={() => editAccount(account, accountType)}
               type="primary"
@@ -397,7 +402,9 @@ const ManageAccountsView = React.memo(() => {
 
             {canRemoveAccount(account, accountType) && (
               <IconButton
-                aria-label={`${t('buttons.remove')}: ${account.label}`}
+                aria-label={`${t('buttons.remove')}: ${account.label} (${
+                  account.address
+                })`}
                 onClick={() => handleRemoveClick(account, accountType)}
                 type="primary"
                 shape="circle"
