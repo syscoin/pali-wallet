@@ -1026,11 +1026,10 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
                                           ? item.symbol.slice(0, 8) + '...'
                                           : item?.symbol}
                                       </p>
-                                      {isNFT(item.assetGuid) && (
-                                        <span className="text-[10px] text-brand-gray200 font-mono">
-                                          GUID: {item.assetGuid.slice(0, 8)}...
-                                        </span>
-                                      )}
+                                      <span className="text-[10px] text-brand-gray200 font-mono break-all text-left">
+                                        {t('tokens.assetGuid')}:{' '}
+                                        {item.assetGuid}
+                                      </span>
                                     </div>
                                     <div className="flex flex-col items-end">
                                       <span
