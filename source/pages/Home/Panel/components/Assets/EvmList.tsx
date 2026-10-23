@@ -75,6 +75,17 @@ const DefaultEvmAssets = React.memo(
       [assets?.ethereum, chainId]
     );
 
+    const duplicateSymbols = useMemo(() => {
+      const counts = new Map<string, number>();
+      for (const token of currentChainAssets) {
+        const symbol = token.tokenSymbol.toLowerCase();
+        counts.set(symbol, (counts.get(symbol) || 0) + 1);
+      }
+      return new Set(
+        [...counts].filter(([, count]) => count > 1).map(([symbol]) => symbol)
+      );
+    }, [currentChainAssets]);
+
     const filteredAssets = useMemo(() => {
       const tokens = currentChainAssets || [];
       const lowercaseSearchValue = searchValue?.trim().toLowerCase() || '';
@@ -156,6 +167,7 @@ const DefaultEvmAssets = React.memo(
         {visibleItems.map((token: ITokenEthProps) => (
           <li
             key={token.id}
+            title={token.contractAddress}
             className="flex items-center justify-between py-2 text-xs border-b border-dashed border-bkg-white200"
           >
             <div className="flex gap-3 items-center justify-start">
@@ -171,18 +183,26 @@ const DefaultEvmAssets = React.memo(
                 </span>
               </Tooltip>
 
-              <p className="flex items-center gap-x-2">
-                <span className="text-brand-white">
-                  {formatFullPrecisionBalance(token.balance, 4)}
-                </span>
+              <div className="min-w-0">
+                <p className="flex items-center gap-x-2">
+                  <span className="text-brand-white">
+                    {formatFullPrecisionBalance(token.balance, 4)}
+                  </span>
 
-                <span
-                  className="text-brand-royalbluemedium hover:text-brand-deepPink100 cursor-pointer underline transition-colors duration-200"
-                  onClick={() => handleAssetClick(token)}
-                >
-                  {`  ${truncate(token.tokenSymbol, 10).toUpperCase()}`}
-                </span>
-              </p>
+                  <span
+                    className="text-brand-royalbluemedium hover:text-brand-deepPink100 cursor-pointer underline transition-colors duration-200"
+                    onClick={() => handleAssetClick(token)}
+                  >
+                    {`  ${truncate(token.tokenSymbol, 10).toUpperCase()}`}
+                  </span>
+                </p>
+                {duplicateSymbols.has(token.tokenSymbol.toLowerCase()) && (
+                  <p className="mt-1 font-mono text-brand-gray200">
+                    {token.contractAddress.slice(0, 6)}...
+                    {token.contractAddress.slice(-4)}
+                  </p>
+                )}
+              </div>
             </div>
 
             <div className="flex items-center justify-between overflow-hidden overflow-ellipsis">
@@ -193,6 +213,7 @@ const DefaultEvmAssets = React.memo(
                   aria-label={t('tokens.viewTokenDetails', {
                     symbol: token.tokenSymbol,
                   })}
+                  aria-description={token.contractAddress}
                 >
                   <DetailsIcon
                     size={16}
@@ -208,6 +229,7 @@ const DefaultEvmAssets = React.memo(
                   aria-label={t('tokens.deleteToken', {
                     symbol: token.tokenSymbol,
                   })}
+                  aria-description={token.contractAddress}
                 >
                   <DeleteIcon
                     size={16}
@@ -236,9 +258,11 @@ const DefaultEvmAssets = React.memo(
           title={t('tokens.deleteToken', {
             symbol: tokenToDelete?.tokenSymbol || t('tokens.genericToken'),
           })}
-          description={t('tokens.confirmDeleteTokenEvm', {
+          description={`${t('tokens.confirmDeleteTokenEvm', {
             symbol: tokenToDelete?.tokenSymbol || t('tokens.thisToken'),
-          })}
+          })} ${t('settings.contractAddress')}: ${
+            tokenToDelete?.contractAddress || ''
+          }`}
           buttonText={t('buttons.delete')}
           isButtonLoading={removal.pending}
         />

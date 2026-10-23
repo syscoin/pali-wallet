@@ -477,7 +477,11 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
         if (incompatibleSmartAddresses.has(address.toLowerCase())) return;
         const maybeName = (ensCache as any)?.[address]?.name;
         const display = maybeName || address;
-        if (!q || String(display).toLowerCase().includes(q)) {
+        if (
+          !q ||
+          address.toLowerCase().includes(q) ||
+          String(display).toLowerCase().includes(q)
+        ) {
           results.push({ label: display, address, type: 'recent' });
         }
       });

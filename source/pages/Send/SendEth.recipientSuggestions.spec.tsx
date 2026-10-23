@@ -445,6 +445,80 @@ it('named recent recipient shows both the ENS display name and shortened concret
   expect(mockNavigateWithContext).not.toHaveBeenCalled();
 });
 
+it('healthy: an unnamed recent recipient is searchable by its address and Enter selects exact bytes', async () => {
+  addRecent();
+  await open(3);
+  fireEvent.change(receiver(), { target: { value: RECENT.slice(0, 10) } });
+  await waitFor(() => expect(rows()).toHaveLength(1));
+  expect(rows()[0]).toHaveAttribute('title', RECENT);
+  rows()[0].focus();
+  await userEvent.keyboard('{Enter}');
+  expect(receiver()).toHaveValue(RECENT);
+  expect(rows()).toHaveLength(0);
+  expect(mockNavigateWithContext).not.toHaveBeenCalled();
+});
+
+it('healthy: a local account remains searchable by its address prefix and Enter selects exact bytes', async () => {
+  await open(2);
+  fireEvent.change(receiver(), { target: { value: SECOND.slice(0, 10) } });
+  await waitFor(() => expect(rows()).toHaveLength(1));
+  expect(rows()[0]).toHaveAttribute('title', SECOND);
+  expect(rows()[0]).toHaveTextContent('Savings recipient');
+  rows()[0].focus();
+  await userEvent.keyboard('{Enter}');
+  expect(receiver()).toHaveValue(SECOND);
+  expect(rows()).toHaveLength(0);
+  expect(mockNavigateWithContext).not.toHaveBeenCalled();
+});
+
+it('healthy: a named recent recipient is searchable by its ENS label and Enter still selects its concrete address', async () => {
+  addRecent();
+  mockState = {
+    ...mockState,
+    vaultGlobal: globalReducer(
+      mockState.vaultGlobal,
+      setEnsName({ address: RECENT, name: 'friend.eth' })
+    ),
+  };
+  await open(3);
+  fireEvent.change(receiver(), { target: { value: 'friend' } });
+  await waitFor(() => expect(rows()).toHaveLength(1));
+  expect(rows()[0]).toHaveAttribute('title', RECENT);
+  expect(rows()[0]).toHaveTextContent('friend.eth');
+  rows()[0].focus();
+  await userEvent.keyboard('{Enter}');
+  expect(receiver()).toHaveValue(RECENT);
+  expect(rows()).toHaveLength(0);
+  expect(mockNavigateWithContext).not.toHaveBeenCalled();
+});
+
+it.each([RECENT.slice(0, 10), RECENT])(
+  'a named recent recipient remains searchable by its address query %s',
+  async (query) => {
+    // Same real account/history/cache reducers as the existing named-recipient
+    // fixture. Production MainController.reverseResolveEns -> resolveEns uses
+    // this setEnsName producer after forward-verifying the destination.
+    addRecent();
+    mockState = {
+      ...mockState,
+      vaultGlobal: globalReducer(
+        mockState.vaultGlobal,
+        setEnsName({ address: RECENT, name: 'friend.eth' })
+      ),
+    };
+    await open(3);
+    fireEvent.change(receiver(), { target: { value: query } });
+    await waitFor(() => expect(rows()).toHaveLength(1));
+    expect(rows()[0]).toHaveAttribute('title', RECENT);
+    expect(rows()[0]).toHaveTextContent('friend.eth');
+    rows()[0].focus();
+    await userEvent.keyboard('{Enter}');
+    expect(receiver()).toHaveValue(RECENT);
+    expect(rows()).toHaveLength(0);
+    expect(mockNavigateWithContext).not.toHaveBeenCalled();
+  }
+);
+
 it.each(locales)(
   '%s ENS choice preserves the typed name and ENS acronym',
   async (_language, resource) => {
