@@ -70,7 +70,9 @@ async function publicState(page: Page) {
       ]);
       const assets = (vault: any) =>
         (vault?.accountAssets?.[active.type]?.[active.id]?.syscoin || [])
-          .filter((asset: any) => guids.includes(String(asset.assetGuid)))
+          .filter((asset: any) =>
+            guids.some((guid) => guid === String(asset.assetGuid))
+          )
           .map((asset: any) => ({
             guid: String(asset.assetGuid),
             symbol: asset.symbol,
