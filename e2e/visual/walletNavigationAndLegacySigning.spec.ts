@@ -246,12 +246,47 @@ test('header network families and choices are keyboard-operable in a small windo
                       label: state.vault.activeNetwork.label,
                       status: state.vaultGlobal.networkStatus,
                       switching: state.vaultGlobal.isSwitchingAccount,
+                      postLoading: state.vaultGlobal.isPostNetworkSwitchLoading,
                     })
                 )
               )
           )
         )
-        .toEqual({ label, status: 'idle', switching: false });
+        .toEqual({
+          label,
+          status: 'idle',
+          switching: false,
+          postLoading: false,
+        });
+      if (group === 'EVM Networks') {
+        // This fresh zero-balance built-in testnet has a real one-time
+        // first-access prompt. It can mount after the switch status is idle;
+        // finish its ordinary Close lifecycle before testing header focus.
+        const faucetTitle = en.faucet.firstAccessTitle
+          .replace('{{token}}', 'TSYS')
+          .replace('{{network}}', label);
+        const faucet = page.getByRole('dialog', {
+          name: faucetTitle,
+          exact: true,
+        });
+        await expect(faucet).toBeVisible();
+        await capture(page, info, 'keyboard-evm-first-access');
+        await faucet
+          .getByRole('button', { name: en.buttons.close, exact: true })
+          .click();
+        await expect(faucet).toBeHidden();
+        await expect(page.getByRole('dialog')).toHaveCount(0);
+        await expect
+          .poll(() =>
+            page.evaluate(async () => {
+              const state = await chrome.runtime.sendMessage({
+                type: 'getCurrentState',
+              });
+              return state.vault.shouldShowFaucetModal[5700];
+            })
+          )
+          .toBe(false);
+      }
       await wallet.ensureOnHome();
       await expect.poll(() => wallet.getActiveNetworkLabel()).toBe(label);
     }

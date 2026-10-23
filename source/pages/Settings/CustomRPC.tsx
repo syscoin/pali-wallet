@@ -236,6 +236,11 @@ const CustomRPCView = () => {
       );
     };
   };
+  const rpcValidationAttemptRef = React.useRef(0);
+  const rpcValidationFeedbackRef = React.useRef<{
+    message: string;
+    url: string;
+  } | null>(null);
   const urlInputRef = React.useRef<any>(null);
   const dropdownRef = React.useRef<HTMLDivElement>(null);
   const suggestionsId = 'custom-rpc-network-suggestions';
@@ -442,6 +447,7 @@ const CustomRPCView = () => {
     canApply = createOperationGuard()
   ): Promise<INetwork | null> => {
     if (!canApply()) return null;
+    const validationAttempt = ++rpcValidationAttemptRef.current;
     if (!rpcUrl || !rpcUrl.trim()) {
       // Clear any existing RPC URL field errors
       form.setFields([
@@ -534,6 +540,24 @@ const CustomRPCView = () => {
         }
       }
 
+      if (!canApply()) return null;
+      const previousFeedback = rpcValidationFeedbackRef.current;
+      if (
+        validationAttempt === rpcValidationAttemptRef.current &&
+        previousFeedback?.url === rpcUrl.trim()
+      ) {
+        // Clear only this helper's older error, not local format feedback or
+        // an error from a newer retry of the same endpoint.
+        form.setFields([
+          {
+            name: 'url',
+            errors: form
+              .getFieldError('url')
+              .filter((message) => message !== previousFeedback.message),
+          },
+        ]);
+        rpcValidationFeedbackRef.current = null;
+      }
       return network;
     } catch (error) {
       if (!canApply()) return null;
@@ -554,6 +578,10 @@ const CustomRPCView = () => {
       if (!ownValidationMessage)
         errorMessage = translateRpcValidationError(errorMessage, t);
 
+      rpcValidationFeedbackRef.current = {
+        message: errorMessage,
+        url: rpcUrl.trim(),
+      };
       form.setFields([
         {
           name: 'url',
