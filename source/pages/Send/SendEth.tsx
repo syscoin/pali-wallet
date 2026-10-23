@@ -158,6 +158,8 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
   const [selectedAsset, setSelectedAsset] = useState<ITokenEthProps | null>(
     initialSelectedAsset
   );
+  const assetSelectionRevision = useRef(0);
+  const submittedAssetSelectionRevision = useRef(0);
   const [isCalculatingGas, setIsCalculatingGas] = useState(false);
   const [cachedFeeData, setCachedFeeData] = useState<any>(null);
   const [isMaxSend, setIsMaxSend] = useState(initialIsMaxSend);
@@ -568,6 +570,9 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
 
   // ✅ MEMOIZED: Handlers
   const handleSelectedAsset = async (value: string) => {
+    // Asset selection lives outside Form values. Retire an in-flight submit
+    // synchronously, even if the user changes away and then back during ENS.
+    assetSelectionRevision.current += 1;
     const current = beginNftLookup();
     setNftTokenIds([]);
     setSelectedNftTokenId(null);
@@ -674,6 +679,13 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
   const handleSubmit = useCallback(
     async (values: any) => {
       if (!isCurrentForm()) return;
+      if (
+        submittedAssetSelectionRevision.current !==
+        assetSelectionRevision.current
+      ) {
+        void form.validateFields(['amount']).catch(() => undefined);
+        return;
+      }
       if (
         selectedAsset?.isNft &&
         selectedAsset.tokenStandard !== 'ERC-1155' &&
@@ -1289,6 +1301,11 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
         validateMessages={{ default: '' }}
         form={form}
         id="send-form"
+        onSubmitCapture={() => {
+          // Native capture covers both Next and Enter before async validation.
+          submittedAssetSelectionRevision.current =
+            assetSelectionRevision.current;
+        }}
         onFinish={handleSubmit}
         autoComplete="off"
         className="flex flex-col gap-2 items-center justify-center mt-6 text-center w-full pb-20 md:pb-0"
