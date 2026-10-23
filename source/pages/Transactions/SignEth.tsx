@@ -1030,6 +1030,10 @@ const EthSign: React.FC<ISign> = () => {
     const parameters = Object.keys(data)
       .filter((key) => !isNaN(Number(key)))
       .map((key) => data[key]);
+    const personalSignParams =
+      data.eventName === 'personal_sign'
+        ? getPersonalSignParams(data)
+        : undefined;
     const typedData =
       data.eventName === 'eth_signTypedData_v3' ||
       data.eventName === 'eth_signTypedData_v4'
@@ -1158,13 +1162,13 @@ const EthSign: React.FC<ISign> = () => {
                   <div>
                     <span className="text-gray-400">{t('send.address')}</span>
                     <span className="font-mono break-all">
-                      {data[0] === activeAccount.address ? data[0] : data[1]}
+                      {personalSignParams?.address}
                     </span>
                   </div>
                   <div>
                     <span className="text-gray-400">{t('send.message')}: </span>
                     <span className="font-mono break-all">
-                      {data[0] === activeAccount.address ? data[1] : data[0]}
+                      {personalSignParams?.message}
                     </span>
                   </div>
                 </>
@@ -1307,7 +1311,10 @@ const EthSign: React.FC<ISign> = () => {
                     <span className="text-xs font-medium text-gray-300 uppercase tracking-wide">
                       {t('send.message')}
                     </span>
-                    <IconButton onClick={() => copy(message)}>
+                    <IconButton
+                      aria-label={t('buttons.copy')}
+                      onClick={() => copy(message)}
+                    >
                       <Icon
                         name="copy"
                         className="text-brand-white hover:text-fields-input-borderfocus"
