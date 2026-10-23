@@ -602,21 +602,56 @@ for (const viewport of [
         }
       );
       await step(
-        'ordinary compact content wheel exposes the same selection without changing consent',
+        'ordinary compact content scrolling exposes the same selection without changing consent',
         async (capture) => {
           const firstRow = rowFor(popup!, first.label);
           const footer = popup!
             .getByRole('button', { name: en.buttons.cancel, exact: true })
             .locator('..')
             .locator('..');
+          const wheelSteps: number[] = [];
           if (viewport.height === 360) {
+            const scrollport = popup!.locator(
+              '[data-navigation-scroll="wallet-layout"]'
+            );
+            const wheel = async (delta: number) => {
+              const expectedTop = await scrollport.evaluate(
+                (element, amount) =>
+                  Math.max(
+                    0,
+                    Math.min(
+                      element.scrollHeight - element.clientHeight,
+                      element.scrollTop + amount
+                    )
+                  ),
+                delta
+              );
+              await popup!.mouse.wheel(0, delta);
+              wheelSteps.push(delta);
+              // Wheel delivery is asynchronous. A transient exposed frame on
+              // the way past this row is not a settled recovery observation.
+              await expect
+                .poll(() => scrollport.evaluate((element) => element.scrollTop))
+                .toBe(expectedTop);
+            };
             await popup!.mouse.move(viewport.width / 2, 200);
-            await popup!.mouse.wheel(0, 100);
-            await expect
-              .poll(async () => (await exposure(firstRow, footer)).fullyExposed)
-              .toBe(true);
+            await wheel(100);
+            const afterWheel = await exposure(firstRow, footer);
+            observations.firstSettledWheel = afterWheel;
+            if (!afterWheel.fullyExposed && afterWheel.row.top < 0) {
+              // Correct native focus may already expose the row near the top.
+              // Recover from scrolling past it with an ordinary reverse wheel;
+              // never change DOM, focus, scrollTop or the stored native proof.
+              await wheel(-100);
+            }
           }
           const control = await exposure(firstRow, footer);
+          observations.wheelHealthyControl = {
+            wheelApplied: viewport.height === 360,
+            wheelSteps,
+            exposure: control,
+          };
+          await capture(popup!);
           expect(control.fullyExposed).toBe(true);
           expect(control.focused).toBe(true);
           expect(control.selected).toBe(true);
@@ -628,16 +663,16 @@ for (const viewport of [
             true
           );
           await assertIdentity();
-          observations.wheelHealthyControl = {
-            wheelApplied: viewport.height === 360,
-            exposure: control,
-          };
-          await capture(popup!);
         }
       );
       await step(
         'native focus also exposes the final account and its separate copy control',
         async (capture) => {
+          // The preceding manual wheel leaves a real pointer in the content.
+          // Move it away before keyboard-only review so scrolling an address
+          // under that pointer does not deliberately open its hover tooltip.
+          await popup!.mouse.move(2, 2);
+          await expect(popup!.getByRole('tooltip')).toBeHidden();
           const lastRow = rowFor(popup!, second.label);
           const footer = popup!
             .getByRole('button', { name: en.buttons.cancel, exact: true })
