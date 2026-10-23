@@ -416,6 +416,7 @@ export const SyscoinImport: React.FC = () => {
       {/* Tab Navigation */}
       <div className="min-h-10 shrink-0 relative flex items-stretch justify-center w-full bg-bkg-1 -mt-2">
         <button
+          aria-pressed={activeTab === 'owned'}
           className={`w-1/2 min-w-0 min-h-10 px-2 py-1 break-words font-medium text-base leading-5 transition-all duration-300 ${
             activeTab === 'owned'
               ? 'bg-bkg-3 text-brand-white rounded-tr-[2rem]'
@@ -428,6 +429,7 @@ export const SyscoinImport: React.FC = () => {
         </button>
 
         <button
+          aria-pressed={activeTab === 'custom'}
           className={`w-1/2 min-w-0 min-h-10 px-2 py-1 break-words font-medium text-base leading-5 transition-all duration-300 ${
             activeTab === 'custom'
               ? 'bg-bkg-3 text-brand-white rounded-tl-[2rem]'

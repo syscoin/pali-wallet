@@ -113,6 +113,11 @@ export const SendEth = () => {
 const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
   const { alert, navigate } = useUtils();
   const { t } = useTranslation();
+  const suggestionSourceLabels = {
+    account: t('transactions.account'),
+    recent: t('send.recentRecipient'),
+    ens: 'ENS',
+  };
   const {
     controllerEmitter,
     isUnlocked,
@@ -1409,7 +1414,11 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                     <button
                       type="button"
                       key={`${sug.type}-${sug.address}-${idx}`}
-                      className="w-full text-left px-3 py-2 text-xs text-white hover:bg-alpha-whiteAlpha100 flex items-center justify-between"
+                      aria-label={`${sug.label}, ${sug.address}, ${
+                        suggestionSourceLabels[sug.type]
+                      }`}
+                      title={sug.address}
+                      className="w-full min-w-0 text-left px-3 py-2 text-xs text-white hover:bg-alpha-whiteAlpha100 flex items-center justify-between gap-2"
                       onMouseDown={(e) => e.preventDefault()}
                       onClick={() => {
                         receiverEditRevision.current += 1;
@@ -1424,9 +1433,17 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                         saveCurrentState();
                       }}
                     >
-                      <span className="truncate max-w-[75%]">{sug.label}</span>
-                      <span className="text-[10px] text-brand-gray200 uppercase">
-                        {sug.type}
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate">{sug.label}</span>
+                        {sug.label.toLowerCase() !==
+                          sug.address.toLowerCase() && (
+                          <span className="block truncate text-[10px] text-brand-gray200">
+                            {ellipsis(sug.address, 8, 6)}
+                          </span>
+                        )}
+                      </span>
+                      <span className="shrink-0 text-[10px] text-brand-gray200 uppercase">
+                        {suggestionSourceLabels[sug.type]}
                       </span>
                     </button>
                   ))}

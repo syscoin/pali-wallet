@@ -424,6 +424,7 @@
     "networkCatchingUp": "네트워크에서 이전 거래를 업데이트하고 있습니다. 잠시 후 다시 시도해 주세요.",
     "balance": "잔액",
     "receiver": "수신자",
+    "recentRecipient": "최근",
     "native": "네이티브",
     "amount": "금액",
     "tokenId": "토큰 ID",

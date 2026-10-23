@@ -424,6 +424,7 @@
     "networkCatchingUp": "Le réseau met encore à jour votre transaction précédente. Veuillez réessayer dans quelques instants.",
     "balance": "Solde",
     "receiver": "Destinataire",
+    "recentRecipient": "Récent",
     "native": "Natif",
     "amount": "Montant",
     "tokenId": "ID du Token",
