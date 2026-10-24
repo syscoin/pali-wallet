@@ -209,7 +209,7 @@ const expectFeedback = (message: string, invalid: boolean) => {
   const alert = screen.getByRole('alert');
   expect(alert).toHaveTextContent(message);
   expect(alert).toHaveAttribute('id', 'custom-token-contract-feedback');
-  expect(alert).toHaveClass('mt-2', 'px-5', 'text-sm');
+  expect(alert).toHaveClass('mt-2', 'px-6', 'text-sm', 'text-red-400');
   expect(input()).toHaveAttribute('aria-describedby', alert.id);
   expect(input()).toHaveAccessibleDescription(message);
   if (invalid) expect(input()).toHaveAttribute('aria-invalid', 'true');

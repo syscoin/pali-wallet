@@ -836,7 +836,7 @@ export const ImportToken: React.FC = () => {
         <p
           id={`${id}-feedback`}
           role="alert"
-          className="mt-2 px-5 text-sm text-warning-error"
+          className="mt-2 px-6 text-sm text-red-400"
         >
           {feedback.message}
         </p>
@@ -966,7 +966,7 @@ export const ImportToken: React.FC = () => {
               ) : customTokenDetails && customContractAddress ? (
                 <CheckCircleOutlined className="text-warning-success text-base" />
               ) : currentContractFailure ? (
-                <CloseCircleOutlined className="text-warning-error text-base" />
+                <CloseCircleOutlined className="text-red-400 text-base" />
               ) : null,
               !activeNetwork.apiUrl && (
                 <div className="mt-3 text-xs text-brand-gray200 leading-relaxed">
