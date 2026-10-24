@@ -166,6 +166,10 @@ export const NetworkList = ({
     [newNetworks]
   );
 
+  const labelCounts = new Map<string, number>();
+  for (const network of sortedNetworks)
+    labelCounts.set(network.label, (labelCounts.get(network.label) || 0) + 1);
+
   return (
     <div className="mb-14">
       {/* Always show network type tabs so users can switch between UTXO and EVM */}
@@ -237,18 +241,27 @@ export const NetworkList = ({
               activeNetwork,
               currentNetworks
             );
+            const label =
+              currentNetworks.label ||
+              t('switchNetworkPage.chainFallback', {
+                chainId: currentNetworks.chainId,
+              });
+            const identity =
+              currentNetworks.label &&
+              (labelCounts.get(currentNetworks.label) || 0) > 1
+                ? `${
+                    selectedNetwork === INetworkType.Syscoin ? 'UTXO' : 'EVM'
+                  } · ${t('settings.chainNumber', {
+                    chainId: currentNetworks.chainId,
+                  })}`
+                : '';
 
             return (
               <button
                 key={`${currentNetworks.chainId}-${currentNetworks.url}`}
                 type="button"
                 aria-pressed={isSelected}
-                title={
-                  currentNetworks.label ||
-                  t('switchNetworkPage.chainFallback', {
-                    chainId: currentNetworks.chainId,
-                  })
-                }
+                title={identity ? `${label} (${identity})` : label}
                 className={`${
                   isSelected ? 'bg-brand-blue800' : 'bg-brand-blue600'
                 } mb-[2px] rounded-[10px] p-2 w-full min-h-11 min-w-0 text-left text-white text-sm font-normal transition-all cursor-pointer hover:bg-brand-blue800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-royalblue flex items-center justify-between gap-2`}
@@ -266,12 +279,16 @@ export const NetworkList = ({
                     className="flex-shrink-0"
                   />
                   <span className="flex items-center gap-2 flex-1 min-w-0">
-                    <span className="truncate">
-                      {currentNetworks.label ||
-                        t('switchNetworkPage.chainFallback', {
-                          chainId: currentNetworks.chainId,
-                        })}
-                    </span>
+                    {identity ? (
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate">{label}</span>{' '}
+                        <span className="block text-xs leading-4 font-normal text-content-muted">
+                          {identity}
+                        </span>
+                      </span>
+                    ) : (
+                      <span className="truncate">{label}</span>
+                    )}
                     {isActive && (
                       <span className="text-xs text-green-400 flex-shrink-0">
                         ({t('components.activeStatus')})
