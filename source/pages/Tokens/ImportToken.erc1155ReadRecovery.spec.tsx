@@ -435,3 +435,156 @@ it('can recover today by an actual edit after the read transport recovers', asyn
   ]);
   expect(importButton()).toBeEnabled();
 });
+
+// Field association/class contracts through the same actual verification
+// pipeline above. Genuine browser captures own painted geometry and contrast.
+const tokenIdField = () => screen.getByLabelText('send.tokenId');
+const expectNoMalformedIdGuidance = () => {
+  expect(tokenIdField()).not.toHaveAttribute('aria-invalid', 'true');
+  expect(tokenIdField()).not.toHaveAttribute('aria-describedby');
+  expect(screen.queryByText('send.invalidTokenId')).toBeNull();
+};
+const expectMalformedIdGuidance = () => {
+  const message = screen.getByRole('alert');
+  expect(message).toHaveAttribute('id', 'custom-token-id-feedback');
+  expect(message).toHaveTextContent('send.invalidTokenId');
+  expect(message).toHaveClass('mt-2', 'px-6', 'text-sm', 'text-red-400');
+  expect(tokenIdField()).toHaveAttribute('aria-invalid', 'true');
+  expect(tokenIdField()).toHaveAttribute(
+    'aria-describedby',
+    'custom-token-id-feedback'
+  );
+  expect(tokenIdField()).toHaveAccessibleDescription('send.invalidTokenId');
+  const glyph = screen.getByTitle('send.invalidTokenId');
+  expect(glyph).toHaveClass('text-red-400', 'text-sm');
+  expect(glyph).not.toHaveClass('text-warning-error');
+};
+
+it('associates completed malformed Token ID guidance without a read, import or scope mutation', async () => {
+  await mount();
+  const baseline = mockStore.getState();
+  await edit('not-a-uint256');
+  expectMalformedIdGuidance();
+  expect(importButton()).toBeNull();
+  expect(rpcCalls).toEqual([]);
+  expect(mockStore.getState()).toEqual(baseline);
+});
+
+it('does not show malformed guidance for empty, held pending, positive or verified-zero IDs', async () => {
+  await mount();
+  expectNoMalformedIdGuidance();
+  const read = holdBatch();
+  await edit('7');
+  expect(importButton()).toBeNull();
+  expectNoMalformedIdGuidance();
+  await act(async () => read.resolve());
+  expect(importButton()).toBeEnabled();
+  expect(screen.getByTitle('tokens.balanceForTokenId:3')).toBeVisible();
+  expectNoMalformedIdGuidance();
+  rawQuantity = '0';
+  await edit('0');
+  expect(importButton()).toBeEnabled();
+  expect(
+    screen.getByTitle('tokens.balanceForTokenId:0 tokens.verifyTokenExists')
+  ).toBeVisible();
+  expectNoMalformedIdGuidance();
+});
+
+it('keeps valid-ID read failure and Retry unchanged instead of calling the field malformed', async () => {
+  await failId();
+  expectNoMalformedIdGuidance();
+  expect(screen.getByRole('alert')).toHaveTextContent('send.unableToLoad');
+  const glyph = screen.getByTitle('send.unableToLoad');
+  expect(glyph).toHaveClass('text-warning-error', 'text-sm');
+  expect(glyph).not.toHaveClass('text-red-400');
+  expect(retry()).toBeEnabled();
+  failOwnershipReads = false;
+  await act(async () => fireEvent.click(retry()));
+  expect(importButton()).toBeEnabled();
+  expectNoMalformedIdGuidance();
+});
+
+it('removes malformed guidance immediately on correction and keeps it absent during the actual held read', async () => {
+  await mount();
+  await edit('not-a-uint256');
+  expectMalformedIdGuidance();
+  const read = holdBatch();
+  fireEvent.change(tokenIdField(), { target: { value: '7' } });
+  expectNoMalformedIdGuidance();
+  expect(importButton()).toBeNull();
+  await act(async () => jest.advanceTimersByTimeAsync(0));
+  expectNoMalformedIdGuidance();
+  expect(importButton()).toBeNull();
+  await act(async () => read.resolve());
+  expect(importButton()).toBeEnabled();
+  expectNoMalformedIdGuidance();
+  await edit('not-a-uint256');
+  expectMalformedIdGuidance();
+  fireEvent.change(tokenIdField(), { target: { value: '' } });
+  expectNoMalformedIdGuidance();
+  expect(importButton()).toBeNull();
+});
+
+it('does not let an older held positive result erase the current malformed-ID guidance', async () => {
+  await mount();
+  rawQuantity = '99';
+  const read = holdBatch();
+  await edit('7');
+  expectNoMalformedIdGuidance();
+  await edit('not-a-uint256');
+  expectMalformedIdGuidance();
+  await act(async () => read.resolve());
+  expect(tokenIdField()).toHaveValue('not-a-uint256');
+  expectMalformedIdGuidance();
+  expect(screen.queryByTitle('tokens.balanceForTokenId:99')).toBeNull();
+  expect(importButton()).toBeNull();
+});
+
+it('does not restore feedback or an import when an old held result finishes after an empty edit', async () => {
+  await mount();
+  const read = holdBatch();
+  await edit('7');
+  await edit('');
+  expectNoMalformedIdGuidance();
+  await act(async () => read.resolve());
+  expect(tokenIdField()).toHaveValue('');
+  expectNoMalformedIdGuidance();
+  expect(importButton()).toBeNull();
+});
+
+it.each(['account', 'same-chain-rpc'] as const)(
+  'does not carry malformed Token ID guidance into a real keyed %s change',
+  async (change) => {
+    await mount();
+    await edit('not-a-uint256');
+    expectMalformedIdGuidance();
+    await act(async () => {
+      if (change === 'account') {
+        mockStore.dispatch(
+          createAccount({
+            accountType: KeyringAccountType.HDAccount,
+            account: {
+              ...mockStore.getState().vault.accounts.HDAccount[0],
+              id: 1,
+              address: `0x${'22'.repeat(20)}`,
+            },
+          })
+        );
+        mockStore.dispatch(
+          setActiveAccount({ type: KeyringAccountType.HDAccount, id: 1 })
+        );
+      } else {
+        mockStore.dispatch(
+          setActiveNetwork({
+            ...mockStore.getState().vault.activeNetwork,
+            url: 'https://other-rpc.synthetic.invalid',
+          })
+        );
+      }
+    });
+    expect(screen.getByLabelText('settings.contractAddress')).toHaveValue('');
+    expect(screen.queryByLabelText('send.tokenId')).toBeNull();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(importButton()).toBeNull();
+  }
+);
