@@ -79,6 +79,10 @@ type CommittedIdentity = {
   xpub: string;
 };
 const tickets = new WeakMap<MainController, RecoveryTicket>();
+const resetTickets = new WeakMap<
+  MainController,
+  Omit<RecoveryTicket, 'identity'>
+>();
 
 const resetOwnedKey = (key: string) =>
   key === 'sysweb3-vault' ||
@@ -355,7 +359,109 @@ export const beginWalletRecovery = async (
     walletStateGeneration,
     createdAt: Date.now(),
   });
+  resetTickets.delete(controller);
   return token;
+};
+
+const assertResetLocked = (wallet: RecoveryHost) => {
+  if (wallet.isAnyKeyringUnlocked())
+    throw new Error('Lock the wallet before starting wallet reset');
+};
+
+/** Issue a read-only, single-use confirmation ticket under authenticationMutex. */
+export const beginLockedWalletReset = async (
+  controller: MainController,
+  context: WalletRecoveryContext
+): Promise<string> => {
+  const wallet = controller as unknown as RecoveryHost;
+  assertResetLocked(wallet);
+  if (wallet.isCreatingWallet)
+    throw new Error('Wallet setup is already in progress');
+  if (wallet.recoveryJournalPending)
+    throw new Error('Reload the wallet to finish the previous recovery');
+  const generation = wallet.walletSessionGeneration;
+  const walletStateGeneration = wallet.walletStateGeneration;
+  const records = await context.storage.getItems([
+    'sysweb3-vault',
+    'sysweb3-vault-keys',
+    JOURNAL_KEY,
+  ]);
+  assertStoredPair(records);
+  if (records[JOURNAL_KEY] !== undefined && records[JOURNAL_KEY] !== null)
+    throw new Error('Reload the wallet to finish the previous recovery');
+  const fingerprint = await pairFingerprint(records);
+  if (
+    generation !== wallet.walletSessionGeneration ||
+    walletStateGeneration !== wallet.walletStateGeneration ||
+    wallet.isCreatingWallet
+  )
+    throw new Error('Wallet state changed before reset');
+  assertResetLocked(wallet);
+  const token = Array.from(crypto.getRandomValues(new Uint8Array(32)), (byte) =>
+    byte.toString(16).padStart(2, '0')
+  ).join('');
+  tickets.delete(controller);
+  resetTickets.set(controller, {
+    token,
+    pairFingerprint: fingerprint,
+    generation,
+    walletStateGeneration,
+    createdAt: Date.now(),
+  });
+  return token;
+};
+
+/**
+ * Explicit destructive reset, never a bypass for ordinary onboarding or recovery.
+ * The caller owns authenticationMutex and reserves setup until final cleanup.
+ */
+export const resetLockedWallet = async (
+  controller: MainController,
+  token: unknown,
+  confirmation: unknown,
+  context: WalletRecoveryContext
+): Promise<void> => {
+  const wallet = controller as unknown as RecoveryHost;
+  const ticket = resetTickets.get(controller);
+  // A wrong/older token must not consume a different document's newer ticket.
+  // A matching attempt is single use, including a rejected acknowledgement.
+  if (ticket?.token === token) resetTickets.delete(controller);
+  if (
+    !ticket ||
+    typeof token !== 'string' ||
+    token !== ticket.token ||
+    Date.now() < ticket.createdAt ||
+    Date.now() - ticket.createdAt > TICKET_LIFETIME_MS
+  )
+    throw new Error('Wallet reset expired. Start reset again');
+  if (confirmation !== 'ERASE')
+    throw new Error('Confirm wallet removal by typing ERASE');
+  const assertCurrent = () => {
+    if (wallet.recoveryJournalPending)
+      throw new Error('Reload the wallet to finish the previous recovery');
+    if (
+      ticket.generation !== wallet.walletSessionGeneration ||
+      ticket.walletStateGeneration !== wallet.walletStateGeneration
+    )
+      throw new Error('Wallet state changed before reset');
+    assertResetLocked(wallet);
+  };
+  assertCurrent();
+  const records = await context.storage.getItems([
+    'sysweb3-vault',
+    'sysweb3-vault-keys',
+    JOURNAL_KEY,
+  ]);
+  assertStoredPair(records);
+  if (records[JOURNAL_KEY] !== undefined && records[JOURNAL_KEY] !== null)
+    throw new Error('Reload the wallet to finish the previous recovery');
+  if ((await pairFingerprint(records)) !== ticket.pairFingerprint)
+    throw new Error('Wallet storage changed before reset');
+  assertCurrent();
+  tickets.delete(controller);
+  // The same verified backup/rollback and full scoped cleanup used by Forget
+  // Wallet owns the destructive portion; this path never accepts a seed.
+  await forgetWalletWithRecovery(controller, context);
 };
 
 const validateJournal = async (record: any): Promise<RecoveryJournal> => {

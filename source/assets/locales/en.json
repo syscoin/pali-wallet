@@ -919,6 +919,14 @@
     "invalidAddress": "Invalid address"
   },
   "start": {
+    "eraseAndStartFresh": "Erase and start fresh",
+    "eraseWarning": "Erases all locally saved accounts, imported keys and settings.",
+    "eraseFundsWarning": "Funds stay on-chain. Without the recovery phrase and separate key backups, access may be lost forever.",
+    "eraseAcknowledge": "I accept possible permanent loss of access without backups.",
+    "eraseTypeConfirmation": "Type {{word}}.",
+    "eraseConfirm": "Erase wallet",
+    "eraseFailed": "Unavailable. Close and retry.",
+    "eraseUncertain": "Reset unconfirmed. Check wallet first.",
     "getStarted": "Get started",
     "importWalletSeedPhrase": "Import using wallet seed phrase",
     "unlockConfirmationFailed": "Wallet unlock could not be confirmed. Please try again.",

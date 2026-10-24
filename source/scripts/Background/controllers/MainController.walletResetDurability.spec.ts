@@ -724,4 +724,192 @@ describe('wallet reset durable cleanup', () => {
     expect(walletPersistenceGate.blocked).toBe(false);
     expect(store.getState().vault.activeNetwork.slip44).toBe(57);
   });
+
+  describe('explicit locked-wallet reset', () => {
+    beforeEach(() => {
+      unlocked = false;
+      wallet.keyrings.set('synthetic', wallet.getActiveKeyring());
+    });
+
+    it('removes every saved wallet and live session without asking for its password or seed', async () => {
+      const { dapp, host, reset } = installLiveDapp();
+      const ticket = await wallet.beginLockedWalletReset();
+      expect(records).toEqual(originalRecords);
+      expect(chrome.storage.local.set).not.toHaveBeenCalled();
+      expect(chrome.storage.local.remove).not.toHaveBeenCalled();
+      wallet.resetRateLimit.mockImplementation(async () => {
+        expect(records).toEqual({});
+      });
+
+      await expect(wallet.resetLockedWallet(ticket, 'ERASE')).resolves.toBe(
+        true
+      );
+
+      expect(records).toEqual({});
+      expect(wallet.getActiveKeyring().getSeed).not.toHaveBeenCalled();
+      expect(wallet.checkRateLimit).not.toHaveBeenCalled();
+      expect(wallet.resetRateLimit).toHaveBeenCalledTimes(1);
+      expect(reset).toHaveBeenCalledWith([host]);
+      expect(dapp.getAll()).toEqual({});
+      expect(() => dapp.hasWindow(host)).toThrow();
+      expect(injectedNotices()).toHaveLength(3);
+      expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({
+        type: 'wallet_forgotten',
+      });
+      expect(wallet.getWalletSetupStatus()).toBeUndefined();
+    });
+
+    it('keeps the wallet and lockout untouched when the acknowledgement is invalid', async () => {
+      const ticket = await wallet.beginLockedWalletReset();
+      await expect(wallet.resetLockedWallet(ticket, 'erase')).rejects.toThrow(
+        'typing ERASE'
+      );
+
+      expect(records).toEqual(originalRecords);
+      expect(chrome.storage.local.set).not.toHaveBeenCalled();
+      expect(chrome.storage.local.remove).not.toHaveBeenCalled();
+      expect(wallet.resetRateLimit).not.toHaveBeenCalled();
+      expect(wallet.getActiveKeyring().getSeed).not.toHaveBeenCalled();
+      expect(chrome.runtime.sendMessage).not.toHaveBeenCalled();
+      expect(wallet.getWalletSetupStatus()).toBeUndefined();
+    });
+
+    it('reserves setup before waiting and rejects duplicate reset or create requests', async () => {
+      const ticket = await wallet.beginLockedWalletReset();
+      let release!: () => void;
+      let markEntered!: () => void;
+      const entered = new Promise<void>((resolve) => {
+        markEntered = resolve;
+      });
+      const held = wallet.authenticationMutex.runExclusive(async () => {
+        markEntered();
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
+      });
+      await entered;
+      const resetting = wallet.resetLockedWallet(ticket, 'ERASE');
+      expect(wallet.getWalletSetupStatus()).toBe('busy');
+      await expect(wallet.resetLockedWallet(ticket, 'ERASE')).rejects.toThrow(
+        'Wallet setup is already in progress'
+      );
+      await expect(
+        wallet.createWallet('unused password', 'unused seed')
+      ).rejects.toThrow('Wallet creation is already in progress');
+      expect(records).toEqual(originalRecords);
+      release();
+
+      await held;
+      await expect(resetting).resolves.toBe(true);
+      expect(records).toEqual({});
+      expect(wallet.resetRateLimit).toHaveBeenCalledTimes(1);
+      expect(wallet.getWalletSetupStatus()).toBeUndefined();
+    });
+
+    it.each([true, false])(
+      'honors an earlier queued unlock with canLogin=%s before deciding whether reset is allowed',
+      async (canLogin) => {
+        const ticket = await wallet.beginLockedWalletReset();
+        const keyring = wallet.getActiveKeyring();
+        let release!: () => void;
+        let markEntered!: () => void;
+        const entered = new Promise<void>((resolve) => {
+          markEntered = resolve;
+        });
+        keyring.unlock = jest.fn(async () => {
+          markEntered();
+          await new Promise<void>((resolve) => {
+            release = resolve;
+          });
+          unlocked = canLogin;
+          return { canLogin, needsAccountCreation: false };
+        });
+        keyring.lockWallet = jest.fn(async () => {
+          unlocked = false;
+        });
+        const unlocking = wallet.unlock('synthetic password');
+        await entered;
+        const resetting = wallet.resetLockedWallet(ticket, 'ERASE').then(
+          (value: boolean) => ({ value, error: undefined }),
+          (error: Error) => ({ value: undefined, error })
+        );
+        expect(wallet.getWalletSetupStatus()).toBe('busy');
+        expect(records).toEqual(originalRecords);
+        release();
+
+        await expect(unlocking).resolves.toEqual({
+          canLogin,
+          needsAccountCreation: false,
+        });
+        const outcome = await resetting;
+        if (canLogin) {
+          expect(outcome.error?.message).toMatch(/lock.*wallet/i);
+          expect(records).toEqual(originalRecords);
+          expect(unlocked).toBe(true);
+          expect(chrome.runtime.sendMessage).not.toHaveBeenCalled();
+        } else {
+          expect(outcome).toEqual({ value: true, error: undefined });
+          expect(records).toEqual({});
+          expect(wallet.recordFailedAttempt).toHaveBeenCalledTimes(1);
+          expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({
+            type: 'wallet_forgotten',
+          });
+        }
+        expect(keyring.getSeed).not.toHaveBeenCalled();
+        expect(wallet.getWalletSetupStatus()).toBeUndefined();
+      }
+    );
+
+    it('restores the complete wallet after an erase failure without clearing its lockout', async () => {
+      const ticket = await wallet.beginLockedWalletReset();
+      failRemoval = 'state-vault-60';
+
+      await expect(
+        wallet.resetLockedWallet(ticket, 'ERASE')
+      ).rejects.toMatchObject({
+        message: 'synthetic storage removal failure',
+      });
+
+      expect(records).toEqual(originalRecords);
+      expect(wallet.resetRateLimit).not.toHaveBeenCalled();
+      expect(walletPersistenceGate.blocked).toBe(false);
+      expect(wallet.recoveryJournalPending).toBe(false);
+      expect(wallet.getWalletSetupStatus()).toBeUndefined();
+      expect(chrome.runtime.sendMessage).not.toHaveBeenCalled();
+      await expect(wallet.resetLockedWallet(ticket, 'ERASE')).rejects.toThrow(
+        /Wallet reset expired/
+      );
+    });
+
+    it('revokes old live sessions after committed erase even if lockout cleanup fails', async () => {
+      const { dapp, host, reset } = installLiveDapp();
+      const ticket = await wallet.beginLockedWalletReset();
+      const failure = new Error('synthetic lockout cleanup failure');
+      wallet.resetRateLimit.mockImplementation(async () => {
+        expect(records).toEqual({});
+        throw failure;
+      });
+
+      await expect(wallet.resetLockedWallet(ticket, 'ERASE')).rejects.toBe(
+        failure
+      );
+
+      expect(records).toEqual({});
+      expect(walletPersistenceGate.blocked).toBe(false);
+      expect(wallet.recoveryJournalPending).toBe(false);
+      expect(reset).toHaveBeenCalledWith([host]);
+      expect(dapp.getAll()).toEqual({});
+      expect(() => dapp.hasWindow(host)).toThrow();
+      expect(injectedNotices()).toHaveLength(3);
+      expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({
+        type: 'wallet_forgotten',
+      });
+      expect(wallet.getWalletSetupStatus()).toBeUndefined();
+      await expect(wallet.resetLockedWallet(ticket, 'ERASE')).rejects.toThrow(
+        /Wallet reset expired/
+      );
+      expect(reset).toHaveBeenCalledTimes(1);
+      expect(wallet.resetRateLimit).toHaveBeenCalledTimes(1);
+    });
+  });
 });

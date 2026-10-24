@@ -919,6 +919,14 @@
     "invalidAddress": "Dirección inválida"
   },
   "start": {
+    "eraseAndStartFresh": "Borrar y empezar de nuevo",
+    "eraseWarning": "Borra todas las cuentas, claves importadas y ajustes locales.",
+    "eraseFundsWarning": "Los fondos siguen en la cadena. Sin la semilla y copias separadas de las claves, puedes perder el acceso para siempre.",
+    "eraseAcknowledge": "Acepto que, sin copias de seguridad, puedo perder el acceso para siempre.",
+    "eraseTypeConfirmation": "Escribe {{word}}.",
+    "eraseConfirm": "Borrar cartera",
+    "eraseFailed": "No disponible. Cierra y reintenta.",
+    "eraseUncertain": "Borrado sin confirmar. Comprueba primero la cartera.",
     "getStarted": "Comenzar",
     "importWalletSeedPhrase": "Importar con la frase semilla de la cartera",
     "unlockConfirmationFailed": "No se pudo confirmar el desbloqueo de la cartera. Inténtalo de nuevo.",

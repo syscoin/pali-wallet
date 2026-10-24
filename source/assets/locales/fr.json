@@ -919,6 +919,14 @@
     "invalidAddress": "Adresse invalide"
   },
   "start": {
+    "eraseAndStartFresh": "Effacer et recommencer",
+    "eraseWarning": "Efface tous les comptes, clés importées et paramètres locaux.",
+    "eraseFundsWarning": "Les fonds restent en chaîne. Sans phrase de récupération et copies séparées des clés, l’accès peut être perdu à jamais.",
+    "eraseAcknowledge": "J’accepte le risque de perdre définitivement l’accès sans sauvegardes.",
+    "eraseTypeConfirmation": "Saisissez {{word}}.",
+    "eraseConfirm": "Effacer le portefeuille",
+    "eraseFailed": "Indisponible. Fermez et réessayez.",
+    "eraseUncertain": "Effacement non confirmé. Vérifiez d’abord le portefeuille.",
     "getStarted": "Commencer",
     "importWalletSeedPhrase": "Importer avec la phrase de récupération du portefeuille",
     "unlockConfirmationFailed": "Le déverrouillage du portefeuille n’a pas pu être confirmé. Réessayez.",

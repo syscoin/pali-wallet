@@ -919,6 +919,14 @@
     "invalidAddress": "无效地址"
   },
   "start": {
+    "eraseAndStartFresh": "清除并重新开始",
+    "eraseWarning": "清除本地的所有账户、导入私钥和设置。",
+    "eraseFundsWarning": "资金仍在链上。没有恢复短语和私钥的单独备份，可能永久失去访问权限。",
+    "eraseAcknowledge": "我接受没有备份可能永久失去访问权限的风险。",
+    "eraseTypeConfirmation": "输入 {{word}}。",
+    "eraseConfirm": "清除钱包",
+    "eraseFailed": "无法准备。关闭后重试。",
+    "eraseUncertain": "清除未确认。请先检查钱包。",
     "getStarted": "开始使用",
     "importWalletSeedPhrase": "使用钱包助记词导入",
     "unlockConfirmationFailed": "无法确认钱包已解锁。请重试。",

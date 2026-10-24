@@ -919,6 +919,14 @@
     "invalidAddress": "Endereço inválido"
   },
   "start": {
+    "eraseAndStartFresh": "Apagar e começar de novo",
+    "eraseWarning": "Apaga todas as contas, chaves importadas e configurações locais.",
+    "eraseFundsWarning": "Os fundos ficam na blockchain. Sem a frase semente e cópias separadas das chaves, o acesso pode ser perdido para sempre.",
+    "eraseAcknowledge": "Aceito o risco de perder o acesso para sempre sem cópias de segurança.",
+    "eraseTypeConfirmation": "Digite {{word}}.",
+    "eraseConfirm": "Apagar carteira",
+    "eraseFailed": "Indisponível. Feche e tente de novo.",
+    "eraseUncertain": "Exclusão não confirmada. Verifique a carteira primeiro.",
     "getStarted": "Começar",
     "importWalletSeedPhrase": "Importar usando a frase-semente da carteira",
     "unlockConfirmationFailed": "Não foi possível confirmar o desbloqueio da carteira. Tente novamente.",

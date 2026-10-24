@@ -919,6 +919,14 @@
     "invalidAddress": "Ungültige Adresse"
   },
   "start": {
+    "eraseAndStartFresh": "Löschen und neu starten",
+    "eraseWarning": "Löscht alle lokalen Konten, importierten Schlüssel und Einstellungen.",
+    "eraseFundsWarning": "Guthaben bleiben on-chain. Ohne Seed und separate Schlüsselsicherungen droht dauerhafter Zugriffsverlust.",
+    "eraseAcknowledge": "Ich akzeptiere einen möglichen dauerhaften Zugriffsverlust ohne Sicherungen.",
+    "eraseTypeConfirmation": "{{word}} eingeben.",
+    "eraseConfirm": "Wallet löschen",
+    "eraseFailed": "Nicht verfügbar. Schließen und neu versuchen.",
+    "eraseUncertain": "Reset unbestätigt. Zuerst Wallet prüfen.",
     "getStarted": "Loslegen",
     "importWalletSeedPhrase": "Mit der Seed-Phrase der Wallet importieren",
     "unlockConfirmationFailed": "Das Entsperren der Wallet konnte nicht bestätigt werden. Bitte versuche es erneut.",

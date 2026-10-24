@@ -2284,6 +2284,10 @@ class MainController {
     const previousOrigins = Object.keys(dapp.getAll());
     await forgetWalletWithRecovery(this, this.walletRecoveryContext());
 
+    await this.finishWalletRemoval(previousOrigins);
+  }
+
+  private async finishWalletRemoval(previousOrigins: string[]) {
     // Reset activeSlip44 to default after forgetting wallet to ensure clean state
     store.dispatch(setActiveSlip44(DEFAULT_UTXO_SLIP44));
     console.log(
@@ -2292,7 +2296,7 @@ class MainController {
 
     store.dispatch(forgetWallet());
     store.dispatch(setLastLogin());
-    await dapp.resetSessions(previousOrigins);
+    await getController().dapp.resetSessions(previousOrigins);
 
     // Send a specific message to indicate wallet was forgotten (not just locked)
     chrome.runtime.sendMessage({ type: 'wallet_forgotten' }).catch(() => {
@@ -2570,6 +2574,55 @@ class MainController {
       this.assertCurrentWalletSession(generation);
       return recovery.beginWalletRecovery(this, this.walletRecoveryContext());
     });
+  }
+
+  public async beginLockedWalletReset(): Promise<string> {
+    const generation = this.walletSessionGeneration;
+    return this.authenticationMutex.runExclusive(async () => {
+      const recovery = await import('./walletRecovery');
+      this.assertCurrentWalletSession(generation);
+      return recovery.beginLockedWalletReset(
+        this,
+        this.walletRecoveryContext()
+      );
+    });
+  }
+
+  public async resetLockedWallet(
+    ticket: unknown,
+    confirmation: unknown
+  ): Promise<boolean> {
+    if (this.isCreatingWallet || this.isResettingWallet)
+      throw new Error('Wallet setup is already in progress');
+    // Reserve before awaiting the mutex: a lost reply cannot queue another
+    // destructive reset or wallet creation behind this explicit request.
+    this.isCreatingWallet = true;
+    const generation = this.walletSessionGeneration;
+    try {
+      return await this.authenticationMutex.runExclusive(async () => {
+        const recovery = await import('./walletRecovery');
+        this.assertCurrentWalletSession(generation);
+        const previousOrigins = Object.keys(getController().dapp.getAll());
+        await recovery.resetLockedWallet(
+          this,
+          ticket,
+          confirmation,
+          this.walletRecoveryContext()
+        );
+        // The old password's lockout must not follow the new empty wallet.
+        // Failure remains an unknown outcome to the UI, which reloads rather
+        // than retrying the destructive operation.
+        try {
+          await this.resetRateLimit();
+        } finally {
+          // The erase is committed; disconnect old dapps even if lockout cleanup fails.
+          await this.finishWalletRemoval(previousOrigins);
+        }
+        return true;
+      });
+    } finally {
+      this.isCreatingWallet = false;
+    }
   }
 
   private walletRecoveryContext() {

@@ -919,6 +919,14 @@
     "invalidAddress": "유효하지 않은 주소입니다"
   },
   "start": {
+    "eraseAndStartFresh": "지우고 새로 시작",
+    "eraseWarning": "로컬에 저장된 모든 계정, 가져온 개인 키와 설정을 지웁니다.",
+    "eraseFundsWarning": "자금은 체인에 남습니다. 시드와 키의 별도 백업 없이는 접근 권한을 영구히 잃을 수 있습니다.",
+    "eraseAcknowledge": "백업 없이는 접근 권한을 영구히 잃을 수 있음을 동의합니다.",
+    "eraseTypeConfirmation": "{{word}} 입력.",
+    "eraseConfirm": "지갑 지우기",
+    "eraseFailed": "준비 실패. 닫고 다시 시도하세요.",
+    "eraseUncertain": "삭제 미확인. 먼저 지갑을 확인하세요.",
     "getStarted": "시작하기",
     "importWalletSeedPhrase": "지갑 시드 문구로 가져오기",
     "unlockConfirmationFailed": "지갑 잠금 해제를 확인할 수 없습니다. 다시 시도하세요.",

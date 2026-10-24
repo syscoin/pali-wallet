@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
-import { useSearchParams } from 'react-router-dom';
+import { useLocation, useSearchParams } from 'react-router-dom';
 
 import { ImportWalletWarning } from 'components/Modal/WarningBaseModal';
 import GetStarted from 'components/Start/GetStarted';
@@ -12,6 +12,9 @@ import { selectActiveAccount } from 'state/vault/selectors';
 
 export const Start = (props: any) => {
   const [isOpenValidation, setIsOpenValidation] = useState(false);
+  // Keep the confirmation mounted while background deletion clears the vault.
+  // Only its acknowledged completion reloads into ordinary onboarding.
+  const [isFreshStartOpen, setIsFreshStartOpen] = useState(false);
   // WalletBootstrap has already hydrated the authoritative background snapshot.
   // Re-reading storage/RPC here could stall or misclassify an existing wallet.
   const hasVault = useSelector(
@@ -21,6 +24,7 @@ export const Start = (props: any) => {
   const hasAccount = !!activeAccount?.address;
   const { t } = useTranslation();
   const [searchParams] = useSearchParams();
+  const location = useLocation();
 
   // Check for external route from URL parameters (when redirected from ExternalQueryHandler)
   const urlExternalRoute = searchParams.get('externalRoute');
@@ -34,7 +38,7 @@ export const Start = (props: any) => {
       }`
     : props.externalRoute;
 
-  const isFirstStep = !hasAccount && !hasVault;
+  const isFirstStep = !hasAccount && !hasVault && !isFreshStartOpen;
 
   useAppReady();
 
@@ -79,6 +83,15 @@ export const Start = (props: any) => {
             <GetStarted />
           ) : (
             <Unlock
+              onFreshStartOpenChange={setIsFreshStartOpen}
+              allowFreshStart={
+                !isExternal &&
+                !externalRoute &&
+                !searchParams.has('route') &&
+                !searchParams.has('data') &&
+                !searchParams.has('externalRoute') &&
+                !location.pathname.startsWith('/external')
+              }
               setIsOpenValidation={setIsOpenValidation}
               isExternal={isExternal}
               externalRoute={externalRoute}
