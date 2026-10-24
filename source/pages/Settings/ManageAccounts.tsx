@@ -355,14 +355,27 @@ const ManageAccountsView = React.memo(() => {
     (account: IKeyringAccountState, accountType: KeyringAccountType) => {
       const config = ACCOUNT_TYPE_CONFIG[accountType];
       const IconComponent = config.icon;
+      const isSmartAccount = accountType === KeyringAccountType.SmartAccount;
 
       return (
         <li
           key={`${accountType}-${account.id}`}
           className="group my-0.5 py-0.5 w-full flex justify-between items-center gap-2 transition-all duration-300 border-b border-dashed border-dashed-light cursor-default"
         >
-          <div className="flex items-center gap-2 min-w-0 flex-1">
-            <div className="flex items-center gap-1 min-w-0 flex-1">
+          <div
+            className={
+              isSmartAccount
+                ? 'grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1 min-w-0 flex-1 [@media(min-width:400px)]:flex [@media(min-width:400px)]:gap-y-2'
+                : 'flex items-center gap-2 min-w-0 flex-1'
+            }
+          >
+            <div
+              className={
+                isSmartAccount
+                  ? 'col-span-2 flex items-center gap-1 min-w-0 flex-1'
+                  : 'flex items-center gap-1 min-w-0 flex-1'
+              }
+            >
               <div className="transform group-hover:scale-110 transition-transform duration-300 ease-out flex-shrink-0">
                 <IconComponent />
               </div>
@@ -374,12 +387,27 @@ const ManageAccountsView = React.memo(() => {
               </span>
             </div>
             <span
-              className={`text-xs px-2 py-0.5 text-white ${config.bgColor} rounded-full flex-shrink-0`}
+              className={`text-xs px-2 py-0.5 text-white ${
+                config.bgColor
+              } rounded-full flex-shrink-0${
+                isSmartAccount
+                  ? ' col-start-1 row-start-2 justify-self-start'
+                  : ''
+              }`}
             >
               {accountTypeLabel(accountType)}
             </span>
             {isActiveAccount(account, accountType) && (
-              <Icon name="greenCheck" isSvg className="w-4 flex-shrink-0" />
+              <Icon
+                name="greenCheck"
+                isSvg
+                className="w-4 flex-shrink-0"
+                wrapperClassname={
+                  isSmartAccount
+                    ? 'col-start-2 row-start-2 justify-self-end'
+                    : undefined
+                }
+              />
             )}
           </div>
 

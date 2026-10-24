@@ -90,7 +90,10 @@ const select = (
         apiUrl: 'https://synthetic.invalid/api',
       },
     },
-    vaultGlobal: { activeSlip44: type === 'HDAccount' ? 1 : 60 },
+    vaultGlobal: {
+      activeSlip44: type === 'HDAccount' ? 1 : 60,
+      networks: { ethereum: {}, syscoin: {} },
+    },
   };
 };
 const Shell = () => {

@@ -28,6 +28,9 @@ export const Receive = () => {
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
+  const networkCatalog = useSelector(
+    (state: RootState) => state.vaultGlobal.networks[activeNetwork.kind]
+  );
   const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
   const walletScope = useSelector(() =>
     JSON.stringify(getWalletNavigationScope())
@@ -45,6 +48,16 @@ export const Receive = () => {
   const [isCopied, copyText, isCurrentCopy] = useCopyClipboard(
     1000,
     walletScope
+  );
+
+  const showChainNumber = useMemo(
+    () =>
+      Object.values(networkCatalog).some(
+        (network) =>
+          network.label === activeNetwork.label &&
+          network.chainId !== activeNetwork.chainId
+      ),
+    [networkCatalog, activeNetwork.label, activeNetwork.chainId]
   );
 
   const accountTypeLabel = useMemo(() => {
@@ -109,6 +122,13 @@ export const Receive = () => {
           <div className="flex max-w-full items-center gap-2 mb-4 px-3 py-1 rounded-full bg-alpha-whiteAlpha100 border border-alpha-whiteAlpha300">
             <span className="min-w-0 break-words text-xs text-white font-medium">
               {activeNetwork?.label}
+              {showChainNumber && (
+                <span className="block text-xs font-normal text-brand-gray200">
+                  {t('settings.chainNumber', {
+                    chainId: activeNetwork.chainId,
+                  })}
+                </span>
+              )}
             </span>
             <span className="shrink-0 text-xs text-brand-gray200">•</span>
             <span className="shrink-0 text-xs text-brand-gray200">
