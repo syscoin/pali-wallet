@@ -255,6 +255,11 @@ test('locked wallet can explicitly erase and create a different wallet without i
             await expect(confirm).toBeDisabled();
             await dialog.getByRole('textbox').fill('ERASE');
             await expect(confirm).toBeEnabled();
+            await screenshot(
+              page,
+              info,
+              `reset-ready-${viewport.width}x${viewport.height}`
+            );
             await cancel.click();
             await expect(dialog).toHaveCount(0);
             await expect(page.locator('#erase-wallet-link')).toBeFocused();
