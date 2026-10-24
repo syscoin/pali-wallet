@@ -366,16 +366,22 @@ export const AccountHeader: React.FC = () => {
                     : ''
                 }
               >
-                <p
-                  className={`min-w-0 truncate text-xs ${
-                    (isLedger || isTrezor) && isBitcoinBased
-                      ? 'cursor-pointer'
-                      : ''
-                  }`}
-                  onClick={handleHardwareAddressClick}
-                >
-                  {ellipsis(currentAccount?.address, 6, 14)}
-                </p>
+                {(isLedger || isTrezor) && isBitcoinBased ? (
+                  <button
+                    type="button"
+                    aria-label={t('home.clickToVerify', {
+                      currency: activeNetwork.currency.toUpperCase(),
+                    })}
+                    className="min-w-0 truncate text-left text-xs cursor-pointer rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue500"
+                    onClick={handleHardwareAddressClick}
+                  >
+                    {ellipsis(currentAccount?.address, 6, 14)}
+                  </button>
+                ) : (
+                  <p className="min-w-0 truncate text-xs">
+                    {ellipsis(currentAccount?.address, 6, 14)}
+                  </p>
+                )}
               </Tooltip>
               <IconButton
                 onClick={copyAddress}

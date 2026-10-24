@@ -53,7 +53,7 @@ export const PageActionFooter = ({
       className={`page-action-footer w-full shrink-0 px-4 ${className}`}
     >
       {error && (
-        <p role="alert" className="mb-4 text-sm text-[#ff8f8f]">
+        <p role="alert" className="mb-4 text-sm text-content-error">
           {error}
         </p>
       )}

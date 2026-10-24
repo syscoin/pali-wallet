@@ -21,6 +21,7 @@ import {
   startUtxoFixtureServer,
   UTXO_FIXTURE_SEED,
 } from '../harness/utxoFixture';
+import { inspectValidationSuffix } from '../harness/validationSuffixPointer';
 
 // Normal custom-import feedback only. The synthetic contract is never imported.
 // Only finite public HTTP replies vary; no controller/renderer/state replacement,
@@ -653,6 +654,12 @@ test('custom token contract feedback distinguishes an ordinary malformed address
       observations.states.push({ state, ...evidence });
       expect(await publicScope(page)).toEqual(observations.baseline);
       await capture(page);
+      await inspectValidationSuffix(
+        page,
+        input,
+        info,
+        `contract-${page.viewportSize()?.width}-${state}`
+      );
       return evidence;
     };
     const noError = async () => {

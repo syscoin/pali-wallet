@@ -8,6 +8,7 @@ import de from '../../source/assets/locales/de.json';
 import en from '../../source/assets/locales/en.json';
 import fr from '../../source/assets/locales/fr.json';
 import { E2E_CONFIG } from '../harness/config';
+import { captureForegroundContrast } from '../harness/foregroundContrast';
 import {
   createIsolatedVaultFixture,
   installIsolatedVaultRoutes,
@@ -464,6 +465,15 @@ for (const locale of locales) {
               await expect(retry.nth(index)).toHaveAttribute('type', 'button');
               geometry.push(await actionGeometry(page, retry.nth(index)));
             }
+            const feeErrors = page.getByText(locale.text.send.unableToLoad, {
+              exact: true,
+            });
+            for (let index = 0; index < (await feeErrors.count()); index++)
+              await captureForegroundContrast(
+                feeErrors.nth(index),
+                info,
+                `fee-${locale.code}-${asset}-${viewport.width}-${index}`
+              );
             observations.push({
               phase,
               geometry,

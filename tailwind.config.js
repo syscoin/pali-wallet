@@ -11,6 +11,26 @@ module.exports = {
   theme: {
     extend: {
       colors: palette,
+      // Error foregrounds need contrast on dark surfaces; fills/borders retain
+      // their original palette for destructive controls and validation chrome.
+      textColor: {
+        warning: { error: palette.content.error },
+        alert: {
+          lighterror: palette.content.error,
+          darkerror: palette.content.error,
+        },
+        status: {
+          error: palette.content.error,
+          errorBright: palette.content.error,
+        },
+        extraColors: { red: palette.content.error },
+        brand: { red: palette.content.error, redDark: palette.content.error },
+        red: {
+          400: palette.content.error,
+          500: palette.content.error,
+          600: palette.content.error,
+        },
+      },
       boxShadow: {
         btn: '0px 1px 5px rgba(0, 0, 0, 0.25)',
         tooltip: '0px 0px 5px rgba(0, 0, 0, 0.25)',

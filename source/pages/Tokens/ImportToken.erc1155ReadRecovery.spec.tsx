@@ -7,6 +7,7 @@ import {
   fireEvent,
   render,
   screen,
+  within,
 } from '@testing-library/react';
 import React from 'react';
 import { Provider } from 'react-redux';
@@ -24,6 +25,15 @@ import { Interface } from 'utils/ethersV6Compat';
 
 import { AddToken } from './AddToken';
 
+// Assert native hover information on the input while retaining the original
+// glyph/content/color checks inside the decorative suffix.
+const tokenIdTitleInput = () =>
+  document.getElementById('custom-token-id') as HTMLInputElement;
+const getTokenIdTitleGlyph = (title: string) => {
+  const input = tokenIdTitleInput();
+  expect(input).toHaveAttribute('title', title);
+  return within(input.nextElementSibling as HTMLElement).getByTitle(title);
+};
 let mockStore: any;
 const mockEmitter = jest.fn();
 const mockAlert = { success: jest.fn(), error: jest.fn() };
@@ -262,7 +272,7 @@ it('retains a healthy positive verified quantity through the actual read pipelin
     [{ tokenId: '7', balance: 3, rawBalance: '3', verified: true }],
   ]);
   expect(importButton()).toBeEnabled();
-  expect(screen.getByTitle('tokens.balanceForTokenId:3')).toBeVisible();
+  expect(getTokenIdTitleGlyph('tokens.balanceForTokenId:3')).toBeVisible();
 });
 
 it('retains healthy verified zero as an importable watch quantity', async () => {
@@ -274,7 +284,7 @@ it('retains healthy verified zero as an importable watch quantity', async () => 
   ]);
   expect(importButton()).toBeEnabled();
   expect(
-    screen.getByTitle('tokens.balanceForTokenId:0 tokens.verifyTokenExists')
+    getTokenIdTitleGlyph('tokens.balanceForTokenId:0 tokens.verifyTokenExists')
   ).toBeVisible();
   expect(screen.queryByRole('button', { name: 'receive.retry' })).toBeNull();
 });
@@ -283,7 +293,7 @@ it('keeps genuinely malformed uint256 input invalid and unavailable for import',
   await mount();
   await edit('not-a-uint256');
   expect(importButton()).toBeNull();
-  expect(screen.getByTitle('send.invalidTokenId')).toBeVisible();
+  expect(getTokenIdTitleGlyph('send.invalidTokenId')).toBeVisible();
   expect(rpcCalls).toEqual([]);
   expect(screen.queryByRole('button', { name: 'receive.retry' })).toBeNull();
 });
@@ -333,7 +343,7 @@ it('retries the unchanged valid ID through the actual helper and restores exact 
   ]);
   expect(screen.getByLabelText('send.tokenId')).toHaveValue('7');
   expect(
-    screen.getByTitle(`tokens.balanceForTokenId:${rawQuantity}`)
+    getTokenIdTitleGlyph(`tokens.balanceForTokenId:${rawQuantity}`)
   ).toBeVisible();
   expect(importButton()).toBeEnabled();
   expect(screen.queryByRole('alert')).toBeNull();
@@ -376,9 +386,9 @@ it('retires a held Retry read after the user edits the ID', async () => {
   await act(async () => fireEvent.click(retry()));
   rawQuantity = '5';
   await edit('8');
-  expect(screen.getByTitle('tokens.balanceForTokenId:5')).toBeVisible();
+  expect(getTokenIdTitleGlyph('tokens.balanceForTokenId:5')).toBeVisible();
   await act(async () => read.resolve());
-  expect(screen.getByTitle('tokens.balanceForTokenId:5')).toBeVisible();
+  expect(getTokenIdTitleGlyph('tokens.balanceForTokenId:5')).toBeVisible();
   expect(screen.queryByTitle('tokens.balanceForTokenId:99')).toBeNull();
 });
 
@@ -455,7 +465,7 @@ const expectMalformedIdGuidance = () => {
     'custom-token-id-feedback'
   );
   expect(tokenIdField()).toHaveAccessibleDescription('send.invalidTokenId');
-  const glyph = screen.getByTitle('send.invalidTokenId');
+  const glyph = getTokenIdTitleGlyph('send.invalidTokenId');
   expect(glyph).toHaveClass('text-red-400', 'text-sm');
   expect(glyph).not.toHaveClass('text-warning-error');
 };
@@ -472,20 +482,22 @@ it('associates completed malformed Token ID guidance without a read, import or s
 
 it('does not show malformed guidance for empty, held pending, positive or verified-zero IDs', async () => {
   await mount();
+  expect(tokenIdTitleInput()).not.toHaveAttribute('title');
   expectNoMalformedIdGuidance();
   const read = holdBatch();
   await edit('7');
+  expect(tokenIdTitleInput()).not.toHaveAttribute('title');
   expect(importButton()).toBeNull();
   expectNoMalformedIdGuidance();
   await act(async () => read.resolve());
   expect(importButton()).toBeEnabled();
-  expect(screen.getByTitle('tokens.balanceForTokenId:3')).toBeVisible();
+  expect(getTokenIdTitleGlyph('tokens.balanceForTokenId:3')).toBeVisible();
   expectNoMalformedIdGuidance();
   rawQuantity = '0';
   await edit('0');
   expect(importButton()).toBeEnabled();
   expect(
-    screen.getByTitle('tokens.balanceForTokenId:0 tokens.verifyTokenExists')
+    getTokenIdTitleGlyph('tokens.balanceForTokenId:0 tokens.verifyTokenExists')
   ).toBeVisible();
   expectNoMalformedIdGuidance();
 });
@@ -494,7 +506,7 @@ it('keeps valid-ID read failure and Retry unchanged instead of calling the field
   await failId();
   expectNoMalformedIdGuidance();
   expect(screen.getByRole('alert')).toHaveTextContent('send.unableToLoad');
-  const glyph = screen.getByTitle('send.unableToLoad');
+  const glyph = getTokenIdTitleGlyph('send.unableToLoad');
   expect(glyph).toHaveClass('text-warning-error', 'text-sm');
   expect(glyph).not.toHaveClass('text-red-400');
   expect(retry()).toBeEnabled();

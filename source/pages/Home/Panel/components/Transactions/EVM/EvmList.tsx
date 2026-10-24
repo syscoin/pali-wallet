@@ -82,6 +82,7 @@ const EvmTransactionItem = React.memo(
     cancellationIntent,
     currency,
     getFiatAmount,
+    isFiatAvailable,
     txId,
     getTxOptions,
     t,
@@ -95,6 +96,7 @@ const EvmTransactionItem = React.memo(
     currentAccount: any;
     ensCache?: any;
     getFiatAmount: any;
+    isFiatAvailable: boolean;
     getTxOptions: any;
     getTxStatusIcons: any;
     getTxType: any;
@@ -248,9 +250,10 @@ const EvmTransactionItem = React.memo(
         isNativeTransfer &&
         !displayInfo.isNft &&
         !displayInfo.hasUnknownDecimals;
-      const fiatText = showFiat
-        ? getFiatAmount(Number(finalTxValue), 6)
-        : '---';
+      const fiatText =
+        showFiat && isFiatAvailable
+          ? getFiatAmount(Number(finalTxValue), 6)
+          : '---';
       const isNumericAmount =
         !isNaN(Number(finalTxValue)) && Number(finalTxValue) > 0;
       // Show sign for native (when we also show fiat) and for ERC-20 transfers as well
@@ -308,7 +311,11 @@ const EvmTransactionItem = React.memo(
 
       return (
         <div className="flex flex-col justify-end items-end min-w-0">
-          <div className="inline-flex items-center text-white text-xs font-normal whitespace-nowrap overflow-hidden max-w-full">
+          <div
+            className={`inline-flex items-center ${
+              isFailed || isReplaced ? 'text-brand-gray200' : 'text-white'
+            } text-xs font-normal whitespace-nowrap overflow-hidden max-w-full`}
+          >
             {showSign && (
               <span
                 className={`${
@@ -374,11 +381,11 @@ const EvmTransactionItem = React.memo(
     // If transaction is replaced, show it with a different style
     if (isReplaced) {
       return (
-        <div className="flex justify-between py-2 w-full border-b border-dashed border-bkg-deepBlue opacity-50">
+        <div className="flex justify-between py-2 w-full border-b border-dashed border-bkg-deepBlue">
           <div className="flex items-center">
             {getTxStatusIcons(getTxType(tx, isTxSent), false)}
             <div className="flex flex-col">
-              <div className="text-white text-xs font-normal line-through">
+              <div className="text-brand-gray200 text-xs font-normal line-through">
                 {transactionLabel}
               </div>
               <div className="text-warning-error text-xs">
@@ -387,9 +394,7 @@ const EvmTransactionItem = React.memo(
             </div>
           </div>
           <div className="flex items-center gap-4">
-            <div className="line-through opacity-50">
-              {renderValueDisplay()}
-            </div>
+            <div className="line-through">{renderValueDisplay()}</div>
             <div className="m-auto">
               <Tooltip content={t('notifications.clickToView')}>
                 <DetailArrowSvg
@@ -406,11 +411,11 @@ const EvmTransactionItem = React.memo(
 
     if (isFailed) {
       return (
-        <div className="flex justify-between py-2 w-full border-b border-dashed border-bkg-deepBlue opacity-30">
+        <div className="flex justify-between py-2 w-full border-b border-dashed border-bkg-deepBlue">
           <div className="flex items-center">
             {getTxStatusIcons(getTxType(tx, isTxSent), false)}
             <div className="flex flex-col">
-              <div className="text-white text-xs font-normal line-through">
+              <div className="text-brand-gray200 text-xs font-normal line-through">
                 {transactionLabel}
               </div>
               <div className="text-warning-error text-xs">
@@ -419,9 +424,7 @@ const EvmTransactionItem = React.memo(
             </div>
           </div>
           <div className="flex items-center gap-4">
-            <div className="line-through opacity-50">
-              {renderValueDisplay()}
-            </div>
+            <div className="line-through">{renderValueDisplay()}</div>
             <div className="m-auto">
               <Tooltip content={t('notifications.clickToView')}>
                 <DetailArrowSvg
@@ -558,6 +561,7 @@ const EvmTransactionItem = React.memo(
     prevProps.tx.input === nextProps.tx.input &&
     prevProps.tx.to === nextProps.tx.to &&
     prevProps.getFiatAmount === nextProps.getFiatAmount &&
+    prevProps.isFiatAvailable === nextProps.isFiatAvailable &&
     prevProps.getTxOptions === nextProps.getTxOptions &&
     prevProps.tokenMeta?.decimals === nextProps.tokenMeta?.decimals &&
     prevProps.tokenMeta?.isNft === nextProps.tokenMeta?.isNft &&
@@ -705,7 +709,7 @@ export const EvmTransactionsList = ({
     [filteredTransactions]
   );
   const { navigate } = useUtils();
-  const { getFiatAmount } = usePrice();
+  const { getFiatAmount, isFiatAvailable } = usePrice();
 
   const [modalData, setModalData] = useState<modalDataType>();
   const [isOpenModal, setIsOpenModal] = useState<boolean>(false);
@@ -858,6 +862,7 @@ export const EvmTransactionsList = ({
                   )}
                   currency={currency}
                   getFiatAmount={getFiatAmount}
+                  isFiatAvailable={isFiatAvailable}
                   onDetailsClick={onDetailsClick}
                   txId={txId}
                   getTxOptions={getTxOptions}

@@ -43,7 +43,7 @@ const scenarios: {
     error: 'Wallet state changed before saving currency',
     commit: (current) => persistFiatCurrency('eur', current),
     read: (state: any) => state.price.fiat,
-    expected: { asset: 'eur', price: 0 },
+    expected: { asset: 'eur', available: false, price: 0 },
   },
   {
     name: 'network registry',
@@ -123,7 +123,7 @@ beforeEach(async () => {
   store.dispatch(
     setAdvancedSettings({ advancedProperty: 'refresh', value: true })
   );
-  store.dispatch(setPrices({ asset: 'usd', price: 42 }));
+  store.dispatch(setPrices({ asset: 'usd', available: true, price: 42 }));
   store.dispatch(setNetworks({ ethereum: {}, syscoin: {} }));
   await persistMainStateStrict();
   writes = 0;

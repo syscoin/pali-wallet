@@ -17,6 +17,13 @@ const mockVault = {
   activeNetwork: { chainId: 1, currency: 'eth' },
 };
 let mockRows: any[] = [];
+let mockFiatAvailable = true;
+let mockFiatText = '0 USD';
+const mockGetFiatAmount = () => mockFiatText;
+beforeEach(() => {
+  mockFiatAvailable = true;
+  mockFiatText = '0 USD';
+});
 const mockEnsCache = {
   [TARGET]: { name: 'first.eth' },
   [ACCOUNT]: { name: 'updated.eth' },
@@ -49,7 +56,10 @@ jest.mock('hooks/useUtils', () => ({
   useUtils: () => ({ alert: mockAlert, navigate: jest.fn() }),
 }));
 jest.mock('hooks/usePrice', () => ({
-  usePrice: () => ({ getFiatAmount: () => '0 USD' }),
+  usePrice: () => ({
+    getFiatAmount: mockGetFiatAmount,
+    isFiatAvailable: mockFiatAvailable,
+  }),
 }));
 jest.mock('../../../../useHomeBrowsingState', () => ({
   getHomeBrowsingScope: () => 'amount-test',
@@ -230,4 +240,50 @@ it('refreshes a legacy token row when explicit event metadata arrives', async ()
   mockRows = [enriched];
   view.rerender(<EvmTransactionsList userTransactions={mockRows} />);
   expect(await screen.findByText('1.0 USDC')).toBeTruthy();
+});
+
+it('updates only native fiat when quote availability changes without replacing the transaction row', async () => {
+  mockFiatAvailable = false;
+  mockRows = [
+    {
+      hash: '0x' + '7'.repeat(64),
+      from: ACCOUNT,
+      to: TARGET,
+      value: '2000000000000000000',
+      input: '0x',
+      nonce: 1,
+      chainId: 1,
+      timestamp: 1791655200,
+      blockNumber: 42,
+      confirmations: 1,
+    },
+  ];
+  const view = render(<EvmTransactionsList userTransactions={mockRows} />);
+  await waitFor(() =>
+    expect(view.container.textContent).toMatch(/2(?:\.0+)? ETH/)
+  );
+  expect(screen.getByText('---')).toBeTruthy();
+  expect(screen.queryByText('0 USD')).toBeNull();
+  const nativeText = view.container.textContent!.match(/2(?:\.0+)? ETH/)![0];
+  mockFiatAvailable = true;
+  view.rerender(<EvmTransactionsList userTransactions={mockRows} />);
+  expect(await screen.findByText('0 USD')).toBeTruthy();
+  mockFiatText = '4 USD';
+  mockFiatAvailable = false;
+  view.rerender(<EvmTransactionsList userTransactions={mockRows} />);
+  await screen.findByText('---');
+  mockFiatAvailable = true;
+  view.rerender(<EvmTransactionsList userTransactions={mockRows} />);
+  expect(await screen.findByText('4 USD')).toBeTruthy();
+  mockFiatText = '-4 USD';
+  view.rerender(<EvmTransactionsList userTransactions={mockRows} />);
+  // Keep the formatter reference stable: availability must itself invalidate memoization.
+  mockFiatAvailable = false;
+  view.rerender(<EvmTransactionsList userTransactions={mockRows} />);
+  expect(await screen.findByText('---')).toBeTruthy();
+  mockFiatAvailable = true;
+  view.rerender(<EvmTransactionsList userTransactions={mockRows} />);
+  expect(await screen.findByText('-4 USD')).toBeTruthy();
+  expect(view.container.textContent).toContain(nativeText);
+  expect(mockRows[0].value).toBe('2000000000000000000');
 });

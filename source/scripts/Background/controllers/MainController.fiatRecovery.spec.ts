@@ -133,7 +133,7 @@ beforeEach(() => {
         activeSlip44: 60,
         networks: { ...global.networks, ethereum: { 1: first, 137: next } },
       } as any,
-      price: { fiat: { asset: 'usd', price: 5 } },
+      price: { fiat: { asset: 'usd', available: true, price: 5 } },
     },
     middleware: (getDefaultMiddleware) =>
       getDefaultMiddleware({ serializableCheck: false }),
@@ -168,7 +168,11 @@ afterEach(() => {
 it('keeps ordinary quote fetching unchanged', async () => {
   fetchPrice.mockResolvedValue(response());
   await wallet.setFiat('eur');
-  expect(mockStore.getState().price.fiat).toEqual({ asset: 'eur', price: 4 });
+  expect(mockStore.getState().price.fiat).toEqual({
+    asset: 'eur',
+    available: true,
+    price: 4,
+  });
   expect(quote).toHaveBeenCalledTimes(1);
   expect(fetchPrice).toHaveBeenCalledTimes(1);
 });
@@ -185,7 +189,11 @@ it('refreshes the retained context once after actual signer setup fails', async 
   expect(wallet.getWalletSessionGeneration()).toBe(1);
   expect(mockStore.getState().vault.activeNetwork).toEqual(first);
   expect(mockStore.getState().vaultGlobal.networkStatus).toBe('error');
-  expect(mockStore.getState().price.fiat).toEqual({ asset: 'usd', price: 5 });
+  expect(mockStore.getState().price.fiat).toEqual({
+    asset: 'usd',
+    available: true,
+    price: 5,
+  });
   expect(quote).toHaveBeenCalledTimes(1);
   expect(fetchPrice).toHaveBeenCalledTimes(1);
 });
@@ -195,7 +203,11 @@ it('retains an explicit currency quote through the real failed-switch signer epo
   fetchPrice.mockReturnValueOnce(pending.promise);
   const update = wallet.setFiat('eur');
   await flush();
-  expect(mockStore.getState().price.fiat).toEqual({ asset: 'eur', price: 0 });
+  expect(mockStore.getState().price.fiat).toEqual({
+    asset: 'eur',
+    available: false,
+    price: 0,
+  });
   await expect(wallet.setActiveNetwork(next)).rejects.toThrow(
     'Synthetic RPC validation failed'
   );
@@ -204,7 +216,11 @@ it('retains an explicit currency quote through the real failed-switch signer epo
   pending.resolve(response());
   await update;
   await flush();
-  expect(mockStore.getState().price.fiat).toEqual({ asset: 'eur', price: 4 });
+  expect(mockStore.getState().price.fiat).toEqual({
+    asset: 'eur',
+    available: true,
+    price: 4,
+  });
   expect(mockStore.getState().vaultGlobal.networkStatus).toBe('error');
   expect(quote.mock.calls).toEqual([
     [1, 'eur'],
@@ -228,7 +244,11 @@ it('settles at zero on a genuine price-read failure without an error loop', asyn
   pending.resolve(invalidResponse);
   await update;
   await flush();
-  expect(mockStore.getState().price.fiat).toEqual({ asset: 'eur', price: 0 });
+  expect(mockStore.getState().price.fiat).toEqual({
+    asset: 'eur',
+    available: false,
+    price: 0,
+  });
   expect(mockStore.getState().vaultGlobal.networkStatus).toBe('error');
   expect(quote).toHaveBeenCalledTimes(2);
   expect(fetchPrice).toHaveBeenCalledTimes(2);
@@ -242,7 +262,11 @@ it('uses only the normal success refresh after an actual successful signer switc
   await wallet.setActiveNetwork(next);
   await flush();
   expect(mockStore.getState().vault.activeNetwork.chainId).toBe(137);
-  expect(mockStore.getState().price.fiat).toEqual({ asset: 'usd', price: 2 });
+  expect(mockStore.getState().price.fiat).toEqual({
+    asset: 'usd',
+    available: true,
+    price: 2,
+  });
   expect(quote.mock.calls).toEqual([[137, 'usd']]);
 });
 
@@ -261,7 +285,11 @@ it('does not enqueue failure recovery for a superseded signer switch', async () 
   await latest;
   await flush();
   expect(quote.mock.calls).toEqual([[1, 'usd']]);
-  expect(mockStore.getState().price.fiat).toEqual({ asset: 'usd', price: 3 });
+  expect(mockStore.getState().price.fiat).toEqual({
+    asset: 'usd',
+    available: true,
+    price: 3,
+  });
 });
 
 it('does not enqueue a refresh when an error-state subscriber locks the wallet', async () => {
@@ -328,6 +356,10 @@ it.each(['lock', 'reset'] as const)(
     await finishReset;
     await flush();
     expect(quote).toHaveBeenCalledTimes(1);
-    expect(mockStore.getState().price.fiat).toEqual({ asset: 'eur', price: 0 });
+    expect(mockStore.getState().price.fiat).toEqual({
+      asset: 'eur',
+      available: false,
+      price: 0,
+    });
   }
 );

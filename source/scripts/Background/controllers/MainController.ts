@@ -657,7 +657,7 @@ class MainController {
   private utxoPriceDataCache = new Map<
     string,
     {
-      data: { price: number; priceChange24h?: number };
+      data: { available: boolean; price: number; priceChange24h?: number };
       timestamp: number;
     }
   >();
@@ -1956,7 +1956,9 @@ class MainController {
         currency = storeCurrency || 'usd';
       } else if (currency !== store.getState().price.fiat.asset) {
         // Quote-only callers still clear any amount in the previous units.
-        store.dispatch(setPrices({ asset: currency, price: 0 }));
+        store.dispatch(
+          setPrices({ asset: currency, available: false, price: 0 })
+        );
       }
 
       const { activeNetwork, isBitcoinBased } = store.getState().vault;
@@ -1982,7 +1984,11 @@ class MainController {
         activeNetwork.chainId
       );
 
-      let priceData: { price: number; priceChange24h?: number };
+      let priceData: {
+        available?: boolean;
+        price: number;
+        priceChange24h?: number;
+      };
       try {
         if (id === INetworkType.Syscoin) {
           priceData = await this.getUtxoPriceData(activeNetwork.url, currency);
@@ -1998,13 +2004,14 @@ class MainController {
         if (!isCurrent()) return;
         if (id === INetworkType.Ethereum)
           logError('Failed to retrieve asset price - EVM', '', error);
-        priceData = { price: 0 };
+        priceData = { available: false, price: 0 };
       }
       // An unabortable quote must not price another network or wallet session.
       if (!isCurrent()) return;
       store.dispatch(
         setPrices({
           asset: currency,
+          available: priceData.available !== false,
           price: priceData.price,
           priceChange24h: priceData.priceChange24h,
         })
@@ -3638,6 +3645,7 @@ class MainController {
           store.dispatch(
             setPrices({
               asset: store.getState().price?.fiat?.asset || 'usd',
+              available: false,
               price: 0,
             })
           );
@@ -9573,6 +9581,7 @@ class MainController {
     networkUrl: string,
     currency = 'usd'
   ): Promise<{
+    available: boolean;
     price: number;
     priceChange24h?: number;
   }> {
@@ -9598,22 +9607,23 @@ class MainController {
       if (
         currencies &&
         currencies.rates &&
-        currencies.rates[currency] &&
         Number.isFinite(currencies.rates[currency])
       ) {
         const result = {
+          available: true,
           price: currencies.rates[currency],
           priceChange24h: undefined, // Backend doesn't provide 24h change for UTXO yet
         };
 
-        // Cache the result
-        this.utxoPriceDataCache.set(cacheKey, {
-          data: result,
-          timestamp: now,
-        });
+        // Preserve the existing zero-quote noncache policy.
+        if (result.price !== 0)
+          this.utxoPriceDataCache.set(cacheKey, {
+            data: result,
+            timestamp: now,
+          });
 
         console.log(
-          `[MainController] Fetched and cached UTXO price data for ${networkUrl}`
+          `[MainController] Fetched UTXO price data for ${networkUrl}`
         );
         return result;
       }
@@ -9621,13 +9631,13 @@ class MainController {
       console.warn(
         `[MainController] Failed to fetch UTXO price for currency ${currency} from ${networkUrl}`
       );
-      return { price: 0 };
+      return { available: false, price: 0 };
     } catch (error) {
       console.error(
         `[MainController] Error fetching UTXO price from ${networkUrl}:`,
         error
       );
-      return { price: 0 };
+      return { available: false, price: 0 };
     }
   }
 

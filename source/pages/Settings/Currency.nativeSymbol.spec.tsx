@@ -5,6 +5,7 @@
 import '@testing-library/jest-dom';
 import { clearRpcCaches } from '@sidhujag/sysweb3-network';
 import {
+  act,
   cleanup,
   render,
   screen,
@@ -26,7 +27,8 @@ import { clearCustomRpcDrafts } from 'pages/Settings/customRpcDraft';
 import MainController from 'scripts/Background/controllers/MainController';
 import { loadState, walletPersistenceGate } from 'state/paliStorage';
 import store from 'state/store';
-import { restoreVaultSnapshot } from 'state/vault';
+import { restoreVaultSnapshot, setAccountBalanceForNetwork } from 'state/vault';
+import { setPrices } from 'state/price';
 import vaultCache from 'state/vaultCache';
 import * as actions from 'state/vaultGlobal';
 import { INetworkType } from 'types/network';
@@ -523,24 +525,56 @@ it.each([5700, 31337])(
     const { accounts, activeAccount, isBitcoinBased } = store.getState().vault;
     const { balances } = accounts[activeAccount.type][activeAccount.id];
     const balance = isBitcoinBased ? balances.syscoin : balances.ethereum;
+    expect(balance).toBe(-1);
     expect(nativeUnit.previousElementSibling?.textContent).toBe(
-      formatNumber(Number(balance) || 0)
+      'settings.unavailable'
     );
-    expect(card).toHaveTextContent('USD');
+    expect(card).not.toHaveTextContent('-1');
+    expect(store.getState().price.fiat.asset).toBe('usd');
+    expect((await loadState()).price.fiat.asset).toBe('usd');
+    expect(
+      screen.getByRole('button', { name: 'settings.setYourPreferred' })
+    ).toHaveTextContent('USD');
     expect(card).not.toHaveTextContent('NaN');
     expect(store.getState().vault.activeNetwork.currency).toBe(
       symbol.toLowerCase()
     );
 
-    // Native DOM assertions preserve the full unit/amount and exact title.
-    // Actual 320px overflow and wrapping are qualified in the browser; jsdom
-    // does not establish CSS geometry or that the amount remains on-screen.
+    // The registration path above intentionally leaves native reads unknown.
+    // Exercise a later successful public balance/quote publication with the
+    // actual reducers; do not pretend it was fetched by this identity-only RPC.
+    await act(async () => {
+      store.dispatch(
+        setAccountBalanceForNetwork({
+          id: activeAccount.id,
+          type: activeAccount.type,
+          network: store.getState().vault.activeNetwork,
+          balance: '2.5',
+        })
+      );
+      store.dispatch(setPrices({ asset: 'usd', price: 2, available: true }));
+    });
+    const knownUnit = within(balanceCard()).getByText(symbol, { exact: true });
+    expect(knownUnit).toHaveAttribute('title', symbol);
+    expect(knownUnit.previousElementSibling?.textContent).toBe(
+      formatNumber(2.5)
+    );
+    expect(balanceCard()).toHaveTextContent('$5 USD');
+    expect(balanceCard()).not.toHaveTextContent('NaN');
+
+    // Actual 320px geometry is qualified separately in the browser.
   }
 );
 
 it('does not change the saved fiat units when the native symbol is customized', async () => {
   await saveAndActivateSymbol(5700, 'XPAY');
   renderPage(<Currency />, '/settings/currency');
-  expect(balanceCard()).toHaveTextContent('USD');
+  expect(store.getState().price.fiat.asset).toBe('usd');
+  expect((await loadState()).price.fiat.asset).toBe('usd');
+  expect(
+    screen.getByRole('button', { name: 'settings.setYourPreferred' })
+  ).toHaveTextContent('USD');
+  expect(balanceCard()).toHaveTextContent('settings.unavailable');
+  expect(balanceCard()).not.toHaveTextContent('-1');
   expect(balanceCard()).not.toHaveTextContent('NaN');
 });

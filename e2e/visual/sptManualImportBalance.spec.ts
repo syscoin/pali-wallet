@@ -12,6 +12,7 @@ import {
   startUtxoFixtureServer,
   UTXO_FIXTURE_SEED,
 } from '../harness/utxoFixture';
+import { inspectValidationSuffix } from '../harness/validationSuffixPointer';
 
 for (const value of [
   {
@@ -111,9 +112,34 @@ for (const value of [
           await page
             .getByRole('button', { name: en.tokens.addCustomTab, exact: true })
             .click();
-          await page
-            .getByLabel(en.tokens.assetGuid, { exact: true })
-            .fill(SPT_GUID);
+          const pointerInput = page.locator('#custom-spt-guid');
+          for (const width of [400, 320]) {
+            await page.setViewportSize({
+              width,
+              height: width === 400 ? 620 : 360,
+            });
+            await pointerInput.fill('');
+            await expect(
+              pointerInput.locator('..').locator('.anticon-loading')
+            ).toHaveCount(0);
+            await inspectValidationSuffix(
+              page,
+              pointerInput,
+              info,
+              `spt-guid-${width}-empty-${value.delta}`
+            );
+            await pointerInput.fill('not-a-guid');
+            await expect(
+              pointerInput.locator('..').locator('.anticon-close-circle')
+            ).toHaveCount(1);
+            await inspectValidationSuffix(
+              page,
+              pointerInput,
+              info,
+              `spt-guid-${width}-error-${value.delta}`
+            );
+          }
+          await pointerInput.fill(SPT_GUID);
           const action = page.getByRole('button', {
             name: `Import ${SPT_SYMBOL} token`,
             exact: true,
@@ -124,6 +150,18 @@ for (const value of [
               .locator('xpath=ancestor::li')
               .locator('span.text-brand-white.font-medium')
           ).toHaveText(value.display);
+          for (const width of [400, 320]) {
+            await page.setViewportSize({
+              width,
+              height: width === 400 ? 620 : 360,
+            });
+            await inspectValidationSuffix(
+              page,
+              pointerInput,
+              info,
+              `spt-guid-${width}-healthy-${value.delta}`
+            );
+          }
           await info.attach('manual-spt-preview', {
             body: await page.screenshot({ animations: 'disabled' }),
             contentType: 'image/png',

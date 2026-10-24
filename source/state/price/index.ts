@@ -5,6 +5,7 @@ import { IAssetPrice, IPriceState } from './types';
 export const initialState: IPriceState = {
   fiat: {
     asset: 'usd',
+    available: false,
     price: 0,
   },
 };

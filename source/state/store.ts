@@ -331,10 +331,13 @@ export function persistFiatCurrency(
   currency: string,
   isCurrent: () => boolean
 ): Promise<void> {
-  return persistMainMutation(setPrices({ asset: currency, price: 0 }), () => {
-    if (!isCurrent())
-      throw new Error('Wallet state changed before saving currency');
-  });
+  return persistMainMutation(
+    setPrices({ asset: currency, available: false, price: 0 }),
+    () => {
+      if (!isCurrent())
+        throw new Error('Wallet state changed before saving currency');
+    }
+  );
 }
 
 /** Commit a network registry edit before exposing it to retrying callers. */

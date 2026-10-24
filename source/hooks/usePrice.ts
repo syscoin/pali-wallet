@@ -14,6 +14,10 @@ export type IGetFiatAmount = (
 
 export const usePrice = () => {
   const fiat = useSelector((state: RootState) => state.price.fiat);
+  const isFiatAvailable =
+    Number.isFinite(fiat.price) &&
+    (fiat.available === true ||
+      (fiat.available === undefined && fiat.price !== 0));
 
   const getFiatAmount: IGetFiatAmount = (
     amount: number,
@@ -52,5 +56,5 @@ export const usePrice = () => {
     return `${symbol}${formattedValue} ${withCurrency ? currency : ''}`;
   };
 
-  return { getFiatAmount };
+  return { getFiatAmount, isFiatAvailable };
 };

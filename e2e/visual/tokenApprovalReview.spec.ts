@@ -3,7 +3,11 @@ import { AbiCoder, Interface, formatUnits, id } from 'ethers';
 
 import en from '../../source/assets/locales/en.json';
 import { E2E_CONFIG } from '../harness/config';
-import { dismissRejectedApproval } from '../harness/dismissRejectedApproval';
+import { captureForegroundContrast } from '../harness/foregroundContrast';
+import {
+  clickClosingPopup,
+  dismissRejectedApproval,
+} from '../harness/dismissRejectedApproval';
 import {
   createIsolatedVaultFixture,
   installIsolatedVaultRoutes,
@@ -1117,3 +1121,413 @@ test('transaction review freezes fee and nonce edits during a delayed balance re
     }
   });
 });
+
+// Append to tokenApprovalReview.spec.ts. This reuses its real wallet/dapp setup.
+for (const width of [400, 320]) {
+  test(`token approval review keeps finite amounts readable at ${width}px`, async ({}, info) => {
+    test.setTimeout(120_000);
+    const height = width === 320 ? 360 : 620;
+    const mode = process.env.PALI_APPROVAL_AMOUNT_MODE || 'after';
+    expect(['before', 'after']).toContain(mode);
+    if (process.env.CI) expect(mode).toBe('after');
+    expect(info.config.workers).toBe(1);
+    expect(info.retry).toBe(0);
+    expect(process.env.PALI_TEST_DAPP_REVISION).toMatch(/^[a-f0-9]{40}$/);
+    if (mode === 'before')
+      expect(process.env.PALI_TEST_DAPP_REVISION).toBe(
+        '38721aec5266a3330749751c9694f8b139af60f1'
+      );
+    expect(E2E_CONFIG.extensionPath).toBe(
+      process.env.PALI_TEST_DAPP_EXTENSION_PATH
+    );
+    const runtime = extensionEvidence();
+    expect(runtime.sourceRevision).toBe(process.env.PALI_TEST_DAPP_REVISION);
+    await withWallet(
+      `token-approval-amount-${width}-${mode}`,
+      async (wallet, origin) => {
+        const { dapp, address } = await connect(wallet, origin);
+        const approvalInterface = new Interface([
+          'function approve(address,uint256)',
+        ]);
+        const maximum = (BigInt(1) << BigInt(256)) - BigInt(1);
+        const cases = [
+          { name: 'ordinary', amount: BigInt('150000000') },
+          { name: 'zero', amount: BigInt(0) },
+          { name: 'large-finite', amount: maximum - BigInt(1) },
+          { name: 'unlimited', amount: maximum },
+        ];
+        for (const fixture of cases) {
+          const data = approvalInterface.encodeFunctionData('approve', [
+            spender,
+            fixture.amount,
+          ]);
+          const transaction = { from: address, to: token, value: '0x0', data };
+          const { request, popup } = await wallet.step(
+            `request ${fixture.name} approval at ${width}px`,
+            async (captureApproval) => {
+              const requestId = await startRequest(
+                dapp,
+                'eth_sendTransaction',
+                [transaction]
+              );
+              let approvalPopup = await popupFor(
+                wallet.context,
+                dapp,
+                requestId
+              );
+              // Rejected approvals can legitimately reach the spam threshold.
+              // Continue through that real warning; it closes and is replaced
+              // by a separate transaction review for this same pending request.
+              if (
+                new URL(approvalPopup.url()).pathname ===
+                '/external/spam-warning'
+              ) {
+                const warning = JSON.parse(
+                  new URL(approvalPopup.url()).searchParams.get('data') || '{}'
+                );
+                expect(warning).toMatchObject({
+                  host: new URL(origin).origin,
+                  eventName: 'spamWarningResponse',
+                });
+                await expect(
+                  approvalPopup.getByRole('heading', {
+                    name: en.spamWarning.title,
+                    exact: true,
+                  })
+                ).toBeVisible();
+                await captureApproval(approvalPopup);
+                const warningPopup = approvalPopup;
+                await clickClosingPopup({
+                  click: () =>
+                    warningPopup
+                      .getByRole('button', {
+                        name: en.buttons.continue,
+                        exact: true,
+                      })
+                      .click(),
+                  isClosed: () => warningPopup.isClosed(),
+                });
+                await expect.poll(() => warningPopup.isClosed()).toBe(true);
+                approvalPopup = await popupFor(wallet.context, dapp, requestId);
+              }
+              const approvalUrl = new URL(approvalPopup.url());
+              expect(approvalUrl.pathname).toBe('/external/tx/send/ethTx');
+              const approvalData = JSON.parse(
+                approvalUrl.searchParams.get('data') || '{}'
+              );
+              expect(approvalData).toMatchObject({
+                host: new URL(origin).origin,
+                eventName: 'txSend',
+                external: true,
+                tx: transaction,
+              });
+              await approvalPopup.setViewportSize({ width, height });
+              await captureApproval(approvalPopup);
+              return { request: requestId, popup: approvalPopup };
+            }
+          );
+          await popupStep(
+            wallet,
+            popup,
+            `inspect ${fixture.name} amount at ${width}px`,
+            async () => {
+              // The edit control appears only after real token metadata has loaded.
+              await expect(
+                popup.getByRole('button', {
+                  name: en.send.editPermission,
+                  exact: true,
+                })
+              ).toBeVisible();
+              const label = popup.getByText(en.transactions.approvalAmount, {
+                exact: true,
+              });
+              const row = label.locator('..');
+              const value = row.locator(':scope > span').nth(1);
+              const expected =
+                fixture.amount === maximum
+                  ? `⚠️ ${en.transactions.unlimited}`
+                  : `${formatUnits(fixture.amount, 8)} REVIEW`;
+              await expect(value).toHaveText(expected);
+              const readPosition = () =>
+                row.evaluate((element, cancelLabel) => {
+                  const cancel = Array.from(
+                    document.querySelectorAll('button')
+                  ).find(
+                    (button) => button.textContent?.trim() === cancelLabel
+                  );
+                  let footer = cancel?.parentElement || null;
+                  while (
+                    footer &&
+                    getComputedStyle(footer).position !== 'fixed'
+                  )
+                    footer = footer.parentElement;
+                  if (!footer) throw new Error('Missing fixed approval footer');
+                  let owner = element.parentElement;
+                  while (
+                    owner &&
+                    !(
+                      /auto|scroll/.test(getComputedStyle(owner).overflowY) &&
+                      owner.scrollHeight > owner.clientHeight + 1
+                    )
+                  )
+                    owner = owner.parentElement;
+                  const box = element.getBoundingClientRect();
+                  const clip = owner?.getBoundingClientRect();
+                  const top = Math.max(0, clip?.top || 0);
+                  const bottom = Math.min(
+                    innerHeight,
+                    clip?.bottom ?? innerHeight,
+                    footer.getBoundingClientRect().top
+                  );
+                  return {
+                    rowTop: box.top,
+                    rowBottom: box.bottom,
+                    top,
+                    bottom,
+                    footerTop: footer.getBoundingClientRect().top,
+                    text: element.children[1].textContent,
+                    scroll: owner
+                      ? {
+                          x: Math.min(innerWidth - 4, clip!.right - 4),
+                          y: (top + bottom) / 2,
+                          top: owner.scrollTop,
+                        }
+                      : null,
+                  };
+                }, en.buttons.cancel);
+              const settlePosition = async () => {
+                let previous = '';
+                let repeats = 0;
+                await expect
+                  .poll(
+                    async () => {
+                      const current = JSON.stringify(await readPosition());
+                      repeats = current === previous ? repeats + 1 : 0;
+                      previous = current;
+                      return repeats >= 2;
+                    },
+                    { intervals: [50], timeout: 4000 }
+                  )
+                  .toBe(true);
+              };
+              // Use ordinary wheel input, accounting for the fixed footer that
+              // scrollIntoView cannot see. Never assign scrollTop or mutate UI.
+              await settlePosition();
+              for (let attempt = 0; attempt < 8; attempt++) {
+                const position = await readPosition();
+                if (!position.scroll) break;
+                const delta = Math.round(
+                  (position.rowTop + position.rowBottom) / 2 -
+                    (position.top + position.bottom) / 2
+                );
+                if (Math.abs(delta) <= 2) break;
+                await popup.mouse.move(position.scroll.x, position.scroll.y);
+                await popup.mouse.wheel(0, delta);
+                await settlePosition();
+                if ((await readPosition()).scroll?.top === position.scroll.top)
+                  break;
+              }
+              await settlePosition();
+              const visibleRegion = await readPosition();
+              expect(visibleRegion.rowTop).toBeGreaterThanOrEqual(
+                visibleRegion.top
+              );
+              expect(visibleRegion.rowBottom).toBeLessThanOrEqual(
+                visibleRegion.bottom
+              );
+              expect(visibleRegion.rowBottom).toBeLessThanOrEqual(
+                visibleRegion.footerTop
+              );
+              expect(visibleRegion.text).toBe(expected);
+              await expect(value).toHaveText(expected);
+              await popup.mouse.move(0, 0);
+              const geometry = await row.evaluate((element) => {
+                const box = (rect: DOMRect) => ({
+                  left: rect.left,
+                  right: rect.right,
+                  top: rect.top,
+                  bottom: rect.bottom,
+                  width: rect.width,
+                  height: rect.height,
+                });
+                const fragments = (target: Element) => {
+                  const range = document.createRange();
+                  range.selectNodeContents(target);
+                  return Array.from(range.getClientRects())
+                    .map(box)
+                    .filter((rect) => rect.width > 0 && rect.height > 0);
+                };
+                const [labelElement, valueElement] = Array.from(
+                  element.children
+                );
+                const rowBox = box(element.getBoundingClientRect());
+                const labelFragments = fragments(labelElement);
+                const valueFragments = fragments(valueElement);
+                const outsideRow = valueFragments.some(
+                  (rect) =>
+                    rect.left < rowBox.left - 1 || rect.right > rowBox.right + 1
+                );
+                const overlapsLabel = valueFragments.some((valueRect) =>
+                  labelFragments.some(
+                    (labelRect) =>
+                      valueRect.left < labelRect.right &&
+                      valueRect.right > labelRect.left &&
+                      valueRect.top < labelRect.bottom &&
+                      valueRect.bottom > labelRect.top
+                  )
+                );
+                return {
+                  row: rowBox,
+                  card: box(element.parentElement!.getBoundingClientRect()),
+                  value: box(valueElement.getBoundingClientRect()),
+                  labelFragments,
+                  valueFragments,
+                  outsideRow,
+                  overlapsLabel,
+                  viewportWidth: window.innerWidth,
+                  documentWidth: document.documentElement.scrollWidth,
+                  visibleText: valueElement.textContent,
+                };
+              });
+              await capture(
+                popup,
+                info,
+                `approval-amount-${fixture.name}-${width}-${mode}`,
+                {
+                  runtime,
+                  fixture: fixture.name,
+                  amount: fixture.amount.toString(),
+                  expected,
+                  requestedData: data,
+                  geometry,
+                  visibleRegion,
+                  viewport: popup.viewportSize(),
+                  controllerResultsReplaced: false,
+                  signingApproved: false,
+                }
+              );
+              expect(geometry.valueFragments.length).toBeGreaterThan(0);
+              expect(geometry.visibleText).toBe(expected);
+              // Before mode records the original geometry without requiring a bug.
+              // Ordinary, zero, and unlimited remain healthy controls in both modes.
+              if (mode === 'after' || fixture.name !== 'large-finite') {
+                expect(geometry.outsideRow).toBe(false);
+                expect(geometry.overlapsLabel).toBe(false);
+                expect(geometry.card.left).toBeGreaterThanOrEqual(-1);
+                expect(geometry.card.right).toBeLessThanOrEqual(width + 1);
+                expect(geometry.documentWidth).toBeLessThanOrEqual(width + 1);
+              }
+              if (fixture.amount === maximum)
+                await expect(value).toHaveClass(/text-warning-error/);
+              else await expect(value).not.toHaveClass(/text-warning-error/);
+              await captureForegroundContrast(
+                value,
+                info,
+                `approval-${fixture.name}-${width}`
+              );
+            }
+          );
+          await popupStep(
+            wallet,
+            popup,
+            `check unchanged ${fixture.name} Data and Hex at ${width}px`,
+            async () => {
+              await popup
+                .locator('#tabExample')
+                .getByText(en.send.data, { exact: true })
+                .click();
+              const displayedData = await popup
+                .locator('#tabContentExample pre:visible')
+                .innerText();
+              expect(JSON.parse(displayedData).inputs).toEqual([
+                spender,
+                fixture.amount.toString(),
+              ]);
+              await popup
+                .locator('#tabExample')
+                .getByText(en.send.hex, { exact: true })
+                .click();
+              const displayedHex = await popup
+                .locator('#tabContentExample [role=tabpanel]:visible')
+                .innerText();
+              expect(displayedHex.trim()).toBe(data);
+              const pending = await dapp.evaluate(
+                (requestId) =>
+                  (window as any).__paliConformance.requests[requestId],
+                request
+              );
+              expect(pending).toMatchObject({
+                method: 'eth_sendTransaction',
+                params: [transaction],
+              });
+              expect(pending.settled).not.toBe(true);
+              await info.attach(`approval-encoding-${fixture.name}-${width}`, {
+                body: JSON.stringify(
+                  {
+                    runtime,
+                    requested: transaction,
+                    pending,
+                    displayedData,
+                    displayedHex,
+                  },
+                  null,
+                  2
+                ),
+                contentType: 'application/json',
+              });
+              await popup
+                .locator('#tabExample')
+                .getByText(en.send.details, { exact: true })
+                .click();
+            }
+          );
+          await popupStep(
+            wallet,
+            popup,
+            `cancel ${fixture.name} without signing at ${width}px`,
+            async () => {
+              const rejected = await dismissRejectedApproval({
+                click: () =>
+                  popup
+                    .getByRole('button', {
+                      name: en.buttons.cancel,
+                      exact: true,
+                    })
+                    .click(),
+                isClosed: () => popup.isClosed(),
+                settle: () => settle(dapp, request),
+              });
+              expect(rejected.error?.code).toBe(4001);
+              expect(rejected.result).toBeUndefined();
+              expect(rejected).toMatchObject({
+                method: 'eth_sendTransaction',
+                params: [transaction],
+              });
+            }
+          );
+        }
+        await wallet.step(
+          `verify ${width}px cancellations and immutable runtime`,
+          async () => {
+            const requests = await dapp.evaluate(
+              () => (window as any).__paliConformance.requests
+            );
+            expect(requests.map((request: any) => request.method)).toEqual([
+              'eth_requestAccounts',
+              ...cases.map(() => 'eth_sendTransaction'),
+            ]);
+            expect(
+              requests.slice(1).map((request: any) => request.error?.code)
+            ).toEqual(cases.map(() => 4001));
+            expect(
+              requests
+                .slice(1)
+                .every((request: any) => request.result === undefined)
+            ).toBe(true);
+            expect(extensionEvidence()).toEqual(runtime);
+          }
+        );
+      }
+    );
+  });
+}

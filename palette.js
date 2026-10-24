@@ -1,3 +1,6 @@
+/* eslint-disable @typescript-eslint/no-var-requires -- Tailwind and Node load this shared palette as CommonJS. */
+const errorTextColor = require('./source/constants/errorTextColor');
+
 module.exports = {
   bkg: {
     1: '#07152A',
@@ -133,6 +136,7 @@ module.exports = {
 
   // Foregrounds.
   content: {
+    error: errorTextColor,
     primary: '#FFFFFF',
     secondary: '#F5F5F5', // brand-graylight
     muted: '#A2A5AB', // brand-gray200

@@ -13,7 +13,7 @@ const mockState = {
     activeNetwork: { chainId: 5700, currency: 'tsys' },
     isBitcoinBased: true,
   },
-  price: { fiat: { asset: 'usd', price: 1 } },
+  price: { fiat: { asset: 'usd', price: 1, available: true } },
 };
 const mockEmitter = jest.fn();
 
@@ -53,7 +53,8 @@ jest.mock('components/index', () => ({
 
 beforeEach(() => {
   mockEmitter.mockReset();
-  mockState.price.fiat = { asset: 'usd', price: 1 };
+  mockState.price.fiat = { asset: 'usd', price: 1, available: true };
+  mockState.vault.accounts.HDAccount[0].balances.syscoin = 10;
 });
 
 const selectEuro = async () => {
@@ -91,7 +92,7 @@ it('keeps the quoted amount and flag in their actual currency until a matching s
     ['wallet', 'saveFiatCurrency'],
     ['eur']
   );
-  mockState.price.fiat = { asset: 'eur', price: 2 };
+  mockState.price.fiat = { asset: 'eur', price: 2, available: true };
   view.rerender(<Currency />);
   const updatedCard = screen.getByText('components.currentBalance')
     .parentElement!;
@@ -111,4 +112,39 @@ it('retains the saved quote currency when saving the new selection fails', async
   expect(card).toHaveTextContent('🇺🇸');
   expect(card).toHaveTextContent('$10 USD');
   expect(card).not.toHaveTextContent('€10 EUR');
+});
+
+it.each([
+  [false, 0, 'settings.unavailable'],
+  [true, 0, '$0 USD'],
+  [true, 2, '$20 USD'],
+  [true, -2, '$-20 USD'],
+] as const)(
+  'keeps native funds distinct from quote availability %s with value %s',
+  (available, price, expected) => {
+    mockState.price.fiat = { asset: 'usd', price, available };
+    render(<Currency />);
+    const card = screen.getByText('components.currentBalance').parentElement!;
+    expect(card.querySelector('p.font-poppins')?.textContent).toBe('10');
+    expect(card).toHaveTextContent(expected);
+    if (!available) expect(card).not.toHaveTextContent('$0 USD');
+  }
+);
+
+it('updates only quote display when a missing quote recovers in the current currency draft', async () => {
+  mockState.price.fiat = { asset: 'usd', price: 0, available: false };
+  const view = render(<Currency />);
+  await selectEuro();
+  expect(
+    screen.getByText('components.currentBalance').parentElement
+  ).toHaveTextContent('settings.unavailable');
+  mockState.price.fiat = { asset: 'usd', price: 2, available: true };
+  view.rerender(<Currency />);
+  const card = screen.getByText('components.currentBalance').parentElement!;
+  expect(card).toHaveTextContent('$20 USD');
+  expect(card).toHaveTextContent('🇺🇸');
+  expect(
+    screen.getByRole('button', { name: 'settings.setYourPreferred' })
+  ).toHaveTextContent('EUR');
+  expect(mockEmitter).not.toHaveBeenCalled();
 });

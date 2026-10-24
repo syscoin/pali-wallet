@@ -126,7 +126,7 @@ ReceiveIcon.displayName = 'ReceiveIcon';
 
 export const Home = () => {
   // ALL hooks must be called first in consistent order
-  const { getFiatAmount } = usePrice();
+  const { getFiatAmount, isFiatAvailable } = usePrice();
   const { navigate } = useUtils();
   const { t } = useTranslation();
   const { state } = useLocation();
@@ -263,6 +263,7 @@ export const Home = () => {
   );
 
   const fiatPriceValue = useMemo(() => {
+    if (!isFiatAvailable) return t('settings.unavailable');
     const numBalance = toNumericBalance(actualBalance);
     // Always return fiat amount, even for zero balance
     return getFiatAmount(
@@ -272,7 +273,7 @@ export const Home = () => {
       true,
       true
     );
-  }, [getFiatAmount, actualBalance, fiatAsset]);
+  }, [getFiatAmount, actualBalance, fiatAsset, isFiatAvailable, t]);
 
   const formatFiatAmount = useMemo(() => {
     if (!fiatPriceValue) return null;
@@ -354,7 +355,7 @@ export const Home = () => {
                 <FiatDisplay
                   isLoadingBalance={isLoadingBalance}
                   formatFiatAmount={formatFiatAmount}
-                  priceChange24h={priceChange24h}
+                  priceChange24h={isFiatAvailable ? priceChange24h : undefined}
                 />
               </div>
 

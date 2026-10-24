@@ -63,14 +63,14 @@ export const ApprovalDetails: React.FC<IApprovalDetailsProps> = ({
             </span>
           </div>
           {formattedAmount !== undefined && (
-            <div className="flex items-center justify-between gap-3 w-full">
-              <span className="text-brand-graylight">
+            <div className="flex items-start justify-between gap-3 w-full">
+              <span className="shrink-0 text-brand-graylight">
                 {t('transactions.approvalAmount')}
               </span>
               <span
-                className={
+                className={`min-w-0 break-all text-right ${
                   isUnlimited ? 'text-warning-error' : 'text-brand-white'
-                }
+                }`}
               >
                 {isUnlimited
                   ? `⚠️ ${t('transactions.unlimited')}`

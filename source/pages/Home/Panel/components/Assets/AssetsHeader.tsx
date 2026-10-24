@@ -229,14 +229,14 @@ export const AssetsHeader = ({
             <GoBackIcon size={16} color="#fff" />
           </button>
 
-          <div className="w-full flex items-center">
+          <div className="relative flex min-w-0 flex-1 items-center">
             <input
               ref={searchInputRef}
               type="text"
               aria-label={t('assetsHeader.tokenOrContractAddress')}
               placeholder={t('assetsHeader.tokenOrContractAddress')}
               className="w-full max-h-8 border bg-brand-blue800 border-bkg-white200 font-poppins 
-              text-xs font-normal p-4 text-brand-gray200 outline-none"
+              text-xs font-normal py-4 pl-4 pr-10 text-brand-gray200 outline-none"
               style={{ borderRadius: '100px' }}
               onChange={handleInputChange}
               value={searchValue}
@@ -245,8 +245,8 @@ export const AssetsHeader = ({
             <SearchIcon
               size={16}
               color="#fff"
-              className="absolute"
-              style={{ right: '8%' }}
+              aria-hidden="true"
+              className="pointer-events-none absolute right-3"
             />
           </div>
         </div>

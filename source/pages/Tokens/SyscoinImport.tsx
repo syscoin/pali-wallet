@@ -508,7 +508,7 @@ export const SyscoinImport: React.FC = () => {
                     setIsValidatingCustom(Boolean(e.target.value.trim()));
                   }}
                 />
-                <div className="absolute right-4 top-1/2 transform -translate-y-1/2 flex items-center justify-center w-6 h-6">
+                <div className="pointer-events-none absolute right-4 top-1/2 transform -translate-y-1/2 flex items-center justify-center w-6 h-6">
                   {isValidatingCustom ? (
                     <LoadingOutlined className="text-brand-royalblue animate-spin text-base" />
                   ) : customTokenDetails && customAssetGuid ? (
