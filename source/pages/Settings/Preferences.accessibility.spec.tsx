@@ -481,3 +481,39 @@ it('does not revert a completed language save when the older preference read fin
   expect(save.hasAttribute('disabled')).toBe(true);
   expect(changeLanguage).toHaveBeenCalledTimes(1);
 });
+
+// These are mounted source/class contracts, not JSDOM pixel measurements.
+// Genuine fenced browser evidence owns arrow/text alignment and hit geometry.
+const expectCenteredPickerContract = (name: string, selected: string) => {
+  const trigger = screen.getByRole('button', { name });
+  for (const value of ['inline-flex', 'items-center', 'h-[44px]', 'p-[10px]'])
+    expect(trigger.classList.contains(value)).toBe(true);
+  const arrow = trigger.querySelector('svg');
+  expect(arrow).not.toBeNull();
+  expect(arrow!.parentElement).toBe(trigger);
+  expect(trigger.textContent).toContain(selected);
+  expect(trigger.hasAttribute('disabled')).toBe(false);
+  expect(
+    screen
+      .getByRole('button', { name: 'buttons.save' })
+      .hasAttribute('disabled')
+  ).toBe(true);
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(mockEmitter).not.toHaveBeenCalled();
+  expect(changeLanguage).not.toHaveBeenCalled();
+};
+
+it('centers the mounted Currency picker without changing its target or saving the initial preference', () => {
+  render(<Currency />);
+  expectCenteredPickerContract('settings.setYourPreferred', 'USD');
+  expect(mockState.price.fiat.asset).toBe('usd');
+  expect(screen.queryByRole('textbox')).toBeNull();
+});
+
+it('centers the mounted Languages picker without changing its target or saving the initial preference', async () => {
+  await act(async () => {
+    render(<Languages />);
+  });
+  expectCenteredPickerContract('settings.setYourPreferredLanguage', 'English');
+  expect(screen.queryByRole('menu')).toBeNull();
+});

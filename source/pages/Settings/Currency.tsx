@@ -257,7 +257,7 @@ const CurrencyView = () => {
               <Popover.Button
                 aria-label={t('settings.setYourPreferred')}
                 disabled={!fiat || !coins || saving}
-                className="inline-flex justify-between p-[10px] w-full h-[44px] text-white text-sm font-light bg-brand-blue600 border border-alpha-whiteAlpha300 focus:border-fields-input-borderfocus rounded-[10px] hover:bg-brand-blue500 hover:bg-opacity-20 transition-all duration-200 group"
+                className="inline-flex items-center justify-between p-[10px] w-full h-[44px] text-white text-sm font-light bg-brand-blue600 border border-alpha-whiteAlpha300 focus:border-fields-input-borderfocus rounded-[10px] hover:bg-brand-blue500 hover:bg-opacity-20 transition-all duration-200 group"
               >
                 <div className="flex items-center gap-2 ml-2">
                   <span className="text-lg transform transition-transform duration-300 group-hover:scale-110">
