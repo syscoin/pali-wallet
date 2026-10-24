@@ -21,6 +21,7 @@ import { INetworkType } from 'types/network';
 import { ellipsis } from 'utils/index';
 import { NFT_FALLBACK_IMAGE } from 'utils/nftFallback';
 import { getNftQuantity } from 'utils/nftQuantity';
+import { normalizeNftTokenId } from 'utils/nftTokenId';
 import { buildExplorerUrl } from 'utils/strings';
 
 const renderNftSection = (title: string, children: React.ReactNode) => (
@@ -226,6 +227,20 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
     setVerificationError(null);
   };
 
+  // Format affects field feedback only; ownership requests keep their existing path.
+  const showTokenIdError = Boolean(
+    manualTokenId && !isVerifyingTokenId && verificationError
+  );
+  const tokenIdFormatInvalid = (() => {
+    if (!showTokenIdError) return false;
+    try {
+      normalizeNftTokenId(manualTokenId.trim());
+      return false;
+    } catch {
+      return true;
+    }
+  })();
+
   // Get display token ID
   const displayTokenId =
     currentNft?.tokenStandard === 'ERC-1155'
@@ -368,6 +383,12 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
                         : t('send.enterTokenId')
                     }
                     disabled={isLoadingTokenIds}
+                    aria-describedby={
+                      showTokenIdError
+                        ? 'nft-details-token-id-help nft-details-token-id-error'
+                        : 'nft-details-token-id-help'
+                    }
+                    aria-invalid={tokenIdFormatInvalid || undefined}
                     className="w-full px-3 py-2 pr-12 bg-bkg-2 border border-bkg-4 rounded-lg text-brand-white text-sm
                            placeholder-brand-gray200 focus:border-brand-royalblue focus:outline-none
                            disabled:opacity-50 disabled:cursor-not-allowed"
@@ -391,15 +412,22 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
                 </div>
 
                 {/* Validation status messages */}
-                {manualTokenId && !isVerifyingTokenId && verificationError && (
+                {showTokenIdError && (
                   <div className="mt-2">
-                    <p className="text-xs text-red-400 text-center">
+                    <p
+                      id="nft-details-token-id-error"
+                      role="alert"
+                      className="text-xs text-red-400 text-center"
+                    >
                       ❌ {verificationError}
                     </p>
                   </div>
                 )}
 
-                <p className="text-brand-gray200 text-[10px] mt-1 text-center">
+                <p
+                  id="nft-details-token-id-help"
+                  className="text-brand-gray200 text-[10px] mt-1 text-center"
+                >
                   {verifiedTokenBalance !== null && verifiedTokenBalance > 0
                     ? t('send.selectTokenIdOrTryDifferent')
                     : t('send.enterNftTokenId')}
