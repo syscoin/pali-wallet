@@ -178,6 +178,7 @@ test.beforeAll(async () => {
           'utils/navigationState$': support,
           assets: path.join(root, 'source/assets'),
           components: path.join(root, 'source/components'),
+          constants: path.join(root, 'source/constants'),
           hooks: path.join(root, 'source/hooks'),
           state: path.join(root, 'source/state'),
           utils: path.join(root, 'source/utils'),
@@ -228,7 +229,9 @@ test.beforeAll(async () => {
   origin = `http://127.0.0.1:${(server.address() as any).port}`;
 });
 test.afterAll(async () => {
-  await new Promise<void>((resolve) => server?.close(() => resolve()));
+  if (server) {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
 });
 
 const exposed = (locator: Locator) =>
