@@ -229,7 +229,7 @@ const guardianReplacementAuthenticatorKey = (
 const SmartAccountPolicy = () => {
   const location = useLocation();
   const routeState = location.state as any;
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { alert, navigate, useCopyClipboard } = useUtils();
   const [, copy] = useCopyClipboard();
   const { controllerEmitter, handleWalletLockedError } = useController();
@@ -812,14 +812,16 @@ const SmartAccountPolicy = () => {
         <>
           <p>
             {t('settings.smartAccountGuardianRecoveryReadyAt', {
-              time: new Date(
-                onChainPending.executableAt * 1000
-              ).toLocaleString(),
+              time: new Date(onChainPending.executableAt * 1000).toLocaleString(
+                i18n?.resolvedLanguage || i18n?.language
+              ),
             })}
           </p>
           <p>
             {t('settings.smartAccountGuardianExpiresAt', {
-              time: new Date(onChainPending.expiresAt * 1000).toLocaleString(),
+              time: new Date(onChainPending.expiresAt * 1000).toLocaleString(
+                i18n?.resolvedLanguage || i18n?.language
+              ),
             })}
           </p>
         </>
@@ -832,7 +834,7 @@ const SmartAccountPolicy = () => {
           {t('settings.smartAccountGuardianObservedAt', {
             time: new Date(
               guardianStatus.observedBlock.timestamp * 1000
-            ).toLocaleString(),
+            ).toLocaleString(i18n?.resolvedLanguage || i18n?.language),
           })}
         </p>
       )}
@@ -2766,7 +2768,7 @@ const SmartAccountPolicy = () => {
               : t('settings.smartAccountGuardianRecoveryReadyAt', {
                   time: new Date(
                     activeGuardianReplacement.recoveryOperation.readyAt * 1000
-                  ).toLocaleString(),
+                  ).toLocaleString(i18n?.resolvedLanguage || i18n?.language),
                 })
             : getSmartAccountActionErrorMessage(
                 error,

@@ -115,28 +115,39 @@ for (const method of ['eth_decrypt', 'personal_sign'] as const) {
           createIsolatedVaultFixture(),
           server.url
         );
-        await wallet.importSeedAndCreatePassword();
-        await wallet.switchNetwork('Syscoin NEVM Testnet', 'EVM');
-        await wallet.ensureOnHome();
+        await wallet.step(
+          'onboard the disposable wallet and select the EVM fixture',
+          async () => {
+            await wallet!.importSeedAndCreatePassword();
+            await wallet!.switchNetwork('Syscoin NEVM Testnet', 'EVM');
+            await wallet!.ensureOnHome();
+          }
+        );
         const fixture = Wallet.fromPhrase(UTXO_FIXTURE_SEED);
         const encryptionKey =
           method === 'eth_decrypt'
             ? getEncryptionPublicKey(fixture.privateKey.slice(2))
             : undefined;
-        const dapp = await wallet.context.newPage();
-        await dapp.goto(server.url);
-        await dapp.waitForFunction(() =>
-          Boolean((window as any).pali?.request)
+        const dapp = await wallet.step(
+          'connect the actual provider and release the ordinary window slot',
+          async (capture) => {
+            const page = await wallet!.context.newPage();
+            await page.goto(server.url);
+            await page.waitForFunction(() =>
+              Boolean((window as any).pali?.request)
+            );
+            const connect = await startRequest(page, 'eth_requestAccounts');
+            expect(
+              (
+                await approve(wallet!.context, page, connect, capture)
+              ).result.map((address: string) => address.toLowerCase())
+            ).toEqual([fixture.address.toLowerCase()]);
+            // Release the ordinary extension window slot before requesting approval.
+            // This navigates the test-owned page; it does not alter wallet state.
+            await wallet!.page.goto('about:blank');
+            return page;
+          }
         );
-        const connect = await startRequest(dapp, 'eth_requestAccounts');
-        expect(
-          (await approve(wallet.context, dapp, connect)).result.map(
-            (address: string) => address.toLowerCase()
-          )
-        ).toEqual([fixture.address.toLowerCase()]);
-        // Release the ordinary extension window slot before requesting approval.
-        // This navigates the test-owned page; it does not alter wallet state.
-        await wallet.page.goto('about:blank');
 
         for (const [name, plaintext] of [
           ['single-line', SINGLE_LINE],

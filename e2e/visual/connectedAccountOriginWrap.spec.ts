@@ -198,23 +198,34 @@ test('account-switch approval keeps complete origins and an uncompressed warning
       ['long', LONG_ORIGIN],
       ['unbroken', UNBROKEN_ORIGIN],
     ] as const) {
-      const required = await select(0);
-      const dapp = await wallet.context.newPage();
-      await dapp.goto(`${origin}/`);
-      await dapp.waitForFunction(() => Boolean((window as any).pali?.request));
-      await wallet.step(
+      const required = await wallet.step(
+        `${kind} origin selects the account to connect`,
+        () => select(0)
+      );
+      const dapp = await wallet.step(
         `${kind} origin connects the real provider to account zero`,
         async (capture) => {
-          const id = await startRequest(dapp, 'eth_requestAccounts');
-          const result = await approve(wallet!.context, dapp, id, capture);
+          const page = await wallet!.context.newPage();
+          await page.goto(`${origin}/`);
+          await page.waitForFunction(() =>
+            Boolean((window as any).pali?.request)
+          );
+          const id = await startRequest(page, 'eth_requestAccounts');
+          const result = await approve(wallet!.context, page, id, capture);
           expect(result.error).toBeUndefined();
           expect(
             result.result.map((value: string) => value.toLowerCase())
           ).toEqual([required.address.toLowerCase()]);
+          return page;
         }
       );
-      await select(1);
-      const original = await publicSelection();
+      const original = await wallet.step(
+        `${kind} origin selects the other account before its request`,
+        async () => {
+          await select(1);
+          return publicSelection();
+        }
+      );
       await wallet.step(
         `${kind} origin reviews its normal required-account request and cancels`,
         async () => {
@@ -287,6 +298,114 @@ test('account-switch approval keeps complete origins and an uncompressed warning
             expect(observation.icon.height).toBe(32);
             expect((await rpcObservation(dapp, id)).settled).not.toBe(true);
             expect(await publicSelection()).toEqual(original);
+            if (viewport.width === 320) {
+              // The complete host need not fit at once. Its final line must be
+              // reachable with ordinary wheel input above the action footer.
+              await expect(
+                popup.locator('[data-page-action-footer]')
+              ).toHaveCount(1);
+              const readTail = () =>
+                host.evaluate((element) => {
+                  const range = document.createRange();
+                  range.selectNodeContents(element);
+                  const fragments = [...range.getClientRects()];
+                  const last = fragments[fragments.length - 1];
+                  const footer = document.querySelector(
+                    '[data-page-action-footer]'
+                  )!;
+                  const footerTop = footer.getBoundingClientRect().top;
+                  let visibleTop = 0;
+                  let visibleBottom = Math.min(innerHeight, footerTop);
+                  for (
+                    let parent = element.parentElement;
+                    parent;
+                    parent = parent.parentElement
+                  ) {
+                    if (
+                      /^(auto|scroll|hidden|clip|overlay)$/.test(
+                        getComputedStyle(parent).overflowY
+                      )
+                    ) {
+                      const bounds = parent.getBoundingClientRect();
+                      visibleTop = Math.max(visibleTop, bounds.top);
+                      visibleBottom = Math.min(visibleBottom, bounds.bottom);
+                    }
+                  }
+                  const centerX = last ? last.left + last.width / 2 : -1;
+                  const centerY = last ? last.top + last.height / 2 : -1;
+                  const hit = document.elementFromPoint(centerX, centerY);
+                  return {
+                    text: element.textContent,
+                    footerTop,
+                    visibleTop,
+                    visibleBottom,
+                    last: last
+                      ? {
+                          left: last.left,
+                          top: last.top,
+                          right: last.right,
+                          bottom: last.bottom,
+                          width: last.width,
+                          height: last.height,
+                        }
+                      : null,
+                    visible: Boolean(
+                      last &&
+                        last.left >= 0 &&
+                        last.right <= innerWidth &&
+                        last.top >= visibleTop &&
+                        last.bottom <= visibleBottom &&
+                        hit &&
+                        (hit === element || element.contains(hit))
+                    ),
+                  };
+                });
+              let tail = await readTail();
+              const wheelDeltas: number[] = [];
+              for (let attempt = 0; attempt < 6 && !tail.visible; attempt++) {
+                expect(tail.last).not.toBeNull();
+                await popup.mouse.move(
+                  viewport.width / 2,
+                  Math.max(
+                    5,
+                    Math.min(tail.visibleBottom - 20, tail.visibleTop + 80)
+                  )
+                );
+                const delta =
+                  tail.last!.bottom > tail.visibleBottom
+                    ? Math.min(200, tail.last!.bottom - tail.visibleBottom + 12)
+                    : -Math.min(200, tail.visibleTop - tail.last!.top + 12);
+                wheelDeltas.push(delta);
+                await popup.mouse.wheel(0, delta);
+                await host.evaluate(async () => {
+                  await new Promise<void>((resolve) =>
+                    requestAnimationFrame(() => resolve())
+                  );
+                  await new Promise<void>((resolve) =>
+                    requestAnimationFrame(() => resolve())
+                  );
+                });
+                tail = await readTail();
+              }
+              expect(tail.text).toBe(origin);
+              expect(tail.last).not.toBeNull();
+              expect(tail.visible).toBe(true);
+              expect(tail.last!.bottom).toBeLessThanOrEqual(tail.footerTop);
+              expect((await rpcObservation(dapp, id)).settled).not.toBe(true);
+              expect(await publicSelection()).toEqual(original);
+              records.push({
+                kind,
+                origin,
+                viewport,
+                phase: 'last-line-revealed',
+                wheelDeltas,
+                ...tail,
+              });
+              await info.attach(`account-origin-${kind}-320-last-line`, {
+                body: await popup.screenshot({ animations: 'disabled' }),
+                contentType: 'image/png',
+              });
+            }
           }
           const result = await dismissRejectedApproval({
             click: () =>
