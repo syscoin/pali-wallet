@@ -6,6 +6,7 @@ import path from 'path';
 
 import en from '../../source/assets/locales/en.json';
 import { E2E_CONFIG } from '../harness/config';
+import { captureForegroundContrast } from '../harness/foregroundContrast';
 import {
   createIsolatedVaultFixture,
   installIsolatedVaultRoutes,
@@ -445,6 +446,11 @@ for (const direction of ['outgoing', 'incoming'] as const) {
               .filter((read) => read.action === 'txlist')
               .every((read) => read.rows === 0)
           ).toBe(true);
+          await captureForegroundContrast(
+            listRow.getByText(sign, { exact: true }),
+            info,
+            `activity-${direction}-sign`
+          );
           observations.list = initial;
         }
       );
@@ -471,6 +477,11 @@ for (const direction of ['outgoing', 'incoming'] as const) {
           await expect(
             details.getByText('1.0 TOK', { exact: true })
           ).toBeVisible();
+          await captureForegroundContrast(
+            details.getByText('1.0 TOK', { exact: true }),
+            info,
+            `activity-${direction}-detail-amount`
+          );
           observations.header = {
             direction: await details
               .getByText(expectedDirection, { exact: true })

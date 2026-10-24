@@ -311,7 +311,11 @@ const EvmTransactionItem = React.memo(
 
       return (
         <div className="flex flex-col justify-end items-end min-w-0">
-          <div className="inline-flex items-center text-white text-xs font-normal whitespace-nowrap overflow-hidden max-w-full">
+          <div
+            className={`inline-flex items-center ${
+              isFailed ? 'text-brand-gray200' : 'text-white'
+            } text-xs font-normal whitespace-nowrap overflow-hidden max-w-full`}
+          >
             {showSign && (
               <span
                 className={`${
@@ -409,11 +413,11 @@ const EvmTransactionItem = React.memo(
 
     if (isFailed) {
       return (
-        <div className="flex justify-between py-2 w-full border-b border-dashed border-bkg-deepBlue opacity-30">
+        <div className="flex justify-between py-2 w-full border-b border-dashed border-bkg-deepBlue">
           <div className="flex items-center">
             {getTxStatusIcons(getTxType(tx, isTxSent), false)}
             <div className="flex flex-col">
-              <div className="text-white text-xs font-normal line-through">
+              <div className="text-brand-gray200 text-xs font-normal line-through">
                 {transactionLabel}
               </div>
               <div className="text-warning-error text-xs">
@@ -422,9 +426,7 @@ const EvmTransactionItem = React.memo(
             </div>
           </div>
           <div className="flex items-center gap-4">
-            <div className="line-through opacity-50">
-              {renderValueDisplay()}
-            </div>
+            <div className="line-through">{renderValueDisplay()}</div>
             <div className="m-auto">
               <Tooltip content={t('notifications.clickToView')}>
                 <DetailArrowSvg

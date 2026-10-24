@@ -3,6 +3,7 @@ import { AbiCoder, Interface, formatUnits, id } from 'ethers';
 
 import en from '../../source/assets/locales/en.json';
 import { E2E_CONFIG } from '../harness/config';
+import { captureForegroundContrast } from '../harness/foregroundContrast';
 import {
   clickClosingPopup,
   dismissRejectedApproval,
@@ -1419,6 +1420,11 @@ for (const width of [400, 320]) {
               if (fixture.amount === maximum)
                 await expect(value).toHaveClass(/text-warning-error/);
               else await expect(value).not.toHaveClass(/text-warning-error/);
+              await captureForegroundContrast(
+                value,
+                info,
+                `approval-${fixture.name}-${width}`
+              );
             }
           );
           await popupStep(

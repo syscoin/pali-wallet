@@ -234,10 +234,7 @@ export const ErrorModal = ({
             style={{ borderColor: '#DC1515' }}
           >
             <div>
-              <span
-                className="text-sm"
-                style={{ color: '#ff8f8f', fontWeight: '600' }}
-              >
+              <span className="text-sm text-content-error font-semibold">
                 {t('buttons.errorDescription')}:{' '}
               </span>
 

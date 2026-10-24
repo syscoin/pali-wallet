@@ -203,8 +203,14 @@
 /* Show form validation messages (i18n'd) instead of icon-only feedback;
    empty-string rejects keep their icon-only behavior via :empty */
 .ant-form-item-explain-error {
-  /* Color comes from the antd error token; brand red is too dark here. */
   @apply text-xs mt-1 text-center;
+}
+
+/* Antd Form uses colorError for copy and feedback too. Scope a higher-
+   specificity foreground override so its fills and borders stay unchanged. */
+.ant-form-item.ant-form-item-has-error .ant-form-item-explain-error,
+.ant-form-item.ant-form-item-has-error .ant-form-item-feedback-icon-error {
+  @apply text-content-error;
 }
 
 .ant-form-item-explain-error:empty {

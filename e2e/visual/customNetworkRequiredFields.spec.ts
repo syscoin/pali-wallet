@@ -5,6 +5,7 @@ import path from 'path';
 
 import en from '../../source/assets/locales/en.json';
 import { E2E_CONFIG } from '../harness/config';
+import { captureForegroundContrast } from '../harness/foregroundContrast';
 import {
   createIsolatedVaultFixture,
   installIsolatedVaultRoutes,
@@ -469,6 +470,11 @@ test('custom network required fields refuse blank text and preserve meaningful p
           });
           await page.mouse.move(2, 2);
           await settle(page);
+          await captureForegroundContrast(
+            nameError,
+            info,
+            `antd-network-name-${viewport.width}`
+          );
           const originalPath = info.outputPath(
             viewport.width +
               'x' +
