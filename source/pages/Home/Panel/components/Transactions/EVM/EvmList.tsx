@@ -313,7 +313,7 @@ const EvmTransactionItem = React.memo(
         <div className="flex flex-col justify-end items-end min-w-0">
           <div
             className={`inline-flex items-center ${
-              isFailed ? 'text-brand-gray200' : 'text-white'
+              isFailed || isReplaced ? 'text-brand-gray200' : 'text-white'
             } text-xs font-normal whitespace-nowrap overflow-hidden max-w-full`}
           >
             {showSign && (
@@ -381,11 +381,11 @@ const EvmTransactionItem = React.memo(
     // If transaction is replaced, show it with a different style
     if (isReplaced) {
       return (
-        <div className="flex justify-between py-2 w-full border-b border-dashed border-bkg-deepBlue opacity-50">
+        <div className="flex justify-between py-2 w-full border-b border-dashed border-bkg-deepBlue">
           <div className="flex items-center">
             {getTxStatusIcons(getTxType(tx, isTxSent), false)}
             <div className="flex flex-col">
-              <div className="text-white text-xs font-normal line-through">
+              <div className="text-brand-gray200 text-xs font-normal line-through">
                 {transactionLabel}
               </div>
               <div className="text-warning-error text-xs">
@@ -394,9 +394,7 @@ const EvmTransactionItem = React.memo(
             </div>
           </div>
           <div className="flex items-center gap-4">
-            <div className="line-through opacity-50">
-              {renderValueDisplay()}
-            </div>
+            <div className="line-through">{renderValueDisplay()}</div>
             <div className="m-auto">
               <Tooltip content={t('notifications.clickToView')}>
                 <DetailArrowSvg
