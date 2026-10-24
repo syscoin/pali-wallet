@@ -516,7 +516,7 @@ export const EvmAssetDetails = ({
                   {t('send.balance')}
                 </p>
                 <p className="flex min-w-0 items-center font-normal gap-x-1.5 text-right text-xs">
-                  <span className="min-w-0 text-brand-white [overflow-wrap:anywhere]">
+                  <span className="min-w-0 break-all text-brand-white">
                     {formatFullPrecisionBalance(currentAsset.balance, 4)}{' '}
                     {currentAsset.tokenSymbol || currentAsset.symbol}
                   </span>

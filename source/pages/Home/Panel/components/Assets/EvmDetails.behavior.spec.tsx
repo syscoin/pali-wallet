@@ -333,7 +333,7 @@ it.each(['BALS', 'B'.repeat(32), 'C'.repeat(64)])(
     expect(value.classList.contains('min-w-0')).toBe(true);
     expect(value.classList.contains('text-right')).toBe(true);
     expect(text.classList.contains('min-w-0')).toBe(true);
-    expect(text.classList.contains('[overflow-wrap:anywhere]')).toBe(true);
+    expect(text.classList.contains('break-all')).toBe(true);
     expect(text.getAttribute('title')).toBeNull();
     const copy = screen.getByRole('button', {
       name: 'send.copyContractAddress',
