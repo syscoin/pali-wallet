@@ -1115,6 +1115,7 @@ const SmartAccountHub = () => {
                 value={activeValidator.address}
                 preset="short"
                 copyable={false}
+                tooltipFocusable
                 className="text-xs text-brand-gray200"
               />
             )}
@@ -1171,6 +1172,7 @@ const SmartAccountHub = () => {
                     value={module.address}
                     preset="short"
                     copyable={false}
+                    tooltipFocusable
                     className="text-xs text-brand-gray200"
                   />
                 </div>

@@ -34,6 +34,8 @@ export interface IAddressText {
   preset?: AddressTextPreset;
   /** Show full value in a tooltip (default true when truncated). */
   tooltip?: boolean;
+  /** Opt a read-only tooltip reference into keyboard focus. Default false. */
+  tooltipFocusable?: boolean;
   value: string;
 }
 
@@ -44,6 +46,7 @@ export const AddressText: FC<IAddressText> = ({
   id,
   preset = 'medium',
   tooltip = true,
+  tooltipFocusable = false,
   value,
 }) => {
   const { t } = useTranslation();
@@ -80,7 +83,9 @@ export const AddressText: FC<IAddressText> = ({
       className={`inline-flex items-center gap-1 font-mono text-current ${className}`}
     >
       {tooltip && isTruncated ? (
-        <Tooltip content={value}>{text}</Tooltip>
+        <Tooltip content={value} focusable={tooltipFocusable}>
+          {text}
+        </Tooltip>
       ) : (
         text
       )}
