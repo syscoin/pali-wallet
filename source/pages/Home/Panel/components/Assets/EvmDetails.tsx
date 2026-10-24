@@ -509,12 +509,14 @@ export const EvmAssetDetails = ({
           {!isNft && (
             <div className="mt-4 mb-6">
               <li
-                className="flex items-center justify-between my-1 pl-0 pr-3 py-2 w-full text-xs border-b 
+                className="flex items-center justify-between gap-x-3 my-1 pl-0 pr-3 py-2 w-full text-xs border-b
                 border-dashed border-bkg-white200 cursor-default transition-all duration-300"
               >
-                <p className="font-normal text-xs">{t('send.balance')}</p>
-                <p className="flex items-center font-normal gap-x-1.5 text-xs">
-                  <span className="text-brand-white">
+                <p className="flex-shrink-0 font-normal text-xs">
+                  {t('send.balance')}
+                </p>
+                <p className="flex min-w-0 items-center font-normal gap-x-1.5 text-right text-xs">
+                  <span className="min-w-0 break-all text-brand-white">
                     {formatFullPrecisionBalance(currentAsset.balance, 4)}{' '}
                     {currentAsset.tokenSymbol || currentAsset.symbol}
                   </span>
