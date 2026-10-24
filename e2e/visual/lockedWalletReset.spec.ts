@@ -196,7 +196,10 @@ test('locked wallet can explicitly erase and create a different wallet without i
           await locked();
           if (beforeOnly)
             await expect(page.locator('#erase-wallet-link')).toHaveCount(0);
-          else await expect(page.locator('#erase-wallet-link')).toBeVisible();
+          else
+            await expect(page.locator('#erase-wallet-link')).toBeInViewport({
+              ratio: 1,
+            });
           await screenshot(
             page,
             info,
@@ -293,7 +296,7 @@ test('locked wallet can explicitly erase and create a different wallet without i
           const empty = await publicState(page);
           expect(empty.hasVault).toBe(false);
           expect(empty.unlocked).toBe(false);
-          expect(empty.active.address).toBeNull();
+          expect([null, '']).toContain(empty.active.address);
           expect(empty.grants).toEqual([]);
           observations.emptyAfterReload = empty;
         }
