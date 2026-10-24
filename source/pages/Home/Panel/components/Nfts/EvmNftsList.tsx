@@ -199,6 +199,7 @@ export const EvmNftsList = ({
                     contractAddress={collection.contractAddress}
                     symbol={collection.symbol}
                     size={24}
+                    isNft={true}
                     className="hover:shadow-md hover:scale-110 transition-all duration-200"
                   />
                 </span>
