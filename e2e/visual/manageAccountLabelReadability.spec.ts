@@ -1,10 +1,22 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { createHash } from 'crypto';
+import { getAddress } from 'ethers';
 import fs from 'fs';
+import net from 'net';
 import path from 'path';
 
 import en from '../../source/assets/locales/en.json';
 import fr from '../../source/assets/locales/fr.json';
+import { ellipsis } from '../../source/utils/format';
+import {
+  getPaliEntryPointAddress,
+  paliEntryPointInterface,
+  paliSmartAccountFactoryInterface,
+} from '../../source/utils/smartAccount/contracts';
+import {
+  PALI_CREATE2_DEPLOYER_ADDRESS,
+  PALI_MULTICALL3_CANONICAL_ADDRESS,
+} from '../../source/utils/smartAccount/deployment';
 import { E2E_CONFIG } from '../harness/config';
 import { PaliWallet } from '../harness/pali';
 import { verifyExecutingWorker } from '../harness/runtimeIdentity';
@@ -13,6 +25,8 @@ import { startUtxoFixtureServer } from '../harness/utxoFixture';
 import {
   createVisualFixture,
   installVisualFixtureRoutes,
+  visualFixtureRead,
+  VISUAL_FIXTURE_RPC,
   VISUAL_FIXTURE_ADDRESS,
   VISUAL_FIXTURE_CHAIN_ID,
   VISUAL_FIXTURE_SEED,
@@ -295,6 +309,601 @@ const inspectRow = (row: Locator, label: string) =>
     };
   }, label);
 
+const publicHubSnapshot = (page: Page) =>
+  page.evaluate(async () => {
+    const state = await chrome.runtime.sendMessage({ type: 'getCurrentState' });
+    const key = 'state-vault-' + state.vaultGlobal.activeSlip44;
+    const disk = await chrome.storage.local.get([key, 'state']);
+    const accounts = (vault: any) =>
+      Object.entries(vault?.accounts || {})
+        .flatMap(([kind, group]) =>
+          Object.values(group || {}).map((account: any) => ({
+            kind,
+            id: account.id,
+            label: account.label,
+            address: account.address,
+            metadata: account.smartAccount
+              ? {
+                  chainId: account.smartAccount.chainId,
+                  isDeployed: account.smartAccount.isDeployed,
+                  descriptor: {
+                    accountIndex: account.smartAccount.descriptor?.accountIndex,
+                    accountVersion:
+                      account.smartAccount.descriptor?.accountVersion,
+                    anchor: account.smartAccount.descriptor?.anchor,
+                    anchorHash: account.smartAccount.descriptor?.anchorHash,
+                    chainId: account.smartAccount.descriptor?.chainId,
+                    deploymentSalt:
+                      account.smartAccount.descriptor?.deploymentSalt,
+                    factoryAddress:
+                      account.smartAccount.descriptor?.factoryAddress,
+                  },
+                  deploymentSalt: account.smartAccount.deploymentSalt,
+                  factoryAddress: account.smartAccount.factoryAddress,
+                  auth: {
+                    data: account.smartAccount.auth?.data,
+                    module: account.smartAccount.auth?.module,
+                    scheme: account.smartAccount.auth?.scheme,
+                    validator: account.smartAccount.auth?.validator,
+                  },
+                  modules: (account.smartAccount.installedModules || []).map(
+                    (m: any) => ({
+                      id: m.id,
+                      type: m.type,
+                      address: m.address,
+                      data: m.data,
+                      owners: m.config?.owners,
+                      threshold: m.config?.threshold,
+                    })
+                  ),
+                }
+              : null,
+          }))
+        )
+        .sort((a, b) =>
+          (a.kind + ':' + a.id).localeCompare(b.kind + ':' + b.id)
+        );
+    const assets = (vault: any) =>
+      Object.entries(vault?.accountAssets || {})
+        .flatMap(([kind, group]) =>
+          Object.entries(group || {}).map(([id, families]: [string, any]) => ({
+            kind,
+            id: Number(id),
+            families: Object.entries(families || {}).map(
+              ([family, values]) => ({
+                family,
+                values: (values as any[]).map((asset) => ({
+                  id: asset.id,
+                  chainId: asset.chainId,
+                  address: asset.contractAddress,
+                  symbol: asset.tokenSymbol || asset.symbol,
+                  balance: asset.balance,
+                  decimals: asset.decimals,
+                  standard: asset.tokenStandard,
+                })),
+              })
+            ),
+          }))
+        )
+        .sort((a, b) =>
+          (a.kind + ':' + a.id).localeCompare(b.kind + ':' + b.id)
+        );
+    return {
+      active: state.vault.activeAccount,
+      savedActive: disk[key]?.activeAccount,
+      network: {
+        kind: state.vault.activeNetwork.kind,
+        chainId: state.vault.activeNetwork.chainId,
+        url: state.vault.activeNetwork.url,
+      },
+      slip44: state.vaultGlobal.activeSlip44,
+      live: accounts(state.vault),
+      saved: accounts(disk[key]),
+      liveAssets: assets(state.vault),
+      savedAssets: assets(disk[key]),
+      grants: Object.keys(state.dapp?.dapps || {}).sort(),
+      savedGrants: Object.keys(disk.state?.dapp?.dapps || {}).sort(),
+    };
+  });
+
+// The method/parameter gate runs before the shared fixture's fulfill handler.
+// The pure fixture then independently checks the canonical ABI and log result.
+const allowsHubCarrierRpc = (
+  call: any,
+  fixture: ReturnType<typeof createVisualFixture>
+) => {
+  if (
+    !call ||
+    typeof call !== 'object' ||
+    Array.isArray(call) ||
+    call.jsonrpc !== '2.0' ||
+    !Number.isSafeInteger(call.id) ||
+    call.id < 0 ||
+    typeof call.method !== 'string' ||
+    !Array.isArray(call.params) ||
+    Object.keys(call).some(
+      (key) => !['id', 'jsonrpc', 'method', 'params'].includes(key)
+    )
+  )
+    return false;
+  const p = call.params;
+  const lower = (value: unknown) =>
+    typeof value === 'string' ? value.toLowerCase() : '';
+  const owners = [fixture.address, fixture.smartAccountAddress].map(lower);
+  const code = [
+    ...owners,
+    ...fixture.infrastructure.map((c) => lower(c.address)),
+    lower(PALI_CREATE2_DEPLOYER_ADDRESS),
+    lower(PALI_MULTICALL3_CANONICAL_ADDRESS),
+  ];
+  const block = (value: unknown) =>
+    typeof value === 'string' &&
+    /^0x(?:0|[1-9a-f][0-9a-f]*)$/.test(value) &&
+    BigInt(value) <= BigInt(43);
+  if (
+    [
+      'eth_chainId',
+      'net_version',
+      'eth_blockNumber',
+      'eth_gasPrice',
+      'eth_maxPriorityFeePerGas',
+    ].includes(call.method)
+  )
+    return p.length === 0;
+  if (['eth_getBalance', 'eth_getTransactionCount'].includes(call.method))
+    return (
+      p.length === 2 &&
+      owners.includes(lower(p[0])) &&
+      ['latest', 'pending'].includes(p[1])
+    );
+  if (call.method === 'eth_getCode')
+    return p.length === 2 && code.includes(lower(p[0])) && p[1] === 'latest';
+  if (call.method === 'eth_call') {
+    const tx = p[0];
+    const calls = [
+      paliSmartAccountFactoryInterface.encodeFunctionData('implementation()'),
+      paliSmartAccountFactoryInterface.encodeFunctionData(
+        'getInitData(address,bytes)',
+        [fixture.validator.address, fixture.authenticatorData]
+      ),
+      paliSmartAccountFactoryInterface.encodeFunctionData(
+        'getAddress(bytes32,bytes)',
+        [fixture.deploymentSalt, fixture.initCode]
+      ),
+    ].map(lower);
+    return (
+      p.length === 2 &&
+      p[1] === 'latest' &&
+      tx &&
+      typeof tx === 'object' &&
+      !Array.isArray(tx) &&
+      Object.keys(tx).every((key) => ['to', 'data', 'from'].includes(key)) &&
+      lower(tx.to) === lower(fixture.factory.address) &&
+      calls.includes(lower(tx.data)) &&
+      (tx.from === undefined || owners.includes(lower(tx.from)))
+    );
+  }
+  if (
+    ['eth_getTransactionByHash', 'eth_getTransactionReceipt'].includes(
+      call.method
+    )
+  )
+    return (
+      p.length === 1 && fixture.transactions.some((row) => row.hash === p[0])
+    );
+  if (call.method === 'eth_getBlockByNumber')
+    return (
+      p.length === 2 &&
+      ((p[1] === true && block(p[0])) ||
+        (p[1] === false &&
+          ['latest', 'pending', '0x2a', '0x2b'].includes(p[0])))
+    );
+  if (call.method === 'eth_getBlockByHash')
+    return (
+      p.length === 2 &&
+      p[1] === false &&
+      [fixture.transaction.blockHash, '0x' + '74'.repeat(32)].includes(p[0])
+    );
+  if (call.method === 'eth_getLogs') {
+    const f = p[0];
+    const topics = [
+      paliEntryPointInterface.getEvent('UserOperationEvent')!.topicHash,
+      null,
+      '0x' + lower(fixture.smartAccountAddress).slice(2).padStart(64, '0'),
+    ];
+    return (
+      p.length === 1 &&
+      f &&
+      typeof f === 'object' &&
+      !Array.isArray(f) &&
+      Object.keys(f).every((key) =>
+        ['address', 'fromBlock', 'toBlock', 'topics'].includes(key)
+      ) &&
+      lower(f.address) ===
+        lower(getPaliEntryPointAddress(VISUAL_FIXTURE_CHAIN_ID)) &&
+      block(f.fromBlock) &&
+      block(f.toBlock) &&
+      BigInt(f.fromBlock) <= BigInt(f.toBlock) &&
+      JSON.stringify(f.topics) === JSON.stringify(topics)
+    );
+  }
+  return false;
+};
+
+async function installHubCarrierGate(
+  context: PaliWallet['context'],
+  fixture: ReturnType<typeof createVisualFixture>
+) {
+  const reads: any[] = [],
+    denied: string[] = [];
+  await context.route('**/*', async (route) => {
+    const request = route.request(),
+      url = new URL(request.url());
+    if (url.origin !== VISUAL_FIXTURE_RPC) return route.fallback();
+    let payload: unknown;
+    try {
+      payload = request.postDataJSON();
+    } catch {
+      /* Rejected below. */
+    }
+    const calls = Array.isArray(payload) ? payload : [payload];
+    const reject = async (reason: string) => {
+      denied.push(reason);
+      await route.abort('blockedbyclient');
+    };
+    if (
+      request.method() !== 'POST' ||
+      url.pathname !== '/' ||
+      url.search ||
+      url.username ||
+      url.password ||
+      url.hash ||
+      !calls.length ||
+      !calls.every((call) => allowsHubCarrierRpc(call, fixture))
+    )
+      return reject('rpc-envelope-or-params');
+    const reply = visualFixtureRead(
+      fixture,
+      request.url(),
+      request.method(),
+      payload
+    );
+    const responses = Array.isArray(reply?.body) ? reply.body : [reply?.body];
+    if (
+      !reply ||
+      reply.unsupported?.length ||
+      responses.some((item: any) => !item || item.error)
+    )
+      return reject('rpc-unsupported-or-error');
+    reads.push(
+      ...calls.map((call: any) => ({
+        method: call.method,
+        params: call.params,
+      }))
+    );
+    return route.fallback();
+  });
+  return { reads, denied };
+}
+
+async function hubProxyDenial(
+  server: Awaited<ReturnType<typeof startUtxoFixtureServer>>,
+  method: 'GET' | 'CONNECT'
+) {
+  const proxy = new URL(server.url),
+    before = server.blocked.length;
+  expect(proxy.protocol).toBe('http:');
+  expect(proxy.hostname).toBe('127.0.0.1');
+  expect(proxy.port).toMatch(/^[0-9]+$/);
+  const result = await new Promise<{
+    connectionClosed: boolean;
+    statusCode: number;
+  }>((resolve, reject) => {
+    const socket = net.createConnection({
+      host: '127.0.0.1',
+      port: Number(proxy.port),
+    });
+    let bytes = Buffer.alloc(0),
+      ended = false,
+      settled = false;
+    const fail = (error: Error) => {
+      if (!settled) {
+        settled = true;
+        socket.destroy();
+        reject(error);
+      }
+    };
+    socket.setTimeout(2000, () =>
+      fail(new Error('Physical Hub proxy canary timed out'))
+    );
+    socket.once('error', fail);
+    socket.once('connect', () =>
+      socket.write(
+        `${method} ${
+          method === 'GET'
+            ? 'http://hub-disclosure-denied.invalid/'
+            : 'hub-disclosure-denied.invalid:443'
+        } HTTP/1.0\r\nHost: hub-disclosure-denied.invalid\r\nConnection: close\r\n\r\n`
+      )
+    );
+    socket.on('data', (chunk: Buffer) => {
+      bytes = Buffer.concat([bytes, chunk]);
+      if (bytes.length > 4096)
+        fail(new Error('Physical canary response too large'));
+    });
+    socket.once('end', () => {
+      ended = true;
+    });
+    socket.once('close', (hadError) => {
+      if (settled) return;
+      settled = true;
+      try {
+        expect(hadError).toBe(false);
+        expect(ended).toBe(true);
+        const text = bytes.toString('utf8'),
+          separator = text.indexOf('\r\n\r\n');
+        expect(separator).toBeGreaterThanOrEqual(0);
+        expect(text.slice(0, separator).split('\r\n')[0]).toMatch(
+          /^HTTP\/1\.[01] 403 Forbidden$/
+        );
+        expect(text.slice(0, separator)).toMatch(
+          /\r\nConnection: close(?:\r\n|$)/i
+        );
+        expect(text.slice(separator + 4)).toBe(
+          method === 'GET' ? 'Offline fixture only' : ''
+        );
+        resolve({ connectionClosed: true, statusCode: 403 });
+      } catch (error) {
+        reject(error);
+      }
+    });
+  });
+  expect(server.blocked.slice(before)).toEqual([method]);
+  return { method, ...result };
+}
+
+// Extraction only: the host must provide an already-qualified finite, physically
+// fenced real-create carrier and freeze its full accepted public live/disk scope.
+// This block adds no fixture route, controller request, state or DOM mutation.
+async function inspectHubModuleAddressDisclosure({
+  assertUnchanged,
+  expectedSmartAddress,
+  expectedValidator,
+  page,
+  reveal,
+  tabTo: reachTarget,
+  wallet,
+}: {
+  assertUnchanged: () => Promise<void>;
+  expectedSmartAddress: string;
+  expectedValidator: string;
+  page: Page;
+  reveal: (targetPage: Page, node: Locator) => Promise<number[]>;
+  tabTo: (targetPage: Page, node: Locator) => Promise<void>;
+  wallet: PaliWallet;
+}) {
+  const observations: any[] = [];
+  const short = ellipsis(expectedValidator, 4, 4);
+  const tooltip = () =>
+    page.getByRole('tooltip').filter({ hasText: expectedValidator });
+  const settledTooltip = async () => {
+    await expect(tooltip()).toHaveCount(1);
+    await expect(tooltip()).toBeVisible();
+    await expect(tooltip()).toHaveText(expectedValidator);
+    await page.evaluate(() => document.fonts.ready.then(() => undefined));
+    await expect
+      .poll(() =>
+        tooltip().evaluate((node) => {
+          const box = node.closest('.tippy-box')!;
+          const style = getComputedStyle(box);
+          return (
+            box.getAttribute('data-state') === 'visible' &&
+            style.opacity === '1' &&
+            (style.transform === 'none' ||
+              style.transform === 'matrix(1, 0, 0, 1, 0, 0)') &&
+            box
+              .getAnimations()
+              .every((animation) =>
+                ['finished', 'idle'].includes(animation.playState)
+              )
+          );
+        })
+      )
+      .toBe(true);
+    const geometry = await tooltip().evaluate((node) => {
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      const box = node.getBoundingClientRect();
+      const textRects = Array.from(range.getClientRects(), (rect) =>
+        rect.toJSON()
+      );
+      return {
+        text: node.textContent,
+        box: box.toJSON(),
+        textRects,
+        viewport: { width: innerWidth, height: innerHeight },
+        allGlyphsInsideViewport: textRects.every(
+          (rect) =>
+            rect.left >= 0 &&
+            rect.right <= innerWidth &&
+            rect.top >= 0 &&
+            rect.bottom <= innerHeight
+        ),
+      };
+    });
+    expect(geometry.allGlyphsInsideViewport).toBe(true);
+    return geometry;
+  };
+  const sections = [
+    en.smartAccountHub.signInMethod,
+    en.smartAccountHub.installedModules,
+  ];
+  const section = (heading: string) =>
+    page
+      .getByRole('heading', { name: heading, exact: true })
+      .locator('xpath=ancestor::section[1]');
+  const references = () =>
+    sections.map((heading) =>
+      section(heading).getByText(short, { exact: true }).locator('..')
+    );
+  const closeHub = async () => {
+    const close = page.getByLabel(en.buttons.close, { exact: true });
+    await expect(close).toHaveCount(1);
+    await reachTarget(page, close);
+    await page.keyboard.press('Enter');
+    await expect(page).toHaveURL(/#\/home(?:\?.*)?$/);
+    await assertUnchanged();
+  };
+  for (const viewport of [
+    { width: 400, height: 620 },
+    { width: 320, height: 360 },
+  ]) {
+    const caseName = `hub-disclosure-${viewport.width}x${viewport.height}`;
+    const result: any = { viewport, hover: [], keyboard: [] };
+    observations.push(result);
+    await wallet.step(
+      caseName + ': open the genuine undeployed Hub',
+      async () => {
+        await page.setViewportSize(viewport);
+        await expect(page).toHaveURL(/#\/home(?:\?.*)?$/);
+        const badge = page.locator('button#smart-account-hub-badge');
+        await expect(badge).toBeEnabled();
+        await badge.click();
+        await expect(page).toHaveURL(/#\/home\/smart-account$/);
+        await expect(
+          page.getByText(en.smartAccountHub.notDeployed, { exact: true })
+        ).toBeVisible();
+        const identity = page
+          .getByText(en.smartAccountHub.accountAddress, { exact: true })
+          .locator('..');
+        await expect(identity).toContainText(
+          ellipsis(expectedSmartAddress, 7, 4)
+        );
+        for (const reference of references()) {
+          await expect(reference).toHaveCount(1);
+          await expect(reference).toHaveText(short);
+          await expect(reference.locator('button, a')).toHaveCount(0);
+        }
+        await assertUnchanged();
+      }
+    );
+    for (let index = 0; index < sections.length; index += 1) {
+      await wallet.step(
+        caseName + ': genuine full-address hover ' + sections[index],
+        async (capture) => {
+          const reference = references()[index];
+          const wheels = await reveal(page, reference);
+          const bounds = await reference.boundingBox();
+          expect(bounds).not.toBeNull();
+          await page.mouse.move(
+            bounds!.x + bounds!.width / 2,
+            bounds!.y + bounds!.height / 2
+          );
+          result.hover.push({
+            section: sections[index],
+            wheels,
+            reference: bounds,
+            tooltip: await settledTooltip(),
+          });
+          await assertUnchanged();
+          await capture(page);
+          await page.mouse.move(2, 2);
+          await expect(tooltip()).toBeHidden();
+        }
+      );
+    }
+    await wallet.step(
+      caseName +
+        ': real keyboard disclosure cycle with healthy existing controls',
+      async (capture) => {
+        const identity = page
+          .getByText(en.smartAccountHub.accountAddress, { exact: true })
+          .locator('..');
+        const copy = identity.getByRole('button', {
+          name: en.buttons.copy,
+          exact: true,
+        });
+        const manage = section(en.smartAccountHub.signInMethod).getByRole(
+          'button',
+          { name: en.smartAccountHub.manage, exact: true }
+        );
+        await reachTarget(page, copy);
+        await expect(copy).toBeFocused();
+        await page.keyboard.press('Tab');
+        await expect(manage).toBeFocused();
+        for (const key of ['Tab', 'Shift+Tab']) {
+          await reachTarget(page, manage);
+          const seen = [false, false],
+            focus: any[] = [],
+            disclosures: any[] = [];
+          let completed = false;
+          for (let count = 0; count < 48; count += 1) {
+            await page.keyboard.press(key);
+            const matched = await Promise.all(
+              references().map((reference) =>
+                reference.evaluate((node) => node === document.activeElement)
+              )
+            );
+            focus.push(
+              await page.evaluate(() => ({
+                tag: document.activeElement?.tagName,
+                id: document.activeElement?.id,
+                role: document.activeElement?.getAttribute('role'),
+                label: document.activeElement?.getAttribute('aria-label'),
+              }))
+            );
+            for (let index = 0; index < matched.length; index += 1) {
+              if (!matched[index]) continue;
+              seen[index] = true;
+              const geometry = await settledTooltip();
+              const described = await references()[index].evaluate((node) => {
+                const id = node.getAttribute('aria-describedby');
+                return id ? document.getElementById(id)?.textContent : null;
+              });
+              expect(described).toBe(expectedValidator);
+              disclosures.push({
+                section: sections[index],
+                geometry,
+                described,
+              });
+              await capture(page);
+              await page.keyboard.press('Escape');
+              await expect(tooltip()).toBeHidden();
+              await expect(references()[index]).toBeFocused();
+            }
+            if (
+              await manage.evaluate((node) => node === document.activeElement)
+            ) {
+              completed = true;
+              break;
+            }
+          }
+          result.keyboard.push({ key, seen, completed, focus, disclosures });
+          expect(completed).toBe(true);
+          await assertUnchanged();
+        }
+        await capture(page);
+      }
+    );
+    await wallet.step(
+      caseName + ': native Close and Smart badge reopening keep exact identity',
+      async () => {
+        await closeHub();
+        const badge = page.locator('button#smart-account-hub-badge');
+        await reachTarget(page, badge);
+        await page.keyboard.press('Enter');
+        await expect(page).toHaveURL(/#\/home\/smart-account$/);
+        await expect(
+          page.getByText(en.smartAccountHub.notDeployed, { exact: true })
+        ).toBeVisible();
+        await assertUnchanged();
+        await closeHub();
+      }
+    );
+  }
+  return observations;
+}
+
 for (const locale of [
   { code: 'en', copy: en },
   { code: 'fr', copy: fr },
@@ -327,6 +936,9 @@ for (const locale of [
     let routes:
       | Awaited<ReturnType<typeof installVisualFixtureRoutes>>
       | undefined;
+    let strictGate:
+      | Awaited<ReturnType<typeof installHubCarrierGate>>
+      | undefined;
     let status: 'passed' | 'failed' = 'failed';
     const observations: Record<string, any> = {
       runtime,
@@ -336,6 +948,10 @@ for (const locale of [
     const forbidden: string[] = [],
       pageErrors: string[] = [];
     try {
+      observations.physicalCanaries = [
+        await hubProxyDenial(server, 'GET'),
+        await hubProxyDenial(server, 'CONNECT'),
+      ];
       wallet = await PaliWallet.launch(
         'managed-label-readability-' + locale.code,
         {
@@ -349,6 +965,7 @@ for (const locale of [
         fixture,
         server.url
       );
+      strictGate = await installHubCarrierGate(wallet.context, fixture);
       const page = wallet.page,
         copy = locale.copy;
       page.on('pageerror', (error) => pageErrors.push(error.message));
@@ -426,6 +1043,62 @@ for (const locale of [
           });
           expect(createdSnapshot.live).toEqual(createdSnapshot.saved);
           observations.created = createdSnapshot;
+          if (locale.code === 'en') {
+            const hubBaseline = await publicHubSnapshot(page);
+            expect(hubBaseline.live).toEqual(hubBaseline.saved);
+            expect(hubBaseline.liveAssets).toEqual(hubBaseline.savedAssets);
+            expect(hubBaseline.grants).toEqual([]);
+            expect(hubBaseline.savedGrants).toEqual([]);
+            expect(hubBaseline).toMatchObject({
+              active: { id: 0, type: 'SmartAccount' },
+              savedActive: { id: 0, type: 'SmartAccount' },
+              slip44: 60,
+              network: {
+                kind: 'ethereum',
+                chainId: VISUAL_FIXTURE_CHAIN_ID,
+                url: VISUAL_FIXTURE_RPC,
+              },
+            });
+            const smart = hubBaseline.live.find(
+              (account) => account.kind === 'SmartAccount'
+            )!;
+            expect(smart.address).toBe(fixture.smartAccountAddress);
+            expect(smart.metadata).toMatchObject({
+              chainId: VISUAL_FIXTURE_CHAIN_ID,
+              isDeployed: false,
+              deploymentSalt: fixture.deploymentSalt,
+              factoryAddress: fixture.factory.address,
+              descriptor: { accountIndex: 0, chainId: VISUAL_FIXTURE_CHAIN_ID },
+              auth: {
+                module: 'ecdsa',
+                validator: fixture.validator.address,
+                data: fixture.authenticatorData,
+              },
+            });
+            expect(smart.metadata!.modules).toEqual([
+              {
+                id: 'ecdsa',
+                type: 'validator',
+                address: getAddress(fixture.validator.address),
+                data: fixture.authenticatorData,
+                owners: [fixture.address],
+                threshold: 1,
+              },
+            ]);
+            observations.hubBaseline = hubBaseline;
+            observations.hubDisclosure =
+              await inspectHubModuleAddressDisclosure({
+                assertUnchanged: async () =>
+                  expect(await publicHubSnapshot(page)).toEqual(hubBaseline),
+                expectedSmartAddress: fixture.smartAccountAddress,
+                expectedValidator: getAddress(fixture.validator.address),
+                page,
+                reveal: revealRow,
+                tabTo,
+                wallet: wallet!,
+              });
+            expect(await publicHubSnapshot(page)).toEqual(hubBaseline);
+          }
           await openMenu(en);
           await page
             .locator('#account-HDAccount-0')
@@ -794,6 +1467,16 @@ for (const locale of [
           ).toEqual([]);
           expect(forbidden).toEqual([]);
           expect(pageErrors).toEqual([]);
+          expect(strictGate!.denied).toEqual([]);
+          // Bind each physical canary exactly at launch, then retain and
+          // reject unexpected proxy methods without mistaking additional
+          // refused background GET/CONNECT traffic for forwarded reads.
+          expect(server.blocked.slice(0, 2)).toEqual(['GET', 'CONNECT']);
+          expect(
+            server.blocked.every(
+              (method) => method === 'GET' || method === 'CONNECT'
+            )
+          ).toBe(true);
           expect(extensionEvidence()).toEqual(runtime);
           expect(
             createHash('sha256')
@@ -825,6 +1508,24 @@ for (const locale of [
           }
         }
       );
+      await wallet.step(
+        `${locale.code}: Hub module addresses disclose their full value through native forward and reverse focus`,
+        async () => {
+          // Keep this gate after every original action, persistence, worker,
+          // label-fit and network-fence control, including on the before build.
+          if (locale.code !== 'en') return;
+          expect(observations.hubDisclosure).toHaveLength(2);
+          for (const viewport of observations.hubDisclosure) {
+            expect(viewport.hover).toHaveLength(2);
+            expect(viewport.keyboard).toHaveLength(2);
+            for (const cycle of viewport.keyboard) {
+              expect(cycle.completed).toBe(true);
+              expect(cycle.seen).toEqual([true, true]);
+              expect(cycle.disclosures).toHaveLength(2);
+            }
+          }
+        }
+      );
       status = 'passed';
     } finally {
       try {
@@ -835,10 +1536,12 @@ for (const locale of [
             observations,
             forbidden,
             pageErrors,
+            strictRpc: strictGate,
             reads: routes?.reads || [],
             deniedWrites: routes?.deniedWrites || [],
             deniedUnknown: routes?.deniedUnknown || [],
             proxyDeniedConnections: server.blocked.length,
+            proxyDeniedMethods: [...server.blocked],
             controllerStateReplaced: false,
             controllerRepliesReplaced: false,
             runtimeTransportReplaced: false,
@@ -854,8 +1557,11 @@ for (const locale of [
         try {
           await wallet?.dispose(status);
         } finally {
-          await server.close();
-          Object.assign(E2E_CONFIG, previous);
+          try {
+            await server.close();
+          } finally {
+            Object.assign(E2E_CONFIG, previous);
+          }
         }
       }
     }
