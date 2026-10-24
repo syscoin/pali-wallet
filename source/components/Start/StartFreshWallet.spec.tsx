@@ -270,6 +270,27 @@ it('treats a non-true reset acknowledgement as uncertain, never as completed', a
   expect(resetCalls()).toHaveLength(1);
 });
 
+it('keeps a failed reload recoverable without repeating the committed erase', async () => {
+  mockReload.mockImplementationOnce(() => {
+    throw new Error('Reload unavailable');
+  });
+  mount();
+  await open();
+  await acknowledge();
+  await userEvent
+    .setup()
+    .click(screen.getByRole('button', { name: 'start.eraseConfirm' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    'start.eraseUncertain'
+  );
+  expect(resetCalls()).toHaveLength(1);
+  await userEvent
+    .setup()
+    .click(screen.getByRole('button', { name: 'buttons.checkWallet' }));
+  expect(mockReload).toHaveBeenCalledTimes(2);
+  expect(resetCalls()).toHaveLength(1);
+});
+
 it('discards a cancelled admission response and requires fresh acknowledgement on reopen', async () => {
   const first = deferred<string>();
   mockEmitter

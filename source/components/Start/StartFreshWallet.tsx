@@ -81,6 +81,9 @@ export const StartFreshWallet = ({
     };
   }, [close]);
 
+  const isCurrent = (request: number) =>
+    mounted.current && request === generation.current;
+
   const open = async () => {
     if (disabled || showing.current) return;
     const request = ++generation.current;
@@ -91,24 +94,20 @@ export const StartFreshWallet = ({
     setStage('beginning');
     setShow(true);
     onOpenChange(true);
+    let nextTicket: unknown;
     try {
-      const nextTicket = await controllerEmitter(
+      nextTicket = await controllerEmitter(
         ['wallet', 'beginLockedWalletReset'],
         [],
         10000,
         false
       );
-      if (!mounted.current || request !== generation.current) return;
-      if (typeof nextTicket !== 'string' || !nextTicket) {
-        throw new Error('Invalid reset admission');
-      }
-      ticket.current = nextTicket;
-      setStage('ready');
     } catch {
-      if (mounted.current && request === generation.current) {
-        setStage('failed');
-      }
+      // Failed admission and invalid replies use the same local guidance.
     }
+    if (!isCurrent(request)) return;
+    ticket.current = typeof nextTicket === 'string' ? nextTicket : undefined;
+    setStage(ticket.current ? 'ready' : 'failed');
   };
 
   const submit = async (event: React.FormEvent) => {
@@ -134,19 +133,27 @@ export const StartFreshWallet = ({
         10000,
         false
       );
-      if (!mounted.current || request !== generation.current) return;
-      if (reset !== true) throw new Error('Reset was not acknowledged');
+      if (!isCurrent(request)) return;
+      if (reset !== true) throw new Error();
       reloadWalletForRecovery();
     } catch {
-      if (mounted.current && request === generation.current) {
-        setStage('uncertain');
-      }
+      if (isCurrent(request)) setStage('uncertain');
     }
   };
 
-  const blocked = stage === 'submitting' || stage === 'uncertain';
-  const canSubmit =
-    stage === 'ready' && acknowledged && confirmation === 'ERASE';
+  const beginning = stage === 'beginning';
+  const pending = stage === 'submitting';
+  const uncertain = stage === 'uncertain';
+  const ready = stage === 'ready';
+  const blocked = pending || uncertain;
+  const canSubmit = ready && acknowledged && confirmation === 'ERASE';
+  const status = beginning
+    ? 'buttons.loading'
+    : stage === 'failed'
+    ? 'start.eraseFailed'
+    : uncertain
+    ? 'start.eraseUncertain'
+    : undefined;
 
   return (
     <>
@@ -164,7 +171,7 @@ export const StartFreshWallet = ({
           <form
             id="erase-wallet-confirmation"
             onSubmit={submit}
-            aria-busy={stage === 'beginning' || stage === 'submitting'}
+            aria-busy={beginning || pending}
             className="flex min-h-0 max-h-[calc(100dvh-2rem)] flex-col"
           >
             <DialogHeader
@@ -176,15 +183,10 @@ export const StartFreshWallet = ({
             <DialogBody className="space-y-4">
               <p>{t('start.eraseWarning')}</p>
               <p>{t('start.eraseFundsWarning')}</p>
-              {stage === 'beginning' && (
-                <p role="status">{t('buttons.loading')}</p>
+              {status && (
+                <p role={beginning ? 'status' : 'alert'}>{t(status)}</p>
               )}
-              {stage === 'failed' && (
-                <p role="alert">{t('start.eraseFailed')}</p>
-              )}
-              {stage === 'uncertain' ? (
-                <p role="alert">{t('start.eraseUncertain')}</p>
-              ) : (
+              {!uncertain && (
                 <>
                   <label
                     htmlFor={acknowledgementId}
@@ -194,7 +196,7 @@ export const StartFreshWallet = ({
                       id={acknowledgementId}
                       type="checkbox"
                       checked={acknowledged}
-                      disabled={stage !== 'ready'}
+                      disabled={!ready}
                       onChange={(event) =>
                         setAcknowledged(event.target.checked)
                       }
@@ -209,7 +211,7 @@ export const StartFreshWallet = ({
                     <Input
                       id={confirmationId}
                       value={confirmation}
-                      disabled={stage !== 'ready'}
+                      disabled={!ready}
                       onChange={(event) => setConfirmation(event.target.value)}
                       autoComplete="off"
                       autoCapitalize="characters"
@@ -221,18 +223,8 @@ export const StartFreshWallet = ({
               )}
             </DialogBody>
             <DialogFooter>
-              {stage === 'uncertain' ? (
-                <DialogActions>
-                  <DialogActionButton
-                    id="erase-check-wallet"
-                    type="button"
-                    onClick={reloadWalletForRecovery}
-                  >
-                    {t('buttons.checkWallet')}
-                  </DialogActionButton>
-                </DialogActions>
-              ) : (
-                <DialogActions>
+              <DialogActions>
+                {!uncertain && (
                   <DialogActionButton
                     ref={cancelRef}
                     id="cancel-erase-wallet"
@@ -243,17 +235,18 @@ export const StartFreshWallet = ({
                   >
                     {t('buttons.cancel')}
                   </DialogActionButton>
-                  <DialogActionButton
-                    id="confirm-erase-wallet"
-                    type="submit"
-                    tone="danger"
-                    disabled={!canSubmit}
-                    loading={stage === 'submitting'}
-                  >
-                    {t('start.eraseConfirm')}
-                  </DialogActionButton>
-                </DialogActions>
-              )}
+                )}
+                <DialogActionButton
+                  id={uncertain ? 'erase-check-wallet' : 'confirm-erase-wallet'}
+                  type={uncertain ? 'button' : 'submit'}
+                  tone={uncertain ? 'primary' : 'danger'}
+                  disabled={!uncertain && !canSubmit}
+                  loading={pending}
+                  onClick={uncertain ? reloadWalletForRecovery : undefined}
+                >
+                  {t(uncertain ? 'buttons.checkWallet' : 'start.eraseConfirm')}
+                </DialogActionButton>
+              </DialogActions>
             </DialogFooter>
           </form>
         </CenterPanel>

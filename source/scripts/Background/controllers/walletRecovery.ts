@@ -317,67 +317,29 @@ const assertMatchingSeed = (phrase: string, expected: RecoveryIdentity) => {
     throw new Error('Recovery phrase does not match this wallet');
 };
 
-const assertLocked = (wallet: RecoveryHost) => {
+const assertLocked = (wallet: RecoveryHost, reset = false) => {
   if (wallet.isAnyKeyringUnlocked())
-    throw new Error('Lock the wallet before starting seed recovery');
+    throw new Error(
+      reset
+        ? 'Lock the wallet before starting wallet reset'
+        : 'Lock the wallet before starting seed recovery'
+    );
 };
 
-export const beginWalletRecovery = async (
+// Both read-only admissions bind a ticket to the same locked durable wallet.
+// Keep the kind-specific guards and commits here, within one synchronous tail.
+const beginWalletChange = async (
   controller: MainController,
-  context: WalletRecoveryContext
+  context: WalletRecoveryContext,
+  reset: boolean
 ): Promise<string> => {
   const wallet = controller as unknown as RecoveryHost;
-  assertLocked(wallet);
+  assertLocked(wallet, reset);
   if (wallet.isCreatingWallet)
-    throw new Error('Wallet creation is already in progress');
-  const generation = wallet.walletSessionGeneration;
-  const walletStateGeneration = wallet.walletStateGeneration;
-  const records = await context.storage.getItems([
-    'sysweb3-vault',
-    'sysweb3-vault-keys',
-    JOURNAL_KEY,
-  ]);
-  assertStoredPair(records);
-  if (records[JOURNAL_KEY] !== undefined && records[JOURNAL_KEY] !== null)
-    throw new Error('Reload the wallet to finish the previous recovery');
-  const fingerprint = await pairFingerprint(records);
-  if (
-    generation !== wallet.walletSessionGeneration ||
-    walletStateGeneration !== wallet.walletStateGeneration ||
-    wallet.isCreatingWallet
-  )
-    throw new Error('Wallet state changed before recovery');
-  assertLocked(wallet);
-  const token = Array.from(crypto.getRandomValues(new Uint8Array(32)), (byte) =>
-    byte.toString(16).padStart(2, '0')
-  ).join('');
-  tickets.set(controller, {
-    token,
-    identity: identity(context),
-    pairFingerprint: fingerprint,
-    generation,
-    walletStateGeneration,
-    createdAt: Date.now(),
-  });
-  resetTickets.delete(controller);
-  return token;
-};
-
-const assertResetLocked = (wallet: RecoveryHost) => {
-  if (wallet.isAnyKeyringUnlocked())
-    throw new Error('Lock the wallet before starting wallet reset');
-};
-
-/** Issue a read-only, single-use confirmation ticket under authenticationMutex. */
-export const beginLockedWalletReset = async (
-  controller: MainController,
-  context: WalletRecoveryContext
-): Promise<string> => {
-  const wallet = controller as unknown as RecoveryHost;
-  assertResetLocked(wallet);
-  if (wallet.isCreatingWallet)
-    throw new Error('Wallet setup is already in progress');
-  if (wallet.recoveryJournalPending)
+    throw new Error(
+      `Wallet ${reset ? 'setup' : 'creation'} is already in progress`
+    );
+  if (reset && wallet.recoveryJournalPending)
     throw new Error('Reload the wallet to finish the previous recovery');
   const generation = wallet.walletSessionGeneration;
   const walletStateGeneration = wallet.walletStateGeneration;
@@ -395,21 +357,43 @@ export const beginLockedWalletReset = async (
     walletStateGeneration !== wallet.walletStateGeneration ||
     wallet.isCreatingWallet
   )
-    throw new Error('Wallet state changed before reset');
-  assertResetLocked(wallet);
+    throw new Error(
+      `Wallet state changed before ${reset ? 'reset' : 'recovery'}`
+    );
+  assertLocked(wallet, reset);
   const token = Array.from(crypto.getRandomValues(new Uint8Array(32)), (byte) =>
     byte.toString(16).padStart(2, '0')
   ).join('');
-  tickets.delete(controller);
-  resetTickets.set(controller, {
+  const ticket = {
     token,
     pairFingerprint: fingerprint,
     generation,
     walletStateGeneration,
-    createdAt: Date.now(),
-  });
+  };
+  if (reset) {
+    tickets.delete(controller);
+    resetTickets.set(controller, { ...ticket, createdAt: Date.now() });
+  } else {
+    // Resolve identity before invalidating any existing reset ticket.
+    tickets.set(controller, {
+      ...ticket,
+      identity: identity(context),
+      createdAt: Date.now(),
+    });
+    resetTickets.delete(controller);
+  }
   return token;
 };
+
+export const beginWalletRecovery = (
+  controller: MainController,
+  context: WalletRecoveryContext
+): Promise<string> => beginWalletChange(controller, context, false);
+
+export const beginLockedWalletReset = (
+  controller: MainController,
+  context: WalletRecoveryContext
+): Promise<string> => beginWalletChange(controller, context, true);
 
 /**
  * Explicit destructive reset, never a bypass for ordinary onboarding or recovery.
@@ -444,7 +428,7 @@ export const resetLockedWallet = async (
       ticket.walletStateGeneration !== wallet.walletStateGeneration
     )
       throw new Error('Wallet state changed before reset');
-    assertResetLocked(wallet);
+    assertLocked(wallet, true);
   };
   assertCurrent();
   const records = await context.storage.getItems([
