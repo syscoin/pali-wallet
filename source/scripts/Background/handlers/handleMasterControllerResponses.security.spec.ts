@@ -292,6 +292,8 @@ describe('controller actions during wallet setup', () => {
         'lock',
         'createWallet',
         'recoverWalletFromSeed',
+        'beginLockedWalletReset',
+        'resetLockedWallet',
         'isSeedValid',
         'isUnlocked',
         'getBalance',
@@ -343,6 +345,8 @@ describe('controller actions during wallet setup', () => {
         ['wallet', 'getActiveKeyring'],
         ['wallet', 'isUnlocked', 'constructor'],
         ['smartAccount', 'signAction'],
+        ['wallet', 'beginLockedWalletReset'],
+        ['wallet', 'resetLockedWallet'],
       ]) {
         expect(invoke(methods)).toBe(false);
       }
@@ -350,7 +354,7 @@ describe('controller actions during wallet setup', () => {
       expect(sdkGetter).not.toHaveBeenCalled();
       for (const call of Object.values(calls))
         expect(call).not.toHaveBeenCalled();
-      expect(sendResponse).toHaveBeenCalledTimes(6);
+      expect(sendResponse).toHaveBeenCalledTimes(8);
       expect(sendResponse).toHaveBeenCalledWith({
         error: 'Wallet setup is in progress. Signing is unavailable.',
         success: false,

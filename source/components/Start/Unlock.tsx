@@ -1,5 +1,11 @@
 import { Form, Input } from 'antd';
-import React, { Dispatch, SetStateAction, useRef, useState } from 'react';
+import React, {
+  Dispatch,
+  SetStateAction,
+  useCallback,
+  useRef,
+  useState,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { Button } from 'components/index';
@@ -11,15 +17,33 @@ import { dispatchBackgroundEvent } from 'utils/browser';
 import { extractErrorMessage } from 'utils/index';
 import { clearTransactionNavigationState } from 'utils/navigationState';
 
+import { StartFreshWallet } from './StartFreshWallet';
+
 const Unlock: React.FC<{
+  allowFreshStart?: boolean;
   externalRoute: string;
   isExternal: boolean;
+  onFreshStartOpenChange?: (open: boolean) => void;
   setIsOpenValidation: Dispatch<SetStateAction<boolean>>;
-}> = ({ isExternal, externalRoute, setIsOpenValidation }) => {
+}> = ({
+  allowFreshStart = false,
+  isExternal,
+  externalRoute,
+  onFreshStartOpenChange,
+  setIsOpenValidation,
+}) => {
   const { navigate, alert } = useUtils();
   const { controllerEmitter } = useController();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isResetOpen, setIsResetOpen] = useState(false);
+  const onResetOpenChange = useCallback(
+    (open: boolean) => {
+      setIsResetOpen(open);
+      onFreshStartOpenChange?.(open);
+    },
+    [onFreshStartOpenChange]
+  );
   const submitting = useRef(false);
   const { t, i18n } = useTranslation();
   const { language } = i18n;
@@ -29,7 +53,7 @@ const Unlock: React.FC<{
   const { host, eventName } = queryData;
 
   const onSubmit = async ({ password }: { password: string }) => {
-    if (submitting.current) return;
+    if (submitting.current || isResetOpen) return;
     submitting.current = true;
     try {
       setIsLoading(true);
@@ -103,6 +127,7 @@ const Unlock: React.FC<{
           help={errorMessage}
         >
           <Input.Password
+            disabled={isResetOpen}
             className="custom-input-password relative"
             placeholder={t('settings.enterYourPassword')}
             id="password"
@@ -116,6 +141,7 @@ const Unlock: React.FC<{
             type="submit"
             className="bg-brand-deepPink100 w-[17.5rem] h-10 text-white text-base	 font-base font-medium rounded-2xl"
             loading={isLoading}
+            disabled={isResetOpen}
           >
             {t('buttons.unlock')}
           </Button>
@@ -123,17 +149,23 @@ const Unlock: React.FC<{
       </Form>
       <button
         type="button"
-        disabled={isLoading}
+        disabled={isLoading || isResetOpen}
         className={`mt-7 hover:text-brand-graylight text-[#A2A5AB] ${
           language === 'es' ? 'text-xs' : 'text-base'
         } font-light transition-all duration-300 cursor-pointer disabled:cursor-not-allowed disabled:opacity-60`}
         id="import-wallet-link"
         onClick={() => {
-          if (!submitting.current) setIsOpenValidation(true);
+          if (!submitting.current && !isResetOpen) setIsOpenValidation(true);
         }}
       >
         {t('start.importUsing')}
       </button>
+      {allowFreshStart && !isExternal && (
+        <StartFreshWallet
+          disabled={isLoading}
+          onOpenChange={onResetOpenChange}
+        />
+      )}
     </>
   );
 };

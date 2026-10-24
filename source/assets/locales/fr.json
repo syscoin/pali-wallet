@@ -919,11 +919,17 @@
     "invalidAddress": "Adresse invalide"
   },
   "start": {
+    "eraseAndStartFresh": "Effacer et recommencer",
+    "eraseWarning": "Efface tous les comptes, clés importées et paramètres locaux.",
+    "eraseFundsWarning": "Les fonds restent en chaîne. Sans phrase de récupération et copies séparées des clés, l’accès peut être perdu à jamais.",
+    "eraseAcknowledge": "J’accepte le risque de perdre définitivement l’accès sans sauvegardes.",
+    "eraseTypeConfirmation": "Saisissez {{word}}.",
+    "eraseConfirm": "Effacer le portefeuille",
+    "eraseFailed": "Indisponible. Fermez et réessayez.",
+    "eraseUncertain": "Effacement non confirmé. Vérifiez d’abord le portefeuille.",
     "getStarted": "Commencer",
     "importWalletSeedPhrase": "Importer avec la phrase de récupération du portefeuille",
     "unlockConfirmationFailed": "Le déverrouillage du portefeuille n’a pas pu être confirmé. Réessayez.",
-    "paliDoesnt": "Pali ne stocke pas votre mot de passe. La récupération d'accès nécessite une réinitialisation du portefeuille avec votre phrase de récupération secrète.",
-    "ifYouPlan": "Si vous prévoyez d'importer une nouvelle phrase de récupération secrète, assurez-vous d'avoir noté la phrase actuelle pour éviter de perdre les fonds associés.",
     "importUsing": "Mot de passe oublié ? Récupérez avec la phrase",
     "wrongPassword": "Mot de passe incorrect",
     "welcomeTo": "BIENVENUE SUR"

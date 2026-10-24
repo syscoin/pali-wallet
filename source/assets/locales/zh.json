@@ -919,11 +919,17 @@
     "invalidAddress": "无效地址"
   },
   "start": {
+    "eraseAndStartFresh": "清除并重新开始",
+    "eraseWarning": "清除本地的所有账户、导入私钥和设置。",
+    "eraseFundsWarning": "资金仍在链上。没有恢复短语和私钥的单独备份，可能永久失去访问权限。",
+    "eraseAcknowledge": "我接受没有备份可能永久失去访问权限的风险。",
+    "eraseTypeConfirmation": "输入 {{word}}。",
+    "eraseConfirm": "清除钱包",
+    "eraseFailed": "无法准备。关闭后重试。",
+    "eraseUncertain": "清除未确认。请先检查钱包。",
     "getStarted": "开始使用",
     "importWalletSeedPhrase": "使用钱包助记词导入",
     "unlockConfirmationFailed": "无法确认钱包已解锁。请重试。",
-    "paliDoesnt": "Pali不存储您的密码。恢复访问权限需要使用您的秘密恢复短语重置钱包。此操作会从您的设备中删除当前钱包、创建的账户、自定义代币和导入的账户，生成与重置短语绑定的新账户。",
-    "ifYouPlan": "如果您计划导入新的秘密恢复短语，请确保您已记录当前短语以避免丢失相关资金。请记住，自定义代币和导入的账户需要在重置后重新添加。此过程不可逆转，请谨慎操作。",
     "importUsing": "忘记密码？使用助记词恢复",
     "wrongPassword": "密码错误",
     "welcomeTo": "欢迎来到"

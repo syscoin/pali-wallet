@@ -919,11 +919,17 @@
     "invalidAddress": "無効なアドレスです"
   },
   "start": {
+    "eraseAndStartFresh": "消去して最初から始める",
+    "eraseWarning": "保存済みアカウント、インポートした秘密鍵、設定をすべて消去します。",
+    "eraseFundsWarning": "資金はチェーン上に残ります。シードと秘密鍵の個別バックアップがなければ、永久にアクセスを失う可能性があります。",
+    "eraseAcknowledge": "バックアップがなければ永久にアクセスを失う可能性を了承します。",
+    "eraseTypeConfirmation": "{{word}}と入力。",
+    "eraseConfirm": "ウォレットを消去",
+    "eraseFailed": "準備できません。閉じて再試行。",
+    "eraseUncertain": "消去未確認。先にウォレットを確認。",
     "getStarted": "始める",
     "importWalletSeedPhrase": "ウォレットのシードフレーズでインポート",
     "unlockConfirmationFailed": "ウォレットのロック解除を確認できませんでした。もう一度お試しください。",
-    "paliDoesnt": "Paliはパスワードを保存しません。アクセスを回復するには、シークレットリカバリーフレーズでウォレットをリセットする必要があります。",
-    "ifYouPlan": "新しいシークレットリカバリーフレーズをインポートする予定がある場合は、関連する資金を失わないように、現在のフレーズを必ず書き留めてください。",
     "importUsing": "パスワードをお忘れですか？シードで復元",
     "wrongPassword": "パスワードが間違っています",
     "welcomeTo": "ようこそ"

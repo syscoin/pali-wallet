@@ -919,11 +919,17 @@
     "invalidAddress": "Invalid address"
   },
   "start": {
+    "eraseAndStartFresh": "Erase and start fresh",
+    "eraseWarning": "Erases all locally saved accounts, imported keys and settings.",
+    "eraseFundsWarning": "Funds stay on-chain. Without the recovery phrase and separate key backups, access may be lost forever.",
+    "eraseAcknowledge": "I accept possible permanent loss of access without backups.",
+    "eraseTypeConfirmation": "Type {{word}}.",
+    "eraseConfirm": "Erase wallet",
+    "eraseFailed": "Unavailable. Close and retry.",
+    "eraseUncertain": "Reset unconfirmed. Check wallet first.",
     "getStarted": "Get started",
     "importWalletSeedPhrase": "Import using wallet seed phrase",
     "unlockConfirmationFailed": "Wallet unlock could not be confirmed. Please try again.",
-    "paliDoesnt": "Pali doesn't store your password. Regaining access requires a wallet reset with your Secret Recovery Phrase. This action erases the current wallet, created accounts, custom tokens, and imported accounts from your device, generating a new account tied to the reset phrase.",
-    "ifYouPlan": "If you plan to import a new Secret Recovery Phrase, ensure you've noted the current one to avoid losing associated funds. Remember, custom tokens and imported accounts will need to be re-added after the reset. This process is irreversible, so proceed with caution.",
     "importUsing": "Forgot password? Recover with seed",
     "wrongPassword": "Wrong password",
     "welcomeTo": "WELCOME TO"

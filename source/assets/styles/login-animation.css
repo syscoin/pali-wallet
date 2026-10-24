@@ -1,6 +1,18 @@
 /* Subtle Login Screen Effects - Just particles and glow */
 
 /* Container for animated elements */
+@media (max-height: 499px) {
+  #login:has(~ #erase-wallet-link) {
+    gap: 0.25rem;
+  }
+  #import-wallet-link:has(+ #erase-wallet-link) {
+    margin-top: 0.5rem;
+  }
+  #erase-wallet-link {
+    margin-top: 0;
+  }
+}
+
 .login-animated-bg {
   position: relative;
   overflow: hidden;

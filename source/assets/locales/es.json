@@ -919,11 +919,17 @@
     "invalidAddress": "Dirección inválida"
   },
   "start": {
+    "eraseAndStartFresh": "Borrar y empezar de nuevo",
+    "eraseWarning": "Borra todas las cuentas, claves importadas y ajustes locales.",
+    "eraseFundsWarning": "Los fondos siguen en la cadena. Sin la semilla y copias separadas de las claves, puedes perder el acceso para siempre.",
+    "eraseAcknowledge": "Acepto que, sin copias de seguridad, puedo perder el acceso para siempre.",
+    "eraseTypeConfirmation": "Escribe {{word}}.",
+    "eraseConfirm": "Borrar cartera",
+    "eraseFailed": "No disponible. Cierra y reintenta.",
+    "eraseUncertain": "Borrado sin confirmar. Comprueba primero la cartera.",
     "getStarted": "Comenzar",
     "importWalletSeedPhrase": "Importar con la frase semilla de la cartera",
     "unlockConfirmationFailed": "No se pudo confirmar el desbloqueo de la cartera. Inténtalo de nuevo.",
-    "paliDoesnt": "Pali no guarda tu contraseña. Recuperar el acceso requiere un reinicio de la billetera con tu Frase Secreta de Recuperación. Esta acción borra la billetera actual, las cuentas creadas, tokens personalizados y cuentas importadas de tu dispositivo, generando una nueva cuenta vinculada a la frase de reinicio.",
-    "ifYouPlan": "Si planeas importar una nueva Frase Secreta de Recuperación, asegúrate de haber anotado la actual para evitar perder los fondos asociados. Recuerda, los tokens personalizados y las cuentas importadas necesitarán ser re-añadidos después del reinicio. Este proceso es irreversible, así que procede con precaución.",
     "importUsing": "¿Olvidaste la contraseña? Recupera con la semilla",
     "wrongPassword": "Contraseña incorrecta",
     "welcomeTo": "BIENVENIDO A"

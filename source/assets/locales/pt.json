@@ -919,11 +919,17 @@
     "invalidAddress": "Endereço inválido"
   },
   "start": {
+    "eraseAndStartFresh": "Apagar e começar de novo",
+    "eraseWarning": "Apaga todas as contas, chaves importadas e configurações locais.",
+    "eraseFundsWarning": "Os fundos ficam na blockchain. Sem a frase semente e cópias separadas das chaves, o acesso pode ser perdido para sempre.",
+    "eraseAcknowledge": "Aceito o risco de perder o acesso para sempre sem cópias de segurança.",
+    "eraseTypeConfirmation": "Digite {{word}}.",
+    "eraseConfirm": "Apagar carteira",
+    "eraseFailed": "Indisponível. Feche e tente de novo.",
+    "eraseUncertain": "Exclusão não confirmada. Verifique a carteira primeiro.",
     "getStarted": "Começar",
     "importWalletSeedPhrase": "Importar usando a frase-semente da carteira",
     "unlockConfirmationFailed": "Não foi possível confirmar o desbloqueio da carteira. Tente novamente.",
-    "paliDoesnt": "O Pali não armazena sua senha. Para recuperar o acesso, é necessário redefinir a carteira com sua Frase de Recuperação Secreta. Esta ação apaga a carteira atual, contas criadas, tokens personalizados e contas importadas do seu dispositivo, gerando uma nova conta vinculada à frase de redefinição.",
-    "ifYouPlan": "Se você planeja importar uma nova Frase de Recuperação Secreta, certifique-se de ter anotado a atual para evitar perder os fundos associados. Lembre-se, tokens personalizados e contas importadas precisarão ser adicionados novamente após a redefinição. Este processo é irreversível, então proceda com cautela.",
     "importUsing": "Esqueceu a senha? Recupere com a seed",
     "wrongPassword": "Senha incorreta",
     "welcomeTo": "BEM-VINDO AO"

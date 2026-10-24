@@ -6,6 +6,7 @@ import { Start } from './Start';
 let mockSearchParams: URLSearchParams;
 let mockUnlockProps: any;
 jest.mock('react-router-dom', () => ({
+  useLocation: () => ({ pathname: '/' }),
   useSearchParams: () => [mockSearchParams],
 }));
 jest.mock('react-redux', () => ({

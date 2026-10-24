@@ -43,6 +43,8 @@ import { chromeStorage } from 'utils/storageAPI';
 
 import {
   beginWalletRecovery as beginWithContext,
+  beginLockedWalletReset as beginResetWithContext,
+  resetLockedWallet as resetWithContext,
   prepareWalletRecoveryAccess as prepareWithContext,
   reconcileWalletRecoveryJournal as reconcileWithContext,
   runWalletSetup as runWithContext,
@@ -94,6 +96,24 @@ const runWalletSetup = (
     generation,
     context
   );
+const beginLockedReset = () =>
+  wallet.authenticationMutex.runExclusive(() =>
+    beginResetWithContext(wallet, context)
+  );
+const submitLockedReset = async (
+  token: unknown,
+  ...acknowledgement: [unknown?]
+) => {
+  const confirmation = acknowledgement.length ? acknowledgement[0] : 'ERASE';
+  wallet.isCreatingWallet = true;
+  try {
+    return await wallet.authenticationMutex.runExclusive(() =>
+      resetWithContext(wallet, token, confirmation, context)
+    );
+  } finally {
+    wallet.isCreatingWallet = false;
+  }
+};
 const originalRecords = () => ({
   'sysweb3-vault': 'original authenticated encrypted mnemonic',
   'sysweb3-vault-keys': { salt: 'original salt' },
@@ -1023,5 +1043,316 @@ describe('explicit seed recovery transaction', () => {
     expect(mockRecords['sysweb3-vault']).toBe(
       'new authenticated encrypted mnemonic'
     );
+  });
+  describe('explicit locked-wallet reset', () => {
+    it('issues a random confirmation ticket without reading a seed or writing wallet data', async () => {
+      const seedValidation = jest.spyOn(wallet, 'isSeedValid');
+      const before = structuredClone(mockRecords);
+      const first = await beginLockedReset();
+      const second = await beginLockedReset();
+      expect(first).toMatch(/^[0-9a-f]{64}$/);
+      expect(second).toMatch(/^[0-9a-f]{64}$/);
+      expect(second).not.toBe(first);
+      expect(mockRecords).toEqual(before);
+      expect(seedValidation).not.toHaveBeenCalled();
+      expect(chromeStorage.setItem).not.toHaveBeenCalled();
+      expect(chromeStorage.setItems).not.toHaveBeenCalled();
+      expect(chromeStorage.removeItem).not.toHaveBeenCalled();
+      expect(wallet.resetWalletState).not.toHaveBeenCalled();
+    });
+
+    it('erases a locked wallet only after explicit confirmation without an old password or seed', async () => {
+      const ticket = await beginLockedReset();
+      await expect(submitLockedReset(ticket)).resolves.toBeUndefined();
+      expect(wallet.resetWalletState).toHaveBeenCalledTimes(1);
+      expect(wallet.resetWalletState).toHaveBeenCalledWith({
+        resetNetworks: true,
+      });
+      expect(wallet.createWalletExclusive).not.toHaveBeenCalled();
+      expect(mockRecords).toEqual({ language: 'en' });
+      expect(wallet.recoveryJournalPending).toBe(false);
+      expect(walletPersistenceGate.blocked).toBe(false);
+    });
+
+    it.each([undefined, null, 123, 'wrong-token'])(
+      'refuses an absent or unrelated reset ticket: %p',
+      async (token) => {
+        await beginLockedReset();
+        await expect(submitLockedReset(token)).rejects.toThrow(
+          'Wallet reset expired'
+        );
+        expect(wallet.resetWalletState).not.toHaveBeenCalled();
+        assertOriginal();
+      }
+    );
+
+    it.each([undefined, null, true, '', 'erase', ' ERASE ', 1])(
+      'requires the exact destructive acknowledgement and consumes a rejected matching attempt: %p',
+      async (confirmation) => {
+        const ticket = await beginLockedReset();
+        await expect(submitLockedReset(ticket, confirmation)).rejects.toThrow(
+          'typing ERASE'
+        );
+        await expect(submitLockedReset(ticket)).rejects.toThrow(
+          'Wallet reset expired'
+        );
+        expect(wallet.resetWalletState).not.toHaveBeenCalled();
+        assertOriginal();
+      }
+    );
+
+    it('rejects replay after successful deletion', async () => {
+      const ticket = await beginLockedReset();
+      await submitLockedReset(ticket);
+      await expect(submitLockedReset(ticket)).rejects.toThrow(
+        'Wallet reset expired'
+      );
+      expect(wallet.resetWalletState).toHaveBeenCalledTimes(1);
+      expect(mockRecords).toEqual({ language: 'en' });
+    });
+
+    it('does not let an older popup consume a newer reset ticket', async () => {
+      const older = await beginLockedReset();
+      const newer = await beginLockedReset();
+      await expect(submitLockedReset(older)).rejects.toThrow(
+        'Wallet reset expired'
+      );
+      expect(wallet.resetWalletState).not.toHaveBeenCalled();
+      assertOriginal();
+      await submitLockedReset(newer);
+      expect(wallet.resetWalletState).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([10 * 60 * 1000 + 1, -1])(
+      'rejects an expired or backward-clock reset ticket: %pms',
+      async (offset) => {
+        const now = Date.now();
+        jest.spyOn(Date, 'now').mockReturnValue(now);
+        const ticket = await beginLockedReset();
+        jest.mocked(Date.now).mockReturnValue(now + offset);
+        await expect(submitLockedReset(ticket)).rejects.toThrow(
+          'Wallet reset expired'
+        );
+        expect(wallet.resetWalletState).not.toHaveBeenCalled();
+        assertOriginal();
+      }
+    );
+
+    it('rejects reset initiation when any keyring is unlocked', async () => {
+      unlocked = true;
+      await expect(beginLockedReset()).rejects.toThrow('Lock the wallet');
+      expect(wallet.resetWalletState).not.toHaveBeenCalled();
+      assertOriginal();
+    });
+
+    it('rejects a previously issued ticket if another unlock succeeds', async () => {
+      const ticket = await beginLockedReset();
+      unlocked = true;
+      await expect(submitLockedReset(ticket)).rejects.toThrow(
+        'Lock the wallet'
+      );
+      unlocked = false;
+      await expect(submitLockedReset(ticket)).rejects.toThrow(
+        'Wallet reset expired'
+      );
+      expect(wallet.resetWalletState).not.toHaveBeenCalled();
+      assertOriginal();
+    });
+
+    it.each(['walletSessionGeneration', 'walletStateGeneration'])(
+      'rejects a ticket after %s changes',
+      async (field) => {
+        const ticket = await beginLockedReset();
+        wallet[field] += 1;
+        await expect(submitLockedReset(ticket)).rejects.toThrow(
+          'Wallet state changed'
+        );
+        expect(wallet.resetWalletState).not.toHaveBeenCalled();
+        assertOriginal();
+      }
+    );
+
+    it.each(['sysweb3-vault', 'sysweb3-vault-keys'])(
+      'rejects a ticket after its stored identity changes: %s',
+      async (key) => {
+        const ticket = await beginLockedReset();
+        mockRecords[key] =
+          key === 'sysweb3-vault'
+            ? 'different ciphertext'
+            : { salt: 'different salt' };
+        const changed = structuredClone(mockRecords);
+        await expect(submitLockedReset(ticket)).rejects.toThrow(
+          'Wallet storage changed'
+        );
+        expect(wallet.resetWalletState).not.toHaveBeenCalled();
+        expect(mockRecords).toEqual(changed);
+      }
+    );
+
+    it('rechecks lock and generation after its asynchronous storage read', async () => {
+      const ticket = await beginLockedReset();
+      jest
+        .mocked(chromeStorage.getItems)
+        .mockImplementationOnce(async (keys) => {
+          const current = Object.fromEntries(
+            keys.map((key) => [key, mockRecords[key]])
+          );
+          wallet.walletSessionGeneration += 1;
+          return current;
+        });
+      await expect(submitLockedReset(ticket)).rejects.toThrow(
+        'Wallet state changed'
+      );
+      expect(wallet.resetWalletState).not.toHaveBeenCalled();
+      assertOriginal();
+    });
+
+    it('does not issue a ticket during setup or an unfinished recovery', async () => {
+      wallet.isCreatingWallet = true;
+      await expect(beginLockedReset()).rejects.toThrow('already in progress');
+      wallet.isCreatingWallet = false;
+      mockRecords[JOURNAL] = { version: 1 };
+      await expect(beginLockedReset()).rejects.toThrow('previous recovery');
+      expect(wallet.resetWalletState).not.toHaveBeenCalled();
+      expect(chromeStorage.setItem).not.toHaveBeenCalled();
+    });
+
+    it('does not consume or bypass a pending recovery journal during confirmation', async () => {
+      const ticket = await beginLockedReset();
+      mockRecords[JOURNAL] = { version: 1 };
+      const before = structuredClone(mockRecords);
+      await expect(submitLockedReset(ticket)).rejects.toThrow(
+        'previous recovery'
+      );
+      expect(mockRecords).toEqual(before);
+      expect(wallet.resetWalletState).not.toHaveBeenCalled();
+    });
+
+    it('cannot use a recovery ticket for destructive reset', async () => {
+      const ticket = await beginWalletRecovery(wallet);
+      await expect(submitLockedReset(ticket)).rejects.toThrow(
+        'Wallet reset expired'
+      );
+      expect(wallet.resetWalletState).not.toHaveBeenCalled();
+      assertOriginal();
+    });
+
+    it('invalidates recovery tickets when a separate reset is begun', async () => {
+      const recovery = await beginWalletRecovery(wallet);
+      const reset = await beginLockedReset();
+      await expect(submit(recovery)).rejects.toThrow('Seed recovery expired');
+      assertOriginal();
+      await submitLockedReset(reset);
+      expect(wallet.resetWalletState).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not invalidate a reset ticket when recovery cannot issue a valid ticket', async () => {
+      const reset = await beginLockedReset();
+      mockState.vault.accounts.HDAccount = {};
+      await expect(beginWalletRecovery(wallet)).rejects.toThrow(
+        'Saved HD account identity'
+      );
+      await expect(submitLockedReset(reset)).resolves.toBeUndefined();
+      expect(wallet.resetWalletState).toHaveBeenCalledTimes(1);
+      expect(mockRecords).toEqual({ language: 'en' });
+    });
+
+    it('refuses pending same-worker recovery even when its journal is absent', async () => {
+      wallet.recoveryJournalPending = true;
+      await expect(beginLockedReset()).rejects.toThrow('previous recovery');
+      wallet.recoveryJournalPending = false;
+      const reset = await beginLockedReset();
+      wallet.recoveryJournalPending = true;
+      await expect(submitLockedReset(reset)).rejects.toThrow(
+        'previous recovery'
+      );
+      expect(wallet.resetWalletState).not.toHaveBeenCalled();
+      assertOriginal();
+    });
+
+    it('invalidates a reset ticket when same-wallet recovery is begun', async () => {
+      const reset = await beginLockedReset();
+      const recovery = await beginWalletRecovery(wallet);
+      await expect(submitLockedReset(reset)).rejects.toThrow(
+        'Wallet reset expired'
+      );
+      assertOriginal();
+      await submit(recovery);
+      expect(wallet.createWalletExclusive).toHaveBeenCalledTimes(1);
+    });
+
+    it.each(['sysweb3-vault', 'sysweb3-vault-keys'])(
+      'refuses an incomplete durable wallet when %s is missing',
+      async (key) => {
+        delete mockRecords[key];
+        const before = structuredClone(mockRecords);
+        await expect(beginLockedReset()).rejects.toThrow(
+          'storage is incomplete'
+        );
+        expect(mockRecords).toEqual(before);
+        expect(wallet.resetWalletState).not.toHaveBeenCalled();
+      }
+    );
+
+    it.each(['before', 'after', 'noop'])(
+      'does not delete the old wallet if its verified backup cannot be saved: %s',
+      async (fault) => {
+        const ticket = await beginLockedReset();
+        const write = jest
+          .mocked(chromeStorage.setItem)
+          .getMockImplementation()!;
+        jest
+          .mocked(chromeStorage.setItem)
+          .mockImplementationOnce(async (key, value) => {
+            expect(key).toBe(JOURNAL);
+            if (fault === 'after') await write(key, value);
+            if (fault !== 'noop')
+              throw new Error('synthetic journal write failed');
+          });
+        await expect(submitLockedReset(ticket)).rejects.toBeDefined();
+        expect(wallet.resetWalletState).not.toHaveBeenCalled();
+        assertOriginal();
+        expect(walletPersistenceGate.blocked).toBe(false);
+        expect(wallet.recoveryJournalPending).toBe(false);
+      }
+    );
+
+    it('restores the old multi-record snapshot after a failed erase', async () => {
+      const ticket = await beginLockedReset();
+      const reset = wallet.resetWalletState.getMockImplementation();
+      wallet.resetWalletState.mockImplementation(async () => {
+        await reset();
+        throw new Error('synthetic erase failure');
+      });
+      await expect(submitLockedReset(ticket)).rejects.toThrow(
+        'synthetic erase failure'
+      );
+      assertOriginal();
+      expect(walletPersistenceGate.blocked).toBe(false);
+      expect(wallet.recoveryJournalPending).toBe(false);
+    });
+
+    it('allows ordinary creation only after the explicit erase committed', async () => {
+      const ticket = await beginLockedReset();
+      await submitLockedReset(ticket);
+      await expect(
+        runWalletSetup(
+          wallet,
+          false,
+          'NewPassword12!',
+          OTHER_PHRASE,
+          undefined,
+          wallet.walletStateGeneration,
+          wallet.walletSessionGeneration
+        )
+      ).resolves.toBeUndefined();
+      expect(wallet.createWalletExclusive).toHaveBeenCalledWith(
+        'NewPassword12!',
+        OTHER_PHRASE
+      );
+      expect(mockRecords['sysweb3-vault']).toBe(
+        'new authenticated encrypted mnemonic'
+      );
+    });
   });
 });

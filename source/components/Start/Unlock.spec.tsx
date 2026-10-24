@@ -10,6 +10,7 @@ import { clearTransactionNavigationState } from 'utils/navigationState';
 import Unlock from './Unlock';
 
 let mockQuery: any;
+jest.mock('./StartFreshWallet', () => ({ StartFreshWallet: () => null }));
 let mockSubmit: (values: { password: string }) => Promise<unknown>;
 const mockNavigate = jest.fn();
 const mockAlert = { error: jest.fn() };
