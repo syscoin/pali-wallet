@@ -482,11 +482,11 @@ export const SyscoinAssetDetails = ({
             </div>
           )}
 
-          <div className="flex flex-col items-center justify-center gap-y-0.5">
-            <span className="text-xs font-light text-brand-gray200">
+          <div className="flex min-w-0 w-full flex-col items-center justify-center gap-y-0.5">
+            <span className="max-w-full break-words text-center text-xs font-light text-brand-gray200">
               {displayedAssetSymbol}
             </span>
-            <span className="font-normal text-base text-brand-white">
+            <span className="max-w-full break-words text-center font-normal text-base text-brand-white">
               {displayedAssetSymbol} ({activeNetwork.label})
             </span>
           </div>
@@ -508,12 +508,12 @@ export const SyscoinAssetDetails = ({
             .map((item, index, totalArray) => (
               <li
                 key={item.originalKey}
-                className={`flex items-center justify-between my-1 pl-0 pr-3 py-2 w-full text-xs border-b
+                className={`flex items-center justify-between gap-x-3 my-1 pl-0 pr-3 py-2 w-full text-xs border-b
                 border-dashed border-bkg-white200 cursor-default transition-all duration-300 ${
                   index + 1 === totalArray.length && 'border-none'
                 } `}
               >
-                <p className="font-normal text-xs">
+                <p className="flex-shrink-0 font-normal text-xs">
                   {translateTransactionLabel(item.key, t)}
                 </p>
                 {item.originalKey === 'contract' ? (
@@ -536,9 +536,9 @@ export const SyscoinAssetDetails = ({
                     {item.value}
                   </p>
                 ) : (
-                  <p className="flex items-center font-normal gap-x-1.5 text-xs">
+                  <p className="flex min-w-0 items-start font-normal gap-x-1.5 text-right text-xs">
                     <span
-                      className="text-brand-white"
+                      className="shrink-0 text-brand-white"
                       title={
                         item.originalKey === 'balance' &&
                         !isSptBalanceAvailable(item.value)
@@ -555,7 +555,7 @@ export const SyscoinAssetDetails = ({
                           )}
                     </span>
 
-                    <span className="text-brand-royalbluemedium">
+                    <span className="min-w-0 break-all text-brand-royalbluemedium">
                       {displayedAssetSymbol}
                     </span>
                   </p>
