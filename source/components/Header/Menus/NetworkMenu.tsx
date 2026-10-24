@@ -272,9 +272,19 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
   const renderNetworkChoice = (
     currentNetwork: INetwork,
     kind: INetworkType,
-    closeMenu: () => void
+    closeMenu: () => void,
+    showIdentity: boolean
   ) => {
     const isCurrent = activeNetworkValidator(currentNetwork);
+    const identity = showIdentity
+      ? `${kind === INetworkType.Syscoin ? 'UTXO' : 'EVM'} · ${t(
+          'settings.chainNumber',
+          { chainId: currentNetwork.chainId }
+        )}`
+      : '';
+    const choiceLabel = identity
+      ? `${currentNetwork.label} (${identity})`
+      : currentNetwork.label;
     return (
       <div
         key={`${currentNetwork.chainId}-${currentNetwork.url}`}
@@ -286,7 +296,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
             <button
               type="button"
               disabled={isNetworkChanging}
-              aria-label={currentNetwork.label}
+              aria-label={choiceLabel}
               aria-current={
                 isCurrent && networkType === kind ? 'true' : undefined
               }
@@ -308,9 +318,20 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                     className="flex-shrink-0 group-hover:brightness-110 transition-all duration-300"
                   />
                 </div>
-                <span className="text-left group-hover:text-white transition-colors duration-300 truncate">
-                  {currentNetwork.label}
-                </span>
+                {identity ? (
+                  <span className="min-w-0 text-left">
+                    <span className="block group-hover:text-white transition-colors duration-300 truncate">
+                      {currentNetwork.label}
+                    </span>
+                    <span className="block text-xs leading-4 font-normal text-content-muted">
+                      {identity}
+                    </span>
+                  </span>
+                ) : (
+                  <span className="text-left group-hover:text-white transition-colors duration-300 truncate">
+                    {currentNetwork.label}
+                  </span>
+                )}
               </div>
 
               <div className="flex items-center flex-shrink-0 relative z-10 mr-2">
@@ -343,6 +364,9 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
     const panelId = `${groupId}-${kind}`;
     const choices = Object.values(networks[kind]) as INetwork[];
     if (!isUtxo) choices.sort(customSort);
+    const labelCounts = new Map<string, number>();
+    for (const choice of choices)
+      labelCounts.set(choice.label, (labelCounts.get(choice.label) || 0) + 1);
 
     return (
       <React.Fragment key={kind}>
@@ -396,7 +420,12 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                 <div className="absolute inset-0 bg-gray-500/30 z-20 rounded-lg backdrop-blur-[0.5px]" />
               )}
               {choices.map((network) =>
-                renderNetworkChoice(network, kind, closeMenu)
+                renderNetworkChoice(
+                  network,
+                  kind,
+                  closeMenu,
+                  (labelCounts.get(network.label) || 0) > 1
+                )
               )}
             </div>
           </div>
