@@ -2,6 +2,7 @@ import { expect, test, type BrowserContext, type Page } from '@playwright/test';
 import { execFileSync } from 'child_process';
 import { createHash } from 'crypto';
 import fs from 'fs';
+import net from 'net';
 import path from 'path';
 
 import packageJson from '../../package.json';
@@ -76,6 +77,80 @@ function extractArtifact(prefix: 'LEGACY' | 'CURRENT', directory: string) {
     if (stat.isSymbolicLink()) throw new Error('Archive symlink refused');
   }
   return { bytes: bytes.length, sha256, version: manifest.version };
+}
+
+async function physicalDenial(
+  server: Awaited<ReturnType<typeof startUtxoFixtureServer>>,
+  method: 'GET' | 'CONNECT'
+) {
+  const proxy = new URL(server.url),
+    before = server.blocked.length;
+  expect(proxy.protocol).toBe('http:');
+  expect(proxy.hostname).toBe('127.0.0.1');
+  const receipt = await new Promise<{
+    connectionClosed: boolean;
+    statusCode: number;
+  }>((resolve, reject) => {
+    const socket = net.createConnection({
+      host: '127.0.0.1',
+      port: Number(proxy.port),
+    });
+    let bytes = Buffer.alloc(0),
+      ended = false,
+      settled = false;
+    const fail = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      reject(error);
+    };
+    socket.setTimeout(2000, () =>
+      fail(new Error('Physical deny-proxy canary timed out'))
+    );
+    socket.once('error', fail);
+    socket.once('connect', () =>
+      socket.write(
+        `${method} ${
+          method === 'GET'
+            ? 'http://token-feedback-denied.invalid/'
+            : 'token-feedback-denied.invalid:443'
+        } HTTP/1.0\r\nHost: token-feedback-denied.invalid\r\nConnection: close\r\n\r\n`
+      )
+    );
+    socket.on('data', (chunk: Buffer) => {
+      bytes = Buffer.concat([bytes, chunk]);
+      if (bytes.length > 4096)
+        fail(new Error('Physical canary response too large'));
+    });
+    socket.once('end', () => {
+      ended = true;
+    });
+    socket.once('close', (hadError) => {
+      if (settled) return;
+      settled = true;
+      try {
+        expect(hadError).toBe(false);
+        expect(ended).toBe(true);
+        const text = bytes.toString('utf8'),
+          separator = text.indexOf('\r\n\r\n');
+        expect(separator).toBeGreaterThanOrEqual(0);
+        expect(text.slice(0, separator).split('\r\n')[0]).toMatch(
+          /^HTTP\/1\.[01] 403 Forbidden$/
+        );
+        expect(text.slice(0, separator)).toMatch(
+          /\r\nConnection: close(?:\r\n|$)/i
+        );
+        expect(text.slice(separator + 4)).toBe(
+          method === 'GET' ? 'Offline fixture only' : ''
+        );
+        resolve({ connectionClosed: true, statusCode: 403 });
+      } catch (error) {
+        reject(error);
+      }
+    });
+  });
+  expect(server.blocked.slice(before)).toEqual([method]);
+  return { method, ...receipt };
 }
 
 // Narrow, public read-only projection. The worker returns state only to its own
@@ -186,6 +261,9 @@ test('published legacy wallet upgrades in-place without reimporting its vault', 
   const steps: any[] = [];
   const snapshots: any[] = [];
   const workerIdentities: any[] = [];
+  const physicalCanaries: ({ launch: number } & Awaited<
+    ReturnType<typeof physicalDenial>
+  >)[] = [];
   const observations: any[] = [];
   let historyAvailable = true;
   let blockedHistoryReads = 0;
@@ -362,28 +440,44 @@ test('published legacy wallet upgrades in-place without reimporting its vault', 
   const route = async (hash: string) => {
     await page.goto(`chrome-extension://${extensionId}/app.html${hash}`);
   };
-  const switchNetwork = async (label: string, group: string) => {
+  const switchNetwork = async (
+    label: string,
+    group: string,
+    expectedFallbackChainId?: number
+  ) => {
     await home();
-    const button = page
-      .getByRole('button')
-      .filter({ hasText: /UTXO|EVM/ })
-      .first();
+    const button = page.getByRole('button').filter({ hasText: /UTXO|EVM/ });
+    await expect(button).toHaveCount(1);
     if ((await button.innerText()).includes(label)) return;
     await button.click();
     // The store baseline exposes family buttons and plain li choices. The
     // current wallet uses native buttons registered as accessible menuitems.
     const family = page
       .locator('button')
-      .filter({ hasText: new RegExp(`^${group} Networks$`, 'i') })
-      .first();
-    if ((await family.getAttribute('aria-expanded')) !== 'true')
-      await family.click();
-    await page
-      .locator('li, button[role="menuitem"]', {
-        hasText: new RegExp(`^\\s*${label}\\s*$`),
-      })
-      .first()
-      .click();
+      .filter({ hasText: new RegExp('^' + group + ' Networks$', 'i') });
+    await expect(family).toHaveCount(1);
+    const expanded = await family.getAttribute('aria-expanded');
+    if (expanded !== 'true') await family.click();
+    if (expanded !== null)
+      await expect(family).toHaveAttribute('aria-expanded', 'true');
+    const currentChoice = page
+      .getByRole('menuitem', { name: label, exact: true })
+      .and(page.locator('button'));
+    const legacyChoice = page.locator('li').filter({
+      has: page.getByText(label, { exact: true }).and(page.locator('span')),
+    });
+    const choice = currentChoice.or(legacyChoice);
+    await expect(choice).toHaveCount(1);
+    if (expectedFallbackChainId !== undefined) {
+      // Reproduce the settled custom-network icon that adds numeric SVG text
+      // to the raw row text, without making it part of the accessible name.
+      await expect(currentChoice).toHaveCount(1);
+      await expect(legacyChoice).toHaveCount(0);
+      await expect(currentChoice.locator('svg text')).toHaveText(
+        String(expectedFallbackChainId)
+      );
+    }
+    await choice.click();
     await expect(button).toContainText(label, { timeout: 60000 });
     await home();
   };
@@ -438,6 +532,12 @@ test('published legacy wallet upgrades in-place without reimporting its vault', 
     await route('#/');
   };
   const launch = async (resumed: boolean, activatePackage = false) => {
+    const launchNumber = physicalCanaries.length / 2 + 1;
+    for (const method of ['GET', 'CONNECT'] as const)
+      physicalCanaries.push({
+        launch: launchNumber,
+        ...(await physicalDenial(server, method)),
+      });
     const result = await launchUpgradeBrowser(
       stablePath,
       server.url,
@@ -978,7 +1078,7 @@ test('published legacy wallet upgrades in-place without reimporting its vault', 
     await step(
       'reconfirmed-origin-permission-survives-upgraded-cold-restart',
       async () => {
-        await switchNetwork('Legacy upgrade network', 'EVM');
+        await switchNetwork('Legacy upgrade network', 'EVM', 65001);
         const dapp = await openDapp();
         await readDappIdentity(dapp);
         expect(
@@ -1025,6 +1125,8 @@ test('published legacy wallet upgrades in-place without reimporting its vault', 
           fixtureReads: observations.flatMap((value) => value.reads),
           deniedWrites: observations.flatMap((value) => value.deniedWrites),
           proxyDeniedConnections: server.blocked.length,
+          proxyDeniedMethods: server.blocked.slice(),
+          physicalCanaries,
           blockedHistoryReads,
           browserQaSessionsClosed: true,
         },
