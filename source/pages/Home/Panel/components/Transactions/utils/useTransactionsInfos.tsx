@@ -49,7 +49,8 @@ export const useTransactionsListConfig = (
   );
   const chainId = activeNetwork.chainId;
 
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const locale = i18n?.resolvedLanguage || i18n?.language || 'en-US';
 
   const txId = isBitcoinBased ? 'txId' : 'hash';
   const blocktime = isBitcoinBased ? 'blockTime' : 'timestamp';
@@ -165,73 +166,78 @@ export const useTransactionsListConfig = (
         year: 'numeric',
       };
 
-      const formatedData = new Intl.DateTimeFormat('en-US', options).format(
+      const formatedData = new Intl.DateTimeFormat(locale, options).format(
         data
       );
 
       return formatedData;
     },
-    [t]
+    [t, locale]
   );
 
-  const formatTimeStampUtxo = useCallback((timestamp: number) => {
-    // Validate timestamp for UTXO as well
-    const currentTime = Math.floor(Date.now() / 1000);
-    const oneYearFromNow = currentTime + 365 * 24 * 60 * 60;
+  const formatTimeStampUtxo = useCallback(
+    (timestamp: number) => {
+      // Validate timestamp for UTXO as well
+      const currentTime = Math.floor(Date.now() / 1000);
+      const oneYearFromNow = currentTime + 365 * 24 * 60 * 60;
 
-    // For UTXO, timestamp might already be in milliseconds
-    let timestampMs = timestamp;
-    if (timestamp < 10000000000) {
-      // If timestamp appears to be in seconds, convert to milliseconds
-      timestampMs = timestamp * 1000;
-    }
+      // For UTXO, timestamp might already be in milliseconds
+      let timestampMs = timestamp;
+      if (timestamp < 10000000000) {
+        // If timestamp appears to be in seconds, convert to milliseconds
+        timestampMs = timestamp * 1000;
+      }
 
-    // Validate the millisecond timestamp
-    const timestampSec = Math.floor(timestampMs / 1000);
-    if (
-      !Number.isFinite(timestampSec) ||
-      timestampSec <= 0 ||
-      timestampSec > oneYearFromNow
-    ) {
-      console.warn(
-        `Invalid UTXO timestamp detected: ${timestamp}, using current time`
+      // Validate the millisecond timestamp
+      const timestampSec = Math.floor(timestampMs / 1000);
+      if (
+        !Number.isFinite(timestampSec) ||
+        timestampSec <= 0 ||
+        timestampSec > oneYearFromNow
+      ) {
+        console.warn(
+          `Invalid UTXO timestamp detected: ${timestamp}, using current time`
+        );
+        timestampMs = Date.now();
+      }
+
+      const date = new Date(timestampMs);
+
+      const dateFormatOptions: Intl.DateTimeFormatOptions = {
+        month: '2-digit',
+        day: '2-digit',
+        year: '2-digit',
+      };
+
+      const timeFormatOptions: Intl.DateTimeFormatOptions = {
+        hour: 'numeric',
+        minute: 'numeric',
+      };
+
+      const formattedDate = new Intl.DateTimeFormat(
+        locale,
+        dateFormatOptions
+      ).format(date);
+      const formattedTime = new Intl.DateTimeFormat(
+        locale,
+        timeFormatOptions
+      ).format(date);
+
+      // Retain Pali's English compact date; other languages use their own
+      // ordering and punctuation instead of forcing month-day-year separators.
+      const displayDate = /^en(?:-|$)/i.test(locale)
+        ? formattedDate.replace(/\//g, '-')
+        : formattedDate;
+
+      return (
+        <div className="flex gap-2">
+          <p className="text-xs text-brand-gray200">{displayDate}</p>
+          <p className="text-xs text-white">{formattedTime}</p>
+        </div>
       );
-      timestampMs = Date.now();
-    }
-
-    const date = new Date(timestampMs);
-
-    const dateFormatOptions: Intl.DateTimeFormatOptions = {
-      month: '2-digit',
-      day: '2-digit',
-      year: '2-digit',
-    };
-
-    const timeFormatOptions: Intl.DateTimeFormatOptions = {
-      hour: 'numeric',
-      minute: 'numeric',
-      hour12: true,
-    };
-
-    const formattedDate = new Intl.DateTimeFormat(
-      'en-US',
-      dateFormatOptions
-    ).format(date);
-    const formattedTime = new Intl.DateTimeFormat(
-      'en-US',
-      timeFormatOptions
-    ).format(date);
-
-    const dateComponents = formattedDate.split('/');
-    const formattedDateWithHyphen = dateComponents.join('-');
-
-    return (
-      <div className="flex gap-2">
-        <p className="text-xs text-brand-gray200">{formattedDateWithHyphen}</p>
-        <p className="text-xs text-white">{formattedTime}</p>
-      </div>
-    );
-  }, []);
+    },
+    [locale]
+  );
 
   return useMemo(
     () => ({

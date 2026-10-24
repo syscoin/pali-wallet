@@ -12,6 +12,7 @@ import { EvmTransactionDetailsEnhanced } from './EvmDetailsEnhanced';
 
 let mockState: any;
 let mockHistory: any[];
+let mockLocale = 'en';
 const mockEmitter = jest.fn();
 const mockDisplay = jest.fn();
 const mockCopy = jest.fn();
@@ -33,6 +34,7 @@ jest.mock('react-redux', () => ({
 }));
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
+    i18n: { resolvedLanguage: mockLocale, language: mockLocale },
     t: (key: string) =>
       ((
         {
@@ -193,6 +195,7 @@ const operationLog = (
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockLocale = 'en';
   mockCopy.mockResolvedValue(undefined);
   Object.defineProperty(navigator, 'clipboard', {
     configurable: true,
@@ -1154,5 +1157,48 @@ it.each(['account', 'endpoint', 'hash', 'unmount'])(
       expect(screen.getByTestId('header').textContent).toBe(
         `${change === 'account' ? 'Received' : 'Sent'}|7|Replacement pending`
       );
+  }
+);
+
+it.each(['de', 'fr'])(
+  'reformats a retained Timestamp in %s without re-reading or changing the transaction',
+  async (locale) => {
+    const timestamp = 1700000000;
+    const hash = `date-locale-${locale}`;
+    const transaction = fullTx(hash, { timestamp });
+    mockHistory = [transaction];
+    mockEmitter.mockResolvedValue(transaction);
+    const view = render(
+      <EvmTransactionDetailsEnhanced hash={hash} tx={transaction} />
+    );
+    await screen.findByText(
+      `Timestamp:${new Date(timestamp * 1000).toLocaleString('en')}|`
+    );
+    await act(async () => Promise.resolve());
+    const reads = mockEmitter.mock.calls.length;
+
+    mockLocale = locale;
+    view.rerender(
+      <EvmTransactionDetailsEnhanced hash={hash} tx={transaction} />
+    );
+    expect(
+      screen.getByText(
+        `Timestamp:${new Date(timestamp * 1000).toLocaleString(locale)}|`
+      )
+    ).toBeTruthy();
+    expect(mockEmitter).toHaveBeenCalledTimes(reads);
+    expect(mockHistory[0]).toBe(transaction);
+    expect(transaction.timestamp).toBe(timestamp);
+
+    mockLocale = 'en';
+    view.rerender(
+      <EvmTransactionDetailsEnhanced hash={hash} tx={transaction} />
+    );
+    expect(
+      screen.getByText(
+        `Timestamp:${new Date(timestamp * 1000).toLocaleString('en')}|`
+      )
+    ).toBeTruthy();
+    expect(mockEmitter).toHaveBeenCalledTimes(reads);
   }
 );

@@ -7,6 +7,7 @@ import React from 'react';
 import { I18nextProvider, initReactI18next } from 'react-i18next';
 import { MemoryRouter } from 'react-router-dom';
 
+import { readRenderedWhiteSpace } from '../../../tests/helpers/renderedWhiteSpace';
 import de from 'assets/locales/de.json';
 import en from 'assets/locales/en.json';
 import fr from 'assets/locales/fr.json';
@@ -201,3 +202,47 @@ describe.each(['en', 'de', 'fr'] as const)(
     );
   }
 );
+
+it('renders personal-sign paragraph boundaries and repeated spaces without changing copied or requested bytes', async () => {
+  const message = 'LINE-A\n\nLINE-B   GAP\nLINE-C';
+  const request = {
+    host: 'https://public-copy.example',
+    eventName: 'personal_sign',
+    0: message,
+    1: ADDRESS,
+  };
+  const serialized = JSON.stringify(request);
+  const stateBefore = JSON.stringify(mockState);
+  const instance = createInstance();
+  await instance.use(initReactI18next).init({
+    initImmediate: false,
+    lng: 'en',
+    fallbackLng: 'en',
+    react: { useSuspense: false },
+    resources: { en: { translation: en } },
+  });
+  const user = userEvent.setup();
+  const writeText = jest.spyOn(navigator.clipboard, 'writeText');
+  const { container } = render(
+    <I18nextProvider i18n={instance}>
+      <MemoryRouter
+        initialEntries={[
+          `/external/eth-sign?data=${encodeURIComponent(serialized)}`,
+        ]}
+      >
+        <EthSign />
+      </MemoryRouter>
+    </I18nextProvider>
+  );
+  await screen.findByRole('heading', { name: en.send.signPersonalMessage });
+  const paragraph =
+    container.querySelector<HTMLParagraphElement>('p.font-mono')!;
+  expect(paragraph.textContent).toBe(message);
+  expect(await readRenderedWhiteSpace(paragraph)).toBe('pre-wrap');
+  const copy = screen.getByRole('img', { name: 'copy' }).closest('button')!;
+  await user.click(copy);
+  await waitFor(() => expect(writeText).toHaveBeenCalledWith(message));
+  expect(await navigator.clipboard.readText()).toBe(message);
+  expect(JSON.stringify(request)).toBe(serialized);
+  expect(JSON.stringify(mockState)).toBe(stateBefore);
+});

@@ -1323,7 +1323,7 @@ const EthSign: React.FC<ISign> = () => {
                     </IconButton>
                   </div>
                   <div className="max-h-24 overflow-auto">
-                    <p className="text-sm text-white font-mono break-all">
+                    <p className="text-sm text-white font-mono whitespace-pre-wrap break-all">
                       {message}
                     </p>
                   </div>

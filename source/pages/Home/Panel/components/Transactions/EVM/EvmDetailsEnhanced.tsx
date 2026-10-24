@@ -270,7 +270,7 @@ export const EvmTransactionDetailsEnhanced = ({
   );
 
   const { alert } = useUtils();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
 
   const { getTxStatusIcons, getTxType } = useTransactionsListConfig();
 
@@ -798,7 +798,9 @@ export const EvmTransactionDetailsEnhanced = ({
           : 'text-brand-redDark';
       } else if (key === 'timestamp') {
         formattedValue.value = finalValue
-          ? new Date(Number(finalValue) * 1000).toLocaleString()
+          ? new Date(Number(finalValue) * 1000).toLocaleString(
+              i18n?.resolvedLanguage || i18n?.language
+            )
           : 'N/A';
       } else if (key === 'method' && finalValue) {
         // Apply translation for method names

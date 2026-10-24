@@ -1,0 +1,336 @@
+import { expect, test, type Page } from '@playwright/test';
+import http from 'http';
+import path from 'path';
+
+import en from '../../source/assets/locales/en.json';
+import { E2E_CONFIG } from '../harness/config';
+import { dismissRejectedApproval } from '../harness/dismissRejectedApproval';
+import {
+  createIsolatedVaultFixture,
+  installIsolatedVaultRoutes,
+} from '../harness/isolatedVaultFixture';
+import { PaliWallet } from '../harness/pali';
+import {
+  approve,
+  extensionEvidence,
+  popupFor,
+  rpcObservation,
+  settle,
+  startRequest,
+} from '../harness/testDappConformance';
+import {
+  startUtxoFixtureServer,
+  UTXO_FIXTURE_SEED,
+} from '../harness/utxoFixture';
+
+// Normal provider requests preserve origin identity and readable layout.
+test.use({ trace: 'off', video: 'off', screenshot: 'off' });
+const LONG_ORIGIN = `https://${'account-review-'.repeat(
+  4
+)}qa.synthetic.invalid`;
+const UNBROKEN_ORIGIN = `https://${'a'.repeat(63)}.synthetic.invalid`;
+
+test('account-switch approval keeps complete origins and an uncompressed warning icon', async ({}, info) => {
+  test.setTimeout(120_000);
+  expect(info.config.workers).toBe(1);
+  expect(info.retry).toBe(0);
+  expect(process.env.PALI_TEST_DAPP_REVISION).toMatch(/^[a-f0-9]{40}$/);
+  expect(path.isAbsolute(E2E_CONFIG.extensionPath)).toBe(true);
+  expect(E2E_CONFIG.extensionPath).toBe(
+    process.env.PALI_TEST_DAPP_EXTENSION_PATH
+  );
+  const runtime = extensionEvidence();
+  expect(runtime.sourceRevision).toBe(process.env.PALI_TEST_DAPP_REVISION);
+  expect(
+    new URL(LONG_ORIGIN).hostname
+      .split('.')
+      .every((label) => label.length <= 63)
+  ).toBe(true);
+  const previous = { ...E2E_CONFIG };
+  const server = await startUtxoFixtureServer();
+  Object.assign(E2E_CONFIG, {
+    seedPhrase: UTXO_FIXTURE_SEED,
+    password: 'OriginObservationSynthetic!2026',
+    rpcUrl: server.url,
+  });
+  let wallet: PaliWallet | undefined;
+  let status: 'passed' | 'failed' = 'failed';
+  let routes:
+    | Awaited<ReturnType<typeof installIsolatedVaultRoutes>>
+    | undefined;
+  const records: unknown[] = [];
+  const pageErrors: string[] = [];
+  const forbiddenWrites: string[] = [];
+  const publicSelection = async () =>
+    wallet!.page.evaluate(async () => {
+      const state = await chrome.runtime.sendMessage({
+        type: 'getCurrentState',
+      });
+      const ref = state.vault.activeAccount;
+      const account = state.vault.accounts[ref.type][ref.id];
+      return {
+        active: { id: account.id, type: ref.type, address: account.address },
+        network: {
+          kind: state.vault.activeNetwork.kind,
+          chainId: state.vault.activeNetwork.chainId,
+        },
+        switching: state.vaultGlobal.isSwitchingAccount,
+        accounts: Object.values(state.vault.accounts.HDAccount).map(
+          (row: any) => ({
+            id: row.id,
+            address: row.address,
+            label: row.label,
+          })
+        ),
+      };
+    });
+  const select = async (id: number) => {
+    await wallet!.ensureOnHome();
+    const state = await publicSelection();
+    const account = state.accounts.find((row) => row.id === id)!;
+    if (state.active.id !== id) {
+      await wallet!.page
+        .locator('#general-settings-button')
+        .locator('..')
+        .click();
+      await wallet!.page
+        .getByRole('menuitem', {
+          name: `${account.label} (${account.address})`,
+          exact: true,
+        })
+        .click();
+    }
+    await expect.poll(publicSelection).toMatchObject({
+      active: { id, address: account.address },
+      switching: false,
+    });
+    return account;
+  };
+  try {
+    wallet = await PaliWallet.launch('account-origin-observation', {
+      offlineHttpProxy: server.url,
+      recordVideo: false,
+      viewport: { width: 400, height: 620 },
+    });
+    const listen = (page: Page) =>
+      page.on('pageerror', (error) => pageErrors.push(error.message));
+    wallet.context.pages().forEach(listen);
+    wallet.context.on('page', listen);
+    routes = await installIsolatedVaultRoutes(
+      wallet.context,
+      createIsolatedVaultFixture(),
+      server.url
+    );
+    // The same public inert fixture document is served under a long origin.
+    // This exact loopback GET neither enters the browser nor weakens its proxy.
+    const documentBody = await new Promise<string>((resolve, reject) => {
+      const request = http.get(`${server.url}/`, (response) => {
+        if (
+          response.statusCode !== 200 ||
+          !response.headers['content-type']?.includes('text/html')
+        ) {
+          response.resume();
+          reject(new Error('Local inert fixture document unavailable'));
+          return;
+        }
+        const chunks: Buffer[] = [];
+        response.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
+        response.on('end', () =>
+          resolve(Buffer.concat(chunks).toString('utf8'))
+        );
+        response.on('error', reject);
+      });
+      request.on('error', reject);
+    });
+    for (const origin of [LONG_ORIGIN, UNBROKEN_ORIGIN]) {
+      await wallet.context.route(`${origin}/`, async (route) => {
+        expect(route.request().method()).toBe('GET');
+        await route.fulfill({
+          status: 200,
+          contentType: 'text/html',
+          body: documentBody,
+        });
+      });
+    }
+    await wallet.context.route('**/*', async (route) => {
+      const request = route.request();
+      let payload: any;
+      try {
+        payload = request.postDataJSON();
+      } catch {
+        /* Exact document and read-only GETs use lower fences. */
+      }
+      const calls = Array.isArray(payload) ? payload : [payload];
+      if (
+        /\/sendtx(?:\/|$)/i.test(request.url()) ||
+        calls.some((call) =>
+          /^(?:eth_send|eth_sign|personal_|wallet_send|sys_sign|sendrawtransaction)/i.test(
+            call?.method || ''
+          )
+        )
+      ) {
+        forbiddenWrites.push(request.url());
+        return route.abort('blockedbyclient');
+      }
+      return route.fallback();
+    });
+    await wallet.step(
+      'onboard and create two real disposable EVM accounts',
+      async () => {
+        await wallet!.importSeedAndCreatePassword();
+        await wallet!.switchNetwork('Syscoin NEVM Testnet', 'EVM');
+        await wallet!.ensureOnHome();
+        await wallet!.gotoRoute('#/settings/account/new');
+        await wallet!.page
+          .locator('#account-name-input')
+          .fill('Other origin-review account');
+        await wallet!.page.locator('#create-btn').click();
+        await wallet!.page
+          .getByRole('button', { name: en.buttons.ok, exact: true })
+          .click();
+        await expect
+          .poll(publicSelection)
+          .toMatchObject({ active: { id: 1 }, switching: false });
+      }
+    );
+    for (const [kind, origin] of [
+      ['short', server.url],
+      ['long', LONG_ORIGIN],
+      ['unbroken', UNBROKEN_ORIGIN],
+    ] as const) {
+      const required = await select(0);
+      const dapp = await wallet.context.newPage();
+      await dapp.goto(`${origin}/`);
+      await dapp.waitForFunction(() => Boolean((window as any).pali?.request));
+      await wallet.step(
+        `${kind} origin connects the real provider to account zero`,
+        async (capture) => {
+          const id = await startRequest(dapp, 'eth_requestAccounts');
+          const result = await approve(wallet!.context, dapp, id, capture);
+          expect(result.error).toBeUndefined();
+          expect(
+            result.result.map((value: string) => value.toLowerCase())
+          ).toEqual([required.address.toLowerCase()]);
+        }
+      );
+      await select(1);
+      const original = await publicSelection();
+      await wallet.step(
+        `${kind} origin reviews its normal required-account request and cancels`,
+        async () => {
+          const id = await startRequest(dapp, 'personal_sign', [
+            '0x6f726967696e2d726576696577',
+            required.address,
+          ]);
+          const popup = await popupFor(wallet!.context, dapp, id);
+          expect(new URL(popup.url()).pathname).toBe(
+            '/external/change-active-connected-account'
+          );
+          const data = JSON.parse(
+            new URL(popup.url()).searchParams.get('data')!
+          );
+          expect(data.host).toBe(new URL(dapp.url()).origin);
+          expect(data.connectedAccount.address.toLowerCase()).toBe(
+            required.address.toLowerCase()
+          );
+          expect((await rpcObservation(dapp, id)).settled).not.toBe(true);
+          const host = popup.getByText(origin, { exact: true });
+          await expect(host).toBeVisible();
+          for (const viewport of [
+            { width: 400, height: 620 },
+            { width: 320, height: 360 },
+          ]) {
+            await popup.setViewportSize(viewport);
+            await popup.mouse.move(viewport.width / 2, 100);
+            await popup.mouse.wheel(0, -1200);
+            // Let native wheel/layout delivery complete; do not alter layout or focus.
+            await host.evaluate(async () => {
+              await new Promise<void>((resolve) =>
+                requestAnimationFrame(() => resolve())
+              );
+              await new Promise<void>((resolve) =>
+                requestAnimationFrame(() => resolve())
+              );
+            });
+            const observation = await host.evaluate((element) => {
+              const rect = (box: DOMRect) => ({
+                x: box.x,
+                y: box.y,
+                width: box.width,
+                height: box.height,
+                right: box.right,
+                bottom: box.bottom,
+              });
+              const range = document.createRange();
+              range.selectNodeContents(element);
+              const lines = [...range.getClientRects()].map(rect);
+              const icon = element.parentElement!.firstElementChild!;
+              return {
+                text: element.textContent,
+                viewport: { width: innerWidth, height: innerHeight },
+                host: rect(element.getBoundingClientRect()),
+                icon: rect(icon.getBoundingClientRect()),
+                lines,
+                allTextInsideViewport: lines.every(
+                  (line) => line.x >= 0 && line.right <= innerWidth
+                ),
+                documentWidth: document.documentElement.scrollWidth,
+              };
+            });
+            records.push({ kind, origin, ...observation });
+            await info.attach(`account-origin-${kind}-${viewport.width}`, {
+              body: await popup.screenshot({ animations: 'disabled' }),
+              contentType: 'image/png',
+            });
+            expect(observation.allTextInsideViewport).toBe(true);
+            expect(observation.icon.width).toBe(32);
+            expect(observation.icon.height).toBe(32);
+            expect((await rpcObservation(dapp, id)).settled).not.toBe(true);
+            expect(await publicSelection()).toEqual(original);
+          }
+          const result = await dismissRejectedApproval({
+            click: () =>
+              popup
+                .getByRole('button', { name: en.buttons.cancel, exact: true })
+                .click(),
+            isClosed: () => popup.isClosed(),
+            settle: () => settle(dapp, id),
+          });
+          expect(result.error?.code).toBe(4100);
+          expect(result.result).toBeUndefined();
+          expect(await publicSelection()).toEqual(original);
+        }
+      );
+      await dapp.close();
+    }
+    expect(routes.deniedWrites).toEqual([]);
+    expect(forbiddenWrites).toEqual([]);
+    expect(pageErrors).toEqual([]);
+    status = 'passed';
+  } finally {
+    await info.attach('account-origin-observation-evidence', {
+      body: JSON.stringify({
+        runtime,
+        status,
+
+        controllerStateReplaced: false,
+        controllerResultsReplaced: false,
+        directPopupRoute: false,
+        records,
+        deniedWrites: routes?.deniedWrites,
+        forbiddenWrites,
+        pageErrors,
+      }),
+      contentType: 'application/json',
+    });
+    try {
+      await wallet?.dispose(status);
+    } finally {
+      try {
+        await server.close();
+      } finally {
+        Object.assign(E2E_CONFIG, previous);
+      }
+    }
+  }
+});
