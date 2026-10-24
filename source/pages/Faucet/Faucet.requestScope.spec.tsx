@@ -821,3 +821,71 @@ it('does not revive success when two account patches arrive in one React batch',
   expect(screen.getByRole('button', { name: 'Request Now' })).toBeTruthy();
   expect(mockAlarms).not.toHaveBeenCalled();
 });
+
+it.each([
+  ['generated', 'Account 1'],
+  ['renamed', 'Family savings — travel and rainy-day fund 2026'],
+])(
+  'keeps %s account identity in an intrinsic-height request card without requesting funds',
+  async (_state, label) => {
+    const user = userEvent.setup();
+    const preloaded = initialState();
+    preloaded.vault.accounts.HDAccount[0].label = label;
+    mockStore = makeStore(preloaded);
+    const accountsBefore = mockStore.getState().vault.accounts;
+    const networkBefore = mockStore.getState().vault.activeNetwork;
+    await mount();
+
+    // JSDOM checks the intrinsic layout contract, not painted pixel geometry.
+    // The paired normal-UI screenshots qualify actual wrapping and clearance.
+    const heading = screen.getByRole('heading', { name: label, level: 1 });
+    const column = heading.parentElement!;
+    const card = column.parentElement!;
+    for (const className of [
+      'w-[352px]',
+      'max-w-full',
+      'min-h-[70px]',
+      'px-4',
+      'py-2',
+      'items-center',
+    ])
+      expect(card.classList.contains(className)).toBe(true);
+    expect(card.classList.contains('h-[70px]')).toBe(false);
+    expect(card.classList.contains('p-4')).toBe(false);
+    for (const className of ['flex', 'min-w-0', 'flex-1', 'flex-col'])
+      expect(column.classList.contains(className)).toBe(true);
+    for (const className of [
+      'text-white',
+      'text-base',
+      'font-medium',
+      '[overflow-wrap:anywhere]',
+    ])
+      expect(heading.classList.contains(className)).toBe(true);
+    expect(heading.textContent).toBe(label);
+    const address = screen.getByText(`${A.slice(0, 8)}...${A.slice(-8)}`);
+    expect(address.parentElement).toBe(column);
+    expect(address.classList.contains('text-xs')).toBe(true);
+    const identicon = card.querySelector('.add-identicon')!;
+    for (const className of ['ml-1', 'mr-2', 'shrink-0'])
+      expect(identicon.classList.contains(className)).toBe(true);
+    expect(identicon.classList.contains('my-2')).toBe(false);
+    const svg = identicon.querySelector('svg')!;
+    expect(svg.getAttribute('width')).toBe('50');
+    expect(svg.getAttribute('height')).toBe('50');
+    const requestButton = screen.getByRole('button', { name: 'Request Now' });
+    expect((requestButton as HTMLButtonElement).disabled).toBe(false);
+    expect(axios.get).not.toHaveBeenCalled();
+
+    const close = screen.getByRole('button', { name: 'Close' });
+    for (let i = 0; i < 20 && document.activeElement !== close; i++)
+      await user.tab();
+    expect(document.activeElement).toBe(close);
+    await user.keyboard('{Enter}');
+    expect(screen.getByText('Home after normal Close')).toBeTruthy();
+    expect(mockStore.getState().vault.accounts).toEqual(accountsBefore);
+    expect(mockStore.getState().vault.activeNetwork).toEqual(networkBefore);
+    expect(axios.get).not.toHaveBeenCalled();
+    expect(mockCopy).not.toHaveBeenCalled();
+    expect(mockAlarms).not.toHaveBeenCalled();
+  }
+);
