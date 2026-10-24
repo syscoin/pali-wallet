@@ -1021,7 +1021,11 @@ export const ImportToken: React.FC = () => {
                     />
                   ) : (
                     <CloseCircleOutlined
-                      className="text-warning-error text-sm"
+                      className={
+                        tokenIdFormatValid
+                          ? 'text-warning-error text-sm'
+                          : 'text-red-400 text-sm'
+                      }
                       title={t(
                         tokenIdFormatValid
                           ? 'send.unableToLoad'
@@ -1046,7 +1050,13 @@ export const ImportToken: React.FC = () => {
                         {t('receive.retry')}
                       </button>
                     </div>
-                  )
+                  ),
+                !tokenIdValidationPending &&
+                  verifiedTokenBalance === -1 &&
+                  !tokenIdFormatValid &&
+                  Boolean(customTokenId.trim())
+                  ? { invalid: true, message: t('send.invalidTokenId') }
+                  : undefined
               )}
             {customTokenDetails?.tokenStandard === 'ERC-1155' &&
               customTokenId &&
