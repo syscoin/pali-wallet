@@ -9,7 +9,7 @@ import { Provider } from 'react-redux';
 import EvmAssetsController from 'scripts/Background/controllers/assets/evm';
 import MainController from 'scripts/Background/controllers/MainController';
 import { CancellablePromises } from 'scripts/Background/controllers/promises/cancellablesPromises';
-import price from 'state/price';
+import price, { setPrices } from 'state/price';
 import vault from 'state/vault';
 import vaultGlobal from 'state/vaultGlobal';
 import { INetworkType, KeyringAccountType } from 'types/network';
@@ -236,15 +236,65 @@ it('preserves a finite negative quote sign along with fiat units', async () => {
   expect(fiat()).toBe('$-125K USD');
 });
 
-it('keeps missing-price fallback explicitly denominated', async () => {
+it('marks a missing price unavailable without changing the native balance', async () => {
   delete quotes.usd;
   const { fiat } = await show('1000000', 'usd');
-  expect(mockStore.getState().price.fiat.price).toBe(0);
-  expect(fiat()).toBe('$0 USD');
+  expect(mockStore.getState().price.fiat).toMatchObject({
+    price: 0,
+    available: false,
+  });
+  expect(fiat()).toBe('settings.unavailable');
+  expect(document.querySelector('#home-balance')?.textContent).toBe('1M');
 });
 
 it('retains a cryptocurrency unit when the converted amount is small', async () => {
   quotes.btc = 0.000001;
   const { fiat } = await show('1000000', 'btc');
   expect(fiat()).toBe('₿1 BTC');
+});
+
+it('recovers a missing quote to a genuine zero quote on the same Home', async () => {
+  delete quotes.usd;
+  const { fiat, view } = await show('2', 'usd');
+  expect(fiat()).toBe('settings.unavailable');
+  const native = view.container.querySelector('#home-balance');
+  expect(native?.textContent).toBe('2');
+  quotes.usd = 0;
+  await act(async () => wallet.setFiat());
+  expect(mockStore.getState().price.fiat).toMatchObject({
+    available: true,
+    price: 0,
+  });
+  expect(fiat()).toBe('$0 USD');
+  expect(view.container.querySelector('#home-balance')).toBe(native);
+  expect(native?.textContent).toBe('2');
+});
+
+it('hides an unavailable quote and its stale 24-hour change while preserving native funds', async () => {
+  const { fiat, view } = await show('2', 'usd');
+  await act(async () =>
+    mockStore.dispatch(
+      setPrices({
+        asset: 'usd',
+        price: 0.125,
+        available: false,
+        priceChange24h: 99,
+      })
+    )
+  );
+  expect(fiat()).toBe('settings.unavailable');
+  expect(view.container.textContent).not.toContain('99.00% (24h)');
+  expect(view.container.querySelector('#home-balance')?.textContent).toBe('2');
+  await act(async () =>
+    mockStore.dispatch(
+      setPrices({
+        asset: 'usd',
+        price: -1,
+        available: true,
+        priceChange24h: -1,
+      })
+    )
+  );
+  expect(fiat()).toBe('$-2 USD');
+  expect(view.container.textContent).toContain('-1.00% (24h)');
 });

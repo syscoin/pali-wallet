@@ -5,6 +5,8 @@ import React from 'react';
 
 import { Fee } from './Fee';
 
+let mockFiatAvailable = true;
+const mockGetFiatAmount = jest.fn<string, [number, number?, string?]>(() => '');
 let mockValidate: (_: unknown, value: unknown) => Promise<void>;
 const mockState = {
   vault: { isBitcoinBased: true, activeNetwork: { currency: 'SYS' } },
@@ -19,7 +21,10 @@ jest.mock('react-i18next', () => ({
   useTranslation: () => ({ t: mockTranslation }),
 }));
 jest.mock('hooks/index', () => ({
-  usePrice: () => ({ getFiatAmount: () => '' }),
+  usePrice: () => ({
+    getFiatAmount: mockGetFiatAmount,
+    isFiatAvailable: mockFiatAvailable,
+  }),
 }));
 jest.mock('..', () => ({
   Icon: () => null,
@@ -50,6 +55,8 @@ describe('fee-rate submission validity', () => {
 
   beforeEach(() => {
     mockState.vault.isBitcoinBased = true;
+    mockFiatAvailable = true;
+    mockGetFiatAmount.mockReset().mockReturnValue('');
     form.validateFields.mockReset().mockResolvedValue(undefined);
     mockTranslation.mockClear();
   });
@@ -135,5 +142,26 @@ describe('fee-rate submission validity', () => {
     await Promise.resolve();
     expect(onFeeChange).not.toHaveBeenCalled();
     expect(form.validateFields).toHaveBeenCalledWith(['fee']);
+  });
+  it('suppresses an unavailable fiat estimate while retaining the exact fee and validation', async () => {
+    mockFiatAvailable = false;
+    mockGetFiatAmount.mockReturnValue('0 USD');
+    const view = render(<Fee disabled={false} form={form} />);
+    expect(screen.queryByText(/0 USD/)).toBeNull();
+    expect(mockGetFiatAmount).not.toHaveBeenCalled();
+    expect((screen.getByRole('spinbutton') as HTMLInputElement).value).toBe(
+      '0.00000001'
+    );
+    await expect(mockValidate(undefined, '0.00005')).rejects.toBe('');
+    mockFiatAvailable = true;
+    view.rerender(<Fee disabled={false} form={form} />);
+    expect(screen.getByText(/0 USD/)).toBeTruthy();
+    expect(mockGetFiatAmount.mock.calls[0][0]).toBeCloseTo(0.000003, 12);
+    mockGetFiatAmount.mockReturnValue('-0.1 USD');
+    view.rerender(<Fee disabled={false} form={form} />);
+    expect(screen.getByText(/-0.1 USD/)).toBeTruthy();
+    expect((screen.getByRole('spinbutton') as HTMLInputElement).value).toBe(
+      '0.00000001'
+    );
   });
 });

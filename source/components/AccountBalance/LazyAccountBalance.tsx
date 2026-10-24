@@ -47,7 +47,7 @@ export const LazyAccountBalance: React.FC<ILazyAccountBalanceProps> = ({
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
-  const { getFiatAmount } = usePrice();
+  const { getFiatAmount, isFiatAvailable } = usePrice();
 
   const [balance, setBalance] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -260,7 +260,9 @@ export const LazyAccountBalance: React.FC<ILazyAccountBalanceProps> = ({
 
   // Calculate fiat value
   const fiatValue =
-    showFiat && nativeBalance >= 0 ? getFiatAmount(nativeBalance, 4) : '$0.00';
+    showFiat && nativeBalance >= 0 && isFiatAvailable
+      ? getFiatAmount(nativeBalance, 4)
+      : '--';
 
   const hasFreshBalance = Boolean(freshBalanceEntry);
 

@@ -34,7 +34,8 @@ function prepare(
   balance: string,
   currency: string,
   quote: number,
-  showFiat = true
+  showFiat = true,
+  available = true
 ) {
   const store = configureStore({ reducer: { vault, price } });
   store.dispatch(setNetworkChange({ activeNetwork: network }));
@@ -47,7 +48,7 @@ function prepare(
       updatedAt: Date.now(),
     })
   );
-  store.dispatch(setPrices({ asset: currency, price: quote }));
+  store.dispatch(setPrices({ asset: currency, price: quote, available }));
   const AccountRow = () => {
     const account = useSelector(
       (state: ReturnType<typeof store.getState>) =>
@@ -105,10 +106,14 @@ it('updates the fiat unit on the same mounted zero-balance row', async () => {
   const store = prepare('0', 'usd', 3);
   const row = await screen.findByTestId('account-row');
   await screen.findByText('0 ETH');
-  act(() => store.dispatch(setPrices({ asset: 'eur', price: 2 })));
+  act(() =>
+    store.dispatch(setPrices({ asset: 'eur', price: 2, available: true }))
+  );
   expect(screen.getByTestId('account-row')).toBe(row);
   expect(within(row).getByText('0 EUR')).toBeVisible();
-  act(() => store.dispatch(setPrices({ asset: 'jpy', price: 150 })));
+  act(() =>
+    store.dispatch(setPrices({ asset: 'jpy', price: 150, available: true }))
+  );
   expect(within(row).getByText('0 JPY')).toBeVisible();
 });
 
@@ -118,4 +123,26 @@ it('keeps fiat hidden when the caller requests only native balance', async () =>
   expect(screen.getByTestId('account-row').querySelectorAll('p')).toHaveLength(
     1
   );
+});
+
+it('keeps known native funds while its quote moves through missing, valid zero and positive states', async () => {
+  const store = prepare('2.5', 'eur', 0, true, false);
+  const row = await screen.findByTestId('account-row');
+  await screen.findByText('2.5 ETH');
+  expect(within(row).getByText('--')).toBeVisible();
+  expect(within(row).queryByText('0 EUR')).toBeNull();
+  act(() =>
+    store.dispatch(setPrices({ asset: 'eur', price: 0, available: true }))
+  );
+  expect(within(row).getByText('0 EUR')).toBeVisible();
+  act(() =>
+    store.dispatch(setPrices({ asset: 'eur', price: 2, available: true }))
+  );
+  expect(within(row).getByText('5 EUR')).toBeVisible();
+  act(() =>
+    store.dispatch(setPrices({ asset: 'eur', price: -2, available: true }))
+  );
+  expect(within(row).getByText('-5 EUR')).toBeVisible();
+  expect(within(row).getByText('2.5 ETH')).toBeVisible();
+  expect(screen.getByTestId('account-row')).toBe(row);
 });

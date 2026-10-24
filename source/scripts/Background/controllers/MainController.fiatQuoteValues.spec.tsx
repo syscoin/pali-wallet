@@ -2,11 +2,18 @@
 import '@testing-library/jest-dom';
 import { combineReducers, configureStore } from '@reduxjs/toolkit';
 import { retryableFetch } from '@sidhujag/sysweb3-network';
-import { act, cleanup, render, screen } from '@testing-library/react';
+import {
+  act,
+  cleanup,
+  render,
+  renderHook,
+  screen,
+} from '@testing-library/react';
 import React from 'react';
 import { Provider, useSelector } from 'react-redux';
 
 import { LazyAccountBalance } from 'components/AccountBalance/LazyAccountBalance';
+import { usePrice } from 'hooks/usePrice';
 import price from 'state/price';
 import vault, { setAccountBalanceForNetwork } from 'state/vault';
 import vaultGlobal from 'state/vaultGlobal';
@@ -188,35 +195,52 @@ afterEach(() => {
 });
 
 const cases = [
-  ['ordinary quote', '13', 13, '26 EUR'],
-  ['real zero', '0', 0, '0 EUR'],
-  ['finite negative quote', '-13', -13, '-26 EUR'],
-  ['positive wire overflow', '9e9999', 0, '0 EUR'],
-  ['negative wire overflow', '-9e9999', 0, '0 EUR'],
-  ['finite multiplication overflow', '1e308', 1e308, '0 EUR'],
-  ['nonnumeric string', '"unavailable"', 0, '0 EUR'],
-  ['numeric string', '"13"', 0, '0 EUR'],
-  ['null', 'null', 0, '0 EUR'],
-  ['boolean', 'true', 0, '0 EUR'],
-  ['array', '[13]', 0, '0 EUR'],
-  ['object', '{"value":13}', 0, '0 EUR'],
+  ['ordinary quote', '13', 13, '26 EUR', true],
+  ['real zero', '0', 0, '0 EUR', true],
+  ['finite negative quote', '-13', -13, '-26 EUR', true],
+  ['positive wire overflow', '9e9999', 0, '0 EUR', false],
+  ['negative wire overflow', '-9e9999', 0, '0 EUR', false],
+  ['finite multiplication overflow', '1e308', 1e308, '0 EUR', true],
+  ['nonnumeric string', '"unavailable"', 0, '0 EUR', false],
+  ['numeric string', '"13"', 0, '0 EUR', false],
+  ['null', 'null', 0, '0 EUR', false],
+  ['boolean', 'true', 0, '0 EUR', false],
+  ['array', '[13]', 0, '0 EUR', false],
+  ['object', '{"value":13}', 0, '0 EUR', false],
 ] as const;
 
 describe.each([INetworkType.Ethereum, INetworkType.Syscoin])(
   '%s fiat quote values through the real reader, controller and balance row',
   (kind) => {
-    it.each(cases)('handles %s', async (_name, wire, quote, expected) => {
-      const { wallet } = prepare(kind, wire);
-      await wallet.setFiat('eur');
-      expect(mockStore.getState().price.fiat).toMatchObject({
-        asset: 'eur',
-        price: quote,
-      });
-      expect(Number.isFinite(mockStore.getState().price.fiat.price)).toBe(true);
-      showBalance();
-      expect(screen.queryByText('Quote crashed balance display')).toBeNull();
-      expect(await screen.findByText(expected)).toBeVisible();
-    });
+    it.each(cases)(
+      'handles %s',
+      async (_name, wire, quote, expected, available) => {
+        const { wallet } = prepare(kind, wire);
+        await wallet.setFiat('eur');
+        expect(mockStore.getState().price.fiat).toMatchObject({
+          asset: 'eur',
+          available,
+          price: quote,
+        });
+        expect(Number.isFinite(mockStore.getState().price.fiat.price)).toBe(
+          true
+        );
+        showBalance();
+        expect(screen.queryByText('Quote crashed balance display')).toBeNull();
+        const format = renderHook(() => usePrice(), {
+          wrapper: ({ children }: React.PropsWithChildren) => (
+            <Provider store={mockStore}>{children}</Provider>
+          ),
+        });
+        // Preserve the formatter's numerical contract, even when UI hides a
+        // quote that was never received. Zero and negative quotes remain valid.
+        expect(format.result.current.getFiatAmount(2, 4, 'EUR')).toBe(expected);
+        expect(format.result.current.isFiatAvailable).toBe(available);
+        expect(
+          await screen.findByText(available ? expected : '--')
+        ).toBeVisible();
+      }
+    );
 
     it.each([
       '9e9999',
@@ -234,11 +258,13 @@ describe.each([INetworkType.Ethereum, INetworkType.Syscoin])(
         await wallet.setFiat('eur');
         expect(mockStore.getState().price.fiat.price).toBe(0);
         showBalance();
-        expect(await screen.findByText('0 EUR')).toBeVisible();
+        expect(mockStore.getState().price.fiat.available).toBe(false);
+        expect(await screen.findByText('--')).toBeVisible();
         setWireValue('13');
         await act(async () => wallet.setFiat('eur'));
         expect(retryableFetch).toHaveBeenCalledTimes(2);
         expect(mockStore.getState().price.fiat.price).toBe(13);
+        expect(mockStore.getState().price.fiat.available).toBe(true);
         expect(screen.queryByText('Quote crashed balance display')).toBeNull();
         expect(await screen.findByText('26 EUR')).toBeVisible();
       }
@@ -249,9 +275,11 @@ describe.each([INetworkType.Ethereum, INetworkType.Syscoin])(
       jest.spyOn(Date, 'now').mockImplementation(() => now);
       const { read, setWireValue } = prepare(kind, '13');
       expect((await read()).price).toBe(13);
+      expect((await read()).available).toBe(true);
       setWireValue('17');
       now += 299999;
       expect((await read()).price).toBe(13);
+      expect((await read()).available).toBe(true);
       expect(retryableFetch).toHaveBeenCalledTimes(1);
       now += 1;
       expect((await read()).price).toBe(17);
@@ -261,6 +289,7 @@ describe.each([INetworkType.Ethereum, INetworkType.Syscoin])(
     it('retains optional price-change metadata on a valid quote', async () => {
       const { read } = prepare(kind, '13');
       expect(await read()).toEqual({
+        available: true,
         price: 13,
         priceChange24h: kind === INetworkType.Ethereum ? -0.5 : undefined,
       });
@@ -268,7 +297,9 @@ describe.each([INetworkType.Ethereum, INetworkType.Syscoin])(
 
     it('preserves the existing zero-quote caching policy', async () => {
       const { read, setWireValue } = prepare(kind, '0');
-      expect((await read()).price).toBe(0);
+      const zeroQuote = await read();
+      expect(zeroQuote.price).toBe(0);
+      expect(zeroQuote.available).toBe(true);
       setWireValue('13');
       expect((await read()).price).toBe(
         kind === INetworkType.Ethereum ? 0 : 13
@@ -277,5 +308,42 @@ describe.each([INetworkType.Ethereum, INetworkType.Syscoin])(
         kind === INetworkType.Ethereum ? 1 : 2
       );
     });
+
+    it.each(['missing rate', 'transport failure'])(
+      'marks %s unavailable without caching the failed quote',
+      async (failure) => {
+        const { wallet } = prepare(kind, '13');
+        if (failure === 'transport failure') {
+          jest
+            .mocked(retryableFetch)
+            .mockRejectedValueOnce(new Error('Synthetic quote refusal'));
+        } else {
+          jest.mocked(retryableFetch).mockResolvedValueOnce({
+            ok: true,
+            json: async () =>
+              kind === INetworkType.Ethereum
+                ? { 'synthetic-native': { usd: 4 } }
+                : { rates: { usd: 4 } },
+          } as Response);
+        }
+        await wallet.setFiat('eur');
+        expect(mockStore.getState().price.fiat).toEqual({
+          asset: 'eur',
+          available: false,
+          price: 0,
+          priceChange24h: undefined,
+        });
+        showBalance();
+        expect(await screen.findByText('--')).toBeVisible();
+        await act(async () => wallet.setFiat('eur'));
+        expect(mockStore.getState().price.fiat).toMatchObject({
+          asset: 'eur',
+          available: true,
+          price: 13,
+        });
+        expect(await screen.findByText('26 EUR')).toBeVisible();
+        expect(retryableFetch).toHaveBeenCalledTimes(2);
+      }
+    );
   }
 );

@@ -64,7 +64,7 @@ export const Fee = ({
   recommend?: number;
 }) => {
   const { t } = useTranslation();
-  const { getFiatAmount } = usePrice();
+  const { getFiatAmount, isFiatAvailable } = usePrice();
   const { isBitcoinBased, activeNetwork } = useSelector(
     (state: RootState) => state.vault
   );
@@ -157,7 +157,8 @@ export const Fee = ({
   };
 
   const getEstimatedFiatCost = (feeRate: number) => {
-    if (!isBitcoinBased || !feeRate || feeRate <= 0) return null;
+    if (!isFiatAvailable || !isBitcoinBased || !feeRate || feeRate <= 0)
+      return null;
 
     // Use typical transaction size (300 bytes) for estimate
     const typicalTxSize = 300;

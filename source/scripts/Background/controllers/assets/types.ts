@@ -149,6 +149,7 @@ export interface IEvmAssetsController {
     chainId: number,
     currency?: string
   ) => Promise<{
+    available: boolean;
     price: number;
     priceChange24h?: number;
   }>;

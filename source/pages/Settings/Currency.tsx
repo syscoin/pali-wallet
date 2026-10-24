@@ -11,12 +11,13 @@ import { usePrice, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { formatNumber } from 'utils/index';
+import { isNativeBalanceAvailable } from 'utils/nativeBalance';
 import { navigateBack } from 'utils/navigationState';
 
 const CurrencyView = () => {
   const { controllerEmitter } = useController();
   const { navigate } = useUtils();
-  const { getFiatAmount } = usePrice();
+  const { getFiatAmount, isFiatAvailable } = usePrice();
   const { t } = useTranslation();
   const location = useLocation();
   //* Selectors
@@ -128,6 +129,7 @@ const CurrencyView = () => {
     activeAccount.balances;
 
   const actualBalance = isBitcoinBased ? syscoinBalance : ethereumBalance;
+  const isBalanceAvailable = isNativeBalanceAvailable(actualBalance);
 
   //* States
   const initialCurrency = (fiat.asset || 'usd').toLowerCase();
@@ -219,6 +221,8 @@ const CurrencyView = () => {
   const hasUnsavedChanges = selectedCoin !== savedCoin;
 
   const fiatPriceValue = useMemo(() => {
+    if (!isBalanceAvailable || !isFiatAvailable)
+      return t('settings.unavailable');
     // The quote belongs to the saved currency until Save returns a new quote.
     // An unsaved selection must not relabel that amount with different units.
     const getAmount = getFiatAmount(
@@ -230,7 +234,14 @@ const CurrencyView = () => {
     );
 
     return getAmount;
-  }, [actualBalance, initialCurrency, getFiatAmount]);
+  }, [
+    actualBalance,
+    initialCurrency,
+    getFiatAmount,
+    isBalanceAvailable,
+    isFiatAvailable,
+    t,
+  ]);
 
   return (
     <>
@@ -364,45 +375,36 @@ const CurrencyView = () => {
             <span className="text-4xl transform transition-transform duration-200 group-hover:scale-110">
               {currencyFlags[initialCurrency] || '💰'}
             </span>
-            {activeNetwork.chainId === 5700 ? (
-              <div className="flex flex-col items-start min-w-0 w-full">
-                <div className="flex flex-wrap gap-x-1 items-baseline min-w-0 w-full">
-                  <p className="font-poppins text-2xl font-medium text-white truncate max-w-full">
-                    {formatNumber(Number(actualBalance) || 0)}
-                  </p>
-                  <p
-                    className="font-poppins text-sm text-brand-gray300 min-w-0 max-w-full break-all text-left"
-                    title={activeNetwork.currency?.toUpperCase() || ''}
-                  >
-                    {activeNetwork.currency
-                      ? activeNetwork.currency.toUpperCase()
-                      : ''}
-                  </p>
-                </div>
-                <p className="text-brand-gray200 text-sm mt-1 font-medium">
-                  {fiatPriceValue || '$0.00'}
+            <div className="flex flex-col items-start min-w-0 w-full">
+              <div className="flex flex-wrap gap-x-1 items-baseline min-w-0 w-full">
+                <p
+                  className={`font-poppins font-medium max-w-full ${
+                    isBalanceAvailable
+                      ? 'text-2xl text-white truncate'
+                      : 'text-sm text-brand-gray200 break-words'
+                  }`}
+                >
+                  {isBalanceAvailable
+                    ? formatNumber(
+                        activeNetwork.chainId === 5700
+                          ? Number(actualBalance) || 0
+                          : actualBalance || 0
+                      )
+                    : t('settings.unavailable')}
+                </p>
+                <p
+                  className="font-poppins text-sm text-brand-gray300 min-w-0 max-w-full break-all text-left"
+                  title={activeNetwork.currency?.toUpperCase() || ''}
+                >
+                  {activeNetwork.currency
+                    ? activeNetwork.currency.toUpperCase()
+                    : ''}
                 </p>
               </div>
-            ) : (
-              <div className="flex flex-col items-start min-w-0 w-full">
-                <div className="flex flex-wrap gap-x-1 items-baseline min-w-0 w-full">
-                  <p className="font-poppins text-2xl font-medium text-white truncate max-w-full">
-                    {formatNumber(actualBalance || 0)}
-                  </p>
-                  <p
-                    className="font-poppins text-sm text-brand-gray300 min-w-0 max-w-full break-all text-left"
-                    title={activeNetwork.currency?.toUpperCase() || ''}
-                  >
-                    {activeNetwork.currency
-                      ? activeNetwork.currency.toUpperCase()
-                      : ''}
-                  </p>
-                </div>
-                <p className="text-brand-gray200 text-sm mt-1 font-medium">
-                  {fiatPriceValue || '$0.00'}
-                </p>
-              </div>
-            )}
+              <p className="text-brand-gray200 text-sm mt-1 font-medium">
+                {fiatPriceValue || '$0.00'}
+              </p>
+            </div>
           </div>
           {hasUnsavedChanges && (
             <p className="text-xs text-brand-royalblue300 mt-3 text-center italic">

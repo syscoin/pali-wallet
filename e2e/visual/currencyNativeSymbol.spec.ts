@@ -48,6 +48,13 @@ const publicState = (page: Page) =>
       active: project(current.vault.activeNetwork),
       isBitcoinBased: current.vault.isBitcoinBased,
       quoteUnit: current.price.fiat.asset,
+      quotePrice: current.price.fiat.price,
+      quoteAvailable: current.price.fiat.available,
+      nativeBalance: String(
+        current.vault.accounts[current.vault.activeAccount.type][
+          current.vault.activeAccount.id
+        ].balances[current.vault.activeNetwork.kind]
+      ),
       savedQuoteUnit: stored.state.price.fiat.asset,
     };
   }, CHAIN_ID);
@@ -272,8 +279,30 @@ for (const { symbol, viewport } of scenarios) {
         page
           .getByText(en.components.currentBalance, { exact: true })
           .locator('..');
+      const assertUnavailableQuote = async (
+        currency: string,
+        selected = currency
+      ) => {
+        const state = await publicState(page);
+        expect(state.quoteUnit).toBe(currency);
+        expect(state.savedQuoteUnit).toBe(currency);
+        expect(state.quotePrice).toBe(0);
+        expect(state.quoteAvailable).toBe(false);
+        // These fenced routes provide no EVM market quote. The saved preference
+        // remains selected, but unavailable must not pretend to be 0 USD/EUR.
+        await expect(
+          balanceCard().locator('p.text-brand-gray200.text-sm.mt-1')
+        ).toHaveText(en.settings.unavailable);
+        await expect(
+          page.getByRole('button', {
+            name: en.settings.setYourPreferred,
+            exact: true,
+          })
+        ).toContainText(selected.toUpperCase());
+      };
       const assertNativeLayout = async (phase: 'initial' | 'reopened') => {
         const card = balanceCard();
+        expect(Number((await publicState(page)).nativeBalance)).toBe(0);
         await card.scrollIntoViewIfNeeded();
         const unit = card.getByText(symbol, { exact: true });
         await expect(unit).toBeVisible();
@@ -357,7 +386,7 @@ for (const { symbol, viewport } of scenarios) {
           await expect(
             balanceCard().getByText('TSYS', { exact: true })
           ).toBeVisible();
-          await expect(balanceCard()).toContainText('USD');
+          await assertUnavailableQuote('usd');
           const initial = await publicState(page);
           expect(initial.isBitcoinBased).toBe(true);
           expect(initial.active.currency).toBe('tsys');
@@ -428,7 +457,7 @@ for (const { symbol, viewport } of scenarios) {
           await expect(
             balanceCard().getByText('TSYS', { exact: true })
           ).toHaveCount(0);
-          await expect(balanceCard()).toContainText('USD');
+          await assertUnavailableQuote('usd');
           await assertNativeLayout('initial');
           observations.beforeFiatSave = await publicState(page);
         }
@@ -456,7 +485,7 @@ for (const { symbol, viewport } of scenarios) {
               exact: true,
             })
           ).toContainText('EUR');
-          await expect(balanceCard()).toContainText('USD');
+          await assertUnavailableQuote('usd', 'eur');
           await expect(
             balanceCard().getByText(symbol, { exact: true })
           ).toBeVisible();
@@ -485,7 +514,7 @@ for (const { symbol, viewport } of scenarios) {
           await expect(
             balanceCard().getByText('TSYS', { exact: true })
           ).toHaveCount(0);
-          await expect(balanceCard()).toContainText('EUR');
+          await assertUnavailableQuote('eur');
           await assertNativeLayout('reopened');
           await expect(
             page.getByRole('button', { name: en.buttons.save, exact: true })

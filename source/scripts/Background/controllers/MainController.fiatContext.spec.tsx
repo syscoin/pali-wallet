@@ -166,7 +166,7 @@ const initialize = (kind: keyof typeof networks = 'ethereum') => {
         },
       } as any,
       vaultGlobal: { ...global, activeSlip44: first.slip44 },
-      price: { fiat: { asset: 'usd', price: 0 } },
+      price: { fiat: { asset: 'usd', available: false, price: 0 } },
     },
     middleware: (getDefaultMiddleware) =>
       getDefaultMiddleware({ serializableCheck: false }),
@@ -249,7 +249,7 @@ it.each(['ethereum', 'syscoin'] as const)(
   'applies the current %s quote and currency',
   async (kind) => {
     const { first } = initialize(kind);
-    quote.mockResolvedValue({ price: 99, priceChange24h: 8 });
+    quote.mockResolvedValue({ available: true, price: 99, priceChange24h: 8 });
     await controller.setFiat('eur');
     expect(quote).toHaveBeenCalledWith(
       kind === 'ethereum' ? first.chainId : first.url,
@@ -257,6 +257,7 @@ it.each(['ethereum', 'syscoin'] as const)(
     );
     expect(mockStore.getState().price.fiat).toEqual({
       asset: 'eur',
+      available: true,
       price: 99,
       priceChange24h: 8,
     });
@@ -270,7 +271,11 @@ it.each(['ethereum', 'syscoin'] as const)(
     initialize(kind);
     quote.mockRejectedValue(new Error('synthetic price failure'));
     await controller.setFiat('eur');
-    expect(mockStore.getState().price.fiat).toEqual({ asset: 'eur', price: 0 });
+    expect(mockStore.getState().price.fiat).toEqual({
+      asset: 'eur',
+      available: false,
+      price: 0,
+    });
   }
 );
 
@@ -283,8 +288,16 @@ it.each(
   'ignores late $kind quotes after a public network switch (failed=$failed)',
   async ({ kind, failed }) => {
     const { next } = initialize(kind);
-    const old = deferred<{ price: number; priceChange24h: number }>();
-    const fresh = deferred<{ price: number; priceChange24h: number }>();
+    const old = deferred<{
+      available: boolean;
+      price: number;
+      priceChange24h: number;
+    }>();
+    const fresh = deferred<{
+      available: boolean;
+      price: number;
+      priceChange24h: number;
+    }>();
     quote.mockReturnValueOnce(old.promise).mockReturnValueOnce(fresh.promise);
     const oldUpdate = controller.setFiat('usd');
     await flush();
@@ -295,7 +308,7 @@ it.each(
     ).toBe(2);
     const dispatch = jest.spyOn(mockStore, 'dispatch');
     if (failed) old.reject(new Error('superseded quote failed'));
-    else old.resolve({ price: 99, priceChange24h: 8 });
+    else old.resolve({ available: true, price: 99, priceChange24h: 8 });
     await oldUpdate;
     await flush();
     try {
@@ -306,6 +319,7 @@ it.each(
         )
       ).toHaveLength(0);
       expect(mockStore.getState().price.fiat.price).toBe(0);
+      expect(mockStore.getState().price.fiat.available).toBe(false);
       // No overlay hides this case: B's recent native balance is already known.
       expect(home()).toContain('data-loading="false"');
       expect(home()).toContain('id="home-balance"');
@@ -314,10 +328,11 @@ it.each(
       expect(home()).not.toContain('8.00%');
       expect(transaction()).not.toContain('198 USD');
     } finally {
-      fresh.resolve({ price: 2, priceChange24h: 1 });
+      fresh.resolve({ available: true, price: 2, priceChange24h: 1 });
       await flush();
     }
     expect(mockStore.getState().price.fiat.price).toBe(2);
+    expect(mockStore.getState().price.fiat.available).toBe(true);
     expect(home()).toContain('$4 USD');
   }
 );
@@ -326,28 +341,37 @@ it.each(['ethereum', 'syscoin'] as const)(
   'clears an already-cached %s quote only when the new network commits',
   async (kind) => {
     const { next } = initialize(kind);
-    quote.mockResolvedValueOnce({ price: 99, priceChange24h: 8 });
+    quote.mockResolvedValueOnce({
+      available: true,
+      price: 99,
+      priceChange24h: 8,
+    });
     await controller.setFiat('eur');
-    const fresh = deferred<{ price: number }>();
+    const fresh = deferred<{ available: boolean; price: number }>();
     quote.mockReturnValueOnce(fresh.promise);
     await controller.setActiveNetwork(next);
     try {
       expect(mockStore.getState().price.fiat).toEqual({
         asset: 'eur',
+        available: false,
         price: 0,
       });
       expect(home()).not.toContain('€198 EUR');
     } finally {
-      fresh.resolve({ price: 2 });
+      fresh.resolve({ available: true, price: 2 });
       await flush();
     }
-    expect(mockStore.getState().price.fiat).toEqual({ asset: 'eur', price: 2 });
+    expect(mockStore.getState().price.fiat).toEqual({
+      asset: 'eur',
+      available: true,
+      price: 2,
+    });
   }
 );
 
 it('preserves the existing quote when network configuration fails', async () => {
   const { next } = initialize();
-  quote.mockResolvedValue({ price: 99, priceChange24h: 8 });
+  quote.mockResolvedValue({ available: true, price: 99, priceChange24h: 8 });
   await controller.setFiat('eur');
   controller.setActiveNetworkLogic = (
     _network: any,
@@ -359,6 +383,7 @@ it('preserves the existing quote when network configuration fails', async () => 
   );
   expect(mockStore.getState().price.fiat).toEqual({
     asset: 'eur',
+    available: true,
     price: 99,
     priceChange24h: 8,
   });
@@ -372,9 +397,13 @@ it.each(
   'invalidates a cached $kind quote when only $endpoint changes',
   async ({ kind, endpoint }) => {
     const { first } = initialize(kind);
-    quote.mockResolvedValueOnce({ price: 99, priceChange24h: 8 });
+    quote.mockResolvedValueOnce({
+      available: true,
+      price: 99,
+      priceChange24h: 8,
+    });
     await controller.setFiat('eur');
-    const fresh = deferred<{ price: number }>();
+    const fresh = deferred<{ available: boolean; price: number }>();
     quote.mockReturnValueOnce(fresh.promise);
     await controller.setActiveNetwork({
       ...first,
@@ -386,10 +415,11 @@ it.each(
     try {
       expect(mockStore.getState().price.fiat).toEqual({
         asset: 'eur',
+        available: false,
         price: 0,
       });
     } finally {
-      fresh.resolve({ price: 2 });
+      fresh.resolve({ available: true, price: 2 });
       await flush();
     }
   }
@@ -397,19 +427,24 @@ it.each(
 
 it('retains a valid cached quote during an unchanged-network retry', async () => {
   const { first } = initialize();
-  quote.mockResolvedValueOnce({ price: 99, priceChange24h: 8 });
+  quote.mockResolvedValueOnce({
+    available: true,
+    price: 99,
+    priceChange24h: 8,
+  });
   await controller.setFiat('eur');
-  const fresh = deferred<{ price: number }>();
+  const fresh = deferred<{ available: boolean; price: number }>();
   quote.mockReturnValueOnce(fresh.promise);
   await controller.setActiveNetwork(first);
   try {
     expect(mockStore.getState().price.fiat).toEqual({
       asset: 'eur',
+      available: true,
       price: 99,
       priceChange24h: 8,
     });
   } finally {
-    fresh.resolve({ price: 2 });
+    fresh.resolve({ available: true, price: 2 });
     await flush();
   }
 });
@@ -418,6 +453,7 @@ it('commits only quote fields and retains the requested currency', async () => {
   initialize();
   quote.mockResolvedValue({
     asset: 'jpy',
+    available: true,
     price: 3,
     priceChange24h: 1,
     unrelated: true,
@@ -425,6 +461,7 @@ it('commits only quote fields and retains the requested currency', async () => {
   await controller.setFiat('eur');
   expect(mockStore.getState().price.fiat).toEqual({
     asset: 'eur',
+    available: true,
     price: 3,
     priceChange24h: 1,
   });
@@ -437,8 +474,8 @@ it('does not accept an A quote started while B configuration is pending', async 
     mockStore.dispatch(startSwitchNetwork(network));
     finishSwitch = resolve;
   };
-  const old = deferred<{ price: number }>();
-  const fresh = deferred<{ price: number }>();
+  const old = deferred<{ available: boolean; price: number }>();
+  const fresh = deferred<{ available: boolean; price: number }>();
   quote.mockReturnValueOnce(old.promise).mockReturnValueOnce(fresh.promise);
   const switching = controller.setActiveNetwork(next);
   const updating = controller.setFiat();
@@ -446,43 +483,56 @@ it('does not accept an A quote started while B configuration is pending', async 
   expect(quote).toHaveBeenCalledWith(1, 'usd');
   finishSwitch();
   await switching;
-  old.resolve({ price: 99 });
+  old.resolve({ available: true, price: 99 });
   await updating;
   await flush();
   try {
     expect(mockStore.getState().price.fiat.price).toBe(0);
+    expect(mockStore.getState().price.fiat.available).toBe(false);
     expect(home()).not.toContain('$198 USD');
   } finally {
-    fresh.resolve({ price: 2 });
+    fresh.resolve({ available: true, price: 2 });
     await flush();
   }
 });
 
 it('keeps explicit currency intent for the queued new-network quote without relabeling the old price', async () => {
   const { next } = initialize();
-  const old = deferred<{ price: number }>();
-  const fresh = deferred<{ price: number }>();
+  const old = deferred<{ available: boolean; price: number }>();
+  const fresh = deferred<{ available: boolean; price: number }>();
   quote.mockReturnValueOnce(old.promise).mockReturnValueOnce(fresh.promise);
   const updating = controller.setFiat('eur');
   await flush();
-  expect(mockStore.getState().price.fiat).toEqual({ asset: 'eur', price: 0 });
+  expect(mockStore.getState().price.fiat).toEqual({
+    asset: 'eur',
+    available: false,
+    price: 0,
+  });
   await controller.setActiveNetwork(next);
-  old.resolve({ price: 99 });
+  old.resolve({ available: true, price: 99 });
   await updating;
   await flush();
   try {
     expect(quote).toHaveBeenLastCalledWith(137, 'eur');
-    expect(mockStore.getState().price.fiat).toEqual({ asset: 'eur', price: 0 });
+    expect(mockStore.getState().price.fiat).toEqual({
+      asset: 'eur',
+      available: false,
+      price: 0,
+    });
   } finally {
-    fresh.resolve({ price: 2 });
+    fresh.resolve({ available: true, price: 2 });
     await flush();
   }
-  expect(mockStore.getState().price.fiat).toEqual({ asset: 'eur', price: 2 });
+  expect(mockStore.getState().price.fiat).toEqual({
+    asset: 'eur',
+    available: true,
+    price: 2,
+  });
 });
 
 it('retains a valid in-flight quote and explicit currency when a different-network attempt fails', async () => {
   const { next } = initialize();
-  const pending = deferred<{ price: number }>();
+  const pending = deferred<{ available: boolean; price: number }>();
   quote.mockReturnValueOnce(pending.promise);
   const updating = controller.setFiat('eur');
   await flush();
@@ -494,27 +544,32 @@ it('retains a valid in-flight quote and explicit currency when a different-netwo
   await expect(controller.setActiveNetwork(next)).rejects.toThrow(
     'switch failed'
   );
-  pending.resolve({ price: 4 });
+  pending.resolve({ available: true, price: 4 });
   await updating;
-  expect(mockStore.getState().price.fiat).toEqual({ asset: 'eur', price: 4 });
+  expect(mockStore.getState().price.fiat).toEqual({
+    asset: 'eur',
+    available: true,
+    price: 4,
+  });
 });
 
 it('does not commit an in-flight quote after the quote lifecycle is invalidated', async () => {
   initialize();
-  const pending = deferred<{ price: number }>();
+  const pending = deferred<{ available: boolean; price: number }>();
   quote.mockReturnValueOnce(pending.promise);
   const updating = controller.setFiat();
   await flush();
   // Lock/reset invalidate this quote-specific epoch before asynchronous I/O.
   controller.fiatQuoteGeneration += 1;
-  pending.resolve({ price: 99 });
+  pending.resolve({ available: true, price: 99 });
   await updating;
   expect(mockStore.getState().price.fiat.price).toBe(0);
+  expect(mockStore.getState().price.fiat.available).toBe(false);
 });
 
 it('ignores an EVM quote whose registry price source changed while it was loading', async () => {
   const { first } = initialize();
-  const pending = deferred<{ price: number }>();
+  const pending = deferred<{ available: boolean; price: number }>();
   quote.mockReturnValueOnce(pending.promise);
   const updating = controller.setFiat();
   await flush();
@@ -523,7 +578,8 @@ it('ignores an EVM quote whose registry price source changed while it was loadin
       network: { ...first, coingeckoId: 'changed-native-asset' } as any,
     })
   );
-  pending.resolve({ price: 99 });
+  pending.resolve({ available: true, price: 99 });
   await updating;
   expect(mockStore.getState().price.fiat.price).toBe(0);
+  expect(mockStore.getState().price.fiat.available).toBe(false);
 });

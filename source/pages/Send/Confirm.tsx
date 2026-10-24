@@ -102,7 +102,7 @@ export const SendConfirm = () => {
     useController();
   const { t } = useTranslation();
   const { alert, navigate, useCopyClipboard } = useUtils();
-  const { getFiatAmount } = usePrice();
+  const { getFiatAmount, isFiatAvailable } = usePrice();
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
@@ -769,7 +769,8 @@ export const SendConfirm = () => {
 
   const getFeeFiatAmount = (currentFee: number | string | undefined) => {
     try {
-      if (currentFee === undefined || currentFee === null) return null;
+      if (!isFiatAvailable || currentFee === undefined || currentFee === null)
+        return null;
 
       const feeAmount =
         typeof currentFee === 'string' ? parseFloat(currentFee) : currentFee;
@@ -782,6 +783,7 @@ export const SendConfirm = () => {
   };
 
   const getTotalFiatAmount = (totalAmount: number | string) => {
+    if (!isFiatAvailable) return null;
     try {
       const total =
         typeof totalAmount === 'string' ? parseFloat(totalAmount) : totalAmount;

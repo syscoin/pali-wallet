@@ -163,7 +163,7 @@ test('Home survives malformed fiat quotes and recovers without a poisoned quote 
         await expect
           .poll(() => quoteReads.filter((read) => read.phase === phase).length)
           .toBeGreaterThan(0);
-        await assertHome('usd', 0, '$0 USD');
+        await assertHome('usd', 0, en.settings.unavailable);
       }
     );
     await wallet.step(

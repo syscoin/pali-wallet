@@ -6,6 +6,11 @@ import React from 'react';
 import { SendConfirm } from './Confirm';
 
 const mockEmitter = jest.fn();
+let mockFiatAvailable = true;
+let mockFiatRate: number | null = null;
+const mockGetFiatAmount = jest.fn((amount: number) =>
+  mockFiatRate === null ? null : String(amount * mockFiatRate) + ' USD'
+);
 let mockConfirmCallbacks: (() => Promise<void> | void)[] = [];
 const mockAuth = {
   isUnlocked: true,
@@ -68,7 +73,10 @@ jest.mock('hooks/index', () => ({
     navigate: jest.fn(),
     useCopyClipboard: () => [false, jest.fn()],
   }),
-  usePrice: () => ({ getFiatAmount: () => null }),
+  usePrice: () => ({
+    getFiatAmount: mockGetFiatAmount,
+    isFiatAvailable: mockFiatAvailable,
+  }),
 }));
 jest.mock('hooks/useController', () => ({
   useController: () => ({ controllerEmitter: mockEmitter, ...mockAuth }),
@@ -166,6 +174,8 @@ beforeAll(() => {
 });
 beforeEach(() => {
   jest.clearAllMocks();
+  mockFiatAvailable = true;
+  mockFiatRate = null;
   window.history.replaceState(null, '', '/');
   mockLocation.key += '-next';
   mockConfirmCallbacks = [];
@@ -235,8 +245,8 @@ function mount(kind: 'native' | 'token') {
       );
     throw new Error('Unexpected controller call: ' + path.join('.'));
   });
-  render(<SendConfirm />);
-  return quote;
+  const view = render(<SendConfirm />);
+  return { ...quote, view };
 }
 const resolveQuote = (quote: ReturnType<typeof deferred>) =>
   act(async () => {
@@ -356,3 +366,40 @@ it.each(['native', 'token'] as const)(
     expect(feeRequests()).toHaveLength(1);
   }
 );
+
+it('changes only approximate fiat when quote availability changes on a ready native review', async () => {
+  mockFiatAvailable = false;
+  mockFiatRate = 0;
+  const quote = mount('native');
+  await act(async () => {
+    jest.advanceTimersByTime(500);
+  });
+  await resolveQuote(quote);
+  expect(confirm()).toBeEnabled();
+  const nativeLines = () =>
+    Array.from(document.querySelectorAll('span,p'))
+      .filter(
+        (element) =>
+          element.children.length === 0 && element.textContent?.includes('TSYS')
+      )
+      .map((element) => element.textContent);
+  const nativeBefore = nativeLines();
+  expect(nativeBefore.length).toBeGreaterThan(0);
+  expect(document.body.textContent).not.toContain(' USD');
+  expect(mockGetFiatAmount).not.toHaveBeenCalled();
+  mockFiatAvailable = true;
+  quote.view.rerender(<SendConfirm />);
+  expect(document.body.textContent).toContain('0 USD');
+  expect(nativeLines()).toEqual(nativeBefore);
+  mockFiatRate = 2;
+  quote.view.rerender(<SendConfirm />);
+  expect(document.body.textContent).toContain('2.000126 USD');
+  expect(nativeLines()).toEqual(nativeBefore);
+  mockFiatAvailable = false;
+  quote.view.rerender(<SendConfirm />);
+  expect(document.body.textContent).not.toContain(' USD');
+  expect(nativeLines()).toEqual(nativeBefore);
+  expect(confirm()).toBeEnabled();
+  expect(sendRequests()).toHaveLength(0);
+  expect(feeRequests()).toHaveLength(1);
+});

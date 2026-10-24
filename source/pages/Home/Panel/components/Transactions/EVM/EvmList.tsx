@@ -82,6 +82,7 @@ const EvmTransactionItem = React.memo(
     cancellationIntent,
     currency,
     getFiatAmount,
+    isFiatAvailable,
     txId,
     getTxOptions,
     t,
@@ -95,6 +96,7 @@ const EvmTransactionItem = React.memo(
     currentAccount: any;
     ensCache?: any;
     getFiatAmount: any;
+    isFiatAvailable: boolean;
     getTxOptions: any;
     getTxStatusIcons: any;
     getTxType: any;
@@ -248,9 +250,10 @@ const EvmTransactionItem = React.memo(
         isNativeTransfer &&
         !displayInfo.isNft &&
         !displayInfo.hasUnknownDecimals;
-      const fiatText = showFiat
-        ? getFiatAmount(Number(finalTxValue), 6)
-        : '---';
+      const fiatText =
+        showFiat && isFiatAvailable
+          ? getFiatAmount(Number(finalTxValue), 6)
+          : '---';
       const isNumericAmount =
         !isNaN(Number(finalTxValue)) && Number(finalTxValue) > 0;
       // Show sign for native (when we also show fiat) and for ERC-20 transfers as well
@@ -558,6 +561,7 @@ const EvmTransactionItem = React.memo(
     prevProps.tx.input === nextProps.tx.input &&
     prevProps.tx.to === nextProps.tx.to &&
     prevProps.getFiatAmount === nextProps.getFiatAmount &&
+    prevProps.isFiatAvailable === nextProps.isFiatAvailable &&
     prevProps.getTxOptions === nextProps.getTxOptions &&
     prevProps.tokenMeta?.decimals === nextProps.tokenMeta?.decimals &&
     prevProps.tokenMeta?.isNft === nextProps.tokenMeta?.isNft &&
@@ -705,7 +709,7 @@ export const EvmTransactionsList = ({
     [filteredTransactions]
   );
   const { navigate } = useUtils();
-  const { getFiatAmount } = usePrice();
+  const { getFiatAmount, isFiatAvailable } = usePrice();
 
   const [modalData, setModalData] = useState<modalDataType>();
   const [isOpenModal, setIsOpenModal] = useState<boolean>(false);
@@ -858,6 +862,7 @@ export const EvmTransactionsList = ({
                   )}
                   currency={currency}
                   getFiatAmount={getFiatAmount}
+                  isFiatAvailable={isFiatAvailable}
                   onDetailsClick={onDetailsClick}
                   txId={txId}
                   getTxOptions={getTxOptions}

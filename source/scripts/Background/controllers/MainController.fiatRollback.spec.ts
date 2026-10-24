@@ -236,6 +236,7 @@ it.each([0, 1, 2, 3])(
     await flush();
     expect(mockStore.getState().vault.activeNetwork).toEqual(first);
     expect(mockStore.getState().price.fiat.price).toBe(4);
+    expect(mockStore.getState().price.fiat.available).toBe(true);
     expect(mockStore.getState().vaultGlobal.networkStatus).toBe('error');
     expect(quote.mock.calls).toEqual([
       [1, 'eur'],

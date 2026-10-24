@@ -123,9 +123,14 @@ describe('currency preference durable completion', () => {
     await finishRefreshes();
     expect(store.getState().price.fiat).toMatchObject({
       asset: 'eur',
+      available: true,
       price: 20,
     });
-    expect((await loadState()).price.fiat).toEqual({ asset: 'eur', price: 0 });
+    expect((await loadState()).price.fiat).toEqual({
+      asset: 'eur',
+      available: false,
+      price: 0,
+    });
   });
 
   it('preserves the saved preference and quote after storage failure and permits an explicit retry', async () => {
@@ -153,16 +158,26 @@ describe('currency preference durable completion', () => {
       await finishTurn();
       expect(calls).toEqual(['eur']);
       expect(acknowledged).toBe(true);
-      expect(store.getState().price.fiat).toEqual({ asset: 'eur', price: 0 });
+      expect(store.getState().price.fiat).toEqual({
+        asset: 'eur',
+        available: false,
+        price: 0,
+      });
       expect((await loadState()).price.fiat).toEqual({
         asset: 'eur',
+        available: false,
         price: 0,
       });
       quote.resolve({ price: 21 });
       await finishRefreshes();
-      expect(store.getState().price.fiat).toEqual({ asset: 'eur', price: 21 });
+      expect(store.getState().price.fiat).toEqual({
+        asset: 'eur',
+        available: true,
+        price: 21,
+      });
       expect((await loadState()).price.fiat).toEqual({
         asset: 'eur',
+        available: false,
         price: 0,
       });
     } finally {
@@ -188,18 +203,31 @@ describe('currency preference durable completion', () => {
       expect(acknowledged).toBe(true);
       expect((await loadState()).price.fiat).toEqual({
         asset: 'eur',
+        available: false,
         price: 0,
       });
-      expect(store.getState().price.fiat).toEqual({ asset: 'eur', price: 0 });
+      expect(store.getState().price.fiat).toEqual({
+        asset: 'eur',
+        available: false,
+        price: 0,
+      });
       expect(calls).toEqual(['usd']);
       oldQuote.resolve({ price: 11 });
       await refreshing;
       await flush();
       expect(calls).toEqual(['usd', 'eur']);
-      expect(store.getState().price.fiat).toEqual({ asset: 'eur', price: 0 });
+      expect(store.getState().price.fiat).toEqual({
+        asset: 'eur',
+        available: false,
+        price: 0,
+      });
       newQuote.resolve({ price: 22 });
       await finishRefreshes();
-      expect(store.getState().price.fiat).toEqual({ asset: 'eur', price: 22 });
+      expect(store.getState().price.fiat).toEqual({
+        asset: 'eur',
+        available: true,
+        price: 22,
+      });
     } finally {
       oldQuote.resolve({ price: 11 });
       newQuote.resolve({ price: 22 });
@@ -229,9 +257,14 @@ describe('currency preference durable completion', () => {
       expect(eurAcknowledged).toBe(true);
       expect(gbpAcknowledged).toBe(true);
       expect(calls).toEqual(['eur']);
-      expect(store.getState().price.fiat).toEqual({ asset: 'gbp', price: 0 });
+      expect(store.getState().price.fiat).toEqual({
+        asset: 'gbp',
+        available: false,
+        price: 0,
+      });
       expect((await loadState()).price.fiat).toEqual({
         asset: 'gbp',
+        available: false,
         price: 0,
       });
       unsubscribe = store.subscribe(() => {
@@ -241,13 +274,22 @@ describe('currency preference durable completion', () => {
       await refreshes.mock.results[0].value;
       await flush();
       expect(calls).toEqual(['eur', 'gbp']);
-      expect(store.getState().price.fiat).toEqual({ asset: 'gbp', price: 0 });
+      expect(store.getState().price.fiat).toEqual({
+        asset: 'gbp',
+        available: false,
+        price: 0,
+      });
       expect(observedAfterGbp).not.toContain('eur');
       gbpQuote.resolve({ price: 24 });
       await finishRefreshes();
-      expect(store.getState().price.fiat).toEqual({ asset: 'gbp', price: 24 });
+      expect(store.getState().price.fiat).toEqual({
+        asset: 'gbp',
+        available: true,
+        price: 24,
+      });
       expect((await loadState()).price.fiat).toEqual({
         asset: 'gbp',
+        available: false,
         price: 0,
       });
       expect(observedAfterGbp).not.toContain('eur');
@@ -281,19 +323,32 @@ describe('currency preference durable completion', () => {
       await finishTurn();
       expect(eurAcknowledged).toBe(true);
       expect(gbpAcknowledged).toBe(true);
-      expect(store.getState().price.fiat).toEqual({ asset: 'gbp', price: 0 });
+      expect(store.getState().price.fiat).toEqual({
+        asset: 'gbp',
+        available: false,
+        price: 0,
+      });
       expect((await loadState()).price.fiat).toEqual({
         asset: 'gbp',
+        available: false,
         price: 0,
       });
       usdQuote.resolve({ price: 12 });
       await original;
       await flush();
       expect(calls).toEqual(['usd', 'gbp']);
-      expect(store.getState().price.fiat).toEqual({ asset: 'gbp', price: 0 });
+      expect(store.getState().price.fiat).toEqual({
+        asset: 'gbp',
+        available: false,
+        price: 0,
+      });
       gbpQuote.resolve({ price: 25 });
       await finishRefreshes();
-      expect(store.getState().price.fiat).toEqual({ asset: 'gbp', price: 25 });
+      expect(store.getState().price.fiat).toEqual({
+        asset: 'gbp',
+        available: true,
+        price: 25,
+      });
     } finally {
       usdQuote.resolve({ price: 12 });
       eurQuote.resolve({ price: 99 });
@@ -341,9 +396,14 @@ describe('currency preference durable completion', () => {
       await finishTurn();
       expect(thirdAcknowledged).toBe(true);
       expect(calls).toEqual(['eur']);
-      expect(store.getState().price.fiat).toEqual({ asset: 'eur', price: 0 });
+      expect(store.getState().price.fiat).toEqual({
+        asset: 'eur',
+        available: false,
+        price: 0,
+      });
       expect((await loadState()).price.fiat).toEqual({
         asset: 'eur',
+        available: false,
         price: 0,
       });
       unsubscribe = store.subscribe(() => {
@@ -355,13 +415,22 @@ describe('currency preference durable completion', () => {
       // Currency equality alone would admit 27 here. Only the new EUR epoch
       // may publish; the intervening queued GBP quote must not even start.
       expect(calls).toEqual(['eur', 'eur']);
-      expect(store.getState().price.fiat).toEqual({ asset: 'eur', price: 0 });
+      expect(store.getState().price.fiat).toEqual({
+        asset: 'eur',
+        available: false,
+        price: 0,
+      });
       expect(observedAfterReturn).not.toContain(27);
       currentEurQuote.resolve({ price: 28 });
       await finishRefreshes();
-      expect(store.getState().price.fiat).toEqual({ asset: 'eur', price: 28 });
+      expect(store.getState().price.fiat).toEqual({
+        asset: 'eur',
+        available: true,
+        price: 28,
+      });
       expect((await loadState()).price.fiat).toEqual({
         asset: 'eur',
+        available: false,
         price: 0,
       });
       expect(observedAfterReturn).not.toContain(27);
@@ -385,17 +454,27 @@ describe('currency preference durable completion', () => {
       await expect(wallet.saveFiatCurrency('gbp')).rejects.toThrow(
         'Storage unavailable'
       );
-      expect(store.getState().price.fiat).toEqual({ asset: 'eur', price: 0 });
+      expect(store.getState().price.fiat).toEqual({
+        asset: 'eur',
+        available: false,
+        price: 0,
+      });
       expect((await loadState()).price.fiat).toEqual({
         asset: 'eur',
+        available: false,
         price: 0,
       });
       expect(calls).toEqual(['eur']);
       eurQuote.resolve({ price: 26 });
       await finishRefreshes();
-      expect(store.getState().price.fiat).toEqual({ asset: 'eur', price: 26 });
+      expect(store.getState().price.fiat).toEqual({
+        asset: 'eur',
+        available: true,
+        price: 26,
+      });
       expect((await loadState()).price.fiat).toEqual({
         asset: 'eur',
+        available: false,
         price: 0,
       });
       expect(calls).toEqual(['eur']);
@@ -466,6 +545,7 @@ describe('currency preference durable completion', () => {
     await wallet.setFiat();
     expect(store.getState().price.fiat).toMatchObject({
       asset: 'usd',
+      available: true,
       price: 20,
     });
     expect(writes).not.toHaveBeenCalled();

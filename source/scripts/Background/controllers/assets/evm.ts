@@ -66,7 +66,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
   const priceDataCache = new Map<
     string,
     {
-      data: { price: number; priceChange24h?: number };
+      data: { available: boolean; price: number; priceChange24h?: number };
       timestamp: number;
     }
   >();
@@ -338,6 +338,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
     chainId: number,
     currency = 'usd'
   ): Promise<{
+    available: boolean;
     price: number;
     priceChange24h?: number;
   }> => {
@@ -349,7 +350,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
       console.warn(
         `[EvmAssetsController] No network configuration or CoinGecko ID found for chain ${chainId}`
       );
-      return { price: 0 };
+      return { available: false, price: 0 };
     }
 
     // Check cache first
@@ -376,6 +377,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
 
         if (tokenData && Number.isFinite(tokenData[currency])) {
           const result = {
+            available: true,
             price: tokenData[currency],
             priceChange24h: tokenData[`${currency}_24h_change`],
           };
@@ -396,13 +398,13 @@ const EvmAssetsController = (): IEvmAssetsController => {
       console.warn(
         `[EvmAssetsController] Failed to fetch price for ${network.coingeckoId}`
       );
-      return { price: 0 };
+      return { available: false, price: 0 };
     } catch (error) {
       console.error(
         `[EvmAssetsController] Error fetching price for chain ${chainId}:`,
         error
       );
-      return { price: 0 };
+      return { available: false, price: 0 };
     }
   };
 
