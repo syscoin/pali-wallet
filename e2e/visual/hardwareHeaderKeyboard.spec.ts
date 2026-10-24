@@ -271,6 +271,10 @@ test('hardware address verification entry renders keyboard access without device
           async (capture) => {
             await view!.setViewportSize(viewport);
             await view!.goto(wallet!.appUrl('#/home'));
+            // Repeating the same hash is not a document navigation. Start each
+            // viewport's native Tab traversal from a fresh document, rather
+            // than the previous confirmation's correctly restored focus.
+            await view!.reload();
             await view!
               .locator('body.app-loaded')
               .waitFor({ state: 'attached' });
@@ -316,6 +320,10 @@ test('hardware address verification entry renders keyboard access without device
               )
                 break;
             }
+            await info.attach(`${mode}-${label}-renderer-keyboard`, {
+              body: await view!.screenshot({ animations: 'disabled' }),
+              contentType: 'image/png',
+            });
             expect(reached).toBe(mode === 'after');
             if (mode === 'before') {
               expect(semantics.tag).toBe('P');
