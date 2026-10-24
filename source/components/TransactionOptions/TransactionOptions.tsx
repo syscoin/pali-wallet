@@ -259,7 +259,7 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
                 <Menu.Items
                   as="div"
                   className={`p-4 absolute right-0 z-10 w-[23rem] origin-top-right rounded-lg bg-brand-blue500 shadow-2xl ring-1 
-                  font-poppins ring-black ring-opacity-5 focus:outline-none transition-all duration-100 ease-out transform opacity-100 scale-100 pointer-events-auto`}
+                  max-w-[calc(100vw-2rem)] font-poppins ring-black ring-opacity-5 focus:outline-none transition-all duration-100 ease-out transform opacity-100 scale-100 pointer-events-auto`}
                 >
                   <h1 className="text-sm font-semibold text-brand-gray200 pb-2 px-2">
                     {t('transactions.pendingTransaction')}

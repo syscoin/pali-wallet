@@ -341,3 +341,67 @@ it.each(cases)(
     );
   }
 );
+
+// Mounted class/interaction contract only. Genuine fenced browser images and
+// text Range/hit measurements own viewport visibility and pixel approval.
+it('bounds the actual pending menu while preserving Escape and safe Details navigation', async () => {
+  const { waitFor } = await import('@testing-library/react');
+  mockState.vault.activeNetwork.explorer = await acceptExplorer(cases[0][1]);
+  const network = { ...mockState.vault.activeNetwork };
+  const rows = mockRows.map((row) => ({ ...row }));
+  const opened = jest.spyOn(window, 'open').mockImplementation(() => null);
+  const view = render(
+    <MemoryRouter>
+      <EvmTransactionsList userTransactions={mockRows} />
+    </MemoryRouter>
+  );
+  const trigger = view.container.querySelector<HTMLButtonElement>(
+    '#transaction-options button'
+  );
+  expect(trigger).not.toBeNull();
+  expect(screen.queryByRole('menu')).toBeNull();
+
+  await userEvent.click(trigger!);
+  let menu = await screen.findByRole('menu');
+  expect(menu).toHaveClass('w-[23rem]', 'max-w-[calc(100vw-2rem)]');
+  expect(
+    screen.getAllByRole('menuitem').map((item) => item.textContent)
+  ).toEqual([
+    'transactions.seeDetails',
+    'transactions.seeOnBlockExplorer',
+    'header.speedUp',
+    'buttons.cancel',
+  ]);
+  await waitFor(() => expect(menu).toHaveFocus());
+  await userEvent.keyboard('{Escape}');
+  expect(screen.queryByRole('menu')).toBeNull();
+  await waitFor(() => expect(trigger).toHaveFocus());
+  expect(mockNavigate).not.toHaveBeenCalled();
+  expect(opened).not.toHaveBeenCalled();
+
+  // Reopen and activate only the existing read-only first action. Never
+  // activate Speed Up, Cancel or the external explorer action.
+  await userEvent.keyboard('{Enter}');
+  menu = await screen.findByRole('menu');
+  expect(menu).toHaveClass('w-[23rem]', 'max-w-[calc(100vw-2rem)]');
+  await waitFor(() => expect(menu).toHaveFocus());
+  await userEvent.keyboard('{Home}');
+  const details = screen.getByRole('menuitem', {
+    name: 'transactions.seeDetails',
+  });
+  await waitFor(() =>
+    expect(menu.getAttribute('aria-activedescendant')).toBe(details.id)
+  );
+  await userEvent.keyboard('{Enter}');
+  expect(screen.queryByRole('menu')).toBeNull();
+  expect(mockNavigate).toHaveBeenCalledTimes(1);
+  expect(mockNavigate).toHaveBeenCalledWith('/home/details', {
+    state: { id: null, hash: HASH, tx: mockRows[0] },
+  });
+  expect(opened).not.toHaveBeenCalled();
+  expect(mockForbiddenHttp).not.toHaveBeenCalled();
+  expect(mockForbiddenController).not.toHaveBeenCalled();
+  expect(mockForbiddenUpdate).not.toHaveBeenCalled();
+  expect(mockState.vault.activeNetwork).toEqual(network);
+  expect(mockRows).toEqual(rows);
+});
