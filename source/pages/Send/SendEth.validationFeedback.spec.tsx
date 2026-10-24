@@ -237,6 +237,67 @@ it('healthy invalid-address control remains actionable and blocked', async () =>
   expect(mockNavigate).not.toHaveBeenCalled();
 });
 
+it('identifies the native recipient input without changing its composite layout', async () => {
+  await mountNative();
+  expect(receiver()).toHaveAttribute('id', 'receiver');
+  expect(receiver()).toHaveAttribute('aria-required', 'true');
+  expect(receiver()).not.toHaveAttribute('aria-invalid', 'true');
+  expect(receiver()).not.toHaveAttribute('aria-describedby');
+  expect(document.querySelectorAll('#receiver')).toHaveLength(1);
+  const wrapper = receiver().closest('.relative');
+  expect(wrapper).toBeInstanceOf(HTMLDivElement);
+  expect(wrapper).not.toHaveAttribute('id');
+  expect(wrapper).not.toHaveAttribute('aria-required');
+});
+
+it.each([
+  ['', 'send.addressRequired'],
+  ['not-an-address', 'send.invalidEthAddress'],
+])(
+  'associates the native recipient with its current %s error',
+  async (value, message) => {
+    await mountNative();
+    fireEvent.change(receiver(), { target: { value } });
+    fireEvent.change(amount(), { target: { value: '0' } });
+    await submit();
+    await waitFor(() =>
+      expect(receiver()).toHaveAttribute('aria-invalid', 'true')
+    );
+    expect(receiver()).toHaveAttribute('aria-describedby', 'receiver_help');
+    expect(await screen.findByText(message)).toBeVisible();
+    await waitFor(() =>
+      expect(document.getElementById('receiver_help')).toHaveTextContent(
+        message
+      )
+    );
+    expect(receiver().closest('.relative')).not.toHaveAttribute('aria-invalid');
+    expect(document.querySelectorAll('#receiver')).toHaveLength(1);
+    expect(mockNavigate).not.toHaveBeenCalled();
+  }
+);
+
+it('clears stale native recipient error semantics on ordinary correction', async () => {
+  await mountNative();
+  fireEvent.change(receiver(), { target: { value: 'not-an-address' } });
+  fireEvent.change(amount(), { target: { value: '0' } });
+  await submit();
+  await waitFor(() =>
+    expect(receiver()).toHaveAttribute('aria-invalid', 'true')
+  );
+  fireEvent.change(receiver(), { target: { value: recipient } });
+  await waitFor(() => {
+    expect(receiver()).not.toHaveAttribute('aria-invalid', 'true');
+    expect(receiver()).not.toHaveAttribute('aria-describedby');
+    expect(
+      screen.queryByText('send.invalidEthAddress')
+    ).not.toBeInTheDocument();
+  });
+  expect(receiver()).toHaveValue(recipient);
+  expect(receiver()).toHaveAttribute('aria-required', 'true');
+  expect(amount()).toHaveAttribute('aria-invalid', 'true');
+  expect(mockNavigate).not.toHaveBeenCalled();
+});
+
 it('healthy excessive-amount control remains actionable and blocked', async () => {
   await mountNative();
   fireEvent.change(receiver(), { target: { value: recipient } });

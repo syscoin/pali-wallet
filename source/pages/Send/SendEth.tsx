@@ -104,6 +104,46 @@ const isNativeMaxAmount = (amount: string, balance: string): boolean => {
   }
 };
 
+type ReceiverFieldProps = React.HTMLAttributes<HTMLDivElement> & {
+  'aria-describedby'?: React.AriaAttributes['aria-describedby'];
+  'aria-errormessage'?: React.AriaAttributes['aria-errormessage'];
+  'aria-invalid'?: React.AriaAttributes['aria-invalid'];
+  'aria-required'?: React.AriaAttributes['aria-required'];
+  id?: string;
+  input: React.ReactElement<React.ComponentProps<typeof Input>>;
+};
+
+// Form.Item supplies field semantics to its immediate child. Keep the existing
+// composite layout and bubbled control handlers, but identify the actual input.
+const ReceiverField = React.forwardRef<HTMLDivElement, ReceiverFieldProps>(
+  function renderReceiverField(
+    {
+      input,
+      children,
+      id,
+      'aria-describedby': describedBy,
+      'aria-errormessage': errorMessage,
+      'aria-invalid': invalid,
+      'aria-required': required,
+      ...wrapperProps
+    },
+    ref
+  ) {
+    return (
+      <div {...wrapperProps} ref={ref}>
+        {React.cloneElement(input, {
+          id,
+          'aria-describedby': describedBy,
+          'aria-errormessage': errorMessage,
+          'aria-invalid': invalid,
+          'aria-required': required,
+        })}
+        {children}
+      </div>
+    );
+  }
+);
+
 export const SendEth = () => {
   const scopeKey = useSelector(() =>
     JSON.stringify(getWalletNavigationScope())
@@ -1402,7 +1442,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
               }),
             ]}
           >
-            <div
+            <ReceiverField
               className="relative"
               onBlur={(event) => {
                 if (
@@ -1413,28 +1453,30 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                   setIsSuggestionsOpen(false);
                 }
               }}
+              input={
+                <Input
+                  type="text"
+                  placeholder={t('send.receiver')}
+                  value={receiverInput}
+                  onChange={(e) => {
+                    const v = e.target.value || '';
+                    receiverEditRevision.current += 1;
+                    resolvedEnsRecipient.current = null;
+                    setReceiverInput(v);
+                    // Keep Form state in sync so validation can react to typing
+                    form.setFieldValue('receiver', v);
+                    void saveCurrentState();
+                    setIsSuggestionsOpen(true);
+                    buildSuggestions(v);
+                  }}
+                  onFocus={() => {
+                    setIsSuggestionsOpen(true);
+                    buildSuggestions(receiverInput);
+                  }}
+                  onBlur={handleFieldBlur}
+                />
+              }
             >
-              <Input
-                type="text"
-                placeholder={t('send.receiver')}
-                value={receiverInput}
-                onChange={(e) => {
-                  const v = e.target.value || '';
-                  receiverEditRevision.current += 1;
-                  resolvedEnsRecipient.current = null;
-                  setReceiverInput(v);
-                  // Keep Form state in sync so validation can react to typing
-                  form.setFieldValue('receiver', v);
-                  void saveCurrentState();
-                  setIsSuggestionsOpen(true);
-                  buildSuggestions(v);
-                }}
-                onFocus={() => {
-                  setIsSuggestionsOpen(true);
-                  buildSuggestions(receiverInput);
-                }}
-                onBlur={handleFieldBlur}
-              />
               {isSuggestionsOpen && suggestions.length > 0 && (
                 <div className="absolute z-20 mt-1 w-full max-h-56 overflow-auto rounded-xl border border-bkg-3 bg-brand-blue800 shadow-2xl">
                   {suggestions.map((sug, idx) => (
@@ -1476,7 +1518,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                   ))}
                 </div>
               )}
-            </div>
+            </ReceiverField>
           </Form.Item>
         </div>
 
