@@ -206,7 +206,7 @@ it('gates the exact visual shard directory after successful baselines and always
   expect(upload).toContain('        if: always()');
 });
 
-it('runs three isolated visual shards and fails the aggregate unless every shard succeeds', () => {
+it('runs four isolated visual shards and fails the aggregate unless every shard succeeds', () => {
   const workflow = fs.readFileSync(
     path.resolve(__dirname, '../../.github/workflows/main.yml'),
     'utf8'
@@ -219,13 +219,13 @@ it('runs three isolated visual shards and fails the aggregate unless every shard
     .split('\n  conformance:')[0];
 
   expect(visual).toContain(
-    '    name: visual regression shard ${{ matrix.shard }}/3'
+    '    name: visual regression shard ${{ matrix.shard }}/4'
   );
-  expect(visual).toContain('        shard: [1, 2, 3]');
+  expect(visual).toContain('        shard: [1, 2, 3, 4]');
   expect(visual).toContain('    timeout-minutes: 35');
   expect(visual).toContain('      fail-fast: false');
   expect(visual).toContain(
-    '        run: yarn e2e:visual --update-snapshots=missing --shard=${{ matrix.shard }}/3 --workers=1'
+    '        run: yarn e2e:visual --update-snapshots=missing --shard=${{ matrix.shard }}/4 --workers=1'
   );
   expect(visual).not.toContain('continue-on-error:');
   expect(aggregate).toContain('    name: visual regression suite');
