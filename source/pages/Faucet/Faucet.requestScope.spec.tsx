@@ -500,6 +500,13 @@ it('faucet hash copy leaves the request contract noninteractive', async () => {
   ).nextElementSibling;
   expect(contract?.tagName).toBe('P');
   expect(contract?.parentElement?.classList.contains('max-w-full')).toBe(true);
+  expect(contract?.parentElement?.classList.contains('min-h-[76px]')).toBe(
+    true
+  );
+  expect(contract?.parentElement?.classList.contains('h-[76px]')).toBe(false);
+  expect(contract?.classList.contains('[overflow-wrap:anywhere]')).toBe(true);
+  expect(contract?.classList.contains('overflow-hidden')).toBe(false);
+  expect(contract?.getAttribute('href')).toBeNull();
   expect(contract?.getAttribute('role')).toBeNull();
   expect((contract as HTMLElement).tabIndex).toBe(-1);
   expect(

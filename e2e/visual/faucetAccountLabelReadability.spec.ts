@@ -411,13 +411,489 @@ async function revealCard(page: Page, card: Locator, gestures: any[]) {
   await frame(page);
 }
 
+// Measure the genuine request text without changing its DOM or native selection.
+const measureFaucetContract = (page: Page, expectedText: string) =>
+  page.evaluate((expected) => {
+    const entry = history.state as { idx?: number; key?: string } | null;
+    const route = {
+      url: location.href,
+      idx: entry?.idx ?? null,
+      key: entry?.key ?? null,
+    };
+    // Route and optional real P are read atomically. A native Back must not
+    // turn an allowed Home observation into a stale Faucet locator wait.
+    const matches = [...document.querySelectorAll('p')].filter(
+      (node) => node.textContent === expected
+    );
+    if (matches.length !== 1) {
+      return { available: false as const, matchCount: matches.length, route };
+    }
+    const element = matches[0];
+    const rect = (node: Element) => {
+      const r = node.getBoundingClientRect();
+      return {
+        left: r.left,
+        right: r.right,
+        top: r.top,
+        bottom: r.bottom,
+        width: r.width,
+        height: r.height,
+      };
+    };
+    const clip = { left: 0, right: innerWidth, top: 0, bottom: innerHeight };
+    const ancestors: any[] = [];
+    // Include the P itself: its own overflow:hidden is material here.
+    for (let node: Element | null = element; node; node = node.parentElement) {
+      const style = getComputedStyle(node),
+        box = node.getBoundingClientRect();
+      ancestors.push({
+        tag: node.tagName,
+        box: rect(node),
+        overflowX: style.overflowX,
+        overflowY: style.overflowY,
+        clientWidth: node.clientWidth,
+        scrollWidth: node.scrollWidth,
+        clientHeight: node.clientHeight,
+        scrollHeight: node.scrollHeight,
+        scrollLeft: node.scrollLeft,
+        scrollTop: node.scrollTop,
+      });
+      if (/auto|scroll|hidden|clip/.test(style.overflowX)) {
+        clip.left = Math.max(clip.left, box.left + node.clientLeft);
+        clip.right = Math.min(
+          clip.right,
+          box.left + node.clientLeft + node.clientWidth
+        );
+      }
+      if (/auto|scroll|hidden|clip/.test(style.overflowY)) {
+        clip.top = Math.max(clip.top, box.top + node.clientTop);
+        clip.bottom = Math.min(
+          clip.bottom,
+          box.top + node.clientTop + node.clientHeight
+        );
+      }
+    }
+    const glyphs: any[] = [];
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    let text: Node | null;
+    while ((text = walker.nextNode())) {
+      const value = text.textContent || '';
+      for (let i = 0; i < value.length; i += 1) {
+        // Detached measurement Ranges do not change native Selection.
+        const range = document.createRange();
+        range.setStart(text, i);
+        range.setEnd(text, i + 1);
+        for (const box of [...range.getClientRects()]) {
+          if (box.width <= 0 || box.height <= 0) continue;
+          const hit = document.elementFromPoint(
+            (box.left + box.right) / 2,
+            (box.top + box.bottom) / 2
+          );
+          glyphs.push({
+            character: value[i],
+            left: box.left,
+            right: box.right,
+            top: box.top,
+            bottom: box.bottom,
+            centerHit: !!hit && (hit === element || element.contains(hit)),
+          });
+        }
+      }
+    }
+    const tolerance = 0.5;
+    const contained = (r: any) =>
+      r.left >= clip.left - tolerance &&
+      r.right <= clip.right + tolerance &&
+      r.top >= clip.top - tolerance &&
+      r.bottom <= clip.bottom + tolerance;
+    const textStyle = getComputedStyle(element);
+    const feedback = element.parentElement!;
+    const feedbackStyle = getComputedStyle(feedback);
+    const neighbors = [
+      element.previousElementSibling,
+      feedback.nextElementSibling,
+      ...document.querySelectorAll('[data-page-action-footer]'),
+    ]
+      .filter((node): node is Element => !!node)
+      .map(rect);
+    return {
+      available: true as const,
+      matchCount: 1,
+      route,
+      text: element.textContent,
+      tag: element.tagName,
+      role: element.getAttribute('role'),
+      tabIndex: (element as HTMLElement).tabIndex,
+      href: element.getAttribute('href'),
+      title: element.getAttribute('title'),
+      interactiveAncestor: element.closest('a,button')?.tagName || null,
+      fontStatus: document.fonts.status,
+      font: textStyle.font,
+      userSelect: textStyle.userSelect,
+      box: rect(element),
+      feedbackBox: rect(feedback),
+      feedbackPadding: {
+        left: parseFloat(feedbackStyle.paddingLeft) + feedback.clientLeft,
+        right: parseFloat(feedbackStyle.paddingRight) + feedback.clientLeft,
+        bottom: parseFloat(feedbackStyle.paddingBottom) + feedback.clientTop,
+      },
+      neighborCollisions: neighbors.filter((neighbor) =>
+        glyphs.some(
+          (glyph) =>
+            Math.min(glyph.right, neighbor.right) -
+              Math.max(glyph.left, neighbor.left) >
+              tolerance &&
+            Math.min(glyph.bottom, neighbor.bottom) -
+              Math.max(glyph.top, neighbor.top) >
+              tolerance
+        )
+      ),
+      clip,
+      ancestors,
+      glyphs,
+      allGlyphsPainted:
+        glyphs.length > 0 && glyphs.every((r) => contained(r) && r.centerHit),
+    };
+  }, expectedText);
+
+// Exercise physical selection and scrolling after the account controls, before
+// the final worker/fence gate. Only the exact saved Home/Faucet entries qualify.
+const observeFaucetContractRecovery = async ({
+  wallet,
+  page,
+  prefix,
+  banner,
+  back,
+  requestNow,
+  contract,
+  expectedContract,
+  unchanged,
+  historyEntry,
+  reveal,
+  observations,
+}: {
+  back: Locator;
+  banner: Locator;
+  contract: Locator;
+  expectedContract: string;
+  historyEntry: () => Promise<{
+    idx: number | null;
+    key: string | null;
+    url: string;
+  }>;
+  observations: Record<string, any>;
+  page: Page;
+  prefix: string;
+  requestNow: Locator;
+  reveal: () => Promise<void>;
+  unchanged: () => Promise<void>;
+  wallet: PaliWallet;
+}) => {
+  const record: Record<string, any> = {
+    measurements: [],
+    selection: [],
+    wheels: [],
+    reopenings: [],
+    unexpectedEntries: [],
+  };
+  observations.contractRecovery = record;
+  const measure = async (phase: string) => {
+    const value = await measureFaucetContract(page, expectedContract);
+    record.measurements.push({ phase, value });
+    expect(value.route).toEqual(record.faucet);
+    expect(value.available).toBe(true);
+    if (!value.available) throw new Error('Real Faucet contract P is absent');
+    return value;
+  };
+  const readSelection = () =>
+    page.evaluate(() => ({
+      // This route contains only public fixture text. No clipboard read is
+      // attempted: a failed copy must not expose an unrelated system clipboard.
+      text: window.getSelection()?.toString() || '',
+      anchorTag:
+        window.getSelection()?.anchorNode?.parentElement?.tagName || null,
+      focusTag:
+        window.getSelection()?.focusNode?.parentElement?.tagName || null,
+    }));
+
+  await wallet.step(
+    prefix + ' real idle contract data and native route controls',
+    async (capture) => {
+      const entry = await historyEntry();
+      if (/#\/faucet$/.test(entry.url)) await back.click();
+      await expect(page).toHaveURL(/#\/home(?:\?.*)?$/);
+      await unchanged();
+      await tabTo(page, banner);
+      record.home = await historyEntry();
+      await page.keyboard.press('Space');
+      await expect(page).toHaveURL(/#\/faucet$/);
+      record.faucet = await historyEntry();
+      expect(Number.isSafeInteger(record.home.idx)).toBe(true);
+      expect(Number.isSafeInteger(record.faucet.idx)).toBe(true);
+      expect(record.faucet.idx).toBe(record.home.idx + 1);
+      expect(record.home.key).toEqual(expect.any(String));
+      expect(record.faucet.key).toEqual(expect.any(String));
+      expect(record.home.key).not.toBe('');
+      expect(record.faucet.key).not.toBe(record.home.key);
+      await expect(contract).toHaveCount(1);
+      await expect(contract).toHaveText(expectedContract);
+      await expect(requestNow).toBeEnabled();
+      const owner = page.locator('[data-navigation-scroll="wallet-layout"]');
+      await expect(owner).toHaveCount(1);
+      const ownerBox = await owner.boundingBox();
+      expect(ownerBox).not.toBeNull();
+      const viewport = page.viewportSize()!;
+      const wheelPoint = {
+        x: Math.min(viewport.width - 4, ownerBox!.x + ownerBox!.width - 4),
+        y: Math.max(
+          ownerBox!.y + 4,
+          Math.min(viewport.height / 2, ownerBox!.y + ownerBox!.height - 4)
+        ),
+      };
+      const ownerHit = await owner.evaluate((node, point) => {
+        const target = document.elementFromPoint(point.x, point.y);
+        return !!target && node.contains(target);
+      }, wheelPoint);
+      expect(ownerHit).toBe(true);
+      await page.mouse.move(wheelPoint.x, wheelPoint.y);
+      await page.mouse.wheel(0, -96);
+      await frame(page);
+      record.verticalWheel = { deltaY: -96, point: wheelPoint, ownerHit };
+      await reveal();
+      await page.mouse.move(2, 2);
+      await settledLayout(page);
+      const initial = await measure('initial');
+      expect(initial.tag).toBe('P');
+      expect(initial.role).toBeNull();
+      expect(initial.tabIndex).toBe(-1);
+      expect(initial.href).toBeNull();
+      expect(initial.title).toBeNull();
+      expect(initial.interactiveAncestor).toBeNull();
+      await expect(
+        page.getByRole('button', { name: en.buttons.copy, exact: true })
+      ).toHaveCount(0);
+      expect(initial.fontStatus).toBe('loaded');
+      expect(initial.glyphs.map((glyph: any) => glyph.character).join('')).toBe(
+        expectedContract
+      );
+      await unchanged();
+      await capture(page);
+    }
+  );
+
+  await wallet.step(
+    prefix +
+      ' genuine native double click and drag observe full-value selection',
+    async (capture) => {
+      const point = async () => {
+        const value = await measure('selection-pointer-target');
+        // A native pointer needs a real visible hit point, not the complete
+        // font line rectangle. Full-glyph paint remains measured separately.
+        const glyph = value.glyphs.find(
+          (r: any) =>
+            (r.left + r.right) / 2 >= value.clip.left &&
+            (r.left + r.right) / 2 <= value.clip.right &&
+            (r.top + r.bottom) / 2 >= value.clip.top &&
+            (r.top + r.bottom) / 2 <= value.clip.bottom &&
+            r.centerHit
+        );
+        expect(glyph).toBeDefined();
+        return {
+          x: (glyph.left + glyph.right) / 2,
+          y: (glyph.top + glyph.bottom) / 2,
+        };
+      };
+      const start = await point();
+      await page.mouse.click(start.x, start.y, { clickCount: 2 });
+      record.selection.push({
+        phase: 'double-click',
+        value: await readSelection(),
+      });
+      await measure('after-double-click');
+      await wallet.shot(
+        prefix + ' native double click selection without a setter'
+      );
+      // Read the physical drag start again after double-click native selection.
+      const dragStart = await point();
+      await page.mouse.click(dragStart.x, dragStart.y);
+      await page.mouse.move(dragStart.x, dragStart.y);
+      await page.mouse.down();
+      try {
+        const width = page.viewportSize()!.width;
+        await page.mouse.move(width - 2, dragStart.y, { steps: 8 });
+      } finally {
+        await page.mouse.up();
+      }
+      record.selection.push({ phase: 'drag', value: await readSelection() });
+      await measure('after-drag');
+      expect(await historyEntry()).toEqual(record.faucet);
+      await expect(requestNow).toBeEnabled();
+      await unchanged();
+      await capture(page);
+    }
+  );
+
+  await wallet.step(
+    prefix +
+      ' terminal real horizontal wheels retain exact native history and public scope',
+    async (capture) => {
+      const sameEntry = (a: any, b: any) =>
+        a.url === b.url && a.idx === b.idx && a.key === b.key;
+      const atomic = async (phase: string) => {
+        const value = await measureFaucetContract(page, expectedContract);
+        if (
+          !sameEntry(value.route, record.home) &&
+          !sameEntry(value.route, record.faucet)
+        ) {
+          record.unexpectedEntries.push({ phase, value });
+        }
+        return value;
+      };
+      const settledAtomic = async (phase: string) => {
+        let previous = '',
+          stable = 0;
+        let value = await atomic(phase);
+        await expect
+          .poll(async () => {
+            value = await atomic(phase);
+            const signature = JSON.stringify({
+              route: value.route,
+              available: value.available,
+              matchCount: value.matchCount,
+              positions: value.available
+                ? value.ancestors.map((node: any) => [
+                    node.scrollLeft,
+                    node.scrollTop,
+                  ])
+                : [],
+            });
+            stable = signature === previous ? stable + 1 : 0;
+            previous = signature;
+            const known =
+              sameEntry(value.route, record.home) ||
+              sameEntry(value.route, record.faucet);
+            // Observe actual Home/no-P, rather than inventing contract glyphs.
+            const routeMatchesDom = sameEntry(value.route, record.home)
+              ? !value.available && value.matchCount === 0
+              : value.available;
+            return known && routeMatchesDom && stable >= 2;
+          })
+          .toBe(true);
+        expect(record.unexpectedEntries).toEqual([]);
+        record.measurements.push({ phase, value });
+        return value;
+      };
+      const reopenFromExactHome = async (phase: string) => {
+        const before = await settledAtomic(phase + '-home');
+        expect(before.route).toEqual(record.home);
+        expect(before.available).toBe(false);
+        await expect(banner).toHaveCount(1);
+        await unchanged();
+        await wallet.shot(
+          prefix + ' actual Home after native traversal ' + phase
+        );
+        await tabTo(page, banner);
+        expect(await historyEntry()).toEqual(record.home);
+        await page.keyboard.press('Space');
+        await expect(page).toHaveURL(/#\/faucet$/);
+        const next = await historyEntry();
+        expect(next.idx).toBe(record.home.idx + 1);
+        expect(next.key).toEqual(expect.any(String));
+        expect(next.key).not.toBe('');
+        expect(next.key).not.toBe(record.home.key);
+        expect(next.key).not.toBe(record.faucet.key);
+        record.reopenings.push({ phase, home: record.home, faucet: next });
+        record.faucet = next;
+        await expect(contract).toHaveCount(1);
+        await expect(contract).toHaveText(expectedContract);
+        await expect(requestNow).toBeEnabled();
+        await unchanged();
+        await reveal();
+        await settledLayout(page);
+        const fresh = await settledAtomic(phase + '-reopened');
+        expect(fresh.route).toEqual(next);
+        expect(fresh.available).toBe(true);
+      };
+      // The first reveal has no new pending horizontal gesture. Subsequent
+      // observations use only the atomic callback, including after mouse move.
+      await reveal();
+      for (const deltaX of [240, -240]) {
+        let point: { x: number; y: number } | undefined;
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          let value = await settledAtomic('before-wheel-' + deltaX);
+          if (sameEntry(value.route, record.home)) {
+            await reopenFromExactHome('before-wheel-' + deltaX + '-' + attempt);
+            value = await settledAtomic('fresh-wheel-' + deltaX);
+          }
+          expect(value.route).toEqual(record.faucet);
+          expect(value.available).toBe(true);
+          if (!value.available)
+            throw new Error('Real Faucet wheel target absent');
+          // Retain exact paint geometry; use only its genuinely hittable
+          // center as the physical gesture target.
+          const glyph = value.glyphs.find(
+            (r: any) =>
+              (r.left + r.right) / 2 >= value.clip.left &&
+              (r.left + r.right) / 2 <= value.clip.right &&
+              (r.top + r.bottom) / 2 >= value.clip.top &&
+              (r.top + r.bottom) / 2 <= value.clip.bottom &&
+              r.centerHit
+          );
+          expect(glyph).toBeDefined();
+          point = {
+            x: (glyph.left + glyph.right) / 2,
+            y: (glyph.top + glyph.bottom) / 2,
+          };
+          await page.mouse.move(point.x, point.y);
+          // Native traversal may commit when the pointer leaves its former
+          // target. Read the route and optional P together before dispatch.
+          const aimed = await settledAtomic('aimed-wheel-' + deltaX);
+          if (sameEntry(aimed.route, record.faucet)) break;
+          point = undefined;
+          await reopenFromExactHome('aimed-wheel-' + deltaX + '-' + attempt);
+        }
+        expect(point).toBeDefined();
+        if (!point) throw new Error('No stable real Faucet wheel target');
+        await page.mouse.wheel(deltaX, 0);
+        const after = await settledAtomic('wheel-' + deltaX);
+        record.wheels.push({ deltaX, point, targetWasRealGlyph: true, after });
+        await wallet.shot(
+          prefix + ' genuine contract horizontal wheel ' + deltaX
+        );
+        await unchanged();
+      }
+      await page.mouse.move(2, 2);
+      await settledLayout(page);
+      const final = await settledAtomic('after-terminal-pointer-move');
+      record.afterWheels = final.route;
+      expect([record.faucet, record.home]).toContainEqual(final.route);
+      expect(record.wheels.map((wheel: any) => wheel.deltaX)).toEqual([
+        240, -240,
+      ]);
+      await unchanged();
+      record.observed = {
+        initiallyFullyPainted: record.measurements[0].value.allGlyphsPainted,
+        nativeDoubleClickSelectedFullValue:
+          record.selection[0].value.text === expectedContract,
+        nativeDragSelectedFullValue:
+          record.selection[1].value.text === expectedContract,
+        clipboardVerified: false,
+      };
+      await capture(page);
+    }
+  );
+};
+
 for (const viewport of [
+  { width: 800, height: 620 },
   { width: 400, height: 620 },
   { width: 320, height: 360 },
 ]) {
-  test(`Faucet preserves a genuinely renamed account label within its identity card at ${viewport.width}x${viewport.height}`, async ({}, info) => {
+  test(`Faucet account and contract text remain readable with native controls at ${viewport.width}x${viewport.height}`, async ({}, info) => {
     expect(process.version).toBe('v23.11.1');
     expect(info.config.workers).toBe(1);
+    expect(info.config.fullyParallel).toBe(false);
+    expect(info.project.timeout).toBe(8 * 60 * 1000);
     expect(info.retry).toBe(0);
     expect(process.env.PALI_TEST_DAPP_REVISION).toMatch(/^[a-f0-9]{40}$/);
     expect(path.isAbsolute(E2E_CONFIG.extensionPath)).toBe(true);
@@ -489,11 +965,14 @@ for (const viewport of [
         networkLabel: NETWORK,
         chainId: 5700,
       });
-      wallet = await PaliWallet.launch(`faucet-account-label-${prefix}`, {
-        offlineHttpProxy: server.url,
-        recordVideo: false,
-        viewport: { width: 400, height: 620 },
-      });
+      wallet = await PaliWallet.launch(
+        `faucet-contract-native-recovery-${prefix}`,
+        {
+          offlineHttpProxy: server.url,
+          recordVideo: false,
+          viewport: { width: 400, height: 620 },
+        }
+      );
       await wallet.context.route('**/*', async (route) => {
         const request = route.request(),
           url = new URL(request.url());
@@ -1035,6 +1514,30 @@ for (const viewport of [
           await capture(page);
         }
       );
+      const contract = page
+        .getByRole('heading', { name: en.send.smartContract, exact: true })
+        .locator('xpath=following-sibling::p');
+      observations.contractRevealGestures = [];
+      await observeFaucetContractRecovery({
+        wallet,
+        page,
+        prefix,
+        banner,
+        back,
+        requestNow,
+        contract,
+        // Exact supported-network public constant; never injected into the UI.
+        expectedContract: '0x35EE5876Db071b527dC62FD3EE3c32e4304d8C23',
+        unchanged: () => unchanged(renamed),
+        historyEntry: nativeHistoryEntry,
+        reveal: () =>
+          revealCard(
+            page,
+            contract.locator('xpath=..'),
+            observations.contractRevealGestures
+          ),
+        observations,
+      });
       await wallet.step(
         `${prefix} public label-only scope worker runtime and finite physical fences complete before candidate`,
         async () => {
@@ -1100,10 +1603,38 @@ for (const viewport of [
           ).toBe(true);
         }
       );
+      await wallet.step(
+        `${prefix} full idle contract is painted inside its padded feedback card without collisions`,
+        async () => {
+          const initial = observations.contractRecovery.measurements.find(
+            (entry: any) => entry.phase === 'initial'
+          ).value;
+          expect(initial.allGlyphsPainted, JSON.stringify(initial)).toBe(true);
+          expect(initial.neighborCollisions).toEqual([]);
+          expect(
+            initial.glyphs.every(
+              (glyph: any) =>
+                glyph.left >=
+                  initial.feedbackBox.left +
+                    initial.feedbackPadding.left -
+                    0.5 &&
+                glyph.right <=
+                  initial.feedbackBox.right -
+                    initial.feedbackPadding.right +
+                    0.5 &&
+                glyph.bottom <=
+                  initial.feedbackBox.bottom -
+                    initial.feedbackPadding.bottom +
+                    0.5
+            ),
+            JSON.stringify(initial)
+          ).toBe(true);
+        }
+      );
       status = 'passed';
     } finally {
       try {
-        await info.attach('faucet-account-label-evidence', {
+        await info.attach('faucet-contract-native-recovery-evidence', {
           contentType: 'application/json',
           body: JSON.stringify({
             status,
