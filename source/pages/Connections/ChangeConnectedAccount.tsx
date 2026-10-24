@@ -166,7 +166,7 @@ export const ChangeConnectedAccount = () => {
             <div className="w-8 h-8 shrink-0 rounded-full bg-gradient-to-br from-brand-royalblue to-brand-deepPurple flex items-center justify-center">
               <Icon name="warning" className="text-white" size={16} />
             </div>
-            <p className="min-w-0 break-all text-lg font-medium text-brand-white">
+            <p className="min-w-0 [overflow-wrap:anywhere] text-lg font-medium text-brand-white">
               {host}
             </p>
           </div>
