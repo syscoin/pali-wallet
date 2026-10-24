@@ -50,11 +50,18 @@ export const PageLoadingOverlay = memo(
     if (isSlow || nonBlocking) {
       // A slow RPC must not hold the whole wallet hostage or be mistaken for a
       // failed operation. The layout separately guards context-sensitive actions.
+      // Ordinary wallet pages reserve the real translated height in page flow.
+      // Headerless approval/hardware layouts retain their existing fixed status:
+      // a viewport-covering child can otherwise paint over an in-flow sibling.
       return (
         <div
           role="status"
           aria-live="polite"
-          className="fixed bottom-3 left-3 right-3 z-[55] pointer-events-none flex items-center justify-center gap-2 rounded-lg bg-bkg-1/95 border border-brand-blue500/30 p-3 text-xs text-brand-white shadow-lg"
+          className={`${
+            hasHeader
+              ? 'mx-3 my-3 shrink-0'
+              : 'fixed bottom-3 left-3 right-3 z-[55]'
+          } pointer-events-none flex items-center justify-center gap-2 rounded-lg bg-bkg-1/95 border border-brand-blue500/30 p-3 text-xs text-brand-white shadow-lg`}
         >
           <span className="animate-spin rounded-full h-4 w-4 shrink-0 border-2 border-brand-blue500 border-t-transparent" />
           <span>

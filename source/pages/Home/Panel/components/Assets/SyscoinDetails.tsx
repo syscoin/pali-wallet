@@ -79,6 +79,9 @@ export const SyscoinAssetDetails = ({
       assetGuid: navigationState.assetGuid || id,
       symbol: navigationState.symbol || 'Unknown',
       name: navigationState.name || navigationState.symbol || 'Unknown Token',
+      ...(typeof navigationState.contract === 'string'
+        ? { contract: navigationState.contract }
+        : {}),
       ...(isSptBalanceAvailable(navigationState.balance)
         ? { balance: navigationState.balance }
         : {}),
@@ -519,8 +522,10 @@ export const SyscoinAssetDetails = ({
                       {truncate(item.value, 10, true)}
                     </span>
                     <button
+                      type="button"
                       onClick={() => copy(item.value)}
-                      className="text-brand-royalbluemedium hover:text-brand-deepPink100 transition-colors"
+                      className="inline-flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg text-brand-royalbluemedium hover:text-brand-deepPink100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue transition-colors"
+                      aria-label={t('send.copyContractAddress')}
                       title={t('send.copyContractAddress')}
                     >
                       <CopyIcon size={14} />
