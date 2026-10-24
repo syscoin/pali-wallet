@@ -1,6 +1,6 @@
 /* eslint-disable react/prop-types */
 import { Switch } from '@headlessui/react';
-import { Form, Input } from 'antd';
+import { Form, Input, type InputProps, type InputRef } from 'antd';
 import { useForm } from 'antd/lib/form/Form';
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -62,6 +62,43 @@ interface IChainInfo {
 const NETWORK_BADGE_CLASS =
   'text-xs px-2 py-0.5 text-white bg-brand-royalblue rounded-full font-medium shadow-sm group-hover:shadow-md group-hover:bg-brand-blue500 transform group-hover:scale-105 transition-all duration-300 flex-shrink-0';
 const NETWORK_INPUT_CLASS = 'custom-input-normal relative';
+
+// Retain the existing empty feedback slot/affix wrapper without introducing
+// an icon when this styled item becomes the Name field's sole owner.
+const NETWORK_NAME_FEEDBACK = {
+  icons: () => ({
+    error: false,
+    success: false,
+    validating: false,
+    warning: false,
+  }),
+};
+
+type NetworkNameControlProps = Omit<InputProps, 'children'> & {
+  children: React.ReactNode;
+  dropdownRef: React.Ref<HTMLDivElement>;
+  onDropdownBlur: React.FocusEventHandler<HTMLDivElement>;
+};
+
+// Form.Item owns the real input ref and all native control/ARIA props. Keep its
+// single onChange chain on Input, not on the surrounding dropdown anchor.
+const NetworkNameControl = React.forwardRef<InputRef, NetworkNameControlProps>(
+  function renderNetworkNameControl(
+    { children, dropdownRef, onDropdownBlur, ...inputProps },
+    ref
+  ) {
+    return (
+      <div
+        className="relative w-full"
+        ref={dropdownRef}
+        onBlur={onDropdownBlur}
+      >
+        <Input {...inputProps} ref={ref} />
+        {children}
+      </div>
+    );
+  }
+);
 
 const networkFormValues = (
   network: INetwork | null | undefined,
@@ -1413,91 +1450,84 @@ const CustomRPCView = () => {
                 <p className="text-brand-deepPink100 text-xs">UTXO</p>
               </div>
             </Form.Item>
-            <Form.Item className="w-full" hasFeedback>
+            <Form.Item
+              name="label"
+              className="w-full"
+              hasFeedback={NETWORK_NAME_FEEDBACK}
+              rules={[
+                {
+                  required: true,
+                  whitespace: true,
+                  message: t('settings.networkNameRequired'),
+                },
+              ]}
+            >
               {/* Autocomplete input for both EVM and UTXO networks */}
-              <div
-                className="relative w-full"
-                ref={dropdownRef}
-                onBlur={(event) => {
+              <NetworkNameControl
+                dropdownRef={dropdownRef}
+                onDropdownBlur={(event) => {
                   if (!event.currentTarget.contains(event.relatedTarget))
                     closeSuggestions();
                 }}
+                role="combobox"
+                aria-label={t('settings.label')}
+                aria-autocomplete="list"
+                aria-expanded={showSuggestions}
+                aria-controls={suggestionsId}
+                aria-activedescendant={activeSuggestionId}
+                disabled={isInputDisableByEditMode}
+                placeholder={`${t('settings.label')} - ${t(
+                  'settings.searchNetworksPlaceholder',
+                  { networkType: isSyscoinRpc ? 'UTXO' : 'EVM' }
+                )}`}
+                className={NETWORK_INPUT_CLASS}
+                onChange={(e) => {
+                  invalidatePendingChecks();
+                  const value = e.target.value;
+                  setNetworkQuery(value);
+                  setSuggestionsOpen(true);
+                  setActiveSuggestion(-1);
+                }}
+                onKeyDown={(event) => {
+                  if (event.nativeEvent.isComposing || testingRpcs) return;
+                  if (event.key === 'Escape') {
+                    if (suggestionsOpen) {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      closeSuggestions();
+                    }
+                  } else if (
+                    (event.key === 'ArrowDown' || event.key === 'ArrowUp') &&
+                    networkSuggestions.length > 0
+                  ) {
+                    event.preventDefault();
+                    setSuggestionsOpen(true);
+                    const last = networkSuggestions.length - 1;
+                    setActiveSuggestion((current) =>
+                      event.key === 'ArrowDown'
+                        ? !showSuggestions || current < 0 || current === last
+                          ? 0
+                          : current + 1
+                        : !showSuggestions || current <= 0
+                        ? last
+                        : current - 1
+                    );
+                  } else if (event.key === 'Enter' && showSuggestions) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    void handleNetworkSelect(
+                      networkSuggestions[
+                        Math.min(
+                          networkSuggestions.length - 1,
+                          Math.max(0, activeSuggestion)
+                        )
+                      ]
+                    );
+                  } else if (event.key === 'Tab') {
+                    closeSuggestions();
+                  }
+                }}
               >
-                <Form.Item
-                  name="label"
-                  noStyle
-                  rules={[
-                    {
-                      required: true,
-                      whitespace: true,
-                      message: t('settings.networkNameRequired'),
-                    },
-                  ]}
-                >
-                  <Input
-                    role="combobox"
-                    aria-label={t('settings.label')}
-                    aria-autocomplete="list"
-                    aria-expanded={showSuggestions}
-                    aria-controls={suggestionsId}
-                    aria-activedescendant={activeSuggestionId}
-                    disabled={isInputDisableByEditMode}
-                    placeholder={`${t('settings.label')} - ${t(
-                      'settings.searchNetworksPlaceholder',
-                      { networkType: isSyscoinRpc ? 'UTXO' : 'EVM' }
-                    )}`}
-                    className={NETWORK_INPUT_CLASS}
-                    onChange={(e) => {
-                      invalidatePendingChecks();
-                      const value = e.target.value;
-                      setNetworkQuery(value);
-                      setSuggestionsOpen(true);
-                      setActiveSuggestion(-1);
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.nativeEvent.isComposing || testingRpcs) return;
-                      if (event.key === 'Escape') {
-                        if (suggestionsOpen) {
-                          event.preventDefault();
-                          event.stopPropagation();
-                          closeSuggestions();
-                        }
-                      } else if (
-                        (event.key === 'ArrowDown' ||
-                          event.key === 'ArrowUp') &&
-                        networkSuggestions.length > 0
-                      ) {
-                        event.preventDefault();
-                        setSuggestionsOpen(true);
-                        const last = networkSuggestions.length - 1;
-                        setActiveSuggestion((current) =>
-                          event.key === 'ArrowDown'
-                            ? !showSuggestions ||
-                              current < 0 ||
-                              current === last
-                              ? 0
-                              : current + 1
-                            : !showSuggestions || current <= 0
-                            ? last
-                            : current - 1
-                        );
-                      } else if (event.key === 'Enter' && showSuggestions) {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        void handleNetworkSelect(
-                          networkSuggestions[
-                            Math.min(
-                              networkSuggestions.length - 1,
-                              Math.max(0, activeSuggestion)
-                            )
-                          ]
-                        );
-                      } else if (event.key === 'Tab') {
-                        closeSuggestions();
-                      }
-                    }}
-                  />
-                </Form.Item>
                 <div
                   id={suggestionsId}
                   role="listbox"
@@ -1554,7 +1584,7 @@ const CustomRPCView = () => {
                   {/* Subtle bottom border accent */}
                   <div className="h-px bg-gradient-to-r from-transparent via-brand-royalblue/50 to-transparent"></div>
                 </div>
-              </div>
+              </NetworkNameControl>
             </Form.Item>
           </>
         )}
