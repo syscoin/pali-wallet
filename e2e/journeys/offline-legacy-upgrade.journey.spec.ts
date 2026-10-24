@@ -446,7 +446,9 @@ test('published legacy wallet upgrades in-place without reimporting its vault', 
     expectedFallbackChainId?: number
   ) => {
     await home();
-    const button = page.getByRole('button').filter({ hasText: /UTXO|EVM/ });
+    const button = page.getByRole('button').filter({
+      has: page.locator('#network-settings-btn'),
+    });
     await expect(button).toHaveCount(1);
     if ((await button.innerText()).includes(label)) return;
     await button.click();
