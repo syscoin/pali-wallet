@@ -140,8 +140,26 @@ const ImportableAssetsListComponent: React.FC<IImportableAssetsListProps> = ({
 
         return (
           <Fragment key={asset.id}>
-            <li className="flex items-center justify-between py-3 px-4 text-xs border border-bkg-4 rounded-lg bg-bkg-2 hover:bg-bkg-3 transition-all duration-200">
-              <div className="flex gap-3 items-center justify-start flex-1 min-w-0">
+            <li
+              className={`flex items-center justify-between py-3 px-4 text-xs border border-bkg-4 rounded-lg bg-bkg-2 hover:bg-bkg-3 transition-all duration-200 ${
+                assetType === 'evm'
+                  ? 'flex-wrap gap-y-2 [@media(min-width:400px)]:flex-nowrap'
+                  : ''
+              }`}
+            >
+              <div
+                className={`flex gap-3 items-center justify-start flex-1 min-w-0 ${
+                  assetType === 'evm'
+                    ? 'basis-full [@media(min-width:400px)]:basis-auto'
+                    : ''
+                } ${
+                  asset.tokenStandard
+                    ? assetType === 'evm'
+                      ? '[@media(min-width:400px)]:mr-3'
+                      : 'mr-3'
+                    : ''
+                }`}
+              >
                 {getAssetLogo(asset)}
 
                 <div className="flex flex-col flex-1 min-w-0">
@@ -195,7 +213,15 @@ const ImportableAssetsListComponent: React.FC<IImportableAssetsListProps> = ({
                     </p>
                   )}
                 </div>
+              </div>
 
+              <div
+                className={`flex items-center justify-between flex-shrink-0 ${
+                  assetType === 'evm'
+                    ? 'w-full [@media(min-width:400px)]:w-auto'
+                    : ''
+                }`}
+              >
                 {/* Token type badge */}
                 {asset.tokenStandard && (
                   <div
@@ -205,74 +231,73 @@ const ImportableAssetsListComponent: React.FC<IImportableAssetsListProps> = ({
                     {asset.tokenStandard}
                   </div>
                 )}
-              </div>
-
-              <div className="flex items-center justify-between flex-shrink-0">
-                <Tooltip content={t('tooltip.assetDetails')}>
-                  <IconButton
-                    onClick={() => onDetailsClick(asset)}
-                    className="p-2 hover:bg-brand-royalbluemedium/20 rounded-full transition-colors duration-200"
-                    aria-label={t('tokens.viewTokenDetails', {
-                      symbol: asset.symbol,
-                    })}
-                  >
-                    <DetailsIcon
-                      size={16}
-                      className="text-brand-white hover:text-brand-royalbluemedium transition-colors"
-                    />
-                  </IconButton>
-                </Tooltip>
-
-                <Tooltip
-                  content={
-                    isImported
-                      ? t('tokens.tokenAlreadyImported')
-                      : t('home.importToken')
-                  }
-                >
-                  <div
-                    className={`relative ${
-                      isImported || isImportBusy
-                        ? 'cursor-not-allowed'
-                        : 'cursor-pointer'
-                    }`}
-                  >
+                <div className="flex items-center justify-between flex-shrink-0 ml-auto">
+                  <Tooltip content={t('tooltip.assetDetails')}>
                     <IconButton
-                      onClick={() => {
-                        if (!isImported && !isImportBusy) {
-                          handleImport(asset);
-                        }
-                      }}
-                      className={`p-2 rounded-full transition-colors duration-200 ${
-                        isImported || isImportBusy
-                          ? 'cursor-not-allowed'
-                          : 'hover:bg-brand-royalblue/20'
-                      }`}
-                      aria-label={t('tokens.importNamedToken', {
+                      onClick={() => onDetailsClick(asset)}
+                      className="p-2 hover:bg-brand-royalbluemedium/20 rounded-full transition-colors duration-200"
+                      aria-label={t('tokens.viewTokenDetails', {
                         symbol: asset.symbol,
                       })}
-                      disabled={isImported || isImportBusy}
                     >
-                      <ImportIcon
-                        className={`transition-all duration-200 ${
-                          isImported
-                            ? 'text-gray-500'
-                            : isImporting
-                            ? 'text-brand-royalblue animate-pulse'
-                            : isImportBusy
-                            ? 'text-gray-500'
-                            : 'text-brand-white hover:text-brand-royalblue'
-                        }`}
+                      <DetailsIcon
                         size={16}
+                        className="text-brand-white hover:text-brand-royalbluemedium transition-colors"
                       />
                     </IconButton>
-                    {isImporting && (
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-brand-royalblue"></div>
-                      </div>
-                    )}
-                  </div>
-                </Tooltip>
+                  </Tooltip>
+
+                  <Tooltip
+                    content={
+                      isImported
+                        ? t('tokens.tokenAlreadyImported')
+                        : t('home.importToken')
+                    }
+                  >
+                    <div
+                      className={`relative ${
+                        isImported || isImportBusy
+                          ? 'cursor-not-allowed'
+                          : 'cursor-pointer'
+                      }`}
+                    >
+                      <IconButton
+                        onClick={() => {
+                          if (!isImported && !isImportBusy) {
+                            handleImport(asset);
+                          }
+                        }}
+                        className={`p-2 rounded-full transition-colors duration-200 ${
+                          isImported || isImportBusy
+                            ? 'cursor-not-allowed'
+                            : 'hover:bg-brand-royalblue/20'
+                        }`}
+                        aria-label={t('tokens.importNamedToken', {
+                          symbol: asset.symbol,
+                        })}
+                        disabled={isImported || isImportBusy}
+                      >
+                        <ImportIcon
+                          className={`transition-all duration-200 ${
+                            isImported
+                              ? 'text-gray-500'
+                              : isImporting
+                              ? 'text-brand-royalblue animate-pulse'
+                              : isImportBusy
+                              ? 'text-gray-500'
+                              : 'text-brand-white hover:text-brand-royalblue'
+                          }`}
+                          size={16}
+                        />
+                      </IconButton>
+                      {isImporting && (
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-brand-royalblue"></div>
+                        </div>
+                      )}
+                    </div>
+                  </Tooltip>
+                </div>
               </div>
             </li>
           </Fragment>
