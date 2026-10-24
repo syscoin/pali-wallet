@@ -1312,7 +1312,7 @@ const CustomRPCView = () => {
       )}
 
       {state?.isEditing && currentNetwork && (
-        <div className="mb-6">
+        <div className="mb-6 min-w-0 max-w-full">
           {/* Beautiful display for edit mode with animations - using fresh Redux data */}
           <div className="group custom-input-normal relative flex items-center gap-3 py-3 px-4 bg-alpha-whiteAlpha100 border border-alpha-whiteAlpha300 rounded-lg shadow-sm hover:shadow-lg transition-all duration-300 hover:border-brand-royalblue">
             <div className="relative">
@@ -1338,7 +1338,7 @@ const CustomRPCView = () => {
                     : currentNetwork.chainId}
                 </span>
               </div>
-              <div className="text-sm text-brand-gray200 mt-1 font-medium group-hover:text-white transition-colors duration-200">
+              <div className="text-sm text-brand-gray200 mt-1 font-medium group-hover:text-white transition-colors duration-200 [overflow-wrap:anywhere]">
                 {'$'}
                 {(currentNetwork.currency || 'sys').toUpperCase()} •{' '}
                 {t('settings.networkFamilyLabel', {
