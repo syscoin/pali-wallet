@@ -261,14 +261,14 @@ export const EvmAssetDetails = ({
           )}
         </div>
 
-        {/* Volume and Supply - Grid */}
-        <div className="grid grid-cols-2 gap-4 mb-4">
+        {/* Reflow whole metrics on narrow screens instead of clipping digits. */}
+        <div className="flex flex-wrap gap-4 mb-4 min-[400px]:grid min-[400px]:grid-cols-2">
           {hasMarketValue(marketData?.total_volume?.[userCurrency]) && (
-            <div>
+            <div className="flex-1 max-w-full">
               <span className="text-gray-400 text-xs block mb-1">
                 {t('tokens.volume24h')}
               </span>
-              <span className="text-white font-medium">
+              <span className="block break-words text-white font-medium">
                 {currencySymbol || ''}
                 {formatCurrency(
                   marketData.total_volume[userCurrency].toString(),
@@ -278,11 +278,11 @@ export const EvmAssetDetails = ({
             </div>
           )}
           {hasMarketValue(marketData?.circulating_supply) && (
-            <div className="text-right">
+            <div className="flex-1 max-w-full text-right">
               <span className="text-gray-400 text-xs block mb-1">
                 {t('tokens.circulatingSupply')}
               </span>
-              <span className="text-white font-medium">
+              <span className="block break-words text-white font-medium">
                 {formatCurrency(marketData.circulating_supply.toString(), 0)}
               </span>
             </div>
