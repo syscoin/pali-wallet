@@ -1,6 +1,12 @@
 /** @jest-environment jsdom */
 import '@testing-library/jest-dom';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { ConfigProvider, Form } from 'antd';
 import React from 'react';
 
@@ -149,22 +155,49 @@ it.each([
 );
 
 it('ordinary positive correction clears stale semantics and preserves one fee-change callback', async () => {
-  render(<NativeFeeForm />);
-  await waitFor(() => expect(field()).toHaveValue(0.00000001));
-  fireEvent.change(field(), { target: { value: '-1' } });
-  expect(await screen.findByText(en.send.invalidFeeRate)).toBeVisible();
-  mockFeeChange.mockClear();
-  fireEvent.change(field(), { target: { value: '0.00000002' } });
-  await waitFor(() => {
-    expect(field()).not.toHaveAttribute('aria-invalid', 'true');
-    expect(field()).not.toHaveAttribute('aria-describedby');
-    expect(screen.queryByText(en.send.invalidFeeRate)).not.toBeInTheDocument();
-  });
-  expect(field()).toHaveValue(0.00000002);
-  expect(field()).toHaveAttribute('aria-required', 'true');
-  expect(mockFeeChange).toHaveBeenCalledTimes(1);
-  expect(mockFeeChange).toHaveBeenCalledWith(0.00000002);
-  expect(mockSubmit).not.toHaveBeenCalled();
+  // Drive real AntD debounce timers deterministically; leave React's
+  // MessageChannel microtasks real. No assertion or default wait is relaxed.
+  jest.useFakeTimers({ doNotFake: ['queueMicrotask'] });
+  let view: ReturnType<typeof render> | undefined;
+  try {
+    view = render(<NativeFeeForm />);
+    await waitFor(() => expect(field()).toHaveValue(0.00000001));
+    fireEvent.change(field(), { target: { value: '-1' } });
+    expect(await screen.findByText(en.send.invalidFeeRate)).toBeVisible();
+    mockFeeChange.mockClear();
+    await act(async () => {
+      fireEvent.change(field(), { target: { value: '0.00000002' } });
+    });
+    // ItemHolder and ErrorList each clear a real 10ms debounce. Commit between
+    // them so the second layer observes the first layer's cleared errors.
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(10);
+    });
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(10);
+    });
+    await waitFor(() => {
+      expect(field()).not.toHaveAttribute('aria-invalid', 'true');
+      expect(field()).not.toHaveAttribute('aria-describedby');
+      expect(
+        screen.queryByText(en.send.invalidFeeRate)
+      ).not.toBeInTheDocument();
+    });
+    expect(field()).toHaveValue(0.00000002);
+    expect(field()).toHaveAttribute('aria-required', 'true');
+    expect(mockFeeChange).toHaveBeenCalledTimes(1);
+    expect(mockFeeChange).toHaveBeenCalledWith(0.00000002);
+    expect(mockSubmit).not.toHaveBeenCalled();
+  } finally {
+    try {
+      view?.unmount();
+      await act(async () => {
+        jest.runOnlyPendingTimers();
+      });
+    } finally {
+      jest.useRealTimers();
+    }
+  }
 });
 
 it('retains disabled state and the existing native label', () => {
