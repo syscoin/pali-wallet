@@ -26,6 +26,17 @@ const RECEIVER = '#send-form input#receiver';
 const AMOUNT = '#with-max-button';
 const FEE = '#fee-input';
 const MALFORMED = 'not-a-syscoin-address';
+// Exercise permitted focused fractions and the blocking safety-card reason.
+// Nonblocking advisory warnings must stay valid; their description is optional.
+const LOW_WARNING = '0.00001';
+const HIGH_SAFETY = '0.00005';
+const lowWarningMessage = en.send.feeRateNormal
+  .replace('{{value}}', Number(LOW_WARNING).toFixed(8))
+  .replace('{{currency}}', 'SYS');
+const highSafetyMessage = en.send.feeRateSafetyLimit
+  .replace('{{value}}', Number(HIGH_SAFETY).toFixed(8))
+  .replace(/\{\{currency\}\}/g, 'SYS')
+  .replace('{{limit}}', '0.00005000');
 const ORIGIN = 'https://blockbook.syscoin.org';
 const FEE_URL = ORIGIN + '/api/v2/estimatefee/1';
 const sha = (file: string) =>
@@ -380,6 +391,23 @@ const fieldEvidence = async (page: Page, selector: string) => {
       ...attributes(field),
       value: field.value,
       type: field.type,
+      focused: field === document.activeElement,
+      defaultValue: field.defaultValue,
+      valueAttribute: field.getAttribute('value'),
+      step: field.getAttribute('step'),
+      min: field.getAttribute('min'),
+      max: field.getAttribute('max'),
+      formNoValidate: field.form?.noValidate ?? null,
+      validationMessage: field.validationMessage,
+      validity: {
+        badInput: field.validity.badInput,
+        customError: field.validity.customError,
+        rangeOverflow: field.validity.rangeOverflow,
+        rangeUnderflow: field.validity.rangeUnderflow,
+        stepMismatch: field.validity.stepMismatch,
+        valid: field.validity.valid,
+        valueMissing: field.validity.valueMissing,
+      },
       placeholder: field.placeholder,
       labels: Array.from(field.labels || []).map((label) =>
         label.textContent?.trim()
@@ -611,6 +639,7 @@ for (const viewport of [
       originals: [],
       routes: [],
       nativeFeeAssociationMeasured: true,
+      nativeSafetyReasonAndFractionalValidityMeasured: true,
     };
     let wallet: PaliWallet | undefined,
       status: 'passed' | 'failed' = 'failed';
@@ -896,6 +925,107 @@ for (const viewport of [
         }
       );
       await wallet.step(
+        `${viewport.width}x${viewport.height}: a normal lower advisory rate remains nonblocking without an association mandate`,
+        async () => {
+          await tabTo(page, fee);
+          await fee.fill(LOW_WARNING);
+          const advisory = page.getByText(lowWarningMessage, { exact: true });
+          await expect(advisory).toHaveCount(1);
+          await expect(advisory).toBeVisible();
+          await revealFeedback(page, advisory);
+          observations.lowerAdvisoryFocused = await fieldEvidence(page, FEE);
+          await screenshot('lower-advisory-fee-focused-before-native-blur');
+          await page.keyboard.press('Tab');
+          await settle(page);
+          const geometry = await revealFeedback(page, advisory);
+          const field = await fieldEvidence(page, FEE);
+          observations.lowerAdvisoryControl = {
+            message: lowWarningMessage,
+            field,
+            geometry,
+          };
+          expect(geometry.visible).toBe(true);
+          expect(field.dom.value).toBe(LOW_WARNING);
+          expect(field.dom.nearbyText).toContain(lowWarningMessage);
+          expect(field.dom.invalid).not.toBe('true');
+          expect(field.native.properties.invalid).not.toBe('true');
+          await requireZeroAmount();
+          await expect(receiver).toHaveValue(MALFORMED);
+          await screenshot('lower-advisory-fee-control');
+          await unchanged();
+        }
+      );
+      await wallet.step(
+        `${viewport.width}x${viewport.height}: observe the ordinary blocking safety-rate reason on the actual input`,
+        async () => {
+          await fee.fill(HIGH_SAFETY);
+          const reason = page.getByText(highSafetyMessage, { exact: true });
+          await expect(reason).toHaveCount(1);
+          await expect(reason).toBeVisible();
+          await expect(
+            page.getByText(lowWarningMessage, { exact: true })
+          ).toHaveCount(0);
+          // Installed rc-component/form converts the intentional empty rejection
+          // into a blank error. Invalid state is a source-backed control; whether
+          // its meaningful reason is actually associated remains the last gate.
+          await expect(fee).toHaveAttribute('aria-invalid', 'true');
+          observations.highSafetyFocused = await fieldEvidence(page, FEE);
+          await page.keyboard.press('Tab');
+          await settle(page);
+          const geometry = await revealFeedback(page, reason);
+          const field = await fieldEvidence(page, FEE);
+          expect(geometry.visible).toBe(true);
+          expect(field.dom.value).toBe(HIGH_SAFETY);
+          expect(field.dom.nearbyText).toContain(highSafetyMessage);
+          expect(field.native.properties.invalid).toBe('true');
+          observations.highSafety = {
+            value: HIGH_SAFETY,
+            message: highSafetyMessage,
+            field,
+            geometry,
+            reasonNode: await reason.evaluate((element) => ({
+              tag: element.tagName,
+              id: element.id,
+              role: element.getAttribute('role'),
+              live: element.getAttribute('aria-live'),
+              text: element.textContent?.trim(),
+            })),
+          };
+          await requireZeroAmount();
+          await expect(receiver).toHaveValue(MALFORMED);
+          await screenshot('blocking-safety-fee-reason-and-native-field');
+          await unchanged();
+        }
+      );
+      await wallet.step(
+        `${viewport.width}x${viewport.height}: ordinary positive correction removes only the current safety card`,
+        async () => {
+          await fee.fill(recommendation);
+          await expect(
+            page.getByText(highSafetyMessage, { exact: true })
+          ).toHaveCount(0);
+          await expect(
+            page.getByText(lowWarningMessage, { exact: true })
+          ).toHaveCount(0);
+          await expect(
+            page.getByText(en.send.invalidFeeRate, { exact: true })
+          ).toHaveCount(0);
+          await expect(fee).not.toHaveAttribute('aria-invalid', 'true');
+          await page.keyboard.press('Tab');
+          await settle(page);
+          const field = await fieldEvidence(page, FEE);
+          expect(field.dom.value).toBe(recommendation);
+          expect(field.dom.invalid).not.toBe('true');
+          expect(field.native.description).not.toContain(highSafetyMessage);
+          observations.afterSafetyCorrection = field;
+          await requireZeroAmount();
+          await expect(receiver).toHaveValue(MALFORMED);
+          await revealFeedback(page, fee);
+          await screenshot('positive-correction-after-safety-card');
+          await unchanged();
+        }
+      );
+      await wallet.step(
         `${viewport.width}x${viewport.height}: real Close and Send reentry retain usable local validation`,
         async () => {
           const close = page.getByRole('button', {
@@ -968,6 +1098,31 @@ for (const viewport of [
         async () => {
           for (const observed of observations.fields)
             associated(observed.field, observed.message);
+        }
+      );
+      await wallet.step(
+        `${viewport.width}x${viewport.height}: only after all original controls judge the blocking safety reason association`,
+        async () => {
+          expect(observations.highSafety).toBeDefined();
+          expect(observations.lowerAdvisoryControl).toBeDefined();
+          expect(observations.afterSafetyCorrection).toBeDefined();
+          associated(
+            observations.highSafety.field,
+            observations.highSafety.message
+          );
+        }
+      );
+      await wallet.step(
+        `${viewport.width}x${viewport.height}: a permitted focused fraction has no native whole-number constraint error`,
+        async () => {
+          const focused = observations.lowerAdvisoryFocused;
+          expect(focused.dom.focused).toBe(true);
+          expect(focused.dom.step).toBe('any');
+          expect(focused.dom.validity.stepMismatch).toBe(false);
+          expect(focused.dom.validity.valid).toBe(true);
+          expect(focused.dom.validationMessage).toBe('');
+          expect(focused.dom.invalid).not.toBe('true');
+          expect(focused.native.properties.invalid).not.toBe('true');
         }
       );
       status = 'passed';

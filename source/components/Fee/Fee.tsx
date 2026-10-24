@@ -72,6 +72,7 @@ export const Fee = ({
 
   // State to track current fee value for real-time validation
   const [currentFee, setCurrentFee] = useState<string>('');
+  const feeWarningId = React.useId();
 
   // Memoize the fee change handler to avoid triggering effects
   const handleFeeChange = useCallback(
@@ -174,6 +175,13 @@ export const Fee = ({
     }
   };
 
+  const displayedFeeValidation = (() => {
+    const feeToValidate = currentFee || recommend;
+    if (!feeToValidate) return null;
+    const numValue = parseFloat(String(feeToValidate));
+    return isNaN(numValue) ? null : validateFeeRate(numValue);
+  })();
+
   return (
     <div className="flex flex-col gap-2 w-full">
       <label
@@ -219,9 +227,20 @@ export const Fee = ({
                   <div className="relative">
                     <Input
                       {...fieldProps}
+                      aria-describedby={
+                        [
+                          fieldProps['aria-describedby'],
+                          displayedFeeValidation?.level === 'error'
+                            ? feeWarningId
+                            : undefined,
+                        ]
+                          .filter(Boolean)
+                          .join(' ') || undefined
+                      }
                       disabled={disabled}
                       id="fee-input"
                       type="number"
+                      step="any"
                       placeholder={getPlaceholder()}
                       suffix={(() => {
                         const feeToEstimate = currentFee || recommend;
@@ -275,18 +294,12 @@ export const Fee = ({
 
                   {/* Fee rate warning display */}
                   {(() => {
-                    const feeToValidate = currentFee || recommend;
-
-                    if (!feeToValidate) return null;
-
-                    const numValue = parseFloat(String(feeToValidate));
-                    if (isNaN(numValue)) return null;
-
-                    const validation = validateFeeRate(numValue);
+                    const validation = displayedFeeValidation;
                     if (!validation) return null;
 
                     return (
                       <div
+                        id={feeWarningId}
                         className={`text-xs p-2 rounded mt-1 ${
                           validation.level === 'error'
                             ? 'bg-red-900/20 text-red-400 border border-red-600/30'
