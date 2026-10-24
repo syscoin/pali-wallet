@@ -121,13 +121,17 @@ export const Receive = () => {
               right chain before sharing the address */}
           <div className="flex max-w-full items-center gap-2 mb-4 px-3 py-1 rounded-full bg-alpha-whiteAlpha100 border border-alpha-whiteAlpha300">
             <span className="min-w-0 break-words text-xs text-white font-medium">
-              {activeNetwork?.label}
-              {showChainNumber && (
-                <span className="block text-xs font-normal text-brand-gray200">
-                  {t('settings.chainNumber', {
-                    chainId: activeNetwork.chainId,
-                  })}
-                </span>
+              {showChainNumber ? (
+                <>
+                  <span className="block">{activeNetwork.label}</span>
+                  <span className="block text-xs font-normal text-brand-gray200">
+                    {t('settings.chainNumber', {
+                      chainId: activeNetwork.chainId,
+                    })}
+                  </span>
+                </>
+              ) : (
+                activeNetwork?.label
               )}
             </span>
             <span className="shrink-0 text-xs text-brand-gray200">•</span>

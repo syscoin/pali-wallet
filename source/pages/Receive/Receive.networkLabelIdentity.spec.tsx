@@ -207,6 +207,7 @@ it.each([
     mockState.vault.activeNetwork = network(chainId);
     const before = JSON.parse(JSON.stringify(mockState));
     mount();
+    expect(screen.getByText(LABEL, { exact: true })).toBeVisible();
     expect(screen.getByText(chainText(chainId))).toBeVisible();
     expect(pill()).toHaveTextContent(LABEL);
     expect(pill()).toHaveTextContent(catalog().receive.hdAccount);
