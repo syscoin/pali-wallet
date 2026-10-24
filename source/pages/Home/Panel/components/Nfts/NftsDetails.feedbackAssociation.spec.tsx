@@ -238,7 +238,7 @@ it('waits for the existing debounce/current result, then associates malformed fe
   expect(screen.getByTestId('verification-pending')).toBeVisible();
   expectHelper('send.enterNftTokenId');
   await complete(0, [{ tokenId: 'abc', verified: false, balance: 0 }]);
-  expectError('send.tokenVerificationFailed', true);
+  expectError('send.invalidTokenId', true);
   edit('7');
   expectHelper('send.enterNftTokenId');
   expect(screen.queryByRole('alert')).toBeNull();
@@ -271,7 +271,7 @@ it.each([
     expect(requests[0].args).toEqual([CONTRACT, OWNER, [value.trim()]]);
     expectHelper('send.enterNftTokenId');
     await complete(0, [{ tokenId: value.trim(), verified: false, balance: 0 }]);
-    expectError('send.tokenVerificationFailed', true);
+    expectError('send.invalidTokenId', true);
   }
 );
 
@@ -345,7 +345,7 @@ it('ignores held A→B→A results until the newest matching request completes',
   await complete(1, [{ tokenId: '7', verified: true, balance: 0 }]);
   expectHelper('send.enterNftTokenId');
   await complete(2, [{ tokenId: 'abc', verified: false, balance: 0 }]);
-  expectError('send.tokenVerificationFailed', true);
+  expectError('send.invalidTokenId', true);
 });
 
 it.each(['account', 'network endpoint', 'collection'] as const)(
@@ -399,11 +399,11 @@ it.each(['fr', 'de'] as const)(
     edit('abc');
     await advance();
     await complete(0, [{ tokenId: 'abc', verified: false, balance: 0 }]);
-    expectError('send.tokenVerificationFailed', true);
+    expectError('send.invalidTokenId', true);
     expect(screen.getByRole('alert')).toHaveTextContent(
-      resources[locale].send.tokenVerificationFailed
+      resources[locale].send.invalidTokenId
     );
-    expect(screen.queryByText(en.send.tokenVerificationFailed)).toBeNull();
+    expect(screen.queryByText(en.send.invalidTokenId)).toBeNull();
   }
 );
 

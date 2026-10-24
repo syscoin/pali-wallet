@@ -419,7 +419,10 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
                       role="alert"
                       className="text-xs text-red-400 text-center"
                     >
-                      ❌ {verificationError}
+                      ❌{' '}
+                      {tokenIdFormatInvalid
+                        ? t('send.invalidTokenId')
+                        : verificationError}
                     </p>
                   </div>
                 )}

@@ -1096,7 +1096,7 @@ for (const viewport of [
           await expect(
             region(nftInput)
               .locator('p')
-              .filter({ hasText: en.send.tokenVerificationFailed })
+              .filter({ hasText: en.send.invalidTokenId })
           ).toBeVisible();
           await expect(
             region(nftInput).getByRole('img', { name: 'loading', exact: true })
@@ -1110,8 +1110,7 @@ for (const viewport of [
           expect(observations.malformed.evidence.dom.value).toBe('abc');
           expect(
             observations.malformed.evidence.dom.messages.some(
-              (message: string) =>
-                message.includes(en.send.tokenVerificationFailed)
+              (message: string) => message.includes(en.send.invalidTokenId)
             )
           ).toBe(true);
           expect(nftCalls().length).toBe(before);
@@ -1128,7 +1127,7 @@ for (const viewport of [
           await expect(
             region(nftInput)
               .locator('p')
-              .filter({ hasText: en.send.tokenVerificationFailed })
+              .filter({ hasText: en.send.invalidTokenId })
           ).toHaveCount(0);
           await page.getByRole('button', { name: '#7', exact: true }).click();
           await expect(nftInput).toHaveValue('');
@@ -1238,19 +1237,16 @@ for (const viewport of [
           expect(
             bad.dom.references.some(
               (ref: any) =>
-                ref.visible &&
-                ref.text.includes(en.send.tokenVerificationFailed)
+                ref.visible && ref.text.includes(en.send.invalidTokenId)
             )
           ).toBe(true);
-          expect(bad.native.description).toContain(
-            en.send.tokenVerificationFailed
-          );
+          expect(bad.native.description).toContain(en.send.invalidTokenId);
           expect(bad.dom.invalid).toBe('true');
           expect(bad.native.properties.invalid).toBe('true');
           expect(
             bad.dom.liveNodes.some(
               (node: any) =>
-                node.text.includes(en.send.tokenVerificationFailed) &&
+                node.text.includes(en.send.invalidTokenId) &&
                 (node.role === 'alert' ||
                   ['polite', 'assertive'].includes(node.live))
             )

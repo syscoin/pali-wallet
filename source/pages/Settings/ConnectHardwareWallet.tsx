@@ -1,4 +1,4 @@
-import React, { FC, useCallback, useEffect, useRef, useState } from 'react';
+import React, { FC, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
@@ -130,10 +130,6 @@ const ConnectHardwareWalletView: FC = () => {
     return <p>{t('buttons.addAccount')}</p>;
   };
 
-  const handleHardwalletBuyNow = useCallback(() => {
-    window.open(isLedger ? 'https://www.ledger.com/' : 'https://trezor.io/');
-  }, [isLedger]);
-
   // Handle screen size changes for optimal hardware wallet experience
   useEffect(() => {
     const handleResize = () => {
@@ -229,7 +225,7 @@ const ConnectHardwareWalletView: FC = () => {
             <div className="mx-4 mb-4 p-3 bg-yellow-500/20 border border-yellow-500/40 rounded-lg">
               <div className="flex items-center gap-2">
                 <svg
-                  className="w-5 h-5 text-yellow-400"
+                  className="w-5 h-5 shrink-0 text-yellow-400"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -327,12 +323,18 @@ const ConnectHardwareWalletView: FC = () => {
                       {isLedger
                         ? t('settings.orderLedger')
                         : t('settings.orderTrezor')}
-                      <span
-                        className="hover:text-button-primary cursor-pointer pl-1 underline"
-                        onClick={handleHardwalletBuyNow}
+                      <a
+                        className="hover:text-button-primary cursor-pointer pl-1 underline rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-royalblue"
+                        href={
+                          isLedger
+                            ? 'https://www.ledger.com/'
+                            : 'https://trezor.io/'
+                        }
+                        target="_blank"
+                        rel="noopener noreferrer"
                       >
                         {t('settings.buyNow')}
-                      </span>
+                      </a>
                     </p>
                   </div>
                 </div>

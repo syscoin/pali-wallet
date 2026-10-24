@@ -651,15 +651,32 @@ test('NFT thumbnails keep their category through native image failures and colle
                 `nft-detail-${width}-healthy`
               );
               await manualId.fill('abc');
-              await expect(
-                page.locator('#nft-details-token-id-error')
-              ).toBeVisible();
+              const tokenIdError = page.locator('#nft-details-token-id-error');
+              await expect(tokenIdError).toHaveText(
+                `❌ ${en.send.invalidTokenId}`
+              );
+              await expect(manualId).toHaveAttribute('aria-invalid', 'true');
               await inspectValidationSuffix(
                 page,
                 manualId,
                 info,
                 `nft-detail-${width}-error`
               );
+              const ownershipCall = `${collection.contract}:${id(
+                'ownerOf(uint256)'
+              ).slice(0, 10)}`;
+              const readCount = () =>
+                contractReads.filter((entry) => entry === ownershipCall).length;
+              const readsBefore = readCount();
+              await manualId.fill('8');
+              await expect(tokenIdError).toHaveText(
+                `❌ ${en.send.tokenVerificationFailed}`
+              );
+              await expect(manualId).not.toHaveAttribute(
+                'aria-invalid',
+                'true'
+              );
+              expect(readCount()).toBeGreaterThan(readsBefore);
               await manualId.fill('');
               await page
                 .getByRole('button', { name: '#7', exact: true })
