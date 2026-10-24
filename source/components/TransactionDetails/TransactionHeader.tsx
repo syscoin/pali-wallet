@@ -45,7 +45,9 @@ export const TransactionHeader: React.FC<ITransactionHeaderProps> = ({
       <p className="text-brand-gray200 text-xs font-light">
         {translateTransactionType(txType, t)}
       </p>
-      <p className="text-white text-base">{formatDisplayValue()}</p>
+      <p className="min-w-0 max-w-full break-all text-center text-white text-base">
+        {formatDisplayValue()}
+      </p>
       <div>{txStatus}</div>
       {isLoading && (
         <div className="flex justify-center py-4">
