@@ -215,9 +215,7 @@ it('keeps distinct-label choices unchanged and dispatches the exact chosen confi
     expect(row).toHaveAccessibleName(network.label);
     expect(row.textContent).toBe(network.label);
   }
-  await user.click(
-    within(group).getByRole('menuitem', { name: second.label })
-  );
+  await user.click(within(group).getByRole('menuitem', { name: second.label }));
   expect(mockEmitter).toHaveBeenCalledTimes(1);
   expect(mockEmitter.mock.calls[0]).toEqual([
     ['wallet', 'setActiveNetwork'],
