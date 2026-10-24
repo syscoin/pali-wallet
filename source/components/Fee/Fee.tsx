@@ -17,6 +17,41 @@ const feeInputValue = (value: number | string) =>
       })
     : value;
 
+type FeeFieldSemantics = Pick<
+  React.AriaAttributes,
+  'aria-describedby' | 'aria-errormessage' | 'aria-invalid' | 'aria-required'
+>;
+type FeeFieldProps = Omit<React.HTMLAttributes<HTMLDivElement>, 'children'> & {
+  children: (semantics: FeeFieldSemantics) => React.ReactNode;
+};
+
+// Keep the existing Form.Item control/ref and layout on the outer DIV, while
+// applying its current validation semantics to the already-labelled input.
+const FeeField = React.forwardRef<HTMLDivElement, FeeFieldProps>(
+  function renderFeeField(
+    {
+      children,
+      'aria-describedby': describedBy,
+      'aria-errormessage': errorMessage,
+      'aria-invalid': invalid,
+      'aria-required': required,
+      ...wrapperProps
+    },
+    ref
+  ) {
+    return (
+      <div {...wrapperProps} ref={ref}>
+        {children({
+          'aria-describedby': describedBy,
+          'aria-errormessage': errorMessage,
+          'aria-invalid': invalid,
+          'aria-required': required,
+        })}
+      </div>
+    );
+  }
+);
+
 export const Fee = ({
   recommend,
   disabled,
@@ -178,94 +213,103 @@ export const Fee = ({
               }),
             ]}
           >
-            <div>
-              <div className="relative">
-                <Input
-                  disabled={disabled}
-                  id="fee-input"
-                  type="number"
-                  placeholder={getPlaceholder()}
-                  suffix={(() => {
-                    const feeToEstimate = currentFee || recommend;
-                    if (!feeToEstimate) return null;
-                    const numValue = parseFloat(String(feeToEstimate));
+            <FeeField>
+              {(fieldProps) => (
+                <>
+                  <div className="relative">
+                    <Input
+                      {...fieldProps}
+                      disabled={disabled}
+                      id="fee-input"
+                      type="number"
+                      placeholder={getPlaceholder()}
+                      suffix={(() => {
+                        const feeToEstimate = currentFee || recommend;
+                        if (!feeToEstimate) return null;
+                        const numValue = parseFloat(String(feeToEstimate));
+                        if (isNaN(numValue)) return null;
+                        const estimatedFiat = getEstimatedFiatCost(numValue);
+                        if (!estimatedFiat) return null;
+                        return (
+                          <span className="text-xs text-brand-gray200 whitespace-nowrap">
+                            ~ {estimatedFiat}{' '}
+                            {t('components.estimatedAbbreviation')}
+                          </span>
+                        );
+                      })()}
+                      value={feeInputValue(
+                        form.getFieldValue('fee') ?? (recommend || '')
+                      )}
+                      onChange={(event) => {
+                        const newValue = event.target.value;
+                        setCurrentFee(newValue); // Update local state for real-time validation
+                        // Manually set form value to ensure it's in sync
+                        form.setFieldsValue({ fee: newValue });
+                        // Trigger form validation to update the visual feedback
+                        void form
+                          .validateFields(['fee'])
+                          .catch(() => undefined);
+                        // Notify parent component of fee change
+                        // Only call if newValue is not empty and converts to a valid positive number
+                        if (newValue && newValue.trim() !== '') {
+                          const numValue = Number(newValue);
+                          if (numValue > 0 && Number.isFinite(numValue)) {
+                            handleFeeChange(numValue);
+                          }
+                        }
+                      }}
+                    />
+                    {disabled && (
+                      <Tooltip
+                        content={getTooltipText()}
+                        childrenClassName="absolute right-3 top-1/2 transform -translate-y-1/2 z-20"
+                      >
+                        <Icon
+                          isSvg
+                          name="Info"
+                          className="w-4 h-4 text-brand-gray200 hover:text-brand-white transition-colors"
+                        />
+                      </Tooltip>
+                    )}
+                  </div>
+
+                  {/* Fee rate warning display */}
+                  {(() => {
+                    const feeToValidate = currentFee || recommend;
+
+                    if (!feeToValidate) return null;
+
+                    const numValue = parseFloat(String(feeToValidate));
                     if (isNaN(numValue)) return null;
-                    const estimatedFiat = getEstimatedFiatCost(numValue);
-                    if (!estimatedFiat) return null;
+
+                    const validation = validateFeeRate(numValue);
+                    if (!validation) return null;
+
                     return (
-                      <span className="text-xs text-brand-gray200 whitespace-nowrap">
-                        ~ {estimatedFiat}{' '}
-                        {t('components.estimatedAbbreviation')}
-                      </span>
+                      <div
+                        className={`text-xs p-2 rounded mt-1 ${
+                          validation.level === 'error'
+                            ? 'bg-red-900/20 text-red-400 border border-red-600/30'
+                            : 'bg-yellow-900/20 text-yellow-400 border border-yellow-600/30'
+                        }`}
+                      >
+                        <div className="flex items-center gap-1">
+                          <Icon
+                            name={
+                              validation.level === 'error'
+                                ? 'warning'
+                                : 'question'
+                            }
+                            className="w-3 h-3"
+                          />
+                          <span>{validation.message}</span>
+                        </div>
+                      </div>
                     );
                   })()}
-                  value={feeInputValue(
-                    form.getFieldValue('fee') ?? (recommend || '')
-                  )}
-                  onChange={(event) => {
-                    const newValue = event.target.value;
-                    setCurrentFee(newValue); // Update local state for real-time validation
-                    // Manually set form value to ensure it's in sync
-                    form.setFieldsValue({ fee: newValue });
-                    // Trigger form validation to update the visual feedback
-                    void form.validateFields(['fee']).catch(() => undefined);
-                    // Notify parent component of fee change
-                    // Only call if newValue is not empty and converts to a valid positive number
-                    if (newValue && newValue.trim() !== '') {
-                      const numValue = Number(newValue);
-                      if (numValue > 0 && Number.isFinite(numValue)) {
-                        handleFeeChange(numValue);
-                      }
-                    }
-                  }}
-                />
-                {disabled && (
-                  <Tooltip
-                    content={getTooltipText()}
-                    childrenClassName="absolute right-3 top-1/2 transform -translate-y-1/2 z-20"
-                  >
-                    <Icon
-                      isSvg
-                      name="Info"
-                      className="w-4 h-4 text-brand-gray200 hover:text-brand-white transition-colors"
-                    />
-                  </Tooltip>
-                )}
-              </div>
-
-              {/* Fee rate warning display */}
-              {(() => {
-                const feeToValidate = currentFee || recommend;
-
-                if (!feeToValidate) return null;
-
-                const numValue = parseFloat(String(feeToValidate));
-                if (isNaN(numValue)) return null;
-
-                const validation = validateFeeRate(numValue);
-                if (!validation) return null;
-
-                return (
-                  <div
-                    className={`text-xs p-2 rounded mt-1 ${
-                      validation.level === 'error'
-                        ? 'bg-red-900/20 text-red-400 border border-red-600/30'
-                        : 'bg-yellow-900/20 text-yellow-400 border border-yellow-600/30'
-                    }`}
-                  >
-                    <div className="flex items-center gap-1">
-                      <Icon
-                        name={
-                          validation.level === 'error' ? 'warning' : 'question'
-                        }
-                        className="w-3 h-3"
-                      />
-                      <span>{validation.message}</span>
-                    </div>
-                  </div>
-                );
-              })()}
-            </div>
+                </>
+              )}
+            </FeeField>
           </Form.Item>
         </div>
       </div>
