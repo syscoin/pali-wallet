@@ -3,6 +3,7 @@ import { getNetworkConfig } from '@sidhujag/sysweb3-network';
 import { createHash } from 'crypto';
 import { AbiCoder, id } from 'ethers';
 import fs from 'fs';
+import net from 'net';
 import path from 'path';
 import { utils as sys } from 'syscoinjs-lib';
 
@@ -86,8 +87,34 @@ const variants = [
 ] as const;
 type Variant = (typeof variants)[number];
 const contracts: readonly string[] = variants.map((value) => value.contract);
-const byContract = new Map<string, Variant>(
-  variants.map((value) => [value.contract, value])
+const balanceVariants = [
+  {
+    ...variants[0],
+    key: 'balance-short',
+    contract: '0x000000000000000000000000000000000000eb41',
+    symbol: 'BALS',
+  },
+  {
+    ...variants[0],
+    key: 'balance-32',
+    contract: '0x000000000000000000000000000000000000eb42',
+    symbol: 'B'.repeat(32),
+  },
+  {
+    ...variants[0],
+    key: 'balance-64',
+    contract: '0x000000000000000000000000000000000000eb43',
+    symbol: 'C'.repeat(64),
+  },
+] as const;
+type BalanceVariant = (typeof balanceVariants)[number];
+type ReadVariant = Variant | BalanceVariant;
+const balanceContracts: readonly string[] = balanceVariants.map(
+  (value) => value.contract
+);
+const readContracts: readonly string[] = [...contracts, ...balanceContracts];
+const byContract = new Map<string, ReadVariant>(
+  [...variants, ...balanceVariants].map((value) => [value.contract, value])
 );
 const feeds = new Map<string, unknown>([
   [
@@ -117,6 +144,82 @@ const favicon = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
   'base64'
 );
+
+async function proxyDenial(
+  server: Awaited<ReturnType<typeof startUtxoFixtureServer>>,
+  method: 'GET' | 'CONNECT'
+) {
+  const proxy = new URL(server.url);
+  expect(proxy.protocol).toBe('http:');
+  expect(proxy.hostname).toBe('127.0.0.1');
+  expect(proxy.port).toMatch(/^[0-9]+$/);
+  const before = server.blocked.length;
+  const result = await new Promise<{
+    connectionClosed: boolean;
+    statusCode: number;
+  }>((resolve, reject) => {
+    const socket = net.createConnection({
+      host: '127.0.0.1',
+      port: Number(proxy.port),
+    });
+    let bytes = Buffer.alloc(0),
+      ended = false,
+      settled = false;
+    const fail = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      reject(error);
+    };
+    socket.setTimeout(2000, () =>
+      fail(new Error('Loopback denial probe timed out'))
+    );
+    socket.once('error', fail);
+    socket.once('connect', () =>
+      socket.write(
+        `${method} ${
+          method === 'GET'
+            ? 'http://balance-symbol-denied.invalid/'
+            : 'balance-symbol-denied.invalid:443'
+        } HTTP/1.0\r\nHost: balance-symbol-denied.invalid\r\nConnection: close\r\n\r\n`
+      )
+    );
+    socket.on('data', (chunk: Buffer) => {
+      bytes = Buffer.concat([bytes, chunk]);
+      if (bytes.length > 4096)
+        fail(new Error('Unexpected denial response size'));
+    });
+    socket.once('end', () => {
+      ended = true;
+    });
+    socket.once('close', (hadError) => {
+      if (settled) return;
+      settled = true;
+      try {
+        expect(hadError).toBe(false);
+        expect(ended).toBe(true);
+        const text = bytes.toString('utf8'),
+          separator = text.indexOf('\r\n\r\n');
+        expect(separator).toBeGreaterThanOrEqual(0);
+        expect(text.slice(0, separator).split('\r\n')[0]).toMatch(
+          /^HTTP\/1\.[01] 403 Forbidden$/
+        );
+        expect(text.slice(0, separator)).toMatch(
+          /\r\nConnection: close(?:\r\n|$)/i
+        );
+        expect(text.slice(separator + 4)).toBe(
+          method === 'GET' ? 'Offline fixture only' : ''
+        );
+        resolve({ statusCode: 403, connectionClosed: true });
+      } catch (error) {
+        reject(error);
+      }
+    });
+  });
+  const blockedDelta = server.blocked.slice(before);
+  expect(blockedDelta).toEqual([method]);
+  return { method, ...result, blockedDelta };
+}
 
 const publicState = (page: Page) =>
   page.evaluate(async () => {
@@ -227,6 +330,304 @@ const withoutTargets = (state: PublicState) => ({
     ),
   })),
 });
+const balanceTargets = (
+  state: PublicState,
+  side: 'liveAssets' | 'savedAssets'
+) =>
+  state[side]
+    .flatMap((group) =>
+      group.ethereum.map((asset) => ({
+        ...asset,
+        accountKind: group.kind,
+        accountId: group.id,
+      }))
+    )
+    .filter(
+      (asset: any) =>
+        asset.chainId === 1 && balanceContracts.includes(asset.contract)
+    )
+    .sort((a: any, b: any) => a.contract.localeCompare(b.contract));
+const withoutBalanceTargets = (state: PublicState) => ({
+  ...state,
+  liveAssets: state.liveAssets.map((group) => ({
+    ...group,
+    ethereum: group.ethereum.filter(
+      (asset: any) =>
+        !(
+          group.kind === state.active.type &&
+          group.id === state.active.id &&
+          asset.chainId === 1 &&
+          balanceContracts.includes(asset.contract)
+        )
+    ),
+  })),
+  savedAssets: state.savedAssets.map((group) => ({
+    ...group,
+    ethereum: group.ethereum.filter(
+      (asset: any) =>
+        !(
+          group.kind === state.active.type &&
+          group.id === state.active.id &&
+          asset.chainId === 1 &&
+          balanceContracts.includes(asset.contract)
+        )
+    ),
+  })),
+});
+
+// Read actual paint only. No DOM, native Selection, scroll or focus setter.
+const measureBalanceSymbol = (row: Locator) =>
+  row.evaluate((root) => {
+    const box = (node: Element) => node.getBoundingClientRect().toJSON();
+    const parts = root.querySelectorAll(':scope > p');
+    if (parts.length !== 2) throw new Error('Actual Balance row shape changed');
+    const label = parts[0];
+    const value = parts[1].querySelector('span');
+    if (!value) throw new Error('Actual Balance value span is missing');
+    const clip = { left: 0, right: innerWidth, top: 0, bottom: innerHeight };
+    const ancestors: any[] = [];
+    for (let node: Element | null = value; node; node = node.parentElement) {
+      const style = getComputedStyle(node);
+      const bounds = node.getBoundingClientRect();
+      ancestors.push({
+        tag: node.tagName,
+        scrollKey: node.getAttribute('data-navigation-scroll'),
+        box: box(node),
+        overflowX: style.overflowX,
+        overflowY: style.overflowY,
+        clientWidth: node.clientWidth,
+        scrollWidth: node.scrollWidth,
+        clientHeight: node.clientHeight,
+        scrollHeight: node.scrollHeight,
+        scrollLeft: node.scrollLeft,
+        scrollTop: node.scrollTop,
+      });
+      if (/hidden|clip|auto|scroll/.test(style.overflowX)) {
+        clip.left = Math.max(clip.left, bounds.left + node.clientLeft);
+        clip.right = Math.min(
+          clip.right,
+          bounds.left + node.clientLeft + node.clientWidth
+        );
+      }
+      if (/hidden|clip|auto|scroll/.test(style.overflowY)) {
+        clip.top = Math.max(clip.top, bounds.top + node.clientTop);
+        clip.bottom = Math.min(
+          clip.bottom,
+          bounds.top + node.clientTop + node.clientHeight
+        );
+      }
+    }
+    const ranges = (element: Element) => {
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      return [...range.getClientRects()]
+        .filter((rect) => rect.width > 0 && rect.height > 0)
+        .map((rect) => rect.toJSON());
+    };
+    const glyphs: any[] = [];
+    const walker = document.createTreeWalker(value, NodeFilter.SHOW_TEXT);
+    let text: Node | null;
+    while ((text = walker.nextNode())) {
+      const content = text.textContent || '';
+      for (let index = 0; index < content.length; index += 1) {
+        if (/\s/.test(content[index])) continue;
+        const range = document.createRange();
+        range.setStart(text, index);
+        range.setEnd(text, index + 1);
+        for (const rect of [...range.getClientRects()]) {
+          if (rect.width <= 0 || rect.height <= 0) continue;
+          const hit = document.elementFromPoint(
+            (rect.left + rect.right) / 2,
+            (rect.top + rect.bottom) / 2
+          );
+          glyphs.push({
+            character: content[index],
+            rect: rect.toJSON(),
+            centerHit: !!hit && (hit === value || value.contains(hit)),
+          });
+        }
+      }
+    }
+    const tolerance = 0.5;
+    const within = (a: any, b: typeof clip) =>
+      a.left >= b.left - tolerance &&
+      a.right <= b.right + tolerance &&
+      a.top >= b.top - tolerance &&
+      a.bottom <= b.bottom + tolerance;
+    const overlap = (a: any, b: any) =>
+      Math.min(a.right, b.right) - Math.max(a.left, b.left) > tolerance &&
+      Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > tolerance;
+    const labelRects = ranges(label);
+    const neighbors = [
+      root.previousElementSibling,
+      root.nextElementSibling,
+      ...(root.parentElement?.querySelectorAll('button') || []),
+    ]
+      .filter((node): node is Element => !!node)
+      .map((node) => ({
+        tag: node.tagName,
+        text: node.textContent,
+        box: box(node),
+      }))
+      .filter((node) => node.box.width > 0 && node.box.height > 0);
+    const collisions = neighbors.filter((neighbor) =>
+      glyphs.some((glyph) => overlap(glyph.rect, neighbor.box))
+    );
+    const rowBox = box(root);
+    return {
+      viewport: { width: innerWidth, height: innerHeight },
+      fontStatus: document.fonts.status,
+      font: getComputedStyle(value).font,
+      text: value.textContent,
+      label: { text: label.textContent, box: box(label), rects: labelRects },
+      row: rowBox,
+      value: box(value),
+      clip,
+      ancestors,
+      glyphs,
+      neighbors,
+      collisions,
+      labelCollision: glyphs.some((glyph) =>
+        labelRects.some((rect) => overlap(glyph.rect, rect))
+      ),
+      allGlyphsPainted:
+        glyphs.length > 0 &&
+        glyphs.every((glyph) => within(glyph.rect, clip) && glyph.centerHit),
+      // Assigned row overflow is observational, not a standalone defect.
+      exceedsAssignedRow: glyphs.some((glyph) => !within(glyph.rect, rowBox)),
+    };
+  });
+
+const revealBalanceSymbolRow = async (
+  page: Page,
+  row: Locator,
+  pane: Locator,
+  gestures: any[]
+) => {
+  await expect(pane).toHaveCount(1);
+  const geometry = () =>
+    row.evaluate((root) => {
+      const owner = root.closest<HTMLElement>(
+        '[data-navigation-scroll="asset-details"]'
+      );
+      if (!owner) throw new Error('Actual asset-details owner is missing');
+      const bounds = owner.getBoundingClientRect();
+      const clip = {
+        left: Math.max(0, bounds.left + owner.clientLeft),
+        right: Math.min(
+          innerWidth,
+          bounds.left + owner.clientLeft + owner.clientWidth
+        ),
+        top: Math.max(0, bounds.top + owner.clientTop),
+        bottom: Math.min(
+          innerHeight,
+          bounds.top + owner.clientTop + owner.clientHeight
+        ),
+      };
+      for (let node = owner.parentElement; node; node = node.parentElement) {
+        const style = getComputedStyle(node);
+        const rect = node.getBoundingClientRect();
+        if (/hidden|clip|auto|scroll/.test(style.overflowX)) {
+          clip.left = Math.max(clip.left, rect.left + node.clientLeft);
+          clip.right = Math.min(
+            clip.right,
+            rect.left + node.clientLeft + node.clientWidth
+          );
+        }
+        if (/hidden|clip|auto|scroll/.test(style.overflowY)) {
+          clip.top = Math.max(clip.top, rect.top + node.clientTop);
+          clip.bottom = Math.min(
+            clip.bottom,
+            rect.top + node.clientTop + node.clientHeight
+          );
+        }
+      }
+      return {
+        row: root.getBoundingClientRect().toJSON(),
+        owner: bounds.toJSON(),
+        clip,
+        scrollTop: owner.scrollTop,
+        max: Math.max(0, owner.scrollHeight - owner.clientHeight),
+        scrolls: [
+          ...document.querySelectorAll<HTMLElement>('[data-navigation-scroll]'),
+        ].map((node) => ({
+          key: node.dataset.navigationScroll,
+          left: node.scrollLeft,
+          top: node.scrollTop,
+        })),
+      };
+    });
+  for (let count = 0; count < 8; count += 1) {
+    await frame(page);
+    const before = await geometry();
+    const availableHeight = before.clip.bottom - before.clip.top;
+    expect(
+      availableHeight,
+      'Balance reveal control: actual pane cannot contain the row plus margins'
+    ).toBeGreaterThan(before.row.height + 24);
+    if (
+      before.row.top >= before.clip.top + 12 &&
+      before.row.bottom <= before.clip.bottom - 12
+    )
+      return;
+    const delta = Math.max(
+      -160,
+      Math.min(
+        160,
+        before.row.top < before.clip.top + 12
+          ? Math.floor(before.row.top - (before.clip.top + 12))
+          : Math.ceil(before.row.bottom - (before.clip.bottom - 12))
+      )
+    );
+    const point = {
+      x: Math.max(
+        before.clip.left + 4,
+        Math.min(before.clip.right - 4, before.owner.right - 8)
+      ),
+      y: (before.clip.top + before.clip.bottom) / 2,
+    };
+    expect(before.clip.right - before.clip.left).toBeGreaterThan(8);
+    const ownerHit = await pane.evaluate((node, target) => {
+      const hit = document.elementFromPoint(target.x, target.y);
+      return !!hit && (hit === node || node.contains(hit));
+    }, point);
+    expect(
+      ownerHit,
+      'Balance reveal control: physical pointer must hit the actual owner'
+    ).toBe(true);
+    await page.mouse.move(point.x, point.y);
+    const entry: any = { delta, point, ownerHit, before };
+    gestures.push(entry);
+    await page.mouse.wheel(0, delta);
+    const signature = (value: typeof before) =>
+      JSON.stringify({
+        top: value.row.top,
+        bottom: value.row.bottom,
+        clip: value.clip,
+        scrolls: value.scrolls,
+      });
+    await expect
+      .poll(
+        async () => {
+          entry.after = await geometry();
+          return signature(entry.after);
+        },
+        {
+          message:
+            'Balance reveal control: a real bounded wheel must change actual scroll or row position',
+        }
+      )
+      .not.toBe(signature(before));
+    await expect(page).toHaveURL(/#\/home\/details/);
+  }
+  const final = await geometry();
+  expect(
+    final.row.top >= final.clip.top + 12 &&
+      final.row.bottom <= final.clip.bottom - 12,
+    'Balance reveal control: row remained outside actual owner after eight physical gestures'
+  ).toBe(true);
+};
+
 const tabTo = async (page: Page, target: Locator) => {
   await expect(target).toHaveCount(1);
   for (let count = 0; count < 56; count += 1) {
@@ -451,6 +852,7 @@ test('ordinary ERC20 market numbers retain readable geometry across valid numeri
   const codeTargets = new Set([
     ...owners,
     ...contracts,
+    ...balanceContracts,
     ...getPaliInfrastructureContracts(1).map((value) =>
       value.address.toLowerCase()
     ),
@@ -483,7 +885,7 @@ test('ordinary ERC20 market numbers retain readable geometry across valid numeri
     networkLabel: 'Ethereum Mainnet',
     rpcUrl: server.url,
   });
-  const marketBody = (value: Variant) => ({
+  const marketBody = (value: ReadVariant) => ({
     id: 'synthetic-' + value.symbol.toLowerCase(),
     symbol: value.symbol,
     name: value.symbol,
@@ -505,6 +907,12 @@ test('ordinary ERC20 market numbers retain readable geometry across valid numeri
     },
   });
   try {
+    // Node socket probes run before launch; they never enter Playwright's
+    // requestfailed array, which is never cleared or filtered for this probe.
+    observations.denialCanaries = [
+      await proxyDenial(server, 'GET'),
+      await proxyDenial(server, 'CONNECT'),
+    ];
     wallet = await PaliWallet.launch('evm-market-number-readability', {
       offlineHttpProxy: server.url,
       recordVideo: false,
@@ -619,6 +1027,85 @@ test('ordinary ERC20 market numbers retain readable geometry across valid numeri
         return undefined;
       }
     );
+
+    // Shadow the shared fixture's permissive Tanenbaum fallback in this test.
+    // Source-backed provider/network identity checks use only eth_chainId[].
+    // An unexpected owner/code/call read is refused for source triage, not
+    // answered by a generic empty result or added silently to an allowlist.
+    observations.balanceStartupRpcReads = [];
+    await wallet.context.route(
+      (url) => url.origin === 'https://rpc.tanenbaum.io',
+      async (route) => {
+        const request = route.request();
+        const url = new URL(request.url());
+        const refuse = (reason: string, calls: any[] = []) => {
+          unsupported.push({
+            kind: 'strict-startup-rpc',
+            reason,
+            url: url.href,
+            method: request.method(),
+            calls: calls.map((call: any) => ({
+              id: call?.id,
+              jsonrpc: call?.jsonrpc,
+              method: call?.method,
+              params: call?.params,
+            })),
+          });
+          return route.abort('blockedbyclient');
+        };
+        if (
+          url.href !== 'https://rpc.tanenbaum.io/' ||
+          request.method() !== 'POST'
+        )
+          return refuse('origin path query credentials or HTTP method');
+        let payload: any;
+        try {
+          payload = request.postDataJSON();
+        } catch {
+          return refuse('invalid JSON');
+        }
+        const calls = Array.isArray(payload) ? payload : [payload];
+        if (
+          calls.length === 0 ||
+          calls.some(
+            (call: any) =>
+              !call ||
+              typeof call !== 'object' ||
+              Array.isArray(call) ||
+              Object.keys(call).sort().join(',') !==
+                'id,jsonrpc,method,params' ||
+              call.jsonrpc !== '2.0' ||
+              !Number.isSafeInteger(call.id) ||
+              call.id < 0 ||
+              call.method !== 'eth_chainId' ||
+              !Array.isArray(call.params) ||
+              call.params.length !== 0
+          )
+        )
+          return refuse(
+            'unrecognized identity envelope method or params',
+            calls
+          );
+        observations.balanceStartupRpcReads.push(
+          ...calls.map((call: any) => ({
+            url: url.href,
+            id: call.id,
+            method: call.method,
+            params: call.params,
+          }))
+        );
+        const replies = calls.map((call: any) => ({
+          jsonrpc: '2.0',
+          id: call.id,
+          result: '0x1644',
+        }));
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify(Array.isArray(payload) ? replies : replies[0]),
+        });
+      }
+    );
     await wallet.context.route(
       'https://www.coingecko.com/favicon-96x96.png',
       (route) =>
@@ -679,7 +1166,7 @@ test('ordinary ERC20 market numbers retain readable geometry across valid numeri
           params[1] === 'latest' &&
           codeTargets.has(String(params[0]).toLowerCase())
         )
-          result = contracts.includes(String(params[0]).toLowerCase())
+          result = readContracts.includes(String(params[0]).toLowerCase())
             ? '0x60006000fd'
             : '0x';
         if (
@@ -711,7 +1198,17 @@ test('ordinary ERC20 market numbers retain readable geometry across valid numeri
           const token = byContract.get(target);
           const data = String(params[0]?.data || '');
           const selector = data.slice(0, 10);
-          if (token) {
+          // New symbols use the same SDK read producer but only this exact
+          // transaction object; original four-contract guards stay unchanged.
+          const balanceTransactionIsExact =
+            !balanceContracts.includes(target) ||
+            (params[0] &&
+              typeof params[0] === 'object' &&
+              !Array.isArray(params[0]) &&
+              Object.keys(params[0]).sort().join(',') === 'data,to' &&
+              typeof params[0].to === 'string' &&
+              typeof params[0].data === 'string');
+          if (token && balanceTransactionIsExact) {
             const noArgument = [
               ['name()', 'string', token.symbol],
               ['symbol()', 'string', token.symbol],
@@ -735,7 +1232,12 @@ test('ordinary ERC20 market numbers retain readable geometry across valid numeri
               const requested = String(
                 abi.decode(['address'], '0x' + data.slice(10))[0]
               ).toLowerCase();
-              if ([...owners, target].includes(requested))
+              if (
+                [...owners, target].includes(requested) &&
+                (!balanceContracts.includes(target) ||
+                  data ===
+                    selector + abi.encode(['address'], [requested]).slice(2))
+              )
                 result = abi.encode(
                   ['uint256'],
                   [requested === target ? '0' : '12000000']
@@ -755,12 +1257,15 @@ test('ordinary ERC20 market numbers retain readable geometry across valid numeri
                   '0xd9b67a26',
                   '0x5b5e139f',
                   '0xffffffff',
-                ].includes(requested)
+                ].includes(requested) &&
+                (!balanceContracts.includes(target) ||
+                  data ===
+                    selector + abi.encode(['bytes4'], [requested]).slice(2))
               )
                 result = abi.encode(['bool'], [false]);
             }
             if (result !== undefined)
-              reads.push({ kind: 'token', contract: target, selector });
+              reads.push({ kind: 'token', contract: target, selector, params });
           }
         }
         if (result === undefined) {
@@ -771,7 +1276,7 @@ test('ordinary ERC20 market numbers retain readable geometry across valid numeri
           });
           return undefined;
         }
-        reads.push({ kind: 'rpc', method: call.method });
+        reads.push({ kind: 'rpc', method: call.method, params });
         return { jsonrpc: '2.0', id: call.id, result };
       });
       if (replies.some((reply: any) => reply === undefined))
@@ -1208,6 +1713,335 @@ test('ordinary ERC20 market numbers retain readable geometry across valid numeri
         }
       }
     );
+
+    // Diagnostic-only extension. Keep the original four-token/eight-Copy
+    // and market predicates above unchanged before importing these controls.
+    let balanceImportedBaseline!: PublicState;
+    observations.balanceMeasurements = [];
+    observations.balanceNativeCopies = [];
+    const openBalance = (value: BalanceVariant) =>
+      page.getByRole('button', {
+        name: en.tokens.viewTokenDetails.replace('{{symbol}}', value.symbol),
+        exact: true,
+      });
+    const unchangedBalance = async () =>
+      expect(await publicState(page)).toEqual(balanceImportedBaseline);
+    await wallet.step(
+      'import short 32 and 64 character symbols through real SDK reads and durable saves',
+      async () => {
+        await page.setViewportSize({ width: 400, height: 620 });
+        await expect(page).toHaveURL(/#\/home(?:\?.*)?$/);
+        await page.locator('#assets-btn').click();
+        await page
+          .getByRole('button', { name: en.home.importToken, exact: true })
+          .click();
+        await page
+          .getByRole('button', { name: en.tokens.addCustomTab, exact: true })
+          .and(page.locator('button[aria-pressed]'))
+          .click();
+        for (const value of balanceVariants) {
+          await page.locator('#custom-token-contract').fill(value.contract);
+          const add = page.getByRole('button', {
+            name: en.tokens.importNamedToken.replace(
+              '{{symbol}}',
+              value.symbol
+            ),
+            exact: true,
+          });
+          await expect(add).toBeEnabled();
+          for (const signature of ['symbol()', 'decimals()']) {
+            const expectedData = id(signature).slice(0, 10);
+            expect(
+              reads.some(
+                (read) =>
+                  read.kind === 'token' &&
+                  read.contract === value.contract &&
+                  read.params?.[1] === 'latest' &&
+                  read.params?.[0]?.data === expectedData
+              )
+            ).toBe(true);
+          }
+          expect(
+            reads.some(
+              (read) =>
+                read.kind === 'token' &&
+                read.contract === value.contract &&
+                read.params?.[1] === 'latest' &&
+                read.params?.[0]?.data ===
+                  id('balanceOf(address)').slice(0, 10) +
+                    abi.encode(['address'], [owner]).slice(2)
+            )
+          ).toBe(true);
+          expect(
+            reads.some(
+              (read) =>
+                read.kind === 'token' &&
+                read.contract === value.contract &&
+                read.selector === id('supportsInterface(bytes4)').slice(0, 10)
+            )
+          ).toBe(true);
+          await add.click();
+          const notice = page.getByText(
+            en.tokens.hasBeenAddedToYourWallet.replace(
+              '{{token}}',
+              value.symbol
+            ),
+            { exact: true }
+          );
+          await expect(notice).toBeVisible();
+          await notice.click();
+          await expect(notice).toBeHidden();
+          await expect
+            .poll(async () =>
+              balanceTargets(await publicState(page), 'savedAssets').map(
+                (asset: any) => asset.contract
+              )
+            )
+            .toContain(value.contract);
+          await expect(add).toBeDisabled();
+        }
+        const back = page.getByRole('button', {
+          name: en.buttons.back,
+          exact: true,
+        });
+        await tabTo(page, back);
+        await page.keyboard.press('Enter');
+        await wallet!.ensureOnHome();
+        await page.locator('#assets-btn').click();
+        balanceImportedBaseline = await publicState(page);
+        expect(withoutBalanceTargets(balanceImportedBaseline)).toEqual(
+          importedBaseline
+        );
+        const live = balanceTargets(balanceImportedBaseline, 'liveAssets');
+        expect(live.map((value: any) => value.contract)).toEqual(
+          [...balanceContracts].sort()
+        );
+        expect(balanceTargets(balanceImportedBaseline, 'savedAssets')).toEqual(
+          live
+        );
+        for (const value of balanceVariants)
+          expect(
+            live.find((asset: any) => asset.contract === value.contract)
+          ).toMatchObject({
+            accountKind: baseline.active.type,
+            accountId: baseline.active.id,
+            chainId: 1,
+            symbol: value.symbol,
+            decimals: 6,
+            balance: '12',
+            isNft: false,
+            standard: 'ERC-20',
+          });
+        observations.balanceImportedBaseline = balanceImportedBaseline;
+      }
+    );
+    for (const value of balanceVariants)
+      for (const viewport of [
+        { width: 400, height: 620 },
+        { width: 320, height: 360 },
+      ]) {
+        await page.setViewportSize(viewport);
+        await wallet.step(
+          value.key +
+            '-' +
+            viewport.width +
+            ' actual Balance paint before native controls',
+          async (capture) => {
+            await reveal(page, openBalance(value));
+            await tabTo(page, openBalance(value));
+            await page.keyboard.press('Enter');
+            await expect(page).toHaveURL(/#\/home\/details/);
+            const pane = page.locator(
+              '#details-view-content [data-navigation-scroll="asset-details"]'
+            );
+            const row = pane
+              .getByText(en.send.balance, { exact: true })
+              .locator('..');
+            await expect(row).toHaveCount(1);
+            await expect(row.locator(':scope > p').nth(1)).toHaveText(
+              '12 ' + value.symbol
+            );
+            await expect
+              .poll(() =>
+                row.evaluate((node) => {
+                  let opacity = 1;
+                  for (
+                    let current: Element | null = node;
+                    current;
+                    current = current.parentElement
+                  )
+                    opacity *= Number(getComputedStyle(current).opacity);
+                  return opacity;
+                })
+              )
+              .toBe(1);
+            await expect
+              .poll(() => page.evaluate(() => document.fonts.status))
+              .toBe('loaded');
+            const gestures: any[] = [];
+            observations.balancePendingReveal = {
+              key: value.key,
+              viewport,
+              gestures,
+            };
+            await revealBalanceSymbolRow(page, row, pane, gestures);
+            observations.balancePendingReveal = null;
+            await page.mouse.move(2, 2);
+            await frame(page);
+            const geometry = await measureBalanceSymbol(row);
+            expect(geometry.text).toBe('12 ' + value.symbol);
+            expect(geometry.fontStatus).toBe('loaded');
+            expect(
+              geometry.glyphs.map((glyph: any) => glyph.character).join('')
+            ).toBe(('12 ' + value.symbol).replace(/\s/g, ''));
+            observations.balanceMeasurements.push({
+              key: value.key,
+              viewport,
+              gestures,
+              geometry,
+              fullSymbolPaintRequired: true,
+            });
+            await unchangedBalance();
+            await capture(page);
+          }
+        );
+        await wallet.step(
+          value.key +
+            '-' +
+            viewport.width +
+            ' genuine Copy and Back or Close preserve full public identity',
+          async () => {
+            if (lastCopy)
+              await expect
+                .poll(() => page.evaluate(() => Date.now()))
+                .toBeGreaterThanOrEqual(lastCopy + 2000);
+            const copiesBefore = await readNativeCopies();
+            await tabTo(page, copy());
+            await page.keyboard.press(
+              viewport.width === 400 ? 'Enter' : 'Space'
+            );
+            const notice = page.getByText(en.home.contractCopied, {
+              exact: true,
+            });
+            await expect(notice).toBeVisible();
+            await expect
+              .poll(readNativeCopies)
+              .toEqual([...copiesBefore, value.contract]);
+            observations.balanceNativeCopies.push({
+              key: value.key,
+              viewport,
+              text: value.contract,
+              completed: true,
+            });
+            lastCopy = await page.evaluate(() => Date.now());
+            await notice.click();
+            await expect(notice).toBeHidden();
+            await unchangedBalance();
+            const action =
+              viewport.width === 400
+                ? page.getByRole('button', {
+                    name: en.buttons.back,
+                    exact: true,
+                  })
+                : close();
+            await tabTo(page, action);
+            await page.keyboard.press('Enter');
+            await expect(page).toHaveURL(/#\/home(?:\?.*)?$/);
+            await expect(openBalance(value)).toHaveCount(1);
+            await unchangedBalance();
+          }
+        );
+      }
+    await wallet.step(
+      'additional symbols retain exact state source worker native writes and physical deny fences',
+      async () => {
+        await unchangedBalance();
+        expect(withoutBalanceTargets(balanceImportedBaseline)).toEqual(
+          importedBaseline
+        );
+        observations.balanceWorkerAfter = await verifyExecutingWorker(
+          wallet!.context,
+          wallet!.extensionId,
+          E2E_CONFIG.extensionPath,
+          (value) => {
+            observations.balanceWorkerAfter = value;
+          }
+        );
+        // Every Tanenbaum request is handled by the stricter local route;
+        // no permissive shared synthetic-evm fallback may answer any call.
+        expect(
+          routes!.reads.some((read) => read.startsWith('synthetic-evm:'))
+        ).toBe(false);
+        expect(observations.balanceMeasurements).toHaveLength(6);
+        expect(observations.balanceNativeCopies).toHaveLength(6);
+        expect(await readNativeCopies()).toEqual([
+          ...variants.flatMap((value) => [value.contract, value.contract]),
+          ...balanceVariants.flatMap((value) => [
+            value.contract,
+            value.contract,
+          ]),
+        ]);
+        expect(observations.denialCanaries).toHaveLength(2);
+        expect(server.blocked.slice(0, 2)).toEqual(['GET', 'CONNECT']);
+        expect(
+          server.blocked.every(
+            (method) => method === 'GET' || method === 'CONNECT'
+          )
+        ).toBe(true);
+        expect(unsupported).toEqual([]);
+        expect(forbidden).toEqual([]);
+        expect(pageErrors).toEqual([]);
+        expect(unknownHttpFailures).toEqual([]);
+        expect(routes!.deniedWrites).toEqual([]);
+        expect(extensionEvidence()).toEqual(runtime);
+        expect(
+          createHash('sha256').update(fs.readFileSync(info.file)).digest('hex')
+        ).toBe(sourceSha256);
+        observations.balancePaintCandidates =
+          observations.balanceMeasurements.map((entry: any) => ({
+            key: entry.key,
+            viewport: entry.viewport,
+            fullPaint: entry.geometry.allGlyphsPainted,
+            labelCollision: entry.geometry.labelCollision,
+            neighborCollisionCount: entry.geometry.collisions.length,
+            exceedsAssignedRow: entry.geometry.exceedsAssignedRow,
+          }));
+      }
+    );
+    await wallet.step(
+      'short and long Balance symbols remain fully painted without label or neighboring control collisions',
+      async () => {
+        const healthy = observations.balancePaintCandidates.filter(
+          (entry: any) => entry.key === 'balance-short'
+        );
+        expect(healthy).toHaveLength(2);
+        for (const value of healthy) {
+          expect(value.fullPaint).toBe(true);
+          expect(value.labelCollision).toBe(false);
+          expect(value.neighborCollisionCount).toBe(0);
+        }
+        // All old market and new identity, native-control, worker and scope
+        // gates complete before the confirmed visual regression predicate.
+        expect(observations.balancePaintCandidates).toHaveLength(6);
+        expect(
+          observations.balancePaintCandidates.map(
+            (entry: any) => entry.key + ':' + entry.viewport.width
+          )
+        ).toEqual(
+          balanceVariants.flatMap((value) => [
+            value.key + ':400',
+            value.key + ':320',
+          ])
+        );
+        for (const value of observations.balancePaintCandidates) {
+          expect(value.fullPaint).toBe(true);
+          expect(value.labelCollision).toBe(false);
+          expect(value.neighborCollisionCount).toBe(0);
+        }
+        observations.balanceFullPaintRequired = true;
+      }
+    );
+
     status = 'passed';
   } finally {
     try {
@@ -1217,6 +2051,9 @@ test('ordinary ERC20 market numbers retain readable geometry across valid numeri
           status,
           observations,
           variants,
+          balanceVariants,
+          balanceSymbolFullPaintRequired: true,
+          additionalNativeClipboardWritesExpected: 6,
           reads,
           marketReads,
           unsupported,
@@ -1232,7 +2069,7 @@ test('ordinary ERC20 market numbers retain readable geometry across valid numeri
           DOMScrollOrFocusInjected: false,
           nativeClipboardObserverDelegatesOriginal: true,
           signingDeploymentOrBroadcastRequested: false,
-          candidateNotConfirmedUntilActualPixelReview: true,
+          actualPixelReviewRequired: true,
         }),
       });
     } finally {

@@ -312,3 +312,33 @@ it.each([
     ).toBeTruthy();
   }
 );
+
+it.each(['BALS', 'B'.repeat(32), 'C'.repeat(64)])(
+  'keeps the complete Balance text in a shrinkable, wrapping row for symbol %s',
+  (symbol) => {
+    mockState.vault.accountAssets.HDAccount[0].ethereum = [
+      { ...tokens[0], tokenSymbol: symbol, balance: 12 },
+      tokens[1],
+    ];
+    render(<EvmAssetDetails id={tokens[0].id} />);
+    const label = screen.getByText('send.balance');
+    const row = label.parentElement!;
+    const value = row.querySelectorAll(':scope > p')[1];
+    const text = value.querySelector('span')!;
+    // Native DOM tests protect the local layout contract, not actual glyph
+    // painting. The fenced production browser journey verifies both widths.
+    expect(value.textContent).toBe('12 ' + symbol);
+    expect(row.classList.contains('gap-x-3')).toBe(true);
+    expect(label.classList.contains('flex-shrink-0')).toBe(true);
+    expect(value.classList.contains('min-w-0')).toBe(true);
+    expect(value.classList.contains('text-right')).toBe(true);
+    expect(text.classList.contains('min-w-0')).toBe(true);
+    expect(text.classList.contains('[overflow-wrap:anywhere]')).toBe(true);
+    expect(text.getAttribute('title')).toBeNull();
+    const copy = screen.getByRole('button', {
+      name: 'send.copyContractAddress',
+    });
+    expect(copy.classList.contains('h-11')).toBe(true);
+    expect(copy.classList.contains('w-11')).toBe(true);
+  }
+);
