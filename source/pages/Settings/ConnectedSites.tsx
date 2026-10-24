@@ -180,7 +180,7 @@ const ConnectedSites = () => {
                   )}
 
                   <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-                    <p className="break-words text-brand-white text-xs">
+                    <p className="min-w-0 break-words text-brand-white text-xs [overflow-wrap:anywhere]">
                       {accountLabel(selected)}
                     </p>
 

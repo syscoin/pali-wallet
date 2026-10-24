@@ -259,6 +259,45 @@ it('constrains long inactive-account labels and hosts without dropping their acc
   );
 });
 
+it.each(['Daily', 'A'.repeat(64), 'Ordinary multi word account label'])(
+  'keeps a selected permission label complete and locally wrappable without changing the grant (%s)',
+  async (label) => {
+    const user = userEvent.setup();
+    mockState.vault.accounts[KeyringAccountType.Imported][0].label = label;
+    const baseline = JSON.stringify(mockState);
+    mount();
+    const edit = screen.getByRole('button', { name: editName() });
+    await user.click(edit);
+    const dialog = screen.getByRole('dialog', { name: 'Edit connection' });
+    const paragraph = within(dialog).getByText(label, { exact: true });
+    expect(paragraph.textContent).toBe(label);
+    expect(paragraph).toHaveClass(
+      'min-w-0',
+      'break-words',
+      '[overflow-wrap:anywhere]'
+    );
+    expect(paragraph).not.toHaveClass('truncate');
+    expect(paragraph.parentElement).toHaveClass('flex-wrap', 'gap-2');
+    expect(
+      within(dialog).getByText('imported-address', { exact: true })
+    ).toBeVisible();
+    expect(
+      within(dialog).getByRole('button', { name: 'Delete connected site' })
+    ).toBeEnabled();
+    expect(JSON.stringify(mockState)).toBe(baseline);
+    await user.click(
+      within(dialog.querySelector('footer')!).getByRole('button', {
+        name: en.buttons.close,
+      })
+    );
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(edit).toHaveFocus();
+    expect(mockEmitter).not.toHaveBeenCalled();
+    expect(JSON.stringify(mockState)).toBe(baseline);
+    expect(screen.getByText(host, { exact: true })).toBeVisible();
+  }
+);
+
 it('keeps the selected account attribution and disconnects the exact host', async () => {
   const user = userEvent.setup();
   mockEmitter.mockImplementationOnce(async () => {
