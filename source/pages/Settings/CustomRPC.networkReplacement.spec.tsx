@@ -556,3 +556,113 @@ describe.each([INetworkType.Ethereum, INetworkType.Syscoin])(
     });
   }
 );
+
+describe.each([INetworkType.Ethereum, INetworkType.Syscoin])(
+  '%s reopened Edit identity presentation contract',
+  (family) => {
+    it.each(['XPAY', 'ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEF'])(
+      'bounds and wraps the complete stored %s identity without saving a canceled draft',
+      async (symbol) => {
+        const registration: INetwork = {
+          ...target,
+          kind: family,
+          slip44: family === INetworkType.Ethereum ? 60 : 111,
+          currency: symbol.toLowerCase(),
+        };
+        store.dispatch(
+          setNetworks({
+            ethereum: {
+              1: source,
+              ...(family === INetworkType.Ethereum
+                ? { 31337: registration }
+                : {}),
+            },
+            syscoin:
+              family === INetworkType.Syscoin ? { 31337: registration } : {},
+          })
+        );
+        await persistCommittedWalletState(true);
+        const before = {
+          live: clone(store.getState().vaultGlobal.networks),
+          saved: clone((await loadState()).vaultGlobal.networks),
+        };
+        const previousRouteState = mockLocation.state;
+        mockLocation.state = {
+          ...previousRouteState,
+          chain: family,
+          selected: { chainId: registration.chainId, kind: family },
+        };
+        let view: ReturnType<typeof render> | undefined;
+        try {
+          view = render(
+            <Provider store={store}>
+              <CustomRPC />
+            </Provider>
+          );
+          await waitFor(() =>
+            expect(mockEmitter).toHaveBeenCalledWith(
+              ['wallet', 'getChainData'],
+              [family]
+            )
+          );
+          const identity = `$${symbol} • settings.networkFamilyLabel`;
+          const line = screen.getByText(identity, { exact: true });
+          expect(line.textContent).toBe(identity);
+          expect(line).toHaveClass('[overflow-wrap:anywhere]');
+          expect(line.className).not.toMatch(
+            /(?:^|\s)(?:truncate|overflow-hidden|text-ellipsis|line-clamp-\S+)(?:\s|$)/
+          );
+          const textColumn = line.parentElement!;
+          const card = textColumn.parentElement!;
+          const wrapper = card.parentElement!;
+          expect(textColumn).toHaveClass('flex-1', 'min-w-0');
+          expect(card).toHaveClass('custom-input-normal', 'flex');
+          expect(wrapper).toHaveClass('mb-6', 'min-w-0', 'max-w-full');
+          expect(wrapper).not.toHaveClass('w-full');
+          const name = screen.getByText(registration.label!, { exact: true });
+          expect(name.textContent).toBe(registration.label);
+          expect(name).toHaveClass('truncate');
+          const badge = name.nextElementSibling!;
+          expect(badge).toHaveClass('flex-shrink-0');
+          expect(badge.textContent).toBe(
+            String(
+              family === INetworkType.Syscoin
+                ? registration.slip44
+                : registration.chainId
+            )
+          );
+          expect(screen.getByPlaceholderText('settings.label')).toHaveAttribute(
+            'type',
+            'hidden'
+          );
+          const input = screen.getByPlaceholderText('settings.symbol');
+          expect(input).toHaveValue(symbol);
+          const save = screen.getByRole('button', { name: 'buttons.save' });
+          const cancel = screen.getByRole('button', { name: 'buttons.cancel' });
+          expect(save).toHaveAttribute('type', 'submit');
+          expect(save).toBeEnabled();
+          expect(cancel).toHaveAttribute('type', 'button');
+          expect(cancel).toBeEnabled();
+          fireEvent.change(input, { target: { value: 'DRAFT' } });
+          expect(input).toHaveValue('DRAFT');
+          expect(line.textContent).toBe(identity);
+          fireEvent.click(cancel);
+          expect(mockNavigate).toHaveBeenCalledWith('/home', { replace: true });
+          expect(
+            mockEmitter.mock.calls.filter(
+              ([[, method]]) => method !== 'getChainData'
+            )
+          ).toEqual([]);
+          expect(mockAlert.success).not.toHaveBeenCalled();
+          expect({
+            live: store.getState().vaultGlobal.networks,
+            saved: (await loadState()).vaultGlobal.networks,
+          }).toEqual(before);
+        } finally {
+          view?.unmount();
+          mockLocation.state = previousRouteState;
+        }
+      }
+    );
+  }
+);
