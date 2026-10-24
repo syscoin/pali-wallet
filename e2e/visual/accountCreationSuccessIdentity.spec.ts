@@ -186,6 +186,21 @@ const publicState = (page: Page) =>
     };
   });
 
+// Public route identity only: no navigation, history, DOM or controller writes.
+const publicNavigationState = (page: Page) =>
+  page.evaluate(() => ({
+    url: window.location.href,
+    hash: window.location.hash,
+    historyIndex:
+      typeof window.history.state?.idx === 'number'
+        ? window.history.state.idx
+        : null,
+    historyKey:
+      typeof window.history.state?.key === 'string'
+        ? window.history.state.key
+        : null,
+  }));
+
 const frame = (page: Page) =>
   page.evaluate(
     () =>
@@ -344,516 +359,596 @@ for (const viewport of [
     const sourceSha256 = createHash('sha256')
       .update(fs.readFileSync(info.file))
       .digest('hex');
-    const prefix = `${viewport.width}x${viewport.height}`;
-    const main = getNetworkConfig(57, 'sys');
-    const mainSigner = new sys.HDSigner(
-      UTXO_FIXTURE_SEED,
-      '',
-      false,
-      main.networks,
-      57,
-      main.types.zPubType,
-      84
-    );
-    const initialXpub = mainSigner.getAccountXpub();
-    const signer = new sys.HDSigner(UTXO_FIXTURE_SEED, '', true);
-    const firstXpub = signer.getAccountXpub();
-    const firstAddress = sys.bitcoinjs.payments.p2wpkh({
-      pubkey: signer.deriveKeypair("m/84'/1'/0'/0/0").publicKey,
-      network: sys.syscoinNetworks.testnet,
-    }).address!;
-    signer.createAccountAtIndex(1, 84);
-    const created = {
-      kind: 'HDAccount',
-      id: 1,
-      label: LABEL,
-      address: sys.bitcoinjs.payments.p2wpkh({
-        pubkey: signer.deriveKeypair("m/84'/1'/1'/0/0").publicKey,
+    // Keep each viewport's original eight-minute case budget. Keyboard
+    // lifecycle and native-history reveal use independent synthetic profiles.
+    for (const lane of ['keyboard', 'reveal'] as const) {
+      const prefix = `${viewport.width}x${viewport.height}-${lane}`;
+      const main = getNetworkConfig(57, 'sys');
+      const mainSigner = new sys.HDSigner(
+        UTXO_FIXTURE_SEED,
+        '',
+        false,
+        main.networks,
+        57,
+        main.types.zPubType,
+        84
+      );
+      const initialXpub = mainSigner.getAccountXpub();
+      const signer = new sys.HDSigner(UTXO_FIXTURE_SEED, '', true);
+      const firstXpub = signer.getAccountXpub();
+      const firstAddress = sys.bitcoinjs.payments.p2wpkh({
+        pubkey: signer.deriveKeypair("m/84'/1'/0'/0/0").publicKey,
         network: sys.syscoinNetworks.testnet,
-      }).address!,
-      xpub: signer.getAccountXpub(),
-    };
-    const publicIdentifiers = new Set([
-      firstXpub,
-      firstAddress,
-      created.xpub,
-      created.address,
-    ]);
-    expect(publicIdentifiers.size).toBe(4);
-    const reads: string[] = [],
-      unsupported: any[] = [],
-      forbidden: string[] = [],
-      failedRequests: any[] = [],
-      pageErrors: string[] = [];
-    const observations: Record<string, any> = {
-      viewport,
-      runtime,
-      sourceSha256,
-      created,
-      geometries: [],
-      controls: {},
-      gestures: [],
-    };
-    const previous = { ...E2E_CONFIG };
-    const server = await startUtxoFixtureServer();
-    const denialCanaries: any[] = [];
-    let wallet: PaliWallet | undefined;
-    let status: 'passed' | 'failed' = 'failed';
-    let baseline!: Awaited<ReturnType<typeof publicState>>;
-    let accepted!: Awaited<ReturnType<typeof publicState>>;
-    try {
-      expect(server.blocked).toEqual([]);
-      denialCanaries.push(await proxyDenial(server, 'GET'));
-      denialCanaries.push(await proxyDenial(server, 'CONNECT'));
-      Object.assign(E2E_CONFIG, {
-        seedPhrase: UTXO_FIXTURE_SEED,
-        password: 'CreationIdentitySynthetic!2026',
-        rpcUrl: server.url,
-      });
-      // Fresh profiles onboard in the established toolbar geometry; only the
-      // actual ordinary form/success UI uses the case's requested viewport.
-      wallet = await PaliWallet.launch(`account-created-identity-${prefix}`, {
-        offlineHttpProxy: server.url,
-        recordVideo: false,
-        viewport: { width: 400, height: 620 },
-      });
-      await wallet.context.route('**/*', async (route) => {
-        const request = route.request(),
-          url = new URL(request.url());
-        if (!['http:', 'https:'].includes(url.protocol))
-          return route.continue();
-        let payload: any;
-        try {
-          payload = request.postDataJSON();
-        } catch {
-          /* Ordinary GET. */
-        }
-        const calls = Array.isArray(payload) ? payload : [payload];
-        if (
-          /\/sendtx(?:\/|$)/i.test(url.pathname) ||
-          calls.some((call) =>
-            /^(?:eth_send|eth_sign|personal_|wallet_|sys_sign|sendrawtransaction|anvil_|evm_)/i.test(
-              call?.method || ''
-            )
-          )
-        ) {
-          forbidden.push(request.method() + ' ' + url.href);
-          return route.abort('blockedbyclient');
-        }
-        // This UTXO-only route needs no JSON-RPC. The finite RPC allowlist is
-        // empty: every POST/method/params envelope is refused and retained.
-        if (
-          request.method() !== 'GET' ||
-          url.username ||
-          url.password ||
-          url.hash
-        ) {
-          unsupported.push({
-            method: request.method(),
-            url: url.href,
-            rpc: calls
-              .filter(Boolean)
-              .map((call) => ({ method: call.method, params: call.params })),
-          });
-          return route.abort('blockedbyclient');
-        }
-        let body: unknown;
-        if (feeds.has(url.href)) body = feeds.get(url.href);
-        if (
-          [
-            'https://blockbook.syscoin.org/api/v2/tickers/currency',
-            'https://blockbook-dev.syscoin.org/api/v2/tickers/currency',
-          ].includes(url.href)
-        )
-          body = { ts: 1, rates: { usd: 1 } };
-        const match = url.pathname.match(
-          /^\/api\/v2\/(xpub|address|utxo)\/([^/]+)$/
-        );
-        const testOrigin = [
-          'https://blockbook-dev.syscoin.org',
-          'https://explorer-blockbook-dev.syscoin.org',
-        ].includes(url.origin);
-        if (
-          testOrigin &&
-          ['/api/v2', '/api/v2/'].includes(url.pathname) &&
-          !url.search
-        )
-          body = {
-            blockbook: { coin: 'Syscoin Testnet', inSync: true, bestHeight: 1 },
-            backend: { chain: 'test', blocks: 1 },
-          };
-        if (match) {
-          const identifier = decodeURIComponent(match[2]);
-          const initial =
-            url.origin === 'https://blockbook.syscoin.org' &&
-            match[1] === 'xpub' &&
-            identifier === initialXpub;
-          const selected = testOrigin && publicIdentifiers.has(identifier);
-          if (
-            (initial || selected) &&
-            ((match[1] === 'utxo' && !url.search) ||
-              (match[1] !== 'utxo' &&
-                accountQueries.has(url.searchParams.toString())))
-          ) {
-            body =
-              match[1] === 'utxo'
-                ? []
-                : {
-                    address: identifier,
-                    balance: '0',
-                    unconfirmedBalance: '0',
-                    totalReceived: '0',
-                    totalSent: '0',
-                    txs: 0,
-                    unconfirmedTxs: 0,
-                    usedTokens: 0,
-                    tokens: [],
-                    tokensAsset: [],
-                    transactions: [],
-                  };
-          }
-        }
-        if (
-          url.origin === 'https://api.coingecko.com' &&
-          url.pathname === '/api/v3/simple/price' &&
-          [...url.searchParams.keys()].length === 3 &&
-          ['ids', 'vs_currencies', 'include_24hr_change'].every(
-            (key) => url.searchParams.getAll(key).length === 1
-          ) &&
-          url.searchParams.get('ids') === 'syscoin' &&
-          url.searchParams.get('vs_currencies') === 'usd' &&
-          url.searchParams.get('include_24hr_change') === 'true'
-        )
-          body = { syscoin: { usd: 1, ['usd_24h_change']: 0 } };
-        if (body === undefined) {
-          unsupported.push({ method: request.method(), url: url.href });
-          return route.abort('blockedbyclient');
-        }
-        reads.push(url.href);
-        return route.fulfill({
-          status: 200,
-          contentType: 'application/json',
-          headers: { 'access-control-allow-origin': '*' },
-          body: JSON.stringify(body),
-        });
-      });
-      const page = wallet.page;
-      page.on('pageerror', (error) => pageErrors.push(error.message));
-      wallet.context.on('requestfailed', (request) => {
-        if (/^https?:/.test(request.url()))
-          failedRequests.push({ method: request.method(), url: request.url() });
-      });
-      const open = async (action: string) => {
-        await wallet!.ensureOnHome();
-        await page
-          .getByRole('button', {
-            name: en.generalMenu.generalOptions,
-            exact: true,
-          })
-          .click();
-        await page.getByRole('menuitem', { name: action, exact: true }).click();
+      }).address!;
+      signer.createAccountAtIndex(1, 84);
+      const created = {
+        kind: 'HDAccount',
+        id: 1,
+        label: LABEL,
+        address: sys.bitcoinjs.payments.p2wpkh({
+          pubkey: signer.deriveKeypair("m/84'/1'/1'/0/0").publicKey,
+          network: sys.syscoinNetworks.testnet,
+        }).address!,
+        xpub: signer.getAccountXpub(),
       };
-      await wallet.step(
-        `${prefix} real onboarding retains one public HD account and no inventory or grants`,
-        async () => {
-          await wallet!.importSeedAndCreatePassword();
-          await wallet!.switchNetwork('Syscoin Testnet', 'UTXO');
-          await wallet!.ensureOnHome();
-          baseline = await publicState(page);
-          expect(baseline.active).toEqual({ id: 0, type: 'HDAccount' });
-          expect(baseline.savedActive).toEqual(baseline.active);
-          expect(baseline.slip44).toBe(1);
-          expect(baseline.network).toMatchObject({
-            kind: 'syscoin',
-            chainId: 5700,
-            label: 'Syscoin Testnet',
-            url: 'https://blockbook-dev.syscoin.org/',
-          });
-          expect(baseline.liveAccounts).toEqual([
-            {
-              kind: 'HDAccount',
-              id: 0,
-              label: 'SYS-T 1',
-              address: firstAddress,
-              xpub: firstXpub,
-            },
-          ]);
-          expect(baseline.savedAccounts).toEqual(baseline.liveAccounts);
-          expect(baseline.liveAssets).toEqual([
-            { kind: 'HDAccount', id: 0, ethereum: [], syscoin: [], nfts: [] },
-          ]);
-          expect(baseline.savedAssets).toEqual(baseline.liveAssets);
-          expect(baseline.grants).toEqual([]);
-          expect(baseline.savedGrants).toEqual([]);
-          observations.before = baseline;
-        }
-      );
-      await wallet.step(
-        `${prefix} ordinary form Close discards only an unsaved name`,
-        async () => {
-          await open(en.accountMenu.createNewAccount);
-          await expect(page).toHaveURL(/#\/settings\/account\/new$/);
-          await page.setViewportSize(viewport);
-          await page.locator('#account-name-input').fill('Unsaved draft');
-          const close = page.getByRole('button', {
-            name: en.buttons.close,
-            exact: true,
-          });
-          await expect(close).toHaveCount(1);
-          await close.click();
-          await expect(page).toHaveURL(/#\/home(?:\?.*)?$/);
-          expect(await publicState(page)).toEqual(baseline);
-        }
-      );
-      const dialog = page.getByRole('dialog', {
-        name: en.settings.yourNewAccount,
-        exact: true,
-      });
-      const address = dialog.getByText(created.address, { exact: true });
-      const close = dialog.getByRole('button', {
-        name: en.buttons.close,
-        exact: true,
-      });
-      const ok = dialog.getByRole('button', {
-        name: en.buttons.ok,
-        exact: true,
-      });
-      await wallet.step(
-        `${prefix} ordinary Create produces the independently derived public account and genuine success address`,
-        async (capture) => {
-          await open(en.accountMenu.createNewAccount);
-          await expect(page).toHaveURL(/#\/settings\/account\/new$/);
-          await page.locator('#account-name-input').fill(LABEL);
-          await page.locator('#create-btn').click();
-          await expect(dialog).toBeVisible();
-          await expect(address).toHaveCount(1);
-          await expect(address).toHaveText(created.address);
-          const assets = [
-            ...baseline.liveAssets,
-            { kind: 'HDAccount', id: 1, ethereum: [], syscoin: [], nfts: [] },
-          ];
-          const accounts = [...baseline.liveAccounts, created];
-          accepted = {
-            ...baseline,
-            active: { id: 1, type: 'HDAccount' },
-            savedActive: { id: 1, type: 'HDAccount' },
-            liveAccounts: accounts,
-            savedAccounts: accounts,
-            liveAssets: assets,
-            savedAssets: assets,
-          };
-          await expect.poll(() => publicState(page)).toEqual(accepted);
-          observations.accepted = accepted;
-          await settledLayout(page);
-          await page.mouse.move(2, 2);
-          observations.geometries.push({
-            mode: 'initial',
-            geometry: await measureAddress(address),
-          });
-          for (const [name, button] of [
-            ['Close', close],
-            ['OK', ok],
-          ] as const) {
-            const geometry = await controlGeometry(button);
-            observations.controls[name] = geometry;
-            expect(geometry.width).toBeGreaterThanOrEqual(44);
-            expect(geometry.height).toBeGreaterThanOrEqual(44);
-            expect(geometry.points.every((point) => point.reachesControl)).toBe(
-              true
-            );
+      const publicIdentifiers = new Set([
+        firstXpub,
+        firstAddress,
+        created.xpub,
+        created.address,
+      ]);
+      expect(publicIdentifiers.size).toBe(4);
+      const reads: string[] = [],
+        unsupported: any[] = [],
+        forbidden: string[] = [],
+        failedRequests: any[] = [],
+        pageErrors: string[] = [];
+      const observations: Record<string, any> = {
+        viewport,
+        lane,
+        runtime,
+        sourceSha256,
+        created,
+        geometries: [],
+        controls: {},
+        gestures: [],
+      };
+      const previous = { ...E2E_CONFIG };
+      const server = await startUtxoFixtureServer();
+      const denialCanaries: any[] = [];
+      let wallet: PaliWallet | undefined;
+      let status: 'passed' | 'failed' = 'failed';
+      let baseline!: Awaited<ReturnType<typeof publicState>>;
+      let accepted!: Awaited<ReturnType<typeof publicState>>;
+      try {
+        expect(server.blocked).toEqual([]);
+        denialCanaries.push(await proxyDenial(server, 'GET'));
+        denialCanaries.push(await proxyDenial(server, 'CONNECT'));
+        Object.assign(E2E_CONFIG, {
+          seedPhrase: UTXO_FIXTURE_SEED,
+          password: 'CreationIdentitySynthetic!2026',
+          rpcUrl: server.url,
+        });
+        // Fresh profiles onboard in the established toolbar geometry; only the
+        // actual ordinary form/success UI uses the case's requested viewport.
+        wallet = await PaliWallet.launch(`account-created-identity-${prefix}`, {
+          offlineHttpProxy: server.url,
+          recordVideo: false,
+          viewport: { width: 400, height: 620 },
+        });
+        await wallet.context.route('**/*', async (route) => {
+          const request = route.request(),
+            url = new URL(request.url());
+          if (!['http:', 'https:'].includes(url.protocol))
+            return route.continue();
+          let payload: any;
+          try {
+            payload = request.postDataJSON();
+          } catch {
+            /* Ordinary GET. */
           }
-          await capture(page);
-        }
-      );
-      await wallet.step(
-        `${prefix} ordinary wheels test vertical and horizontal reveal without moving DOM or focus`,
-        async (capture) => {
-          const scrollSignature = () =>
-            address.evaluate((node) => {
-              const positions: number[] = [];
-              for (
-                let parent: Element | null = node;
-                parent;
-                parent = parent.parentElement
+          const calls = Array.isArray(payload) ? payload : [payload];
+          if (
+            /\/sendtx(?:\/|$)/i.test(url.pathname) ||
+            calls.some((call) =>
+              /^(?:eth_send|eth_sign|personal_|wallet_|sys_sign|sendrawtransaction|anvil_|evm_)/i.test(
+                call?.method || ''
               )
-                positions.push(parent.scrollLeft, parent.scrollTop);
-              return positions;
+            )
+          ) {
+            forbidden.push(request.method() + ' ' + url.href);
+            return route.abort('blockedbyclient');
+          }
+          // This UTXO-only route needs no JSON-RPC. The finite RPC allowlist is
+          // empty: every POST/method/params envelope is refused and retained.
+          if (
+            request.method() !== 'GET' ||
+            url.username ||
+            url.password ||
+            url.hash
+          ) {
+            unsupported.push({
+              method: request.method(),
+              url: url.href,
+              rpc: calls
+                .filter(Boolean)
+                .map((call) => ({ method: call.method, params: call.params })),
             });
-          const settleScroll = async () => {
-            let previousSignature = '',
-              stable = 0;
-            await frame(page);
-            await expect
-              .poll(async () => {
-                const signature = JSON.stringify(await scrollSignature());
-                stable = signature === previousSignature ? stable + 1 : 0;
-                previousSignature = signature;
-                return stable >= 2;
-              })
-              .toBe(true);
-            await frame(page);
-          };
-          for (const gesture of [
-            { x: 0, y: 96 },
-            { x: 0, y: -96 },
-            { x: 240, y: 0 },
-            { x: -240, y: 0 },
-          ]) {
-            const geometry = await measureAddress(address);
-            const x = Math.max(
-              geometry.clip.left + 4,
-              Math.min(
-                geometry.clip.right - 4,
-                (geometry.box.left + geometry.box.right) / 2
-              )
-            );
-            const y = Math.max(
-              geometry.clip.top + 4,
-              Math.min(
-                geometry.clip.bottom - 4,
-                (geometry.box.top + geometry.box.bottom) / 2
-              )
-            );
-            expect(x).toBeGreaterThanOrEqual(0);
-            expect(y).toBeGreaterThanOrEqual(0);
-            const bodyHit = await address.evaluate(
-              (node, point) => {
-                const hit = document.elementFromPoint(point.x, point.y);
-                return !!hit && !!node.parentElement?.contains(hit);
+            return route.abort('blockedbyclient');
+          }
+          let body: unknown;
+          if (feeds.has(url.href)) body = feeds.get(url.href);
+          if (
+            [
+              'https://blockbook.syscoin.org/api/v2/tickers/currency',
+              'https://blockbook-dev.syscoin.org/api/v2/tickers/currency',
+            ].includes(url.href)
+          )
+            body = { ts: 1, rates: { usd: 1 } };
+          const match = url.pathname.match(
+            /^\/api\/v2\/(xpub|address|utxo)\/([^/]+)$/
+          );
+          const testOrigin = [
+            'https://blockbook-dev.syscoin.org',
+            'https://explorer-blockbook-dev.syscoin.org',
+          ].includes(url.origin);
+          if (
+            testOrigin &&
+            ['/api/v2', '/api/v2/'].includes(url.pathname) &&
+            !url.search
+          )
+            body = {
+              blockbook: {
+                coin: 'Syscoin Testnet',
+                inSync: true,
+                bestHeight: 1,
               },
-              { x, y }
+              backend: { chain: 'test', blocks: 1 },
+            };
+          if (match) {
+            const identifier = decodeURIComponent(match[2]);
+            const initial =
+              url.origin === 'https://blockbook.syscoin.org' &&
+              match[1] === 'xpub' &&
+              identifier === initialXpub;
+            const selected = testOrigin && publicIdentifiers.has(identifier);
+            if (
+              (initial || selected) &&
+              ((match[1] === 'utxo' && !url.search) ||
+                (match[1] !== 'utxo' &&
+                  accountQueries.has(url.searchParams.toString())))
+            ) {
+              body =
+                match[1] === 'utxo'
+                  ? []
+                  : {
+                      address: identifier,
+                      balance: '0',
+                      unconfirmedBalance: '0',
+                      totalReceived: '0',
+                      totalSent: '0',
+                      txs: 0,
+                      unconfirmedTxs: 0,
+                      usedTokens: 0,
+                      tokens: [],
+                      tokensAsset: [],
+                      transactions: [],
+                    };
+            }
+          }
+          if (
+            url.origin === 'https://api.coingecko.com' &&
+            url.pathname === '/api/v3/simple/price' &&
+            [...url.searchParams.keys()].length === 3 &&
+            ['ids', 'vs_currencies', 'include_24hr_change'].every(
+              (key) => url.searchParams.getAll(key).length === 1
+            ) &&
+            url.searchParams.get('ids') === 'syscoin' &&
+            url.searchParams.get('vs_currencies') === 'usd' &&
+            url.searchParams.get('include_24hr_change') === 'true'
+          )
+            body = { syscoin: { usd: 1, ['usd_24h_change']: 0 } };
+          if (body === undefined) {
+            unsupported.push({ method: request.method(), url: url.href });
+            return route.abort('blockedbyclient');
+          }
+          reads.push(url.href);
+          return route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            headers: { 'access-control-allow-origin': '*' },
+            body: JSON.stringify(body),
+          });
+        });
+        const page = wallet.page;
+        page.on('pageerror', (error) => pageErrors.push(error.message));
+        wallet.context.on('requestfailed', (request) => {
+          if (/^https?:/.test(request.url()))
+            failedRequests.push({
+              method: request.method(),
+              url: request.url(),
+            });
+        });
+        const open = async (action: string) => {
+          await wallet!.ensureOnHome();
+          await page
+            .getByRole('button', {
+              name: en.generalMenu.generalOptions,
+              exact: true,
+            })
+            .click();
+          await page
+            .getByRole('menuitem', { name: action, exact: true })
+            .click();
+        };
+        await wallet.step(
+          `${prefix} real onboarding retains one public HD account and no inventory or grants`,
+          async () => {
+            await wallet!.importSeedAndCreatePassword();
+            await wallet!.switchNetwork('Syscoin Testnet', 'UTXO');
+            await wallet!.ensureOnHome();
+            baseline = await publicState(page);
+            expect(baseline.active).toEqual({ id: 0, type: 'HDAccount' });
+            expect(baseline.savedActive).toEqual(baseline.active);
+            expect(baseline.slip44).toBe(1);
+            expect(baseline.network).toMatchObject({
+              kind: 'syscoin',
+              chainId: 5700,
+              label: 'Syscoin Testnet',
+              url: 'https://blockbook-dev.syscoin.org/',
+            });
+            expect(baseline.liveAccounts).toEqual([
+              {
+                kind: 'HDAccount',
+                id: 0,
+                label: 'SYS-T 1',
+                address: firstAddress,
+                xpub: firstXpub,
+              },
+            ]);
+            expect(baseline.savedAccounts).toEqual(baseline.liveAccounts);
+            expect(baseline.liveAssets).toEqual([
+              { kind: 'HDAccount', id: 0, ethereum: [], syscoin: [], nfts: [] },
+            ]);
+            expect(baseline.savedAssets).toEqual(baseline.liveAssets);
+            expect(baseline.grants).toEqual([]);
+            expect(baseline.savedGrants).toEqual([]);
+            observations.before = baseline;
+          }
+        );
+        await wallet.step(
+          `${prefix} ordinary form Close discards only an unsaved name`,
+          async () => {
+            await open(en.accountMenu.createNewAccount);
+            await expect(page).toHaveURL(/#\/settings\/account\/new$/);
+            await page.setViewportSize(viewport);
+            await page.locator('#account-name-input').fill('Unsaved draft');
+            const close = page.getByRole('button', {
+              name: en.buttons.close,
+              exact: true,
+            });
+            await expect(close).toHaveCount(1);
+            await close.click();
+            await expect(page).toHaveURL(/#\/home(?:\?.*)?$/);
+            expect(await publicState(page)).toEqual(baseline);
+          }
+        );
+        const dialog = page.getByRole('dialog', {
+          name: en.settings.yourNewAccount,
+          exact: true,
+        });
+        const address = dialog.getByText(created.address, { exact: true });
+        const close = dialog.getByRole('button', {
+          name: en.buttons.close,
+          exact: true,
+        });
+        const ok = dialog.getByRole('button', {
+          name: en.buttons.ok,
+          exact: true,
+        });
+        await wallet.step(
+          `${prefix} ordinary Create produces the independently derived public account and genuine success address`,
+          async (capture) => {
+            await wallet!.ensureOnHome();
+            observations.priorHomeRoute = await publicNavigationState(page);
+            expect(observations.priorHomeRoute.hash).toMatch(
+              /^#\/home(?:\?.*)?$/
             );
-            expect(bodyHit).toBe(true);
-            await page.mouse.move(x, y);
-            await page.mouse.wheel(gesture.x, gesture.y);
-            await settleScroll();
-            observations.gestures.push({ gesture, point: { x, y }, bodyHit });
+            expect(observations.priorHomeRoute.historyIndex).not.toBeNull();
+            expect(observations.priorHomeRoute.historyKey).not.toBeNull();
+            await open(en.accountMenu.createNewAccount);
+            await expect(page).toHaveURL(/#\/settings\/account\/new$/);
+            await page.locator('#account-name-input').fill(LABEL);
+            await page.locator('#create-btn').click();
+            await expect(dialog).toBeVisible();
+            await expect(address).toHaveCount(1);
+            await expect(address).toHaveText(created.address);
+            const assets = [
+              ...baseline.liveAssets,
+              { kind: 'HDAccount', id: 1, ethereum: [], syscoin: [], nfts: [] },
+            ];
+            const accounts = [...baseline.liveAccounts, created];
+            accepted = {
+              ...baseline,
+              active: { id: 1, type: 'HDAccount' },
+              savedActive: { id: 1, type: 'HDAccount' },
+              liveAccounts: accounts,
+              savedAccounts: accounts,
+              liveAssets: assets,
+              savedAssets: assets,
+            };
+            await expect.poll(() => publicState(page)).toEqual(accepted);
+            observations.accepted = accepted;
+            observations.createdRoute = await publicNavigationState(page);
+            expect(observations.createdRoute.hash).toBe(
+              '#/settings/account/new'
+            );
+            expect(observations.createdRoute.historyIndex).toBe(
+              observations.priorHomeRoute.historyIndex + 1
+            );
+            expect(observations.createdRoute.historyKey).not.toBeNull();
+            expect(observations.createdRoute.historyKey).not.toBe(
+              observations.priorHomeRoute.historyKey
+            );
+            await settledLayout(page);
+            await page.mouse.move(2, 2);
             observations.geometries.push({
-              mode: `wheel-${gesture.x}-${gesture.y}`,
+              mode: 'initial',
               geometry: await measureAddress(address),
             });
-            if (gesture.x !== 0) {
-              observations.revealScreenshots ??= [];
-              observations.revealScreenshots.push(
-                await wallet!.shot(
-                  `${prefix} horizontal-wheel-${gesture.x} genuine success identity`
-                )
-              );
+            for (const [name, button] of [
+              ['Close', close],
+              ['OK', ok],
+            ] as const) {
+              const geometry = await controlGeometry(button);
+              observations.controls[name] = geometry;
+              expect(geometry.width).toBeGreaterThanOrEqual(44);
+              expect(geometry.height).toBeGreaterThanOrEqual(44);
+              expect(
+                geometry.points.every((point) => point.reachesControl)
+              ).toBe(true);
             }
-            expect(await publicState(page)).toEqual(accepted);
+            await capture(page);
           }
-          await page.mouse.move(2, 2);
-          await settledLayout(page);
-          await capture(page);
-        }
-      );
-      await wallet.step(
-        `${prefix} native Tab reaches both success controls and Enter Close preserves accepted identity`,
-        async () => {
-          await tabTo(page, ok);
-          await expect(ok).toBeFocused();
-          await tabTo(page, close);
-          await expect(close).toBeFocused();
-          expect(await publicState(page)).toEqual(accepted);
-          await page.keyboard.press('Enter');
-          await expect(dialog).toHaveCount(0);
-          await expect(page).toHaveURL(/#\/home(?:\?.*)?$/);
-          expect(await publicState(page)).toEqual(accepted);
-          await open(en.accountMenu.manageAccounts);
-          await expect(page).toHaveURL(/#\/settings\/manage-accounts$/);
-          const exactAction = `${en.buttons.edit}: ${created.label} (${created.address})`;
-          await expect(
-            page.getByRole('button', { name: exactAction, exact: true })
-          ).toHaveCount(1);
-          expect(await publicState(page)).toEqual(accepted);
-        }
-      );
-      await wallet.step(
-        `${prefix} worker runtime physical fences and exact public scope complete before the presentation predicate`,
-        async () => {
-          expect(await publicState(page)).toEqual(accepted);
-          observations.workerAfter = await verifyExecutingWorker(
-            wallet!.context,
-            wallet!.extensionId,
-            E2E_CONFIG.extensionPath,
-            (value) => {
-              observations.workerAfter = value;
+        );
+        if (lane === 'keyboard') {
+          await wallet.step(
+            `${prefix} native Tab reaches both success controls and Enter Close preserves accepted identity`,
+            async () => {
+              await tabTo(page, ok);
+              await expect(ok).toBeFocused();
+              await tabTo(page, close);
+              await expect(close).toBeFocused();
+              expect(await publicState(page)).toEqual(accepted);
+              await page.keyboard.press('Enter');
+              await expect(dialog).toHaveCount(0);
+              await expect(page).toHaveURL(/#\/home(?:\?.*)?$/);
+              expect(await publicState(page)).toEqual(accepted);
+              await open(en.accountMenu.manageAccounts);
+              await expect(page).toHaveURL(/#\/settings\/manage-accounts$/);
+              const exactAction = `${en.buttons.edit}: ${created.label} (${created.address})`;
+              await expect(
+                page.getByRole('button', { name: exactAction, exact: true })
+              ).toHaveCount(1);
+              expect(await publicState(page)).toEqual(accepted);
             }
           );
-          expect(denialCanaries).toHaveLength(2);
-          expect(server.blocked.slice(0, 2)).toEqual(['GET', 'CONNECT']);
-          expect(
-            server.blocked.every(
-              (method) => method === 'GET' || method === 'CONNECT'
-            )
-          ).toBe(true);
-          expect(unsupported).toEqual([]);
-          expect(forbidden).toEqual([]);
-          expect(failedRequests).toEqual([]);
-          expect(pageErrors).toEqual([]);
-          expect(
-            reads.some((url) => url.includes(encodeURIComponent(created.xpub)))
-          ).toBe(true);
-          expect(extensionEvidence()).toEqual(runtime);
-          expect(
-            createHash('sha256')
-              .update(fs.readFileSync(info.file))
-              .digest('hex')
-          ).toBe(sourceSha256);
+        } else {
+          await wallet.step(
+            `${prefix} ordinary wheels test vertical and horizontal reveal without moving DOM or focus`,
+            async (capture) => {
+              expect(await publicNavigationState(page)).toEqual(
+                observations.createdRoute
+              );
+              const scrollSignature = () =>
+                address.evaluate((node) => {
+                  const positions: number[] = [];
+                  for (
+                    let parent: Element | null = node;
+                    parent;
+                    parent = parent.parentElement
+                  )
+                    positions.push(parent.scrollLeft, parent.scrollTop);
+                  return positions;
+                });
+              const settleScroll = async () => {
+                let previousSignature = '',
+                  stable = 0;
+                await frame(page);
+                await expect
+                  .poll(async () => {
+                    const signature = JSON.stringify(await scrollSignature());
+                    stable = signature === previousSignature ? stable + 1 : 0;
+                    previousSignature = signature;
+                    return stable >= 2;
+                  })
+                  .toBe(true);
+                await frame(page);
+              };
+              for (const gesture of [
+                { x: 0, y: 96 },
+                { x: 0, y: -96 },
+                { x: 240, y: 0 },
+                { x: -240, y: 0 },
+              ]) {
+                // No earlier gesture may silently move to another route.
+                expect(await publicNavigationState(page)).toEqual(
+                  observations.createdRoute
+                );
+                const geometry = await measureAddress(address);
+                const x = Math.max(
+                  geometry.clip.left + 4,
+                  Math.min(
+                    geometry.clip.right - 4,
+                    (geometry.box.left + geometry.box.right) / 2
+                  )
+                );
+                const y = Math.max(
+                  geometry.clip.top + 4,
+                  Math.min(
+                    geometry.clip.bottom - 4,
+                    (geometry.box.top + geometry.box.bottom) / 2
+                  )
+                );
+                expect(x).toBeGreaterThanOrEqual(0);
+                expect(y).toBeGreaterThanOrEqual(0);
+                const bodyHit = await address.evaluate(
+                  (node, point) => {
+                    const hit = document.elementFromPoint(point.x, point.y);
+                    return !!hit && !!node.parentElement?.contains(hit);
+                  },
+                  { x, y }
+                );
+                expect(bodyHit).toBe(true);
+                await page.mouse.move(x, y);
+                await page.mouse.wheel(gesture.x, gesture.y);
+                await settleScroll();
+                observations.gestures.push({
+                  gesture,
+                  point: { x, y },
+                  bodyHit,
+                });
+                observations.geometries.push({
+                  mode: `wheel-${gesture.x}-${gesture.y}`,
+                  geometry: await measureAddress(address),
+                });
+                if (gesture.x !== 0) {
+                  observations.revealScreenshots ??= [];
+                  observations.revealScreenshots.push(
+                    await wallet!.shot(
+                      `${prefix} horizontal-wheel-${gesture.x} genuine success identity`
+                    )
+                  );
+                }
+                expect(await publicState(page)).toEqual(accepted);
+              }
+              await page.mouse.move(2, 2);
+              await settledLayout(page);
+              const afterWheels = await publicNavigationState(page);
+              const remainedOnCreatedRoute =
+                JSON.stringify(afterWheels) ===
+                JSON.stringify(observations.createdRoute);
+              const traversedToExactPriorHome =
+                JSON.stringify(afterWheels) ===
+                JSON.stringify(observations.priorHomeRoute);
+              observations.navigationAfterWheels = {
+                before: observations.createdRoute,
+                priorHome: observations.priorHomeRoute,
+                after: afterWheels,
+                remainedOnCreatedRoute,
+                traversedToExactPriorHome,
+              };
+              // A native horizontal history gesture may restore precisely the
+              // preceding Home entry. It must never mutate the accepted wallet.
+              expect(remainedOnCreatedRoute || traversedToExactPriorHome).toBe(
+                true
+              );
+              if (remainedOnCreatedRoute) {
+                await expect(dialog).toBeVisible();
+                await expect(address).toHaveText(created.address);
+              } else {
+                await expect(dialog).toHaveCount(0);
+                await expect(page).toHaveURL(/#\/home(?:\?.*)?$/);
+              }
+              expect(await publicState(page)).toEqual(accepted);
+              await capture(page);
+            }
+          );
         }
-      );
-      await wallet.step(
-        `${prefix} accepted success address is readable without horizontal scrolling`,
-        async () => {
-          const initial = observations.geometries.find(
-            (entry: any) => entry.mode === 'initial'
-          ).geometry;
-          // All ordinary reveal attempts and identity/fence controls above run
-          // first. This final assertion is the only presentation candidate.
-          expect(
-            initial.noGlyphClip && initial.noHorizontalScrollNeeded,
-            JSON.stringify({
-              initial,
-              reveal: observations.geometries.slice(1),
-            })
-          ).toBe(true);
+        await wallet.step(
+          `${prefix} worker runtime physical fences and exact public scope complete before the presentation predicate`,
+          async () => {
+            expect(await publicState(page)).toEqual(accepted);
+            observations.workerAfter = await verifyExecutingWorker(
+              wallet!.context,
+              wallet!.extensionId,
+              E2E_CONFIG.extensionPath,
+              (value) => {
+                observations.workerAfter = value;
+              }
+            );
+            expect(denialCanaries).toHaveLength(2);
+            expect(server.blocked.slice(0, 2)).toEqual(['GET', 'CONNECT']);
+            expect(
+              server.blocked.every(
+                (method) => method === 'GET' || method === 'CONNECT'
+              )
+            ).toBe(true);
+            expect(unsupported).toEqual([]);
+            expect(forbidden).toEqual([]);
+            expect(failedRequests).toEqual([]);
+            expect(pageErrors).toEqual([]);
+            expect(
+              reads.some((url) =>
+                url.includes(encodeURIComponent(created.xpub))
+              )
+            ).toBe(true);
+            expect(extensionEvidence()).toEqual(runtime);
+            expect(
+              createHash('sha256')
+                .update(fs.readFileSync(info.file))
+                .digest('hex')
+            ).toBe(sourceSha256);
+          }
+        );
+        if (lane === 'reveal') {
+          await wallet.step(
+            `${prefix} accepted success address is readable without horizontal scrolling`,
+            async () => {
+              const initial = observations.geometries.find(
+                (entry: any) => entry.mode === 'initial'
+              ).geometry;
+              // All ordinary reveal attempts and identity/fence controls above run
+              // first. This final assertion is the only presentation candidate.
+              expect(
+                initial.noGlyphClip && initial.noHorizontalScrollNeeded,
+                JSON.stringify({
+                  initial,
+                  reveal: observations.geometries.slice(1),
+                })
+              ).toBe(true);
+            }
+          );
         }
-      );
-      status = 'passed';
-    } finally {
-      try {
-        await info.attach('account-creation-success-identity-evidence', {
-          contentType: 'application/json',
-          body: JSON.stringify({
-            status,
-            runtime,
-            sourceSha256,
-            observations,
-            reads,
-            unsupported,
-            forbidden,
-            failedRequests,
-            pageErrors,
-            denialCanaries,
-            proxyDeniedConnections: server.blocked.length,
-            controllerStateReplaced: false,
-            controllerResultsReplaced: false,
-            chromeApiReplaced: false,
-            addressInjected: false,
-            focusOrScrollSetterUsed: false,
-            privateKeyImportOrRevealRequested: false,
-            signingOrBroadcastRequested: false,
-            tracesAndVideosDisabled: true,
-          }),
-        });
+        status = 'passed';
       } finally {
         try {
-          await wallet?.dispose(status);
+          await info.attach(
+            `account-creation-success-identity-${lane}-evidence`,
+            {
+              contentType: 'application/json',
+              body: JSON.stringify({
+                status,
+                runtime,
+                sourceSha256,
+                observations,
+                reads,
+                unsupported,
+                forbidden,
+                failedRequests,
+                pageErrors,
+                denialCanaries,
+                proxyDeniedConnections: server.blocked.length,
+                controllerStateReplaced: false,
+                controllerResultsReplaced: false,
+                chromeApiReplaced: false,
+                addressInjected: false,
+                focusOrScrollSetterUsed: false,
+                privateKeyImportOrRevealRequested: false,
+                signingOrBroadcastRequested: false,
+                tracesAndVideosDisabled: true,
+              }),
+            }
+          );
         } finally {
           try {
-            await server.close();
+            await wallet?.dispose(status);
           } finally {
-            Object.assign(E2E_CONFIG, previous);
+            try {
+              await server.close();
+            } finally {
+              Object.assign(E2E_CONFIG, previous);
+            }
           }
         }
       }
