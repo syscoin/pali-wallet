@@ -930,8 +930,6 @@
     "getStarted": "Começar",
     "importWalletSeedPhrase": "Importar usando a frase-semente da carteira",
     "unlockConfirmationFailed": "Não foi possível confirmar o desbloqueio da carteira. Tente novamente.",
-    "paliDoesnt": "O Pali não armazena sua senha. Para recuperar o acesso, é necessário redefinir a carteira com sua Frase de Recuperação Secreta. Esta ação apaga a carteira atual, contas criadas, tokens personalizados e contas importadas do seu dispositivo, gerando uma nova conta vinculada à frase de redefinição.",
-    "ifYouPlan": "Se você planeja importar uma nova Frase de Recuperação Secreta, certifique-se de ter anotado a atual para evitar perder os fundos associados. Lembre-se, tokens personalizados e contas importadas precisarão ser adicionados novamente após a redefinição. Este processo é irreversível, então proceda com cautela.",
     "importUsing": "Esqueceu a senha? Recupere com a seed",
     "wrongPassword": "Senha incorreta",
     "welcomeTo": "BEM-VINDO AO"

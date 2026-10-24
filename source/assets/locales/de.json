@@ -930,8 +930,6 @@
     "getStarted": "Loslegen",
     "importWalletSeedPhrase": "Mit der Seed-Phrase der Wallet importieren",
     "unlockConfirmationFailed": "Das Entsperren der Wallet konnte nicht bestätigt werden. Bitte versuche es erneut.",
-    "paliDoesnt": "Pali speichert Ihr Passwort nicht. Die Wiederherstellung des Zugriffs erfordert ein Zurücksetzen der Wallet mit Ihrer geheimen Wiederherstellungsphrase.",
-    "ifYouPlan": "Wenn Sie eine neue geheime Wiederherstellungsphrase importieren möchten, stellen Sie sicher, dass Sie die aktuelle notiert haben, um keine zugehörigen Gelder zu verlieren.",
     "importUsing": "Passwort vergessen? Mit Seed wiederherstellen",
     "wrongPassword": "Falsches Passwort",
     "welcomeTo": "WILLKOMMEN BEI"

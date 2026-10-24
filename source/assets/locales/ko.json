@@ -930,8 +930,6 @@
     "getStarted": "시작하기",
     "importWalletSeedPhrase": "지갑 시드 문구로 가져오기",
     "unlockConfirmationFailed": "지갑 잠금 해제를 확인할 수 없습니다. 다시 시도하세요.",
-    "paliDoesnt": "Pali는 비밀번호를 저장하지 않습니다. 액세스를 복구하려면 비밀 복구 구문으로 지갑을 재설정해야 합니다.",
-    "ifYouPlan": "새로운 비밀 복구 구문을 가져오려는 경우, 관련 자금을 잃지 않도록 현재 구문을 반드시 기록해 두세요.",
     "importUsing": "비밀번호를 잊으셨나요? 시드로 복구",
     "wrongPassword": "잘못된 비밀번호",
     "welcomeTo": "환영합니다"
