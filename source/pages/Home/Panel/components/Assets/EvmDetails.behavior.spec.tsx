@@ -270,3 +270,45 @@ it('preserves reported zero market cap, volume and circulating supply', async ()
   for (const label of ['marketCap', 'volume24h', 'circulatingSupply'])
     expect(screen.getByText(`tokens.${label}`)).toBeTruthy();
 });
+
+it.each([
+  ['both metrics', 123456789012, 123456789012345],
+  ['volume only', 123456789012, null],
+  ['supply only', null, 123456789012345],
+  ['neither metric', null, null],
+])(
+  'retains full numeric text and optional-field behavior with %s',
+  async (_label, volume, supply) => {
+    const data: any = market(55);
+    data.market_data['total_volume'] = { usd: volume };
+    data.market_data['circulating_supply'] = supply;
+    render(<EvmAssetDetails id={tokens[0].id} />);
+    await act(async () => pending.get(tokens[0].contractAddress)!(data));
+
+    expect(screen.getByText('$55')).toBeTruthy();
+    const volumeLabel = screen.queryByText('tokens.volume24h');
+    const supplyLabel = screen.queryByText('tokens.circulatingSupply');
+    expect(Boolean(volumeLabel)).toBe(volume !== null);
+    expect(Boolean(supplyLabel)).toBe(supply !== null);
+    if (volume !== null) expect(screen.getByText(`$${volume}`)).toBeTruthy();
+    if (supply !== null) expect(screen.getByText(String(supply))).toBeTruthy();
+
+    for (const label of [volumeLabel, supplyLabel].filter(Boolean)) {
+      const cell = label!.parentElement!;
+      const row = cell.parentElement!;
+      // These are source contracts only; the fenced browser regression proves
+      // actual glyph clipping, whole-field reflow and healthy rendered layouts.
+      expect(row.classList.contains('flex-wrap')).toBe(true);
+      expect(row.classList.contains('min-[400px]:grid')).toBe(true);
+      expect(row.classList.contains('min-[400px]:grid-cols-2')).toBe(true);
+      expect(cell.classList.contains('flex-1')).toBe(true);
+      expect(cell.classList.contains('max-w-full')).toBe(true);
+      expect(cell.lastElementChild!.classList.contains('break-words')).toBe(
+        true
+      );
+    }
+    expect(
+      screen.getByRole('button', { name: 'send.copyContractAddress' })
+    ).toBeTruthy();
+  }
+);
