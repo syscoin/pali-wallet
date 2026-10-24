@@ -143,6 +143,11 @@ describe('large connection approval account selection', () => {
         });
       }
     });
+    // This direct-invocation harness queues both React effect phases. Mounted
+    // focus-clearance tests cover their actual DOM measurement and cleanup.
+    jest
+      .spyOn(React, 'useLayoutEffect')
+      .mockImplementation((effect, deps) => React.useEffect(effect, deps));
     mockEmitter.mockReset().mockResolvedValue(null);
     mockCopy.mockReset().mockResolvedValue(undefined);
     mockAlert.info.mockClear();

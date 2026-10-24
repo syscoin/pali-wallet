@@ -39,7 +39,10 @@ import { dispatchBackgroundEvent } from 'utils/browser';
 import { isTrustedDappOrigin } from 'utils/dappOrigin';
 import { ellipsis } from 'utils/index';
 
+import { useConnectionFocusClearance } from './useConnectionFocusClearance';
+
 export const ConnectWallet = () => {
+  const connectionFocusRef = useConnectionFocusClearance();
   const { controllerEmitter } = useController();
   const { host, chain, chainId, eventName } = useQueryData();
   const { t } = useTranslation();
@@ -294,7 +297,7 @@ export const ConnectWallet = () => {
   }, [accountId, accountType, eligibleAccounts, visibleItems]);
 
   return (
-    <div className="flex flex-col w-full h-full">
+    <div ref={connectionFocusRef} className="flex flex-col w-full h-full">
       {/* Main scrollable content area */}
       <div className="flex-1 overflow-y-auto remove-scrollbar">
         {isLoading ? (
@@ -406,21 +409,22 @@ export const ConnectWallet = () => {
                                 }
                               }}
                             >
-                              <div className="flex items-center justify-between gap-2 w-full">
-                                <div className="flex items-center gap-3 flex-1 min-w-0">
-                                  <div className="relative">
+                              <div className="flex flex-col gap-3 w-full [@media(min-width:400px)]:flex-row [@media(min-width:400px)]:items-center [@media(min-width:400px)]:justify-between [@media(min-width:400px)]:gap-2">
+                                <div className="flex items-center gap-3 w-full min-w-0 [@media(min-width:400px)]:w-auto [@media(min-width:400px)]:flex-1">
+                                  <div className="relative flex-shrink-0">
                                     <AccountIcon account={acc} size={40} />
                                   </div>
                                   <div className="flex-1 min-w-0 pr-2">
                                     <p className="font-medium text-sm text-brand-white mb-1 truncate">
                                       {acc.label}
                                     </p>
-                                    <div className="flex items-center gap-1">
+                                    <div className="flex items-center gap-1 min-w-0">
                                       <Tooltip
                                         content={acc.address}
                                         placement="top"
+                                        childrenClassName="min-w-0"
                                       >
-                                        <p className="text-xs text-brand-graylight">
+                                        <p className="text-xs text-brand-graylight truncate">
                                           {acc.address
                                             ? ellipsis(acc.address, 8, 4)
                                             : t('connections.noAddress')}
@@ -460,8 +464,8 @@ export const ConnectWallet = () => {
                                     </div>
                                   </div>
                                 </div>
-                                <div className="flex items-center gap-3 flex-shrink-0">
-                                  <div className="text-right">
+                                <div className="flex items-center justify-between gap-3 w-full flex-shrink-0 [@media(min-width:400px)]:w-auto">
+                                  <div className="text-left [@media(min-width:400px)]:text-right">
                                     <LazyAccountBalance
                                       account={acc}
                                       accountType={keyringType}
@@ -470,7 +474,7 @@ export const ConnectWallet = () => {
                                       precision={8}
                                     />
                                     {tokens && tokens.length > 0 && (
-                                      <div className="mt-0.5 flex justify-end">
+                                      <div className="mt-0.5 flex justify-start [@media(min-width:400px)]:justify-end">
                                         <TokenIconStack tokens={tokens} />
                                       </div>
                                     )}
@@ -540,7 +544,10 @@ export const ConnectWallet = () => {
       </div>
 
       {/* Fixed button container at bottom of viewport */}
-      <ToastActionFooter className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 shadow-lg z-50">
+      <ToastActionFooter
+        data-connection-actions
+        className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 shadow-lg z-50"
+      >
         <div className="flex gap-3 justify-center">
           <Button
             variant="secondary"
