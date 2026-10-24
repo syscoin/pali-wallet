@@ -224,3 +224,114 @@ describe.each([
     }
   );
 });
+
+describe.each(['TSPT', 'W'.repeat(32)])(
+  'SPT details symbol containment: %s',
+  (symbol) => {
+    it.each([
+      { units: '0', exact: '0.0', label: '0' },
+      {
+        units: '18446744073709551615',
+        exact: '184467440737.09551615',
+        label: '184.467B',
+      },
+    ])(
+      'retains exact amounts and local wrapping constraints for $units',
+      async (fixture) => {
+        mockRead.mockResolvedValue({
+          tokensAsset: [
+            {
+              assetGuid: '223456',
+              symbol,
+              name: 'Public SPT symbol control',
+              decimals: 8,
+              balance: fixture.units,
+              unconfirmedBalance: '0',
+              totalReceived: fixture.units,
+              totalSent: '0',
+              transfers: 1,
+            },
+          ],
+        });
+        const rows = await SysAssetsController().getUserOwnedTokens(
+          'zpub-public'
+        );
+        expect(mockRead).toHaveBeenCalledWith(
+          'https://blockbook.synthetic.invalid/',
+          'zpub-public',
+          'details=tokenBalances&tokens=nonzero',
+          true
+        );
+        act(() =>
+          mockStore.dispatch(
+            setAccountAssets({
+              accountId: 0,
+              accountType: KeyringAccountType.HDAccount,
+              property: 'syscoin',
+              value: rows,
+            })
+          )
+        );
+        render(
+          <Provider store={mockStore}>
+            <MemoryRouter
+              initialEntries={[
+                {
+                  pathname: '/home/details',
+                  state: { id: '223456', hash: null },
+                },
+              ]}
+              future={{
+                ['v7_startTransition']: true,
+                ['v7_relativeSplatPath']: true,
+              }}
+            >
+              <Routes>
+                <Route path="/home/details" element={<DetailsView />} />
+              </Routes>
+            </MemoryRouter>
+          </Provider>
+        );
+        const context = screen.getByText(`${symbol} (Syscoin Testnet)`);
+        const header = context.parentElement!;
+        expect(header).toHaveClass('min-w-0', 'w-full');
+        expect(context).toHaveClass('max-w-full', 'break-words', 'text-center');
+        expect(header.children[0]).toHaveTextContent(symbol);
+        expect(header.children[0]).toHaveClass(
+          'max-w-full',
+          'break-words',
+          'text-center'
+        );
+        for (const [field, title] of [
+          ['balance', 'Balance'],
+          ['totalReceived', 'Total Received'],
+          ['totalSent', 'Total Sent'],
+        ]) {
+          const row = screen.getByText(title).closest('li')!;
+          const label = within(row).getByText(title);
+          const amount = row.querySelector('span.text-brand-white')!;
+          const token = within(row).getByText(symbol);
+          const value = amount.parentElement!;
+          expect(row).toHaveClass('gap-x-3');
+          expect(label).toHaveClass('flex-shrink-0');
+          expect(value).toHaveClass('min-w-0', 'items-start', 'text-right');
+          expect(amount).toHaveClass('shrink-0');
+          expect(token).toHaveClass(
+            'min-w-0',
+            'break-all',
+            'text-brand-royalbluemedium'
+          );
+          expect(rows[0][field]).toBe(
+            field === 'totalSent' ? '0.0' : fixture.exact
+          );
+          expect(amount.textContent).toBe(
+            field === 'totalSent' ? '0' : fixture.label
+          );
+          expect(amount).toHaveAttribute('title', rows[0][field]);
+          expect(token.textContent).toBe(symbol);
+        }
+        expect(mockController).not.toHaveBeenCalled();
+      }
+    );
+  }
+);
