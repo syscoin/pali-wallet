@@ -1,6 +1,6 @@
 /** @jest-environment jsdom */
 import '@testing-library/jest-dom';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 
@@ -321,23 +321,61 @@ const expectCollapsedLayout = (symbol: string) => {
 it.each(['DUP', 'ABCDEFGH1', 'VERYLONGTOKEN123456789'])(
   'reserves the actual collapsed icon while preserving full ERC20 name and selection for %s',
   async (symbol) => {
-    mockAssets[0].tokenSymbol = symbol;
-    const user = await mount();
-    expectCollapsedLayout('ETH');
-    await open(user);
-    await user.click(screen.getAllByRole('menuitem')[1]);
-    await waitFor(() => expectCollapsedLayout(symbol));
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'send.max' })).toBeEnabled()
-    );
-    await user.click(screen.getByRole('button', { name: 'send.max' }));
-    expect(
-      (screen.getByPlaceholderText('send.amount') as HTMLInputElement).value
-    ).toBe('0.999999999999999999');
-    expect(mockEmitter).toHaveBeenCalledWith(
-      ['wallet', 'getERC20TokenInfo'],
-      [PRECISE, mockState.vault.accounts.HDAccount[0].address]
-    );
+    jest.useFakeTimers({ doNotFake: ['queueMicrotask'] });
+    try {
+      mockAssets[0].tokenSymbol = symbol;
+      const user = userEvent.setup({
+        advanceTimers: jest.advanceTimersByTime,
+      });
+      const implementation = mockEmitter.getMockImplementation()!;
+      let releaseLookup!: () => void;
+      const lookupGate = new Promise<void>((resolve) => {
+        releaseLookup = resolve;
+      });
+      mockEmitter.mockImplementation((path: string[], args: unknown[] = []) =>
+        path.at(-1) === 'getERC20TokenInfo'
+          ? lookupGate.then(() => implementation(path, args))
+          : implementation(path, args)
+      );
+      await act(async () => render(<SendEth />));
+      expectCollapsedLayout('ETH');
+      await open(user);
+      await user.click(screen.getAllByRole('menuitem')[1]);
+      const max = () => screen.getByRole('button', { name: 'send.max' });
+      const tokenReads = () =>
+        mockEmitter.mock.calls.filter(
+          ([path]) => path.at(-1) === 'getERC20TokenInfo'
+        );
+      expect(max()).toBeDisabled();
+      expect(tokenReads()).toHaveLength(0);
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(999);
+      });
+      expect(max()).toBeDisabled();
+      expect(tokenReads()).toHaveLength(0);
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(1);
+      });
+      expect(tokenReads()).toHaveLength(1);
+      expect(max()).toBeDisabled();
+      await act(async () => releaseLookup());
+      await waitFor(() => expectCollapsedLayout(symbol));
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: 'send.max' })).toBeEnabled()
+      );
+      await user.click(screen.getByRole('button', { name: 'send.max' }));
+      expect(
+        (screen.getByPlaceholderText('send.amount') as HTMLInputElement).value
+      ).toBe('0.999999999999999999');
+      expect(mockEmitter).toHaveBeenCalledWith(
+        ['wallet', 'getERC20TokenInfo'],
+        [PRECISE, mockState.vault.accounts.HDAccount[0].address]
+      );
+    } finally {
+      cleanup();
+      jest.clearAllTimers();
+      jest.useRealTimers();
+    }
   }
 );
 
