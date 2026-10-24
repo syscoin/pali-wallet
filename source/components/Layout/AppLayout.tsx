@@ -407,19 +407,6 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
         disableScroll ? '' : 'overflow-y-auto'
       }`}
     >
-      {/* Loading overlay - shows after delay for content area only */}
-      <PageLoadingOverlay
-        isLoading={isLoading || connectionUnavailable}
-        message={
-          connectionUnavailable
-            ? t('components.walletServiceReconnecting')
-            : message
-        }
-        nonBlocking={connectionUnavailable}
-        hasHeader={!hideHeader && !titleOnly}
-        hasBanner={showBanner}
-      />
-
       {/* Persistent header across all routes - respect hideHeader and titleOnly */}
       {!hideHeader && !titleOnly && (
         <Header accountHeader={shouldShowAccountHeader} />
@@ -489,6 +476,19 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
           />
         </div>
       )}
+
+      {/* Initial loading blocks as before; slow status owns in-flow space. */}
+      <PageLoadingOverlay
+        isLoading={isLoading || connectionUnavailable}
+        message={
+          connectionUnavailable
+            ? t('components.walletServiceReconnecting')
+            : message
+        }
+        nonBlocking={connectionUnavailable}
+        hasHeader={!hideHeader && !titleOnly}
+        hasBanner={showBanner}
+      />
 
       {/* Content area - keyed by route so each navigation gets a short fade-in */}
       {location.pathname === '/home' ? (

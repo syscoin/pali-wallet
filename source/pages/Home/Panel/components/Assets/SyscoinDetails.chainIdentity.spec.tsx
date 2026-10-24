@@ -45,7 +45,7 @@ jest.mock('utils/index', () => ({
   truncate: (value: string) => value,
   camelCaseToText: (value: string) =>
     value.charAt(0).toUpperCase() + value.slice(1),
-  syscoinKeysOfInterest: ['symbol', 'decimals', 'balance'],
+  syscoinKeysOfInterest: ['symbol', 'decimals', 'balance', 'contract'],
   adjustUrl: (value: string) => value,
   getKnownSyscoinAsset: () => null,
   getTokenLogo: () => undefined,
@@ -83,7 +83,11 @@ const network = {
   url: 'https://testnet.invalid/',
 };
 
-const mount = (assets: any[], navigationState?: any) => {
+const mount = (
+  assets: any[],
+  navigationState?: any,
+  selectedNetwork = network
+) => {
   const initial = vaultReducer(undefined, { type: 'test/init' });
   const store = configureStore({
     reducer: {
@@ -94,7 +98,7 @@ const mount = (assets: any[], navigationState?: any) => {
       vault: {
         ...initial,
         activeAccount: { type: KeyringAccountType.HDAccount, id: 0 },
-        activeNetwork: network,
+        activeNetwork: selectedNetwork,
       } as any,
     },
   });
@@ -196,3 +200,109 @@ it('keeps a stored Unknown symbol authoritative over an incomplete preview draft
     stored,
   ]);
 });
+
+const previewContract = '0x3333333333333333333333333333333333333333';
+const foreignContract = '0x4444444444444444444444444444444444444444';
+const preview = (contract: unknown) => ({
+  isImportPreview: true,
+  assetGuid: guid,
+  symbol: 'PREVIEW',
+  balance: '0',
+  decimals: 8,
+  contract,
+});
+
+it.each([
+  {
+    chainId: 57,
+    label: 'Syscoin Mainnet',
+    url: 'https://mainnet.invalid/',
+    linkName: 'View on NEVM Explorer',
+    explorer: 'https://explorer.syscoin.org',
+  },
+  {
+    chainId: 5700,
+    label: 'Syscoin Testnet',
+    url: 'https://testnet.invalid/',
+    linkName: 'View on Tanenbaum Explorer',
+    explorer: 'https://explorer.tanenbaum.io',
+  },
+])(
+  'retains validated preview contract actions on chain $chainId without importing or mutating the inventory',
+  (value) => {
+    const store = mount([], preview(previewContract), {
+      ...network,
+      chainId: value.chainId,
+      label: value.label,
+      url: value.url,
+    });
+    const copy = screen.getByRole('button', {
+      name: 'send.copyContractAddress',
+    });
+    expect(copy).toHaveAttribute('type', 'button');
+    expect(copy).toHaveAttribute('title', 'send.copyContractAddress');
+    expect(copy).toHaveClass(
+      'h-11',
+      'w-11',
+      'flex-shrink-0',
+      'focus-visible:ring-2',
+      'focus-visible:ring-brand-royalblue'
+    );
+    expect(screen.getByText(previewContract)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: value.linkName })).toHaveAttribute(
+      'href',
+      value.explorer + '/token/' + previewContract
+    );
+    expect(store.getState().vault.accountAssets.HDAccount[0].syscoin).toEqual(
+      []
+    );
+  }
+);
+
+it('uses the current preview contract rather than an imported same-GUID contract from another chain', () => {
+  const foreign = { ...mainnet, contract: foreignContract };
+  const store = mount([foreign], preview(previewContract));
+  expect(screen.getByText(previewContract)).toBeInTheDocument();
+  expect(screen.queryByText(foreignContract)).not.toBeInTheDocument();
+  expect(
+    screen.getByRole('link', { name: 'View on Tanenbaum Explorer' })
+  ).toHaveAttribute(
+    'href',
+    'https://explorer.tanenbaum.io/token/' + previewContract
+  );
+  expect(store.getState().vault.accountAssets.HDAccount[0].syscoin).toEqual([
+    foreign,
+  ]);
+});
+
+it('keeps an imported active-chain contract authoritative over an incomplete preview draft', () => {
+  const stored = { ...testnet, contract: foreignContract };
+  const store = mount([stored], preview(previewContract));
+  expect(screen.getByText(foreignContract)).toBeInTheDocument();
+  expect(screen.queryByText(previewContract)).not.toBeInTheDocument();
+  expect(
+    screen.getByRole('link', { name: 'View on Tanenbaum Explorer' })
+  ).toHaveAttribute(
+    'href',
+    'https://explorer.tanenbaum.io/token/' + foreignContract
+  );
+  expect(store.getState().vault.accountAssets.HDAccount[0].syscoin).toEqual([
+    stored,
+  ]);
+});
+
+it.each([undefined, null, { address: previewContract }])(
+  'does not invent contract controls for a preview without string contract metadata: %p',
+  (contract) => {
+    const store = mount([], preview(contract));
+    expect(
+      screen.queryByRole('button', { name: 'send.copyContractAddress' })
+    ).toBeNull();
+    expect(
+      screen.queryByRole('link', { name: 'View on Tanenbaum Explorer' })
+    ).toBeNull();
+    expect(store.getState().vault.accountAssets.HDAccount[0].syscoin).toEqual(
+      []
+    );
+  }
+);
