@@ -414,13 +414,16 @@ test('offline sustained wallet stress: pending MAX, edits, vault switches, read 
       .poll(selection)
       .toEqual({ kind: 'syscoin', id: 0, address: chain.fixture.userAddress });
     await page.locator('#activity-btn').click();
+    const activityPanel = page.locator('#activity-panel-list');
+    await expect(activityPanel).toBeVisible();
     const latest = chain.accepted[chain.accepted.length - 1];
     await expect(
-      page.getByText(`${latest.txid.slice(0, 4)}...${latest.txid.slice(-14)}`, {
-        exact: true,
-      })
+      activityPanel.getByText(
+        `${latest.txid.slice(0, 4)}...${latest.txid.slice(-14)}`,
+        { exact: true }
+      )
     ).toBeVisible();
-    const latestRow = page
+    const latestRow = activityPanel
       .getByText(`${latest.txid.slice(0, 4)}...${latest.txid.slice(-14)}`, {
         exact: true,
       })
@@ -430,8 +433,10 @@ test('offline sustained wallet stress: pending MAX, edits, vault switches, read 
     await expect(
       latestRow.getByText(`−${coin(latest.feeSatoshis)} TSYS`, { exact: true })
     ).toBeVisible();
+    // Home may correctly lack a fiat quote in this fenced fixture. Every
+    // Activity row must still have its native amount available.
     await expect(
-      page.getByText(en.settings.unavailable, { exact: true })
+      activityPanel.getByText(en.settings.unavailable, { exact: true })
     ).toHaveCount(0);
     historyFullTransactionReadDeltas.push(fullReads() - beforeReads);
   };
