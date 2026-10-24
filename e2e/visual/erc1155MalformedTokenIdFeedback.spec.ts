@@ -21,6 +21,7 @@ import {
   startUtxoFixtureServer,
   UTXO_FIXTURE_SEED,
 } from '../harness/utxoFixture';
+import { inspectValidationSuffix } from '../harness/validationSuffixPointer';
 
 // Normal malformed ERC-1155 ID guidance with healthy quantity and read-recovery
 // controls. The synthetic collection is never imported. Only source-backed HTTP
@@ -747,6 +748,10 @@ test('manual ERC1155 token ID guidance distinguishes malformed input from health
     const page = wallet.page;
     const contract = page.locator('#custom-token-contract');
     const input = page.locator('#custom-token-id');
+    const titleGlyph = (title: string) =>
+      input
+        .locator('xpath=following-sibling::*[1]')
+        .getByTitle(title, { exact: true });
     const importControl = page.getByRole('button', {
       name: `Import ${SYMBOL} token`,
       exact: true,
@@ -800,6 +805,12 @@ test('manual ERC1155 token ID guidance distinguishes malformed input from health
       observations.states.push({ state, ...evidence });
       expect(await publicScope(page)).toEqual(observations.baseline);
       await capture(page);
+      await inspectValidationSuffix(
+        page,
+        input,
+        info,
+        `erc1155-id-${page.viewportSize()?.width}-${state}`
+      );
       return evidence;
     };
     const noError = async () => {
@@ -873,9 +884,7 @@ test('manual ERC1155 token ID guidance distinguishes malformed input from health
           await record('pending', capture);
           release();
           await expect(importControl).toBeEnabled();
-          await expect(
-            page.getByTitle(exactBalance, { exact: true })
-          ).toBeVisible();
+          await expect(titleGlyph(exactBalance)).toBeVisible();
           await noError();
           await record('healthy-positive', capture);
         }
@@ -901,9 +910,7 @@ test('manual ERC1155 token ID guidance distinguishes malformed input from health
           await input.fill('7');
           await expect.poll(() => phase!.individualCalls).toBe(1);
           await expect(importControl).toHaveCount(0);
-          await expect(
-            page.getByTitle(en.send.invalidTokenId, { exact: true })
-          ).toHaveCount(0);
+          await expect(titleGlyph(en.send.invalidTokenId)).toHaveCount(0);
           await expect(
             page.getByText(en.send.unableToLoad, { exact: true })
           ).toBeVisible();
@@ -914,9 +921,7 @@ test('manual ERC1155 token ID guidance distinguishes malformed input from health
           await retry.click();
           await expect(input).toHaveValue('7');
           await expect(importControl).toBeEnabled();
-          await expect(
-            page.getByTitle(exactBalance, { exact: true })
-          ).toBeVisible();
+          await expect(titleGlyph(exactBalance)).toBeVisible();
           await expect(retry).toHaveCount(0);
           await noError();
           await record('recovered-same-id', capture);
@@ -934,9 +939,7 @@ test('manual ERC1155 token ID guidance distinguishes malformed input from health
               .locator('..')
               .getByRole('img', { name: 'loading', exact: true })
           ).toHaveCount(0);
-          await expect(
-            page.getByTitle(en.send.invalidTokenId, { exact: true })
-          ).toBeVisible();
+          await expect(titleGlyph(en.send.invalidTokenId)).toBeVisible();
           await expect(importControl).toHaveCount(0);
           await expect(retry).toHaveCount(0);
           await input.press('Tab');

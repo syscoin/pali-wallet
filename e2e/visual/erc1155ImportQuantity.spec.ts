@@ -174,6 +174,11 @@ test('manual ERC1155 import and Send MAX retain the exact verified quantity', as
       });
     });
     const page = wallet.page;
+    const titleGlyph = (title: string) =>
+      page
+        .locator('#custom-token-id')
+        .locator('xpath=following-sibling::*[1]')
+        .getByTitle(title, { exact: true });
     await wallet.step(
       'import a disposable synthetic wallet and select the EVM fixture',
       async (capture) => {
@@ -228,7 +233,7 @@ test('manual ERC1155 import and Send MAX retain the exact verified quantity', as
             '{{balance}}',
             QUANTITY
           );
-          await expect(page.getByTitle(title, { exact: true })).toBeVisible();
+          await expect(titleGlyph(title)).toBeVisible();
           expect(ownershipReads).toContainEqual({
             tokenIds: [TOKEN_ID],
             balances: [QUANTITY],
@@ -295,9 +300,8 @@ test('manual ERC1155 import and Send MAX retain the exact verified quantity', as
             await page.locator('#custom-token-id').fill(alias);
             await expect(page.locator('#custom-token-id')).toHaveValue(alias);
             await expect(
-              page.getByTitle(
-                en.tokens.balanceForTokenId.replace('{{balance}}', QUANTITY),
-                { exact: true }
+              titleGlyph(
+                en.tokens.balanceForTokenId.replace('{{balance}}', QUANTITY)
               )
             ).toBeVisible();
             await expect(importToken).toBeDisabled();

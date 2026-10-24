@@ -17,6 +17,7 @@ import {
   startUtxoFixtureServer,
   UTXO_FIXTURE_SEED,
 } from '../harness/utxoFixture';
+import { inspectValidationSuffix } from '../harness/validationSuffixPointer';
 
 const BASELINE = 'eddcca217822f733c0f4d6f5ead5eb0267c1716a';
 const MODE = process.env.PALI_NFT_THUMBNAIL_MODE || 'after';
@@ -630,6 +631,43 @@ test('NFT thumbnails keep their category through native image failures and colle
                 exact: true,
               })
             ).toBeVisible();
+            if (collection.symbol === 'C404') {
+              const manualId = page.locator('#nft-details-token-id');
+              await expect(manualId).toBeEnabled();
+              await inspectValidationSuffix(
+                page,
+                manualId,
+                info,
+                `nft-detail-${width}-empty`
+              );
+              await manualId.fill('7');
+              await expect(
+                manualId.locator('..').locator('.text-green-500')
+              ).toBeVisible();
+              await inspectValidationSuffix(
+                page,
+                manualId,
+                info,
+                `nft-detail-${width}-healthy`
+              );
+              await manualId.fill('abc');
+              await expect(
+                page.locator('#nft-details-token-id-error')
+              ).toBeVisible();
+              await inspectValidationSuffix(
+                page,
+                manualId,
+                info,
+                `nft-detail-${width}-error`
+              );
+              await manualId.fill('');
+              await page
+                .getByRole('button', { name: '#7', exact: true })
+                .click();
+              await expect(
+                page.locator('#nft-details-token-id-error')
+              ).toHaveCount(0);
+            }
             const detail = page.locator('#details-view-content');
             const detailIcon = failed
               ? nftFallback(detail).first()

@@ -158,6 +158,11 @@ test('manual ERC1155 verification distinguishes failed reads and retries the unc
       });
     });
     const page = wallet.page;
+    const titleGlyph = (title: string) =>
+      page
+        .locator('#custom-token-id')
+        .locator('xpath=following-sibling::*[1]')
+        .getByTitle(title, { exact: true });
     const importToken = page.getByRole('button', {
       name: `Import ${SYMBOL} token`,
       exact: true,
@@ -199,9 +204,7 @@ test('manual ERC1155 verification distinguishes failed reads and retries the unc
       async () => {
         await page.locator('#custom-token-id').fill('8');
         await expect(importToken).toBeEnabled();
-        await expect(
-          page.getByTitle(exactBalance, { exact: true })
-        ).toBeVisible();
+        await expect(titleGlyph(exactBalance)).toBeVisible();
         await page.locator('#custom-token-id').fill('9');
         await expect(importToken).toBeEnabled();
         await expect(
@@ -289,9 +292,7 @@ test('manual ERC1155 verification distinguishes failed reads and retries the unc
           .click();
         await expect(page.locator('#custom-token-id')).toHaveValue('7');
         await expect(importToken).toBeEnabled();
-        await expect(
-          page.getByTitle(exactBalance, { exact: true })
-        ).toBeVisible();
+        await expect(titleGlyph(exactBalance)).toBeVisible();
         await expect(
           page.getByText(en.send.unableToLoad, { exact: true })
         ).toHaveCount(0);

@@ -825,12 +825,19 @@ export const ImportToken: React.FC = () => {
                     focus:border-brand-royalblue/50 focus:outline-none focus:ring-2 focus:ring-brand-royalblue/20
                     transition-all duration-200`}
           placeholder={t(placeholder)}
+          title={
+            React.isValidElement<{ title?: string }>(indicator)
+              ? indicator.props.title
+              : undefined
+          }
           value={value}
           onChange={onChange}
           aria-invalid={feedback?.invalid || undefined}
           aria-describedby={feedback ? `${id}-feedback` : undefined}
         />
-        <div className={indicatorClass}>{indicator}</div>
+        <div className={`pointer-events-none ${indicatorClass}`}>
+          {indicator}
+        </div>
       </div>
       {feedback && (
         <p

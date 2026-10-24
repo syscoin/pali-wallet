@@ -394,7 +394,7 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
                            disabled:opacity-50 disabled:cursor-not-allowed"
                   />
                   {/* Validation indicator */}
-                  <div className="absolute right-4 top-1/2 transform -translate-y-1/2 flex items-center justify-center w-6 h-6">
+                  <div className="pointer-events-none absolute right-4 top-1/2 transform -translate-y-1/2 flex items-center justify-center w-6 h-6">
                     {isVerifyingTokenId ? (
                       <LoadingOutlined className="text-brand-royalblue animate-spin text-base" />
                     ) : manualTokenId && verificationError ? (

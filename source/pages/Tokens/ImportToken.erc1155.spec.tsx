@@ -1,11 +1,22 @@
 /** @jest-environment jsdom */
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import '@testing-library/jest-dom';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import React from 'react';
 import { useSelector } from 'react-redux';
 
 import { useController } from 'hooks/useController';
 
 import { ImportToken } from './ImportToken';
+
+// Assert native hover information on the input while retaining the original
+// glyph/content/color checks inside the decorative suffix.
+const tokenIdTitleInput = () =>
+  document.getElementById('custom-token-id') as HTMLInputElement;
+const getTokenIdTitleGlyph = (title: string) => {
+  const input = tokenIdTitleInput();
+  expect(input).toHaveAttribute('title', title);
+  return within(input.nextElementSibling as HTMLElement).getByTitle(title);
+};
 
 let mockLastImport: Promise<void> | undefined;
 const mockPreviewUnmount = jest.fn();
@@ -160,12 +171,14 @@ afterEach(() => jest.useRealTimers());
 
 it('does not offer an ERC1155 import before its token ID has been verified', async () => {
   await load();
+  expect(tokenIdTitleInput()).not.toHaveAttribute('title');
   expect(screen.queryByRole('button', { name: 'Import NFT' })).toBeNull();
   await changeId('0');
+  expect(tokenIdTitleInput()).not.toHaveAttribute('title');
   expect(screen.queryByRole('button', { name: 'Import NFT' })).toBeNull();
   await complete('0', 0);
   expect(
-    screen.getByTitle('tokens.balanceForTokenId:0 tokens.verifyTokenExists')
+    getTokenIdTitleGlyph('tokens.balanceForTokenId:0 tokens.verifyTokenExists')
   ).toBeDefined();
   fireEvent.click(screen.getByRole('button', { name: 'Import NFT' }));
   await act(async () => undefined);
@@ -324,7 +337,7 @@ it.each([
     await complete('7', Number.MAX_SAFE_INTEGER, CONTRACT, quantity);
     expect(screen.getByTestId('token-balance').textContent).toBe(displayed);
     expect(
-      screen.getByTitle(`tokens.balanceForTokenId:${quantity}`)
+      getTokenIdTitleGlyph(`tokens.balanceForTokenId:${quantity}`)
     ).toBeDefined();
     expect(mockTranslate).toHaveBeenCalledWith('tokens.balanceForTokenId', {
       balance: quantity,
@@ -356,7 +369,7 @@ it('keeps the numeric preview and save compatible when ownership omits rawBalanc
       .resolve([{ tokenId: '7', balance: 3, verified: true }])
   );
   expect(screen.getByTestId('token-balance').textContent).toBe('3');
-  expect(screen.getByTitle('tokens.balanceForTokenId:3')).toBeDefined();
+  expect(getTokenIdTitleGlyph('tokens.balanceForTokenId:3')).toBeDefined();
   expect(mockTranslate).toHaveBeenCalledWith('tokens.balanceForTokenId', {
     balance: 3,
   });
