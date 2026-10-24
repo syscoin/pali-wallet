@@ -302,19 +302,25 @@ it('permits wrapping an unbroken public identity without changing text, sibling 
   expect(onClick).toHaveBeenCalledTimes(1);
 });
 
-it.each([
-  ['UTXO', 'tsys1qp7shgcwx3mpzgxjvff0d77vuhchcldzf37xxdm'],
-  ['EVM', '0x2222222222222222222222222222222222222222'],
-])(
-  'wraps only the successful %s public address without changing identity or dismissal controls',
-  async (_family, publicAddress) => {
+it.each(
+  [
+    ['UTXO', 'tsys1qp7shgcwx3mpzgxjvff0d77vuhchcldzf37xxdm'],
+    ['EVM', '0x2222222222222222222222222222222222222222'],
+  ].flatMap(([family, publicAddress]) =>
+    ['Travel', 'TreasuryAccountForBusinessOperations2026'].map(
+      (accountLabel) => ({ family, publicAddress, accountLabel })
+    )
+  )
+)(
+  'wraps successful $family labels and addresses without changing identity or dismissal controls ($accountLabel)',
+  async ({ publicAddress, accountLabel }) => {
     const onClose = jest.fn();
     const user = userEvent.setup();
     render(
       <MemoryRouter>
         <CreatedAccountSuccessfully
           title="Created"
-          phraseOne="Travel"
+          phraseOne={accountLabel}
           phraseTwo={publicAddress}
           onClose={onClose}
         />
@@ -322,15 +328,17 @@ it.each([
     );
     const dialog = screen.getByRole('dialog', { name: 'Created' });
     const address = within(dialog).getByText(publicAddress, { exact: true });
-    const label = within(dialog).getByText('Travel', { exact: true });
+    const label = within(dialog).getByText(accountLabel, { exact: true });
     expect(address.tagName).toBe('P');
     expect(address).toHaveClass('[overflow-wrap:anywhere]');
     expect(address).not.toHaveClass('truncate');
     expect(address).not.toHaveClass('break-all');
     // CSS supplies emergency line wrapping, never inserted address bytes.
     expect(address.textContent).toBe(publicAddress);
-    expect(label.textContent).toBe('Travel');
-    expect(label).not.toHaveClass('[overflow-wrap:anywhere]');
+    expect(label.textContent).toBe(accountLabel);
+    expect(label).toHaveClass('[overflow-wrap:anywhere]');
+    expect(label).not.toHaveClass('truncate');
+    expect(label).not.toHaveClass('break-all');
     const close = within(dialog).getByRole('button', { name: 'Close' });
     const ok = within(dialog).getByRole('button', { name: 'OK' });
     expect(close).toHaveClass('h-11', 'w-11');
@@ -350,6 +358,7 @@ it.each([
     expect(onClose).toHaveBeenCalledTimes(2);
     await user.keyboard('{Escape}');
     expect(onClose).toHaveBeenCalledTimes(3);
+    expect(label.textContent).toBe(accountLabel);
     expect(address.textContent).toBe(publicAddress);
   }
 );
