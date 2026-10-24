@@ -28,6 +28,7 @@ import {
   ITokenDetails,
   ITokenSearchResult,
 } from 'types/tokens';
+import { isAddress } from 'utils/ethersV6Compat';
 import {
   getCurrentTab,
   getWalletNavigationScope,
@@ -87,9 +88,34 @@ export const ImportToken: React.FC = () => {
   const contractValidationRevision = useRef(0);
   const customContractRef = useRef(customContractAddress);
   customContractRef.current = customContractAddress;
+  const contractFeedbackScopeRef = useRef(tokenImportScope);
+  contractFeedbackScopeRef.current = tokenImportScope;
+  const [contractValidationFailure, setContractValidationFailure] = useState<{
+    revision: number;
+    scope: string;
+    value: string;
+  } | null>(null);
   const [customTokenDetails, setCustomTokenDetails] =
     useState<ITokenDetails | null>(restoredState?.customTokenDetails || null);
   const [isValidatingCustom, setIsValidatingCustom] = useState(false);
+  // Feedback belongs to a completed validation, not an edit awaiting debounce.
+  // The revision also prevents an old A result resurfacing after A -> B -> A.
+  const currentContractFailure =
+    !isValidatingCustom &&
+    !customTokenDetails &&
+    Boolean(customContractAddress.trim()) &&
+    contractValidationFailure?.scope === tokenImportScope &&
+    contractValidationFailure.revision === contractValidationRevision.current &&
+    contractValidationFailure.value === customContractAddress.trim();
+  const contractFormatInvalid = !isAddress(customContractAddress.trim());
+  const contractFeedback = currentContractFailure
+    ? {
+        invalid: contractFormatInvalid,
+        message: t(
+          contractFormatInvalid ? 'send.invalidEthAddress' : 'send.unableToLoad'
+        ),
+      }
+    : undefined;
   const [customTokenId, setCustomTokenId] = useState(
     restoredState?.customTokenId || ''
   );
@@ -271,6 +297,7 @@ export const ImportToken: React.FC = () => {
     let current = true;
     const validateCustomToken = async (contractAddress: string) => {
       const revision = ++contractValidationRevision.current;
+      const scope = contractFeedbackScopeRef.current;
       const isCurrent = () =>
         current &&
         revision === contractValidationRevision.current &&
@@ -281,6 +308,9 @@ export const ImportToken: React.FC = () => {
         // SYSCOIN: A cancelled validation cannot clear this input's spinner.
         setIsValidatingCustom(false);
         setCustomTokenDetails(null);
+        setContractValidationFailure(
+          contractAddress ? { revision, scope, value: contractAddress } : null
+        );
         return;
       }
 
@@ -314,12 +344,20 @@ export const ImportToken: React.FC = () => {
         if (!isCurrent()) return;
         if (details) {
           setCustomTokenDetails(details as ITokenDetails);
+          setContractValidationFailure(null);
         } else {
           throw new Error('Invalid contract');
         }
       } catch (error) {
         console.error('Validation error:', error);
-        if (isCurrent()) setCustomTokenDetails(null);
+        if (isCurrent()) {
+          setCustomTokenDetails(null);
+          setContractValidationFailure({
+            revision,
+            scope,
+            value: contractAddress,
+          });
+        }
       } finally {
         if (isCurrent()) setIsValidatingCustom(false);
       }
@@ -346,6 +384,7 @@ export const ImportToken: React.FC = () => {
     } else if (!deferredCustomAddress) {
       setCustomTokenDetails(null);
       setIsValidatingCustom(false);
+      setContractValidationFailure(null);
     }
   }, [deferredCustomAddress, activeAccount?.address, activeNetwork.chainId]);
 
@@ -768,7 +807,8 @@ export const ImportToken: React.FC = () => {
     padding: string,
     indicatorClass: string,
     indicator: React.ReactNode,
-    help?: React.ReactNode
+    help?: React.ReactNode,
+    feedback?: { invalid: boolean; message: string }
   ) => (
     <div className="relative max-w-lg mx-auto">
       <label
@@ -787,9 +827,20 @@ export const ImportToken: React.FC = () => {
           placeholder={t(placeholder)}
           value={value}
           onChange={onChange}
+          aria-invalid={feedback?.invalid || undefined}
+          aria-describedby={feedback ? `${id}-feedback` : undefined}
         />
         <div className={indicatorClass}>{indicator}</div>
       </div>
+      {feedback && (
+        <p
+          id={`${id}-feedback`}
+          role="alert"
+          className="mt-2 px-6 text-sm text-red-400"
+        >
+          {feedback.message}
+        </p>
+      )}
       {help}
     </div>
   );
@@ -914,10 +965,8 @@ export const ImportToken: React.FC = () => {
                 <LoadingOutlined className="text-brand-royalblue animate-spin text-base" />
               ) : customTokenDetails && customContractAddress ? (
                 <CheckCircleOutlined className="text-warning-success text-base" />
-              ) : customContractAddress &&
-                !customTokenDetails &&
-                !isValidatingCustom ? (
-                <CloseCircleOutlined className="text-warning-error text-base" />
+              ) : currentContractFailure ? (
+                <CloseCircleOutlined className="text-red-400 text-base" />
               ) : null,
               !activeNetwork.apiUrl && (
                 <div className="mt-3 text-xs text-brand-gray200 leading-relaxed">
@@ -931,7 +980,8 @@ export const ImportToken: React.FC = () => {
                     {t('tokens.importHelp')}
                   </a>
                 </div>
-              )
+              ),
+              contractFeedback
             )}
 
             {/* Token ID Input for ERC-1155 */}
