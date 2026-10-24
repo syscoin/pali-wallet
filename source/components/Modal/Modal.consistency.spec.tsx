@@ -301,3 +301,55 @@ it('permits wrapping an unbroken public identity without changing text, sibling 
   await user.click(confirm);
   expect(onClick).toHaveBeenCalledTimes(1);
 });
+
+it.each([
+  ['UTXO', 'tsys1qp7shgcwx3mpzgxjvff0d77vuhchcldzf37xxdm'],
+  ['EVM', '0x2222222222222222222222222222222222222222'],
+])(
+  'wraps only the successful %s public address without changing identity or dismissal controls',
+  async (_family, publicAddress) => {
+    const onClose = jest.fn();
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <CreatedAccountSuccessfully
+          title="Created"
+          phraseOne="Travel"
+          phraseTwo={publicAddress}
+          onClose={onClose}
+        />
+      </MemoryRouter>
+    );
+    const dialog = screen.getByRole('dialog', { name: 'Created' });
+    const address = within(dialog).getByText(publicAddress, { exact: true });
+    const label = within(dialog).getByText('Travel', { exact: true });
+    expect(address.tagName).toBe('P');
+    expect(address).toHaveClass('[overflow-wrap:anywhere]');
+    expect(address).not.toHaveClass('truncate');
+    expect(address).not.toHaveClass('break-all');
+    // CSS supplies emergency line wrapping, never inserted address bytes.
+    expect(address.textContent).toBe(publicAddress);
+    expect(label.textContent).toBe('Travel');
+    expect(label).not.toHaveClass('[overflow-wrap:anywhere]');
+    const close = within(dialog).getByRole('button', { name: 'Close' });
+    const ok = within(dialog).getByRole('button', { name: 'OK' });
+    expect(close).toHaveClass('h-11', 'w-11');
+    expect(close).toBeEnabled();
+    expect(ok).toHaveAttribute('id', 'account-created-ok-btn');
+    expect(ok).toBeEnabled();
+    for (let count = 0; count < 4 && document.activeElement !== close; count++)
+      await user.tab();
+    expect(close).toHaveFocus();
+    await user.keyboard('{Enter}');
+    expect(onClose).toHaveBeenCalledTimes(1);
+    // The controlled fixture intentionally retains show=true. Both ordinary
+    // existing dismissal handlers remain testable without remounting.
+    await user.tab();
+    expect(ok).toHaveFocus();
+    await user.keyboard('{Enter}');
+    expect(onClose).toHaveBeenCalledTimes(2);
+    await user.keyboard('{Escape}');
+    expect(onClose).toHaveBeenCalledTimes(3);
+    expect(address.textContent).toBe(publicAddress);
+  }
+);
