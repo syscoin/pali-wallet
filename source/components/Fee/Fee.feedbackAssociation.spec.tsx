@@ -1,7 +1,7 @@
 /** @jest-environment jsdom */
 import '@testing-library/jest-dom';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { Form } from 'antd';
+import { ConfigProvider, Form } from 'antd';
 import React from 'react';
 
 import de from '../../assets/locales/de.json';
@@ -85,15 +85,19 @@ beforeEach(() => {
 const NativeFeeForm = ({ disabled = false }: { disabled?: boolean }) => {
   const [form] = Form.useForm();
   return (
-    <Form form={form} onFinish={mockSubmit}>
-      <Fee
-        disabled={disabled}
-        recommend={0.00000001}
-        form={form}
-        onFeeChange={mockFeeChange}
-      />
-      <button type="submit">Next</button>
-    </Form>
+    // JSDOM does not run CSS transitions. Exercise native field semantics with
+    // real AntD controls; production browser cases retain ordinary motion.
+    <ConfigProvider theme={{ token: { motion: false } }}>
+      <Form form={form} onFinish={mockSubmit}>
+        <Fee
+          disabled={disabled}
+          recommend={0.00000001}
+          form={form}
+          onFeeChange={mockFeeChange}
+        />
+        <button type="submit">Next</button>
+      </Form>
+    </ConfigProvider>
   );
 };
 const field = () => screen.getByRole('spinbutton') as HTMLInputElement;
