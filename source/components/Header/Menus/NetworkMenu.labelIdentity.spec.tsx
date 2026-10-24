@@ -167,12 +167,10 @@ const openMenu = async () => {
   await user.click(
     within(menu).getByRole('menuitem', {
       name: familyName(),
-      exact: true,
     })
   );
   const group = within(menu).getByRole('group', {
     name: familyName(),
-    exact: true,
   });
   return { user, view, trigger, menu, group };
 };
@@ -213,13 +211,12 @@ it('keeps distinct-label choices unchanged and dispatches the exact chosen confi
   for (const network of [first, second]) {
     const row = within(group).getByRole('menuitem', {
       name: network.label,
-      exact: true,
     });
     expect(row).toHaveAccessibleName(network.label);
     expect(row.textContent).toBe(network.label);
   }
   await user.click(
-    within(group).getByRole('menuitem', { name: second.label, exact: true })
+    within(group).getByRole('menuitem', { name: second.label })
   );
   expect(mockEmitter).toHaveBeenCalledTimes(1);
   expect(mockEmitter.mock.calls[0]).toEqual([
@@ -233,7 +230,7 @@ it('keeps distinct-label choices unchanged and dispatches the exact chosen confi
 it('gives same-label same-glyph choices distinct visible and accessible chain identities without exposing endpoint secrets', async () => {
   const { menu, group } = await openMenu();
   const rows = IDS.map((id) =>
-    within(group).getByRole('menuitem', { name: identity(id), exact: true })
+    within(group).getByRole('menuitem', { name: identity(id) })
   );
   const glyphs = rows.map((row) => row.querySelector('svg'));
   expect(glyphs.every(Boolean)).toBe(true);
@@ -269,7 +266,6 @@ it.each([
     const { user, menu, group } = await openMenu();
     const target = within(group).getByRole('menuitem', {
       name: identity(chainId),
-      exact: true,
     });
     if (method === 'keyboard') {
       await reachWithKeys(user, menu, target);
@@ -294,7 +290,6 @@ it('cancels by native Escape and returns focus without switching or granting', a
     menu,
     within(group).getByRole('menuitem', {
       name: identity(11155111),
-      exact: true,
     })
   );
   await user.keyboard('{Escape}');
@@ -311,11 +306,9 @@ it('retains the exact current no-op and another same-label choice remains switch
   const { user, group, trigger } = await openMenu();
   const currentRow = within(group).getByRole('menuitem', {
     name: identity(5),
-    exact: true,
   });
   const otherRow = within(group).getByRole('menuitem', {
     name: identity(11155111),
-    exact: true,
   });
   expect(currentRow).toHaveAttribute('aria-current', 'true');
   expect(otherRow).not.toHaveAttribute('aria-current');
@@ -328,7 +321,7 @@ it('retains the exact current no-op and another same-label choice remains switch
   await user.click(
     within(screen.getByRole('group', { name: familyName() })).getByRole(
       'menuitem',
-      { name: identity(11155111), exact: true }
+      { name: identity(11155111) }
     )
   );
   expect(mockEmitter).toHaveBeenCalledTimes(1);
@@ -376,13 +369,11 @@ it('removes only unnecessary identity lines after a real registry reducer edit',
   expect(
     within(updatedGroup).getByRole('menuitem', {
       name: SHARED_LABEL,
-      exact: true,
     })
   ).toBeTruthy();
   expect(
     within(updatedGroup).getByRole('menuitem', {
       name: replacement.label,
-      exact: true,
     })
   ).toBeTruthy();
   expect(updatedGroup).not.toHaveTextContent('EVM · Chain');
@@ -399,7 +390,6 @@ it('uses the existing French chain-number catalog in visible and accessible iden
   for (const id of IDS) {
     const row = within(group).getByRole('menuitem', {
       name: identity(id),
-      exact: true,
     });
     expect(row).toHaveAccessibleName(identity(id));
     expect(row).toHaveTextContent(`EVM · Chaîne ${id}`);
@@ -415,20 +405,19 @@ it('leaves labels repeated only across separate family groups unchanged', async 
   mockState.vaultGlobal.networks.syscoin[57].label = SHARED_LABEL;
   const { user, menu, group } = await openMenu();
   expect(
-    within(group).getByRole('menuitem', { name: SHARED_LABEL, exact: true })
+    within(group).getByRole('menuitem', { name: SHARED_LABEL })
   ).toBeTruthy();
   expect(group).not.toHaveTextContent('EVM · Chain');
   await user.click(
     within(menu).getByRole('menuitem', {
       name: familyName(INetworkType.Syscoin),
-      exact: true,
     })
   );
   const utxoGroup = within(menu).getByRole('group', {
     name: familyName(INetworkType.Syscoin),
   });
   expect(
-    within(utxoGroup).getByRole('menuitem', { name: SHARED_LABEL, exact: true })
+    within(utxoGroup).getByRole('menuitem', { name: SHARED_LABEL })
   ).toBeTruthy();
   expect(utxoGroup).not.toHaveTextContent('UTXO · Chain');
   expect(mockEmitter).not.toHaveBeenCalled();
@@ -442,7 +431,6 @@ it('keeps label text literal rather than interpreting it as markup', async () =>
   for (const id of IDS) {
     const row = within(group).getByRole('menuitem', {
       name: identity(id, label),
-      exact: true,
     });
     expect(row).toHaveTextContent(label);
     expect(row.querySelector('img[src="x"]')).toBeNull();

@@ -175,7 +175,8 @@ const inspectCard = (row: Locator) =>
         node.classList.contains('underline') &&
         node.textContent?.includes(symbol)
     )!;
-    const balanceNode = textColumn.querySelector('p')?.firstElementChild!;
+    const balanceNode = textColumn.querySelector('p')?.firstElementChild;
+    if (!balanceNode) throw new Error('The rendered balance is missing');
     const identifier = textColumn.querySelector('p.break-all')!;
     const tokenId = textColumn.querySelector('p.font-mono')!;
     const buttons = Array.from(element.querySelectorAll('button'));
@@ -335,12 +336,12 @@ const inspectCard = (row: Locator) =>
     };
   }, SYMBOL);
 
-for (const { viewport, tokenId } of [
+for (const { viewport, tokenId: testTokenId } of [
   { viewport: { width: 400, height: 620 }, tokenId: '7' },
   { viewport: { width: 320, height: 360 }, tokenId: '7' },
   { viewport: { width: 320, height: 360 }, tokenId: '1234567890123456' },
 ]) {
-  const TOKEN_ID = tokenId;
+  const TOKEN_ID = testTokenId;
   const caseName = `${viewport.width}x${viewport.height}${
     TOKEN_ID === '7' ? '' : '-id-' + TOKEN_ID
   }`;
@@ -449,9 +450,9 @@ for (const { viewport, tokenId } of [
     const malformedContractReads: string[] = [];
     const unsupportedContractReads: string[] = [];
     const failures: Array<{
+      error: string | null;
       method: string;
       url: string;
-      error: string | null;
     }> = [];
     const pageErrors: string[] = [];
     const observations: Record<string, any> = {
