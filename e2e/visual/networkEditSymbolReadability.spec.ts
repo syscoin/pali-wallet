@@ -1,5 +1,6 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { getNetworkConfig } from '@sidhujag/sysweb3-network';
+import { execFileSync } from 'child_process';
 import { createHash } from 'crypto';
 import fs from 'fs';
 import net from 'net';
@@ -214,6 +215,20 @@ const publicState = (page: Page) =>
       savedGrants: clone(disk.state?.dapp?.dapps || {}),
     };
   });
+// Public route identity only; never write navigation, history or page state.
+const publicNavigationState = (page: Page) =>
+  page.evaluate(() => ({
+    url: window.location.href,
+    hash: window.location.hash,
+    historyIndex:
+      typeof window.history.state?.idx === 'number'
+        ? window.history.state.idx
+        : null,
+    historyKey:
+      typeof window.history.state?.key === 'string'
+        ? window.history.state.key
+        : null,
+  }));
 const frame = (page: Page) =>
   page.evaluate(
     () =>
@@ -440,10 +455,32 @@ for (const { symbol, viewport, role } of scenarios) {
       process.env.PALI_TEST_DAPP_EXTENSION_PATH
     );
     const sourceSha256 = digest(fs.readFileSync(info.file));
-    expect(process.env.PALI_NETWORK_SYMBOL_PROBE_SHA256).toMatch(
-      /^[a-f0-9]{64}$/
-    );
-    expect(sourceSha256).toBe(process.env.PALI_NETWORK_SYMBOL_PROBE_SHA256);
+    const repositoryRoot = path.resolve(path.dirname(info.file), '../..');
+    const probePath = 'e2e/visual/networkEditSymbolReadability.spec.ts';
+    expect(path.resolve(info.file)).toBe(path.join(repositoryRoot, probePath));
+    const diagnosticMode = process.env.PALI_DIAGNOSTIC_OLD_RUNTIME;
+    const diagnosticSha256 = process.env.PALI_NETWORK_SYMBOL_PROBE_SHA256;
+    expect([undefined, '1']).toContain(diagnosticMode);
+    let expectedSourceSha256: string;
+    if (diagnosticMode === '1') {
+      // A reviewed dirty/proposed test may run only with an explicit mode and
+      // independently pinned digest. Ordinary CI must use its committed blob.
+      expect(diagnosticSha256).toMatch(/^[a-f0-9]{64}$/);
+      expectedSourceSha256 = diagnosticSha256!;
+    } else {
+      expect(diagnosticSha256).toBeUndefined();
+      const options = { cwd: repositoryRoot, encoding: 'utf8' as const };
+      expect(execFileSync('git', ['rev-parse', 'HEAD'], options).trim()).toBe(
+        process.env.PALI_TEST_DAPP_REVISION
+      );
+      expectedSourceSha256 = digest(
+        execFileSync('git', ['show', `HEAD:${probePath}`], {
+          cwd: repositoryRoot,
+          maxBuffer: 1024 * 1024,
+        })
+      );
+    }
+    expect(sourceSha256).toBe(expectedSourceSha256);
     const runtime = extensionEvidence();
     expect(runtime.sourceRevision).toBe(process.env.PALI_TEST_DAPP_REVISION);
     expect(runtime.version).toBe(packageJson.version);
@@ -838,8 +875,72 @@ for (const { symbol, viewport, role } of scenarios) {
         const identityText = `$${symbol} • ${family}`;
         const line = page.getByText(identityText, { exact: true });
         await wallet.step(
+          `${prefix} native keyboard Save Cancel and unsaved draft preserve the stored symbol`,
+          async () => {
+            await edit.click();
+            await expect(page).toHaveURL(/#\/settings\/networks\/custom-rpc$/);
+            await page.setViewportSize(viewport);
+            await expect(page.locator('input#rpc_symbol')).toHaveValue(symbol);
+            await expect(page.locator('input#rpc_url')).toHaveValue(localRpc);
+            expect(await publicState(page)).toEqual(observations.accepted);
+            const symbolInput = page.locator('input#rpc_symbol');
+            const save = page.getByRole('button', {
+              name: en.buttons.save,
+              exact: true,
+            });
+            const cancel = page.getByRole('button', {
+              name: en.buttons.cancel,
+              exact: true,
+            });
+            await tabTo(page, symbolInput);
+            await expect(symbolInput).toBeFocused();
+            await page.keyboard.press('ControlOrMeta+A');
+            await page.keyboard.type('DRAFT');
+            await expect(symbolInput).toHaveValue('DRAFT');
+            await tabTo(page, save);
+            await expect(save).toBeFocused();
+            await expect(save).toBeEnabled();
+            await tabTo(page, cancel);
+            await expect(cancel).toBeFocused();
+            for (const [name, control] of [
+              ['Save', save],
+              ['Cancel', cancel],
+            ] as const) {
+              const geometry = await controlGeometry(control);
+              observations.controls[name] = geometry;
+              // Normal shared Button size md is h-10 (40px), not the separate
+              // account-created dialog's 44px controls.
+              expect(geometry.width).toBeGreaterThanOrEqual(40);
+              expect(geometry.height).toBeGreaterThanOrEqual(40);
+              expect(
+                geometry.points.every((point) => point.reachesControl)
+              ).toBe(true);
+            }
+            expect(await publicState(page)).toEqual(observations.accepted);
+            await page.keyboard.press('Enter');
+            await expect(manager).toBeVisible();
+            expect(await publicState(page)).toEqual(observations.accepted);
+            await edit.click();
+            await expect(page.locator('input#rpc_symbol')).toHaveValue(symbol);
+            await expect(line).toHaveText(identityText);
+            await tabTo(
+              page,
+              page.getByRole('button', { name: en.buttons.cancel, exact: true })
+            );
+            await page.keyboard.press('Enter');
+            await expect(manager).toBeVisible();
+            expect(await publicState(page)).toEqual(observations.accepted);
+          }
+        );
+        await wallet.step(
           `${prefix} actual reopened Edit identity is physically revealed and captured without layout injection`,
           async () => {
+            observations.priorManagerRoute = await publicNavigationState(page);
+            expect(observations.priorManagerRoute.hash).toBe(
+              '#/settings/networks/edit'
+            );
+            expect(observations.priorManagerRoute.historyIndex).not.toBeNull();
+            expect(observations.priorManagerRoute.historyKey).not.toBeNull();
             await edit.click();
             await expect(page).toHaveURL(/#\/settings\/networks\/custom-rpc$/);
             await expect(page.locator('input#rpc_symbol')).toHaveValue(symbol);
@@ -856,6 +957,17 @@ for (const { symbol, viewport, role } of scenarios) {
             ).toEqual({ view: 'standalone', ...viewport });
             await expect(line).toHaveCount(1);
             await expect(line).toHaveText(identityText);
+            observations.customRpcRoute = await publicNavigationState(page);
+            expect(observations.customRpcRoute.hash).toBe(
+              '#/settings/networks/custom-rpc'
+            );
+            expect(observations.customRpcRoute.historyIndex).toBe(
+              observations.priorManagerRoute.historyIndex + 1
+            );
+            expect(observations.customRpcRoute.historyKey).not.toBeNull();
+            expect(observations.customRpcRoute.historyKey).not.toBe(
+              observations.priorManagerRoute.historyKey
+            );
             observations.geometries.push({
               mode: 'initial-reopened',
               geometry: await measureLine(line),
@@ -964,6 +1076,9 @@ for (const { symbol, viewport, role } of scenarios) {
             };
             await screenshot('vertical-revealed');
             for (const deltaX of [240, -240]) {
+              expect(await publicNavigationState(page)).toEqual(
+                observations.customRpcRoute
+              );
               const geometry = await measureLine(line);
               const point = {
                 x: Math.max(
@@ -998,59 +1113,36 @@ for (const { symbol, viewport, role } of scenarios) {
             }
             await page.mouse.move(2, 2);
             await settle(page);
-            await screenshot('after-horizontal-wheels');
-            expect(await publicState(page)).toEqual(observations.accepted);
-          }
-        );
-        await wallet.step(
-          `${prefix} native keyboard Save Cancel and unsaved draft preserve the stored symbol`,
-          async () => {
-            const symbolInput = page.locator('input#rpc_symbol');
-            const save = page.getByRole('button', {
-              name: en.buttons.save,
-              exact: true,
-            });
-            const cancel = page.getByRole('button', {
-              name: en.buttons.cancel,
-              exact: true,
-            });
-            await tabTo(page, symbolInput);
-            await expect(symbolInput).toBeFocused();
-            await page.keyboard.press('ControlOrMeta+A');
-            await page.keyboard.type('DRAFT');
-            await expect(symbolInput).toHaveValue('DRAFT');
-            await tabTo(page, save);
-            await expect(save).toBeFocused();
-            await expect(save).toBeEnabled();
-            await tabTo(page, cancel);
-            await expect(cancel).toBeFocused();
-            for (const [name, control] of [
-              ['Save', save],
-              ['Cancel', cancel],
-            ] as const) {
-              const geometry = await controlGeometry(control);
-              observations.controls[name] = geometry;
-              // Normal shared Button size md is h-10 (40px), not the separate
-              // account-created dialog's 44px controls.
-              expect(geometry.width).toBeGreaterThanOrEqual(40);
-              expect(geometry.height).toBeGreaterThanOrEqual(40);
-              expect(
-                geometry.points.every((point) => point.reachesControl)
-              ).toBe(true);
-            }
-            expect(await publicState(page)).toEqual(observations.accepted);
-            await page.keyboard.press('Enter');
-            await expect(manager).toBeVisible();
-            expect(await publicState(page)).toEqual(observations.accepted);
-            await edit.click();
-            await expect(page.locator('input#rpc_symbol')).toHaveValue(symbol);
-            await expect(line).toHaveText(identityText);
-            await tabTo(
-              page,
-              page.getByRole('button', { name: en.buttons.cancel, exact: true })
+            const afterWheels = await publicNavigationState(page);
+            const remainedInEditor = isDeepStrictEqual(
+              afterWheels,
+              observations.customRpcRoute
             );
-            await page.keyboard.press('Enter');
-            await expect(manager).toBeVisible();
+            const traversedToExactPriorManager = isDeepStrictEqual(
+              afterWheels,
+              observations.priorManagerRoute
+            );
+            observations.navigationAfterWheels = {
+              before: observations.customRpcRoute,
+              priorManager: observations.priorManagerRoute,
+              after: afterWheels,
+              remainedInEditor,
+              traversedToExactPriorManager,
+            };
+            // Native horizontal history navigation may restore only the exact
+            // preceding manager entry; never ignore a different route or state.
+            expect(remainedInEditor || traversedToExactPriorManager).toBe(true);
+            if (remainedInEditor) {
+              await expect(line).toHaveText(identityText);
+              await expect(page.locator('input#rpc_symbol')).toHaveValue(
+                symbol
+              );
+            } else {
+              await expect(manager).toBeVisible();
+              await expect(edit).toHaveCount(1);
+              await expect(page).toHaveURL(/#\/settings\/networks\/edit$/);
+            }
+            await screenshot('after-horizontal-wheels');
             expect(await publicState(page)).toEqual(observations.accepted);
           }
         );
