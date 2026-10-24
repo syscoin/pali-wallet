@@ -161,6 +161,7 @@ test('UTXO Activity distinguishes pending and failed history from a verified emp
   const normalReads: Array<{ accountId: number; details: string | null }> = [];
   const releases = new Set<() => void>();
   const observations: Record<string, unknown> = {};
+  const pendingGeometryChecks: Array<() => void> = [];
   let wallet: PaliWallet | undefined;
   let server: Awaited<ReturnType<typeof startUtxoFixtureServer>> | undefined;
   let routes:
@@ -389,6 +390,188 @@ test('UTXO Activity distinguishes pending and failed history from a verified emp
           expect((await publicHistory(page)).account).toEqual(second);
           observations[`initial-pending-${viewport.width}`] =
             await publicHistory(page);
+          const skeletonGeometry = await pending.evaluate((element) => {
+            const inspect = (node: Element | null | undefined) => {
+              if (!node) return null;
+              const bounds = node.getBoundingClientRect();
+              const style = getComputedStyle(node);
+              return {
+                bounds: {
+                  left: bounds.left,
+                  right: bounds.right,
+                  top: bounds.top,
+                  bottom: bounds.bottom,
+                  width: bounds.width,
+                  height: bounds.height,
+                  clientWidth: node.clientWidth,
+                  clientHeight: node.clientHeight,
+                },
+                computed: {
+                  width: style.width,
+                  minWidth: style.minWidth,
+                  maxWidth: style.maxWidth,
+                  display: style.display,
+                  flexBasis: style.flexBasis,
+                  flexGrow: style.flexGrow,
+                  flexShrink: style.flexShrink,
+                  gap: style.gap,
+                  columnGap: style.columnGap,
+                  paddingLeft: style.paddingLeft,
+                  paddingRight: style.paddingRight,
+                  borderLeftWidth: style.borderLeftWidth,
+                  borderRightWidth: style.borderRightWidth,
+                  boxSizing: style.boxSizing,
+                  overflowX: style.overflowX,
+                  overflowY: style.overflowY,
+                },
+                inlineWidth: (node as HTMLElement).style.width,
+              };
+            };
+            const skeleton = element.parentElement;
+            const rowGroup = skeleton?.firstElementChild;
+            return {
+              viewport: {
+                width: innerWidth,
+                height: innerHeight,
+                devicePixelRatio,
+                documentWidth: document.documentElement.scrollWidth,
+              },
+              skeleton: inspect(skeleton),
+              rows: Array.from(rowGroup?.children || []).map((row, index) => {
+                const left = row.children.item(0);
+                const right = row.children.item(1);
+                const avatar = left?.children.item(0);
+                const labels = left?.children.item(1);
+                const labelTop = labels?.children.item(0);
+                const labelBottom = labels?.children.item(1);
+                const valueTop = right?.children.item(0);
+                const valueBottom = right?.children.item(1);
+                const rowBox = row.getBoundingClientRect();
+                const rowStyle = getComputedStyle(row);
+                const contentLeft =
+                  rowBox.left +
+                  parseFloat(rowStyle.borderLeftWidth) +
+                  parseFloat(rowStyle.paddingLeft);
+                const contentRight =
+                  rowBox.right -
+                  parseFloat(rowStyle.borderRightWidth) -
+                  parseFloat(rowStyle.paddingRight);
+                const leftBox = left?.getBoundingClientRect();
+                const rightBox = right?.getBoundingClientRect();
+                const avatarBox = avatar?.getBoundingClientRect();
+                const labelBox = labels?.getBoundingClientRect();
+                const labelTopBox = labelTop?.getBoundingClientRect();
+                const labelBottomBox = labelBottom?.getBoundingClientRect();
+                const valueTopBox = valueTop?.getBoundingClientRect();
+                const valueBottomBox = valueBottom?.getBoundingClientRect();
+                return {
+                  index,
+                  row: inspect(row),
+                  rowContentBounds: {
+                    left: contentLeft,
+                    right: contentRight,
+                    width: contentRight - contentLeft,
+                  },
+                  leftGroup: inspect(left),
+                  rightGroup: inspect(right),
+                  avatar: inspect(avatar),
+                  labelGroup: inspect(labels),
+                  labelTop: inspect(labelTop),
+                  labelBottom: inspect(labelBottom),
+                  valueTop: inspect(valueTop),
+                  valueBottom: inspect(valueBottom),
+                  gaps: {
+                    groups:
+                      leftBox && rightBox
+                        ? rightBox.left - leftBox.right
+                        : null,
+                    avatarToLabels:
+                      avatarBox && labelBox
+                        ? labelBox.left - avatarBox.right
+                        : null,
+                    topLabelToValue:
+                      labelTopBox && valueTopBox
+                        ? valueTopBox.left - labelTopBox.right
+                        : null,
+                    bottomLabelToValue:
+                      labelBottomBox && valueBottomBox
+                        ? valueBottomBox.left - labelBottomBox.right
+                        : null,
+                    rightGroupToContentEdge: rightBox
+                      ? contentRight - rightBox.right
+                      : null,
+                    rightGroupToRowEdge: rightBox
+                      ? rowBox.right - rightBox.right
+                      : null,
+                    topValueToRowEdge: valueTopBox
+                      ? rowBox.right - valueTopBox.right
+                      : null,
+                    bottomValueToRowEdge: valueBottomBox
+                      ? rowBox.right - valueBottomBox.right
+                      : null,
+                  },
+                };
+              }),
+            };
+          });
+          observations[`pending-skeleton-geometry-${viewport.width}`] =
+            skeletonGeometry;
+          await info.attach(
+            `activity-pending-skeleton-geometry-${viewport.width}`,
+            {
+              body: JSON.stringify(skeletonGeometry, null, 2),
+              contentType: 'application/json',
+            }
+          );
+          pendingGeometryChecks.push(() => {
+            expect(skeletonGeometry.viewport.width).toBe(viewport.width);
+            expect(skeletonGeometry.viewport.documentWidth).toBe(
+              viewport.width
+            );
+            expect(skeletonGeometry.rows).toHaveLength(3);
+            for (const row of skeletonGeometry.rows) {
+              expect(row.avatar?.bounds).toMatchObject({
+                width: 40,
+                height: 40,
+              });
+              expect(row.valueTop?.bounds.width).toBe(100);
+              expect(row.valueBottom?.bounds.width).toBe(60);
+              expect(row.labelTop?.bounds.width).toBeGreaterThan(0);
+              expect(row.labelTop?.bounds.width).toBeLessThanOrEqual(120);
+              expect(row.labelBottom?.bounds.width).toBeGreaterThan(0);
+              expect(row.labelBottom?.bounds.width).toBeLessThanOrEqual(80);
+              expect(row.gaps.avatarToLabels).toBe(12);
+              expect(row.gaps.groups).toBeGreaterThanOrEqual(12);
+              expect(row.gaps.topLabelToValue).toBeGreaterThanOrEqual(12);
+              expect(row.gaps.bottomLabelToValue).toBeGreaterThanOrEqual(12);
+              expect(row.gaps.rightGroupToContentEdge).toBeGreaterThanOrEqual(
+                0
+              );
+              expect(row.gaps.rightGroupToRowEdge).toBe(12);
+              for (const box of [
+                row.avatar,
+                row.labelTop,
+                row.labelBottom,
+                row.valueTop,
+                row.valueBottom,
+              ]) {
+                expect(box).not.toBeNull();
+                expect(box!.bounds.left).toBeGreaterThanOrEqual(
+                  row.rowContentBounds.left
+                );
+                expect(box!.bounds.right).toBeLessThanOrEqual(
+                  row.rowContentBounds.right
+                );
+              }
+              if (viewport.width === 400) {
+                expect(row.leftGroup?.bounds.width).toBe(172);
+                expect(row.rightGroup?.bounds.width).toBe(100);
+                expect(row.labelTop?.bounds.width).toBe(120);
+                expect(row.labelBottom?.bounds.width).toBe(80);
+                expect(row.gaps.groups).toBe(72);
+              }
+            }
+          });
           await info.attach(`activity-initial-pending-${viewport.width}`, {
             body: await page.screenshot(),
             contentType: 'image/png',
@@ -560,6 +743,8 @@ test('UTXO Activity distinguishes pending and failed history from a verified emp
     ).toBe(true);
     expect(normalReads.some((read) => read.accountId === 0)).toBe(true);
     expect(normalReads.some((read) => read.accountId === 1)).toBe(true);
+    expect(pendingGeometryChecks).toHaveLength(2);
+    for (const check of pendingGeometryChecks) check();
     status = 'passed';
   } finally {
     releaseHeld();

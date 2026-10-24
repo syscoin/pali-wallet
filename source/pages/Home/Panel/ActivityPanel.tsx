@@ -102,16 +102,28 @@ export const TransactionsPanel = () => {
           {[...Array(3)].map((_, index) => (
             <div
               key={index}
-              className="flex items-center justify-between p-3 bg-brand-blue500 rounded-lg"
+              className="flex items-center justify-between gap-x-3 p-3 bg-brand-blue500 rounded-lg"
             >
-              <div className="flex items-center space-x-3">
-                <SkeletonLoader width="40px" height="40px" />
-                <div className="space-y-1">
-                  <SkeletonLoader width="120px" height="16px" />
-                  <SkeletonLoader width="80px" height="12px" />
+              <div className="flex min-w-0 items-center space-x-3">
+                <SkeletonLoader
+                  width="40px"
+                  height="40px"
+                  className="shrink-0"
+                />
+                <div className="min-w-0 w-[120px] space-y-1">
+                  <SkeletonLoader
+                    width="100%"
+                    height="16px"
+                    className="max-w-[120px]"
+                  />
+                  <SkeletonLoader
+                    width="100%"
+                    height="12px"
+                    className="max-w-[80px]"
+                  />
                 </div>
               </div>
-              <div className="text-right space-y-1">
+              <div className="shrink-0 text-right space-y-1">
                 <SkeletonLoader width="100px" height="16px" />
                 <SkeletonLoader width="60px" height="12px" />
               </div>
