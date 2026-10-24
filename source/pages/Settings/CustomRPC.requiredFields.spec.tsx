@@ -6,6 +6,7 @@ import '@testing-library/jest-dom';
 import { clearRpcCaches } from '@sidhujag/sysweb3-network';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { ConfigProvider } from 'antd';
 import React from 'react';
 import { Provider } from 'react-redux';
 
@@ -434,4 +435,131 @@ it('keeps a valid padded edit label hidden and preserves its registration identi
   expect((await loadState()).vaultGlobal.networks.ethereum[31337]).toEqual(
     live
   );
+});
+
+// Real Form/field semantics for the Add-network Name, without CSS timing.
+// Existing SDK registration/edit and keyboard suites remain unchanged.
+async function nameFeedbackScope() {
+  return clone({
+    active: store.getState().vault.activeNetwork,
+    live: store.getState().vaultGlobal.networks,
+    saved: (await loadState()).vaultGlobal.networks,
+  });
+}
+
+async function openNameFeedbackForm() {
+  const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+  const before = await nameFeedbackScope();
+  render(
+    <ConfigProvider theme={{ token: { motion: false } }}>
+      <Provider store={store}>
+        <CustomRPC />
+      </Provider>
+    </ConfigProvider>
+  );
+  await waitFor(() =>
+    expect(mockEmitter).toHaveBeenCalledWith(
+      ['wallet', 'getChainData'],
+      [INetworkType.Ethereum]
+    )
+  );
+  return {
+    user,
+    before,
+    name: screen.getByRole('combobox', { name: 'settings.label' }),
+    symbol: screen.getByPlaceholderText('settings.symbol'),
+    endpoint: screen.getByPlaceholderText('settings.rpcUrlPlaceholder'),
+    save: screen.getByRole('button', { name: 'buttons.save' }),
+  };
+}
+
+async function expectNameFeedbackScopeUnchanged(
+  before: Awaited<ReturnType<typeof nameFeedbackScope>>
+) {
+  expect(await nameFeedbackScope()).toEqual(before);
+  expect(calls()).toHaveLength(0);
+  expect(edits()).toHaveLength(0);
+  expect(reads).toEqual([]);
+  expect(mockAlert.success).not.toHaveBeenCalled();
+  expect(
+    mockEmitter.mock.calls.some(([[, method]]) => method === 'setActiveNetwork')
+  ).toBe(false);
+}
+
+it('keeps the pristine Name native control and existing affix/dropdown structure', async () => {
+  const { name, symbol, endpoint, before } = await openNameFeedbackForm();
+  expect(name).toHaveValue('');
+  expect(symbol).toHaveValue('');
+  expect(endpoint).toHaveValue('');
+  expect(name).toHaveAttribute('id', 'rpc_label');
+  expect(name).toHaveAttribute('aria-required', 'true');
+  expect(name).not.toHaveAttribute('aria-invalid', 'true');
+  expect(name).not.toHaveAttribute('aria-describedby');
+  expect(document.querySelectorAll('#rpc_label')).toHaveLength(1);
+  const affix = name.closest('.ant-input-affix-wrapper');
+  expect(affix).not.toBeNull();
+  const anchor = document.getElementById('custom-rpc-network-suggestions')!
+    .parentElement!;
+  expect(affix!.parentElement).toBe(anchor);
+  expect(anchor).toHaveClass('relative', 'w-full');
+  expect(anchor).not.toHaveAttribute('id', 'rpc_label');
+  expect(anchor).not.toHaveAttribute('aria-required');
+  expect(anchor.querySelector('.ant-form-item-feedback-icon')).toBeNull();
+  await expectNameFeedbackScopeUnchanged(before);
+});
+
+it.each(['', '   ', '\u00a0\u00a0'])(
+  'associates current required Name %j with the actual native combobox without adding an icon',
+  async (value) => {
+    const { user, name, symbol, endpoint, save, before } =
+      await openNameFeedbackForm();
+    if (value) await user.type(name, value);
+    await user.click(save);
+    expect(
+      await screen.findByText('settings.networkNameRequired')
+    ).toBeVisible();
+    await waitFor(() => expect(name).toHaveAttribute('aria-invalid', 'true'));
+    expect(name).toHaveValue(value);
+    expect(name).toHaveAttribute('aria-describedby', 'rpc_label_help');
+    expect(name).toHaveAccessibleDescription('settings.networkNameRequired');
+    expect(document.querySelectorAll('#rpc_label_help')).toHaveLength(1);
+    expect(document.getElementById('rpc_label_help')).toHaveTextContent(
+      'settings.networkNameRequired'
+    );
+    expect(name).toHaveAttribute('aria-required', 'true');
+    expect(name.closest('.ant-input-affix-wrapper')).not.toBeNull();
+    const anchor = document.getElementById('custom-rpc-network-suggestions')!
+      .parentElement!;
+    expect(anchor.querySelector('.ant-form-item-feedback-icon')).toBeNull();
+    expect(symbol).toHaveValue('');
+    expect(endpoint).toHaveValue('');
+    await expectNameFeedbackScopeUnchanged(before);
+  }
+);
+
+it('clears stale Name feedback after ordinary correction while preserving focus and meaningful padding', async () => {
+  const { user, name, symbol, endpoint, save, before } =
+    await openNameFeedbackForm();
+  await user.click(save);
+  expect(await screen.findByText('settings.networkNameRequired')).toBeVisible();
+  await user.type(name, '  Personal sandbox  ');
+  await waitFor(() => {
+    expect(name).not.toHaveAttribute('aria-invalid', 'true');
+    expect(name).not.toHaveAttribute('aria-describedby');
+    expect(
+      screen.queryByText('settings.networkNameRequired')
+    ).not.toBeInTheDocument();
+  });
+  expect(name).toHaveFocus();
+  expect(name).toHaveValue('  Personal sandbox  ');
+  expect(name).toHaveAttribute('aria-required', 'true');
+  expect(name).toHaveAccessibleDescription('');
+  expect(document.querySelectorAll('#rpc_label')).toHaveLength(1);
+  expect(name.closest('.ant-input-affix-wrapper')).not.toBeNull();
+  const anchor = document.getElementById('custom-rpc-network-suggestions')!
+    .parentElement!;
+  expect(anchor.querySelector('.ant-form-item-feedback-icon')).toBeNull();
+  expect(symbol).toHaveValue('');
+  expect(endpoint).toHaveValue('');
+  await expectNameFeedbackScopeUnchanged(before);
 });
