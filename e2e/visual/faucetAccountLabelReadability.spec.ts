@@ -739,6 +739,15 @@ for (const viewport of [
       const unchanged = async (
         expected: Awaited<ReturnType<typeof publicState>>
       ) => expect(await publicState(page)).toEqual(expected);
+      const nativeHistoryEntry = () =>
+        page.evaluate(() => {
+          const entry = history.state as { idx?: number; key?: string } | null;
+          return {
+            url: location.href,
+            idx: entry?.idx ?? null,
+            key: entry?.key ?? null,
+          };
+        });
       const cardFor = (label: string) =>
         page
           .getByRole('heading', { name: label, exact: true, level: 1 })
@@ -902,6 +911,8 @@ for (const viewport of [
         }
       );
       let candidate!: Awaited<ReturnType<typeof measureCard>>;
+      let renamedHomeEntry!: Awaited<ReturnType<typeof nativeHistoryEntry>>,
+        renamedFaucetEntry!: Awaited<ReturnType<typeof nativeHistoryEntry>>;
       await wallet.step(
         `${prefix} real renamed Faucet card records glyphs border neighbors and clip bounds`,
         async (capture) => {
@@ -910,6 +921,33 @@ for (const viewport of [
           const observed = await observe('renamed', LABEL, renamed);
           candidate = observed.after;
           await capture(page);
+        }
+      );
+      await wallet.step(
+        `${prefix} native Back and Space preserve the renamed identity and leave Request Now idle`,
+        async () => {
+          await tabTo(page, back);
+          await page.keyboard.press('Enter');
+          await expect(page).toHaveURL(/#\/home(?:\?.*)?$/);
+          await tabTo(page, banner);
+          renamedHomeEntry = await nativeHistoryEntry();
+          observations.renamedHistory = { homeBeforeSpace: renamedHomeEntry };
+          await page.keyboard.press('Space');
+          await expect(page).toHaveURL(/#\/faucet$/);
+          renamedFaucetEntry = await nativeHistoryEntry();
+          observations.renamedHistory.faucetAfterReopen = renamedFaucetEntry;
+          await expect(requestNow).toBeEnabled();
+          await expect(cardFor(LABEL)).toHaveCount(1);
+          await unchanged(renamed);
+          expect(renamedHomeEntry.url).toMatch(/#\/home(?:\?.*)?$/);
+          expect(renamedFaucetEntry.url).toMatch(/#\/faucet$/);
+          for (const entry of [renamedHomeEntry, renamedFaucetEntry]) {
+            expect(Number.isSafeInteger(entry.idx)).toBe(true);
+            expect(entry.key).toEqual(expect.any(String));
+            expect(entry.key).not.toBe('');
+          }
+          expect(renamedFaucetEntry.idx).toBe(renamedHomeEntry.idx! + 1);
+          expect(renamedFaucetEntry.key).not.toBe(renamedHomeEntry.key);
         }
       );
       await wallet.step(
@@ -988,21 +1026,13 @@ for (const viewport of [
           }
           await page.mouse.move(2, 2);
           await settledLayout(page);
-          await capture(page);
-        }
-      );
-      await wallet.step(
-        `${prefix} native Back and Space preserve the renamed identity and leave Request Now idle`,
-        async () => {
-          await tabTo(page, back);
-          await page.keyboard.press('Enter');
-          await expect(page).toHaveURL(/#\/home(?:\?.*)?$/);
-          await tabTo(page, banner);
-          await page.keyboard.press('Space');
-          await expect(page).toHaveURL(/#\/faucet$/);
-          await expect(requestNow).toBeEnabled();
-          await expect(cardFor(LABEL)).toHaveCount(1);
+          const afterWheelsEntry = await nativeHistoryEntry();
+          observations.renamedHistory.afterWheels = afterWheelsEntry;
           await unchanged(renamed);
+          expect([renamedFaucetEntry, renamedHomeEntry]).toContainEqual(
+            afterWheelsEntry
+          );
+          await capture(page);
         }
       );
       await wallet.step(
