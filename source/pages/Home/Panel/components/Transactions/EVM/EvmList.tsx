@@ -494,12 +494,12 @@ const EvmTransactionItem = React.memo(
                   </Tooltip>
                 )}
                 {isSpeedUp && (
-                  <span className="text-warning-success ml-1 text-xs">
+                  <span className="text-green-400 ml-1 text-xs">
                     ({t('header.speedUp')})
                   </span>
                 )}
                 {isCancel && !isConfirmed && (
-                  <span className="text-warning-success ml-1 text-xs">
+                  <span className="text-green-400 ml-1 text-xs">
                     ({t('transactions.cancelSubmitted')})
                   </span>
                 )}

@@ -200,7 +200,7 @@ const ExpandableSection: React.FC<{
         type="button"
         aria-expanded={expanded}
         onClick={() => setExpanded(!expanded)}
-        className="flex w-full items-center gap-2 text-left text-white text-sm hover:text-fields-input-borderfocus transition-colors mb-2 cursor-pointer"
+        className="flex w-full items-center gap-2 text-left text-white text-sm hover:text-content-accent transition-colors mb-2 cursor-pointer"
       >
         {expanded ? (
           <DownOutlined aria-hidden="true" className="text-xs" />

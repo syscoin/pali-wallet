@@ -102,7 +102,7 @@ test('connection selection stays on the reviewed account until real switch and g
   const observations: Record<string, unknown> = {};
   const deniedTrustedRequests: string[] = [];
   try {
-    wallet = await PaliWallet.launch('connection-pending-selection', {
+    wallet = await PaliWallet.launch('connection-pending-selection-contrast', {
       offlineHttpProxy: server.url,
       viewport: { width: 400, height: 620 },
     });

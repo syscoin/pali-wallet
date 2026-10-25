@@ -629,6 +629,88 @@ test('faucet feedback and eligibility follow a network switch in another normal 
           await capture(page);
           const targetBox = await exposed(page, copy);
           const cardBox = await exposed(page, copy.locator('..'));
+          const glyphLayout = await copy.evaluate((element) => {
+            const own = element.getBoundingClientRect();
+            let left = Math.max(0, own.left),
+              top = Math.max(0, own.top);
+            let right = Math.min(innerWidth, own.right),
+              bottom = Math.min(innerHeight, own.bottom);
+            for (
+              let parent = element.parentElement;
+              parent;
+              parent = parent.parentElement
+            ) {
+              const style = getComputedStyle(parent),
+                box = parent.getBoundingClientRect();
+              if (/auto|scroll|hidden|clip/.test(style.overflowX)) {
+                left = Math.max(left, box.left + parent.clientLeft);
+                right = Math.min(
+                  right,
+                  box.left + parent.clientLeft + parent.clientWidth
+                );
+              }
+              if (/auto|scroll|hidden|clip/.test(style.overflowY)) {
+                top = Math.max(top, box.top + parent.clientTop);
+                bottom = Math.min(
+                  bottom,
+                  box.top + parent.clientTop + parent.clientHeight
+                );
+              }
+            }
+            const nodes = document.createTreeWalker(
+              element,
+              NodeFilter.SHOW_TEXT
+            );
+            const glyphs = [];
+            while (nodes.nextNode()) {
+              const text = nodes.currentNode;
+              for (
+                let offset = 0;
+                offset < (text.textContent || '').length;
+                offset++
+              ) {
+                const range = document.createRange();
+                range.setStart(text, offset);
+                range.setEnd(text, offset + 1);
+                for (const rect of Array.from(range.getClientRects())) {
+                  const hit = document.elementFromPoint(
+                    rect.x + rect.width / 2,
+                    rect.y + rect.height / 2
+                  );
+                  glyphs.push({
+                    x: rect.x,
+                    y: rect.y,
+                    width: rect.width,
+                    height: rect.height,
+                    visible:
+                      rect.width > 0 &&
+                      rect.height > 0 &&
+                      rect.left >= left - 0.5 &&
+                      rect.right <= right + 0.5 &&
+                      rect.top >= top - 0.5 &&
+                      rect.bottom <= bottom + 0.5 &&
+                      !!hit &&
+                      (hit === element || element.contains(hit)),
+                  });
+                }
+              }
+            }
+            return {
+              text: element.textContent,
+              clip: { left, top, right, bottom },
+              glyphs,
+              lines: new Set(glyphs.map((glyph) => Math.round(glyph.y))).size,
+            };
+          });
+          expect(glyphLayout.text).toBe(CURRENT_HASH);
+          expect(glyphLayout.glyphs).toHaveLength(CURRENT_HASH.length);
+          expect(glyphLayout.glyphs.every((glyph) => glyph.visible)).toBe(true);
+          expect(glyphLayout.lines).toBeGreaterThan(1);
+          await info.attach(`faucet-full-hash-glyphs-${viewport.width}`, {
+            body: JSON.stringify(glyphLayout, null, 2),
+            contentType: 'application/json',
+          });
+          await capture(page);
           const before = (await clipboard()).writes.length;
           await page.evaluate(() =>
             (window as any).__faucetCopy.hold('accept')

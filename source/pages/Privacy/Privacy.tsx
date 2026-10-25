@@ -68,7 +68,7 @@ function PoolData({
             className="h-1.5 overflow-hidden rounded-full bg-alpha-whiteAlpha300"
           >
             <div
-              className="h-full rounded-full bg-brand-royalblue"
+              className="h-full rounded-full bg-brand-blue100"
               style={{
                 width: percentage === undefined ? '25%' : `${percentage}%`,
               }}

@@ -1317,7 +1317,7 @@ const EthSign: React.FC<ISign> = () => {
                     >
                       <Icon
                         name="copy"
-                        className="text-brand-white hover:text-fields-input-borderfocus"
+                        className="text-brand-white hover:text-brand-blue100"
                         size={12}
                       />
                     </IconButton>

@@ -37,7 +37,14 @@ it('preserves an explicit accessible name for icon controls', () => {
   expect(screen.getByRole('button', { name: 'Close dialog' })).toBeDefined();
 });
 
-it.each(['primary', 'secondary', 'ghost', 'danger', 'neutral'] as const)(
+it.each([
+  'primary',
+  'secondary',
+  'ghost',
+  'danger',
+  'neutral',
+  'unstyled',
+] as const)(
   'keeps active %s progress visible without enabling a pending action',
   (variant) => {
     const action = jest.fn();

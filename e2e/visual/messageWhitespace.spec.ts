@@ -205,6 +205,168 @@ async function revealPreview(target: Locator) {
   return result;
 }
 
+async function observeCopyHover(
+  popup: any,
+  info: any,
+  method: string,
+  plaintext: string
+) {
+  const copyButton = popup.getByRole('button', {
+    name:
+      method === 'eth_decrypt' ? en.transactions.copyMessage : en.buttons.copy,
+    exact: true,
+  });
+  await expect(copyButton).toHaveCount(1);
+  await expect(copyButton).toBeEnabled();
+  await copyButton.scrollIntoViewIfNeeded();
+  const glyph = copyButton.locator('svg path');
+  await expect(glyph).toHaveCount(1);
+  await expect
+    .poll(() =>
+      glyph.evaluate((element: Element) => {
+        for (let n: Element | null = element; n; n = n.parentElement)
+          if (getComputedStyle(n).opacity !== '1') return false;
+        return true;
+      })
+    )
+    .toBe(true);
+  const read = async () =>
+    glyph.evaluate((element: Element) => {
+      const parse = (value: string) => {
+        const m = value.match(/^rgba?\(([^)]+)\)$/);
+        if (!m) throw new Error('Non-solid computed color: ' + value);
+        return m[1]
+          .split(/[ ,/]+/)
+          .filter(Boolean)
+          .map(Number);
+      };
+      const initial = getComputedStyle(element);
+      let background: string | undefined;
+      const layers = [];
+      for (let n: Element | null = element; n; n = n.parentElement) {
+        const s = getComputedStyle(n);
+        if (
+          s.opacity !== '1' ||
+          s.filter !== 'none' ||
+          s.mixBlendMode !== 'normal'
+        )
+          throw new Error('Unsupported compositing layer');
+        layers.push({
+          tag: n.tagName,
+          color: s.color,
+          background: s.backgroundColor,
+          opacity: s.opacity,
+        });
+        const color = parse(s.backgroundColor);
+        if (!background && color[3] !== 0) {
+          if (color.length === 4 && color[3] !== 1)
+            throw new Error('Translucent backing');
+          background = s.backgroundColor;
+        }
+        if (!background && s.backgroundImage !== 'none')
+          throw new Error('Non-solid backing');
+      }
+      if (!background) throw new Error('No opaque backing');
+      const fg = parse(initial.fill),
+        bg = parse(background);
+      const lum = (c: number[]) =>
+        [0.2126, 0.7152, 0.0722].reduce((n, w, i) => {
+          const v = c[i] / 255;
+          return (
+            n + w * (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)
+          );
+        }, 0);
+      const a = lum(fg),
+        b = lum(bg);
+      const r = element.getBoundingClientRect();
+      return {
+        fill: initial.fill,
+        color: initial.color,
+        background,
+        ratio: (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05),
+        hovered: Boolean(element.closest('.anticon')?.matches(':hover')),
+        hoverOwnerColor: element.closest('.anticon')
+          ? getComputedStyle(element.closest('.anticon')!).color
+          : null,
+        bounds: r.toJSON(),
+        layers,
+      };
+    });
+  const capture = async (state: string) => {
+    await popup.evaluate(
+      () =>
+        new Promise<void>((r) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => r()))
+        )
+    );
+    const data = await read();
+    const file = info.outputPath(
+      `${method}-${popup.viewportSize().width}-${state}.png`
+    );
+    await popup.screenshot({ path: file, animations: 'disabled' });
+    await info.attach(`${method}-${state}`, {
+      path: file,
+      contentType: 'image/png',
+    });
+    return data;
+  };
+  await popup.mouse.move(0, 0);
+  const rest = await capture('rest');
+  expect(rest.ratio).toBeGreaterThanOrEqual(3);
+  await copyButton.hover();
+  const hover = await capture('hover');
+  expect(hover.hovered).toBe(true);
+  expect(hover.ratio).toBeGreaterThanOrEqual(3);
+  await popup.evaluate(() => {
+    const clipboard = navigator.clipboard;
+    const original = clipboard.writeText;
+    const record = { texts: [] as string[], nativeCompleted: 0 };
+    (window as any).__publicCopyNative = {
+      record,
+      restore: () => (clipboard.writeText = original),
+    };
+    clipboard.writeText = async (text: string) => {
+      record.texts.push(text);
+      await original.call(clipboard, text);
+      record.nativeCompleted++;
+    };
+  });
+  try {
+    await copyButton.click();
+    await expect
+      .poll(() =>
+        popup.evaluate(
+          () => (window as any).__publicCopyNative.record.nativeCompleted
+        )
+      )
+      .toBe(1);
+    const actual = await popup.evaluate(
+      () => (window as any).__publicCopyNative.record.texts
+    );
+    expect(actual).toEqual([plaintext]);
+    await expect(
+      popup.getByText(en.transactions.messageCopied, { exact: true })
+    ).toBeVisible();
+    const after = await capture('after-native-copy');
+    expect(after.ratio).toBeGreaterThanOrEqual(3);
+    await expect(copyButton).toBeEnabled();
+    await info.attach('copy-hover-observation', {
+      contentType: 'application/json',
+      body: JSON.stringify({
+        method,
+        plaintext,
+        rest,
+        hover,
+        after,
+        nativeClipboardTexts: actual,
+        enabledIconMinimumContrast: 3,
+      }),
+    });
+  } finally {
+    await popup.evaluate(() => (window as any).__publicCopyNative?.restore());
+  }
+}
+
 for (const method of ['eth_decrypt', 'personal_sign'] as const) {
   for (const viewport of [
     { width: 400, height: 620 },
@@ -383,6 +545,8 @@ for (const method of ['eth_decrypt', 'personal_sign'] as const) {
               await expect(preview).toBeVisible();
               expect(await preview.textContent()).toBe(plaintext);
               const geometry = await revealPreview(preview);
+              if (name === 'human-words')
+                await observeCopyHover(popup, info, method, plaintext);
               const text = await preview.evaluate((element) => {
                 const source = element.textContent!;
                 const node = element.firstChild!;

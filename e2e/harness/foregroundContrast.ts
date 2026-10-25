@@ -6,7 +6,7 @@ export async function captureForegroundContrast(
   target: Locator,
   info: TestInfo,
   label: string,
-  kind: 'text' | 'currentColor-icon' | 'border' = 'text'
+  kind: 'text' | 'currentColor-icon' | 'border' | 'background' = 'text'
 ) {
   await expect(target).toBeVisible();
   // A rotating loading border never has stationary bounds. Its visible paint
@@ -73,12 +73,31 @@ export async function captureForegroundContrast(
 
     const initial = getComputedStyle(element);
     const foregroundColor =
-      targetKind === 'border' ? initial.borderTopColor : initial.color;
+      targetKind === 'border'
+        ? initial.borderTopColor
+        : targetKind === 'background'
+        ? initial.backgroundColor
+        : initial.color;
     let foreground = parseColor(foregroundColor);
     let background: Color = [0, 0, 0, 0];
     const unsupported: string[] = [];
     const layers = [];
-    for (let node: Element | null = element; node; node = node.parentElement) {
+    if (targetKind === 'background') {
+      foreground[3] *= Number(initial.opacity);
+      if (initial.backgroundImage !== 'none')
+        unsupported.push(`${element.tagName}: background image/gradient`);
+      for (const property of ['filter', 'backdrop-filter', 'mix-blend-mode']) {
+        const value = initial.getPropertyValue(property);
+        if (value && value !== 'none' && value !== 'normal')
+          unsupported.push(`${element.tagName}: ${property}=${value}`);
+      }
+    }
+    for (
+      let node: Element | null =
+        targetKind === 'background' ? element.parentElement : element;
+      node;
+      node = node.parentElement
+    ) {
       const style = getComputedStyle(node);
       const nodeBackground = parseColor(style.backgroundColor);
       const opacity = Number(style.opacity);

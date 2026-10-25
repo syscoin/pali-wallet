@@ -12,6 +12,7 @@ import {
   hashPair,
 } from '../../source/utils/privacy/merkle';
 import { E2E_CONFIG } from '../harness/config';
+import { captureForegroundContrast } from '../harness/foregroundContrast';
 import {
   createIsolatedVaultFixture,
   installIsolatedVaultRoutes,
@@ -481,6 +482,12 @@ test('privacy pool preparation is opt-in, independently verified and preserves a
           en.privacy.syncing
         );
         await expect(wallet!.page.getByRole('progressbar')).toBeVisible();
+        await captureForegroundContrast(
+          wallet!.page.getByRole('progressbar').locator('div'),
+          info,
+          'privacy-downloading-progress',
+          'background'
+        );
         await capture('progress');
       }
     );
@@ -491,6 +498,12 @@ test('privacy pool preparation is opt-in, independently verified and preserves a
         await expect.poll(() => finalAnchorHeld, { timeout: 30000 }).toBe(true);
         await expect(poolStatus(wallet!.page)).toContainText(
           en.privacy.verifying
+        );
+        await captureForegroundContrast(
+          wallet!.page.getByRole('progressbar').locator('div'),
+          info,
+          'privacy-verifying-progress',
+          'background'
         );
         await capture('verifying');
         releaseFinalAnchor();

@@ -36,7 +36,7 @@ export const FaucetApiFeedback: React.FC<FaucetApiFeedbackProps> = ({
             type="button"
             aria-label={t('buttons.copy')}
             onClick={handleCopyToClipboard}
-            className="text-white text-sm underline overflow-hidden text-left cursor-pointer"
+            className="text-white text-sm underline [overflow-wrap:anywhere] text-left cursor-pointer"
           >
             {apiResponse}
           </button>

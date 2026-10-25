@@ -29,9 +29,14 @@ const widthClasses: Record<string, string> = {
 };
 
 // Memoize loading icons to prevent unnecessary re-renders
-const LoadingIconPrimary = memo(() => (
-  <LoadingSvg className="w-6 animate-spin" style={{ color: '#4d76b8' }} />
-));
+const LoadingIconPrimary = memo(
+  ({ inherit = false }: { inherit?: boolean }) => (
+    <LoadingSvg
+      className="w-6 animate-spin"
+      style={{ color: inherit ? 'currentColor' : '#4d76b8' }}
+    />
+  )
+);
 
 const LoadingIconForeground = memo(() => (
   <LoadingSvg className="w-5 animate-spin" style={{ color: 'currentColor' }} />
@@ -154,14 +159,18 @@ export const Button = React.forwardRef<HTMLButtonElement, IButtonProps>(
           className={`${className} ${
             useDefaultWidth ? widthClasses[width] || 'w-36' : ''
           } ${
-            isBlocked ? disabledMotion : 'hover:scale-105 active:scale-95'
+            loading
+              ? '!opacity-100 cursor-not-allowed'
+              : isBlocked
+              ? disabledMotion
+              : 'hover:scale-105 active:scale-95'
           } flex justify-center items-center transition-all duration-200`}
           disabled={isBlocked}
           onClick={onClick}
           type={type}
           id={id}
         >
-          {loading ? <LoadingIconPrimary /> : children}
+          {loading ? <LoadingIconPrimary inherit /> : children}
         </button>
       );
     }

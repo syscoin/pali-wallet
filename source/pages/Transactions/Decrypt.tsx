@@ -268,7 +268,7 @@ const Decrypt: React.FC<ISign> = () => {
                 >
                   <Icon
                     name="copy"
-                    className="text-brand-white hover:text-fields-input-borderfocus"
+                    className="text-brand-white hover:text-brand-blue100"
                     size={12}
                     wrapperClassname="flex items-center justify-center"
                   />
