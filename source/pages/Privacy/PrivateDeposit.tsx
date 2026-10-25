@@ -327,19 +327,21 @@ function DepositFlow({
               </dt>
               <dd className="break-all">{review.poolAddress}</dd>
             </div>
-            <div className="flex justify-between gap-3">
+            <div className="flex flex-wrap justify-between gap-x-3 gap-y-1">
               <dt>{t('privacy.deposit.amount')}</dt>
-              <dd>{review.amount} ETH</dd>
+              <dd className="ml-auto min-w-0 max-w-full shrink-0 break-words text-right">
+                {review.amount} ETH
+              </dd>
             </div>
-            <div className="flex justify-between gap-3">
+            <div className="flex flex-wrap justify-between gap-x-3 gap-y-1">
               <dt>{t('privacy.deposit.networkFee')}</dt>
-              <dd className="break-all text-right">
+              <dd className="ml-auto min-w-0 max-w-full shrink-0 break-words text-right">
                 {eth(review.maxNetworkFeeWei)} ETH
               </dd>
             </div>
-            <div className="flex justify-between gap-3 font-medium">
+            <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 font-medium">
               <dt>{t('privacy.deposit.total')}</dt>
-              <dd className="break-all text-right">
+              <dd className="ml-auto min-w-0 max-w-full shrink-0 break-words text-right">
                 {eth(review.maxTotalWei)} ETH
               </dd>
             </div>

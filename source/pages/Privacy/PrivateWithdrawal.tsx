@@ -507,29 +507,39 @@ function WithdrawalFlow({
                 </dd>
               </div>
             )}
-            <div className="flex justify-between gap-3">
+            <div className="flex flex-wrap justify-between gap-x-3 gap-y-1">
               <dt>{t('privacy.deposit.amount')}</dt>
-              <dd>{review.amount} ETH</dd>
+              <dd className="ml-auto min-w-0 max-w-full shrink-0 break-words text-right">
+                {review.amount} ETH
+              </dd>
             </div>
-            <div className="flex justify-between gap-3">
+            <div className="flex flex-wrap justify-between gap-x-3 gap-y-1">
               <dt>{t('privacy.deposit.networkFee')}</dt>
-              <dd>{eth(review.maxNetworkFeeWei)} ETH</dd>
+              <dd className="ml-auto min-w-0 max-w-full shrink-0 break-words text-right">
+                {eth(review.maxNetworkFeeWei)} ETH
+              </dd>
             </div>
             {mode === 'relayed' && (
               <>
-                <div className="flex justify-between gap-3">
+                <div className="flex flex-wrap justify-between gap-x-3 gap-y-1">
                   <dt>{t('privacy.withdrawal.serviceFee')}</dt>
-                  <dd>{eth(review.serviceFeeWei)} ETH</dd>
+                  <dd className="ml-auto min-w-0 max-w-full shrink-0 break-words text-right">
+                    {eth(review.serviceFeeWei)} ETH
+                  </dd>
                 </div>
-                <div className="flex justify-between gap-3">
+                <div className="flex flex-wrap justify-between gap-x-3 gap-y-1">
                   <dt>{t('privacy.withdrawal.totalFee')}</dt>
-                  <dd>{eth(review.feeWei)} ETH</dd>
+                  <dd className="ml-auto min-w-0 max-w-full shrink-0 break-words text-right">
+                    {eth(review.feeWei)} ETH
+                  </dd>
                 </div>
               </>
             )}
-            <div className="flex justify-between gap-3 font-medium">
+            <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 font-medium">
               <dt>{t('privacy.withdrawal.receive')}</dt>
-              <dd>{eth(review.receiveWei)} ETH</dd>
+              <dd className="ml-auto min-w-0 max-w-full shrink-0 break-words text-right">
+                {eth(review.receiveWei)} ETH
+              </dd>
             </div>
           </dl>
           <p className="text-xs text-brand-gray200">

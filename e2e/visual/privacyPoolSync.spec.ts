@@ -278,6 +278,51 @@ test('privacy pool preparation verifies local note imports and preserves a good 
     ]) {
       await wallet!.page.setViewportSize(viewport);
       await section.scrollIntoViewIfNeeded();
+      const values = await section.locator('dl dd').evaluateAll((items) =>
+        items
+          .filter((item) => / ETH\s*$/.test(item.textContent || ''))
+          .map((item) => {
+            const bounds = item.getBoundingClientRect();
+            const walker = document.createTreeWalker(
+              item,
+              NodeFilter.SHOW_TEXT
+            );
+            let node: Node | null;
+            while ((node = walker.nextNode())) {
+              const start = node.textContent?.lastIndexOf('ETH') ?? -1;
+              if (start < 0) continue;
+              const range = document.createRange();
+              range.setStart(node, start);
+              range.setEnd(node, start + 3);
+              return {
+                text: item.textContent,
+                left: bounds.left,
+                right: bounds.right,
+                width: item.clientWidth,
+                scrollWidth: item.scrollWidth,
+                unit: Array.from(range.getClientRects(), (rect) => ({
+                  left: rect.left,
+                  right: rect.right,
+                })),
+              };
+            }
+            return null;
+          })
+      );
+      expect(values.length).toBeGreaterThan(0);
+      for (const value of values) {
+        expect(value, 'review value contains its currency unit').not.toBeNull();
+        expect(
+          value!.unit,
+          `${value!.text}: ETH remains on one line`
+        ).toHaveLength(1);
+        expect(
+          value!.scrollWidth,
+          `${value!.text}: no horizontal overflow`
+        ).toBeLessThanOrEqual(value!.width + 1);
+        expect(value!.unit[0].left).toBeGreaterThanOrEqual(value!.left - 1);
+        expect(value!.unit[0].right).toBeLessThanOrEqual(value!.right + 1);
+      }
       const file = await wallet!.shot(
         `privacy-${phase}-review-${viewport.width}x${viewport.height}`
       );
