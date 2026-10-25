@@ -35,8 +35,7 @@ const loaderTimeout = setTimeout(function () {
   retry.addEventListener('click', function () {
     window.location.reload();
   });
-  loader.appendChild(message);
-  loader.appendChild(retry);
+  loader.append(message, retry);
 }, Math.max(0, 1800 - performance.now()));
 
 window.addEventListener('pali-app-ready', function () {

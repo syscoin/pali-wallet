@@ -5,30 +5,11 @@ export type OnboardingContinuation = Readonly<{
   route: string;
 }>;
 
-const approvalRoutes = new Set([
-  'add-EthChain',
-  'change-account',
-  'change-active-connected-account',
-  'connect-wallet',
-  'login',
-  'sentry-link',
-  'sentry-operation',
-  'sentry-vote',
-  'smart-account',
-  'smart-account-modules',
-  'switch-EthChain',
-  'switch-network',
-  'switch-UtxoEvm',
-  'tx/calls-status',
-  'tx/decrypt',
-  'tx/encryptKey',
-  'tx/ethSign',
-  'tx/send/calls',
-  'tx/send/ethTx',
-  'tx/sign',
-  'tx/sign-psbt',
-  'watch-asset',
-]);
+const approvalRoutes = new Set(
+  'add-EthChain|change-account|change-active-connected-account|connect-wallet|login|sentry-link|sentry-operation|sentry-vote|smart-account|smart-account-modules|switch-EthChain|switch-network|switch-UtxoEvm|tx/calls-status|tx/decrypt|tx/encryptKey|tx/ethSign|tx/send/calls|tx/send/ethTx|tx/sign|tx/sign-psbt|watch-asset'.split(
+    '|'
+  )
+);
 
 export const readOnboardingContinuation = (
   documentUrl: string
@@ -46,12 +27,9 @@ export const readOnboardingContinuation = (
       !request ||
       typeof request !== 'object' ||
       Array.isArray(request) ||
-      typeof request.approvalId !== 'string' ||
-      !request.approvalId ||
-      typeof request.host !== 'string' ||
-      !request.host ||
-      typeof request.eventName !== 'string' ||
-      !request.eventName
+      !['approvalId', 'host', 'eventName'].every(
+        (key) => typeof request[key] === 'string' && request[key]
+      )
     )
       return undefined;
     return { route, data };
