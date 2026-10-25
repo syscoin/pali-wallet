@@ -1322,7 +1322,7 @@ const CustomRPCView = () => {
       {testingRpcs && currentRpcTest && (
         <div className="mb-4 p-4 bg-alpha-whiteAlpha100 border border-alpha-whiteAlpha300 rounded-lg">
           <div className="flex items-center gap-3">
-            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-brand-royalblue"></div>
+            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-brand-blue100"></div>
             <div className="flex-1">
               <p className="text-sm font-medium text-white">
                 {t('settings.testingRpcProgress', {
@@ -1337,7 +1337,7 @@ const CustomRPCView = () => {
           </div>
           <div className="w-full bg-alpha-whiteAlpha200 rounded-full h-2 mt-2">
             <div
-              className="bg-brand-royalblue h-2 rounded-full transition-all duration-300"
+              className="bg-brand-blue100 h-2 rounded-full transition-all duration-300"
               style={{
                 width: `${
                   (currentRpcTest.index / currentRpcTest.total) * 100
