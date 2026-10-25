@@ -158,6 +158,22 @@ import type {
   IPrivacyNoteReader,
   IPrivateVaultController,
 } from 'utils/privacy/privateVaultTypes';
+import type { IPrivacyRelayerClient } from 'utils/privacy/relayers';
+import type {
+  IPrivacyDepositSession,
+  IPrivacyTransactionsController,
+  IPrivacyTransactionsHost,
+} from 'utils/privacy/transactionTypes';
+import type { IPrivacySnapshotReader } from 'utils/privacy/trustedSnapshot';
+import {
+  privacyFeeQuantity,
+  privacyWithdrawalFees,
+} from 'utils/privacy/withdrawalFees';
+import type { IPrivacyWithdrawalSession } from 'utils/privacy/withdrawalTransactionTypes';
+import type {
+  IPrivacyWithdrawalsController,
+  IPrivacyWithdrawalsHost,
+} from 'utils/privacy/withdrawTypes';
 import { blacklistService } from 'utils/security/blacklistService';
 import {
   getSentryCollateralReservations,
@@ -236,7 +252,11 @@ import ChainListService from './chainlist';
 import { clearProviderCache } from './message-handler/requests';
 import { recordSendCallsBundle } from './message-handler/sendCallsBundles';
 import { PaliEvents, PaliSyscoinEvents } from './message-handler/types';
-import type { IPrivateVaultSession } from './privateVault';
+import type {
+  IPrivateVaultDepositController,
+  IPrivateVaultWithdrawalController,
+  IPrivateVaultSession,
+} from './privateVault';
 import {
   CancellablePromises,
   PromiseTargets,
@@ -350,8 +370,27 @@ class MainController {
   private recoveryJournalPending = false;
   private isResettingWallet = false;
   private authenticationMutex = new AsyncMutex();
-  private privateVaultController?: Promise<IPrivateVaultController>;
+  private privateVaultController?: Promise<
+    IPrivateVaultController &
+      IPrivateVaultDepositController &
+      IPrivateVaultWithdrawalController
+  >;
+  private privacyTransactionsController?: Promise<IPrivacyTransactionsController>;
+  private privacyWithdrawalsController?: Promise<IPrivacyWithdrawalsController>;
+  private privacyDepositSessions = new WeakMap<
+    () => void,
+    { provider: CustomJsonRpcProvider; session: IPrivateVaultSession }
+  >();
+  private privacyDepositContexts = new WeakMap<
+    IEvmTransactionContext,
+    {
+      assertCurrent: () => void;
+      provider: CustomJsonRpcProvider;
+      session: IPrivateVaultSession;
+    }
+  >();
   private privateVaultNoteReader?: IPrivacyNoteReader;
+  private privacySnapshotReader?: IPrivacySnapshotReader;
   private sentryController: Promise<SentryController> | undefined;
   private ethPropertyMutex = new AsyncMutex();
   private accountLabelMutex = new AsyncMutex();
@@ -469,6 +508,16 @@ class MainController {
     this.walletSessionGeneration += 1;
     this.walletStateGeneration += 1;
     this.networkRequestGeneration += 1;
+    const privacyTransactions = this.privacyTransactionsController;
+    this.privacyTransactionsController = undefined;
+    void privacyTransactions
+      ?.then((controller) => controller.close())
+      .catch(() => undefined);
+    const withdrawals = this.privacyWithdrawalsController;
+    this.privacyWithdrawalsController = undefined;
+    void withdrawals
+      ?.then((controller) => controller.close())
+      .catch(() => undefined);
     const { resetNetworks = false } = options || {};
 
     // Clear all timers first to prevent any background operations
@@ -1809,6 +1858,10 @@ class MainController {
     this.privateVaultNoteReader = reader;
   }
 
+  public setPrivacySnapshotReader(reader: IPrivacySnapshotReader): void {
+    this.privacySnapshotReader = reader;
+  }
+
   private capturePrivateVaultSession(): IPrivateVaultSession {
     if (this.getWalletSetupStatus())
       throw new Error('privacy_vault_unavailable');
@@ -1830,7 +1883,11 @@ class MainController {
     };
   }
 
-  private getPrivateVaultController(): Promise<IPrivateVaultController> {
+  private getPrivateVaultController(): Promise<
+    IPrivateVaultController &
+      IPrivateVaultDepositController &
+      IPrivateVaultWithdrawalController
+  > {
     if (!this.privateVaultController) {
       this.privateVaultController = import(
         /* webpackChunkName: "private-vault" */ './privateVault'
@@ -1873,8 +1930,588 @@ class MainController {
     return this.usePrivateVault((vault) => vault.importNote(note));
   }
 
+  public createPrivateVaultDepositNote(
+    poolId: Parameters<IPrivateVaultController['createDepositNote']>[0]
+  ) {
+    return this.usePrivateVault((vault) => vault.createDepositNote(poolId));
+  }
+
   public revealPrivateVaultNote(id: string, password: string) {
     return this.usePrivateVault((vault) => vault.revealNote(id, password));
+  }
+
+  private capturePrivacyDepositContext(): IPrivacyDepositSession {
+    this.assertWalletReadyForSigning();
+    const privateSession = this.capturePrivateVaultSession();
+    const { vault, vaultGlobal } = store.getState();
+    const selected = vault.activeAccount;
+    const account = vault.accounts[selected.type]?.[selected.id];
+    if (
+      vault.isBitcoinBased ||
+      vault.activeNetwork.kind !== 'ethereum' ||
+      vault.activeNetwork.chainId !== 1 ||
+      !account?.address ||
+      !/^0x[0-9a-fA-F]{40}$/.test(account.address) ||
+      this.isNetworkSwitching ||
+      this.isAccountSwitching
+    )
+      throw new Error('privacy_deposit_context_invalid');
+    // sysweb3-keyring 1.0.625 replaces the approved nonce in its Ledger/Trezor
+    // sendFormattedTransaction branches. Keep this new reserved-nonce flow on
+    // software accounts until those SDK paths preserve the reviewed nonce.
+    if (
+      (selected.type !== KeyringAccountType.HDAccount &&
+        selected.type !== KeyringAccountType.Imported) ||
+      account.isLedgerWallet ||
+      account.isTrezorWallet ||
+      account.isSmartAccount
+    )
+      throw new Error('privacy_deposit_unsupported_account');
+    const provider = this.ethereumTransaction.web3Provider;
+    const context: IEvmTransactionContext = Object.freeze({
+      account: Object.freeze({
+        id: selected.id,
+        type: selected.type,
+        address: account.address,
+      }),
+      chainId: 1,
+      rpcUrl: vault.activeNetwork.url,
+      slip44: vaultGlobal.activeSlip44,
+      sessionGeneration: privateSession.generation,
+    });
+    const assertCurrent = () => {
+      privateSession.assertCurrent();
+      const current = store.getState();
+      const ref = current.vault.activeAccount;
+      const active = current.vault.accounts[ref.type]?.[ref.id];
+      if (
+        this.isNetworkSwitching ||
+        this.isAccountSwitching ||
+        current.vault.isBitcoinBased ||
+        current.vault.activeNetwork.chainId !== 1 ||
+        current.vault.activeNetwork.url !== context.rpcUrl ||
+        current.vaultGlobal.activeSlip44 !== context.slip44 ||
+        ref.id !== context.account.id ||
+        ref.type !== context.account.type ||
+        active?.isLedgerWallet ||
+        active?.isTrezorWallet ||
+        active?.isSmartAccount ||
+        active?.address?.toLowerCase() !==
+          context.account.address.toLowerCase() ||
+        this.ethereumTransaction.web3Provider !== provider
+      )
+        throw new Error('privacy_deposit_context_changed');
+    };
+    this.privacyDepositSessions.set(assertCurrent, {
+      session: privateSession,
+      provider,
+    });
+    return { context, assertCurrent };
+  }
+
+  private createPrivacyTransactionsHost(): IPrivacyTransactionsHost {
+    const binding = (session: IPrivacyDepositSession) => {
+      const value = this.privacyDepositSessions.get(session.assertCurrent);
+      if (!value) throw new Error('privacy_deposit_context_changed');
+      return value;
+    };
+    const uint = (value: any) => {
+      if (typeof value === 'number' && !Number.isSafeInteger(value))
+        throw new Error('privacy_deposit_fee_invalid');
+      const text = value?.toString();
+      if (
+        typeof text !== 'string' ||
+        !/^(?:0|[1-9][0-9]*|0x(?:0|[1-9a-f][0-9a-f]*))$/.test(text) ||
+        text.length > 80
+      )
+        throw new Error('privacy_deposit_fee_invalid');
+      const parsed = BigInt(text);
+      if (parsed >= BigInt(1) << BigInt(256))
+        throw new Error('privacy_deposit_fee_invalid');
+      return parsed;
+    };
+    const read = async <T>(
+      session: IPrivacyDepositSession,
+      operation: () => Promise<T>
+    ) => {
+      session.assertCurrent();
+      const result = await operation();
+      session.assertCurrent();
+      return result;
+    };
+    const original = (
+      attempt: Parameters<IPrivacyTransactionsHost['beforeSubmission']>[0]
+    ) => {
+      const value = this.privacyDepositContexts.get(attempt.context);
+      if (!value) throw new Error('privacy_deposit_context_changed');
+      return value;
+    };
+    return {
+      captureContext: () => this.capturePrivacyDepositContext(),
+      prepareNote: async (poolId, noteId, session) => {
+        const saved = binding(session);
+        session.assertCurrent();
+        this.privacyDepositContexts.set(session.context, {
+          ...saved,
+          assertCurrent: session.assertCurrent,
+        });
+        const vault = await this.getPrivateVaultController();
+        session.assertCurrent();
+        const result = await vault.prepareDepositNote(
+          poolId,
+          noteId,
+          saved.session
+        );
+        session.assertCurrent();
+        return result;
+      },
+      withCommitment: async (noteId, session, use) => {
+        const saved = binding(session);
+        session.assertCurrent();
+        const vault = await this.getPrivateVaultController();
+        session.assertCurrent();
+        const result = await vault.withDepositCommitment(
+          noteId,
+          saved.session,
+          use
+        );
+        session.assertCurrent();
+        return result;
+      },
+      prepareFees: async (transaction, session) => {
+        const { provider } = binding(session);
+        if (
+          uint(await read(session, () => provider.send('eth_chainId', []))) !==
+          BigInt(1)
+        )
+          throw new Error('privacy_deposit_context_invalid');
+        const estimate = uint(
+          await read(session, () => provider.estimateGas(transaction))
+        );
+        const fees = await read(session, () => provider.getFeeData());
+        const nonce = uint(
+          await read(session, () =>
+            provider.send('eth_getTransactionCount', [
+              session.context.account.address,
+              'pending',
+            ])
+          )
+        );
+        const balance = uint(
+          await read(session, () =>
+            provider.getBalance(session.context.account.address)
+          )
+        );
+        // Round a 20% execution buffer upward; never invent a fallback estimate.
+        const gasLimit = (estimate * BigInt(12) + BigInt(9)) / BigInt(10);
+        if (estimate === BigInt(0))
+          throw new Error('privacy_deposit_fee_invalid');
+        if (
+          fees.maxFeePerGas !== null &&
+          fees.maxFeePerGas !== undefined &&
+          fees.maxPriorityFeePerGas !== null &&
+          fees.maxPriorityFeePerGas !== undefined
+        ) {
+          const max = uint(fees.maxFeePerGas),
+            priority = uint(fees.maxPriorityFeePerGas);
+          if (max === BigInt(0) || priority > max)
+            throw new Error('privacy_deposit_fee_invalid');
+          if (balance < uint(transaction.value) + gasLimit * max)
+            throw new Error('privacy_deposit_insufficient_funds');
+          return {
+            nonce: String(nonce),
+            gasLimit: String(gasLimit),
+            maxFeePerGas: String(max),
+            maxPriorityFeePerGas: String(priority),
+          };
+        }
+        const price = uint(fees.gasPrice);
+        if (price === BigInt(0)) throw new Error('privacy_deposit_fee_invalid');
+        if (balance < uint(transaction.value) + gasLimit * price)
+          throw new Error('privacy_deposit_insufficient_funds');
+        return {
+          nonce: String(nonce),
+          gasLimit: String(gasLimit),
+          gasPrice: String(price),
+        };
+      },
+      beforeSubmission: async (attempt) => {
+        const saved = original(attempt);
+        const session = {
+          context: attempt.context,
+          assertCurrent: saved.assertCurrent,
+        };
+        const nonce = uint(
+          await read(session, () =>
+            saved.provider.send('eth_getTransactionCount', [
+              attempt.context.account.address,
+              'pending',
+            ])
+          )
+        );
+        const balance = uint(
+          await read(session, () =>
+            saved.provider.getBalance(attempt.context.account.address)
+          )
+        );
+        if (nonce !== uint(attempt.transaction.nonce))
+          throw new Error('privacy_deposit_quote_changed');
+        const maximum =
+          uint(attempt.transaction.gasLimit) *
+          uint(
+            attempt.transaction.gasPrice ?? attempt.transaction.maxFeePerGas
+          );
+        if (balance < uint(attempt.transaction.value) + maximum)
+          throw new Error('privacy_deposit_insufficient_funds');
+        const vault = await this.getPrivateVaultController();
+        saved.assertCurrent();
+        await vault.reserveDepositAttempt(attempt, saved.session);
+        saved.assertCurrent();
+      },
+      recordBroadcast: async (attempt, hash) => {
+        const saved = original(attempt);
+        saved.session.assertCurrent();
+        const vault = await this.getPrivateVaultController();
+        saved.session.assertCurrent();
+        await vault.recordDepositBroadcast(attempt, hash, saved.session);
+      },
+      recordNotBroadcast: async (attempt) => {
+        const saved = original(attempt);
+        saved.session.assertCurrent();
+        const vault = await this.getPrivateVaultController();
+        saved.session.assertCurrent();
+        await vault.clearUnbroadcastDepositAttempt(attempt, saved.session);
+      },
+      sendTransaction: (transaction, session, onBroadcast) =>
+        this.sendAndSaveEthTransaction(
+          transaction,
+          transaction.gasPrice !== undefined,
+          {
+            id: session.context.account.id,
+            type: session.context.account.type,
+          },
+          undefined,
+          {
+            expectedContext: session.context,
+            assertCurrentContext: session.assertCurrent,
+            clearNavigation: false,
+            onBroadcast,
+          }
+        ),
+    };
+  }
+
+  private getPrivacyTransactionsController(): Promise<IPrivacyTransactionsController> {
+    if (!this.privacyTransactionsController) {
+      this.privacyTransactionsController = import(
+        /* webpackChunkName: "privacy-transactions" */ './privacyTransactions'
+      )
+        .then(({ createPrivacyTransactionsController }) =>
+          createPrivacyTransactionsController(
+            this.createPrivacyTransactionsHost()
+          )
+        )
+        .catch(() => {
+          this.privacyTransactionsController = undefined;
+          throw new Error('privacy_deposit_unavailable');
+        });
+    }
+    return this.privacyTransactionsController;
+  }
+
+  public async preparePrivacyDeposit(
+    request: Parameters<IPrivacyTransactionsController['prepareDeposit']>[0]
+  ) {
+    const session = this.capturePrivacyDepositContext();
+    const controller = await this.getPrivacyTransactionsController();
+    session.assertCurrent();
+    const result = await controller.prepareDeposit(request);
+    session.assertCurrent();
+    return result;
+  }
+
+  public async submitPrivacyDeposit(intentId: string) {
+    return (await this.getPrivacyTransactionsController()).submitDeposit(
+      intentId
+    );
+  }
+
+  public async discardPrivacyDeposit(intentId: string) {
+    return (await this.getPrivacyTransactionsController()).discardDeposit(
+      intentId
+    );
+  }
+
+  private createPrivacyWithdrawalsHost(
+    relayers: IPrivacyRelayerClient
+  ): IPrivacyWithdrawalsHost {
+    const sessions = new WeakMap<
+      IEvmTransactionContext,
+      {
+        assertCurrent: () => void;
+        provider: CustomJsonRpcProvider;
+        session: IPrivateVaultSession;
+      }
+    >();
+    const capturedSessions = new WeakMap<
+      () => void,
+      {
+        assertCurrent: () => void;
+        provider: CustomJsonRpcProvider;
+        session: IPrivateVaultSession;
+      }
+    >();
+    const sessionBinding = (session: IPrivacyWithdrawalSession) => {
+      const saved = capturedSessions.get(session.assertCurrent);
+      if (!saved) throw new Error('privacy_withdrawal_context_changed');
+      sessions.set(session.context, saved);
+      return saved;
+    };
+    const binding = (context: IEvmTransactionContext) => {
+      const saved = sessions.get(context);
+      if (!saved) throw new Error('privacy_withdrawal_context_changed');
+      return saved;
+    };
+    const read = async <T>(
+      session: IPrivacyWithdrawalSession,
+      operation: () => Promise<T>
+    ) => {
+      session.assertCurrent();
+      const result = await operation();
+      session.assertCurrent();
+      return result;
+    };
+    return {
+      relayers,
+      captureSession: () => {
+        const captured = this.capturePrivacyDepositContext();
+        const saved = this.privacyDepositSessions.get(captured.assertCurrent);
+        if (!saved) throw new Error('privacy_withdrawal_context_changed');
+        capturedSessions.set(captured.assertCurrent, {
+          ...saved,
+          assertCurrent: captured.assertCurrent,
+        });
+        return captured;
+      },
+      getSnapshot: async (poolId) => {
+        if (!this.privacySnapshotReader)
+          throw new Error('privacy_verification_pending');
+        return this.privacySnapshotReader(poolId);
+      },
+      getWithdrawalAttempt: async (noteId, session) => {
+        const saved = sessionBinding(session);
+        session.assertCurrent();
+        const vault = await this.getPrivateVaultController();
+        session.assertCurrent();
+        return vault.getWithdrawalAttempt(noteId, saved.session);
+      },
+      recordJobStatus: async (
+        noteId,
+        attemptHash,
+        acknowledgement,
+        session
+      ) => {
+        const saved = sessionBinding(session);
+        session.assertCurrent();
+        if (!acknowledgement.jobId)
+          throw new Error('privacy_withdrawal_ack_invalid');
+        const vault = await this.getPrivateVaultController();
+        session.assertCurrent();
+        await vault.recordWithdrawalJobStatus(
+          noteId,
+          attemptHash,
+          {
+            jobId: acknowledgement.jobId,
+            transactionHash: acknowledgement.transactionHash,
+          },
+          saved.session
+        );
+      },
+      withNote: async (noteId, session, use) => {
+        const saved = sessionBinding(session);
+        session.assertCurrent();
+        const vault = await this.getPrivateVaultController();
+        session.assertCurrent();
+        const result = await vault.withWithdrawalNote(
+          noteId,
+          saved.session,
+          use
+        );
+        session.assertCurrent();
+        return result;
+      },
+      quoteDirectFees: async (session) => {
+        const { provider } = sessionBinding(session);
+        if (
+          privacyFeeQuantity(
+            await read(session, () => provider.send('eth_chainId', []))
+          ) !== BigInt(1)
+        )
+          throw new Error('privacy_withdrawal_context_changed');
+        const fees = await read(session, () => provider.getFeeData());
+        // Bypass AbstractProvider's short read cache: a just-submitted deposit
+        // may have advanced the pending nonce since the preceding UI action.
+        const nonce = await read(session, () =>
+          provider.send('eth_getTransactionCount', [
+            session.context.account.address,
+            'pending',
+          ])
+        );
+        const balance = await read(session, () =>
+          provider.getBalance(session.context.account.address)
+        );
+        // This fixed bound was qualified against all four deployed pool runtimes
+        // and their real verifier. Never disclose a note in gas-estimation calls.
+        return privacyWithdrawalFees(fees, nonce, balance);
+      },
+      quoteRelayerGasPrice: async (session) => {
+        const { provider } = sessionBinding(session);
+        if (
+          privacyFeeQuantity(
+            await read(session, () => provider.send('eth_chainId', []))
+          ) !== BigInt(1)
+        )
+          throw new Error('privacy_withdrawal_context_changed');
+        const fee = await read(session, () => provider.getFeeData());
+        const price = privacyFeeQuantity(fee.maxFeePerGas ?? fee.gasPrice);
+        if (!price) throw new Error('privacy_withdrawal_fee_invalid');
+        return String(price);
+      },
+      beforeSubmission: async (attempt) => {
+        const saved = binding(attempt.context);
+        saved.assertCurrent();
+        if (attempt.mode === 'direct') {
+          const session = {
+            context: attempt.context,
+            assertCurrent: saved.assertCurrent,
+          };
+          const nonce = privacyFeeQuantity(
+            await read(session, () =>
+              saved.provider.send('eth_getTransactionCount', [
+                attempt.context.account.address,
+                'pending',
+              ])
+            )
+          );
+          const balance = privacyFeeQuantity(
+            await read(session, () =>
+              saved.provider.getBalance(attempt.context.account.address)
+            )
+          );
+          if (nonce !== privacyFeeQuantity(attempt.transaction.nonce))
+            throw new Error('privacy_withdrawal_quote_changed');
+          const maxFee = privacyFeeQuantity(
+            attempt.transaction.gasPrice ?? attempt.transaction.maxFeePerGas
+          );
+          if (
+            balance <
+            privacyFeeQuantity(attempt.transaction.gasLimit) * maxFee
+          )
+            throw new Error('privacy_withdrawal_insufficient_funds');
+        }
+        const vault = await this.getPrivateVaultController();
+        saved.assertCurrent();
+        await vault.reserveWithdrawalAttempt(attempt, saved.session);
+        saved.assertCurrent();
+      },
+      recordSubmission: async (attempt, acknowledgement) => {
+        const saved = binding(attempt.context);
+        saved.session.assertCurrent();
+        const vault = await this.getPrivateVaultController();
+        saved.session.assertCurrent();
+        await vault.recordWithdrawalSubmission(
+          attempt,
+          acknowledgement,
+          saved.session
+        );
+      },
+      recordNotBroadcast: async (attempt) => {
+        const saved = binding(attempt.context);
+        saved.session.assertCurrent();
+        const vault = await this.getPrivateVaultController();
+        saved.session.assertCurrent();
+        await vault.clearUnbroadcastWithdrawalAttempt(attempt, saved.session);
+      },
+      sendTransaction: (transaction, session, onBroadcast) =>
+        this.sendAndSaveEthTransaction(
+          transaction,
+          transaction.gasPrice !== undefined,
+          {
+            id: session.context.account.id,
+            type: session.context.account.type,
+          },
+          undefined,
+          {
+            expectedContext: session.context,
+            assertCurrentContext: session.assertCurrent,
+            clearNavigation: false,
+            onBroadcast,
+          }
+        ),
+    };
+  }
+
+  private getPrivacyWithdrawalsController(): Promise<IPrivacyWithdrawalsController> {
+    if (!this.privacyWithdrawalsController) {
+      this.privacyWithdrawalsController = Promise.all([
+        import(
+          /* webpackChunkName: "privacy-withdrawals" */ './privacyWithdrawals'
+        ),
+        import(
+          /* webpackChunkName: "privacy-relayers" */ 'utils/privacy/relayers'
+        ),
+      ])
+        .then(
+          ([
+            { createPrivacyWithdrawalsController },
+            { createPrivacyRelayerClient },
+          ]) =>
+            createPrivacyWithdrawalsController(
+              this.createPrivacyWithdrawalsHost(createPrivacyRelayerClient())
+            )
+        )
+        .catch(() => {
+          this.privacyWithdrawalsController = undefined;
+          throw new Error('privacy_withdrawal_unavailable');
+        });
+    }
+    return this.privacyWithdrawalsController;
+  }
+
+  public async getPrivacyRelayers() {
+    this.capturePrivateVaultSession().assertCurrent();
+    return (await this.getPrivacyWithdrawalsController()).getRelayers();
+  }
+
+  public async preparePrivacyWithdrawal(
+    request: Parameters<IPrivacyWithdrawalsController['prepareWithdrawal']>[0]
+  ) {
+    const session = this.capturePrivacyDepositContext();
+    const controller = await this.getPrivacyWithdrawalsController();
+    session.assertCurrent();
+    return controller.prepareWithdrawal(request);
+  }
+
+  public async submitPrivacyWithdrawal(intentId: string) {
+    return (await this.getPrivacyWithdrawalsController()).submitWithdrawal(
+      intentId
+    );
+  }
+
+  public async discardPrivacyWithdrawal(intentId: string) {
+    return (await this.getPrivacyWithdrawalsController()).discardWithdrawal(
+      intentId
+    );
+  }
+
+  public async getPrivacyWithdrawalStatus(noteId: string) {
+    return (await this.getPrivacyWithdrawalsController()).statusByNote(noteId);
+  }
+
+  public cancelPrivacyWithdrawalPreparation() {
+    void this.privacyWithdrawalsController
+      ?.then((controller) => controller.cancelPreparation())
+      .catch(() => undefined);
   }
 
   private authenticatePrivateVault(

@@ -85,6 +85,26 @@ export interface IClassicNoteIdentity {
   poolId: PrivacyPoolId;
 }
 
+/** Generate only in the background; keep the returned bearer note private. */
+export function generateClassicNote(
+  poolId: PrivacyPoolId,
+  random: (bytes: Uint8Array) => void = (bytes) => {
+    crypto.getRandomValues(bytes);
+  }
+): string {
+  const pool = getPrivacyPool(poolId);
+  const bytes = new Uint8Array(62);
+  try {
+    random(bytes);
+    const hex = Array.from(bytes, (byte) =>
+      byte.toString(16).padStart(2, '0')
+    ).join('');
+    return `tornado-eth-${pool.amount}-1-0x${hex}`;
+  } finally {
+    bytes.fill(0);
+  }
+}
+
 // This identifies a note, but does not admit it as funded or unspent. That
 // requires a locally verified deposit snapshot and the bulk withdrawal feed.
 // Errors are deliberately static so neither the note nor its bytes are logged.

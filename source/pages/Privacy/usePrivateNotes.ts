@@ -8,6 +8,7 @@ import { PRIVACY_POOLS } from 'utils/privacy/registry';
 export function readPrivateNote(value: unknown): IPrivateNoteView {
   const note = value as IPrivateNoteView | null;
   const pool = PRIVACY_POOLS.find(({ id }) => id === note?.poolId);
+  const withdrawal = note?.withdrawal;
   if (
     !note ||
     typeof note.id !== 'string' ||
@@ -17,7 +18,20 @@ export function readPrivateNote(value: unknown): IPrivateNoteView {
     note.amount !== pool.amount ||
     !Number.isSafeInteger(note.createdAt) ||
     note.createdAt < 0 ||
-    !['verified', 'spent', 'waiting', 'not-found'].includes(note.phase) ||
+    !['prepared', 'verified', 'spent', 'waiting', 'not-found'].includes(
+      note.phase
+    ) ||
+    (withdrawal !== undefined &&
+      (!withdrawal ||
+        !['direct', 'relayed'].includes(withdrawal.mode) ||
+        !['unknown', 'submitted'].includes(withdrawal.phase) ||
+        (withdrawal.jobId !== undefined &&
+          (withdrawal.mode !== 'relayed' ||
+            typeof withdrawal.jobId !== 'string' ||
+            !/^[a-zA-Z0-9_-]{1,128}$/.test(withdrawal.jobId))) ||
+        (withdrawal.transactionHash !== undefined &&
+          (typeof withdrawal.transactionHash !== 'string' ||
+            !/^0x[0-9a-fA-F]{64}$/.test(withdrawal.transactionHash))))) ||
     (note.blockNumber !== undefined &&
       (!Number.isSafeInteger(note.blockNumber) || note.blockNumber < 0))
   ) {
@@ -28,7 +42,19 @@ export function readPrivateNote(value: unknown): IPrivateNoteView {
     poolId: pool.id,
     amount: pool.amount,
     createdAt: note.createdAt,
-    phase: note.phase,
+    phase: withdrawal && note.phase !== 'spent' ? 'waiting' : note.phase,
+    ...(withdrawal
+      ? {
+          withdrawal: {
+            mode: withdrawal.mode,
+            phase: withdrawal.phase,
+            ...(withdrawal.jobId ? { jobId: withdrawal.jobId } : {}),
+            ...(withdrawal.transactionHash
+              ? { transactionHash: withdrawal.transactionHash }
+              : {}),
+          },
+        }
+      : {}),
     ...(note.blockNumber === undefined
       ? {}
       : { blockNumber: note.blockNumber }),

@@ -10,8 +10,16 @@ import {
   createMerkleWork,
   MerkleWork,
 } from 'utils/privacy/merkle';
+import {
+  copyMerklePathIndex,
+  createMerklePathIndex,
+  getMerklePath,
+  MerklePathIndex,
+  recordMerkleSubtree,
+} from 'utils/privacy/merklePath';
 import type { IPrivacyNoteReader } from 'utils/privacy/privateVaultTypes';
 import { getPrivacyPool, PRIVACY_POOLS } from 'utils/privacy/registry';
+import type { IPrivacySnapshotReader } from 'utils/privacy/trustedSnapshot';
 import {
   PrivacyController,
   PrivacyPoolId,
@@ -43,7 +51,8 @@ interface Dependencies {
 export function createPrivacyController(
   getNetwork: () => { chainId: number; isEthereum: boolean; url: string },
   dependencies: Dependencies = {},
-  registerNoteReader?: (reader: IPrivacyNoteReader) => void
+  registerNoteReader?: (reader: IPrivacyNoteReader) => void,
+  registerSnapshotReader?: (reader: IPrivacySnapshotReader) => void
 ): PrivacyController {
   const cache = dependencies.cache || privacyCache;
   const fetchSnapshot = dependencies.fetchSnapshot || fetchPrivacySnapshot;
@@ -55,12 +64,28 @@ export function createPrivacyController(
   const timers = new Map<PrivacyPoolId, ReturnType<typeof setTimeout>>();
   const calculations = new Map<
     PrivacyPoolId,
-    { generation: number; snapshot: PrivacySnapshot; work: MerkleWork }
+    {
+      generation: number;
+      pathIndex: MerklePathIndex;
+      snapshot: PrivacySnapshot;
+      work: MerkleWork;
+    }
   >();
   const verifiedTrees = new Map<
     PrivacyPoolId,
-    { blockTimestamp: number; snapshot: PrivacySnapshot; work: MerkleWork }
+    {
+      blockTimestamp: number;
+      generation: number;
+      pathIndex: MerklePathIndex;
+      snapshot: PrivacySnapshot;
+      work: MerkleWork;
+    }
   >();
+  const snapshotRevisions = new Map<PrivacyPoolId, number>();
+  const revision = (poolId: PrivacyPoolId) =>
+    snapshotRevisions.get(poolId) || 0;
+  const invalidateSnapshot = (poolId: PrivacyPoolId) =>
+    snapshotRevisions.set(poolId, revision(poolId) + 1);
   const schedule =
     dependencies.schedule ||
     ((poolId, delay) => {
@@ -101,6 +126,15 @@ export function createPrivacyController(
       })
       .catch(() => undefined);
     return result;
+  }
+
+  function change<T>(
+    poolId: PrivacyPoolId,
+    action: () => Promise<T>
+  ): Promise<T> {
+    getPrivacyPool(poolId);
+    invalidateSnapshot(poolId);
+    return serialize(poolId, action);
   }
 
   async function timed<T>(
@@ -163,6 +197,8 @@ export function createPrivacyController(
       const live = calculations.get(poolId);
       let snapshot =
         live?.generation === generation ? live.snapshot : undefined;
+      let pathIndex =
+        live?.generation === generation ? live.pathIndex : undefined;
       if (snapshot) record.work = live!.work;
       // Disk checkpoints preserve the download, but are not cryptographic
       // proof of a consumed prefix. Rehash after a worker restart rather than
@@ -175,7 +211,13 @@ export function createPrivacyController(
             verifyAnchor(poolId, snapshot!, record!.rpcUrl!, signal)
           );
           record.work = createMerkleWork();
-          calculations.set(poolId, { generation, snapshot, work: record.work });
+          pathIndex = createMerklePathIndex();
+          calculations.set(poolId, {
+            generation,
+            pathIndex,
+            snapshot,
+            work: record.work,
+          });
         }
       }
       if (!snapshot) {
@@ -215,6 +257,11 @@ export function createPrivacyController(
               root: undefined,
             }
           : createMerkleWork();
+        // New append work owns its arrays; a live proof lease must never see
+        // its verified subtree cache change underneath a newer verification.
+        pathIndex = reusable
+          ? copyMerklePathIndex(trusted!.pathIndex)
+          : createMerklePathIndex();
         if (!(await cache.saveCandidate(poolId, generation, snapshot))) return;
         record.status = {
           ...record.status,
@@ -223,13 +270,24 @@ export function createPrivacyController(
           total: snapshot.leafCount,
         };
         if (!(await cache.save(record, generation))) return;
-        calculations.set(poolId, { generation, snapshot, work: record.work });
+        calculations.set(poolId, {
+          generation,
+          pathIndex,
+          snapshot,
+          work: record.work,
+        });
       } else {
         validateSnapshot(poolId, snapshot);
       }
       const deadline = now() + SLICE_MS;
       do {
-        record.work = advanceMerkleWork(record.work!, snapshot.leaves, 128);
+        record.work = advanceMerkleWork(
+          record.work!,
+          snapshot.leaves,
+          128,
+          (level, index, root) =>
+            recordMerkleSubtree(pathIndex!, level, index, root)
+        );
         record.status = {
           ...record.status,
           phase: 'verifying',
@@ -255,9 +313,20 @@ export function createPrivacyController(
         verifiedAt: now(),
       };
       if (await cache.commit(poolId, generation, next)) {
+        // Own immutable bytes for every synchronous proof lease. The cache and
+        // download objects must not mutate previously verified provenance.
+        const ownedSnapshot: PrivacySnapshot = Object.freeze({
+          ...snapshot,
+          leaves: Object.freeze([...snapshot.leaves]) as unknown as string[],
+          withdrawnNullifiers: Object.freeze([
+            ...snapshot.withdrawnNullifiers,
+          ]) as unknown as string[],
+        });
         verifiedTrees.set(poolId, {
+          generation,
+          pathIndex: pathIndex!,
+          snapshot: ownedSnapshot,
           blockTimestamp: anchor.blockTimestamp,
-          snapshot,
           work: record.work,
         });
         calculations.delete(poolId);
@@ -286,6 +355,7 @@ export function createPrivacyController(
   async function resumePending(poolId: PrivacyPoolId): Promise<void> {
     getPrivacyPool(poolId);
     if (tasks.has(poolId)) return;
+    invalidateSnapshot(poolId);
     const task = process(poolId);
     tasks.set(poolId, task);
     try {
@@ -305,6 +375,77 @@ export function createPrivacyController(
     })
   ).catch(() => undefined);
 
+  const isFresh = (
+    poolId: PrivacyPoolId,
+    trusted: NonNullable<ReturnType<typeof verifiedTrees.get>>,
+    record: PrivacyRecord | undefined
+  ) => {
+    const age = now() - trusted.blockTimestamp;
+    return (
+      verifiedTrees.get(poolId) === trusted &&
+      !!record &&
+      record.poolId === poolId &&
+      record.status.phase !== 'idle' &&
+      record.status.phase !== 'error' &&
+      record.status.blockNumber === trusted.snapshot.asOfBlockNumber &&
+      Number.isSafeInteger(trusted.blockTimestamp) &&
+      trusted.blockTimestamp > 0 &&
+      Number.isFinite(age) &&
+      age >= -MAX_FUTURE_BLOCK_MS &&
+      age <= PRIVACY_NOTE_MAX_BLOCK_AGE_MS
+    );
+  };
+
+  // A lease authenticates this controller's live verified entry, not future
+  // arbitrary IndexedDB writes. All managed lifecycle transitions revoke it
+  // synchronously; the initial cache read must match its verified generation.
+  registerSnapshotReader?.((poolId) => {
+    getPrivacyPool(poolId);
+    const capturedRevision = revision(poolId);
+    return serialize(poolId, async () => {
+      const trusted = verifiedTrees.get(poolId);
+      let record: PrivacyRecord | undefined;
+      try {
+        record = await cache.get(poolId);
+      } catch {
+        throw new Error('privacy_verification_pending');
+      }
+      const assertSnapshotCurrent = (snapshot: PrivacySnapshot) => {
+        if (
+          !trusted ||
+          snapshot !== trusted.snapshot ||
+          revision(poolId) !== capturedRevision ||
+          tasks.has(poolId) ||
+          !isFresh(poolId, trusted, record) ||
+          record!.running ||
+          record!.status.phase !== 'ready' ||
+          record!.generation !== trusted.generation ||
+          record!.status.leafCount !== trusted.snapshot.leafCount
+        )
+          throw new Error('privacy_verification_pending');
+      };
+      if (!trusted) throw new Error('privacy_verification_pending');
+      assertSnapshotCurrent(trusted.snapshot);
+      return {
+        snapshot: trusted.snapshot,
+        assertSnapshotCurrent,
+        getPath: async (leafIndex) => {
+          const assertCurrent = () => assertSnapshotCurrent(trusted.snapshot);
+          assertCurrent();
+          const path = await getMerklePath(
+            trusted.pathIndex,
+            trusted.snapshot.leaves,
+            leafIndex,
+            trusted.work,
+            { assertCurrent }
+          );
+          assertCurrent();
+          return path;
+        },
+      };
+    });
+  });
+
   // Keep note-specific reads in this background closure. The message-facing
   // controller exposes only public sync operations, and reading a note neither
   // fetches data nor wakes a sync job. Disk ready flags are not proof: after a
@@ -320,21 +461,7 @@ export function createPrivacyController(
       } catch {
         return { phase: 'waiting' };
       }
-      const age = now() - trusted.blockTimestamp;
-      if (
-        verifiedTrees.get(poolId) !== trusted ||
-        !record ||
-        record.poolId !== poolId ||
-        record.status.phase === 'idle' ||
-        record.status.phase === 'error' ||
-        record.status.blockNumber !== trusted.snapshot.asOfBlockNumber ||
-        !Number.isSafeInteger(trusted.blockTimestamp) ||
-        trusted.blockTimestamp <= 0 ||
-        !Number.isFinite(age) ||
-        age < -MAX_FUTURE_BLOCK_MS ||
-        age > PRIVACY_NOTE_MAX_BLOCK_AGE_MS
-      )
-        return { phase: 'waiting' };
+      if (!isFresh(poolId, trusted, record)) return { phase: 'waiting' };
       const blockNumber = trusted.snapshot.asOfBlockNumber;
       if (!trusted.snapshot.leaves.includes(commitment))
         return { phase: record.running ? 'waiting' : 'not-found', blockNumber };
@@ -358,7 +485,7 @@ export function createPrivacyController(
       return status(record, poolId);
     },
     start: (poolId) =>
-      serialize(poolId, async () => {
+      change(poolId, async () => {
         const record = await cache.get(poolId);
         if (record?.running) {
           void resumePending(poolId).catch(() => undefined);
@@ -390,7 +517,7 @@ export function createPrivacyController(
         return next.status;
       }),
     pause: (poolId) =>
-      serialize(poolId, async () => {
+      change(poolId, async () => {
         const record = await cache.get(poolId);
         if (!record || (!record.running && !record.subscribed))
           return status(record, poolId);
@@ -408,7 +535,7 @@ export function createPrivacyController(
         return next.status;
       }),
     clear: (poolId) =>
-      serialize(poolId, async () => {
+      change(poolId, async () => {
         const record = await cache.clear(poolId);
         calculations.delete(poolId);
         verifiedTrees.delete(poolId);

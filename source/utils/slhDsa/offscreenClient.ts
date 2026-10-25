@@ -55,7 +55,7 @@ export const ensureOffscreenDocument = async () => {
     offscreenCreationPromise = chrome.offscreen
       .createDocument({
         justification:
-          'Run local SLH-DSA signing without blocking the wallet UI',
+          'Run local wallet signing and privacy proofs without blocking the wallet UI',
         reasons: ['DOM_SCRAPING' as any],
         url: 'offscreen.html',
       })
@@ -166,6 +166,9 @@ export const clearSLHDSAXmssCacheInOffscreen = async (): Promise<void> => {
 };
 
 export const cancelSLHDSAWorkerInOffscreen = async (): Promise<void> => {
+  await sendBestEffortOffscreenCleanupMessage(
+    'PALI_PRIVACY_PROVER_CANCEL_WORKER'
+  );
   await sendBestEffortOffscreenCleanupMessage('PALI_SLH_DSA_CANCEL_WORKER');
   await sendBestEffortOffscreenCleanupMessage('PALI_SENTRY_CANCEL_WORKER');
 };

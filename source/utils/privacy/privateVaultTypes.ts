@@ -11,11 +11,18 @@ export type IPrivacyNoteReader = (
   identity: IClassicNoteIdentity
 ) => Promise<IPrivateNoteStatus>;
 
-export interface IPrivateNoteView extends IPrivateNoteStatus {
+export interface IPrivateNoteView extends Omit<IPrivateNoteStatus, 'phase'> {
   amount: string;
   createdAt: number;
   id: string;
+  phase: IPrivateNoteStatus['phase'] | 'prepared';
   poolId: PrivacyPoolId;
+  withdrawal?: {
+    jobId?: string;
+    mode: 'direct' | 'relayed';
+    phase: 'unknown' | 'submitted';
+    transactionHash?: string;
+  };
 }
 
 export interface IPrivateVaultView {
@@ -23,6 +30,7 @@ export interface IPrivateVaultView {
 }
 
 export interface IPrivateVaultController {
+  createDepositNote: (poolId: PrivacyPoolId) => Promise<IPrivateNoteView>;
   getNotes: () => Promise<IPrivateVaultView>;
   importNote: (note: string) => Promise<IPrivateNoteView>;
   revealNote: (id: string, password: string) => Promise<string>;

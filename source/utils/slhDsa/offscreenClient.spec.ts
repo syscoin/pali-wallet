@@ -1,8 +1,31 @@
 import { SLH_DSA_PARAMETER_SET } from './constants';
 import {
+  cancelSLHDSAWorkerInOffscreen,
   prepareSLHDSAKeypairInOffscreen,
   signSLHDSAInOffscreen,
 } from './offscreenClient';
+
+test('wallet cleanup cancels the privacy prover even if another worker rejects cleanup', async () => {
+  const originalChrome = global.chrome;
+  const sendMessage = jest.fn().mockResolvedValue(undefined);
+  sendMessage.mockRejectedValueOnce(new Error('worker unavailable'));
+  global.chrome = {
+    runtime: {
+      getContexts: jest.fn().mockResolvedValue([{}]),
+      sendMessage,
+    },
+  } as unknown as typeof chrome;
+  try {
+    await expect(cancelSLHDSAWorkerInOffscreen()).resolves.toBeUndefined();
+    expect(sendMessage.mock.calls.map(([message]) => message.type)).toEqual([
+      'PALI_PRIVACY_PROVER_CANCEL_WORKER',
+      'PALI_SLH_DSA_CANCEL_WORKER',
+      'PALI_SENTRY_CANCEL_WORKER',
+    ]);
+  } finally {
+    global.chrome = originalChrome;
+  }
+});
 
 const deferred = <T>() => {
   let resolve: (value: T) => void;

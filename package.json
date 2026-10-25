@@ -51,10 +51,10 @@
     "*.@(ts|tsx|js|jsx)": "eslint --fix"
   },
   "dependencies": {
-    "@bitcoinerlab/secp256k1": "^1.2.0",
     "@ant-design/icons": "^6.0.0",
     "@babel/preset-react": "^7.25.9",
     "@babel/preset-typescript": "^7.25.9",
+    "@bitcoinerlab/secp256k1": "^1.2.0",
     "@headlessui/react": "^1.7.17",
     "@heroicons/react": "^1.0.6",
     "@noble/curves": "1.9.7",
@@ -70,6 +70,7 @@
     "@typescript-eslint/eslint-plugin": "^7.18.0",
     "antd": "^6.0.0",
     "axios": "^1.18.1",
+    "big-integer": "1.6.52",
     "bignumber.js": "^9.1.2",
     "bip32": "^5.0.1",
     "bip39": "^3.1.0",

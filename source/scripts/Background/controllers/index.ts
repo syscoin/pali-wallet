@@ -22,7 +22,9 @@ import {
   PALI_NETWORKS_STATE,
 } from 'utils/constants';
 import type { IPrivateVaultController } from 'utils/privacy/privateVaultTypes';
+import type { IPrivacyTransactionsController } from 'utils/privacy/transactionTypes';
 import type { PrivacyController } from 'utils/privacy/types';
+import type { IPrivacyWithdrawalsController } from 'utils/privacy/withdrawTypes';
 
 import DAppController from './DAppController';
 import { createExternalWalletView } from './externalWalletCreation';
@@ -44,6 +46,19 @@ export interface IMasterController {
     maxAttempts: number;
   };
   privacy: PrivacyController;
+  privacyTransactions: Pick<
+    IPrivacyTransactionsController,
+    'prepareDeposit' | 'submitDeposit' | 'discardDeposit'
+  >;
+  privacyWithdrawals: Pick<
+    IPrivacyWithdrawalsController,
+    | 'getRelayers'
+    | 'prepareWithdrawal'
+    | 'submitWithdrawal'
+    | 'discardWithdrawal'
+    | 'cancelPreparation'
+    | 'statusByNote'
+  >;
   privateVault: IPrivateVaultController;
   refresh: () => void;
   rehydrate: () => void;
@@ -308,7 +323,8 @@ const MasterController = (
       };
     },
     undefined,
-    (reader) => wallet.setPrivateVaultNoteReader(reader)
+    (reader) => wallet.setPrivateVaultNoteReader(reader),
+    (reader) => wallet.setPrivacySnapshotReader(reader)
   );
 
   return {
@@ -322,9 +338,25 @@ const MasterController = (
     wallet,
     privacy,
     privateVault: {
+      createDepositNote: (poolId) =>
+        wallet.createPrivateVaultDepositNote(poolId),
       getNotes: () => wallet.getPrivateVaultNotes(),
       importNote: (note) => wallet.importPrivateVaultNote(note),
       revealNote: (id, password) => wallet.revealPrivateVaultNote(id, password),
+    },
+    privacyTransactions: {
+      prepareDeposit: (request) => wallet.preparePrivacyDeposit(request),
+      submitDeposit: (intentId) => wallet.submitPrivacyDeposit(intentId),
+      discardDeposit: (intentId) => wallet.discardPrivacyDeposit(intentId),
+    },
+    privacyWithdrawals: {
+      getRelayers: () => wallet.getPrivacyRelayers(),
+      prepareWithdrawal: (request) => wallet.preparePrivacyWithdrawal(request),
+      submitWithdrawal: (intentId) => wallet.submitPrivacyWithdrawal(intentId),
+      discardWithdrawal: (intentId) =>
+        wallet.discardPrivacyWithdrawal(intentId),
+      cancelPreparation: () => wallet.cancelPrivacyWithdrawalPreparation(),
+      statusByNote: (noteId) => wallet.getPrivacyWithdrawalStatus(noteId),
     },
     // These will be overridden in the background script if initialization fails
     getInitializationStatus: () => ({

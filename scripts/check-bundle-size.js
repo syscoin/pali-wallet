@@ -16,10 +16,11 @@ const budget = {
   // Retain the shared-favicon and unused NFT-placeholder copy savings.
   // Keep a rounded, small-buffer ceiling below its package allowance;
   // CI measures the actual shipped artifact. Startup budgets stay unchanged.
-  // Explicit new-feature allowance: public pool sync, local MiMC verification,
-  // and nine-language preparation UI add about 38 KB over the 8,561,290-byte
-  // shipped baseline. Preserve startup caps and a small rounded package buffer.
-  package: 8605000,
+  // Explicit privacy-transaction allowance: packaged circuit metadata, local
+  // prover/WASM, license notices, and the deposit/withdrawal UI. Shared helpers
+  // retain the deduplication savings; startup caps remain unchanged. The
+  // measured unpacked production ZIP is about 9.331 MB, with a small buffer.
+  package: 9340000,
 };
 const allFiles = (root) =>
   fs.readdirSync(root, { withFileTypes: true }).flatMap((entry) => {
@@ -44,6 +45,12 @@ const scripts = {
     ...[
       'js/wallet-recovery.bundle.js',
       'js/private-vault.bundle.js',
+      'js/privacy-transactions.bundle.js',
+      'js/privacy-withdrawals.bundle.js',
+      'js/privacy-relayers.bundle.js',
+      'js/privacy-withdrawal.bundle.js',
+      'js/privacy-prover.bundle.js',
+      'js/privacy-background-shared.bundle.js',
       'js/sentry-controller.bundle.js',
       'js/sentry-sdk.bundle.js',
       // Required by the Sentry SDK's evaluation-time preload when present.
