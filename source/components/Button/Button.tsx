@@ -79,9 +79,10 @@ const sizeClasses: Record<ButtonSize, string> = {
 // Change accent labels and fills atomically: interpolating both colors can
 // cross an unreadable midpoint. Keep the existing scale and shadow motion.
 const baseStyled =
-  'flex justify-center items-center gap-x-2 rounded-full font-bold tracking-normal leading-4 transition-[transform,box-shadow] duration-200';
+  'flex justify-center items-center gap-x-2 rounded-full border-2 font-bold tracking-normal leading-4 transition-[transform,box-shadow] duration-200';
 
 const enabledMotion = 'opacity-100 hover:scale-105 active:scale-95';
+const raisedMotion = `${enabledMotion} hover:shadow-lg`;
 const disabledMotion = 'opacity-60 cursor-not-allowed';
 
 const variantClasses: Record<
@@ -89,28 +90,28 @@ const variantClasses: Record<
   { disabled: string; enabled: string; statics: string }
 > = {
   primary: {
-    statics: 'border-2 border-button-primary bg-button-primary text-bkg-1',
-    enabled: `${enabledMotion} cursor-pointer hover:bg-button-primaryhover hover:text-brand-white hover:shadow-lg`,
+    statics: 'border-button-primary bg-button-primary text-bkg-1',
+    enabled: `${raisedMotion} cursor-pointer hover:bg-button-primaryhover hover:text-brand-white`,
     disabled: disabledMotion,
   },
   secondary: {
-    statics: 'border-2 border-button-secondary bg-button-secondary text-bkg-1',
-    enabled: `${enabledMotion} hover:bg-button-secondaryhover hover:text-brand-white hover:shadow-lg`,
+    statics: 'border-button-secondary bg-button-secondary text-bkg-1',
+    enabled: `${raisedMotion} hover:bg-button-secondaryhover hover:text-brand-white`,
     disabled: disabledMotion,
   },
   neutral: {
-    statics: 'border-2 border-button-neutral bg-button-neutral',
+    statics: 'border-button-neutral bg-button-neutral',
     enabled: `${enabledMotion} hover:shadow-md`,
     disabled: disabledMotion,
   },
   ghost: {
-    statics: 'border-2 border-button-primary text-brand-white',
-    enabled: `${enabledMotion} cursor-pointer hover:bg-button-primaryhover hover:shadow-lg`,
+    statics: 'border-button-primary text-brand-white',
+    enabled: `${raisedMotion} cursor-pointer hover:bg-button-primaryhover`,
     disabled: disabledMotion,
   },
   danger: {
-    statics: 'border-2 border-brand-red bg-brand-red text-brand-white',
-    enabled: `${enabledMotion} hover:bg-brand-redDark hover:shadow-lg`,
+    statics: 'border-brand-red bg-brand-red text-brand-white',
+    enabled: `${raisedMotion} hover:bg-brand-redDark`,
     disabled: disabledMotion,
   },
 };

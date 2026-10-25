@@ -20,6 +20,11 @@ type OnboardingSecrets = {
   recoveryTicket?: string;
 };
 
+const importPasswordPath = '/create-password-import';
+const importPaths = ['/import', '/external/import'];
+const retainedSecretPaths = ['/phrase', '/external/phrase', importPasswordPath];
+const draftPaths = importPaths.concat('/create-password', retainedSecretPaths);
+
 const OnboardingContext = createContext<{
   beginCreate: (password: string) => void;
   beginImport: (phrase: string, recoveryTicket?: string) => void;
@@ -41,6 +46,7 @@ export const OnboardingSecretsProvider = ({
   const [secrets, setSecrets] = useState<OnboardingSecrets>({});
   const location = useLocation();
   const navigate = useNavigate();
+  const pathname = location.pathname;
   const [initialContinuation] = useState(() =>
     readOnboardingContinuation(window.location.href)
   );
@@ -75,19 +81,12 @@ export const OnboardingSecretsProvider = ({
 
   useEffect(() => {
     if (
-      ![
-        '/',
-        '/external.html',
-        '/import',
-        '/external/import',
-        '/create-password',
-        '/create-password-import',
-        '/phrase',
-        '/external/phrase',
-      ].includes(location.pathname)
+      pathname !== '/' &&
+      pathname !== '/external.html' &&
+      !draftPaths.includes(pathname)
     )
       continuation.current = undefined;
-    if (['/import', '/external/import'].includes(location.pathname)) {
+    if (importPaths.includes(pathname)) {
       setSecrets((current) =>
         current.recoveryTicket
           ? { kind: 'import', recoveryTicket: current.recoveryTicket }
@@ -95,17 +94,13 @@ export const OnboardingSecretsProvider = ({
       );
       return;
     }
-    if (location.pathname !== '/create-password-import') {
+    if (pathname !== importPasswordPath) {
       setSecrets((current) => (current.recoveryTicket ? {} : current));
     }
-    if (
-      !['/phrase', '/external/phrase', '/create-password-import'].includes(
-        location.pathname
-      )
-    ) {
+    if (!retainedSecretPaths.includes(pathname)) {
       clear();
     }
-  }, [location.pathname, clear]);
+  }, [pathname, clear]);
 
   useEffect(() => {
     // Discard a current history entry left by an older release. This cannot
@@ -116,26 +111,17 @@ export const OnboardingSecretsProvider = ({
       typeof state === 'object' &&
       ['password', 'phrase', 'createdSeed'].some((key) => key in state)
     ) {
-      navigate(location.pathname + location.search + location.hash, {
+      navigate(pathname + location.search + location.hash, {
         replace: true,
         state: null,
       });
     }
-  }, [location, navigate]);
+  }, [location, navigate, pathname]);
 
   useEffect(() => {
     const discard = () => {
       clear();
-      if (
-        [
-          '/import',
-          '/external/import',
-          '/create-password',
-          '/create-password-import',
-          '/phrase',
-          '/external/phrase',
-        ].includes(location.pathname)
-      ) {
+      if (draftPaths.includes(pathname)) {
         navigate(
           continuation.current
             ? onboardingContinuationPath(continuation.current, true)
@@ -153,7 +139,7 @@ export const OnboardingSecretsProvider = ({
       window.removeEventListener('pagehide', discard);
       document.removeEventListener('visibilitychange', onVisibility);
     };
-  }, [clear, navigate, location.pathname]);
+  }, [clear, navigate, pathname]);
 
   return (
     <OnboardingContext.Provider

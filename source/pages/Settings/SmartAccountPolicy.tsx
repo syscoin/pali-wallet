@@ -226,6 +226,9 @@ const guardianReplacementAuthenticatorKey = (
 ) =>
   `pali-smart-account-recovery-replacement:${chainId}:${account.toLowerCase()}`;
 
+const copyAddressMotion =
+  'transition-colors duration-200 hover:text-brand-white';
+
 const SmartAccountPolicy = () => {
   const location = useLocation();
   const routeState = location.state as any;
@@ -2998,7 +3001,7 @@ const SmartAccountPolicy = () => {
               </span>
               <button
                 type="button"
-                className="min-w-0 truncate text-right transition-colors duration-200 hover:text-brand-white"
+                className={`min-w-0 truncate text-right ${copyAddressMotion}`}
                 onClick={() => copyAddress(displayedGuardianAddress)}
               >
                 {shortAddress(displayedGuardianAddress)}
@@ -3160,7 +3163,7 @@ const SmartAccountPolicy = () => {
                   {activePaliWalletOwnerAddress && (
                     <button
                       type="button"
-                      className="min-w-0 truncate text-brand-graylight transition-colors duration-200 hover:text-brand-white"
+                      className={`min-w-0 truncate text-brand-graylight ${copyAddressMotion}`}
                       title={activePaliWalletOwnerAddress}
                       onClick={() => copyAddress(activePaliWalletOwnerAddress)}
                     >
@@ -3303,7 +3306,7 @@ const SmartAccountPolicy = () => {
                           {paliWalletOwnerAddress && (
                             <button
                               type="button"
-                              className="mt-1 max-w-full truncate text-xs text-brand-graylight transition-colors duration-200 hover:text-brand-white"
+                              className={`mt-1 max-w-full truncate text-xs text-brand-graylight ${copyAddressMotion}`}
                               title={paliWalletOwnerAddress}
                               onClick={() =>
                                 copyAddress(paliWalletOwnerAddress)
@@ -3476,7 +3479,7 @@ const SmartAccountPolicy = () => {
                                 </span>
                                 <button
                                   type="button"
-                                  className="min-w-0 truncate text-right transition-colors duration-200 hover:text-brand-white"
+                                  className={`min-w-0 truncate text-right ${copyAddressMotion}`}
                                   onClick={() =>
                                     copyAddress(displayedGuardianAddress)
                                   }
