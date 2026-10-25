@@ -47,7 +47,6 @@ import SpeedUp from '../../assets/all_assets/speedUp.svg';
 import Wallet from '../../assets/all_assets/wallet.svg';
 
 const icons = {
-  appstoreadd: AntIcons.AppstoreAddOutlined,
   'arrow-down': AntIcons.ArrowDownOutlined,
   'arrow-left': AntIcons.ArrowLeftOutlined,
   'arrow-up': AntIcons.ArrowUpOutlined,
@@ -66,14 +65,12 @@ const icons = {
   export: AntIcons.ExportOutlined,
   eye: AntIcons.EyeOutlined,
   file: AntIcons.FileFilled,
-  'file-protect': AntIcons.FileProtectOutlined,
   globe: AntIcons.GlobalOutlined,
   home: AntIcons.HomeOutlined,
   image: AntIcons.PictureOutlined,
   info: AntIcons.InfoCircleOutlined,
   link: AntIcons.LinkOutlined,
   message: AntIcons.MessageOutlined,
-  partition: AntIcons.PartitionOutlined,
   question: AntIcons.QuestionCircleOutlined,
   reload: AntIcons.ReloadOutlined,
   rise: AntIcons.RiseOutlined,
