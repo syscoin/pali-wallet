@@ -392,7 +392,8 @@ for (const width of [400, 320]) {
                 reads.filter(
                   (r) =>
                     r.url === (isApi ? newApi : newUrl) &&
-                    r.method === (isApi ? 'GET' : 'eth_chainId')
+                    r.method === (isApi ? 'GET' : 'eth_chainId') &&
+                    r.replied
                 ).length;
               const beforeAddReads = currentReads();
               await add.click();
@@ -407,6 +408,10 @@ for (const width of [400, 320]) {
                 ).toBe('0x3441');
                 observations.addResult = 'current healthy URL accepted';
               } else {
+                await expect(add).toBeEnabled();
+                await expect(spinner).toHaveCount(0);
+                await settleView();
+                await expectCurrentFeedback();
                 await expect(errors.first()).toContainText(badMessage);
                 expect((await rpcObservation(dapp, id)).settled).not.toBe(true);
                 observations.addResult = 'current mismatch rejected';
