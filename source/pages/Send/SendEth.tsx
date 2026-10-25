@@ -1652,7 +1652,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                 </button>
                 <Form.Item
                   name="amount"
-                  className="relative w-full"
+                  className="relative w-full break-words"
                   hasFeedback
                   rules={[
                     {
