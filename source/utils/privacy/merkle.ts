@@ -8,7 +8,10 @@ export const TREE_DEPTH = 20;
 export const TREE_CAPACITY = 2 ** TREE_DEPTH;
 export const MAX_LEAVES_PER_BATCH = 256;
 
-// Tornado Classic MerkleTreeWithHistory.sol, core commit 1ef6a263ac6a0e476d063fcb269a9df65a1bd56a.
+// Deployed Solidity 0.5.8 MerkleTreeWithHistory. Verified Ethereum source:
+// https://sourcify.dev/server/v2/contract/1/0x47ce0c6ed5b0ce3d3a51fdb1c52dc66a7c3c2936?fields=sources
+// TornadoCash_eth.sol SHA-256: 1956932a1bd892439c7909803c65872ec979bfedd8f146ebd79a4f4ab60e9a69.
+// All four pinned pools have identical constructor and hashLeftRight blocks.
 const ZEROES = [
   '0x2fe54c60d3acabf3343a35b6eba15db4821b340f76e741e2249685ed4899af6c',
   '0x256a6135777eee2fd26f54b8b7037a25439d5235caee224154186d2b8a52e31d',
@@ -33,6 +36,18 @@ const ZEROES = [
 ] as const;
 
 export const ZERO_VALUE = ZEROES[0];
+
+export const getMerkleZero = (level: number): string => {
+  if (!Number.isInteger(level) || level < 0 || level >= TREE_DEPTH)
+    throw new Error('Invalid Merkle level');
+  return ZEROES[level];
+};
+
+export type MerkleSubtreeListener = (
+  level: number,
+  index: number,
+  root: string
+) => void;
 
 const ZERO = BigInt(0);
 const ROUNDS = 220;
@@ -127,9 +142,10 @@ const validateWork = (work: MerkleWork, leafCount: number): void => {
 };
 
 const foldRoot = (work: MerkleWork): string => {
-  // The deployed Classic constructor uses zeros(levels - 1), not the ordinary
-  // empty depth-20 tree root. There is no inclusion proof for an empty pool.
-  if (work.nextIndex === 0) return ZEROES[TREE_DEPTH - 1];
+  // The deployed constructor fills zero0..zero19, then hashes zero19 once
+  // more for roots[0]. There is no inclusion proof for an empty pool.
+  if (work.nextIndex === 0)
+    return hashPair(ZEROES[TREE_DEPTH - 1], ZEROES[TREE_DEPTH - 1]);
   if (work.nextIndex === TREE_CAPACITY) {
     return toHex(fieldElement(work.frontier[TREE_DEPTH] as string));
   }
@@ -152,7 +168,8 @@ const foldRoot = (work: MerkleWork): string => {
 export const advanceMerkleWork = (
   work: MerkleWork,
   leaves: string[],
-  maxLeaves = 128
+  maxLeaves = 128,
+  onSubtree?: MerkleSubtreeListener
 ): MerkleWork => {
   if (!Array.isArray(leaves) || leaves.length > TREE_CAPACITY) {
     throw new Error('Invalid Merkle leaf count');
@@ -177,6 +194,7 @@ export const advanceMerkleWork = (
       work.frontier[level] = null;
       index = Math.floor(index / 2);
       level += 1;
+      onSubtree?.(level, index, carry);
     }
     work.frontier[level] = carry;
     work.nextIndex += 1;

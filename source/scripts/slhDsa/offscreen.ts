@@ -4,6 +4,7 @@ import type {
   SLHDSAWorkerResponse,
 } from 'utils/slhDsa';
 import '../sentry/offscreen';
+import '../privacyProver/offscreen';
 
 import { isTrustedSigningWorkerSender } from './messageAuthorization';
 

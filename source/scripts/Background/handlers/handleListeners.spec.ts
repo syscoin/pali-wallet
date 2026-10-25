@@ -171,9 +171,23 @@ const mockMasterController: jest.Mocked<IMasterController> = {
     start: jest.fn(),
   },
   privateVault: {
+    createDepositNote: jest.fn(),
     getNotes: jest.fn(),
     importNote: jest.fn(),
     revealNote: jest.fn(),
+  },
+  privacyTransactions: {
+    prepareDeposit: jest.fn(),
+    submitDeposit: jest.fn(),
+    discardDeposit: jest.fn(),
+  },
+  privacyWithdrawals: {
+    statusByNote: jest.fn(),
+    getRelayers: jest.fn(),
+    prepareWithdrawal: jest.fn(),
+    submitWithdrawal: jest.fn(),
+    discardWithdrawal: jest.fn(),
+    cancelPreparation: jest.fn(),
   },
   // Mock wallet methods used in handleListeners
   wallet: {

@@ -67,16 +67,24 @@ it.each([
   expect(leaves).toEqual(leavesFor(count as number));
 });
 
-it('returns the Classic constructor root for an empty pool', () => {
-  const work = finish([]);
-  expect(work.nextIndex).toBe(0);
-  expect(work.root).toBe(
+it('matches the verified deployed constructor root for an empty depth-20 pool', () => {
+  // Sourcify verified Ethereum 0x47ce0c6ed5b0ce3d3a51fdb1c52dc66a7c3c2936,
+  // TornadoCash_eth.sol:35-51. The other three pinned pools have identical
+  // constructor and hashLeftRight blocks: fill zero0..zero19, then hash once.
+  let zero19: string = ZERO_VALUE;
+  for (let level = 1; level < TREE_DEPTH; level++)
+    zero19 = hashPair(zero19, zero19);
+  expect(zero19).toBe(
     '0x198622acbd783d1b0d9064105b1fc8e4d8889de95c4c519b3f635809fe6afc05'
   );
-  // zeros(19), deliberately not the ordinary empty depth-20 tree root zeros(20).
-  expect(work.root).not.toBe(
+  const zero20 = hashPair(zero19, zero19);
+  const work = finish([]);
+  expect(work.nextIndex).toBe(0);
+  expect(zero20).toBe(
     '0x29d7ed391256ccc3ea596c86e933b89ff339d25ea8ddced975ae2fe30b5296d4'
   );
+  expect(work.root).toBe(zero20);
+  expect(work.root).not.toBe(zero19);
 });
 
 it('resumes JSON checkpoints through carry boundaries without replaying leaves', () => {

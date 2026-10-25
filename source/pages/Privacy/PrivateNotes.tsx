@@ -6,7 +6,12 @@ import { useSelector } from 'react-redux';
 import { ValidatedPasswordInput } from 'components/Input/ValidatedPasswordInput';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
+import { verifiedNoteBalance } from 'utils/privacy/balance';
+import type { IPrivateNoteView } from 'utils/privacy/privateVaultTypes';
 
+import PrivateDeposit from './PrivateDeposit';
+import PrivateNoteBackupDialog from './PrivateNoteBackupDialog';
+import PrivateWithdrawal from './PrivateWithdrawal';
 import { usePrivateNotes } from './usePrivateNotes';
 
 const actionClass =
@@ -36,6 +41,9 @@ function NotesView() {
   const { t } = useTranslation();
   const { controllerEmitter, loading, notes, refresh, remember, unavailable } =
     usePrivateNotes();
+  const verificationPending = notes.some(
+    ({ phase }) => phase === 'waiting' || phase === 'not-found'
+  );
   const [form] = Form.useForm();
   const [importing, setImporting] = useState(false);
   const [noteText, setNoteText] = useState('');
@@ -43,6 +51,15 @@ function NotesView() {
   const [error, setError] = useState('');
   const [selected, setSelected] = useState<string | null>(null);
   const [revealed, setRevealed] = useState('');
+  const [deposit, setDeposit] = useState(false);
+  const [backupNoteId, setBackupNoteId] = useState<string | null>(null);
+  const [withdrawing, setWithdrawing] = useState<IPrivateNoteView | null>(null);
+  const [statusNote, setStatusNote] = useState<string | null>(null);
+  const [statusError, setStatusError] = useState<string | null>(null);
+  const [reportedStatus, setReportedStatus] = useState<{
+    id: string;
+    status: string;
+  }>();
   const owner = useRef({ active: true, revision: 0 });
   const importField = useRef<HTMLTextAreaElement>(null);
   const clear = () => {
@@ -94,7 +111,24 @@ function NotesView() {
     }
   };
 
-  return (
+  const content = withdrawing ? (
+    <PrivateWithdrawal
+      note={withdrawing}
+      onBack={() => {
+        setWithdrawing(null);
+        void refresh();
+      }}
+    />
+  ) : deposit ? (
+    <PrivateDeposit
+      onBack={() => {
+        setBackupNoteId(null);
+        setDeposit(false);
+        void refresh();
+      }}
+      onBackup={setBackupNoteId}
+    />
+  ) : (
     <section
       aria-labelledby="privacy-notes-title"
       className="space-y-3"
@@ -102,11 +136,23 @@ function NotesView() {
         if (event.key === 'Escape') clear();
       }}
     >
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 id="privacy-notes-title" className="text-sm font-medium text-white">
           {t('privacy.yourNotes')}
         </h2>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {!importing && (
+            <button
+              type="button"
+              className={actionClass}
+              onClick={() => {
+                clear();
+                setDeposit(true);
+              }}
+            >
+              {t('privacy.deposit.title')}
+            </button>
+          )}
           {notes.length > 0 && !importing && (
             <button
               type="button"
@@ -200,6 +246,14 @@ function NotesView() {
           : !notes.length
           ? t('privacy.noNotes')
           : null}
+        {(notes.length > 0 || (!loading && !unavailable)) && (
+          <p className="text-white">
+            {t('privacy.verifiedBalance', {
+              amount: verifiedNoteBalance(notes),
+            })}
+          </p>
+        )}
+        {verificationPending && <p>{t('privacy.balancePending')}</p>}
       </div>
       {unavailable && (
         <button
@@ -226,6 +280,102 @@ function NotesView() {
               <p className="text-xs text-brand-gray200">
                 {t('privacy.noteAsOfBlock', { block: note.blockNumber })}
               </p>
+            )}
+            {note.withdrawal && (
+              <div className="space-y-2 text-xs text-brand-gray200">
+                <p>
+                  {t(
+                    `privacy.withdrawal.${
+                      note.withdrawal.phase === 'unknown'
+                        ? 'statusUnknown'
+                        : 'statusPending'
+                    }`
+                  )}
+                </p>
+                {note.withdrawal.transactionHash && (
+                  <p className="break-all">
+                    {t('privacy.deposit.txHash')}:{' '}
+                    {note.withdrawal.transactionHash}
+                  </p>
+                )}
+                {note.withdrawal.jobId && (
+                  <p className="break-all">
+                    {t('privacy.withdrawal.jobId')}: {note.withdrawal.jobId}
+                  </p>
+                )}
+                {note.withdrawal.mode === 'relayed' &&
+                  note.withdrawal.jobId && (
+                    <button
+                      type="button"
+                      className={actionClass}
+                      disabled={statusNote !== null}
+                      onClick={async () => {
+                        const revision = owner.current.revision;
+                        setStatusNote(note.id);
+                        setStatusError(null);
+                        try {
+                          const result = await controllerEmitter(
+                            ['privacyWithdrawals', 'statusByNote'],
+                            [note.id],
+                            30000,
+                            false
+                          );
+                          if (current(revision)) {
+                            const status = (
+                              result as { claimedStatus?: unknown } | null
+                            )?.claimedStatus;
+                            if (
+                              [
+                                'QUEUED',
+                                'ACCEPTED',
+                                'SENT',
+                                'MINED',
+                                'RESUBMITTED',
+                                'CONFIRMED',
+                                'FAILED',
+                              ].includes(
+                                typeof status === 'string' ? status : ''
+                              )
+                            )
+                              setReportedStatus({
+                                id: note.id,
+                                status: String(status),
+                              });
+                            await refresh(true);
+                          }
+                        } catch {
+                          if (current(revision)) setStatusError(note.id);
+                        } finally {
+                          if (current(revision)) setStatusNote(null);
+                        }
+                      }}
+                    >
+                      {t('privacy.withdrawal.checkStatus')}
+                    </button>
+                  )}
+                {statusError === note.id && (
+                  <p role="alert">{t('privacy.withdrawal.statusFailed')}</p>
+                )}
+                {reportedStatus?.id === note.id && (
+                  <p>
+                    {t('privacy.withdrawal.reportedStatus', {
+                      status: reportedStatus.status,
+                    })}
+                  </p>
+                )}
+              </div>
+            )}
+            {note.phase === 'verified' && !note.withdrawal && (
+              <button
+                type="button"
+                className={actionClass}
+                onClick={() => {
+                  clear();
+                  setWithdrawing(note);
+                }}
+              >
+                {t('privacy.withdrawal.open')}
+              </button>
             )}
             {selected !== note.id ? (
               <button
@@ -325,6 +475,16 @@ function NotesView() {
         ))}
       </ul>
     </section>
+  );
+  return (
+    <>
+      {content}
+      {/* Keep the deposit review mounted while the local backup dialog is open. */}
+      <PrivateNoteBackupDialog
+        noteId={backupNoteId}
+        onClose={() => setBackupNoteId(null)}
+      />
+    </>
   );
 }
 

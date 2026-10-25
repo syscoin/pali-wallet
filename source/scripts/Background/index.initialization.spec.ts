@@ -32,6 +32,8 @@ describe('background initialization ownership', () => {
   let store: { getState: jest.Mock; subscribe: jest.Mock };
   let subscribers: Set<() => void>;
   let messageListeners: Set<MessageListener>;
+  let privacyRegistrations: string[];
+  let startPrivacyOperation: jest.Mock;
 
   beforeEach(() => {
     jest.resetModules();
@@ -84,6 +86,29 @@ describe('background initialization ownership', () => {
       }),
     };
     messageListeners = new Set();
+    privacyRegistrations = [];
+    startPrivacyOperation = jest.fn();
+    // These factories model evaluation/registration, not operation startup.
+    jest.doMock('./controllers/privacyTransactions', () => {
+      privacyRegistrations.push('transactions');
+      return { createPrivacyTransactionsController: startPrivacyOperation };
+    });
+    jest.doMock('./controllers/privacyWithdrawals', () => {
+      privacyRegistrations.push('withdrawals');
+      return { createPrivacyWithdrawalsController: startPrivacyOperation };
+    });
+    jest.doMock('utils/privacy/relayers', () => {
+      privacyRegistrations.push('relayers');
+      return { createPrivacyRelayerClient: startPrivacyOperation };
+    });
+    jest.doMock('utils/privacy/withdrawal', () => {
+      privacyRegistrations.push('withdrawal-builder');
+      return { provePrivacyWithdrawal: startPrivacyOperation };
+    });
+    jest.doMock('utils/privacy/prover', () => {
+      privacyRegistrations.push('prover');
+      return { runPrivacyProof: startPrivacyOperation };
+    });
     Object.assign(chrome.runtime, {
       getURL: jest.fn(
         (path = '') => `chrome-extension://pali-extension/${path}`
@@ -181,6 +206,22 @@ describe('background initialization ownership', () => {
       maxAttempts: 3,
     });
   };
+
+  it('registers optional privacy chunks during startup without beginning an operation or waiting for wallet setup', async () => {
+    const construction = deferred<any>();
+    initializeController.mockReturnValue(construction.promise);
+    await loadBackground();
+    expect(privacyRegistrations).toEqual([
+      'transactions',
+      'withdrawals',
+      'relayers',
+      'withdrawal-builder',
+      'prover',
+    ]);
+    expect(startPrivacyOperation).not.toHaveBeenCalled();
+    expect(initializeController).toHaveBeenCalledTimes(1);
+    expectStatus(0);
+  });
 
   it('shares overlapping trusted retries across storage and controller awaits', async () => {
     await enterDegradedMode();
