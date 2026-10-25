@@ -21,6 +21,65 @@ import {
   UTXO_FIXTURE_SEED,
 } from '../harness/utxoFixture';
 
+const inspectSwitchActions = async (popup: Page) => {
+  let geometry;
+  for (let attempt = 0; attempt < 10; attempt++) {
+    geometry = await popup.evaluate(
+      ({ reject, confirm }) => {
+        const actions = [reject, confirm].map((label) =>
+          [...document.querySelectorAll('button')].find(
+            (element) => element.textContent?.trim() === label
+          )
+        );
+        if (actions.some((element) => !element))
+          return { contained: false, hitTargets: false, separation: -1 };
+        const boxes = actions.map((element) =>
+          element!.getBoundingClientRect()
+        );
+        return {
+          contained: boxes.every(
+            (box) =>
+              box.left >= 0 &&
+              box.top >= 0 &&
+              box.right <= innerWidth &&
+              box.bottom <= innerHeight
+          ),
+          hitTargets: actions.every((element, index) => {
+            const box = boxes[index];
+            return [0.25, 0.5, 0.75].every((fraction) => {
+              const hit = document.elementFromPoint(
+                box.left + box.width * fraction,
+                box.top + box.height / 2
+              );
+              return hit === element || element!.contains(hit);
+            });
+          }),
+          separation: Math.max(
+            boxes[1].left - boxes[0].right,
+            boxes[0].left - boxes[1].right,
+            boxes[1].top - boxes[0].bottom,
+            boxes[0].top - boxes[1].bottom
+          ),
+        };
+      },
+      { reject: en.buttons.reject, confirm: en.buttons.confirm }
+    );
+    if (geometry.contained && geometry.hitTargets) break;
+    const viewport = popup.viewportSize()!;
+    await popup.mouse.move(viewport.width / 2, viewport.height / 2);
+    await popup.mouse.wheel(0, 300);
+    await popup.evaluate(
+      () =>
+        new Promise((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(resolve))
+        )
+    );
+  }
+  expect(geometry?.contained).toBe(true);
+  expect(geometry?.hitTargets).toBe(true);
+  expect(geometry?.separation).toBeGreaterThanOrEqual(8);
+};
+
 // Real provider requests, isolated wallet state and launch-time network denial.
 for (const width of [400, 320]) {
   test(`external network consent keeps metadata readable and unobscured at ${width}`, async ({}, info) => {
@@ -163,6 +222,51 @@ for (const width of [400, 320]) {
         }
       );
       await wallet.step(
+        'reject a chain switch through its separate ordinary action',
+        async (capture) => {
+          const id = await startRequest(dapp, 'wallet_switchEthereumChain', [
+            { chainId: '0x1644' },
+          ]);
+          const popup = await popupFor(wallet!.context, dapp, id);
+          await popup.setViewportSize({
+            width,
+            height: width === 320 ? 360 : 620,
+          });
+          await inspectSwitchActions(popup);
+          await capture(popup);
+          await info.attach(`network-switch-reject-${width}`, {
+            body: await popup.screenshot({ animations: 'disabled' }),
+            contentType: 'image/png',
+          });
+          await clickClosingPopup({
+            click: async () => {
+              const reject = popup.getByRole('button', {
+                name: en.buttons.reject,
+                exact: true,
+              });
+              if (width === 400) {
+                for (let attempt = 0; attempt < 20; attempt++) {
+                  if (
+                    await reject.evaluate(
+                      (button) => document.activeElement === button
+                    )
+                  )
+                    break;
+                  await popup.keyboard.press('Tab');
+                }
+                await expect(reject).toBeFocused();
+                await popup.keyboard.press('Enter');
+              } else await reject.click();
+            },
+            isClosed: () => popup.isClosed(),
+          });
+          expect((await settle(dapp, id)).error?.code).toBe(4001);
+          expect(
+            (await settle(dapp, await startRequest(dapp, 'eth_chainId'))).result
+          ).toBe('0x3441');
+        }
+      );
+      await wallet.step(
         'switch back through the real Ethereum chain consent',
         async (capture) => {
           const id = await startRequest(dapp, 'wallet_switchEthereumChain', [
@@ -177,6 +281,7 @@ for (const width of [400, 320]) {
                 width,
                 height: width === 320 ? 360 : 620,
               });
+              await inspectSwitchActions(popup);
               await info.attach(`network-switch-${width}`, {
                 body: await popup.screenshot({ animations: 'disabled' }),
                 contentType: 'image/png',
@@ -184,7 +289,11 @@ for (const width of [400, 320]) {
               await capture(popup);
             }
           );
+          expect(result.error).toBeUndefined();
           expect(result.result).toBeNull();
+          expect(
+            (await settle(dapp, await startRequest(dapp, 'eth_chainId'))).result
+          ).toBe('0x1644');
         }
       );
       await wallet.step(
