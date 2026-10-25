@@ -411,6 +411,7 @@ test('privacy pool preparation is opt-in, independently verified and preserves a
                 asOfBlockNumber: BLOCK_NUMBER,
                 asOfBlockHash: BLOCK_HASH,
                 leafCount: 2,
+                withdrawnNullifiers: [],
                 leaves: [word(1), word(mode === 'corrupt' ? 3 : 2)],
                 root: TWO_LEAF_ROOT,
               }

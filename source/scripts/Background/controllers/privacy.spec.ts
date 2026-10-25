@@ -20,6 +20,7 @@ const leaf = (value: number) => `0x${value.toString(16).padStart(64, '0')}`;
 function snapshot(leaves = [leaf(1), leaf(2)]): PrivacySnapshot {
   const work = advanceMerkleWork(createMerkleWork(), leaves);
   return {
+    withdrawnNullifiers: [],
     version: 1,
     chainId: 1,
     poolAddress: getPrivacyPool(id).address,

@@ -13,6 +13,7 @@ const id = 'eth-0.1';
 const hash = (n: number) => `0x${n.toString(16).padStart(64, '0')}`;
 const leaves = [hash(1), hash(2)];
 const snapshot: PrivacySnapshot = {
+  withdrawnNullifiers: [],
   version: 1,
   chainId: 1,
   poolAddress: getPrivacyPool(id).address,
@@ -110,6 +111,17 @@ test.each([
   { root: hash(0).toUpperCase() },
   { leaves: [hash(1), '0x' + 'ff'.repeat(32)] },
   { leaves: null },
+  { withdrawnNullifiers: undefined },
+  { withdrawnNullifiers: null },
+  { withdrawnNullifiers: [hash(1), hash(2), hash(3)] },
+  { withdrawnNullifiers: [hash(1), hash(1)] },
+  { withdrawnNullifiers: [hash(1).toUpperCase()] },
+  { withdrawnNullifiers: ['0x' + 'ff'.repeat(32)] },
+  { withdrawnNullifiers: [hash(1) + '\n'] },
+  { withdrawnNullifiers: [hash(1) + '\r'] },
+  { withdrawnNullifiers: [123] },
+  { leaves: [hash(1), hash(2) + '\n'] },
+  { root: snapshot.root + '\n' },
 ])('rejects malformed or cross-context data: %j', (change) => {
   expect(() => validateSnapshot(id, { ...snapshot, ...change })).toThrow(
     'privacy_data_invalid'
