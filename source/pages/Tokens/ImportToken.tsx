@@ -907,7 +907,7 @@ export const ImportToken: React.FC = () => {
             <p>{t('settings.apiConnectionError')}</p>
             {/* SYSCOIN: Retry only on user action; the API cooldown still applies. */}
             <button
-              className="mt-2 text-brand-royalblue underline"
+              className="mt-2 text-brand-royalbluemedium underline"
               onClick={loadOwnedTokens}
               type="button"
             >
@@ -928,7 +928,7 @@ export const ImportToken: React.FC = () => {
               {t('tokens.missingTokenManualImport')}
             </p>
             <button
-              className="h-10 px-6 rounded-full bg-brand-royalblue text-brand-white text-sm font-medium hover:bg-brand-royalbluemedium transition-colors"
+              className="h-10 px-6 rounded-full bg-brand-royalblue text-brand-white text-sm font-medium hover:bg-brand-royalbluemedium hover:text-bkg-1"
               type="button"
               onClick={() => handleTabChange('custom')}
             >

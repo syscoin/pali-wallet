@@ -466,11 +466,14 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
 
       {/* Main Transaction Details */}
       <div className="bg-brand-blue800 rounded-lg p-4 space-y-3">
-        <div className="flex justify-between items-center mb-3">
-          <Typography.Text strong className="text-white text-sm sm:text-base">
+        <div className="flex flex-wrap justify-between items-center gap-2 mb-3">
+          <Typography.Text
+            strong
+            className="break-normal text-white text-sm sm:text-base"
+          >
             {t('send.transactionDetails')}
           </Typography.Text>
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2">
             {/* Toggle details button for dapp popup mode */}
             {!showTechnicalDetails && (
               <button
@@ -986,7 +989,7 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
                             {activeNetwork.currency.toUpperCase()}
                           </Typography.Text>
                           {assetInfo && assetAmount && (
-                            <Typography.Text className="text-brand-royalblue text-xs sm:text-sm font-medium block mt-1">
+                            <Typography.Text className="text-brand-royalbluemedium text-xs sm:text-sm font-medium block mt-1">
                               {assetAmount} {assetInfo.symbol || 'SYSX'}
                             </Typography.Text>
                           )}
@@ -1198,7 +1201,7 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
                             </Typography.Text>
                           )}
                           {input.assetInfo && (
-                            <Typography.Text className="text-brand-royalblue text-xs font-medium block mt-1">
+                            <Typography.Text className="text-brand-royalbluemedium text-xs font-medium block mt-1">
                               {input.assetInfo.value
                                 ? formatSyscoinValue(
                                     input.assetInfo.value.toString(),

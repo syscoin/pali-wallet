@@ -1026,10 +1026,8 @@ test('ordinary preference pickers retain centered SVG boxes while localized mark
     const card = () =>
       page
         .getByRole('heading', {
-          // The real h4 includes both the favicon alt and visible link label.
-          name:
-            currentLocale.text.tokens.marketInformation +
-            ' CoinGecko CoinGecko',
+          // The decorative favicon is hidden; the heading includes the visible link label.
+          name: currentLocale.text.tokens.marketInformation + ' CoinGecko',
           exact: true,
         })
         .locator('..');
@@ -1520,6 +1518,9 @@ test('ordinary preference pickers retain centered SVG boxes while localized mark
             await expect(page).toHaveURL(/#\/home\/details/);
             await expect(card()).toHaveCount(1);
             await expect(
+              card().getByRole('link', { name: 'CoinGecko', exact: true })
+            ).toHaveAttribute('href', 'https://www.coingecko.com');
+            await expect(
               card().getByText(tokenCase.priceText, { exact: true })
             ).toBeAttached();
             await expect
@@ -1649,9 +1650,7 @@ test('ordinary preference pickers retain centered SVG boxes while localized mark
               const target =
                 phase === 'heading'
                   ? card().getByRole('heading', {
-                      name:
-                        locale.text.tokens.marketInformation +
-                        ' CoinGecko CoinGecko',
+                      name: locale.text.tokens.marketInformation + ' CoinGecko',
                       exact: true,
                     })
                   : phase === 'metrics'

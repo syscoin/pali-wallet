@@ -5,6 +5,7 @@ import path from 'path';
 
 import en from '../../source/assets/locales/en.json';
 import { E2E_CONFIG } from '../harness/config';
+import { captureForegroundContrast } from '../harness/foregroundContrast';
 import {
   createIsolatedVaultFixture,
   installIsolatedVaultRoutes,
@@ -305,6 +306,48 @@ test('connection selection stays on the reviewed account until real switch and g
             },
           });
         await assertBusySelection();
+        for (const viewport of [
+          { width: 400, height: 620 },
+          { width: 320, height: 360 },
+        ]) {
+          await approval.setViewportSize(viewport);
+          const pendingConfirm = approval.getByRole('button', {
+            name: en.buttons.confirm,
+            exact: true,
+          });
+          await expect(pendingConfirm).toBeDisabled();
+          await expect(pendingConfirm).toHaveAttribute('aria-busy', 'true');
+          const spinner = pendingConfirm.locator(':scope > svg');
+          const progress = await captureForegroundContrast(
+            pendingConfirm,
+            info,
+            `connection-busy-progress-${viewport.width}`,
+            'currentColor-icon'
+          );
+          // The spinner inherits this stable button's foreground. Measure its
+          // backing without requiring the rotating SVG to become stationary.
+          expect(
+            await spinner.evaluate((node) => getComputedStyle(node).color)
+          ).toBe(
+            await pendingConfirm.evaluate(
+              (node) => getComputedStyle(node).color
+            )
+          );
+          // This is active progress, even though the action stays disabled.
+          expect(progress.unsupported).toEqual([]);
+          expect(progress.ratio).toBeGreaterThanOrEqual(3);
+          expect(
+            await spinner.evaluate((element) =>
+              Number.parseFloat(getComputedStyle(element).width)
+            )
+          ).toBe(20);
+          expect(
+            await spinner.evaluate(
+              (element) => getComputedStyle(element).animationName
+            )
+          ).not.toBe('none');
+        }
+        await approval.setViewportSize({ width: 400, height: 620 });
         const state = await publicState(page);
         expect(state.active).toEqual({
           id: reviewed!.id,

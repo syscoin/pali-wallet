@@ -2,6 +2,7 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 import fs from 'fs';
 import path from 'path';
 
+import de from '../../source/assets/locales/de.json';
 import en from '../../source/assets/locales/en.json';
 import { E2E_CONFIG } from '../harness/config';
 import { launchExtension } from '../harness/launch';
@@ -81,6 +82,46 @@ const capture = async (
   await info.attach(name, { path: output, contentType: 'image/png' });
 };
 
+const inspectImportReveal = async (page: Page, info: any, state: string) => {
+  const field = page.locator('#import-wallet-input');
+  const reveal = field.locator('..').getByRole('button');
+  await wheelTo(page, field);
+  await wheelTo(page, reveal);
+  expect(await exposed(field), `${state}: complete field exposed`).toBe(true);
+  expect(await exposed(reveal), `${state}: reveal control exposed`).toBe(true);
+  const fieldBox = (await field.boundingBox())!;
+  const revealBox = (await reveal.boundingBox())!;
+  await info.attach(`${state}-field-and-reveal-bounds`, {
+    body: JSON.stringify({ field: fieldBox, reveal: revealBox }),
+    contentType: 'application/json',
+  });
+  await capture(page, state, info, false);
+  // The existing44px hit target must stay inside the actual textarea border,
+  // including when AntD adds long inline validation feedback.
+  expect(revealBox.width).toBe(44);
+  expect(revealBox.height).toBe(44);
+  expect.soft(revealBox.x).toBeGreaterThanOrEqual(fieldBox.x);
+  expect.soft(revealBox.y).toBeGreaterThanOrEqual(fieldBox.y);
+  expect
+    .soft(revealBox.x + revealBox.width)
+    .toBeLessThanOrEqual(fieldBox.x + fieldBox.width);
+  expect
+    .soft(revealBox.y + revealBox.height)
+    .toBeLessThanOrEqual(fieldBox.y + fieldBox.height);
+  if (state.includes('empty')) {
+    const label = await reveal.getAttribute('aria-label');
+    await reveal.focus();
+    await expect(reveal).toBeFocused();
+    await page.keyboard.press('Space');
+    await expect(reveal).not.toHaveAttribute('aria-label', label!);
+    await page.keyboard.press('Space');
+    await expect(reveal).toHaveAttribute('aria-label', label!);
+    await expect(page.locator('#import-wallet-action')).toBeDisabled();
+  }
+  // This helper is used only for empty or literal invalid public input.
+  await capture(page, `${state}-keyboard`, info, false);
+};
+
 test('welcome, import and password setup stay reachable in small windows', async ({}, info) => {
   test.setTimeout(150000);
   const before = { ...E2E_CONFIG };
@@ -107,6 +148,8 @@ test('welcome, import and password setup stay reachable in small windows', async
           ),
         language
       );
+      // A persisted language selection is read when the document starts.
+      await page.reload();
       for (const size of sizes) {
         await page.setViewportSize(size);
         const suffix = `${language}-${size.width}x${size.height}`;
@@ -160,6 +203,15 @@ test('welcome, import and password setup stay reachable in small windows', async
             info
           );
           if (screen.route === '/import') {
+            await expect(page.locator('#import-wallet-input')).toHaveAttribute(
+              'aria-label',
+              (language === 'de' ? de : en).import.pasteYourWalletSeed
+            );
+            await inspectImportReveal(
+              page,
+              info,
+              `import-empty-field-${suffix}`
+            );
             await page.locator('#import-wallet-input').fill('one two three');
             await page.waitForTimeout(150);
             await page.locator('#import-wallet-input').press('Tab');
@@ -185,6 +237,12 @@ test('welcome, import and password setup stay reachable in small windows', async
             // Masking an occluded textarea would paint over the actual dialog.
             await capture(page, `import-warning-${suffix}`, info, false);
             await page.keyboard.press('Escape');
+            await expect(dialog).not.toBeVisible();
+            await inspectImportReveal(
+              page,
+              info,
+              `import-error-field-${suffix}`
+            );
           }
         }
       }

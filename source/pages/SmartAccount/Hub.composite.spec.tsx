@@ -943,3 +943,111 @@ describe('uninstall approval scope', () => {
     expect(mockSubmit).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('initial smart-account deployment refresh', () => {
+  const markCachedUndeployed = () => {
+    const current =
+      mockState.vault.accounts[KeyringAccountType.SmartAccount][0];
+    current.smartAccount = {
+      ...current.smartAccount,
+      isDeployed: false,
+      installedModules: [],
+    };
+  };
+
+  it('refreshes an undeployed cache and shows an account deployed outside this document', async () => {
+    markCachedUndeployed();
+    const refresh = deferred<any>();
+    mockEmitter.mockImplementation(async (methods) => {
+      if (methods[1] === 'hydrateSmartAccount') return refresh.promise;
+      if (methods[1] === 'getWalletSessionGeneration') return mockGeneration;
+      return undefined;
+    });
+    render(<SmartAccountHub />);
+    expect(screen.getByText('smartAccountHub.notDeployed')).toBeDefined();
+    await waitFor(() =>
+      expect(mockEmitter).toHaveBeenCalledWith(
+        ['wallet', 'hydrateSmartAccount'],
+        [0],
+        300000
+      )
+    );
+    await act(async () => refresh.resolve(metadata()));
+    expect(screen.queryByText('smartAccountHub.notDeployed')).toBeNull();
+    expect(screen.getAllByText(address(3)).length).toBeGreaterThan(0);
+    expect(mockSubmit).not.toHaveBeenCalled();
+  });
+
+  it('retains the conservative undeployed view when the refresh fails', async () => {
+    markCachedUndeployed();
+    mockEmitter.mockImplementation(async (methods) => {
+      if (methods[1] === 'hydrateSmartAccount')
+        throw new Error('Synthetic read unavailable');
+      return undefined;
+    });
+    render(<SmartAccountHub />);
+    await waitFor(() =>
+      expect(mockEmitter).toHaveBeenCalledWith(
+        ['wallet', 'hydrateSmartAccount'],
+        [0],
+        300000
+      )
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.getByText('smartAccountHub.notDeployed')).toBeDefined();
+    expect(mockSubmit).not.toHaveBeenCalled();
+    expect(mockAlert.error).not.toHaveBeenCalled();
+  });
+
+  it('does not apply a formerly undeployed account refresh after selecting another account', async () => {
+    markCachedUndeployed();
+    const oldRead = deferred<any>();
+    mockEmitter.mockImplementation(async (methods, params) => {
+      if (methods[1] === 'getWalletSessionGeneration') return mockGeneration;
+      if (methods[1] === 'hydrateSmartAccount')
+        return params[0] === 0 ? oldRead.promise : metadata(10);
+      return undefined;
+    });
+    const view = render(<SmartAccountHub />);
+    await waitFor(() =>
+      expect(mockEmitter).toHaveBeenCalledWith(
+        ['wallet', 'hydrateSmartAccount'],
+        [0],
+        300000
+      )
+    );
+    select(1);
+    view.rerender(<SmartAccountHub />);
+    await waitFor(() =>
+      expect(screen.getAllByText(address(13)).length).toBeGreaterThan(0)
+    );
+    await act(async () => oldRead.resolve(metadata(20)));
+    expect(screen.queryByText(address(23))).toBeNull();
+    expect(screen.getAllByText(address(13)).length).toBeGreaterThan(0);
+    expect(mockSubmit).not.toHaveBeenCalled();
+  });
+
+  it.each(['locked', 'ordinary account'])(
+    'does not hydrate an inadmissible %s view',
+    async (kind) => {
+      markCachedUndeployed();
+      if (kind === 'locked') mockUnlocked = false;
+      else
+        mockState.vault.accounts[
+          KeyringAccountType.SmartAccount
+        ][0].isSmartAccount = false;
+      render(<SmartAccountHub />);
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(
+        mockEmitter.mock.calls.filter(
+          ([methods]) => methods[1] === 'hydrateSmartAccount'
+        )
+      ).toHaveLength(0);
+      expect(mockSubmit).not.toHaveBeenCalled();
+    }
+  );
+});

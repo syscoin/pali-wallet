@@ -1,4 +1,5 @@
 /** @jest-environment jsdom */
+import '@testing-library/jest-dom';
 import {
   act,
   fireEvent,
@@ -207,10 +208,13 @@ it('surfaces a preparation failure without signing and permits explicit retry', 
     ).toBeTruthy()
   );
   expect(sign().disabled).toBe(true);
+  expect(screen.getByText('send.feeUnavailable')).toBeVisible();
+  expect(screen.queryByText('send.calculating')).not.toBeInTheDocument();
   expect(mockSubmit).not.toHaveBeenCalled();
   mockQuote.mockResolvedValue(quote());
   fireEvent.click(screen.getByRole('button', { name: 'send.refreshFeeQuote' }));
   await ready();
+  expect(screen.queryByText('send.feeUnavailable')).not.toBeInTheDocument();
 });
 
 it('does not introduce AA preparation into the existing EOA route', async () => {

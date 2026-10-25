@@ -140,6 +140,7 @@ const ImportPhrase: React.FC = () => {
         className="flex flex-col gap-4 items-center w-full max-w-xs"
       >
         <Form.Item
+          className="w-[17.5rem]"
           name="phrase"
           rules={[
             {
@@ -210,7 +211,7 @@ const ImportPhrase: React.FC = () => {
                   : setShowModal(false)
               }
               style={{ padding: '15px 48px 15px 15px' }}
-              className={`${formBorderStatusStyle} ${textAreaNotVisibleStyle} bg-fields-input-primary overflow-hidden max-w-[17.5rem] w-[17.5rem] h-[5.625rem] text-brand-graylight text-sm border focus:border-fields-input-borderfocus rounded-lg outline-none resize-none `}
+              className={`${formBorderStatusStyle} ${textAreaNotVisibleStyle} bg-fields-input-primary overflow-hidden w-full h-[5.625rem] text-brand-graylight text-sm border focus:border-fields-input-borderfocus rounded-lg outline-none resize-none `}
               placeholder={t('import.pasteYourWalletSeed')}
               onKeyPress={handleKeypress}
             />
@@ -253,7 +254,7 @@ const ImportPhrase: React.FC = () => {
               seedIsValid
                 ? 'cursor-pointer opacity-100'
                 : 'cursor-not-allowed opacity-60'
-            } bg-brand-deepPink100 w-[17.5rem] mt-3 h-10 text-white text-base font-base font-medium rounded-2xl`}
+            } bg-brand-deepPink100 w-[17.5rem] mt-3 h-10 text-bkg-1 text-base font-base font-medium rounded-2xl`}
           >
             {t(isRecovery ? 'buttons.recoverWallet' : 'buttons.import')}
           </Button>

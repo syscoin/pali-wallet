@@ -1,5 +1,6 @@
 /** @jest-environment jsdom */
-import { render, screen } from '@testing-library/react';
+import '@testing-library/jest-dom';
+import { fireEvent, render, screen } from '@testing-library/react';
 import React from 'react';
 
 import { AssetMarketLinks } from './AssetMarketLinks';
@@ -98,7 +99,7 @@ it('keeps the exact coin and historical links, translations and link identity on
   const view = render(
     <AssetMarketLinks marketData={{ id: 'syscoin' }} t={t} />
   );
-  const tokenName = 'CoinGecko translated:tokens.tokenPage';
+  const tokenName = 'translated:tokens.tokenPage';
   const token = screen.getByRole('link', { name: tokenName });
   const history = screen.getByRole('link', {
     name: 'translated:tokens.historicalData',
@@ -123,4 +124,29 @@ it('keeps the exact coin and historical links, translations and link identity on
   expect(document.activeElement).toBe(token);
   expect(screen.getByRole('link', { name: tokenName })).toBe(token);
   expect(screen.getByText('translated:tokens.viewOnCoinGecko')).toBeTruthy();
+});
+
+it('hides a failed decorative logo while retaining the translated, focusable link', () => {
+  render(<AssetMarketLinks marketData={{ id: 'syscoin' }} t={t} />);
+  const token = screen.getByRole('link', {
+    name: 'translated:tokens.tokenPage',
+  });
+  const logo = token.querySelector('img');
+  expect(logo).not.toBeNull();
+  expect(logo).toHaveAttribute('alt', '');
+  expect(logo).toHaveAttribute('aria-hidden', 'true');
+  expect(logo).toBeVisible();
+  fireEvent.error(logo!);
+  expect(logo).not.toBeVisible();
+  expect(
+    screen.getByRole('link', { name: 'translated:tokens.tokenPage' })
+  ).toBe(token);
+  expect(token).toHaveAttribute(
+    'href',
+    'https://www.coingecko.com/en/coins/syscoin'
+  );
+  expect(token).toHaveAttribute('target', '_blank');
+  expect(token).toHaveAttribute('rel', 'noopener noreferrer');
+  token.focus();
+  expect(document.activeElement).toBe(token);
 });

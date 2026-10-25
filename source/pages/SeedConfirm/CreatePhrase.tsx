@@ -126,9 +126,15 @@ export const CreatePhrase = () => {
           displayMode="words"
           className="w-[17.5rem] max-w-[17.5rem]"
         />
-        {isGenerating && <p role="status">{t('buttons.loading')}</p>}
+        {isGenerating && (
+          <p role="status" className="text-brand-gray200">
+            {t('buttons.loading')}
+          </p>
+        )}
         {generationFailed && (
-          <p role="alert">{t('settings.walletSetupFailed')}</p>
+          <p role="alert" className="text-brand-gray200">
+            {t('settings.walletSetupFailed')}
+          </p>
         )}
 
         <div className="flex w-full flex-col space-y-6 mt-2 gap-2 z-20">
@@ -156,7 +162,7 @@ export const CreatePhrase = () => {
               type="button"
               className={`bg-brand-deepPink100 ${
                 isTermsConfirmed ? 'opacity-100' : 'opacity-60'
-              } w-[17.5rem] h-10 text-white text-base font-base font-medium rounded-2xl`}
+              } w-[17.5rem] h-10 text-bkg-1 text-base font-base font-medium rounded-2xl`}
               onClick={handleNext}
             >
               {t('buttons.next')}

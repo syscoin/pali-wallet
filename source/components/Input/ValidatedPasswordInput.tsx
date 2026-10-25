@@ -369,7 +369,7 @@ export const ValidatedPasswordInput: React.FC<IValidatedPasswordInputProps> = ({
             validationTrigger === 'submit' ? (
               <button
                 type="button"
-                className="text-brand-blue500 text-xs font-medium disabled:opacity-50"
+                className="text-content-primary text-xs font-medium disabled:opacity-50"
                 disabled={!hasPassword || isValidating}
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={handleExplicitValidation}

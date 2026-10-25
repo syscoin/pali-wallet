@@ -640,6 +640,132 @@ for (const { standard, assets } of scenarios) {
                       .inputValue(),
                   };
                 } else {
+                  const amount = page.locator('#with-max-button');
+                  const next = page.getByRole('button', {
+                    name: en.buttons.next,
+                    exact: true,
+                  });
+                  for (const [value, message] of [
+                    ['0', en.send.amountMustBePositiveInteger],
+                    ['1.5', en.send.amountMustBePositiveInteger],
+                    [
+                      (BigInt(asset.quantity) + BigInt(1)).toString(),
+                      en.send.youOnlyOwn.replace('{{amount}}', asset.quantity),
+                    ],
+                  ]) {
+                    await amount.fill(value);
+                    await amount.press('Tab');
+                    const error = page
+                      .locator('.ant-form-item-explain-error')
+                      .first();
+                    await expect(error).toHaveText(message);
+                    await error.evaluate(async (element) => {
+                      await new Promise(requestAnimationFrame);
+                      const boundary =
+                        element.closest('.ant-form-item') || element;
+                      await Promise.all(
+                        boundary
+                          .getAnimations({ subtree: true })
+                          .filter(
+                            (a) =>
+                              a.playState === 'running' &&
+                              Number.isFinite(
+                                a.effect?.getComputedTiming().endTime
+                              )
+                          )
+                          .map((a) => a.finished.catch(() => undefined))
+                      );
+                      await new Promise(requestAnimationFrame);
+                      await new Promise(requestAnimationFrame);
+                    });
+                    await page.bringToFront();
+                    for (let attempt = 0; attempt < 16; attempt++) {
+                      const box = await error.boundingBox();
+                      if (
+                        box &&
+                        box.y > 2 &&
+                        box.y + box.height < viewport.height - 65
+                      )
+                        break;
+                      await page.mouse.move(
+                        viewport.width - 12,
+                        viewport.height / 2
+                      );
+                      await page.mouse.wheel(0, box && box.y < 2 ? -180 : 180);
+                      await page.waitForTimeout(100);
+                    }
+                    const errorGeometry = await geometry(error);
+                    expect(errorGeometry.text).toBe(message);
+                    for (const rect of errorGeometry.textRects) {
+                      expect(rect.left).toBeGreaterThanOrEqual(
+                        errorGeometry.target.bounds.left - 0.5
+                      );
+                      expect(rect.right).toBeLessThanOrEqual(
+                        errorGeometry.target.bounds.right + 0.5
+                      );
+                    }
+                    expect(
+                      errorGeometry.target.bounds.top
+                    ).toBeGreaterThanOrEqual(0);
+                    expect(errorGeometry.target.bounds.bottom).toBeLessThan(
+                      viewport.height - 45
+                    );
+                    expect(errorGeometry.hits[0].exposed).toBe(true);
+                    await info.attach(
+                      `${asset.control}-quantity-validation-${value}-${viewport.width}`,
+                      {
+                        contentType: 'application/json',
+                        body: JSON.stringify({
+                          value,
+                          text: await error.textContent(),
+                          errorGeometry,
+                        }),
+                      }
+                    );
+                    // Dismiss the browser's native invalid-input bubble before the public UI capture.
+                    await page.mouse.click(viewport.width - 4, 100);
+                    await page.evaluate(
+                      () =>
+                        new Promise((resolve) =>
+                          requestAnimationFrame(() =>
+                            requestAnimationFrame(resolve)
+                          )
+                        )
+                    );
+                    await info.attach(
+                      `${asset.control}-quantity-feedback-${value}-${viewport.width}`,
+                      {
+                        contentType: 'image/png',
+                        body: await page.screenshot({ animations: 'disabled' }),
+                      }
+                    );
+                    await expect(
+                      page.getByText(message, { exact: true })
+                    ).toBeVisible();
+                    await next.click();
+                    await expect(page).toHaveURL(/#\/send\/eth$/);
+                    await expect(amount).toHaveValue(value);
+                    await info.attach(
+                      `${asset.control}-invalid-quantity-${value}-${viewport.width}`,
+                      {
+                        contentType: 'image/png',
+                        body: await page.screenshot({ animations: 'disabled' }),
+                      }
+                    );
+                  }
+                  await amount.fill('1');
+                  await amount.press('Tab');
+                  await expect(
+                    page.getByText(en.send.amountMustBePositiveInteger, {
+                      exact: true,
+                    })
+                  ).toHaveCount(0);
+                  await expect(
+                    page.getByText(
+                      en.send.youOnlyOwn.replace('{{amount}}', asset.quantity),
+                      { exact: true }
+                    )
+                  ).toHaveCount(0);
                   const max = page.getByRole('button', {
                     name: en.send.max,
                     exact: true,

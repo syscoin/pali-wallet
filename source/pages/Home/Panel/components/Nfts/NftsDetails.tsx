@@ -18,6 +18,7 @@ import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { INetworkType } from 'types/network';
+import { INftTokenIdsResult } from 'types/tokens';
 import { ellipsis } from 'utils/index';
 import { NFT_FALLBACK_IMAGE } from 'utils/nftFallback';
 import { getNftQuantity } from 'utils/nftQuantity';
@@ -132,15 +133,13 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
             currentAccount.address,
             currentNft.tokenStandard || 'ERC-721',
           ]
-        )) as { balance: number; tokenId: string }[] & {
-          hasMore?: boolean;
-          requiresManualEntry?: boolean;
-        };
+        )) as INftTokenIdsResult;
         if (!current) return;
-        setNftTokenIds(result || []);
+        const tokens = result?.tokens || [];
+        setNftTokenIds(tokens);
         setHasMoreTokens(result?.hasMore || false);
-        if (result?.length > 0 && !selectedTokenId && !manualTokenId) {
-          setSelectedTokenId(result[0].tokenId);
+        if (tokens.length > 0 && !selectedTokenId && !manualTokenId) {
+          setSelectedTokenId(tokens[0].tokenId);
         }
       } catch (error) {
         console.error('Error loading NFT token IDs:', error);
@@ -361,7 +360,7 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
                       <button
                         type="button"
                         onClick={openCollectionOnExplorer}
-                        className="text-brand-royalblue text-xs hover:underline flex items-center gap-1"
+                        className="text-brand-royalbluemedium text-xs hover:underline flex items-center gap-1"
                       >
                         <span>{t('send.viewAllOnExplorer')}</span>
                         <ExternalLinkIcon size={12} />

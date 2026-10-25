@@ -472,12 +472,27 @@ test('BLS management links the node and preserves operator authorization through
             prepared.request,
           ]);
           const popup = await popupFor(wallet!.context, page, id);
-          if (service)
+          if (service) {
             await expect(
               popup
                 .getByText(target || 'Remove registration', { exact: true })
                 .first()
             ).toBeVisible();
+            // These requests change only NEVM; the verified empty payout script
+            // stays empty and must not be described as another removal.
+            const payoutChange = popup
+              .getByRole('heading', {
+                name: 'Operator payout script · unchanged',
+                exact: true,
+              })
+              .locator('..');
+            await expect(
+              payoutChange.getByText('Not set', { exact: true })
+            ).toHaveCount(2);
+            await expect(
+              payoutChange.getByText('Remove registration', { exact: true })
+            ).toHaveCount(0);
+          }
           await popup.getByLabel('Wallet password').fill(E2E_CONFIG.password);
           await capture(popup);
           await popup.getByRole('button', { name: 'Authorize update' }).click();

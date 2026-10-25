@@ -92,9 +92,13 @@ export const CallsStatus: React.FC = () => {
 
       <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
         <div className="bg-bkg-3 rounded-lg p-4 space-y-2">
-          <div className="flex justify-between text-sm">
-            <span className="text-brand-gray200">{t('send.status')}</span>
-            <span className={`font-medium ${statusColor}`}>
+          <div className="flex justify-between gap-2 text-sm">
+            <span className="shrink-0 text-brand-gray200">
+              {t('send.status')}
+            </span>
+            <span
+              className={`min-w-0 text-right break-words font-medium ${statusColor}`}
+            >
               {statusLabel} ({callsStatus.status})
             </span>
           </div>

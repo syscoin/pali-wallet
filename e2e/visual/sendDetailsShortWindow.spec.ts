@@ -4,6 +4,7 @@ import path from 'path';
 
 import en from '../../source/assets/locales/en.json';
 import { E2E_CONFIG } from '../harness/config';
+import { captureForegroundContrast } from '../harness/foregroundContrast';
 import {
   createIsolatedVaultFixture,
   installIsolatedVaultRoutes,
@@ -374,6 +375,34 @@ for (const { width, height } of viewports) {
         await expect(
           page.getByText('Lock Time:', { exact: true })
         ).toBeAttached();
+        // These passive asset quantities are part of the unsigned review, not
+        // disabled controls. Read the real composed colors on their opaque
+        // cards, while preserving every existing amount and Cancel assertion.
+        const assetAmounts = page
+          .locator('span.ant-typography')
+          .filter({ hasText: new RegExp(`^[0-9][0-9.,]*\\s+${SPT_SYMBOL}$`) });
+        expect(await assetAmounts.count()).toBeGreaterThanOrEqual(2);
+        const reviewedAssetAmounts = await assetAmounts.allTextContents();
+        for (let index = 0; index < reviewedAssetAmounts.length; index += 1) {
+          const result = await captureForegroundContrast(
+            assetAmounts.nth(index),
+            test.info(),
+            `${asset}-${width}x${height}-asset-amount-${index}`
+          );
+          expect(result.disabled).toBe(false);
+          expect(result.minimum).toBe(4.5);
+        }
+        await expect(assetAmounts).toHaveText(reviewedAssetAmounts);
+        const nativeAmount = page
+          .locator('span.ant-typography')
+          .filter({ hasText: /^[0-9][0-9.,]*\s+TSYS$/ })
+          .first();
+        const nativeResult = await captureForegroundContrast(
+          nativeAmount,
+          test.info(),
+          `${asset}-${width}x${height}-native-amount-control`
+        );
+        expect(nativeResult.disabled).toBe(false);
         await wheelReveal(page, confirm);
         await capture(page, `${asset}-${height}-confirm-expanded`);
         await observe(page, confirm, `${asset}-${height}-confirm`);

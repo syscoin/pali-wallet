@@ -6,6 +6,7 @@ import path from 'path';
 import en from '../../source/assets/locales/en.json';
 import { E2E_CONFIG } from '../harness/config';
 import { dismissRejectedApproval } from '../harness/dismissRejectedApproval';
+import { captureForegroundContrast } from '../harness/foregroundContrast';
 import {
   createIsolatedVaultFixture,
   installIsolatedVaultRoutes,
@@ -108,7 +109,19 @@ test('connection account Copy supports keyboard activation without changing sele
       async () => {
         await wallet!.importSeedAndCreatePassword();
         await wallet!.switchNetwork('Syscoin NEVM Testnet', 'EVM');
-        await wallet!.gotoRoute('#/settings/account/new');
+        await wallet!.page
+          .getByRole('button', {
+            name: en.generalMenu.generalOptions,
+            exact: true,
+          })
+          .click();
+        await wallet!.page
+          .getByRole('menuitem', {
+            name: en.accountMenu.createNewAccount,
+            exact: true,
+          })
+          .click();
+        await expect(wallet!.page).toHaveURL(/#\/settings\/account\/new$/);
         await wallet!.page.locator('#account-name-input').fill(secondLabel);
         await wallet!.page.locator('#create-btn').click();
         await wallet!.page
@@ -135,11 +148,54 @@ test('connection account Copy supports keyboard activation without changing sele
     popup = await popupFor(wallet.context, dapp, requestId);
     await popup.setViewportSize({ width: 400, height: 620 });
     const approval = popup;
+    for (const viewport of [
+      { width: 400, height: 620 },
+      { width: 320, height: 360 },
+    ]) {
+      await approval.setViewportSize(viewport);
+      for (const action of [en.buttons.cancel, en.buttons.confirm]) {
+        const button = approval.getByRole('button', {
+          name: action,
+          exact: true,
+        });
+        await expect(button).toBeEnabled();
+        await approval.mouse.move(0, 0);
+        await captureForegroundContrast(
+          button,
+          info,
+          `connection-${action}-default-${viewport.width}`
+        );
+        await button.hover();
+        await captureForegroundContrast(
+          button,
+          info,
+          `connection-${action}-hover-${viewport.width}`
+        );
+        // Accent fill and label changes must stay readable during hover too.
+        expect(
+          await button.evaluate(
+            (node) => getComputedStyle(node).transitionProperty
+          )
+        ).not.toMatch(/(^|,\s*)(all|color|background-color)(,|$)/);
+      }
+      await approval.mouse.move(0, 0);
+      await captureForegroundContrast(
+        approval.getByRole('link', {
+          name: en.connections.learnMore,
+          exact: true,
+        }),
+        info,
+        `connection-learn-more-${viewport.width}`
+      );
+    }
+    await approval.mouse.move(0, 0);
+    await approval.setViewportSize({ width: 400, height: 620 });
     const accountRow = (label: string) =>
       approval.locator('[role="button"][tabindex="0"]').filter({
         has: approval.getByText(label, { exact: true }),
       });
     const firstRow = accountRow(first!.label);
+    await firstRow.scrollIntoViewIfNeeded();
     const secondRow = accountRow(secondLabel);
     const firstCopy = firstRow.getByRole('button', {
       name: en.transactions.copyAddress,

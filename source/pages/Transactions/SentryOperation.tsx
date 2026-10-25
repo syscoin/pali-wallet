@@ -33,7 +33,8 @@ const Change = ({
         <div>
           <dt className="text-brand-gray200">{t('sentry.proposed')}</dt>
           <dd className="mt-1 break-all font-mono">
-            {next || t('sentry.removeRegistration')}
+            {next ||
+              t(previous ? 'sentry.removeRegistration' : 'sentry.notSet')}
           </dd>
         </div>
       </dl>

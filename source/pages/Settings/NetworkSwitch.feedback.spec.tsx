@@ -71,6 +71,8 @@ jest.mock('components/Icon/Icon', () => ({
   LoadingSvg: () => null,
 }));
 jest.mock('components/index', () => ({
+  PageActionFooter: jest.requireActual('components/PageActionFooter')
+    .PageActionFooter,
   Button: jest.requireActual('components/Button/Button').Button,
 }));
 jest.mock('utils/browser', () => ({

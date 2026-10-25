@@ -17,6 +17,8 @@ import {
 const PASSWORD = 'UnlockRecoverySyntheticOnly!2026';
 const WRONG_PASSWORD = 'WrongUnlockRecoverySyntheticOnly!2026';
 
+test.use({ trace: 'off', video: 'off', screenshot: 'off' });
+
 const publicState = (page: Page) =>
   page.evaluate(async () => {
     const state = await chrome.runtime.sendMessage({ type: 'getCurrentState' });
@@ -215,6 +217,159 @@ test('pending Unlock excludes recovery until the genuine failure is delivered', 
         expect((await publicState(page)).unlocked).toBe(false);
         observations.pending = await publicState(page);
         await expect(page.locator('#unlock-btn')).toBeDisabled();
+      }
+    );
+    await wallet.step(
+      'unlock-recovery: active progress stays visible and duplicate actions stay blocked',
+      async () => {
+        for (const size of [
+          { width: 400, height: 620 },
+          { width: 320, height: 360 },
+        ]) {
+          await page.setViewportSize(size);
+          const unlock = page.locator('#unlock-btn');
+          await expect(unlock).toHaveAttribute('aria-busy', 'true');
+          const spinner = unlock.locator(':scope > svg');
+          await expect(spinner).toHaveCount(1);
+          await spinner.evaluate(async (element) => {
+            await document.fonts.ready;
+            const animations = new Set<Animation>();
+            for (
+              let node: Element | null = element;
+              node;
+              node = node.parentElement
+            ) {
+              for (const animation of node.getAnimations()) {
+                if (
+                  animation.playState === 'running' &&
+                  Number.isFinite(
+                    Number(animation.effect?.getComputedTiming().endTime)
+                  )
+                ) {
+                  animations.add(animation);
+                }
+              }
+            }
+            await Promise.all(
+              [...animations].map((animation) =>
+                animation.finished.catch(() => undefined)
+              )
+            );
+          });
+          const progress = await spinner.evaluate((element) => {
+            const style = getComputedStyle(element);
+            const button = element.closest('button')!;
+            const background = getComputedStyle(button);
+            const opacity = [];
+            const effects = [];
+            for (
+              let node: Element | null = element;
+              node;
+              node = node.parentElement
+            ) {
+              const current = getComputedStyle(node);
+              opacity.push(Number(current.opacity));
+              effects.push(
+                current.filter,
+                current.backdropFilter,
+                current.mixBlendMode
+              );
+            }
+            const luminance = (color: string) => {
+              const values = color.match(/[\d.]+/g)!.map(Number);
+              if (values.length !== 3)
+                throw new Error('Expected opaque RGB color');
+              return values.reduce((sum, value, index) => {
+                const scaled = value / 255;
+                return (
+                  sum +
+                  [0.2126, 0.7152, 0.0722][index] *
+                    (scaled <= 0.04045
+                      ? scaled / 12.92
+                      : ((scaled + 0.055) / 1.055) ** 2.4)
+                );
+              }, 0);
+            };
+            const fg = luminance(style.color);
+            const bg = luminance(background.backgroundColor);
+            return {
+              ratio: (Math.max(fg, bg) + 0.05) / (Math.min(fg, bg) + 0.05),
+              opacity,
+              effects,
+              backgroundImage: background.backgroundImage,
+              layoutWidth: parseFloat(style.width),
+              layoutHeight: parseFloat(style.height),
+              bounds: (() => {
+                const rect = element.getBoundingClientRect();
+                return {
+                  left: rect.left,
+                  right: rect.right,
+                  top: rect.top,
+                  bottom: rect.bottom,
+                  viewportWidth: innerWidth,
+                  viewportHeight: innerHeight,
+                };
+              })(),
+              animation: style.animationName,
+            };
+          });
+          // This is an active progress signal on a disabled control. Opaque
+          // paint and ancestors make the solid-color calculation valid.
+          expect(progress.opacity.every((opacity) => opacity === 1)).toBe(true);
+          expect(
+            progress.effects.every((effect) =>
+              ['none', 'normal', ''].includes(effect)
+            )
+          ).toBe(true);
+          expect(progress.backgroundImage).toBe('none');
+          expect(progress.ratio).toBeGreaterThanOrEqual(3);
+          expect(progress.layoutWidth).toBe(24);
+          expect(progress.layoutHeight).toBe(
+            Number(await spinner.getAttribute('height'))
+          );
+          expect(progress.bounds.left).toBeGreaterThanOrEqual(0);
+          expect(progress.bounds.top).toBeGreaterThanOrEqual(0);
+          expect(progress.bounds.right).toBeLessThanOrEqual(
+            progress.bounds.viewportWidth
+          );
+          expect(progress.bounds.bottom).toBeLessThanOrEqual(
+            progress.bounds.viewportHeight
+          );
+          expect(progress.animation).not.toBe('none');
+          await info.attach(`unlock-busy-progress-${size.width}`, {
+            contentType: 'application/json',
+            body: JSON.stringify(progress),
+          });
+          const box = await unlock.boundingBox();
+          expect(box).not.toBeNull();
+          await page.mouse.click(
+            box!.x + box!.width / 2,
+            box!.y + box!.height / 2
+          );
+          await page.locator('#login #password').press('Enter');
+          await expect(unlock).toBeDisabled();
+          await expect(page.locator('#erase-wallet-link')).toBeDisabled();
+          expect(await snapshotDelivery()).toMatchObject({
+            held: true,
+            forwardedUnlocks: 1,
+            recoveryBegins: 0,
+            setupOrRecoveryCommits: 0,
+          });
+          const current = await publicState(page);
+          expect(current.unlocked).toBe(false);
+          expect(current.account).toEqual(
+            (observations.original as any).account
+          );
+          expect(current.network).toEqual(
+            (observations.original as any).network
+          );
+          await info.attach(`unlock-progress-${size.width}`, {
+            contentType: 'image/png',
+            body: await page.screenshot({
+              mask: [page.locator('input')],
+            }),
+          });
+        }
       }
     );
     await wallet.step(

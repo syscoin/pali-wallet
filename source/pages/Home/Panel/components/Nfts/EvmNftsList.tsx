@@ -215,8 +215,8 @@ export const EvmNftsList = ({
             )}
 
             {/* Collection Info */}
-            <div className="flex flex-col gap-y-1 flex-1 text-left">
-              <div className="flex items-center gap-x-2">
+            <div className="flex flex-col gap-y-1 flex-1 min-w-0 text-left">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                 <span
                   className="text-brand-white"
                   title={collection.exactQuantity}
@@ -239,7 +239,7 @@ export const EvmNftsList = ({
                   {truncate(collection.symbol, 10).toUpperCase()}
                 </span>
                 <span
-                  className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${getTokenTypeBadgeColor(
+                  className={`px-2 py-0.5 rounded-full text-[10px] font-medium shrink-0 whitespace-nowrap ${getTokenTypeBadgeColor(
                     collection.tokenStandard
                   )}`}
                 >

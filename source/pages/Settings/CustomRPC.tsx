@@ -1284,7 +1284,7 @@ const CustomRPCView = () => {
           {/* Currency and RPC info - more compact */}
           <div className="flex items-center justify-start gap-1.5 text-xs text-brand-gray200 group-hover:text-brand-white/90 transition-colors duration-300">
             <span className="inline-flex items-center gap-1 font-medium text-left">
-              <span className="text-brand-royalblue group-hover:text-white font-semibold text-xs">
+              <span className="text-content-secondary group-hover:text-white font-semibold text-xs">
                 ${chain.nativeCurrency.symbol.toUpperCase()}
               </span>
               <span className="text-brand-gray200 group-hover:text-brand-white/50 text-xs">

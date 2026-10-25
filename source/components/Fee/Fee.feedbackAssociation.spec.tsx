@@ -318,23 +318,30 @@ it.each([
     );
     expect(mockSubmit).not.toHaveBeenCalled();
 
-    const descriptionIds = (field().getAttribute('aria-describedby') ?? '')
-      .split(/\s+/)
-      .filter(Boolean);
-    expect(descriptionIds.length).toBeGreaterThan(0);
-    expect(new Set(descriptionIds).size).toBe(descriptionIds.length);
-    for (const id of descriptionIds) {
-      const matches = Array.from(document.querySelectorAll('[id]')).filter(
-        (element) => element.id === id
+    // Form validation finishes before AntD's debounced ErrorList commits.
+    // Observe the complete native description association after both settle.
+    await waitFor(() => {
+      const descriptionIds = (field().getAttribute('aria-describedby') ?? '')
+        .split(/\s+/)
+        .filter(Boolean);
+      expect(descriptionIds.length).toBeGreaterThan(0);
+      expect(new Set(descriptionIds).size).toBe(descriptionIds.length);
+      for (const id of descriptionIds) {
+        const matches = Array.from(document.querySelectorAll('[id]')).filter(
+          (element) => element.id === id
+        );
+        expect(matches).toHaveLength(1);
+      }
+      // The preserved blank AntD help reference contributes boundary whitespace;
+      // require the entire exact reason, with no additional words or substrings.
+      const escapedReason = safetyMessage.replace(
+        /[.*+?^${}()|[\]\\]/g,
+        '\\$&'
       );
-      expect(matches).toHaveLength(1);
-    }
-    // The preserved blank AntD help reference contributes boundary whitespace;
-    // require the entire exact reason, with no additional words or substrings.
-    const escapedReason = safetyMessage.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    expect(field()).toHaveAccessibleDescription(
-      new RegExp('^\\s*' + escapedReason + '\\s*$')
-    );
+      expect(field()).toHaveAccessibleDescription(
+        new RegExp('^\\s*' + escapedReason + '\\s*$')
+      );
+    });
 
     mockFeeChange.mockClear();
     fireEvent.change(field(), { target: { value: '0.00000002' } });

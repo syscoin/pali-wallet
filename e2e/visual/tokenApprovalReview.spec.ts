@@ -1,13 +1,19 @@
-import { expect, test, type Page, type TestInfo } from '@playwright/test';
+import {
+  expect,
+  test,
+  type Locator,
+  type Page,
+  type TestInfo,
+} from '@playwright/test';
 import { AbiCoder, Interface, formatUnits, id } from 'ethers';
 
 import en from '../../source/assets/locales/en.json';
 import { E2E_CONFIG } from '../harness/config';
-import { captureForegroundContrast } from '../harness/foregroundContrast';
 import {
   clickClosingPopup,
   dismissRejectedApproval,
 } from '../harness/dismissRejectedApproval';
+import { captureForegroundContrast } from '../harness/foregroundContrast';
 import {
   createIsolatedVaultFixture,
   installIsolatedVaultRoutes,
@@ -79,7 +85,8 @@ async function captureOpenApproval(
 async function withWallet(
   name: string,
   run: (wallet: PaliWallet, origin: string) => Promise<void>,
-  decimals = 8
+  decimals = 8,
+  networkGasPrice?: string
 ) {
   const previous = { ...E2E_CONFIG };
   const stepPrefix = decimals === 8 ? '' : `${name}: `;
@@ -120,6 +127,8 @@ async function withWallet(
       const replies = calls.map((call: any) => {
         let result: unknown;
         if (call.method === 'eth_estimateGas') result = '0x5208';
+        if (call.method === 'eth_gasPrice' && networkGasPrice)
+          result = networkGasPrice;
         if (call.method === 'eth_feeHistory')
           result = {
             oldestBlock: '0x1',
@@ -239,6 +248,103 @@ test('token approval review restores discarded drafts and shows the edited calld
             exact: true,
           })
           .check();
+        // Human prose keeps whole ordinary words; very long host tokens may wrap.
+        for (const viewport of [
+          { width: 400, height: 620 },
+          { width: 320, height: 360 },
+        ]) {
+          await popup.setViewportSize(viewport);
+          const description = dialog.getByText(
+            `${en.send.allow} ${origin} ${en.send.toWithdraw}:`,
+            { exact: true }
+          );
+          const observations = await description.evaluate((element) => {
+            const text = element.textContent || '';
+            const node = element.firstChild!;
+            const words = ['withdraw', 'spend', 'following', 'amount'];
+            return words.map((word) => {
+              const start = text.indexOf(word);
+              if (start < 0) throw new Error(`Missing ${word}`);
+              const range = document.createRange();
+              range.setStart(node, start);
+              range.setEnd(node, start + word.length);
+              const rects = Array.from(range.getClientRects());
+              return {
+                word,
+                lines: new Set(rects.map((rect) => Math.round(rect.top))).size,
+              };
+            });
+          });
+          await info.attach(`allowance-prose-${viewport.width}`, {
+            body: await popup.screenshot({ animations: 'disabled' }),
+            contentType: 'image/png',
+          });
+          await info.attach(`allowance-prose-geometry-${viewport.width}`, {
+            body: JSON.stringify({ origin, observations }),
+            contentType: 'application/json',
+          });
+          expect(observations.every((word) => word.lines === 1)).toBe(true);
+          for (let attempt = 0; attempt < 30; attempt++) {
+            if (
+              await input.evaluate(
+                (element) => element === document.activeElement
+              )
+            )
+              break;
+            await popup.keyboard.press('Tab');
+          }
+          await expect(input).toBeFocused();
+          for (let attempt = 0; attempt < 12; attempt++) {
+            const point = await input.evaluate((element) => {
+              const rect = element.getBoundingClientRect();
+              let visibleTop = 0;
+              let visibleBottom = innerHeight;
+              let owner: HTMLElement | null = null;
+              for (
+                let ancestor = element.parentElement;
+                ancestor;
+                ancestor = ancestor.parentElement
+              ) {
+                const style = getComputedStyle(ancestor);
+                if (!/auto|scroll|hidden|clip/.test(style.overflowY)) continue;
+                const area = ancestor.getBoundingClientRect();
+                visibleTop = Math.max(visibleTop, area.top);
+                visibleBottom = Math.min(visibleBottom, area.bottom);
+                if (
+                  !owner &&
+                  /auto|scroll/.test(style.overflowY) &&
+                  ancestor.scrollHeight > ancestor.clientHeight + 2
+                )
+                  owner = ancestor;
+              }
+              if (rect.top >= visibleTop && rect.bottom <= visibleBottom)
+                return null;
+              const area = (
+                owner || document.documentElement
+              ).getBoundingClientRect();
+              return {
+                x: Math.max(8, area.left + area.width / 2),
+                y: Math.max(visibleTop + 8, (visibleTop + visibleBottom) / 2),
+                delta: rect.top < visibleTop ? -80 : 80,
+              };
+            });
+            if (!point) break;
+            await popup.mouse.move(point.x, point.y);
+            await popup.mouse.wheel(0, point.delta);
+            await popup.evaluate(
+              () =>
+                new Promise((resolve) =>
+                  requestAnimationFrame(() => requestAnimationFrame(resolve))
+                )
+            );
+          }
+          await expect(input).toBeInViewport({ ratio: 1 });
+          await info.attach(`allowance-custom-input-${viewport.width}`, {
+            body: await popup.screenshot({ animations: 'disabled' }),
+            contentType: 'image/png',
+          });
+        }
+        await popup.setViewportSize({ width: 400, height: 620 });
         await input.fill('5');
         await dialog
           .getByRole('button', { name: en.buttons.save, exact: true })
@@ -1531,3 +1637,259 @@ for (const width of [400, 320]) {
     );
   });
 }
+
+test('token approval symbol and real fee choices retain readable text without changing the request', async ({}, info) => {
+  test.setTimeout(120_000);
+  expect([undefined, 'after']).toContain(
+    process.env.PALI_FOREGROUND_CONTRAST_MODE
+  );
+  expect(process.env.PALI_TEST_DAPP_REVISION).toMatch(/^[a-f0-9]{40}$/);
+  expect(E2E_CONFIG.extensionPath).toBe(
+    process.env.PALI_TEST_DAPP_EXTENSION_PATH
+  );
+  const runtime = extensionEvidence();
+  expect(runtime.sourceRevision).toBe(process.env.PALI_TEST_DAPP_REVISION);
+  const readable = async (target: Locator, label: string) => {
+    await expect(target).toBeEnabled();
+    await target.page().mouse.move(0, 0);
+    await captureForegroundContrast(target, info, `${label}-rest`);
+    await target.hover();
+    await captureForegroundContrast(target, info, `${label}-hover`);
+    await target.page().mouse.move(0, 0);
+  };
+  await withWallet(
+    'token-approval-fee-choice-contrast',
+    async (wallet, origin) => {
+      const { dapp, address } = await connect(wallet, origin);
+      const calldata = new Interface([
+        'function approve(address,uint256)',
+      ]).encodeFunctionData('approve', [spender, BigInt(100000000)]);
+      for (const recommendationOnly of [true, false]) {
+        await wallet.step(
+          `review ${
+            recommendationOnly ? 'suggested' : 'raised'
+          } fees without signing`,
+          async () => {
+            const transaction = {
+              from: address,
+              to: token,
+              value: '0x0',
+              data: calldata,
+              gas: recommendationOnly ? '0x11170' : '0x1000',
+              gasPrice: recommendationOnly ? '0x59682f00' : '0x1',
+            };
+            const request = await startRequest(dapp, 'eth_sendTransaction', [
+              transaction,
+            ]);
+            let popup = await popupFor(wallet.context, dapp, request);
+            if (new URL(popup.url()).pathname === '/external/spam-warning') {
+              const warning = JSON.parse(
+                new URL(popup.url()).searchParams.get('data') || '{}'
+              );
+              expect(warning).toMatchObject({
+                host: new URL(origin).origin,
+                eventName: 'spamWarningResponse',
+              });
+              const warningPopup = popup;
+              await clickClosingPopup({
+                click: () =>
+                  warningPopup
+                    .getByRole('button', {
+                      name: en.buttons.continue,
+                      exact: true,
+                    })
+                    .click(),
+                isClosed: () => warningPopup.isClosed(),
+              });
+              popup = await popupFor(wallet.context, dapp, request);
+            }
+            const url = new URL(popup.url());
+            expect(url.pathname).toBe('/external/tx/send/ethTx');
+            expect(
+              JSON.parse(url.searchParams.get('data') || '{}')
+            ).toMatchObject({
+              host: new URL(origin).origin,
+              eventName: 'txSend',
+              external: true,
+              tx: transaction,
+            });
+            await expect(
+              popup.getByRole('button', {
+                name: en.send.editPermission,
+                exact: true,
+              })
+            ).toBeVisible();
+            const useDapp = popup.getByRole('button', {
+              name: en.send.useDappFeeRequest,
+              exact: true,
+            });
+            const useNetwork = popup.getByRole('button', {
+              name: en.send.useNetworkFeeSuggestion,
+              exact: true,
+            });
+            await expect(useDapp).toBeEnabled();
+            if (recommendationOnly) await expect(useNetwork).toBeEnabled();
+            else await expect(useNetwork).toHaveCount(0);
+            for (const width of [400, 320]) {
+              await popup.setViewportSize({
+                width,
+                height: width === 320 ? 360 : 620,
+              });
+              const prefix = `approval-${
+                recommendationOnly ? 'suggested' : 'raised'
+              }-${width}`;
+              const symbol = popup.getByText('REVIEW', { exact: true });
+              await expect(symbol).toHaveCount(1);
+              await readable(symbol, `${prefix}-symbol`);
+              await readable(useDapp, `${prefix}-use-dapp`);
+              if (recommendationOnly)
+                await readable(useNetwork, `${prefix}-use-network`);
+            }
+            const rejected = await dismissRejectedApproval({
+              click: () =>
+                popup
+                  .getByRole('button', { name: en.buttons.cancel, exact: true })
+                  .click(),
+              isClosed: () => popup.isClosed(),
+              settle: () => settle(dapp, request),
+            });
+            expect(rejected.error?.code).toBe(4001);
+            expect(rejected.result).toBeUndefined();
+          }
+        );
+      }
+      expect(extensionEvidence()).toEqual(runtime);
+    },
+    8,
+    '0x77359400'
+  );
+});
+
+test('rejected popup bursts keep SpamWarning readable and preserve explicit blocking', async ({}, info) => {
+  test.setTimeout(120000);
+  expect(process.env.PALI_TEST_DAPP_REVISION).toMatch(/^[a-f0-9]{40}$/);
+  expect(E2E_CONFIG.extensionPath).toBe(
+    process.env.PALI_TEST_DAPP_EXTENSION_PATH
+  );
+  expect(process.env.PALI_FOREGROUND_CONTRAST_MODE).not.toBe('before');
+  expect(info.config.workers).toBe(1);
+  expect(info.retry).toBe(0);
+  let observed = false;
+  await withWallet('spam-warning-readable-actions', async (wallet, origin) => {
+    const { dapp, address } = await connect(wallet, origin);
+    const data = new Interface([
+      'function approve(address,uint256)',
+    ]).encodeFunctionData('approve', [spender, BigInt(1)]);
+    for (let attempt = 0; attempt < 4; attempt++) {
+      await wallet.step(
+        `ordinary approval attempt ${attempt + 1} is rejected or blocked`,
+        async () => {
+          const request = await startRequest(dapp, 'eth_sendTransaction', [
+            { from: address, to: token, value: '0x0', data },
+          ]);
+          const popup = await popupFor(wallet.context, dapp, request);
+          const url = new URL(popup.url());
+          if (url.pathname === '/external/spam-warning') {
+            observed = true;
+            expect(
+              JSON.parse(url.searchParams.get('data') || '{}')
+            ).toMatchObject({
+              host: new URL(origin).origin,
+              eventName: 'spamWarningResponse',
+            });
+            await expect(
+              popup.getByRole('heading', {
+                name: en.spamWarning.title,
+                exact: true,
+              })
+            ).toBeVisible();
+            for (const width of [400, 320]) {
+              await popup.setViewportSize({
+                width,
+                height: width === 320 ? 360 : 620,
+              });
+              const block = popup.getByRole('button', {
+                name: en.spamWarning.blockTemporarily,
+                exact: true,
+              });
+              const continuation = popup.getByRole('button', {
+                name: en.buttons.continue,
+                exact: true,
+              });
+              const count = popup.locator('span').filter({ hasText: /^3$/ });
+              const duration = popup
+                .locator('p')
+                .filter({ hasText: /minute|second/i })
+                .last();
+              for (const [label, target] of [
+                ['block', block],
+                ['continue', continuation],
+                ['count', count],
+                ['duration', duration],
+              ] as const) {
+                await popup.mouse.move(0, 0);
+                await captureForegroundContrast(
+                  target,
+                  info,
+                  `spam-${label}-${width}-rest`
+                );
+                if (label === 'block' || label === 'continue') {
+                  await target.hover();
+                  await captureForegroundContrast(
+                    target,
+                    info,
+                    `spam-${label}-${width}-hover`
+                  );
+                }
+              }
+            }
+            await clickClosingPopup({
+              click: () =>
+                popup
+                  .getByRole('button', {
+                    name: en.spamWarning.blockTemporarily,
+                    exact: true,
+                  })
+                  .click(),
+              isClosed: () => popup.isClosed(),
+            });
+            const result = await settle(dapp, request);
+            expect(result.error?.code).toBe(4100);
+            expect(result.result).toBeUndefined();
+            const blocked = await settle(
+              dapp,
+              await startRequest(dapp, 'eth_sendTransaction', [
+                { from: address, to: token, value: '0x0', data },
+              ])
+            );
+            expect(blocked.error?.code).toBe(4100);
+            expect(blocked.result).toBeUndefined();
+            await info.attach('spam-warning-normal-admission', {
+              body: JSON.stringify({
+                ...extensionEvidence(),
+                observed,
+                attempt: attempt + 1,
+                controllerStateReplaced: false,
+                realPopup: url.pathname,
+                broadcast: false,
+              }),
+              contentType: 'application/json',
+            });
+          } else {
+            expect(url.pathname).toBe('/external/tx/send/ethTx');
+            await clickClosingPopup({
+              click: () =>
+                popup
+                  .getByRole('button', { name: en.buttons.cancel, exact: true })
+                  .click(),
+              isClosed: () => popup.isClosed(),
+            });
+            expect((await settle(dapp, request)).error?.code).toBe(4001);
+          }
+        }
+      );
+      if (observed) break;
+    }
+    expect(observed).toBe(true);
+  });
+});

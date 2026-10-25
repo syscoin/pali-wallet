@@ -139,7 +139,7 @@ const Unlock: React.FC<{
           <Button
             id="unlock-btn"
             type="submit"
-            className="bg-brand-deepPink100 w-[17.5rem] h-10 text-white text-base	 font-base font-medium rounded-2xl"
+            className="bg-brand-deepPink100 w-[17.5rem] h-10 text-bkg-1 text-base	 font-base font-medium rounded-2xl [&[aria-busy=true]]:opacity-100 [&[aria-busy=true]>svg]:!text-bkg-1"
             loading={isLoading}
             disabled={isResetOpen}
           >

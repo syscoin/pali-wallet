@@ -23,6 +23,7 @@ import { restoreVaultSnapshot } from 'state/vault';
 import vaultCache from 'state/vaultCache';
 import { setActiveSlip44 } from 'state/vaultGlobal';
 import { INetworkType, KeyringAccountType } from 'types/network';
+import { walletPersistenceMutex } from 'utils/asyncMutex';
 import { chromeStorage } from 'utils/storageAPI';
 
 import MainController from './MainController';
@@ -169,16 +170,6 @@ const watched = '0x2B5AD5c4795c026514f8317c7a215E218DcCD6cF';
 it.each(['private first', 'watch first'])(
   'preserves the successful private/watch import and permits the collision to retry: %s',
   async (order) => {
-    const url = `${store
-      .getState()
-      .vault.activeNetwork.url.replace(
-        /\/$/,
-        ''
-      )}/api/v2/address/${watched}?details=basic`;
-    jest.mocked(fetch).mockImplementation(async (input) => {
-      expect(input).toBe(url);
-      return { ok: true, json: async () => ({ address: watched }) } as Response;
-    });
     const startPrivate = () =>
       wallet.importAccountFromPrivateKey(keys[0], 'Private');
     const startWatch = () =>
@@ -205,44 +196,59 @@ it.each(['private first', 'watch first'])(
         (account: any) => account.address === watched
       )
     ).toMatchObject({ xprv: '', xpub: watched });
-    expect(fetch).toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
   }
 );
 
 it.each(['reset', 'keyring change'])(
-  'rejects a stale delayed import after %s without blocking new imports',
+  'rejects a stale writer-queued EVM import after %s without blocking new imports',
   async (change) => {
-    let release!: (response: Response) => void;
-    let started!: () => void;
-    const validating = new Promise<void>((resolve) => {
-      started = resolve;
-    });
-    jest.mocked(fetch).mockImplementationOnce(async () => {
-      started();
-      return new Promise<Response>((resolve) => {
-        release = resolve;
-      });
-    });
+    // EVM watch imports no longer make a Blockbook request. Hold their real
+    // durable writer boundary instead; SDK private derivation remains real.
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    const blocker = walletPersistenceMutex.runExclusive(() => held);
+    const queued = jest.spyOn(walletPersistenceMutex, 'runExclusive');
     const pending = wallet.importWatchOnlyFromController(watched, 'Old watch');
     const rejection = expect(pending).rejects.toThrow('Wallet session changed');
-    await validating;
-    if (change === 'reset') {
-      wallet.walletSessionGeneration += 1;
-      wallet.walletStateGeneration += 1;
-    } else {
-      const replacement = Object.create(manager);
-      wallet.getActiveKeyring = () => replacement;
+    let freshPending: Promise<any> | undefined;
+    try {
+      expect(queued).toHaveBeenCalledTimes(1);
+      expect(chromeStorage.setItems).not.toHaveBeenCalled();
+      if (change === 'reset') {
+        wallet.walletSessionGeneration += 1;
+        wallet.walletStateGeneration += 1;
+      } else {
+        const replacement = Object.create(manager);
+        wallet.getActiveKeyring = () => replacement;
+      }
+      freshPending = wallet.importAccountFromPrivateKey(keys[0], 'Fresh');
+      // Observe both callers entering the real FIFO before releasing it.
+      // This only drains ordinary promise turns; it changes no clock or I/O.
+      for (let turn = 0; turn < 20 && queued.mock.calls.length < 2; turn++)
+        await Promise.resolve();
+      expect(queued).toHaveBeenCalledTimes(2);
+      expect(chromeStorage.setItems).not.toHaveBeenCalled();
+    } finally {
+      release();
+      await blocker;
+      await Promise.allSettled([
+        pending,
+        ...(freshPending ? [freshPending] : []),
+      ]);
     }
-    const fresh = await wallet.importAccountFromPrivateKey(keys[0], 'Fresh');
-    expect(fresh.address).toBeTruthy();
-    release({ ok: true, json: async () => ({ address: watched }) } as Response);
     await rejection;
+    const fresh = await freshPending!;
+    expect(fresh.address).toBeTruthy();
     expect(
-      Object.values((await loadSlip44State(60)).accounts.Imported)
-    ).toHaveLength(1);
+      Object.values((await loadSlip44State(60)).accounts.Imported).map(
+        (account: any) => account.address
+      )
+    ).toEqual([fresh.address]);
     expect(store.getState().vault.accounts.Imported[0].address).toBe(
       fresh.address
     );
+    expect(fetch).not.toHaveBeenCalled();
   }
 );
 

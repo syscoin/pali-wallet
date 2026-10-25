@@ -21,7 +21,7 @@ export const SeedConfirm = () => {
   const [passedGeneration, setPassedGeneration] = useState<number>();
   const [created, setCreated] = useState(false);
   const creationRequested = useRef(false);
-  const { secrets, clear } = useOnboardingSecrets();
+  const { secrets, clear, consumeContinuation } = useOnboardingSecrets();
   const { password, phrase: createdSeed } = secrets;
   const { state } = useLocation();
   const next = state?.next === true;
@@ -87,14 +87,20 @@ export const SeedConfirm = () => {
           false
         );
       } catch {
+        if (!mounted.current) return;
         alert.error(t('settings.walletSetupFailed'));
         reloadWalletForRecovery();
         return;
       }
 
+      if (!mounted.current) return;
       const confirmed = await refreshControllerStatus();
-      if (confirmed) navigate('/home');
-      else reloadWalletForRecovery();
+      if (!mounted.current) return;
+      if (confirmed) {
+        const destination = consumeContinuation();
+        if (destination) navigate(destination, { replace: true });
+        else navigate('/home');
+      } else reloadWalletForRecovery();
     }
   };
   if (created) return <AppLoadingSkeleton />;

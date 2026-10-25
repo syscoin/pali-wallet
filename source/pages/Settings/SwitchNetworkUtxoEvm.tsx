@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { ChainIcon } from 'components/ChainIcon';
-import { Button } from 'components/index';
+import { Button, PageActionFooter } from 'components/index';
 import { useQueryData } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
@@ -89,7 +89,7 @@ const SwitchNeworkUtxoEvm: React.FC = () => {
   return (
     <>
       <div className="flex flex-col items-center justify-center w-full">
-        <div className="relative top-5 flex flex-col pb-4 pt-4 w-full border-b border-t border-dashed border-dashed-dark">
+        <div className="mt-5 flex flex-col pb-4 pt-4 w-full border-b border-t border-dashed border-dashed-dark">
           <h2 className="text-center text-lg">
             {t('send.allow')} {host} {t('settings.toSwitchNetwork')}?
           </h2>
@@ -100,7 +100,7 @@ const SwitchNeworkUtxoEvm: React.FC = () => {
             <div className="flex flex-col gap-3 items-start justify-center mt-4 px-4 py-2 w-full text-left text-sm divide-bkg-3 divide-dashed divide-y">
               <div className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
                 {t('settings.previousChain')}
-                <span className="flex items-center gap-2 text-brand-royalblue text-xs transition-opacity hover:opacity-90">
+                <span className="flex items-center gap-2 text-content-secondary text-xs transition-opacity hover:opacity-90">
                   <ChainIcon
                     chainId={previousNetwork[0]}
                     size={18}
@@ -113,7 +113,7 @@ const SwitchNeworkUtxoEvm: React.FC = () => {
 
               <div className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
                 {t('settings.newChain')}
-                <span className="flex items-center gap-2 text-brand-royalblue text-xs transition-opacity hover:opacity-90">
+                <span className="flex items-center gap-2 text-content-secondary text-xs transition-opacity hover:opacity-90">
                   <ChainIcon
                     chainId={newNetwork?.chainId}
                     size={18}
@@ -128,14 +128,14 @@ const SwitchNeworkUtxoEvm: React.FC = () => {
 
               <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
                 {t('settings.newNetworkUrl')}
-                <span className="text-brand-royalblue text-xs break-all transition-opacity hover:opacity-90">
+                <span className="text-content-secondary text-xs break-all transition-opacity hover:opacity-90">
                   {newNetwork?.url || 'N/A'}
                 </span>
               </p>
 
               <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
                 {t('settings.newNetworkChainId')}
-                <span className="text-brand-royalblue text-xs transition-opacity hover:opacity-90">
+                <span className="text-content-secondary text-xs transition-opacity hover:opacity-90">
                   {newNetwork?.chainId ?? 'N/A'}
                 </span>
               </p>
@@ -143,38 +143,33 @@ const SwitchNeworkUtxoEvm: React.FC = () => {
           </div>
         </div>
 
-        <div
-          className={`w-full px-4 flex flex-wrap items-center justify-between ${
-            switchError ? 'mt-8' : 'absolute bottom-12 md:static'
-          }`}
+        <PageActionFooter
+          error={
+            switchError && <span className="break-words">{switchError}</span>
+          }
         >
-          {switchError && (
-            <p
-              role="alert"
-              className="mb-3 w-full break-words text-sm text-warning-error"
+          <div className="grid w-full grid-cols-2 gap-3">
+            <Button
+              variant="secondary"
+              type="button"
+              fullWidth
+              onClick={window.close}
+              disabled={loading}
             >
-              {switchError}
-            </p>
-          )}
-          <Button
-            variant="secondary"
-            type="button"
-            onClick={window.close}
-            disabled={loading}
-          >
-            {t('buttons.cancel')}
-          </Button>
-
-          <Button
-            variant="primary"
-            type="submit"
-            disabled={confirmed || loading}
-            loading={loading}
-            onClick={onSubmit}
-          >
-            {t('buttons.change')}
-          </Button>
-        </div>
+              {t('buttons.cancel')}
+            </Button>
+            <Button
+              variant="primary"
+              type="submit"
+              fullWidth
+              disabled={confirmed || loading}
+              loading={loading}
+              onClick={onSubmit}
+            >
+              {t('buttons.change')}
+            </Button>
+          </div>
+        </PageActionFooter>
       </div>
     </>
   );

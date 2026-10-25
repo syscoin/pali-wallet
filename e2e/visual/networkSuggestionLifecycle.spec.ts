@@ -58,6 +58,80 @@ async function expectActive(menu: Locator, item: Locator) {
   await expect(menu).toBeFocused();
 }
 
+// This suggestion surface is an opaque RGB linear gradient, unlike the solid
+// surfaces checked by foregroundContrast. Check both actual endpoints without
+// weakening that helper's rejection of unsupported backgrounds.
+async function suggestionContrast(target: Locator) {
+  await target.evaluate(async (element) => {
+    const animations = new Set<Animation>();
+    for (let node: Element | null = element; node; node = node.parentElement)
+      for (const animation of node.getAnimations())
+        if (
+          Number.isFinite(Number(animation.effect?.getComputedTiming().endTime))
+        )
+          animations.add(animation);
+    await Promise.all(
+      [...animations].map((animation) =>
+        animation.finished.catch(() => undefined)
+      )
+    );
+  });
+  const colors = await target.evaluate((element) => {
+    const style = getComputedStyle(element);
+    const unsupported: string[] = [];
+    if (style.textShadow !== 'none') unsupported.push('text shadow');
+    let backgrounds: string[] = [];
+    for (let node: Element | null = element; node; node = node.parentElement) {
+      const css = getComputedStyle(node);
+      if (
+        css.opacity !== '1' ||
+        css.filter !== 'none' ||
+        css.mixBlendMode !== 'normal'
+      )
+        unsupported.push(node.tagName + ': opacity/filter/blend');
+      if (!backgrounds.length && css.backgroundImage !== 'none') {
+        if (!css.backgroundImage.startsWith('linear-gradient('))
+          unsupported.push('nonlinear background');
+        backgrounds = css.backgroundImage.match(/rgba?\([^)]+\)/g) || [];
+        if (backgrounds.length !== 2)
+          unsupported.push('unsupported gradient stops');
+      }
+      if (!backgrounds.length && css.backgroundColor.startsWith('rgb('))
+        backgrounds = [css.backgroundColor];
+    }
+    return {
+      foreground: style.color,
+      backgrounds,
+      fontSize: style.fontSize,
+      unsupported,
+    };
+  });
+  const luminance = (value: string) => {
+    const rgb = value.match(/[\d.]+/g)?.map(Number) || [];
+    expect(rgb).toHaveLength(3); // No unresolved alpha/compositing assumption.
+    return rgb.reduce((sum, channel, index) => {
+      const normalized = channel / 255;
+      return (
+        sum +
+        [0.2126, 0.7152, 0.0722][index] *
+          (normalized <= 0.04045
+            ? normalized / 12.92
+            : ((normalized + 0.055) / 1.055) ** 2.4)
+      );
+    }, 0);
+  };
+  expect(colors.unsupported).toEqual([]);
+  expect(colors.backgrounds.length).toBeGreaterThan(0);
+  const foreground = luminance(colors.foreground);
+  const backgroundLuminances = colors.backgrounds.map(luminance);
+  // Keep the foreground lighter than both actual endpoint colors.
+  expect(foreground).toBeGreaterThan(Math.max(...backgroundLuminances));
+  const ratios = backgroundLuminances.map(
+    (background) => (foreground + 0.05) / (background + 0.05)
+  );
+  return { ...colors, ratios };
+}
+
 test('network suggestions reset reopened typeahead and do not carry an EVM explorer into Litecoin', async ({}, info) => {
   test.setTimeout(120_000);
   expect(info.config.workers).toBe(1);
@@ -308,6 +382,53 @@ test('network suggestions reset reopened typeahead and do not carry an EVM explo
           has: page.getByText(EVM_LABEL, { exact: true }),
         });
         await expect(evmOption).toHaveCount(1);
+        for (const width of [400, 320]) {
+          await page.setViewportSize({
+            width,
+            height: width === 400 ? 620 : 360,
+          });
+          await evmOption.scrollIntoViewIfNeeded();
+          const save = page.getByRole('button', {
+            name: en.buttons.save,
+            exact: true,
+          });
+          for (let step = 0; step < 6; step += 1) {
+            const row = (await evmOption.boundingBox())!;
+            const footer = (await save.boundingBox())!;
+            if (row.y >= 0 && row.y + row.height <= footer.y - 12) break;
+            await page.mouse.move(width - 8, 180);
+            await page.mouse.wheel(0, row.y < 0 ? -100 : 100);
+            await page.evaluate(
+              () =>
+                new Promise<void>((resolve) =>
+                  requestAnimationFrame(() =>
+                    requestAnimationFrame(() => resolve())
+                  )
+                )
+            );
+          }
+          await expect(evmOption).toBeInViewport({ ratio: 1 });
+          const visibleRow = (await evmOption.boundingBox())!;
+          const visibleFooter = (await save.boundingBox())!;
+          expect(visibleRow.y + visibleRow.height).toBeLessThanOrEqual(
+            visibleFooter.y - 12
+          );
+          await page.mouse.move(width - 2, 2);
+          const symbol = evmOption.getByText('$TSYS', { exact: true });
+          const contrast = await suggestionContrast(symbol);
+          await info.attach(`network-suggestion-symbol-${width}`, {
+            body: await page.screenshot({ animations: 'disabled' }),
+            contentType: 'image/png',
+          });
+          await info.attach(`network-suggestion-symbol-${width}-contrast`, {
+            body: JSON.stringify(contrast),
+            contentType: 'application/json',
+          });
+          expect(Math.min(...contrast.ratios)).toBeGreaterThanOrEqual(4.5);
+          await expect(input).toHaveValue(EVM_LABEL);
+          await unchanged(initial);
+        }
+        await page.setViewportSize({ width: 400, height: 620 });
         await evmOption.click();
         await expect(input).toHaveValue(EVM_LABEL);
         await expect(page.locator('#rpc_url')).toHaveValue(EVM_RPC);

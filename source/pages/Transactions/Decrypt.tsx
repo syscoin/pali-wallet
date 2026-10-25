@@ -241,7 +241,7 @@ const Decrypt: React.FC<ISign> = () => {
                 ) : (
                   <>
                     <LockFilled className="text-lg text-brand-royalblue" />
-                    <span className="text-xs text-brand-royalblue whitespace-nowrap">
+                    <span className="text-xs text-brand-royalbluemedium whitespace-nowrap">
                       {t('transactions.decryptMessage')}
                     </span>
                   </>
@@ -252,7 +252,7 @@ const Decrypt: React.FC<ISign> = () => {
         ) : (
           <div className="bg-bkg-1 rounded-lg p-4">
             <div className="flex items-start justify-between gap-2">
-              <p className="min-w-0 text-sm text-brand-white break-all flex-1">
+              <p className="min-w-0 text-sm text-brand-white whitespace-pre-wrap [overflow-wrap:anywhere] flex-1">
                 {decryptedMessage}
               </p>
               <Tooltip content={t('buttons.copy')}>

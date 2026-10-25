@@ -10,6 +10,7 @@ import {
   clickClosingPopup,
   dismissRejectedApproval,
 } from '../harness/dismissRejectedApproval';
+import { captureForegroundContrast } from '../harness/foregroundContrast';
 import {
   createIsolatedVaultFixture,
   installIsolatedVaultRoutes,
@@ -300,6 +301,117 @@ test('watch-asset review tolerates missing market change data and preserves zero
         });
         expect(contractReads).toContain(`${PRICE_ONLY}:balanceOf(address)`);
         expect(contractReads).toContain(`${PRICE_ONLY}:symbol()`);
+        for (const width of [400, 320]) {
+          await popup.setViewportSize({
+            width,
+            height: width === 320 ? 360 : 620,
+          });
+          for (const label of [
+            en.settings.tokenName,
+            en.settings.decimals,
+            en.send.balance,
+            en.settings.tokenSymbol,
+          ]) {
+            const value = popup
+              .locator('p')
+              .filter({ hasText: label })
+              .locator('span')
+              .first();
+            await expect(value).toHaveCount(1);
+            await captureForegroundContrast(
+              value,
+              info,
+              `watch-${label}-${width}`
+            );
+          }
+          const symbolRow = popup
+            .locator('p')
+            .filter({ hasText: en.settings.tokenSymbol });
+          await expect(symbolRow).toContainText('PRICEONLY');
+          for (let attempt = 0; attempt < 12; attempt++) {
+            const point = await symbolRow.evaluate((element) => {
+              const rect = element.getBoundingClientRect();
+              const footer = [...document.querySelectorAll('button')]
+                .find((button) => button.textContent?.trim() === 'Cancel')
+                ?.getBoundingClientRect();
+              const bottom = footer?.top ?? innerHeight;
+              if (rect.top >= 0 && rect.bottom <= bottom) return null;
+              let owner = element.parentElement;
+              while (
+                owner &&
+                !(
+                  /auto|scroll/.test(getComputedStyle(owner).overflowY) &&
+                  owner.scrollHeight > owner.clientHeight + 2
+                )
+              )
+                owner = owner.parentElement;
+              const area = (
+                owner || document.documentElement
+              ).getBoundingClientRect();
+              return {
+                x: Math.max(8, area.left + 16),
+                y: Math.max(
+                  8,
+                  Math.min(bottom - 16, Math.max(0, area.top) + 80)
+                ),
+                delta: rect.top < 0 ? -80 : 80,
+              };
+            });
+            if (!point) break;
+            await popup.mouse.move(point.x, point.y);
+            await popup.mouse.wheel(0, point.delta);
+            await popup.evaluate(
+              () =>
+                new Promise((resolve) =>
+                  requestAnimationFrame(() => requestAnimationFrame(resolve))
+                )
+            );
+          }
+          const symbolBounds = await symbolRow.boundingBox();
+          const cancelBounds = await popup
+            .getByRole('button', { name: en.buttons.cancel, exact: true })
+            .boundingBox();
+          expect(symbolBounds).not.toBeNull();
+          expect(cancelBounds).not.toBeNull();
+          expect(symbolBounds!.y).toBeGreaterThanOrEqual(0);
+          expect(symbolBounds!.y + symbolBounds!.height).toBeLessThanOrEqual(
+            cancelBounds!.y
+          );
+          await info.attach(`watch-symbol-tail-${width}`, {
+            body: await popup.screenshot({ animations: 'disabled' }),
+            contentType: 'image/png',
+          });
+          const contract = popup.getByRole('button', {
+            name: PRICE_ONLY,
+            exact: true,
+          });
+          const layout = await contract.evaluate((element) => {
+            const parent = element.parentElement!.getBoundingClientRect();
+            const range = document.createRange();
+            range.selectNodeContents(element);
+            return {
+              text: element.textContent,
+              outside: Array.from(range.getClientRects()).some(
+                (rect) =>
+                  rect.left < parent.left - 1 || rect.right > parent.right + 1
+              ),
+            };
+          });
+          expect(layout.text).toBe(PRICE_ONLY);
+          expect(layout.outside).toBe(false);
+          await captureForegroundContrast(
+            contract,
+            info,
+            `watch-contract-default-${width}`
+          );
+          await contract.hover();
+          await captureForegroundContrast(
+            contract,
+            info,
+            `watch-contract-hover-${width}`
+          );
+          await popup.mouse.move(0, 0);
+        }
       }
     );
     await step(

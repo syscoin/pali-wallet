@@ -16,6 +16,7 @@ let mockSubmit: (values: { password: string }) => Promise<void>;
 const mockNavigate = jest.fn();
 const mockAlert = jest.fn();
 const mockClear = jest.fn();
+const mockConsumeContinuation = jest.fn();
 const mockReload = jest.fn();
 let mockSecrets: { kind: string; phrase?: string; recoveryTicket?: string };
 jest.mock('utils/reloadWalletForRecovery', () => ({
@@ -57,6 +58,7 @@ jest.mock('hooks/useOnboardingSecrets', () => ({
   useOnboardingSecrets: () => ({
     secrets: mockSecrets,
     clear: mockClear,
+    consumeContinuation: () => mockConsumeContinuation(),
   }),
 }));
 jest.mock('hooks/index', () => ({
@@ -81,6 +83,7 @@ describe('new wallet authentication navigation', () => {
     mockNavigate.mockClear();
     mockAlert.mockClear();
     mockClear.mockClear();
+    mockConsumeContinuation.mockReset();
     mockReload.mockClear();
     mockSecrets = { kind: 'import', phrase: 'test seed' };
     renderToStaticMarkup(<CreatePasswordImport />);
@@ -148,6 +151,46 @@ describe('new wallet authentication navigation', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/home', {
       state: { isWalletImported: true },
     });
+  });
+
+  it('resumes the original approval only after authoritative import readiness', async () => {
+    const destination = '/external/connect-wallet?data=original-request';
+    mockConsumeContinuation.mockReturnValue(destination);
+    jest
+      .mocked(controllerEmitter)
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce(true);
+    await mockSubmit({ password: 'test password' });
+    expect(mockConsumeContinuation).toHaveBeenCalledTimes(1);
+    expect(mockNavigate).toHaveBeenCalledWith(destination, { replace: true });
+    expect(
+      jest.mocked(controllerEmitter).mock.calls.map(([method]) => method)
+    ).toEqual([
+      ['wallet', 'createWallet'],
+      ['wallet', 'isUnlocked'],
+    ]);
+  });
+
+  it('does not consume or resume a cancelled view after its create reply arrives', async () => {
+    let complete!: () => void;
+    jest.mocked(controllerEmitter).mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          complete = resolve;
+        })
+    );
+    const view = render(<CreatePasswordImport />);
+    let pending!: Promise<void>;
+    act(() => {
+      pending = mockSubmit({ password: 'test password' });
+    });
+    view.unmount();
+    complete();
+    await pending;
+    expect(controllerEmitter).toHaveBeenCalledTimes(1);
+    expect(mockConsumeContinuation).not.toHaveBeenCalled();
+    expect(mockNavigate).not.toHaveBeenCalled();
+    expect(mockReload).not.toHaveBeenCalled();
   });
 
   it('consumes recovery secrets before awaiting the worker and never asks for the old password', async () => {

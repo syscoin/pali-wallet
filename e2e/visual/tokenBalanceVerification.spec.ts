@@ -5,6 +5,7 @@ import fs from 'fs';
 
 import en from '../../source/assets/locales/en.json';
 import { E2E_CONFIG } from '../harness/config';
+import { captureForegroundContrast } from '../harness/foregroundContrast';
 import {
   createIsolatedVaultFixture,
   installIsolatedVaultRoutes,
@@ -365,6 +366,7 @@ test('ERC20 balance verification exposes a scoped explicit retry without losing 
           }
           await expect(retry).toBeFocused();
           retryBox = await bounds(retry);
+          await captureForegroundContrast(retry, info, 'token-retry-' + suffix);
           await bounds(
             page.getByText(en.send.tokenVerificationFailed, { exact: true })
           );
@@ -393,6 +395,11 @@ test('ERC20 balance verification exposes a scoped explicit retry without losing 
             balanceReads.filter((read) => read.phase === phase)
           ).toHaveLength(1);
           await expect(receiver).toHaveValue(fixture.evmAddresses[1]);
+          await captureForegroundContrast(
+            page.getByText(en.send.verifyingBalance, { exact: true }),
+            info,
+            'token-verifying-' + suffix
+          );
         }
       );
       await wallet.step(

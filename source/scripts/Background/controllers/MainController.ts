@@ -108,6 +108,7 @@ import {
   ISmartAccountMetadata,
   IKeyringAccountState,
   KeyringAccountType,
+  initialActiveHdAccountState,
 } from 'types/network';
 import { IBlacklistCheckResult } from 'types/security';
 import {
@@ -115,6 +116,7 @@ import {
   IWatchAssetTokenProps,
   ISysAssetMetadata,
   ITokenDetails,
+  INftTokenIdsResult,
   WatchAssetType,
 } from 'types/tokens';
 import { ICustomRpcParams, IDecodedTx } from 'types/transactions';
@@ -131,7 +133,12 @@ import {
   PALI_NETWORKS_STATE,
 } from 'utils/constants';
 import { assertSupportedEvmFees } from 'utils/dappTransaction';
-import { Contract, formatUnits } from 'utils/ethersV6Compat';
+import {
+  Contract,
+  formatUnits,
+  getAddress,
+  isAddress,
+} from 'utils/ethersV6Compat';
 import { decodeTransactionData } from 'utils/ethUtil';
 import { getBlacklistTargetsForEvmCallWithContractType } from 'utils/evmCallBlacklist';
 import {
@@ -229,6 +236,10 @@ import {
 } from './balances/ReceiptBalanceRefresh';
 import { IBalancesManager } from './balances/types';
 import ChainListService from './chainlist';
+import {
+  freshSdkGasEstimate,
+  getSdkGasOverrides,
+} from './freshNativeGasEstimate';
 import { clearProviderCache } from './message-handler/requests';
 import { recordSendCallsBundle } from './message-handler/sendCallsBundles';
 import { PaliEvents, PaliSyscoinEvents } from './message-handler/types';
@@ -4495,25 +4506,76 @@ class MainController {
   ) {
     const { keyring, assertCurrent } = this.accountMutationContext();
     assertPublicWatchOnlyIdentifier(identifier);
-    // The SDK only validates and constructs public account metadata here.
-    // Abandon a late result before the guarded durable creation below.
-    let validationTimer: ReturnType<typeof setTimeout> | undefined;
-    const importedAccount = await Promise.race([
-      (keyring as any).importWatchOnly(identifier, label),
-      new Promise<never>((_, reject) => {
-        validationTimer = setTimeout(
-          () => reject(new Error(WATCH_ONLY_VALIDATION_TIMEOUT)),
-          WATCH_ONLY_VALIDATION_TIMEOUT_MS
+    const { activeNetwork, accounts } = store.getState().vault;
+    let importedAccount: IKeyringAccountState;
+    let assertImportCurrent = assertCurrent;
+    if (activeNetwork?.kind === INetworkType.Ethereum) {
+      // EVM watch identities are public addresses, not Blockbook lookups.
+      // Keep admission tied to the network that accepted this draft.
+      if (!isAddress(identifier))
+        throw new Error(
+          'Watch-only EVM import requires a valid Ethereum address.'
         );
-      }),
-    ]).finally(() => {
-      if (validationTimer !== undefined) clearTimeout(validationTimer);
-    });
-    assertCurrent();
+      const address = getAddress(identifier);
+      const network = networkRegistrationFingerprint(activeNetwork);
+      const slip44 = store.getState().vaultGlobal.activeSlip44;
+      assertImportCurrent = () => {
+        assertCurrent();
+        const current = store.getState();
+        if (
+          current.vault.isBitcoinBased ||
+          current.vault.activeNetwork.kind !== INetworkType.Ethereum ||
+          networkRegistrationFingerprint(current.vault.activeNetwork) !==
+            network ||
+          current.vaultGlobal.activeSlip44 !== slip44
+        )
+          throw new Error(
+            'Network changed before watch-only import. Please retry.'
+          );
+        if (
+          Object.values(current.vault.accounts).some((bucket) =>
+            Object.values(bucket).some(
+              (account) =>
+                typeof account?.address === 'string' &&
+                account.address.toLowerCase() === address.toLowerCase()
+            )
+          )
+        )
+          throw new Error('Account already exists on your Wallet.');
+      };
+      assertImportCurrent();
+      let id = 0;
+      while (accounts.Imported[id]) id++;
+      importedAccount = {
+        ...initialActiveHdAccountState,
+        id,
+        address,
+        label: label || `Watch-only ${id + 1}`,
+        xpub: address,
+        xprv: '',
+        isImported: true,
+      };
+    } else {
+      // The SDK only validates and constructs public account metadata here.
+      // Abandon a late result before the guarded durable creation below.
+      let validationTimer: ReturnType<typeof setTimeout> | undefined;
+      importedAccount = await Promise.race([
+        (keyring as any).importWatchOnly(identifier, label),
+        new Promise<never>((_, reject) => {
+          validationTimer = setTimeout(
+            () => reject(new Error(WATCH_ONLY_VALIDATION_TIMEOUT)),
+            WATCH_ONLY_VALIDATION_TIMEOUT_MS
+          );
+        }),
+      ]).finally(() => {
+        if (validationTimer !== undefined) clearTimeout(validationTimer);
+      });
+    }
+    assertImportCurrent();
     await this.storeCreatedAccount(
       importedAccount,
       KeyringAccountType.Imported,
-      assertCurrent
+      assertImportCurrent
     );
     setTimeout(() => {
       this.getLatestUpdateForCurrentAccount(false, true).catch((err) => {
@@ -9004,6 +9066,103 @@ class MainController {
     };
   }
 
+  // Explicit user Retry for a native EOA quote; ordinary estimates still use
+  // the long-lived SDK instance. No caller-selected network or signing path.
+  public async getFreshNativeEvmGasLimit(
+    input: { data: string; from: string; to: string; value: string },
+    expectedScope: IWalletNavigationScope
+  ) {
+    this.assertAssetMutationContext(expectedScope);
+    const state = store.getState();
+    const network = { ...state.vault.activeNetwork };
+    const ref = { ...state.vault.activeAccount };
+    const account = state.vault.accounts[ref.type]?.[ref.id];
+    const transaction = {
+      data: input?.data,
+      from: input?.from,
+      to: input?.to,
+      value: input?.value,
+    };
+    if (
+      state.vault.isBitcoinBased ||
+      network.kind !== INetworkType.Ethereum ||
+      account?.isSmartAccount ||
+      transaction.data !== '0x' ||
+      typeof transaction.from !== 'string' ||
+      transaction.from.toLowerCase() !== account?.address?.toLowerCase() ||
+      typeof transaction.to !== 'string' ||
+      !/^0x[\da-f]{40}$/i.test(transaction.to) ||
+      typeof transaction.value !== 'string' ||
+      !/^0x[\da-f]{1,64}$/i.test(transaction.value)
+    )
+      throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    const keyring = this.getActiveKeyring();
+    const session = this.walletSessionGeneration;
+    const generation = this.walletStateGeneration;
+    const sdk = this.ethereumTransaction;
+    const originalProvider = sdk.web3Provider;
+    const overrides = getSdkGasOverrides(sdk);
+    const gasPolicy = JSON.stringify(overrides);
+    const assertCurrent = () => {
+      this.assertCurrentWalletSession(session, keyring);
+      this.assertAssetMutationContext(expectedScope);
+      if (
+        this.isResettingWallet ||
+        generation !== this.walletStateGeneration ||
+        this.ethereumTransaction !== sdk ||
+        sdk.web3Provider !== originalProvider ||
+        JSON.stringify(getSdkGasOverrides(sdk)) !== gasPolicy
+      )
+        throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    };
+    assertCurrent();
+    const abort = new AbortController();
+    const invalidate = () =>
+      abort.abort(new Error(EVM_TRANSACTION_CONTEXT_CHANGED));
+    originalProvider.signal.addEventListener('abort', invalidate, {
+      once: true,
+    });
+    const unsubscribe = store.subscribe(() => {
+      if (abort.signal.aborted) return;
+      try {
+        assertCurrent();
+      } catch {
+        invalidate();
+      }
+    });
+    // Match the existing controllerEmitter default deadline; do not extend it.
+    const timeout = setTimeout(
+      () =>
+        abort.abort(
+          new DOMException('Network request timed out', 'AbortError')
+        ),
+      10000
+    );
+    try {
+      if (originalProvider.signal.aborted) invalidate();
+      return await this.withReceiptReadProvider(
+        abort.signal,
+        network,
+        (provider) =>
+          freshSdkGasEstimate(
+            overrides,
+            network,
+            transaction,
+            provider,
+            assertCurrent
+          )
+      );
+    } catch (error) {
+      if (abort.signal.aborted) throw abort.signal.reason;
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+      unsubscribe();
+      originalProvider.signal.removeEventListener('abort', invalidate);
+      abort.abort();
+    }
+  }
+
   // Get current block with latest data
   public async getCurrentBlock(): Promise<any> {
     const { isBitcoinBased } = store.getState().vault;
@@ -9731,12 +9890,18 @@ class MainController {
     contractAddress: string,
     ownerAddress: string,
     tokenStandard: 'ERC-721' | 'ERC-1155'
-  ): Promise<{ balance: number; tokenId: string }[]> {
-    return this.evmAssetsController.fetchNftTokenIds(
+  ): Promise<INftTokenIdsResult> {
+    const result = await this.evmAssetsController.fetchNftTokenIds(
       contractAddress,
       ownerAddress,
       tokenStandard
     );
+    // Chrome's JSON messaging drops custom properties attached to arrays.
+    return {
+      tokens: result,
+      hasMore: result.hasMore === true,
+      requiresManualEntry: result.requiresManualEntry === true,
+    };
   }
 
   /**

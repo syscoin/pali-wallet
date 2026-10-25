@@ -8,6 +8,7 @@ import {
 } from '@testing-library/react';
 import React from 'react';
 
+import { readRenderedWhiteSpace } from '../../../tests/helpers/renderedWhiteSpace';
 import { dispatchBackgroundEvent } from 'utils/browser';
 
 import Decrypt from './Decrypt';
@@ -376,6 +377,33 @@ it('ignores a preview completion after its review unmounts', async () => {
   view.unmount();
   await act(async () => finish(PLAINTEXT));
   expect(screen.queryByText(PLAINTEXT)).toBeNull();
+  expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
+  expect(window.close).not.toHaveBeenCalled();
+});
+
+it('renders decrypted paragraph boundaries and repeated spaces while copying the original plaintext', async () => {
+  const plaintext = 'LINE-A\n\nLINE-B   GAP\nLINE-C';
+  mockEmitter.mockResolvedValueOnce(plaintext);
+  const { container } = render(<Decrypt />);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'transactions.decryptMessage' })
+  );
+  await waitFor(() => expect(container.textContent).toContain(plaintext));
+  const paragraph = Array.from(container.querySelectorAll('p')).find(
+    (node) => node.textContent === plaintext
+  )!;
+  expect(paragraph).toBeDefined();
+  expect(paragraph.textContent).toBe(plaintext);
+  expect(await readRenderedWhiteSpace(paragraph)).toBe('pre-wrap');
+  fireEvent.click(
+    screen.getByRole('button', { name: 'transactions.copyMessage' })
+  );
+  await waitFor(() => expect(mockCopy).toHaveBeenCalledWith(plaintext));
+  expect(mockEmitter).toHaveBeenCalledTimes(1);
+  expect(mockEmitter).toHaveBeenCalledWith(
+    ['wallet', 'ethereumTransaction', 'decryptMessage'],
+    [[CIPHERTEXT, ADDRESS]]
+  );
   expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
   expect(window.close).not.toHaveBeenCalled();
 });

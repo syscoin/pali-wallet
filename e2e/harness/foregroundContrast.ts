@@ -6,10 +6,13 @@ export async function captureForegroundContrast(
   target: Locator,
   info: TestInfo,
   label: string,
-  kind: 'text' | 'currentColor-icon' = 'text'
+  kind: 'text' | 'currentColor-icon' | 'border' = 'text'
 ) {
   await expect(target).toBeVisible();
-  await target.scrollIntoViewIfNeeded();
+  // A rotating loading border never has stationary bounds. Its visible paint
+  // is measured in place; other targets still use ordinary scroll admission.
+  if (kind === 'border') await expect(target).toBeInViewport();
+  else await target.scrollIntoViewIfNeeded();
   // Measure the settled UI, not a transient page fade. Observe and await only
   // finite native animations on this target's ancestors; never pause, cancel,
   // finish, change styles or wait on unrelated infinite loading indicators.
@@ -69,7 +72,9 @@ export async function captureForegroundContrast(
       }, 0);
 
     const initial = getComputedStyle(element);
-    let foreground = parseColor(initial.color);
+    const foregroundColor =
+      targetKind === 'border' ? initial.borderTopColor : initial.color;
+    let foreground = parseColor(foregroundColor);
     let background: Color = [0, 0, 0, 0];
     const unsupported: string[] = [];
     const layers = [];
@@ -117,7 +122,7 @@ export async function captureForegroundContrast(
     return {
       kind: targetKind,
       disabled: Boolean(element.closest('[disabled], [aria-disabled="true"]')),
-      foreground: initial.color,
+      foreground: foregroundColor,
       effectiveForeground: foreground,
       effectiveBackground: background,
       font: {
@@ -133,7 +138,7 @@ export async function captureForegroundContrast(
         height: bounds.height,
       },
       viewport: { width: innerWidth, height: innerHeight },
-      minimum: targetKind === 'currentColor-icon' || largeText ? 3 : 4.5,
+      minimum: targetKind !== 'text' || largeText ? 3 : 4.5,
       ratio,
       unsupported,
       layers,

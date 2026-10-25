@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page, type TestInfo } from '@playwright/test';
 import { createHash } from 'crypto';
 import {
   AbiCoder,
@@ -442,7 +442,7 @@ async function snapshot(page: Page) {
   });
 }
 
-test('Send keeps asset validation bound to the request while genuine ENS HTTP reads are pending', async ({}, info) => {
+async function runValidationSnapshot(info: TestInfo, width: number) {
   test.setTimeout(240000);
   expect(info.config.workers).toBe(1);
   expect(info.retry).toBe(0);
@@ -480,10 +480,13 @@ test('Send keeps asset validation bound to the request while genuine ENS HTTP re
     rpcUrl: proxy.url,
   });
   try {
-    wallet = await PaliWallet.launch('send-asset-validation-snapshot', {
-      offlineHttpProxy: proxy.url,
-      viewport: { width: 400, height: 620 },
-    });
+    wallet = await PaliWallet.launch(
+      'send-asset-validation-snapshot-' + width,
+      {
+        offlineHttpProxy: proxy.url,
+        viewport: { width, height: width === 400 ? 620 : 360 },
+      }
+    );
     routes = await installIsolatedVaultRoutes(
       wallet.context,
       fixture,
@@ -681,6 +684,15 @@ test('Send keeps asset validation bound to the request while genuine ENS HTTP re
           )
         ).toBeVisible();
         await expect(page).toHaveURL(/#\/send\/eth$/);
+        const error = page.getByText(
+          en.send.insufficientFundsVerified.replace('{{balance}}', '1'),
+          { exact: true }
+        );
+        await error.scrollIntoViewIfNeeded();
+        await info.attach('verified-balance-error-' + width, {
+          contentType: 'image/png',
+          body: await page.screenshot({ animations: 'disabled' }),
+        });
         await amount.fill('0.5');
         await next.click();
         await checkPreview('0.5', true);
@@ -779,4 +791,9 @@ test('Send keeps asset validation bound to the request while genuine ENS HTTP re
     await proxy.close();
     Object.assign(E2E_CONFIG, previous);
   }
-});
+}
+for (const width of [400, 320]) {
+  test(`Send keeps asset validation bound to pending ENS reads at ${width}px`, async ({}, info) => {
+    await runValidationSnapshot(info, width);
+  });
+}

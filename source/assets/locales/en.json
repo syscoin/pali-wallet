@@ -446,9 +446,9 @@
     "balanceVerified": "Balance verified",
     "tokenOwnershipVerified": "Token ownership verified",
     "pleaseVerifyTokenOwnership": "Please verify token ownership first",
-    "youOnlyOwn": "You only own {amount} of this token",
+    "youOnlyOwn": "You only own {{amount}} of this token",
     "pleaseWaitForBalanceVerification": "Please wait for balance verification",
-    "insufficientFundsVerified": "Insufficient funds (verified balance: {balance})",
+    "insufficientFundsVerified": "Insufficient funds (verified balance: {{balance}})",
     "enterTokenId": "Enter token ID",
     "amountMustBePositiveInteger": "Amount must be a positive integer",
     "verifyingBalance": "Verifying balance...",
@@ -687,7 +687,7 @@
     "clickHereSupport": "Contact our team on discord channel #pali_support",
     "refreshButtonWarning": "Enabling the refresh button will create additional network requests to update your wallet data. This may impact performance and could hit rate limits on public RPC providers. Consider using paid RPC services for better reliability.",
     "hereYouCanEnable": "Here, you can enable advanced settings in Pali. Use them responsibly and at your own risk.",
-    "advancedSettingsWasSet": "Advanced settings was set successfully",
+    "advancedSettingsWasSet": "Advanced settings were set successfully",
     "yourWalletWasConfigured": "Your wallet was configured successfully. You can change it at any time.",
     "enableRefresh": "Enable wallet refresh button",
     "minutes": "Minutes",
@@ -785,7 +785,7 @@
     "watchOnlyNoPrivateKey": "This is a watch-only account. You can receive funds and view activity, but this wallet has no private key for this account.",
     "seeOnExplorer": "See on explorer",
     "manageEthProvider": "MANAGE ETH PROVIDER",
-    "windowObjectWasSet": "Window object set successfully",
+    "windowObjectWasSet": "Default wallet updated",
     "missingApiKey": "Missing/Invalid API Key - Please add your API key to the URL (e.g., ?apikey=YOUR_KEY)",
     "apiFormatError": "API does not respond correctly. Please check the URL and ensure it supports Etherscan/Blockscout API format.",
     "apiConnectionError": "Unable to validate API. Please check your connection and try again.",
@@ -1215,7 +1215,7 @@
   "forgetWalletPage": {
     "removalFailed": "The wallet could not be removed. Please try again.",
     "importedAccountsWont": "Imported accounts won't link to your initial Pali account Secret Recovery Phrase",
-    "stillHaveFunds": "You still have funds in you wallet!",
+    "stillHaveFunds": "You still have funds in your wallet!",
     "saveProperly": "Save this seed phrase properly, so you can import this wallet in the future."
   },
   "walletSeedPhrasePage": {
