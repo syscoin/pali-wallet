@@ -2432,7 +2432,7 @@ class MainController {
         saved.session.assertCurrent();
         await vault.clearUnbroadcastWithdrawalAttempt(attempt, saved.session);
       },
-      sendTransaction: (transaction, session, onBroadcast) =>
+      sendTransaction: (transaction, session, onBroadcast, assertBeforeSign) =>
         this.sendAndSaveEthTransaction(
           transaction,
           transaction.gasPrice !== undefined,
@@ -2444,6 +2444,7 @@ class MainController {
           {
             expectedContext: session.context,
             assertCurrentContext: session.assertCurrent,
+            assertBeforeSign,
             clearNavigation: false,
             onBroadcast,
           }
@@ -6661,6 +6662,7 @@ class MainController {
     targetAccount?: { id: number; type: KeyringAccountType },
     transactionMetadata?: Record<string, unknown>,
     saveOptions?: {
+      assertBeforeSign?: () => void;
       assertCurrentContext?: () => void;
       clearNavigation?: boolean;
       expectedContext?: IEvmTransactionContext;
@@ -6776,6 +6778,7 @@ class MainController {
         // keyring's synchronous capture of the account and network.
         saveOptions?.assertCurrentContext?.();
         assertExpectedContext();
+        saveOptions?.assertBeforeSign?.();
         submissionStarted = true;
         txResponse =
           (await controller.wallet.ethereumTransaction.sendFormattedTransaction(
@@ -6786,7 +6789,10 @@ class MainController {
                   from: expectedContext.account.address,
                 }
               : params,
-            isLegacy
+            isLegacy,
+            saveOptions?.assertBeforeSign
+              ? { assertCurrent: saveOptions.assertBeforeSign }
+              : undefined
           )) as unknown as IEvmTransactionResponse;
       } finally {
         if (shouldUseTargetAccount) {

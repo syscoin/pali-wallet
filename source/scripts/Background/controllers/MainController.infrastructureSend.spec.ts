@@ -102,7 +102,7 @@ describe('infrastructure transaction broadcast boundary', () => {
     'passes supported fees unchanged to the SDK: %p',
     async (params, legacy) => {
       await wallet.sendAndSaveEthTransaction(params, legacy);
-      expect(send).toHaveBeenCalledWith(params, legacy);
+      expect(send).toHaveBeenCalledWith(params, legacy, undefined);
     }
   );
 
@@ -117,7 +117,7 @@ describe('infrastructure transaction broadcast boundary', () => {
         })
       );
       await wallet.sendAndSaveEthTransaction(params, false);
-      expect(send).toHaveBeenCalledWith(params, false);
+      expect(send).toHaveBeenCalledWith(params, false, undefined);
     }
   );
   it.each([null, '-1', '', { hex: 'broken' }, '0x11'])(
@@ -369,7 +369,8 @@ describe('infrastructure transaction broadcast boundary', () => {
       );
       expect(send).toHaveBeenCalledWith(
         { chainId: 1, from: 'payer-a', value: '0x1' },
-        false
+        false,
+        undefined
       );
       expect(params).toEqual({ value: '0x1' });
     });

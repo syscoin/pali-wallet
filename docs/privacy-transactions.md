@@ -16,6 +16,13 @@ amount, nonce and fees. A per-note encrypted reservation is written before the
 sender is entered. Deposit and direct-withdrawal reservations also reject reuse
 of the same sender nonce across both types of transaction.
 
+As transaction journals grow, the vault can move from one encrypted record to
+an atomic bundle of bounded encrypted chunks. Its encrypted index authenticates
+their IDs, order, note counts and ciphertext hashes. The existing 128-note limit
+and the SDK's per-record limit remain unchanged; previously accepted notes do
+not lose their spending capacity as their journals grow. Older single-record
+vaults remain readable and migrate only when needed.
+
 The initial sender integration supports HD and imported software accounts.
 Hardware and smart accounts are rejected before note creation or RPC preflight:
 the installed hardware sender can replace a supplied nonce, which does not satisfy
@@ -26,6 +33,11 @@ note. Ambiguous transport outcomes retain the encrypted reservation and do not
 offer automatic resubmission. A delayed acknowledgement cannot update another
 profile after lock, account replacement or reset. Clearing a review never erases
 its saved bearer note.
+
+The withdrawal's original snapshot and review deadline are checked again at the
+SDK's signing and broadcast boundaries, including after asynchronous preflight.
+A received broadcast acknowledgement is retained even if the deadline expires
+while the response is in flight.
 
 ## Local proof generation
 

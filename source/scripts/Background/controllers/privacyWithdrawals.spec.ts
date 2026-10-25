@@ -410,6 +410,83 @@ it.each(['context', 'snapshot'] as const)(
   }
 );
 
+it.each(['healthy', 'context', 'snapshot', 'expiry'] as const)(
+  'passes a final signing guard that checks %s after sender preflight',
+  async (condition) => {
+    jest.useFakeTimers();
+    const run = setup(),
+      review = await run.controller.prepareWithdrawal(direct());
+    const entered = deferred<void>(),
+      release = deferred<void>();
+    const sign = jest.fn();
+    jest
+      .mocked(run.host.sendTransaction)
+      .mockImplementationOnce(
+        async (_transaction, _session, onBroadcast, assertBeforeSign) => {
+          entered.resolve();
+          await release.promise;
+          try {
+            assertBeforeSign();
+          } catch (error) {
+            // Match MainController/the SDK's pre-broadcast error boundary.
+            throw Object.assign(error as Error, {
+              transactionNotBroadcast: true,
+            });
+          }
+          sign();
+          await onBroadcast({ hash: HASH });
+          return { hash: HASH };
+        }
+      );
+    const pending = run.controller.submitWithdrawal(review.intentId).then(
+      (value) => ({ value, error: undefined }),
+      (error: unknown) => ({ value: undefined, error })
+    );
+    await entered.promise;
+    if (condition === 'context') run.change();
+    if (condition === 'snapshot') run.invalidate();
+    if (condition === 'expiry') run.clock(review.expiresAt);
+    release.resolve();
+    const result = await pending;
+    if (condition === 'healthy') {
+      expect(result.error).toBeUndefined();
+      expect(result.value).toMatchObject({
+        phase: 'submitted',
+        transactionHash: HASH,
+      });
+      expect(sign).toHaveBeenCalledTimes(1);
+      expect(run.host.recordNotBroadcast).not.toHaveBeenCalled();
+    } else {
+      expect(sign).not.toHaveBeenCalled();
+      expect(result.value).toBeUndefined();
+      expect(result.error).toMatchObject({ transactionNotBroadcast: true });
+      expect(run.host.recordNotBroadcast).toHaveBeenCalledTimes(1);
+      expect(run.host.recordSubmission).not.toHaveBeenCalled();
+    }
+  }
+);
+
+it('keeps a successful acknowledgement when the review expires after signing and broadcast', async () => {
+  jest.useFakeTimers();
+  const run = setup(),
+    review = await run.controller.prepareWithdrawal(direct());
+  jest
+    .mocked(run.host.sendTransaction)
+    .mockImplementationOnce(
+      async (_transaction, _session, onBroadcast, assertBeforeSign) => {
+        assertBeforeSign();
+        run.clock(review.expiresAt + 1);
+        await onBroadcast({ hash: HASH });
+        return { hash: HASH };
+      }
+    );
+  await expect(
+    run.controller.submitWithdrawal(review.intentId)
+  ).resolves.toMatchObject({ phase: 'submitted', transactionHash: HASH });
+  expect(run.host.recordSubmission).toHaveBeenCalledTimes(1);
+  expect(run.host.recordNotBroadcast).not.toHaveBeenCalled();
+});
+
 it('revalidates selected endpoint before reservation and never falls back to direct mode', async () => {
   jest.useFakeTimers();
   const run = setup();
