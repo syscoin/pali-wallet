@@ -57,6 +57,7 @@ const BROWSING_ROUTES = new Set([
   '/tokens/add',
   '/receive',
   '/faucet',
+  '/privacy',
   '/settings/about',
   '/settings/advanced',
   '/settings/languages',
@@ -436,6 +437,7 @@ const admitBrowsingState = (
   return state;
 };
 const ACCOUNT_INDEPENDENT = new Set([
+  '/privacy',
   '/settings/about',
   '/settings/advanced',
   '/settings/languages',

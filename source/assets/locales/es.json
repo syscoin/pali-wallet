@@ -1556,5 +1556,32 @@
       "voting": "Votación",
       "collateral": "Garantía"
     }
+  },
+  "privacy": {
+    "title": "Privacidad",
+    "prepare": "Preparar privacidad",
+    "description": "Prepara datos públicos verificados del fondo en este dispositivo para operaciones de privacidad.",
+    "scopeNotice": "Solo se preparan los datos del fondo. Los depósitos y retiros aún no están disponibles aquí.",
+    "poolLabel": "Fondo de ETH",
+    "networkName": "Tornado Classic · Red principal de Ethereum",
+    "poolData": "Datos del fondo",
+    "checking": "Comprobando los datos guardados del fondo…",
+    "idle": "Los datos del fondo aún no se han preparado.",
+    "syncing": "Descargando datos públicos del fondo…",
+    "verifying": "Verificando los datos del fondo…",
+    "ready": "Los datos del fondo están verificados y guardados en este dispositivo.",
+    "paused": "La preparación está en pausa.",
+    "error": "No se pudo completar la preparación. Inténtalo de nuevo.",
+    "unavailable": "No se pudo consultar el estado de preparación. Inténtalo de nuevo.",
+    "retry": "Reintentar",
+    "resume": "Reanudar",
+    "refresh": "Actualizar datos del fondo",
+    "pause": "Pausar",
+    "clear": "Borrar datos guardados",
+    "networkRequired": "Selecciona la red principal de Ethereum en el menú de redes para preparar los datos del fondo.",
+    "publicDataOnly": "Solo se descargan datos públicos del fondo. No se envían tu dirección de cartera ni tus notas privadas.",
+    "savedDeposits": "Depósitos públicos guardados: {{count}}",
+    "verifiedBlock": "Último bloque verificado: {{block}}",
+    "progress": "{{completed}} de {{total}}"
   }
 }

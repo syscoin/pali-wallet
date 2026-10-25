@@ -154,6 +154,7 @@ const SentryVote = lazy(() => import('pages/Transactions/SentryVote'));
 const SmartAccountHub = lazy(() => import('pages/SmartAccount/Hub'));
 const EditAccount = lazy(() => import('pages/Settings/EditAccount'));
 const Advanced = lazy(() => import('pages/Settings/Advanced'));
+const Privacy = lazy(() => import('pages/Privacy/Privacy'));
 const Languages = lazy(() => import('pages/Settings/Languages'));
 const ChainErrorPage = lazy(() =>
   import('pages/Chain/ChainErrorPage').then((m) => ({
@@ -290,6 +291,7 @@ export const Router = () => {
             {/* Transaction Routes */}
             <Route path="/receive" element={<Receive />} />
             <Route path="/faucet" element={<Faucet />} />
+            <Route path="/privacy" element={<Privacy />} />
             <Route path="/send/eth" element={<SendEth />} />
             <Route path="/send/sys" element={<SendSys />} />
             <Route path="/send/confirm" element={<SendConfirm />} />

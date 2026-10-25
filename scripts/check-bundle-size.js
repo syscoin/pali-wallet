@@ -16,7 +16,10 @@ const budget = {
   // Retain the shared-favicon and unused NFT-placeholder copy savings.
   // Keep a rounded, small-buffer ceiling below its package allowance;
   // CI measures the actual shipped artifact. Startup budgets stay unchanged.
-  package: 8565000,
+  // Explicit new-feature allowance: public pool sync, local MiMC verification,
+  // and nine-language preparation UI add about 38 KB over the 8,561,290-byte
+  // shipped baseline. Preserve startup caps and a small rounded package buffer.
+  package: 8605000,
 };
 const allFiles = (root) =>
   fs.readdirSync(root, { withFileTypes: true }).flatMap((entry) => {

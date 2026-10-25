@@ -1,0 +1,190 @@
+import { Interface, parseEther, toQuantity } from 'ethers';
+
+import {
+  fetchPrivacySnapshot,
+  validateSnapshot,
+  verifySnapshotAnchor,
+} from './client';
+import { advanceMerkleWork, createMerkleWork } from './merkle';
+import { getPrivacyPool } from './registry';
+import { PrivacySnapshot } from './types';
+
+const id = 'eth-0.1';
+const hash = (n: number) => `0x${n.toString(16).padStart(64, '0')}`;
+const leaves = [hash(1), hash(2)];
+const snapshot: PrivacySnapshot = {
+  version: 1,
+  chainId: 1,
+  poolAddress: getPrivacyPool(id).address,
+  asOfBlockNumber: 20000000,
+  asOfBlockHash: hash(99),
+  leafCount: 2,
+  leaves,
+  root: advanceMerkleWork(createMerkleWork(), leaves).root!,
+};
+const abi = new Interface([
+  'function nextIndex() view returns (uint32)',
+  'function getLastRoot() view returns (bytes32)',
+  'function levels() view returns (uint32)',
+  'function denomination() view returns (uint256)',
+  'function isKnownRoot(bytes32) view returns (bool)',
+]);
+const signal = () => new AbortController().signal;
+const originalFetch = global.fetch;
+afterEach(() => {
+  global.fetch = originalFetch;
+});
+
+function mockRpc(
+  options: {
+    chain?: string;
+    changedHash?: boolean;
+    count?: number;
+    expired?: boolean;
+    wrongId?: boolean;
+  } = {}
+) {
+  let headers = 0;
+  const fetch = jest.fn(async (_url, init) => {
+    const request = JSON.parse(init.body);
+    let result: unknown;
+    if (request.method === 'eth_chainId') result = options.chain || '0x1';
+    else if (request.method === 'eth_getBlockByNumber') {
+      headers++;
+      result = {
+        number: toQuantity(snapshot.asOfBlockNumber),
+        hash:
+          options.changedHash && headers > 1
+            ? hash(100)
+            : snapshot.asOfBlockHash,
+      };
+    } else if (request.method === 'eth_call') {
+      const fn = abi.parseTransaction({ data: request.params[0].data })!.name;
+      const values = {
+        nextIndex: options.count ?? 2,
+        getLastRoot: snapshot.root,
+        levels: 20,
+        denomination: parseEther('0.1'),
+        isKnownRoot: !options.expired,
+      };
+      result = abi.encodeFunctionResult(fn, [values[fn]]);
+    } else throw new Error('Unexpected RPC method');
+    return new Response(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: options.wrongId ? request.id + 1 : request.id,
+        result,
+      }),
+      { headers: { 'Content-Type': 'application/json' } }
+    );
+  });
+  global.fetch = fetch;
+  return fetch;
+}
+
+test('validates the entire fixed-pool snapshot, not a server-selected address', () => {
+  expect(validateSnapshot(id, snapshot)).toEqual(snapshot);
+  expect(() =>
+    validateSnapshot(id, { ...snapshot, poolAddress: '0x' + '11'.repeat(20) })
+  ).toThrow();
+});
+
+test('server-added progress or endpoint fields cannot change snapshot interpretation', () => {
+  const clean = validateSnapshot(id, {
+    ...snapshot,
+    phase: 'syncing',
+    rpcUrl: 'https://attacker.example',
+  });
+  expect(clean).toEqual(snapshot);
+  expect(clean).not.toHaveProperty('phase');
+  expect(clean).not.toHaveProperty('rpcUrl');
+});
+
+test.each([
+  { chainId: 57 },
+  { version: 2 },
+  { leafCount: 1 },
+  { leafCount: 2 ** 20 + 1 },
+  { asOfBlockNumber: 1 },
+  { asOfBlockHash: 'bad' },
+  { root: hash(0).toUpperCase() },
+  { leaves: [hash(1), '0x' + 'ff'.repeat(32)] },
+  { leaves: null },
+])('rejects malformed or cross-context data: %j', (change) => {
+  expect(() => validateSnapshot(id, { ...snapshot, ...change })).toThrow(
+    'privacy_data_invalid'
+  );
+});
+
+test('only sends a public pool identifier to Sysnode, without cookies or wallet data', async () => {
+  const fetch = jest.fn(
+    async (_url: RequestInfo | URL, _init?: RequestInit) =>
+      new Response(JSON.stringify(snapshot))
+  );
+  global.fetch = fetch;
+  expect(await fetchPrivacySnapshot(id, signal())).toEqual(snapshot);
+  expect(fetch).toHaveBeenCalledWith(
+    'https://sysnode.info/api/privacy/v1/pools/eth-0.1/snapshot',
+    expect.objectContaining({ credentials: 'omit', redirect: 'error' })
+  );
+  expect(fetch.mock.calls[0][1]).not.toHaveProperty('body');
+});
+
+test('accepts bounded cold-index progress, not an incomplete empty snapshot', async () => {
+  const data = {
+    phase: 'syncing',
+    startBlock: 9116966,
+    scannedBlock: 9116965,
+    targetBlock: 9116965,
+  };
+  global.fetch = jest.fn(
+    async () => new Response(JSON.stringify(data), { status: 202 })
+  );
+  expect(await fetchPrivacySnapshot(id, signal())).toEqual(data);
+});
+
+test('declared oversized and invalid JSON responses are refused', async () => {
+  global.fetch = jest.fn(
+    async () =>
+      new Response('{}', {
+        headers: { 'Content-Length': String(100 * 1024 * 1024) },
+      })
+  );
+  await expect(fetchPrivacySnapshot(id, signal())).rejects.toThrow(
+    'privacy_data_invalid'
+  );
+  global.fetch = jest.fn(async () => new Response('<html>not JSON</html>'));
+  await expect(fetchPrivacySnapshot(id, signal())).rejects.toThrow();
+});
+
+test('independently checks block hash, leaf count, pool parameters and accepted root', async () => {
+  const fetch = mockRpc();
+  await verifySnapshotAnchor(id, snapshot, 'https://rpc.example/', signal());
+  expect(
+    fetch.mock.calls.every(([url]) => url === 'https://rpc.example/')
+  ).toBe(true);
+  const calls = fetch.mock.calls.map(([, init]) => JSON.parse(init.body));
+  expect(
+    calls.filter((item) => item.method === 'eth_getBlockByNumber')
+  ).toHaveLength(2);
+  expect(calls.filter((item) => item.method === 'eth_call')).toHaveLength(5);
+  expect(calls.some((item) => item.method === 'eth_sendRawTransaction')).toBe(
+    false
+  );
+});
+
+test.each([
+  [{ chain: '0x39' }, 'privacy_wrong_chain'],
+  [{ count: 3 }, 'privacy_verification_failed'],
+  [{ changedHash: true }, 'privacy_anchor_changed'],
+  [{ expired: true }, 'privacy_snapshot_stale'],
+  [{ wrongId: true }, 'privacy_rpc_unavailable'],
+] as const)(
+  'rejects invalid independent chain evidence: %j',
+  async (options, error) => {
+    mockRpc(options);
+    await expect(
+      verifySnapshotAnchor(id, snapshot, 'https://rpc.example/', signal())
+    ).rejects.toThrow(error);
+  }
+);

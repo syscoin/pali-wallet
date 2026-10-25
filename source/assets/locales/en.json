@@ -1556,5 +1556,32 @@
       "voting": "Voting",
       "collateral": "Collateral"
     }
+  },
+  "privacy": {
+    "title": "Privacy",
+    "prepare": "Prepare privacy",
+    "description": "Sync public pool data for use on this device.",
+    "scopeNotice": "Pool data only. Deposits and withdrawals come later.",
+    "poolLabel": "ETH pool",
+    "networkName": "Tornado Classic · Ethereum Mainnet",
+    "poolData": "Pool data",
+    "checking": "Checking saved data…",
+    "idle": "No saved pool data.",
+    "syncing": "Downloading public pool data…",
+    "verifying": "Verifying pool data…",
+    "ready": "Verified and saved on this device.",
+    "paused": "Paused.",
+    "error": "Could not finish. Try again.",
+    "unavailable": "Status unavailable. Try again.",
+    "retry": "Retry",
+    "resume": "Resume",
+    "refresh": "Update pool data",
+    "pause": "Pause",
+    "clear": "Clear saved data",
+    "networkRequired": "Select Ethereum Mainnet to prepare this pool.",
+    "publicDataOnly": "No wallet address or private notes are sent to Sysnode.",
+    "savedDeposits": "Saved public deposits: {{count}}",
+    "verifiedBlock": "Last verified block: {{block}}",
+    "progress": "{{completed}} of {{total}}"
   }
 }

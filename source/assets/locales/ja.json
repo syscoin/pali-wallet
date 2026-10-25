@@ -1556,5 +1556,32 @@
       "voting": "投票",
       "collateral": "担保"
     }
+  },
+  "privacy": {
+    "title": "プライバシー",
+    "prepare": "プライバシー機能を準備",
+    "description": "プライバシー操作に向けて、検証済みのプール公開データをこの端末に準備します。",
+    "scopeNotice": "ここではプールデータのみを準備します。入金と出金はまだ利用できません。",
+    "poolLabel": "ETHプール",
+    "networkName": "Tornado Classic · Ethereumメインネット",
+    "poolData": "プールデータ",
+    "checking": "保存済みのプールデータを確認中…",
+    "idle": "プールデータはまだ準備されていません。",
+    "syncing": "プールの公開データをダウンロード中…",
+    "verifying": "プールデータを検証中…",
+    "ready": "プールデータを検証し、この端末に保存しました。",
+    "paused": "準備を一時停止しました。",
+    "error": "準備を完了できませんでした。再試行してください。",
+    "unavailable": "準備状況を読み取れませんでした。再試行してください。",
+    "retry": "再試行",
+    "resume": "再開",
+    "refresh": "プールデータを更新",
+    "pause": "一時停止",
+    "clear": "保存済みデータを削除",
+    "networkRequired": "ネットワークメニューでEthereumメインネットを選択して、プールデータを準備してください。",
+    "publicDataOnly": "ダウンロードするのはプールの公開データのみです。ウォレットアドレスや秘密のノートは送信されません。",
+    "savedDeposits": "保存済みの公開入金数：{{count}}",
+    "verifiedBlock": "最後に検証したブロック：{{block}}",
+    "progress": "{{total}}件中{{completed}}件"
   }
 }

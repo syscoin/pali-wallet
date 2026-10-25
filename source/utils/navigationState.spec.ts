@@ -500,6 +500,7 @@ const separateDocument = () => {
 
 it.each([
   ['/home?tab=activity', 'save-browsing'],
+  ['/privacy', 'save-browsing'],
   ['/settings/account/smart-account-policy', 'save-browsing'],
   ['/send/eth', 'form-owned-draft'],
   ['/send/sys', 'form-owned-draft'],
