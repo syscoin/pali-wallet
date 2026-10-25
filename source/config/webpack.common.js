@@ -315,6 +315,22 @@ module.exports = {
           },
         },
         {
+          from: 'source/scripts/privacyProver/assets',
+          to: 'assets/privacy-prover',
+          globOptions: {
+            ignore: ['**/*.json'],
+          },
+        },
+        {
+          from: 'source/scripts/privacyProver/COPYING',
+          to: 'assets/privacy-prover/COPYING',
+          toType: 'file',
+        },
+        {
+          from: 'source/scripts/privacyProver/LICENSES.md',
+          to: 'assets/privacy-prover/LICENSES.md',
+        },
+        {
           from: 'source/scripts/offscreen-setup.js',
           to: 'source/scripts/offscreen-setup.js',
         },
@@ -342,6 +358,36 @@ module.exports = {
   optimization: {
     splitChunks: {
       cacheGroups: {
+        // Share only identical privacy modules across pre-registered background chunks.
+        privacyBackgroundShared: {
+          test(module) {
+            const resource = (module.resource || '')
+              .split(String.fromCharCode(92))
+              .join('/');
+            return (
+              /\/source\/utils\/privacy\/(?:note|relayers|withdrawal)\.ts$/.test(
+                resource
+              ) ||
+              resource.endsWith(
+                '/node_modules/@noble/curves/abstract/edwards.js'
+              )
+            );
+          },
+          chunks(chunk) {
+            return [
+              'private-vault',
+              'privacy-withdrawals',
+              'privacy-relayers',
+              'privacy-withdrawal',
+              'privacy-prover',
+            ].includes(chunk.name);
+          },
+          name: 'privacy-background-shared',
+          priority: 100,
+          minChunks: 2,
+          enforce: true,
+        },
+
         // Only UI locale imports reference this structure/restorer. Worker
         // notifications use their separate, small JSON projection above.
         localeCatalog: {

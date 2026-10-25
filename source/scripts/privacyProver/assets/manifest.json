@@ -1,0 +1,114 @@
+{
+  "version": 1,
+  "sources": [
+    {
+      "file": "artifacts/tornado.json",
+      "url": "https://raw.githubusercontent.com/tornadocash/tornado-cli/378ddf8b8b92a4924037d7b64a94dbfd5a7dd6e8/build/circuits/tornado.json",
+      "sha256": "3ddd61dbff09caeec82d8edde95c674a3c34f9e66b1fe9f2c8783e72fe536f98",
+      "bytes": 19474889
+    },
+    {
+      "file": "artifacts/withdraw_verification_key.json",
+      "url": "https://github.com/tornadocash/tornado-core/releases/download/v2.1/withdraw_verification_key.json",
+      "sha256": "3eedcf6ec6b5c24219ed19c7a33966fbfa6a03ae7c84124270589091e87cf8d3",
+      "bytes": 3398
+    },
+    {
+      "file": "vendor/snarkjs/src/bigint.js",
+      "url": "https://raw.githubusercontent.com/tornadocash/snarkjs/869181cfaf7526fe8972073d31655493a04326d5/src/bigint.js",
+      "sha256": "ed536201cd51de513a43c1732867d7f85456a178e4c124d5aa77d5aa82105f20",
+      "bytes": 11553
+    },
+    {
+      "file": "vendor/snarkjs/src/calculateWitness.js",
+      "url": "https://raw.githubusercontent.com/tornadocash/snarkjs/869181cfaf7526fe8972073d31655493a04326d5/src/calculateWitness.js",
+      "sha256": "0239f6419dcf04fa09dd7140c534899c140d804f7b20d5a0918649103800d932",
+      "bytes": 8137
+    },
+    {
+      "file": "vendor/snarkjs/src/stringifybigint.js",
+      "url": "https://raw.githubusercontent.com/tornadocash/snarkjs/869181cfaf7526fe8972073d31655493a04326d5/src/stringifybigint.js",
+      "sha256": "3c9812d0ab408321f0fc4b525b5fbb34198cbe2c59e9ae0be9eac2432e40c528",
+      "bytes": 1675
+    },
+    {
+      "file": "vendor/snarkjs/src/verifier_groth.js",
+      "url": "https://raw.githubusercontent.com/tornadocash/snarkjs/869181cfaf7526fe8972073d31655493a04326d5/src/verifier_groth.js",
+      "sha256": "c116321f0391dd1855b761fd278775053d11bf734d407b7818a158313b947c21",
+      "bytes": 1490
+    },
+    {
+      "file": "vendor/snarkjs/src/bn128.js",
+      "url": "https://raw.githubusercontent.com/tornadocash/snarkjs/869181cfaf7526fe8972073d31655493a04326d5/src/bn128.js",
+      "sha256": "85c5519d4a590434c6e5e81ef5d78ae951f2dbf572c8d1df096ffeaa3373c1ef",
+      "bytes": 14682
+    },
+    {
+      "file": "vendor/snarkjs/src/zqfield.js",
+      "url": "https://raw.githubusercontent.com/tornadocash/snarkjs/869181cfaf7526fe8972073d31655493a04326d5/src/zqfield.js",
+      "sha256": "120352eaccd8d0c4578a9ced552c84c399f5b62b1b70a8861c7e9e8713616d6d",
+      "bytes": 4037
+    },
+    {
+      "file": "vendor/snarkjs/src/f2field.js",
+      "url": "https://raw.githubusercontent.com/tornadocash/snarkjs/869181cfaf7526fe8972073d31655493a04326d5/src/f2field.js",
+      "sha256": "ec3bc96b0349b11c86f4b684bedd32df25be928dd1c0ca616a44a71dd26e4e7d",
+      "bytes": 3366
+    },
+    {
+      "file": "vendor/snarkjs/src/f3field.js",
+      "url": "https://raw.githubusercontent.com/tornadocash/snarkjs/869181cfaf7526fe8972073d31655493a04326d5/src/f3field.js",
+      "sha256": "8f972e203762ab7f2c988a4e3615faf40e7b1b92c4cdec36f6388bc69b026a62",
+      "bytes": 5666
+    },
+    {
+      "file": "vendor/snarkjs/src/gcurve.js",
+      "url": "https://raw.githubusercontent.com/tornadocash/snarkjs/869181cfaf7526fe8972073d31655493a04326d5/src/gcurve.js",
+      "sha256": "acadaa8b446de36b8a7c41f2daea55e499a94f136b2a4fd241df9fdf38fc6fb8",
+      "bytes": 5354
+    },
+    {
+      "file": "vendor/snarkjs/src/futils.js",
+      "url": "https://raw.githubusercontent.com/tornadocash/snarkjs/869181cfaf7526fe8972073d31655493a04326d5/src/futils.js",
+      "sha256": "5f764b866aac6634a398648e6a5b9520976164a7afd865df16dacfaa5afa46d0",
+      "bytes": 1328
+    },
+    {
+      "file": "vendor/websnark/src/groth16.js",
+      "url": "https://raw.githubusercontent.com/tornadocash/websnark/4c0af6a8b65aabea3c09f377f63c44e7a58afa6d/src/groth16.js",
+      "sha256": "715466cd17ee6f096e2cf052dfbd2ffde77de10a95d8e0c1ea8b942b362bd932",
+      "bytes": 19872
+    },
+    {
+      "file": "vendor/websnark/build/groth16_wasm.js",
+      "url": "https://raw.githubusercontent.com/tornadocash/websnark/4c0af6a8b65aabea3c09f377f63c44e7a58afa6d/build/groth16_wasm.js",
+      "sha256": "f3dfe57eeb393d1a07794c1e710805e748064345f5f4ad2fb594a7882aa47d3c",
+      "bytes": 40356
+    },
+    {
+      "file": "vendor/snarkjs/COPYING",
+      "url": "https://raw.githubusercontent.com/tornadocash/snarkjs/869181cfaf7526fe8972073d31655493a04326d5/COPYING",
+      "sha256": "589ed823e9a84c56feb95ac58e7cf384626b9cbf4fda2a907bc36e103de1bad2",
+      "bytes": 35141
+    }
+  ],
+  "artifacts": {
+    "metadata": {
+      "bytes": 310560,
+      "sha256": "346d3a157a5c3abd8970c520f692837426392a04b2a13ac2d7634151d36814d5",
+      "decodedBytes": 4582626
+    },
+    "wasm": {
+      "bytes": 30173,
+      "sha256": "a79df53990e4a18d44062d60560e50f3c0961d84ee9bc06f9545fc4fe6a079ea"
+    },
+    "verificationKey": {
+      "bytes": 3398,
+      "sha256": "3eedcf6ec6b5c24219ed19c7a33966fbfa6a03ae7c84124270589091e87cf8d3"
+    }
+  },
+  "provingKey": {
+    "bytes": 14522256,
+    "sha256": "8e2d2f22beafb5a9666daebca57b13f8029c3656c65fcfbcc86e2418fa16a3af"
+  }
+}

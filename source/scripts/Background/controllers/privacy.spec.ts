@@ -2,6 +2,7 @@ import { PrivacyCache, PrivacyRecord } from 'utils/privacy/cache';
 import { advanceMerkleWork, createMerkleWork } from 'utils/privacy/merkle';
 import type { IPrivacyNoteReader } from 'utils/privacy/privateVaultTypes';
 import { getPrivacyPool } from 'utils/privacy/registry';
+import type { IPrivacySnapshotReader } from 'utils/privacy/trustedSnapshot';
 import { PrivacyPoolId, PrivacySnapshot } from 'utils/privacy/types';
 
 import {
@@ -100,6 +101,7 @@ function setup(overrides: any = {}) {
     blockTimestamp: Math.max(1, (overrides.now || Date.now)() - 12 * 60 * 1000),
   }));
   let readNote!: IPrivacyNoteReader;
+  let readSnapshot!: IPrivacySnapshotReader;
   const schedule = jest.fn();
   const stop = jest.fn();
   const getNetwork = jest.fn(() => ({
@@ -119,6 +121,9 @@ function setup(overrides: any = {}) {
     },
     (reader) => {
       readNote = reader;
+    },
+    (reader) => {
+      readSnapshot = reader;
     }
   );
   return {
@@ -130,6 +135,7 @@ function setup(overrides: any = {}) {
     stop,
     getNetwork,
     readNote,
+    readSnapshot,
   };
 }
 
@@ -588,6 +594,229 @@ test('unavailable public cache defers note status without network recovery', asy
   const fetches = run.fetchSnapshot.mock.calls.length;
   const checks = run.verifyAnchor.mock.calls.length;
   expect(await run.readNote(noteIdentity())).toEqual({ phase: 'waiting' });
+  expect(run.fetchSnapshot).toHaveBeenCalledTimes(fetches);
+  expect(run.verifyAnchor).toHaveBeenCalledTimes(checks);
+});
+
+test('internal snapshot reader grants only immutable live verified data without network', async () => {
+  const downloaded = snapshot();
+  const run = setup({ fetchSnapshot: jest.fn(async () => downloaded) });
+  await expect(run.readSnapshot(id)).rejects.toThrow(
+    'privacy_verification_pending'
+  );
+  await run.controller.start(id);
+  await run.controller.resumePending(id);
+  const fetches = run.fetchSnapshot.mock.calls.length;
+  const checks = run.verifyAnchor.mock.calls.length;
+  const schedules = run.schedule.mock.calls.length;
+  const access = await run.readSnapshot(id);
+  expect(access.snapshot).toEqual(downloaded);
+  expect(access.snapshot).not.toBe(downloaded);
+  expect(Object.isFrozen(access.snapshot)).toBe(true);
+  expect(Object.isFrozen(access.snapshot.leaves)).toBe(true);
+  expect(Object.isFrozen(access.snapshot.withdrawnNullifiers)).toBe(true);
+  expect(() => access.assertSnapshotCurrent(access.snapshot)).not.toThrow();
+  expect(() => access.assertSnapshotCurrent(copy(access.snapshot))).toThrow(
+    'privacy_verification_pending'
+  );
+  downloaded.leaves[0] = leaf(77);
+  downloaded.withdrawnNullifiers.push(leaf(88));
+  expect(access.snapshot.leaves[0]).toBe(leaf(1));
+  expect(access.snapshot.withdrawnNullifiers).toEqual([]);
+  expect(() => access.assertSnapshotCurrent(access.snapshot)).not.toThrow();
+  expect(run.fetchSnapshot).toHaveBeenCalledTimes(fetches);
+  expect(run.verifyAnchor).toHaveBeenCalledTimes(checks);
+  expect(run.schedule).toHaveBeenCalledTimes(schedules);
+});
+
+test('a stored ready snapshot does not grant trust after controller restart', async () => {
+  const run = setup();
+  await run.controller.start(id);
+  await run.controller.resumePending(id);
+  let restoredReader!: IPrivacySnapshotReader;
+  createPrivacyController(
+    run.getNetwork,
+    {
+      cache: run.storage.cache,
+      fetchSnapshot: run.fetchSnapshot,
+      verifyAnchor: run.verifyAnchor,
+      schedule: run.schedule,
+      stop: run.stop,
+    },
+    undefined,
+    (reader) => {
+      restoredReader = reader;
+    }
+  );
+  const fetches = run.fetchSnapshot.mock.calls.length;
+  const checks = run.verifyAnchor.mock.calls.length;
+  await expect(restoredReader(id)).rejects.toThrow(
+    'privacy_verification_pending'
+  );
+  expect(run.fetchSnapshot).toHaveBeenCalledTimes(fetches);
+  expect(run.verifyAnchor).toHaveBeenCalledTimes(checks);
+});
+
+test.each(['pause', 'clear'] as const)(
+  '%s immediately revokes captured snapshot before its storage operation completes',
+  async (action) => {
+    const run = setup();
+    await run.controller.start(id);
+    await run.controller.resumePending(id);
+    const access = await run.readSnapshot(id);
+    const changed = run.controller[action](id);
+    expect(() => access.assertSnapshotCurrent(access.snapshot)).toThrow(
+      'privacy_verification_pending'
+    );
+    await changed;
+    await expect(run.readSnapshot(id)).rejects.toThrow(
+      'privacy_verification_pending'
+    );
+  }
+);
+
+test('requested refresh revokes the old snapshot while preserving as-of note reads', async () => {
+  const run = setup();
+  await run.controller.start(id);
+  await run.controller.resumePending(id);
+  const previous = await run.readSnapshot(id);
+  const starting = run.controller.start(id);
+  expect(() => previous.assertSnapshotCurrent(previous.snapshot)).toThrow(
+    'privacy_verification_pending'
+  );
+  await starting;
+  const download = deferred<PrivacySnapshot>();
+  const started = deferred<void>();
+  run.fetchSnapshot.mockImplementationOnce(() => {
+    started.resolve();
+    return download.promise;
+  });
+  const syncing = run.controller.resumePending(id);
+  await started.promise;
+  await expect(run.readSnapshot(id)).rejects.toThrow(
+    'privacy_verification_pending'
+  );
+  expect((await run.readNote(noteIdentity())).phase).toBe('verified');
+  download.resolve({
+    ...snapshot([leaf(1), leaf(2), leaf(3)]),
+    asOfBlockNumber: 20000001,
+  });
+  await syncing;
+  const current = await run.readSnapshot(id);
+  expect(current.snapshot.leafCount).toBe(3);
+  expect(() => current.assertSnapshotCurrent(current.snapshot)).not.toThrow();
+  expect(() => previous.assertSnapshotCurrent(previous.snapshot)).toThrow(
+    'privacy_verification_pending'
+  );
+});
+
+test('periodic refresh immediately revokes an old snapshot and replaces same-height fork data', async () => {
+  const run = setup();
+  await run.controller.start(id);
+  await run.controller.resumePending(id);
+  const previous = await run.readSnapshot(id);
+  const replacement = { ...snapshot([leaf(3)]), asOfBlockHash: leaf(101) };
+  run.fetchSnapshot.mockResolvedValueOnce(replacement);
+  const refreshing = run.controller.resumePending(id);
+  expect(() => previous.assertSnapshotCurrent(previous.snapshot)).toThrow(
+    'privacy_verification_pending'
+  );
+  await refreshing;
+  const current = await run.readSnapshot(id);
+  expect(current.snapshot).toEqual(replacement);
+  expect(current.snapshot.asOfBlockNumber).toBe(
+    previous.snapshot.asOfBlockNumber
+  );
+  expect(() => current.assertSnapshotCurrent(current.snapshot)).not.toThrow();
+  expect(() => previous.assertSnapshotCurrent(previous.snapshot)).toThrow(
+    'privacy_verification_pending'
+  );
+});
+
+test('a snapshot read queued before Pause cannot acquire a lease after Pause is requested', async () => {
+  const run = setup();
+  await run.controller.start(id);
+  await run.controller.resumePending(id);
+  const read = run.readSnapshot(id);
+  const assertion = expect(read).rejects.toThrow(
+    'privacy_verification_pending'
+  );
+  const paused = run.controller.pause(id);
+  await assertion;
+  await paused;
+});
+
+test.each([
+  [0, true],
+  [PRIVACY_NOTE_MAX_BLOCK_AGE_MS, true],
+  [PRIVACY_NOTE_MAX_BLOCK_AGE_MS + 1, false],
+  [-30000, true],
+  [-30001, false],
+  [NaN, false],
+  [Infinity, false],
+] as const)(
+  'snapshot lease rechecks clock age %s synchronously',
+  async (age, valid) => {
+    const blockTimestamp = 2000000000000;
+    let current = blockTimestamp;
+    const run = setup({
+      now: () => current,
+      verifyAnchor: jest.fn(async () => ({ blockTimestamp })),
+    });
+    await run.controller.start(id);
+    await run.controller.resumePending(id);
+    const access = await run.readSnapshot(id);
+    current = blockTimestamp + age;
+    if (valid) {
+      expect(() => access.assertSnapshotCurrent(access.snapshot)).not.toThrow();
+    } else {
+      expect(() => access.assertSnapshotCurrent(access.snapshot)).toThrow(
+        'privacy_verification_pending'
+      );
+      await expect(run.readSnapshot(id)).rejects.toThrow(
+        'privacy_verification_pending'
+      );
+    }
+  }
+);
+
+test.each([
+  'generation',
+  'leafCount',
+  'blockNumber',
+  'phase',
+  'running',
+] as const)(
+  'snapshot capture rejects mismatched persisted %s',
+  async (field) => {
+    const run = setup();
+    await run.controller.start(id);
+    await run.controller.resumePending(id);
+    const record = copy(run.storage.record!);
+    if (field === 'generation') record.generation++;
+    if (field === 'leafCount') record.status.leafCount!++;
+    if (field === 'blockNumber') record.status.blockNumber!++;
+    if (field === 'phase') record.status.phase = 'paused';
+    if (field === 'running') record.running = true;
+    run.storage.setRecord(record);
+    await expect(run.readSnapshot(id)).rejects.toThrow(
+      'privacy_verification_pending'
+    );
+  }
+);
+
+test('a snapshot cache failure is sanitized and does not start recovery network activity', async () => {
+  const run = setup();
+  await run.controller.start(id);
+  await run.controller.resumePending(id);
+  run.storage.cache.get = jest.fn(async () => {
+    throw new Error('storage implementation detail');
+  });
+  const fetches = run.fetchSnapshot.mock.calls.length;
+  const checks = run.verifyAnchor.mock.calls.length;
+  await expect(run.readSnapshot(id)).rejects.toThrow(
+    'privacy_verification_pending'
+  );
   expect(run.fetchSnapshot).toHaveBeenCalledTimes(fetches);
   expect(run.verifyAnchor).toHaveBeenCalledTimes(checks);
 });

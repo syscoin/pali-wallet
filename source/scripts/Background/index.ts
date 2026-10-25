@@ -46,6 +46,23 @@ void import(
 void import(
   /* webpackChunkName: "private-vault" */ './controllers/privateVault'
 ).catch(() => undefined);
+// MV3 classic workers reject previously unseen script URLs after install.
+// Register optional privacy modules now, without starting a sync, proof or send.
+void import(
+  /* webpackChunkName: "privacy-transactions" */ './controllers/privacyTransactions'
+).catch(() => undefined);
+void import(
+  /* webpackChunkName: "privacy-withdrawals" */ './controllers/privacyWithdrawals'
+).catch(() => undefined);
+void import(
+  /* webpackChunkName: "privacy-relayers" */ 'utils/privacy/relayers'
+).catch(() => undefined);
+void import(
+  /* webpackChunkName: "privacy-withdrawal" */ 'utils/privacy/withdrawal'
+).catch(() => undefined);
+void import(
+  /* webpackChunkName: "privacy-prover" */ 'utils/privacy/prover'
+).catch(() => undefined);
 // Register the optional Sentry signer chunk while the classic worker evaluates.
 // This does not unlock keys or initialize its cryptographic implementations.
 void import(

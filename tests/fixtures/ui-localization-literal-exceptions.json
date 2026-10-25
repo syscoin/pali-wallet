@@ -3,20 +3,6 @@
   "scope": "Exact normalized JSX word-copy and direct visible string props in production components/pages TSX. This is not callback-error, dynamic-text or all-source localization coverage.",
   "exceptions": [
     {
-      "file": "source/pages/Privacy/Privacy.tsx",
-      "kind": "jsx-text",
-      "text": "ETH",
-      "count": 1,
-      "reason": "Canonical asset ticker for the fixed Ethereum mainnet pool denominations; the symbol is not translated user guidance."
-    },
-    {
-      "file": "source/pages/Privacy/PrivateNotes.tsx",
-      "kind": "jsx-text",
-      "text": "ETH",
-      "count": 1,
-      "reason": "Canonical asset ticker beside the imported Ethereum mainnet note denomination; the surrounding note status and actions are translated."
-    },
-    {
       "file": "source/components/Fullscreen/Fullscreen.tsx",
       "kind": "jsx-text",
       "text": "Fullscreen mode",
@@ -61,16 +47,9 @@
     {
       "file": "source/components/TransactionDetails/SyscoinTransactionDetailsFromPSBT.tsx",
       "kind": "jsx-text",
-      "text": "vbytes",
+      "text": "Coinbase",
       "count": 1,
-      "reason": "Bitcoin virtual-byte technical size unit next to a numeric fee/size value."
-    },
-    {
-      "file": "source/components/TransactionDetails/SyscoinTransactionDetailsFromPSBT.tsx",
-      "kind": "jsx-text",
-      "text": "bytes",
-      "count": 1,
-      "reason": "Technical byte-size unit next to the raw transaction byte count, not an instruction."
+      "reason": "Bitcoin protocol coinbase-input type, not the exchange brand or a user guidance sentence."
     },
     {
       "file": "source/components/TransactionDetails/SyscoinTransactionDetailsFromPSBT.tsx",
@@ -82,9 +61,16 @@
     {
       "file": "source/components/TransactionDetails/SyscoinTransactionDetailsFromPSBT.tsx",
       "kind": "jsx-text",
-      "text": "Coinbase",
+      "text": "bytes",
       "count": 1,
-      "reason": "Bitcoin protocol coinbase-input type, not the exchange brand or a user guidance sentence."
+      "reason": "Technical byte-size unit next to the raw transaction byte count, not an instruction."
+    },
+    {
+      "file": "source/components/TransactionDetails/SyscoinTransactionDetailsFromPSBT.tsx",
+      "kind": "jsx-text",
+      "text": "vbytes",
+      "count": 1,
+      "reason": "Bitcoin virtual-byte technical size unit next to a numeric fee/size value."
     },
     {
       "file": "source/components/WalletBootstrap/WalletBootstrap.tsx",
@@ -137,10 +123,10 @@
     },
     {
       "file": "source/pages/Home/Panel/components/Assets/EvmDetails.tsx",
-      "kind": "prop:alt",
-      "text": "CoinGecko",
+      "kind": "jsx-text",
+      "text": "% (24h)",
       "count": 1,
-      "reason": "Proper market-data service name for the CoinGecko logo alternative text."
+      "reason": "Percentage and 24-hour market interval units beside the numeric price change."
     },
     {
       "file": "source/pages/Home/Panel/components/Assets/EvmDetails.tsx",
@@ -151,17 +137,17 @@
     },
     {
       "file": "source/pages/Home/Panel/components/Assets/EvmDetails.tsx",
-      "kind": "jsx-text",
-      "text": "% (24h)",
-      "count": 1,
-      "reason": "Percentage and 24-hour market interval units beside the numeric price change."
-    },
-    {
-      "file": "source/pages/Home/Panel/components/Assets/SyscoinDetails.tsx",
       "kind": "prop:alt",
       "text": "CoinGecko",
       "count": 1,
-      "reason": "Proper name of the CoinGecko market-data logo, not a description or instruction."
+      "reason": "Proper market-data service name for the CoinGecko logo alternative text."
+    },
+    {
+      "file": "source/pages/Home/Panel/components/Assets/SyscoinDetails.tsx",
+      "kind": "jsx-text",
+      "text": "% (24h)",
+      "count": 1,
+      "reason": "Percentage and 24-hour interval unit suffix for numeric market change."
     },
     {
       "file": "source/pages/Home/Panel/components/Assets/SyscoinDetails.tsx",
@@ -172,10 +158,10 @@
     },
     {
       "file": "source/pages/Home/Panel/components/Assets/SyscoinDetails.tsx",
-      "kind": "jsx-text",
-      "text": "% (24h)",
+      "kind": "prop:alt",
+      "text": "CoinGecko",
       "count": 1,
-      "reason": "Percentage and 24-hour interval unit suffix for numeric market change."
+      "reason": "Proper name of the CoinGecko market-data logo, not a description or instruction."
     },
     {
       "file": "source/pages/Home/Panel/components/Assets/SyscoinList.tsx",
@@ -193,17 +179,45 @@
     },
     {
       "file": "source/pages/Home/Panel/components/Transactions/UTXO/UtxoList.tsx",
+      "kind": "jsx-text",
+      "text": "Z-DAG",
+      "count": 1,
+      "reason": "Exact Syscoin Z-DAG protocol label, not an English status sentence."
+    },
+    {
+      "file": "source/pages/Home/Panel/components/Transactions/UTXO/UtxoList.tsx",
       "kind": "prop:title",
       "text": "Z-DAG",
       "count": 1,
       "reason": "Exact Syscoin Z-DAG protocol name in the protocol-status title."
     },
     {
-      "file": "source/pages/Home/Panel/components/Transactions/UTXO/UtxoList.tsx",
+      "file": "source/pages/Privacy/Privacy.tsx",
       "kind": "jsx-text",
-      "text": "Z-DAG",
+      "text": "ETH",
       "count": 1,
-      "reason": "Exact Syscoin Z-DAG protocol label, not an English status sentence."
+      "reason": "Canonical asset ticker for the fixed Ethereum mainnet pool denominations; the symbol is not translated user guidance."
+    },
+    {
+      "file": "source/pages/Privacy/PrivateDeposit.tsx",
+      "kind": "jsx-text",
+      "text": "ETH",
+      "count": 4,
+      "reason": "Canonical Ethereum ticker in fixed ETH pool amounts and fees; protocol symbol is unchanged across locales."
+    },
+    {
+      "file": "source/pages/Privacy/PrivateNotes.tsx",
+      "kind": "jsx-text",
+      "text": "ETH",
+      "count": 1,
+      "reason": "Canonical asset ticker beside the imported Ethereum mainnet note denomination; the surrounding note status and actions are translated."
+    },
+    {
+      "file": "source/pages/Privacy/PrivateWithdrawal.tsx",
+      "kind": "jsx-text",
+      "text": "ETH",
+      "count": 6,
+      "reason": "Canonical Ethereum ticker in fixed ETH pool amounts and fees; protocol symbol is unchanged across locales."
     },
     {
       "file": "source/pages/Send/EditPriority.tsx",
@@ -229,16 +243,16 @@
     {
       "file": "source/pages/Settings/ConnectHardwareWallet.tsx",
       "kind": "jsx-text",
-      "text": "Trezor",
+      "text": "Ledger",
       "count": 1,
-      "reason": "Proper name of the Trezor hardware-wallet manufacturer."
+      "reason": "Proper name of the Ledger hardware-wallet manufacturer."
     },
     {
       "file": "source/pages/Settings/ConnectHardwareWallet.tsx",
       "kind": "jsx-text",
-      "text": "Ledger",
+      "text": "Trezor",
       "count": 1,
-      "reason": "Proper name of the Ledger hardware-wallet manufacturer."
+      "reason": "Proper name of the Trezor hardware-wallet manufacturer."
     },
     {
       "file": "source/pages/Settings/ConnectedSites.tsx",
@@ -299,16 +313,16 @@
     {
       "file": "source/pages/Settings/ManageNetwork.tsx",
       "kind": "jsx-text",
-      "text": "UTXO",
+      "text": "EVM",
       "count": 1,
-      "reason": "UTXO protocol-family acronym for the network list section."
+      "reason": "EVM protocol-family acronym for the network list section."
     },
     {
       "file": "source/pages/Settings/ManageNetwork.tsx",
       "kind": "jsx-text",
-      "text": "EVM",
+      "text": "UTXO",
       "count": 1,
-      "reason": "EVM protocol-family acronym for the network list section."
+      "reason": "UTXO protocol-family acronym for the network list section."
     },
     {
       "file": "source/pages/Settings/RemoveEth.tsx",
@@ -320,23 +334,16 @@
     {
       "file": "source/pages/SmartAccount/Hub.tsx",
       "kind": "prop:placeholder",
-      "text": "0x...",
-      "count": 1,
-      "reason": "Literal hexadecimal address-format hint for the public guardian account field."
-    },
-    {
-      "file": "source/pages/SmartAccount/Hub.tsx",
-      "kind": "prop:placeholder",
       "text": "0x",
       "count": 1,
       "reason": "Literal hexadecimal calldata prefix, not a natural-language placeholder."
     },
     {
-      "file": "source/pages/SwitchNetwork/NetworkList.tsx",
-      "kind": "jsx-text",
-      "text": "UTXO",
+      "file": "source/pages/SmartAccount/Hub.tsx",
+      "kind": "prop:placeholder",
+      "text": "0x...",
       "count": 1,
-      "reason": "UTXO protocol-family acronym for the network category filter."
+      "reason": "Literal hexadecimal address-format hint for the public guardian account field."
     },
     {
       "file": "source/pages/SwitchNetwork/NetworkList.tsx",
@@ -344,6 +351,13 @@
       "text": "EVM",
       "count": 1,
       "reason": "EVM protocol-family acronym for the network category filter."
+    },
+    {
+      "file": "source/pages/SwitchNetwork/NetworkList.tsx",
+      "kind": "jsx-text",
+      "text": "UTXO",
+      "count": 1,
+      "reason": "UTXO protocol-family acronym for the network category filter."
     },
     {
       "file": "source/pages/Transactions/SignEth.tsx",
