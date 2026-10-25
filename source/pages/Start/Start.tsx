@@ -43,13 +43,10 @@ export const Start = (props: any) => {
   useAppReady();
 
   return (
-    <div className="bg-no-repeat bg-[url('../../../source/assets/all_assets/GET_STARTED2.webp')] [@media(max-height:619px),(max-width:399px)]:!bg-none [@media(max-height:619px),(max-width:399px)]:bg-bkg-1 min-w-full h-screen !overflow-y-auto overscroll-y-contain login-animated-bg">
+    <div className="bg-no-repeat bg-[url('../../../source/assets/all_assets/GET_STARTED2.webp')] min-w-full h-screen !overflow-y-auto overscroll-y-contain login-animated-bg">
       {/* Subtle twinkling particles */}
       {[1, 2, 3, 4, 5, 6].map((number) => (
-        <div
-          key={number}
-          className={`particle-${number} [@media(max-height:619px),(max-width:399px)]:hidden`}
-        />
+        <div key={number} className={`particle-${number}`} />
       ))}
 
       <ImportWalletWarning
@@ -62,7 +59,7 @@ export const Start = (props: any) => {
       />
 
       <div className="flex min-h-full w-full flex-col items-center justify-center pb-6">
-        <p className="relative z-10 pt-[14rem] [@media(max-height:619px),(max-width:399px)]:pt-8 mb-2 text-center text-white text-opacity-92 font-poppins text-sm font-light leading-normal tracking-[0.175rem]">
+        <p className="relative z-10 pt-[14rem] login-welcome-spacing mb-2 text-center text-white text-opacity-92 font-poppins text-sm font-light leading-normal tracking-[0.175rem]">
           {t('start.welcomeTo')}
         </p>
 

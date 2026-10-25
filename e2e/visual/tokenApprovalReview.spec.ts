@@ -297,31 +297,35 @@ test('token approval review restores discarded drafts and shows the edited calld
           for (let attempt = 0; attempt < 12; attempt++) {
             const point = await input.evaluate((element) => {
               const rect = element.getBoundingClientRect();
-              const dialog = element.closest('[role="dialog"]');
-              const footer = dialog
-                ?.querySelector('button[type="submit"]')
-                ?.getBoundingClientRect();
-              const bottom = footer?.top ?? innerHeight;
-              if (rect.top >= 0 && rect.bottom <= bottom) return null;
-              let owner = element.parentElement;
-              while (
-                owner &&
-                !(
-                  /auto|scroll/.test(getComputedStyle(owner).overflowY) &&
-                  owner.scrollHeight > owner.clientHeight + 2
+              let visibleTop = 0;
+              let visibleBottom = innerHeight;
+              let owner: HTMLElement | null = null;
+              for (
+                let ancestor = element.parentElement;
+                ancestor;
+                ancestor = ancestor.parentElement
+              ) {
+                const style = getComputedStyle(ancestor);
+                if (!/auto|scroll|hidden|clip/.test(style.overflowY)) continue;
+                const area = ancestor.getBoundingClientRect();
+                visibleTop = Math.max(visibleTop, area.top);
+                visibleBottom = Math.min(visibleBottom, area.bottom);
+                if (
+                  !owner &&
+                  /auto|scroll/.test(style.overflowY) &&
+                  ancestor.scrollHeight > ancestor.clientHeight + 2
                 )
-              )
-                owner = owner.parentElement;
+                  owner = ancestor;
+              }
+              if (rect.top >= visibleTop && rect.bottom <= visibleBottom)
+                return null;
               const area = (
                 owner || document.documentElement
               ).getBoundingClientRect();
               return {
-                x: Math.max(8, area.left + 16),
-                y: Math.max(
-                  8,
-                  Math.min(bottom - 16, Math.max(0, area.top) + 60)
-                ),
-                delta: rect.top < 0 ? -80 : 80,
+                x: Math.max(8, area.left + area.width / 2),
+                y: Math.max(visibleTop + 8, (visibleTop + visibleBottom) / 2),
+                delta: rect.top < visibleTop ? -80 : 80,
               };
             });
             if (!point) break;

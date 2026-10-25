@@ -393,3 +393,17 @@
   backface-visibility: hidden;
   transform-style: preserve-3d;
 }
+
+/* The fixed-width hero must not sit behind text in narrow or short windows. */
+@media (max-width: 399px), (max-height: 619px) {
+  .login-animated-bg {
+    background-image: none !important;
+    background-color: #07152a;
+  }
+  .login-animated-bg > [class^='particle-'] {
+    display: none;
+  }
+  .login-animated-bg .login-welcome-spacing {
+    padding-top: 2rem;
+  }
+}

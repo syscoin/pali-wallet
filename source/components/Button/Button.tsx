@@ -32,12 +32,15 @@ const widthClasses: Record<string, string> = {
 const LoadingIconPrimary = memo(() => (
   <LoadingSvg className="w-6 animate-spin" style={{ color: '#4d76b8' }} />
 ));
-LoadingIconPrimary.displayName = 'LoadingIconPrimary';
 
 const LoadingIconWhite = memo(() => (
   <LoadingSvg className="w-5 animate-spin" style={{ color: '#ffffff' }} />
 ));
-LoadingIconWhite.displayName = 'LoadingIconWhite';
+// Internal debugging labels are unnecessary in the shipped startup bundle.
+if (process.env.NODE_ENV !== 'production') {
+  LoadingIconPrimary.displayName = 'LoadingIconPrimary';
+  LoadingIconWhite.displayName = 'LoadingIconWhite';
+}
 
 export type ButtonVariant =
   | 'danger'

@@ -33,59 +33,100 @@ async function inspectHomeTabs(
   const assets = page.locator('#assets-btn');
   await assets.scrollIntoViewIfNeeded();
   await page.mouse.move(0, 0);
-  const observed = [];
-  for (const [id, expected] of [
-    ['assets-btn', text.buttons.assets],
-    ['activity-btn', text.buttons.activity],
-  ]) {
-    const button = page.locator('#' + id);
-    await expect(button).toHaveText(expected);
-    const bounds = await button.evaluate((element) => {
-      const box = element.getBoundingClientRect();
-      const range = document.createRange();
-      range.selectNodeContents(element);
-      const glyphs = [...range.getClientRects()].filter(
-        (r) => r.width > 0 && r.height > 0
+  // Leaving the clicked tab starts the shared button's finite hover-scale
+  // transition. Inspect its resting glyphs only after that motion completes.
+  await page
+    .locator('#assets-btn, #activity-btn')
+    .evaluateAll(async (nodes) => {
+      await Promise.all(
+        nodes.flatMap((node) =>
+          node
+            .getAnimations()
+            .filter(
+              (animation) =>
+                animation.playState === 'running' &&
+                Number.isFinite(
+                  Number(animation.effect?.getComputedTiming().endTime)
+                )
+            )
+            .map((animation) => animation.finished.catch(() => undefined))
+        )
       );
-      return {
-        id: element.id,
-        text: element.textContent?.trim(),
-        box: {
-          left: box.left,
-          right: box.right,
-          top: box.top,
-          bottom: box.bottom,
-        },
-        glyphs: glyphs.map((r) => ({
-          left: r.left,
-          right: r.right,
-          top: r.top,
-          bottom: r.bottom,
-        })),
-        fits: element.scrollWidth <= element.clientWidth,
-        width: innerWidth,
-        glyphHits: glyphs.flatMap((r) =>
-          [0.05, 0.5, 0.95].map((fraction) => {
-            const hit = document.elementFromPoint(
-              r.left + r.width * fraction,
-              r.top + r.height / 2
-            );
-            return hit === element || Boolean(hit && element.contains(hit));
-          })
-        ),
-      };
     });
-    observed.push(bounds);
-    expect(bounds.fits, id + ': label fits').toBe(true);
-    expect(
-      bounds.glyphHits,
-      id + ': no sibling covers the label'
-    ).not.toContain(false);
-    for (const glyph of bounds.glyphs) {
-      expect(glyph.left).toBeGreaterThanOrEqual(bounds.box.left);
-      expect(glyph.right).toBeLessThanOrEqual(bounds.box.right);
-      expect(glyph.left).toBeGreaterThanOrEqual(0);
-      expect(glyph.right).toBeLessThanOrEqual(bounds.width);
+  const observed = [];
+  for (const state of ['rest', 'hover', 'keyboard']) {
+    for (const [id, expected] of [
+      ['assets-btn', text.buttons.assets],
+      ['activity-btn', text.buttons.activity],
+    ]) {
+      const button = page.locator('#' + id);
+      await expect(button).toHaveText(expected);
+      if (state === 'hover') await button.hover();
+      else {
+        await page.mouse.move(0, 0);
+        if (state === 'keyboard') {
+          for (
+            let step = 0;
+            step < 120 &&
+            !(await button.evaluate((e) => e === document.activeElement));
+            step++
+          )
+            await page.keyboard.press('Tab');
+          await expect(button).toBeFocused();
+        }
+      }
+      await button.evaluate(async (e) => {
+        await Promise.all(
+          e
+            .getAnimations()
+            .filter(
+              (a) =>
+                a.playState === 'running' &&
+                Number.isFinite(Number(a.effect?.getComputedTiming().endTime))
+            )
+            .map((a) => a.finished.catch(() => undefined))
+        );
+      });
+      const bounds = await button.evaluate((element) => {
+        const box = element.getBoundingClientRect();
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        const glyphs = [...range.getClientRects()].filter(
+          (r) => r.width > 0 && r.height > 0
+        );
+        return {
+          id: element.id,
+          text: element.textContent?.trim(),
+          box: {
+            left: box.left,
+            right: box.right,
+            top: box.top,
+            bottom: box.bottom,
+          },
+          glyphs: glyphs.map((r) => ({
+            left: r.left,
+            right: r.right,
+            top: r.top,
+            bottom: r.bottom,
+          })),
+          fits: element.scrollWidth <= element.clientWidth,
+          width: innerWidth,
+          glyphHits: glyphs.flatMap((r) =>
+            [0.05, 0.5, 0.95].map((fraction) => {
+              const hit = document.elementFromPoint(
+                r.left + r.width * fraction,
+                r.top + r.height / 2
+              );
+              return hit === element || Boolean(hit && element.contains(hit));
+            })
+          ),
+        };
+      });
+      observed.push({ state, ...bounds });
+      await info.attach(label + '-' + id + '-' + state, {
+        body: await page.screenshot({ animations: 'disabled' }),
+        contentType: 'image/png',
+      });
     }
   }
   await info.attach(label + '-tabs-geometry', {
@@ -96,6 +137,24 @@ async function inspectHomeTabs(
     body: await page.screenshot({ animations: 'disabled' }),
     contentType: 'image/png',
   });
+  for (const bounds of observed) {
+    expect(bounds.fits, bounds.state + ': label fits').toBe(true);
+    expect(bounds.glyphHits, bounds.state + ': glyph hit target').not.toContain(
+      false
+    );
+    for (const glyph of bounds.glyphs) {
+      expect(
+        glyph.left,
+        bounds.state + ': ' + bounds.id + ' left'
+      ).toBeGreaterThanOrEqual(0);
+      expect(
+        glyph.right,
+        bounds.state + ': ' + bounds.id + ' right'
+      ).toBeLessThanOrEqual(bounds.width);
+      expect(glyph.left).toBeGreaterThanOrEqual(bounds.box.left);
+      expect(glyph.right).toBeLessThanOrEqual(bounds.box.right);
+    }
+  }
 }
 
 // Test-local version of the ordinary network flow. The shared driver assumes

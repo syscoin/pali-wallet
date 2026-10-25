@@ -29,54 +29,69 @@ import {
   UTXO_FIXTURE_SEED,
 } from '../harness/utxoFixture';
 
-async function observeTokenBadges(page: Page, info: TestInfo, label: string) {
+async function observeTokenBadges(
+  page: Page,
+  info: TestInfo,
+  label: string,
+  standard: 'ERC-1155' | 'SPT' | 'ERC20' = 'ERC-1155',
+  count = 1
+) {
   await page.mouse.move(0, 0);
   await expect(page.getByText(/has been added to your wallet/)).toBeHidden({
     timeout: 10000,
   });
   const badges = page
     .locator('span.bg-opacity-80, div.bg-opacity-80')
-    .filter({ hasText: /^(ERC-1155|SPT)$/ });
-  await expect(badges).toHaveCount(1);
-  const badge = badges.first();
-  const contrast = await captureForegroundContrast(badge, info, label);
-  const geometry = await badge.evaluate((element) => {
-    const r = element.getBoundingClientRect();
-    const range = document.createRange();
-    range.selectNodeContents(element);
-    const lines = [...range.getClientRects()].filter(
-      (line) => line.width > 0 && line.height > 0
+    .filter({ hasText: new RegExp(`^${standard}$`) });
+  await expect(badges).toHaveCount(count);
+  const observations = [];
+  for (let index = 0; index < count; index++) {
+    const badge = badges.nth(index);
+    const observationLabel = count === 1 ? label : `${label}-${index}`;
+    const contrast = await captureForegroundContrast(
+      badge,
+      info,
+      observationLabel
     );
-    const row = element.closest('li')?.getBoundingClientRect();
-    return {
-      text: element.textContent?.trim(),
-      width: r.width,
-      height: r.height,
-      left: r.left,
-      right: r.right,
-      lineTops: [...new Set(lines.map((line) => Math.round(line.top)))],
-      fits: element.scrollWidth <= element.clientWidth,
-      viewport: innerWidth,
-      row: row ? { left: row.left, right: row.right } : null,
-    };
-  });
-  expect(geometry.lineTops).toHaveLength(1);
-  expect(geometry.fits).toBe(true);
-  expect(geometry.left).toBeGreaterThanOrEqual(0);
-  expect(geometry.right).toBeLessThanOrEqual(geometry.viewport);
-  if (geometry.row) {
-    expect(geometry.row.left).toBeGreaterThanOrEqual(0);
-    expect(geometry.row.right).toBeLessThanOrEqual(geometry.viewport);
+    const geometry = await badge.evaluate((element) => {
+      const r = element.getBoundingClientRect();
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      const lines = [...range.getClientRects()].filter(
+        (line) => line.width > 0 && line.height > 0
+      );
+      const row = element.closest('li')?.getBoundingClientRect();
+      return {
+        text: element.textContent?.trim(),
+        width: r.width,
+        height: r.height,
+        left: r.left,
+        right: r.right,
+        lineTops: [...new Set(lines.map((line) => Math.round(line.top)))],
+        fits: element.scrollWidth <= element.clientWidth,
+        viewport: innerWidth,
+        row: row ? { left: row.left, right: row.right } : null,
+      };
+    });
+    expect(geometry.lineTops).toHaveLength(1);
+    expect(geometry.fits).toBe(true);
+    expect(geometry.left).toBeGreaterThanOrEqual(0);
+    expect(geometry.right).toBeLessThanOrEqual(geometry.viewport);
+    if (geometry.row) {
+      expect(geometry.row.left).toBeGreaterThanOrEqual(0);
+      expect(geometry.row.right).toBeLessThanOrEqual(geometry.viewport);
+    }
+    await info.attach(observationLabel + '-geometry', {
+      body: JSON.stringify(geometry),
+      contentType: 'application/json',
+    });
+    await info.attach(observationLabel + '-full', {
+      body: await page.screenshot({ animations: 'disabled' }),
+      contentType: 'image/png',
+    });
+    observations.push({ contrast, geometry });
   }
-  await info.attach(label + '-geometry', {
-    body: JSON.stringify(geometry),
-    contentType: 'application/json',
-  });
-  await info.attach(label + '-full', {
-    body: await page.screenshot({ animations: 'disabled' }),
-    contentType: 'image/png',
-  });
-  return { contrast, geometry };
+  return observations;
 }
 
 for (const width of [400, 320]) {
@@ -147,7 +162,9 @@ for (const width of [400, 320]) {
             exact: true,
           });
           await expect(importToken).toBeEnabled();
-          await observeTokenBadges(page, info, 'spt-import-' + width);
+          // Blockbook's discovered fungible row retains its existing ERC20
+          // label; the prepared UTXO transaction below must identify it as SPT.
+          await observeTokenBadges(page, info, 'spt-import-' + width, 'ERC20');
           await importToken.click();
           await expect(importToken).toBeDisabled();
           await page
@@ -182,7 +199,7 @@ for (const width of [400, 320]) {
           await expect(page.locator('p.text-2xl')).toHaveText(
             `${SPT_BELOW_MAX} ${SPT_SYMBOL}`
           );
-          await observeTokenBadges(page, info, 'spt-confirm-' + width);
+          await observeTokenBadges(page, info, 'spt-confirm-' + width, 'SPT');
           await page
             .getByRole('button', { name: en.buttons.cancel, exact: true })
             .click();
@@ -550,7 +567,9 @@ for (const targetViewport of [
                 await observeTokenBadges(
                   page,
                   info,
-                  'details-' + scenario.id + '-' + targetViewport.width
+                  'details-' + scenario.id + '-' + targetViewport.width,
+                  'ERC-1155',
+                  2
                 );
               }
             );
