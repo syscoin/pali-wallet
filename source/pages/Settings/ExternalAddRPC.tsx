@@ -35,9 +35,19 @@ const CustomRPCExternal = () => {
   const [confirmed, setConfirmed] = useState(false);
   const addedNetwork = useRef<string>();
   const submitting = useRef(false);
+  const rpcValidation = useRef(0);
+  const apiValidation = useRef(0);
   const { alert } = useUtils();
   const { controllerEmitter } = useController();
   const [form] = useForm();
+
+  React.useEffect(
+    () => () => {
+      rpcValidation.current++;
+      apiValidation.current++;
+    },
+    []
+  );
 
   // Extract chainConfig from the nested data structure
   const chainConfig = data.chainConfig || data;
@@ -95,6 +105,10 @@ const CustomRPCExternal = () => {
     rpcUrl?: string,
     formData?: ICustomRpcParams
   ): Promise<INetwork | null> => {
+    const validation = ++rpcValidation.current;
+    const isCurrent = () =>
+      validation === rpcValidation.current &&
+      form.getFieldValue('url')?.trim() === rpcUrl?.trim();
     if (!rpcUrl || !rpcUrl.trim()) {
       // Clear any existing RPC URL field errors
       setFieldErrors('url');
@@ -126,6 +140,10 @@ const CustomRPCExternal = () => {
         [rpcParams]
       )) as INetwork;
 
+      // A later edit or validation owns the field, even if this request was
+      // started first and happens to complete last.
+      if (!isCurrent()) return null;
+
       if (!network) {
         ownValidationMessage = t('settings.failedValidateRpc');
         throw new Error('Failed to get network configuration from RPC');
@@ -154,6 +172,7 @@ const CustomRPCExternal = () => {
 
       return network;
     } catch (error) {
+      if (!isCurrent()) return null;
       // Extract the actual error message from the thrown error
       const errorMessage =
         ownValidationMessage ||
@@ -170,6 +189,10 @@ const CustomRPCExternal = () => {
   };
 
   const validateApiUrlAndShowError = async (apiUrl?: string) => {
+    const validation = ++apiValidation.current;
+    const isCurrent = () =>
+      validation === apiValidation.current &&
+      form.getFieldValue('apiUrl')?.trim() === apiUrl?.trim();
     if (!apiUrl || !apiUrl.trim()) {
       // Clear any existing API URL field errors
       setFieldErrors('apiUrl');
@@ -190,6 +213,8 @@ const CustomRPCExternal = () => {
         [apiUrl.trim()]
       );
 
+      if (!isCurrent()) return false;
+
       // Type guard for API result
       const typedApiResult = apiResult as { error?: string; success?: boolean };
 
@@ -207,6 +232,7 @@ const CustomRPCExternal = () => {
 
       return true;
     } catch (error) {
+      if (!isCurrent()) return false;
       const errorMessage = extractErrorMessage(
         error,
         t('settings.apiConnectionError')
@@ -358,6 +384,10 @@ const CustomRPCExternal = () => {
         name="rpc"
         initialValues={initialValues}
         onFinish={onSubmit}
+        onValuesChange={(changed) => {
+          if ('url' in changed) rpcValidation.current++;
+          if ('apiUrl' in changed) apiValidation.current++;
+        }}
         disabled={loading || switchingNetwork || confirmed}
         autoComplete="off"
         className="flex flex-col gap-3 items-center justify-center text-center w-full px-4 py-4"
