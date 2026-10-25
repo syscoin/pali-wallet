@@ -1,6 +1,4 @@
-// This runs before the bundles, so failed chunk loads still have a recovery UI.
-// Chrome toolbar popups need an intrinsic height. Only a positively identified
-// non-popup view may opt into viewport-relative sizing for short windows.
+// Pre-bundle recovery; retain fixed sizing unless Chrome identifies a non-popup.
 try {
   if (
     typeof chrome !== 'undefined' &&
@@ -43,5 +41,10 @@ const loaderTimeout = setTimeout(function () {
 
 window.addEventListener('pali-app-ready', function () {
   clearTimeout(loaderTimeout);
+  const loader = document.getElementById('initial-loader');
+  if (loader) {
+    loader.setAttribute('aria-hidden', 'true');
+    loader.setAttribute('inert', '');
+  }
   document.body.classList.add('app-loaded');
 });

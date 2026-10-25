@@ -51,6 +51,17 @@ test('Welcome and Unlock keep readable text over the short-window backdrop', asy
           `${state}: inspect backdrop, text and keyboard link at ${viewport.width}x${viewport.height}`,
           async () => {
             await page.setViewportSize(viewport);
+            await expect(page.locator('#initial-loader')).toHaveAttribute(
+              'aria-hidden',
+              'true'
+            );
+            await expect(page.locator('#initial-loader')).toHaveAttribute(
+              'inert',
+              ''
+            );
+            await expect(
+              page.getByRole('heading', { name: 'Pali', exact: true })
+            ).toHaveCount(1);
             const backdrop = page.locator('.login-animated-bg');
             const link = page.locator('#import-wallet-link');
             await expect(link).toHaveText(
@@ -64,7 +75,7 @@ test('Welcome and Unlock keep readable text over the short-window backdrop', asy
             if (viewport.height < 500) {
               expect(art).toBe('none');
               const heading = await captureForegroundContrast(
-                page.getByRole('heading', { name: 'Pali', exact: true }),
+                backdrop.getByRole('heading', { name: 'Pali', exact: true }),
                 info,
                 `${state}-heading-${viewport.width}x${viewport.height}`
               );

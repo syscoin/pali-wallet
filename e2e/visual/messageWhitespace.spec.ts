@@ -52,16 +52,140 @@ async function revealPreview(target: Locator) {
       )
         surface = surface.parentElement;
       const area = surface?.getBoundingClientRect();
+      const intrinsicScrollportHeight = surface?.clientHeight ?? innerHeight;
       return {
         box: box.toJSON(),
         bottom,
         width: innerWidth,
+        intrinsicScrollportHeight,
         wheel: area
           ? { x: area.left + 12, y: Math.min(area.bottom, bottom) - 12 }
           : null,
       };
     });
   const before = await read();
+  if (before.box.height > before.intrinsicScrollportHeight + 1) {
+    // The personal-message preview intentionally has a bounded inner scroller.
+    // An oversized paragraph cannot fit there at once; prove its endpoints are
+    // physically readable through native wheel scrolling instead of requiring
+    // its whole bounding box to fit the outer viewport.
+    await test.info().attach('scrollable-preview-initial', {
+      body: await page.screenshot({ animations: 'disabled' }),
+      contentType: 'image/png',
+    });
+    const glyph = (last: boolean) =>
+      target.evaluate((element, atEnd) => {
+        const text = element.firstChild!;
+        const offset = atEnd ? text.textContent!.length - 1 : 0;
+        const range = document.createRange();
+        range.setStart(text, offset);
+        range.setEnd(text, offset + 1);
+        const rect = range.getBoundingClientRect();
+        const footer = document.querySelector('.fixed.bottom-0');
+        const clip = {
+          left: 0,
+          right: innerWidth,
+          top: 0,
+          bottom: (footer?.getBoundingClientRect().top ?? innerHeight) - 4,
+        };
+        let wheel: { x: number; y: number } | null = null;
+        for (
+          let node = element.parentElement;
+          node;
+          node = node.parentElement
+        ) {
+          const style = getComputedStyle(node);
+          const bounds = node.getBoundingClientRect();
+          if (/auto|scroll|hidden|clip/.test(style.overflowY)) {
+            clip.top = Math.max(clip.top, bounds.top + node.clientTop);
+            clip.bottom = Math.min(
+              clip.bottom,
+              bounds.top + node.clientTop + node.clientHeight
+            );
+          }
+          if (/auto|scroll|hidden|clip/.test(style.overflowX)) {
+            clip.left = Math.max(clip.left, bounds.left + node.clientLeft);
+            clip.right = Math.min(
+              clip.right,
+              bounds.left + node.clientLeft + node.clientWidth
+            );
+          }
+          if (
+            !wheel &&
+            /auto|scroll/.test(style.overflowY) &&
+            node.scrollHeight > node.clientHeight + 1
+          )
+            wheel = {
+              x: Math.max(
+                clip.left + 2,
+                Math.min(clip.right - 2, bounds.left + 8)
+              ),
+              y: Math.max(
+                clip.top + 2,
+                Math.min(clip.bottom - 2, bounds.top + node.clientHeight / 2)
+              ),
+            };
+        }
+        if (wheel) {
+          wheel.x = Math.max(clip.left + 2, Math.min(clip.right - 2, wheel.x));
+          wheel.y = Math.max(clip.top + 2, Math.min(clip.bottom - 2, wheel.y));
+        }
+        const hit = document.elementFromPoint(
+          rect.left + rect.width / 2,
+          rect.top + rect.height / 2
+        );
+        return {
+          glyph: rect.toJSON(),
+          clip,
+          wheel,
+          visible:
+            rect.width > 0 &&
+            rect.height > 0 &&
+            rect.left >= clip.left &&
+            rect.right <= clip.right &&
+            rect.top >= clip.top &&
+            rect.bottom <= clip.bottom &&
+            Boolean(hit && (element === hit || element.contains(hit))),
+        };
+      }, last);
+    const endpoints = [];
+    for (const last of [false, true]) {
+      let observed = await glyph(last);
+      for (let attempt = 0; !observed.visible && attempt < 20; attempt++) {
+        expect(observed.wheel).not.toBeNull();
+        await page.mouse.move(observed.wheel!.x, observed.wheel!.y);
+        const delta =
+          observed.glyph.top < observed.clip.top
+            ? observed.glyph.top - observed.clip.top - 8
+            : observed.glyph.bottom - observed.clip.bottom + 8;
+        await page.mouse.wheel(0, delta);
+        await page.evaluate(
+          () =>
+            new Promise<void>((resolve) =>
+              requestAnimationFrame(() =>
+                requestAnimationFrame(() => resolve())
+              )
+            )
+        );
+        observed = await glyph(last);
+      }
+      expect(
+        observed.visible,
+        `${last ? 'last' : 'first'} preview glyph is exposed`
+      ).toBe(true);
+      await test
+        .info()
+        .attach(`scrollable-preview-${last ? 'last' : 'first'}-glyph`, {
+          body: await page.screenshot({ animations: 'disabled' }),
+          contentType: 'image/png',
+        });
+      endpoints.push(observed);
+    }
+    const result = await read();
+    expect(result.box.left).toBeGreaterThanOrEqual(0);
+    expect(result.box.right).toBeLessThanOrEqual(result.width);
+    return { ...result, oversizedScrollport: true, before, endpoints };
+  }
   if (before.box.bottom > before.bottom - 8) {
     expect(before.wheel).not.toBeNull();
     await page.mouse.move(before.wheel!.x, before.wheel!.y);
