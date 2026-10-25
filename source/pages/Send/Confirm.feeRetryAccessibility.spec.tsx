@@ -192,9 +192,11 @@ afterEach(() => {
   // No signing, publication, storage, account switch, or balance mutation.
   expect(
     mockEmitter.mock.calls.every(([path]) =>
-      ['getFeeDataWithDynamicMaxPriorityFeePerGas', 'getTxGasLimit', 'getFreshNativeEvmGasLimit'].includes(
-        path.at(-1)
-      )
+      [
+        'getFeeDataWithDynamicMaxPriorityFeePerGas',
+        'getTxGasLimit',
+        'getFreshNativeEvmGasLimit',
+      ].includes(path.at(-1))
     )
   ).toBe(true);
 });
@@ -251,7 +253,13 @@ async function prepare(language: string, count = 1, token = false) {
     if (method === 'getTxGasLimit') return Promise.resolve(21000);
     if (method === 'getFreshNativeEvmGasLimit') {
       expect(params[1]).toEqual(mockScope);
-      expect(params[0]).toEqual(expect.objectContaining({ data: '0x', from: mockLocation.state.tx.sender, to: mockLocation.state.tx.receivingAddress }));
+      expect(params[0]).toEqual(
+        expect.objectContaining({
+          data: '0x',
+          from: mockLocation.state.tx.sender,
+          to: mockLocation.state.tx.receivingAddress,
+        })
+      );
       return Promise.resolve(21000);
     }
     throw new Error(`Unexpected controller call: ${path.join('.')}`);
@@ -322,7 +330,11 @@ describe.each(['en', 'de', 'fr'])(
       expect(confirm(instance)).toBeDisabled();
       await succeedQuote(quotes[1], instance);
       expect(feeRequests()).toHaveLength(2);
-      expect(mockEmitter.mock.calls.filter(([path]) => path.at(-1) === 'getFreshNativeEvmGasLimit')).toHaveLength(1);
+      expect(
+        mockEmitter.mock.calls.filter(
+          ([path]) => path.at(-1) === 'getFreshNativeEvmGasLimit'
+        )
+      ).toHaveLength(1);
       expect(mockLocation.state.tx.receivingAddress).toBe(
         '0x2222222222222222222222222222222222222222'
       );

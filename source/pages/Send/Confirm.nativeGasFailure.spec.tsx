@@ -477,7 +477,9 @@ it.each(modes)(
 
 it('consumes fresh-read mode once, so later resolved-recipient changes use the ordinary SDK path', async () => {
   mockLocation.state.tx.receivingAddress = 'recipient.eth';
-  mockEnsNameToAddress = { 'recipient.eth': '0x2222222222222222222222222222222222222222' };
+  mockEnsNameToAddress = {
+    'recipient.eth': '0x2222222222222222222222222222222222222222',
+  };
   provider.estimateGas.mockRejectedValueOnce(
     new RpcResponseIntegrityError('Synthetic stale estimate', false)
   );
@@ -498,7 +500,9 @@ it('consumes fresh-read mode once, so later resolved-recipient changes use the o
   // The confirmation deliberately retains its original route payload. A new
   // verified ENS cache result is a real recomputation trigger and changes the
   // fee cache key without replacing that protected transaction entry.
-  mockEnsNameToAddress = { 'recipient.eth': '0x3333333333333333333333333333333333333333' };
+  mockEnsNameToAddress = {
+    'recipient.eth': '0x3333333333333333333333333333333333333333',
+  };
   await act(async () => {
     mountResult.rerender(<SendConfirm />);
   });
@@ -513,7 +517,11 @@ it('consumes fresh-read mode once, so later resolved-recipient changes use the o
     mockEmitter.mock.calls.filter(([path]) => path.at(-1) === 'getTxGasLimit')
   ).toHaveLength(2);
   expect(mockLocation.state.tx.receivingAddress).toBe('recipient.eth');
-  expect(provider.estimateGas).toHaveBeenLastCalledWith(expect.objectContaining({ to: '0x3333333333333333333333333333333333333333' }));
+  expect(provider.estimateGas).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      to: '0x3333333333333333333333333333333333333333',
+    })
+  );
 });
 
 it('keeps every exact MAX refinement on the same explicit fresh-read attempt', async () => {

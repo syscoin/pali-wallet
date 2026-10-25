@@ -51,7 +51,42 @@ async function readablePublicText(
     );
     const r = node.getBoundingClientRect(),
       s = getComputedStyle(node);
+    const plainParagraph =
+      node.tagName === 'P' &&
+      s.backgroundImage === 'none' &&
+      /^rgba\([^,]+,[^,]+,[^,]+,\s*0\)$/.test(s.backgroundColor) &&
+      (
+        [
+          'borderTopWidth',
+          'borderBottomWidth',
+          'paddingTop',
+          'paddingBottom',
+        ] as const
+      ).every((property) => parseFloat(s[property]) === 0);
+    const clip = plainParagraph
+      ? {
+          x: Math.floor(r.x) - 4,
+          y: Math.floor(r.y) - 4,
+          width: Math.ceil(r.right) - Math.floor(r.x) + 8,
+          height: Math.ceil(r.bottom) - Math.floor(r.y) + 8,
+        }
+      : undefined;
+    // Both sample strips are outside the paragraph/glyph box but on its
+    // actual ancestor backdrop. Never sample through a sibling or overlay.
+    const backdropExposed =
+      !clip ||
+      [clip.y + 1, clip.y + clip.height - 2].every((y) =>
+        [0.2, 0.35, 0.5, 0.65, 0.8].every((fraction) => {
+          const hit = document.elementFromPoint(
+            clip.x + clip.width * fraction,
+            y
+          );
+          return Boolean(hit && hit.contains(node));
+        })
+      );
     return {
+      clip,
+      backdropExposed,
       color: s.color,
       opacity: s.opacity,
       ancestorOpacities: ancestors.map(
@@ -70,11 +105,27 @@ async function readablePublicText(
   expect(native.ancestorOpacities.every((opacity) => opacity === '1')).toBe(
     true
   );
-  const image = await target.screenshot({ animations: 'disabled' });
+  expect(native.backdropExposed).toBe(true);
+  if (native.clip) {
+    const viewport = page.viewportSize()!;
+    expect(native.clip.x).toBeGreaterThanOrEqual(0);
+    expect(native.clip.y).toBeGreaterThanOrEqual(0);
+    expect(native.clip.x + native.clip.width).toBeLessThanOrEqual(
+      viewport.width
+    );
+    expect(native.clip.y + native.clip.height).toBeLessThanOrEqual(
+      viewport.height
+    );
+  }
+  const image = native.clip
+    ? await page.screenshot({ clip: native.clip, animations: 'disabled' })
+    : await target.screenshot({ animations: 'disabled' });
   // Analyze the actual PNG, including the real gradient/dots. Do not treat
-  // transparent CSS backgrounds as a flat canvas. Top/bottom inset samples are
-  // outside these single-line glyphs; any sampled foreground makes the check
-  // stricter rather than manufacturing a passing background.
+  // transparent CSS backgrounds as a flat canvas. Transparent paragraphs use
+  // unoccluded ancestor-background strips outside their entire line box so
+  // descender antialiasing is not mistaken for background. Filled buttons keep
+  // their own interior fill samples. This is bounded local-pixel regression;
+  // full-screen personal visual inspection remains required.
   const measurement = await page.evaluate(
     async ({ bytes, color }) => {
       const bitmap = await createImageBitmap(
@@ -177,6 +228,7 @@ for (const state of ['generation', 'recovery'] as const) {
             await expect(page.getByRole('checkbox')).toBeEnabled();
           } else {
             await wallet!.importSeedAndCreatePassword();
+            await wallet!.ensureOnHome();
             await page.locator('#general-settings-button').click();
             await page
               .getByRole('menuitem', { name: en.generalMenu.lock, exact: true })

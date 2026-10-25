@@ -38,6 +38,8 @@ async function captureReview(
   label: string
 ) {
   await page.bringToFront();
+  await page.evaluate(async () => document.fonts.ready);
+  const scrollObservations: unknown[] = [];
   for (let n = 0; n < 30; n++) {
     const box = await target.boundingBox();
     const reject = await page
@@ -45,13 +47,68 @@ async function captureReview(
       .boundingBox();
     if (box && reject && box.y >= 0 && box.y + box.height <= reject.y - 8)
       break;
-    await page.mouse.move(
-      page.viewportSize()!.width - 14,
-      page.viewportSize()!.height / 2
+    const position = await target.evaluate((element) => {
+      let owner: HTMLElement | null = element.parentElement;
+      while (
+        owner &&
+        !(
+          owner.scrollHeight > owner.clientHeight + 2 &&
+          /auto|scroll/.test(getComputedStyle(owner).overflowY)
+        )
+      )
+        owner = owner.parentElement;
+      owner ||= document.scrollingElement as HTMLElement | null;
+      if (!owner) throw new Error('Missing review scroll owner');
+      const r = owner.getBoundingClientRect();
+      const left = Math.max(0, r.left),
+        right = Math.min(innerWidth, r.right);
+      const top = Math.max(0, r.top),
+        bottom = Math.min(innerHeight - 60, r.bottom);
+      const points = [];
+      for (const x of [left + 8, (left + right) / 2, right - 8])
+        for (const y of [(top + bottom) / 2, top + 24]) {
+          const hit = document.elementFromPoint(x, y);
+          if (
+            !hit ||
+            !owner.contains(hit) ||
+            hit.closest('input,textarea,select')
+          )
+            continue;
+          let nearest: Element | null = hit;
+          while (nearest && nearest !== owner) {
+            if (
+              nearest.scrollHeight > nearest.clientHeight + 2 &&
+              /auto|scroll/.test(getComputedStyle(nearest).overflowY)
+            )
+              break;
+            nearest = nearest.parentElement;
+          }
+          if (nearest === owner) points.push({ x, y });
+        }
+      return {
+        points,
+        scrollTop: owner.scrollTop,
+        height: owner.clientHeight,
+        scrollHeight: owner.scrollHeight,
+        bounds: r.toJSON(),
+      };
+    });
+    expect(position.points.length).toBeGreaterThan(0);
+    const point = position.points[n % position.points.length];
+    await page.mouse.move(point.x, point.y);
+    await page.mouse.wheel(0, box && box.y < 0 ? -100 : 100);
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+        )
     );
-    await page.mouse.wheel(0, box && box.y < 0 ? -180 : 180);
-    await page.waitForTimeout(80);
+    scrollObservations.push(position);
   }
+  await info.attach(label + '-scroll', {
+    contentType: 'application/json',
+    body: JSON.stringify(scrollObservations),
+  });
   const box = await target.boundingBox();
   const reject = await page
     .getByRole('button', { name: en.buttons.reject, exact: true })

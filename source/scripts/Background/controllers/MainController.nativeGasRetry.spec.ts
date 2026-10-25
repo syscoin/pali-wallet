@@ -294,13 +294,13 @@ it('fails closed when an incompatible accessor returns a pending policy', async 
 it.each(['resolve', 'reject'])(
   'consumes and refuses a %s thenable with its original receiver',
   async (outcome) => {
-    let receiver: unknown;
+    let receiverMatched = false;
     const policy = {
       then(
         resolve: (value: unknown) => void,
         reject: (reason: unknown) => void
       ) {
-        receiver = this;
+        receiverMatched = this === policy;
         if (outcome === 'resolve') resolve({});
         else reject(new Error('Async policy failed'));
       },
@@ -313,7 +313,7 @@ it.each(['resolve', 'reject'])(
     });
     await expect(run()).rejects.toThrow('SDK gas policy is unavailable');
     await flush();
-    expect(receiver).toBe(policy);
+    expect(receiverMatched).toBe(true);
     expect(mockFreshProviders).toHaveLength(0);
   }
 );
