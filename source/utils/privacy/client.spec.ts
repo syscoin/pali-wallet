@@ -44,6 +44,7 @@ function mockRpc(
     count?: number;
     expired?: boolean;
     timestamp?: unknown;
+    transactions?: number;
     wrongId?: boolean;
   } = {}
 ) {
@@ -66,6 +67,10 @@ function mockRpc(
           options.changedHash && headers > 1
             ? hash(100)
             : snapshot.asOfBlockHash,
+        transactions: Array.from(
+          { length: options.transactions || 0 },
+          (_, index) => hash(index)
+        ),
       };
     } else if (request.method === 'eth_call') {
       const fn = abi.parseTransaction({ data: request.params[0].data })!.name;
@@ -196,6 +201,49 @@ test('independently checks block hash, leaf count, pool parameters and accepted 
     false
   );
 });
+
+test('verifies busy block anchors whose transaction hashes exceed 64 KiB', async () => {
+  mockRpc({ transactions: 1100 });
+  await expect(
+    verifySnapshotAnchor(id, snapshot, 'https://rpc.example/', signal())
+  ).resolves.toEqual({
+    blockTimestamp: Number(BigInt('0x65000000')) * 1000,
+  });
+});
+
+test.each(['eth_chainId', 'eth_call'])(
+  'keeps the 64 KiB bound for scalar %s replies',
+  async (method) => {
+    const healthy = mockRpc();
+    global.fetch = jest.fn(async (url, init) => {
+      if (JSON.parse(init!.body as string).method === method)
+        return new Response(' '.repeat(64 * 1024 + 1));
+      return healthy(url, init);
+    });
+    await expect(
+      verifySnapshotAnchor(id, snapshot, 'https://rpc.example/', signal())
+    ).rejects.toThrow('privacy_data_invalid');
+  }
+);
+
+test.each([true, false])(
+  'rejects oversized block replies with declared length=%s',
+  async (declared) => {
+    const healthy = mockRpc();
+    global.fetch = jest.fn(async (url, init) => {
+      if (JSON.parse(init!.body as string).method === 'eth_getBlockByNumber')
+        return new Response(' '.repeat(4 * 1024 * 1024 + 1), {
+          headers: declared
+            ? { 'Content-Length': String(4 * 1024 * 1024 + 1) }
+            : {},
+        });
+      return healthy(url, init);
+    });
+    await expect(
+      verifySnapshotAnchor(id, snapshot, 'https://rpc.example/', signal())
+    ).rejects.toThrow('privacy_data_invalid');
+  }
+);
 
 test.each([
   [{ chain: '0x39' }, 'privacy_wrong_chain'],

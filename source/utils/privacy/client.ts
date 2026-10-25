@@ -10,6 +10,9 @@ import { PrivacyIndexProgress, PrivacyPoolId, PrivacySnapshot } from './types';
 
 export const PRIVACY_SERVICE_URL = 'https://sysnode.info/api/privacy/v1';
 const MAX_SNAPSHOT_BYTES = 160 * 1024 * 1024;
+const MAX_SCALAR_RPC_BYTES = 64 * 1024;
+// Block replies include every transaction hash even when full objects are off.
+const MAX_BLOCK_RPC_BYTES = 4 * 1024 * 1024;
 const WORD = /^0x[0-9a-f]{64}$/;
 const FIELD = BigInt(
   '21888242871839275222246405745257275088548364400416034343698204186575808495617'
@@ -154,7 +157,12 @@ async function rpc(
     signal,
   });
   if (!response.ok) throw new Error('privacy_rpc_unavailable');
-  const body: any = await readJson(response, 64 * 1024);
+  const body: any = await readJson(
+    response,
+    method === 'eth_getBlockByNumber'
+      ? MAX_BLOCK_RPC_BYTES
+      : MAX_SCALAR_RPC_BYTES
+  );
   if (
     !body ||
     body.jsonrpc !== '2.0' ||
