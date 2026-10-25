@@ -8,11 +8,12 @@ import path from 'path';
 
 import en from '../../source/assets/locales/en.json';
 import { E2E_CONFIG } from '../harness/config';
-import { captureForegroundContrast } from '../harness/foregroundContrast';
 import {
   clickClosingPopup,
   dismissRejectedApproval,
 } from '../harness/dismissRejectedApproval';
+import { captureForegroundContrast } from '../harness/foregroundContrast';
+import { expectCenteredHeadingLines } from '../harness/headingAlignment';
 import {
   createIsolatedVaultFixture,
   installIsolatedVaultRoutes,
@@ -331,6 +332,21 @@ for (const method of ['eth_decrypt', 'personal_sign'] as const) {
                   : '/external/tx/ethSign'
               );
               await popup.setViewportSize(viewport);
+              if (method === 'personal_sign') {
+                const heading = popup.getByRole('heading', {
+                  name: en.send.signPersonalMessage,
+                  exact: true,
+                });
+                await info.attach(
+                  `signature-heading-${name}-${viewport.width}`,
+                  {
+                    body: JSON.stringify(
+                      await expectCenteredHeadingLines(heading)
+                    ),
+                    contentType: 'application/json',
+                  }
+                );
+              }
               const query = JSON.parse(
                 new URL(popup.url()).searchParams.get('data')!
               );

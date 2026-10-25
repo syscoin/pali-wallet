@@ -1276,7 +1276,7 @@ const EthSign: React.FC<ISign> = () => {
                   alt=""
                 />
               </div>
-              <h1 className="text-xl font-semibold text-white mb-2">
+              <h1 className="text-center text-xl font-semibold text-white mb-2">
                 {getActionType()}
               </h1>
               <p className="text-sm text-gray-300 text-center mb-1">

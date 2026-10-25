@@ -687,7 +687,7 @@
     "clickHereSupport": "Contact our team on discord channel #pali_support",
     "refreshButtonWarning": "Enabling the refresh button will create additional network requests to update your wallet data. This may impact performance and could hit rate limits on public RPC providers. Consider using paid RPC services for better reliability.",
     "hereYouCanEnable": "Here, you can enable advanced settings in Pali. Use them responsibly and at your own risk.",
-    "advancedSettingsWasSet": "Advanced settings was set successfully",
+    "advancedSettingsWasSet": "Advanced settings were set successfully",
     "yourWalletWasConfigured": "Your wallet was configured successfully. You can change it at any time.",
     "enableRefresh": "Enable wallet refresh button",
     "minutes": "Minutes",
@@ -1215,7 +1215,7 @@
   "forgetWalletPage": {
     "removalFailed": "The wallet could not be removed. Please try again.",
     "importedAccountsWont": "Imported accounts won't link to your initial Pali account Secret Recovery Phrase",
-    "stillHaveFunds": "You still have funds in you wallet!",
+    "stillHaveFunds": "You still have funds in your wallet!",
     "saveProperly": "Save this seed phrase properly, so you can import this wallet in the future."
   },
   "walletSeedPhrasePage": {
