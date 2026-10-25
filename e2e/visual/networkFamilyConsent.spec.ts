@@ -240,10 +240,12 @@ for (const width of [400, 320]) {
           });
           await clickClosingPopup({
             click: async () => {
-              const reject = popup.getByRole('button', {
-                name: en.buttons.reject,
-                exact: true,
-              });
+              const reject = popup
+                .getByRole('button')
+                .filter({ hasText: en.buttons.reject });
+              await expect(reject).toHaveCount(1);
+              await expect(reject).toHaveText(en.buttons.reject);
+              await expect(reject).toBeEnabled();
               if (width === 400) {
                 for (let attempt = 0; attempt < 20; attempt++) {
                   if (
