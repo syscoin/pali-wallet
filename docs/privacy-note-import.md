@@ -30,7 +30,9 @@ of Pali. `@noble/curves@1.9.7` was already in the lockfile and is now explicit.
   without this field are incomplete and must be synced again.
 - Treat a matching nullifier as already withdrawn. Absence is only as current and
   complete as the bulk feed; the deposit root does not authenticate that absence.
-- Serialize encrypted-profile duplicate checks and durable writes, and reject
+- Serialize duplicate checks for the same chain, pool and commitment within the
+  encrypted profile, together with durable writes. The same preimage can appear
+  in different pools, whose nullifier sets are independent. Reject
   completion after a wallet session/profile change. All note metadata belongs
   inside the encrypted record, with random opaque record IDs outside it.
 
