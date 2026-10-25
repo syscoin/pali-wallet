@@ -267,7 +267,9 @@ for (const viewport of [
               name: en.tooltip.viewNFTs,
               exact: true,
             });
-            if (await viewNfts.count()) await viewNfts.click();
+            await expect(viewNfts).toBeVisible();
+            await viewNfts.click();
+            await expect(viewNfts).toHaveAttribute('aria-pressed', 'true');
             await page
               .getByRole('button', {
                 name: 'View details for ' + item.symbol + ' collection',
