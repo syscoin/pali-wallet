@@ -482,9 +482,12 @@ export function createPrivacyWithdrawalsController(
             if (identity.poolId !== poolId || submitting.has(request.noteId))
               throw fail('privacy_withdrawal_note_busy');
             const access = await host.getSnapshot(poolId);
+            if (typeof access?.getPath !== 'function')
+              throw fail('privacy_verification_pending');
             intent.lease = Object.freeze({
               snapshot: access.snapshot,
               assertSnapshotCurrent: access.assertSnapshotCurrent,
+              getPath: access.getPath,
             });
             current(intent);
             let fee = '0',
@@ -538,6 +541,7 @@ export function createPrivacyWithdrawalsController(
               {
                 assertCurrent: () => current(intent),
                 assertSnapshotCurrent: intent.lease.assertSnapshotCurrent,
+                getPath: intent.lease.getPath,
                 signal: intent.abort.signal,
                 onProgress: host.onProgress,
               }

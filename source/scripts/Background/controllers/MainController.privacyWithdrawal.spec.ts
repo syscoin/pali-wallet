@@ -163,6 +163,7 @@ function setup() {
     getPrivateVaultController: jest.fn(async () => vault),
     privacySnapshotReader: jest.fn(() => ({
       snapshot,
+      getPath: jest.fn(async () => ({ pathElements: [], pathIndices: [] })),
       assertSnapshotCurrent: snapshotGuard,
     })),
     sendAndSaveEthTransaction: jest.fn(

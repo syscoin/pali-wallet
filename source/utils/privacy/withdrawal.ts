@@ -24,6 +24,10 @@ export interface IPrivacyWithdrawalOptions extends IPrivacyProofOptions {
   assertSnapshotCurrent: (snapshot: PrivacySnapshot) => void;
   /** Public cached path, independently checked against the anchored root before use. */
   cachedPath?: { pathElements: string[]; pathIndices: number[] };
+  /** Local verifier-owned path lookup; the returned path is still rehashed here. */
+  getPath?: (
+    leafIndex: number
+  ) => Promise<{ pathElements: string[]; pathIndices: number[] }>;
   onPathProgress?: (completed: number, total: number) => void;
   runProof?: (
     input: IPrivacyProofInput,
@@ -177,16 +181,32 @@ export async function preparePrivacyWithdrawal(
       (_, level) => Math.floor(leafIndex / 2 ** level) % 2
     );
     let pathElements: string[];
-    if (options.cachedPath) {
-      pathElements = Array.from(options.cachedPath.pathElements);
+    let cachedPath = options.cachedPath;
+    if (options.getPath !== undefined) {
+      if (typeof options.getPath !== 'function' || cachedPath !== undefined)
+        throw snapshotInvalid();
+      check();
+      cachedPath = await options.getPath(leafIndex);
+      check();
+      if (!cachedPath) throw snapshotInvalid();
+    }
+    if (cachedPath !== undefined) {
+      if (
+        !cachedPath ||
+        !Array.isArray(cachedPath.pathElements) ||
+        !Array.isArray(cachedPath.pathIndices)
+      )
+        throw snapshotInvalid();
+      pathElements = Array.from(cachedPath.pathElements);
+      const suppliedIndices = Array.from(cachedPath.pathIndices);
       if (
         pathElements.length !== TREE_DEPTH ||
         pathElements.some(
           (value) =>
             typeof value !== 'string' || !/^0x[0-9a-f]{64}$/.test(value)
         ) ||
-        options.cachedPath.pathIndices.length !== TREE_DEPTH ||
-        pathIndices.some((bit, i) => options.cachedPath!.pathIndices[i] !== bit)
+        suppliedIndices.length !== TREE_DEPTH ||
+        pathIndices.some((bit, i) => suppliedIndices[i] !== bit)
       )
         throw snapshotInvalid();
       let root = identity.commitment;

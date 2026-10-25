@@ -1,5 +1,10 @@
 import { PrivacyCache, PrivacyRecord } from 'utils/privacy/cache';
-import { advanceMerkleWork, createMerkleWork } from 'utils/privacy/merkle';
+import {
+  advanceMerkleWork,
+  createMerkleWork,
+  hashPair,
+  TREE_DEPTH,
+} from 'utils/privacy/merkle';
 import type { IPrivacyNoteReader } from 'utils/privacy/privateVaultTypes';
 import { getPrivacyPool } from 'utils/privacy/registry';
 import type { IPrivacySnapshotReader } from 'utils/privacy/trustedSnapshot';
@@ -23,7 +28,10 @@ const deferred = <T>() => {
 const leaf = (value: number) => `0x${value.toString(16).padStart(64, '0')}`;
 
 function snapshot(leaves = [leaf(1), leaf(2)]): PrivacySnapshot {
-  const work = advanceMerkleWork(createMerkleWork(), leaves);
+  const work = createMerkleWork();
+  do {
+    advanceMerkleWork(work, leaves);
+  } while (!work.complete);
   return {
     withdrawnNullifiers: [],
     version: 1,
@@ -35,6 +43,24 @@ function snapshot(leaves = [leaf(1), leaf(2)]): PrivacySnapshot {
     leaves,
     root: work.root!,
   };
+}
+
+function expectValidPath(
+  data: PrivacySnapshot,
+  index: number,
+  path: { pathElements: string[]; pathIndices: number[] }
+) {
+  expect(path.pathElements).toHaveLength(TREE_DEPTH);
+  expect(path.pathIndices).toHaveLength(TREE_DEPTH);
+  let root = data.leaves[index];
+  for (let level = 0; level < TREE_DEPTH; level++) {
+    const bit = Math.floor(index / 2 ** level) % 2;
+    expect(path.pathIndices[level]).toBe(bit);
+    root = bit
+      ? hashPair(path.pathElements[level], root)
+      : hashPair(root, path.pathElements[level]);
+  }
+  expect(root).toBe(data.root);
 }
 
 function memoryCache() {
@@ -96,10 +122,16 @@ function memoryCache() {
 
 function setup(overrides: any = {}) {
   const storage = memoryCache();
-  const fetchSnapshot = jest.fn(async () => snapshot());
-  const verifyAnchor = jest.fn(async () => ({
-    blockTimestamp: Math.max(1, (overrides.now || Date.now)() - 12 * 60 * 1000),
-  }));
+  const fetchSnapshot =
+    overrides.fetchSnapshot || jest.fn(async () => snapshot());
+  const verifyAnchor =
+    overrides.verifyAnchor ||
+    jest.fn(async () => ({
+      blockTimestamp: Math.max(
+        1,
+        (overrides.now || Date.now)() - 12 * 60 * 1000
+      ),
+    }));
   let readNote!: IPrivacyNoteReader;
   let readSnapshot!: IPrivacySnapshotReader;
   const schedule = jest.fn();
@@ -627,6 +659,154 @@ test('internal snapshot reader grants only immutable live verified data without 
   expect(run.fetchSnapshot).toHaveBeenCalledTimes(fetches);
   expect(run.verifyAnchor).toHaveBeenCalledTimes(checks);
   expect(run.schedule).toHaveBeenCalledTimes(schedules);
+});
+
+test('the production reader retains verified subtree paths across calculation slices without network work', async () => {
+  let clock = 2000000000000;
+  const data = snapshot(Array.from({ length: 300 }, (_, i) => leaf(i + 1)));
+  const run = setup({
+    now: () => clock,
+    fetchSnapshot: jest.fn(async () => data),
+  });
+  const save = run.storage.cache.save;
+  run.storage.cache.save = async (next, expected) => {
+    const accepted = await save(next, expected);
+    if (next.status.phase === 'verifying' && next.work?.nextIndex)
+      clock += 3000;
+    return accepted;
+  };
+  await run.controller.start(id);
+  await run.controller.resumePending(id);
+  expect(run.storage.record?.work?.nextIndex).toBe(128);
+  await expect(run.readSnapshot(id)).rejects.toThrow(
+    'privacy_verification_pending'
+  );
+  await run.controller.resumePending(id);
+  expect(run.storage.record?.work?.nextIndex).toBe(256);
+  await run.controller.resumePending(id);
+  const access = await run.readSnapshot(id);
+  const fetches = run.fetchSnapshot.mock.calls.length,
+    anchors = run.verifyAnchor.mock.calls.length;
+  for (const index of [0, 255, 299])
+    expectValidPath(data, index, await access.getPath(index));
+  expect(run.fetchSnapshot).toHaveBeenCalledTimes(fetches);
+  expect(run.verifyAnchor).toHaveBeenCalledTimes(anchors);
+});
+
+test('an appended verified prefix retains its subtree index and yields paths for old and new leaves', async () => {
+  const initial = snapshot(Array.from({ length: 300 }, (_, i) => leaf(i + 1)));
+  const run = setup({
+    now: () => 2000000000000,
+    fetchSnapshot: jest.fn(async () => initial),
+  });
+  await run.controller.start(id);
+  await run.controller.resumePending(id);
+  const previous = await run.readSnapshot(id);
+  expectValidPath(initial, 0, await previous.getPath(0));
+  const appended = {
+    ...snapshot(Array.from({ length: 800 }, (_, i) => leaf(i + 1))),
+    asOfBlockNumber: initial.asOfBlockNumber + 1,
+    asOfBlockHash: leaf(100),
+  };
+  run.fetchSnapshot.mockResolvedValueOnce(appended);
+  await run.controller.start(id);
+  await run.controller.resumePending(id);
+  const current = await run.readSnapshot(id);
+  const fetches = run.fetchSnapshot.mock.calls.length,
+    anchors = run.verifyAnchor.mock.calls.length;
+  for (const index of [0, 299, 300, 511, 799])
+    expectValidPath(appended, index, await current.getPath(index));
+  await expect(previous.getPath(0)).rejects.toThrow(
+    'privacy_verification_pending'
+  );
+  expect(previous.snapshot.leaves).toHaveLength(300);
+  expect(run.fetchSnapshot).toHaveBeenCalledTimes(fetches);
+  expect(run.verifyAnchor).toHaveBeenCalledTimes(anchors);
+});
+
+test.each(['pause', 'clear', 'start'] as const)(
+  '%s revokes an in-progress cached-path read',
+  async (action) => {
+    const data = snapshot(Array.from({ length: 300 }, (_, i) => leaf(i + 1)));
+    const run = setup({
+      now: () => 2000000000000,
+      fetchSnapshot: jest.fn(async () => data),
+    });
+    await run.controller.start(id);
+    await run.controller.resumePending(id);
+    const access = await run.readSnapshot(id);
+    const path = access.getPath(0);
+    const rejected = expect(path).rejects.toThrow(
+      'privacy_verification_pending'
+    );
+    const changing = run.controller[action](id);
+    await rejected;
+    await changing;
+    await expect(access.getPath(0)).rejects.toThrow(
+      'privacy_verification_pending'
+    );
+  }
+);
+
+test('cold resume rebuilds the private index instead of trusting stored complete work', async () => {
+  const data = snapshot(Array.from({ length: 300 }, (_, i) => leaf(i + 1)));
+  const run = setup({
+    now: () => 2000000000000,
+    fetchSnapshot: jest.fn(async () => data),
+  });
+  await run.controller.start(id);
+  await run.storage.cache.saveCandidate(id, 1, data);
+  const forged = createMerkleWork();
+  forged.complete = true;
+  forged.nextIndex = data.leafCount;
+  forged.root = data.root;
+  run.storage.setRecord({ ...run.storage.record!, work: forged });
+  let restoredRead!: IPrivacySnapshotReader;
+  const restarted = createPrivacyController(
+    run.getNetwork,
+    {
+      cache: run.storage.cache,
+      fetchSnapshot: run.fetchSnapshot,
+      verifyAnchor: run.verifyAnchor,
+      now: () => 2000000000000,
+      schedule: run.schedule,
+      stop: run.stop,
+    },
+    undefined,
+    (reader) => {
+      restoredRead = reader;
+    }
+  );
+  await expect(restoredRead(id)).rejects.toThrow(
+    'privacy_verification_pending'
+  );
+  await restarted.resumePending(id);
+  const access = await restoredRead(id);
+  expectValidPath(data, 0, await access.getPath(0));
+  expectValidPath(data, 299, await access.getPath(299));
+  expect(run.fetchSnapshot).not.toHaveBeenCalled();
+});
+
+test('a verified subtree index is not available before the snapshot commit completes', async () => {
+  const run = setup();
+  const reached = deferred<void>(),
+    release = deferred<void>();
+  const commit = run.storage.cache.commit;
+  run.storage.cache.commit = async (...args) => {
+    reached.resolve();
+    await release.promise;
+    return commit(...args);
+  };
+  await run.controller.start(id);
+  const process = run.controller.resumePending(id);
+  await reached.promise;
+  await expect(run.readSnapshot(id)).rejects.toThrow(
+    'privacy_verification_pending'
+  );
+  release.resolve();
+  await process;
+  const access = await run.readSnapshot(id);
+  expectValidPath(access.snapshot, 0, await access.getPath(0));
 });
 
 test('a stored ready snapshot does not grant trust after controller restart', async () => {

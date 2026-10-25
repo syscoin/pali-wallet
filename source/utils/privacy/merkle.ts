@@ -37,6 +37,18 @@ const ZEROES = [
 
 export const ZERO_VALUE = ZEROES[0];
 
+export const getMerkleZero = (level: number): string => {
+  if (!Number.isInteger(level) || level < 0 || level >= TREE_DEPTH)
+    throw new Error('Invalid Merkle level');
+  return ZEROES[level];
+};
+
+export type MerkleSubtreeListener = (
+  level: number,
+  index: number,
+  root: string
+) => void;
+
 const ZERO = BigInt(0);
 const ROUNDS = 220;
 let roundConstants: bigint[] | undefined;
@@ -156,7 +168,8 @@ const foldRoot = (work: MerkleWork): string => {
 export const advanceMerkleWork = (
   work: MerkleWork,
   leaves: string[],
-  maxLeaves = 128
+  maxLeaves = 128,
+  onSubtree?: MerkleSubtreeListener
 ): MerkleWork => {
   if (!Array.isArray(leaves) || leaves.length > TREE_CAPACITY) {
     throw new Error('Invalid Merkle leaf count');
@@ -181,6 +194,7 @@ export const advanceMerkleWork = (
       work.frontier[level] = null;
       index = Math.floor(index / 2);
       level += 1;
+      onSubtree?.(level, index, carry);
     }
     work.frontier[level] = carry;
     work.nextIndex += 1;

@@ -338,3 +338,87 @@ it('rejects sparse proof replies and aborts before local work', async () => {
   ).rejects.toThrow('privacy_proof_cancelled');
   expect(options.assertSnapshotCurrent).not.toHaveBeenCalled();
 });
+
+it('uses the local verifier path with only twenty root-binding hashes and no full-tree fallback', async () => {
+  const r = request(snapshotAt(146, 257));
+  const expected = await preparePrivacyWithdrawal(r, guards());
+  const getPath = jest.fn(async () => ({
+    pathElements: [...expected.pathElements],
+    pathIndices: [...expected.pathIndices],
+  }));
+  const yieldControl = jest.fn();
+  const hash = jest.spyOn(jest.requireActual('./merkle'), 'hashPair');
+  try {
+    const result = await preparePrivacyWithdrawal(r, {
+      ...guards(),
+      getPath,
+      yieldControl,
+    });
+    expect(result).toEqual(expected);
+    expect(getPath).toHaveBeenCalledWith(146);
+    expect(getPath).toHaveBeenCalledTimes(1);
+    expect(hash).toHaveBeenCalledTimes(20);
+    expect(yieldControl).not.toHaveBeenCalled();
+  } finally {
+    hash.mockRestore();
+  }
+});
+
+it.each(['missing', 'corrupted', 'wrong-bits', 'sparse'])(
+  'rejects a %s verifier path without rebuilding the full tree',
+  async (kind) => {
+    const r = request(snapshotAt(3, 5));
+    const correct = await preparePrivacyWithdrawal(r, guards());
+    const path = {
+      pathElements: [...correct.pathElements],
+      pathIndices: [...correct.pathIndices],
+    };
+    if (kind === 'corrupted') path.pathElements[0] = word(900);
+    if (kind === 'wrong-bits') path.pathIndices[0] ^= 1;
+    if (kind === 'sparse') delete path.pathElements[3];
+    const yieldControl = jest.fn();
+    await expect(
+      preparePrivacyWithdrawal(r, {
+        ...guards(),
+        getPath: async () => (kind === 'missing' ? undefined : path) as any,
+        yieldControl,
+      })
+    ).rejects.toThrow('privacy_withdrawal_snapshot_invalid');
+    expect(yieldControl).not.toHaveBeenCalled();
+  }
+);
+
+it('rechecks the original snapshot lease after an asynchronous path read', async () => {
+  const r = request();
+  const expected = await preparePrivacyWithdrawal(r, guards());
+  let valid = true;
+  await expect(
+    preparePrivacyWithdrawal(r, {
+      ...guards(),
+      assertSnapshotCurrent: (snapshot) => {
+        expect(snapshot).toBe(r.snapshot);
+        if (!valid) throw new Error('cleared while reading');
+      },
+      getPath: async () => {
+        await Promise.resolve();
+        valid = false;
+        return expected;
+      },
+    })
+  ).rejects.toThrow('privacy_verification_pending');
+});
+
+it('refuses path-read errors and never substitutes an older supplied path', async () => {
+  const r = request();
+  const expected = await preparePrivacyWithdrawal(r, guards());
+  const getPath = jest.fn(async () => {
+    throw new Error(note);
+  });
+  await expect(
+    preparePrivacyWithdrawal(r, { ...guards(), getPath })
+  ).rejects.toThrow(/^privacy_withdrawal_invalid$/);
+  await expect(
+    preparePrivacyWithdrawal(r, { ...guards(), getPath, cachedPath: expected })
+  ).rejects.toThrow('privacy_withdrawal_snapshot_invalid');
+  expect(getPath).toHaveBeenCalledTimes(1);
+});

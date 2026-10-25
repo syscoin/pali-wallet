@@ -36,6 +36,13 @@ revokes it. The Merkle path is checked against its root, and the current bulk
 withdrawal set must not contain the note's nullifier. Preparation and submission
 both check their original session and snapshot.
 
+Public-pool verification also retains a small in-memory index of completed
+upper subtrees. Even at the million-leaf limit it stores at most 8,191 roots.
+Withdrawal preparation rebuilds only the selected block of up to 256 leaves,
+then checks the resulting path against the anchored root. Refreshes copy the
+index before extending it; a worker restart must reverify the public data before
+it can serve paths. No note-specific request or trusted persisted path is added.
+
 The packaged offscreen prover runs a static Classic witness interpreter and
 Groth16 WASM in dedicated workers. No remote JavaScript, WASM or circuit wiring
 is evaluated. The only downloaded artifact is the public proving key, whose

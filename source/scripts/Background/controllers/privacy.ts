@@ -10,6 +10,13 @@ import {
   createMerkleWork,
   MerkleWork,
 } from 'utils/privacy/merkle';
+import {
+  copyMerklePathIndex,
+  createMerklePathIndex,
+  getMerklePath,
+  MerklePathIndex,
+  recordMerkleSubtree,
+} from 'utils/privacy/merklePath';
 import type { IPrivacyNoteReader } from 'utils/privacy/privateVaultTypes';
 import { getPrivacyPool, PRIVACY_POOLS } from 'utils/privacy/registry';
 import type { IPrivacySnapshotReader } from 'utils/privacy/trustedSnapshot';
@@ -57,13 +64,19 @@ export function createPrivacyController(
   const timers = new Map<PrivacyPoolId, ReturnType<typeof setTimeout>>();
   const calculations = new Map<
     PrivacyPoolId,
-    { generation: number; snapshot: PrivacySnapshot; work: MerkleWork }
+    {
+      generation: number;
+      pathIndex: MerklePathIndex;
+      snapshot: PrivacySnapshot;
+      work: MerkleWork;
+    }
   >();
   const verifiedTrees = new Map<
     PrivacyPoolId,
     {
       blockTimestamp: number;
       generation: number;
+      pathIndex: MerklePathIndex;
       snapshot: PrivacySnapshot;
       work: MerkleWork;
     }
@@ -184,6 +197,8 @@ export function createPrivacyController(
       const live = calculations.get(poolId);
       let snapshot =
         live?.generation === generation ? live.snapshot : undefined;
+      let pathIndex =
+        live?.generation === generation ? live.pathIndex : undefined;
       if (snapshot) record.work = live!.work;
       // Disk checkpoints preserve the download, but are not cryptographic
       // proof of a consumed prefix. Rehash after a worker restart rather than
@@ -196,7 +211,13 @@ export function createPrivacyController(
             verifyAnchor(poolId, snapshot!, record!.rpcUrl!, signal)
           );
           record.work = createMerkleWork();
-          calculations.set(poolId, { generation, snapshot, work: record.work });
+          pathIndex = createMerklePathIndex();
+          calculations.set(poolId, {
+            generation,
+            pathIndex,
+            snapshot,
+            work: record.work,
+          });
         }
       }
       if (!snapshot) {
@@ -236,6 +257,11 @@ export function createPrivacyController(
               root: undefined,
             }
           : createMerkleWork();
+        // New append work owns its arrays; a live proof lease must never see
+        // its verified subtree cache change underneath a newer verification.
+        pathIndex = reusable
+          ? copyMerklePathIndex(trusted!.pathIndex)
+          : createMerklePathIndex();
         if (!(await cache.saveCandidate(poolId, generation, snapshot))) return;
         record.status = {
           ...record.status,
@@ -244,13 +270,24 @@ export function createPrivacyController(
           total: snapshot.leafCount,
         };
         if (!(await cache.save(record, generation))) return;
-        calculations.set(poolId, { generation, snapshot, work: record.work });
+        calculations.set(poolId, {
+          generation,
+          pathIndex,
+          snapshot,
+          work: record.work,
+        });
       } else {
         validateSnapshot(poolId, snapshot);
       }
       const deadline = now() + SLICE_MS;
       do {
-        record.work = advanceMerkleWork(record.work!, snapshot.leaves, 128);
+        record.work = advanceMerkleWork(
+          record.work!,
+          snapshot.leaves,
+          128,
+          (level, index, root) =>
+            recordMerkleSubtree(pathIndex!, level, index, root)
+        );
         record.status = {
           ...record.status,
           phase: 'verifying',
@@ -287,6 +324,7 @@ export function createPrivacyController(
         });
         verifiedTrees.set(poolId, {
           generation,
+          pathIndex: pathIndex!,
           snapshot: ownedSnapshot,
           blockTimestamp: anchor.blockTimestamp,
           work: record.work,
@@ -388,7 +426,23 @@ export function createPrivacyController(
       };
       if (!trusted) throw new Error('privacy_verification_pending');
       assertSnapshotCurrent(trusted.snapshot);
-      return { snapshot: trusted.snapshot, assertSnapshotCurrent };
+      return {
+        snapshot: trusted.snapshot,
+        assertSnapshotCurrent,
+        getPath: async (leafIndex) => {
+          const assertCurrent = () => assertSnapshotCurrent(trusted.snapshot);
+          assertCurrent();
+          const path = await getMerklePath(
+            trusted.pathIndex,
+            trusted.snapshot.leaves,
+            leafIndex,
+            trusted.work,
+            { assertCurrent }
+          );
+          assertCurrent();
+          return path;
+        },
+      };
     });
   });
 

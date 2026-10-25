@@ -123,6 +123,10 @@ function setup() {
     withNote: jest.fn(async (_id, _session, use) => use(NOTE, 'eth-1')),
     getSnapshot: jest.fn(async () => ({
       snapshot,
+      getPath: jest.fn(async () => ({
+        pathElements: [...fixture.input.pathElements],
+        pathIndices: [...fixture.input.pathIndices],
+      })),
       assertSnapshotCurrent: (supplied) => {
         if (!validSnapshot || supplied !== snapshot)
           throw new Error('privacy_verification_pending');
@@ -589,6 +593,7 @@ it('rejects asynchronous snapshot assertions and sanitizes callback error text',
   const run = setup();
   jest.mocked(run.host.getSnapshot).mockResolvedValueOnce({
     snapshot: run.snapshot,
+    getPath: async () => ({ pathElements: [], pathIndices: [] }),
     assertSnapshotCurrent: (async () => undefined) as any,
   });
   await expect(run.controller.prepareWithdrawal(direct())).rejects.toThrow(
@@ -845,4 +850,31 @@ it('projects only account identity fields from the captured host context', async
   await run.controller.submitWithdrawal(review.intentId);
   const attempt = jest.mocked(run.host.beforeSubmission).mock.calls[0][0];
   expect(JSON.stringify(attempt.context)).not.toContain('unrelatedSecret');
+});
+
+it('requires the production snapshot path provider and passes the same provider to the local prover', async () => {
+  const { host, controller } = setup();
+  try {
+    await controller.prepareWithdrawal(direct());
+    const access = await jest.mocked(host.getSnapshot).mock.results[0].value;
+    expect(jest.mocked(host.prove!).mock.calls[0][1].getPath).toBe(
+      access.getPath
+    );
+    expect(access.getPath).not.toHaveBeenCalled(); // The real builder, not controller, owns path derivation.
+  } finally {
+    controller.close();
+  }
+});
+
+it('does not fall back to a full-tree proof build when a production snapshot has no local path provider', async () => {
+  const { host, controller, snapshot } = setup();
+  jest.mocked(host.getSnapshot).mockResolvedValue({
+    snapshot,
+    assertSnapshotCurrent: () => undefined,
+  } as any);
+  await expect(controller.prepareWithdrawal(direct())).rejects.toThrow(
+    'privacy_verification_pending'
+  );
+  expect(host.prove).not.toHaveBeenCalled();
+  expect(host.quoteDirectFees).not.toHaveBeenCalled();
 });
