@@ -846,6 +846,34 @@ test('privacy pool preparation verifies local note imports and preserves a good 
         await expect(poolStatus(wallet!.page)).toContainText(en.privacy.ready);
         expect(knownRootCalls).toBe(4);
         expect(await readAlarm()).toBeDefined();
+        // The controller intentionally syncs at shared 15-minute boundaries.
+        // If one is due during the following custody/transaction checks, wait
+        // for that real refresh first. Otherwise a legitimate scheduled GET
+        // would be mistaken for a note-specific request. Keep the exact
+        // no-additional-read assertions below and the overall test deadline.
+        const untilBoundary = 15 * 60 * 1000 - (Date.now() % (15 * 60 * 1000));
+        if (untilBoundary <= 90_000) {
+          const beforePeriodic = snapshots.length;
+          const beforeAnchors = knownRootCalls;
+          await expect
+            .poll(() => snapshots.length, { timeout: 120_000 })
+            .toBe(beforePeriodic + 1);
+          await expect
+            .poll(async () => {
+              const cache = await readPublicCache(wallet!.page);
+              return {
+                anchors: knownRootCalls,
+                phase: cache.status.phase,
+                candidate: cache.candidate,
+              };
+            })
+            .toEqual({
+              anchors: beforeAnchors + 2,
+              phase: 'ready',
+              candidate: null,
+            });
+          observations.scheduledRefreshBeforeTransactions = true;
+        }
       }
     );
     await wallet.step(
@@ -1208,6 +1236,7 @@ test('privacy pool preparation verifies local note imports and preserves a good 
     await wallet.step(
       'privacy: a corrupt leaf fails local verification and retains the previously verified snapshot',
       async () => {
+        const anchorsBeforeCorrupt = knownRootCalls;
         mode = 'corrupt';
         await wallet!.page
           .getByRole('button', { name: en.privacy.refresh, exact: true })
@@ -1241,7 +1270,8 @@ test('privacy pool preparation verifies local note imports and preserves a good 
         expect((observations.rejected as any).ready).toEqual(
           (observations.verified as any).ready
         );
-        expect(knownRootCalls).toBe(5); // First anchor passes; a corrupt local root never reaches the final anchor.
+        // First anchor passes; a corrupt local root never reaches the final anchor.
+        expect(knownRootCalls).toBe(anchorsBeforeCorrupt + 1);
         await capture('error');
       }
     );

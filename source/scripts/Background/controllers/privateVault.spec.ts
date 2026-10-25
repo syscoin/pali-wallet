@@ -1,6 +1,6 @@
 import { KeyringManager } from '@sidhujag/sysweb3-keyring';
 import { webcrypto } from 'crypto';
-import { Interface, parseEther } from 'ethers';
+import { Interface, keccak256, parseEther, toUtf8Bytes } from 'ethers';
 
 import { KeyringAccountType } from 'types/network';
 import { AsyncMutex } from 'utils/asyncMutex';
@@ -33,7 +33,8 @@ const TX_HASH = '0x' + 'ab'.repeat(32);
 function depositAttempt(
   noteId: string,
   generation = 0,
-  rawNote = NOTE
+  rawNote = NOTE,
+  identify = identifyClassicNote
 ): IPrivacyDepositAttempt {
   const pool = getPrivacyPool('eth-1');
   const from = '0x' + '11'.repeat(20);
@@ -57,9 +58,7 @@ function depositAttempt(
       value: '0x' + parseEther('1').toString(16),
       data: new Interface([
         'function deposit(bytes32) payable',
-      ]).encodeFunctionData('deposit', [
-        identifyClassicNote(rawNote).commitment,
-      ]),
+      ]).encodeFunctionData('deposit', [identify(rawNote).commitment]),
       gasLimit: '0x186a0',
       nonce: '0x7',
       maxFeePerGas: '0x64',
@@ -70,16 +69,17 @@ function depositAttempt(
 function withdrawalAttempt(
   noteId: string,
   mode: 'direct' | 'relayed' = 'direct',
-  rawNote = NOTE
+  rawNote = NOTE,
+  identify = identifyClassicNote
 ): IPrivacyWithdrawalAttempt {
-  const identity = identifyClassicNote(rawNote);
+  const identity = identify(rawNote);
   const base = {
     intentId: INTENT_ID,
     noteId,
     poolId: identity.poolId,
     createdAt: 456,
     expiresAt: 60456,
-    context: depositAttempt(noteId).context,
+    context: depositAttempt(noteId, 0, NOTE, identify).context,
     root: '0x' + '01'.repeat(32),
     nullifierHash: identity.nullifierHash,
     recipient: '0x' + '22'.repeat(20),
@@ -102,7 +102,7 @@ function withdrawalAttempt(
     ...base,
     mode,
     transaction: {
-      ...depositAttempt(noteId).transaction,
+      ...depositAttempt(noteId, 0, NOTE, identify).transaction,
       to: getPrivacyPool(identity.poolId).address,
       value: '0',
       gasLimit: '650000',
@@ -139,7 +139,10 @@ function fakeUnlockedKeyring(root = ROOT) {
   return keyring as KeyringManager;
 }
 
-function fixture(generate?: () => string) {
+function fixture(
+  generate?: () => string,
+  identify?: typeof identifyClassicNote
+) {
   const records: Record<string, any> = {};
   const mutex = new AsyncMutex();
   let keyring = fakeUnlockedKeyring();
@@ -188,7 +191,7 @@ function fixture(generate?: () => string) {
   const create = () =>
     createPrivateVaultController(
       { captureSession, authenticate, readNote },
-      { storage, mutex, now: () => 456, generate }
+      { storage, mutex, now: () => 456, generate, identify }
     );
   const controller = create();
   return {
@@ -217,6 +220,343 @@ function fixture(generate?: () => string) {
     },
   };
 }
+
+function capacityNotes(count = 128) {
+  return Array.from({ length: count }, (_, index) => ({
+    id: `00000000-0000-4000-8000-${(index + 1000)
+      .toString(16)
+      .padStart(12, '0')}`,
+    note: `tornado-eth-1-1-0x${(index + 1).toString(16).padStart(124, '0')}`,
+    createdAt: 456,
+  }));
+}
+async function capacityFixture(notes = capacityNotes()) {
+  // Cache only real deterministic note identities, avoiding repeated Pedersen
+  // calculations while exercising actual released SDK encryption and storage.
+  const identities = new Map(
+    notes.map(({ note }) => [note, identifyClassicNote(note)])
+  );
+  const identify = (note: string) => {
+    let identity = identities.get(note);
+    if (!identity) {
+      identity = identifyClassicNote(note);
+      identities.set(note, identity);
+    }
+    return identity;
+  };
+  const f = fixture(undefined, identify);
+  const plaintext = new TextEncoder().encode(
+    JSON.stringify({ version: 1, notes })
+  );
+  expect(plaintext.length).toBeLessThan(64 * 1024);
+  const envelope = await f.getKeyring().encryptPrivateRecord({
+    domain: PRIVATE_VAULT_DOMAIN,
+    recordId: UUID,
+    plaintext,
+  });
+  plaintext.fill(0);
+  const key = PRIVATE_VAULT_STORAGE_PREFIX + envelope.profileId;
+  f.records[key] = envelope;
+  return { f, notes, key, identify };
+}
+function capacityAttempt(
+  note: { id: string; note: string },
+  index: number,
+  mode: 'direct' | 'relayed',
+  identify = identifyClassicNote
+) {
+  const attempt = withdrawalAttempt(note.id, mode, note.note, identify);
+  return attempt.mode === 'direct'
+    ? {
+        ...attempt,
+        intentId: note.id,
+        transaction: { ...attempt.transaction, nonce: String(index) },
+      }
+    : {
+        ...attempt,
+        intentId: note.id,
+        endpoint:
+          'https://relay.example/' +
+          'a'.repeat(2048 - 'https://relay.example/'.length),
+      };
+}
+
+it.each(['direct', 'relayed'] as const)(
+  'keeps all 128 accepted notes spendable after their %s withdrawal journals grow',
+  async (mode) => {
+    const { f, notes, key, identify } = await capacityFixture();
+    expect((await f.controller.getNotes()).notes).toHaveLength(128);
+    const encrypt = jest.spyOn(f.getKeyring(), 'encryptPrivateRecord');
+    const encryptedSizes: number[] = [];
+    let storageWrites = 0;
+    const recordOperationEvidence = () => {
+      for (const [params] of encrypt.mock.calls)
+        encryptedSizes.push(params.plaintext.length);
+      // Retain the size assertion evidence, not hundreds of cleared plaintext
+      // buffers and returned ciphertexts while this full-capacity loop runs.
+      encrypt.mockClear();
+      storageWrites += f.storage.setItem.mock.calls.length;
+      // Both mock histories otherwise retain every full encrypted bundle,
+      // although the storage fixture itself correctly retains only the latest.
+      f.storage.setItem.mockClear();
+      f.storage.getItem.mockClear();
+    };
+    const session = f.captureSession();
+    for (const [index, note] of notes.entries()) {
+      const attempt = capacityAttempt(note, index, mode, identify);
+      await f.controller.reserveWithdrawalAttempt(attempt, session);
+      recordOperationEvidence();
+      await f.controller.recordWithdrawalSubmission(
+        attempt,
+        {
+          transactionHash: TX_HASH,
+          ...(mode === 'relayed' ? { jobId: 'x'.repeat(128) } : {}),
+        },
+        session
+      );
+      recordOperationEvidence();
+    }
+    expect(f.records[key].version).toBe(2);
+    expect(f.records[key].shards.length).toBeGreaterThan(1);
+    expect(storageWrites).toBe(256);
+    expect(encryptedSizes.length).toBeGreaterThanOrEqual(256);
+    expect(encryptedSizes.every((size) => size <= 64 * 1024)).toBe(true);
+    const restarted = f.create();
+    const restored = (await restarted.getNotes()).notes;
+    expect(restored).toHaveLength(128);
+    expect(
+      restored.every((note) => note.withdrawal?.phase === 'submitted')
+    ).toBe(true);
+    const last = await restarted.getWithdrawalAttempt(notes[127].id, session);
+    expect(last).toMatchObject({
+      transactionHash: TX_HASH,
+      mode,
+      ...(mode === 'relayed'
+        ? {
+            endpoint:
+              'https://relay.example/' +
+              'a'.repeat(2048 - 'https://relay.example/'.length),
+            jobId: 'x'.repeat(128),
+          }
+        : { nonce: '127' }),
+    });
+    expect(await restarted.revealNote(notes[0].id, 'correct-password')).toBe(
+      notes[0].note
+    );
+    expect(await restarted.revealNote(notes[127].id, 'correct-password')).toBe(
+      notes[127].note
+    );
+    const extra = `tornado-eth-1-1-0x${'ff'.repeat(62)}`;
+    await expect(restarted.importNote(extra)).rejects.toThrow(
+      'privacy_note_limit'
+    );
+    expect(JSON.stringify(f.records)).not.toContain(notes[0].note);
+  }
+);
+
+async function chunkedFixture() {
+  const ready = await capacityFixture(capacityNotes(32));
+  const session = ready.f.captureSession();
+  for (let i = 0; i < 24; i++) {
+    const attempt = capacityAttempt(ready.notes[i], i, 'relayed');
+    await ready.f.controller.reserveWithdrawalAttempt(attempt, session);
+  }
+  expect(ready.f.records[ready.key].version).toBe(2);
+  return { ...ready, session };
+}
+
+it('preserves encrypted shard roots made with the original UTF-8 encoding', async () => {
+  const { f, key, notes } = await chunkedFixture();
+  const bundle = f.records[key];
+  const plaintext = await f.getKeyring().decryptPrivateRecord({
+    domain: PRIVATE_VAULT_DOMAIN,
+    recordId: bundle.root.recordId,
+    envelope: bundle.root,
+  });
+  try {
+    const root = JSON.parse(new TextDecoder().decode(plaintext));
+    const references = bundle.shards.map(
+      (shard: typeof bundle.root, index: number) => ({
+        recordId: shard.recordId,
+        hash: keccak256(
+          toUtf8Bytes(
+            JSON.stringify([
+              shard.version,
+              shard.domain,
+              shard.recordId,
+              shard.profileId,
+              shard.nonce,
+              shard.ciphertext,
+            ])
+          )
+        ),
+        count: root.shards[index].count,
+      })
+    );
+    expect(root.shards).toEqual(references);
+    const legacyPlaintext = new TextEncoder().encode(
+      JSON.stringify({ ...root, shards: references })
+    );
+    try {
+      f.records[key] = {
+        ...bundle,
+        root: await f.getKeyring().encryptPrivateRecord({
+          domain: PRIVATE_VAULT_DOMAIN,
+          recordId: bundle.root.recordId,
+          plaintext: legacyPlaintext,
+        }),
+      };
+    } finally {
+      legacyPlaintext.fill(0);
+    }
+  } finally {
+    plaintext.fill(0);
+  }
+  const restored = f.create();
+  expect((await restored.getNotes()).notes).toHaveLength(notes.length);
+  expect(await restored.revealNote(notes[0].id, 'correct-password')).toBe(
+    notes[0].note
+  );
+  expect(await restored.revealNote(notes[31].id, 'correct-password')).toBe(
+    notes[31].note
+  );
+});
+
+it('bounds sharding for escaped long endpoints and both journal types', async () => {
+  const notes = capacityNotes(8).map((note, index) => ({
+    ...note,
+    createdAt: Number.MAX_SAFE_INTEGER,
+    origin: 'generated' as const,
+    deposit: {
+      intentId: note.id,
+      createdAt: Number.MAX_SAFE_INTEGER,
+      from: '0x' + '11'.repeat(20),
+      nonce: String((BigInt(1) << BigInt(64)) - BigInt(1 + index)),
+      phase: 'submitted' as const,
+      attemptHash: '0x' + 'aa'.repeat(32),
+      transactionHash: TX_HASH,
+    },
+  }));
+  const { f, key } = await capacityFixture(notes);
+  // URL accepts and encodes these path characters. Each remains six bytes in
+  // JSON, covering the size expansion that an ASCII-only endpoint misses.
+  const endpoint =
+    'https://relay.example/' +
+    '\u0000'.repeat(2048 - 'https://relay.example/'.length);
+  expect(endpoint.length).toBe(2048);
+  expect(new URL(endpoint).protocol).toBe('https:');
+  const session = f.captureSession();
+  const encrypt = jest.spyOn(f.getKeyring(), 'encryptPrivateRecord');
+  for (const [index, note] of notes.entries()) {
+    const base = withdrawalAttempt(note.id, 'relayed', note.note);
+    if (base.mode !== 'relayed') throw new Error('Expected relayed fixture');
+    const attempt = {
+      ...base,
+      intentId: note.id,
+      endpoint,
+      createdAt: Number.MAX_SAFE_INTEGER - 60000,
+      expiresAt: Number.MAX_SAFE_INTEGER,
+    };
+    await f.controller.reserveWithdrawalAttempt(attempt, session);
+    if (index !== notes.length - 1)
+      await f.controller.recordWithdrawalSubmission(
+        attempt,
+        { jobId: 'j'.repeat(128), transactionHash: TX_HASH },
+        session
+      );
+  }
+  expect(f.records[key].version).toBe(2);
+  expect(
+    encrypt.mock.calls
+      .filter(([params]) => params.domain.endsWith('.shard.v2'))
+      .every(([params]) => params.plaintext.length <= 32 * 1024)
+  ).toBe(true);
+  const restored = f.create();
+  expect((await restored.getNotes()).notes).toHaveLength(notes.length);
+  for (const [index, note] of notes.entries()) {
+    expect(await restored.getDepositAttempt(note.id, session)).toEqual(
+      note.deposit
+    );
+    expect(await restored.getWithdrawalAttempt(note.id, session)).toMatchObject(
+      {
+        endpoint,
+        createdAt: Number.MAX_SAFE_INTEGER - 60000,
+        phase: index === notes.length - 1 ? 'unknown' : 'submitted',
+      }
+    );
+  }
+  // Conservatively extend the largest observed plaintext note to the fixed
+  // 128-note limit, include Base64 expansion and ample root/envelope overhead.
+  const largest = new TextEncoder().encode(
+    JSON.stringify({
+      ...notes[0],
+      withdrawal: await restored.getWithdrawalAttempt(notes[0].id, session),
+    })
+  ).length;
+  expect(largest * 128 * (4 / 3) + 128 * 1024).toBeLessThan(4 * 1024 * 1024);
+});
+
+it('rejects missing, duplicate, swapped and stale encrypted shards without replacing saved data', async () => {
+  const { f, key, notes, session } = await chunkedFixture();
+  const saved = structuredClone(f.records[key]);
+  const attempt = capacityAttempt(notes[24], 24, 'relayed');
+  await f.controller.reserveWithdrawalAttempt(attempt, session);
+  const latest = structuredClone(f.records[key]);
+  for (const corrupt of [
+    { ...latest, shards: latest.shards.slice(1) },
+    {
+      ...latest,
+      shards: [latest.shards[0], latest.shards[0], ...latest.shards.slice(2)],
+    },
+    { ...latest, shards: [...latest.shards].reverse() },
+    { ...latest, shards: [saved.shards[0], ...latest.shards.slice(1)] },
+  ]) {
+    f.records[key] = corrupt;
+    const before = f.storage.setItem.mock.calls.length;
+    await expect(f.create().getNotes()).rejects.toThrow(
+      'privacy_vault_corrupt'
+    );
+    expect(f.storage.setItem).toHaveBeenCalledTimes(before);
+  }
+  f.records[key] = latest;
+  expect(
+    (await f.create().getWithdrawalAttempt(notes[24].id, session))?.phase
+  ).toBe('unknown');
+});
+
+it('keeps an atomic encrypted bundle readable after failed and uncertain writes', async () => {
+  const { f, key, notes, session } = await chunkedFixture();
+  const attempt = capacityAttempt(notes[24], 24, 'relayed');
+  const saved = structuredClone(f.records[key]);
+  f.storage.setItem.mockImplementationOnce(async () => {
+    throw new Error('write refused');
+  });
+  await expect(
+    f.controller.reserveWithdrawalAttempt(attempt, session)
+  ).rejects.toThrow('privacy_vault_unavailable');
+  expect(f.records[key]).toEqual(saved);
+  expect(
+    await f.create().getWithdrawalAttempt(notes[24].id, session)
+  ).toBeNull();
+  f.storage.setItem.mockImplementationOnce(async (storageKey, value) => {
+    f.records[storageKey] = structuredClone(value);
+    throw new Error('uncertain acknowledgement');
+  });
+  await expect(
+    f.controller.reserveWithdrawalAttempt(attempt, session)
+  ).rejects.toThrow('privacy_vault_unavailable');
+  expect(
+    (await f.create().getWithdrawalAttempt(notes[24].id, session))?.phase
+  ).toBe('unknown');
+  await expect(
+    f.create().reserveWithdrawalAttempt(attempt, session)
+  ).rejects.toThrow('privacy_withdrawal_attempt_exists');
+  await f.controller.clearUnbroadcastWithdrawalAttempt(attempt, session);
+  expect(f.records[key].version).toBe(2);
+  expect(
+    await f.create().getWithdrawalAttempt(notes[24].id, session)
+  ).toBeNull();
+});
 
 beforeAll(() => {
   Object.defineProperty(globalThis, 'crypto', {

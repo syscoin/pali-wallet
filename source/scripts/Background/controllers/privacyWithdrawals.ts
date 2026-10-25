@@ -700,6 +700,11 @@ export function createPrivacyWithdrawalsController(
         await pending;
       };
       try {
+        const assertBeforeSign = () => {
+          current(intent);
+          if (now() >= intent.expiresAt!)
+            throw fail('privacy_withdrawal_intent_expired');
+        };
         if (intent.selection) {
           await host.relayers.checkRelayer(
             intent.selection.directory,
@@ -711,15 +716,14 @@ export function createPrivacyWithdrawalsController(
         }
         await host.beforeSubmission(attempt);
         reserved = true;
-        current(intent);
-        if (now() >= intent.expiresAt!)
-          throw fail('privacy_withdrawal_intent_expired');
+        assertBeforeSign();
         entered = true;
         if (attempt.mode === 'direct') {
           const result = await host.sendTransaction(
             attempt.transaction,
             intent.session,
-            (ack) => record({ transactionHash: ack.hash.toLowerCase() })
+            (ack) => record({ transactionHash: ack.hash.toLowerCase() }),
+            assertBeforeSign
           );
           await record({ transactionHash: result.hash.toLowerCase() });
         } else await record(await relay(attempt));

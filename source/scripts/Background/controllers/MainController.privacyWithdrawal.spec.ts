@@ -5,6 +5,11 @@ jest.mock('..', () => ({
 jest.mock('./providers/patchFetchWithPaliHeaders', () => ({
   patchFetchWithPaliHeaders: jest.fn(),
 }));
+jest.mock('utils/evmCallBlacklist', () => ({
+  getBlacklistTargetsForEvmCallWithContractType: jest
+    .fn()
+    .mockResolvedValue([]),
+}));
 jest.mock('@sidhujag/sysweb3-keyring', () => ({
   ...jest.requireActual('@sidhujag/sysweb3-keyring/cjs/utils/derivation-paths'),
   ...jest.requireActual('@sidhujag/sysweb3-keyring/cjs/signers'),
@@ -26,10 +31,12 @@ jest.mock('utils/slhDsa', () => ({
 import { webcrypto } from 'crypto';
 import { Interface } from 'ethers';
 
+import { getController } from '..';
 import { walletPersistenceGate } from 'state/paliStorage';
 import store from 'state/store';
 import { KeyringAccountType } from 'types/network';
 import { AsyncMutex } from 'utils/asyncMutex';
+import { getBlacklistTargetsForEvmCallWithContractType } from 'utils/evmCallBlacklist';
 import { identifyClassicNote } from 'utils/privacy/note';
 import { PRIVACY_POOLS } from 'utils/privacy/registry';
 import type { IPrivacyWithdrawalsHost } from 'utils/privacy/withdrawTypes';
@@ -62,6 +69,7 @@ const deferred = () => {
 };
 
 function setup() {
+  let clock = 1000;
   const state: any = structuredClone(store.getState());
   state.vault.activeNetwork = {
     kind: 'ethereum',
@@ -204,7 +212,7 @@ function setup() {
     };
   });
   const controller = createPrivacyWithdrawalsController(host, {
-    now: () => 1000,
+    now: () => clock,
     randomId: () => INTENT_ID,
   });
   controllers.push(controller);
@@ -219,6 +227,10 @@ function setup() {
     host,
     controller,
     events,
+    snapshotGuard,
+    clock: (value: number) => {
+      clock = value;
+    },
   };
 }
 const prepare = (wallet: any) =>
@@ -229,6 +241,10 @@ const prepare = (wallet: any) =>
   });
 
 beforeEach(() => {
+  jest
+    .mocked(getBlacklistTargetsForEvmCallWithContractType)
+    .mockReset()
+    .mockResolvedValue([]);
   jest.spyOn(console, 'log').mockImplementation();
   jest.spyOn(console, 'warn').mockImplementation();
   jest.spyOn(console, 'error').mockImplementation();
@@ -238,6 +254,184 @@ beforeEach(() => {
   });
   walletPersistenceGate.blocked = false;
 });
+
+it.each(['healthy', 'snapshot', 'expiry'] as const)(
+  'checks %s withdrawal admission after the actual sender preflight and before signing',
+  async (state) => {
+    const run = setup();
+    const entered = deferred(),
+      release = deferred();
+    const signer = jest.fn(async () => {
+      run.events.push('sign');
+      return { hash: HASH, nonce: 7 };
+    });
+    Object.defineProperty(run.wallet, 'ethereumTransaction', {
+      configurable: true,
+      value: {
+        web3Provider: run.provider,
+        sendFormattedTransaction: signer,
+      },
+    });
+    run.wallet.getWalletSetupStatus = jest.fn(() => undefined);
+    run.wallet.sendAndSaveTransaction = jest.fn(async () => undefined);
+    // Exercise the actual wrapper's asynchronous preflight and final guard.
+    // The SDK boundary is a no-network signer spy; no transaction is broadcast.
+    run.wallet.sendAndSaveEthTransaction =
+      MainController.prototype.sendAndSaveEthTransaction.bind(run.wallet);
+    jest.mocked(getController).mockReturnValue({ wallet: run.wallet } as any);
+    const review = await prepare(run.wallet);
+    jest
+      .mocked(getBlacklistTargetsForEvmCallWithContractType)
+      .mockImplementationOnce(async () => {
+        entered.resolve();
+        await release.promise;
+        return [];
+      });
+    const result = run.wallet.submitPrivacyWithdrawal(review.intentId).then(
+      (value: unknown) => ({ value, error: undefined }),
+      (error: unknown) => ({ value: undefined, error })
+    );
+    await entered.promise;
+    expect(run.vault.reserveWithdrawalAttempt).toHaveBeenCalledTimes(1);
+    expect(signer).not.toHaveBeenCalled();
+    if (state === 'snapshot')
+      run.snapshotGuard.mockImplementation(() => {
+        throw new Error('privacy_verification_pending');
+      });
+    if (state === 'expiry') run.clock(review.expiresAt);
+    release.resolve();
+    const settled = await result;
+    if (state === 'healthy') {
+      expect(settled.error).toBeUndefined();
+      expect(settled.value).toMatchObject({
+        phase: 'submitted',
+        transactionHash: HASH,
+      });
+      expect(signer).toHaveBeenCalledTimes(1);
+      expect(run.events).toEqual(['reserve', 'sign', 'record']);
+      expect(
+        run.vault.clearUnbroadcastWithdrawalAttempt
+      ).not.toHaveBeenCalled();
+    } else {
+      expect(signer).not.toHaveBeenCalled();
+      expect(settled.value).toBeUndefined();
+      expect(settled.error).toMatchObject({
+        message:
+          state === 'snapshot'
+            ? 'privacy_verification_pending'
+            : 'privacy_withdrawal_intent_expired',
+        transactionNotBroadcast: true,
+      });
+      expect(run.vault.clearUnbroadcastWithdrawalAttempt).toHaveBeenCalledTimes(
+        1
+      );
+      expect(run.vault.recordWithdrawalSubmission).not.toHaveBeenCalled();
+      expect(run.events).toEqual(['reserve', 'clear']);
+    }
+  }
+);
+
+it.each(['healthy', 'snapshot', 'expiry', 'expiry after broadcast'] as const)(
+  'checks %s withdrawal admission after the actual SDK chain verification and before local signing',
+  async (condition) => {
+    const run = setup();
+    const entered = deferred(),
+      release = deferred();
+    const localSigner = jest.requireActual(
+      '@sidhujag/sysweb3-keyring/cjs/transactions/evm-local-signer'
+    );
+    const { EthereumTransactions } = jest.requireActual(
+      '@sidhujag/sysweb3-keyring/cjs/transactions/ethereum'
+    );
+    const privateKey =
+      '0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+    const address = localSigner.privateKeyToAccount(privateKey).address;
+    run.state.vault.accounts[KeyringAccountType.HDAccount][0].address = address;
+    const provider = {
+      ...run.provider,
+      verifyConfiguredChainId: jest.fn(async () => {
+        entered.resolve();
+        await release.promise;
+      }),
+      sendTransaction: jest.fn(async () => {
+        // Once the sender was entered, expiry does not make its known hash
+        // disappear or turn the transaction into a retryable pre-send failure.
+        if (condition === 'expiry after broadcast') run.clock(review.expiresAt);
+        return { hash: HASH, nonce: 7 };
+      }),
+    };
+    const sdk = new EthereumTransactions(
+      () => run.state.vault.activeNetwork,
+      () => ({ address, decryptedPrivateKey: privateKey }),
+      () => ({
+        activeAccountId: run.state.vault.activeAccount.id,
+        activeAccountType: run.state.vault.activeAccount.type,
+        activeNetwork: run.state.vault.activeNetwork,
+        accounts: run.state.vault.accounts,
+      }),
+      {},
+      {}
+    );
+    Object.defineProperty(sdk, 'web3Provider', {
+      configurable: true,
+      get: () => provider,
+    });
+    const sign = jest.spyOn(localSigner, 'signTransaction');
+    Object.defineProperty(run.wallet, 'ethereumTransaction', {
+      configurable: true,
+      value: sdk,
+    });
+    run.wallet.getWalletSetupStatus = jest.fn(() => undefined);
+    run.wallet.sendAndSaveTransaction = jest.fn(async () => undefined);
+    run.wallet.sendAndSaveEthTransaction =
+      MainController.prototype.sendAndSaveEthTransaction.bind(run.wallet);
+    jest.mocked(getController).mockReturnValue({ wallet: run.wallet } as any);
+    const review = await prepare(run.wallet);
+    const result = run.wallet.submitPrivacyWithdrawal(review.intentId).then(
+      (value: unknown) => ({ value, error: undefined }),
+      (error: unknown) => ({ value: undefined, error })
+    );
+    await entered.promise;
+    expect(run.vault.reserveWithdrawalAttempt).toHaveBeenCalledTimes(1);
+    expect(sign).not.toHaveBeenCalled();
+    expect(provider.sendTransaction).not.toHaveBeenCalled();
+    if (condition === 'snapshot')
+      run.snapshotGuard.mockImplementation(() => {
+        throw new Error('privacy_verification_pending');
+      });
+    if (condition === 'expiry') run.clock(review.expiresAt);
+    release.resolve();
+    const settled = await result;
+    if (condition === 'healthy' || condition === 'expiry after broadcast') {
+      expect(settled.error).toBeUndefined();
+      expect(settled.value).toMatchObject({
+        phase: 'submitted',
+        transactionHash: HASH,
+      });
+      expect(sign).toHaveBeenCalledTimes(1);
+      expect(provider.sendTransaction).toHaveBeenCalledTimes(1);
+      expect(run.vault.recordWithdrawalSubmission).toHaveBeenCalledTimes(1);
+      expect(
+        run.vault.clearUnbroadcastWithdrawalAttempt
+      ).not.toHaveBeenCalled();
+    } else {
+      expect(sign).not.toHaveBeenCalled();
+      expect(provider.sendTransaction).not.toHaveBeenCalled();
+      expect(settled.value).toBeUndefined();
+      expect(settled.error).toMatchObject({
+        message:
+          condition === 'snapshot'
+            ? 'privacy_verification_pending'
+            : 'privacy_withdrawal_intent_expired',
+        transactionNotBroadcast: true,
+      });
+      expect(run.vault.clearUnbroadcastWithdrawalAttempt).toHaveBeenCalledTimes(
+        1
+      );
+      expect(run.vault.recordWithdrawalSubmission).not.toHaveBeenCalled();
+    }
+  }
+);
 afterEach(() => {
   for (const controller of controllers.splice(0)) controller.close();
   if (originalCrypto)
