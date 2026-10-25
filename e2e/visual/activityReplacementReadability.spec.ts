@@ -220,7 +220,10 @@ for (const width of [400, 320])
                 );
                 expect(tx.chainId).toBe(BigInt('5700'));
                 expect(tx.nonce).toBe(0);
-                expect(tx.gasLimit).toBe(BigInt(21000));
+                // Preserve the pinned SDK's replacement gas policy.
+                expect(tx.gasLimit).toBe(
+                  BigInt(action === 'speedup' ? 25200 : 42000)
+                );
                 expect(tx.data).toBe('0x');
                 expect(tx.to?.toLowerCase()).toBe(
                   fixture.evmAddresses[

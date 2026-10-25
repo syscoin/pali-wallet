@@ -109,9 +109,9 @@ export const getTokenTypeBadgeColor = (type: string | undefined): string => {
     case 'erc-1155':
       return `bg-yellow-500 bg-opacity-80 text-black`;
     case 'erc-777':
-      return `bg-green-500 bg-opacity-80 text-white`;
+      return `bg-green-500 bg-opacity-80 text-black`;
     case 'erc-4626':
-      return `bg-orange-500 bg-opacity-80 text-white`;
+      return `bg-orange-500 bg-opacity-80 text-black`;
 
     // Syscoin Token Types
     case 'spt':
