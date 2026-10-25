@@ -1,5 +1,8 @@
+/* eslint-disable @typescript-eslint/no-var-requires -- Webpack loaders run as CommonJS in Node. */
 const fs = require('fs');
 const path = require('path');
+
+const { projectLocale, scopeFromQuery } = require('./localeProjection');
 const { structure } = require('./localeStructure');
 
 module.exports = function compactLocaleJson(source) {
@@ -12,11 +15,17 @@ module.exports = function compactLocaleJson(source) {
   if (JSON.stringify(actual) !== JSON.stringify(canonical)) {
     throw new Error('Locale resource structure/order differs from English');
   }
+  const scope = scopeFromQuery(this.resourceQuery);
+  const projection = projectLocale(resource, scope);
+  const structureQuery =
+    scope === 'full' ? 'localeStructure' : `${scope}Structure`;
   const values = (node) =>
     typeof node === 'string' ? [node] : Object.values(node).flatMap(values);
   return (
-    'module.exports=require("utils/restoreLocale").restoreLocale(require("assets/locales/en.json?localeStructure"),' +
-    JSON.stringify(values(resource)) +
+    'module.exports=require("utils/restoreLocale").restoreLocale(require("assets/locales/en.json?' +
+    structureQuery +
+    '"),' +
+    JSON.stringify(values(projection)) +
     ');'
   );
 };

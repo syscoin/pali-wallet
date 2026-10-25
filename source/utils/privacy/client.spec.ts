@@ -13,6 +13,7 @@ const id = 'eth-0.1';
 const hash = (n: number) => `0x${n.toString(16).padStart(64, '0')}`;
 const leaves = [hash(1), hash(2)];
 const snapshot: PrivacySnapshot = {
+  withdrawnNullifiers: [],
   version: 1,
   chainId: 1,
   poolAddress: getPrivacyPool(id).address,
@@ -39,8 +40,10 @@ function mockRpc(
   options: {
     chain?: string;
     changedHash?: boolean;
+    changedTimestamp?: boolean;
     count?: number;
     expired?: boolean;
+    timestamp?: unknown;
     transactions?: number;
     wrongId?: boolean;
   } = {}
@@ -54,6 +57,12 @@ function mockRpc(
       headers++;
       result = {
         number: toQuantity(snapshot.asOfBlockNumber),
+        timestamp:
+          options.changedTimestamp && headers > 1
+            ? '0x65000001'
+            : Object.prototype.hasOwnProperty.call(options, 'timestamp')
+            ? options.timestamp
+            : '0x65000000',
         hash:
           options.changedHash && headers > 1
             ? hash(100)
@@ -115,6 +124,17 @@ test.each([
   { root: hash(0).toUpperCase() },
   { leaves: [hash(1), '0x' + 'ff'.repeat(32)] },
   { leaves: null },
+  { withdrawnNullifiers: undefined },
+  { withdrawnNullifiers: null },
+  { withdrawnNullifiers: [hash(1), hash(2), hash(3)] },
+  { withdrawnNullifiers: [hash(1), hash(1)] },
+  { withdrawnNullifiers: [hash(1).toUpperCase()] },
+  { withdrawnNullifiers: ['0x' + 'ff'.repeat(32)] },
+  { withdrawnNullifiers: [hash(1) + '\n'] },
+  { withdrawnNullifiers: [hash(1) + '\r'] },
+  { withdrawnNullifiers: [123] },
+  { leaves: [hash(1), hash(2) + '\n'] },
+  { root: snapshot.root + '\n' },
 ])('rejects malformed or cross-context data: %j', (change) => {
   expect(() => validateSnapshot(id, { ...snapshot, ...change })).toThrow(
     'privacy_data_invalid'
@@ -164,7 +184,11 @@ test('declared oversized and invalid JSON responses are refused', async () => {
 
 test('independently checks block hash, leaf count, pool parameters and accepted root', async () => {
   const fetch = mockRpc();
-  await verifySnapshotAnchor(id, snapshot, 'https://rpc.example/', signal());
+  expect(
+    await verifySnapshotAnchor(id, snapshot, 'https://rpc.example/', signal())
+  ).toEqual({
+    blockTimestamp: Number(BigInt('0x65000000')) * 1000,
+  });
   expect(
     fetch.mock.calls.every(([url]) => url === 'https://rpc.example/')
   ).toBe(true);
@@ -182,7 +206,9 @@ test('verifies busy block anchors whose transaction hashes exceed 64 KiB', async
   mockRpc({ transactions: 1100 });
   await expect(
     verifySnapshotAnchor(id, snapshot, 'https://rpc.example/', signal())
-  ).resolves.toBeUndefined();
+  ).resolves.toEqual({
+    blockTimestamp: Number(BigInt('0x65000000')) * 1000,
+  });
 });
 
 test.each(['eth_chainId', 'eth_call'])(
@@ -234,3 +260,32 @@ test.each([
     ).rejects.toThrow(error);
   }
 );
+
+test.each([
+  undefined,
+  null,
+  1700000000,
+  '',
+  '0x',
+  '0x0',
+  '0x01',
+  '0xABC',
+  '0x65000000\n',
+  '0x65000000 ',
+  '0x20000000000000',
+])(
+  'rejects malformed block timestamps instead of inventing freshness: %p',
+  async (timestamp) => {
+    mockRpc({ timestamp });
+    await expect(
+      verifySnapshotAnchor(id, snapshot, 'https://rpc.example/', signal())
+    ).rejects.toThrow('privacy_rpc_unavailable');
+  }
+);
+
+test('a changed timestamp at the same block/hash invalidates its anchor', async () => {
+  mockRpc({ changedTimestamp: true });
+  await expect(
+    verifySnapshotAnchor(id, snapshot, 'https://rpc.example/', signal())
+  ).rejects.toThrow('privacy_anchor_changed');
+});

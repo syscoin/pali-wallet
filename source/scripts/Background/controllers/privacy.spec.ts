@@ -1,9 +1,13 @@
 import { PrivacyCache, PrivacyRecord } from 'utils/privacy/cache';
 import { advanceMerkleWork, createMerkleWork } from 'utils/privacy/merkle';
+import type { IPrivacyNoteReader } from 'utils/privacy/privateVaultTypes';
 import { getPrivacyPool } from 'utils/privacy/registry';
 import { PrivacyPoolId, PrivacySnapshot } from 'utils/privacy/types';
 
-import { createPrivacyController } from './privacy';
+import {
+  createPrivacyController,
+  PRIVACY_NOTE_MAX_BLOCK_AGE_MS,
+} from './privacy';
 
 const id: PrivacyPoolId = 'eth-0.1';
 const copy = <T>(value: T): T =>
@@ -20,6 +24,7 @@ const leaf = (value: number) => `0x${value.toString(16).padStart(64, '0')}`;
 function snapshot(leaves = [leaf(1), leaf(2)]): PrivacySnapshot {
   const work = advanceMerkleWork(createMerkleWork(), leaves);
   return {
+    withdrawnNullifiers: [],
     version: 1,
     chainId: 1,
     poolAddress: getPrivacyPool(id).address,
@@ -91,7 +96,10 @@ function memoryCache() {
 function setup(overrides: any = {}) {
   const storage = memoryCache();
   const fetchSnapshot = jest.fn(async () => snapshot());
-  const verifyAnchor = jest.fn(async () => undefined);
+  const verifyAnchor = jest.fn(async () => ({
+    blockTimestamp: Math.max(1, (overrides.now || Date.now)() - 12 * 60 * 1000),
+  }));
+  let readNote!: IPrivacyNoteReader;
   const schedule = jest.fn();
   const stop = jest.fn();
   const getNetwork = jest.fn(() => ({
@@ -99,14 +107,20 @@ function setup(overrides: any = {}) {
     isEthereum: true,
     url: 'https://ethereum.example/rpc',
   }));
-  const controller = createPrivacyController(getNetwork, {
-    cache: storage.cache,
-    fetchSnapshot,
-    verifyAnchor,
-    schedule,
-    stop,
-    ...overrides,
-  });
+  const controller = createPrivacyController(
+    getNetwork,
+    {
+      cache: storage.cache,
+      fetchSnapshot,
+      verifyAnchor,
+      schedule,
+      stop,
+      ...overrides,
+    },
+    (reader) => {
+      readNote = reader;
+    }
+  );
   return {
     storage,
     controller,
@@ -115,6 +129,7 @@ function setup(overrides: any = {}) {
     schedule,
     stop,
     getNetwork,
+    readNote,
   };
 }
 
@@ -356,4 +371,223 @@ test('pause wins when it overlaps the scheduled ready-to-running transition', as
   const reads = run.fetchSnapshot.mock.calls.length;
   await run.controller.resumePending(id);
   expect(run.fetchSnapshot).toHaveBeenCalledTimes(reads);
+});
+
+const noteIdentity = (commitment = leaf(1), nullifierHash = leaf(88)) => ({
+  poolId: id,
+  commitment,
+  nullifierHash,
+});
+
+test('note inspection stays background-only and performs zero network work', async () => {
+  const run = setup();
+  expect(Object.keys(run.controller).sort()).toEqual([
+    'clear',
+    'getStatus',
+    'pause',
+    'resumePending',
+    'start',
+  ]);
+  expect(await run.readNote(noteIdentity())).toEqual({ phase: 'waiting' });
+  expect(run.fetchSnapshot).not.toHaveBeenCalled();
+  expect(run.verifyAnchor).not.toHaveBeenCalled();
+  expect(run.schedule).not.toHaveBeenCalled();
+});
+
+test('only locally verified deposits and bulk withdrawals classify notes at their block', async () => {
+  const data = { ...snapshot(), withdrawnNullifiers: [leaf(88)] };
+  const run = setup({ fetchSnapshot: jest.fn(async () => data) });
+  await run.controller.start(id);
+  await run.controller.resumePending(id);
+  const fetches = run.fetchSnapshot.mock.calls.length;
+  const checks = run.verifyAnchor.mock.calls.length;
+  expect(await run.readNote(noteIdentity())).toEqual({
+    phase: 'spent',
+    blockNumber: data.asOfBlockNumber,
+  });
+  expect(await run.readNote(noteIdentity(leaf(2), leaf(89)))).toEqual({
+    phase: 'verified',
+    blockNumber: data.asOfBlockNumber,
+  });
+  expect(await run.readNote(noteIdentity(leaf(3)))).toEqual({
+    phase: 'not-found',
+    blockNumber: data.asOfBlockNumber,
+  });
+  expect(await run.readNote({ ...noteIdentity(), poolId: 'eth-1' })).toEqual({
+    phase: 'waiting',
+  });
+  expect(run.fetchSnapshot).toHaveBeenCalledTimes(fetches);
+  expect(run.verifyAnchor).toHaveBeenCalledTimes(checks);
+});
+
+test('a stored ready flag and a worker restart cannot manufacture verified provenance', async () => {
+  const run = setup();
+  run.storage.setRecord({
+    poolId: id,
+    generation: 1,
+    running: false,
+    status: {
+      poolId: id,
+      phase: 'ready',
+      blockNumber: 20000000,
+      verifiedAt: Date.now(),
+    },
+  });
+  expect(await run.readNote(noteIdentity())).toEqual({ phase: 'waiting' });
+  await run.controller.start(id);
+  await run.controller.resumePending(id);
+  expect((await run.readNote(noteIdentity())).phase).toBe('verified');
+  let restoredRead!: IPrivacyNoteReader;
+  createPrivacyController(
+    run.getNetwork,
+    {
+      cache: run.storage.cache,
+      fetchSnapshot: run.fetchSnapshot,
+      verifyAnchor: run.verifyAnchor,
+      schedule: run.schedule,
+      stop: run.stop,
+    },
+    (reader) => {
+      restoredRead = reader;
+    }
+  );
+  const fetches = run.fetchSnapshot.mock.calls.length;
+  const checks = run.verifyAnchor.mock.calls.length;
+  expect(await restoredRead(noteIdentity())).toEqual({ phase: 'waiting' });
+  expect(run.fetchSnapshot).toHaveBeenCalledTimes(fetches);
+  expect(run.verifyAnchor).toHaveBeenCalledTimes(checks);
+});
+
+test('fresh download time cannot make an old block fresh for note admission', async () => {
+  const current = 2000000000000;
+  const run = setup({
+    now: () => current,
+    verifyAnchor: jest.fn(async () => ({
+      blockTimestamp: current - PRIVACY_NOTE_MAX_BLOCK_AGE_MS - 1,
+    })),
+  });
+  await run.controller.start(id);
+  await run.controller.resumePending(id);
+  expect(run.storage.record?.status.verifiedAt).toBe(current);
+  expect(await run.readNote(noteIdentity())).toEqual({ phase: 'waiting' });
+});
+
+test.each([
+  [-PRIVACY_NOTE_MAX_BLOCK_AGE_MS, 'verified'],
+  [-PRIVACY_NOTE_MAX_BLOCK_AGE_MS - 1, 'waiting'],
+  [30000, 'verified'],
+  [30001, 'waiting'],
+  [NaN, 'waiting'],
+  [Infinity, 'waiting'],
+] as const)('note block-age boundary %s gives %s', async (offset, phase) => {
+  const current = 2000000000000;
+  const run = setup({
+    now: () => current,
+    verifyAnchor: jest.fn(async () => ({
+      blockTimestamp: current + offset,
+    })),
+  });
+  await run.controller.start(id);
+  await run.controller.resumePending(id);
+  expect((await run.readNote(noteIdentity())).phase).toBe(phase);
+});
+
+test('Pause retains a fresh as-of result until expiry; Clear removes its trust', async () => {
+  let current = 2000000000000;
+  const run = setup({ now: () => current });
+  await run.controller.start(id);
+  await run.controller.resumePending(id);
+  await run.controller.pause(id);
+  const calls = run.fetchSnapshot.mock.calls.length;
+  expect(await run.readNote(noteIdentity())).toEqual({
+    phase: 'verified',
+    blockNumber: 20000000,
+  });
+  current += PRIVACY_NOTE_MAX_BLOCK_AGE_MS;
+  expect(await run.readNote(noteIdentity())).toEqual({ phase: 'waiting' });
+  expect(run.fetchSnapshot).toHaveBeenCalledTimes(calls);
+  await run.controller.clear(id);
+  expect(await run.readNote(noteIdentity())).toEqual({ phase: 'waiting' });
+});
+
+test('an unfinished newer snapshot cannot classify its new note before verification', async () => {
+  const run = setup();
+  await run.controller.start(id);
+  await run.controller.resumePending(id);
+  const download = deferred<PrivacySnapshot>();
+  const started = deferred<void>();
+  run.fetchSnapshot.mockImplementationOnce(() => {
+    started.resolve();
+    return download.promise;
+  });
+  await run.controller.start(id);
+  const syncing = run.controller.resumePending(id);
+  await started.promise;
+  expect(await run.readNote(noteIdentity(leaf(3)))).toEqual({
+    phase: 'waiting',
+    blockNumber: 20000000,
+  });
+  expect(await run.readNote(noteIdentity())).toEqual({
+    phase: 'verified',
+    blockNumber: 20000000,
+  });
+  download.resolve({
+    ...snapshot([leaf(1), leaf(2), leaf(3)]),
+    asOfBlockNumber: 20000001,
+  });
+  await syncing;
+  expect(await run.readNote(noteIdentity(leaf(3)))).toEqual({
+    phase: 'verified',
+    blockNumber: 20000001,
+  });
+});
+
+test('Clear wins over late final verification before a note can become usable', async () => {
+  const run = setup();
+  const completion = deferred<{ blockTimestamp: number }>();
+  const reached = deferred<void>();
+  run.verifyAnchor.mockImplementationOnce(async () => ({
+    blockTimestamp: Date.now(),
+  }));
+  run.verifyAnchor.mockImplementationOnce(() => {
+    reached.resolve();
+    return completion.promise;
+  });
+  await run.controller.start(id);
+  const syncing = run.controller.resumePending(id);
+  await reached.promise;
+  await run.controller.clear(id);
+  completion.resolve({ blockTimestamp: Date.now() });
+  await syncing;
+  expect(await run.readNote(noteIdentity())).toEqual({ phase: 'waiting' });
+});
+
+test('a failed newer anchor leaves public cache but defers private note admission', async () => {
+  const run = setup();
+  await run.controller.start(id);
+  await run.controller.resumePending(id);
+  const old = copy(run.storage.verified);
+  run.verifyAnchor.mockRejectedValueOnce(new Error('privacy_anchor_changed'));
+  await run.controller.start(id);
+  await run.controller.resumePending(id);
+  expect(run.storage.verified).toEqual(old);
+  const fetches = run.fetchSnapshot.mock.calls.length;
+  const checks = run.verifyAnchor.mock.calls.length;
+  expect(await run.readNote(noteIdentity())).toEqual({ phase: 'waiting' });
+  expect(run.fetchSnapshot).toHaveBeenCalledTimes(fetches);
+  expect(run.verifyAnchor).toHaveBeenCalledTimes(checks);
+});
+
+test('unavailable public cache defers note status without network recovery', async () => {
+  const run = setup();
+  await run.controller.start(id);
+  await run.controller.resumePending(id);
+  run.storage.cache.get = jest.fn(async () => {
+    throw new Error('storage unavailable');
+  });
+  const fetches = run.fetchSnapshot.mock.calls.length;
+  const checks = run.verifyAnchor.mock.calls.length;
+  expect(await run.readNote(noteIdentity())).toEqual({ phase: 'waiting' });
+  expect(run.fetchSnapshot).toHaveBeenCalledTimes(fetches);
+  expect(run.verifyAnchor).toHaveBeenCalledTimes(checks);
 });

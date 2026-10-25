@@ -154,7 +154,7 @@ const SentryVote = lazy(() => import('pages/Transactions/SentryVote'));
 const SmartAccountHub = lazy(() => import('pages/SmartAccount/Hub'));
 const EditAccount = lazy(() => import('pages/Settings/EditAccount'));
 const Advanced = lazy(() => import('pages/Settings/Advanced'));
-const Privacy = lazy(() => import('pages/Privacy/Privacy'));
+const Privacy = lazy(() => import('pages/Privacy'));
 const Languages = lazy(() => import('pages/Settings/Languages'));
 const ChainErrorPage = lazy(() =>
   import('pages/Chain/ChainErrorPage').then((m) => ({

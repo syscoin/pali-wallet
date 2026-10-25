@@ -16,12 +16,13 @@ import {
 } from 'state/vaultGlobal';
 import { IDAppController } from 'types/controllers';
 import { INetwork, INetworkType } from 'types/network';
-import type { PrivacyController } from 'utils/privacy/types';
 import {
   SYSCOIN_UTXO_MAINNET_NETWORK,
   CHAIN_IDS,
   PALI_NETWORKS_STATE,
 } from 'utils/constants';
+import type { IPrivateVaultController } from 'utils/privacy/privateVaultTypes';
+import type { PrivacyController } from 'utils/privacy/types';
 
 import DAppController from './DAppController';
 import { createExternalWalletView } from './externalWalletCreation';
@@ -43,6 +44,7 @@ export interface IMasterController {
     maxAttempts: number;
   };
   privacy: PrivacyController;
+  privateVault: IPrivateVaultController;
   refresh: () => void;
   rehydrate: () => void;
   retryInitialization?: () => Promise<{ retrying: boolean }>;
@@ -294,16 +296,20 @@ const MasterController = (
 
   initializeMainController();
 
-  const privacy = createPrivacyController(() => {
-    const state = externalStore.getState();
-    return {
-      chainId: state.vault.activeNetwork.chainId,
-      isEthereum:
-        state.vault.activeNetwork.kind === INetworkType.Ethereum &&
-        !state.vault.isBitcoinBased,
-      url: state.vault.activeNetwork.url,
-    };
-  });
+  const privacy = createPrivacyController(
+    () => {
+      const state = externalStore.getState();
+      return {
+        chainId: state.vault.activeNetwork.chainId,
+        isEthereum:
+          state.vault.activeNetwork.kind === INetworkType.Ethereum &&
+          !state.vault.isBitcoinBased,
+        url: state.vault.activeNetwork.url,
+      };
+    },
+    undefined,
+    (reader) => wallet.setPrivateVaultNoteReader(reader)
+  );
 
   return {
     rehydrate,
@@ -315,6 +321,11 @@ const MasterController = (
     callGetLatestUpdateForAccount,
     wallet,
     privacy,
+    privateVault: {
+      getNotes: () => wallet.getPrivateVaultNotes(),
+      importNote: (note) => wallet.importPrivateVaultNote(note),
+      revealNote: (id, password) => wallet.revealPrivateVaultNote(id, password),
+    },
     // These will be overridden in the background script if initialization fails
     getInitializationStatus: () => ({
       isReady: true,

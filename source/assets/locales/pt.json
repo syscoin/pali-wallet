@@ -1582,6 +1582,33 @@
     "publicDataOnly": "Apenas dados públicos do pool são baixados. Seu endereço de carteira e suas notas privadas não são enviados.",
     "savedDeposits": "Depósitos públicos salvos: {{count}}",
     "verifiedBlock": "Último bloco verificado: {{block}}",
-    "progress": "{{completed}} de {{total}}"
+    "progress": "{{completed}} de {{total}}",
+    "yourNotes": "Suas notas",
+    "importNote": "Importar nota",
+    "notesLocal": "Salvas na sua carteira criptografada. O status pode estar atrasado.",
+    "noteLabel": "Nota",
+    "noteSecret": "Qualquer pessoa com esta nota pode sacar. Mantenha seu backup privado.",
+    "noNotes": "Nenhuma nota salva.",
+    "notesUnavailable": "Não foi possível carregar as notas. Tente novamente.",
+    "noteInvalid": "Este formato de nota não é compatível.",
+    "noteNotFound": "Nenhum depósito correspondente encontrado.",
+    "notePending": "A verificação do pool não está pronta. Prepare o pool e tente novamente.",
+    "noteDuplicate": "Esta nota já está salva.",
+    "noteImportFailed": "Não foi possível importar a nota. Tente novamente.",
+    "revealNote": "Revelar para backup",
+    "revealNoteLabel": "Revelar nota de {{amount}} ETH para backup",
+    "revealPassword": "Confirme sua senha para revelar esta nota.",
+    "privateNote": "Nota privada",
+    "hideNote": "Ocultar",
+    "noteAsOfBlock": "Até o bloco {{block}}",
+    "notePhase": {
+      "verified": "Depósito verificado",
+      "spent": "Já sacado",
+      "waiting": "Aguardando verificação",
+      "not-found": "Depósito não encontrado"
+    },
+    "refreshNotes": "Atualizar notas",
+    "noteRevealFailed": "Não foi possível revelar esta nota. Verifique sua senha e tente novamente.",
+    "noteLimit": "Esta carteira tem 128 notas salvas. Guarde esta nota em um backup seguro."
   }
 }

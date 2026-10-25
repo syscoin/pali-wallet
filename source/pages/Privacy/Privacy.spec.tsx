@@ -17,6 +17,7 @@ import { isPrivacySyncStatus } from './usePrivacyIndex';
 
 const mockEmitter = jest.fn();
 let mockState: any;
+jest.mock('./PrivateNotes', () => () => null);
 jest.mock('react-redux', () => ({
   useSelector: (select: any) => select(mockState),
 }));

@@ -43,8 +43,11 @@ const scripts = {
     // Include it in startup cost, even though webpack emits a separate file.
     ...[
       'js/wallet-recovery.bundle.js',
+      'js/private-vault.bundle.js',
       'js/sentry-controller.bundle.js',
       'js/sentry-sdk.bundle.js',
+      // Required by the Sentry SDK's evaluation-time preload when present.
+      'js/sentry-crypto-shared.bundle.js',
       'js/sentry-wallet-authority.bundle.js',
     ]
       .map((file) => path.join(directory, file))

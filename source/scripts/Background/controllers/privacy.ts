@@ -10,6 +10,7 @@ import {
   createMerkleWork,
   MerkleWork,
 } from 'utils/privacy/merkle';
+import type { IPrivacyNoteReader } from 'utils/privacy/privateVaultTypes';
 import { getPrivacyPool, PRIVACY_POOLS } from 'utils/privacy/registry';
 import {
   PrivacyController,
@@ -22,6 +23,11 @@ export const PRIVACY_ALARM_PREFIX = 'privacy-pool-sync:';
 const REQUEST_TIMEOUT_MS = 25000;
 const SLICE_MS = 3000;
 const SYNC_INTERVAL_MS = 15 * 60 * 1000;
+// Includes the shared 15-minute refresh period, normal Ethereum finality and
+// verification time. This is an as-of view, never a claim about later or pending
+// withdrawals; completeness still depends on the public withdrawal feed.
+export const PRIVACY_NOTE_MAX_BLOCK_AGE_MS = 45 * 60 * 1000;
+const MAX_FUTURE_BLOCK_MS = 30000;
 
 interface Dependencies {
   cache?: PrivacyCache;
@@ -36,7 +42,8 @@ interface Dependencies {
 // Neither the index service nor this job ever receives a note or wallet key.
 export function createPrivacyController(
   getNetwork: () => { chainId: number; isEthereum: boolean; url: string },
-  dependencies: Dependencies = {}
+  dependencies: Dependencies = {},
+  registerNoteReader?: (reader: IPrivacyNoteReader) => void
 ): PrivacyController {
   const cache = dependencies.cache || privacyCache;
   const fetchSnapshot = dependencies.fetchSnapshot || fetchPrivacySnapshot;
@@ -52,7 +59,7 @@ export function createPrivacyController(
   >();
   const verifiedTrees = new Map<
     PrivacyPoolId,
-    { snapshot: PrivacySnapshot; work: MerkleWork }
+    { blockTimestamp: number; snapshot: PrivacySnapshot; work: MerkleWork }
   >();
   const schedule =
     dependencies.schedule ||
@@ -237,7 +244,7 @@ export function createPrivacyController(
       }
       if (record.work.root !== snapshot.root)
         throw new Error('privacy_verification_failed');
-      await timed(poolId, generation, (signal) =>
+      const anchor = await timed(poolId, generation, (signal) =>
         verifyAnchor(poolId, snapshot!, record!.rpcUrl!, signal)
       );
       const next: PrivacySyncStatus = {
@@ -248,7 +255,11 @@ export function createPrivacyController(
         verifiedAt: now(),
       };
       if (await cache.commit(poolId, generation, next)) {
-        verifiedTrees.set(poolId, { snapshot, work: record.work });
+        verifiedTrees.set(poolId, {
+          blockTimestamp: anchor.blockTimestamp,
+          snapshot,
+          work: record.work,
+        });
         calculations.delete(poolId);
         await finishScheduling(poolId, generation);
       }
@@ -293,6 +304,48 @@ export function createPrivacyController(
         schedule(id, record.running ? 30000 : nextSyncDelay());
     })
   ).catch(() => undefined);
+
+  // Keep note-specific reads in this background closure. The message-facing
+  // controller exposes only public sync operations, and reading a note neither
+  // fetches data nor wakes a sync job. Disk ready flags are not proof: after a
+  // worker restart this map is empty until this worker verifies the snapshot.
+  registerNoteReader?.((identity) => {
+    const { poolId, commitment, nullifierHash } = identity;
+    return serialize(poolId, async () => {
+      const trusted = verifiedTrees.get(poolId);
+      if (!trusted) return { phase: 'waiting' };
+      let record: PrivacyRecord | undefined;
+      try {
+        record = await cache.get(poolId);
+      } catch {
+        return { phase: 'waiting' };
+      }
+      const age = now() - trusted.blockTimestamp;
+      if (
+        verifiedTrees.get(poolId) !== trusted ||
+        !record ||
+        record.poolId !== poolId ||
+        record.status.phase === 'idle' ||
+        record.status.phase === 'error' ||
+        record.status.blockNumber !== trusted.snapshot.asOfBlockNumber ||
+        !Number.isSafeInteger(trusted.blockTimestamp) ||
+        trusted.blockTimestamp <= 0 ||
+        !Number.isFinite(age) ||
+        age < -MAX_FUTURE_BLOCK_MS ||
+        age > PRIVACY_NOTE_MAX_BLOCK_AGE_MS
+      )
+        return { phase: 'waiting' };
+      const blockNumber = trusted.snapshot.asOfBlockNumber;
+      if (!trusted.snapshot.leaves.includes(commitment))
+        return { phase: record.running ? 'waiting' : 'not-found', blockNumber };
+      return {
+        phase: trusted.snapshot.withdrawnNullifiers.includes(nullifierHash)
+          ? 'spent'
+          : 'verified',
+        blockNumber,
+      };
+    });
+  });
 
   return {
     resumePending,
