@@ -260,110 +260,133 @@ it.each([
 ])(
   'retains advisory/high-rate policy and associates the current safety reason in %s',
   async (_, locale) => {
-    mockLocale = locale as typeof en;
-    render(<NativeSafetyFeeForm />);
-    await waitFor(() => expect(field()).toHaveValue(0.00000001));
-    const advisoryMessage = mockTranslate('send.feeRateNormal', {
-      value: '0.00001000',
-      currency: 'SYS',
-    });
-    const safetyMessage = mockTranslate('send.feeRateSafetyLimit', {
-      value: '0.00005000',
-      currency: 'SYS',
-      limit: '0.00005000',
-    });
+    // Control AntD's two debounce layers without changing any wait/assertion.
+    jest.useFakeTimers({ doNotFake: ['queueMicrotask'] });
+    let view: ReturnType<typeof render> | undefined;
+    try {
+      mockLocale = locale as typeof en;
+      view = render(<NativeSafetyFeeForm />);
+      await waitFor(() => expect(field()).toHaveValue(0.00000001));
+      const advisoryMessage = mockTranslate('send.feeRateNormal', {
+        value: '0.00001000',
+        currency: 'SYS',
+      });
+      const safetyMessage = mockTranslate('send.feeRateSafetyLimit', {
+        value: '0.00005000',
+        currency: 'SYS',
+        limit: '0.00005000',
+      });
 
-    mockFeeChange.mockClear();
-    fireEvent.change(field(), { target: { value: '0.00001' } });
-    expect(await screen.findByText(advisoryMessage)).toBeVisible();
-    await waitFor(() =>
-      expect(field()).not.toHaveAttribute('aria-invalid', 'true')
-    );
-    expect(field()).toHaveValue(0.00001);
-    expect(mockFeeChange).toHaveBeenCalledTimes(1);
-    expect(mockFeeChange).toHaveBeenCalledWith(0.00001);
-    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-    await waitFor(() => expect(mockSubmit).toHaveBeenCalledTimes(1));
-    expect(mockSubmit.mock.calls[0][0]).toEqual({ fee: '0.00001' });
-    expect(mockSafetyFinishFailed).not.toHaveBeenCalled();
-    // A nonblocking advisory need not be marked invalid or be a description.
+      mockFeeChange.mockClear();
+      fireEvent.change(field(), { target: { value: '0.00001' } });
+      expect(await screen.findByText(advisoryMessage)).toBeVisible();
+      await waitFor(() =>
+        expect(field()).not.toHaveAttribute('aria-invalid', 'true')
+      );
+      expect(field()).toHaveValue(0.00001);
+      expect(mockFeeChange).toHaveBeenCalledTimes(1);
+      expect(mockFeeChange).toHaveBeenCalledWith(0.00001);
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+      await waitFor(() => expect(mockSubmit).toHaveBeenCalledTimes(1));
+      expect(mockSubmit.mock.calls[0][0]).toEqual({ fee: '0.00001' });
+      expect(mockSafetyFinishFailed).not.toHaveBeenCalled();
+      // A nonblocking advisory need not be marked invalid or be a description.
 
-    mockSubmit.mockClear();
-    mockFeeChange.mockClear();
-    fireEvent.change(field(), { target: { value: '0.00005' } });
-    expect(await screen.findByText(safetyMessage)).toBeVisible();
-    expect(screen.queryByText(advisoryMessage)).not.toBeInTheDocument();
-    await waitFor(() =>
-      expect(field()).toHaveAttribute('aria-invalid', 'true')
-    );
-    expect(field()).toHaveValue(0.00005);
-    expect(field()).toHaveAttribute('aria-required', 'true');
-    expect(field()).toHaveAttribute('id', 'fee-input');
-    expect(
-      screen.getByLabelText(
-        mockTranslate('components.feeRateLabel', { currency: 'SYS' })
-      )
-    ).toBe(field());
+      mockSubmit.mockClear();
+      mockFeeChange.mockClear();
+      fireEvent.change(field(), { target: { value: '0.00005' } });
+      expect(await screen.findByText(safetyMessage)).toBeVisible();
+      expect(screen.queryByText(advisoryMessage)).not.toBeInTheDocument();
+      await waitFor(() =>
+        expect(field()).toHaveAttribute('aria-invalid', 'true')
+      );
+      expect(field()).toHaveValue(0.00005);
+      expect(field()).toHaveAttribute('aria-required', 'true');
+      expect(field()).toHaveAttribute('id', 'fee-input');
+      expect(
+        screen.getByLabelText(
+          mockTranslate('components.feeRateLabel', { currency: 'SYS' })
+        )
+      ).toBe(field());
 
-    // A finite positive high edit still notifies its parent, as before; the
-    // actual AntD validator independently prevents successful submission.
-    expect(mockFeeChange).toHaveBeenCalledTimes(1);
-    expect(mockFeeChange).toHaveBeenCalledWith(0.00005);
-    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-    await waitFor(() =>
-      expect(mockSafetyFinishFailed).toHaveBeenCalledTimes(1)
-    );
-    expect(mockSafetyFinishFailed.mock.calls[0][0].errorFields).toEqual(
-      expect.arrayContaining([expect.objectContaining({ name: ['fee'] })])
-    );
-    expect(mockSubmit).not.toHaveBeenCalled();
+      // A finite positive high edit still notifies its parent, as before; the
+      // actual AntD validator independently prevents successful submission.
+      expect(mockFeeChange).toHaveBeenCalledTimes(1);
+      expect(mockFeeChange).toHaveBeenCalledWith(0.00005);
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+      await waitFor(() =>
+        expect(mockSafetyFinishFailed).toHaveBeenCalledTimes(1)
+      );
+      expect(mockSafetyFinishFailed.mock.calls[0][0].errorFields).toEqual(
+        expect.arrayContaining([expect.objectContaining({ name: ['fee'] })])
+      );
+      expect(mockSubmit).not.toHaveBeenCalled();
 
-    // Form validation finishes before AntD's debounced ErrorList commits.
-    // Observe the complete native description association after both settle.
-    await waitFor(() => {
-      const descriptionIds = (field().getAttribute('aria-describedby') ?? '')
+      // ItemHolder and ErrorList each debounce their error state. Commit between
+      // them so the second layer sees the completed validation before checking IDs.
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(10);
+      });
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(10);
+      });
+
+      // Form validation finishes before AntD's debounced ErrorList commits.
+      // Observe the complete native description association after both settle.
+      await waitFor(() => {
+        const descriptionIds = (field().getAttribute('aria-describedby') ?? '')
+          .split(/\s+/)
+          .filter(Boolean);
+        expect(descriptionIds.length).toBeGreaterThan(0);
+        expect(new Set(descriptionIds).size).toBe(descriptionIds.length);
+        for (const id of descriptionIds) {
+          const matches = Array.from(document.querySelectorAll('[id]')).filter(
+            (element) => element.id === id
+          );
+          expect(matches).toHaveLength(1);
+        }
+        // The preserved blank AntD help reference contributes boundary whitespace;
+        // require the entire exact reason, with no additional words or substrings.
+        const escapedReason = safetyMessage.replace(
+          /[.*+?^${}()|[\]\\]/g,
+          '\\$&'
+        );
+        expect(field()).toHaveAccessibleDescription(
+          new RegExp('^\\s*' + escapedReason + '\\s*$')
+        );
+      });
+
+      mockFeeChange.mockClear();
+      fireEvent.change(field(), { target: { value: '0.00000002' } });
+      await waitFor(() => {
+        expect(field()).not.toHaveAttribute('aria-invalid', 'true');
+        expect(screen.queryByText(safetyMessage)).not.toBeInTheDocument();
+        expect(screen.queryByText(advisoryMessage)).not.toBeInTheDocument();
+      });
+      const correctedIds = (field().getAttribute('aria-describedby') ?? '')
         .split(/\s+/)
         .filter(Boolean);
-      expect(descriptionIds.length).toBeGreaterThan(0);
-      expect(new Set(descriptionIds).size).toBe(descriptionIds.length);
-      for (const id of descriptionIds) {
-        const matches = Array.from(document.querySelectorAll('[id]')).filter(
-          (element) => element.id === id
-        );
-        expect(matches).toHaveLength(1);
+      const correctedDescription = correctedIds
+        .map((id) => document.getElementById(id)?.textContent ?? '')
+        .join(' ');
+      expect(correctedDescription).not.toContain(safetyMessage);
+      expect(field()).toHaveValue(0.00000002);
+      expect(field()).toHaveAttribute('aria-required', 'true');
+      expect(mockFeeChange).toHaveBeenCalledTimes(1);
+      expect(mockFeeChange).toHaveBeenCalledWith(0.00000002);
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+      await waitFor(() => expect(mockSubmit).toHaveBeenCalledTimes(1));
+      expect(mockSubmit.mock.calls[0][0]).toEqual({ fee: '0.00000002' });
+      expect(mockSafetyFinishFailed).toHaveBeenCalledTimes(1);
+    } finally {
+      try {
+        view?.unmount();
+        await act(async () => {
+          jest.runOnlyPendingTimers();
+        });
+      } finally {
+        jest.useRealTimers();
       }
-      // The preserved blank AntD help reference contributes boundary whitespace;
-      // require the entire exact reason, with no additional words or substrings.
-      const escapedReason = safetyMessage.replace(
-        /[.*+?^${}()|[\]\\]/g,
-        '\\$&'
-      );
-      expect(field()).toHaveAccessibleDescription(
-        new RegExp('^\\s*' + escapedReason + '\\s*$')
-      );
-    });
-
-    mockFeeChange.mockClear();
-    fireEvent.change(field(), { target: { value: '0.00000002' } });
-    await waitFor(() => {
-      expect(field()).not.toHaveAttribute('aria-invalid', 'true');
-      expect(screen.queryByText(safetyMessage)).not.toBeInTheDocument();
-      expect(screen.queryByText(advisoryMessage)).not.toBeInTheDocument();
-    });
-    const correctedIds = (field().getAttribute('aria-describedby') ?? '')
-      .split(/\s+/)
-      .filter(Boolean);
-    const correctedDescription = correctedIds
-      .map((id) => document.getElementById(id)?.textContent ?? '')
-      .join(' ');
-    expect(correctedDescription).not.toContain(safetyMessage);
-    expect(field()).toHaveValue(0.00000002);
-    expect(field()).toHaveAttribute('aria-required', 'true');
-    expect(mockFeeChange).toHaveBeenCalledTimes(1);
-    expect(mockFeeChange).toHaveBeenCalledWith(0.00000002);
-    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-    await waitFor(() => expect(mockSubmit).toHaveBeenCalledTimes(1));
-    expect(mockSubmit.mock.calls[0][0]).toEqual({ fee: '0.00000002' });
-    expect(mockSafetyFinishFailed).toHaveBeenCalledTimes(1);
+    }
   }
 );

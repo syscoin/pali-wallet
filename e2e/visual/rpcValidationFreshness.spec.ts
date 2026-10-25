@@ -382,12 +382,30 @@ for (const width of [400, 320]) {
             }
           );
           await wallet.step(
-            'explicit Add revalidates the current URL and does not save a mismatching endpoint',
+            'Add accepts the current valid endpoint or refuses the current invalid endpoint',
             async (capture) => {
               const add = popup.getByRole('button', {
                 name: en.buttons.addNetwork,
                 exact: true,
               });
+              const publicNetworkState = () =>
+                popup.evaluate(async () => {
+                  const state = await chrome.runtime.sendMessage({
+                    type: 'getCurrentState',
+                  });
+                  if (
+                    !state?.vault?.activeNetwork ||
+                    !state?.vaultGlobal?.networks?.ethereum
+                  )
+                    throw new Error('Missing public network state');
+                  return {
+                    activeChainId: state.vault.activeNetwork.chainId,
+                    proposedRegistered: Boolean(
+                      state.vaultGlobal.networks.ethereum[13377]
+                    ),
+                  };
+                });
+              const beforeNetwork = await publicNetworkState();
               const currentReads = () =>
                 reads.filter(
                   (r) =>
@@ -397,7 +415,14 @@ for (const width of [400, 320]) {
                 ).length;
               const beforeAddReads = currentReads();
               await add.click();
-              await expect.poll(currentReads).toBeGreaterThan(beforeAddReads);
+              // RPC chain metadata is intentionally cached by the installed SDK.
+              // Only the explorer API path requires another actual HTTP read.
+              if (isApi)
+                await expect.poll(currentReads).toBeGreaterThan(beforeAddReads);
+              observations.addWireReads = {
+                before: beforeAddReads,
+                after: currentReads(),
+              };
               if (oldWrong) {
                 const result = await settle(dapp, id);
                 expect(result.error).toBeUndefined();
@@ -415,6 +440,8 @@ for (const width of [400, 320]) {
                 await expect(errors.first()).toContainText(badMessage);
                 expect((await rpcObservation(dapp, id)).settled).not.toBe(true);
                 observations.addResult = 'current mismatch rejected';
+                expect(await publicNetworkState()).toEqual(beforeNetwork);
+                expect(beforeNetwork.proposedRegistered).toBe(false);
                 await shot('current-mismatch-after-explicit-add');
                 await capture(popup);
                 await popup
