@@ -10,6 +10,13 @@
       "reason": "Canonical asset ticker for the fixed Ethereum mainnet pool denominations; the symbol is not translated user guidance."
     },
     {
+      "file": "source/pages/Privacy/PrivateNotes.tsx",
+      "kind": "jsx-text",
+      "text": "ETH",
+      "count": 1,
+      "reason": "Canonical asset ticker beside the imported Ethereum mainnet note denomination; the surrounding note status and actions are translated."
+    },
+    {
       "file": "source/components/Fullscreen/Fullscreen.tsx",
       "kind": "jsx-text",
       "text": "Fullscreen mode",
