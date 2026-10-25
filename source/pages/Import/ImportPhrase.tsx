@@ -253,7 +253,7 @@ const ImportPhrase: React.FC = () => {
               seedIsValid
                 ? 'cursor-pointer opacity-100'
                 : 'cursor-not-allowed opacity-60'
-            } bg-brand-deepPink100 w-[17.5rem] mt-3 h-10 text-white text-base font-base font-medium rounded-2xl`}
+            } bg-brand-deepPink100 w-[17.5rem] mt-3 h-10 text-bkg-1 text-base font-base font-medium rounded-2xl`}
           >
             {t(isRecovery ? 'buttons.recoverWallet' : 'buttons.import')}
           </Button>

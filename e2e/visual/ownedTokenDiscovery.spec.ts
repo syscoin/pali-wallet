@@ -42,6 +42,7 @@ for (const failed of [true, false]) {
       const reads: string[] = [];
       const denied: string[] = [];
       let armed = false;
+      const heldReleases: Array<() => void> = [];
       let wallet: PaliWallet | undefined;
       let status: 'passed' | 'failed' = 'failed';
       Object.assign(E2E_CONFIG, {
@@ -83,6 +84,8 @@ for (const failed of [true, false]) {
               return route.abort('blockedbyclient');
             }
             reads.push(url.href);
+            if (armed && !failed)
+              await new Promise<void>((resolve) => heldReleases.push(resolve));
             await route.fulfill({
               status: armed && failed ? 503 : 200,
               contentType: 'application/json',
@@ -138,6 +141,26 @@ for (const failed of [true, false]) {
             await page
               .getByRole('button', { name: en.tokens.yourTokens, exact: true })
               .click();
+            if (!failed) {
+              await expect.poll(() => heldReleases.length).toBeGreaterThan(0);
+              const loader = page.locator(
+                '[data-navigation-scroll="token-import"] .animate-spin.border-t-2.border-b-2'
+              );
+              await expect(loader).toBeVisible();
+              await expect(
+                page.getByText(en.tokens.noAdditionalTokensFound, {
+                  exact: true,
+                })
+              ).toHaveCount(0);
+              await captureForegroundContrast(
+                loader,
+                info,
+                `owned-inline-spinner-${width}`,
+                'border'
+              );
+              heldReleases.splice(0).forEach((release) => release());
+              await expect(loader).toBeHidden();
+            }
             const retry = page.getByRole('button', {
               name: en.receive.retry,
               exact: true,
@@ -199,6 +222,7 @@ for (const failed of [true, false]) {
         );
         status = 'passed';
       } finally {
+        heldReleases.splice(0).forEach((release) => release());
         await info.attach('owned-token-discovery-evidence', {
           contentType: 'application/json',
           body: JSON.stringify(

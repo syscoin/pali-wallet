@@ -109,7 +109,19 @@ test('connection account Copy supports keyboard activation without changing sele
       async () => {
         await wallet!.importSeedAndCreatePassword();
         await wallet!.switchNetwork('Syscoin NEVM Testnet', 'EVM');
-        await wallet!.gotoRoute('#/settings/account/new');
+        await wallet!.page
+          .getByRole('button', {
+            name: en.generalMenu.generalOptions,
+            exact: true,
+          })
+          .click();
+        await wallet!.page
+          .getByRole('menuitem', {
+            name: en.accountMenu.createNewAccount,
+            exact: true,
+          })
+          .click();
+        await expect(wallet!.page).toHaveURL(/#\/settings\/account\/new$/);
         await wallet!.page.locator('#account-name-input').fill(secondLabel);
         await wallet!.page.locator('#create-btn').click();
         await wallet!.page

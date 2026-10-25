@@ -233,8 +233,11 @@ for (const viewport of [
                 exact: true,
               })
               .and(page.locator('[aria-pressed]'));
-            if (await custom.count()) await custom.click();
-            await page.locator('#custom-token-contract').fill(item.address);
+            await expect(custom).toBeVisible();
+            await custom.click();
+            const contract = page.locator('#custom-token-contract');
+            await expect(contract).toBeEditable();
+            await contract.fill(item.address);
             const add = page.getByRole('button', {
               name: 'Import ' + item.symbol + ' token',
               exact: true,

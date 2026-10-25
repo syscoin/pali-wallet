@@ -353,7 +353,7 @@ const ConnectHardwareWalletView: FC = () => {
                   selectedHardwareWallet === undefined || !isUnlocked
                     ? 'opacity-60'
                     : 'opacity-100'
-                } cursor-pointer bg-white w-full h-10 text-brand-blue200 text-base font-base font-medium rounded-2xl`}
+                } cursor-pointer bg-white w-full h-10 text-brand-royalblue text-base font-base font-medium rounded-2xl`}
               >
                 <ButtonLabel />
               </Button>

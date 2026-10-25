@@ -108,6 +108,7 @@ import {
   ISmartAccountMetadata,
   IKeyringAccountState,
   KeyringAccountType,
+  initialActiveHdAccountState,
 } from 'types/network';
 import { IBlacklistCheckResult } from 'types/security';
 import {
@@ -132,7 +133,12 @@ import {
   PALI_NETWORKS_STATE,
 } from 'utils/constants';
 import { assertSupportedEvmFees } from 'utils/dappTransaction';
-import { Contract, formatUnits } from 'utils/ethersV6Compat';
+import {
+  Contract,
+  formatUnits,
+  getAddress,
+  isAddress,
+} from 'utils/ethersV6Compat';
 import { decodeTransactionData } from 'utils/ethUtil';
 import { getBlacklistTargetsForEvmCallWithContractType } from 'utils/evmCallBlacklist';
 import {
@@ -4496,25 +4502,76 @@ class MainController {
   ) {
     const { keyring, assertCurrent } = this.accountMutationContext();
     assertPublicWatchOnlyIdentifier(identifier);
-    // The SDK only validates and constructs public account metadata here.
-    // Abandon a late result before the guarded durable creation below.
-    let validationTimer: ReturnType<typeof setTimeout> | undefined;
-    const importedAccount = await Promise.race([
-      (keyring as any).importWatchOnly(identifier, label),
-      new Promise<never>((_, reject) => {
-        validationTimer = setTimeout(
-          () => reject(new Error(WATCH_ONLY_VALIDATION_TIMEOUT)),
-          WATCH_ONLY_VALIDATION_TIMEOUT_MS
+    const { activeNetwork, accounts } = store.getState().vault;
+    let importedAccount: IKeyringAccountState;
+    let assertImportCurrent = assertCurrent;
+    if (activeNetwork?.kind === INetworkType.Ethereum) {
+      // EVM watch identities are public addresses, not Blockbook lookups.
+      // Keep admission tied to the network that accepted this draft.
+      if (!isAddress(identifier))
+        throw new Error(
+          'Watch-only EVM import requires a valid Ethereum address.'
         );
-      }),
-    ]).finally(() => {
-      if (validationTimer !== undefined) clearTimeout(validationTimer);
-    });
-    assertCurrent();
+      const address = getAddress(identifier);
+      const network = networkRegistrationFingerprint(activeNetwork);
+      const slip44 = store.getState().vaultGlobal.activeSlip44;
+      assertImportCurrent = () => {
+        assertCurrent();
+        const current = store.getState();
+        if (
+          current.vault.isBitcoinBased ||
+          current.vault.activeNetwork.kind !== INetworkType.Ethereum ||
+          networkRegistrationFingerprint(current.vault.activeNetwork) !==
+            network ||
+          current.vaultGlobal.activeSlip44 !== slip44
+        )
+          throw new Error(
+            'Network changed before watch-only import. Please retry.'
+          );
+        if (
+          Object.values(current.vault.accounts).some((bucket) =>
+            Object.values(bucket).some(
+              (account) =>
+                typeof account?.address === 'string' &&
+                account.address.toLowerCase() === address.toLowerCase()
+            )
+          )
+        )
+          throw new Error('Account already exists on your Wallet.');
+      };
+      assertImportCurrent();
+      let id = 0;
+      while (accounts.Imported[id]) id++;
+      importedAccount = {
+        ...initialActiveHdAccountState,
+        id,
+        address,
+        label: label || `Watch-only ${id + 1}`,
+        xpub: address,
+        xprv: '',
+        isImported: true,
+      };
+    } else {
+      // The SDK only validates and constructs public account metadata here.
+      // Abandon a late result before the guarded durable creation below.
+      let validationTimer: ReturnType<typeof setTimeout> | undefined;
+      importedAccount = await Promise.race([
+        (keyring as any).importWatchOnly(identifier, label),
+        new Promise<never>((_, reject) => {
+          validationTimer = setTimeout(
+            () => reject(new Error(WATCH_ONLY_VALIDATION_TIMEOUT)),
+            WATCH_ONLY_VALIDATION_TIMEOUT_MS
+          );
+        }),
+      ]).finally(() => {
+        if (validationTimer !== undefined) clearTimeout(validationTimer);
+      });
+    }
+    assertImportCurrent();
     await this.storeCreatedAccount(
       importedAccount,
       KeyringAccountType.Imported,
-      assertCurrent
+      assertImportCurrent
     );
     setTimeout(() => {
       this.getLatestUpdateForCurrentAccount(false, true).catch((err) => {

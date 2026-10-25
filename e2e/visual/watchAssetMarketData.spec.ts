@@ -324,6 +324,63 @@ test('watch-asset review tolerates missing market change data and preserves zero
               `watch-${label}-${width}`
             );
           }
+          const symbolRow = popup
+            .locator('p')
+            .filter({ hasText: en.settings.tokenSymbol });
+          await expect(symbolRow).toContainText('PRICEONLY');
+          for (let attempt = 0; attempt < 12; attempt++) {
+            const point = await symbolRow.evaluate((element) => {
+              const rect = element.getBoundingClientRect();
+              const footer = [...document.querySelectorAll('button')]
+                .find((button) => button.textContent?.trim() === 'Cancel')
+                ?.getBoundingClientRect();
+              const bottom = footer?.top ?? innerHeight;
+              if (rect.top >= 0 && rect.bottom <= bottom) return null;
+              let owner = element.parentElement;
+              while (
+                owner &&
+                !(
+                  /auto|scroll/.test(getComputedStyle(owner).overflowY) &&
+                  owner.scrollHeight > owner.clientHeight + 2
+                )
+              )
+                owner = owner.parentElement;
+              const area = (
+                owner || document.documentElement
+              ).getBoundingClientRect();
+              return {
+                x: Math.max(8, area.left + 16),
+                y: Math.max(
+                  8,
+                  Math.min(bottom - 16, Math.max(0, area.top) + 80)
+                ),
+                delta: rect.top < 0 ? -80 : 80,
+              };
+            });
+            if (!point) break;
+            await popup.mouse.move(point.x, point.y);
+            await popup.mouse.wheel(0, point.delta);
+            await popup.evaluate(
+              () =>
+                new Promise((resolve) =>
+                  requestAnimationFrame(() => requestAnimationFrame(resolve))
+                )
+            );
+          }
+          const symbolBounds = await symbolRow.boundingBox();
+          const cancelBounds = await popup
+            .getByRole('button', { name: en.buttons.cancel, exact: true })
+            .boundingBox();
+          expect(symbolBounds).not.toBeNull();
+          expect(cancelBounds).not.toBeNull();
+          expect(symbolBounds!.y).toBeGreaterThanOrEqual(0);
+          expect(symbolBounds!.y + symbolBounds!.height).toBeLessThanOrEqual(
+            cancelBounds!.y
+          );
+          await info.attach(`watch-symbol-tail-${width}`, {
+            body: await popup.screenshot({ animations: 'disabled' }),
+            contentType: 'image/png',
+          });
           const contract = popup.getByRole('button', {
             name: PRICE_ONLY,
             exact: true,

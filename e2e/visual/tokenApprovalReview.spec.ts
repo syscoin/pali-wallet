@@ -284,6 +284,61 @@ test('token approval review restores discarded drafts and shows the edited calld
             contentType: 'application/json',
           });
           expect(observations.every((word) => word.lines === 1)).toBe(true);
+          for (let attempt = 0; attempt < 30; attempt++) {
+            if (
+              await input.evaluate(
+                (element) => element === document.activeElement
+              )
+            )
+              break;
+            await popup.keyboard.press('Tab');
+          }
+          await expect(input).toBeFocused();
+          for (let attempt = 0; attempt < 12; attempt++) {
+            const point = await input.evaluate((element) => {
+              const rect = element.getBoundingClientRect();
+              const dialog = element.closest('[role="dialog"]');
+              const footer = dialog
+                ?.querySelector('button[type="submit"]')
+                ?.getBoundingClientRect();
+              const bottom = footer?.top ?? innerHeight;
+              if (rect.top >= 0 && rect.bottom <= bottom) return null;
+              let owner = element.parentElement;
+              while (
+                owner &&
+                !(
+                  /auto|scroll/.test(getComputedStyle(owner).overflowY) &&
+                  owner.scrollHeight > owner.clientHeight + 2
+                )
+              )
+                owner = owner.parentElement;
+              const area = (
+                owner || document.documentElement
+              ).getBoundingClientRect();
+              return {
+                x: Math.max(8, area.left + 16),
+                y: Math.max(
+                  8,
+                  Math.min(bottom - 16, Math.max(0, area.top) + 60)
+                ),
+                delta: rect.top < 0 ? -80 : 80,
+              };
+            });
+            if (!point) break;
+            await popup.mouse.move(point.x, point.y);
+            await popup.mouse.wheel(0, point.delta);
+            await popup.evaluate(
+              () =>
+                new Promise((resolve) =>
+                  requestAnimationFrame(() => requestAnimationFrame(resolve))
+                )
+            );
+          }
+          await expect(input).toBeInViewport({ ratio: 1 });
+          await info.attach(`allowance-custom-input-${viewport.width}`, {
+            body: await popup.screenshot({ animations: 'disabled' }),
+            contentType: 'image/png',
+          });
         }
         await popup.setViewportSize({ width: 400, height: 620 });
         await input.fill('5');
@@ -1704,4 +1759,133 @@ test('token approval symbol and real fee choices retain readable text without ch
     8,
     '0x77359400'
   );
+});
+
+test('rejected popup bursts keep SpamWarning readable and preserve explicit blocking', async ({}, info) => {
+  test.setTimeout(120000);
+  expect(process.env.PALI_TEST_DAPP_REVISION).toMatch(/^[a-f0-9]{40}$/);
+  expect(E2E_CONFIG.extensionPath).toBe(
+    process.env.PALI_TEST_DAPP_EXTENSION_PATH
+  );
+  expect(process.env.PALI_FOREGROUND_CONTRAST_MODE).not.toBe('before');
+  expect(info.config.workers).toBe(1);
+  expect(info.retry).toBe(0);
+  let observed = false;
+  await withWallet('spam-warning-readable-actions', async (wallet, origin) => {
+    const { dapp, address } = await connect(wallet, origin);
+    const data = new Interface([
+      'function approve(address,uint256)',
+    ]).encodeFunctionData('approve', [spender, BigInt(1)]);
+    for (let attempt = 0; attempt < 4; attempt++) {
+      await wallet.step(
+        `ordinary approval attempt ${attempt + 1} is rejected or blocked`,
+        async () => {
+          const request = await startRequest(dapp, 'eth_sendTransaction', [
+            { from: address, to: token, value: '0x0', data },
+          ]);
+          const popup = await popupFor(wallet.context, dapp, request);
+          const url = new URL(popup.url());
+          if (url.pathname === '/external/spam-warning') {
+            observed = true;
+            expect(
+              JSON.parse(url.searchParams.get('data') || '{}')
+            ).toMatchObject({
+              host: new URL(origin).origin,
+              eventName: 'spamWarningResponse',
+            });
+            await expect(
+              popup.getByRole('heading', {
+                name: en.spamWarning.title,
+                exact: true,
+              })
+            ).toBeVisible();
+            for (const width of [400, 320]) {
+              await popup.setViewportSize({
+                width,
+                height: width === 320 ? 360 : 620,
+              });
+              const block = popup.getByRole('button', {
+                name: en.spamWarning.blockTemporarily,
+                exact: true,
+              });
+              const continuation = popup.getByRole('button', {
+                name: en.buttons.continue,
+                exact: true,
+              });
+              const count = popup.locator('span').filter({ hasText: /^3$/ });
+              const duration = popup
+                .locator('p')
+                .filter({ hasText: /minute|second/i })
+                .last();
+              for (const [label, target] of [
+                ['block', block],
+                ['continue', continuation],
+                ['count', count],
+                ['duration', duration],
+              ] as const) {
+                await popup.mouse.move(0, 0);
+                await captureForegroundContrast(
+                  target,
+                  info,
+                  `spam-${label}-${width}-rest`
+                );
+                if (label === 'block' || label === 'continue') {
+                  await target.hover();
+                  await captureForegroundContrast(
+                    target,
+                    info,
+                    `spam-${label}-${width}-hover`
+                  );
+                }
+              }
+            }
+            await clickClosingPopup({
+              click: () =>
+                popup
+                  .getByRole('button', {
+                    name: en.spamWarning.blockTemporarily,
+                    exact: true,
+                  })
+                  .click(),
+              isClosed: () => popup.isClosed(),
+            });
+            const result = await settle(dapp, request);
+            expect(result.error?.code).toBe(4100);
+            expect(result.result).toBeUndefined();
+            const blocked = await settle(
+              dapp,
+              await startRequest(dapp, 'eth_sendTransaction', [
+                { from: address, to: token, value: '0x0', data },
+              ])
+            );
+            expect(blocked.error?.code).toBe(4100);
+            expect(blocked.result).toBeUndefined();
+            await info.attach('spam-warning-normal-admission', {
+              body: JSON.stringify({
+                ...extensionEvidence(),
+                observed,
+                attempt: attempt + 1,
+                controllerStateReplaced: false,
+                realPopup: url.pathname,
+                broadcast: false,
+              }),
+              contentType: 'application/json',
+            });
+          } else {
+            expect(url.pathname).toBe('/external/tx/send/ethTx');
+            await clickClosingPopup({
+              click: () =>
+                popup
+                  .getByRole('button', { name: en.buttons.cancel, exact: true })
+                  .click(),
+              isClosed: () => popup.isClosed(),
+            });
+            expect((await settle(dapp, request)).error?.code).toBe(4001);
+          }
+        }
+      );
+      if (observed) break;
+    }
+    expect(observed).toBe(true);
+  });
 });

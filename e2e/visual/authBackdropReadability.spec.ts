@@ -42,9 +42,14 @@ test('Welcome and Unlock keep readable text over the short-window backdrop', asy
     const inspect = async (state: 'welcome' | 'unlock') => {
       for (const viewport of [
         { width: 400, height: 620 },
+        { width: 400, height: 619 },
+        { width: 400, height: 600 },
+        { width: 400, height: 580 },
         { width: 400, height: 500 },
         { width: 400, height: 499 },
         { width: 400, height: 360 },
+        { width: 320, height: 620 },
+        { width: 320, height: 500 },
         { width: 320, height: 360 },
       ]) {
         await wallet!.step(
@@ -72,7 +77,16 @@ test('Welcome and Unlock keep readable text over the short-window backdrop', asy
             const art = await backdrop.evaluate(
               (element) => getComputedStyle(element).backgroundImage
             );
-            if (viewport.height < 500) {
+            const renderedViewport = await backdrop.evaluate((element) => ({
+              width: innerWidth,
+              height: innerHeight,
+              backgroundImage: getComputedStyle(element).backgroundImage,
+              clientHeight: element.clientHeight,
+              scrollHeight: element.scrollHeight,
+            }));
+            expect(renderedViewport.width).toBe(viewport.width);
+            expect(renderedViewport.height).toBe(viewport.height);
+            if (viewport.height < 620 || viewport.width < 400) {
               expect(art).toBe('none');
               const heading = await captureForegroundContrast(
                 backdrop.getByRole('heading', { name: 'Pali', exact: true }),
@@ -84,9 +98,16 @@ test('Welcome and Unlock keep readable text over the short-window backdrop', asy
                 info,
                 `${state}-import-${viewport.width}x${viewport.height}`
               );
-              observations.push({ state, viewport, heading, action });
+              observations.push({
+                state,
+                viewport,
+                renderedViewport,
+                heading,
+                action,
+              });
             } else {
               expect(art).toMatch(/^url\(/);
+              observations.push({ state, viewport, renderedViewport });
             }
             // Use ordinary keyboard traversal, without focusing a DOM node.
             await page.keyboard.press('Tab');

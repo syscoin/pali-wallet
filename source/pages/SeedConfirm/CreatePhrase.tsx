@@ -156,7 +156,7 @@ export const CreatePhrase = () => {
               type="button"
               className={`bg-brand-deepPink100 ${
                 isTermsConfirmed ? 'opacity-100' : 'opacity-60'
-              } w-[17.5rem] h-10 text-white text-base font-base font-medium rounded-2xl`}
+              } w-[17.5rem] h-10 text-bkg-1 text-base font-base font-medium rounded-2xl`}
               onClick={handleNext}
             >
               {t('buttons.next')}

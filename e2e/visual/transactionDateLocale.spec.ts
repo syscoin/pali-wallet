@@ -24,6 +24,80 @@ const UTXO_HASH = '72'.repeat(32);
 const API = 'https://explorer.tanenbaum.io/api';
 const RPC = 'https://rpc.tanenbaum.io/';
 
+async function inspectHomeTabs(
+  page: Page,
+  info: import('@playwright/test').TestInfo,
+  label: string,
+  text: typeof en
+) {
+  const assets = page.locator('#assets-btn');
+  await assets.scrollIntoViewIfNeeded();
+  await page.mouse.move(0, 0);
+  const observed = [];
+  for (const [id, expected] of [
+    ['assets-btn', text.buttons.assets],
+    ['activity-btn', text.buttons.activity],
+  ]) {
+    const button = page.locator('#' + id);
+    await expect(button).toHaveText(expected);
+    const bounds = await button.evaluate((element) => {
+      const box = element.getBoundingClientRect();
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      const glyphs = [...range.getClientRects()].filter(
+        (r) => r.width > 0 && r.height > 0
+      );
+      return {
+        id: element.id,
+        text: element.textContent?.trim(),
+        box: {
+          left: box.left,
+          right: box.right,
+          top: box.top,
+          bottom: box.bottom,
+        },
+        glyphs: glyphs.map((r) => ({
+          left: r.left,
+          right: r.right,
+          top: r.top,
+          bottom: r.bottom,
+        })),
+        fits: element.scrollWidth <= element.clientWidth,
+        width: innerWidth,
+        glyphHits: glyphs.flatMap((r) =>
+          [0.05, 0.5, 0.95].map((fraction) => {
+            const hit = document.elementFromPoint(
+              r.left + r.width * fraction,
+              r.top + r.height / 2
+            );
+            return hit === element || Boolean(hit && element.contains(hit));
+          })
+        ),
+      };
+    });
+    observed.push(bounds);
+    expect(bounds.fits, id + ': label fits').toBe(true);
+    expect(
+      bounds.glyphHits,
+      id + ': no sibling covers the label'
+    ).not.toContain(false);
+    for (const glyph of bounds.glyphs) {
+      expect(glyph.left).toBeGreaterThanOrEqual(bounds.box.left);
+      expect(glyph.right).toBeLessThanOrEqual(bounds.box.right);
+      expect(glyph.left).toBeGreaterThanOrEqual(0);
+      expect(glyph.right).toBeLessThanOrEqual(bounds.width);
+    }
+  }
+  await info.attach(label + '-tabs-geometry', {
+    body: JSON.stringify(observed),
+    contentType: 'application/json',
+  });
+  await info.attach(label + '-tabs', {
+    body: await page.screenshot({ animations: 'disabled' }),
+    contentType: 'image/png',
+  });
+}
+
 // Test-local version of the ordinary network flow. The shared driver assumes
 // English group/faucet labels; this regression intentionally switches language.
 async function switchLocalizedNetwork(
@@ -201,9 +275,11 @@ async function fullDetailValue(page: Page, label: string) {
 
 for (const target of [
   { code: 'de', text: de, option: 'German Deutsch', width: 400, height: 620 },
+  { code: 'de', text: de, option: 'German Deutsch', width: 320, height: 360 },
+  { code: 'fr', text: fr, option: 'French Français', width: 400, height: 620 },
   { code: 'fr', text: fr, option: 'French Français', width: 320, height: 360 },
 ] as const) {
-  test(`Activity dates follow English and saved ${target.code} across EVM and UTXO`, async ({}, info) => {
+  test(`Activity dates and tabs follow English and saved ${target.code} across EVM and UTXO at ${target.width}px`, async ({}, info) => {
     test.setTimeout(120_000);
     expect(info.config.workers).toBe(1);
     expect(info.retry).toBe(0);
@@ -291,7 +367,7 @@ for (const target of [
     let result: 'passed' | 'failed' = 'failed';
     try {
       wallet = await PaliWallet.launch(
-        `transaction-date-locale-${target.code}`,
+        `transaction-date-locale-${target.code}-${target.width}`,
         {
           offlineHttpProxy: server.url,
           viewport: { width: target.width, height: target.height },
@@ -545,7 +621,20 @@ for (const target of [
                 text
               );
               await wallet!.ensureOnHome();
+              await page.locator('#assets-btn').click();
+              await inspectHomeTabs(
+                page,
+                info,
+                `${language}-${family}-assets-selected`,
+                text
+              );
               await page.locator('#activity-btn').click();
+              await inspectHomeTabs(
+                page,
+                info,
+                `${language}-${family}-activity-selected`,
+                text
+              );
               const expected = await formats(language);
               const list = page.locator('#activity-panel-list');
               const rowDate = list.getByText(

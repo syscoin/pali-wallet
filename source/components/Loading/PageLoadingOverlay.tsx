@@ -63,7 +63,7 @@ export const PageLoadingOverlay = memo(
               : 'fixed bottom-3 left-3 right-3 z-[55]'
           } pointer-events-none flex items-center justify-center gap-2 rounded-lg bg-bkg-1/95 border border-brand-blue500/30 p-3 text-xs text-brand-white shadow-lg`}
         >
-          <span className="animate-spin rounded-full h-4 w-4 shrink-0 border-2 border-brand-blue500 border-t-transparent" />
+          <span className="animate-spin rounded-full h-4 w-4 shrink-0 border-2 border-brand-royalbluemedium border-t-transparent" />
           <span>
             {nonBlocking
               ? status
@@ -91,7 +91,7 @@ export const PageLoadingOverlay = memo(
             }}
           >
             <div className="absolute inset-0 flex items-center justify-center">
-              <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-brand-blue500 drop-shadow-lg" />
+              <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-brand-royalbluemedium drop-shadow-lg" />
             </div>
           </div>
         )}

@@ -418,6 +418,136 @@ for (const scenario of [
           ).toEqual([fixture.evmAddresses[0].toLowerCase()]);
         }
       );
+      const inspectStatus = async (expectedCode: number, state: string) => {
+        for (const width of [400, 320]) {
+          const opening = wallet!.context.waitForEvent('page');
+          const request = await startRequest(dapp, 'wallet_showCallsStatus', [
+            bundleId,
+          ]);
+          const statusPopup = await opening;
+          await statusPopup.waitForURL(/\/external\/tx\/calls-status/);
+          await statusPopup.setViewportSize({
+            width,
+            height: width === 320 ? 360 : 620,
+          });
+          const value = statusPopup.getByText(
+            new RegExp(`\\(${expectedCode}\\)$`)
+          );
+          await expect(value).toBeVisible();
+          await expect(
+            statusPopup.locator(`[title="${bundleId}"]`)
+          ).toBeVisible();
+          const statusRow = value.locator('..');
+          const geometry = await statusRow.evaluate((row) => {
+            const [caption, text] = [...row.querySelectorAll('span')];
+            const a = caption.getBoundingClientRect();
+            const b = text.getBoundingClientRect();
+            const range = document.createRange();
+            range.selectNodeContents(text);
+            const fragments = [...range.getClientRects()].map((rect) => ({
+              left: rect.left,
+              right: rect.right,
+              top: rect.top,
+              bottom: rect.bottom,
+            }));
+            return {
+              caption: a.toJSON(),
+              value: b.toJSON(),
+              fragments,
+              gap: b.left - a.right,
+              width: innerWidth,
+            };
+          });
+          expect(
+            geometry.gap >= 8 || geometry.value.top >= geometry.caption.bottom
+          ).toBe(true);
+          expect(geometry.fragments.length).toBeGreaterThan(0);
+          expect(
+            geometry.fragments.every(
+              (rect) =>
+                rect.left >= geometry.value.left - 1 &&
+                rect.right <= geometry.value.right + 1
+            )
+          ).toBe(true);
+          await testInfo.attach(`calls-status-${state}-${width}-layout`, {
+            body: JSON.stringify(geometry),
+            contentType: 'application/json',
+          });
+          await testInfo.attach(`calls-status-${state}-${width}-top`, {
+            body: await statusPopup.screenshot({ animations: 'disabled' }),
+            contentType: 'image/png',
+          });
+          const close = statusPopup.getByRole('button', {
+            name: en.buttons.close,
+            exact: true,
+          });
+          for (let attempt = 0; attempt < 30; attempt++) {
+            if (
+              await close.evaluate(
+                (element) => element === document.activeElement
+              )
+            )
+              break;
+            await statusPopup.keyboard.press('Tab');
+          }
+          await expect(close).toBeFocused();
+          await expect(close).toBeInViewport({ ratio: 1 });
+          const pane = statusRow.locator('..').locator('..');
+          const bounds = await pane.boundingBox();
+          expect(bounds).not.toBeNull();
+          for (let attempt = 0; attempt < 20; attempt++) {
+            const done = await pane.evaluate(
+              (element) =>
+                element.scrollHeight -
+                  element.clientHeight -
+                  element.scrollTop <=
+                2
+            );
+            if (done) break;
+            await statusPopup.mouse.move(
+              bounds!.x + Math.min(bounds!.width / 2, 32),
+              Math.max(
+                8,
+                Math.min(
+                  (width === 320 ? 360 : 620) - 8,
+                  bounds!.y + bounds!.height / 2
+                )
+              )
+            );
+            await statusPopup.mouse.wheel(0, 260);
+            await statusPopup.evaluate(
+              () =>
+                new Promise((resolve) =>
+                  requestAnimationFrame(() => requestAnimationFrame(resolve))
+                )
+            );
+          }
+          await expect
+            .poll(() =>
+              pane.evaluate(
+                (element) =>
+                  element.scrollHeight -
+                  element.clientHeight -
+                  element.scrollTop
+              )
+            )
+            .toBeLessThanOrEqual(2);
+          if (state === 'mined')
+            await expect(
+              statusPopup.getByText('21000', { exact: true }).last()
+            ).toBeInViewport({ ratio: 1 });
+          await testInfo.attach(`calls-status-${state}-${width}-receipts`, {
+            body: await statusPopup.screenshot({ animations: 'disabled' }),
+            contentType: 'image/png',
+          });
+          const statusResult = await settle(dapp, request);
+          expect(statusResult.error).toBeUndefined();
+          await statusPopup
+            .getByRole('button', { name: en.buttons.close, exact: true })
+            .click();
+          await expect.poll(() => statusPopup.isClosed()).toBe(true);
+        }
+      };
       let requestId = -1;
       let popup: Page;
       await step(
@@ -541,6 +671,7 @@ for (const scenario of [
               atomic: false,
               status: 100,
             });
+            await inspectStatus(100, 'pending');
           }
         );
         await step(
@@ -567,6 +698,7 @@ for (const scenario of [
                 (receipt: any) => receipt.transactionHash
               )
             ).toEqual(rpc!.acks.map((ack) => ack.hash));
+            await inspectStatus(scenario === 'partial' ? 600 : 200, 'mined');
           }
         );
       }

@@ -567,9 +567,9 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                         }
                       )
                     }
-                    className="flex items-center justify-start mb-4 mx-3 px-2 py-1 text-base bg-brand-blue200 hover:bg-opacity-70 border border-solid border-brand-royalblue rounded-full cursor-pointer transition-all duration-200"
+                    className="flex items-center justify-start mb-4 mx-3 px-2 py-1 text-base text-bkg-1 hover:text-content-primary bg-brand-blue200 hover:bg-opacity-70 border border-solid border-brand-royalblue rounded-full cursor-pointer transition-[transform,box-shadow] duration-200"
                   >
-                    <WhiteSuccessIconSvg />
+                    <WhiteSuccessIconSvg className="!text-inherit [&_path]:fill-current" />
 
                     <span className="px-3 text-base">
                       {t('networkMenu.trustedSites')}

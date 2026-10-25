@@ -213,7 +213,9 @@ test('account review preserves readable overflow for four imported positive toke
       const custom = page
         .getByRole('button', { name: en.tokens.addCustomTab, exact: true })
         .first();
-      if (await custom.isVisible()) await custom.click();
+      await expect(custom).toBeVisible();
+      await custom.click();
+      await expect(page.locator('#custom-token-contract')).toBeVisible();
     };
     const imported = () =>
       page.evaluate(async () => {

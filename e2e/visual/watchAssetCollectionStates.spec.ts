@@ -383,6 +383,19 @@ for (const viewport of [
           expect((await rpcObservation(dapp!, request)).result).toBeUndefined();
           expect((await rpcObservation(dapp!, request)).error).toBeUndefined();
           await captureState(popup, 'erc721-metadata-loading');
+          const spinner = popup.locator('.animate-spin').last();
+          const spinnerSize = await spinner.evaluate((element) => ({
+            width: getComputedStyle(element).width,
+            height: getComputedStyle(element).height,
+          }));
+          expect(spinnerSize).toEqual({ width: '64px', height: '64px' });
+          await captureForegroundContrast(
+            spinner,
+            info,
+            `watch-asset-loading-arc-${viewport.width}`,
+            'border'
+          );
+
           modes.set(contracts.metadata, 'healthy');
           released.splice(0).forEach((resolve) => resolve());
           await expect(
