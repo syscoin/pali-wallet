@@ -43,7 +43,7 @@ window.addEventListener('pali-app-ready', function () {
   const loader = document.getElementById('initial-loader');
   if (loader) {
     loader.setAttribute('aria-hidden', 'true');
-    loader.setAttribute('inert', '');
+    loader.inert = true;
   }
   document.body.classList.add('app-loaded');
 });

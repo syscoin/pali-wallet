@@ -58,7 +58,7 @@ it('retires the loader and its slow-start recovery control when the application 
   window.dispatchEvent(new Event('pali-app-ready'));
   expect(document.body).toHaveClass('app-loaded');
   expect(loader).toHaveAttribute('aria-hidden', 'true');
-  expect(loader).toHaveAttribute('inert');
+  expect(loader).toHaveProperty('inert', true);
 });
 
 it('does not append an invisible recovery control after a fast startup', () => {
