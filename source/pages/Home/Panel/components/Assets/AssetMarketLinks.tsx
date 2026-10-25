@@ -2,6 +2,18 @@ import React from 'react';
 
 import { FiExternalLink as ExternalLinkIcon } from 'components/Icon/Icon';
 
+export const CoinGeckoLogo = ({ className }: { className: string }) => (
+  <img
+    src="https://www.coingecko.com/favicon-96x96.png"
+    alt=""
+    aria-hidden="true"
+    className={className}
+    onError={(event) => {
+      event.currentTarget.style.display = 'none';
+    }}
+  />
+);
+
 export const AssetMarketLinks = ({
   marketData,
   t,
@@ -59,11 +71,7 @@ export const AssetMarketLinks = ({
               rel="noopener noreferrer"
               className="px-3 py-1.5 bg-green-600 bg-opacity-20 text-green-500 text-xs rounded hover:bg-opacity-30 transition-all duration-200 flex items-center gap-1"
             >
-              <img
-                src="https://www.coingecko.com/favicon-96x96.png"
-                alt="CoinGecko"
-                className="w-3 h-3"
-              />
+              <CoinGeckoLogo className="w-3 h-3" />
               {t('tokens.tokenPage')}
               <ExternalLinkIcon size={12} />
             </a>

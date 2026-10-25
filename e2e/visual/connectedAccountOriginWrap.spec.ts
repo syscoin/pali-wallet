@@ -30,7 +30,7 @@ const LONG_ORIGIN = `https://${'account-review-'.repeat(
 )}qa.synthetic.invalid`;
 const UNBROKEN_ORIGIN = `https://${'a'.repeat(63)}.synthetic.invalid`;
 
-test('account-switch approval keeps complete origins and an uncompressed warning icon', async ({}, info) => {
+test('connection and account-switch approvals keep complete origins and uncompressed icons', async ({}, info) => {
   test.setTimeout(120_000);
   expect(info.config.workers).toBe(1);
   expect(info.retry).toBe(0);
@@ -211,7 +211,111 @@ test('account-switch approval keeps complete origins and an uncompressed warning
             Boolean((window as any).pali?.request)
           );
           const id = await startRequest(page, 'eth_requestAccounts');
-          const result = await approve(wallet!.context, page, id, capture);
+          const result = await approve(
+            wallet!.context,
+            page,
+            id,
+            async (popup) => {
+              // The initial account picker has a different header from the later
+              // required-account approval. Qualify both through the real request.
+              if ((await popup.getByRole('dialog').count()) === 0) {
+                for (const viewport of [
+                  { width: 400, height: 620 },
+                  { width: 320, height: 360 },
+                ]) {
+                  await popup.setViewportSize(viewport);
+                  const host = popup.getByText(origin, { exact: true });
+                  await expect(host).toBeVisible();
+                  const read = () =>
+                    host.evaluate((element) => {
+                      const range = document.createRange();
+                      range.selectNodeContents(element);
+                      const lines = [...range.getClientRects()];
+                      const icon =
+                        element.previousElementSibling!.getBoundingClientRect();
+                      const last = lines[lines.length - 1];
+                      const footer = document
+                        .querySelector('[data-connection-actions]')!
+                        .getBoundingClientRect();
+                      const hit =
+                        last &&
+                        document.elementFromPoint(
+                          last.left + last.width / 2,
+                          last.top + last.height / 2
+                        );
+                      return {
+                        text: element.textContent,
+                        icon: { width: icon.width, height: icon.height },
+                        lines: lines.map((line) => ({
+                          left: line.left,
+                          right: line.right,
+                          top: line.top,
+                          bottom: line.bottom,
+                        })),
+                        horizontallyContained: lines.every(
+                          (line) => line.left >= 0 && line.right <= innerWidth
+                        ),
+                        tailExposed: Boolean(
+                          last &&
+                            last.top >= 68 &&
+                            last.bottom <= footer.top &&
+                            hit &&
+                            (hit === element || element.contains(hit))
+                        ),
+                      };
+                    });
+                  await popup.mouse.move(0, 0);
+                  const initial = await read();
+                  expect(initial.text).toBe(origin);
+                  expect(initial.icon).toEqual({ width: 32, height: 32 });
+                  expect(initial.horizontallyContained).toBe(true);
+                  await info.attach(
+                    `connect-origin-${kind}-${viewport.width}`,
+                    {
+                      body: await popup.screenshot({ animations: 'disabled' }),
+                      contentType: 'image/png',
+                    }
+                  );
+                  let tail = initial;
+                  for (let step = 0; step < 12 && !tail.tailExposed; step++) {
+                    await popup.mouse.move(viewport.width - 30, 190);
+                    await popup.mouse.wheel(0, 100);
+                    await popup.evaluate(
+                      () =>
+                        new Promise((resolve) =>
+                          requestAnimationFrame(() =>
+                            requestAnimationFrame(resolve)
+                          )
+                        )
+                    );
+                    tail = await read();
+                  }
+                  expect(tail.tailExposed).toBe(true);
+                  expect(tail.text).toBe(origin);
+                  expect((await rpcObservation(page, id)).settled).not.toBe(
+                    true
+                  );
+                  records.push({
+                    phase: 'initial-connect',
+                    kind,
+                    origin,
+                    viewport,
+                    initial,
+                    tail,
+                  });
+                  await popup.mouse.move(0, 0);
+                  await info.attach(
+                    `connect-origin-${kind}-${viewport.width}-tail`,
+                    {
+                      body: await popup.screenshot({ animations: 'disabled' }),
+                      contentType: 'image/png',
+                    }
+                  );
+                }
+              }
+              await capture(popup);
+            }
+          );
           expect(result.error).toBeUndefined();
           expect(
             result.result.map((value: string) => value.toLowerCase())

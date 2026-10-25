@@ -1514,6 +1514,8 @@ export const SendCalls = () => {
                 ? `${formatEther(feeQuote.maximumFeeWei)} ${
                     activeNetwork.currency
                   }`
+                : feeQuoteError
+                ? t('send.feeUnavailable')
                 : t('send.calculating')}
             </p>
             <p className="text-xs text-brand-gray200 mt-1">
@@ -1538,11 +1540,11 @@ export const SendCalls = () => {
         )}
         {totalValue !== '0' && (
           <div className="mt-4 p-4 bg-bkg-2 rounded-lg">
-            <div className="flex justify-between items-center">
-              <p className="text-sm text-brand-gray200">
+            <div className="flex min-w-0 justify-between items-center gap-3">
+              <p className="shrink-0 text-sm text-brand-gray200">
                 {t('send.totalValue')}:
               </p>
-              <p className="text-lg font-bold text-brand-white">
+              <p className="min-w-0 text-right text-lg font-bold text-brand-white [overflow-wrap:anywhere]">
                 {formatEther(totalValue)} {activeNetwork.currency}
               </p>
             </div>

@@ -82,16 +82,15 @@ export const PageLoadingOverlay = memo(
           <div
             role="status"
             aria-label={status}
-            className="fixed z-[55] pointer-events-none"
+            className="fixed inset-x-0 bottom-0 z-[55] pointer-events-none"
             style={{
-              top: hasHeader ? (hasBanner ? '148px' : '80px') : '0',
-              left: '0',
-              right: '0',
-              bottom: '0',
+              top: hasHeader ? (hasBanner ? 148 : 80) : 0,
             }}
           >
             <div className="absolute inset-0 flex items-center justify-center">
-              <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-brand-royalbluemedium drop-shadow-lg" />
+              <div className="rounded-full bg-bkg-1 p-2">
+                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-brand-royalbluemedium drop-shadow-lg" />
+              </div>
             </div>
           </div>
         )}

@@ -33,7 +33,7 @@ import { isSptBalanceAvailable } from 'utils/sptBalance';
 import { buildExplorerUrl } from 'utils/strings';
 import { translateTransactionLabel } from 'utils/transactionDisplay';
 
-import { AssetMarketLinks } from './AssetMarketLinks';
+import { AssetMarketLinks, CoinGeckoLogo } from './AssetMarketLinks';
 
 const hasMarketValue = Number.isFinite;
 
@@ -278,11 +278,7 @@ export const SyscoinAssetDetails = ({
               className="text-xs text-gray-400 hover:text-brand-royalblue transition-colors duration-200"
             >
               <span className="flex items-center gap-1">
-                <img
-                  src="https://www.coingecko.com/favicon-96x96.png"
-                  alt="CoinGecko"
-                  className="w-4 h-4"
-                />
+                <CoinGeckoLogo className="w-4 h-4" />
                 CoinGecko
               </span>
             </a>

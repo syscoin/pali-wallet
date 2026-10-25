@@ -4,7 +4,9 @@ import { expect, type Locator } from '@playwright/test';
 // center each wrapped line unless the heading itself aligns its text.
 export async function expectCenteredHeadingLines(heading: Locator) {
   await expect(heading).toBeVisible();
-  await heading.page().evaluate(() => document.fonts.ready.then(() => undefined));
+  await heading
+    .page()
+    .evaluate(() => document.fonts.ready.then(() => undefined));
   const observed = await heading.evaluate((element) => {
     const box = element.getBoundingClientRect();
     const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);

@@ -259,6 +259,7 @@ export const SendConfirm = () => {
     null
   );
   const [retryTrigger, setRetryTrigger] = useState(0);
+  const freshNativeEstimate = useRef(false);
 
   // Handle both normal navigation and restoration
   const basicTxValues = state?.tx;
@@ -356,6 +357,11 @@ export const SendConfirm = () => {
 
   // Manual retry function for fee calculation
   const retryFeeCalculation = () => {
+    freshNativeEstimate.current =
+      !isBitcoinBased &&
+      !isSmartAccountSend &&
+      !basicTxValues?.token &&
+      basicTxValues?.transactionType === TransactionType.NATIVE_ETH;
     setQuotedEvmFeeMode(undefined);
     setFeeCalculationError(null);
     setIsCalculatingFees(false);
@@ -705,18 +711,24 @@ export const SendConfirm = () => {
           BigNumber.from(1);
       }
 
+      const fresh = freshNativeEstimate.current;
+      freshNativeEstimate.current = false;
       const estimateGas = async (estimateWithValue: BigNumber) => {
-        const estimatedGasLimit = (await controllerEmitter(
-          ['wallet', 'ethereumTransaction', 'getTxGasLimit'],
-          [
-            {
-              data: '0x',
-              from: basicTxValues.sender,
-              to,
-              value: estimateWithValue.toHexString(),
-            },
-          ]
-        )) as any;
+        const transaction = {
+          data: '0x',
+          from: basicTxValues.sender,
+          to,
+          value: estimateWithValue.toHexString(),
+        };
+        const estimatedGasLimit = (await (fresh
+          ? controllerEmitter(
+              ['wallet', 'getFreshNativeEvmGasLimit'],
+              [transaction, state?.walletScope]
+            )
+          : controllerEmitter(
+              ['wallet', 'ethereumTransaction', 'getTxGasLimit'],
+              [transaction]
+            ))) as any;
 
         return BigNumber.from(estimatedGasLimit);
       };
@@ -746,7 +758,13 @@ export const SendConfirm = () => {
         throw error;
       }
     },
-    [basicTxValues, controllerEmitter, resolvedToAddress, isSmartAccountSend]
+    [
+      basicTxValues,
+      controllerEmitter,
+      resolvedToAddress,
+      isSmartAccountSend,
+      state?.walletScope,
+    ]
   );
 
   const getFormattedFee = (currentFee: number | string | undefined) => {

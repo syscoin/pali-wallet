@@ -311,11 +311,13 @@ export const ConnectWallet = () => {
               <h3 className="text-xs text-brand-graylight uppercase tracking-wider mb-2">
                 {t('connections.connectRequest')}
               </h3>
-              <div className="flex items-center justify-center gap-2">
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-brand-royalblue to-brand-deepPurple flex items-center justify-center">
+              <div className="flex min-w-0 items-center justify-center gap-2">
+                <div className="w-8 h-8 shrink-0 rounded-full bg-gradient-to-br from-brand-royalblue to-brand-deepPurple flex items-center justify-center">
                   <Icon name="link" className="text-white" size={16} />
                 </div>
-                <p className="text-lg font-medium text-brand-white">{host}</p>
+                <p className="min-w-0 text-lg font-medium text-brand-white [overflow-wrap:anywhere]">
+                  {host}
+                </p>
               </div>
 
               {connectedAccount && (

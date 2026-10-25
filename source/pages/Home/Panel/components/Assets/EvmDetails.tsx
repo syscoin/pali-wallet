@@ -29,7 +29,7 @@ import { getNftQuantity } from 'utils/nftQuantity';
 import { buildExplorerUrl } from 'utils/strings';
 import { getTokenTypeBadgeColor } from 'utils/tokens';
 
-import { AssetMarketLinks } from './AssetMarketLinks';
+import { AssetMarketLinks, CoinGeckoLogo } from './AssetMarketLinks';
 
 const hasMarketValue = Number.isFinite;
 
@@ -182,11 +182,7 @@ export const EvmAssetDetails = ({
               className="text-xs text-gray-400 hover:text-brand-royalblue transition-colors duration-200"
             >
               <span className="flex items-center gap-1">
-                <img
-                  src="https://www.coingecko.com/favicon-96x96.png"
-                  alt="CoinGecko"
-                  className="w-4 h-4"
-                />
+                <CoinGeckoLogo className="w-4 h-4" />
                 CoinGecko
               </span>
             </a>

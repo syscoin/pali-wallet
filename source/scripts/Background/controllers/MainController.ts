@@ -236,6 +236,10 @@ import {
 } from './balances/ReceiptBalanceRefresh';
 import { IBalancesManager } from './balances/types';
 import ChainListService from './chainlist';
+import {
+  freshSdkGasEstimate,
+  getSdkGasOverrides,
+} from './freshNativeGasEstimate';
 import { clearProviderCache } from './message-handler/requests';
 import { recordSendCallsBundle } from './message-handler/sendCallsBundles';
 import { PaliEvents, PaliSyscoinEvents } from './message-handler/types';
@@ -9060,6 +9064,103 @@ class MainController {
       serverHasAnError: provider.serverHasAnError || false,
       errorMessage: provider.errorMessage || '',
     };
+  }
+
+  // Explicit user Retry for a native EOA quote; ordinary estimates still use
+  // the long-lived SDK instance. No caller-selected network or signing path.
+  public async getFreshNativeEvmGasLimit(
+    input: { data: string; from: string; to: string; value: string },
+    expectedScope: IWalletNavigationScope
+  ) {
+    this.assertAssetMutationContext(expectedScope);
+    const state = store.getState();
+    const network = { ...state.vault.activeNetwork };
+    const ref = { ...state.vault.activeAccount };
+    const account = state.vault.accounts[ref.type]?.[ref.id];
+    const transaction = {
+      data: input?.data,
+      from: input?.from,
+      to: input?.to,
+      value: input?.value,
+    };
+    if (
+      state.vault.isBitcoinBased ||
+      network.kind !== INetworkType.Ethereum ||
+      account?.isSmartAccount ||
+      transaction.data !== '0x' ||
+      typeof transaction.from !== 'string' ||
+      transaction.from.toLowerCase() !== account?.address?.toLowerCase() ||
+      typeof transaction.to !== 'string' ||
+      !/^0x[\da-f]{40}$/i.test(transaction.to) ||
+      typeof transaction.value !== 'string' ||
+      !/^0x[\da-f]{1,64}$/i.test(transaction.value)
+    )
+      throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    const keyring = this.getActiveKeyring();
+    const session = this.walletSessionGeneration;
+    const generation = this.walletStateGeneration;
+    const sdk = this.ethereumTransaction;
+    const originalProvider = sdk.web3Provider;
+    const overrides = getSdkGasOverrides(sdk);
+    const gasPolicy = JSON.stringify(overrides);
+    const assertCurrent = () => {
+      this.assertCurrentWalletSession(session, keyring);
+      this.assertAssetMutationContext(expectedScope);
+      if (
+        this.isResettingWallet ||
+        generation !== this.walletStateGeneration ||
+        this.ethereumTransaction !== sdk ||
+        sdk.web3Provider !== originalProvider ||
+        JSON.stringify(getSdkGasOverrides(sdk)) !== gasPolicy
+      )
+        throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    };
+    assertCurrent();
+    const abort = new AbortController();
+    const invalidate = () =>
+      abort.abort(new Error(EVM_TRANSACTION_CONTEXT_CHANGED));
+    originalProvider.signal.addEventListener('abort', invalidate, {
+      once: true,
+    });
+    const unsubscribe = store.subscribe(() => {
+      if (abort.signal.aborted) return;
+      try {
+        assertCurrent();
+      } catch {
+        invalidate();
+      }
+    });
+    // Match the existing controllerEmitter default deadline; do not extend it.
+    const timeout = setTimeout(
+      () =>
+        abort.abort(
+          new DOMException('Network request timed out', 'AbortError')
+        ),
+      10000
+    );
+    try {
+      if (originalProvider.signal.aborted) invalidate();
+      return await this.withReceiptReadProvider(
+        abort.signal,
+        network,
+        (provider) =>
+          freshSdkGasEstimate(
+            overrides,
+            network,
+            transaction,
+            provider,
+            assertCurrent
+          )
+      );
+    } catch (error) {
+      if (abort.signal.aborted) throw abort.signal.reason;
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+      unsubscribe();
+      originalProvider.signal.removeEventListener('abort', invalidate);
+      abort.abort();
+    }
   }
 
   // Get current block with latest data
