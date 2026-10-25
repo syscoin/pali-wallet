@@ -1,6 +1,6 @@
 import { KeyringManager } from '@sidhujag/sysweb3-keyring';
 import { webcrypto } from 'crypto';
-import { Interface, parseEther } from 'ethers';
+import { Interface, keccak256, parseEther, toUtf8Bytes } from 'ethers';
 
 import { KeyringAccountType } from 'types/network';
 import { AsyncMutex } from 'utils/asyncMutex';
@@ -364,6 +364,63 @@ async function chunkedFixture() {
   expect(ready.f.records[ready.key].version).toBe(2);
   return { ...ready, session };
 }
+
+it('preserves encrypted shard roots made with the original UTF-8 encoding', async () => {
+  const { f, key, notes } = await chunkedFixture();
+  const bundle = f.records[key];
+  const plaintext = await f.getKeyring().decryptPrivateRecord({
+    domain: PRIVATE_VAULT_DOMAIN,
+    recordId: bundle.root.recordId,
+    envelope: bundle.root,
+  });
+  try {
+    const root = JSON.parse(new TextDecoder().decode(plaintext));
+    const references = bundle.shards.map(
+      (shard: typeof bundle.root, index: number) => ({
+        recordId: shard.recordId,
+        hash: keccak256(
+          toUtf8Bytes(
+            JSON.stringify([
+              shard.version,
+              shard.domain,
+              shard.recordId,
+              shard.profileId,
+              shard.nonce,
+              shard.ciphertext,
+            ])
+          )
+        ),
+        count: root.shards[index].count,
+      })
+    );
+    expect(root.shards).toEqual(references);
+    const legacyPlaintext = new TextEncoder().encode(
+      JSON.stringify({ ...root, shards: references })
+    );
+    try {
+      f.records[key] = {
+        ...bundle,
+        root: await f.getKeyring().encryptPrivateRecord({
+          domain: PRIVATE_VAULT_DOMAIN,
+          recordId: bundle.root.recordId,
+          plaintext: legacyPlaintext,
+        }),
+      };
+    } finally {
+      legacyPlaintext.fill(0);
+    }
+  } finally {
+    plaintext.fill(0);
+  }
+  const restored = f.create();
+  expect((await restored.getNotes()).notes).toHaveLength(notes.length);
+  expect(await restored.revealNote(notes[0].id, 'correct-password')).toBe(
+    notes[0].note
+  );
+  expect(await restored.revealNote(notes[31].id, 'correct-password')).toBe(
+    notes[31].note
+  );
+});
 
 it('bounds sharding for escaped long endpoints and both journal types', async () => {
   const notes = capacityNotes(8).map((note, index) => ({

@@ -208,7 +208,7 @@ interface IVaultBundle {
 
 const envelopeHash = (value: IEncryptedPrivateRecord): string =>
   keccak256(
-    toUtf8Bytes(
+    new TextEncoder().encode(
       JSON.stringify([
         value.version,
         value.domain,
