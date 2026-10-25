@@ -33,7 +33,8 @@ const TX_HASH = '0x' + 'ab'.repeat(32);
 function depositAttempt(
   noteId: string,
   generation = 0,
-  rawNote = NOTE
+  rawNote = NOTE,
+  identify = identifyClassicNote
 ): IPrivacyDepositAttempt {
   const pool = getPrivacyPool('eth-1');
   const from = '0x' + '11'.repeat(20);
@@ -57,9 +58,7 @@ function depositAttempt(
       value: '0x' + parseEther('1').toString(16),
       data: new Interface([
         'function deposit(bytes32) payable',
-      ]).encodeFunctionData('deposit', [
-        identifyClassicNote(rawNote).commitment,
-      ]),
+      ]).encodeFunctionData('deposit', [identify(rawNote).commitment]),
       gasLimit: '0x186a0',
       nonce: '0x7',
       maxFeePerGas: '0x64',
@@ -70,16 +69,17 @@ function depositAttempt(
 function withdrawalAttempt(
   noteId: string,
   mode: 'direct' | 'relayed' = 'direct',
-  rawNote = NOTE
+  rawNote = NOTE,
+  identify = identifyClassicNote
 ): IPrivacyWithdrawalAttempt {
-  const identity = identifyClassicNote(rawNote);
+  const identity = identify(rawNote);
   const base = {
     intentId: INTENT_ID,
     noteId,
     poolId: identity.poolId,
     createdAt: 456,
     expiresAt: 60456,
-    context: depositAttempt(noteId).context,
+    context: depositAttempt(noteId, 0, NOTE, identify).context,
     root: '0x' + '01'.repeat(32),
     nullifierHash: identity.nullifierHash,
     recipient: '0x' + '22'.repeat(20),
@@ -102,7 +102,7 @@ function withdrawalAttempt(
     ...base,
     mode,
     transaction: {
-      ...depositAttempt(noteId).transaction,
+      ...depositAttempt(noteId, 0, NOTE, identify).transaction,
       to: getPrivacyPool(identity.poolId).address,
       value: '0',
       gasLimit: '650000',
@@ -236,10 +236,15 @@ async function capacityFixture(notes = capacityNotes()) {
   const identities = new Map(
     notes.map(({ note }) => [note, identifyClassicNote(note)])
   );
-  const f = fixture(
-    undefined,
-    (note) => identities.get(note) || identifyClassicNote(note)
-  );
+  const identify = (note: string) => {
+    let identity = identities.get(note);
+    if (!identity) {
+      identity = identifyClassicNote(note);
+      identities.set(note, identity);
+    }
+    return identity;
+  };
+  const f = fixture(undefined, identify);
   const plaintext = new TextEncoder().encode(
     JSON.stringify({ version: 1, notes })
   );
@@ -252,14 +257,15 @@ async function capacityFixture(notes = capacityNotes()) {
   plaintext.fill(0);
   const key = PRIVATE_VAULT_STORAGE_PREFIX + envelope.profileId;
   f.records[key] = envelope;
-  return { f, notes, key };
+  return { f, notes, key, identify };
 }
 function capacityAttempt(
   note: { id: string; note: string },
   index: number,
-  mode: 'direct' | 'relayed'
+  mode: 'direct' | 'relayed',
+  identify = identifyClassicNote
 ) {
-  const attempt = withdrawalAttempt(note.id, mode, note.note);
+  const attempt = withdrawalAttempt(note.id, mode, note.note, identify);
   return attempt.mode === 'direct'
     ? {
         ...attempt,
@@ -278,13 +284,28 @@ function capacityAttempt(
 it.each(['direct', 'relayed'] as const)(
   'keeps all 128 accepted notes spendable after their %s withdrawal journals grow',
   async (mode) => {
-    const { f, notes, key } = await capacityFixture();
+    const { f, notes, key, identify } = await capacityFixture();
     expect((await f.controller.getNotes()).notes).toHaveLength(128);
     const encrypt = jest.spyOn(f.getKeyring(), 'encryptPrivateRecord');
+    const encryptedSizes: number[] = [];
+    let storageWrites = 0;
+    const recordOperationEvidence = () => {
+      for (const [params] of encrypt.mock.calls)
+        encryptedSizes.push(params.plaintext.length);
+      // Retain the size assertion evidence, not hundreds of cleared plaintext
+      // buffers and returned ciphertexts while this full-capacity loop runs.
+      encrypt.mockClear();
+      storageWrites += f.storage.setItem.mock.calls.length;
+      // Both mock histories otherwise retain every full encrypted bundle,
+      // although the storage fixture itself correctly retains only the latest.
+      f.storage.setItem.mockClear();
+      f.storage.getItem.mockClear();
+    };
     const session = f.captureSession();
     for (const [index, note] of notes.entries()) {
-      const attempt = capacityAttempt(note, index, mode);
+      const attempt = capacityAttempt(note, index, mode, identify);
       await f.controller.reserveWithdrawalAttempt(attempt, session);
+      recordOperationEvidence();
       await f.controller.recordWithdrawalSubmission(
         attempt,
         {
@@ -293,14 +314,13 @@ it.each(['direct', 'relayed'] as const)(
         },
         session
       );
+      recordOperationEvidence();
     }
     expect(f.records[key].version).toBe(2);
     expect(f.records[key].shards.length).toBeGreaterThan(1);
-    expect(
-      encrypt.mock.calls.every(
-        ([params]) => params.plaintext.length <= 64 * 1024
-      )
-    ).toBe(true);
+    expect(storageWrites).toBe(256);
+    expect(encryptedSizes.length).toBeGreaterThanOrEqual(256);
+    expect(encryptedSizes.every((size) => size <= 64 * 1024)).toBe(true);
     const restarted = f.create();
     const restored = (await restarted.getNotes()).notes;
     expect(restored).toHaveLength(128);
