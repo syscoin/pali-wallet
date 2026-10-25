@@ -43,6 +43,7 @@ jest.mock('components/Button', () => ({
   ),
 }));
 function review(poolId = 'eth-0.1', intentId = INTENT_ID) {
+  const createdAt = Date.now();
   const pool = PRIVACY_POOLS.find(({ id }) => id === poolId)!;
   const value =
     poolId === 'eth-0.1'
@@ -56,8 +57,8 @@ function review(poolId = 'eth-0.1', intentId = INTENT_ID) {
     chainId: 1,
     poolAddress: pool.address,
     account: { id: 0, type: 'HDAccount', address: '0x' + '11'.repeat(20) },
-    createdAt: Date.now(),
-    expiresAt: Date.now() + 60000,
+    createdAt,
+    expiresAt: createdAt + 60000,
     valueWei: String(value),
     gasLimit: '100000',
     nonce: '7',

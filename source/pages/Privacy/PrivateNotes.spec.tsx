@@ -162,6 +162,7 @@ const depositNoteId = '00000000-0000-4000-8000-000000000001';
 const depositIntentId = '00000000-0000-4000-8000-000000000002';
 const depositHash = '0x' + 'ab'.repeat(32);
 function depositReview() {
+  const createdAt = Date.now();
   return {
     intentId: depositIntentId,
     noteId: depositNoteId,
@@ -170,8 +171,8 @@ function depositReview() {
     poolAddress: PRIVACY_POOLS[0].address,
     chainId: 1,
     account: { id: 0, type: 'Imported', address: '0x' + '11'.repeat(20) },
-    createdAt: Date.now(),
-    expiresAt: Date.now() + 60000,
+    createdAt,
+    expiresAt: createdAt + 60000,
     valueWei: '100000000000000000',
     gasLimit: '100000',
     nonce: '7',
@@ -183,6 +184,7 @@ function depositReview() {
 }
 
 it('keeps the deposit review mounted during password backup, then refreshes notes after submit', async () => {
+  mockState.vault.accounts.Imported[0].xprv = 'synthetic-deposit-signer';
   let submitted = false;
   mockEmitter.mockImplementation(async ([, method]) => {
     if (method === 'getNotes')
@@ -263,6 +265,7 @@ it('keeps the deposit review mounted during password backup, then refreshes note
 });
 
 it('refreshes saved prepared notes on cancel without sending a transaction', async () => {
+  mockState.vault.accounts.Imported[0].xprv = 'synthetic-deposit-signer';
   let prepared = false;
   mockEmitter.mockImplementation(async ([, method]) => {
     if (method === 'getNotes')
@@ -973,6 +976,8 @@ it('ignores a poll older than a successful import and avoids overlapping polls',
 it.each(['deposit', 'import', 'reveal', 'escape'] as const)(
   'keeps relay status retryable after %s and ignores an earlier completion',
   async (navigation) => {
+    if (navigation === 'deposit')
+      mockState.vault.accounts.Imported[0].xprv = 'synthetic-deposit-signer';
     const first = deferred();
     const second = deferred();
     const saved = {
