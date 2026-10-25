@@ -1,9 +1,11 @@
 # Private note import
 
-The note codec in `source/utils/privacy/note.ts` identifies Tornado Classic ETH
-notes for the four pinned Ethereum mainnet pools. It is not an import screen or
-an assertion that a note is funded. The private-vault storage and import UI are
-still being integrated.
+The Privacy page imports existing Tornado Classic ETH notes for the four pinned
+Ethereum mainnet pools. It identifies each note locally, checks it against a
+verified public pool snapshot, and saves admitted notes in the current wallet's
+encrypted private vault. The page supports local status and balance display and
+password-confirmed note backup. Deposits, withdrawals, proofs, and relayer
+selection are not implemented in this stage.
 
 Classic is not advertised as post-quantum privacy. Its public Pedersen
 commitments and nullifiers permit additional candidate-linking attacks after
@@ -46,3 +48,23 @@ of Pali. `@noble/curves@1.9.7` was already in the lockfile and is now explicit.
 A spent note can be represented as history but contributes no available balance.
 The UI must distinguish waiting, verified deposit, and withdrawal state at the
 reported block. No balance view initiates a note-specific request.
+
+## Custody and display
+
+The keyring's private-record API encrypts the note manifest with a
+profile-scoped AES-GCM key. Only ciphertext and an opaque profile storage key
+are written to extension storage. Import checks and durable writes are
+serialized, with wallet-session checks across asynchronous work. Forget-wallet
+cleanup includes the private vault in the existing rollback journal.
+
+Revealing a saved note uses the wallet's existing password throttling. The page
+hides revealed notes on a wallet/context change, document hide, or unmount.
+Browser strings cannot be guaranteed to be erased from process memory; the
+application avoids keeping plaintext notes in persistent or shared UI state.
+The wallet seed alone does not recreate randomly generated notes from another
+wallet: users must retain their note backups.
+
+The UI polls only local verified state for saved-note status. Public pool sync
+is separately opt-in and runs at the shared 15-minute boundary. Pausing sync
+preserves the last verified snapshot; clearing that public cache makes note
+status wait for fresh verification without deleting encrypted private notes.
