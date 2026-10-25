@@ -499,6 +499,7 @@ export default function PrivateDeposit(props: IPrivateDepositProps) {
         vault.activeNetwork.chainId === 1 &&
         ['HDAccount', 'Imported'].includes(ref.type) &&
         account &&
+        (ref.type !== 'Imported' || Boolean(account.xprv)) &&
         !account.isLedgerWallet &&
         !account.isTrezorWallet &&
         !account.isSmartAccount,

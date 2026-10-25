@@ -496,7 +496,11 @@ it('rejects hardware flags even on a software account record and still accepts i
   ).rejects.toThrow('privacy_deposit_unsupported_account');
   expect(f.provider.send).not.toHaveBeenCalled();
   f.state.vault.accounts.Imported = {
-    0: { ...f.state.vault.accounts.HDAccount[0], isLedgerWallet: false },
+    0: {
+      ...f.state.vault.accounts.HDAccount[0],
+      isLedgerWallet: false,
+      xprv: 'synthetic-private-key',
+    },
   };
   f.state.vault.activeAccount = { id: 0, type: KeyringAccountType.Imported };
   expect(
@@ -643,3 +647,48 @@ it.each([false, true])(
     expect(wallet.recoveryJournalPending).toBe(false);
   }
 );
+
+function importedDepositGuardFixture(xprv: string) {
+  const f = depositFixture();
+  f.state.vault.accounts.Imported = {
+    0: {
+      ...f.state.vault.accounts.HDAccount[0],
+      xpub: f.state.vault.accounts.HDAccount[0].address,
+      xprv,
+    },
+  };
+  f.state.vault.activeAccount = { id: 0, type: KeyringAccountType.Imported };
+  return f;
+}
+it('rejects before creating a note or reading a fee', async () => {
+  const f = importedDepositGuardFixture('');
+  await expect(
+    f.wallet.preparePrivacyDeposit({ poolId: 'eth-1' })
+  ).rejects.toThrow('privacy_deposit_unsupported_account');
+  expect(f.vault.prepareDepositNote).not.toHaveBeenCalled();
+  for (const operation of Object.values(f.provider))
+    expect(operation).not.toHaveBeenCalled();
+  expect(f.wallet.sendAndSaveEthTransaction).not.toHaveBeenCalled();
+});
+it('preserves the imported private-key deposit path', async () => {
+  const f = importedDepositGuardFixture('synthetic-private-key');
+  await expect(
+    f.wallet.preparePrivacyDeposit({ poolId: 'eth-1' })
+  ).resolves.toMatchObject({ account: { type: KeyringAccountType.Imported } });
+  expect(f.vault.prepareDepositNote).toHaveBeenCalledTimes(1);
+  expect(f.wallet.sendAndSaveEthTransaction).not.toHaveBeenCalled();
+});
+it('loses deposit authority when its imported key disappears', async () => {
+  const f = importedDepositGuardFixture('synthetic-private-key');
+  const review = await f.wallet.preparePrivacyDeposit({ poolId: 'eth-1' });
+  f.state.vault.accounts.Imported[0].xprv = '';
+  await expect(f.wallet.submitPrivacyDeposit(review.intentId)).rejects.toThrow(
+    'privacy_deposit_context_changed'
+  );
+  expect(f.vault.reserveDepositAttempt).not.toHaveBeenCalled();
+  expect(f.wallet.sendAndSaveEthTransaction).not.toHaveBeenCalled();
+});
+it('retains the shared read-only context for withdrawal callers', () => {
+  const f = importedDepositGuardFixture('');
+  expect(() => f.wallet.capturePrivacyDepositContext()).not.toThrow();
+});

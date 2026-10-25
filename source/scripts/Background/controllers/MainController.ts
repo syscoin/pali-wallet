@@ -1951,7 +1951,9 @@ class MainController {
     return this.usePrivateVault((vault) => vault.revealNote(id, password));
   }
 
-  private capturePrivacyDepositContext(): IPrivacyDepositSession {
+  private capturePrivacyDepositContext(
+    requireDepositSigner = false
+  ): IPrivacyDepositSession {
     this.assertWalletReadyForSigning();
     const privateSession = this.capturePrivateVaultSession();
     const { vault, vaultGlobal } = store.getState();
@@ -1975,7 +1977,10 @@ class MainController {
         selected.type !== KeyringAccountType.Imported) ||
       account.isLedgerWallet ||
       account.isTrezorWallet ||
-      account.isSmartAccount
+      account.isSmartAccount ||
+      (requireDepositSigner &&
+        selected.type === KeyringAccountType.Imported &&
+        !account.xprv)
     )
       throw new Error('privacy_deposit_unsupported_account');
     const provider = this.ethereumTransaction.web3Provider;
@@ -2007,6 +2012,9 @@ class MainController {
         active?.isLedgerWallet ||
         active?.isTrezorWallet ||
         active?.isSmartAccount ||
+        (requireDepositSigner &&
+          ref.type === KeyringAccountType.Imported &&
+          !active?.xprv) ||
         active?.address?.toLowerCase() !==
           context.account.address.toLowerCase() ||
         this.ethereumTransaction.web3Provider !== provider
@@ -2058,7 +2066,7 @@ class MainController {
       return value;
     };
     return {
-      captureContext: () => this.capturePrivacyDepositContext(),
+      captureContext: () => this.capturePrivacyDepositContext(true),
       prepareNote: async (poolId, noteId, session) => {
         const saved = binding(session);
         session.assertCurrent();
@@ -2233,7 +2241,7 @@ class MainController {
   public async preparePrivacyDeposit(
     request: Parameters<IPrivacyTransactionsController['prepareDeposit']>[0]
   ) {
-    const session = this.capturePrivacyDepositContext();
+    const session = this.capturePrivacyDepositContext(true);
     const controller = await this.getPrivacyTransactionsController();
     session.assertCurrent();
     const result = await controller.prepareDeposit(request);

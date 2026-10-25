@@ -396,3 +396,41 @@ it('returns through onBack and discards an unsubmitted review', async () => {
     false
   );
 });
+
+it('refuses an imported account with no private key before controller contact', () => {
+  mockState.vault.activeAccount = { type: 'Imported', id: 0 };
+  mockState.vault.accounts.Imported = {
+    0: {
+      address: '0x' + '11'.repeat(20),
+      xpub: '0x' + '11'.repeat(20),
+      xprv: '',
+    },
+  };
+  mount();
+  expect(screen.getByText(en.privacy.deposit.unavailable)).toBeVisible();
+  expect(
+    screen.queryByRole('button', { name: en.privacy.deposit.continue })
+  ).not.toBeInTheDocument();
+  expect(mockEmitter).not.toHaveBeenCalled();
+});
+it('preserves imported software signer preparation', async () => {
+  mockState.vault.activeAccount = { type: 'Imported', id: 0 };
+  mockState.vault.accounts.Imported = {
+    0: {
+      address: '0x' + '11'.repeat(20),
+      xpub: 'public',
+      xprv: 'synthetic-private-key',
+    },
+  };
+  mount();
+  await prepare();
+  expect(
+    screen.getByLabelText(en.privacy.deposit.backupAck)
+  ).toBeInTheDocument();
+  expect(mockEmitter).toHaveBeenCalledWith(
+    ['privacyTransactions', 'prepareDeposit'],
+    [{ poolId: 'eth-0.1' }],
+    90000,
+    false
+  );
+});
