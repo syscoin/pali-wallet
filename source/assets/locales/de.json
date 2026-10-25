@@ -785,7 +785,7 @@
     "watchOnlyNoPrivateKey": "Dies ist ein Watch-only-Konto. Sie können Guthaben empfangen und Aktivitäten ansehen, aber diese Wallet besitzt keinen privaten Schlüssel für dieses Konto.",
     "seeOnExplorer": "Im Explorer anzeigen",
     "manageEthProvider": "ETH-ANBIETER VERWALTEN",
-    "windowObjectWasSet": "Window-Objekt erfolgreich gesetzt",
+    "windowObjectWasSet": "Standard-Wallet aktualisiert",
     "missingApiKey": "Fehlender/Ungültiger API-Schlüssel - Bitte fügen Sie Ihren API-Schlüssel zur URL hinzu (z.B., ?apikey=IHR_SCHLÜSSEL)",
     "apiFormatError": "Die API antwortet nicht korrekt. Bitte überprüfen Sie die URL und stellen Sie sicher, dass sie das Etherscan/Blockscout-API-Format unterstützt.",
     "apiConnectionError": "API kann nicht validiert werden. Bitte überprüfen Sie Ihre Verbindung und versuchen Sie es erneut.",

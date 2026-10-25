@@ -76,13 +76,10 @@ async function captureArc(
           );
         }, 0);
       const samples = [];
-      // The lower visible arc has a wallet/panel background, not an unrelated
-      // action button underneath the top of the initial viewport-centered arc.
-      for (
-        let y = Math.ceil(center.y + radius * 0.3);
-        y <= center.y + radius;
-        y++
-      ) {
+      // The status has a disjoint, opaque backing. Inspect the whole rotating
+      // arc: at small sizes a valid animation phase can have no solid-colored
+      // pixels in the lower arc while its upper arc remains clearly painted.
+      for (let y = Math.floor(center.y - radius); y <= center.y + radius; y++) {
         for (
           let x = Math.floor(center.x - radius);
           x <= center.x + radius;

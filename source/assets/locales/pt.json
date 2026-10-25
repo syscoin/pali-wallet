@@ -785,7 +785,7 @@
     "watchOnlyNoPrivateKey": "Esta é uma conta somente de observação. Você pode receber fundos e visualizar as atividades, mas esta carteira não possui a chave privada desta conta.",
     "seeOnExplorer": "Ver no explorador",
     "manageEthProvider": "GERENCIAR PROVEDOR ETH",
-    "windowObjectWasSet": "Objeto window definido com sucesso",
+    "windowObjectWasSet": "Carteira padrão atualizada",
     "missingApiKey": "Chave API Ausente/Inválida - Por favor adicione sua chave API à URL (ex., ?apikey=SUA_CHAVE)",
     "apiFormatError": "A API não responde corretamente. Por favor verifique a URL e certifique-se de que suporte o formato de API Etherscan/Blockscout.",
     "apiConnectionError": "Não é possível validar a API. Por favor verifique sua conexão e tente novamente.",

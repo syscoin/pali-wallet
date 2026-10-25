@@ -33,13 +33,13 @@ const LoadingIconPrimary = memo(() => (
   <LoadingSvg className="w-6 animate-spin" style={{ color: '#4d76b8' }} />
 ));
 
-const LoadingIconWhite = memo(() => (
-  <LoadingSvg className="w-5 animate-spin" style={{ color: '#ffffff' }} />
+const LoadingIconForeground = memo(() => (
+  <LoadingSvg className="w-5 animate-spin" style={{ color: 'currentColor' }} />
 ));
 // Internal debugging labels are unnecessary in the shipped startup bundle.
 if (process.env.NODE_ENV !== 'production') {
   LoadingIconPrimary.displayName = 'LoadingIconPrimary';
-  LoadingIconWhite.displayName = 'LoadingIconWhite';
+  LoadingIconForeground.displayName = 'LoadingIconForeground';
 }
 
 export type ButtonVariant =
@@ -181,7 +181,13 @@ export const Button = React.forwardRef<HTMLButtonElement, IButtonProps>(
         aria-busy={loading || undefined}
         className={`${baseStyled} ${sizeClasses[size]} ${widthClass} ${
           palette.statics
-        } ${isBlocked ? palette.disabled : palette.enabled} ${className}`}
+        } ${
+          isBlocked
+            ? loading
+              ? 'opacity-100 cursor-not-allowed'
+              : palette.disabled
+            : palette.enabled
+        } ${className}`}
         disabled={isBlocked}
         onClick={onClick}
         type={type}
@@ -191,7 +197,7 @@ export const Button = React.forwardRef<HTMLButtonElement, IButtonProps>(
           variant === 'neutral' ? (
             <LoadingIconPrimary />
           ) : (
-            <LoadingIconWhite />
+            <LoadingIconForeground />
           )
         ) : (
           <>

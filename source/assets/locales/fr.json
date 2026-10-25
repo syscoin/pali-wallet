@@ -785,7 +785,7 @@
     "watchOnlyNoPrivateKey": "Ce compte est en lecture seule. Vous pouvez recevoir des fonds et consulter son activité, mais ce portefeuille ne possède pas de clé privée pour ce compte.",
     "seeOnExplorer": "Voir sur l'explorateur",
     "manageEthProvider": "GÉRER LE FOURNISSEUR ETH",
-    "windowObjectWasSet": "Objet window défini avec succès",
+    "windowObjectWasSet": "Portefeuille par défaut mis à jour",
     "missingApiKey": "Clé API Manquante/Invalide - Veuillez ajouter votre clé API à l'URL (ex., ?apikey=VOTRE_CLE)",
     "apiFormatError": "L'API ne répond pas correctement. Veuillez vérifier l'URL et vous assurer qu'elle prend en charge le format d'API Etherscan/Blockscout.",
     "apiConnectionError": "Impossible de valider l'API. Veuillez vérifier votre connexion et réessayer.",

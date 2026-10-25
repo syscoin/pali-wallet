@@ -19,7 +19,7 @@ export const LogoHeader: React.FC = () => {
         className="absolute right-6 top-0"
         onClick={() => navigate('/', { replace: true })}
       >
-        <Icon name="home" className="text-brand-royalblue opacity-60" />
+        <Icon name="home" className="text-content-primary" />
       </IconButton>
     </div>
   );

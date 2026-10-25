@@ -542,9 +542,26 @@ for (const scenario of [
           });
           const statusResult = await settle(dapp, request);
           expect(statusResult.error).toBeUndefined();
-          await statusPopup
-            .getByRole('button', { name: en.buttons.close, exact: true })
-            .click();
+          // The native Close action can retire its page before Playwright
+          // receives the click acknowledgement. Require that exact close event;
+          // errors on a still-open page or any other click failure remain fatal.
+          await Promise.all([
+            statusPopup.waitForEvent('close'),
+            statusPopup
+              .getByRole('button', { name: en.buttons.close, exact: true })
+              .click()
+              .catch((error: unknown) => {
+                if (
+                  !statusPopup.isClosed() ||
+                  !(error instanceof Error) ||
+                  !error.message.includes(
+                    'Target page, context or browser has been closed'
+                  )
+                )
+                  throw error;
+              }),
+          ]);
+          expect(wallet!.page.isClosed()).toBe(false);
           await expect.poll(() => statusPopup.isClosed()).toBe(true);
         }
       };
