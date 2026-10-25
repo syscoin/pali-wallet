@@ -10,6 +10,8 @@ import {
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 
+import en from '../../assets/locales/en.json';
+
 import Privacy from './Privacy';
 import { isPrivacySyncStatus } from './usePrivacyIndex';
 
@@ -82,27 +84,25 @@ afterEach(() => jest.useRealTimers());
 it('checks only local status before explicit preparation and has an accessible four-pool selector', async () => {
   const user = userEvent.setup();
   render(<Privacy />);
-  const prepare = screen.getByRole('button', { name: 'Prepare privacy' });
+  const prepare = screen.getByRole('button', { name: en.privacy.prepare });
   expect(prepare).toBeDisabled();
   await waitFor(() => expect(prepare).toBeEnabled());
-  expect(screen.getByRole('combobox', { name: 'ETH pool' })).toHaveValue(
-    'eth-0.1'
-  );
+  expect(
+    screen.getByRole('combobox', { name: en.privacy.poolLabel })
+  ).toHaveValue('eth-0.1');
   expect(
     screen.getAllByRole('option').map((option) => option.textContent)
   ).toEqual(['0.1 ETH', '1 ETH', '10 ETH', '100 ETH']);
   expect(mockEmitter.mock.calls).toEqual([
     [['privacy', 'getStatus'], ['eth-0.1'], 10000, false],
   ]);
-  expect(
-    screen.getByText(/Deposits and withdrawals are not available/)
-  ).toBeVisible();
+  expect(screen.getByText(en.privacy.scopeNotice)).toBeVisible();
   await user.tab();
   expect(screen.getByRole('combobox')).toHaveFocus();
   await user.tab();
   expect(prepare).toHaveFocus();
   await user.keyboard('{Enter}');
-  await screen.findByText('Downloading public pool data…');
+  await screen.findByText(en.privacy.syncing);
   expect(mockEmitter).toHaveBeenLastCalledWith(
     ['privacy', 'start'],
     ['eth-0.1'],
@@ -118,11 +118,9 @@ it('shows sync, verification and verified cached data, then stops polling', asyn
     await Promise.resolve();
   });
   await act(async () => {
-    fireEvent.click(screen.getByRole('button', { name: 'Prepare privacy' }));
+    fireEvent.click(screen.getByRole('button', { name: en.privacy.prepare }));
   });
-  expect(screen.getByRole('status')).toHaveTextContent(
-    'Downloading public pool data…'
-  );
+  expect(screen.getByRole('status')).toHaveTextContent(en.privacy.syncing);
   expect(screen.getByRole('progressbar')).not.toHaveAttribute('aria-valuenow');
   mockEmitter.mockResolvedValueOnce({
     poolId: 'eth-0.1',
@@ -133,7 +131,7 @@ it('shows sync, verification and verified cached data, then stops polling', asyn
   await act(async () => {
     jest.advanceTimersByTime(1500);
   });
-  expect(screen.getByRole('status')).toHaveTextContent('Verifying pool data…');
+  expect(screen.getByRole('status')).toHaveTextContent(en.privacy.verifying);
   expect(screen.getByRole('progressbar')).toHaveAttribute(
     'aria-valuenow',
     '50'
@@ -142,13 +140,15 @@ it('shows sync, verification and verified cached data, then stops polling', asyn
   await act(async () => {
     jest.advanceTimersByTime(1500);
   });
-  expect(screen.getByRole('status')).toHaveTextContent(
-    'Pool data is verified and saved on this device.'
-  );
-  expect(screen.getByText('Saved public deposits: 42')).toBeVisible();
-  expect(screen.getByText('Last verified block: 20000000')).toBeVisible();
+  expect(screen.getByRole('status')).toHaveTextContent(en.privacy.ready);
   expect(
-    screen.getByRole('button', { name: 'Update pool data' })
+    screen.getByText(en.privacy.savedDeposits.replace('{{count}}', '42'))
+  ).toBeVisible();
+  expect(
+    screen.getByText(en.privacy.verifiedBlock.replace('{{block}}', '20000000'))
+  ).toBeVisible();
+  expect(
+    screen.getByRole('button', { name: en.privacy.refresh })
   ).toBeEnabled();
   const calls = mockEmitter.mock.calls.length;
   await act(async () => {
@@ -166,29 +166,27 @@ it('retains verified cache metadata after an update error and allows retry', asy
   const user = userEvent.setup();
   render(<Privacy />);
   await user.click(
-    await screen.findByRole('button', { name: 'Update pool data' })
+    await screen.findByRole('button', { name: en.privacy.refresh })
   );
-  expect(screen.getByRole('status')).toHaveTextContent(
-    'Preparation could not finish. Try again.'
-  );
-  expect(screen.getByText('Saved public deposits: 42')).toBeVisible();
+  expect(screen.getByRole('status')).toHaveTextContent(en.privacy.error);
+  expect(
+    screen.getByText(en.privacy.savedDeposits.replace('{{count}}', '42'))
+  ).toBeVisible();
   expect(
     screen.queryByText('untrusted remote details')
   ).not.toBeInTheDocument();
-  await user.click(screen.getByRole('button', { name: 'Retry' }));
-  await screen.findByText('Downloading public pool data…');
+  await user.click(screen.getByRole('button', { name: en.privacy.retry }));
+  await screen.findByText(en.privacy.syncing);
 });
 
 it('recovers from a failed local status read without claiming the pool is empty', async () => {
   mockEmitter.mockRejectedValueOnce(new Error('offline'));
   const user = userEvent.setup();
   render(<Privacy />);
-  await screen.findByText('Could not read preparation status. Try again.');
-  expect(
-    screen.queryByText('Pool data has not been prepared.')
-  ).not.toBeInTheDocument();
-  await user.click(screen.getByRole('button', { name: 'Retry' }));
-  await screen.findByText('Downloading public pool data…');
+  await screen.findByText(en.privacy.unavailable);
+  expect(screen.queryByText(en.privacy.idle)).not.toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: en.privacy.retry }));
+  await screen.findByText(en.privacy.syncing);
 });
 
 it('supports pause, resume and clearing public data without a transaction action', async () => {
@@ -196,17 +194,17 @@ it('supports pause, resume and clearing public data without a transaction action
   render(<Privacy />);
   await waitFor(() =>
     expect(
-      screen.getByRole('button', { name: 'Prepare privacy' })
+      screen.getByRole('button', { name: en.privacy.prepare })
     ).toBeEnabled()
   );
-  await user.click(screen.getByRole('button', { name: 'Prepare privacy' }));
+  await user.click(screen.getByRole('button', { name: en.privacy.prepare }));
   mockEmitter.mockResolvedValueOnce({ poolId: 'eth-0.1', phase: 'paused' });
-  await user.click(screen.getByRole('button', { name: 'Pause' }));
-  await screen.findByText('Preparation is paused.');
-  await user.click(screen.getByRole('button', { name: 'Resume' }));
-  await screen.findByText('Downloading public pool data…');
-  await user.click(screen.getByRole('button', { name: 'Clear saved data' }));
-  await screen.findByText('Pool data has not been prepared.');
+  await user.click(screen.getByRole('button', { name: en.privacy.pause }));
+  await screen.findByText(en.privacy.paused);
+  await user.click(screen.getByRole('button', { name: en.privacy.resume }));
+  await screen.findByText(en.privacy.syncing);
+  await user.click(screen.getByRole('button', { name: en.privacy.clear }));
+  await screen.findByText(en.privacy.idle);
   expect(mockEmitter.mock.calls.map((call) => call[0][1])).toEqual([
     'getStatus',
     'start',
@@ -224,15 +222,15 @@ it('ignores a prior pool response after keyboard selection changes the pool', as
   await user.selectOptions(screen.getByRole('combobox'), 'eth-10');
   await waitFor(() =>
     expect(
-      screen.getByRole('button', { name: 'Prepare privacy' })
+      screen.getByRole('button', { name: en.privacy.prepare })
     ).toBeEnabled()
   );
   await act(async () => oldReply.resolve(ready));
   expect(screen.getByRole('combobox')).toHaveValue('eth-10');
   expect(
-    screen.queryByText('Saved public deposits: 42')
+    screen.queryByText(en.privacy.savedDeposits.replace('{{count}}', '42'))
   ).not.toBeInTheDocument();
-  await user.click(screen.getByRole('button', { name: 'Prepare privacy' }));
+  await user.click(screen.getByRole('button', { name: en.privacy.prepare }));
   expect(mockEmitter).toHaveBeenLastCalledWith(
     ['privacy', 'start'],
     ['eth-10'],
@@ -253,13 +251,11 @@ it.each([
     mockState.vault.isBitcoinBased = bitcoin;
     mockState.vaultGlobal.networkStatus = networkStatus;
     render(<Privacy />);
-    await screen.findByText('Pool data has not been prepared.');
+    await screen.findByText(en.privacy.idle);
     expect(
-      screen.getByRole('button', { name: 'Prepare privacy' })
+      screen.getByRole('button', { name: en.privacy.prepare })
     ).toBeDisabled();
-    expect(
-      screen.getByText(/Select Ethereum Mainnet from the network menu/)
-    ).toBeVisible();
+    expect(screen.getByText(en.privacy.networkRequired)).toBeVisible();
     expect(
       mockEmitter.mock.calls.every((call) => call[0][1] === 'getStatus')
     ).toBe(true);
@@ -326,23 +322,23 @@ it('discards an old network reply and requires mainnet again after a network cha
   const { rerender } = render(<Privacy />);
   await waitFor(() =>
     expect(
-      screen.getByRole('button', { name: 'Prepare privacy' })
+      screen.getByRole('button', { name: en.privacy.prepare })
     ).toBeEnabled()
   );
-  await user.click(screen.getByRole('button', { name: 'Prepare privacy' }));
+  await user.click(screen.getByRole('button', { name: en.privacy.prepare }));
   mockState.vault.activeNetwork = {
     chainId: 57,
     kind: 'ethereum',
     url: 'https://other.test',
   };
   rerender(<Privacy />);
-  await screen.findByText('Pool data has not been prepared.');
+  await screen.findByText(en.privacy.idle);
   await act(async () => reply.resolve(ready));
   expect(
-    screen.getByRole('button', { name: 'Prepare privacy' })
+    screen.getByRole('button', { name: en.privacy.prepare })
   ).toBeDisabled();
   expect(
-    screen.queryByText('Saved public deposits: 42')
+    screen.queryByText(en.privacy.savedDeposits.replace('{{count}}', '42'))
   ).not.toBeInTheDocument();
 });
 
