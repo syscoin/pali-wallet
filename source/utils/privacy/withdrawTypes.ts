@@ -98,7 +98,8 @@ export interface IPrivacyWithdrawalsHost {
   sendTransaction: (
     transaction: IPrivacyWithdrawalTransaction,
     session: IPrivacyWithdrawalSession,
-    onBroadcast: (acknowledgement: { hash: string }) => Promise<void>
+    onBroadcast: (acknowledgement: { hash: string }) => Promise<void>,
+    assertCurrent: () => void
   ) => Promise<{ hash: string }>;
   /** Decrypted note may exist only for this background callback and its proof worker. */
   withNote: <T>(
