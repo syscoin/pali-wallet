@@ -31,75 +31,222 @@ async function readablePublicText(
 ) {
   const page = target.page();
   await expect(target).toBeVisible();
-  await target.scrollIntoViewIfNeeded();
-  const native = await target.evaluate(async (node) => {
-    await document.fonts.ready;
-    const ancestors: Element[] = [];
-    for (
-      let current: Element | null = node;
-      current;
-      current = current.parentElement
-    )
-      ancestors.push(current);
-    await Promise.all(
-      ancestors
-        .flatMap((current) => current.getAnimations())
-        .filter((animation) =>
-          Number.isFinite(Number(animation.effect?.getComputedTiming().endTime))
-        )
-        .map((animation) => animation.finished.catch(() => undefined))
-    );
-    const r = node.getBoundingClientRect(),
-      s = getComputedStyle(node);
-    const plainParagraph =
-      node.tagName === 'P' &&
-      s.backgroundImage === 'none' &&
-      /^rgba\([^,]+,[^,]+,[^,]+,\s*0\)$/.test(s.backgroundColor) &&
-      (
-        [
-          'borderTopWidth',
-          'borderBottomWidth',
-          'paddingTop',
-          'paddingBottom',
-        ] as const
-      ).every((property) => parseFloat(s[property]) === 0);
-    const clip = plainParagraph
-      ? {
-          x: Math.floor(r.x) - 4,
-          y: Math.floor(r.y) - 4,
-          width: Math.ceil(r.right) - Math.floor(r.x) + 8,
-          height: Math.ceil(r.bottom) - Math.floor(r.y) + 8,
-        }
-      : undefined;
-    // Both sample strips are outside the paragraph/glyph box but on its
-    // actual ancestor backdrop. Never sample through a sibling or overlay.
-    const backdropExposed =
-      !clip ||
-      [clip.y + 1, clip.y + clip.height - 2].every((y) =>
-        [0.2, 0.35, 0.5, 0.65, 0.8].every((fraction) => {
-          const hit = document.elementFromPoint(
-            clip.x + clip.width * fraction,
-            y
-          );
-          return Boolean(hit && hit.contains(node));
-        })
+  await page.bringToFront();
+  const read = () =>
+    target.evaluate(async (node) => {
+      await document.fonts.ready;
+      const ancestors: Element[] = [];
+      for (
+        let current: Element | null = node;
+        current;
+        current = current.parentElement
+      )
+        ancestors.push(current);
+      await Promise.all(
+        ancestors
+          .flatMap((current) => current.getAnimations())
+          .filter((animation) =>
+            Number.isFinite(
+              Number(animation.effect?.getComputedTiming().endTime)
+            )
+          )
+          .map((animation) => animation.finished.catch(() => undefined))
       );
-    return {
-      clip,
-      backdropExposed,
-      color: s.color,
-      opacity: s.opacity,
-      ancestorOpacities: ancestors.map(
-        (current) => getComputedStyle(current).opacity
-      ),
-      bounds: { x: r.x, y: r.y, width: r.width, height: r.height },
-      visible:
-        r.top >= 0 &&
-        r.left >= 0 &&
-        r.bottom <= innerHeight &&
-        r.right <= innerWidth,
-    };
+      const r = node.getBoundingClientRect(),
+        s = getComputedStyle(node);
+      const plainParagraph =
+        node.tagName === 'P' &&
+        s.backgroundImage === 'none' &&
+        /^rgba\([^,]+,[^,]+,[^,]+,\s*0\)$/.test(s.backgroundColor) &&
+        (
+          [
+            'borderTopWidth',
+            'borderBottomWidth',
+            'paddingTop',
+            'paddingBottom',
+          ] as const
+        ).every((property) => parseFloat(s[property]) === 0);
+      const clip = plainParagraph
+        ? {
+            x: Math.floor(r.x) - 4,
+            y: Math.floor(r.y) - 4,
+            width: Math.ceil(r.right) - Math.floor(r.x) + 8,
+            height: Math.ceil(r.bottom) - Math.floor(r.y) + 8,
+          }
+        : undefined;
+      // Both sample strips are outside the paragraph/glyph box but on its
+      // actual ancestor backdrop. Never sample through a sibling or overlay.
+      const backdropExposed =
+        !clip ||
+        [clip.y + 1, clip.y + clip.height - 2].every((y) =>
+          [0.2, 0.35, 0.5, 0.65, 0.8].every((fraction) => {
+            const hit = document.elementFromPoint(
+              clip.x + clip.width * fraction,
+              y
+            );
+            return Boolean(hit && hit.contains(node));
+          })
+        );
+      const footer = document
+        .querySelector('#unlock-btn')
+        ?.closest('div.fixed');
+      const footerTop = footer?.getBoundingClientRect().top ?? innerHeight;
+      let visibleLeft = 0,
+        visibleTop = 0,
+        visibleRight = innerWidth,
+        visibleBottom = Math.min(innerHeight, footerTop);
+      for (const parent of ancestors.slice(1)) {
+        const style = getComputedStyle(parent),
+          box = parent.getBoundingClientRect();
+        if (/auto|scroll|hidden|clip/.test(style.overflowX)) {
+          visibleLeft = Math.max(visibleLeft, box.left);
+          visibleRight = Math.min(visibleRight, box.right);
+        }
+        if (/auto|scroll|hidden|clip/.test(style.overflowY)) {
+          visibleTop = Math.max(visibleTop, box.top);
+          visibleBottom = Math.min(visibleBottom, box.bottom);
+        }
+      }
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      const glyphRects = [...range.getClientRects()].filter(
+        (box) => box.width && box.height
+      );
+      const glyphsExposed =
+        glyphRects.length > 0 &&
+        glyphRects.every(
+          (box) =>
+            box.left >= visibleLeft &&
+            box.right <= visibleRight &&
+            box.top >= visibleTop &&
+            box.bottom <= visibleBottom &&
+            [0.1, 0.5, 0.9].every((fraction) => {
+              const hit = document.elementFromPoint(
+                box.left + box.width * fraction,
+                box.top + box.height / 2
+              );
+              return Boolean(hit && (hit === node || node.contains(hit)));
+            })
+        );
+      const owner = ancestors
+        .slice(1)
+        .find(
+          (parent) =>
+            parent.scrollHeight > parent.clientHeight + 2 &&
+            /auto|scroll/.test(getComputedStyle(parent).overflowY)
+        ) as HTMLElement | undefined;
+      const points: { x: number; y: number }[] = [];
+      if (owner) {
+        const area = owner.getBoundingClientRect();
+        const left = Math.max(visibleLeft, area.left),
+          right = Math.min(visibleRight, area.right);
+        for (const x of [left + 8, (left + right) / 2, right - 8]) {
+          for (const y of [
+            visibleTop + 12,
+            (visibleTop + visibleBottom) / 2,
+            visibleBottom - 12,
+          ]) {
+            const hit = document.elementFromPoint(x, y);
+            if (
+              !hit ||
+              !owner.contains(hit) ||
+              hit.closest('input,textarea,select')
+            )
+              continue;
+            let nearest: Element | null = hit;
+            while (nearest && nearest !== owner) {
+              if (
+                nearest.scrollHeight > nearest.clientHeight + 2 &&
+                /auto|scroll/.test(getComputedStyle(nearest).overflowY)
+              )
+                break;
+              nearest = nearest.parentElement;
+            }
+            if (nearest === owner) points.push({ x, y });
+          }
+        }
+      }
+      const region = clip || {
+        x: r.x,
+        y: r.y,
+        width: r.width,
+        height: r.height,
+      };
+      return {
+        clip,
+        backdropExposed,
+        glyphsExposed,
+        glyphRects: glyphRects.map((box) => box.toJSON()),
+        visibleArea: {
+          left: visibleLeft,
+          top: visibleTop,
+          right: visibleRight,
+          bottom: visibleBottom,
+        },
+        fullyExposed:
+          glyphsExposed &&
+          backdropExposed &&
+          region.x >= visibleLeft &&
+          region.y >= visibleTop &&
+          region.x + region.width <= visibleRight &&
+          region.y + region.height <= visibleBottom,
+        scrollOwner: owner
+          ? {
+              tag: owner.tagName,
+              className: owner.className,
+              top: owner.scrollTop,
+              max: owner.scrollHeight - owner.clientHeight,
+            }
+          : null,
+        points,
+        color: s.color,
+        opacity: s.opacity,
+        ancestorOpacities: ancestors.map(
+          (current) => getComputedStyle(current).opacity
+        ),
+        bounds: { x: r.x, y: r.y, width: r.width, height: r.height },
+        visible:
+          r.top >= 0 &&
+          r.left >= 0 &&
+          r.bottom <= innerHeight &&
+          r.right <= innerWidth,
+      };
+    });
+  let native = await read();
+  const movement = [];
+  for (let attempt = 0; !native.fullyExposed && attempt < 60; attempt++) {
+    if (!native.points.length) break;
+    const first = native.clip?.y ?? native.bounds.y;
+    const last = first + (native.clip?.height ?? native.bounds.height);
+    const delta =
+      last > native.visibleArea.bottom
+        ? 60
+        : first < native.visibleArea.top
+        ? -60
+        : (first + last - native.visibleArea.top - native.visibleArea.bottom) /
+          2;
+    const point = native.points[attempt % native.points.length];
+    movement.push(native);
+    await page.mouse.move(point.x, point.y);
+    await page.mouse.wheel(0, delta || 20);
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+        )
+    );
+    native = await read();
+  }
+  await info.attach(label + '-native-visibility', {
+    contentType: 'application/json',
+    body: JSON.stringify({ movement, final: native }),
   });
+  if (!native.fullyExposed)
+    await info.attach(label + '-unexposed', {
+      contentType: 'image/png',
+      body: await page.screenshot({ animations: 'disabled' }),
+    });
+  expect(native.fullyExposed).toBe(true);
   expect(native.visible).toBe(true);
   expect(native.opacity).toBe('1');
   expect(native.ancestorOpacities.every((opacity) => opacity === '1')).toBe(
