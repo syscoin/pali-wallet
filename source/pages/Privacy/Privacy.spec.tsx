@@ -97,6 +97,7 @@ it('checks only local status before explicit preparation and has an accessible f
     [['privacy', 'getStatus'], ['eth-0.1'], 10000, false],
   ]);
   expect(screen.getByText(en.privacy.scopeNotice)).toBeVisible();
+  expect(screen.getByText(en.privacy.description)).toBeVisible();
   await user.tab();
   expect(screen.getByRole('combobox')).toHaveFocus();
   await user.tab();
@@ -111,7 +112,7 @@ it('checks only local status before explicit preparation and has an accessible f
   );
 });
 
-it('shows sync, verification and verified cached data, then stops polling', async () => {
+it('shows active progress, then observes local ready status at a slower interval', async () => {
   jest.useFakeTimers();
   render(<Privacy />);
   await act(async () => {
@@ -152,10 +153,63 @@ it('shows sync, verification and verified cached data, then stops polling', asyn
   ).toBeEnabled();
   const calls = mockEmitter.mock.calls.length;
   await act(async () => {
-    jest.advanceTimersByTime(10000);
+    jest.advanceTimersByTime(14999);
   });
   expect(mockEmitter).toHaveBeenCalledTimes(calls);
+  mockEmitter.mockResolvedValueOnce(ready);
+  await act(async () => {
+    jest.advanceTimersByTime(1);
+  });
+  expect(mockEmitter).toHaveBeenCalledTimes(calls + 1);
+  expect(mockEmitter).toHaveBeenLastCalledWith(
+    ['privacy', 'getStatus'],
+    ['eth-0.1'],
+    10000,
+    false
+  );
+  expect(
+    mockEmitter.mock.calls.filter((call) => call[0][1] === 'start')
+  ).toHaveLength(1);
 });
+
+it('observes locally retried jobs after an error without issuing another start', async () => {
+  jest.useFakeTimers();
+  mockEmitter.mockResolvedValueOnce({ ...ready, phase: 'error' });
+  render(<Privacy />);
+  await act(async () => {
+    await Promise.resolve();
+  });
+  expect(screen.getByRole('status')).toHaveTextContent(en.privacy.error);
+  expect(screen.getByRole('button', { name: en.privacy.pause })).toBeEnabled();
+  await act(async () => {
+    jest.advanceTimersByTime(14999);
+  });
+  expect(mockEmitter).toHaveBeenCalledTimes(1);
+  mockEmitter.mockResolvedValueOnce({ ...ready, phase: 'syncing' });
+  await act(async () => {
+    jest.advanceTimersByTime(1);
+  });
+  expect(screen.getByRole('status')).toHaveTextContent(en.privacy.syncing);
+  expect(
+    mockEmitter.mock.calls.every((call) => call[0][1] === 'getStatus')
+  ).toBe(true);
+});
+
+it.each(['idle', 'paused'])(
+  'does not poll local status while %s',
+  async (phase) => {
+    jest.useFakeTimers();
+    mockEmitter.mockResolvedValue({ ...ready, phase });
+    render(<Privacy />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(60000);
+    });
+    expect(mockEmitter).toHaveBeenCalledTimes(1);
+  }
+);
 
 it('retains verified cache metadata after an update error and allows retry', async () => {
   mockEmitter.mockResolvedValueOnce(ready).mockResolvedValueOnce({
@@ -208,6 +262,70 @@ it('supports pause, resume and clearing public data without a transaction action
   expect(mockEmitter.mock.calls.map((call) => call[0][1])).toEqual([
     'getStatus',
     'start',
+    'pause',
+    'start',
+    'clear',
+  ]);
+});
+
+it('pauses future updates from ready, retains verified data on resume and clears it on request', async () => {
+  const pauseReply = deferred();
+  mockEmitter
+    .mockResolvedValueOnce(ready)
+    .mockReturnValueOnce(pauseReply.promise);
+  const user = userEvent.setup();
+  render(<Privacy />);
+  const pause = await screen.findByRole('button', { name: en.privacy.pause });
+  const clear = screen.getByRole('button', { name: en.privacy.clear });
+  await user.click(pause);
+  expect(pause).toBeDisabled();
+  expect(clear).toBeDisabled();
+  expect(
+    screen.getByRole('button', { name: en.privacy.refresh })
+  ).toBeDisabled();
+  await act(async () => pauseReply.resolve({ ...ready, phase: 'paused' }));
+  expect(screen.getByRole('status')).toHaveTextContent(en.privacy.paused);
+  expect(
+    screen.getByText(en.privacy.savedDeposits.replace('{{count}}', '42'))
+  ).toBeVisible();
+  expect(
+    screen.getByText(en.privacy.verifiedBlock.replace('{{block}}', '20000000'))
+  ).toBeVisible();
+  expect(
+    screen.queryByRole('button', { name: en.privacy.pause })
+  ).not.toBeInTheDocument();
+
+  mockEmitter.mockResolvedValueOnce({ ...ready, phase: 'syncing' });
+  await user.click(screen.getByRole('button', { name: en.privacy.resume }));
+  expect(screen.getByRole('status')).toHaveTextContent(en.privacy.syncing);
+  expect(
+    screen.getByText(en.privacy.savedDeposits.replace('{{count}}', '42'))
+  ).toBeVisible();
+  expect(screen.getByRole('button', { name: en.privacy.pause })).toBeEnabled();
+
+  const clearReply = deferred();
+  mockEmitter.mockReturnValueOnce(clearReply.promise);
+  await user.click(screen.getByRole('button', { name: en.privacy.clear }));
+  expect(screen.getByRole('button', { name: en.privacy.pause })).toBeDisabled();
+  expect(screen.getByRole('button', { name: en.privacy.clear })).toBeDisabled();
+  await act(async () =>
+    clearReply.resolve({ poolId: ready.poolId, phase: 'idle' })
+  );
+  expect(screen.getByRole('status')).toHaveTextContent(en.privacy.idle);
+  expect(
+    screen.queryByText(en.privacy.savedDeposits.replace('{{count}}', '42'))
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole('button', { name: en.privacy.pause })
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole('button', { name: en.privacy.clear })
+  ).not.toBeInTheDocument();
+  expect(
+    screen.getByRole('button', { name: en.privacy.prepare })
+  ).toBeEnabled();
+  expect(mockEmitter.mock.calls.map((call) => call[0][1])).toEqual([
+    'getStatus',
     'pause',
     'start',
     'clear',
@@ -282,37 +400,45 @@ it('stops polling on departure and ignores an outstanding reply', async () => {
   expect(mockEmitter).toHaveBeenCalledTimes(2);
 });
 
-it('polls a running job only while this page is visible', async () => {
-  jest.useFakeTimers();
-  const visibility = jest
-    .spyOn(document, 'visibilityState', 'get')
-    .mockReturnValue('visible');
-  mockEmitter.mockResolvedValue({ poolId: 'eth-0.1', phase: 'syncing' });
-  try {
-    render(<Privacy />);
-    await act(async () => {
-      await Promise.resolve();
-    });
-    act(() => {
-      visibility.mockReturnValue('hidden');
-      document.dispatchEvent(new Event('visibilitychange'));
-    });
-    await act(async () => {
-      jest.advanceTimersByTime(10000);
-    });
-    expect(mockEmitter).toHaveBeenCalledTimes(1);
-    act(() => {
-      visibility.mockReturnValue('visible');
-      document.dispatchEvent(new Event('visibilitychange'));
-    });
-    await act(async () => {
-      jest.advanceTimersByTime(1500);
-    });
-    expect(mockEmitter).toHaveBeenCalledTimes(2);
-  } finally {
-    visibility.mockRestore();
+it.each([
+  ['syncing', 1500],
+  ['verifying', 1500],
+  ['ready', 15000],
+  ['error', 15000],
+])(
+  'observes %s status only while this page is visible',
+  async (phase, delay) => {
+    jest.useFakeTimers();
+    const visibility = jest
+      .spyOn(document, 'visibilityState', 'get')
+      .mockReturnValue('visible');
+    mockEmitter.mockResolvedValue({ ...ready, phase });
+    try {
+      render(<Privacy />);
+      await act(async () => {
+        await Promise.resolve();
+      });
+      act(() => {
+        visibility.mockReturnValue('hidden');
+        document.dispatchEvent(new Event('visibilitychange'));
+      });
+      await act(async () => {
+        jest.advanceTimersByTime(30000);
+      });
+      expect(mockEmitter).toHaveBeenCalledTimes(1);
+      act(() => {
+        visibility.mockReturnValue('visible');
+        document.dispatchEvent(new Event('visibilitychange'));
+      });
+      await act(async () => {
+        jest.advanceTimersByTime(Number(delay));
+      });
+      expect(mockEmitter).toHaveBeenCalledTimes(2);
+    } finally {
+      visibility.mockRestore();
+    }
   }
-});
+);
 
 it('discards an old network reply and requires mainnet again after a network change', async () => {
   const reply = deferred();

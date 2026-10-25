@@ -114,7 +114,9 @@ function PoolData({
       {(running || hasSavedData || status.phase !== 'idle') &&
         !initialLoading && (
           <div className="flex flex-wrap items-center justify-center gap-4">
-            {running && (
+            {(running ||
+              status.phase === 'ready' ||
+              status.phase === 'error') && (
               <button
                 type="button"
                 className="text-xs text-brand-gray200 underline rounded p-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white disabled:opacity-50"

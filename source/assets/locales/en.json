@@ -1560,7 +1560,7 @@
   "privacy": {
     "title": "Privacy",
     "prepare": "Prepare pool",
-    "description": "Download and verify public pool data.",
+    "description": "Sync public pool data in the background.",
     "scopeNotice": "Deposits and withdrawals unavailable.",
     "poolLabel": "Pool",
     "networkName": "Tornado Classic · Ethereum Mainnet",

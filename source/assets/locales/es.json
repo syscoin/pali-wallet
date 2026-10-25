@@ -1560,7 +1560,7 @@
   "privacy": {
     "title": "Privacidad",
     "prepare": "Preparar privacidad",
-    "description": "Prepara datos públicos verificados del fondo en este dispositivo para operaciones de privacidad.",
+    "description": "Sincroniza los datos públicos del fondo en segundo plano.",
     "scopeNotice": "Solo se preparan los datos del fondo. Los depósitos y retiros aún no están disponibles aquí.",
     "poolLabel": "Fondo de ETH",
     "networkName": "Tornado Classic · Red principal de Ethereum",

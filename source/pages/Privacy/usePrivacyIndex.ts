@@ -87,15 +87,16 @@ export function usePrivacyIndex(poolId: PrivacyPoolId) {
   }, []);
 
   useEffect(() => {
-    if (
-      initialLoading ||
-      action ||
-      !visible ||
-      unavailable ||
-      !['syncing', 'verifying'].includes(status.phase)
-    )
-      return;
-    const timer = setTimeout(() => void invoke('getStatus'), 1500);
+    if (initialLoading || action || !visible || unavailable) return;
+    const delay = ['syncing', 'verifying'].includes(status.phase)
+      ? 1500
+      : ['ready', 'error'].includes(status.phase)
+      ? 15000
+      : undefined;
+    if (delay === undefined) return;
+    // Observe the local job only. Background refresh admission and remote
+    // requests belong to the controller, never to this page's polling timer.
+    const timer = setTimeout(() => void invoke('getStatus'), delay);
     return () => clearTimeout(timer);
   }, [action, initialLoading, invoke, status, unavailable, visible]);
 

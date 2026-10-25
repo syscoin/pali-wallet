@@ -10,6 +10,7 @@ export interface PrivacyRecord {
   poolId: PrivacyPoolId;
   rpcUrl?: string;
   running: boolean;
+  subscribed?: boolean;
   status: PrivacySyncStatus;
   work?: MerkleWork;
 }
@@ -156,6 +157,7 @@ export const privacyCache: PrivacyCache = {
           poolId,
           generation: (request.result?.generation ?? 0) + 1,
           running: false,
+          subscribed: false,
           status: { poolId, phase: 'idle' },
         };
         meta.put(next);

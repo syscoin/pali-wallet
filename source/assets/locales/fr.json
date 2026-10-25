@@ -1560,7 +1560,7 @@
   "privacy": {
     "title": "Confidentialité",
     "prepare": "Préparer la confidentialité",
-    "description": "Préparez des données publiques de pool vérifiées sur cet appareil pour les opérations de confidentialité.",
+    "description": "Synchronisez les données publiques du pool en arrière-plan.",
     "scopeNotice": "Seules les données du pool sont préparées. Les dépôts et retraits ne sont pas encore disponibles ici.",
     "poolLabel": "Pool ETH",
     "networkName": "Tornado Classic · Réseau principal Ethereum",

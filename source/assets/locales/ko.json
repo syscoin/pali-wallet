@@ -1560,7 +1560,7 @@
   "privacy": {
     "title": "개인정보 보호",
     "prepare": "개인정보 보호 준비",
-    "description": "개인정보 보호 작업에 사용할 검증된 풀 공개 데이터를 이 기기에 준비합니다.",
+    "description": "풀 공개 데이터를 백그라운드에서 동기화합니다.",
     "scopeNotice": "여기서는 풀 데이터만 준비합니다. 입금과 출금은 아직 사용할 수 없습니다.",
     "poolLabel": "ETH 풀",
     "networkName": "Tornado Classic · 이더리움 메인넷",

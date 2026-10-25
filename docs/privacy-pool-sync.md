@@ -3,7 +3,8 @@
 This increment prepares public Tornado Classic ETH pool data. It does not create
 notes, deposit, withdraw, generate withdrawal proofs, or claim that a wallet
 address is private. The Privacy page states that scope. Only an explicit Prepare
-action starts a job; opening the wallet or page does not contact the indexer.
+action opts a pool into preparation and background updates; opening the wallet
+or page does not opt any pool in or trigger a balance-related lookup.
 
 ## Data and verification
 
@@ -41,6 +42,13 @@ suspension. No job can run while the browser is closed. Restart retains the
 download but recomputes its root, because a stored frontier does not prove the
 integrity of its consumed leaf prefix. In-memory verified prefixes can be reused
 for append-only updates after comparing the old leaf sequence.
+
+After a successful preparation, opted-in pools refresh at shared 15-minute
+clock boundaries. This schedule is independent of balance viewing and
+transaction submission. Pause retains verified data and disables future
+updates; Clear disables updates and removes the public cache. Browser restart
+restores only opted-in alarms, without immediately making remote requests.
+The visible page polls local status slowly while ready and faster during work.
 
 ## Private-vault follow-through
 

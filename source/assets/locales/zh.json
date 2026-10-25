@@ -1560,7 +1560,7 @@
   "privacy": {
     "title": "隐私",
     "prepare": "准备隐私功能",
-    "description": "在此设备上准备经过验证的资金池公开数据，以便进行隐私操作。",
+    "description": "在后台同步资金池公开数据。",
     "scopeNotice": "此处仅准备资金池数据，暂不支持存款和提款。",
     "poolLabel": "ETH 资金池",
     "networkName": "Tornado Classic · 以太坊主网",

@@ -1560,7 +1560,7 @@
   "privacy": {
     "title": "プライバシー",
     "prepare": "プライバシー機能を準備",
-    "description": "プライバシー操作に向けて、検証済みのプール公開データをこの端末に準備します。",
+    "description": "プールの公開データをバックグラウンドで同期します。",
     "scopeNotice": "ここではプールデータのみを準備します。入金と出金はまだ利用できません。",
     "poolLabel": "ETHプール",
     "networkName": "Tornado Classic · Ethereumメインネット",

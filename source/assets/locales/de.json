@@ -1560,7 +1560,7 @@
   "privacy": {
     "title": "Privatsphäre",
     "prepare": "Privatsphäre vorbereiten",
-    "description": "Bereite verifizierte öffentliche Pooldaten auf diesem Gerät für private Transaktionen vor.",
+    "description": "Öffentliche Pooldaten im Hintergrund synchronisieren.",
     "scopeNotice": "Hier werden nur Pooldaten vorbereitet. Ein- und Auszahlungen sind hier noch nicht verfügbar.",
     "poolLabel": "ETH-Pool",
     "networkName": "Tornado Classic · Ethereum-Mainnet",

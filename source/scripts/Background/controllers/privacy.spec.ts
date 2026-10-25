@@ -68,6 +68,7 @@ function memoryCache() {
         poolId,
         generation: (record?.generation || 0) + 1,
         running: false,
+        subscribed: false,
         status: { phase: 'idle', poolId },
       };
       return copy(record);
@@ -187,10 +188,16 @@ test.each(['clear', 'pause'] as const)(
   '%s wins over a late network completion',
   async (action) => {
     const pending = deferred<PrivacySnapshot>();
-    const run = setup({ fetchSnapshot: () => pending.promise });
+    const started = deferred<void>();
+    const run = setup({
+      fetchSnapshot: () => {
+        started.resolve();
+        return pending.promise;
+      },
+    });
     await run.controller.start(id);
     const active = run.controller.resumePending(id);
-    await Promise.resolve();
+    await started.promise;
     await run.controller[action](id);
     pending.resolve(snapshot());
     await active;
@@ -198,6 +205,7 @@ test.each(['clear', 'pause'] as const)(
       action === 'clear' ? 'idle' : 'paused'
     );
     expect(run.storage.verified).toBeUndefined();
+    expect(run.verifyAnchor).not.toHaveBeenCalled();
   }
 );
 
@@ -254,4 +262,98 @@ test.each([
   await expect(run.controller.start(id)).rejects.toThrow('privacy_wrong_chain');
   expect(run.storage.record).toBeUndefined();
   expect(run.fetchSnapshot).not.toHaveBeenCalled();
+});
+
+test('ready pools refresh at a shared clock boundary, not when a balance is read', async () => {
+  const run = setup({ now: () => 1000 });
+  await run.controller.start(id);
+  await run.controller.resumePending(id);
+  expect(run.storage.record?.subscribed).toBe(true);
+  expect(run.schedule).toHaveBeenLastCalledWith(id, 899000);
+  const reads = run.fetchSnapshot.mock.calls.length;
+  await run.controller.getStatus(id);
+  await run.controller.getStatus(id);
+  expect(run.fetchSnapshot).toHaveBeenCalledTimes(reads);
+  await run.controller.resumePending(id); // the scheduled alarm
+  expect(run.fetchSnapshot).toHaveBeenCalledTimes(reads + 1);
+  expect((await run.controller.getStatus(id)).phase).toBe('ready');
+});
+
+test('pausing ready data disables future updates and preserves the verified cache', async () => {
+  const run = setup();
+  await run.controller.start(id);
+  await run.controller.resumePending(id);
+  const verified = copy(run.storage.verified);
+  const paused = await run.controller.pause(id);
+  expect(paused).toMatchObject({ phase: 'paused', leafCount: 2 });
+  expect(run.storage.record?.subscribed).toBe(false);
+  const reads = run.fetchSnapshot.mock.calls.length;
+  await run.controller.resumePending(id);
+  expect(run.fetchSnapshot).toHaveBeenCalledTimes(reads);
+  expect(run.storage.verified).toEqual(verified);
+  await run.controller.clear(id);
+  await run.controller.resumePending(id);
+  expect(run.fetchSnapshot).toHaveBeenCalledTimes(reads);
+  expect(run.storage.verified).toBeUndefined();
+});
+
+test('worker restart restores an opted-in alarm without performing a network request', async () => {
+  const run = setup({ now: () => 1000 });
+  await run.controller.start(id);
+  await run.controller.resumePending(id);
+  const schedule = jest.fn();
+  const fetchSnapshot = jest.fn();
+  createPrivacyController(run.getNetwork, {
+    cache: run.storage.cache,
+    schedule,
+    fetchSnapshot,
+    now: () => 1000,
+    stop: jest.fn(),
+  });
+  await Promise.resolve();
+  expect(schedule).toHaveBeenCalledTimes(1);
+  expect(schedule).toHaveBeenCalledWith(id, 899000);
+  expect(fetchSnapshot).not.toHaveBeenCalled();
+});
+
+test('pause wins when it overlaps the scheduled ready-to-running transition', async () => {
+  const run = setup();
+  await run.controller.start(id);
+  await run.controller.resumePending(id);
+  const transitionRead = deferred<void>();
+  const releaseTransition = deferred<void>();
+  const releasePause = deferred<void>();
+  const get = run.storage.cache.get;
+  const save = run.storage.cache.save;
+  let first = true;
+  run.storage.cache.get = async (pool) => {
+    const value = await get(pool);
+    if (first) {
+      first = false;
+      transitionRead.resolve();
+      await releaseTransition.promise;
+    }
+    return value;
+  };
+  run.storage.cache.save = async (record, generation) => {
+    if (record.status.phase === 'paused') await releasePause.promise;
+    return save(record, generation);
+  };
+  const periodic = run.controller.resumePending(id);
+  await transitionRead.promise;
+  const pausing = run.controller.pause(id);
+  await Promise.resolve();
+  releaseTransition.resolve();
+  await periodic;
+  releasePause.resolve();
+  await pausing;
+  expect(run.storage.record).toMatchObject({
+    running: false,
+    subscribed: false,
+    status: { phase: 'paused' },
+  });
+  expect(run.storage.verified).toBeDefined();
+  const reads = run.fetchSnapshot.mock.calls.length;
+  await run.controller.resumePending(id);
+  expect(run.fetchSnapshot).toHaveBeenCalledTimes(reads);
 });

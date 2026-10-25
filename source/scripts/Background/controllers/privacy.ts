@@ -10,7 +10,7 @@ import {
   createMerkleWork,
   MerkleWork,
 } from 'utils/privacy/merkle';
-import { getPrivacyPool } from 'utils/privacy/registry';
+import { getPrivacyPool, PRIVACY_POOLS } from 'utils/privacy/registry';
 import {
   PrivacyController,
   PrivacyPoolId,
@@ -21,6 +21,7 @@ import {
 export const PRIVACY_ALARM_PREFIX = 'privacy-pool-sync:';
 const REQUEST_TIMEOUT_MS = 25000;
 const SLICE_MS = 3000;
+const SYNC_INTERVAL_MS = 15 * 60 * 1000;
 
 interface Dependencies {
   cache?: PrivacyCache;
@@ -58,7 +59,7 @@ export function createPrivacyController(
     ((poolId, delay) => {
       // A durable alarm is the fallback if Chrome suspends a short-lived timer.
       chrome.alarms.create(PRIVACY_ALARM_PREFIX + poolId, {
-        delayInMinutes: 0.5,
+        when: now() + Math.max(delay, 30000),
       });
       const previous = timers.get(poolId);
       if (previous) clearTimeout(previous);
@@ -97,8 +98,12 @@ export function createPrivacyController(
 
   async function timed<T>(
     poolId: PrivacyPoolId,
+    generation: number,
     run: (signal: AbortSignal) => Promise<T>
   ): Promise<T> {
+    const current = await cache.get(poolId);
+    if (current?.generation !== generation || !current.running)
+      throw new Error('privacy_cancelled');
     const abort = new AbortController();
     aborts.set(poolId, abort);
     const timeout = setTimeout(() => abort.abort(), REQUEST_TIMEOUT_MS);
@@ -115,12 +120,36 @@ export function createPrivacyController(
     poolId: PrivacyPoolId
   ): PrivacySyncStatus => record?.status || { poolId, phase: 'idle' };
 
+  // A shared clock boundary is independent of balance views and transactions.
+  const nextSyncDelay = () => SYNC_INTERVAL_MS - (now() % SYNC_INTERVAL_MS);
+
+  async function finishScheduling(poolId: PrivacyPoolId, generation: number) {
+    const current = await cache.get(poolId);
+    if (current?.generation !== generation) return;
+    stop(poolId);
+    if (current.subscribed) schedule(poolId, nextSyncDelay());
+  }
+
   async function process(poolId: PrivacyPoolId): Promise<void> {
-    let record = await cache.get(poolId);
-    if (!record?.running || !record.rpcUrl) {
-      stop(poolId);
-      return;
-    }
+    let record = await serialize(poolId, async () => {
+      const current = await cache.get(poolId);
+      if (!current?.rpcUrl || (!current.running && !current.subscribed))
+        return undefined;
+      if (current.running) return current;
+      const next = {
+        ...current,
+        generation: current.generation + 1,
+        running: true,
+        work: undefined,
+        status: {
+          ...current.status,
+          phase: 'syncing' as const,
+          errorCode: undefined,
+        },
+      };
+      return (await cache.save(next, current.generation)) ? next : undefined;
+    });
+    if (!record) return;
     const generation = record.generation;
     schedule(poolId, 30000);
     try {
@@ -135,7 +164,7 @@ export function createPrivacyController(
         snapshot = await cache.getCandidate(poolId);
         if (snapshot) {
           validateSnapshot(poolId, snapshot);
-          await timed(poolId, (signal) =>
+          await timed(poolId, generation, (signal) =>
             verifyAnchor(poolId, snapshot!, record!.rpcUrl!, signal)
           );
           record.work = createMerkleWork();
@@ -143,7 +172,7 @@ export function createPrivacyController(
         }
       }
       if (!snapshot) {
-        const result = await timed(poolId, (signal) =>
+        const result = await timed(poolId, generation, (signal) =>
           fetchSnapshot(poolId, signal)
         );
         if ('phase' in result) {
@@ -160,7 +189,7 @@ export function createPrivacyController(
           return;
         }
         snapshot = validateSnapshot(poolId, result);
-        await timed(poolId, (signal) =>
+        await timed(poolId, generation, (signal) =>
           verifyAnchor(poolId, snapshot!, record!.rpcUrl!, signal)
         );
         const trusted = verifiedTrees.get(poolId);
@@ -208,7 +237,7 @@ export function createPrivacyController(
       }
       if (record.work.root !== snapshot.root)
         throw new Error('privacy_verification_failed');
-      await timed(poolId, (signal) =>
+      await timed(poolId, generation, (signal) =>
         verifyAnchor(poolId, snapshot!, record!.rpcUrl!, signal)
       );
       const next: PrivacySyncStatus = {
@@ -221,7 +250,7 @@ export function createPrivacyController(
       if (await cache.commit(poolId, generation, next)) {
         verifiedTrees.set(poolId, { snapshot, work: record.work });
         calculations.delete(poolId);
-        stop(poolId);
+        await finishScheduling(poolId, generation);
       }
     } catch (error) {
       const current = await cache.get(poolId);
@@ -239,7 +268,7 @@ export function createPrivacyController(
         generation
       );
       calculations.delete(poolId);
-      stop(poolId);
+      await finishScheduling(poolId, generation);
     }
   }
 
@@ -254,6 +283,16 @@ export function createPrivacyController(
       if (tasks.get(poolId) === task) tasks.delete(poolId);
     }
   }
+
+  // Alarms may be lost across a full browser restart. Only restore explicitly
+  // requested work. This does local reads and scheduling, never network I/O.
+  void Promise.all(
+    PRIVACY_POOLS.map(async ({ id }) => {
+      const record = await cache.get(id);
+      if (record?.poolId === id && (record.running || record.subscribed))
+        schedule(id, record.running ? 30000 : nextSyncDelay());
+    })
+  ).catch(() => undefined);
 
   return {
     resumePending,
@@ -283,6 +322,7 @@ export function createPrivacyController(
           generation: generation + 1,
           rpcUrl,
           running: true,
+          subscribed: true,
           work: record?.status.phase === 'paused' ? record.work : undefined,
           status: {
             ...status(record, poolId),
@@ -299,11 +339,13 @@ export function createPrivacyController(
     pause: (poolId) =>
       serialize(poolId, async () => {
         const record = await cache.get(poolId);
-        if (!record?.running) return status(record, poolId);
+        if (!record || (!record.running && !record.subscribed))
+          return status(record, poolId);
         const next = {
           ...record,
           generation: record.generation + 1,
           running: false,
+          subscribed: false,
           status: { ...record.status, phase: 'paused' as const },
         };
         if (!(await cache.save(next, record.generation)))

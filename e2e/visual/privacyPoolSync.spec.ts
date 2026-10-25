@@ -510,6 +510,39 @@ test('privacy pool preparation is opt-in, independently verified and preserves a
       }
     );
     await wallet.step(
+      'privacy: pause scheduled updates without deleting verified data and resume explicitly',
+      async () => {
+        const alarmName = `privacy-pool-sync:${POOL_ID}`;
+        const readAlarm = () =>
+          wallet!.page.evaluate(
+            (name) =>
+              new Promise<chrome.alarms.Alarm | undefined>((resolve) =>
+                chrome.alarms.get(name, resolve)
+              ),
+            alarmName
+          );
+        const scheduled = await readAlarm();
+        expect(scheduled?.scheduledTime).toBeGreaterThan(Date.now());
+        expect(scheduled!.scheduledTime - Date.now()).toBeLessThanOrEqual(
+          15 * 60 * 1000
+        );
+        await wallet!.page
+          .getByRole('button', { name: en.privacy.pause, exact: true })
+          .click();
+        await expect(poolStatus(wallet!.page)).toContainText(en.privacy.paused);
+        expect((await readPublicCache(wallet!.page)).ready).toEqual(
+          (observations.verified as any).ready
+        );
+        await expect.poll(readAlarm).toBeUndefined();
+        await wallet!.page
+          .getByRole('button', { name: en.privacy.resume, exact: true })
+          .click();
+        await expect(poolStatus(wallet!.page)).toContainText(en.privacy.ready);
+        expect(knownRootCalls).toBe(4);
+        expect(await readAlarm()).toBeDefined();
+      }
+    );
+    await wallet.step(
       'privacy: a corrupt leaf fails local verification and retains the previously verified snapshot',
       async () => {
         mode = 'corrupt';
@@ -536,7 +569,7 @@ test('privacy pool preparation is opt-in, independently verified and preserves a
         expect((observations.rejected as any).ready).toEqual(
           (observations.verified as any).ready
         );
-        expect(knownRootCalls).toBe(3); // First anchor passes; a corrupt local root never reaches the final anchor.
+        expect(knownRootCalls).toBe(5); // First anchor passes; a corrupt local root never reaches the final anchor.
         await capture('error');
       }
     );
