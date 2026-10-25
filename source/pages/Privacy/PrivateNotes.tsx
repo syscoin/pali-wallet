@@ -64,6 +64,7 @@ function NotesView() {
   const importField = useRef<HTMLTextAreaElement>(null);
   const clear = () => {
     owner.current.revision += 1;
+    setStatusNote(null);
     setImporting(false);
     setNoteText('');
     setPending(false);

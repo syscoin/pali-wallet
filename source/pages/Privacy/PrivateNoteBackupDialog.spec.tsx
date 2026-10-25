@@ -1,6 +1,12 @@
 /** @jest-environment jsdom */
 import '@testing-library/jest-dom';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 
@@ -258,10 +264,22 @@ it('sanitizes controller failures before the shared password input logs them', a
       new Error('private-note-and-password-must-not-leak')
     );
     render(dialog());
-    confirm();
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      en.privacy.noteRevealFailed
+    const password = screen.getByLabelText(en.privacy.revealPassword);
+    await userEvent.type(password, 'test-password');
+    await userEvent.click(
+      screen.getByRole('button', { name: en.buttons.confirm })
     );
+    await waitFor(() => {
+      expect(screen.getAllByText(en.privacy.noteRevealFailed)).toHaveLength(1);
+      expect(password).toHaveAttribute('aria-invalid', 'true');
+      const descriptions =
+        password.getAttribute('aria-describedby')?.split(/\s+/) || [];
+      expect(
+        descriptions
+          .map((id) => document.getElementById(id)?.textContent)
+          .join(' ')
+      ).toContain(en.privacy.noteRevealFailed);
+    });
     expect(
       screen.queryByText(/private-note-and-password/)
     ).not.toBeInTheDocument();
@@ -272,6 +290,34 @@ it('sanitizes controller failures before the shared password input logs them', a
     expect(JSON.stringify(log.mock.calls)).not.toContain(
       'private-note-and-password'
     );
+  } finally {
+    log.mockRestore();
+  }
+});
+
+it('shows one linked backup failure after a rejected password', async () => {
+  const log = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+  try {
+    mockEmitter.mockRejectedValue(new Error('rejected'));
+    render(dialog());
+    const password = screen.getByLabelText(en.privacy.revealPassword);
+    await userEvent.type(password, 'wrong-password');
+    await userEvent.click(
+      screen.getByRole('button', { name: en.buttons.confirm })
+    );
+    await waitFor(() => {
+      expect(screen.getAllByText(en.privacy.noteRevealFailed)).toHaveLength(1);
+      expect(password).toHaveAttribute('aria-invalid', 'true');
+      const descriptions =
+        password.getAttribute('aria-describedby')?.split(/\s+/) || [];
+      expect(
+        descriptions
+          .map((id) => document.getElementById(id)?.textContent)
+          .join(' ')
+      ).toContain(en.privacy.noteRevealFailed);
+    });
+    expect(screen.queryByDisplayValue(SECRET)).not.toBeInTheDocument();
+    expect(mockEmitter).toHaveBeenCalledTimes(1);
   } finally {
     log.mockRestore();
   }

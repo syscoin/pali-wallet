@@ -969,3 +969,89 @@ it('ignores a poll older than a successful import and avoids overlapping polls',
   expect(screen.getByText('1 ETH')).toBeVisible();
   expect(screen.getAllByText(en.privacy.notePhase.verified)).toHaveLength(2);
 });
+
+it.each(['deposit', 'import', 'reveal', 'escape'] as const)(
+  'keeps relay status retryable after %s and ignores an earlier completion',
+  async (navigation) => {
+    const first = deferred();
+    const second = deferred();
+    const saved = {
+      ...note,
+      withdrawal: {
+        mode: 'relayed',
+        phase: 'submitted',
+        jobId: depositIntentId,
+      },
+    };
+    let statusCalls = 0;
+    mockEmitter.mockImplementation(async ([, method]) => {
+      if (method === 'getNotes') return { notes: [saved] };
+      if (method === 'statusByNote') {
+        statusCalls++;
+        return statusCalls === 1 ? first.promise : second.promise;
+      }
+      throw new Error(`Unexpected call: ${method}`);
+    });
+    render(<PrivateNotes />);
+    const label = en.privacy.withdrawal.checkStatus;
+    const button = await screen.findByRole('button', { name: label });
+    await userEvent.click(button);
+    expect(button).toBeDisabled();
+    expect(statusCalls).toBe(1);
+
+    if (navigation === 'deposit') {
+      await userEvent.click(
+        screen.getByRole('button', { name: en.privacy.deposit.title })
+      );
+      await screen.findByRole('heading', { name: en.privacy.deposit.title });
+      await userEvent.click(
+        screen.getByRole('button', { name: en.buttons.cancel })
+      );
+    } else if (navigation === 'import') {
+      await openImport();
+      await userEvent.click(
+        screen.getByRole('button', { name: en.buttons.cancel })
+      );
+    } else if (navigation === 'reveal') {
+      await beginReveal();
+      await userEvent.click(
+        screen.getByRole('button', { name: en.privacy.hideNote })
+      );
+    } else {
+      await userEvent.tab();
+      expect(
+        screen.getByRole('region', { name: en.privacy.yourNotes })
+      ).toContainElement(document.activeElement as HTMLElement);
+      expect(document.activeElement?.tagName).toBe('BUTTON');
+      await userEvent.keyboard('{Escape}');
+    }
+
+    const retry = await screen.findByRole('button', { name: label });
+    expect(retry).toBeEnabled();
+    await userEvent.click(retry);
+    expect(statusCalls).toBe(2);
+    expect(retry).toBeDisabled();
+
+    await act(async () => first.resolve({ claimedStatus: 'CONFIRMED' }));
+    expect(retry).toBeDisabled();
+    expect(
+      screen.queryByText(
+        en.privacy.withdrawal.reportedStatus.replace('{{status}}', 'CONFIRMED')
+      )
+    ).not.toBeInTheDocument();
+
+    await act(async () => second.resolve({ claimedStatus: 'QUEUED' }));
+    await waitFor(() => expect(retry).toBeEnabled());
+    expect(
+      screen.getByText(
+        en.privacy.withdrawal.reportedStatus.replace('{{status}}', 'QUEUED')
+      )
+    ).toBeVisible();
+    expect(
+      mockEmitter.mock.calls.filter(([path]) => path[1] === 'statusByNote')
+    ).toEqual([
+      [['privacyWithdrawals', 'statusByNote'], [note.id], 30000, false],
+      [['privacyWithdrawals', 'statusByNote'], [note.id], 30000, false],
+    ]);
+  }
+);
