@@ -643,7 +643,7 @@ test('privacy pool preparation verifies local note imports and preserves a good 
 
         await notes
           .getByRole('listitem')
-          .first()
+          .filter({ hasText: en.privacy.notePhase.verified })
           .getByRole('button', {
             name: en.privacy.revealNoteLabel.replace('{{amount}}', '1'),
           })

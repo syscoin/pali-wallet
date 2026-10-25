@@ -2,8 +2,9 @@
 import i18next from 'i18next';
 import { initReactI18next } from 'react-i18next';
 
-// Only import the default language statically
-import enTranslations from 'assets/locales/en.json';
+// Keep navigation labels in the base resources; the lazy Privacy route
+// hydrates its own copy from packaged locale fragments.
+import enTranslations from 'assets/locales/en.json?baseMessages';
 import { chromeStorage } from 'utils/storageAPI';
 
 export const availableLanguages = [
@@ -37,28 +38,28 @@ const loadLanguage = async (lng: string): Promise<any> => {
     let translations;
     switch (lng) {
       case 'es':
-        translations = await import('assets/locales/es.json');
+        translations = await import('assets/locales/es.json?baseMessages');
         break;
       case 'pt':
-        translations = await import('assets/locales/pt.json');
+        translations = await import('assets/locales/pt.json?baseMessages');
         break;
       case 'fr':
-        translations = await import('assets/locales/fr.json');
+        translations = await import('assets/locales/fr.json?baseMessages');
         break;
       case 'de':
-        translations = await import('assets/locales/de.json');
+        translations = await import('assets/locales/de.json?baseMessages');
         break;
       case 'zh':
-        translations = await import('assets/locales/zh.json');
+        translations = await import('assets/locales/zh.json?baseMessages');
         break;
       case 'ja':
-        translations = await import('assets/locales/ja.json');
+        translations = await import('assets/locales/ja.json?baseMessages');
         break;
       case 'ko':
-        translations = await import('assets/locales/ko.json');
+        translations = await import('assets/locales/ko.json?baseMessages');
         break;
       case 'ru':
-        translations = await import('assets/locales/ru.json');
+        translations = await import('assets/locales/ru.json?baseMessages');
         break;
       default:
         return enTranslations;

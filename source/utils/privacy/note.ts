@@ -1,7 +1,11 @@
-import { edwards } from '@noble/curves/abstract/edwards';
-
 import { getPrivacyPool } from './registry';
 import type { PrivacyPoolId } from './types';
+
+// The background already carries this package's CommonJS arithmetic. Match
+// that entry point so the note chunk does not add a second ESM copy.
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const edwards: typeof import('@noble/curves/abstract/edwards').edwards =
+  require('@noble/curves/abstract/edwards').edwards;
 
 const ORDER =
   BigInt(

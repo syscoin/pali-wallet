@@ -23,15 +23,22 @@ const execute = (
   new Function('module', 'require', generated)(module, requireDependency);
   return module.exports;
 };
-const schema = () =>
-  execute(localeStructure(source('en')), () => {
-    throw Error('Structure must not import anything');
-  }) as LocaleStructure;
-const compile = (lng: string) => {
+const schema = (scope = '') =>
+  execute(
+    localeStructure.call(
+      { resourceQuery: scope ? `?${scope}Structure` : '' },
+      source('en')
+    ),
+    () => {
+      throw Error('Structure must not import anything');
+    }
+  ) as LocaleStructure;
+const compile = (lng: string, scope = '') => {
   const dependencies: string[] = [];
   const generated = compactLocaleJson.call(
     {
       resourcePath: resourcePath(lng),
+      resourceQuery: scope ? `?${scope}Messages` : '',
       addDependency: (name: string) => dependencies.push(name),
     },
     source(lng)
@@ -39,7 +46,13 @@ const compile = (lng: string) => {
   expect(dependencies).toEqual([resourcePath('en')]);
   const packed = execute(generated, (name) => {
     if (name === 'utils/restoreLocale') return { restoreLocale };
-    if (name === 'assets/locales/en.json?localeStructure') return schema();
+    if (
+      name ===
+      `assets/locales/en.json?${
+        scope ? scope + 'Structure' : 'localeStructure'
+      }`
+    )
+      return schema(scope);
     throw Error(`Unexpected locale dependency: ${name}`);
   }) as Record<string, LocaleResource>;
   return { packed, generated };
@@ -157,6 +170,51 @@ it('fails the build for key/order/type drift rather than shifting translations',
   ])
     expect(() => localeStructure(invalid)).toThrow('only objects and text');
 });
+
+it.each(languages)(
+  '%s base and lazy Privacy projections reconstruct the original exactly',
+  (lng) => {
+    const original = JSON.parse(source(lng));
+    const base = compile(lng, 'base').packed as any;
+    const privacy = compile(lng, 'privacy').packed as any;
+    expect(base.privacy).toEqual({ title: original.privacy.title });
+    expect(Object.keys(privacy)).toEqual(['privacy']);
+    expect(privacy.privacy.title).toBeUndefined();
+    const merged = {
+      ...base,
+      privacy: { ...base.privacy, ...privacy.privacy },
+    };
+    expect(JSON.stringify(merged)).toBe(JSON.stringify(original));
+    expectExact(original, merged);
+    expect(compile(lng, 'base').generated).not.toContain(
+      original.privacy.noteSecret
+    );
+    expect(compile(lng, 'privacy').generated).toContain(
+      original.privacy.noteSecret
+    );
+  }
+);
+
+it.each(['base', 'privacy'])(
+  'validates omitted fields before the %s projection',
+  (scope) => {
+    const context = {
+      resourcePath: resourcePath('en'),
+      resourceQuery: `?${scope}Messages`,
+      addDependency: jest.fn(),
+    };
+    const original = JSON.parse(source('en'));
+    delete original.privacy.title;
+    expect(() =>
+      compactLocaleJson.call(context, JSON.stringify(original))
+    ).toThrow('structure/order differs');
+    const invalid = JSON.parse(source('en'));
+    invalid.buttons.cancel = null;
+    expect(() =>
+      compactLocaleJson.call(context, JSON.stringify(invalid))
+    ).toThrow('only objects and text');
+  }
+);
 
 it('reconstructs literal prototype-named keys and refuses truncated/extra value arrays', () => {
   const shape = execute(
