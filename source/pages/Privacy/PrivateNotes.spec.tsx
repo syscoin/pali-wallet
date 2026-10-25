@@ -288,11 +288,22 @@ it('sanitizes reveal errors before the shared password input logs them', async (
       );
     });
     render(<PrivateNotes />);
-    fireEvent.change(await beginReveal(), {
-      target: { value: 'private-password' },
+    const password = await beginReveal();
+    await userEvent.type(password, 'private-password');
+    await userEvent.click(
+      screen.getByRole('button', { name: en.buttons.confirm })
+    );
+    expect(
+      await screen.findAllByText(en.privacy.noteRevealFailed)
+    ).toHaveLength(1);
+    await waitFor(() => {
+      expect(password).toHaveAttribute('aria-invalid', 'true');
+      const ids = password.getAttribute('aria-describedby')?.split(/\s+/) || [];
+      expect(
+        ids.map((id) => document.getElementById(id)?.textContent).join(' ')
+      ).toContain(en.privacy.noteRevealFailed);
+      expect(screen.getAllByText(en.privacy.noteRevealFailed)).toHaveLength(1);
     });
-    fireEvent.click(screen.getByRole('button', { name: en.buttons.confirm }));
-    expect(await screen.findByText(en.privacy.noteRevealFailed)).toBeVisible();
     const logged = log.mock.calls
       .map((args) => args.map(String).join(' '))
       .join(' ');

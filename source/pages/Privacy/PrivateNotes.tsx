@@ -314,11 +314,6 @@ function NotesView() {
                         setError('');
                       }}
                     />
-                    {error && (
-                      <p role="alert" className="text-xs text-brand-red">
-                        {t(`privacy.${error}`)}
-                      </p>
-                    )}
                   </Form>
                 )}
                 <button type="button" className={actionClass} onClick={clear}>
