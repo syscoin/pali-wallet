@@ -76,9 +76,10 @@ const sizeClasses: Record<ButtonSize, string> = {
   icon: 'h-10 w-10 p-0',
 };
 
-// Shared shell for every styled variant; matches the legacy dialect markup.
+// Change accent labels and fills atomically: interpolating both colors can
+// cross an unreadable midpoint. Keep the existing scale and shadow motion.
 const baseStyled =
-  'flex justify-center items-center gap-x-2 rounded-full font-bold tracking-normal leading-4 transition-all duration-200';
+  'flex justify-center items-center gap-x-2 rounded-full font-bold tracking-normal leading-4 transition-[transform,box-shadow] duration-200';
 
 const enabledMotion = 'opacity-100 hover:scale-105 active:scale-95';
 const disabledMotion = 'opacity-60 cursor-not-allowed';
@@ -88,15 +89,13 @@ const variantClasses: Record<
   { disabled: string; enabled: string; statics: string }
 > = {
   primary: {
-    statics:
-      'border-2 border-button-primary bg-button-primary text-brand-white',
-    enabled: `${enabledMotion} cursor-pointer hover:bg-button-primaryhover hover:shadow-lg`,
+    statics: 'border-2 border-button-primary bg-button-primary text-bkg-1',
+    enabled: `${enabledMotion} cursor-pointer hover:bg-button-primaryhover hover:text-brand-white hover:shadow-lg`,
     disabled: disabledMotion,
   },
   secondary: {
-    statics:
-      'border-2 border-button-secondary bg-button-secondary text-brand-white',
-    enabled: `${enabledMotion} hover:bg-button-secondaryhover hover:shadow-lg`,
+    statics: 'border-2 border-button-secondary bg-button-secondary text-bkg-1',
+    enabled: `${enabledMotion} hover:bg-button-secondaryhover hover:text-brand-white hover:shadow-lg`,
     disabled: disabledMotion,
   },
   neutral: {

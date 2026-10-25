@@ -71,7 +71,7 @@ export const AssetMarketLinks = ({
               href={`https://www.coingecko.com/en/coins/${coinGeckoId}/historical_data`}
               target="_blank"
               rel="noopener noreferrer"
-              className="px-3 py-1.5 bg-blue-600 bg-opacity-20 text-blue-500 text-xs rounded hover:bg-opacity-30 transition-all duration-200 flex items-center gap-1"
+              className="px-3 py-1.5 bg-blue-600 bg-opacity-20 text-blue-300 text-xs rounded hover:bg-opacity-30 transition-all duration-200 flex items-center gap-1"
             >
               {t('tokens.historicalData')}
               <ExternalLinkIcon size={12} />

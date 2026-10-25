@@ -257,6 +257,14 @@ for (const viewport of [
         await wallet.step(
           `${item.count}-item collection keeps the ten-ID cap and its genuine overflow state`,
           async (capture) => {
+            // Closing details returns to Home; explicitly reopen the ordinary
+            // Assets/NFT view before inspecting the next collection.
+            await page.locator('#assets-btn').click();
+            const viewNfts = page.getByRole('button', {
+              name: en.tooltip.viewNFTs,
+              exact: true,
+            });
+            if (await viewNfts.count()) await viewNfts.click();
             await page
               .getByRole('button', {
                 name: 'View details for ' + item.symbol + ' collection',

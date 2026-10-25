@@ -1654,7 +1654,7 @@ export const SendTransaction = () => {
                       <>
                         <span className="text-brand-white text-lg">
                           {t('send.grantAccess')}{' '}
-                          <span className="text-brand-royalblue font-semibold">
+                          <span className="text-brand-royalbluemedium font-semibold">
                             {approvedTokenInfos?.tokenSymbol ||
                               t('send.unknownToken', {
                                 address: dataTx?.to?.slice(0, 8),
@@ -1821,7 +1821,7 @@ export const SendTransaction = () => {
                     )}
                     <button
                       type="button"
-                      className="mt-2 text-xs text-brand-royalblue hover:opacity-80"
+                      className="mt-2 text-xs text-brand-white underline"
                       disabled={editingDisabled}
                       onClick={handleUseDappFeeRequest}
                     >
@@ -1830,7 +1830,7 @@ export const SendTransaction = () => {
                     {feeRecommendationOnly && (
                       <button
                         type="button"
-                        className="mt-2 ml-3 text-xs text-brand-royalblue hover:opacity-80"
+                        className="mt-2 ml-3 text-xs text-brand-white underline"
                         disabled={editingDisabled}
                         onClick={handleUseNetworkFeeSuggestion}
                       >

@@ -2998,7 +2998,7 @@ const SmartAccountPolicy = () => {
               </span>
               <button
                 type="button"
-                className="min-w-0 truncate text-right transition-colors duration-200 hover:text-brand-royalblue"
+                className="min-w-0 truncate text-right transition-colors duration-200 hover:text-brand-white"
                 onClick={() => copyAddress(displayedGuardianAddress)}
               >
                 {shortAddress(displayedGuardianAddress)}
@@ -3160,7 +3160,7 @@ const SmartAccountPolicy = () => {
                   {activePaliWalletOwnerAddress && (
                     <button
                       type="button"
-                      className="min-w-0 truncate text-brand-graylight transition-colors duration-200 hover:text-brand-royalblue"
+                      className="min-w-0 truncate text-brand-graylight transition-colors duration-200 hover:text-brand-white"
                       title={activePaliWalletOwnerAddress}
                       onClick={() => copyAddress(activePaliWalletOwnerAddress)}
                     >
@@ -3303,7 +3303,7 @@ const SmartAccountPolicy = () => {
                           {paliWalletOwnerAddress && (
                             <button
                               type="button"
-                              className="mt-1 max-w-full truncate text-xs text-brand-graylight transition-colors duration-200 hover:text-brand-royalblue"
+                              className="mt-1 max-w-full truncate text-xs text-brand-graylight transition-colors duration-200 hover:text-brand-white"
                               title={paliWalletOwnerAddress}
                               onClick={() =>
                                 copyAddress(paliWalletOwnerAddress)
@@ -3476,7 +3476,7 @@ const SmartAccountPolicy = () => {
                                 </span>
                                 <button
                                   type="button"
-                                  className="min-w-0 truncate text-right transition-colors duration-200 hover:text-brand-royalblue"
+                                  className="min-w-0 truncate text-right transition-colors duration-200 hover:text-brand-white"
                                   onClick={() =>
                                     copyAddress(displayedGuardianAddress)
                                   }

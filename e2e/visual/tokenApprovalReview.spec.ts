@@ -1,4 +1,10 @@
-import { expect, test, type Page, type TestInfo } from '@playwright/test';
+import {
+  expect,
+  test,
+  type Locator,
+  type Page,
+  type TestInfo,
+} from '@playwright/test';
 import { AbiCoder, Interface, formatUnits, id } from 'ethers';
 
 import en from '../../source/assets/locales/en.json';
@@ -79,7 +85,8 @@ async function captureOpenApproval(
 async function withWallet(
   name: string,
   run: (wallet: PaliWallet, origin: string) => Promise<void>,
-  decimals = 8
+  decimals = 8,
+  networkGasPrice?: string
 ) {
   const previous = { ...E2E_CONFIG };
   const stepPrefix = decimals === 8 ? '' : `${name}: `;
@@ -120,6 +127,8 @@ async function withWallet(
       const replies = calls.map((call: any) => {
         let result: unknown;
         if (call.method === 'eth_estimateGas') result = '0x5208';
+        if (call.method === 'eth_gasPrice' && networkGasPrice)
+          result = networkGasPrice;
         if (call.method === 'eth_feeHistory')
           result = {
             oldestBlock: '0x1',
@@ -1569,3 +1578,130 @@ for (const width of [400, 320]) {
     );
   });
 }
+
+test('token approval symbol and real fee choices retain readable text without changing the request', async ({}, info) => {
+  test.setTimeout(120_000);
+  expect([undefined, 'after']).toContain(
+    process.env.PALI_FOREGROUND_CONTRAST_MODE
+  );
+  expect(process.env.PALI_TEST_DAPP_REVISION).toMatch(/^[a-f0-9]{40}$/);
+  expect(E2E_CONFIG.extensionPath).toBe(
+    process.env.PALI_TEST_DAPP_EXTENSION_PATH
+  );
+  const runtime = extensionEvidence();
+  expect(runtime.sourceRevision).toBe(process.env.PALI_TEST_DAPP_REVISION);
+  const readable = async (target: Locator, label: string) => {
+    await expect(target).toBeEnabled();
+    await target.page().mouse.move(0, 0);
+    await captureForegroundContrast(target, info, `${label}-rest`);
+    await target.hover();
+    await captureForegroundContrast(target, info, `${label}-hover`);
+    await target.page().mouse.move(0, 0);
+  };
+  await withWallet(
+    'token-approval-fee-choice-contrast',
+    async (wallet, origin) => {
+      const { dapp, address } = await connect(wallet, origin);
+      const calldata = new Interface([
+        'function approve(address,uint256)',
+      ]).encodeFunctionData('approve', [spender, BigInt(100000000)]);
+      for (const recommendationOnly of [true, false]) {
+        await wallet.step(
+          `review ${
+            recommendationOnly ? 'suggested' : 'raised'
+          } fees without signing`,
+          async () => {
+            const transaction = {
+              from: address,
+              to: token,
+              value: '0x0',
+              data: calldata,
+              gas: recommendationOnly ? '0x11170' : '0x1000',
+              gasPrice: recommendationOnly ? '0x59682f00' : '0x1',
+            };
+            const request = await startRequest(dapp, 'eth_sendTransaction', [
+              transaction,
+            ]);
+            let popup = await popupFor(wallet.context, dapp, request);
+            if (new URL(popup.url()).pathname === '/external/spam-warning') {
+              const warning = JSON.parse(
+                new URL(popup.url()).searchParams.get('data') || '{}'
+              );
+              expect(warning).toMatchObject({
+                host: new URL(origin).origin,
+                eventName: 'spamWarningResponse',
+              });
+              const warningPopup = popup;
+              await clickClosingPopup({
+                click: () =>
+                  warningPopup
+                    .getByRole('button', {
+                      name: en.buttons.continue,
+                      exact: true,
+                    })
+                    .click(),
+                isClosed: () => warningPopup.isClosed(),
+              });
+              popup = await popupFor(wallet.context, dapp, request);
+            }
+            const url = new URL(popup.url());
+            expect(url.pathname).toBe('/external/tx/send/ethTx');
+            expect(
+              JSON.parse(url.searchParams.get('data') || '{}')
+            ).toMatchObject({
+              host: new URL(origin).origin,
+              eventName: 'txSend',
+              external: true,
+              tx: transaction,
+            });
+            await expect(
+              popup.getByRole('button', {
+                name: en.send.editPermission,
+                exact: true,
+              })
+            ).toBeVisible();
+            const useDapp = popup.getByRole('button', {
+              name: en.send.useDappFeeRequest,
+              exact: true,
+            });
+            const useNetwork = popup.getByRole('button', {
+              name: en.send.useNetworkFeeSuggestion,
+              exact: true,
+            });
+            await expect(useDapp).toBeEnabled();
+            if (recommendationOnly) await expect(useNetwork).toBeEnabled();
+            else await expect(useNetwork).toHaveCount(0);
+            for (const width of [400, 320]) {
+              await popup.setViewportSize({
+                width,
+                height: width === 320 ? 360 : 620,
+              });
+              const prefix = `approval-${
+                recommendationOnly ? 'suggested' : 'raised'
+              }-${width}`;
+              const symbol = popup.getByText('REVIEW', { exact: true });
+              await expect(symbol).toHaveCount(1);
+              await readable(symbol, `${prefix}-symbol`);
+              await readable(useDapp, `${prefix}-use-dapp`);
+              if (recommendationOnly)
+                await readable(useNetwork, `${prefix}-use-network`);
+            }
+            const rejected = await dismissRejectedApproval({
+              click: () =>
+                popup
+                  .getByRole('button', { name: en.buttons.cancel, exact: true })
+                  .click(),
+              isClosed: () => popup.isClosed(),
+              settle: () => settle(dapp, request),
+            });
+            expect(rejected.error?.code).toBe(4001);
+            expect(rejected.result).toBeUndefined();
+          }
+        );
+      }
+      expect(extensionEvidence()).toEqual(runtime);
+    },
+    8,
+    '0x77359400'
+  );
+});

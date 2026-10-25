@@ -1,10 +1,11 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Locator, type TestInfo } from '@playwright/test';
 import path from 'path';
 
 import de from '../../source/assets/locales/de.json';
 import en from '../../source/assets/locales/en.json';
 import fr from '../../source/assets/locales/fr.json';
 import { E2E_CONFIG } from '../harness/config';
+import { captureForegroundContrast } from '../harness/foregroundContrast';
 import { createGuardianRecoveryFixture } from '../harness/guardianRecoveryFixture';
 import { PaliWallet } from '../harness/pali';
 import { verifyExecutingWorker } from '../harness/runtimeIdentity';
@@ -21,6 +22,21 @@ const TIMESTAMP = Number(
   process.env.PALI_GUARDIAN_DATE_TIMESTAMP || Math.floor(Date.now() / 1000)
 );
 
+// Select public copy values by their content/semantic title, not their color.
+async function readablePolicyCopy(
+  target: Locator,
+  info: TestInfo,
+  label: string
+) {
+  await expect(target).toHaveCount(1);
+  await expect(target).toBeEnabled();
+  await target.page().mouse.move(0, 0);
+  await captureForegroundContrast(target, info, `${label}-rest`);
+  await target.hover();
+  await captureForegroundContrast(target, info, `${label}-hover`);
+  await target.page().mouse.move(0, 0);
+}
+
 for (const target of [
   { code: 'de', text: de, option: 'German Deutsch', width: 400, height: 620 },
   { code: 'fr', text: fr, option: 'French Français', width: 320, height: 360 },
@@ -29,6 +45,9 @@ for (const target of [
     test.setTimeout(120_000);
     expect(info.config.workers).toBe(1);
     expect(info.retry).toBe(0);
+    expect([undefined, 'after']).toContain(
+      process.env.PALI_FOREGROUND_CONTRAST_MODE
+    );
     expect(Number.isSafeInteger(TIMESTAMP)).toBe(true);
     expect(path.isAbsolute(E2E_CONFIG.extensionPath)).toBe(true);
     const runtime = extensionEvidence();
@@ -194,6 +213,17 @@ for (const target of [
             await expect(
               panel.getByText(fixture.base.smartAccountAddress, { exact: true })
             ).toBeVisible();
+            const shortAddress = /^0x[0-9a-f]{4}\.\.\.[0-9a-f]{4}$/i;
+            await readablePolicyCopy(
+              page.locator('button[title]').filter({ hasText: shortAddress }),
+              info,
+              `guardian-owner-${language}-${target.width}`
+            );
+            await readablePolicyCopy(
+              panel.locator('..').getByRole('button', { name: shortAddress }),
+              info,
+              `guardian-policy-copy-${language}-${target.width}`
+            );
             for (const [field, key, seconds] of [
               [
                 'ready',
@@ -260,6 +290,14 @@ for (const target of [
                 exact: true,
               })
             ).toBeDisabled();
+            await readablePolicyCopy(
+              page
+                .getByTestId('guardian-chain-status')
+                .locator('..')
+                .getByRole('button', { name: shortAddress }),
+              info,
+              `guardian-recovery-copy-${language}-${target.width}`
+            );
             // No recovery is started/finalized and no local credential is created.
             expect(await localIntentKeys()).toEqual([]);
           }

@@ -454,6 +454,21 @@ async function marketAvailability(
         const rank = page.getByText(/^#\d+$/);
         if (await rank.count())
           await captureForegroundContrast(rank, info, 'market-rank');
+        if (!malformedIdentity) {
+          await page.mouse.move(0, 0);
+          await captureForegroundContrast(
+            history,
+            info,
+            'market-history-default'
+          );
+          await history.hover();
+          await captureForegroundContrast(
+            history,
+            info,
+            'market-history-hover'
+          );
+          await page.mouse.move(0, 0);
+        }
         if (categoryCounts)
           await checkVisibleCategories(categoryCounts[0], 'COMPLETE');
         await info.attach('complete-market-details', {

@@ -627,7 +627,7 @@ export const ChangeAccount = () => {
                 href="https://docs.syscoin.org/"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-brand-royalblue hover:underline"
+                className="text-brand-royalbluemedium hover:underline"
               >
                 {t('connections.learnMore')}
               </a>

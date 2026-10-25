@@ -431,7 +431,7 @@ export const TokenIconStack = React.memo(
           ))}
         </div>
         {remainingCount > 0 && (
-          <span className="ml-1 text-[10px] text-brand-royalblue">
+          <span className="ml-1 text-[10px] text-content-secondary">
             +{remainingCount}
           </span>
         )}
