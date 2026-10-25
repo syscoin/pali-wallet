@@ -117,10 +117,10 @@ test.each([
 });
 
 test('only sends a public pool identifier to Sysnode, without cookies or wallet data', async () => {
-  const fetch = jest.fn(
-    async (_url: RequestInfo | URL, _init?: RequestInit) =>
-      new Response(JSON.stringify(snapshot))
-  );
+  const fetch = jest.fn<
+    ReturnType<typeof global.fetch>,
+    Parameters<typeof global.fetch>
+  >(async () => new Response(JSON.stringify(snapshot)));
   global.fetch = fetch;
   expect(await fetchPrivacySnapshot(id, signal())).toEqual(snapshot);
   expect(fetch).toHaveBeenCalledWith(
