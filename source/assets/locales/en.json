@@ -1582,6 +1582,33 @@
     "publicDataOnly": "No notes or addresses sent to Sysnode.",
     "savedDeposits": "Deposits: {{count}}",
     "verifiedBlock": "Block: {{block}}",
-    "progress": "{{completed}} of {{total}}"
+    "progress": "{{completed}} of {{total}}",
+    "yourNotes": "Your notes",
+    "importNote": "Import note",
+    "notesLocal": "Saved in your encrypted wallet. Status may lag the chain.",
+    "noteLabel": "Note",
+    "noteSecret": "Anyone with this note can withdraw. Keep your backup private.",
+    "noNotes": "No saved notes.",
+    "notesUnavailable": "Could not load notes. Retry.",
+    "noteInvalid": "This note format is not supported.",
+    "noteNotFound": "No matching deposit found.",
+    "notePending": "Pool verification is not ready. Prepare the pool and retry.",
+    "noteDuplicate": "This note is already saved.",
+    "noteImportFailed": "Could not import the note. Retry.",
+    "revealNote": "Reveal for backup",
+    "revealNoteLabel": "Reveal {{amount}} ETH note for backup",
+    "revealPassword": "Confirm your password to reveal this note.",
+    "privateNote": "Private note",
+    "hideNote": "Hide",
+    "noteAsOfBlock": "As of block {{block}}",
+    "notePhase": {
+      "verified": "Verified deposit",
+      "spent": "Already withdrawn",
+      "waiting": "Waiting for verification",
+      "not-found": "Deposit not found"
+    },
+    "refreshNotes": "Update notes",
+    "noteRevealFailed": "Could not reveal this note. Check your password and retry.",
+    "noteLimit": "This wallet has 128 saved notes. Keep this note in a secure backup."
   }
 }

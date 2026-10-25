@@ -1582,6 +1582,33 @@
     "publicDataOnly": "仅下载资金池公开数据，不会发送您的钱包地址和隐私票据。",
     "savedDeposits": "已保存的公开存款数：{{count}}",
     "verifiedBlock": "最近验证的区块：{{block}}",
-    "progress": "{{completed}} / {{total}}"
+    "progress": "{{completed}} / {{total}}",
+    "yourNotes": "你的票据",
+    "importNote": "导入票据",
+    "notesLocal": "保存在加密钱包中。状态可能滞后于链上数据。",
+    "noteLabel": "票据",
+    "noteSecret": "任何持有此票据的人都可以提款。请保密保存备份。",
+    "noNotes": "没有已保存的票据。",
+    "notesUnavailable": "无法加载票据，请重试。",
+    "noteInvalid": "不支持此票据格式。",
+    "noteNotFound": "未找到匹配的存款。",
+    "notePending": "资金池验证尚未就绪。请先准备资金池，然后重试。",
+    "noteDuplicate": "此票据已保存。",
+    "noteImportFailed": "无法导入票据，请重试。",
+    "revealNote": "显示以备份",
+    "revealNoteLabel": "显示 {{amount}} ETH 票据以备份",
+    "revealPassword": "请确认密码以显示此票据。",
+    "privateNote": "私密票据",
+    "hideNote": "隐藏",
+    "noteAsOfBlock": "截至区块 {{block}}",
+    "notePhase": {
+      "verified": "已验证的存款",
+      "spent": "已提款",
+      "waiting": "等待验证",
+      "not-found": "未找到存款"
+    },
+    "refreshNotes": "更新票据",
+    "noteRevealFailed": "无法显示此票据。请检查密码并重试。",
+    "noteLimit": "此钱包已保存128张票据。请将此票据保存在安全的备份中。"
   }
 }

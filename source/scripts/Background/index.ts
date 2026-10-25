@@ -41,6 +41,11 @@ console.log('[Background] Initializing controller...');
 void import(
   /* webpackChunkName: "wallet-recovery" */ './controllers/walletRecovery'
 ).catch(() => undefined);
+// Register packaged note-custody code while classic-worker imports are still
+// permitted. This initializes no wallet session and reads no private records.
+void import(
+  /* webpackChunkName: "private-vault" */ './controllers/privateVault'
+).catch(() => undefined);
 // Register the optional Sentry signer chunk while the classic worker evaluates.
 // This does not unlock keys or initialize its cryptographic implementations.
 void import(

@@ -91,14 +91,14 @@ module.exports = {
       {
         test: /\.json$/,
         include: join(sourcePath, 'assets/locales'),
-        resourceQuery: /^$/,
+        resourceQuery: /^(?:\?(?:baseMessages|privacyMessages))?$/,
         type: 'javascript/auto',
         use: join(__dirname, 'loaders/compactLocaleJson.js'),
       },
       {
         test: /\.json$/,
         include: join(sourcePath, 'assets/locales'),
-        resourceQuery: /^\?localeStructure$/,
+        resourceQuery: /^\?(?:localeStructure|baseStructure|privacyStructure)$/,
         type: 'javascript/auto',
         use: join(__dirname, 'loaders/localeStructure.js'),
       },
@@ -357,11 +357,32 @@ module.exports = {
               resource.endsWith('/source/utils/restoreLocale.ts') ||
               resource.endsWith(
                 '/source/assets/locales/en.json?localeStructure'
-              )
+              ) ||
+              resource.endsWith('/source/assets/locales/en.json?baseStructure')
             );
           },
           chunks: 'all',
           name: 'locale-catalog',
+          enforce: true,
+        },
+        privacyLocaleCatalog: {
+          test(module) {
+            return (module.resource || '')
+              .split(String.fromCharCode(92))
+              .join('/')
+              .endsWith('/source/assets/locales/en.json?privacyStructure');
+          },
+          chunks: 'async',
+          name: 'privacy-locale-catalog',
+          enforce: true,
+        },
+        // The same installed Sentry curve/hash modules serve several lazy
+        // paths. Share identical modules without aliasing dependency versions.
+        sentryCryptoShared: {
+          test: /[\\/]node_modules[\\/]@sidhujag[\\/]sysweb3-sentry[\\/]node_modules[\\/]@noble[\\/]/,
+          chunks: 'async',
+          name: 'sentry-crypto-shared',
+          minChunks: 2,
           enforce: true,
         },
         // Share copies used by lazy account/approval routes. Initial worker

@@ -20,6 +20,14 @@ declare module '*.json?notificationMessages' {
   const value: { notifications: Record<string, string> };
   export default value;
 }
+declare module '*.json?baseMessages' {
+  const value: import('i18next').ResourceLanguage;
+  export default value;
+}
+declare module '*.json?privacyMessages' {
+  const value: import('i18next').ResourceLanguage;
+  export default value;
+}
 declare module 'react-notifications-component';
 
 declare const TARGET_BROWSER: 'chrome' | 'firefox' | 'opera' | string;

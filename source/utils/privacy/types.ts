@@ -17,6 +17,9 @@ export interface PrivacySnapshot {
   poolAddress: string;
   root: string;
   version: 1;
+  // Public withdrawal events at the same block anchor. The deposit root does
+  // not authenticate this list's completeness; the index service supplies it.
+  withdrawnNullifiers: string[];
 }
 
 export interface PrivacyIndexProgress {

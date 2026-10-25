@@ -8,6 +8,7 @@ import { INetworkType } from 'types/network';
 import { PRIVACY_CHAIN_ID, PRIVACY_POOLS } from 'utils/privacy/registry';
 import type { PrivacyPoolId } from 'utils/privacy/types';
 
+import PrivateNotes from './PrivateNotes';
 import { usePrivacyIndex } from './usePrivacyIndex';
 
 function PoolData({
@@ -198,6 +199,7 @@ export default function Privacy() {
       <p className="text-xs text-brand-gray200">
         {t('privacy.publicDataOnly')}
       </p>
+      <PrivateNotes />
     </div>
   );
 }

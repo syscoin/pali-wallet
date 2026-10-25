@@ -1582,6 +1582,33 @@
     "publicDataOnly": "풀 공개 데이터만 다운로드합니다. 지갑 주소와 비공개 노트는 전송되지 않습니다.",
     "savedDeposits": "저장된 공개 입금 수: {{count}}",
     "verifiedBlock": "마지막으로 검증한 블록: {{block}}",
-    "progress": "{{total}}개 중 {{completed}}개"
+    "progress": "{{total}}개 중 {{completed}}개",
+    "yourNotes": "내 노트",
+    "importNote": "노트 가져오기",
+    "notesLocal": "암호화된 지갑에 저장됩니다. 상태 반영이 지연될 수 있습니다.",
+    "noteLabel": "노트",
+    "noteSecret": "이 노트를 가진 사람은 누구나 출금할 수 있습니다. 백업을 비공개로 보관하세요.",
+    "noNotes": "저장된 노트가 없습니다.",
+    "notesUnavailable": "노트를 불러오지 못했습니다. 다시 시도하세요.",
+    "noteInvalid": "지원하지 않는 노트 형식입니다.",
+    "noteNotFound": "일치하는 입금을 찾지 못했습니다.",
+    "notePending": "풀 검증이 준비되지 않았습니다. 풀을 준비한 뒤 다시 시도하세요.",
+    "noteDuplicate": "이미 저장된 노트입니다.",
+    "noteImportFailed": "노트를 가져오지 못했습니다. 다시 시도하세요.",
+    "revealNote": "백업용으로 표시",
+    "revealNoteLabel": "{{amount}} ETH 노트를 백업용으로 표시",
+    "revealPassword": "노트를 표시하려면 비밀번호를 확인하세요.",
+    "privateNote": "비공개 노트",
+    "hideNote": "숨기기",
+    "noteAsOfBlock": "블록 {{block}} 기준",
+    "notePhase": {
+      "verified": "검증된 입금",
+      "spent": "이미 출금됨",
+      "waiting": "검증 대기 중",
+      "not-found": "입금을 찾지 못함"
+    },
+    "refreshNotes": "노트 업데이트",
+    "noteRevealFailed": "노트를 표시하지 못했습니다. 비밀번호를 확인하고 다시 시도하세요.",
+    "noteLimit": "이 지갑에는 노트 128개가 저장되어 있습니다. 이 노트를 안전한 백업에 보관하세요."
   }
 }

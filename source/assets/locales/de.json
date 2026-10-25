@@ -1582,6 +1582,33 @@
     "publicDataOnly": "Es werden nur öffentliche Pooldaten heruntergeladen. Deine Wallet-Adresse und privaten Notizen werden nicht gesendet.",
     "savedDeposits": "Gespeicherte öffentliche Einzahlungen: {{count}}",
     "verifiedBlock": "Zuletzt verifizierter Block: {{block}}",
-    "progress": "{{completed}} von {{total}}"
+    "progress": "{{completed}} von {{total}}",
+    "yourNotes": "Deine Notizen",
+    "importNote": "Notiz importieren",
+    "notesLocal": "In deiner verschlüsselten Wallet gespeichert. Der Status kann verzögert sein.",
+    "noteLabel": "Notiz",
+    "noteSecret": "Jeder mit dieser Notiz kann abheben. Bewahre dein Backup geheim auf.",
+    "noNotes": "Keine gespeicherten Notizen.",
+    "notesUnavailable": "Notizen konnten nicht geladen werden. Erneut versuchen.",
+    "noteInvalid": "Dieses Notizformat wird nicht unterstützt.",
+    "noteNotFound": "Keine passende Einzahlung gefunden.",
+    "notePending": "Pool-Verifizierung noch nicht bereit. Bereite den Pool vor und versuche es erneut.",
+    "noteDuplicate": "Diese Notiz ist bereits gespeichert.",
+    "noteImportFailed": "Notiz konnte nicht importiert werden. Erneut versuchen.",
+    "revealNote": "Für Backup anzeigen",
+    "revealNoteLabel": "Notiz über {{amount}} ETH für Backup anzeigen",
+    "revealPassword": "Bestätige dein Passwort, um diese Notiz anzuzeigen.",
+    "privateNote": "Private Notiz",
+    "hideNote": "Verbergen",
+    "noteAsOfBlock": "Stand: Block {{block}}",
+    "notePhase": {
+      "verified": "Verifizierte Einzahlung",
+      "spent": "Bereits abgehoben",
+      "waiting": "Warten auf Verifizierung",
+      "not-found": "Einzahlung nicht gefunden"
+    },
+    "refreshNotes": "Notizen aktualisieren",
+    "noteRevealFailed": "Notiz konnte nicht angezeigt werden. Prüfe dein Passwort und versuche es erneut.",
+    "noteLimit": "Diese Wallet enthält 128 gespeicherte Notizen. Bewahre diese Notiz in einem sicheren Backup auf."
   }
 }

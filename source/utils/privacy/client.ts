@@ -9,7 +9,7 @@ import {
 import { PrivacyIndexProgress, PrivacyPoolId, PrivacySnapshot } from './types';
 
 export const PRIVACY_SERVICE_URL = 'https://sysnode.info/api/privacy/v1';
-const MAX_SNAPSHOT_BYTES = 75 * 1024 * 1024;
+const MAX_SNAPSHOT_BYTES = 160 * 1024 * 1024;
 const MAX_SCALAR_RPC_BYTES = 64 * 1024;
 // Block replies include every transaction hash even when full objects are off.
 const MAX_BLOCK_RPC_BYTES = 4 * 1024 * 1024;
@@ -17,6 +17,10 @@ const WORD = /^0x[0-9a-f]{64}$/;
 const FIELD = BigInt(
   '21888242871839275222246405745257275088548364400416034343698204186575808495617'
 );
+const isWord = (value: unknown): value is string =>
+  typeof value === 'string' && value.length === 66 && WORD.test(value);
+const isFieldWord = (value: unknown): value is string =>
+  isWord(value) && BigInt(value) < FIELD;
 const ABI = new Interface([
   'function nextIndex() view returns (uint32)',
   'function getLastRoot() view returns (bytes32)',
@@ -62,15 +66,18 @@ export function validateSnapshot(
     data.poolAddress !== pool.address ||
     !Number.isSafeInteger(data.asOfBlockNumber) ||
     data.asOfBlockNumber < pool.deploymentBlock ||
-    !WORD.test(data.asOfBlockHash) ||
-    !WORD.test(data.root) ||
-    BigInt(data.root) >= FIELD ||
+    !isWord(data.asOfBlockHash) ||
+    !isFieldWord(data.root) ||
     !Number.isSafeInteger(data.leafCount) ||
     data.leafCount < 0 ||
     data.leafCount > PRIVACY_MAX_LEAVES ||
     !Array.isArray(data.leaves) ||
     data.leaves.length !== data.leafCount ||
-    data.leaves.some((leaf) => !WORD.test(leaf) || BigInt(leaf) >= FIELD)
+    data.leaves.some((leaf) => !isFieldWord(leaf)) ||
+    !Array.isArray(data.withdrawnNullifiers) ||
+    data.withdrawnNullifiers.length > data.leafCount ||
+    data.withdrawnNullifiers.some((hash) => !isFieldWord(hash)) ||
+    new Set(data.withdrawnNullifiers).size !== data.withdrawnNullifiers.length
   )
     throw new Error('privacy_data_invalid');
   // Project only the protocol fields. In particular, a server-supplied `phase`
@@ -84,6 +91,7 @@ export function validateSnapshot(
     leafCount: data.leafCount,
     root: data.root,
     leaves: data.leaves,
+    withdrawnNullifiers: data.withdrawnNullifiers,
   };
 }
 
@@ -173,7 +181,7 @@ export async function verifySnapshotAnchor(
   snapshot: PrivacySnapshot,
   rpcUrl: string,
   signal: AbortSignal
-): Promise<void> {
+): Promise<{ blockTimestamp: number }> {
   const pool = getPrivacyPool(poolId);
   const url = validatePrivacyRpcUrl(rpcUrl);
   if ((await rpc(url, 'eth_chainId', [], signal)) !== '0x1')
@@ -186,6 +194,19 @@ export async function verifySnapshotAnchor(
     before?.number !== tag
   )
     throw new Error('privacy_anchor_changed');
+  // Timestamp comes from the independently checked block, never Sysnode or
+  // the download clock. The note reader uses it to bound as-of freshness.
+  const timestamp = before.timestamp;
+  if (
+    typeof timestamp !== 'string' ||
+    timestamp.length > 16 ||
+    timestamp.trim() !== timestamp ||
+    !/^0x(?:0|[1-9a-f][0-9a-f]*)$/.test(timestamp)
+  )
+    throw new Error('privacy_rpc_unavailable');
+  const blockTimestamp = Number(BigInt(timestamp)) * 1000;
+  if (!Number.isSafeInteger(blockTimestamp) || blockTimestamp <= 0)
+    throw new Error('privacy_rpc_unavailable');
   const read = async (fn: string) => {
     const result = await rpc(
       url,
@@ -202,7 +223,11 @@ export async function verifySnapshotAnchor(
     read('denomination'),
   ]);
   const after = await block();
-  if (after?.hash !== before.hash || after?.number !== before.number)
+  if (
+    after?.hash !== before.hash ||
+    after?.number !== before.number ||
+    after?.timestamp !== timestamp
+  )
     throw new Error('privacy_anchor_changed');
   if (
     count !== BigInt(snapshot.leafCount) ||
@@ -227,4 +252,5 @@ export async function verifySnapshotAnchor(
     )
   )[0];
   if (known !== true) throw new Error('privacy_snapshot_stale');
+  return { blockTimestamp };
 }

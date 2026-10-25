@@ -1582,6 +1582,33 @@
     "publicDataOnly": "Seules les données publiques du pool sont téléchargées. Votre adresse de portefeuille et vos notes privées ne sont pas envoyées.",
     "savedDeposits": "Dépôts publics enregistrés : {{count}}",
     "verifiedBlock": "Dernier bloc vérifié : {{block}}",
-    "progress": "{{completed}} sur {{total}}"
+    "progress": "{{completed}} sur {{total}}",
+    "yourNotes": "Vos notes",
+    "importNote": "Importer une note",
+    "notesLocal": "Enregistrées dans votre portefeuille chiffré. Le statut peut être retardé.",
+    "noteLabel": "Note",
+    "noteSecret": "Toute personne possédant cette note peut retirer les fonds. Gardez votre sauvegarde privée.",
+    "noNotes": "Aucune note enregistrée.",
+    "notesUnavailable": "Impossible de charger les notes. Réessayez.",
+    "noteInvalid": "Ce format de note n’est pas pris en charge.",
+    "noteNotFound": "Aucun dépôt correspondant trouvé.",
+    "notePending": "La vérification du pool n’est pas prête. Préparez le pool et réessayez.",
+    "noteDuplicate": "Cette note est déjà enregistrée.",
+    "noteImportFailed": "Impossible d’importer la note. Réessayez.",
+    "revealNote": "Afficher pour sauvegarder",
+    "revealNoteLabel": "Afficher la note de {{amount}} ETH pour sauvegarder",
+    "revealPassword": "Confirmez votre mot de passe pour afficher cette note.",
+    "privateNote": "Note privée",
+    "hideNote": "Masquer",
+    "noteAsOfBlock": "Au bloc {{block}}",
+    "notePhase": {
+      "verified": "Dépôt vérifié",
+      "spent": "Déjà retiré",
+      "waiting": "En attente de vérification",
+      "not-found": "Dépôt introuvable"
+    },
+    "refreshNotes": "Actualiser les notes",
+    "noteRevealFailed": "Impossible d’afficher cette note. Vérifiez votre mot de passe et réessayez.",
+    "noteLimit": "Ce portefeuille contient 128 notes enregistrées. Conservez cette note dans une sauvegarde sécurisée."
   }
 }

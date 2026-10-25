@@ -28,13 +28,22 @@ const POOL_ADDRESS = '0x47ce0c6ed5b0ce3d3a51fdb1c52dc66a7c3c2936';
 const DEPLOYMENT_BLOCK = 9117609;
 const BLOCK_NUMBER = 20000000;
 const BLOCK_HASH = '0x' + '42'.repeat(32);
-// Independent fixed-merkle-tree@0.7.3 + circomlibjs@0.1.2 vectors; these are
-// synthetic leaves, not observed mainnet deposits. Never derive the expected
+const BLOCK_TIMESTAMP = toQuantity(Math.floor(Date.now() / 1000) - 900);
+const FUNDED_NOTE = `tornado-eth-1-1-0x${'00'.repeat(62)}`;
+const SPENT_NOTE = `tornado-eth-1-1-0x${'01'.repeat(62)}`;
+const FUNDED_COMMITMENT =
+  '0x17731ee23dee1b3a01f4c667052b7898aee8db579cc49748d8fc798d4e769d58';
+const SPENT_COMMITMENT =
+  '0x2d707d9af99186d8fab88c82455e4af57221d7148440318e2de0039bc6ce7841';
+const SPENT_NULLIFIER =
+  '0x1247b27cdafda5cc981be564e7c1b992b711fc5393c137435574d875714e6638';
+// Independent circomlibjs@0.1.7 Pedersen and MiMC vectors for two synthetic
+// notes; these are not observed mainnet deposits. Never derive the expected
 // root from the snapshot under test or from the RPC fixture's response.
 const TWO_LEAF_ROOT =
-  '0x2a8f5562e5e3f6c807682f10513c97c6e8f44bb90bcb8a7fb76aea8b4c66e3d8';
+  '0x220b4b81baca64b1efe6bbf6725960bfc2781f3af4886dccd44f9f0f8aba0dd2';
 const TWO_LEAF_PAIR =
-  '0x2bcea035a1251603f1ceaf73cd4ae89427c47075bb8e3a944039ff1e3d6d2a6f';
+  '0x27a1f6c5b6b1ebc9ec4f31d830b137d81e689544b611e83486502c85e6c93d55';
 const word = (value: number) => '0x' + value.toString(16).padStart(64, '0');
 const ABI = new Interface([
   'function nextIndex() view returns (uint32)',
@@ -133,7 +142,39 @@ async function readPublicCache(page: Page) {
   );
 }
 
-test('privacy pool preparation is opt-in, independently verified and preserves a good cache on corrupt data', async ({}, info) => {
+async function auditEncryptedNotes(page: Page) {
+  return page.evaluate(
+    (secrets) =>
+      new Promise<{ count: number; encryptedOnly: boolean }>((resolve) => {
+        chrome.storage.local.get(null, (stored) => {
+          const records = Object.entries(stored).filter(([key]) =>
+            key.startsWith('state-private-vault-v1:')
+          );
+          const serialized = JSON.stringify(records);
+          resolve({
+            count: records.length,
+            encryptedOnly:
+              records.every(
+                ([, value]) =>
+                  value?.version === 1 &&
+                  typeof value.ciphertext === 'string' &&
+                  typeof value.nonce === 'string' &&
+                  !('notes' in value)
+              ) && secrets.every((secret) => !serialized.includes(secret)),
+          });
+        });
+      }),
+    [
+      FUNDED_NOTE,
+      SPENT_NOTE,
+      FUNDED_COMMITMENT,
+      SPENT_COMMITMENT,
+      SPENT_NULLIFIER,
+    ]
+  );
+}
+
+test('privacy pool preparation verifies local note imports and preserves a good cache on corrupt data', async ({}, info) => {
   test.setTimeout(180_000);
   expect(info.config.workers).toBe(1);
   expect(info.retry).toBe(0);
@@ -193,8 +234,12 @@ test('privacy pool preparation is opt-in, independently verified and preserves a
   };
 
   try {
-    expect(hashPair('1', '2')).toBe(TWO_LEAF_PAIR);
-    const work = advanceMerkleWork(createMerkleWork(), [word(1), word(2)], 2);
+    expect(hashPair(FUNDED_COMMITMENT, SPENT_COMMITMENT)).toBe(TWO_LEAF_PAIR);
+    const work = advanceMerkleWork(
+      createMerkleWork(),
+      [FUNDED_COMMITMENT, SPENT_COMMITMENT],
+      2
+    );
     expect(work.complete).toBe(true);
     expect(work.root).toBe(TWO_LEAF_ROOT);
     server = await startPrivacyFence();
@@ -301,7 +346,7 @@ test('privacy pool preparation is opt-in, independently verified and preserves a
                 hash: hash(height),
                 parentHash: hash(height - 1),
                 nonce: '0x0000000000000000',
-                timestamp: '0x65000000',
+                timestamp: BLOCK_TIMESTAMP,
                 difficulty: '0x0',
                 gasLimit: '0x1c9c380',
                 gasUsed: '0x0',
@@ -412,7 +457,11 @@ test('privacy pool preparation is opt-in, independently verified and preserves a
                 asOfBlockNumber: BLOCK_NUMBER,
                 asOfBlockHash: BLOCK_HASH,
                 leafCount: 2,
-                leaves: [word(1), word(mode === 'corrupt' ? 3 : 2)],
+                withdrawnNullifiers: [SPENT_NULLIFIER],
+                leaves: [
+                  FUNDED_COMMITMENT,
+                  mode === 'corrupt' ? word(3) : SPENT_COMMITMENT,
+                ],
                 root: TWO_LEAF_ROOT,
               }
         ),
@@ -512,7 +561,7 @@ test('privacy pool preparation is opt-in, independently verified and preserves a
         expect(observations.verified).toMatchObject({
           status: { phase: 'ready', leafCount: 2, blockNumber: BLOCK_NUMBER },
           ready: {
-            leaves: [word(1), word(2)],
+            leaves: [FUNDED_COMMITMENT, SPENT_COMMITMENT],
             root: TWO_LEAF_ROOT,
             asOfBlockHash: BLOCK_HASH,
           },
@@ -556,6 +605,102 @@ test('privacy pool preparation is opt-in, independently verified and preserves a
       }
     );
     await wallet.step(
+      'privacy: notes require verified deposits and use encrypted custody with explicit backup reveal',
+      async () => {
+        const notes = wallet!.page.locator(
+          'section[aria-labelledby="privacy-notes-title"]'
+        );
+        const readsBefore = snapshots.length;
+        const importNote = async (value: string) => {
+          await notes
+            .getByRole('button', { name: en.privacy.importNote, exact: true })
+            .click();
+          await notes
+            .getByRole('textbox', { name: en.privacy.noteLabel, exact: true })
+            .fill(value);
+          await notes
+            .getByRole('button', { name: en.privacy.importNote, exact: true })
+            .click();
+          await expect(notes.locator('#privacy-import-form')).toHaveCount(0);
+        };
+        await importNote(FUNDED_NOTE);
+        await expect(notes.getByRole('listitem')).toHaveCount(1);
+        await expect(notes).toContainText(en.privacy.notePhase.verified);
+        await importNote(FUNDED_NOTE);
+        await expect(notes.getByRole('listitem')).toHaveCount(1);
+        await importNote(SPENT_NOTE);
+        await expect(notes.getByRole('listitem')).toHaveCount(2);
+        await expect(notes).toContainText(en.privacy.notePhase.spent);
+        expect(await auditEncryptedNotes(wallet!.page)).toEqual({
+          count: 1,
+          encryptedOnly: true,
+        });
+        observations.encryptedNotes = await auditEncryptedNotes(wallet!.page);
+
+        await notes
+          .getByRole('button', { name: en.privacy.importNote, exact: true })
+          .click();
+        await notes
+          .getByRole('textbox', { name: en.privacy.noteLabel, exact: true })
+          .fill(`tornado-eth-1-1-0x${'02'.repeat(62)}`);
+        await notes
+          .getByRole('button', { name: en.privacy.importNote, exact: true })
+          .click();
+        await expect(notes.getByRole('alert')).toContainText(
+          en.privacy.noteNotFound
+        );
+        await expect(notes.getByRole('listitem')).toHaveCount(2);
+        await notes
+          .getByRole('button', { name: en.buttons.cancel, exact: true })
+          .click();
+
+        await notes
+          .getByRole('listitem')
+          .filter({ hasText: en.privacy.notePhase.verified })
+          .getByRole('button', {
+            name: en.privacy.revealNoteLabel.replace('{{amount}}', '1'),
+          })
+          .click();
+        const password = notes.getByPlaceholder(en.settings.enterYourPassword);
+        await password.fill('wrong-password');
+        await notes
+          .getByRole('button', { name: en.buttons.confirm, exact: true })
+          .click();
+        await expect(notes).toContainText(en.privacy.noteRevealFailed);
+        await expect(notes.locator('#privacy-revealed-note')).toHaveCount(0);
+        await password.fill(E2E_CONFIG.password);
+        await notes
+          .getByRole('button', { name: en.buttons.confirm, exact: true })
+          .click();
+        await expect(
+          notes.getByRole('textbox', {
+            name: en.privacy.privateNote,
+            exact: true,
+          })
+        ).toHaveValue(FUNDED_NOTE);
+        await notes
+          .getByRole('button', { name: en.privacy.hideNote, exact: true })
+          .click();
+        await expect(notes.locator('#privacy-revealed-note')).toHaveCount(0);
+        expect(snapshots.length).toBe(readsBefore);
+        expect(JSON.stringify(rpcReads)).not.toContain(FUNDED_COMMITMENT);
+        expect(JSON.stringify(rpcReads)).not.toContain(SPENT_NULLIFIER);
+        for (const viewport of [
+          { width: 400, height: 620 },
+          { width: 320, height: 480 },
+        ]) {
+          await wallet!.page.setViewportSize(viewport);
+          await notes.scrollIntoViewIfNeeded();
+          screenshots.push(
+            await wallet!.shot(
+              `private-notes-${viewport.width}x${viewport.height}`
+            )
+          );
+        }
+        await wallet!.page.setViewportSize({ width: 400, height: 620 });
+      }
+    );
+    await wallet.step(
       'privacy: a corrupt leaf fails local verification and retains the previously verified snapshot',
       async () => {
         mode = 'corrupt';
@@ -563,6 +708,15 @@ test('privacy pool preparation is opt-in, independently verified and preserves a
           .getByRole('button', { name: en.privacy.refresh, exact: true })
           .click();
         await expect(poolStatus(wallet!.page)).toContainText(en.privacy.error);
+        const notes = wallet!.page.locator(
+          'section[aria-labelledby="privacy-notes-title"]'
+        );
+        await notes
+          .getByRole('button', { name: en.privacy.refreshNotes, exact: true })
+          .click();
+        await expect(
+          notes.getByText(en.privacy.notePhase.waiting, { exact: true })
+        ).toHaveCount(2);
         await expect(
           wallet!.page.getByRole('button', {
             name: en.privacy.retry,

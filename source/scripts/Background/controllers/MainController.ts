@@ -161,6 +161,10 @@ import {
 import { getNetworkChain } from 'utils/network';
 import { networkRegistrationFingerprint } from 'utils/networkRegistration';
 import { normalizeNftTokenId } from 'utils/nftTokenId';
+import type {
+  IPrivacyNoteReader,
+  IPrivateVaultController,
+} from 'utils/privacy/privateVaultTypes';
 import { blacklistService } from 'utils/security/blacklistService';
 import {
   getSentryCollateralReservations,
@@ -243,6 +247,7 @@ import {
 import { clearProviderCache } from './message-handler/requests';
 import { recordSendCallsBundle } from './message-handler/sendCallsBundles';
 import { PaliEvents, PaliSyscoinEvents } from './message-handler/types';
+import type { IPrivateVaultSession } from './privateVault';
 import {
   CancellablePromises,
   PromiseTargets,
@@ -356,6 +361,8 @@ class MainController {
   private recoveryJournalPending = false;
   private isResettingWallet = false;
   private authenticationMutex = new AsyncMutex();
+  private privateVaultController?: Promise<IPrivateVaultController>;
+  private privateVaultNoteReader?: IPrivacyNoteReader;
   private sentryController: Promise<SentryController> | undefined;
   private ethPropertyMutex = new AsyncMutex();
   private accountLabelMutex = new AsyncMutex();
@@ -1807,6 +1814,99 @@ class MainController {
     ) {
       throw new Error(WALLET_SESSION_CHANGED_ERROR);
     }
+  }
+
+  public setPrivateVaultNoteReader(reader: IPrivacyNoteReader): void {
+    this.privateVaultNoteReader = reader;
+  }
+
+  private capturePrivateVaultSession(): IPrivateVaultSession {
+    if (this.getWalletSetupStatus())
+      throw new Error('privacy_vault_unavailable');
+    const generation = this.walletSessionGeneration;
+    const keyring = this.getActiveKeyring();
+    if (!keyring.isUnlocked()) throw new Error('privacy_vault_locked');
+    return {
+      generation,
+      keyring,
+      assertCurrent: () => {
+        if (this.getWalletSetupStatus())
+          throw new Error('privacy_vault_session_changed');
+        try {
+          this.assertCurrentWalletSession(generation, keyring);
+        } catch {
+          throw new Error('privacy_vault_session_changed');
+        }
+      },
+    };
+  }
+
+  private getPrivateVaultController(): Promise<IPrivateVaultController> {
+    if (!this.privateVaultController) {
+      this.privateVaultController = import(
+        /* webpackChunkName: "private-vault" */ './privateVault'
+      )
+        .then(({ createPrivateVaultController }) =>
+          createPrivateVaultController({
+            captureSession: () => this.capturePrivateVaultSession(),
+            readNote: (identity) =>
+              this.privateVaultNoteReader
+                ? this.privateVaultNoteReader(identity)
+                : Promise.resolve({ phase: 'waiting' }),
+            authenticate: (password, session, reveal) =>
+              this.authenticatePrivateVault(password, session, reveal),
+          })
+        )
+        .catch(() => {
+          this.privateVaultController = undefined;
+          throw new Error('privacy_vault_unavailable');
+        });
+    }
+    return this.privateVaultController;
+  }
+
+  private async usePrivateVault<T>(
+    operation: (vault: IPrivateVaultController) => Promise<T>
+  ): Promise<T> {
+    const session = this.capturePrivateVaultSession();
+    const vault = await this.getPrivateVaultController();
+    session.assertCurrent();
+    const result = await operation(vault);
+    session.assertCurrent();
+    return result;
+  }
+
+  public getPrivateVaultNotes() {
+    return this.usePrivateVault((vault) => vault.getNotes());
+  }
+
+  public importPrivateVaultNote(note: string) {
+    return this.usePrivateVault((vault) => vault.importNote(note));
+  }
+
+  public revealPrivateVaultNote(id: string, password: string) {
+    return this.usePrivateVault((vault) => vault.revealNote(id, password));
+  }
+
+  private authenticatePrivateVault(
+    password: string,
+    session: IPrivateVaultSession,
+    reveal: () => Promise<string>
+  ): Promise<string> {
+    // Reset also takes authentication before persistence. Never acquire these
+    // in the reverse order when a reveal waits for password verification.
+    return this.authenticationMutex.runExclusive(async () => {
+      session.assertCurrent();
+      const result = await this.unlockWithRateLimit(
+        password,
+        session.generation
+      );
+      session.assertCurrent();
+      if (!result.canLogin) throw new Error(INVALID_PASSWORD_ERROR);
+      const note = await reveal();
+      session.assertCurrent();
+      return note;
+    });
   }
 
   private async unlockKeyring(pwd: string, generation: number) {
