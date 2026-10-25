@@ -7,6 +7,7 @@ import path from 'path';
 import en from '../../source/assets/locales/en.json';
 import { E2E_CONFIG } from '../harness/config';
 import { clickClosingPopup } from '../harness/dismissRejectedApproval';
+import { captureForegroundContrast } from '../harness/foregroundContrast';
 import {
   createIsolatedVaultFixture,
   installIsolatedVaultRoutes,
@@ -52,9 +53,9 @@ test('wallet_watchAsset preserves exact ERC1155 quantities and distinct token ID
     [];
   const settlements: { action: string; code?: number; result?: unknown }[] = [];
   const quantityGeometry: {
+    scrollWidth: number;
     tokenId: string;
     width: number;
-    scrollWidth: number;
   }[] = [];
   const deniedWrites: string[] = [];
   let routes:
@@ -381,6 +382,25 @@ test('wallet_watchAsset preserves exact ERC1155 quantities and distinct token ID
             owner: fixture.evmAddresses[0].toLowerCase(),
             tokenId,
           });
+          for (const width of [400, 320]) {
+            await popup.setViewportSize({
+              width,
+              height: width === 320 ? 360 : 620,
+            });
+            await captureForegroundContrast(
+              popup
+                .locator('p')
+                .filter({ hasText: en.send.tokenId })
+                .locator('span'),
+              info,
+              `watch-token-id-${tokenId}-${width}`
+            );
+            await captureForegroundContrast(
+              popup.getByText(QUANTITIES[tokenId], { exact: true }),
+              info,
+              `watch-quantity-${tokenId}-${width}`
+            );
+          }
           quantityGeometry.push({
             tokenId,
             ...(await popup

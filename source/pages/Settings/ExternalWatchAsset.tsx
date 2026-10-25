@@ -18,7 +18,7 @@ import { buildExplorerUrl } from 'utils/strings';
 
 const DETAIL_FIELD_CLASS =
   'flex flex-col pt-2 w-full text-brand-white font-poppins font-thin';
-const DETAIL_VALUE_CLASS = 'text-brand-royalblue text-xs';
+const DETAIL_VALUE_CLASS = 'text-content-secondary text-xs';
 
 const ExternalWatchAsset = () => {
   const { host, ...data } = useQueryData();
@@ -336,7 +336,7 @@ const ExternalWatchAsset = () => {
                         );
                         window.open(explorerUrl, '_blank');
                       }}
-                      className="text-brand-royalblue text-xs hover:text-brand-deepPink100 cursor-pointer underline text-left transition-colors duration-200"
+                      className="text-content-secondary text-xs hover:text-content-primary cursor-pointer underline text-left min-w-0 break-all transition-colors duration-200"
                     >
                       {assetInfo.contractAddress}
                     </button>
@@ -352,7 +352,7 @@ const ExternalWatchAsset = () => {
                   {assetInfo.tokenStandard === 'ERC-1155' && (
                     <p className={DETAIL_FIELD_CLASS}>
                       {t('send.tokenId')}
-                      <span className="text-brand-royalblue text-xs break-all">
+                      <span className="text-content-secondary text-xs break-all">
                         {assetInfo.tokenId}
                       </span>
                     </p>
@@ -360,7 +360,7 @@ const ExternalWatchAsset = () => {
 
                   <p className={DETAIL_FIELD_CLASS}>
                     {t('send.balance')}
-                    <span className="text-brand-royalblue text-xs break-all">
+                    <span className="text-content-secondary text-xs break-all">
                       {assetInfo.tokenStandard === 'ERC-1155'
                         ? assetInfo.rawBalance
                         : assetInfo.tokenStandard === 'ERC-721' &&

@@ -10,6 +10,7 @@ import {
   clickClosingPopup,
   dismissRejectedApproval,
 } from '../harness/dismissRejectedApproval';
+import { captureForegroundContrast } from '../harness/foregroundContrast';
 import {
   createIsolatedVaultFixture,
   installIsolatedVaultRoutes,
@@ -300,6 +301,60 @@ test('watch-asset review tolerates missing market change data and preserves zero
         });
         expect(contractReads).toContain(`${PRICE_ONLY}:balanceOf(address)`);
         expect(contractReads).toContain(`${PRICE_ONLY}:symbol()`);
+        for (const width of [400, 320]) {
+          await popup.setViewportSize({
+            width,
+            height: width === 320 ? 360 : 620,
+          });
+          for (const label of [
+            en.settings.tokenName,
+            en.settings.decimals,
+            en.send.balance,
+            en.settings.tokenSymbol,
+          ]) {
+            const value = popup
+              .locator('p')
+              .filter({ hasText: label })
+              .locator('span')
+              .first();
+            await expect(value).toHaveCount(1);
+            await captureForegroundContrast(
+              value,
+              info,
+              `watch-${label}-${width}`
+            );
+          }
+          const contract = popup.getByRole('button', {
+            name: PRICE_ONLY,
+            exact: true,
+          });
+          const layout = await contract.evaluate((element) => {
+            const parent = element.parentElement!.getBoundingClientRect();
+            const range = document.createRange();
+            range.selectNodeContents(element);
+            return {
+              text: element.textContent,
+              outside: Array.from(range.getClientRects()).some(
+                (rect) =>
+                  rect.left < parent.left - 1 || rect.right > parent.right + 1
+              ),
+            };
+          });
+          expect(layout.text).toBe(PRICE_ONLY);
+          expect(layout.outside).toBe(false);
+          await captureForegroundContrast(
+            contract,
+            info,
+            `watch-contract-default-${width}`
+          );
+          await contract.hover();
+          await captureForegroundContrast(
+            contract,
+            info,
+            `watch-contract-hover-${width}`
+          );
+          await popup.mouse.move(0, 0);
+        }
       }
     );
     await step(

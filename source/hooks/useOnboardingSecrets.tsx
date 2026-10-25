@@ -3,9 +3,15 @@ import React, {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
 } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+
+import {
+  onboardingContinuationPath,
+  readOnboardingContinuation,
+} from 'utils/onboardingContinuation';
 
 type OnboardingSecrets = {
   kind?: 'create' | 'import';
@@ -19,6 +25,7 @@ const OnboardingContext = createContext<{
   beginImport: (phrase: string, recoveryTicket?: string) => void;
   beginRecovery: (recoveryTicket: string) => void;
   clear: () => void;
+  consumeContinuation: () => string | undefined;
   secrets: OnboardingSecrets;
   setCreatedPhrase: (phrase: string) => void;
 } | null>(null);
@@ -34,6 +41,15 @@ export const OnboardingSecretsProvider = ({
   const [secrets, setSecrets] = useState<OnboardingSecrets>({});
   const location = useLocation();
   const navigate = useNavigate();
+  const [initialContinuation] = useState(() =>
+    readOnboardingContinuation(window.location.href)
+  );
+  const continuation = useRef(initialContinuation);
+  const consumeContinuation = useCallback(() => {
+    const pending = continuation.current;
+    continuation.current = undefined;
+    return pending ? onboardingContinuationPath(pending) : undefined;
+  }, []);
   const clear = useCallback(() => setSecrets({}), []);
   const beginCreate = useCallback(
     (password: string) => setSecrets({ kind: 'create', password }),
@@ -58,6 +74,19 @@ export const OnboardingSecretsProvider = ({
   }, []);
 
   useEffect(() => {
+    if (
+      ![
+        '/',
+        '/external.html',
+        '/import',
+        '/external/import',
+        '/create-password',
+        '/create-password-import',
+        '/phrase',
+        '/external/phrase',
+      ].includes(location.pathname)
+    )
+      continuation.current = undefined;
     if (['/import', '/external/import'].includes(location.pathname)) {
       setSecrets((current) =>
         current.recoveryTicket
@@ -107,7 +136,12 @@ export const OnboardingSecretsProvider = ({
           '/external/phrase',
         ].includes(location.pathname)
       ) {
-        navigate('/', { replace: true });
+        navigate(
+          continuation.current
+            ? onboardingContinuationPath(continuation.current, true)
+            : '/',
+          { replace: true }
+        );
       }
     };
     const onVisibility = () => {
@@ -130,6 +164,7 @@ export const OnboardingSecretsProvider = ({
         beginRecovery,
         setCreatedPhrase,
         clear,
+        consumeContinuation,
       }}
     >
       {children}

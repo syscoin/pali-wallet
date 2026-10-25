@@ -986,7 +986,7 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
                             {activeNetwork.currency.toUpperCase()}
                           </Typography.Text>
                           {assetInfo && assetAmount && (
-                            <Typography.Text className="text-brand-royalblue text-xs sm:text-sm font-medium block mt-1">
+                            <Typography.Text className="text-brand-royalbluemedium text-xs sm:text-sm font-medium block mt-1">
                               {assetAmount} {assetInfo.symbol || 'SYSX'}
                             </Typography.Text>
                           )}
@@ -1198,7 +1198,7 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
                             </Typography.Text>
                           )}
                           {input.assetInfo && (
-                            <Typography.Text className="text-brand-royalblue text-xs font-medium block mt-1">
+                            <Typography.Text className="text-brand-royalbluemedium text-xs font-medium block mt-1">
                               {input.assetInfo.value
                                 ? formatSyscoinValue(
                                     input.assetInfo.value.toString(),

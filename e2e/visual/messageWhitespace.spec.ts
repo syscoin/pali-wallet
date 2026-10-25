@@ -152,6 +152,8 @@ for (const method of ['eth_decrypt', 'personal_sign'] as const) {
         for (const [name, plaintext] of [
           ['single-line', SINGLE_LINE],
           ['multiline', MULTILINE],
+          ['human-words', 'Review this public clipboard fixture.'],
+          ['long-token', 'A'.repeat(96)],
         ]) {
           await wallet.step(
             `${name}: review a real ${method} request and cancel`,
@@ -253,6 +255,24 @@ for (const method of ['eth_decrypt', 'personal_sign'] as const) {
                   lineB: lineB >= 0 ? box(lineB, lineB + 6) : null,
                   threeSpaces: spaces >= 0 ? box(spaces, spaces + 3) : null,
                   oneSpace: spaces >= 0 ? box(spaces, spaces + 1) : null,
+                  words: Array.from(
+                    source.matchAll(/[A-Za-z]{4,}/g),
+                    (match) => {
+                      const range = document.createRange();
+                      range.setStart(node, match.index!);
+                      range.setEnd(node, match.index! + match[0].length);
+                      return {
+                        word: match[0],
+                        lines: new Set(
+                          Array.from(range.getClientRects(), (rect) =>
+                            Math.round(rect.top)
+                          )
+                        ).size,
+                      };
+                    }
+                  ),
+                  horizontalOverflow:
+                    element.scrollWidth > element.clientWidth + 1,
                 };
               });
               if (name === 'multiline') {
@@ -283,6 +303,13 @@ for (const method of ['eth_decrypt', 'personal_sign'] as const) {
                 path: screenshot,
                 contentType: 'image/png',
               });
+              if (name === 'human-words') {
+                expect(text.words.every((word) => word.lines === 1)).toBe(true);
+              }
+              if (name === 'long-token') {
+                expect(text.horizontalOverflow).toBe(false);
+                expect(text.source).toBe(plaintext);
+              }
               observations.push({
                 name,
                 viewport,

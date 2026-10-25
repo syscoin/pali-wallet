@@ -3,11 +3,11 @@ import { AbiCoder, Interface, formatUnits, id } from 'ethers';
 
 import en from '../../source/assets/locales/en.json';
 import { E2E_CONFIG } from '../harness/config';
-import { captureForegroundContrast } from '../harness/foregroundContrast';
 import {
   clickClosingPopup,
   dismissRejectedApproval,
 } from '../harness/dismissRejectedApproval';
+import { captureForegroundContrast } from '../harness/foregroundContrast';
 import {
   createIsolatedVaultFixture,
   installIsolatedVaultRoutes,
@@ -239,6 +239,44 @@ test('token approval review restores discarded drafts and shows the edited calld
             exact: true,
           })
           .check();
+        // Human prose keeps whole ordinary words; very long host tokens may wrap.
+        for (const viewport of [
+          { width: 400, height: 620 },
+          { width: 320, height: 360 },
+        ]) {
+          await popup.setViewportSize(viewport);
+          const description = dialog.getByText(
+            `${en.send.allow} ${origin} ${en.send.toWithdraw}:`,
+            { exact: true }
+          );
+          const observations = await description.evaluate((element) => {
+            const text = element.textContent || '';
+            const node = element.firstChild!;
+            const words = ['withdraw', 'spend', 'following', 'amount'];
+            return words.map((word) => {
+              const start = text.indexOf(word);
+              if (start < 0) throw new Error(`Missing ${word}`);
+              const range = document.createRange();
+              range.setStart(node, start);
+              range.setEnd(node, start + word.length);
+              const rects = Array.from(range.getClientRects());
+              return {
+                word,
+                lines: new Set(rects.map((rect) => Math.round(rect.top))).size,
+              };
+            });
+          });
+          await info.attach(`allowance-prose-${viewport.width}`, {
+            body: await popup.screenshot({ animations: 'disabled' }),
+            contentType: 'image/png',
+          });
+          await info.attach(`allowance-prose-geometry-${viewport.width}`, {
+            body: JSON.stringify({ origin, observations }),
+            contentType: 'application/json',
+          });
+          expect(observations.every((word) => word.lines === 1)).toBe(true);
+        }
+        await popup.setViewportSize({ width: 400, height: 620 });
         await input.fill('5');
         await dialog
           .getByRole('button', { name: en.buttons.save, exact: true })

@@ -43,10 +43,13 @@ export const Start = (props: any) => {
   useAppReady();
 
   return (
-    <div className="bg-no-repeat bg-[url('../../../source/assets/all_assets/GET_STARTED2.webp')] min-w-full h-screen !overflow-y-auto overscroll-y-contain login-animated-bg">
+    <div className="bg-no-repeat bg-[url('../../../source/assets/all_assets/GET_STARTED2.webp')] [@media(max-height:499px)]:!bg-none [@media(max-height:499px)]:bg-bkg-1 min-w-full h-screen !overflow-y-auto overscroll-y-contain login-animated-bg">
       {/* Subtle twinkling particles */}
       {[1, 2, 3, 4, 5, 6].map((number) => (
-        <div key={number} className={`particle-${number}`} />
+        <div
+          key={number}
+          className={`particle-${number} [@media(max-height:499px)]:hidden`}
+        />
       ))}
 
       <ImportWalletWarning
