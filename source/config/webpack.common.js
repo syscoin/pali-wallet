@@ -372,6 +372,15 @@ module.exports = {
           name: 'privacy-locale-catalog',
           enforce: true,
         },
+        // The same installed Sentry curve/hash modules serve several lazy
+        // paths. Share identical modules without aliasing dependency versions.
+        sentryCryptoShared: {
+          test: /[\\/]node_modules[\\/]@sidhujag[\\/]sysweb3-sentry[\\/]node_modules[\\/]@noble[\\/]/,
+          chunks: 'async',
+          name: 'sentry-crypto-shared',
+          minChunks: 2,
+          enforce: true,
+        },
         // Share copies used by lazy account/approval routes. Initial worker
         // modules stay static, preserving its separate chunk policy.
         accountReview: {
