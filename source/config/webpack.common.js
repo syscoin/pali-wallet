@@ -293,6 +293,10 @@ module.exports = {
               // A future import still emits them through asset/resource.
               '**/input_success_icon.svg',
               '**/input_error_icon.svg',
+              // Legacy success artwork is unused; current states use inline
+              // icons or faucet-success.svg. Imports still emit these files.
+              '**/successIcon.svg',
+              '**/successIconWhite.svg',
             ],
           },
         },
