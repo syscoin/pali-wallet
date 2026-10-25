@@ -3,8 +3,8 @@ import type { PrivacyPoolId } from './types';
 
 // The background already carries this package's CommonJS arithmetic. Match
 // that entry point so the note chunk does not add a second ESM copy.
-// eslint-disable-next-line @typescript-eslint/no-var-requires
 const edwards: typeof import('@noble/curves/abstract/edwards').edwards =
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
   require('@noble/curves/abstract/edwards').edwards;
 
 const ORDER =
