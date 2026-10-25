@@ -170,6 +170,11 @@ const mockMasterController: jest.Mocked<IMasterController> = {
     resumePending: jest.fn(async () => undefined),
     start: jest.fn(),
   },
+  privateVault: {
+    getNotes: jest.fn(),
+    importNote: jest.fn(),
+    revealNote: jest.fn(),
+  },
   // Mock wallet methods used in handleListeners
   wallet: {
     setActiveNetwork: jest.fn(),

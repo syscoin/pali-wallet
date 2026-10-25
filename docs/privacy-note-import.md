@@ -5,6 +5,13 @@ notes for the four pinned Ethereum mainnet pools. It is not an import screen or
 an assertion that a note is funded. The private-vault storage and import UI are
 still being integrated.
 
+Classic is not advertised as post-quantum privacy. Its public Pedersen
+commitments and nullifiers permit additional candidate-linking attacks after
+an elliptic-curve discrete-log break; this does not imply instant or unique
+tracing of every historical withdrawal. Local AES-GCM note storage avoids the
+optional ECC-encrypted onchain-backup mechanism but does not repair the public
+protocol. See [L2BEAT's future-adversary assessment](https://l2beat.com/privacy/projects/tornado-cash#privacy).
+
 `identifyClassicNote` requires the complete canonical note structure, the
 supported denomination and network, and exactly 62 bytes of preimage. Surrounding
 paste whitespace and hex letter case are accepted. It derives the commitment

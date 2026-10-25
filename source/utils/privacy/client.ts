@@ -173,7 +173,7 @@ export async function verifySnapshotAnchor(
   snapshot: PrivacySnapshot,
   rpcUrl: string,
   signal: AbortSignal
-): Promise<void> {
+): Promise<{ blockTimestamp: number }> {
   const pool = getPrivacyPool(poolId);
   const url = validatePrivacyRpcUrl(rpcUrl);
   if ((await rpc(url, 'eth_chainId', [], signal)) !== '0x1')
@@ -186,6 +186,19 @@ export async function verifySnapshotAnchor(
     before?.number !== tag
   )
     throw new Error('privacy_anchor_changed');
+  // Timestamp comes from the independently checked block, never Sysnode or
+  // the download clock. The note reader uses it to bound as-of freshness.
+  const timestamp = before.timestamp;
+  if (
+    typeof timestamp !== 'string' ||
+    timestamp.length > 16 ||
+    timestamp.trim() !== timestamp ||
+    !/^0x(?:0|[1-9a-f][0-9a-f]*)$/.test(timestamp)
+  )
+    throw new Error('privacy_rpc_unavailable');
+  const blockTimestamp = Number(BigInt(timestamp)) * 1000;
+  if (!Number.isSafeInteger(blockTimestamp) || blockTimestamp <= 0)
+    throw new Error('privacy_rpc_unavailable');
   const read = async (fn: string) => {
     const result = await rpc(
       url,
@@ -202,7 +215,11 @@ export async function verifySnapshotAnchor(
     read('denomination'),
   ]);
   const after = await block();
-  if (after?.hash !== before.hash || after?.number !== before.number)
+  if (
+    after?.hash !== before.hash ||
+    after?.number !== before.number ||
+    after?.timestamp !== timestamp
+  )
     throw new Error('privacy_anchor_changed');
   if (
     count !== BigInt(snapshot.leafCount) ||
@@ -227,4 +244,5 @@ export async function verifySnapshotAnchor(
     )
   )[0];
   if (known !== true) throw new Error('privacy_snapshot_stale');
+  return { blockTimestamp };
 }

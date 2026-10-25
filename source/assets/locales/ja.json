@@ -1582,6 +1582,33 @@
     "publicDataOnly": "ダウンロードするのはプールの公開データのみです。ウォレットアドレスや秘密のノートは送信されません。",
     "savedDeposits": "保存済みの公開入金数：{{count}}",
     "verifiedBlock": "最後に検証したブロック：{{block}}",
-    "progress": "{{total}}件中{{completed}}件"
+    "progress": "{{total}}件中{{completed}}件",
+    "yourNotes": "保存したノート",
+    "importNote": "ノートをインポート",
+    "notesLocal": "暗号化されたウォレットに保存されます。状態の反映には遅れが生じる場合があります。",
+    "noteLabel": "ノート",
+    "noteSecret": "このノートを持つ人は誰でも出金できます。バックアップは秘密に保管してください。",
+    "noNotes": "保存されたノートはありません。",
+    "notesUnavailable": "ノートを読み込めませんでした。再試行してください。",
+    "noteInvalid": "このノート形式はサポートされていません。",
+    "noteNotFound": "一致する入金が見つかりません。",
+    "notePending": "プールの検証が完了していません。プールを準備して再試行してください。",
+    "noteDuplicate": "このノートは保存済みです。",
+    "noteImportFailed": "ノートをインポートできませんでした。再試行してください。",
+    "revealNote": "バックアップ用に表示",
+    "revealNoteLabel": "{{amount}} ETHのノートをバックアップ用に表示",
+    "revealPassword": "このノートを表示するにはパスワードを確認してください。",
+    "privateNote": "プライベートノート",
+    "hideNote": "非表示",
+    "noteAsOfBlock": "ブロック{{block}}時点",
+    "notePhase": {
+      "verified": "検証済みの入金",
+      "spent": "出金済み",
+      "waiting": "検証待ち",
+      "not-found": "入金が見つかりません"
+    },
+    "refreshNotes": "ノートを更新",
+    "noteRevealFailed": "ノートを表示できませんでした。パスワードを確認して再試行してください。",
+    "noteLimit": "このウォレットには128件のノートが保存されています。このノートは安全なバックアップに保管してください。"
   }
 }

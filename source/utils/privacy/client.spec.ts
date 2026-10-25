@@ -40,8 +40,10 @@ function mockRpc(
   options: {
     chain?: string;
     changedHash?: boolean;
+    changedTimestamp?: boolean;
     count?: number;
     expired?: boolean;
+    timestamp?: unknown;
     wrongId?: boolean;
   } = {}
 ) {
@@ -54,6 +56,12 @@ function mockRpc(
       headers++;
       result = {
         number: toQuantity(snapshot.asOfBlockNumber),
+        timestamp:
+          options.changedTimestamp && headers > 1
+            ? '0x65000001'
+            : Object.prototype.hasOwnProperty.call(options, 'timestamp')
+            ? options.timestamp
+            : '0x65000000',
         hash:
           options.changedHash && headers > 1
             ? hash(100)
@@ -171,7 +179,11 @@ test('declared oversized and invalid JSON responses are refused', async () => {
 
 test('independently checks block hash, leaf count, pool parameters and accepted root', async () => {
   const fetch = mockRpc();
-  await verifySnapshotAnchor(id, snapshot, 'https://rpc.example/', signal());
+  expect(
+    await verifySnapshotAnchor(id, snapshot, 'https://rpc.example/', signal())
+  ).toEqual({
+    blockTimestamp: Number(BigInt('0x65000000')) * 1000,
+  });
   expect(
     fetch.mock.calls.every(([url]) => url === 'https://rpc.example/')
   ).toBe(true);
@@ -200,3 +212,32 @@ test.each([
     ).rejects.toThrow(error);
   }
 );
+
+test.each([
+  undefined,
+  null,
+  1700000000,
+  '',
+  '0x',
+  '0x0',
+  '0x01',
+  '0xABC',
+  '0x65000000\n',
+  '0x65000000 ',
+  '0x20000000000000',
+])(
+  'rejects malformed block timestamps instead of inventing freshness: %p',
+  async (timestamp) => {
+    mockRpc({ timestamp });
+    await expect(
+      verifySnapshotAnchor(id, snapshot, 'https://rpc.example/', signal())
+    ).rejects.toThrow('privacy_rpc_unavailable');
+  }
+);
+
+test('a changed timestamp at the same block/hash invalidates its anchor', async () => {
+  mockRpc({ changedTimestamp: true });
+  await expect(
+    verifySnapshotAnchor(id, snapshot, 'https://rpc.example/', signal())
+  ).rejects.toThrow('privacy_anchor_changed');
+});
