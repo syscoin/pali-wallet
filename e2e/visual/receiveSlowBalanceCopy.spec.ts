@@ -892,7 +892,7 @@ for (const viewport of [
           expect(observations.released.paint.glyphClearOfStatus).toBe(true);
           expect(observations.held.paint.glyphClearOfStatus).toBe(true);
           expect(observations.visibleSlowStatus.metadata.position).toBe(
-            'static'
+            'relative'
           );
           expect(
             observations.copyAfterStatusReveal.paint.glyphClearOfStatus
