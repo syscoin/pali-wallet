@@ -206,7 +206,7 @@ const ExternalWatchAsset = () => {
 
               <p className="text-sm text-gray-400 mb-6">{t(formatError)}</p>
 
-              <div className="text-xs text-gray-500 mb-6 p-4 bg-gray-800/50 rounded-lg">
+              <div className="text-xs text-gray-400 mb-6 p-4 bg-gray-800/50 rounded-lg">
                 <p className="mb-2">{t('components.expectedFormat')}</p>
                 <code className="text-green-400">
                   {`// ERC-20 Token
@@ -250,7 +250,7 @@ const ExternalWatchAsset = () => {
                   : assetError}
               </p>
 
-              <div className="text-xs text-gray-500 mb-6 p-4 bg-gray-800/50 rounded-lg">
+              <div className="text-xs text-gray-400 mb-6 p-4 bg-gray-800/50 rounded-lg">
                 <p>{t('components.pleaseVerifyThat')}</p>
                 <ul className="text-left mt-2 space-y-1">
                   <li>{t('components.contractAddressCorrect')}</li>

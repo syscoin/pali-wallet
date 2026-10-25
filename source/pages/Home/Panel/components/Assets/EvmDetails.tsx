@@ -233,13 +233,13 @@ export const EvmAssetDetails = ({
                   href={`https://www.coingecko.com/en/coins/${coinGeckoId}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-brand-royalblue font-medium hover:text-brand-deepPink100 transition-colors duration-200 flex items-center gap-1"
+                  className="text-brand-royalbluemedium font-medium hover:text-brand-deepPink100 transition-colors duration-200 flex items-center gap-1"
                 >
                   #{tokenData.market_cap_rank}
                   <ExternalLinkIcon size={12} />
                 </a>
               ) : (
-                <span className="text-brand-royalblue font-medium">
+                <span className="text-brand-royalbluemedium font-medium">
                   #{tokenData.market_cap_rank}
                 </span>
               )}
@@ -399,7 +399,7 @@ export const EvmAssetDetails = ({
                   returnContext
                 );
               }}
-              className="w-full py-2 px-4 bg-brand-royalblue bg-opacity-20 text-brand-royalblue text-sm font-medium rounded-lg hover:bg-opacity-30 transition-all duration-200 flex items-center justify-center gap-2"
+              className="w-full py-2 px-4 bg-brand-royalblue bg-opacity-20 text-brand-royalbluemedium text-sm font-medium rounded-lg hover:bg-opacity-30 hover:text-brand-white transition-all duration-200 flex items-center justify-center gap-2"
               aria-label={t('send.viewCollectionItems')}
             >
               <Icon name="eye" size={16} />

@@ -8,6 +8,7 @@ import path from 'path';
 
 import en from '../../source/assets/locales/en.json';
 import { E2E_CONFIG } from '../harness/config';
+import { captureForegroundContrast } from '../harness/foregroundContrast';
 import {
   clickClosingPopup,
   dismissRejectedApproval,
@@ -348,6 +349,14 @@ for (const method of ['eth_decrypt', 'personal_sign'] as const) {
                   exact: true,
                 });
                 await expect(reveal).toBeEnabled();
+                await popup.mouse.move(0, 0);
+                await captureForegroundContrast(
+                  reveal.getByText(en.transactions.decryptMessage, {
+                    exact: true,
+                  }),
+                  info,
+                  `decrypt-action-${name}-${viewport.width}`
+                );
                 await reveal.click();
               }
               const preview =

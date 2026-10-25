@@ -115,6 +115,7 @@ import {
   IWatchAssetTokenProps,
   ISysAssetMetadata,
   ITokenDetails,
+  INftTokenIdsResult,
   WatchAssetType,
 } from 'types/tokens';
 import { ICustomRpcParams, IDecodedTx } from 'types/transactions';
@@ -9731,12 +9732,18 @@ class MainController {
     contractAddress: string,
     ownerAddress: string,
     tokenStandard: 'ERC-721' | 'ERC-1155'
-  ): Promise<{ balance: number; tokenId: string }[]> {
-    return this.evmAssetsController.fetchNftTokenIds(
+  ): Promise<INftTokenIdsResult> {
+    const result = await this.evmAssetsController.fetchNftTokenIds(
       contractAddress,
       ownerAddress,
       tokenStandard
     );
+    // Chrome's JSON messaging drops custom properties attached to arrays.
+    return {
+      tokens: result,
+      hasMore: result.hasMore === true,
+      requiresManualEntry: result.requiresManualEntry === true,
+    };
   }
 
   /**

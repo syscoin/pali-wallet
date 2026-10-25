@@ -455,7 +455,7 @@ export const SyscoinImport: React.FC = () => {
             <p>{t('settings.apiConnectionError')}</p>
             <button
               type="button"
-              className="mt-2 min-h-11 px-2 text-brand-royalblue underline"
+              className="mt-2 min-h-11 px-2 text-brand-royalbluemedium underline"
               disabled={isLoadingOwned}
               onClick={loadOwnedTokens}
             >

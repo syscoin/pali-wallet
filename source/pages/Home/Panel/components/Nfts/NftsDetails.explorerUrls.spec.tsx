@@ -62,7 +62,13 @@ beforeEach(() => {
   mockEmitter.mockImplementation(async (methods: string[], args: any[]) => {
     expect(methods).toEqual(['wallet', 'fetchNftTokenIds']);
     expect(args).toEqual([CONTRACT, OWNER, 'ERC-721']);
-    return Object.assign([{ tokenId: '7', balance: 1 }], { hasMore: true });
+    return JSON.parse(
+      JSON.stringify({
+        tokens: [{ tokenId: '7', balance: 1 }],
+        hasMore: true,
+        requiresManualEntry: false,
+      })
+    );
   });
   jest.spyOn(window, 'open').mockReturnValue(null);
 });

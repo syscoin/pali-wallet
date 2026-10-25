@@ -2938,7 +2938,7 @@ const SmartAccountPolicy = () => {
           {t(
             failed
               ? 'settings.smartAccountMetadataLoadFailed'
-              : 'common.loading'
+              : 'buttons.loading'
           )}
         </p>
         {failed && (

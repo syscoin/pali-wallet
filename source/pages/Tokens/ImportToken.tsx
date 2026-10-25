@@ -907,7 +907,7 @@ export const ImportToken: React.FC = () => {
             <p>{t('settings.apiConnectionError')}</p>
             {/* SYSCOIN: Retry only on user action; the API cooldown still applies. */}
             <button
-              className="mt-2 text-brand-royalblue underline"
+              className="mt-2 text-brand-royalbluemedium underline"
               onClick={loadOwnedTokens}
               type="button"
             >

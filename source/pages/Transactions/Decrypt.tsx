@@ -241,7 +241,7 @@ const Decrypt: React.FC<ISign> = () => {
                 ) : (
                   <>
                     <LockFilled className="text-lg text-brand-royalblue" />
-                    <span className="text-xs text-brand-royalblue whitespace-nowrap">
+                    <span className="text-xs text-brand-royalbluemedium whitespace-nowrap">
                       {t('transactions.decryptMessage')}
                     </span>
                   </>

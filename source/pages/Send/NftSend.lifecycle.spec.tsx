@@ -365,10 +365,22 @@ describe('NFT send lookup lifetime', () => {
     render(<SendEth />);
     selectCollection('COLLA');
     selectCollection('COLLB');
-    await act(async () => second.resolve(ownedReply('22')));
+    await act(async () =>
+      second.resolve({
+        tokens: ownedReply('22'),
+        hasMore: false,
+        requiresManualEntry: false,
+      })
+    );
     expect(tokenInput().value).toBe('22');
     expect(screen.getByRole('button', { name: '#22' })).toBeTruthy();
-    await act(async () => first.resolve(ownedReply('11')));
+    await act(async () =>
+      first.resolve({
+        tokens: ownedReply('11'),
+        hasMore: false,
+        requiresManualEntry: false,
+      })
+    );
     expect(tokenInput().value).toBe('22');
     expect(screen.queryByRole('button', { name: '#11' })).toBeNull();
     expect(screen.getByRole('button', { name: '#22' })).toBeTruthy();
@@ -387,13 +399,25 @@ describe('NFT send lookup lifetime', () => {
     render(<SendEth />);
     selectCollection('COLLA');
     selectCollection('COLLB');
-    await act(async () => first.resolve(ownedReply('11')));
+    await act(async () =>
+      first.resolve({
+        tokens: ownedReply('11'),
+        hasMore: false,
+        requiresManualEntry: false,
+      })
+    );
     const loadingInput = screen.getByPlaceholderText(
       'networkConnection.loadingNfts'
     ) as HTMLInputElement;
     expect(loadingInput.disabled).toBe(true);
     expect(loadingInput.value).toBe('');
-    await act(async () => second.resolve(ownedReply('22')));
+    await act(async () =>
+      second.resolve({
+        tokens: ownedReply('22'),
+        hasMore: false,
+        requiresManualEntry: false,
+      })
+    );
     expect(tokenInput().value).toBe('22');
   });
 
@@ -401,7 +425,12 @@ describe('NFT send lookup lifetime', () => {
     const first = deferred();
     const second = deferred();
     mockEmitter.mockImplementation(([, method], args) => {
-      if (method === 'fetchNftTokenIds') return Promise.resolve([]);
+      if (method === 'fetchNftTokenIds')
+        return Promise.resolve({
+          tokens: [],
+          hasMore: false,
+          requiresManualEntry: true,
+        });
       if (method === 'verifyERC721Ownership')
         return args[2][0] === '11' ? first.promise : second.promise;
       return new Promise(() => undefined);
@@ -459,7 +488,11 @@ describe('NFT send lookup lifetime', () => {
   it('uses the current enumeration and manual ownership reply normally', async () => {
     mockEmitter.mockImplementation(([, method], args) => {
       if (method === 'fetchNftTokenIds')
-        return Promise.resolve(ownedReply('11'));
+        return Promise.resolve({
+          tokens: ownedReply('11'),
+          hasMore: false,
+          requiresManualEntry: false,
+        });
       if (method === 'verifyERC721Ownership')
         return Promise.resolve(ownedReply(args[2][0]));
       return new Promise(() => undefined);
@@ -498,7 +531,13 @@ describe('NFT send lookup lifetime', () => {
       type: KeyringAccountType.HDAccount,
     };
     view.rerender(<SendEth />);
-    await act(async () => first.resolve(ownedReply('11')));
+    await act(async () =>
+      first.resolve({
+        tokens: ownedReply('11'),
+        hasMore: false,
+        requiresManualEntry: false,
+      })
+    );
     expect(screen.queryByPlaceholderText('send.enterTokenId')).toBeNull();
     expect(screen.queryByRole('button', { name: '#11' })).toBeNull();
     expect(
@@ -545,7 +584,12 @@ describe('NFT send lookup lifetime', () => {
   it('does not show old ownership while the newly typed token waits for its lookup', async () => {
     const first = deferred();
     mockEmitter.mockImplementation(([, method]) => {
-      if (method === 'fetchNftTokenIds') return Promise.resolve([]);
+      if (method === 'fetchNftTokenIds')
+        return Promise.resolve({
+          tokens: [],
+          hasMore: false,
+          requiresManualEntry: true,
+        });
       if (method === 'verifyERC721Ownership') return first.promise;
       return new Promise(() => undefined);
     });
@@ -565,7 +609,12 @@ describe('NFT send lookup lifetime', () => {
     const first = deferred();
     const second = deferred();
     mockEmitter.mockImplementation(([, method], args) => {
-      if (method === 'fetchNftTokenIds') return Promise.resolve([]);
+      if (method === 'fetchNftTokenIds')
+        return Promise.resolve({
+          tokens: [],
+          hasMore: false,
+          requiresManualEntry: true,
+        });
       if (method === 'verifyERC721Ownership')
         return args[2][0] === '11' ? first.promise : second.promise;
       return new Promise(() => undefined);
@@ -586,7 +635,12 @@ describe('NFT send lookup lifetime', () => {
 
   it('keeps the current no-ownership response visible', async () => {
     mockEmitter.mockImplementation(([, method]) => {
-      if (method === 'fetchNftTokenIds') return Promise.resolve([]);
+      if (method === 'fetchNftTokenIds')
+        return Promise.resolve({
+          tokens: [],
+          hasMore: false,
+          requiresManualEntry: true,
+        });
       if (method === 'verifyERC721Ownership')
         return Promise.resolve(ownedReply('22', 0));
       return new Promise(() => undefined);
@@ -633,7 +687,11 @@ describe('NFT send lookup lifetime', () => {
     const manual = deferred();
     mockEmitter.mockImplementation(([, method]) => {
       if (method === 'fetchNftTokenIds')
-        return Promise.resolve(ownedReply('11'));
+        return Promise.resolve({
+          tokens: ownedReply('11'),
+          hasMore: false,
+          requiresManualEntry: false,
+        });
       if (method === 'verifyERC721Ownership') return manual.promise;
       return new Promise(() => undefined);
     });

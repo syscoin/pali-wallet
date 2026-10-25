@@ -26,7 +26,7 @@ import {
   selectValidEnsCache,
 } from 'state/vault/selectors';
 import { ENS_CACHE_TTL_MS } from 'state/vaultGlobal';
-import { ITokenEthProps } from 'types/tokens';
+import { ITokenEthProps, INftTokenIdsResult } from 'types/tokens';
 import {
   findEvmAddressPoisoningCollision,
   getTrustedEvmRecipients,
@@ -668,23 +668,21 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                   activeAccount.address,
                   getAsset.tokenStandard || 'ERC-721',
                 ]
-              )) as { balance: number; tokenId: string }[] & {
-                hasMore?: boolean;
-                requiresManualEntry?: boolean;
-              };
+              )) as INftTokenIdsResult;
 
               if (!current()) return;
-              setNftTokenIds(result || []);
+              const tokens = result?.tokens || [];
+              setNftTokenIds(tokens);
 
               // Auto-select first token if only one
-              if (result && result.length === 1) {
-                setSelectedNftTokenId(result[0].tokenId);
+              if (tokens.length === 1) {
+                setSelectedNftTokenId(tokens[0].tokenId);
                 // Also set it in the form
-                form.setFieldValue('nftTokenId', result[0].tokenId);
-                if (result[0].balance > 0)
+                form.setFieldValue('nftTokenId', tokens[0].tokenId);
+                if (tokens[0].balance > 0)
                   ownedNftRef.current = nftOwnershipKey(
                     getAsset.contractAddress,
-                    result[0].tokenId
+                    tokens[0].tokenId
                   );
               }
             } catch {
@@ -1895,7 +1893,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                             {renderVerificationSpinner(
                               'animate-spin h-3 w-3 text-brand-royalblue'
                             )}
-                            <p className="text-brand-royalblue text-[10px]">
+                            <p className="text-brand-royalbluemedium text-[10px]">
                               {t('send.verifyingBalance')}
                             </p>
                           </>
@@ -1906,7 +1904,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                             </p>
                             <button
                               type="button"
-                              className="text-brand-royalblue text-[10px] underline"
+                              className="text-brand-royalbluemedium text-[10px] underline"
                               onClick={() => {
                                 if (isCurrentForm())
                                   setSelectedAsset((asset) =>
@@ -2023,7 +2021,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                 ) && (
                   <div className="mt-2">
                     {isVerifyingTokenId ? (
-                      <p className="text-xs text-brand-royalblue flex items-center justify-center">
+                      <p className="text-xs text-brand-royalbluemedium flex items-center justify-center">
                         {renderVerificationSpinner(
                           'animate-spin -ml-1 mr-2 h-3 w-3 text-brand-royalblue'
                         )}

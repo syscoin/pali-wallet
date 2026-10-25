@@ -32,7 +32,7 @@ export const AssetMarketLinks = ({
                   href={`https://www.coingecko.com/en/categories/${categorySlug}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="px-2 py-1 bg-brand-royalblue bg-opacity-20 text-brand-royalblue text-xs rounded hover:bg-opacity-30 transition-all duration-200 flex items-center gap-1 group"
+                  className="px-2 py-1 bg-brand-royalblue bg-opacity-20 text-brand-royalbluemedium text-xs rounded hover:bg-opacity-30 hover:text-brand-white transition-all duration-200 flex items-center gap-1 group"
                 >
                   {category}
                   <ExternalLinkIcon

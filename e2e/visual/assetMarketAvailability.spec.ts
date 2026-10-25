@@ -6,6 +6,7 @@ import path from 'path';
 
 import en from '../../source/assets/locales/en.json';
 import { E2E_CONFIG } from '../harness/config';
+import { captureForegroundContrast } from '../harness/foregroundContrast';
 import {
   createIsolatedVaultFixture,
   installIsolatedVaultRoutes,
@@ -310,6 +311,18 @@ async function marketAvailability(
           name: categories[0],
           exact: true,
         });
+        await captureForegroundContrast(
+          first,
+          info,
+          'category-' + symbol + '-default'
+        );
+        await first.hover();
+        await captureForegroundContrast(
+          first,
+          info,
+          'category-' + symbol + '-hover'
+        );
+        await page.mouse.move(0, 0);
         // Traverse the actual browser tab order; do not synthesize focus or
         // activate external links. Focus must also scroll each link into view.
         for (let tabs = 0; tabs < 40; tabs += 1) {
@@ -438,6 +451,9 @@ async function marketAvailability(
               })
           )
           .toBe(1);
+        const rank = page.getByText(/^#\d+$/);
+        if (await rank.count())
+          await captureForegroundContrast(rank, info, 'market-rank');
         if (categoryCounts)
           await checkVisibleCategories(categoryCounts[0], 'COMPLETE');
         await info.attach('complete-market-details', {
@@ -445,6 +461,21 @@ async function marketAvailability(
           contentType: 'image/png',
         });
         expect(pageErrors).toEqual([]);
+        const neutralClose = page
+          .getByRole('button', { name: en.buttons.close, exact: true })
+          .filter({ hasText: en.buttons.close });
+        await captureForegroundContrast(
+          neutralClose,
+          info,
+          'market-close-default'
+        );
+        await neutralClose.hover();
+        await captureForegroundContrast(
+          neutralClose,
+          info,
+          'market-close-hover'
+        );
+        await page.mouse.move(0, 0);
         await page
           .getByRole('button', { name: en.buttons.close, exact: true })
           .filter({ hasText: en.buttons.close })

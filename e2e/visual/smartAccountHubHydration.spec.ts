@@ -235,10 +235,23 @@ for (const width of [400, 320]) {
             ),
           });
           await policy.scrollIntoViewIfNeeded();
+          fixture.armBarrier();
           await policy.click();
           await expect(wallet!.page).toHaveURL(
             /#\/settings\/account\/smart-account-policy$/
           );
+          await fixture.waitForRead(1);
+          await expect(wallet!.page.getByRole('status')).toHaveText(
+            en.buttons.loading
+          );
+          await info.attach(`policy-loading-${width}`, {
+            body: await wallet!.page.screenshot({ animations: 'disabled' }),
+            contentType: 'image/png',
+          });
+          fixture.releaseAll();
+          await expect(
+            wallet!.page.getByText(en.buttons.loading, { exact: true })
+          ).toHaveCount(0);
           await expect
             .poll(async () => (await snapshot()).isDeployed)
             .toBe(true);
@@ -287,6 +300,7 @@ for (const width of [400, 320]) {
       expect(fixture.audit.deniedWrites).toEqual([]);
       status = 'passed';
     } finally {
+      fixture.releaseAll();
       try {
         await wallet?.dispose(status);
       } finally {

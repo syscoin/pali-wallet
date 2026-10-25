@@ -4,6 +4,7 @@ import fs from 'fs';
 
 import en from '../../source/assets/locales/en.json';
 import { E2E_CONFIG } from '../harness/config';
+import { captureForegroundContrast } from '../harness/foregroundContrast';
 import {
   createIsolatedVaultFixture,
   installIsolatedVaultRoutes,
@@ -245,6 +246,13 @@ for (const width of [320, 400]) {
             }
             expect(marketReads).toBe(1);
             expect(routes!.deniedWrites).toEqual([]);
+            const rank = page.getByText(/^#\d+$/);
+            if (await rank.count())
+              await captureForegroundContrast(
+                rank,
+                info,
+                'spt-market-rank-' + width
+              );
             await close.click();
             await expect(page).toHaveURL(/#\/tokens\/add/);
           } finally {
