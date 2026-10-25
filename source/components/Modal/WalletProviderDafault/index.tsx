@@ -42,7 +42,7 @@ export const WalletProviderDefaultModal = () => {
         }
       }}
       aria-hidden={isNotVisible}
-      className="fixed left-0 bottom-0 z-40 bg-brand-blue400 flex"
+      className="fixed left-0 bottom-0 z-40 bg-brand-blue400 flex aria-hidden:pointer-events-none"
       style={containerStyleAnimation.style}
       animate={containerStyleAnimation.animation}
     >
