@@ -115,20 +115,6 @@
       "reason": "Percentage and 24-hour market interval units, not an untranslated English sentence."
     },
     {
-      "file": "source/pages/Home/Panel/components/Assets/AssetMarketLinks.tsx",
-      "kind": "prop:alt",
-      "text": "CoinGecko",
-      "count": 1,
-      "reason": "Proper name of the linked market-data service in its logo alternative text."
-    },
-    {
-      "file": "source/pages/Home/Panel/components/Assets/EvmDetails.tsx",
-      "kind": "prop:alt",
-      "text": "CoinGecko",
-      "count": 1,
-      "reason": "Proper market-data service name for the CoinGecko logo alternative text."
-    },
-    {
       "file": "source/pages/Home/Panel/components/Assets/EvmDetails.tsx",
       "kind": "jsx-text",
       "text": "CoinGecko",
@@ -141,13 +127,6 @@
       "text": "% (24h)",
       "count": 1,
       "reason": "Percentage and 24-hour market interval units beside the numeric price change."
-    },
-    {
-      "file": "source/pages/Home/Panel/components/Assets/SyscoinDetails.tsx",
-      "kind": "prop:alt",
-      "text": "CoinGecko",
-      "count": 1,
-      "reason": "Proper name of the CoinGecko market-data logo, not a description or instruction."
     },
     {
       "file": "source/pages/Home/Panel/components/Assets/SyscoinDetails.tsx",

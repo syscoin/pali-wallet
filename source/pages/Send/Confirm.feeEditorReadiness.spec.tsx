@@ -176,6 +176,7 @@ afterEach(() => {
       [
         'getFeeDataWithDynamicMaxPriorityFeePerGas',
         'getTxGasLimit',
+        'getFreshNativeEvmGasLimit',
         'refreshActiveAccountBalances',
       ].includes(path.at(-1))
     )
@@ -194,11 +195,23 @@ function deferred() {
 function prepare(quoteCount = 1) {
   const quotes = Array.from({ length: quoteCount }, deferred);
   let nextQuote = 0;
-  mockEmitter.mockImplementation((path: string[]) => {
+  mockEmitter.mockImplementation((path: string[], params: any[] = []) => {
     const method = path.at(-1);
     if (method === 'getFeeDataWithDynamicMaxPriorityFeePerGas')
       return quotes[nextQuote++].promise;
     if (method === 'getTxGasLimit') return Promise.resolve(21000);
+    if (method === 'getFreshNativeEvmGasLimit') {
+      expect(params).toEqual([
+        {
+          data: '0x',
+          from: mockLocation.state.tx.sender,
+          to: mockLocation.state.tx.receivingAddress,
+          value: '0x0de0b6b3a7640000',
+        },
+        mockScope,
+      ]);
+      return Promise.resolve(21000);
+    }
     if (method === 'refreshActiveAccountBalances')
       return Promise.resolve({ nativeBalance: '100' });
     throw new Error(`Unexpected controller call: ${path.join('.')}`);
@@ -257,6 +270,11 @@ it.each(['rejected quote', 'zero maximum fee'])(
     expect(edit()).toBeDisabled();
     await resolveQuote(retry);
     await waitFor(() => expect(edit()).toBeEnabled());
+    expect(
+      mockEmitter.mock.calls.filter(
+        ([path]) => path.at(-1) === 'getFreshNativeEvmGasLimit'
+      )
+    ).toHaveLength(1);
     await act(async () => fireEvent.click(edit()));
     const dialog = within(screen.getByRole('dialog'));
     expect(dialog.getByPlaceholderText('send.maxFee (GWEI)')).toHaveValue(3);
