@@ -11,11 +11,12 @@ interface IPageLoadingOverlayProps {
 
 export const MAX_BLOCKING_LOADING_MS = 2000;
 
+const spinnerClass = 'animate-spin rounded-full border-brand-royalbluemedium';
+
 export const PageLoadingOverlay = memo(
   ({
     isLoading,
     hasHeader = true,
-    hasBanner = false,
     message,
     nonBlocking = false,
   }: IPageLoadingOverlayProps) => {
@@ -48,7 +49,7 @@ export const PageLoadingOverlay = memo(
 
     const status = message || t('buttons.loading');
     const blockingOverlay = showOverlay && !isSlow && !nonBlocking && (
-      <div className="fixed inset-0 z-50 bg-black/20 backdrop-blur-[1px] transition-opacity duration-200" />
+      <div className="fixed inset-0 z-50 bg-black/20 backdrop-blur-[1px]" />
     );
 
     if (isSlow || nonBlocking || hasHeader) {
@@ -67,7 +68,9 @@ export const PageLoadingOverlay = memo(
               : 'fixed bottom-3 left-3 right-3 z-[55]'
           } pointer-events-none flex items-center justify-center gap-2 rounded-lg bg-bkg-1/95 border border-brand-blue500/30 p-3 text-xs text-brand-white shadow-lg`}
         >
-          <span className="animate-spin rounded-full h-4 w-4 shrink-0 border-2 border-brand-royalbluemedium border-t-transparent" />
+          <span
+            className={`${spinnerClass} h-4 w-4 shrink-0 border-2 border-t-transparent`}
+          />
           <span>
             {isSlow && !nonBlocking
               ? t('networkConnection.operationSlow', { operation: status })
@@ -92,14 +95,13 @@ export const PageLoadingOverlay = memo(
           <div
             role="status"
             aria-label={status}
-            className="fixed inset-x-0 bottom-0 z-[55] pointer-events-none"
-            style={{
-              top: hasHeader ? (hasBanner ? 148 : 80) : 0,
-            }}
+            className="fixed inset-0 z-[55] pointer-events-none"
           >
             <div className="absolute inset-0 flex items-center justify-center">
               <div className="rounded-full bg-bkg-1 p-2">
-                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-brand-royalbluemedium drop-shadow-lg" />
+                <div
+                  className={`${spinnerClass} h-12 w-12 border-t-2 border-b-2 drop-shadow-lg`}
+                />
               </div>
             </div>
           </div>
@@ -109,4 +111,6 @@ export const PageLoadingOverlay = memo(
   }
 );
 
-PageLoadingOverlay.displayName = 'PageLoadingOverlay';
+if (process.env.NODE_ENV !== 'production') {
+  PageLoadingOverlay.displayName = 'PageLoadingOverlay';
+}

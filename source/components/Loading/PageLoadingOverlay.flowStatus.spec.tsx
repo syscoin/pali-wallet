@@ -39,7 +39,9 @@ const advance = (milliseconds: number) =>
 const backdrop = (container: HTMLElement) =>
   Array.from(container.querySelectorAll('div')).find(
     (node) =>
-      node.classList.contains('fixed') && node.classList.contains('inset-0')
+      node.classList.contains('fixed') &&
+      node.classList.contains('inset-0') &&
+      node.classList.contains('z-50')
   );
 const expectInFlow = (status: HTMLElement) => {
   expect(status).toHaveAttribute('aria-live', 'polite');
@@ -169,7 +171,7 @@ it.each([false, true])(
       advance(500);
       expect(backdrop(view.container)).toBeDefined();
       expect(backdrop(view.container)).not.toHaveClass('pointer-events-none');
-      expect(screen.getByRole('status')).toHaveStyle({ top: '0px' });
+      expect(screen.getByRole('status')).toHaveClass('inset-0', 'z-[55]');
     }
     advance(MAX_BLOCKING_LOADING_MS);
     const status = screen.getByRole('status');
