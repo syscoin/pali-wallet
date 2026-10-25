@@ -39,15 +39,15 @@ async function captureReview(
 ) {
   await page.bringToFront();
   await page.evaluate(async () => document.fonts.ready);
-  const scrollObservations: unknown[] = [];
-  for (let n = 0; n < 30; n++) {
-    const box = await target.boundingBox();
-    const reject = await page
-      .getByRole('button', { name: en.buttons.reject, exact: true })
+  const read = async () => {
+    const footer = await page
+      .getByRole('button', {
+        name: en.buttons.reject,
+        exact: true,
+      })
       .boundingBox();
-    if (box && reject && box.y >= 0 && box.y + box.height <= reject.y - 8)
-      break;
-    const position = await target.evaluate((element) => {
+    expect(footer).not.toBeNull();
+    return target.evaluate((element, footerTop) => {
       let owner: HTMLElement | null = element.parentElement;
       while (
         owner &&
@@ -59,64 +59,104 @@ async function captureReview(
         owner = owner.parentElement;
       owner ||= document.scrollingElement as HTMLElement | null;
       if (!owner) throw new Error('Missing review scroll owner');
-      const r = owner.getBoundingClientRect();
-      const left = Math.max(0, r.left),
-        right = Math.min(innerWidth, r.right);
-      const top = Math.max(0, r.top),
-        bottom = Math.min(innerHeight - 60, r.bottom);
-      const points = [];
-      for (const x of [left + 8, (left + right) / 2, right - 8])
-        for (const y of [(top + bottom) / 2, top + 24]) {
-          const hit = document.elementFromPoint(x, y);
-          if (
-            !hit ||
-            !owner.contains(hit) ||
-            hit.closest('input,textarea,select')
-          )
-            continue;
-          let nearest: Element | null = hit;
-          while (nearest && nearest !== owner) {
-            if (
-              nearest.scrollHeight > nearest.clientHeight + 2 &&
-              /auto|scroll/.test(getComputedStyle(nearest).overflowY)
-            )
-              break;
-            nearest = nearest.parentElement;
-          }
-          if (nearest === owner) points.push({ x, y });
+      const area = owner.getBoundingClientRect();
+      let top = 0,
+        bottom = Math.min(innerHeight, footerTop);
+      for (
+        let parent = element.parentElement;
+        parent;
+        parent = parent.parentElement
+      ) {
+        if (
+          /auto|scroll|hidden|clip/.test(getComputedStyle(parent).overflowY)
+        ) {
+          const r = parent.getBoundingClientRect();
+          top = Math.max(top, r.top);
+          bottom = Math.min(bottom, r.bottom);
         }
+      }
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      const rects = [...range.getClientRects()].filter(
+        (r) => r.width && r.height
+      );
+      const first = Math.min(...rects.map((r) => r.top));
+      const last = Math.max(...rects.map((r) => r.bottom));
+      const exposed = rects.every((r) => {
+        const hit = document.elementFromPoint(
+          r.left + r.width / 2,
+          r.top + r.height / 2
+        );
+        return hit === element || (!!hit && element.contains(hit));
+      });
+      const points = [];
+      const left = Math.max(0, area.left),
+        right = Math.min(innerWidth, area.right);
+      for (const x of [left + 8, (left + right) / 2, right - 8]) {
+        const y = (top + bottom) / 2,
+          hit = document.elementFromPoint(x, y);
+        if (
+          !hit ||
+          !owner.contains(hit) ||
+          hit.closest('input,textarea,select')
+        )
+          continue;
+        let nearest: Element | null = hit;
+        while (nearest && nearest !== owner) {
+          if (
+            nearest.scrollHeight > nearest.clientHeight + 2 &&
+            /auto|scroll/.test(getComputedStyle(nearest).overflowY)
+          )
+            break;
+          nearest = nearest.parentElement;
+        }
+        if (nearest === owner) points.push({ x, y });
+      }
       return {
+        first,
+        last,
+        top,
+        bottom,
+        exposed,
         points,
+        text: element.textContent,
         scrollTop: owner.scrollTop,
-        height: owner.clientHeight,
-        scrollHeight: owner.scrollHeight,
-        bounds: r.toJSON(),
+        visible:
+          rects.length > 0 &&
+          first >= top - 0.5 &&
+          last <= bottom + 0.5 &&
+          exposed,
       };
-    });
-    expect(position.points.length).toBeGreaterThan(0);
-    const point = position.points[n % position.points.length];
+    }, footer!.y);
+  };
+  const observations = [];
+  let state = await read();
+  for (let n = 0; !state.visible && n < 60; n++) {
+    expect(state.last - state.first).toBeLessThanOrEqual(
+      state.bottom - state.top + 1
+    );
+    expect(state.points.length).toBeGreaterThan(0);
+    const point = state.points[n % state.points.length];
+    const delta = Math.max(
+      -60,
+      Math.min(60, (state.first + state.last - state.top - state.bottom) / 2)
+    );
     await page.mouse.move(point.x, point.y);
-    await page.mouse.wheel(0, box && box.y < 0 ? -100 : 100);
+    await page.mouse.wheel(0, delta || (state.first < state.top ? -20 : 20));
     await page.evaluate(
       () =>
         new Promise<void>((resolve) =>
           requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
         )
     );
-    scrollObservations.push(position);
+    observations.push(state);
+    state = await read();
   }
-  await info.attach(label + '-scroll', {
+  await info.attach(label + '-visibility', {
     contentType: 'application/json',
-    body: JSON.stringify(scrollObservations),
+    body: JSON.stringify({ observations, final: state }),
   });
-  const box = await target.boundingBox();
-  const reject = await page
-    .getByRole('button', { name: en.buttons.reject, exact: true })
-    .boundingBox();
-  expect(box).not.toBeNull();
-  expect(reject).not.toBeNull();
-  expect(box!.y).toBeGreaterThanOrEqual(0);
-  expect(box!.y + box!.height).toBeLessThanOrEqual(reject!.y);
+  expect(state.visible).toBe(true);
   await page.mouse.move(0, 0);
   await info.attach(label, {
     contentType: 'image/png',
@@ -415,9 +455,21 @@ for (const width of [400, 320]) {
           ).toHaveCount(0);
           await captureReview(
             popup,
-            maximumFee.locator('..'),
+            maximumFee,
+            info,
+            'smart-quote-error-value-' + width
+          );
+          await captureReview(
+            popup,
+            popup.getByText(en.send.unableToCalculateFees, { exact: true }),
             info,
             'smart-quote-error-' + width
+          );
+          await captureReview(
+            popup,
+            refresh,
+            info,
+            'smart-quote-retry-' + width
           );
           await captureForegroundContrast(
             refresh,
@@ -446,7 +498,7 @@ for (const width of [400, 320]) {
           ).toHaveCount(0);
           await captureReview(
             popup,
-            maximumFee.locator('..'),
+            maximumFee,
             info,
             'smart-quote-ready-' + width
           );
@@ -454,7 +506,12 @@ for (const width of [400, 320]) {
             exact: true,
           });
           const row = totalLabel.locator('..');
-          await captureReview(popup, row, info, 'smart-quote-total-' + width);
+          await captureReview(
+            popup,
+            row.locator('p').last(),
+            info,
+            'smart-quote-total-' + width
+          );
           const layout = await row.evaluate((node) => {
             const [label, amount] = Array.from(node.children);
             const range = (e: Element) => {
