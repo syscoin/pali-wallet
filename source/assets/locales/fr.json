@@ -1556,5 +1556,32 @@
       "voting": "Vote",
       "collateral": "Garantie"
     }
+  },
+  "privacy": {
+    "title": "Confidentialité",
+    "prepare": "Préparer la confidentialité",
+    "description": "Synchronisez les données publiques du pool en arrière-plan.",
+    "scopeNotice": "Seules les données du pool sont préparées. Les dépôts et retraits ne sont pas encore disponibles ici.",
+    "poolLabel": "Pool ETH",
+    "networkName": "Tornado Classic · Réseau principal Ethereum",
+    "poolData": "Données du pool",
+    "checking": "Vérification des données du pool enregistrées…",
+    "idle": "Les données du pool ne sont pas encore préparées.",
+    "syncing": "Téléchargement des données publiques du pool…",
+    "verifying": "Vérification des données du pool…",
+    "ready": "Les données du pool sont vérifiées et enregistrées sur cet appareil.",
+    "paused": "La préparation est en pause.",
+    "error": "La préparation n’a pas pu se terminer. Réessayez.",
+    "unavailable": "Impossible de lire l’état de la préparation. Réessayez.",
+    "retry": "Réessayer",
+    "resume": "Reprendre",
+    "refresh": "Actualiser les données du pool",
+    "pause": "Mettre en pause",
+    "clear": "Effacer les données enregistrées",
+    "networkRequired": "Sélectionnez le réseau principal Ethereum dans le menu des réseaux pour préparer les données du pool.",
+    "publicDataOnly": "Seules les données publiques du pool sont téléchargées. Votre adresse de portefeuille et vos notes privées ne sont pas envoyées.",
+    "savedDeposits": "Dépôts publics enregistrés : {{count}}",
+    "verifiedBlock": "Dernier bloc vérifié : {{block}}",
+    "progress": "{{completed}} sur {{total}}"
   }
 }

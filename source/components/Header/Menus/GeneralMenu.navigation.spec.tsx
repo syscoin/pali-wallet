@@ -136,6 +136,7 @@ const destinations = [
   ['settings.connectedSites', '/settings/networks/connected-sites'],
   ['generalMenu.manageEth', '/settings/remove-eth'],
   ['smartAccountHub.menuEntry', '/home/smart-account'],
+  ['privacy.title', '/privacy'],
   ['sentry.sentryOperators', '/settings/sentry'],
   ['generalMenu.walletSeedPhrase', '/settings/seed'],
   ['generalMenu.forget', '/settings/forget-wallet'],

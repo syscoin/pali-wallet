@@ -5,6 +5,8 @@ import { startPolling } from 'scripts/Background/utils/startPolling';
 import store from 'state/store';
 import vaultCache from 'state/vaultCache';
 import { persistSLHDSASmartAccountSetupProgress } from 'utils/slhDsa/smartAccountSetup';
+import { PRIVACY_ALARM_PREFIX } from '../controllers/privacy';
+import type { PrivacyPoolId } from 'utils/privacy/types';
 
 import { checkForUpdates } from './handlePaliUpdates';
 import {
@@ -58,6 +60,15 @@ export const handleListeners = (masterController: IMasterController) => {
   // Create and store alarm listener
   alarmListener = (alarm) => {
     console.log(`Alarm triggered: ${alarm.name}`);
+
+    if (alarm.name.startsWith(PRIVACY_ALARM_PREFIX)) {
+      void currentMasterController.privacy
+        ?.resumePending(
+          alarm.name.slice(PRIVACY_ALARM_PREFIX.length) as PrivacyPoolId
+        )
+        .catch(() => undefined);
+      return;
+    }
 
     if (alarm.name === 'check_for_updates') {
       console.log(`🎯 handleListeners: Processing check_for_updates alarm`);

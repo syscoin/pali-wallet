@@ -150,6 +150,7 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
       }`;
     if (path === '/send/confirm') return t('send.confirm');
     if (path === '/faucet') return activeNetwork?.label || t('faucet.title');
+    if (path === '/privacy') return t('privacy.title');
     if (path === '/tokens/add') return t('buttons.addToken');
     if (path === '/chain-fail-to-connect') return t('chainError.errorTitle');
     if (path === '/switch-network') return t('settings.switchChain');

@@ -15,7 +15,8 @@ import {
   setNetworks,
 } from 'state/vaultGlobal';
 import { IDAppController } from 'types/controllers';
-import { INetwork } from 'types/network';
+import { INetwork, INetworkType } from 'types/network';
+import type { PrivacyController } from 'utils/privacy/types';
 import {
   SYSCOIN_UTXO_MAINNET_NETWORK,
   CHAIN_IDS,
@@ -25,6 +26,7 @@ import {
 import DAppController from './DAppController';
 import { createExternalWalletView } from './externalWalletCreation';
 import MainController from './MainController';
+import { createPrivacyController } from './privacy';
 
 export interface IMasterController {
   appRoute: (newRoute?: string, external?: boolean) => string;
@@ -40,6 +42,7 @@ export interface IMasterController {
     isReady: boolean;
     maxAttempts: number;
   };
+  privacy: PrivacyController;
   refresh: () => void;
   rehydrate: () => void;
   retryInitialization?: () => Promise<{ retrying: boolean }>;
@@ -291,6 +294,17 @@ const MasterController = (
 
   initializeMainController();
 
+  const privacy = createPrivacyController(() => {
+    const state = externalStore.getState();
+    return {
+      chainId: state.vault.activeNetwork.chainId,
+      isEthereum:
+        state.vault.activeNetwork.kind === INetworkType.Ethereum &&
+        !state.vault.isBitcoinBased,
+      url: state.vault.activeNetwork.url,
+    };
+  });
+
   return {
     rehydrate,
     appRoute,
@@ -300,6 +314,7 @@ const MasterController = (
     refresh,
     callGetLatestUpdateForAccount,
     wallet,
+    privacy,
     // These will be overridden in the background script if initialization fails
     getInitializationStatus: () => ({
       isReady: true,

@@ -1556,5 +1556,32 @@
       "voting": "투표",
       "collateral": "담보"
     }
+  },
+  "privacy": {
+    "title": "개인정보 보호",
+    "prepare": "개인정보 보호 준비",
+    "description": "풀 공개 데이터를 백그라운드에서 동기화합니다.",
+    "scopeNotice": "여기서는 풀 데이터만 준비합니다. 입금과 출금은 아직 사용할 수 없습니다.",
+    "poolLabel": "ETH 풀",
+    "networkName": "Tornado Classic · 이더리움 메인넷",
+    "poolData": "풀 데이터",
+    "checking": "저장된 풀 데이터 확인 중…",
+    "idle": "풀 데이터가 아직 준비되지 않았습니다.",
+    "syncing": "풀 공개 데이터 다운로드 중…",
+    "verifying": "풀 데이터 검증 중…",
+    "ready": "풀 데이터를 검증하여 이 기기에 저장했습니다.",
+    "paused": "준비가 일시 중지되었습니다.",
+    "error": "준비를 완료하지 못했습니다. 다시 시도하세요.",
+    "unavailable": "준비 상태를 읽을 수 없습니다. 다시 시도하세요.",
+    "retry": "다시 시도",
+    "resume": "계속",
+    "refresh": "풀 데이터 업데이트",
+    "pause": "일시 중지",
+    "clear": "저장된 데이터 삭제",
+    "networkRequired": "네트워크 메뉴에서 이더리움 메인넷을 선택하여 풀 데이터를 준비하세요.",
+    "publicDataOnly": "풀 공개 데이터만 다운로드합니다. 지갑 주소와 비공개 노트는 전송되지 않습니다.",
+    "savedDeposits": "저장된 공개 입금 수: {{count}}",
+    "verifiedBlock": "마지막으로 검증한 블록: {{block}}",
+    "progress": "{{total}}개 중 {{completed}}개"
   }
 }

@@ -28,6 +28,8 @@ import {
 
 const MENU_ITEM_CLASS_NAME =
   'gap-2 py-1.5 cursor-pointer px-5 w-full backface-visibility-hidden flex items-center justify-start text-white text-sm font-medium hover:bg-brand-blue500 hover:bg-opacity-20 active:bg-opacity-40 focus:outline-none transition-colors duration-200';
+const MENU_ACTION_CLASS_NAME =
+  'menu-action flex min-h-11 w-full items-center gap-2 px-5 text-left text-sm text-white hover:bg-brand-blue500 hover:bg-opacity-20 focus-visible:outline focus-visible:outline-2';
 
 interface IGeneralMenuProps {
   disabled?: boolean;
@@ -235,10 +237,21 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
                   <Menu.Item>
                     <button
                       type="button"
+                      onClick={() => handleSettingsNavigation('/privacy')}
+                      className={MENU_ACTION_CLASS_NAME}
+                    >
+                      <LockIconSvg className="text-brand-white" />
+                      <span>{t('privacy.title')}</span>
+                    </button>
+                  </Menu.Item>
+
+                  <Menu.Item>
+                    <button
+                      type="button"
                       onClick={() =>
                         handleSettingsNavigation('/settings/sentry')
                       }
-                      className="menu-action flex min-h-11 w-full items-center gap-2 px-5 text-left text-sm text-white hover:bg-brand-blue500 hover:bg-opacity-20 focus-visible:outline focus-visible:outline-2"
+                      className={MENU_ACTION_CLASS_NAME}
                     >
                       <KeySvg className="text-brand-white" />
                       <span>{t('sentry.sentryOperators')}</span>

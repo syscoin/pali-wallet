@@ -163,6 +163,13 @@ const mockMasterController: jest.Mocked<IMasterController> = {
   } as any, // Using 'as any' here for brevity in mocking the nested dapp object
   refresh: jest.fn(),
   rehydrate: jest.fn(),
+  privacy: {
+    clear: jest.fn(),
+    getStatus: jest.fn(),
+    pause: jest.fn(),
+    resumePending: jest.fn(async () => undefined),
+    start: jest.fn(),
+  },
   // Mock wallet methods used in handleListeners
   wallet: {
     setActiveNetwork: jest.fn(),

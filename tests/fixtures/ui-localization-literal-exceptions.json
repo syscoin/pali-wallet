@@ -3,6 +3,13 @@
   "scope": "Exact normalized JSX word-copy and direct visible string props in production components/pages TSX. This is not callback-error, dynamic-text or all-source localization coverage.",
   "exceptions": [
     {
+      "file": "source/pages/Privacy/Privacy.tsx",
+      "kind": "jsx-text",
+      "text": "ETH",
+      "count": 1,
+      "reason": "Canonical asset ticker for the fixed Ethereum mainnet pool denominations; the symbol is not translated user guidance."
+    },
+    {
       "file": "source/components/Fullscreen/Fullscreen.tsx",
       "kind": "jsx-text",
       "text": "Fullscreen mode",

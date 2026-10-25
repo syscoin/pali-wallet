@@ -1556,5 +1556,32 @@
       "voting": "Abstimmung",
       "collateral": "Sicherheit"
     }
+  },
+  "privacy": {
+    "title": "Privatsphäre",
+    "prepare": "Privatsphäre vorbereiten",
+    "description": "Öffentliche Pooldaten im Hintergrund synchronisieren.",
+    "scopeNotice": "Hier werden nur Pooldaten vorbereitet. Ein- und Auszahlungen sind hier noch nicht verfügbar.",
+    "poolLabel": "ETH-Pool",
+    "networkName": "Tornado Classic · Ethereum-Mainnet",
+    "poolData": "Pooldaten",
+    "checking": "Gespeicherte Pooldaten werden geprüft…",
+    "idle": "Die Pooldaten wurden noch nicht vorbereitet.",
+    "syncing": "Öffentliche Pooldaten werden heruntergeladen…",
+    "verifying": "Pooldaten werden verifiziert…",
+    "ready": "Die Pooldaten sind verifiziert und auf diesem Gerät gespeichert.",
+    "paused": "Die Vorbereitung ist pausiert.",
+    "error": "Die Vorbereitung konnte nicht abgeschlossen werden. Versuche es erneut.",
+    "unavailable": "Der Vorbereitungsstatus konnte nicht gelesen werden. Versuche es erneut.",
+    "retry": "Erneut versuchen",
+    "resume": "Fortsetzen",
+    "refresh": "Pooldaten aktualisieren",
+    "pause": "Pausieren",
+    "clear": "Gespeicherte Daten löschen",
+    "networkRequired": "Wähle Ethereum-Mainnet im Netzwerkmenü, um die Pooldaten vorzubereiten.",
+    "publicDataOnly": "Es werden nur öffentliche Pooldaten heruntergeladen. Deine Wallet-Adresse und privaten Notizen werden nicht gesendet.",
+    "savedDeposits": "Gespeicherte öffentliche Einzahlungen: {{count}}",
+    "verifiedBlock": "Zuletzt verifizierter Block: {{block}}",
+    "progress": "{{completed}} von {{total}}"
   }
 }

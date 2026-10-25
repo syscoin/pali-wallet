@@ -1556,5 +1556,32 @@
       "voting": "投票",
       "collateral": "抵押"
     }
+  },
+  "privacy": {
+    "title": "隐私",
+    "prepare": "准备隐私功能",
+    "description": "在后台同步资金池公开数据。",
+    "scopeNotice": "此处仅准备资金池数据，暂不支持存款和提款。",
+    "poolLabel": "ETH 资金池",
+    "networkName": "Tornado Classic · 以太坊主网",
+    "poolData": "资金池数据",
+    "checking": "正在检查已保存的资金池数据…",
+    "idle": "尚未准备资金池数据。",
+    "syncing": "正在下载资金池公开数据…",
+    "verifying": "正在验证资金池数据…",
+    "ready": "资金池数据已验证并保存在此设备上。",
+    "paused": "准备已暂停。",
+    "error": "无法完成准备，请重试。",
+    "unavailable": "无法读取准备状态，请重试。",
+    "retry": "重试",
+    "resume": "继续",
+    "refresh": "更新资金池数据",
+    "pause": "暂停",
+    "clear": "清除已保存的数据",
+    "networkRequired": "请在网络菜单中选择以太坊主网，以准备资金池数据。",
+    "publicDataOnly": "仅下载资金池公开数据，不会发送您的钱包地址和隐私票据。",
+    "savedDeposits": "已保存的公开存款数：{{count}}",
+    "verifiedBlock": "最近验证的区块：{{block}}",
+    "progress": "{{completed}} / {{total}}"
   }
 }
