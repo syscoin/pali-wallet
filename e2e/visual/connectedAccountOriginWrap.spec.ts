@@ -30,6 +30,34 @@ const LONG_ORIGIN = `https://${'account-review-'.repeat(
 )}qa.synthetic.invalid`;
 const UNBROKEN_ORIGIN = `https://${'a'.repeat(63)}.synthetic.invalid`;
 
+async function settleNativeScroll(page: Page) {
+  let previous = '',
+    stable = 0;
+  await expect
+    .poll(
+      async () => {
+        const geometry = await page.evaluate(() =>
+          [...document.querySelectorAll('*')]
+            .filter(
+              (node) =>
+                node.scrollHeight > node.clientHeight + 1 &&
+                /auto|scroll/.test(getComputedStyle(node).overflowY)
+            )
+            .map((node) => {
+              const r = node.getBoundingClientRect();
+              return [node.scrollTop, r.y, r.height];
+            })
+        );
+        const value = JSON.stringify(geometry);
+        stable = value === previous ? stable + 1 : 0;
+        previous = value;
+        return stable;
+      },
+      { intervals: [50], timeout: 2000 }
+    )
+    .toBeGreaterThanOrEqual(3);
+}
+
 test('connection and account-switch approvals keep complete origins and uncompressed icons', async ({}, info) => {
   test.setTimeout(120_000);
   expect(info.config.workers).toBe(1);
@@ -359,14 +387,7 @@ test('connection and account-switch approvals keep complete origins and uncompre
             await popup.mouse.move(viewport.width / 2, 100);
             await popup.mouse.wheel(0, -1200);
             // Let native wheel/layout delivery complete; do not alter layout or focus.
-            await host.evaluate(async () => {
-              await new Promise<void>((resolve) =>
-                requestAnimationFrame(() => resolve())
-              );
-              await new Promise<void>((resolve) =>
-                requestAnimationFrame(() => resolve())
-              );
-            });
+            await settleNativeScroll(popup);
             const observation = await host.evaluate((element) => {
               const rect = (box: DOMRect) => ({
                 x: box.x,
@@ -481,14 +502,7 @@ test('connection and account-switch approvals keep complete origins and uncompre
                     : -Math.min(200, tail.visibleTop - tail.last!.top + 12);
                 wheelDeltas.push(delta);
                 await popup.mouse.wheel(0, delta);
-                await host.evaluate(async () => {
-                  await new Promise<void>((resolve) =>
-                    requestAnimationFrame(() => resolve())
-                  );
-                  await new Promise<void>((resolve) =>
-                    requestAnimationFrame(() => resolve())
-                  );
-                });
+                await settleNativeScroll(popup);
                 tail = await readTail();
               }
               expect(tail.text).toBe(origin);

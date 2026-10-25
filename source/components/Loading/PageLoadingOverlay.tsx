@@ -47,37 +47,47 @@ export const PageLoadingOverlay = memo(
       return null;
 
     const status = message || t('buttons.loading');
-    if (isSlow || nonBlocking) {
+    const blockingOverlay = showOverlay && !isSlow && !nonBlocking && (
+      <div className="fixed inset-0 z-50 bg-black/20 backdrop-blur-[1px] transition-opacity duration-200" />
+    );
+
+    if (isSlow || nonBlocking || hasHeader) {
       // A slow RPC must not hold the whole wallet hostage or be mistaken for a
       // failed operation. The layout separately guards context-sensitive actions.
       // Ordinary wallet pages reserve the real translated height in page flow.
       // Headerless approval/hardware layouts retain their existing fixed status:
       // a viewport-covering child can otherwise paint over an in-flow sibling.
-      return (
+      const progress = (
         <div
           role="status"
           aria-live="polite"
           className={`${
             hasHeader
-              ? 'mx-3 my-3 shrink-0'
+              ? 'relative z-[55] mx-3 my-3 shrink-0'
               : 'fixed bottom-3 left-3 right-3 z-[55]'
           } pointer-events-none flex items-center justify-center gap-2 rounded-lg bg-bkg-1/95 border border-brand-blue500/30 p-3 text-xs text-brand-white shadow-lg`}
         >
           <span className="animate-spin rounded-full h-4 w-4 shrink-0 border-2 border-brand-royalbluemedium border-t-transparent" />
           <span>
-            {nonBlocking
-              ? status
-              : t('networkConnection.operationSlow', { operation: status })}
+            {isSlow && !nonBlocking
+              ? t('networkConnection.operationSlow', { operation: status })
+              : status}
           </span>
         </div>
+      );
+      return blockingOverlay ? (
+        <>
+          {blockingOverlay}
+          {progress}
+        </>
+      ) : (
+        progress
       );
     }
 
     return (
       <>
-        {showOverlay && (
-          <div className="fixed inset-0 z-50 bg-black/20 backdrop-blur-[1px] transition-opacity duration-200" />
-        )}
+        {blockingOverlay}
         {showSpinner && (
           <div
             role="status"
