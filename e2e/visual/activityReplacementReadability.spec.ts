@@ -497,6 +497,40 @@ for (const width of [400, 320])
               await page.waitForTimeout(100);
             }
             expect((await exposure()).visible).toBe(true);
+            if (action === 'cancel') {
+              const amount = list.getByText('0 TSYS', { exact: true });
+              await expect(amount).toBeVisible();
+              await expect
+                .poll(() =>
+                  amount.evaluate((node) => {
+                    let left = 0;
+                    let right = innerWidth;
+                    for (
+                      let parent: Element | null = node;
+                      parent;
+                      parent = parent.parentElement
+                    ) {
+                      const style = getComputedStyle(parent);
+                      if (/auto|hidden|scroll|clip/.test(style.overflowX)) {
+                        const box = parent.getBoundingClientRect();
+                        left = Math.max(
+                          left,
+                          box.left + parseFloat(style.borderLeftWidth || '0')
+                        );
+                        right = Math.min(
+                          right,
+                          box.right - parseFloat(style.borderRightWidth || '0')
+                        );
+                      }
+                    }
+                    const text = document.createRange();
+                    text.selectNodeContents(node);
+                    const bounds = text.getBoundingClientRect();
+                    return Math.min(bounds.left - left, right - bounds.right);
+                  })
+                )
+                .toBeGreaterThanOrEqual(0);
+            }
             await snap(page, 'submitted-metadata');
             expect(routes.deniedWrites).toEqual([]);
             expect(unexpected).toEqual([]);
