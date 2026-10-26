@@ -450,7 +450,7 @@ for (const state of ['generation', 'recovery'] as const) {
           if (state === 'generation') {
             await releaseRuntimeReply(page);
             await expect(page.getByRole('alert')).toHaveText(
-              en.settings.walletSetupFailed
+              en.createPhrase.generationFailed
             );
             await page
               .getByRole('button', { name: en.buttons.generate, exact: true })
