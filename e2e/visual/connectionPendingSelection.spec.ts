@@ -167,6 +167,39 @@ test('connection selection stays on the reviewed account until real switch and g
       });
     const reviewedRow = row(reviewed!.label);
     const otherRow = row(SECOND_LABEL);
+    const healthyLabelPixels = new Map<number, Buffer>();
+    const captureLabelPixels = async () => {
+      await otherRow.hover();
+      await otherRow.evaluate(async (element) => {
+        const animations = new Set<Animation>();
+        for (
+          let node: Element | null = element;
+          node;
+          node = node.parentElement
+        ) {
+          for (const animation of node.getAnimations()) {
+            if (
+              Number.isFinite(
+                Number(animation.effect?.getComputedTiming().endTime)
+              )
+            )
+              animations.add(animation);
+          }
+        }
+        await Promise.all(
+          [...animations].map((animation) =>
+            animation.finished.catch(() => undefined)
+          )
+        );
+        await new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+        );
+      });
+      return otherRow
+        .getByText(SECOND_LABEL, { exact: true })
+        .screenshot({ animations: 'allow' });
+    };
+
     const confirm = approval.getByRole('button', {
       name: en.buttons.confirm,
       exact: true,
@@ -262,6 +295,14 @@ test('connection selection stays on the reviewed account until real switch and g
           },
           { id: reviewed!.id, origin: ORIGIN }
         );
+        for (const viewport of [
+          { width: 400, height: 620 },
+          { width: 320, height: 360 },
+        ]) {
+          await approval.setViewportSize(viewport);
+          healthyLabelPixels.set(viewport.width, await captureLabelPixels());
+        }
+        await approval.setViewportSize({ width: 400, height: 620 });
         await capture(approval);
       }
     );
@@ -311,6 +352,13 @@ test('connection selection stays on the reviewed account until real switch and g
           { width: 320, height: 360 },
         ]) {
           await approval.setViewportSize(viewport);
+          // Focusing a busy row must preserve the healthy label's rendered
+          // ellipsis. Comparing within this run avoids platform font baselines.
+          expect(
+            (await captureLabelPixels()).equals(
+              healthyLabelPixels.get(viewport.width)!
+            )
+          ).toBe(true);
           const pendingConfirm = approval.getByRole('button', {
             name: en.buttons.confirm,
             exact: true,
