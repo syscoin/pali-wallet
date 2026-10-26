@@ -284,15 +284,17 @@ function NotesView() {
             )}
             {note.withdrawal && (
               <div className="space-y-2 text-xs text-brand-gray200">
-                <p>
-                  {t(
-                    `privacy.withdrawal.${
-                      note.withdrawal.phase === 'unknown'
-                        ? 'statusUnknown'
-                        : 'statusPending'
-                    }`
-                  )}
-                </p>
+                {note.phase !== 'spent' && (
+                  <p>
+                    {t(
+                      `privacy.withdrawal.${
+                        note.withdrawal.phase === 'unknown'
+                          ? 'statusUnknown'
+                          : 'statusPending'
+                      }`
+                    )}
+                  </p>
+                )}
                 {note.withdrawal.transactionHash && (
                   <p className="break-all">
                     {t('privacy.deposit.txHash')}:{' '}

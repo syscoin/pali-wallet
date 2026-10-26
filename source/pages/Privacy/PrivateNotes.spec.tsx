@@ -394,6 +394,67 @@ it('keeps a reserved withdrawal out of balance and checks a saved relay job only
   ]);
 });
 
+it.each([
+  ['direct', 'submitted'],
+  ['direct', 'unknown'],
+  ['relayed', 'submitted'],
+  ['relayed', 'unknown'],
+])(
+  'removes stale %s %s submission guidance after public verification marks the note spent',
+  async (mode, phase) => {
+    let spent = false;
+    mockEmitter.mockImplementation(async ([, method]) => {
+      if (method === 'getNotes')
+        return {
+          notes: [
+            {
+              ...note,
+              phase: spent ? 'spent' : 'waiting',
+              blockNumber: spent ? 22000001 : 22000000,
+              withdrawal: {
+                mode,
+                phase,
+                transactionHash: depositHash,
+                ...(mode === 'relayed' ? { jobId: depositIntentId } : {}),
+              },
+            },
+          ],
+        };
+      throw new Error('Unexpected call');
+    });
+    render(<PrivateNotes />);
+    expect(
+      await screen.findByText(
+        phase === 'unknown'
+          ? en.privacy.withdrawal.statusUnknown
+          : en.privacy.withdrawal.statusPending
+      )
+    ).toBeVisible();
+    spent = true;
+    fireEvent.click(
+      screen.getByRole('button', { name: en.privacy.refreshNotes })
+    );
+    expect(await screen.findByText(en.privacy.notePhase.spent)).toBeVisible();
+    expect(screen.getByText('As of block 22000001')).toBeVisible();
+    expect(screen.getByText('Verified balance: 0 ETH')).toBeVisible();
+    expect(
+      screen.queryByText(en.privacy.withdrawal.statusPending)
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(en.privacy.withdrawal.statusUnknown)
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText(`${en.privacy.deposit.txHash}: ${depositHash}`)
+    ).toBeVisible();
+    expect(
+      screen.getByRole('button', { name: 'Reveal 0.1 ETH note for backup' })
+    ).toBeVisible();
+    expect(
+      screen.queryByRole('button', { name: en.privacy.withdrawal.open })
+    ).not.toBeInTheDocument();
+  }
+);
+
 it('projects only public withdrawal metadata and validates its hash and job ID', () => {
   const value = {
     ...note,
