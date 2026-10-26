@@ -86,6 +86,25 @@ export async function checkReviewInputFocusRing(
   info: TestInfo,
   label: string
 ) {
+  // Let the input's own native transition settle before measuring its ring.
+  // Poll again when a transition is replaced; never finish/cancel or restyle it.
+  await expect
+    .poll(
+      () =>
+        input.evaluate((element) =>
+          element
+            .getAnimations({ subtree: false })
+            .some(
+              (animation) =>
+                animation.pending || animation.playState === 'running'
+            )
+        ),
+      {
+        timeout: 30_000,
+        message: 'Input focus animation settles within the action budget',
+      }
+    )
+    .toBe(false);
   const geometry = await input.evaluate((element) => {
     const value = element.getBoundingClientRect();
     const style = getComputedStyle(element);
