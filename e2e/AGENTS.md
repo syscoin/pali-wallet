@@ -13,7 +13,7 @@ never be used with real money.
 ## Quick start
 
 ```bash
-# 1. Build the extension (use Node >= 23.3; v23.2.0 has a webpack-breaking bug)
+# 1. Build the extension (use the security-patched Node 26.12.1 pinned in .nvmrc)
 yarn build:chrome
 
 # 2. Run all journeys (headless)

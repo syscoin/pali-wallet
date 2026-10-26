@@ -166,7 +166,7 @@ async function networkState(page: Page) {
 }
 
 test('custom network authentication feedback follows the saved Spanish locale and recovers without registration', async ({}, info) => {
-  expect(process.version).toBe('v23.11.1');
+  expect(process.version).toBe('v26.12.1');
   expect(info.config.workers).toBe(1);
   expect(info.retry).toBe(0);
   expect(process.env.PALI_TEST_DAPP_REVISION).toMatch(/^[a-f0-9]{40}$/);

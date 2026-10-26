@@ -346,7 +346,7 @@ for (const { viewport, tokenId: testTokenId } of [
     TOKEN_ID === '7' ? '' : '-id-' + TOKEN_ID
   }`;
   test(`ordinary ERC1155 custom preview keeps identity, badge and actions distinct at ${caseName}`, async ({}, info) => {
-    expect(process.version).toBe('v23.11.1');
+    expect(process.version).toBe('v26.12.1');
     expect(info.config.workers).toBe(1);
     expect(info.retry).toBe(0);
     expect(process.env.PALI_TEST_DAPP_REVISION).toMatch(/^[a-f0-9]{40}$/);
