@@ -313,7 +313,8 @@
     "youShould": "Agora você deve ter sua frase de recuperação e senha da carteira anotadas para referência futura."
   },
   "createPhrase": {
-    "recoveryPhrase": "Frase de Recuperação"
+    "recoveryPhrase": "Frase de Recuperação",
+    "generationFailed": "Não foi possível gerar uma nova frase de recuperação. Selecione Gerar para tentar novamente."
   },
   "send": {
     "transactionFailureDetails": "Falha na transação: {{message}}",

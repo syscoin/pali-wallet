@@ -313,7 +313,8 @@
     "youShould": "您现在应该已经记录了恢复短语和钱包密码以备将来参考。"
   },
   "createPhrase": {
-    "recoveryPhrase": "恢复短语"
+    "recoveryPhrase": "恢复短语",
+    "generationFailed": "无法生成新的恢复短语。请选择“生成”重试。"
   },
   "send": {
     "transactionFailureDetails": "交易失败：{{message}}",

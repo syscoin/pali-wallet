@@ -313,7 +313,8 @@
     "youShould": "Sie sollten nun Ihre Wiederherstellungsphrase und Ihr Wallet-Passwort für zukünftige Referenz notiert haben."
   },
   "createPhrase": {
-    "recoveryPhrase": "Wiederherstellungsphrase"
+    "recoveryPhrase": "Wiederherstellungsphrase",
+    "generationFailed": "Eine neue Wiederherstellungsphrase konnte nicht erstellt werden. Wähle „Generieren“, um es erneut zu versuchen."
   },
   "send": {
     "transactionFailureDetails": "Transaktion fehlgeschlagen: {{message}}",

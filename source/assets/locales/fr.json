@@ -313,7 +313,8 @@
     "youShould": "Vous devriez maintenant avoir noté votre phrase de récupération et votre mot de passe pour référence future."
   },
   "createPhrase": {
-    "recoveryPhrase": "Phrase de récupération"
+    "recoveryPhrase": "Phrase de récupération",
+    "generationFailed": "Impossible de générer une nouvelle phrase de récupération. Sélectionnez Générer pour réessayer."
   },
   "send": {
     "transactionFailureDetails": "Échec de la transaction : {{message}}",

@@ -313,7 +313,8 @@
     "youShould": "향후 참조를 위해 복구 구문과 지갑 비밀번호를 기록해 두어야 합니다."
   },
   "createPhrase": {
-    "recoveryPhrase": "복구 구문"
+    "recoveryPhrase": "복구 구문",
+    "generationFailed": "새 복구 구문을 생성하지 못했습니다. 다시 시도하려면 생성을 선택하세요."
   },
   "send": {
     "transactionFailureDetails": "트랜잭션 실패: {{message}}",

@@ -313,7 +313,8 @@
     "youShould": "今後の参考のために、リカバリーフレーズとウォレットのパスワードを書き留めておく必要があります。"
   },
   "createPhrase": {
-    "recoveryPhrase": "リカバリーフレーズ"
+    "recoveryPhrase": "リカバリーフレーズ",
+    "generationFailed": "新しいリカバリーフレーズを生成できませんでした。「生成」を選択してもう一度お試しください。"
   },
   "send": {
     "transactionFailureDetails": "トランザクション失敗：{{message}}",

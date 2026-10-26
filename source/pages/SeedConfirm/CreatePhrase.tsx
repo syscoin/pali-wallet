@@ -133,7 +133,7 @@ export const CreatePhrase = () => {
         )}
         {generationFailed && (
           <p role="alert" className="text-brand-gray200">
-            {t('settings.walletSetupFailed')}
+            {t('createPhrase.generationFailed')}
           </p>
         )}
 

@@ -230,7 +230,7 @@ it.each(['initial', 'manual'])(
     }
     await screen.findByRole('alert');
     expect(screen.getByRole('alert').textContent).toBe(
-      'settings.walletSetupFailed'
+      'createPhrase.generationFailed'
     );
     expect(screen.queryByText(error.message)).toBeNull();
     expect((screen.getByRole('checkbox') as HTMLInputElement).disabled).toBe(

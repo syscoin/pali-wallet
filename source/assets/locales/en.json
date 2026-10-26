@@ -313,7 +313,8 @@
     "youShould": "You should now have your recovery phrase and your wallet password written down for future reference."
   },
   "createPhrase": {
-    "recoveryPhrase": "Recovery Phrase"
+    "recoveryPhrase": "Recovery Phrase",
+    "generationFailed": "Could not generate a new recovery phrase. Select Generate to try again."
   },
   "send": {
     "transactionFailureDetails": "Transaction failed: {{message}}",
