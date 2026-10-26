@@ -120,7 +120,11 @@ export const SyscoinAssetDetails = ({
       focused instanceof HTMLElement &&
       closeFooterRef.current?.contains(focused)
     ) {
-      focused.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      // Include the footer padding so the focused outline stays inside the viewport.
+      closeFooterRef.current.scrollIntoView({
+        block: 'nearest',
+        inline: 'nearest',
+      });
     }
   }, [marketData, isLoadingMarketData]);
 

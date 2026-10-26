@@ -21,12 +21,27 @@ import {
 const closeVisibility = (close: Locator) =>
   close.evaluate((button) => {
     const rect = button.getBoundingClientRect();
+    const style = getComputedStyle(button);
+    // Measure the actual focused outline, without assuming a padding class.
+    const outlineOutset = ['none', 'hidden'].includes(style.outlineStyle)
+      ? 0
+      : Math.max(
+          0,
+          (Number.parseFloat(style.outlineWidth) || 0) +
+            (Number.parseFloat(style.outlineOffset) || 0)
+        );
     const center = document.elementFromPoint(
       rect.left + rect.width / 2,
       rect.top + rect.height / 2
     );
     return {
       focused: document.activeElement === button,
+      focusVisible: button.matches(':focus-visible'),
+      outlineVisible:
+        !['none', 'hidden'].includes(style.outlineStyle) &&
+        Number.parseFloat(style.outlineWidth) > 0 &&
+        style.outlineColor !== 'transparent' &&
+        !/^rgba\([^)]*,\s*0(?:\.0+)?\)$/.test(style.outlineColor),
       withinViewport:
         rect.width > 0 &&
         rect.height > 0 &&
@@ -34,6 +49,12 @@ const closeVisibility = (close: Locator) =>
         rect.top >= 0 &&
         rect.right <= innerWidth &&
         rect.bottom <= innerHeight,
+      focusOutlineWithinViewport:
+        rect.top - outlineOutset >= 0 &&
+        rect.left - outlineOutset >= 0 &&
+        rect.right + outlineOutset <= innerWidth &&
+        rect.bottom + outlineOutset <= innerHeight,
+      outlineOutset,
       // A rounded button's outer corners are intentionally not hit targets.
       centerHit: !!center && (center === button || button.contains(center)),
       rect: {
@@ -227,7 +248,10 @@ for (const { width, height } of [
                 top,
                 visible,
               });
+              expect(visible.focusVisible).toBe(true);
+              expect(visible.outlineVisible).toBe(true);
               expect(visible.withinViewport).toBe(true);
+              expect(visible.focusOutlineWithinViewport).toBe(true);
               expect(visible.centerHit).toBe(true);
               await captureState('pending');
             } finally {
@@ -300,7 +324,10 @@ for (const { width, height } of [
               await captureState('loaded');
               if (focusOwner === 'close') {
                 expect(visible.focused).toBe(true);
+                expect(visible.focusVisible).toBe(true);
+                expect(visible.outlineVisible).toBe(true);
                 expect(visible.withinViewport).toBe(true);
+                expect(visible.focusOutlineWithinViewport).toBe(true);
                 expect(visible.centerHit).toBe(true);
               } else {
                 await expect(headerBack).toBeFocused();

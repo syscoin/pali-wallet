@@ -311,7 +311,9 @@ describe('focused Close visibility after asynchronous market changes', () => {
         inline: 'nearest',
       });
       expect(
-        witness.scroll.mock.instances.every((instance) => instance === close)
+        witness.scroll.mock.instances.every(
+          (instance) => instance === close.parentElement
+        )
       ).toBe(true);
     } finally {
       witness.restore();
@@ -369,7 +371,9 @@ describe('focused Close visibility after asynchronous market changes', () => {
         inline: 'nearest',
       });
       expect(
-        witness.scroll.mock.instances.every((instance) => instance === close)
+        witness.scroll.mock.instances.every(
+          (instance) => instance === close.parentElement
+        )
       ).toBe(true);
     } finally {
       log.mockRestore();
