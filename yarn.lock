@@ -5334,7 +5334,7 @@ bip32@^5.0.1:
     valibot "^1.2.0"
     wif "^5.0.0"
 
-bip39@^3.1.0, bip39@^3.1.2:
+bip39@^3.1.2:
   version "3.1.2"
   resolved "https://registry.yarnpkg.com/bip39/-/bip39-3.1.2.tgz#17e31b77e80ded2e7388cb88a327cd640917baf7"
   integrity sha512-inxKLEH+Weos8f5rBYNKuOrpOIcNWtKnrLur9x72s4Cb8w4Mm0jJktUPkev7+1pQuivxFqkiut9+AcrwunLHxA==
@@ -7226,9 +7226,9 @@ eth-chains@^1.0.0:
   resolved "https://registry.yarnpkg.com/eth-chains/-/eth-chains-1.0.0.tgz#1386496ee1aa231a4d050fde6a87fe36741ecb83"
   integrity sha512-SnJrJPSr5I3rKpW6RZT/qhX8qbmE5bsMeeHoRWBXkvbifudfi3YLKHXZMdLsg+Yv+PP8oqSyPxOvQxKwjNVqmQ==
 
-eth-object@^1.0.3, "eth-object@https://github.com/syscoin/eth-object.git":
+eth-object@^1.0.3, "eth-object@git+https://github.com/syscoin/eth-object.git":
   version "1.0.3"
-  resolved "https://github.com/syscoin/eth-object.git#b5ff300f57c136138b31d6e570c816a147e0f1c9"
+  resolved "git+https://github.com/syscoin/eth-object.git#b5ff300f57c136138b31d6e570c816a147e0f1c9"
   dependencies:
     eth-util-lite "^1.0.1"
 
@@ -12171,17 +12171,17 @@ symbol-tree@^3.2.4:
   resolved "https://registry.yarnpkg.com/symbol-tree/-/symbol-tree-3.2.4.tgz#430637d248ba77e078883951fb9aa0eed7c63fa2"
   integrity sha512-9QNk5KwDF+Bvz+PyObkmSYjI5ksVUYtjW7AU22r2NKcfLJcXp96hkDWU3+XndOsUb+AQ9QhfzfCT2O+CNWT5Tw==
 
-syscoinjs-lib@^1.0.274:
-  version "1.0.274"
-  resolved "https://registry.npmjs.org/syscoinjs-lib/-/syscoinjs-lib-1.0.274.tgz#0d27e75d9508181de79541e8cefe661b650f3448"
-  integrity sha512-6Tfx7XjVd4PaG13sCXWqvzDm4KvSF+x4X/xGaMhqx7ifurSXqjvebcDoSlQN3TuWnMtQ9SwhpDpQ4OBlFDnqXw==
+syscoinjs-lib@^1.0.275:
+  version "1.0.275"
+  resolved "https://registry.yarnpkg.com/syscoinjs-lib/-/syscoinjs-lib-1.0.275.tgz#e70379458953b55e82b4656bdfad4bef7ff6976a"
+  integrity sha512-el+6wWDxVObR/f7+Q1aZTgg7goUEEQTfNYoF+CSMvv/VZKd8I2qqImb4LV1opkIPXTwydRBhaFpM7wE+93J8XA==
   dependencies:
     "@bitcoinerlab/secp256k1" "^1.2.0"
     axios "^1.18.1"
     bip32 "^5.0.1"
-    bip39 "^3.1.0"
+    bip39 "^3.1.2"
     bitcoin-ops "^1.4.1"
-    bitcoinjs-lib "^7.0.1"
+    bitcoinjs-lib "^7.0.5"
     bn.js "^5.2.4"
     bs58 "^6.0.0"
     ecpair "^3.0.1"
