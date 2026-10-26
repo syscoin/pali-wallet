@@ -322,7 +322,7 @@ const SentryOperation = () => {
                 <input
                   type="password"
                   autoComplete="current-password"
-                  className="mt-2 min-h-11 w-full rounded-xl border border-fields-input-border bg-bkg-1 p-3"
+                  className="mt-2 min-h-11 w-full rounded-xl border border-fields-input-border bg-bkg-1 p-3 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-royalblue focus-visible:-outline-offset-2"
                   value={password}
                   disabled={busy}
                   onChange={(e) => setPassword(e.target.value)}

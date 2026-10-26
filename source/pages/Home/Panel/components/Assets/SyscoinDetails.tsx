@@ -1,5 +1,11 @@
 import getSymbolFromCurrency from 'currency-symbol-map';
-import React, { useEffect, useState, useMemo } from 'react';
+import React, {
+  useEffect,
+  useState,
+  useMemo,
+  useLayoutEffect,
+  useRef,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
@@ -105,6 +111,18 @@ export const SyscoinAssetDetails = ({
       ? marketDataState.data
       : null;
   const marketCoinId = typeof marketData?.id === 'string' ? marketData.id : '';
+  const closeFooterRef = useRef<HTMLDivElement>(null);
+
+  // Keep an already-focused action visible when its preceding market data changes.
+  useLayoutEffect(() => {
+    const focused = document.activeElement;
+    if (
+      focused instanceof HTMLElement &&
+      closeFooterRef.current?.contains(focused)
+    ) {
+      focused.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
+  }, [marketData, isLoadingMarketData]);
 
   // All hooks must be called before any early returns
   // Memoize formattedAsset and assetSymbol calculation
@@ -606,7 +624,7 @@ export const SyscoinAssetDetails = ({
       </div>
 
       {/* Close button - Fixed at bottom */}
-      <div className="flex-shrink-0 px-4 pb-4 pt-2">
+      <div ref={closeFooterRef} className="flex-shrink-0 px-4 pb-4 pt-2">
         <Button
           variant="neutral"
           className="text-sm text-brand-royalblue"

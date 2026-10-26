@@ -9,6 +9,7 @@ import { pathToFileURL } from 'url';
 import en from '../../source/assets/locales/en.json';
 import { E2E_CONFIG } from '../harness/config';
 import { PaliWallet } from '../harness/pali';
+import { expectContainedSentryPasswordFocus } from '../harness/sentryPasswordFocus';
 import {
   approve,
   extensionEvidence,
@@ -494,6 +495,8 @@ test('BLS management links the node and preserves operator authorization through
             ).toHaveCount(0);
           }
           await popup.getByLabel('Wallet password').fill(E2E_CONFIG.password);
+          if (label === 'register')
+            await expectContainedSentryPasswordFocus(popup, info);
           await capture(popup);
           await popup.getByRole('button', { name: 'Authorize update' }).click();
           const signed = await settle(page, id, 45000);
