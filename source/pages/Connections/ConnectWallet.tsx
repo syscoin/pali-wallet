@@ -383,7 +383,7 @@ export const ConnectWallet = () => {
                           return (
                             <div
                               key={`${acc.id}-${keyringType}`}
-                              className={`w-full p-4 rounded-lg border transition-all duration-200 text-left group cursor-pointer
+                              className={`w-full p-4 rounded-lg border transition-all duration-200 text-left group cursor-pointer select-none
                                 ${
                                   isSelected
                                     ? 'border-brand-royalblue bg-bkg-4 shadow-md'
