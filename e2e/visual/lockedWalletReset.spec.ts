@@ -260,6 +260,50 @@ test('locked wallet can explicitly erase and create a different wallet without i
               info,
               `reset-ready-${viewport.width}x${viewport.height}`
             );
+            if (viewport.width === 320) {
+              // A pointer can focus the field while it is partly below the
+              // scrollable body. Its focus outline must remain visible.
+              const checkbox = dialog.getByRole('checkbox');
+              const field = dialog.getByRole('textbox');
+              await checkbox.click();
+              await checkbox.click();
+              const checkboxBox = await checkbox.boundingBox();
+              expect(checkboxBox).not.toBeNull();
+              await page.mouse.move(checkboxBox!.x + 5, checkboxBox!.y + 5);
+              await page.mouse.wheel(0, 200);
+              await page.waitForTimeout(150);
+              const fieldBox = await field.boundingBox();
+              expect(fieldBox).not.toBeNull();
+              await page.mouse.move(fieldBox!.x + 20, fieldBox!.y + 10);
+              await page.mouse.wheel(0, -15);
+              await page.waitForTimeout(150);
+              const partlyVisible = await field.boundingBox();
+              expect(partlyVisible).not.toBeNull();
+              await page.mouse.click(
+                partlyVisible!.x + 30,
+                Math.min(partlyVisible!.y + 10, 205)
+              );
+              await expect(field).toBeFocused();
+              await expect(confirm).toBeEnabled();
+              await expect
+                .poll(() =>
+                  field.evaluate((input) => {
+                    let parent = input.parentElement;
+                    while (
+                      parent &&
+                      !/(auto|scroll)/.test(getComputedStyle(parent).overflowY)
+                    )
+                      parent = parent.parentElement;
+                    if (!parent) return -Infinity;
+                    return (
+                      parent.getBoundingClientRect().bottom -
+                      input.getBoundingClientRect().bottom
+                    );
+                  })
+                )
+                .toBeGreaterThanOrEqual(4);
+              await screenshot(page, info, 'reset-pointer-visible-320x360');
+            }
             await cancel.click();
             await expect(dialog).toHaveCount(0);
             await expect(page.locator('#erase-wallet-link')).toBeFocused();
