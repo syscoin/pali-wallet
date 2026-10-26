@@ -19,6 +19,7 @@ import {
   installIsolatedVaultRoutes,
 } from '../harness/isolatedVaultFixture';
 import { PaliWallet } from '../harness/pali';
+import { checkReviewInputFocusRing } from '../harness/reviewGeometry';
 import {
   approve,
   extensionEvidence,
@@ -339,6 +340,12 @@ test('token approval review restores discarded drafts and shows the edited calld
             );
           }
           await expect(input).toBeInViewport({ ratio: 1 });
+          await checkReviewInputFocusRing(
+            popup,
+            input,
+            info,
+            `allowance-focused-input-${viewport.width}`
+          );
           await info.attach(`allowance-custom-input-${viewport.width}`, {
             body: await popup.screenshot({ animations: 'disabled' }),
             contentType: 'image/png',

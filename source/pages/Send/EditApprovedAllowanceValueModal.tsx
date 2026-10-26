@@ -221,7 +221,7 @@ export const EditApprovedAllowanceValueModal = (
                               currentRadioChecked === 'custom_limit'
                                 ? 'border bg-transparent border-slate-400'
                                 : ''
-                            } rounded outline-none focus-visible:ring-2 focus-visible:ring-content-primary`}
+                            } rounded outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-content-primary`}
                             disabled={currentRadioChecked !== 'custom_limit'}
                           />
                         </Form.Item>

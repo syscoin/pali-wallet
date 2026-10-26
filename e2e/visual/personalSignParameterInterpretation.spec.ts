@@ -15,6 +15,7 @@ import {
   installIsolatedVaultRoutes,
 } from '../harness/isolatedVaultFixture';
 import { PaliWallet } from '../harness/pali';
+import { checkReviewHeadingContainment } from '../harness/reviewGeometry';
 import {
   approve,
   extensionEvidence,
@@ -450,6 +451,15 @@ for (const viewport of viewports) {
             );
             expect(await publicState(wallet!.page)).toEqual(baseline);
             await interpretation.scrollIntoViewIfNeeded();
+            if (scenario.name === 'canonical-text') {
+              await checkReviewHeadingContainment(
+                popup,
+                heading,
+                interpretation,
+                info,
+                `parameter-heading-${viewport.width}`
+              );
+            }
             const image = info.outputPath(
               `${scenario.name}-${viewport.width}.png`
             );

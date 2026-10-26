@@ -1084,7 +1084,7 @@ const EthSign: React.FC<ISign> = () => {
           data.eventName === 'personal_sign') && (
           <div className="bg-gray-900 rounded-lg p-4">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-medium text-gray-300 uppercase tracking-wide">
+              <span className="min-w-0 [overflow-wrap:anywhere] text-xs font-medium text-gray-300 uppercase tracking-wide [@media(max-width:360px)]:tracking-[0.2em]">
                 {t('send.parameterInterpretation')}
               </span>
             </div>
