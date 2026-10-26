@@ -272,7 +272,7 @@ for (const scenario of ['edited-url', 'same-url'] as const) {
   test(`Custom RPC ${scenario} retry clears prior validation feedback`, async ({}, info) => {
     expect(info.config.workers).toBe(1);
     expect(info.retry).toBe(0);
-    expect(process.version).toBe('v23.11.1');
+    expect(process.version).toBe('v26.12.1');
     expect(process.env.PALI_TEST_DAPP_REVISION).toMatch(/^[a-f0-9]{40}$/);
     expect(path.isAbsolute(E2E_CONFIG.extensionPath)).toBe(true);
     expect(E2E_CONFIG.extensionPath).toBe(
