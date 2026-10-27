@@ -675,6 +675,7 @@
     "recoverySeedHelp": "Enter the phrase for this wallet. A different phrase cannot restore its accounts.",
     "recoveryLimitations": "Recovery deletes the locally stored encrypted records of imported private keys. Without separate backups of those keys, you may permanently lose access to those accounts. Hardware connections, custom settings and smart-account/passkey setup need their own backups or reconnection. Recovery does not move your funds.",
     "walletRecoveryFailed": "Wallet recovery could not be completed. Check your phrase and try again. If it keeps failing, restart your browser. Do not clear wallet storage.",
+    "walletRecoveryUnconfirmed": "Wallet recovery could not be confirmed. Check wallet to see its current state. Do not clear wallet storage.",
     "walletRecoveryRestartRequired": "Recovery needs to finish before you can use the wallet. Restart your browser, then check your wallet and try recovery again if needed. Do not clear wallet storage.",
     "walletWindowCheckSlow": "Wallet windows are taking longer to respond. Try checking again.",
     "retryWalletWindowCheck": "Retry window check",

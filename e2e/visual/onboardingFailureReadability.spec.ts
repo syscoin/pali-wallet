@@ -426,6 +426,13 @@ for (const state of ['generation', 'recovery'] as const) {
               ? page.getByRole('alert')
               : page.locator('#recovery-check-wallet');
           await expect(target).toBeVisible({ timeout: 15000 });
+          if (state === 'recovery') {
+            // The real operation succeeded but its acknowledgement was held;
+            // the UI must not claim it failed or tell the user to retry it.
+            await expect(page.getByRole('alert')).toHaveText(
+              en.settings.walletRecoveryUnconfirmed
+            );
+          }
           for (const width of [400, 320]) {
             await page.setViewportSize({
               width,

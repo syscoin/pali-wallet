@@ -675,6 +675,7 @@
     "recoverySeedHelp": "Saisissez la phrase de ce portefeuille. Une autre phrase ne peut pas restaurer ses comptes.",
     "recoveryLimitations": "La récupération supprime les enregistrements chiffrés des clés privées importées stockés localement. Sans sauvegardes distinctes de ces clés, vous risquez de perdre définitivement l’accès à ces comptes. Les connexions matérielles, les paramètres personnalisés et la configuration des comptes intelligents et des passkeys nécessitent leurs propres sauvegardes ou une reconnexion. La récupération ne déplace pas vos fonds.",
     "walletRecoveryFailed": "La récupération du portefeuille n’a pas pu être effectuée. Vérifiez votre phrase et réessayez. Si le problème persiste, redémarrez votre navigateur. Ne supprimez pas les données du portefeuille.",
+    "walletRecoveryUnconfirmed": "La récupération du portefeuille n’a pas pu être confirmée. Vérifiez le portefeuille pour connaître son état actuel. Ne supprimez pas ses données.",
     "walletRecoveryRestartRequired": "La récupération doit se terminer avant que vous puissiez utiliser le portefeuille. Redémarrez votre navigateur, puis vérifiez votre portefeuille et réessayez la récupération si nécessaire. Ne supprimez pas les données du portefeuille.",
     "walletWindowCheckSlow": "Les fenêtres du portefeuille mettent plus de temps à répondre. Réessayez de les vérifier.",
     "retryWalletWindowCheck": "Vérifier à nouveau les fenêtres",

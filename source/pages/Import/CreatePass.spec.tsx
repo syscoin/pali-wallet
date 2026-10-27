@@ -284,7 +284,7 @@ describe('new wallet authentication navigation', () => {
     });
 
     expect(screen.getByRole('alert').textContent).toBe(
-      'settings.walletRecoveryFailed'
+      'settings.walletRecoveryUnconfirmed'
     );
     expect(screen.getByRole('heading').textContent).toBe(
       'settings.recoveryTitle'
@@ -302,7 +302,7 @@ describe('new wallet authentication navigation', () => {
       await submitBeforeFailure({ password: 'new recovery password' });
     });
     expect(screen.getByRole('alert').textContent).toBe(
-      'settings.walletRecoveryFailed'
+      'settings.walletRecoveryUnconfirmed'
     );
     expect(mockReload).not.toHaveBeenCalled();
     expect(controllerEmitter).toHaveBeenCalledTimes(1);

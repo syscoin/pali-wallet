@@ -675,6 +675,7 @@
     "recoverySeedHelp": "请输入此钱包的恢复短语。其他恢复短语无法恢复其中的账户。",
     "recoveryLimitations": "恢复会删除本地存储的已导入私钥的加密记录。如果没有这些私钥的独立备份，您可能会永久失去对这些账户的访问权限。硬件连接、自定义设置以及智能账户和通行密钥的设置需要各自的备份或重新连接。恢复不会转移您的资金。",
     "walletRecoveryFailed": "钱包恢复未能完成。请检查您的恢复短语后重试。如果仍然失败，请重启浏览器。请勿清除钱包存储数据。",
+    "walletRecoveryUnconfirmed": "无法确认钱包恢复是否完成。请检查钱包以查看当前状态。请勿清除钱包存储数据。",
     "walletRecoveryRestartRequired": "恢复必须完成后才能使用钱包。请重启浏览器，然后检查钱包，必要时再次尝试恢复。请勿清除钱包存储数据。",
     "walletWindowCheckSlow": "钱包窗口响应时间较长。请尝试重新检查。",
     "retryWalletWindowCheck": "重新检查窗口",

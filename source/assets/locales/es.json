@@ -675,6 +675,7 @@
     "recoverySeedHelp": "Introduce la frase de esta billetera. Una frase diferente no puede restaurar sus cuentas.",
     "recoveryLimitations": "La recuperación elimina los registros cifrados de las claves privadas importadas que se guardan localmente. Sin copias de seguridad independientes de esas claves, puedes perder permanentemente el acceso a esas cuentas. Las conexiones de hardware, los ajustes personalizados y la configuración de cuentas inteligentes y passkeys requieren sus propias copias de seguridad o una nueva conexión. La recuperación no mueve tus fondos.",
     "walletRecoveryFailed": "No se pudo completar la recuperación de la billetera. Comprueba tu frase y vuelve a intentarlo. Si sigue fallando, reinicia tu navegador. No borres los datos de almacenamiento de la billetera.",
+    "walletRecoveryUnconfirmed": "No se pudo confirmar la recuperación de la cartera. Comprueba la cartera para ver su estado actual. No borres los datos de almacenamiento de la cartera.",
     "walletRecoveryRestartRequired": "La recuperación debe finalizar antes de que puedas usar la billetera. Reinicia tu navegador, después verifica tu billetera y vuelve a intentar la recuperación si es necesario. No borres los datos de almacenamiento de la billetera.",
     "walletWindowCheckSlow": "Las ventanas de la billetera tardan más en responder. Intenta comprobarlas de nuevo.",
     "retryWalletWindowCheck": "Volver a comprobar las ventanas",

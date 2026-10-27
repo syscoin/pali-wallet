@@ -73,7 +73,7 @@ export const CreatePasswordImport = () => {
   return recoveryFailed ? (
     <OnboardingLayout title={t('settings.recoveryTitle')}>
       <p role="alert" className="mb-6 text-brand-gray200 text-center text-sm">
-        {t('settings.walletRecoveryFailed')}
+        {t('settings.walletRecoveryUnconfirmed')}
       </p>
       <Button
         id="recovery-check-wallet"
