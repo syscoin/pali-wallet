@@ -14,11 +14,38 @@ const dependencies = [
   },
   {
     name: 'uint8array-tools',
-    version: '0.0.9',
-    anchor: 'bip174',
+    version: '0.0.8',
+    anchor: 'bip32',
     file: 'src/mjs/browser.js',
     match:
       /[\\/]node_modules[\\/]uint8array-tools[\\/]src[\\/]mjs[\\/]browser\.js$/,
+  },
+  {
+    name: 'string_decoder',
+    version: '1.1.1',
+    anchor: 'browserify-sign',
+    packageJsonEntry: true,
+    file: 'lib/string_decoder.js',
+    match:
+      /[\\/]node_modules[\\/]string_decoder[\\/]lib[\\/]string_decoder\.js$/,
+    compareDependencies: 'decoder',
+  },
+  {
+    name: 'safe-buffer',
+    version: '5.1.2',
+    anchor: 'level-iterator-stream',
+    file: 'index.js',
+    match: /[\\/]node_modules[\\/]safe-buffer[\\/]index\.js$/,
+    compareDependencies: 'buffer',
+  },
+  {
+    name: 'varuint-bitcoin',
+    version: '2.0.1',
+    anchor: 'bip174',
+    file: 'src/cjs/index.cjs',
+    match:
+      /[\\/]node_modules[\\/]varuint-bitcoin[\\/]src[\\/]cjs[\\/]index\.cjs$/,
+    compareDependencies: 'varuint',
   },
 ];
 
@@ -45,7 +72,12 @@ function readResource(resource, dependency) {
 function canonicalResource(dependency) {
   try {
     const anchor = path.dirname(require.resolve(dependency.anchor));
-    const entry = require.resolve(dependency.name, { paths: [anchor] });
+    const entry = require.resolve(
+      dependency.packageJsonEntry
+        ? `${dependency.name}/package.json`
+        : dependency.name,
+      { paths: [anchor] }
+    );
     let root = path.dirname(entry);
     while (path.dirname(root) !== root) {
       const resource = path.join(root, dependency.file);
@@ -54,6 +86,53 @@ function canonicalResource(dependency) {
     }
   } catch {
     // A missing or upgraded pinned dependency disables only its own dedup.
+  }
+}
+
+// Changing module identity also changes where relative dependencies resolve.
+// Only canonicalize these modules when their dependencies remain equivalent.
+function equivalentDependencies(original, target, dependency) {
+  try {
+    if (dependency.compareDependencies === 'buffer') {
+      return (
+        require.resolve('buffer/', { paths: [original.root] }) ===
+        require.resolve('buffer/', { paths: [target.root] })
+      );
+    }
+    if (dependency.compareDependencies === 'varuint') {
+      return (
+        require.resolve('uint8array-tools', { paths: [original.root] }) ===
+        require.resolve('uint8array-tools', { paths: [target.root] })
+      );
+    }
+    if (dependency.compareDependencies === 'decoder') {
+      const safe = (root) => {
+        const file = require.resolve('safe-buffer', { paths: [root] });
+        const dir = path.dirname(file);
+        const metadata = JSON.parse(
+          fs.readFileSync(path.join(dir, 'package.json'), 'utf8')
+        );
+        if (metadata.name !== 'safe-buffer' || metadata.version !== '5.1.2')
+          return;
+        return {
+          bytes: fs.readFileSync(file),
+          browser: JSON.stringify(metadata.browser),
+          buffer: require.resolve('buffer/', { paths: [dir] }),
+        };
+      };
+      const a = safe(original.root);
+      const b = safe(target.root);
+      return Boolean(
+        a &&
+          b &&
+          a.browser === b.browser &&
+          a.buffer === b.buffer &&
+          a.bytes.equals(b.bytes)
+      );
+    }
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -74,7 +153,10 @@ function createIdenticalDependencyDedupPlugins() {
           !original ||
           !target ||
           original.metadata.type !== target.metadata.type ||
-          !original.bytes.equals(target.bytes)
+          JSON.stringify(original.metadata.browser) !==
+            JSON.stringify(target.metadata.browser) ||
+          !original.bytes.equals(target.bytes) ||
+          !equivalentDependencies(original, target, dependency)
         )
           return;
 

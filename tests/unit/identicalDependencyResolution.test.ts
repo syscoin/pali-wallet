@@ -17,8 +17,8 @@ const byteFile = (anchor?: string) =>
     path.dirname(installed('uint8array-tools', anchor)),
     '../mjs/browser.js'
   );
-const bytes9 = byteFile('bip174');
-const bytes8 = byteFile();
+const bytes8 = byteFile('bip32');
+const bytes10 = byteFile('bip174');
 const bnAnchors = [
   'asn1.js',
   'create-ecdh',
@@ -100,7 +100,7 @@ async function compile(source: string, deduplicate = true) {
   return { resources, dependencies, packageMetadata, result: result.exports };
 }
 
-it('deduplicates the installed identical versions while preserving BN5 and older byte tools', async () => {
+it('deduplicates the installed identical versions while preserving BN5 and newer byte tools', async () => {
   const paths = bnAnchors.map((anchor) => installed('bn.js', anchor));
   const source = `
     ${paths
@@ -110,9 +110,9 @@ it('deduplicates the installed identical versions while preserving BN5 and older
       )
       .join('\n')}
     import RootBN5 from ${JSON.stringify(bn5)};
-    import * as a from ${JSON.stringify(bytes9)};
-    import * as b from ${JSON.stringify(byteFile('bitcoinjs-lib'))};
-    import * as old from ${JSON.stringify(bytes8)};
+    import * as a from ${JSON.stringify(bytes8)};
+    import * as b from ${JSON.stringify(byteFile('ecpair'))};
+    import * as newer from ${JSON.stringify(bytes10)};
     const constructors = [${paths.map((_, index) => `BN${index}`).join(',')}];
     const value = new BN0('ffffffffffffffff', 16);
     const buffer = new Uint8Array(12);
@@ -121,15 +121,15 @@ it('deduplicates the installed identical versions while preserving BN5 and older
     export default {
       sameBn4: constructors.every(BN => BN === BN0),
       separateBn5: RootBN5 !== BN0,
-      sameBytes9: a === b,
-      separateBytes8: old.toHex !== a.toHex,
+      sameBytes8: a === b,
+      separateBytes10: newer.toHex !== a.toHex,
       product: value.mul(new constructors[8](2)).toString(16),
       bnBytes: Array.from(value.toArrayLike(Uint8Array, 'be', 8)),
       bn5Sum: new RootBN5('9007199254740993').addn(1).toString(),
       bytes: a.toHex(buffer),
       uint32: b.readUInt32(buffer, 0, 'LE'),
       uint64: a.readUInt64(buffer, 4, 'BE').toString(),
-      olderRoundTrip: old.toHex(old.fromHex('00aabbff')),
+      newerRoundTrip: newer.toHex(newer.fromHex('00aabbff')),
     };`;
   const baseline = await compile(source, false);
   const deduplicated = await compile(source);
@@ -143,7 +143,7 @@ it('deduplicates the installed identical versions while preserving BN5 and older
   expect(bnResources(deduplicated.resources).sort()).toEqual([bn4, bn5].sort());
   expect(byteResources(baseline.resources)).toHaveLength(3);
   expect(byteResources(deduplicated.resources).sort()).toEqual(
-    [bytes9, bytes8].sort()
+    [bytes8, bytes10].sort()
   );
   for (const [build, count] of [
     [baseline, 9],
@@ -160,7 +160,7 @@ it('deduplicates the installed identical versions while preserving BN5 and older
     }
     expect(
       build.dependencies.filter((dependency) =>
-        [bytes9, byteFile('bitcoinjs-lib')].includes(dependency.from)
+        [bytes8, byteFile('ecpair')].includes(dependency.from)
       )
     ).toEqual([]);
   }
@@ -168,29 +168,29 @@ it('deduplicates the installed identical versions while preserving BN5 and older
     expect.arrayContaining([
       { resource: bn4, root: path.resolve(path.dirname(bn4), '..') },
       {
-        resource: bytes9,
-        root: path.resolve(path.dirname(bytes9), '../..'),
+        resource: bytes8,
+        root: path.resolve(path.dirname(bytes8), '../..'),
       },
     ])
   );
-  expect(baseline.result).toMatchObject({ sameBn4: false, sameBytes9: false });
+  expect(baseline.result).toMatchObject({ sameBn4: false, sameBytes8: false });
   expect(deduplicated.result).toEqual({
     sameBn4: true,
     separateBn5: true,
-    sameBytes9: true,
-    separateBytes8: true,
+    sameBytes8: true,
+    separateBytes10: true,
     product: '1fffffffffffffffe',
     bnBytes: Array(8).fill(255),
     bn5Sum: '9007199254740994',
     bytes: 'efcdab890102030405060708',
     uint32: 0x89abcdef,
     uint64: '72623859790382856',
-    olderRoundTrip: '00aabbff',
+    newerRoundTrip: '00aabbff',
   });
   expect(baseline.result).toEqual({
     ...deduplicated.result,
     sameBn4: false,
-    sameBytes9: false,
+    sameBytes8: false,
   });
 });
 
@@ -204,10 +204,10 @@ it.each([
   },
   {
     name: 'uint8array-tools',
-    version: '0.0.9',
-    otherVersion: '0.0.8',
+    version: '0.0.8',
+    otherVersion: '0.0.10',
     file: 'src/mjs/browser.js',
-    canonical: bytes9,
+    canonical: bytes8,
   },
 ])(
   'keeps changed $name sources and different versions separate',
@@ -339,4 +339,198 @@ it('preserves deterministic elliptic secp256k1 signing, verification and recover
     verified: true,
     wrongDigestVerified: false,
   });
+});
+
+it('shares only identical decoder copies with equivalent buffer dependencies', async () => {
+  const decoder = (anchor: string) =>
+    path.join(
+      path.dirname(installed('string_decoder/package.json', anchor)),
+      'lib/string_decoder.js'
+    );
+  const a = decoder('browserify-sign');
+  const b = decoder('hash-base');
+  const { resources, result } = await compile(`
+    import * as a from ${JSON.stringify(a)};
+    import * as b from ${JSON.stringify(b)};
+    import { Buffer } from ${JSON.stringify(require.resolve('buffer/'))};
+    const decoder = new a.StringDecoder('utf8');
+    export default {
+      shared: a.StringDecoder === b.StringDecoder,
+      prefix: decoder.write(Buffer.from([0xe2, 0x82])),
+      suffix: decoder.end(Buffer.from([0xac])),
+    };`);
+  expect(resources).toContain(a);
+  expect(resources).not.toContain(b);
+  expect(result).toEqual({ shared: true, prefix: '', suffix: '€' });
+
+  const root = path.join(directory, 'node_modules', 'string_decoder');
+  const file = path.join(root, 'lib', 'string_decoder.js');
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.copyFileSync(a, file);
+  fs.copyFileSync(
+    path.join(path.dirname(a), '../package.json'),
+    path.join(root, 'package.json')
+  );
+  const safe = path.join(root, 'node_modules', 'safe-buffer');
+  fs.mkdirSync(safe, { recursive: true });
+  fs.writeFileSync(
+    path.join(safe, 'package.json'),
+    JSON.stringify({ name: 'safe-buffer', version: '5.1.2', main: 'index.js' })
+  );
+  fs.writeFileSync(
+    path.join(safe, 'index.js'),
+    'exports.Buffer = require("buffer").Buffer; // changed\n'
+  );
+  const separate = await compile(`
+    import * as a from ${JSON.stringify(a)};
+    import * as b from ${JSON.stringify(file)};
+    export default { separate: a.StringDecoder !== b.StringDecoder };`);
+  expect(separate.resources).toEqual(expect.arrayContaining([a, file]));
+  expect(separate.result).toEqual({ separate: true });
+});
+
+it('shares matching varuint copies and keeps the previous version separate', async () => {
+  const a = installed('varuint-bitcoin', 'bip174');
+  const b = installed('varuint-bitcoin', 'bitcoinjs-lib');
+  const previous = installed('varuint-bitcoin', 'bip32');
+  const { resources, result } = await compile(`
+    import * as a from ${JSON.stringify(a)};
+    import * as b from ${JSON.stringify(b)};
+    import * as previous from ${JSON.stringify(previous)};
+    export default {
+      shared: a.encode === b.encode,
+      separate: a.encode !== previous.encode,
+      roundTrip: b.decode(a.encode(1000).buffer).numberValue,
+    };`);
+  expect(resources).toEqual(expect.arrayContaining([a, previous]));
+  expect(resources).not.toContain(b);
+  expect(result).toEqual({ shared: true, separate: true, roundTrip: 1000 });
+});
+
+it('shares equivalent safe-buffer copies without merging other versions', async () => {
+  const a = installed('safe-buffer', 'level-iterator-stream');
+  const b = installed('safe-buffer', 'level-ws');
+  const newer = installed('safe-buffer');
+  const baseline = await compile(
+    `
+    import * as a from ${JSON.stringify(a)};
+    import * as b from ${JSON.stringify(b)};
+    import * as newer from ${JSON.stringify(newer)};
+    export default {
+      same: a === b,
+      separate: a !== newer,
+      hex: a.Buffer.from('sample').toString('hex'),
+    };`,
+    false
+  );
+  const deduplicated = await compile(`
+    import * as a from ${JSON.stringify(a)};
+    import * as b from ${JSON.stringify(b)};
+    import * as newer from ${JSON.stringify(newer)};
+    export default {
+      same: a === b,
+      separate: a !== newer,
+      hex: a.Buffer.from('sample').toString('hex'),
+    };`);
+  expect(baseline.resources).toEqual(expect.arrayContaining([a, b, newer]));
+  expect(deduplicated.resources).toContain(a);
+  expect(deduplicated.resources).not.toContain(b);
+  expect(deduplicated.resources).toContain(newer);
+  // Both versions expose the same underlying Buffer object; module paths
+  // above prove that the different version remains in the compilation.
+  expect(baseline.result).toEqual({
+    same: true,
+    separate: false,
+    hex: '73616d706c65',
+  });
+  expect(deduplicated.result).toEqual(baseline.result);
+
+  const root = path.join(directory, 'node_modules', 'safe-buffer');
+  fs.mkdirSync(root, { recursive: true });
+  const copy = path.join(root, 'index.js');
+  fs.copyFileSync(a, copy);
+  fs.copyFileSync(
+    path.join(path.dirname(a), 'package.json'),
+    path.join(root, 'package.json')
+  );
+  const bufferRoot = path.join(root, 'node_modules', 'buffer');
+  fs.mkdirSync(bufferRoot, { recursive: true });
+  fs.writeFileSync(
+    path.join(bufferRoot, 'package.json'),
+    JSON.stringify({ name: 'buffer', main: 'index.js' })
+  );
+  fs.writeFileSync(
+    path.join(bufferRoot, 'index.js'),
+    `module.exports = require(${JSON.stringify(require.resolve('buffer/'))});`
+  );
+  const differentResolution = await compile(`
+    import * as a from ${JSON.stringify(a)};
+    import * as copy from ${JSON.stringify(copy)};
+    export default { hex: copy.Buffer.from('sample').toString('hex') };`);
+  expect(differentResolution.resources).toEqual(
+    expect.arrayContaining([a, copy])
+  );
+  expect(differentResolution.result).toEqual({ hex: '73616d706c65' });
+});
+
+it('keeps identical varuint source separate when its byte tools resolve differently', async () => {
+  const original = installed('varuint-bitcoin', 'bip174');
+  const sourceRoot = path.resolve(path.dirname(original), '../..');
+  const root = path.join(directory, 'node_modules', 'varuint-bitcoin');
+  const copy = path.join(root, 'src/cjs/index.cjs');
+  fs.mkdirSync(path.dirname(copy), { recursive: true });
+  fs.copyFileSync(original, copy);
+  fs.copyFileSync(
+    path.join(sourceRoot, 'package.json'),
+    path.join(root, 'package.json')
+  );
+  const toolsRoot = path.join(root, 'node_modules', 'uint8array-tools');
+  fs.mkdirSync(toolsRoot, { recursive: true });
+  fs.writeFileSync(
+    path.join(toolsRoot, 'package.json'),
+    JSON.stringify({
+      name: 'uint8array-tools',
+      version: '0.0.10',
+      main: 'index.cjs',
+    })
+  );
+  fs.writeFileSync(
+    path.join(toolsRoot, 'index.cjs'),
+    `module.exports = require(${JSON.stringify(
+      installed('uint8array-tools', 'bip174')
+    )});`
+  );
+  const { resources, result } = await compile(`
+    import * as original from ${JSON.stringify(original)};
+    import * as copy from ${JSON.stringify(copy)};
+    export default {
+      separate: original.encode !== copy.encode,
+      roundTrip: copy.decode(copy.encode(1000).buffer).numberValue,
+    };`);
+  expect(resources).toEqual(expect.arrayContaining([original, copy]));
+  expect(result).toEqual({ separate: true, roundTrip: 1000 });
+});
+
+it('preserves browserified readable stream decoding across the deduplication', async () => {
+  const streams = ['browserify-sign', 'hash-base'].map((anchor) =>
+    installed('readable-stream', anchor)
+  );
+  const source = `
+    import streamA from ${JSON.stringify(streams[0])};
+    import streamB from ${JSON.stringify(streams[1])};
+    import { Buffer } from ${JSON.stringify(require.resolve('buffer/'))};
+    function read(Stream) {
+      const stream = new Stream.PassThrough();
+      let text = '';
+      stream.setEncoding('utf8');
+      stream.on('data', chunk => { text += chunk; });
+      stream.write(Buffer.from([0x41, 0xe2, 0x82]));
+      stream.end(Buffer.from([0xac, 0x42]));
+      return text;
+    }
+    export default { first: read(streamA), second: read(streamB) };`;
+  const baseline = await compile(source, false);
+  const deduplicated = await compile(source);
+  expect(baseline.result).toEqual({ first: 'A€B', second: 'A€B' });
+  expect(deduplicated.result).toEqual(baseline.result);
 });

@@ -6,8 +6,8 @@ const pins = require('./pins.cjs');
 
 assert.equal(
   process.versions.node,
-  '23.11.1',
-  'Use Node 23.11.1 for the pinned integration fixture'
+  '26.12.1',
+  'Use Node 26.12.1 for the pinned integration fixture'
 );
 assert.ok(
   process.env.RECOVERY_BACKEND_ROOT,

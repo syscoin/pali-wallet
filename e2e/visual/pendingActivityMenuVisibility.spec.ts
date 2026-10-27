@@ -341,7 +341,7 @@ for (const viewport of [
   { width: 320, height: 360 },
 ]) {
   test(`pending Activity options remain readable with ordinary pointer and keyboard use at ${viewport.width}x${viewport.height}`, async ({}, info) => {
-    expect(process.version).toBe('v23.11.1');
+    expect(process.version).toBe('v26.12.1');
     expect(info.config.workers).toBe(1);
     expect(info.retry).toBe(0);
     expect(path.isAbsolute(E2E_CONFIG.extensionPath)).toBe(true);

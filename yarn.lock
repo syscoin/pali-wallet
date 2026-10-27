@@ -3056,10 +3056,10 @@
   resolved "https://registry.npmjs.org/@sidhujag/sysweb3-core/-/sysweb3-core-1.0.29.tgz#ba86f171956513e423d2c328c9098ddbc76774d1"
   integrity sha512-ZQGSdwHG2Q9FX+PbHj3MnV6I413z+pN2Sm2qjoi1TrOqWZHXVnzfhjvxkj9s3djfTD56OAiu1nW2TUhX98rrdQ==
 
-"@sidhujag/sysweb3-keyring@1.0.626":
-  version "1.0.626"
-  resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-keyring/-/sysweb3-keyring-1.0.626.tgz#5cc705f24f5071f388b3724fcfb76a9f63f0da80"
-  integrity sha512-CUju87dtCvn74ydLJogfE3LmgaSYXKr1ZNcJSOJkk3ztCPmuQAok2yHDiKlZaergkwHtzZAPaGp26xX47uDiOg==
+"@sidhujag/sysweb3-keyring@1.0.627":
+  version "1.0.627"
+  resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-keyring/-/sysweb3-keyring-1.0.627.tgz#e30fe3d808d1133610aafff8618b6da82850c25c"
+  integrity sha512-I8L7NLSp8B5zyVzR/8pPQ9XGBgksd19Ls+2ekC5MWlmvIddpbKKbraozCTLGAsLyBVFBKIwmh8Efjt4KjwRIQg==
   dependencies:
     "@bitcoinerlab/secp256k1" "^1.2.0"
     "@ledgerhq/hw-app-eth" "^6.47.1"
@@ -3068,14 +3068,14 @@
     "@metamask/eth-sig-util" "^8.2.0"
     "@sidhujag/sysweb3-core" "^1.0.29"
     "@sidhujag/sysweb3-network" "^1.0.109"
-    "@sidhujag/sysweb3-utils" "^1.1.279"
+    "@sidhujag/sysweb3-utils" "^1.1.280"
     "@trezor/connect-web" "^9.7.1"
     "@trezor/connect-webextension" "^9.7.1"
     "@trezor/utxo-lib" "^1.0.12"
     bip32 "^5.0.1"
     bip32-path "^0.4.2"
     bitcoin-ops "^1.4.1"
-    bitcoinjs-lib "^7.0.1"
+    bitcoinjs-lib "^7.0.5"
     bs58check "^3.0.1"
     crypto-js "^4.1.1"
     ethers "^6.17.0"
@@ -3098,10 +3098,10 @@
     "@noble/post-quantum" "0.7.1"
     "@scure/base" "2.4.0"
 
-"@sidhujag/sysweb3-utils@^1.1.279":
-  version "1.1.279"
-  resolved "https://registry.npmjs.org/@sidhujag/sysweb3-utils/-/sysweb3-utils-1.1.279.tgz#f871e6fc05a8e24bcc6ac7a3d164fd61615d76a8"
-  integrity sha512-Cdel8pjEAvCpZpjwXJhRuvtZKNzBoYiGyXp4ghAcwUr15pjcZsu/gvRNQiZ2i8prBVmOgFFydylj3Fd0CbQkTQ==
+"@sidhujag/sysweb3-utils@^1.1.280":
+  version "1.1.280"
+  resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-utils/-/sysweb3-utils-1.1.280.tgz#1a29c758e7dd40fbe18a9ad9f8cd5afc319c5656"
+  integrity sha512-q/bEBhIW9HLoX0WoDQ1LId6zqEBlLioqkir8B0JafCGBFUX9PkzUVrck+7tMLJNlL/rj/q3MY86ZjKphdsWARg==
   dependencies:
     "@sidhujag/sysweb3-network" "^1.0.109"
     bech32 "^2.0.0"
@@ -5310,13 +5310,13 @@ bindings@^1.3.0:
   dependencies:
     file-uri-to-path "1.0.0"
 
-bip174@^3.0.0:
-  version "3.0.0"
-  resolved "https://registry.yarnpkg.com/bip174/-/bip174-3.0.0.tgz#fbf60cc7a6e39dde17afdda0cf1a27e5508ae075"
-  integrity sha512-N3vz3rqikLEu0d6yQL8GTrSkpYb35NQKWMR7Hlza0lOj6ZOlvQ3Xr7N9Y+JPebaCVoEUHdBeBSuLxcHr71r+Lw==
+bip174@^3.0.1:
+  version "3.0.1"
+  resolved "https://registry.yarnpkg.com/bip174/-/bip174-3.0.1.tgz#c213c888ab42dd0b113802b0c48285ede8c37cb0"
+  integrity sha512-avOnOoLOwdjw1MebWKh3bHqWOH558Q9VpqmRKUv2S63vjw0pnX7Y+yRihxIibgP55twhc7+YfC0IAH43IF5FqQ==
   dependencies:
-    uint8array-tools "^0.0.9"
-    varuint-bitcoin "^2.0.0"
+    uint8array-tools "^0.0.10"
+    varuint-bitcoin "^2.0.1"
 
 bip32-path@^0.4.2:
   version "0.4.2"
@@ -5334,10 +5334,10 @@ bip32@^5.0.1:
     valibot "^1.2.0"
     wif "^5.0.0"
 
-bip39@^3.1.0:
-  version "3.1.0"
-  resolved "https://registry.yarnpkg.com/bip39/-/bip39-3.1.0.tgz#c55a418deaf48826a6ceb34ac55b3ee1577e18a3"
-  integrity sha512-c9kiwdk45Do5GL0vJMe7tS95VjCii65mYAH7DfWl3uW8AVzXKQVUm64i3hzVybBDMp9r7j9iNxR85+ul8MdN/A==
+bip39@^3.1.2:
+  version "3.1.2"
+  resolved "https://registry.yarnpkg.com/bip39/-/bip39-3.1.2.tgz#17e31b77e80ded2e7388cb88a327cd640917baf7"
+  integrity sha512-inxKLEH+Weos8f5rBYNKuOrpOIcNWtKnrLur9x72s4Cb8w4Mm0jJktUPkev7+1pQuivxFqkiut9+AcrwunLHxA==
   dependencies:
     "@noble/hashes" "^1.2.0"
 
@@ -5358,18 +5358,18 @@ bitcoin-ops@^1.3.0, bitcoin-ops@^1.4.1:
   resolved "https://registry.yarnpkg.com/bitcoin-ops/-/bitcoin-ops-1.4.1.tgz#e45de620398e22fd4ca6023de43974ff42240278"
   integrity sha512-pef6gxZFztEhaE9RY9HmWVmiIHqCb2OyS4HPKkpc6CIiiOa3Qmuoylxc5P2EkU3w+5eTSifI9SEZC88idAIGow==
 
-bitcoinjs-lib@^7.0.1:
-  version "7.0.1"
-  resolved "https://registry.yarnpkg.com/bitcoinjs-lib/-/bitcoinjs-lib-7.0.1.tgz#55fd0a44f258669e2de9a5d50c8d8008d0a29ce0"
-  integrity sha512-vwEmpL5Tpj0I0RBdNkcDMXePoaYSTeKY6mL6/l5esbnTs+jGdPDuLp4NY1hSh6Zk5wSgePygZ4Wx5JJao30Pww==
+bitcoinjs-lib@^7.0.1, bitcoinjs-lib@^7.0.5:
+  version "7.0.5"
+  resolved "https://registry.yarnpkg.com/bitcoinjs-lib/-/bitcoinjs-lib-7.0.5.tgz#ef7175e79e50faae69c9ca61c273efd966a60c33"
+  integrity sha512-xH24P1ile3QtyChzX1ITitcgpfZgDzG986gy1glbGXFsvcSnRX0P6p4m3nuTQfJ+j97va8py0leEK7xG8oxMqQ==
   dependencies:
     "@noble/hashes" "^1.2.0"
     bech32 "^2.0.0"
-    bip174 "^3.0.0"
+    bip174 "^3.0.1"
     bs58check "^4.0.0"
-    uint8array-tools "^0.0.9"
+    uint8array-tools "^0.0.10"
     valibot "^1.2.0"
-    varuint-bitcoin "^2.0.0"
+    varuint-bitcoin "^2.0.1"
 
 blake-hash@^2.0.0:
   version "2.0.0"
@@ -7226,9 +7226,9 @@ eth-chains@^1.0.0:
   resolved "https://registry.yarnpkg.com/eth-chains/-/eth-chains-1.0.0.tgz#1386496ee1aa231a4d050fde6a87fe36741ecb83"
   integrity sha512-SnJrJPSr5I3rKpW6RZT/qhX8qbmE5bsMeeHoRWBXkvbifudfi3YLKHXZMdLsg+Yv+PP8oqSyPxOvQxKwjNVqmQ==
 
-eth-object@^1.0.3, "eth-object@https://github.com/syscoin/eth-object.git":
+eth-object@^1.0.3, "eth-object@git+https://github.com/syscoin/eth-object.git", "eth-object@https://github.com/syscoin/eth-object.git":
   version "1.0.3"
-  resolved "https://github.com/syscoin/eth-object.git#b5ff300f57c136138b31d6e570c816a147e0f1c9"
+  resolved "git+https://github.com/syscoin/eth-object.git#b5ff300f57c136138b31d6e570c816a147e0f1c9"
   dependencies:
     eth-util-lite "^1.0.1"
 
@@ -12171,17 +12171,17 @@ symbol-tree@^3.2.4:
   resolved "https://registry.yarnpkg.com/symbol-tree/-/symbol-tree-3.2.4.tgz#430637d248ba77e078883951fb9aa0eed7c63fa2"
   integrity sha512-9QNk5KwDF+Bvz+PyObkmSYjI5ksVUYtjW7AU22r2NKcfLJcXp96hkDWU3+XndOsUb+AQ9QhfzfCT2O+CNWT5Tw==
 
-syscoinjs-lib@^1.0.274:
-  version "1.0.274"
-  resolved "https://registry.npmjs.org/syscoinjs-lib/-/syscoinjs-lib-1.0.274.tgz#0d27e75d9508181de79541e8cefe661b650f3448"
-  integrity sha512-6Tfx7XjVd4PaG13sCXWqvzDm4KvSF+x4X/xGaMhqx7ifurSXqjvebcDoSlQN3TuWnMtQ9SwhpDpQ4OBlFDnqXw==
+syscoinjs-lib@^1.0.275:
+  version "1.0.275"
+  resolved "https://registry.yarnpkg.com/syscoinjs-lib/-/syscoinjs-lib-1.0.275.tgz#e70379458953b55e82b4656bdfad4bef7ff6976a"
+  integrity sha512-el+6wWDxVObR/f7+Q1aZTgg7goUEEQTfNYoF+CSMvv/VZKd8I2qqImb4LV1opkIPXTwydRBhaFpM7wE+93J8XA==
   dependencies:
     "@bitcoinerlab/secp256k1" "^1.2.0"
     axios "^1.18.1"
     bip32 "^5.0.1"
-    bip39 "^3.1.0"
+    bip39 "^3.1.2"
     bitcoin-ops "^1.4.1"
-    bitcoinjs-lib "^7.0.1"
+    bitcoinjs-lib "^7.0.5"
     bn.js "^5.2.4"
     bs58 "^6.0.0"
     ecpair "^3.0.1"
@@ -12600,15 +12600,15 @@ uglify-js@^3.1.4:
   resolved "https://registry.yarnpkg.com/uglify-js/-/uglify-js-3.19.3.tgz#82315e9bbc6f2b25888858acd1fff8441035b77f"
   integrity sha512-v3Xu+yuwBXisp6QYTcH4UbH+xYJXqnq2m/LtQVWKWzYc1iehYnLixoQDN9FH6/j9/oybfd6W9Ghwkl8+UMKTKQ==
 
+uint8array-tools@^0.0.10:
+  version "0.0.10"
+  resolved "https://registry.yarnpkg.com/uint8array-tools/-/uint8array-tools-0.0.10.tgz#acfcf118e072df79175c5f73f86af917885d095a"
+  integrity sha512-sSbrZqlr04w4p8KKpHw0ME/R4JzQaadum+BWhMlk2M7LrDyXWTfJOco3d1jNMdQNxgk5DDm88R3IWYH0nR+tzQ==
+
 uint8array-tools@^0.0.8:
   version "0.0.8"
   resolved "https://registry.yarnpkg.com/uint8array-tools/-/uint8array-tools-0.0.8.tgz#712bab001f8347bd782f45bc47c76ffff32d1e0b"
   integrity sha512-xS6+s8e0Xbx++5/0L+yyexukU7pz//Yg6IHg3BKhXotg1JcYtgxVcUctQ0HxLByiJzpAkNFawz1Nz5Xadzo82g==
-
-uint8array-tools@^0.0.9:
-  version "0.0.9"
-  resolved "https://registry.yarnpkg.com/uint8array-tools/-/uint8array-tools-0.0.9.tgz#e29e6d05f3472273db1b0e370ac1d91e4a0a4e6f"
-  integrity sha512-9vqDWmoSXOoi+K14zNaf6LBV51Q8MayF0/IiQs3GlygIKUYtog603e6virExkjjFosfJUBI4LhbQK1iq8IG11A==
 
 unbox-primitive@^1.1.0:
   version "1.1.0"
@@ -12803,6 +12803,13 @@ varuint-bitcoin@^1.1.2:
   integrity sha512-4EVb+w4rx+YfVM32HQX42AbbT7/1f5zwAYhIujKXKk8NQK+JfRVl3pqT3hjNn/L+RstigmGGKVwHA/P0wgITZw==
   dependencies:
     safe-buffer "^5.1.1"
+
+varuint-bitcoin@^2.0.1:
+  version "2.0.1"
+  resolved "https://registry.yarnpkg.com/varuint-bitcoin/-/varuint-bitcoin-2.0.1.tgz#bbf7e790b900f47aad5b597a501337dff7978b17"
+  integrity sha512-TTl5qSPJ3FzjuTHo0Ex9WUE3jTxnUsQHR38vIDhHApoVstzJK4gE20WqmTWOT5oo7ilvOSNejXt4CJrfDcqm5A==
+  dependencies:
+    uint8array-tools "^0.0.10"
 
 vary@~1.1.2:
   version "1.1.2"

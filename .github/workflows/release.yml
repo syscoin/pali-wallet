@@ -38,7 +38,7 @@ jobs:
         if: steps.release_guard.outputs.should_release == 'true'
         uses: actions/setup-node@v7
         with:
-          node-version: '23.11.1'
+          node-version: '26.12.1'
 
       - name: Install dependencies
         if: steps.release_guard.outputs.should_release == 'true'
