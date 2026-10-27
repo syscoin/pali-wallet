@@ -246,6 +246,12 @@ test('connection selection stays on the reviewed account until real switch and g
           exact: true,
         });
         await copyControl.focus();
+        await expect(copyControl).toBeFocused();
+        await expect
+          .poll(() =>
+            copyControl.evaluate((element) => getComputedStyle(element).opacity)
+          )
+          .toBe('1');
         const copyBox = await copyControl.boundingBox();
         expect(copyBox).not.toBeNull();
         expect(copyBox!.width).toBeGreaterThanOrEqual(32);
