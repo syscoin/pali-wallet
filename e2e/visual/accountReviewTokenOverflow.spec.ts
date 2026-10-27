@@ -267,7 +267,11 @@ test('account review preserves readable overflow for four imported positive toke
     const inspect = async (count: number) => {
       const requestId = await startRequest(dapp, 'eth_requestAccounts');
       const popup = await popupFor(wallet!.context, dapp, requestId);
-      await expect(popup.getByText('Account 1', { exact: true })).toBeVisible();
+      await expect(
+        popup.locator('[role="button"]').filter({
+          has: popup.getByText('Account 1', { exact: true }),
+        })
+      ).toBeVisible();
       const overflow = popup.locator('span').filter({ hasText: /^\+1$/ });
       for (const width of [400, 320]) {
         await popup.setViewportSize({
