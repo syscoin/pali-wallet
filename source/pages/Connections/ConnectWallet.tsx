@@ -356,7 +356,7 @@ export const ConnectWallet = () => {
                 placeholder={t('connections.searchAccounts')}
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                className="w-full mb-4 rounded-lg border border-brand-gray300 bg-bkg-2 p-3 text-sm text-brand-white"
+                className="w-full mb-4 rounded-lg border border-brand-gray300 bg-bkg-2 p-3 text-sm text-brand-white [@media(max-height:400px)]:mb-8"
               />
               {matchingAccounts.length === 0 && (
                 <p role="status" className="text-sm text-brand-graylight">

@@ -233,6 +233,14 @@ test('connection selection stays on the reviewed account until real switch and g
         expect(searchBounds!.y + searchBounds!.height).toBeLessThanOrEqual(
           actionBounds!.y + 1
         );
+        const groupBounds = await approval
+          .getByRole('heading', { name: en.receive.hdAccount, exact: true })
+          .boundingBox();
+        expect(groupBounds).not.toBeNull();
+        expect(
+          groupBounds!.y >= actionBounds!.y ||
+            groupBounds!.y + groupBounds!.height <= actionBounds!.y + 1
+        ).toBe(true);
         await approval.setViewportSize({ width: 400, height: 620 });
         await reviewedRow.click();
         await expect(reviewedRow).toHaveClass(/shadow-md/);
