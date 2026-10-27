@@ -296,10 +296,9 @@ export const ConnectWallet = () => {
     );
   }, [accountId, accountType, eligibleAccounts, visibleItems]);
 
-  const selectedAccount =
-    accountId !== null && accountType !== null
-      ? accounts?.[accountType]?.[accountId]
-      : undefined;
+  const selectedAccount = eligibleAccounts.find(
+    ({ account, type }) => account.id === accountId && type === accountType
+  )?.account;
 
   return (
     <div ref={connectionFocusRef} className="flex flex-col w-full h-full">
@@ -588,9 +587,7 @@ export const ConnectWallet = () => {
           <Button
             variant="primary"
             type="button"
-            disabled={
-              isConnecting || accountId === null || accountType === null
-            }
+            disabled={isConnecting || !selectedAccount}
             loading={isConnecting}
             onClick={onConfirm}
           >
