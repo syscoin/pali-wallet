@@ -700,7 +700,14 @@ export function createPrivacyWithdrawalsController(
         remove(id);
         throw fail('privacy_withdrawal_intent_expired');
       }
-      current(intent);
+      try {
+        current(intent);
+      } catch (error) {
+        // This guard runs before reservation or any broadcast. Discard a stale
+        // review and preserve that known outcome for the UI.
+        remove(id);
+        throw sanitize(error);
+      }
       const attempt = intent.attempt;
       if (submitting.has(attempt.noteId))
         throw fail('privacy_withdrawal_note_busy');

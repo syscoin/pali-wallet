@@ -362,6 +362,57 @@ it.each(['context', 'snapshot', 'close', 'cancel'] as const)(
   }
 );
 
+it.each(['direct', 'relayed'] as const)(
+  'reports a stale %s snapshot as not broadcast before submission',
+  async (mode) => {
+    const run = setup();
+    try {
+      if (mode === 'relayed') await run.controller.getRelayers();
+      const review = await run.controller.prepareWithdrawal(
+        mode === 'direct' ? direct() : relayed()
+      );
+      run.invalidate();
+      await expect(
+        run.controller.submitWithdrawal(review.intentId)
+      ).rejects.toMatchObject({
+        message: 'privacy_verification_pending',
+        transactionNotBroadcast: true,
+      });
+      expect(run.host.beforeSubmission).not.toHaveBeenCalled();
+      expect(run.host.sendTransaction).not.toHaveBeenCalled();
+      expect(run.fetcher).not.toHaveBeenCalled();
+      await expect(
+        run.controller.submitWithdrawal(review.intentId)
+      ).rejects.toThrow('privacy_withdrawal_intent_expired');
+    } finally {
+      run.controller.close();
+    }
+  }
+);
+
+it('reports a stale relayer selection as not broadcast before submission', async () => {
+  const run = setup();
+  try {
+    await run.controller.getRelayers();
+    const review = await run.controller.prepareWithdrawal(relayed());
+    jest
+      .mocked(run.host.relayers.assertSelectionCurrent)
+      .mockImplementation(() => {
+        throw new Error('privacy_relayer_stale');
+      });
+    await expect(
+      run.controller.submitWithdrawal(review.intentId)
+    ).rejects.toMatchObject({
+      message: 'privacy_relayer_stale',
+      transactionNotBroadcast: true,
+    });
+    expect(run.host.beforeSubmission).not.toHaveBeenCalled();
+    expect(run.fetcher).not.toHaveBeenCalled();
+  } finally {
+    run.controller.close();
+  }
+});
+
 it('allows only one active proof and TTL begins after completion, not before', async () => {
   jest.useFakeTimers();
   const run = setup(),
