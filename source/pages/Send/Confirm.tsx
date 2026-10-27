@@ -1969,7 +1969,7 @@ export const SendConfirm = () => {
         <IconButton
           aria-label={t('receive.retry')}
           onClick={retryFeeCalculation}
-          className="p-1 hover:bg-brand-blue600 rounded-full transition-all duration-200"
+          className="inline-flex min-h-[32px] min-w-[32px] items-center justify-center p-1 hover:bg-brand-blue600 rounded-full transition-all duration-200"
         >
           <Icon
             name="reload"
@@ -2300,7 +2300,7 @@ export const SendConfirm = () => {
                                 <IconButton
                                   aria-label={t('receive.retry')}
                                   onClick={retryFeeCalculation}
-                                  className="p-0.5 hover:bg-brand-blue600 rounded-full transition-all duration-200"
+                                  className="inline-flex min-h-[32px] min-w-[32px] items-center justify-center p-0.5 hover:bg-brand-blue600 rounded-full transition-all duration-200"
                                 >
                                   <Icon
                                     name="reload"
