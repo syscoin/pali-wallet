@@ -501,6 +501,38 @@ it('rejects a waiting retry if its captured wallet context changes', async () =>
   run.controller.close();
 });
 
+it('rejects a waiting retry if its snapshot becomes invalid', async () => {
+  const run = setup();
+  const started = deferred<void>();
+  const blocked = deferred<void>();
+  jest.mocked(run.host.quoteDirectFees).mockImplementationOnce(async () => {
+    started.resolve();
+    await blocked.promise;
+    return {
+      gasLimit: '650000',
+      nonce: '7',
+      maxFeePerGas: '30000000000',
+      maxPriorityFeePerGas: '1000000000',
+    };
+  });
+  const first = run.controller.prepareWithdrawal(direct());
+  const firstRejected = expect(first).rejects.toThrow(/^privacy_/);
+  await started.promise;
+  run.controller.cancelPreparation();
+  const retry = run.controller.prepareWithdrawal(direct());
+  const retryRejected = expect(retry).rejects.toThrow(
+    'privacy_verification_pending'
+  );
+  run.invalidate();
+  blocked.resolve();
+  await firstRejected;
+  await retryRejected;
+  expect(run.host.prove).not.toHaveBeenCalled();
+  expect(run.host.beforeSubmission).not.toHaveBeenCalled();
+  expect(run.fetcher).not.toHaveBeenCalled();
+  run.controller.close();
+});
+
 it.each(['context', 'snapshot'] as const)(
   '%s change during durable reservation prevents send',
   async (action) => {
