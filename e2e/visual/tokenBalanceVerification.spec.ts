@@ -366,6 +366,33 @@ test('ERC20 balance verification exposes a scoped explicit retry without losing 
           }
           await expect(retry).toBeFocused();
           retryBox = await bounds(retry);
+          expect(retryBox.width).toBeGreaterThanOrEqual(32);
+          expect(retryBox.height).toBeGreaterThanOrEqual(32);
+          for (const neighbor of [amount, page.locator('#send-eth-next-btn')]) {
+            const neighborBox = await neighbor.boundingBox();
+            expect(neighborBox).not.toBeNull();
+            const separated =
+              retryBox.x + retryBox.width <= neighborBox!.x ||
+              neighborBox!.x + neighborBox!.width <= retryBox.x ||
+              retryBox.y + retryBox.height <= neighborBox!.y ||
+              neighborBox!.y + neighborBox!.height <= retryBox.y;
+            expect(
+              separated,
+              'Retry must not overlap an adjacent control'
+            ).toBe(true);
+          }
+          const amountBox = await amount.boundingBox();
+          const nextBox = await page
+            .locator('#send-eth-next-btn')
+            .boundingBox();
+          expect(amountBox).not.toBeNull();
+          expect(nextBox).not.toBeNull();
+          expect(retryBox.y).toBeGreaterThanOrEqual(
+            amountBox!.y + amountBox!.height + 2
+          );
+          expect(nextBox!.y).toBeGreaterThanOrEqual(
+            retryBox.y + retryBox.height + 2
+          );
           await captureForegroundContrast(retry, info, 'token-retry-' + suffix);
           await bounds(
             page.getByText(en.send.tokenVerificationFailed, { exact: true })

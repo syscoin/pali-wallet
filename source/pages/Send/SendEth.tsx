@@ -1884,7 +1884,11 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
 
                 {/* Verification Status Display */}
                 {selectedAsset && (
-                  <div className="absolute -bottom-6 left-0 right-0">
+                  <div
+                    className={`absolute ${
+                      verificationError ? '-bottom-7' : '-bottom-6'
+                    } left-0 right-0`}
+                  >
                     {/* ERC-20 token verification status */}
                     {!selectedAsset.isNft && (
                       <div className="flex items-center justify-center gap-1">
@@ -1904,7 +1908,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                             </p>
                             <button
                               type="button"
-                              className="text-brand-royalbluemedium text-[10px] underline"
+                              className="inline-flex min-h-[32px] min-w-[32px] items-center justify-center text-brand-royalbluemedium text-[10px] underline"
                               onClick={() => {
                                 if (isCurrentForm())
                                   setSelectedAsset((asset) =>
