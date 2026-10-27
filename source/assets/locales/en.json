@@ -390,7 +390,7 @@
     "cantCompleteTxs": "Can't complete transaction. Try again later.",
     "txSuccessfull": "Transaction successful",
     "txSuccessfullMessage": "Your transaction has been successfully submitted. You can see more details under activity on your home page.",
-    "estimatedGasFee": "Estimated GasFee",
+    "estimatedGasFee": "Estimated gas fee",
     "amountAndFee": "Amount + gas fee",
     "spendingLimit": "Spending limit permission",
     "allow": "Allow",
