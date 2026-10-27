@@ -722,6 +722,17 @@ for (const { width, height } of viewports) {
       const explorer = page.getByText('View on Explorer', { exact: true });
       await wheelReveal(page, explorer);
       await observe(page, explorer, `evm-${height}-explorer`);
+      const timestampRow = page
+        .getByText('Timestamp', { exact: true })
+        .locator('..');
+      const expectedTimestamp = await page.evaluate(() =>
+        new Date(1700000000 * 1000).toLocaleString('en')
+      );
+      const timestamp = timestampRow.getByText(expectedTimestamp, {
+        exact: true,
+      });
+      await expect(timestamp).toBeVisible();
+      await expect(timestamp).toBeInViewport({ ratio: 1 });
       await capture(page, `evm-${height}-details`);
       expect
         .soft(

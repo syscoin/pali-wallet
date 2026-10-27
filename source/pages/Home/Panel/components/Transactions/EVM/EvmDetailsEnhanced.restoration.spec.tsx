@@ -112,7 +112,10 @@ jest.mock('components/TransactionDetails', () => ({
     return (
       <div>
         {details.map((item: any, index: number) => (
-          <span key={index}>
+          <span
+            key={index}
+            data-show-full={item.showFullValue ? 'true' : undefined}
+          >
             {item.label}:{String(item.value)}|
           </span>
         ))}
@@ -1171,9 +1174,10 @@ it.each(['de', 'fr'])(
     const view = render(
       <EvmTransactionDetailsEnhanced hash={hash} tx={transaction} />
     );
-    await screen.findByText(
+    const timestampRow = await screen.findByText(
       `Timestamp:${new Date(timestamp * 1000).toLocaleString('en')}|`
     );
+    expect(timestampRow.getAttribute('data-show-full')).toBe('true');
     await act(async () => Promise.resolve());
     const reads = mockEmitter.mock.calls.length;
 
@@ -1182,10 +1186,12 @@ it.each(['de', 'fr'])(
       <EvmTransactionDetailsEnhanced hash={hash} tx={transaction} />
     );
     expect(
-      screen.getByText(
-        `Timestamp:${new Date(timestamp * 1000).toLocaleString(locale)}|`
-      )
-    ).toBeTruthy();
+      screen
+        .getByText(
+          `Timestamp:${new Date(timestamp * 1000).toLocaleString(locale)}|`
+        )
+        .getAttribute('data-show-full')
+    ).toBe('true');
     expect(mockEmitter).toHaveBeenCalledTimes(reads);
     expect(mockHistory[0]).toBe(transaction);
     expect(transaction.timestamp).toBe(timestamp);

@@ -797,6 +797,7 @@ export const EvmTransactionDetailsEnhanced = ({
           ? 'text-brand-green'
           : 'text-brand-redDark';
       } else if (key === 'timestamp') {
+        formattedValue.showFullValue = true;
         formattedValue.value = finalValue
           ? new Date(Number(finalValue) * 1000).toLocaleString(
               i18n?.resolvedLanguage || i18n?.language
