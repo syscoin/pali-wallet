@@ -416,6 +416,7 @@ const CurrencyView = () => {
 
       <PageActionFooter
         className="currency-settings-footer"
+        includeInFlow
         error={saveError ? t('settings.preferencesSaveFailed') : undefined}
       >
         <Button
