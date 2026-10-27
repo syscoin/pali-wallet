@@ -3056,10 +3056,10 @@
   resolved "https://registry.npmjs.org/@sidhujag/sysweb3-core/-/sysweb3-core-1.0.29.tgz#ba86f171956513e423d2c328c9098ddbc76774d1"
   integrity sha512-ZQGSdwHG2Q9FX+PbHj3MnV6I413z+pN2Sm2qjoi1TrOqWZHXVnzfhjvxkj9s3djfTD56OAiu1nW2TUhX98rrdQ==
 
-"@sidhujag/sysweb3-keyring@1.0.626":
-  version "1.0.626"
-  resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-keyring/-/sysweb3-keyring-1.0.626.tgz#5cc705f24f5071f388b3724fcfb76a9f63f0da80"
-  integrity sha512-CUju87dtCvn74ydLJogfE3LmgaSYXKr1ZNcJSOJkk3ztCPmuQAok2yHDiKlZaergkwHtzZAPaGp26xX47uDiOg==
+"@sidhujag/sysweb3-keyring@1.0.627":
+  version "1.0.627"
+  resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-keyring/-/sysweb3-keyring-1.0.627.tgz#e30fe3d808d1133610aafff8618b6da82850c25c"
+  integrity sha512-I8L7NLSp8B5zyVzR/8pPQ9XGBgksd19Ls+2ekC5MWlmvIddpbKKbraozCTLGAsLyBVFBKIwmh8Efjt4KjwRIQg==
   dependencies:
     "@bitcoinerlab/secp256k1" "^1.2.0"
     "@ledgerhq/hw-app-eth" "^6.47.1"
@@ -3068,14 +3068,14 @@
     "@metamask/eth-sig-util" "^8.2.0"
     "@sidhujag/sysweb3-core" "^1.0.29"
     "@sidhujag/sysweb3-network" "^1.0.109"
-    "@sidhujag/sysweb3-utils" "^1.1.279"
+    "@sidhujag/sysweb3-utils" "^1.1.280"
     "@trezor/connect-web" "^9.7.1"
     "@trezor/connect-webextension" "^9.7.1"
     "@trezor/utxo-lib" "^1.0.12"
     bip32 "^5.0.1"
     bip32-path "^0.4.2"
     bitcoin-ops "^1.4.1"
-    bitcoinjs-lib "^7.0.1"
+    bitcoinjs-lib "^7.0.5"
     bs58check "^3.0.1"
     crypto-js "^4.1.1"
     ethers "^6.17.0"
@@ -3098,10 +3098,10 @@
     "@noble/post-quantum" "0.7.1"
     "@scure/base" "2.4.0"
 
-"@sidhujag/sysweb3-utils@^1.1.279":
-  version "1.1.279"
-  resolved "https://registry.npmjs.org/@sidhujag/sysweb3-utils/-/sysweb3-utils-1.1.279.tgz#f871e6fc05a8e24bcc6ac7a3d164fd61615d76a8"
-  integrity sha512-Cdel8pjEAvCpZpjwXJhRuvtZKNzBoYiGyXp4ghAcwUr15pjcZsu/gvRNQiZ2i8prBVmOgFFydylj3Fd0CbQkTQ==
+"@sidhujag/sysweb3-utils@^1.1.280":
+  version "1.1.280"
+  resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-utils/-/sysweb3-utils-1.1.280.tgz#1a29c758e7dd40fbe18a9ad9f8cd5afc319c5656"
+  integrity sha512-q/bEBhIW9HLoX0WoDQ1LId6zqEBlLioqkir8B0JafCGBFUX9PkzUVrck+7tMLJNlL/rj/q3MY86ZjKphdsWARg==
   dependencies:
     "@sidhujag/sysweb3-network" "^1.0.109"
     bech32 "^2.0.0"
