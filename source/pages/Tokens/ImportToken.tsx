@@ -1047,7 +1047,7 @@ export const ImportToken: React.FC = () => {
                     <div role="alert" className="mt-2 px-5 text-sm">
                       <p>{t('send.unableToLoad')}</p>
                       <button
-                        className="mt-2 text-brand-royalbluemedium underline"
+                        className="mt-2 inline-flex min-h-[32px] min-w-[32px] items-center justify-center text-brand-royalbluemedium underline"
                         type="button"
                         onClick={() => {
                           setTokenIdResult(null);
