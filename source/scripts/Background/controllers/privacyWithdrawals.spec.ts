@@ -460,6 +460,7 @@ it.each(['cancel', 'close'] as const)(
     await retryRejected;
     blocked.resolve();
     await firstRejected;
+    expect(run.host.withNote).toHaveBeenCalledTimes(1);
     expect(run.host.prove).not.toHaveBeenCalled();
     expect(run.host.beforeSubmission).not.toHaveBeenCalled();
     expect(run.fetcher).not.toHaveBeenCalled();
@@ -493,6 +494,7 @@ it('rejects a waiting retry if its captured wallet context changes', async () =>
   blocked.resolve();
   await firstRejected;
   await retryRejected;
+  expect(run.host.withNote).toHaveBeenCalledTimes(1);
   expect(run.host.prove).not.toHaveBeenCalled();
   expect(run.host.beforeSubmission).not.toHaveBeenCalled();
   expect(run.fetcher).not.toHaveBeenCalled();
