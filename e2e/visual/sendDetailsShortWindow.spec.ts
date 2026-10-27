@@ -375,6 +375,23 @@ for (const { width, height } of viewports) {
         await expect(
           page.getByText('Lock Time:', { exact: true })
         ).toBeAttached();
+        // Shortened identifiers should remain one readable line, even when
+        // the value needs to move below its label in a narrow wallet window.
+        const originRow = page
+          .getByText('Origin contract:', { exact: true })
+          .first()
+          .locator('..');
+        const shortenedOrigin = originRow.locator('span.ant-typography').last();
+        await expect(shortenedOrigin).toContainText('...');
+        const originLayout = await shortenedOrigin.evaluate((element) => {
+          const range = document.createRange();
+          range.selectNodeContents(element);
+          return {
+            lines: range.getClientRects().length,
+            clipped: element.scrollWidth > element.clientWidth,
+          };
+        });
+        expect(originLayout).toEqual({ lines: 1, clipped: false });
         // These passive asset quantities are part of the unsigned review, not
         // disabled controls. Read the real composed colors on their opaque
         // cards, while preserving every existing amount and Cancel assertion.

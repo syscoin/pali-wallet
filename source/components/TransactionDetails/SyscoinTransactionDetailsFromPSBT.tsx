@@ -156,17 +156,29 @@ const CopyableField: React.FC<{
   }, [copied, alert, copyMessage, label, t]);
 
   return (
-    <div className={`flex justify-between items-center gap-4 ${className}`}>
+    <div
+      className={`flex justify-between items-center gap-4 ${
+        displayValue && displayValue !== value ? 'flex-wrap' : ''
+      } ${className}`}
+    >
       <Typography.Text
         className={`text-brand-gray200 text-xs flex-shrink-0 ${labelClassName}`}
       >
         {label}:
       </Typography.Text>
-      <div className="flex items-center gap-1">
+      <div
+        className={`flex items-center gap-1 ${
+          displayValue && displayValue !== value
+            ? 'ml-auto max-w-full shrink-0'
+            : ''
+        }`}
+      >
         <Tooltip content={value}>
           <Typography.Text
             className={`text-white text-xs text-right ${
               monospace ? 'font-mono' : ''
+            } ${
+              displayValue && displayValue !== value ? 'min-w-0 truncate' : ''
             } ${valueClassName}`}
           >
             {displayValue || value}
