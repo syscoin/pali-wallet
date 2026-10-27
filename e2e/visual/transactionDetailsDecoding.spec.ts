@@ -395,16 +395,17 @@ for (const mode of [
               Number(event.timeStamp)
             );
             expect(timestamp.length).toBeGreaterThanOrEqual(20);
-            const timestampValue = page
+            const timestampRow = page
               .getByText('Timestamp', { exact: true })
-              .locator('..')
-              .getByText(`${timestamp.slice(0, 2)}...${timestamp.slice(-4)}`, {
-                exact: true,
-              });
-            for (const [value, full] of [
-              [methodValue, methodLabel],
-              [timestampValue, timestamp],
-            ] as const) {
+              .locator('..');
+            const timestampValue = timestampRow.getByText(timestamp, {
+              exact: true,
+            });
+            await timestampValue.scrollIntoViewIfNeeded();
+            await expect(timestampValue).toBeVisible();
+            await expect(timestampRow.locator('[tabindex]')).toHaveCount(0);
+            await methodValue.scrollIntoViewIfNeeded();
+            for (const [value, full] of [[methodValue, methodLabel]] as const) {
               const disclosure = value.locator('..');
               await expect(disclosure).toHaveAttribute('tabindex', '0');
               for (let index = 0; index < 80; index++) {
