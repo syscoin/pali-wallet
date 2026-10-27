@@ -341,7 +341,10 @@ for (const viewport of [
             ).toBe(true);
           }
         );
-        if (initialPhase === 'failed' || viewport.width === 320) {
+        if (
+          initialPhase === 'failed' ||
+          (mode === 'after' && viewport.width === 320)
+        ) {
           await wallet.step(
             'choose German through Languages without changing wallet state',
             async () => {
@@ -393,7 +396,7 @@ for (const viewport of [
           'Currency reports availability honestly and keeps an unsaved currency selectable',
           async () => {
             await openCurrency();
-            if (viewport.height <= 400) {
+            if (mode === 'after' && viewport.height <= 400) {
               const selector = page.getByRole('button', {
                 name: copy.settings.setYourPreferred,
                 exact: true,
