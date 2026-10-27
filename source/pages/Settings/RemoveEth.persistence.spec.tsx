@@ -285,7 +285,9 @@ it('keeps the provider enabled and the grant reviewable when a requested revocat
     livePermission: true,
     persistedPermission: true,
   });
-  expect(screen.getByRole('alert')).toHaveTextContent('send.failed');
+  expect(screen.getByRole('alert')).toHaveTextContent(
+    'settings.disablePaliProviderFailed'
+  );
   expect(mockEmitter).not.toHaveBeenCalledWith([
     'wallet',
     'removeWindowEthProperty',
@@ -313,7 +315,9 @@ it('retries a refused permission write from the same screen without re-enabling 
   mount();
   refusePermissionWrite = true;
   await disableProvider();
-  expect(screen.getByRole('alert')).toHaveTextContent('send.failed');
+  expect(screen.getByRole('alert')).toHaveTextContent(
+    'settings.disablePaliProviderFailed'
+  );
   await disableProvider();
   expect(screen.queryByRole('alert')).toBeNull();
   expect(screen.getByRole('dialog')).toHaveTextContent(
@@ -344,7 +348,9 @@ it('keeps earlier durable revocations when a later host fails, then retries only
   expect(records.state.dapp.dapps[secondHost]).toBeDefined();
   expect(records.state.vaultGlobal.hasEthProperty).toBe(true);
   expect(screen.queryByRole('dialog')).toBeNull();
-  expect(screen.getByRole('alert')).toHaveTextContent('send.failed');
+  expect(screen.getByRole('alert')).toHaveTextContent(
+    'settings.disablePaliProviderFailed'
+  );
   mockEmitter.mockClear();
   await disableProvider();
   expect(
@@ -370,7 +376,9 @@ it('does not claim success when the provider preference fails after durable revo
   expect(dapp.isConnected(HOST)).toBe(false);
   expect(records.state.dapp.dapps[HOST]).toBeUndefined();
   expect(records.state.vaultGlobal.hasEthProperty).toBe(true);
-  expect(screen.getByRole('alert')).toHaveTextContent('send.failed');
+  expect(screen.getByRole('alert')).toHaveTextContent(
+    'settings.disablePaliProviderFailed'
+  );
   expect(screen.queryByRole('dialog')).toBeNull();
   await disableProvider();
   expect(records.state.vaultGlobal.hasEthProperty).toBe(false);

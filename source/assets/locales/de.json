@@ -625,6 +625,8 @@
     "disablePaliProvider": "Palis Ethereum-Anbieter deaktivieren",
     "enablePaliProvider": "Palis Ethereum-Anbieter aktivieren",
     "disablePaliProviderWarning": "Beim Deaktivieren von Pali werden alle verbundenen Websites getrennt. Richten Sie eine andere Wallet in deren Einstellungen ein.",
+    "disablePaliProviderFailed": "Die Deaktivierung von Palis Ethereum-Anbieter konnte nicht bestätigt werden. Einige Websites sind möglicherweise bereits getrennt. Prüfe die Verbindungen vor einem erneuten Versuch.",
+    "enablePaliProviderFailed": "Die Aktivierung von Palis Ethereum-Anbieter konnte nicht bestätigt werden. Prüfe die Einstellung vor einem erneuten Versuch.",
     "setWalletAsDefault": "{{wallet}} als Standard-Wallet festlegen",
     "localSmartAccountGuardianMissing": "Lokaler Smart-Account-Wächter nicht gefunden.",
     "recoveryValidatorNotConfigured": "P-256/WebAuthn-Validator ist nicht konfiguriert.",

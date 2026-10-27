@@ -625,6 +625,8 @@
     "disablePaliProvider": "PaliのEthereumプロバイダーを無効にする",
     "enablePaliProvider": "PaliのEthereumプロバイダーを有効にする",
     "disablePaliProviderWarning": "Paliを無効にすると、接続済みのすべてのサイトが切断されます。別のウォレットはその設定で構成してください。",
+    "disablePaliProviderFailed": "PaliのEthereumプロバイダーの無効化を確認できませんでした。一部のサイトはすでに切断されている可能性があります。再試行する前に接続を確認してください。",
+    "enablePaliProviderFailed": "PaliのEthereumプロバイダーの有効化を確認できませんでした。再試行する前に設定を確認してください。",
     "setWalletAsDefault": "{{wallet}}を既定のウォレットにする",
     "localSmartAccountGuardianMissing": "ローカルのスマートアカウントガーディアンが見つかりません。",
     "recoveryValidatorNotConfigured": "P-256/WebAuthnバリデーターが設定されていません。",

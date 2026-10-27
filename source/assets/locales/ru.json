@@ -625,6 +625,8 @@
     "disablePaliProvider": "Отключить провайдер Ethereum Pali",
     "enablePaliProvider": "Включить провайдер Ethereum Pali",
     "disablePaliProviderWarning": "При отключении Pali все подключённые сайты будут отключены. Настройте другой кошелёк в его собственных настройках.",
+    "disablePaliProviderFailed": "Не удалось подтвердить отключение провайдера Ethereum Pali. Некоторые сайты уже могли быть отключены. Проверьте подключения перед повторной попыткой.",
+    "enablePaliProviderFailed": "Не удалось подтвердить включение провайдера Ethereum Pali. Проверьте настройку перед повторной попыткой.",
     "setWalletAsDefault": "Сделать {{wallet}} кошельком по умолчанию",
     "localSmartAccountGuardianMissing": "Локальный защитник смарт-аккаунта не найден.",
     "recoveryValidatorNotConfigured": "Валидатор P-256/WebAuthn не настроен.",

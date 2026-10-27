@@ -625,6 +625,8 @@
     "disablePaliProvider": "Desativar o provedor Ethereum da Pali",
     "enablePaliProvider": "Ativar o provedor Ethereum da Pali",
     "disablePaliProviderWarning": "Desativar a Pali desconecta todos os sites conectados. Configure outra carteira nas próprias configurações dela.",
+    "disablePaliProviderFailed": "Não foi possível confirmar a desativação do provedor Ethereum da Pali. Alguns sites podem já estar desconectados. Verifique as conexões antes de tentar novamente.",
+    "enablePaliProviderFailed": "Não foi possível confirmar a ativação do provedor Ethereum da Pali. Verifique a configuração antes de tentar novamente.",
     "setWalletAsDefault": "Definir {{wallet}} como carteira padrão",
     "localSmartAccountGuardianMissing": "Guardião local da conta inteligente não encontrado.",
     "recoveryValidatorNotConfigured": "O validador P-256/WebAuthn não está configurado.",

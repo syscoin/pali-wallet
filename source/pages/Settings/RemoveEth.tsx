@@ -112,7 +112,18 @@ const RemoveEthView = () => {
           </div>
         )}
 
-        <PageActionFooter error={saveError ? t('send.failed') : undefined}>
+        <PageActionFooter
+          className="provider-settings-footer"
+          error={
+            saveError
+              ? t(
+                  isEnabled
+                    ? 'settings.disablePaliProviderFailed'
+                    : 'settings.enablePaliProviderFailed'
+                )
+              : undefined
+          }
+        >
           <div className="flex w-full flex-col gap-3">
             {isEnabled && (
               <p className="text-center text-xs text-white">

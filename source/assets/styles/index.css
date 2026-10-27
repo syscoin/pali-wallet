@@ -60,6 +60,12 @@
   box-shadow: 0 -8px 12px -12px rgb(0 0 0 / 45%);
 }
 
+/* The provider settings explanation and error must remain in the same scroll
+ * flow as the actions, so a short popup never covers explanatory text. */
+[data-navigation-scroll='wallet-layout'] .provider-settings-footer {
+  position: static;
+}
+
 /** ALERTS/TOASTS **/
 
 /* PSBT approvals use one bounded content scroller above their action row. */

@@ -625,6 +625,8 @@
     "disablePaliProvider": "Disable Pali’s Ethereum provider",
     "enablePaliProvider": "Enable Pali’s Ethereum provider",
     "disablePaliProviderWarning": "Disabling Pali disconnects all connected sites. Configure another wallet in its own settings.",
+    "disablePaliProviderFailed": "Could not confirm disabling Pali’s Ethereum provider. Some sites may already be disconnected. Check connections before retrying.",
+    "enablePaliProviderFailed": "Could not confirm enabling Pali’s Ethereum provider. Check the setting before retrying.",
     "setWalletAsDefault": "Set {{wallet}} as default wallet",
     "localSmartAccountGuardianMissing": "Local smart-account guardian not found.",
     "recoveryValidatorNotConfigured": "P-256/WebAuthn validator is not configured.",

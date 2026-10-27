@@ -67,7 +67,9 @@ it.each([true, false])(
         ? 'Disable Pali’s Ethereum provider'
         : 'Enable Pali’s Ethereum provider',
     });
-    expect(action.closest('[data-page-action-footer]')).not.toBeNull();
+    expect(action.closest('[data-page-action-footer]')).toHaveClass(
+      'provider-settings-footer'
+    );
     expect(action).toHaveClass('w-full', 'min-w-0', 'min-h-[44px]');
     expect(action).not.toHaveClass('w-[352px]');
     expect(action).toHaveAttribute('type', 'button');
@@ -213,5 +215,28 @@ it('default-wallet rejection shows no false success and permits a later explicit
     expect(mockEmitter).toHaveBeenCalledTimes(2);
   } finally {
     error.mockRestore();
+  }
+});
+
+it('identifies a failed provider enablement and leaves it retryable', async () => {
+  mockHasEthProperty = false;
+  mockEmitter
+    .mockReset()
+    .mockRejectedValueOnce(new Error('storage unavailable'));
+  const log = jest.spyOn(console, 'error').mockImplementation();
+  try {
+    render(<RemoveEth />);
+    const enable = screen.getByRole('button', {
+      name: 'Enable Pali’s Ethereum provider',
+    });
+    fireEvent.click(enable);
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'settings.enablePaliProviderFailed'
+      )
+    );
+    expect(enable).toBeEnabled();
+  } finally {
+    log.mockRestore();
   }
 });

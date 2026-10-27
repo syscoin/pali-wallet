@@ -304,13 +304,6 @@
       "reason": "UTXO protocol-family acronym for the network list section."
     },
     {
-      "file": "source/pages/Settings/RemoveEth.tsx",
-      "kind": "jsx-text",
-      "text": "Pali",
-      "count": 1,
-      "reason": "Exact product name in the asset-removal illustration; removal guidance is localized."
-    },
-    {
       "file": "source/pages/SmartAccount/Hub.tsx",
       "kind": "prop:placeholder",
       "text": "0x",

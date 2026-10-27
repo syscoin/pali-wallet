@@ -97,6 +97,9 @@ test('a refused default-wallet permission write stays visible and retries withou
       { width: 320, height: 360 },
     ]) {
       await page.setViewportSize(viewport);
+      // The footer is in the page's scroll flow, so short windows do not
+      // cover the explanation; bring the action into view before inspecting it.
+      await disable.scrollIntoViewIfNeeded();
       await expect(
         footer.getByText(en.settings.disablePaliProviderWarning, {
           exact: true,
@@ -153,8 +156,31 @@ test('a refused default-wallet permission write stays visible and retries withou
       async () => {
         await disable.click();
         const failure = footer.getByRole('alert');
-        await expect(failure).toHaveText(en.send.failed);
-        await expect(failure).toBeInViewport();
+        await expect(failure).toHaveText(en.settings.disablePaliProviderFailed);
+        const help = page.getByText(en.settings.otherDefaultWalletHelp, {
+          exact: true,
+        });
+        // Exercise the native scroll path to expose the complete help text.
+        await page.mouse.move(160, 180);
+        await page.mouse.wheel(0, -1000);
+        const scroller = page.locator(
+          '[data-navigation-scroll="wallet-layout"]'
+        );
+        await expect
+          .poll(() => scroller.evaluate((node) => node.scrollTop))
+          .toBe(0);
+        await page.mouse.wheel(0, 180);
+        await expect(help).toBeInViewport({ ratio: 1 });
+        const helpBox = (await help.boundingBox())!;
+        const footerBox = (await footer.boundingBox())!;
+        expect(helpBox.y + helpBox.height).toBeLessThanOrEqual(footerBox.y);
+        await expect(footer).toHaveCSS('position', 'static');
+        await info.attach('default-wallet-help-visible-320x360', {
+          body: await page.screenshot({ animations: 'disabled' }),
+          contentType: 'image/png',
+        });
+        await page.mouse.wheel(0, 1000);
+        await expect(failure).toBeInViewport({ ratio: 1 });
         await expect(disable).toBeEnabled();
         await expect(disable).toBeInViewport();
         await expect(page.getByRole('dialog')).toHaveCount(0);
