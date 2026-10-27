@@ -1053,7 +1053,7 @@ const EthSign: React.FC<ISign> = () => {
             {parameters.map((param: any, index: number) => (
               <div key={index} className="flex flex-col">
                 <span className="text-xs text-gray-400">params[{index}]:</span>
-                <pre className="text-xs text-gray-300 whitespace-pre-wrap break-all">
+                <pre className="text-xs text-gray-300 whitespace-pre-wrap break-words">
                   {typeof param === 'string' ? param : JSON.stringify(param)}
                 </pre>
               </div>
@@ -1155,7 +1155,7 @@ const EthSign: React.FC<ISign> = () => {
                     <span className="text-gray-400">
                       {t('send.actualParams')}
                     </span>
-                    <span className="font-mono break-all">
+                    <span className="font-mono break-words">
                       [{parameters.map((p) => `"${p}"`).join(', ')}]
                     </span>
                   </div>
@@ -1167,7 +1167,7 @@ const EthSign: React.FC<ISign> = () => {
                   </div>
                   <div>
                     <span className="text-gray-400">{t('send.message')}: </span>
-                    <span className="font-mono break-all">
+                    <span className="font-mono break-words">
                       {personalSignParams?.message}
                     </span>
                   </div>
