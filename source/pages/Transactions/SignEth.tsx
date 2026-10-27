@@ -1313,6 +1313,7 @@ const EthSign: React.FC<ISign> = () => {
                     </span>
                     <IconButton
                       aria-label={t('buttons.copy')}
+                      className="inline-flex min-h-[32px] min-w-[32px] items-center justify-center"
                       onClick={() => copy(message)}
                     >
                       <Icon
