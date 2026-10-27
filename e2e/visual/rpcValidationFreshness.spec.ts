@@ -3,6 +3,7 @@ import { expect, test, type Page } from '@playwright/test';
 
 import en from '../../source/assets/locales/en.json';
 import { E2E_CONFIG } from '../harness/config';
+import { dismissRejectedApproval } from '../harness/dismissRejectedApproval';
 import {
   createIsolatedVaultFixture,
   installIsolatedVaultRoutes,
@@ -444,10 +445,17 @@ for (const width of [400, 320]) {
                 expect(beforeNetwork.proposedRegistered).toBe(false);
                 await shot('current-mismatch-after-explicit-add');
                 await capture(popup);
-                await popup
-                  .getByRole('button', { name: en.buttons.cancel, exact: true })
-                  .click();
-                const rejected = await settle(dapp, id);
+                const rejected = await dismissRejectedApproval({
+                  click: () =>
+                    popup
+                      .getByRole('button', {
+                        name: en.buttons.cancel,
+                        exact: true,
+                      })
+                      .click(),
+                  isClosed: () => popup.isClosed(),
+                  settle: () => settle(dapp, id),
+                });
                 expect(rejected.error?.code).toBe(4001);
               }
             }
