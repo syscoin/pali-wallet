@@ -126,6 +126,7 @@ function WithdrawalFlow({
   const [recipient, setRecipient] = useState('');
   const [mode, setMode] = useState<'direct' | 'relayed'>('direct');
   const [relayers, setRelayers] = useState<IPrivacyRelayerChoice[]>([]);
+  const [directoryLoaded, setDirectoryLoaded] = useState(false);
   const [relayerId, setRelayerId] = useState('');
   const [busy, setBusy] = useState<'directory' | 'prepare' | 'submit' | null>(
     null
@@ -174,6 +175,7 @@ function WithdrawalFlow({
     const revision = ++owner.current.revision;
     setBusy('directory');
     setError('');
+    setDirectoryLoaded(false);
     setRelayerId('');
     try {
       const raw = await call('getRelayers', [], 20000);
@@ -217,6 +219,7 @@ function WithdrawalFlow({
           supportedPools.includes(note.poolId)
         )
       );
+      setDirectoryLoaded(true);
     } catch {
       if (current(revision)) {
         setRelayers([]);
@@ -380,7 +383,9 @@ function WithdrawalFlow({
             disabled={busy === 'prepare'}
             onChange={(event) => {
               setRecipient(event.target.value);
-              setError('');
+              setError((currentError) =>
+                currentError === 'directoryFailed' ? currentError : ''
+              );
             }}
             className="w-full rounded-lg border border-alpha-whiteAlpha300 bg-bkg-4 p-3 text-xs"
           />
@@ -446,7 +451,7 @@ function WithdrawalFlow({
                       </option>
                     ))}
                   </select>
-                  {!relayers.length && (
+                  {directoryLoaded && !relayers.length && (
                     <p className="text-xs">
                       {t('privacy.withdrawal.noRelayers')}
                     </p>

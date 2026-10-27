@@ -461,6 +461,40 @@ it('rejects malformed relay directory data without rendering extra fields', asyn
   expect(screen.queryByText('secret-data')).not.toBeInTheDocument();
 });
 
+it('distinguishes a failed relayer lookup from a successfully empty directory', async () => {
+  let reads = 0;
+  mockEmitter.mockImplementation(async ([, method]) => {
+    if (method !== 'getRelayers') return undefined;
+    reads += 1;
+    if (reads === 1) throw new Error('Synthetic directory failure');
+    return [];
+  });
+  mount();
+  fireEvent.click(screen.getByLabelText(en.privacy.withdrawal.relayed));
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    en.privacy.withdrawal.directoryFailed
+  );
+  expect(screen.queryByText(en.privacy.withdrawal.noRelayers)).toBeNull();
+
+  fireEvent.change(screen.getByLabelText(en.privacy.withdrawal.recipient), {
+    target: { value: RECIPIENT },
+  });
+  expect(screen.getByRole('alert')).toHaveTextContent(
+    en.privacy.withdrawal.directoryFailed
+  );
+  expect(screen.queryByText(en.privacy.withdrawal.noRelayers)).toBeNull();
+
+  fireEvent.click(screen.getByRole('button', { name: en.privacy.refresh }));
+  expect(
+    await screen.findByText(en.privacy.withdrawal.noRelayers)
+  ).toBeVisible();
+  expect(screen.queryByRole('alert')).toBeNull();
+  expect(reads).toBe(2);
+  expect(
+    screen.getByRole('button', { name: en.privacy.withdrawal.continue })
+  ).toBeDisabled();
+});
+
 it('prevents duplicate confirmation and drops a late submission after the account changes', async () => {
   const pending = deferred(),
     original = mockEmitter.getMockImplementation()!;
