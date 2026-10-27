@@ -1681,6 +1681,7 @@
       "jobId": "ID de trabajo del relayer",
       "directoryFailed": "No se pudieron cargar los relayers. Reintenta o elige Directo.",
       "prepareFailed": "No se pudo preparar el retiro. Comprueba los datos del fondo y la red, y reintenta.",
+      "prepareInterrupted": "La preparación se interrumpió. Comprueba los datos del pool y vuelve a intentarlo.",
       "checkStatus": "Consultar estado",
       "statusFailed": "No se pudo consultar el estado del relayer. Inténtalo de nuevo.",
       "statusUnknown": "Estado de envío del retiro desconocido. Compruébalo antes de reintentar.",

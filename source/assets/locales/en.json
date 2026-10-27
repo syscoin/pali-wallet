@@ -1681,6 +1681,7 @@
       "jobId": "Relayer job ID",
       "directoryFailed": "Could not load relayers. Retry or choose Direct.",
       "prepareFailed": "Could not prepare this withdrawal. Check the pool data and your network, then retry.",
+      "prepareInterrupted": "Preparation was interrupted. Check the pool data, then try again.",
       "checkStatus": "Check status",
       "statusFailed": "Could not check the relayer status. Try again.",
       "statusUnknown": "Withdrawal submission status unknown. Check before trying again.",

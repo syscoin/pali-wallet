@@ -262,10 +262,15 @@ function WithdrawalFlow({
       setReview(next);
       setConsumed(false);
       setClock(Date.now());
-    } catch {
+    } catch (failure) {
       if (current(revision)) {
         cancel();
-        setError('prepareFailed');
+        const interrupted =
+          typeof failure === 'object' &&
+          failure !== null &&
+          'message' in failure &&
+          failure.message === 'privacy_proof_cancelled';
+        setError(interrupted ? 'prepareInterrupted' : 'prepareFailed');
       }
     } finally {
       if (current(revision)) {

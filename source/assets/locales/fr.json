@@ -1681,6 +1681,7 @@
       "jobId": "Identifiant de tâche du relais",
       "directoryFailed": "Impossible de charger les relais. Réessayez ou choisissez Direct.",
       "prepareFailed": "Impossible de préparer le retrait. Vérifiez les données du pool et votre réseau, puis réessayez.",
+      "prepareInterrupted": "La préparation a été interrompue. Vérifiez les données du pool, puis réessayez.",
       "checkStatus": "Vérifier le statut",
       "statusFailed": "Impossible de vérifier le statut du relais. Réessayez.",
       "statusUnknown": "Statut d’envoi du retrait inconnu. Vérifiez avant de réessayer.",

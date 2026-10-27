@@ -1681,6 +1681,7 @@
       "jobId": "ID de tarefa do relayer",
       "directoryFailed": "Não foi possível carregar os relayers. Tente novamente ou escolha Direto.",
       "prepareFailed": "Não foi possível preparar o saque. Verifique os dados do pool e sua rede e tente novamente.",
+      "prepareInterrupted": "A preparação foi interrompida. Verifique os dados do pool e tente novamente.",
       "checkStatus": "Verificar status",
       "statusFailed": "Não foi possível verificar o status do relayer. Tente novamente.",
       "statusUnknown": "Status de envio do saque desconhecido. Verifique antes de tentar novamente.",

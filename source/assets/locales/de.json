@@ -1681,6 +1681,7 @@
       "jobId": "Relayer-Auftrags-ID",
       "directoryFailed": "Relayer konnten nicht geladen werden. Erneut versuchen oder Direkt wählen.",
       "prepareFailed": "Die Auszahlung konnte nicht vorbereitet werden. Prüfe Pooldaten und Netzwerk und versuche es erneut.",
+      "prepareInterrupted": "Die Vorbereitung wurde unterbrochen. Prüfe die Pooldaten und versuche es erneut.",
       "checkStatus": "Status prüfen",
       "statusFailed": "Der Relayer-Status konnte nicht geprüft werden. Erneut versuchen.",
       "statusUnknown": "Der Übermittlungsstatus der Auszahlung ist unbekannt. Vor einem erneuten Versuch prüfen.",

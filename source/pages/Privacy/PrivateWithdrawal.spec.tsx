@@ -378,6 +378,49 @@ it('requires refreshing after a proven unbroadcast failure', async () => {
   ).toHaveLength(1);
 });
 
+it.each([
+  new Error('privacy_proof_cancelled'),
+  { message: 'privacy_proof_cancelled' },
+])(
+  'explains interrupted preparation and allows an explicit fresh review',
+  async (failure) => {
+    const original = mockEmitter.getMockImplementation()!;
+    let first = true;
+    mockEmitter.mockImplementation((path, ...rest) => {
+      if (path[1] === 'prepareWithdrawal' && first) {
+        first = false;
+        return Promise.reject(failure);
+      }
+      return original(path, ...rest);
+    });
+    mount();
+    fireEvent.change(screen.getByLabelText(en.privacy.withdrawal.recipient), {
+      target: { value: RECIPIENT },
+    });
+    fireEvent.click(
+      screen.getByRole('button', { name: en.privacy.withdrawal.continue })
+    );
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      en.privacy.withdrawal.prepareInterrupted
+    );
+    expect(
+      screen.queryByRole('button', { name: en.privacy.withdrawal.confirm })
+    ).not.toBeInTheDocument();
+    expect(
+      mockEmitter.mock.calls.filter(([path]) => path[1] === 'submitWithdrawal')
+    ).toHaveLength(0);
+    fireEvent.click(
+      screen.getByRole('button', { name: en.privacy.withdrawal.continue })
+    );
+    expect(
+      await screen.findByRole('heading', { name: en.privacy.withdrawal.review })
+    ).toBeVisible();
+    expect(
+      mockEmitter.mock.calls.filter(([path]) => path[1] === 'submitWithdrawal')
+    ).toHaveLength(0);
+  }
+);
+
 it('rejects a malformed public review instead of showing secret fields or a submit action', async () => {
   mockEmitter.mockResolvedValue({
     ...review(),

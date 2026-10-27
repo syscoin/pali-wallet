@@ -1681,6 +1681,7 @@
       "jobId": "中继任务 ID",
       "directoryFailed": "无法加载中继器。请重试或选择直接发送。",
       "prepareFailed": "无法准备提款。请检查资金池数据和网络后重试。",
+      "prepareInterrupted": "准备已中断。请检查资金池数据，然后重试。",
       "checkStatus": "检查状态",
       "statusFailed": "无法检查中继器状态，请重试。",
       "statusUnknown": "提款提交状态未知，请在重试前检查。",
