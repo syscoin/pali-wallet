@@ -163,8 +163,8 @@ test('both default-wallet choices remain unobscured beside Close in small window
   await withWallet('qa119-default-wallet-regression', async (wallet) => {
     const page = wallet.page;
     for (const label of [
-      'Set Metamask as default wallet',
-      'Set Pali as default wallet',
+      en.settings.disablePaliProvider,
+      en.settings.enablePaliProvider,
     ]) {
       await wallet.gotoRoute('#/settings/remove-eth');
       const action = page.getByRole('button', { name: label, exact: true });
@@ -182,9 +182,9 @@ test('both default-wallet choices remain unobscured beside Close in small window
         await capture(
           page,
           info,
-          `default-${label.includes('Metamask') ? 'metamask' : 'pali'}-${
-            viewport.width
-          }x${viewport.height}`
+          `default-${
+            label === en.settings.disablePaliProvider ? 'metamask' : 'pali'
+          }-${viewport.width}x${viewport.height}`
         );
       }
       // Only this disposable browser's provider preference is changed.

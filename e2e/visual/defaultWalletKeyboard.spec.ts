@@ -102,7 +102,7 @@ test('Home default-wallet controls support keyboard actions, dismissal and hidde
       await wallet!.gotoRoute('#/settings/remove-eth');
       await page
         .getByRole('button', {
-          name: 'Set Metamask as default wallet',
+          name: en.settings.disablePaliProvider,
           exact: true,
         })
         .click();

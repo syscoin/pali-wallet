@@ -82,17 +82,32 @@ test('a refused default-wallet permission write stays visible and retries withou
     );
     const page = wallet.page;
     await wallet.gotoRoute('#/settings/remove-eth');
-    await page.setViewportSize({ width: 320, height: 360 });
     const disable = page.getByRole('button', {
-      name: 'Set Metamask as default wallet',
+      name: en.settings.disablePaliProvider,
       exact: true,
     });
     const enable = page.getByRole('button', {
-      name: 'Set Pali as default wallet',
+      name: en.settings.enablePaliProvider,
       exact: true,
     });
     const footer = page.locator('[data-page-action-footer]');
     await expect(disable).toBeEnabled();
+    for (const viewport of [
+      { width: 400, height: 620 },
+      { width: 320, height: 360 },
+    ]) {
+      await page.setViewportSize(viewport);
+      await expect(
+        footer.getByText(en.settings.disablePaliProviderWarning, {
+          exact: true,
+        })
+      ).toBeInViewport({ ratio: 1 });
+      await expect(disable).toBeInViewport({ ratio: 1 });
+      await info.attach(`default-provider-warning-${viewport.width}`, {
+        body: await page.screenshot({ animations: 'disabled' }),
+        contentType: 'image/png',
+      });
+    }
     expect(await readPermission(page, origin)).toEqual({
       livePermission: true,
       savedPermission: true,
@@ -170,7 +185,7 @@ test('a refused default-wallet permission write stays visible and retries withou
         await disable.click();
         await expect(page.getByRole('dialog')).toBeVisible();
         await expect(
-          page.getByText(en.settings.windowObjectWasSet, { exact: true })
+          page.getByText(en.settings.paliProviderDisabled, { exact: true })
         ).toBeVisible();
         await expect(
           footer.getByRole('alert', { includeHidden: true })

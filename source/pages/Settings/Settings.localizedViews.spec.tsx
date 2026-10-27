@@ -227,15 +227,17 @@ describe.each(locales)('%s settings display', (locale) => {
       mockState.vaultGlobal.hasEthProperty = enabled;
       const i18n = await mount(locale, <RemoveEth />);
       const action = screen.getByRole('button', {
-        name: i18n.t('settings.setWalletAsDefault', {
-          wallet: enabled ? 'Metamask' : 'Pali',
-        }),
+        name: i18n.t(
+          enabled
+            ? 'settings.disablePaliProvider'
+            : 'settings.enablePaliProvider'
+        ),
       });
       expect(action).toBeVisible();
       expect(action).toHaveAttribute('type', 'button');
       if (enabled) {
         expect(
-          screen.getByText(resources[locale].settings.defaultWalletStatus)
+          screen.getByText(resources[locale].settings.paliProviderEnabled)
         ).toBeVisible();
         expect(
           screen.getByText(
@@ -245,9 +247,14 @@ describe.each(locales)('%s settings display', (locale) => {
         expect(
           screen.getByText(resources[locale].settings.otherDefaultWalletHelp)
         ).toBeVisible();
+        expect(
+          screen.getByText(
+            resources[locale].settings.disablePaliProviderWarning
+          )
+        ).toBeVisible();
       } else
         expect(
-          screen.getByText(resources[locale].settings.usingAnotherWallet)
+          screen.getByText(resources[locale].settings.paliProviderDisabled)
         ).toBeVisible();
       expect(mockState.vaultGlobal.hasEthProperty).toBe(enabled);
       expect(mockEmitter).not.toHaveBeenCalled();

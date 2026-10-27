@@ -32,6 +32,11 @@ jest.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string, values?: { wallet?: string }) => {
       const messages = jest.requireActual('../../assets/locales/en.json');
+      if (
+        key === 'settings.disablePaliProvider' ||
+        key === 'settings.enablePaliProvider'
+      )
+        return messages.settings[key.split('.')[1]];
       if (key === 'settings.setWalletAsDefault')
         return messages.settings.setWalletAsDefault.replace(
           '{{wallet}}',
@@ -59,8 +64,8 @@ it.each([true, false])(
     render(<RemoveEth />);
     const action = screen.getByRole('button', {
       name: enabled
-        ? 'Set Metamask as default wallet'
-        : 'Set Pali as default wallet',
+        ? 'Disable Pali’s Ethereum provider'
+        : 'Enable Pali’s Ethereum provider',
     });
     expect(action.closest('[data-page-action-footer]')).not.toBeNull();
     expect(action).toHaveClass('w-full', 'min-w-0', 'min-h-[44px]');
@@ -71,6 +76,15 @@ it.each([true, false])(
         .getByRole('button', { name: 'buttons.close' })
         .closest('[data-page-action-footer]')
     ).toBe(action.closest('[data-page-action-footer]'));
+    const warning = screen.queryByText('settings.disablePaliProviderWarning');
+    if (enabled) {
+      expect(warning).toBeVisible();
+      expect(warning!.closest('[data-page-action-footer]')).toBe(
+        action.closest('[data-page-action-footer]')
+      );
+    } else {
+      expect(warning).toBeNull();
+    }
   }
 );
 
@@ -88,7 +102,7 @@ it('blocks overlapping settings choices while normal property delivery is pendin
   render(<RemoveEth />);
 
   const disable = screen.getByRole('button', {
-    name: 'Set Metamask as default wallet',
+    name: 'Disable Pali’s Ethereum provider',
   });
   fireEvent.click(disable);
   expect(disable).toBeDisabled();
@@ -105,7 +119,7 @@ it('blocks overlapping settings choices while normal property delivery is pendin
   await act(async () => complete());
   await waitFor(() =>
     expect(
-      screen.getByRole('button', { name: 'Set Pali as default wallet' })
+      screen.getByRole('button', { name: 'Enable Pali’s Ethereum provider' })
     ).toBeEnabled()
   );
   expect(
@@ -159,8 +173,8 @@ it.each([true, false])(
     try {
       render(<RemoveEth />);
       const label = enabled
-        ? 'Set Metamask as default wallet'
-        : 'Set Pali as default wallet';
+        ? 'Disable Pali’s Ethereum provider'
+        : 'Enable Pali’s Ethereum provider';
       fireEvent.click(screen.getByRole('button', { name: label }));
       await waitFor(() =>
         expect(screen.getByRole('button', { name: label })).toBeEnabled()

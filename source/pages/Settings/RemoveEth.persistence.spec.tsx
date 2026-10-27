@@ -35,7 +35,12 @@ jest.mock('hooks/useController', () => ({
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string, values?: { wallet?: string }) =>
-      key === 'settings.setWalletAsDefault'
+      key === 'settings.disablePaliProvider' ||
+      key === 'settings.enablePaliProvider'
+        ? jest.requireActual('../../assets/locales/en.json').settings[
+            key.split('.')[1]
+          ]
+        : key === 'settings.setWalletAsDefault'
         ? jest
             .requireActual('../../assets/locales/en.json')
             .settings.setWalletAsDefault.replace(
@@ -229,12 +234,12 @@ const mount = () =>
   );
 const disableProvider = async () => {
   fireEvent.click(
-    screen.getByRole('button', { name: 'Set Metamask as default wallet' })
+    screen.getByRole('button', { name: 'Disable Pali’s Ethereum provider' })
   );
   await waitFor(() =>
     expect(
       screen.getByRole('button', {
-        name: /Set (Pali|Metamask) as default wallet/,
+        name: /(Disable|Enable) Pali’s Ethereum provider/,
       })
     ).toBeEnabled()
   );
@@ -249,7 +254,7 @@ it('persists provider disablement and healthy namespace disconnection through th
   mount();
   await disableProvider();
   expect(screen.getByRole('dialog')).toHaveTextContent(
-    'settings.windowObjectWasSet'
+    'settings.paliProviderDisabled'
   );
   expect(store.getState().vaultGlobal.hasEthProperty).toBe(false);
   expect(dapp.isConnected(HOST)).toBe(false);
@@ -312,7 +317,7 @@ it('retries a refused permission write from the same screen without re-enabling 
   await disableProvider();
   expect(screen.queryByRole('alert')).toBeNull();
   expect(screen.getByRole('dialog')).toHaveTextContent(
-    'settings.windowObjectWasSet'
+    'settings.paliProviderDisabled'
   );
   expect(dapp.isConnected(HOST)).toBe(false);
   expect(records.state.vaultGlobal.hasEthProperty).toBe(false);
@@ -370,7 +375,7 @@ it('does not claim success when the provider preference fails after durable revo
   await disableProvider();
   expect(records.state.vaultGlobal.hasEthProperty).toBe(false);
   expect(screen.getByRole('dialog')).toHaveTextContent(
-    'settings.windowObjectWasSet'
+    'settings.paliProviderDisabled'
   );
 });
 
@@ -379,7 +384,7 @@ it('enables the provider without revoking existing namespace permissions', async
   await persistCommittedWalletState(true);
   mount();
   fireEvent.click(
-    screen.getByRole('button', { name: 'Set Pali as default wallet' })
+    screen.getByRole('button', { name: 'Enable Pali’s Ethereum provider' })
   );
   await screen.findByRole('dialog');
   expect(records.state.vaultGlobal.hasEthProperty).toBe(true);
@@ -410,7 +415,7 @@ it('does not revoke a newly approved origin outside the requested disconnect sna
     });
   mount();
   fireEvent.click(
-    screen.getByRole('button', { name: 'Set Metamask as default wallet' })
+    screen.getByRole('button', { name: 'Disable Pali’s Ethereum provider' })
   );
   await writeStarted;
   const approval = dapp.requestPermissions(
@@ -464,7 +469,7 @@ it('finishes disabling when another view already durably disconnected a later re
     });
   mount();
   fireEvent.click(
-    screen.getByRole('button', { name: 'Set Metamask as default wallet' })
+    screen.getByRole('button', { name: 'Disable Pali’s Ethereum provider' })
   );
   await writeStarted;
   const otherView = dapp.disconnect(secondHost, true, {
@@ -477,14 +482,14 @@ it('finishes disabling when another view already durably disconnected a later re
   await waitFor(() =>
     expect(
       screen.getByRole('button', {
-        name: /Set (Pali|Metamask) as default wallet/,
+        name: /(Disable|Enable) Pali’s Ethereum provider/,
       })
     ).toBeEnabled()
   );
   expect(records.state.dapp.dapps).toEqual({});
   expect(screen.queryByRole('alert')).toBeNull();
   expect(screen.getByRole('dialog')).toHaveTextContent(
-    'settings.windowObjectWasSet'
+    'settings.paliProviderDisabled'
   );
   expect(records.state.vaultGlobal.hasEthProperty).toBe(false);
 });
@@ -512,7 +517,7 @@ it('still revokes a newly approved permission for a host in the clicked global d
     });
   mount();
   fireEvent.click(
-    screen.getByRole('button', { name: 'Set Metamask as default wallet' })
+    screen.getByRole('button', { name: 'Disable Pali’s Ethereum provider' })
   );
   await writeStarted;
   let approvedPermission: any;
