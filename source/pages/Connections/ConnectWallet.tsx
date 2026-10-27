@@ -457,7 +457,7 @@ export const ConnectWallet = () => {
                                               );
                                             }
                                           }}
-                                          className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity duration-200"
+                                          className="inline-flex min-h-[32px] min-w-[32px] items-center justify-center opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity duration-200"
                                         >
                                           <Icon
                                             name="copy"
@@ -538,7 +538,13 @@ export const ConnectWallet = () => {
             </div>
 
             {/* Add bottom padding to account for fixed buttons */}
-            <div className="pb-20"></div>
+            <div
+              className="pb-20"
+              style={{
+                paddingBottom:
+                  'max(5rem, calc(var(--pali-toast-footer-clearance, 0px) + 1rem))',
+              }}
+            ></div>
           </>
         ) : (
           <div className="flex items-center justify-center h-full">

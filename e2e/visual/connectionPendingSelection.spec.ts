@@ -241,6 +241,48 @@ test('connection selection stays on the reviewed account until real switch and g
           groupBounds!.y >= actionBounds!.y ||
             groupBounds!.y + groupBounds!.height <= actionBounds!.y + 1
         ).toBe(true);
+        const copyControl = reviewedRow.getByRole('button', {
+          name: en.transactions.copyAddress,
+          exact: true,
+        });
+        await copyControl.focus();
+        const copyBox = await copyControl.boundingBox();
+        expect(copyBox).not.toBeNull();
+        expect(copyBox!.width).toBeGreaterThanOrEqual(32);
+        expect(copyBox!.height).toBeGreaterThanOrEqual(32);
+        await info.attach('connection-copy-target-screenshot', {
+          body: await approval.screenshot(),
+          contentType: 'image/png',
+        });
+        await approval.mouse.move(160, 160);
+        await approval.mouse.wheel(0, 1500);
+        const help = approval.getByRole('link', {
+          name: en.connections.learnMore,
+          exact: true,
+        });
+        await expect
+          .poll(async () => {
+            const link = await help.boundingBox();
+            const footer = await approval
+              .locator('[data-connection-actions]')
+              .boundingBox();
+            return Boolean(link && footer && link.y + link.height <= footer.y);
+          })
+          .toBe(true);
+        expect(
+          await help.evaluate((element) => {
+            const rect = element.getBoundingClientRect();
+            const hit = document.elementFromPoint(
+              rect.left + rect.width / 2,
+              rect.top + rect.height / 2
+            );
+            return hit === element || Boolean(hit && element.contains(hit));
+          })
+        ).toBe(true);
+        await info.attach('connection-help-bottom-screenshot', {
+          body: await approval.screenshot(),
+          contentType: 'image/png',
+        });
         await approval.setViewportSize({ width: 400, height: 620 });
         await reviewedRow.click();
         await expect(reviewedRow).toHaveClass(/shadow-md/);
