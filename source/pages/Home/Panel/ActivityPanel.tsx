@@ -256,7 +256,7 @@ export const TransactionsPanel = () => {
           {historyUnavailable && <p role="status">{t('send.unableToLoad')}</p>}
           <button
             type="button"
-            className="underline"
+            className="inline-flex min-h-[32px] min-w-[32px] items-center justify-center underline"
             disabled={historyState === 'pending' || isRetrying}
             onClick={retryHistory}
           >
