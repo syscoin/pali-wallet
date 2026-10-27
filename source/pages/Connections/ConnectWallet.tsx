@@ -296,6 +296,11 @@ export const ConnectWallet = () => {
     );
   }, [accountId, accountType, eligibleAccounts, visibleItems]);
 
+  const selectedAccount =
+    accountId !== null && accountType !== null
+      ? accounts?.[accountType]?.[accountId]
+      : undefined;
+
   return (
     <div ref={connectionFocusRef} className="flex flex-col w-full h-full">
       {/* Main scrollable content area */}
@@ -550,6 +555,26 @@ export const ConnectWallet = () => {
         data-connection-actions
         className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 shadow-lg z-50"
       >
+        {selectedAccount && (
+          <div
+            aria-live="polite"
+            data-connection-selected-summary
+            className="hidden min-w-0 flex-col gap-1 pb-2 text-xs [@media(max-height:400px)]:flex"
+          >
+            <span className="text-brand-graylight">
+              {t('connections.connectAccount')}:
+            </span>
+            <span className="flex min-w-0 items-center gap-1 text-brand-white">
+              <span className="min-w-0 truncate">{selectedAccount.label}</span>
+              <span aria-hidden="true">·</span>
+              <span className="shrink-0">
+                {selectedAccount.address
+                  ? ellipsis(selectedAccount.address, 8, 4)
+                  : t('connections.noAddress')}
+              </span>
+            </span>
+          </div>
+        )}
         <div className="flex gap-3 justify-center">
           <Button
             variant="secondary"

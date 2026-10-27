@@ -210,12 +210,32 @@ test('connection selection stays on the reviewed account until real switch and g
         await expect(approval.getByText(ORIGIN, { exact: true })).toBeVisible();
         await expect(approval.getByRole('dialog')).toHaveCount(0);
         await expect(otherRow).toHaveClass(/shadow-md/);
+        await approval.setViewportSize({ width: 320, height: 360 });
+        const compactSelection = approval.locator(
+          '[data-connection-selected-summary]'
+        );
+        await expect(compactSelection).toBeVisible();
+        await expect(compactSelection).toContainText(SECOND_LABEL);
+        await expect(compactSelection).toContainText(
+          `${before!.active.address.slice(
+            0,
+            8
+          )}...${before!.active.address.slice(-4)}`
+        );
+        await approval.setViewportSize({ width: 400, height: 620 });
         await reviewedRow.click();
         await expect(reviewedRow).toHaveClass(/shadow-md/);
         await otherRow.press('Enter');
         await expect(otherRow).toHaveClass(/shadow-md/);
         await reviewedRow.press('Space');
         await expect(reviewedRow).toHaveClass(/shadow-md/);
+        await approval.setViewportSize({ width: 320, height: 360 });
+        await expect(compactSelection).toBeVisible();
+        await expect(compactSelection).toContainText(reviewed!.label);
+        await expect(compactSelection).toContainText(
+          `${reviewed!.address.slice(0, 8)}...${reviewed!.address.slice(-4)}`
+        );
+        await approval.setViewportSize({ width: 400, height: 620 });
         expect(await publicState(page)).toEqual(before);
         await approval.evaluate(
           (target) => {
