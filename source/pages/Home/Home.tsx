@@ -363,7 +363,7 @@ export const Home = () => {
                 />
               </div>
 
-              <div className="flex items-center justify-center pt-8 w-3/4 max-w-md floating-dots-content">
+              <div className="flex items-center justify-center pt-8 w-3/4 min-w-[min(18rem,calc(100%-2rem))] max-w-md floating-dots-content">
                 <Button
                   type="button"
                   className={`${dashboardActionClass} bg-button-secondary hover:bg-button-secondaryhover border-button-secondary rounded-l-full`}
