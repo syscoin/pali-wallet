@@ -355,6 +355,9 @@ it.each(['removed', 'incompatible'] as const)(
     expect(screen.queryByText('Beta')).not.toBeInTheDocument();
     // The stale selection is neither presented nor actionable.
     expect(confirm()).toBeDisabled();
+    expect(
+      screen.getByText('connections.selectAccountToConnect')
+    ).toBeInTheDocument();
     await user.click(confirm());
     expect(mutationCalls()).toEqual([]);
     expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
@@ -362,6 +365,9 @@ it.each(['removed', 'incompatible'] as const)(
     await user.click(row('Alpha'));
     expect(isSelected('Alpha')).toBe(true);
     expect(confirm()).toBeEnabled();
+    expect(
+      screen.queryByText('connections.selectAccountToConnect')
+    ).not.toBeInTheDocument();
     await user.click(cancel());
     expect(window.close).toHaveBeenCalledTimes(1);
     expect(mutationCalls()).toEqual([]);

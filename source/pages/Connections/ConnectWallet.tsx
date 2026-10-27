@@ -574,6 +574,19 @@ export const ConnectWallet = () => {
             </span>
           </div>
         )}
+        {!selectedAccount && !isLoading && (
+          <div
+            aria-live="polite"
+            data-connection-selection-required
+            className="hidden pb-2 text-xs text-brand-graylight [@media(max-height:400px)]:block"
+          >
+            {t(
+              eligibleAccounts.length
+                ? 'connections.selectAccountToConnect'
+                : 'connections.noAccountsAvailable'
+            )}
+          </div>
+        )}
         <div className="flex gap-3 justify-center">
           <Button
             variant="secondary"
