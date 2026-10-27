@@ -222,6 +222,17 @@ test('connection selection stays on the reviewed account until real switch and g
             8
           )}...${before!.active.address.slice(-4)}`
         );
+        const searchBounds = await approval
+          .getByRole('searchbox', { name: en.connections.searchAccounts })
+          .boundingBox();
+        const actionBounds = await approval
+          .locator('[data-connection-actions]')
+          .boundingBox();
+        expect(searchBounds).not.toBeNull();
+        expect(actionBounds).not.toBeNull();
+        expect(searchBounds!.y + searchBounds!.height).toBeLessThanOrEqual(
+          actionBounds!.y + 1
+        );
         await approval.setViewportSize({ width: 400, height: 620 });
         await reviewedRow.click();
         await expect(reviewedRow).toHaveClass(/shadow-md/);

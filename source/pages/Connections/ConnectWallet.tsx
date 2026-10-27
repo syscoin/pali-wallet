@@ -312,7 +312,7 @@ export const ConnectWallet = () => {
         ) : accounts && Object.keys(accounts).length > 0 ? (
           <>
             {/* Header section */}
-            <div className="text-center px-6 py-6 border-b border-brand-gray300">
+            <div className="text-center px-6 py-6 border-b border-brand-gray300 [@media(max-height:400px)]:py-2">
               <h3 className="text-xs text-brand-graylight uppercase tracking-wider mb-2">
                 {t('connections.connectRequest')}
               </h3>
@@ -349,7 +349,7 @@ export const ConnectWallet = () => {
             </div>
 
             {/* Accounts list */}
-            <div className="px-4 py-4">
+            <div className="px-4 py-4 [@media(max-height:400px)]:py-2">
               <input
                 type="search"
                 aria-label={t('connections.searchAccounts')}
