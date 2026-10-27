@@ -176,6 +176,10 @@ test('both default-wallet choices remain unobscured beside Close in small window
         const close = page
           .locator('[data-page-action-footer]')
           .getByRole('button', { name: en.buttons.close, exact: true });
+        // Provider help and actions now share the page's scroll flow so the
+        // footer cannot cover help in short windows. Expose the action area
+        // before checking that both controls are visible at the same time.
+        await close.scrollIntoViewIfNeeded();
         await expect.poll(() => exposed(action)).toBe(true);
         await expect.poll(() => exposed(close)).toBe(true);
         expect((await action.boundingBox())!.height).toBeGreaterThanOrEqual(44);
