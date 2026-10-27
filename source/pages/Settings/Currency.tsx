@@ -415,6 +415,7 @@ const CurrencyView = () => {
       </div>
 
       <PageActionFooter
+        className="currency-settings-footer"
         error={saveError ? t('settings.preferencesSaveFailed') : undefined}
       >
         <Button

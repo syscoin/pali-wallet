@@ -66,6 +66,13 @@
   position: static;
 }
 
+/* Keep the currency selector fully exposed in a short wallet window. */
+@media (max-height: 400px) {
+  [data-navigation-scroll='wallet-layout'] .currency-settings-footer {
+    position: static;
+  }
+}
+
 /** ALERTS/TOASTS **/
 
 /* PSBT approvals use one bounded content scroller above their action row. */
