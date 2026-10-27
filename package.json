@@ -101,7 +101,7 @@
     "redux": "^5.0.1",
     "redux-thunk": "^3.1.0",
     "sass": "^1.80.7",
-    "syscoinjs-lib": "^1.0.274",
+    "syscoinjs-lib": "^1.0.275",
     "syscointx-js": "1.0.128",
     "tailwindcss": "^3.4.15",
     "tippy.js": "^6.3.7",
