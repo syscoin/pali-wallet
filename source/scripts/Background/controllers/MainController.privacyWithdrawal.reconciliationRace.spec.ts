@@ -390,6 +390,9 @@ it.each(['account change', 'account ABA', 'network ABA'] as const)(
       });
     const writesBefore = storage.setItem.mock.calls.length;
     const clearing = run.wallet.getPrivateVaultNotes();
+    const clearingFailure = expect(clearing).rejects.toThrow(
+      'privacy_vault_session_changed'
+    );
     await entered.promise;
     run.wallet.walletSessionGeneration += 1;
     if (transition === 'network ABA') {
@@ -410,8 +413,7 @@ it.each(['account change', 'account ABA', 'network ABA'] as const)(
       }
     }
     release.resolve();
-    const different = await clearing;
-    expect(different.notes[0].phase).toBe('waiting');
+    await clearingFailure;
     expect(storage.setItem.mock.calls.length).toBe(writesBefore);
     expect(run.wallet.knownUnbroadcast.has(review.intentId)).toBe(true);
     expect(
@@ -420,6 +422,18 @@ it.each(['account change', 'account ABA', 'network ABA'] as const)(
         run.wallet.capturePrivateVaultSession()
       )
     ).toMatchObject({ phase: 'unknown' });
+    // A new session on another account may read the still-reserved note, but
+    // must not clear a capability bound to the original account.
+    run.wallet.walletSessionGeneration += 1;
+    run.state.vault.activeAccount = {
+      id: 1,
+      type: KeyringAccountType.HDAccount,
+    };
+    expect((await run.wallet.getPrivateVaultNotes()).notes[0].phase).toBe(
+      'waiting'
+    );
+    expect(storage.setItem.mock.calls.length).toBe(writesBefore);
+    expect(run.wallet.knownUnbroadcast.has(review.intentId)).toBe(true);
     run.wallet.walletSessionGeneration += 1;
     run.state.vault.activeAccount = {
       id: 0,

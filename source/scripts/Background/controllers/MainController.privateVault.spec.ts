@@ -301,13 +301,62 @@ it('does not load the custody chunk while locked or restoring wallet state', asy
 
 it('does not transfer an admitted request across a delayed chunk load', async () => {
   const { wallet } = fixture();
+  const entered = deferred();
   const release = deferred();
   const getNotes = jest.fn(async () => ({ notes: [] }));
   wallet.privateVaultController = release.promise.then(() => ({ getNotes }));
+  const loadController = wallet.getPrivateVaultController.bind(wallet);
+  jest.spyOn(wallet, 'getPrivateVaultController').mockImplementation(() => {
+    entered.resolve();
+    return loadController();
+  });
   const result = wallet.getPrivateVaultNotes();
   const failure = expect(result).rejects.toThrow(
     'privacy_vault_session_changed'
   );
+  await entered.promise;
+  wallet.walletSessionGeneration++;
+  release.resolve();
+  await failure;
+  expect(getNotes).not.toHaveBeenCalled();
+});
+
+it('does not admit a notes request into a session changed before empty reconciliation settles', async () => {
+  const { wallet } = fixture();
+  const getNotes = jest.fn(async () => ({ notes: [] }));
+  wallet.privateVaultController = Promise.resolve({ getNotes });
+  const result = wallet.getPrivateVaultNotes();
+  const failure = expect(result).rejects.toThrow(
+    'privacy_vault_session_changed'
+  );
+  wallet.walletSessionGeneration++;
+  await failure;
+  expect(getNotes).not.toHaveBeenCalled();
+});
+
+it('does not transfer a notes request when the session changes during reconciliation', async () => {
+  const { wallet, keyring } = fixture();
+  const entered = deferred();
+  const release = deferred();
+  const getNotes = jest.fn(async () => ({ notes: [] }));
+  wallet.privateVaultController = Promise.resolve({ getNotes });
+  wallet.knownUnbroadcast = new Map([['synthetic-attempt', {}]]);
+  wallet.capturePrivacyDepositContext = jest.fn(() => ({
+    context: {},
+    assertCurrent: jest.fn(),
+  }));
+  Object.assign(keyring, {
+    getPrivateRecordProfileId: jest.fn(async () => {
+      entered.resolve();
+      await release.promise;
+      return 'synthetic-profile';
+    }),
+  });
+  const result = wallet.getPrivateVaultNotes();
+  const failure = expect(result).rejects.toThrow(
+    'privacy_vault_session_changed'
+  );
+  await entered.promise;
   wallet.walletSessionGeneration++;
   release.resolve();
   await failure;

@@ -203,6 +203,8 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
   const submittedAssetSelectionRevision = useRef(0);
   const [isCalculatingGas, setIsCalculatingGas] = useState(false);
   const [cachedFeeData, setCachedFeeData] = useState<any>(null);
+  const [feeReadFailed, setFeeReadFailed] = useState(false);
+  const [feeRetry, setFeeRetry] = useState(0);
   const [isMaxSend, setIsMaxSend] = useState(initialIsMaxSend);
 
   // NFT-related state
@@ -1203,6 +1205,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
     if (selectedAsset || !activeAccount?.address || cachedFeeData) return;
     let current = true;
     setIsCalculatingGas(true);
+    setFeeReadFailed(false);
 
     const calculateGasFees = async () => {
       try {
@@ -1212,18 +1215,40 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
           'getFeeDataWithDynamicMaxPriorityFeePerGas',
         ])) as any;
 
-        if (current && feeData?.maxFeePerGas && feeData.maxPriorityFeePerGas) {
+        if (
+          feeData?.maxFeePerGas === undefined ||
+          feeData?.maxPriorityFeePerGas === undefined
+        ) {
+          throw new Error('Invalid fee quote');
+        }
+        const maxFeePerGas = BigNumber.from(feeData.maxFeePerGas);
+        const maxPriorityFeePerGas = BigNumber.from(
+          feeData.maxPriorityFeePerGas
+        );
+        const gasPrice =
+          feeData.gasPrice == null ? null : BigNumber.from(feeData.gasPrice);
+        if (
+          maxFeePerGas.lt(0) ||
+          maxPriorityFeePerGas.lt(0) ||
+          maxPriorityFeePerGas.gt(maxFeePerGas) ||
+          (gasPrice && gasPrice.lt(0)) ||
+          (maxFeePerGas.isZero() && (!gasPrice || gasPrice.lte(0)))
+        ) {
+          throw new Error('Invalid fee quote');
+        }
+        if (current && isCurrentForm(false) && !isCurrentForm()) {
+          setFeeReadFailed(true);
+        } else if (current && isCurrentForm()) {
           // Cache serializable fee rates; the backend handles the gas limit.
           setCachedFeeData({
-            maxFeePerGas: BigNumber.from(feeData.maxFeePerGas).toHexString(),
-            maxPriorityFeePerGas: BigNumber.from(
-              feeData.maxPriorityFeePerGas
-            ).toHexString(),
+            maxFeePerGas: maxFeePerGas.toHexString(),
+            maxPriorityFeePerGas: maxPriorityFeePerGas.toHexString(),
+            ...(gasPrice && { gasPrice: gasPrice.toHexString() }),
           });
         }
       } catch (error) {
         console.error('Error calculating gas fees:', error);
-        // Leave failed prefetches uncached; confirmation still validates fees.
+        if (current && isCurrentForm(false)) setFeeReadFailed(true);
       } finally {
         if (current) setIsCalculatingGas(false);
       }
@@ -1232,7 +1257,24 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
     return () => {
       current = false;
     };
-  }, [selectedAsset, activeAccount?.address, cachedFeeData]);
+  }, [
+    selectedAsset,
+    activeAccount?.address,
+    cachedFeeData,
+    feeRetry,
+    isCurrentForm,
+  ]);
+
+  useEffect(() => {
+    if (
+      cachedFeeData &&
+      !selectedAsset &&
+      form.getFieldValue('amount') &&
+      form.getFieldError('amount').length
+    ) {
+      void form.validateFields(['amount']).catch(() => undefined);
+    }
+  }, [cachedFeeData, selectedAsset, form]);
 
   // Close suggestions when clicking outside form
   useEffect(() => {
@@ -1781,7 +1823,10 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                                 const maxFeePerGas = BigNumber.from(
                                   cachedFeeData.maxFeePerGas
                                 );
-                                estimatedGasCost = gasLimit.mul(maxFeePerGas);
+                                const feeRate = maxFeePerGas.isZero()
+                                  ? BigNumber.from(cachedFeeData.gasPrice)
+                                  : maxFeePerGas;
+                                estimatedGasCost = gasLimit.mul(feeRate);
                               } else {
                                 // Use conservative fallback estimate
                                 const conservativeFee =
@@ -1796,8 +1841,9 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
 
                               if (remainingAfterSend.lt(estimatedGasCost)) {
                                 return Promise.reject(
-                                  t('send.insufficientFundsForGas') ||
-                                    'Insufficient funds for gas'
+                                  cachedFeeData?.maxFeePerGas
+                                    ? t('send.insufficientFundsForGas')
+                                    : t('send.feeUnavailable')
                                 );
                               }
                             } catch (error) {
@@ -1881,6 +1927,28 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                     }}
                   />
                 </Form.Item>
+
+                <div>
+                  <span
+                    className="sr-only"
+                    role="status"
+                    aria-live="polite"
+                    aria-atomic="true"
+                  >
+                    {!selectedAsset && feeReadFailed
+                      ? t('send.feeUnavailable')
+                      : ''}
+                  </span>
+                  {!selectedAsset && feeReadFailed && (
+                    <button
+                      type="button"
+                      className="text-brand-royalblue text-xs underline focus-visible:outline focus-visible:outline-2"
+                      onClick={() => setFeeRetry((attempt) => attempt + 1)}
+                    >
+                      {t('send.unableToCalculateFees')}
+                    </button>
+                  )}
+                </div>
 
                 {/* Verification Status Display */}
                 {selectedAsset && (

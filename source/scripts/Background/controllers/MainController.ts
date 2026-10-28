@@ -1943,9 +1943,9 @@ class MainController {
   }
 
   private async usePrivateVault<T>(
-    operation: (vault: IPrivateVaultController) => Promise<T>
+    operation: (vault: IPrivateVaultController) => Promise<T>,
+    session = this.capturePrivateVaultSession()
   ): Promise<T> {
-    const session = this.capturePrivateVaultSession();
     const vault = await this.getPrivateVaultController();
     session.assertCurrent();
     const result = await operation(vault);
@@ -1998,8 +1998,11 @@ class MainController {
   }
 
   public async getPrivateVaultNotes() {
+    // Admission belongs to the current session even if reconciliation yields.
+    const session = this.capturePrivateVaultSession();
     await this.reconcileKnownUnbroadcast();
-    return this.usePrivateVault((vault) => vault.getNotes());
+    session.assertCurrent();
+    return this.usePrivateVault((vault) => vault.getNotes(), session);
   }
 
   public importPrivateVaultNote(note: string) {
