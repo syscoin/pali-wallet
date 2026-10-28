@@ -16,6 +16,8 @@ export default function PrivacyServiceSettings({
   const [origin, setOrigin] = useState('');
   const [saved, setSaved] = useState('');
   const [loading, setLoading] = useState(false);
+  const [baselineReady, setBaselineReady] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
@@ -33,8 +35,11 @@ export default function PrivacyServiceSettings({
   useEffect(() => {
     if (!open || owner.current.saving) return undefined;
     const revision = ++owner.current.revision;
+    setBaselineReady(false);
+    setLoadFailed(false);
     setLoading(true);
     setError('');
+    setSuccess(false);
     void controllerEmitter(
       ['privacySettings', 'getServiceOrigin'],
       [],
@@ -46,10 +51,13 @@ export default function PrivacyServiceSettings({
         const current = normalizePrivacyServiceOrigin(value as string);
         setOrigin(current);
         setSaved(current);
+        setBaselineReady(true);
       })
       .catch(() => {
-        if (revision === owner.current.revision)
+        if (revision === owner.current.revision) {
+          setLoadFailed(true);
           setError(t('privacy.serviceLoadFailed'));
+        }
       })
       .finally(() => {
         if (revision === owner.current.revision) setLoading(false);
@@ -61,7 +69,7 @@ export default function PrivacyServiceSettings({
 
   const save = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (owner.current.saving || loading) return;
+    if (owner.current.saving || loading || !baselineReady) return;
     let normalized: string;
     try {
       normalized = normalizePrivacyServiceOrigin(origin);
@@ -105,7 +113,13 @@ export default function PrivacyServiceSettings({
   };
 
   return (
-    <details onToggle={(event) => setOpen(event.currentTarget.open)}>
+    <details
+      onToggle={(event) => {
+        const isOpen = event.currentTarget.open;
+        if (isOpen && !owner.current.saving) setBaselineReady(false);
+        setOpen(isOpen);
+      }}
+    >
       <summary className="cursor-pointer text-sm text-brand-royalbluemedium underline rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-white">
         {t('privacy.serviceSettings')}
       </summary>
@@ -129,7 +143,7 @@ export default function PrivacyServiceSettings({
               setError('');
               setSuccess(false);
             }}
-            disabled={loading || saving}
+            disabled={loading || saving || !baselineReady}
             autoComplete="off"
             spellCheck={false}
             aria-invalid={Boolean(error)}
@@ -145,7 +159,7 @@ export default function PrivacyServiceSettings({
               {error}
             </p>
           )}
-          {error && !saved && (
+          {loadFailed && (
             <button
               type="button"
               className="rounded p-1 text-xs text-brand-royalbluemedium underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-white"
@@ -163,7 +177,9 @@ export default function PrivacyServiceSettings({
             type="submit"
             variant="primary"
             fullWidth
-            disabled={loading || saving || !origin || origin === saved}
+            disabled={
+              loading || saving || !baselineReady || !origin || origin === saved
+            }
             loading={saving}
           >
             {t('buttons.save')}
