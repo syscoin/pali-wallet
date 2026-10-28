@@ -265,6 +265,7 @@
     "importToken": "トークンインポート",
     "youHaveNoTokens": "トークンやNFTがありません",
     "youHaveNoTxs": "取引履歴がありません",
+    "historyMayBeIncomplete": "エクスプローラー API がない場合、取引履歴が不完全になる可能性があります。",
     "seeAllTxs": "全取引を表示",
     "addressCopied": "アドレスが正常にコピーされました",
     "hashCopied": "ハッシュが正常にコピーされました",

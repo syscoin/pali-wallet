@@ -29,6 +29,7 @@ export const TransactionsPanel = () => {
   const { activeNetwork, isBitcoinBased, isSwitchingAccount } =
     useSelector(selectVaultCoreData);
   const hasHistoryStatus = isBitcoinBased || Boolean(activeNetwork.apiUrl);
+  const historyMayBeIncomplete = !isBitcoinBased && !activeNetwork.apiUrl;
 
   const { t } = useTranslation();
   const historyStatus = useSelector(
@@ -89,10 +90,16 @@ export const TransactionsPanel = () => {
   const NoTransactionsComponent = useMemo(
     () => (
       <div className="flex items-center justify-center pt-3 pb-6 text-brand-white text-sm">
-        <p>{t('home.youHaveNoTxs')}</p>
+        <p role={historyMayBeIncomplete ? 'status' : undefined}>
+          {t(
+            historyMayBeIncomplete
+              ? 'home.historyMayBeIncomplete'
+              : 'home.youHaveNoTxs'
+          )}
+        </p>
       </div>
     ),
-    [t]
+    [historyMayBeIncomplete, t]
   );
 
   const TransactionSkeleton = useMemo(
@@ -280,6 +287,11 @@ export const TransactionsPanel = () => {
           id="activity-panel-list"
           className="p-4 mt-8 w-full  mb-9 text-white text-base bg-brand-blue600"
         >
+          {historyMayBeIncomplete && (
+            <p role="status" className="mb-3 text-sm text-brand-gray200">
+              {t('home.historyMayBeIncomplete')}
+            </p>
+          )}
           {isBitcoinBased ? (
             <UtxoTransactionsList userTransactions={utxoTransactions} />
           ) : (

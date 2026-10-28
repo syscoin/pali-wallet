@@ -1,5 +1,5 @@
 import { QRCodeSVG } from 'qrcode.react';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
@@ -16,6 +16,9 @@ export const Receive = () => {
   const { useCopyClipboard, alert, navigate } = useUtils();
   const { t } = useTranslation();
   const [timedOutScope, setTimedOutScope] = useState<string>();
+  const [validationAttempt, setValidationAttempt] = useState(0);
+  const validationRevision = useRef(0);
+  const timeoutAttempt = useRef(0);
   const [validatedAddress, setValidatedAddress] = useState<{
     address: string;
     scope: string;
@@ -38,6 +41,8 @@ export const Receive = () => {
   const address =
     typeof activeAccount?.address === 'string' ? activeAccount.address : '';
   const isEthereum = activeNetwork.kind === INetworkType.Ethereum;
+  const canRetryValidation =
+    activeNetwork.kind === INetworkType.Syscoin && Boolean(address);
   const isAddressReady = isEthereum
     ? Boolean(address)
     : validatedAddress?.address === address &&
@@ -83,16 +88,19 @@ export const Receive = () => {
 
   useEffect(() => {
     let current = true;
+    const revision = ++validationRevision.current;
     setValidatedAddress(undefined);
     if (!address || isEthereum) return;
     const complete = (valid: boolean) => {
-      if (current) setValidatedAddress({ address, scope: walletScope, valid });
+      if (current && revision === validationRevision.current)
+        setValidatedAddress({ address, scope: walletScope, valid });
     };
     if (activeNetwork.kind === INetworkType.Syscoin)
       void isValidSYSAddress(address, activeNetwork.chainId).then(complete);
     else complete(false);
     return () => {
       current = false;
+      validationRevision.current += 1;
     };
   }, [
     address,
@@ -100,18 +108,28 @@ export const Receive = () => {
     activeNetwork.kind,
     activeNetwork.chainId,
     isEthereum,
+    validationAttempt,
   ]);
 
   // Neither missing addresses nor unfinished validation may spin forever.
   useEffect(() => {
     setTimedOutScope(undefined);
     if (isAddressReady) return;
-    const timer = setTimeout(
-      () => setTimedOutScope(walletScope),
-      ADDRESS_WAIT_TIMEOUT_MS
-    );
+    const attempt = validationAttempt;
+    const timer = setTimeout(() => {
+      if (timeoutAttempt.current === attempt) setTimedOutScope(walletScope);
+    }, ADDRESS_WAIT_TIMEOUT_MS);
     return () => clearTimeout(timer);
-  }, [isAddressReady, walletScope]);
+  }, [isAddressReady, walletScope, validationAttempt]);
+
+  const retryValidation = () => {
+    // Retire a timed-out response before React runs effect cleanup.
+    validationRevision.current += 1;
+    timeoutAttempt.current += 1;
+    setValidatedAddress(undefined);
+    setTimedOutScope(undefined);
+    setValidationAttempt(timeoutAttempt.current);
+  };
 
   return (
     <>
@@ -184,9 +202,13 @@ export const Receive = () => {
             variant="neutral"
             className="text-sm text-brand-royalblue"
             type="button"
-            onClick={() => navigate('/home')}
+            onClick={
+              canRetryValidation ? retryValidation : () => navigate('/home')
+            }
           >
-            <span className="text-xs">{t('receive.retry')}</span>
+            <span className="text-xs">
+              {t(canRetryValidation ? 'receive.retry' : 'buttons.back')}
+            </span>
           </Button>
         </div>
       ) : (

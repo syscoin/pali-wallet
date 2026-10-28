@@ -265,6 +265,7 @@
     "importToken": "Импорт токена",
     "youHaveNoTokens": "У вас нет токенов или NFT",
     "youHaveNoTxs": "Нет истории транзакций",
+    "historyMayBeIncomplete": "Без API обозревателя история транзакций может быть неполной.",
     "seeAllTxs": "Посмотреть все транзакции",
     "addressCopied": "Адрес успешно скопирован",
     "hashCopied": "Хеш успешно скопирован",

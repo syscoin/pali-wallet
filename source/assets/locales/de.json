@@ -265,6 +265,7 @@
     "importToken": "Token importieren",
     "youHaveNoTokens": "Keine Token oder NFTs vorhanden",
     "youHaveNoTxs": "Keine Transaktionshistorie",
+    "historyMayBeIncomplete": "Ohne eine Explorer-API ist der Transaktionsverlauf möglicherweise unvollständig.",
     "seeAllTxs": "Alle Transaktionen anzeigen",
     "addressCopied": "Adresse erfolgreich kopiert",
     "hashCopied": "Hash erfolgreich kopiert",

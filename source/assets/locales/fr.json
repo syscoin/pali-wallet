@@ -265,6 +265,7 @@
     "importToken": "Importer un jeton",
     "youHaveNoTokens": "Vous n'avez pas de jetons ou NFTs",
     "youHaveNoTxs": "Aucun historique de transactions",
+    "historyMayBeIncomplete": "L’historique des transactions peut être incomplet sans API d’explorateur.",
     "seeAllTxs": "Voir toutes les transactions",
     "addressCopied": "Adresse copiée avec succès",
     "hashCopied": "Hash copié avec succès",

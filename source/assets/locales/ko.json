@@ -265,6 +265,7 @@
     "importToken": "토큰 가져오기",
     "youHaveNoTokens": "토큰이나 NFT가 없습니다",
     "youHaveNoTxs": "거래 내역이 없습니다",
+    "historyMayBeIncomplete": "탐색기 API가 없으면 거래 내역이 불완전할 수 있습니다.",
     "seeAllTxs": "모든 거래 보기",
     "addressCopied": "주소가 성공적으로 복사되었습니다",
     "hashCopied": "해시가 성공적으로 복사되었습니다",

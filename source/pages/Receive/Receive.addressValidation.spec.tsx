@@ -315,7 +315,10 @@ it('never exposes an old raw descriptor as address text, QR or copy target', asy
   expect(screen.queryByText(descriptor)).toBeNull();
   expect(mockWrite).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: 'receive.retry' }));
-  expect(screen.getByRole('button', { name: 'Open Receive' })).toBeDefined();
+  await settle();
+  expect(mockValidate).toHaveBeenCalledTimes(2);
+  expect(screen.getByText('receive.addressUnavailable')).toBeDefined();
+  expect(document.querySelector('#qr-code')).toBeNull();
 });
 
 it('keeps the address hidden until its current network validation completes', async () => {
@@ -412,15 +415,159 @@ it('fails closed when background address validation rejects', async () => {
   }
 });
 
-it('times out unfinished validation and ignores it after leaving Receive', async () => {
-  const held = validation();
-  mockValidate.mockReturnValueOnce(held.promise);
+it('Retry revalidates the current SYS address in place after a transient refusal', async () => {
+  const error = jest
+    .spyOn(console, 'error')
+    .mockImplementation(() => undefined);
+  try {
+    mockValidate.mockRejectedValueOnce(
+      new Error('synthetic transient failure')
+    );
+    mount();
+    enter();
+    await settle();
+    expect(screen.getByText('receive.addressUnavailable')).toBeDefined();
+    expect(mockValidate).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('button', { name: 'receive.retry' }));
+    await settle();
+    expect(mockValidate).toHaveBeenCalledTimes(2);
+    expect(mockValidate).toHaveBeenLastCalledWith(
+      ['wallet', 'validateSysAddress'],
+      [records.HDAccount.address, 5700]
+    );
+    expect(screen.getByText(records.HDAccount.address)).toBeDefined();
+    expect(visibleQr()).toEqual(qrPath(records.HDAccount.address));
+  } finally {
+    error.mockRestore();
+  }
+});
+
+it('retires a timed-out validation immediately when retry begins', async () => {
+  const old = validation();
+  const current = validation();
+  mockValidate
+    .mockReturnValueOnce(old.promise)
+    .mockReturnValueOnce(current.promise);
   mount();
   enter();
   await act(async () => jest.advanceTimersByTimeAsync(8000));
   expect(screen.getByText('receive.addressUnavailable')).toBeDefined();
   fireEvent.click(screen.getByRole('button', { name: 'receive.retry' }));
-  await act(async () => held.resolve(true));
-  expect(screen.getByRole('button', { name: 'Open Receive' })).toBeDefined();
+  await act(async () => old.resolve(true));
   expect(document.querySelector('#qr-code')).toBeNull();
+  await act(async () => current.resolve(true));
+  expect(screen.getByText(records.HDAccount.address)).toBeDefined();
+  expect(visibleQr()).toEqual(qrPath(records.HDAccount.address));
+});
+
+it('keeps the successful retry when the original validation later refuses', async () => {
+  const old = validation();
+  const current = validation();
+  mockValidate
+    .mockReturnValueOnce(old.promise)
+    .mockReturnValueOnce(current.promise);
+  mount();
+  enter();
+  await act(async () => jest.advanceTimersByTimeAsync(8000));
+  fireEvent.click(screen.getByRole('button', { name: 'receive.retry' }));
+  await act(async () => current.resolve(true));
+  expect(visibleQr()).toEqual(qrPath(records.HDAccount.address));
+  await act(async () => old.resolve(false));
+  expect(screen.getByText(records.HDAccount.address)).toBeDefined();
+  expect(visibleQr()).toEqual(qrPath(records.HDAccount.address));
+  expect(screen.queryByText('receive.addressUnavailable')).toBeNull();
+});
+
+it('offers Back after a missing address times out without requesting SYS validation', async () => {
+  select('HDAccount', '');
+  mount();
+  enter();
+  await act(async () => jest.advanceTimersByTimeAsync(8000));
+  expect(screen.getByText('receive.addressUnavailable')).toBeDefined();
+  expect(screen.queryByRole('button', { name: 'receive.retry' })).toBeNull();
+  expect(mockValidate).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.back' }));
+  expect(screen.getByRole('button', { name: 'Open Receive' })).toBeDefined();
+  expect(mockValidate).not.toHaveBeenCalled();
+});
+
+it('restarts the timeout when retry is still pending', async () => {
+  const old = validation();
+  const current = validation();
+  mockValidate
+    .mockReturnValueOnce(old.promise)
+    .mockReturnValueOnce(current.promise);
+  mount();
+  enter();
+  await act(async () => jest.advanceTimersByTimeAsync(8000));
+  fireEvent.click(screen.getByRole('button', { name: 'receive.retry' }));
+  expect(screen.queryByText('receive.addressUnavailable')).toBeNull();
+  await act(async () => jest.advanceTimersByTimeAsync(7999));
+  expect(screen.queryByText('receive.addressUnavailable')).toBeNull();
+  await act(async () => jest.advanceTimersByTimeAsync(1));
+  expect(screen.getByText('receive.addressUnavailable')).toBeDefined();
+  expect(document.querySelector('#qr-code')).toBeNull();
+});
+
+it.each(['account', 'network', 'leave'] as const)(
+  'does not apply an in-flight retry after %s changes',
+  async (change) => {
+    const retry = validation();
+    mockValidate
+      .mockResolvedValueOnce(false)
+      .mockReturnValueOnce(retry.promise);
+    const view = mount();
+    enter();
+    await settle();
+    fireEvent.click(screen.getByRole('button', { name: 'receive.retry' }));
+    if (change === 'account') {
+      select('Imported');
+      redraw(view);
+      await settle();
+      expect(screen.getByText(records.Imported.address)).toBeDefined();
+    } else if (change === 'network') {
+      mockValidate.mockResolvedValueOnce(false);
+      mockState.vault.activeNetwork.url = 'https://other-synthetic.invalid/';
+      redraw(view);
+      await settle();
+      expect(screen.getByText('receive.addressUnavailable')).toBeDefined();
+    } else {
+      fireEvent.click(screen.getByRole('button', { name: 'Back to Home' }));
+    }
+    await act(async () => retry.resolve(true));
+    if (change === 'account') {
+      expect(visibleQr()).toEqual(qrPath(records.Imported.address));
+      expect(screen.queryByText(records.HDAccount.address)).toBeNull();
+    } else {
+      expect(document.querySelector('#qr-code')).toBeNull();
+      expect(screen.queryByRole('button', { name: 'buttons.copy' })).toBeNull();
+    }
+  }
+);
+
+it.each(['{Enter}', ' '])(
+  'retries SYS validation through keyboard %s',
+  async (key) => {
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    mockValidate.mockResolvedValueOnce(false);
+    mount();
+    enter();
+    await settle();
+    screen.getByRole('button', { name: 'receive.retry' }).focus();
+    await user.keyboard(key);
+    await settle();
+    expect(mockValidate).toHaveBeenCalledTimes(2);
+    expect(screen.getByText(records.HDAccount.address)).toBeDefined();
+  }
+);
+
+it('uses Back for an invalid EVM address instead of offering a false retry', async () => {
+  select('Imported', 'not-an-ethereum-address');
+  mount();
+  enter();
+  expect(screen.getByText('receive.addressUnavailable')).toBeDefined();
+  expect(screen.queryByRole('button', { name: 'receive.retry' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.back' }));
+  expect(screen.getByRole('button', { name: 'Open Receive' })).toBeDefined();
+  expect(mockValidate).not.toHaveBeenCalled();
 });

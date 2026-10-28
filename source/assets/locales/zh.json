@@ -265,6 +265,7 @@
     "importToken": "导入代币",
     "youHaveNoTokens": "暂无代币或NFT",
     "youHaveNoTxs": "暂无交易记录",
+    "historyMayBeIncomplete": "没有区块浏览器 API，交易记录可能不完整。",
     "seeAllTxs": "查看所有交易",
     "addressCopied": "地址复制成功",
     "hashCopied": "哈希复制成功",
