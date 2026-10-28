@@ -212,8 +212,12 @@ export const Receive = () => {
           </Button>
         </div>
       ) : (
-        <div className="flex items-center justify-center h-80">
-          <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-brand-blue500"></div>
+        <div className="flex items-center justify-center h-80" role="status">
+          <div
+            aria-hidden="true"
+            className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-brand-blue500"
+          ></div>
+          <span className="sr-only">{t('buttons.loading')}</span>
         </div>
       )}
     </>

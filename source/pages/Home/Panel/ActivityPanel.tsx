@@ -90,7 +90,14 @@ export const TransactionsPanel = () => {
   const NoTransactionsComponent = useMemo(
     () => (
       <div className="flex items-center justify-center pt-3 pb-6 text-brand-white text-sm">
-        <p role={historyMayBeIncomplete ? 'status' : undefined}>
+        <p
+          role={historyMayBeIncomplete ? 'status' : undefined}
+          className={
+            historyMayBeIncomplete
+              ? 'min-w-0 break-words px-4 text-center'
+              : undefined
+          }
+        >
           {t(
             historyMayBeIncomplete
               ? 'home.historyMayBeIncomplete'

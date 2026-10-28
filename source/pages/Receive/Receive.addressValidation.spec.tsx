@@ -442,6 +442,28 @@ it('Retry revalidates the current SYS address in place after a transient refusal
   }
 });
 
+it('announces pending validation on initial load and Retry, then clears the status', async () => {
+  const initial = validation();
+  const retry = validation();
+  mockValidate
+    .mockReturnValueOnce(initial.promise)
+    .mockReturnValueOnce(retry.promise);
+  mount();
+  enter();
+  expect(screen.getByRole('status').textContent).toBe('buttons.loading');
+  expect(
+    screen.getByRole('status').querySelector('[aria-hidden="true"]')
+  ).not.toBeNull();
+  await act(async () => initial.resolve(false));
+  expect(screen.queryByRole('status')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'receive.retry' }));
+  expect(screen.getByRole('status').textContent).toBe('buttons.loading');
+  expect(document.querySelector('#qr-code')).toBeNull();
+  await act(async () => retry.resolve(true));
+  expect(screen.queryByRole('status')).toBeNull();
+  expect(visibleQr()).toEqual(qrPath(records.HDAccount.address));
+});
+
 it('retires a timed-out validation immediately when retry begins', async () => {
   const old = validation();
   const current = validation();
