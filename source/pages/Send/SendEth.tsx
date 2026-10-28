@@ -1942,7 +1942,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                   {!selectedAsset && feeReadFailed && (
                     <button
                       type="button"
-                      className="text-brand-royalblue text-xs underline focus-visible:outline focus-visible:outline-2"
+                      className="min-h-11 px-2 text-brand-royalbluemedium text-xs underline focus-visible:outline focus-visible:outline-2"
                       onClick={() => setFeeRetry((attempt) => attempt + 1)}
                     >
                       {t('send.unableToCalculateFees')}
