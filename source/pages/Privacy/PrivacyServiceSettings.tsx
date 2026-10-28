@@ -183,10 +183,14 @@ export default function PrivacyServiceSettings({
             <p
               id="privacy-service-error"
               role="alert"
-              className="text-xs text-brand-red"
+              className="text-xs text-brand-red break-words"
             >
               {error ||
-                t('privacy.serviceConflict', { origin: conflictOrigin })}
+                t('privacy.serviceConflict', {
+                  origin: conflictOrigin,
+                  // React renders this as text, so it handles HTML escaping.
+                  interpolation: { escapeValue: false },
+                })}
             </p>
           )}
           {error && !saved && (
