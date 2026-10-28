@@ -508,6 +508,10 @@ const ManageAccountsView = React.memo(() => {
           description={removeAccountDescription}
           buttonText={t('buttons.remove')}
           isButtonLoading={isRemoving}
+          actionsInBody={
+            accountToRemove.accountType === KeyringAccountType.Imported &&
+            Boolean(accountToRemove.account.xprv)
+          }
         />
       )}
     </>

@@ -129,6 +129,31 @@ it('preserves normal idle confirmation Escape and Confirm callbacks', async () =
   expect(onClose).toHaveBeenCalledTimes(1);
 });
 
+it('keeps an in-flow confirmation cancellable with Escape', async () => {
+  const onClose = jest.fn();
+  const onClick = jest.fn();
+  render(
+    <ConfirmationModal
+      show
+      actionsInBody
+      title="Remove Account"
+      description="Keep the recovery warning before the action."
+      buttonText="Remove"
+      onClose={onClose}
+      onClick={onClick}
+    />
+  );
+  const dialog = screen.getByRole('dialog', { name: 'Remove Account' });
+  const description = within(dialog).getByText(
+    'Keep the recovery warning before the action.'
+  );
+  const action = within(dialog).getByRole('button', { name: 'Remove' });
+  expect(description.closest('.overflow-y-auto')).toContainElement(action);
+  await userEvent.keyboard('{Escape}');
+  expect(onClose).toHaveBeenCalledTimes(1);
+  expect(onClick).not.toHaveBeenCalled();
+});
+
 it('keeps an explicitly read-only loading quote cancellable without enabling Confirm', async () => {
   const onClose = jest.fn();
   const onClick = jest.fn();

@@ -46,6 +46,7 @@ interface IWarningModal extends IDefaultModal {
 }
 
 interface IConfirmationModal extends Omit<IDefaultModal, 'title'> {
+  actionsInBody?: boolean;
   allowCloseWhileLoading?: boolean;
   onClick: () => void;
   title: ReactNode;
@@ -143,6 +144,7 @@ export const WarningModal = ({
 };
 
 export const ConfirmationModal = ({
+  actionsInBody = false,
   buttonText,
   children,
   description = '',
@@ -159,6 +161,31 @@ export const ConfirmationModal = ({
   const close = () => {
     if (!dismissalBlocked) onClose?.();
   };
+  const actions = (
+    <DialogFooter>
+      <DialogActions>
+        <DialogActionButton
+          tone="secondary"
+          type="button"
+          onClick={close}
+          disabled={dismissalBlocked}
+          id="cancel-btn"
+        >
+          {t('buttons.cancel')}
+        </DialogActionButton>
+        <DialogActionButton
+          type="button"
+          onClick={() => {
+            if (!isButtonLoading) onClick();
+          }}
+          id="confirm-btn"
+          loading={isButtonLoading}
+        >
+          {buttonText === undefined ? t('buttons.ok') : buttonText}
+        </DialogActionButton>
+      </DialogActions>
+    </DialogFooter>
+  );
   return (
     <Modal show={show} onClose={close} initialFocus={panelRef}>
       <CenterPanel
@@ -175,34 +202,21 @@ export const ConfirmationModal = ({
           onClose={close}
           disabled={dismissalBlocked}
         />
-        <DialogBody>
-          <p className="[overflow-wrap:anywhere]">{description}</p>
-          {children}
+        <DialogBody className={actionsInBody ? '!px-0 !py-0' : ''}>
+          {actionsInBody ? (
+            <div className="px-5 py-5 [@media(max-width:360px)]:px-4 [@media(max-width:360px)]:py-3">
+              <p className="[overflow-wrap:anywhere]">{description}</p>
+              {children}
+            </div>
+          ) : (
+            <>
+              <p className="[overflow-wrap:anywhere]">{description}</p>
+              {children}
+            </>
+          )}
+          {actionsInBody && actions}
         </DialogBody>
-
-        <DialogFooter>
-          <DialogActions>
-            <DialogActionButton
-              tone="secondary"
-              type="button"
-              onClick={close}
-              disabled={dismissalBlocked}
-              id="cancel-btn"
-            >
-              {t('buttons.cancel')}
-            </DialogActionButton>
-            <DialogActionButton
-              type="button"
-              onClick={() => {
-                if (!isButtonLoading) onClick();
-              }}
-              id="confirm-btn"
-              loading={isButtonLoading}
-            >
-              {buttonText === undefined ? t('buttons.ok') : buttonText}
-            </DialogActionButton>
-          </DialogActions>
-        </DialogFooter>
+        {!actionsInBody && actions}
       </CenterPanel>
     </Modal>
   );
