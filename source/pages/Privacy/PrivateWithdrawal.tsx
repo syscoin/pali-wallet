@@ -124,6 +124,11 @@ function WithdrawalFlow({
 }: IPrivateWithdrawalProps & { emitter: (...args: any[]) => Promise<any> }) {
   const { t } = useTranslation();
   const [recipient, setRecipient] = useState('');
+  const [recipientTouched, setRecipientTouched] = useState(false);
+  const recipientInvalid =
+    recipientTouched &&
+    Boolean(recipient.trim()) &&
+    !ADDRESS.test(recipient.trim());
   const [mode, setMode] = useState<'direct' | 'relayed'>('direct');
   const [relayers, setRelayers] = useState<IPrivacyRelayerChoice[]>([]);
   const [directoryLoaded, setDirectoryLoaded] = useState(false);
@@ -380,6 +385,13 @@ function WithdrawalFlow({
             autoCapitalize="off"
             spellCheck={false}
             maxLength={42}
+            aria-invalid={recipientInvalid || undefined}
+            aria-describedby={
+              recipientInvalid
+                ? 'privacy-withdrawal-recipient-error'
+                : undefined
+            }
+            onBlur={() => setRecipientTouched(true)}
             disabled={busy === 'prepare'}
             onChange={(event) => {
               setRecipient(event.target.value);
@@ -389,6 +401,15 @@ function WithdrawalFlow({
             }}
             className="w-full rounded-lg border border-alpha-whiteAlpha300 bg-bkg-4 p-3 text-xs"
           />
+          {recipientInvalid && (
+            <p
+              id="privacy-withdrawal-recipient-error"
+              role="alert"
+              className="text-xs text-brand-red"
+            >
+              {t('privacy.withdrawal.recipientInvalid')}
+            </p>
+          )}
           <fieldset disabled={Boolean(busy)} className="space-y-2">
             <legend>{t('privacy.withdrawal.method')}</legend>
             {(['direct', 'relayed'] as const).map((value) => (

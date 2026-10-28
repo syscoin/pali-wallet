@@ -1663,6 +1663,7 @@
       "title": "ノートを出金",
       "open": "出金",
       "recipient": "受取先アドレス",
+      "recipientInvalid": "有効なEthereumアドレスを入力してください。",
       "method": "送信方法",
       "direct": "直接",
       "relayed": "リレイヤー",

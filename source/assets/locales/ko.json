@@ -1663,6 +1663,7 @@
       "title": "노트 출금",
       "open": "출금",
       "recipient": "수신 주소",
+      "recipientInvalid": "올바른 이더리움 주소를 입력하세요.",
       "method": "전송 방식",
       "direct": "직접",
       "relayed": "릴레이어",

@@ -1663,6 +1663,7 @@
       "title": "Withdraw note",
       "open": "Withdraw",
       "recipient": "Recipient address",
+      "recipientInvalid": "Enter a valid Ethereum address.",
       "method": "Send with",
       "direct": "Direct",
       "relayed": "Relayer",

@@ -165,6 +165,29 @@ it('starts direct with an empty recipient and no controller or directory call', 
   expect(mockEmitter).not.toHaveBeenCalled();
 });
 
+it('explains an invalid recipient after blur and clears the error when corrected', () => {
+  mount();
+  const input = screen.getByLabelText(en.privacy.withdrawal.recipient);
+  const next = screen.getByRole('button', {
+    name: en.privacy.withdrawal.continue,
+  });
+  fireEvent.blur(input);
+  expect(screen.queryByText(en.privacy.withdrawal.recipientInvalid)).toBeNull();
+  fireEvent.change(input, { target: { value: 'invalid' } });
+  fireEvent.blur(input);
+  expect(screen.getByRole('alert')).toHaveTextContent(
+    en.privacy.withdrawal.recipientInvalid
+  );
+  expect(input).toHaveAttribute('aria-invalid', 'true');
+  expect(input).toHaveAccessibleDescription(
+    en.privacy.withdrawal.recipientInvalid
+  );
+  expect(next).toBeDisabled();
+  fireEvent.change(input, { target: { value: RECIPIENT } });
+  expect(screen.queryByText(en.privacy.withdrawal.recipientInvalid)).toBeNull();
+  expect(next).toBeEnabled();
+});
+
 it('reviews the exact recipient, gas payer and receive amount, then submits once explicitly', async () => {
   mount();
   await prepare();

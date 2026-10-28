@@ -1663,6 +1663,7 @@
       "title": "凭证提款",
       "open": "提款",
       "recipient": "收款地址",
+      "recipientInvalid": "请输入有效的以太坊地址。",
       "method": "发送方式",
       "direct": "直接发送",
       "relayed": "中继器",
