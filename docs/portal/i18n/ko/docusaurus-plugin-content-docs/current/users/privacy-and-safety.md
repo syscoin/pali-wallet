@@ -23,3 +23,7 @@ Blockchain activity는 공개됩니다. address, transaction history, token appr
 ## 기관 passkey 개인정보
 
 dapp 또는 기관이 sponsor URL을 제공하는 경우, 해당 service는 account execution과 관련된 sponsor request를 받을 수 있습니다. 승인하기 전에 institution policy text와 URL을 검토하세요.
+
+## 비공개 노트
+
+Pali는 기본 프라이버시 서비스 또는 직접 운영하는 Sysnode 서비스를 사용할 수 있습니다. 직접 서비스를 실행하려면 [Sysnode 가이드](https://github.com/syscoin/sysnode-backend/blob/main/docs/privacy-standalone.md)를 참조하세요.

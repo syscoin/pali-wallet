@@ -23,3 +23,7 @@ A atividade na blockchain é pública. Seu endereço, histórico de transações
 ## Privacidade de passkey institucional
 
 Se uma dapp ou instituição fornece uma URL de sponsor, esse serviço pode receber solicitações de sponsor relacionadas à execução da conta. Revise o texto da política da instituição e a URL antes de aprovar.
+
+## Notas privadas
+
+O Pali pode usar o serviço de privacidade padrão ou seu próprio serviço Sysnode. Para executar seu serviço, consulte o [guia do Sysnode](https://github.com/syscoin/sysnode-backend/blob/main/docs/privacy-standalone.md).

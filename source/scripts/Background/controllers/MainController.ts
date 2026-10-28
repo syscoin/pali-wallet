@@ -166,6 +166,11 @@ import type {
   IPrivateVaultController,
 } from 'utils/privacy/privateVaultTypes';
 import type { IPrivacyRelayerClient } from 'utils/privacy/relayers';
+import {
+  assertPrivacyServiceStable,
+  getPrivacyServiceOrigin,
+  privacyServiceRevision,
+} from 'utils/privacy/service';
 import type {
   IPrivacyDepositSession,
   IPrivacyTransactionsController,
@@ -2487,7 +2492,14 @@ class MainController {
             { createPrivacyRelayerClient },
           ]) =>
             createPrivacyWithdrawalsController(
-              this.createPrivacyWithdrawalsHost(createPrivacyRelayerClient())
+              this.createPrivacyWithdrawalsHost(
+                createPrivacyRelayerClient({
+                  getDirectoryUrl: async () =>
+                    `${await getPrivacyServiceOrigin()}/api/privacy/v1/relayers`,
+                  getServiceRevision: privacyServiceRevision,
+                  assertServiceCurrent: assertPrivacyServiceStable,
+                })
+              )
             )
         )
         .catch(() => {
@@ -2532,6 +2544,15 @@ class MainController {
     void this.privacyWithdrawalsController
       ?.then((controller) => controller.cancelPreparation())
       .catch(() => undefined);
+  }
+
+  public async invalidatePrivacyServiceWithdrawals() {
+    const previous = this.privacyWithdrawalsController;
+    this.privacyWithdrawalsController = undefined;
+    if (previous) {
+      const controller = await previous.catch(() => undefined);
+      controller?.close();
+    }
   }
 
   private authenticatePrivateVault(

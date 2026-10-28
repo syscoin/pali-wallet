@@ -297,6 +297,9 @@ module.exports = {
               // icons or faucet-success.svg. Imports still emit these files.
               '**/successIcon.svg',
               '**/successIconWhite.svg',
+              // No current Icon call site selects this legacy provider logo.
+              // A future explicit import still emits it as an asset.
+              '**/metamask.svg',
             ],
           },
         },

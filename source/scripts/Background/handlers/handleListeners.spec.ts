@@ -170,6 +170,10 @@ const mockMasterController: jest.Mocked<IMasterController> = {
     resumePending: jest.fn(async () => undefined),
     start: jest.fn(),
   },
+  privacySettings: {
+    getServiceOrigin: jest.fn(),
+    setServiceOrigin: jest.fn(),
+  },
   privateVault: {
     createDepositNote: jest.fn(),
     getNotes: jest.fn(),

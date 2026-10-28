@@ -23,3 +23,7 @@ Dapps могут запрашивать публичные адреса акка
 ## Конфиденциальность institutional passkey
 
 Если dapp или институция предоставляет sponsor URL, этот сервис может получать sponsor requests, связанные с execution аккаунта. Перед подтверждением проверьте текст policy институции и URL.
+
+## Приватные заметки
+
+Pali может использовать стандартный сервис приватности или ваш собственный сервис Sysnode. Для запуска своего сервиса см. [руководство Sysnode](https://github.com/syscoin/sysnode-backend/blob/main/docs/privacy-standalone.md).

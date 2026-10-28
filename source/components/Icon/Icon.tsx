@@ -42,7 +42,6 @@ import EditTx from '../../assets/all_assets/editTx.svg';
 import WhiteErrorIcon from '../../assets/all_assets/errorIconWhite.svg';
 import GreenCheck from '../../assets/all_assets/greencheck.svg';
 import Info from '../../assets/all_assets/info.svg';
-import Metamask from '../../assets/all_assets/metamask.svg';
 import SpeedUp from '../../assets/all_assets/speedUp.svg';
 import Wallet from '../../assets/all_assets/wallet.svg';
 
@@ -1330,7 +1329,6 @@ const svgIcons = {
   Copy,
   Info,
   Wallet,
-  Metamask,
   WhiteSuccess: WhiteSuccessIconSvg,
   Edit: EditIconSvg,
   Network: NetworkIconSvg,

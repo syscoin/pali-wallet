@@ -255,7 +255,7 @@ beforeEach(() => {
   walletPersistenceGate.blocked = false;
 });
 
-it.each(['healthy', 'snapshot', 'expiry'] as const)(
+it.each(['healthy', 'snapshot', 'expiry', 'service change'] as const)(
   'checks %s withdrawal admission after the actual sender preflight and before signing',
   async (state) => {
     const run = setup();
@@ -299,6 +299,8 @@ it.each(['healthy', 'snapshot', 'expiry'] as const)(
         throw new Error('privacy_verification_pending');
       });
     if (state === 'expiry') run.clock(review.expiresAt);
+    if (state === 'service change')
+      await run.wallet.invalidatePrivacyServiceWithdrawals();
     release.resolve();
     const settled = await result;
     if (state === 'healthy') {
@@ -319,6 +321,8 @@ it.each(['healthy', 'snapshot', 'expiry'] as const)(
         message:
           state === 'snapshot'
             ? 'privacy_verification_pending'
+            : state === 'service change'
+            ? 'privacy_withdrawal_cancelled'
             : 'privacy_withdrawal_intent_expired',
         transactionNotBroadcast: true,
       });
@@ -670,6 +674,32 @@ it('journals a successful acknowledgement to the original attempt when the selec
   const [attempt, , session] = vault.recordWithdrawalSubmission.mock.calls[0];
   expect(attempt.context.account.id).toBe(0);
   expect(session).toBe(vault.reserveWithdrawalAttempt.mock.calls[0][1]);
+  expect(vault.clearUnbroadcastWithdrawalAttempt).not.toHaveBeenCalled();
+});
+
+it('preserves an acknowledgement already in flight when the privacy service changes', async () => {
+  const { wallet, vault } = setup();
+  const review = await prepare(wallet);
+  const entered = deferred(),
+    release = deferred();
+  wallet.sendAndSaveEthTransaction.mockImplementationOnce(
+    async (_tx, _legacy, _account, _metadata, options) => {
+      options.assertCurrentContext();
+      entered.resolve();
+      await release.promise;
+      await options.onBroadcast({ hash: HASH });
+      return { hash: HASH };
+    }
+  );
+  const pending = wallet.submitPrivacyWithdrawal(review.intentId);
+  await entered.promise;
+  await wallet.invalidatePrivacyServiceWithdrawals();
+  release.resolve();
+  await expect(pending).resolves.toMatchObject({
+    phase: 'submitted',
+    transactionHash: HASH,
+  });
+  expect(vault.recordWithdrawalSubmission).toHaveBeenCalledTimes(1);
   expect(vault.clearUnbroadcastWithdrawalAttempt).not.toHaveBeenCalled();
 });
 

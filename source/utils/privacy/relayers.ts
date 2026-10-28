@@ -354,7 +354,10 @@ async function readJson(response: Response, maximum: number): Promise<unknown> {
 
 export function createPrivacyRelayerClient(
   options: {
+    assertServiceCurrent?: (revision: number) => void;
     fetcher?: typeof fetch;
+    getDirectoryUrl?: () => Promise<string>;
+    getServiceRevision?: () => number;
     now?: () => number;
   } = {}
 ): IPrivacyRelayerClient {
@@ -362,8 +365,10 @@ export function createPrivacyRelayerClient(
     now = options.now || Date.now;
   const directories = new WeakSet<object>(),
     selections = new WeakSet<object>();
+  const directoryRevisions = new WeakMap<object, number>();
   const assertDirectory = (directory: Readonly<IPrivacyRelayerDirectory>) => {
     if (!directories.has(directory)) throw invalid();
+    options.assertServiceCurrent?.(directoryRevisions.get(directory)!);
     fresh(directory.observedAt, now(), PRIVACY_RELAYER_MAX_AGE_MS);
     fresh(directory.asOfBlockTimestamp * 1000, now(), MAX_CHAIN_AGE_MS);
     for (const entry of directory.relayers)
@@ -439,23 +444,33 @@ export function createPrivacyRelayerClient(
     }
   };
   return {
-    getDirectory: async (signal) =>
-      request(
-        PRIVACY_RELAYER_DIRECTORY_URL,
+    getDirectory: async (signal) => {
+      const revision = options.getServiceRevision?.() ?? 0;
+      options.assertServiceCurrent?.(revision);
+      const url = options.getDirectoryUrl
+        ? await options.getDirectoryUrl()
+        : PRIVACY_RELAYER_DIRECTORY_URL;
+      options.assertServiceCurrent?.(revision);
+      const directory = await request(
+        url,
         MAX_DIRECTORY_BYTES,
         async (response) => {
           if (response.headers.get('x-privacy-index-state') === 'stale')
             throw new Error('privacy_relayer_stale');
-          const directory = readDirectory(
+          const parsed = readDirectory(
             await readJson(response, MAX_DIRECTORY_BYTES),
             response.headers.get('x-privacy-index-state'),
             now()
           );
-          directories.add(directory);
-          return directory;
+          return parsed;
         },
         signal
-      ),
+      );
+      options.assertServiceCurrent?.(revision);
+      directories.add(directory);
+      directoryRevisions.set(directory, revision);
+      return directory;
+    },
     checkRelayer: async (directory, ensHash, poolId, signal) => {
       assertDirectory(directory);
       poolFor(poolId);

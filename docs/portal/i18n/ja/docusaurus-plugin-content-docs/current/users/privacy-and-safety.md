@@ -23,3 +23,7 @@ dappsは、公開アカウントアドレス、プロバイダー状態、ネッ
 ## 機関向けpasskeyのプライバシー
 
 dappまたは機関がsponsor URLを提供する場合、そのサービスはアカウント実行に関連するスポンサーリクエストを受け取る可能性があります。承認前に、機関のpolicy textとURLを確認してください。
+
+## プライベートノート
+
+Pali は標準のプライバシーサービスまたは自身の Sysnode サービスを使用できます。自身のサービスを実行するには、[Sysnode ガイド](https://github.com/syscoin/sysnode-backend/blob/main/docs/privacy-standalone.md)を参照してください。

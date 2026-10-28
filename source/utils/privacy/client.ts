@@ -97,11 +97,12 @@ export function validateSnapshot(
 
 export async function fetchPrivacySnapshot(
   poolId: PrivacyPoolId,
-  signal: AbortSignal
+  signal: AbortSignal,
+  serviceOrigin = 'https://sysnode.info'
 ): Promise<PrivacySnapshot | PrivacyIndexProgress> {
   const pool = getPrivacyPool(poolId);
   const response = await fetch(
-    `${PRIVACY_SERVICE_URL}/pools/${pool.id}/snapshot`,
+    `${serviceOrigin}/api/privacy/v1/pools/${pool.id}/snapshot`,
     { cache: 'no-store', credentials: 'omit', redirect: 'error', signal }
   );
   if (response.status !== 200 && response.status !== 202)
