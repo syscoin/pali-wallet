@@ -150,6 +150,11 @@ export default function PrivacyServiceSettings({
             aria-describedby={error ? 'privacy-service-error' : undefined}
             className="w-full rounded-lg border border-alpha-whiteAlpha300 bg-bkg-4 p-3 text-sm text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-royalblue"
           />
+          {loading && (
+            <p role="status" className="text-xs text-brand-gray200">
+              {t('buttons.loading')}
+            </p>
+          )}
           {error && (
             <p
               id="privacy-service-error"

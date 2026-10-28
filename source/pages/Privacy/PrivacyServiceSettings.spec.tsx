@@ -323,9 +323,65 @@ test('a pending read disables editing and saving until the current baseline arri
   await waitFor(() => expect(finish).toBeDefined());
   expect(input).toBeDisabled();
   expect(screen.getByRole('button', { name: 'buttons.save' })).toBeDisabled();
-  finish('https://sysnode.info');
+  expect(screen.getByRole('status')).toHaveTextContent('buttons.loading');
+  await act(async () => finish('https://sysnode.info'));
   await waitFor(() => expect(input).toBeEnabled());
   expect(input).toHaveValue('https://sysnode.info');
+  expect(screen.queryByRole('status')).not.toBeInTheDocument();
+});
+
+test('a reopened pending read announces loading until failure and retry settle', async () => {
+  let reads = 0;
+  let fail!: (error: Error) => void;
+  let finish!: (value: string) => void;
+  mockEmitter.mockImplementation(async ([, method]: string[]) => {
+    if (method !== 'getServiceOrigin') throw new Error('unexpected write');
+    if (++reads === 1) return 'https://sysnode.info';
+    if (reads === 2)
+      return new Promise<string>((_, reject) => {
+        fail = reject;
+      });
+    return new Promise<string>((resolve) => {
+      finish = resolve;
+    });
+  });
+  render(<PrivacyServiceSettings onSettled={jest.fn()} />);
+  const summary = screen.getByText('privacy.serviceSettings');
+  fireEvent.click(summary);
+  await waitFor(() =>
+    expect(screen.getByLabelText('privacy.serviceOrigin')).toBeEnabled()
+  );
+  fireEvent.click(summary);
+  await waitFor(() =>
+    expect(
+      screen.queryByLabelText('privacy.serviceOrigin')
+    ).not.toBeInTheDocument()
+  );
+  fireEvent.click(summary);
+  await waitFor(() => expect(fail).toBeDefined());
+  const input = screen.getByLabelText('privacy.serviceOrigin');
+  expect(input).toHaveValue('https://sysnode.info');
+  expect(input).toBeDisabled();
+  expect(screen.getByRole('status')).toHaveTextContent('buttons.loading');
+  await act(async () => fail(new Error('unavailable')));
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    'privacy.serviceLoadFailed'
+  );
+  expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'privacy.retry' }));
+  await waitFor(() => expect(finish).toBeDefined());
+  expect(screen.getByRole('status')).toHaveTextContent('buttons.loading');
+  expect(input).toBeDisabled();
+  await act(async () => finish('http://localhost:8800'));
+  await waitFor(() => expect(input).toBeEnabled());
+  expect(input).toHaveValue('http://localhost:8800');
+  expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  expect(
+    mockEmitter.mock.calls.every(
+      ([[, method]]) => method === 'getServiceOrigin'
+    )
+  ).toBe(true);
 });
 
 test('closing and reopening while a save is pending does not start a competing read', async () => {
