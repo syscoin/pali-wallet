@@ -210,13 +210,22 @@ function NotesView() {
             autoCapitalize="off"
             spellCheck={false}
             readOnly={pending}
-            aria-describedby="privacy-note-help"
+            aria-invalid={error === 'noteInvalid' || undefined}
+            aria-describedby={
+              error === 'noteInvalid'
+                ? 'privacy-note-help privacy-note-error'
+                : 'privacy-note-help'
+            }
           />
           <p id="privacy-note-help" className="text-xs text-brand-gray200">
             {t('privacy.noteSecret')}
           </p>
           {error && (
-            <p role="alert" className="text-xs text-brand-red">
+            <p
+              id="privacy-note-error"
+              role="alert"
+              className="text-xs text-brand-red"
+            >
               {t(`privacy.${error}`)}
             </p>
           )}

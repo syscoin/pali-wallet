@@ -394,6 +394,7 @@ export const ConnectWallet = () => {
                                     : 'border-brand-gray300 bg-bkg-2 hover:bg-bkg-3 hover:border-brand-gray200'
                                 }`}
                               role="button"
+                              aria-pressed={isSelected}
                               aria-disabled={isConnecting}
                               tabIndex={isConnecting ? -1 : 0}
                               onClick={() => {

@@ -693,6 +693,58 @@ it.each([
   expect(screen.queryByText(code)).not.toBeInTheDocument();
 });
 
+it('associates an invalid note error with the import field and clears it on edit', async () => {
+  mockEmitter.mockImplementation(async ([, method]) => {
+    if (method === 'getNotes') return { notes: [] };
+    throw new Error('privacy_note_invalid');
+  });
+  render(<PrivateNotes />);
+  const input = await openImport();
+  fireEvent.change(input, { target: { value: 'unsupported-note' } });
+  fireEvent.click(screen.getByRole('button', { name: en.privacy.importNote }));
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    en.privacy.noteInvalid
+  );
+  expect(input).toHaveAttribute('aria-invalid', 'true');
+  expect(input).toHaveAttribute(
+    'aria-describedby',
+    'privacy-note-help privacy-note-error'
+  );
+  expect(input).toHaveAccessibleDescription(
+    `${en.privacy.noteSecret} ${en.privacy.noteInvalid}`
+  );
+  fireEvent.change(input, { target: { value: 'edited-note' } });
+  expect(input).not.toHaveAttribute('aria-invalid');
+  expect(input).toHaveAttribute('aria-describedby', 'privacy-note-help');
+  expect(input).toHaveAccessibleDescription(en.privacy.noteSecret);
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+});
+
+it.each([
+  'privacy_note_not_found',
+  'privacy_verification_pending',
+  'privacy_note_limit',
+  'synthetic offline failure',
+])(
+  'keeps %s as an alert without marking the note syntax invalid',
+  async (code) => {
+    mockEmitter.mockImplementation(async ([, method]) => {
+      if (method === 'getNotes') return { notes: [] };
+      throw new Error(code);
+    });
+    render(<PrivateNotes />);
+    const input = await openImport();
+    fireEvent.change(input, { target: { value: 'synthetic-note' } });
+    fireEvent.click(
+      screen.getByRole('button', { name: en.privacy.importNote })
+    );
+    expect(await screen.findByRole('alert')).toBeVisible();
+    expect(input).not.toHaveAttribute('aria-invalid');
+    expect(input).toHaveAttribute('aria-describedby', 'privacy-note-help');
+    expect(input).toHaveAccessibleDescription(en.privacy.noteSecret);
+  }
+);
+
 it('reveals only after explicit password confirmation and hides the backup', async () => {
   render(<PrivateNotes />);
   const password = await beginReveal();

@@ -480,6 +480,7 @@ export const ChangeAccount = () => {
                                   : 'border-brand-gray300 bg-bkg-2 hover:bg-bkg-3 hover:border-brand-gray200'
                               }`}
                             role="button"
+                            aria-pressed={isSelected}
                             aria-disabled={isChanging}
                             tabIndex={isChanging ? -1 : 0}
                             onClick={() =>
