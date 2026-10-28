@@ -2032,7 +2032,10 @@ export const SendConfirm = () => {
                     <div className="text-white font-medium">
                       {basicTxValues.token.tokenId ? (
                         basicTxValues.token.tokenId.length > 20 ? (
-                          <Tooltip content={basicTxValues.token.tokenId}>
+                          <Tooltip
+                            content={basicTxValues.token.tokenId}
+                            focusable
+                          >
                             #{ellipsis(basicTxValues.token.tokenId, 8, 8)}
                           </Tooltip>
                         ) : (
