@@ -134,7 +134,7 @@ export const Receive = () => {
   return (
     <>
       {canReceive ? (
-        <div className="flex flex-col items-center justify-center w-full">
+        <div className="flex flex-col items-center justify-center w-full pb-4">
           {/* Network + account-type context so users verify they're on the
               right chain before sharing the address */}
           <div className="flex max-w-full items-center gap-2 mb-4 px-3 py-1 rounded-full bg-alpha-whiteAlpha100 border border-alpha-whiteAlpha300">

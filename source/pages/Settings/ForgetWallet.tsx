@@ -187,7 +187,11 @@ const ForgetWalletView = () => {
       </div>
 
       {/* Buttons container - pushed to bottom */}
-      <PageActionFooter error={submissionError}>
+      <PageActionFooter
+        className={hasAccountFunds ? 'funded-forget-footer' : undefined}
+        includeInFlow={hasAccountFunds}
+        error={submissionError}
+      >
         <div className="flex gap-x-8 justify-between md:gap-x-40">
           <Button
             variant="secondary"

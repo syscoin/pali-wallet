@@ -54,12 +54,16 @@ jest.mock('components/index', () => ({
   ),
   PageActionFooter: ({
     children,
+    className,
     error,
+    includeInFlow,
   }: {
     children: React.ReactNode;
+    className?: string;
     error?: string;
+    includeInFlow?: boolean;
   }) => (
-    <footer>
+    <footer className={className} data-include-in-flow={String(includeInFlow)}>
       {children}
       {error}
     </footer>
@@ -192,9 +196,14 @@ describe.each([
     add(0);
     balance(1, 0);
     open();
+    const warning = screen.getByText('forgetWalletPage.stillHaveFunds');
+    const forget = screen.getByRole('button', { name: 'buttons.forget' });
+    const footer = forget.closest('footer');
+    expect(footer).toHaveClass('funded-forget-footer');
+    expect(footer).toHaveAttribute('data-include-in-flow', 'true');
     expect(
-      screen.queryByText('forgetWalletPage.stillHaveFunds')
-    ).not.toBeNull();
+      warning.compareDocumentPosition(footer!) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
   });
 
   test('does not claim funds when all known accounts have zero balance', () => {
@@ -205,6 +214,11 @@ describe.each([
     balance(0, 1);
     open();
     expect(screen.queryByText('forgetWalletPage.stillHaveFunds')).toBeNull();
+    const footer = screen
+      .getByRole('button', { name: 'buttons.forget' })
+      .closest('footer');
+    expect(footer).not.toHaveClass('funded-forget-footer');
+    expect(footer).toHaveAttribute('data-include-in-flow', 'false');
   });
 
   test('does not treat the unknown balance sentinel as positive funds', () => {

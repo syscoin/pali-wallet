@@ -66,6 +66,11 @@
   position: static;
 }
 
+/* A funded wallet's warning precedes Forget in the normal scroll flow. */
+[data-navigation-scroll='wallet-layout'] .funded-forget-footer {
+  position: static;
+}
+
 /* Keep the currency selector fully exposed in a short wallet window. */
 @media (max-height: 400px) {
   [data-navigation-scroll='wallet-layout'] .currency-settings-footer {

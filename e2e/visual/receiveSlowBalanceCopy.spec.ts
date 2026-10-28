@@ -495,6 +495,38 @@ for (const viewport of [
         await focusWithKeyboard(page, copy);
         const copyReveal = await reveal(page, copy);
         await expect(copy).toBeFocused();
+        // Check the outline at the physical scroll limit as well as the border box.
+        const port = page.locator('[data-navigation-scroll="wallet-layout"]');
+        const size = page.viewportSize()!;
+        await page.mouse.move(size.width / 2, size.height / 2);
+        for (let count = 0; count < 12; count++) {
+          const scroll = await port.evaluate((element) => ({
+            top: element.scrollTop,
+            max: element.scrollHeight - element.clientHeight,
+          }));
+          if (scroll.top >= scroll.max - 1) break;
+          await page.mouse.wheel(0, 300);
+          await frame(page);
+        }
+        const scroll = await port.evaluate((element) => ({
+          top: element.scrollTop,
+          max: element.scrollHeight - element.clientHeight,
+        }));
+        expect(scroll.top).toBeGreaterThanOrEqual(scroll.max - 1);
+        await expect(copy).toBeFocused();
+        const focusClearance = await copy.evaluate((element) => {
+          const style = getComputedStyle(element);
+          return {
+            bottom: innerHeight - element.getBoundingClientRect().bottom,
+            outline:
+              (parseFloat(style.outlineWidth) || 0) +
+              Math.max(0, parseFloat(style.outlineOffset) || 0),
+          };
+        });
+        expect(focusClearance.bottom).toBeGreaterThanOrEqual(4);
+        expect(focusClearance.bottom).toBeGreaterThanOrEqual(
+          focusClearance.outline
+        );
         return { homeReveal, copyReveal, copy };
       };
       const copyNative = async (copy: Locator) => {
