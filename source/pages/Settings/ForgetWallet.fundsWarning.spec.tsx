@@ -202,7 +202,8 @@ describe.each([
     expect(footer).toHaveClass('funded-forget-footer');
     expect(footer).toHaveAttribute('data-include-in-flow', 'true');
     expect(
-      warning.compareDocumentPosition(footer!) & Node.DOCUMENT_POSITION_FOLLOWING
+      warning.compareDocumentPosition(footer!) &
+        Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy();
   });
 
