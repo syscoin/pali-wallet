@@ -1,3 +1,4 @@
+import { getAddress } from 'ethers';
 import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { shallowEqual, useSelector } from 'react-redux';
@@ -21,6 +22,13 @@ const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const ADDRESS = /^0x[0-9a-fA-F]{40}$/;
 const HASH = /^0x[0-9a-fA-F]{64}$/;
+const isValidRecipient = (value: string) => {
+  try {
+    return ADDRESS.test(value) && BigInt(getAddress(value)) !== BigInt(0);
+  } catch {
+    return false;
+  }
+};
 const uint = (value: unknown) => {
   if (typeof value !== 'string' || !/^(0|[1-9][0-9]{0,77})$/.test(value))
     throw new Error('Invalid withdrawal review');
@@ -128,7 +136,7 @@ function WithdrawalFlow({
   const recipientInvalid =
     recipientTouched &&
     Boolean(recipient.trim()) &&
-    !ADDRESS.test(recipient.trim());
+    !isValidRecipient(recipient.trim());
   const [mode, setMode] = useState<'direct' | 'relayed'>('direct');
   const [relayers, setRelayers] = useState<IPrivacyRelayerChoice[]>([]);
   const [directoryLoaded, setDirectoryLoaded] = useState(false);
@@ -237,7 +245,7 @@ function WithdrawalFlow({
   const prepare = async () => {
     if (
       owner.current.busy ||
-      !ADDRESS.test(recipient.trim()) ||
+      !isValidRecipient(recipient.trim()) ||
       (mode === 'relayed' && !relayerId)
     )
       return;
@@ -500,7 +508,7 @@ function WithdrawalFlow({
             variant="primary"
             disabled={
               Boolean(busy) ||
-              !ADDRESS.test(recipient.trim()) ||
+              !isValidRecipient(recipient.trim()) ||
               (mode === 'relayed' && !relayerId)
             }
             loading={busy === 'prepare'}

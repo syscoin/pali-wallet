@@ -550,3 +550,64 @@ it('prevents duplicate confirmation and drops a late submission after the accoun
     ''
   );
 });
+
+it.each([
+  ['zero address', '0x0000000000000000000000000000000000000000'],
+  ['invalid mixed checksum', '0x52908400098527886E0F7030069857D2E4169Ee7'],
+])(
+  'blocks %s with an associated recipient error and no preparation',
+  (_label, value) => {
+    mount();
+    const input = screen.getByLabelText(en.privacy.withdrawal.recipient);
+    const next = screen.getByRole('button', {
+      name: en.privacy.withdrawal.continue,
+    });
+    fireEvent.change(input, { target: { value } });
+    fireEvent.blur(input);
+    expect(input).toHaveAttribute('aria-invalid', 'true');
+    expect(input).toHaveAccessibleDescription(
+      en.privacy.withdrawal.recipientInvalid
+    );
+    expect(next).toBeDisabled();
+    expect(mockEmitter).not.toHaveBeenCalled();
+    fireEvent.change(input, { target: { value: RECIPIENT } });
+    expect(input).not.toHaveAttribute('aria-invalid', 'true');
+    expect(next).toBeEnabled();
+  }
+);
+
+it.each([
+  ['lowercase', '0x52908400098527886e0f7030069857d2e4169ee7'],
+  ['valid checksum', '0x52908400098527886E0F7030069857D2E4169EE7'],
+])('accepts a %s recipient without initiating preparation', (_label, value) => {
+  mount();
+  const input = screen.getByLabelText(en.privacy.withdrawal.recipient);
+  fireEvent.change(input, { target: { value } });
+  fireEvent.blur(input);
+  expect(input).not.toHaveAttribute('aria-invalid', 'true');
+  expect(
+    screen.getByRole('button', { name: en.privacy.withdrawal.continue })
+  ).toBeEnabled();
+  expect(mockEmitter).not.toHaveBeenCalled();
+});
+
+it('does not start relayed preparation for a zero recipient after choosing a relayer', async () => {
+  mount();
+  fireEvent.click(screen.getByLabelText(en.privacy.withdrawal.relayed));
+  const relayer = await screen.findByLabelText(en.privacy.withdrawal.relayer);
+  fireEvent.change(relayer, { target: { value: RELAYER_ID } });
+  const input = screen.getByLabelText(en.privacy.withdrawal.recipient);
+  fireEvent.change(input, {
+    target: { value: '0x0000000000000000000000000000000000000000' },
+  });
+  fireEvent.blur(input);
+  expect(input).toHaveAccessibleDescription(
+    en.privacy.withdrawal.recipientInvalid
+  );
+  expect(
+    screen.getByRole('button', { name: en.privacy.withdrawal.continue })
+  ).toBeDisabled();
+  expect(
+    mockEmitter.mock.calls.some(([path]) => path[1] === 'prepareWithdrawal')
+  ).toBe(false);
+});
