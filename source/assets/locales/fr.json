@@ -1595,7 +1595,6 @@
     "serviceInvalid": "Saisissez une origine HTTPS ou HTTP sur localhost, sans chemin ni identifiants.",
     "serviceLoadFailed": "Impossible de charger le réglage du service de confidentialité.",
     "serviceSaveFailed": "Impossible d’enregistrer le réglage du service de confidentialité. Réessayez.",
-    "serviceConflict": "Ce paramètre a été modifié dans une autre fenêtre. Service actuel : {{origin}}. Vérifiez votre saisie, puis enregistrez pour le remplacer.",
     "serviceSaved": "Service de confidentialité enregistré. Préparez à nouveau le pool.",
     "savedDeposits": "Dépôts publics enregistrés : {{count}}",
     "verifiedBlock": "Dernier bloc vérifié : {{block}}",

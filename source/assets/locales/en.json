@@ -1595,7 +1595,6 @@
     "serviceInvalid": "Enter an HTTPS origin or a localhost HTTP origin, without a path or credentials.",
     "serviceLoadFailed": "Could not load the privacy service setting.",
     "serviceSaveFailed": "Could not save the privacy service setting. Try again.",
-    "serviceConflict": "This setting changed in another window. Current service: {{origin}}. Review your draft, then save to replace it.",
     "serviceSaved": "Privacy service saved. Prepare the pool again.",
     "savedDeposits": "Deposits: {{count}}",
     "verifiedBlock": "Block: {{block}}",

@@ -1595,7 +1595,6 @@
     "serviceInvalid": "Introduce un origen HTTPS o HTTP en localhost, sin ruta ni credenciales.",
     "serviceLoadFailed": "No se pudo cargar la configuración del servicio de privacidad.",
     "serviceSaveFailed": "No se pudo guardar la configuración del servicio de privacidad. Inténtalo de nuevo.",
-    "serviceConflict": "Este ajuste cambió en otra ventana. Servicio actual: {{origin}}. Revisa tu borrador y guárdalo para reemplazarlo.",
     "serviceSaved": "Servicio de privacidad guardado. Prepara el fondo de nuevo.",
     "savedDeposits": "Depósitos públicos guardados: {{count}}",
     "verifiedBlock": "Último bloque verificado: {{block}}",

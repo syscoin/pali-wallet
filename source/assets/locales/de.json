@@ -1595,7 +1595,6 @@
     "serviceInvalid": "Gib einen HTTPS-Ursprung oder HTTP auf localhost ohne Pfad oder Zugangsdaten ein.",
     "serviceLoadFailed": "Die Einstellung des Privatsphäredienstes konnte nicht geladen werden.",
     "serviceSaveFailed": "Die Einstellung des Privatsphäredienstes konnte nicht gespeichert werden. Versuche es erneut.",
-    "serviceConflict": "Diese Einstellung wurde in einem anderen Fenster geändert. Aktueller Dienst: {{origin}}. Prüfen Sie Ihren Entwurf und speichern Sie ihn, um den Dienst zu ersetzen.",
     "serviceSaved": "Privatsphäredienst gespeichert. Bereite den Pool erneut vor.",
     "savedDeposits": "Gespeicherte öffentliche Einzahlungen: {{count}}",
     "verifiedBlock": "Zuletzt verifizierter Block: {{block}}",

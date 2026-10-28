@@ -1595,7 +1595,6 @@
     "serviceInvalid": "Informe uma origem HTTPS ou HTTP no localhost, sem caminho ou credenciais.",
     "serviceLoadFailed": "Não foi possível carregar a configuração do serviço de privacidade.",
     "serviceSaveFailed": "Não foi possível salvar a configuração do serviço de privacidade. Tente novamente.",
-    "serviceConflict": "Esta configuração foi alterada em outra janela. Serviço atual: {{origin}}. Revise seu rascunho e salve para substituí-lo.",
     "serviceSaved": "Serviço de privacidade salvo. Prepare o pool novamente.",
     "savedDeposits": "Depósitos públicos salvos: {{count}}",
     "verifiedBlock": "Último bloco verificado: {{block}}",

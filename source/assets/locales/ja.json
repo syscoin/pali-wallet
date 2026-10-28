@@ -1595,7 +1595,6 @@
     "serviceInvalid": "パスや認証情報を含まない HTTPS または localhost の HTTP オリジンを入力してください。",
     "serviceLoadFailed": "プライバシーサービスの設定を読み込めませんでした。",
     "serviceSaveFailed": "プライバシーサービスの設定を保存できませんでした。もう一度お試しください。",
-    "serviceConflict": "この設定は別のウィンドウで変更されました。現在のサービス: {{origin}}。入力内容を確認し、保存すると置き換えられます。",
     "serviceSaved": "プライバシーサービスを保存しました。プールを再度準備してください。",
     "savedDeposits": "保存済みの公開入金数：{{count}}",
     "verifiedBlock": "最後に検証したブロック：{{block}}",
