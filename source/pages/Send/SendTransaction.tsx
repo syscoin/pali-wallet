@@ -49,6 +49,7 @@ import { validateTransactionDataValue } from 'utils/validateTransactionDataValue
 import {
   ApprovalType,
   canEditApprovalAmount,
+  formatApprovalNftTokenId,
   formatApprovalTokenAmount,
   getApprovalAmountDisplay,
   getApprovalAddressValues,
@@ -1518,9 +1519,8 @@ export const SendTransaction = () => {
           if (!canApplyMetadata()) return;
           // For single NFT approvals, try to get token metadata
           const tokenId =
-            scope.approvalType === 'erc721-single' &&
-            scope.decodedTx?.inputs?.[1]
-              ? convertBigNumberToString(scope.decodedTx.inputs[1])
+            scope.approvalType === 'erc721-single'
+              ? formatApprovalNftTokenId(scope.decodedTx?.inputs?.[1])
               : undefined;
           setApprovalMetadata({
             scope,
@@ -1668,16 +1668,45 @@ export const SendTransaction = () => {
                     {approvalType === 'erc721-single' && (
                       <>
                         <span className="text-brand-white text-lg">
-                          {t('send.approveNftTransfer')}
+                          {t(
+                            approvalDetails.isNftRevocation
+                              ? 'send.revokeNftApproval'
+                              : 'send.approveNftTransfer'
+                          )}
                         </span>
-                        <span className="text-brand-graylight text-sm">
-                          {t('send.allowTransferOf')}{' '}
-                          {approvedTokenInfos?.tokenSymbol ||
-                            t('send.unknownNft', {
-                              address: dataTx?.to?.slice(0, 8),
+                        <span className="text-brand-graylight text-sm max-w-full break-words">
+                          {approvalDetails.isNftRevocation ? (
+                            t('send.revokeNftApprovalDescription', {
+                              token:
+                                approvedTokenInfos?.tokenSymbol ||
+                                t('send.unknownNft', {
+                                  address: dataTx?.to?.slice(0, 8),
+                                  interpolation: { escapeValue: false },
+                                }),
+                              tokenId:
+                                nftInfo?.tokenId ||
+                                formatApprovalNftTokenId(
+                                  decodedTxData?.inputs?.[1]
+                                ) ||
+                                '...',
                               interpolation: { escapeValue: false },
-                            })}{' '}
-                          #{nftInfo?.tokenId || '...'}
+                            })
+                          ) : (
+                            <>
+                              {t('send.allowTransferOf')}{' '}
+                              {approvedTokenInfos?.tokenSymbol ||
+                                t('send.unknownNft', {
+                                  address: dataTx?.to?.slice(0, 8),
+                                  interpolation: { escapeValue: false },
+                                })}{' '}
+                              #
+                              {nftInfo?.tokenId ||
+                                formatApprovalNftTokenId(
+                                  decodedTxData?.inputs?.[1]
+                                ) ||
+                                '...'}
+                            </>
+                          )}
                         </span>
                       </>
                     )}
@@ -1751,7 +1780,7 @@ export const SendTransaction = () => {
                         <p className="text-brand-white text-sm">
                           {t('send.tokenId')}:{' '}
                           {nftInfo?.tokenId ||
-                            convertBigNumberToString(
+                            formatApprovalNftTokenId(
                               decodedTxData?.inputs?.[1]
                             )}
                         </p>
