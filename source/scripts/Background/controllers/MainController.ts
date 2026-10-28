@@ -181,7 +181,10 @@ import {
   privacyFeeQuantity,
   privacyWithdrawalFees,
 } from 'utils/privacy/withdrawalFees';
-import type { IPrivacyWithdrawalSession } from 'utils/privacy/withdrawalTransactionTypes';
+import type {
+  IPrivacyWithdrawalSession,
+  IPrivacyWithdrawalAttempt,
+} from 'utils/privacy/withdrawalTransactionTypes';
 import type {
   IPrivacyWithdrawalsController,
   IPrivacyWithdrawalsHost,
@@ -393,6 +396,17 @@ class MainController {
   >;
   private privacyTransactionsController?: Promise<IPrivacyTransactionsController>;
   private privacyWithdrawalsController?: Promise<IPrivacyWithdrawalsController>;
+  private knownUnbroadcast = new Map<
+    string,
+    {
+      attemptHash: string;
+      context: IPrivacyWithdrawalAttempt['context'];
+      intentId: string;
+      noteId: string;
+      profileId: string;
+      walletStateGeneration: number;
+    }
+  >();
   private privacyDepositSessions = new WeakMap<
     () => void,
     { provider: CustomJsonRpcProvider; session: IPrivateVaultSession }
@@ -523,6 +537,7 @@ class MainController {
     this.fiatQuoteGeneration += 1;
     this.walletSessionGeneration += 1;
     this.walletStateGeneration += 1;
+    this.knownUnbroadcast?.clear();
     this.networkRequestGeneration += 1;
     const privacyTransactions = this.privacyTransactionsController;
     this.privacyTransactionsController = undefined;
@@ -1938,7 +1953,52 @@ class MainController {
     return result;
   }
 
-  public getPrivateVaultNotes() {
+  private async reconcileKnownUnbroadcast() {
+    if (!this.knownUnbroadcast?.size) return;
+    try {
+      const session = this.capturePrivateVaultSession();
+      const current = this.capturePrivacyDepositContext();
+      const profileId = await session.keyring.getPrivateRecordProfileId();
+      session.assertCurrent();
+      current.assertCurrent();
+      for (const [id, pending] of this.knownUnbroadcast) {
+        try {
+          const expected = pending.context,
+            actual = current.context;
+          if (
+            pending.walletStateGeneration !== this.walletStateGeneration ||
+            pending.profileId !== profileId ||
+            expected.slip44 !== actual.slip44 ||
+            expected.chainId !== actual.chainId ||
+            expected.rpcUrl !== actual.rpcUrl ||
+            expected.account.id !== actual.account.id ||
+            expected.account.type !== actual.account.type ||
+            expected.account.address.toLowerCase() !==
+              actual.account.address.toLowerCase()
+          )
+            continue;
+          const vault = await this.getPrivateVaultController();
+          current.assertCurrent();
+          await vault.clearKnownUnbroadcastWithdrawal(
+            pending.noteId,
+            pending.intentId,
+            pending.attemptHash,
+            pending.profileId,
+            session,
+            current.assertCurrent
+          );
+          this.knownUnbroadcast.delete(id);
+        } catch {
+          /* A stale journal does not block independent attempts. */
+        }
+      }
+    } catch {
+      /* Retain only while this worker can prove no send was entered. */
+    }
+  }
+
+  public async getPrivateVaultNotes() {
+    await this.reconcileKnownUnbroadcast();
     return this.usePrivateVault((vault) => vault.getNotes());
   }
 
@@ -2269,6 +2329,37 @@ class MainController {
   private createPrivacyWithdrawalsHost(
     relayers: IPrivacyRelayerClient
   ): IPrivacyWithdrawalsHost {
+    const reservationIdentity = new WeakMap<
+      IPrivacyWithdrawalAttempt,
+      {
+        attemptHash: string;
+        profileId: string;
+        walletStateGeneration: number;
+      }
+    >();
+    const rememberKnownUnbroadcast = (attempt: IPrivacyWithdrawalAttempt) => {
+      const identity = reservationIdentity.get(attempt);
+      if (
+        !identity ||
+        identity.walletStateGeneration !== this.walletStateGeneration
+      )
+        return;
+      if (!this.knownUnbroadcast) this.knownUnbroadcast = new Map();
+      // Eviction keeps the existing unknown journal; it never authorizes reuse.
+      if (
+        !this.knownUnbroadcast.has(attempt.intentId) &&
+        this.knownUnbroadcast.size >= 8
+      ) {
+        const oldest = this.knownUnbroadcast.keys().next().value;
+        if (oldest) this.knownUnbroadcast.delete(oldest);
+      }
+      this.knownUnbroadcast.set(attempt.intentId, {
+        ...identity,
+        noteId: attempt.noteId,
+        intentId: attempt.intentId,
+        context: attempt.context,
+      });
+    };
     const sessions = new WeakMap<
       IEvmTransactionContext,
       {
@@ -2435,8 +2526,23 @@ class MainController {
         }
         const vault = await this.getPrivateVaultController();
         saved.assertCurrent();
-        await vault.reserveWithdrawalAttempt(attempt, saved.session);
-        saved.assertCurrent();
+        const walletStateGeneration = this.walletStateGeneration;
+        try {
+          await vault.reserveWithdrawalAttempt(
+            attempt,
+            saved.session,
+            (identity) =>
+              reservationIdentity.set(attempt, {
+                ...identity,
+                walletStateGeneration,
+              })
+          );
+          saved.assertCurrent();
+        } catch (error) {
+          // This host has not entered send: identity is scoped to that attempt.
+          rememberKnownUnbroadcast(attempt);
+          throw error;
+        }
       },
       recordSubmission: async (attempt, acknowledgement) => {
         const saved = binding(attempt.context);

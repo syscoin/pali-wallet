@@ -137,6 +137,14 @@ export type IPrivateVaultWithdrawalJournal = IPrivacyWithdrawalJournal;
 
 /** Background-only custody capabilities. Never project these into the message API. */
 export interface IPrivateVaultWithdrawalController {
+  clearKnownUnbroadcastWithdrawal: (
+    noteId: string,
+    intentId: string,
+    attemptHash: string,
+    profileId: string,
+    session: IPrivateVaultSession,
+    assertCurrent: () => void
+  ) => Promise<void>;
   clearUnbroadcastWithdrawalAttempt: (
     attempt: IPrivacyWithdrawalAttempt,
     session: IPrivateVaultSession
@@ -158,7 +166,8 @@ export interface IPrivateVaultWithdrawalController {
   ) => Promise<void>;
   reserveWithdrawalAttempt: (
     attempt: IPrivacyWithdrawalAttempt,
-    session: IPrivateVaultSession
+    session: IPrivateVaultSession,
+    onIdentity?: (identity: { attemptHash: string; profileId: string }) => void
   ) => Promise<void>;
   withWithdrawalNote: <T>(
     noteId: string,
@@ -1393,7 +1402,7 @@ export function createPrivateVaultController(
           recordId
         );
       }),
-    reserveWithdrawalAttempt: (attempt, session) =>
+    reserveWithdrawalAttempt: (attempt, session, onIdentity) =>
       internal(session, async (context) => {
         if (
           attempt?.context?.sessionGeneration !== session.generation ||
@@ -1404,6 +1413,10 @@ export function createPrivateVaultController(
         const note = findNote(manifest, attempt?.noteId);
         const identity = await assertWithdrawable(context, note);
         const withdrawal = createWithdrawalJournal(attempt, note, identity);
+        onIdentity?.({
+          profileId: context.profileId,
+          attemptHash: withdrawal.attemptHash,
+        });
         if (
           withdrawal.from &&
           withdrawal.nonce !== undefined &&
@@ -1466,6 +1479,38 @@ export function createPrivateVaultController(
             entry.id === note.id ? { ...entry, withdrawal } : entry
           ),
           recordId
+        );
+      }),
+    clearKnownUnbroadcastWithdrawal: (
+      noteId,
+      intentId,
+      attemptHash,
+      profileId,
+      session,
+      assertCurrent
+    ) =>
+      internal(session, async (context) => {
+        if (context.profileId !== profileId)
+          throw new Error('privacy_vault_session_changed');
+        const { manifest, recordId } = await load(context);
+        const note = findNote(manifest, noteId);
+        const previous = note.withdrawal;
+        if (!previous) return;
+        if (
+          previous.intentId !== intentId ||
+          previous.attemptHash !== attemptHash ||
+          previous.phase !== 'unknown'
+        )
+          throw new Error('privacy_withdrawal_attempt_invalid');
+        const cleared = { ...note };
+        delete cleared.withdrawal;
+        await persist(
+          context,
+          manifest.notes.map((entry) =>
+            entry.id === note.id ? cleared : entry
+          ),
+          recordId,
+          async () => assertCurrent()
         );
       }),
     clearUnbroadcastWithdrawalAttempt: (attempt, session) =>

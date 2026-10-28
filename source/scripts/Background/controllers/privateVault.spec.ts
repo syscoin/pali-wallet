@@ -1894,3 +1894,112 @@ it.each([
     /^privacy_vault_corrupt$/
   );
 });
+
+it.each([
+  'switch during committed write',
+  'healthy pre-sign cancellation',
+] as const)('reservation review: %s', async (scenario) => {
+  const { createPrivacyWithdrawalsController } = await import(
+    './privacyWithdrawals'
+  );
+  const f = fixture();
+  const saved = await f.controller.importNote(NOTE);
+  const originalSession = f.captureSession();
+  const captured = {
+    context: depositAttempt(saved.id).context,
+    assertCurrent: originalSession.assertCurrent,
+  };
+  const identity = identifyClassicNote(NOTE);
+  const root = '0x' + '01'.repeat(32);
+  const proof = '0x' + 'ab'.repeat(256);
+  let forceCancel = false;
+  const send = jest.fn();
+  const clear = jest.fn(async (attempt) =>
+    f.controller.clearUnbroadcastWithdrawalAttempt(attempt, originalSession)
+  );
+  const snapshot: any = { root };
+  const host: any = {
+    captureSession: () => captured,
+    withNote: (id, _session, use) =>
+      f.controller.withWithdrawalNote(id, originalSession, use),
+    getSnapshot: async () => ({
+      snapshot,
+      getPath: async () => ({}),
+      assertSnapshotCurrent: () => {
+        if (forceCancel) throw new Error('privacy_verification_pending');
+      },
+    }),
+    quoteDirectFees: async () => ({
+      gasLimit: '650000',
+      nonce: '7',
+      maxFeePerGas: '100',
+      maxPriorityFeePerGas: '1',
+    }),
+    prove: async (request) => ({
+      proof,
+      publicSignals: [
+        root,
+        identity.nullifierHash,
+        request.recipient,
+        request.relayer,
+        request.fee,
+        request.refund,
+      ].map((x) => BigInt(x).toString()),
+    }),
+    beforeSubmission: async (attempt) => {
+      captured.assertCurrent();
+      await f.controller.reserveWithdrawalAttempt(attempt, originalSession);
+      captured.assertCurrent();
+      if (scenario === 'healthy pre-sign cancellation') forceCancel = true;
+    },
+    recordNotBroadcast: clear,
+    recordSubmission: jest.fn(),
+    sendTransaction: send,
+    relayers: {},
+  };
+  const controller = createPrivacyWithdrawalsController(host, {
+    now: () => 456,
+    randomId: () => INTENT_ID,
+  });
+  const review = await controller.prepareWithdrawal({
+    noteId: saved.id,
+    recipient: '0x' + '22'.repeat(20),
+    mode: 'direct',
+  });
+  const committed = deferred(),
+    release = deferred();
+  if (scenario === 'switch during committed write') {
+    const write = f.storage.setItem.getMockImplementation()!;
+    f.storage.setItem.mockImplementationOnce(async (key, value) => {
+      await write(key, value);
+      committed.resolve();
+      await release.promise;
+    });
+  }
+  const result = controller.submitWithdrawal(review.intentId);
+  const rejected = expect(result).rejects.toMatchObject({
+    transactionNotBroadcast: true,
+  });
+  if (scenario === 'switch during committed write') {
+    await committed.promise;
+    f.replaceKeyring();
+    release.resolve();
+  }
+  await rejected;
+  expect(send).not.toHaveBeenCalled();
+  const newSession = f.captureSession();
+  const persisted = await f.create().getWithdrawalAttempt(saved.id, newSession);
+  if (scenario === 'switch during committed write') {
+    expect(clear).not.toHaveBeenCalled();
+    expect(persisted).toMatchObject({ phase: 'unknown' });
+    expect((await f.create().getNotes()).notes[0].phase).toBe('waiting');
+    await expect(
+      f.create().withWithdrawalNote(saved.id, newSession, jest.fn())
+    ).rejects.toThrow('privacy_withdrawal_attempt_exists');
+  } else {
+    expect(clear).toHaveBeenCalledTimes(1);
+    expect(persisted).toBeNull();
+    expect((await f.create().getNotes()).notes[0].phase).toBe('verified');
+  }
+  controller.close();
+});
