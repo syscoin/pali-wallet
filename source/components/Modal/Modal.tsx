@@ -15,6 +15,7 @@ import {
   DialogActionButton,
   DialogHeader,
   DialogBody,
+  DialogDescription,
   DialogFooter,
 } from 'components/Dialog/Dialog';
 import { MdBugReport } from 'components/Icon/Icon';
@@ -205,7 +206,9 @@ export const ConfirmationModal = ({
         <DialogBody className={actionsInBody ? '!px-0 !py-0' : ''}>
           {actionsInBody ? (
             <div className="px-5 py-5 [@media(max-width:360px)]:px-4 [@media(max-width:360px)]:py-3">
-              <p className="[overflow-wrap:anywhere]">{description}</p>
+              <DialogDescription className="[overflow-wrap:anywhere]">
+                {description}
+              </DialogDescription>
               {children}
             </div>
           ) : (

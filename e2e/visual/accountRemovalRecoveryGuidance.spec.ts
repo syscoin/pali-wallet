@@ -200,6 +200,9 @@ test('account removal explains private-import backup needs and Cancel preserves 
           .locator('p')
           .filter({ hasText: en.settings.importedAccountRemovalWarning });
         await expect(description).toHaveCount(1);
+        const descriptionText = await description.textContent();
+        expect(descriptionText).toBeTruthy();
+        await expect(dialog).toHaveAccessibleDescription(descriptionText!);
         const body = description.locator(
           'xpath=ancestor::div[contains(concat(" ", normalize-space(@class), " "), " overflow-y-auto ")][1]'
         );

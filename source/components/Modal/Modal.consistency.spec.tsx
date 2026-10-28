@@ -148,6 +148,9 @@ it('keeps an in-flow confirmation cancellable with Escape', async () => {
     'Keep the recovery warning before the action.'
   );
   const action = within(dialog).getByRole('button', { name: 'Remove' });
+  expect(dialog).toHaveAccessibleDescription(
+    'Keep the recovery warning before the action.'
+  );
   expect(description.closest('.overflow-y-auto')).toContainElement(action);
   await userEvent.keyboard('{Escape}');
   expect(onClose).toHaveBeenCalledTimes(1);

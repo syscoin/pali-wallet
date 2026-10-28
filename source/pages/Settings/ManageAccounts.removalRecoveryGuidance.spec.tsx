@@ -275,6 +275,11 @@ it.each(cases)(
     const expected = privateImport ? `${question} ${warning}` : question;
     const description = within(dialog).getByText(expected, { exact: true });
     expect(description).toBeVisible();
+    if (privateImport) {
+      expect(dialog).toHaveAccessibleDescription(expected);
+    } else {
+      expect(dialog).not.toHaveAttribute('aria-describedby');
+    }
     const scrollBody = description.closest('.overflow-y-auto');
     expect(scrollBody).not.toBeNull();
     const remove = within(dialog).getByRole('button', {
