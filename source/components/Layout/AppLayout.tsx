@@ -140,14 +140,7 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
       return `${t('receive.receiveTitle')} ${
         activeNetwork?.currency?.toUpperCase() || ''
       }`;
-    if (path === '/send/eth')
-      return `${t('send.send')} ${
-        activeNetwork?.currency?.toUpperCase() || ''
-      }`;
-    if (path === '/send/sys')
-      return `${t('send.send')} ${
-        activeNetwork?.currency?.toUpperCase() || ''
-      }`;
+    if (path === '/send/eth' || path === '/send/sys') return t('send.send');
     if (path === '/send/confirm') return t('send.confirm');
     if (path === '/faucet') return activeNetwork?.label || t('faucet.title');
     if (path === '/privacy') return t('privacy.title');
