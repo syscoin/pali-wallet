@@ -21,6 +21,33 @@ const renderedPhrase = (container: HTMLElement, displayMode: string) =>
         .map((word) => word.textContent)
         .join(' ');
 
+it('labels the concealed recovery phrase field before and after authentication', () => {
+  const view = render(
+    <SeedPhraseDisplay
+      displayMode="textarea"
+      seedPhrase={seed}
+      isEnabled={false}
+    />
+  );
+  const field = screen.getByRole('textbox', {
+    name: 'createPhrase.recoveryPhrase',
+  });
+  expect(screen.getByText('createPhrase.recoveryPhrase')).toBeVisible();
+  expect(field).toHaveValue(mask);
+  expect(field).toHaveClass('blur-sm');
+  view.rerender(<SeedPhraseDisplay displayMode="textarea" seedPhrase={seed} />);
+  expect(field).toHaveAccessibleName('createPhrase.recoveryPhrase');
+  expect(field).toHaveValue(mask);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'import.showSeedPhrase' })
+  );
+  expect(field).toHaveValue(seed);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'import.hideSeedPhrase' })
+  );
+  expect(field).toHaveValue(mask);
+});
+
 it.each(displayModes)(
   'masks the rendered %s content before Show and after Hide',
   (displayMode) => {
