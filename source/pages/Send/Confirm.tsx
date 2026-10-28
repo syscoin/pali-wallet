@@ -2029,7 +2029,7 @@ export const SendConfirm = () => {
                     <p className="text-brand-gray200 text-xs mb-1">
                       {t('send.tokenId')}
                     </p>
-                    <div className="text-white font-medium">
+                    <div className="text-white font-medium break-all">
                       {basicTxValues.token.tokenId ? (
                         basicTxValues.token.tokenId.length > 20 ? (
                           <Tooltip

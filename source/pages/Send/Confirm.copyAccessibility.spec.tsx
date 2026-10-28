@@ -347,13 +347,18 @@ it.each(['ERC-721', 'ERC-1155'] as const)(
   }
 );
 
-it('keeps a 20-digit token ID visible without adding a tooltip tab stop', async () => {
-  const tokenId = '12345678901234567890';
-  const { user } = await prepare('en', 'nft', tokenId, 'ERC-721');
-  const reference = screen.getByText(`#${tokenId}`);
-  expect(reference).not.toHaveAttribute('tabindex');
-  for (let step = 0; step < 20; step++) {
-    await user.tab();
-    expect(reference).not.toHaveFocus();
+it.each(['ERC-721', 'ERC-1155'] as const)(
+  'allows the complete 20-digit %s token ID to wrap without a tooltip tab stop',
+  async (standard) => {
+    const tokenId = '12345678901234567890';
+    const { user } = await prepare('en', 'nft', tokenId, standard);
+    const reference = screen.getByText(`#${tokenId}`);
+    expect(reference).toHaveTextContent(`#${tokenId}`);
+    expect(reference).toHaveClass('break-all');
+    expect(reference).not.toHaveAttribute('tabindex');
+    for (let step = 0; step < 20; step++) {
+      await user.tab();
+      expect(reference).not.toHaveFocus();
+    }
   }
-});
+);
