@@ -1595,6 +1595,7 @@
     "serviceInvalid": "경로와 인증 정보가 없는 HTTPS 또는 localhost HTTP 오리진을 입력하세요.",
     "serviceLoadFailed": "프라이버시 서비스 설정을 불러오지 못했습니다.",
     "serviceSaveFailed": "프라이버시 서비스 설정을 저장하지 못했습니다. 다시 시도하세요.",
+    "serviceConflict": "이 설정이 다른 창에서 변경되었습니다. 현재 서비스: {{origin}}. 입력한 내용을 확인한 후 저장하면 대체됩니다.",
     "serviceSaved": "프라이버시 서비스가 저장되었습니다. 풀을 다시 준비하세요.",
     "savedDeposits": "저장된 공개 입금 수: {{count}}",
     "verifiedBlock": "마지막으로 검증한 블록: {{block}}",

@@ -1595,6 +1595,7 @@
     "serviceInvalid": "请输入不含路径或凭据的 HTTPS 来源，或 localhost 上的 HTTP 来源。",
     "serviceLoadFailed": "无法加载隐私服务设置。",
     "serviceSaveFailed": "无法保存隐私服务设置，请重试。",
+    "serviceConflict": "此设置已在另一个窗口中更改。当前服务：{{origin}}。请检查输入的内容，然后保存以替换当前服务。",
     "serviceSaved": "隐私服务已保存，请重新准备资金池。",
     "savedDeposits": "已保存的公开存款数：{{count}}",
     "verifiedBlock": "最近验证的区块：{{block}}",
