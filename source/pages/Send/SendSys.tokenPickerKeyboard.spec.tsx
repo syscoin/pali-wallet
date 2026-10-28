@@ -322,6 +322,7 @@ it.each(['{Enter}', ' '])('selects a highlighted SPT using %s', async (key) => {
   trigger().focus();
   await user.keyboard('{ArrowDown}');
   const menu = screen.getByRole('menu');
+  expect(menu).toHaveClass('pali-menu-focus');
   await waitFor(() => {
     expect(menu).toHaveFocus();
     expect(
@@ -333,6 +334,11 @@ it.each(['{Enter}', ' '])('selects a highlighted SPT using %s', async (key) => {
     menu.getAttribute('aria-activedescendant')!
   );
   expect(active).toHaveTextContent('SPTONE');
+  expect(active).toHaveAttribute('data-headlessui-state', 'active');
+  expect(optionButton('SYS send.native')).not.toHaveAttribute(
+    'data-headlessui-state',
+    'active'
+  );
   await user.keyboard(key);
   await waitFor(() => expect(trigger('SPTONE')).toBeInTheDocument());
   await user.click(screen.getByRole('button', { name: 'send.max' }));

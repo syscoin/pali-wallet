@@ -430,12 +430,18 @@ it.each(['{Enter}', ' '])(
   async (key) => {
     const user = await mount();
     const menu = await open(user);
+    expect(menu).toHaveClass('pali-menu-focus');
     await user.keyboard('{Home}{ArrowDown}');
     const selected = document.getElementById(
       menu.getAttribute('aria-activedescendant')!
     );
     expect(selected?.tagName).toBe('BUTTON');
     expect(selected).toHaveTextContent('PRECISE');
+    expect(selected).toHaveAttribute('data-headlessui-state', 'active');
+    expect(screen.getAllByRole('menuitem')[0]).not.toHaveAttribute(
+      'data-headlessui-state',
+      'active'
+    );
     await user.keyboard(key);
     await waitFor(() =>
       expect(
