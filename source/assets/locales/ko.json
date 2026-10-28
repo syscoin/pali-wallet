@@ -211,7 +211,6 @@
     "errorSwitching": "네트워크 전환 오류",
     "speedUp": "가속",
     "cancelTx": "거래 취소",
-    "cancelTxMessage": "정말로 이 거래를 취소하시겠습니까?",
     "speedTx": "거래 가속"
   },
   "connections": {
@@ -1177,6 +1176,9 @@
     "checkYourDevice": "{{device}}에서 이 요청을 승인하세요",
     "useYourPasskey": "패스키를 사용하세요",
     "passkeyPrompt": "브라우저 안내에 따라 패스키로 서명하세요",
+    "cancelFeePreview": "취소 네트워크 수수료 확인 중…",
+    "cancelFeeConsent": "최대 가스 수수료 {{fee}} {{currency}}로 이 거래를 취소하시겠습니까?",
+    "cancelFeeUnavailable": "취소 수수료를 확인할 수 없습니다. 다시 시도하세요.",
     "speedUpFeePreview": "네트워크 수수료 확인 중…",
     "speedUpFeeConsent": "최대 네트워크 수수료 {{fee}} {{currency}}로 이 거래를 가속하시겠습니까?",
     "speedUpFeeUnavailable": "수수료를 확인할 수 없습니다. 다시 시도해 주세요."

@@ -211,7 +211,6 @@
     "errorSwitching": "Erro ao trocar redes",
     "speedUp": "Acelerar",
     "cancelTx": "Cancelar Transação",
-    "cancelTxMessage": "Tem certeza de que deseja cancelar esta transação?",
     "speedTx": "Acelerar Transação"
   },
   "connections": {
@@ -1177,6 +1176,9 @@
     "checkYourDevice": "Verifique seu {{device}} para aprovar esta solicitação",
     "useYourPasskey": "Use sua chave de acesso",
     "passkeyPrompt": "Siga as instruções do navegador para assinar com sua chave de acesso",
+    "cancelFeePreview": "Verificando a taxa de rede de cancelamento…",
+    "cancelFeeConsent": "Cancelar esta transação com uma taxa máxima de gás de {{fee}} {{currency}}?",
+    "cancelFeeUnavailable": "Não foi possível verificar a taxa de cancelamento. Tente novamente.",
     "speedUpFeePreview": "Verificando a taxa de rede…",
     "speedUpFeeConsent": "Acelerar esta transação com uma taxa de rede máxima de {{fee}} {{currency}}?",
     "speedUpFeeUnavailable": "Não foi possível verificar a taxa. Tente novamente."

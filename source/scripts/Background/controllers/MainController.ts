@@ -5734,7 +5734,8 @@ class MainController {
     expectedContext: {
       chainId: number;
       walletScope: IWalletNavigationScope;
-    }
+    },
+    options: { approvedMaximumFee?: string; previewOnly?: boolean } = {}
   ) {
     this.assertWalletReadyForSigning();
     const vault = store.getState().vault;
@@ -5903,10 +5904,6 @@ class MainController {
       }
     };
 
-    const shouldUseTargetAccount =
-      targetAccount &&
-      (targetAccount.id !== activeAccount.id ||
-        targetAccount.type !== activeAccount.type);
     const keyring = this.getActiveKeyring();
     const transactionController = keyring.ethereumTransaction;
     const provider = transactionController.web3Provider;
@@ -5952,25 +5949,18 @@ class MainController {
         throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
     };
     assertCurrentContext();
-    try {
-      if (shouldUseTargetAccount) {
-        keyring.setVaultStateGetter(() => ({
-          ...store.getState().vault,
-          activeAccount: targetAccount,
-        }));
+    return await transactionController.cancelSentTransaction(
+      txHash,
+      isLegacy,
+      fallbackNonce,
+      {
+        assertCurrentContext,
+        validateOriginal,
+        targetAccount,
+        previewOnly: options.previewOnly === true,
+        approvedMaximumFee: options.approvedMaximumFee,
       }
-
-      return await transactionController.cancelSentTransaction(
-        txHash,
-        isLegacy,
-        fallbackNonce,
-        { assertCurrentContext, validateOriginal }
-      );
-    } finally {
-      if (shouldUseTargetAccount) {
-        keyring.setVaultStateGetter(() => store.getState().vault);
-      }
-    }
+    );
   }
 
   public async setEvmTransactionCancelSubmitted(

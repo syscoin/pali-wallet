@@ -388,17 +388,12 @@ for (const width of [400, 320])
           async () => {
             lookupFailure = true;
             await awaitDistinctRead();
-            await openAction(action === 'cancel');
-            if (action === 'cancel') {
-              await page
-                .getByRole('button', { name: en.buttons.confirm, exact: true })
-                .click();
-            }
+            await openAction(false);
             await expect(
               page.getByText(
                 action === 'speedup'
                   ? en.transactions.speedUpFeeUnavailable
-                  : en.transactions.transactionCancelFailed,
+                  : en.transactions.cancelFeeUnavailable,
                 { exact: true }
               )
             ).toBeVisible();
@@ -425,6 +420,13 @@ for (const width of [400, 320])
               exact: true,
             });
             await expect(confirm).toBeEnabled();
+            const consent =
+              action === 'cancel'
+                ? en.transactions.cancelFeeConsent
+                : en.transactions.speedUpFeeConsent;
+            await expect(
+              page.getByText(consent.split('{{fee}}')[0], { exact: false })
+            ).toBeVisible();
             await snap(page, 'healthy-fee-confirmation');
             admission = action;
             await keyboard(page, confirm);

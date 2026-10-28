@@ -10,7 +10,11 @@ import { RootState } from 'state/store';
 import { formatUnits } from 'utils/ethersV6Compat';
 import { getWalletNavigationScope } from 'utils/navigationState';
 import { buildExplorerUrl } from 'utils/strings';
-import { previewSpeedUpTransaction, UpdateTxAction } from 'utils/transactions';
+import {
+  previewCancelTransaction,
+  previewSpeedUpTransaction,
+  UpdateTxAction,
+} from 'utils/transactions';
 import { ITransactionOptions } from 'utils/types';
 
 // Memoize frequently used transaction option icons
@@ -81,7 +85,8 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
     chainId,
   ]);
 
-  const previewSpeedUp = async () => {
+  const previewReplacement = async (actionType: UpdateTxAction) => {
+    const isCancel = actionType === UpdateTxAction.Cancel;
     preview.current?.cancel();
     const startingScope = getWalletNavigationScope();
     let cancelled = false;
@@ -115,7 +120,8 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
           chainId,
           isLegacy: isLegacyTransaction,
           txHash: transaction.hash,
-          updateType: UpdateTxAction.SpeedUp,
+          updateType: actionType,
+          nonce: transaction.nonce,
           signerAddress: transaction.from,
           approvedMaximumFee: maximumFee,
           walletScope: startingScope,
@@ -126,8 +132,12 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
     preview.current = { cancel, close };
     const modal = {
       buttonText: t('buttons.confirm'),
-      title: t('header.speedTx'),
-      description: t('transactions.speedUpFeePreview'),
+      title: t(isCancel ? 'header.cancelTx' : 'header.speedTx'),
+      description: t(
+        isCancel
+          ? 'transactions.cancelFeePreview'
+          : 'transactions.speedUpFeePreview'
+      ),
       isButtonLoading: true,
       // This stage only reads a quote; cancelling it cannot cancel a send.
       allowCloseWhileLoading: true,
@@ -139,25 +149,45 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
     const fail = () => {
       if (!current()) return;
       close();
-      alert.error(t('transactions.speedUpFeeUnavailable'));
+      alert.error(
+        t(
+          isCancel
+            ? 'transactions.cancelFeeUnavailable'
+            : 'transactions.speedUpFeeUnavailable'
+        )
+      );
     };
     const timer = setTimeout(fail, 15_000);
     try {
-      const fee = await previewSpeedUpTransaction(
-        transaction.hash,
-        isLegacyTransaction,
-        chainId,
-        transaction.from
-      );
+      const fee = isCancel
+        ? await previewCancelTransaction(
+            transaction.hash,
+            isLegacyTransaction,
+            chainId,
+            transaction.nonce,
+            transaction.from,
+            startingScope
+          )
+        : await previewSpeedUpTransaction(
+            transaction.hash,
+            isLegacyTransaction,
+            chainId,
+            transaction.from
+          );
       if (!current()) return;
       clearTimeout(timer);
       maximumFee = fee;
       setModalData({
         ...modal,
-        description: t('transactions.speedUpFeeConsent', {
-          fee: formatUnits(fee, 18),
-          currency: currency?.toUpperCase(),
-        }),
+        description: t(
+          isCancel
+            ? 'transactions.cancelFeeConsent'
+            : 'transactions.speedUpFeeConsent',
+          {
+            fee: formatUnits(fee, 18),
+            currency: currency?.toUpperCase(),
+          }
+        ),
         isButtonLoading: false,
       });
     } catch {
@@ -166,60 +196,7 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
   };
 
   const handleOnClick = (actionType: UpdateTxAction) => {
-    if (actionType === UpdateTxAction.SpeedUp) {
-      void previewSpeedUp();
-      return;
-    }
-    preview.current?.cancel();
-    const startingScope = getWalletNavigationScope();
-    let cancelled = false;
-    const cancel = () => {
-      cancelled = true;
-    };
-    const close = () => {
-      cancel();
-      if (preview.current?.close !== close) return;
-      preview.current = undefined;
-      setIsOpenModal(false);
-    };
-    preview.current = { cancel, close };
-    setIsOpenModal(true);
-
-    switch (actionType) {
-      case UpdateTxAction.Cancel:
-        setModalData({
-          buttonText: t('buttons.confirm'),
-          title: t('header.cancelTx'),
-          description: t('header.cancelTxMessage'),
-          onClose: close,
-          onClick: () => {
-            const current = getWalletNavigationScope();
-            if (
-              cancelled ||
-              current.account !== startingScope.account ||
-              current.network !== startingScope.network
-            ) {
-              close();
-              return;
-            }
-            close();
-            void handleUpdateTransaction({
-              updateData: {
-                alert,
-                chainId,
-                isLegacy: isLegacyTransaction,
-                txHash: transaction.hash,
-                updateType: UpdateTxAction.Cancel,
-                nonce: transaction.nonce,
-                signerAddress: transaction.from,
-                walletScope: startingScope,
-              },
-              t,
-            });
-          },
-        });
-        break;
-    }
+    void previewReplacement(actionType);
   };
 
   const handleGoTxDetails = useCallback(() => {

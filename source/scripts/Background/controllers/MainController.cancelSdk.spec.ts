@@ -88,10 +88,17 @@ describe('Pali cancellation through the manifest-pinned installed SDK', () => {
       mockState.vault.activeAccount.id
     ].ethereum[CHAIN];
   const run = () =>
-    wallet.cancelEvmTransaction(HASH, true, NONCE, PAYER, {
-      chainId: CHAIN,
-      walletScope: getWalletNavigationScope(),
-    });
+    wallet.cancelEvmTransaction(
+      HASH,
+      true,
+      NONCE,
+      PAYER,
+      {
+        chainId: CHAIN,
+        walletScope: getWalletNavigationScope(),
+      },
+      { approvedMaximumFee: '999999999999999999999999' }
+    );
   const unsignedRequest = () =>
     jest.mocked(sendLocalEvmTransaction).mock.calls[0]?.[2];
 
@@ -301,16 +308,17 @@ describe('Pali cancellation through the manifest-pinned installed SDK', () => {
       type: KeyringAccountType.SmartAccount,
       id: 1,
     };
-    syntheticCredential.mockImplementation(() => {
+    syntheticCredential.mockImplementation((target) => {
+      expect(target).toEqual({ type: KeyringAccountType.HDAccount, id: 0 });
       expect(readVault().activeAccount).toEqual({
-        type: KeyringAccountType.HDAccount,
-        id: 0,
+        type: KeyringAccountType.SmartAccount,
+        id: 1,
       });
       return { address: PAYER, decryptedPrivateKey: 'not-a-private-key' };
     });
     await expect(run()).resolves.toEqual({ isCanceled: false, error: true });
     expect(unsignedRequest().from).toBe(PAYER);
-    expect(keyring.setVaultStateGetter).toHaveBeenCalledTimes(2);
+    expect(keyring.setVaultStateGetter).not.toHaveBeenCalled();
     expect(readVault()).toBe(mockState.vault);
     expect(mockState.vault.activeAccount).toEqual({
       type: KeyringAccountType.SmartAccount,
@@ -333,6 +341,7 @@ describe('Pali cancellation through the manifest-pinned installed SDK', () => {
           sdk.cancelSentTransaction(HASH, true, NONCE, {
             assertCurrentContext: () => undefined,
             validateOriginal: () => validation,
+            approvedMaximumFee: '999999999999999999999999',
           })
         ).rejects.toThrow('Original transaction validator must be synchronous');
         expect(then).toHaveBeenCalled();
