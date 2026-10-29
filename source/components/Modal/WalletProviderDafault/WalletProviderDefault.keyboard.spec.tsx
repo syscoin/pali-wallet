@@ -39,12 +39,15 @@ jest.mock('components/index', () => ({
 // Avoid browser animation timing in jsdom with fake timers. Keep the native
 // elements and styles while testing the component's controls.
 jest.mock('framer-motion', () => {
-  const React = jest.requireActual('react');
+  const react = jest.requireActual('react');
   const native = (tag: string) =>
-    React.forwardRef(
-      ({ initial, animate, transition, ...props }: any, ref: any) =>
-        React.createElement(tag, { ...props, ref })
-    );
+    react.forwardRef(function NativeMotionElement(props: any, ref: any) {
+      const domProps = { ...props };
+      delete domProps.initial;
+      delete domProps.animate;
+      delete domProps.transition;
+      return react.createElement(tag, { ...domProps, ref });
+    });
   return { motion: { div: native('div'), button: native('button') } };
 });
 
