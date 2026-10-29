@@ -71,10 +71,28 @@
   position: static;
 }
 
+/* Long service-provided feedback must wrap without widening the wallet. */
+.faucet-feedback p {
+  overflow-wrap: anywhere;
+}
+
 /* Keep the currency selector fully exposed in a short wallet window. */
 @media (max-height: 400px) {
   [data-navigation-scroll='wallet-layout'] .currency-settings-footer {
     position: static;
+  }
+
+  /* Keep short Faucet feedback above its sticky action in a short popup. */
+  [data-navigation-scroll='wallet-layout'] .page-content:has(.faucet-feedback) {
+    padding-top: 0.5rem;
+  }
+
+  .faucet-feedback h1 {
+    margin-top: 0.5rem;
+  }
+
+  .faucet-feedback p {
+    max-width: 100%;
   }
 }
 
