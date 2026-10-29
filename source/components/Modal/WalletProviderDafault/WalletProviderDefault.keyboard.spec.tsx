@@ -86,6 +86,10 @@ it('reports Pali provider state without assuming a different default wallet', as
   act(() => store.dispatch({ type: 'test/provider', payload: false }));
   await user.tab();
   await user.keyboard('{Enter}');
+  expect(opener().parentElement).toHaveStyle({
+    height: 'auto',
+    minHeight: '64px',
+  });
   expect(
     screen.getByText('Pali’s Ethereum provider is disabled')
   ).toBeVisible();

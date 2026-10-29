@@ -8,7 +8,8 @@ export const getContainerStyleAnimation = (
 ) => {
   const style = {
     width: isHovered ? `100vw` : `2.75rem`,
-    height: isHovered ? `64px` : `2.75rem`,
+    height: isHovered ? `auto` : `2.75rem`,
+    minHeight: isHovered ? `64px` : `2.75rem`,
     borderTopRightRadius: isHovered ? `20px` : `999px`,
     borderTopLeftRadius: isHovered ? `20px` : `unset`,
     opacity: isNotVisible ? 0 : 1,

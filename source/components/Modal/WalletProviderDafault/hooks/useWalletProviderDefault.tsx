@@ -49,11 +49,11 @@ export const useWalletProviderDefault = () => {
   const modalText = useMemo(
     () =>
       isEnabled ? (
-        <span className="text-white text-sm">
+        <span className="min-w-0 break-words text-white text-sm">
           <p>{t('settings.paliProviderEnabled')}</p>
         </span>
       ) : (
-        <span className="text-white text-sm ">
+        <span className="min-w-0 break-words text-white text-sm">
           <p>{t('settings.paliProviderDisabled')}</p>
           <button
             type="button"
