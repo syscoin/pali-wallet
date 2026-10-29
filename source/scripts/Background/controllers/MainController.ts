@@ -6927,10 +6927,13 @@ class MainController {
               : target.type === 'token-recipient'
               ? 'Recipient address is blacklisted'
               : 'Recipient address is blacklisted';
-          throw new Error(
-            `Transaction blocked: ${
-              blacklistResult.reason || fallbackReason
-            }. Severity: ${blacklistResult.severity}`
+          throw Object.assign(
+            new Error(
+              `Transaction blocked: ${
+                blacklistResult.reason || fallbackReason
+              }. Severity: ${blacklistResult.severity}`
+            ),
+            { transactionNotBroadcast: true }
           );
         }
       }
