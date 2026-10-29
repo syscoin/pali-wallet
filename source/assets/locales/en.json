@@ -160,7 +160,7 @@
     "forget": "Forget wallet",
     "generalOptions": "GENERAL OPTIONS",
     "currency": "Currency",
-    "manageEth": "Set default wallet",
+    "manageEth": "Manage Ethereum provider",
     "infoHelp": "Info/Help",
     "lock": "Lock",
     "advanced": "Advanced"

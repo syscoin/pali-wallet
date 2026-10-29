@@ -16,13 +16,19 @@ jest.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string) =>
       ({
-        'generalMenu.manageEth': 'Set default wallet',
+        'generalMenu.manageEth': jest.requireActual(
+          '../../../assets/locales/en.json'
+        ).generalMenu.manageEth,
         'buttons.close': 'Close',
-        'providerDefault.defaultEnabled':
-          'Pali was successfully set as the default wallet!',
-        'providerDefault.otherWalletInUse':
-          'MetaMask is in use and Pali is disabled.',
-        'providerDefault.setPaliDefault': 'Set Pali as default wallet!',
+        'settings.paliProviderEnabled': jest.requireActual(
+          '../../../assets/locales/en.json'
+        ).settings.paliProviderEnabled,
+        'settings.paliProviderDisabled': jest.requireActual(
+          '../../../assets/locales/en.json'
+        ).settings.paliProviderDisabled,
+        'settings.enablePaliProvider': jest.requireActual(
+          '../../../assets/locales/en.json'
+        ).settings.enablePaliProvider,
       }[key] || key),
   }),
 }));
@@ -47,9 +53,10 @@ const mount = (enabled = false) => {
   );
   return { ...view, store };
 };
-const opener = () => screen.getByRole('button', { name: 'Set default wallet' });
+const opener = () =>
+  screen.getByRole('button', { name: 'Manage Ethereum provider' });
 const action = () =>
-  screen.getByRole('button', { name: 'Set Pali as default wallet!' });
+  screen.getByRole('button', { name: 'Enable Pali’s Ethereum provider' });
 
 beforeEach(() => {
   jest.useFakeTimers();
@@ -61,12 +68,36 @@ afterEach(() => {
   jest.useRealTimers();
 });
 
+it('reports Pali provider state without assuming a different default wallet', async () => {
+  const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+  const { store } = mount(true);
+  act(() => store.dispatch({ type: 'test/provider', payload: false }));
+  await user.tab();
+  await user.keyboard('{Enter}');
+  expect(
+    screen.getByText('Pali’s Ethereum provider is disabled')
+  ).toBeVisible();
+  expect(screen.queryByText(/MetaMask/i)).toBeNull();
+  expect(action()).toBeEnabled();
+  expect(mockEmitter).not.toHaveBeenCalled();
+  await user.tab();
+  await user.keyboard('{Enter}');
+  expect(mockEmitter).toHaveBeenCalledWith(['wallet', 'addWindowEthProperty']);
+  act(() => store.dispatch({ type: 'test/provider', payload: true }));
+  expect(screen.getByText('Pali’s Ethereum provider is enabled')).toBeVisible();
+  expect(
+    screen.queryByText(/successfully set as the default wallet/i)
+  ).toBeNull();
+});
+
 it('retains ordinary hover and pointer activation', async () => {
   mount();
   fireEvent.mouseEnter(opener());
-  expect(screen.getByText('Set Pali as default wallet!')).toBeInTheDocument();
+  expect(
+    screen.getByText('Enable Pali’s Ethereum provider')
+  ).toBeInTheDocument();
   await act(async () =>
-    fireEvent.click(screen.getByText('Set Pali as default wallet!'))
+    fireEvent.click(screen.getByText('Enable Pali’s Ethereum provider'))
   );
   expect(mockEmitter.mock.calls).toEqual([
     [['wallet', 'addWindowEthProperty']],
@@ -80,13 +111,13 @@ it('stays closed when removing the Close target causes parent-only pointer re-en
   expect(action()).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Close' }));
   expect(opener()).toHaveFocus();
-  expect(screen.queryByText('Set Pali as default wallet!')).toBeNull();
+  expect(screen.queryByText('Enable Pali’s Ethereum provider')).toBeNull();
 
   // The pointer can remain over the collapsing parent after its Close target
   // is removed. Only entering the opener should deliberately reopen it.
   fireEvent.mouseEnter(container);
   expect(opener()).toHaveAttribute('aria-expanded', 'false');
-  expect(screen.queryByText('Set Pali as default wallet!')).toBeNull();
+  expect(screen.queryByText('Enable Pali’s Ethereum provider')).toBeNull();
   fireEvent.mouseEnter(opener());
   expect(opener()).toHaveAttribute('aria-expanded', 'true');
   expect(action()).toBeInTheDocument();
@@ -126,7 +157,7 @@ it('closes with its native control and returns focus without changing the provid
   await user.keyboard(' ');
   expect(opener()).toHaveFocus();
   expect(opener()).toHaveAttribute('aria-expanded', 'false');
-  expect(screen.queryByText('Set Pali as default wallet!')).toBeNull();
+  expect(screen.queryByText('Enable Pali’s Ethereum provider')).toBeNull();
   expect(mockEmitter).not.toHaveBeenCalled();
 });
 
@@ -188,13 +219,13 @@ it('retains the one-second success display and removes hidden controls from the 
   await user.keyboard('{Enter}');
   act(() => store.dispatch({ type: 'test/provider', payload: true }));
   expect(
-    screen.getByText('Pali was successfully set as the default wallet!')
+    screen.getByText('Pali’s Ethereum provider is enabled')
   ).toBeInTheDocument();
   act(() => jest.advanceTimersByTime(999));
   expect(opener()).not.toBeDisabled();
   act(() => jest.advanceTimersByTime(1));
   expect(
-    screen.queryByRole('button', { name: 'Set default wallet' })
+    screen.queryByRole('button', { name: 'Manage Ethereum provider' })
   ).toBeNull();
   expect(screen.queryByRole('button', { name: 'Close' })).toBeNull();
   await user.tab();
@@ -207,7 +238,7 @@ it('does not expose invisible controls for an initially enabled provider', async
   await user.tab();
   expect(screen.getByRole('button', { name: 'After widget' })).toHaveFocus();
   expect(
-    within(container).queryByText('Set Pali as default wallet!')
+    within(container).queryByText('Enable Pali’s Ethereum provider')
   ).toBeNull();
   expect(mockEmitter).not.toHaveBeenCalled();
 });
@@ -216,7 +247,7 @@ it('reveals the mounted widget when Pali is no longer the default provider', asy
   const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
   const { store } = mount(true);
   expect(
-    screen.queryByRole('button', { name: 'Set default wallet' })
+    screen.queryByRole('button', { name: 'Manage Ethereum provider' })
   ).toBeNull();
   act(() => store.dispatch({ type: 'test/provider', payload: false }));
   expect(opener()).toBeEnabled();
@@ -240,8 +271,6 @@ it('cancels a pending success-hide timer when the provider is disabled again', a
   expect(opener()).toBeEnabled();
   expect(opener()).toHaveAttribute('aria-expanded', 'true');
   expect(action()).toBeEnabled();
-  expect(
-    screen.queryByText('Pali was successfully set as the default wallet!')
-  ).toBeNull();
+  expect(screen.queryByText('Pali’s Ethereum provider is enabled')).toBeNull();
   expect(mockEmitter).not.toHaveBeenCalled();
 });

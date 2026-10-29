@@ -160,7 +160,7 @@
     "forget": "ウォレットを忘れる",
     "generalOptions": "一般オプション",
     "currency": "通貨",
-    "manageEth": "デフォルトウォレットを設定",
+    "manageEth": "Ethereumプロバイダーを管理",
     "infoHelp": "情報/ヘルプ",
     "lock": "ロック",
     "advanced": "詳細設定"

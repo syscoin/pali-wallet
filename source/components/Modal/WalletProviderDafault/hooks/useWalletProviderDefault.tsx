@@ -50,17 +50,17 @@ export const useWalletProviderDefault = () => {
     () =>
       isEnabled ? (
         <span className="text-white text-sm">
-          <p>{t('providerDefault.defaultEnabled')}</p>
+          <p>{t('settings.paliProviderEnabled')}</p>
         </span>
       ) : (
         <span className="text-white text-sm ">
-          <p>{t('providerDefault.otherWalletInUse')}</p>
+          <p>{t('settings.paliProviderDisabled')}</p>
           <button
             type="button"
             className="underline font-bold cursor-pointer focus-visible:ring-2 focus-visible:ring-white"
             onClick={turnPaliAsDefault}
           >
-            {t('providerDefault.setPaliDefault')}
+            {t('settings.enablePaliProvider')}
           </button>
         </span>
       ),

@@ -160,7 +160,7 @@
     "forget": "Esquecer carteira",
     "generalOptions": "OPÇÕES GERAIS",
     "currency": "Moeda",
-    "manageEth": "Definir carteira padrão",
+    "manageEth": "Gerenciar provedor Ethereum",
     "infoHelp": "Info/Ajuda",
     "lock": "Bloquear",
     "advanced": "Avançado"

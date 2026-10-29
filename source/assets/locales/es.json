@@ -160,7 +160,7 @@
     "forget": "Olvidar billetera",
     "generalOptions": "Opciones generales",
     "currency": "Moneda",
-    "manageEth": "Billetera predeterminada",
+    "manageEth": "Administrar el proveedor de Ethereum",
     "infoHelp": "Info/Ayuda",
     "lock": "Bloquear",
     "advanced": "Avanzado"

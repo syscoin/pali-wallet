@@ -160,7 +160,7 @@
     "forget": "忘记钱包",
     "generalOptions": "常规选项",
     "currency": "货币",
-    "manageEth": "设置默认钱包",
+    "manageEth": "管理以太坊提供程序",
     "infoHelp": "信息/帮助",
     "lock": "锁定",
     "advanced": "高级"

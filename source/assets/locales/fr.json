@@ -160,7 +160,7 @@
     "forget": "Oublier le portefeuille",
     "generalOptions": "OPTIONS GÉNÉRALES",
     "currency": "Devise",
-    "manageEth": "Définir le portefeuille par défaut",
+    "manageEth": "Gérer le fournisseur Ethereum",
     "infoHelp": "Info/Aide",
     "lock": "Verrouiller",
     "advanced": "Avancé"

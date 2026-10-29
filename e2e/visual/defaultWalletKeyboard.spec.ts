@@ -85,7 +85,7 @@ test('Home default-wallet controls support keyboard actions, dismissal and hidde
     );
     const panel = page.locator('#default-wallet-options');
     const action = panel.getByRole('button', {
-      name: 'Set Pali as default wallet!',
+      name: en.settings.enablePaliProvider,
       exact: true,
     });
     const close = panel.getByRole('button', {
@@ -153,6 +153,10 @@ test('Home default-wallet controls support keyboard actions, dismissal and hidde
         await page.mouse.move(399, 0);
         await expect(action).toBeFocused();
         await expect(panel).toBeVisible();
+        await expect(
+          panel.getByText(en.settings.paliProviderDisabled, { exact: true })
+        ).toBeVisible();
+        await expect(panel).not.toContainText(/MetaMask/i);
         await capture(page);
         await page.keyboard.press('Escape');
         await expect(panel).toHaveCount(0);

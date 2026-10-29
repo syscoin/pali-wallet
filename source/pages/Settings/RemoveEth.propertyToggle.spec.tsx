@@ -34,7 +34,9 @@ jest.mock('react-i18next', () => ({
       const messages = jest.requireActual('../../assets/locales/en.json');
       if (
         key === 'settings.disablePaliProvider' ||
-        key === 'settings.enablePaliProvider'
+        key === 'settings.enablePaliProvider' ||
+        key === 'settings.paliProviderEnabled' ||
+        key === 'settings.paliProviderDisabled'
       )
         return messages.settings[key.split('.')[1]];
       if (key === 'settings.setWalletAsDefault')
@@ -149,19 +151,17 @@ it('uses the authoritative preference without optimistic success or late setter 
   const DefaultWallet = () => useWalletProviderDefault().modalText;
   const view = render(<DefaultWallet />);
 
-  fireEvent.click(screen.getByText('Set Pali as default wallet!'));
-  fireEvent.click(screen.getByText('Set Pali as default wallet!'));
+  fireEvent.click(screen.getByText('Enable Pali’s Ethereum provider'));
+  fireEvent.click(screen.getByText('Enable Pali’s Ethereum provider'));
   expect(mockEmitter).toHaveBeenCalledTimes(1);
   expect(mockEmitter).toHaveBeenCalledWith(['wallet', 'addWindowEthProperty']);
 
-  expect(
-    screen.queryByText('Pali was successfully set as the default wallet!')
-  ).toBeNull();
+  expect(screen.queryByText('Pali’s Ethereum provider is enabled')).toBeNull();
   await act(async () => complete());
   mockHasEthProperty = true;
   view.rerender(<DefaultWallet />);
   expect(
-    screen.getByText('Pali was successfully set as the default wallet!')
+    screen.getByText('Pali’s Ethereum provider is enabled')
   ).toBeInTheDocument();
   expect(mockEmitter).toHaveBeenCalledTimes(1);
 });
@@ -206,12 +206,12 @@ it('default-wallet rejection shows no false success and permits a later explicit
   const DefaultWallet = () => useWalletProviderDefault().modalText;
   try {
     render(<DefaultWallet />);
-    fireEvent.click(screen.getByText('Set Pali as default wallet!'));
+    fireEvent.click(screen.getByText('Enable Pali’s Ethereum provider'));
     await waitFor(() => expect(error).toHaveBeenCalled());
     expect(
-      screen.queryByText('Pali was successfully set as the default wallet!')
+      screen.queryByText('Pali’s Ethereum provider is enabled')
     ).toBeNull();
-    fireEvent.click(screen.getByText('Set Pali as default wallet!'));
+    fireEvent.click(screen.getByText('Enable Pali’s Ethereum provider'));
     expect(mockEmitter).toHaveBeenCalledTimes(2);
   } finally {
     error.mockRestore();
