@@ -2400,7 +2400,7 @@ export const SendConfirm = () => {
                           totalCrypto = totalAmount;
                         } catch {
                           totalAmount = 0;
-                          totalCrypto = t('send.calculating');
+                          totalCrypto = undefined;
                         }
                       } else if (nativeTotal !== undefined) {
                         totalAmount = nativeTotal.amount;
@@ -2446,7 +2446,9 @@ export const SendConfirm = () => {
                       return (
                         <div className="flex flex-col">
                           <span>
-                            {removeScientificNotation(totalCrypto)}{' '}
+                            {totalCrypto === undefined
+                              ? t('send.calculating')
+                              : removeScientificNotation(totalCrypto)}{' '}
                             {activeNetwork.currency.toUpperCase()}
                             {feeCalculationError && (
                               <span className="text-xs text-brand-gray200 ml-1">
