@@ -7,6 +7,7 @@ import {
   formatApprovalTokenAmount,
   getApprovalAddressValues,
   getApprovalAmountDisplay,
+  getErc20ApprovalHeadingKey,
   getEffectiveApprovalData,
   parseApprovalAmount,
 } from './approval';
@@ -182,6 +183,43 @@ describe('approval editing', () => {
       inputs: [SPENDER, encoded[1].toString()],
     });
     expect(decodedTx.inputs[1]).toBe('100000000');
+  });
+
+  it.each([
+    ['approve', '0', 'send.erc20SetAllowanceZero'],
+    ['approve', '1', 'send.grantAccess'],
+    ['increaseAllowance', '0', 'send.erc20IncreaseAllowance'],
+    ['increaseAllowance', '1', 'send.erc20IncreaseAllowance'],
+    ['decreaseAllowance', '0', 'send.erc20DecreaseAllowance'],
+    ['decreaseAllowance', '1', 'send.erc20DecreaseAllowance'],
+    ['unknown', '1', 'send.erc20ApprovalRequest'],
+    ['approve', '', 'send.erc20ApprovalRequest'],
+    ['approve', '-1', 'send.erc20ApprovalRequest'],
+  ])('labels %s with value %s using effective data', (method, value, key) => {
+    expect(
+      getErc20ApprovalHeadingKey({ method, inputs: [SPENDER, value] })
+    ).toBe(key);
+  });
+
+  it.each([
+    ['0', 'send.erc20SetAllowanceZero'],
+    ['1.5', 'send.grantAccess'],
+  ])('labels edited approve %s from the encoded bytes', (customAmount, key) => {
+    const effective = getEffectiveApprovalData({
+      approvalType: 'erc20-amount',
+      customAmount,
+      data: originalData,
+      decimals: 6,
+      decodedTx,
+      isCustom: true,
+    });
+    expect(effective).not.toBeNull();
+    const encoded = new Interface(ERC20_ABI).decodeFunctionData(
+      'approve',
+      effective!.data
+    );
+    expect(encoded[1].toString()).toBe(effective!.decodedTx.inputs[1]);
+    expect(getErc20ApprovalHeadingKey(effective!.decodedTx)).toBe(key);
   });
 
   it('preserves original default and non-approval data without requiring token metadata', () => {

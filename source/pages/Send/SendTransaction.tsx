@@ -52,6 +52,7 @@ import {
   formatApprovalNftTokenId,
   formatApprovalTokenAmount,
   getApprovalAmountDisplay,
+  getErc20ApprovalHeadingKey,
   getApprovalAddressValues,
   getEffectiveApprovalData,
 } from './approval';
@@ -1653,7 +1654,11 @@ export const SendTransaction = () => {
                     {approvalType === 'erc20-amount' && (
                       <>
                         <span className="text-brand-white text-lg">
-                          {t('send.grantAccess')}{' '}
+                          {t(
+                            getErc20ApprovalHeadingKey(
+                              effectiveApprovalData?.decodedTx
+                            )
+                          )}{' '}
                           <span className="text-brand-royalbluemedium font-semibold">
                             {approvedTokenInfos?.tokenSymbol ||
                               t('send.unknownToken', {

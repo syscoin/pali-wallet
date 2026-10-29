@@ -316,12 +316,20 @@ type MetadataRequest = {
   resolve: (value: typeof TOKEN_INFO) => void;
 };
 
-const prepareApproval = async (expectedInitialRequests = 1) => {
-  const abi = new Interface(['function approve(address,uint256)']);
-  mockQuery.tx.data = abi.encodeFunctionData('approve', [SPENDER, '1000000']);
+const prepareApproval = async (
+  expectedInitialRequests = 1,
+  raw = '1000000',
+  method = 'approve'
+) => {
+  const abi = new Interface([
+    'function approve(address,uint256)',
+    'function increaseAllowance(address,uint256)',
+    'function decreaseAllowance(address,uint256)',
+  ]);
+  mockQuery.tx.data = abi.encodeFunctionData(method, [SPENDER, raw]);
   mockQuery.decodedTx = {
-    method: 'approve',
-    inputs: [SPENDER, '1000000'],
+    method,
+    inputs: [SPENDER, raw],
     names: ['spender', 'amount'],
     types: ['address', 'uint256'],
   };
@@ -384,6 +392,44 @@ const expectReadyAllowance = async (data: string) => {
     ).toBe(false);
   });
 };
+
+it('changes the approval heading with the real allowance editor and preserves the reviewed bytes', async () => {
+  const { pending, abi } = await prepareApproval();
+  await act(async () => pending[0].resolve(TOKEN_INFO));
+  const positive = abi.encodeFunctionData('approve', [SPENDER, '1000000']);
+  const zero = abi.encodeFunctionData('approve', [SPENDER, '0']);
+  await expectReadyAllowance(positive);
+  expect(screen.getByText('send.grantAccess')).toBeDefined();
+  await editAllowance('0');
+  await expectReadyAllowance(zero);
+  expect(screen.getByText('send.erc20SetAllowanceZero')).toBeDefined();
+  expect(screen.queryByText('send.grantAccess')).toBeNull();
+  await editAllowance('1');
+  await expectReadyAllowance(positive);
+  expect(screen.getByText('send.grantAccess')).toBeDefined();
+  expect(screen.queryByText('send.erc20SetAllowanceZero')).toBeNull();
+});
+
+it.each([
+  ['approve', '0', 'send.erc20SetAllowanceZero'],
+  ['approve', '1000000', 'send.grantAccess'],
+  ['increaseAllowance', '1000000', 'send.erc20IncreaseAllowance'],
+  ['decreaseAllowance', '1000000', 'send.erc20DecreaseAllowance'],
+])(
+  'renders the %s request heading and retains its actual bytes',
+  async (method, raw, key) => {
+    const { pending, abi } = await prepareApproval(1, raw, method);
+    await act(async () => pending[0].resolve(TOKEN_INFO));
+    const original = abi.encodeFunctionData(method, [SPENDER, raw]);
+    await expectReadyAllowance(original);
+    expect(screen.getByText(key)).toBeDefined();
+    await act(async () => mockButtonHandlers['buttons.confirm']());
+    const sent = mockEmitter.mock.calls.find(
+      ([path]) => path[1] === 'sendAndSaveEthTransaction'
+    );
+    expect(sent?.[1][0].data).toBe(original);
+  }
+);
 
 it.each([0, 6])(
   'uses the real allowance editor with healthy %s-decimal metadata',
