@@ -838,7 +838,10 @@ const speedUpTransaction = async (
       chainId,
       signerAddress,
       { approvedMaximumFee }
-    );
+    ).catch((error) => {
+      if (error?.code === 'REPLACEMENT_VALUE_WOULD_CHANGE') return error;
+      throw error;
+    });
 
     if (!response) {
       alert.error(t('transactions.transactionSpeedUpFailed'));
