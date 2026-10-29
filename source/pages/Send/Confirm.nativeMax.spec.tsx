@@ -354,6 +354,28 @@ it.each([false, true])(
   }
 );
 
+const reviewedTotal = () => screen.getByText(/^send.total/).textContent;
+
+it.each([false, true])(
+  'MAX total follows the reviewed amount plus displayed fee after balance update (legacy=%s)',
+  async (legacy) => {
+    await ready(true, { legacy });
+    expect(reviewedTotal()).toContain('99.999999 TSYS');
+    mockState.vault.accounts.HDAccount[0].balances.ethereum = '99';
+    await act(async () => mockRerender!());
+    expect(headline()).toBe('98.999936 TSYS');
+    expect(reviewedTotal()).toContain('98.999999 TSYS');
+  }
+);
+
+it.each([false, true])(
+  'MAX total retains wei precision for the reviewed amount plus fee (legacy=%s)',
+  async (legacy) => {
+    await ready(true, { balance: '1.123456789123456789', legacy });
+    expect(reviewedTotal()).toContain('1.123455789123456789 TSYS');
+  }
+);
+
 it.each([false, true])(
   'keeps exact native MAX wei for high-precision balance (legacy=%s)',
   async (legacy) => {
@@ -398,11 +420,15 @@ it('does not advertise gross MAX while its initial quote is pending or failed', 
   expect(headline()).toBe('send.calculating TSYS');
   await waitForQuote();
   expect(headline()).toBe('send.calculating TSYS');
+  expect(reviewedTotal()).toContain('send.calculating');
+  expect(reviewedTotal()).not.toContain('100 TSYS');
   await act(async () => quote.reject(new Error('Synthetic failed quote')));
   await waitFor(() =>
     expect(screen.queryByRole('button', { name: 'send.editFee' })).toBeNull()
   );
   expect(headline()).toBe('send.calculating TSYS');
+  expect(reviewedTotal()).toContain('send.calculating');
+  expect(reviewedTotal()).not.toContain('100 TSYS');
   expect(submissionCalls()).toHaveLength(0);
 });
 

@@ -2371,6 +2371,37 @@ export const SendConfirm = () => {
                         ).add(smartAccountQuote.maximumFeeWei);
                         totalAmount = formatEther(totalWei);
                         totalCrypto = totalAmount;
+                      } else if (
+                        !isBitcoinBased &&
+                        !isSmartAccountSend &&
+                        !basicTxValues.token &&
+                        basicTxValues.isMax
+                      ) {
+                        // Match the exact reviewed amount and the fee displayed above.
+                        // Never fall back to the stale gross amount while loading.
+                        try {
+                          if (
+                            !confirmationFeeReady ||
+                            getCalculatedFee === undefined
+                          )
+                            throw new Error('MAX total unavailable');
+                          const shownFee =
+                            basicTxValues.fee > 0
+                              ? basicTxValues.fee
+                              : getCalculatedFee;
+                          totalAmount = formatEther(
+                            parseUnits(String(displayedAmount), 18).add(
+                              parseUnits(
+                                String(removeScientificNotation(shownFee)),
+                                18
+                              )
+                            )
+                          );
+                          totalCrypto = totalAmount;
+                        } catch {
+                          totalAmount = 0;
+                          totalCrypto = t('send.calculating');
+                        }
                       } else if (nativeTotal !== undefined) {
                         totalAmount = nativeTotal.amount;
                         totalCrypto = nativeTotal.formatted;
