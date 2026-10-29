@@ -1231,7 +1231,8 @@
     "removalFailed": "No se pudo eliminar la billetera. Inténtalo de nuevo.",
     "importedAccountsWont": "Las cuentas importadas no se vincularán a la Frase de Recuperación Secreta de tu cuenta Pali inicial.",
     "stillHaveFunds": "¡Todavía tienes fondos en tu billetera!",
-    "saveProperly": "Guarda esta frase semilla correctamente para que puedas importar esta billetera en el futuro."
+    "saveProperly": "Guarda esta frase semilla correctamente para que puedas importar esta billetera en el futuro.",
+    "privateNotesBackupWarning": "Si tienes notas privadas, haz una copia de seguridad por separado. Las notas privadas generadas no se pueden restaurar con tu frase de recuperación."
   },
   "walletSeedPhrasePage": {
     "keepSeedPhrase": "¡Mantén en secreto tu seed frase!",

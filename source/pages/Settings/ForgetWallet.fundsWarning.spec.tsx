@@ -197,6 +197,9 @@ describe.each([
     balance(1, 0);
     open();
     const warning = screen.getByText('forgetWalletPage.stillHaveFunds');
+    expect(
+      screen.getByText('forgetWalletPage.privateNotesBackupWarning')
+    ).toBeInTheDocument();
     expect(screen.queryByText('start.eraseFundsWarning')).toBeNull();
     const forget = screen.getByRole('button', { name: 'buttons.forget' });
     const footer = forget.closest('footer');
@@ -217,6 +220,12 @@ describe.each([
     open();
     expect(screen.queryByText('forgetWalletPage.stillHaveFunds')).toBeNull();
     const warning = screen.getByText('start.eraseFundsWarning');
+    const privateNotesWarning = screen.getByText(
+      'forgetWalletPage.privateNotesBackupWarning'
+    );
+    expect(privateNotesWarning).toBeInTheDocument();
+    expect(privateNotesWarning.parentElement).toBe(warning.parentElement);
+    expect(warning.parentElement).toHaveClass('flex-col');
     expect(screen.queryByLabelText('Inactive empty seed display')).toBeNull();
     const footer = screen
       .getByRole('button', { name: 'buttons.forget' })
@@ -240,6 +249,9 @@ describe.each([
     open();
     expect(screen.queryByText('forgetWalletPage.stillHaveFunds')).toBeNull();
     expect(screen.getByText('start.eraseFundsWarning')).toBeInTheDocument();
+    expect(
+      screen.getByText('forgetWalletPage.privateNotesBackupWarning')
+    ).toBeInTheDocument();
     expect(screen.queryByLabelText('Inactive empty seed display')).toBeNull();
   });
 

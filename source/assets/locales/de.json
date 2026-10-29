@@ -1231,7 +1231,8 @@
     "removalFailed": "Die Wallet konnte nicht entfernt werden. Bitte versuchen Sie es erneut.",
     "importedAccountsWont": "Importierte Konten werden nicht mit Ihrer ursprünglichen Pali-Konto-Wiederherstellungsphrase verknüpft",
     "stillHaveFunds": "Sie haben noch Guthaben in Ihrer Wallet!",
-    "saveProperly": "Speichern Sie diese Seed-Phrase ordnungsgemäß, damit Sie diese Wallet in Zukunft importieren können."
+    "saveProperly": "Speichern Sie diese Seed-Phrase ordnungsgemäß, damit Sie diese Wallet in Zukunft importieren können.",
+    "privateNotesBackupWarning": "Wenn du private Notizen hast, sichere sie separat. Generierte private Notizen können nicht mit deiner Wiederherstellungsphrase wiederhergestellt werden."
   },
   "walletSeedPhrasePage": {
     "keepSeedPhrase": "Halten Sie Ihre Seed-Phrase geheim!",

@@ -1231,7 +1231,8 @@
     "removalFailed": "The wallet could not be removed. Please try again.",
     "importedAccountsWont": "Imported accounts won't link to your initial Pali account Secret Recovery Phrase",
     "stillHaveFunds": "You still have funds in your wallet!",
-    "saveProperly": "Save this seed phrase properly, so you can import this wallet in the future."
+    "saveProperly": "Save this seed phrase properly, so you can import this wallet in the future.",
+    "privateNotesBackupWarning": "If you have private notes, back them up separately. Generated private notes cannot be restored from your recovery phrase."
   },
   "walletSeedPhrasePage": {
     "keepSeedPhrase": "Keep your seed phrase secret!",

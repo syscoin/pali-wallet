@@ -172,12 +172,15 @@ const ForgetWalletView = () => {
               </Form.Item>
 
               <Card type="info">
-                <div className="flex flex-col justify-start items-start">
+                <div className="flex flex-col items-start justify-start gap-2">
                   <p className="text-brand-yellowInfo text-sm font-normal text-left">
                     {t('forgetWalletPage.stillHaveFunds')}
                   </p>
                   <p className="text-white text-sm font-normal text-left">
                     {t('forgetWalletPage.saveProperly')}
+                  </p>
+                  <p className="text-white text-sm font-normal text-left">
+                    {t('forgetWalletPage.privateNotesBackupWarning')}
                   </p>
                 </div>
               </Card>
@@ -185,9 +188,14 @@ const ForgetWalletView = () => {
           )}
           {!hasAccountFunds && (
             <Card type="info">
-              <p className="text-white text-sm font-normal text-left">
-                {t('start.eraseFundsWarning')}
-              </p>
+              <div className="flex flex-col items-start justify-start gap-2">
+                <p className="text-white text-sm font-normal text-left">
+                  {t('start.eraseFundsWarning')}
+                </p>
+                <p className="text-white text-sm font-normal text-left">
+                  {t('forgetWalletPage.privateNotesBackupWarning')}
+                </p>
+              </div>
             </Card>
           )}
         </Form>
