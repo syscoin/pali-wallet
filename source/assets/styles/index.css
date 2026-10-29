@@ -577,3 +577,7 @@ input[type='number']::-webkit-inner-spin-button {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+
+.faucet-title > h2 {
+  max-height: min(8rem, 34dvh) !important;
+}

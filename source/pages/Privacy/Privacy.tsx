@@ -52,6 +52,12 @@ function PoolData({
         className="text-sm font-medium text-white"
       >
         {t('privacy.poolData')}
+        {' · '}
+        {
+          (PRIVACY_POOLS.find((pool) => pool.id === poolId) || { amount: '' })
+            .amount
+        }{' '}
+        ETH
       </h2>
       <div
         role="status"

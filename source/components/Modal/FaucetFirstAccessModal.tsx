@@ -36,6 +36,7 @@ export const FaucetFirstAccessModal = ({
     <DialogPrimitive show onClose={onClose}>
       <CenterPanel padded={false} scroll={false} className="flex flex-col">
         <DialogHeader
+          className="faucet-title"
           title={t('faucet.firstAccessTitle', {
             token: currentNetworkData?.token,
             network: currentNetworkData?.network,
