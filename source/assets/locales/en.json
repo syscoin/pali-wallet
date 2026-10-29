@@ -423,6 +423,7 @@
     "feeRateNormal": "Fee rate {{value}} {{currency}}/vbyte is higher than normal.",
     "send": "SEND",
     "insufficientFunds": "Insufficient funds",
+    "maxBalanceReviewRequired": "Balance changed or could not be verified. Review the amount and try again.",
     "insufficientFundsForGas": "Insufficient funds to cover gas fees",
     "maxUnavailablePendingTx": "MAX is unavailable while you have a pending transaction. Please wait for it to confirm.",
     "networkCatchingUp": "The network is still updating your previous transaction. Please try again shortly.",

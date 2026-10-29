@@ -423,6 +423,7 @@
     "feeRateNormal": "수수료율 {{value}} {{currency}}/vbyte가 정상보다 높습니다.",
     "send": "보내기",
     "insufficientFunds": "잔액 부족",
+    "maxBalanceReviewRequired": "잔액이 변경되었거나 확인할 수 없습니다. 금액을 확인하고 다시 시도하세요.",
     "insufficientFundsForGas": "가스 수수료를 충당할 잔액이 부족합니다",
     "maxUnavailablePendingTx": "대기 중인 거래가 있어 MAX를 사용할 수 없습니다. 확인될 때까지 기다려 주세요.",
     "networkCatchingUp": "네트워크에서 이전 거래를 업데이트하고 있습니다. 잠시 후 다시 시도해 주세요.",

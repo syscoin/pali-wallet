@@ -423,6 +423,7 @@
     "feeRateNormal": "手数料率 {{value}} {{currency}}/vbyte が通常より高くなっています。",
     "send": "送信",
     "insufficientFunds": "残高不足",
+    "maxBalanceReviewRequired": "残高が変更されたか確認できませんでした。金額を確認して、もう一度お試しください。",
     "insufficientFundsForGas": "ガス料金を支払うための残高が不足しています",
     "maxUnavailablePendingTx": "保留中のトランザクションがあるためMAXは利用できません。確認されるまでお待ちください。",
     "networkCatchingUp": "ネットワークが前のトランザクションを更新しています。しばらくしてから再試行してください。",

@@ -423,6 +423,7 @@
     "feeRateNormal": "费率 {{value}} {{currency}}/vbyte 高于正常值。",
     "send": "发送",
     "insufficientFunds": "余额不足",
+    "maxBalanceReviewRequired": "余额已变化或无法验证。请核对金额后重试。",
     "insufficientFundsForGas": "余额不足以支付燃料费用",
     "maxUnavailablePendingTx": "在有待确认的交易时无法使用MAX。请等待交易确认。",
     "networkCatchingUp": "网络仍在更新您的上一笔交易。请稍后重试。",

@@ -15,6 +15,10 @@ import { SendConfirm } from 'pages/Send/Confirm';
 
 let mockEIP1559 = true;
 let mockRefreshedBalance = '100';
+let mockRefreshFails = false;
+let mockRefreshDeferred: ReturnType<typeof deferred> | undefined;
+let mockRerender: (() => void) | undefined;
+const mockAlertError = jest.fn();
 const mockEmitter = jest.fn();
 const mockAuth = {
   isUnlocked: true,
@@ -73,7 +77,7 @@ jest.mock('react-i18next', () => ({
 }));
 jest.mock('hooks/index', () => ({
   useUtils: () => ({
-    alert: { error: jest.fn(), success: jest.fn(), info: jest.fn() },
+    alert: { error: mockAlertError, success: jest.fn(), info: jest.fn() },
     navigate: jest.fn(),
     useCopyClipboard: () => [false, jest.fn()],
   }),
@@ -177,6 +181,10 @@ beforeEach(() => {
   mockLocation.key += '-next';
   mockEIP1559 = true;
   mockRefreshedBalance = '100';
+  mockRefreshFails = false;
+  mockRefreshDeferred = undefined;
+  mockRerender = undefined;
+  mockScope.network = 'synthetic-network';
   mockState.vault.accounts.HDAccount[0].balances.ethereum = '100';
   mockLocation.state.tx.amount = '1';
   mockLocation.state.tx.isMax = false;
@@ -214,7 +222,10 @@ function prepare(quoteCount = 1) {
       return quotes[nextQuote++].promise;
     if (method === 'getTxGasLimit') return Promise.resolve(21000);
     if (method === 'refreshActiveAccountBalances')
-      return Promise.resolve({ nativeBalance: mockRefreshedBalance });
+      return mockRefreshFails
+        ? Promise.reject(new Error('Synthetic balance read failure'))
+        : mockRefreshDeferred?.promise ||
+            Promise.resolve({ nativeBalance: mockRefreshedBalance });
     if (method === 'getRecommendedGasPrice')
       return Promise.resolve('3000000000');
     if (method === 'sendAndSaveEthTransaction')
@@ -225,7 +236,8 @@ function prepare(quoteCount = 1) {
       );
     throw new Error(`Unexpected controller call: ${path.join('.')}`);
   });
-  render(<SendConfirm />);
+  const rendered = render(<SendConfirm />);
+  mockRerender = () => rendered.rerender(<SendConfirm />);
   return quotes;
 }
 const edit = () => screen.getByRole('button', { name: 'send.editFee' });
@@ -394,15 +406,97 @@ it('does not advertise gross MAX while its initial quote is pending or failed', 
   expect(submissionCalls()).toHaveLength(0);
 });
 
-it('continues refreshing the balance at submission instead of sending a stale displayed estimate', async () => {
+it.each([
+  [false, '100'],
+  [false, '101'],
+  [true, '100'],
+  [true, '101'],
+] as const)(
+  'keeps the reviewed native MAX when legacy=%s and refreshed balance=%s',
+  async (legacy, refreshedBalance) => {
+    await ready(true, { legacy });
+    const reviewed = headline();
+    mockRefreshedBalance = refreshedBalance;
+    const tx = await captureRefusedSubmission();
+    expect(formatEther(tx.value) + ' TSYS').toBe(reviewed);
+  }
+);
+
+it.each([false, true])(
+  'rejects native MAX before submission when refreshed balance cannot afford the reviewed amount (legacy=%s)',
+  async (legacy) => {
+    await ready(true, { legacy });
+    expect(headline()).toBe('99.999936 TSYS');
+    mockRefreshedBalance = '99';
+    await act(async () =>
+      fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }))
+    );
+    await waitFor(() =>
+      expect(mockAlertError).toHaveBeenCalledWith(
+        'send.maxBalanceReviewRequired'
+      )
+    );
+    expect(submissionCalls()).toHaveLength(0);
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'buttons.confirm' })
+      ).toBeEnabled()
+    );
+  }
+);
+
+it('does not submit a MAX when the fee mode changes during refresh', async () => {
   await ready(true);
-  expect(headline()).toBe('99.999936 TSYS');
-  mockRefreshedBalance = '99';
-  const tx = await captureRefusedSubmission();
-  expect(formatEther(tx.value)).toBe('98.999936');
-  expect(
-    mockEmitter.mock.calls.filter(
-      ([method]) => method.at(-1) === 'refreshActiveAccountBalances'
-    )
-  ).toHaveLength(1);
+  mockRefreshDeferred = deferred();
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
+  await waitFor(() =>
+    expect(
+      mockEmitter.mock.calls.some(
+        ([path]) => path.at(-1) === 'refreshActiveAccountBalances'
+      )
+    ).toBe(true)
+  );
+  mockEIP1559 = false;
+  await act(async () => mockRerender!());
+  await act(async () => mockRefreshDeferred!.resolve({ nativeBalance: '100' }));
+  expect(submissionCalls()).toHaveLength(0);
+  expect(mockAlertError).not.toHaveBeenCalledWith(
+    'send.maxBalanceReviewRequired'
+  );
 });
+
+it('does not submit a MAX after the account or network scope changes during refresh', async () => {
+  await ready(true);
+  mockRefreshDeferred = deferred();
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
+  await waitFor(() =>
+    expect(
+      mockEmitter.mock.calls.some(
+        ([path]) => path.at(-1) === 'refreshActiveAccountBalances'
+      )
+    ).toBe(true)
+  );
+  mockScope.network = 'different-network';
+  await act(async () => mockRefreshDeferred!.resolve({ nativeBalance: '100' }));
+  expect(submissionCalls()).toHaveLength(0);
+  expect(mockAlertError).not.toHaveBeenCalledWith(
+    'send.maxBalanceReviewRequired'
+  );
+});
+
+it.each([false, true])(
+  'rejects native MAX before submission when its fresh balance cannot be read (legacy=%s)',
+  async (legacy) => {
+    await ready(true, { legacy });
+    mockRefreshFails = true;
+    await act(async () =>
+      fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }))
+    );
+    await waitFor(() =>
+      expect(mockAlertError).toHaveBeenCalledWith(
+        'send.maxBalanceReviewRequired'
+      )
+    );
+    expect(submissionCalls()).toHaveLength(0);
+  }
+);

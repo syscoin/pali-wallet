@@ -423,6 +423,7 @@
     "feeRateNormal": "A taxa de {{value}} {{currency}}/vbyte é mais alta que o normal.",
     "send": "ENVIAR",
     "insufficientFunds": "Fundos insuficientes",
+    "maxBalanceReviewRequired": "O saldo mudou ou não pôde ser verificado. Confira o valor e tente novamente.",
     "insufficientFundsForGas": "Fundos insuficientes para cobrir as taxas de gás",
     "maxUnavailablePendingTx": "MAX não está disponível enquanto você tiver uma transação pendente. Aguarde a confirmação.",
     "networkCatchingUp": "A rede ainda está atualizando sua transação anterior. Tente novamente em instantes.",

@@ -905,6 +905,25 @@ export const SendConfirm = () => {
     }
     const submitEmitter = submission.controllerEmitter;
     const approvedFeeSelection = feeSelectionRef.current;
+    // Capture the exact amount the user reviewed before any asynchronous reads.
+    const nativeMax =
+      !isBitcoinBased &&
+      !isSmartAccountSend &&
+      !basicTxValues?.token &&
+      basicTxValues?.isMax &&
+      (!basicTxValues?.transactionType ||
+        basicTxValues.transactionType === TransactionType.NATIVE_ETH);
+    let approvedNativeMax: BigNumber | undefined;
+    if (nativeMax) {
+      if (renderedFeeSelection !== approvedFeeSelection) return;
+      try {
+        approvedNativeMax = parseUnits(String(displayedAmount), 'ether');
+        if (approvedNativeMax.lte(0)) throw new Error('Invalid MAX review');
+      } catch {
+        alert.error(t('send.maxBalanceReviewRequired'));
+        return;
+      }
+    }
     const assertSmartAccountConfirmationCurrent = () => {
       if (
         !submission.isActive() ||
@@ -940,6 +959,15 @@ export const SendConfirm = () => {
       balance = refreshedBalance.nativeBalance || '0';
     } catch (error) {
       console.error('Failed to refresh balance before confirming:', error);
+      if (nativeMax) {
+        if (submission.isActive())
+          alert.error(t('send.maxBalanceReviewRequired'));
+        return;
+      }
+    }
+    if (nativeMax) {
+      if (!submission.isActive()) return;
+      if (feeSelectionRef.current !== approvedFeeSelection) return;
     }
 
     if (activeAccount && Number(balance) >= 0) {
@@ -1188,14 +1216,26 @@ export const SendConfirm = () => {
                     9
                   )
                 : BigNumber.from(gasPrice);
-              value = nativeMaxSendValue(balance, maxSendGasLimit, feeRate);
-
-              // Ensure value doesn't go negative
-              if (value.lt(0)) {
-                alert.error(t('send.insufficientFundsForGas'));
+              // The refreshed balance is an affordability check, not a new
+              // authorization to change the recipient's reviewed amount.
+              const affordableMax = nativeMaxSendValue(
+                balance,
+                maxSendGasLimit,
+                feeRate
+              );
+              if (
+                !submission.isActive() ||
+                feeSelectionRef.current !== approvedFeeSelection
+              ) {
                 setLoading(false);
                 return;
               }
+              if (!approvedNativeMax || affordableMax.lt(approvedNativeMax)) {
+                alert.error(t('send.maxBalanceReviewRequired'));
+                setLoading(false);
+                return;
+              }
+              value = approvedNativeMax;
             }
 
             if (isEIP1559Compatible === false) {

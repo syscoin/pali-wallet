@@ -423,6 +423,7 @@
     "feeRateNormal": "Die Gebührenrate {{value}} {{currency}}/vByte ist höher als normal.",
     "send": "SENDEN",
     "insufficientFunds": "Unzureichende Mittel",
+    "maxBalanceReviewRequired": "Der Kontostand hat sich geändert oder konnte nicht geprüft werden. Prüfe den Betrag und versuche es erneut.",
     "insufficientFundsForGas": "Unzureichende Mittel zur Deckung der Gasgebühren",
     "maxUnavailablePendingTx": "MAX ist nicht verfügbar, solange eine Transaktion aussteht. Bitte warten Sie, bis sie bestätigt wurde.",
     "networkCatchingUp": "Das Netzwerk aktualisiert noch Ihre vorherige Transaktion. Bitte versuchen Sie es in Kürze erneut.",
