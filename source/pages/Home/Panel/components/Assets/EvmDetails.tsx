@@ -26,12 +26,9 @@ import {
 } from 'utils/navigationState';
 import { navigateBack } from 'utils/navigationState';
 import { getNftQuantity } from 'utils/nftQuantity';
-import {
-  buildExplorerUrl,
-  hasExplorer,
-  selectExplorerNetwork,
-} from 'utils/strings';
+import { buildExplorerUrl, selectExplorerUrl } from 'utils/strings';
 import { getTokenTypeBadgeColor } from 'utils/tokens';
+import { ExplorerLink } from 'pages/Home/Panel/components/ExplorerLink';
 
 import { AssetMarketLinks, CoinGeckoLogo } from './AssetMarketLinks';
 
@@ -48,7 +45,7 @@ export const EvmAssetDetails = ({
 }: IEvmAssetDetailsProps) => {
   const { controllerEmitter } = useController();
   const location = useLocation();
-  const explorerNetwork = useSelector(selectExplorerNetwork);
+  const explorer = useSelector(selectExplorerUrl);
   const { activeAccount, accountAssets, activeNetwork, accounts } = useSelector(
     (state: RootState) => state.vault
   );
@@ -590,25 +587,19 @@ export const EvmAssetDetails = ({
             </div>
           )}
 
-          {hasExplorer(explorerNetwork) && (
+          {explorer && (
             <div className="w-full flex items-center justify-center text-brand-white hover:text-brand-deepPink100 mb-6">
-              <a
+              <ExplorerLink
                 href={buildExplorerUrl(
-                  explorerNetwork.explorer || explorerNetwork.url,
+                  explorer,
                   'token',
                   currentAsset.contractAddress
                 )}
-                target="_blank"
-                className="flex items-center justify-center gap-x-2"
-                rel="noreferrer"
               >
-                <ExternalLinkIcon size={16} />
-                <span className="font-normal font-poppins underline text-sm">
-                  {isNft
-                    ? t('home.viewCollectionOnExplorer')
-                    : t('home.viewOnExplorer')}
-                </span>
-              </a>
+                {isNft
+                  ? t('home.viewCollectionOnExplorer')
+                  : t('home.viewOnExplorer')}
+              </ExplorerLink>
             </div>
           )}
         </div>

@@ -45,11 +45,7 @@ import {
   getWalletNavigationScope,
 } from 'utils/index';
 import { isErc721BalanceAvailable } from 'utils/nftQuantity';
-import {
-  buildExplorerUrl,
-  hasExplorer,
-  selectExplorerNetwork,
-} from 'utils/strings';
+import { buildExplorerUrl, selectExplorerUrl } from 'utils/strings';
 import { getDefaultGasLimit } from 'utils/transactionUtils';
 import { isValidEthereumAddress } from 'utils/validations';
 
@@ -174,7 +170,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
   const isCurrentForm = useSendPreparationGuard(scopeKey, location.pathname);
   const beginAddressCopy = useRequestScope(scopeKey);
 
-  const explorerNetwork = useSelector(selectExplorerNetwork);
+  const explorer = useSelector(selectExplorerUrl);
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
@@ -943,17 +939,13 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
 
   const openAccountInExplorer = useCallback(() => {
     const accountAddress = activeAccount?.address;
-    if (!accountAddress || !hasExplorer(explorerNetwork)) return;
+    if (!accountAddress || !explorer) return;
 
     window.open(
-      buildExplorerUrl(
-        explorerNetwork.explorer || explorerNetwork.url,
-        'address',
-        accountAddress
-      ),
+      buildExplorerUrl(explorer, 'address', accountAddress),
       '_blank'
     );
-  }, [activeAccount?.address, isBitcoinBased, explorerNetwork]);
+  }, [activeAccount?.address, isBitcoinBased, explorer]);
 
   const handleMaxButton = () => {
     // Only work with verified balances - no fallbacks
@@ -1305,7 +1297,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
     <div className="w-full md:max-w-sm">
       <div className="flex flex-col items-center justify-center">
         <AccountExplorerAvatar
-          available={hasExplorer(explorerNetwork)}
+          available={Boolean(explorer)}
           onClick={openAccountInExplorer}
         />
         <div className="flex min-w-0 max-w-full flex-wrap gap-1 justify-center items-center">

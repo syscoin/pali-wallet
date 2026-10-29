@@ -17,7 +17,7 @@ import type {
   ITransactionInfoUtxo,
 } from 'types/useTransactionsInfo';
 import { getWalletNavigationScope } from 'utils/navigationState';
-import { buildExplorerUrl, selectExplorerNetwork } from 'utils/strings';
+import { buildExplorerUrl, selectExplorerUrl } from 'utils/strings';
 
 import { EvmTransactionsList } from './components/Transactions/EVM/EvmList';
 import { UtxoTransactionsList } from './components/Transactions/UTXO/UtxoList';
@@ -28,7 +28,7 @@ export const TransactionsPanel = () => {
     useSelector(selectActiveAccountWithTransactions);
   const { activeNetwork, isBitcoinBased, isSwitchingAccount } =
     useSelector(selectVaultCoreData);
-  const explorerNetwork = useSelector(selectExplorerNetwork);
+  const explorer = useSelector(selectExplorerUrl);
   const hasHistoryStatus = isBitcoinBased || Boolean(activeNetwork.apiUrl);
   const historyMayBeIncomplete = !isBitcoinBased && !activeNetwork.apiUrl;
 
@@ -155,11 +155,7 @@ export const TransactionsPanel = () => {
 
   // ✅ OPTIMIZED: Memoized explorer component with proper dependencies
   const OpenTransactionExplorer = useMemo(() => {
-    if (
-      !activeAccount ||
-      (!isBitcoinBased && explorerNetwork.explorerExplicitlyAbsent)
-    )
-      return null;
+    if (!activeAccount || !explorer) return null;
 
     const { xpub, address: userAddress, isImported } = activeAccount as any;
 
@@ -185,11 +181,7 @@ export const TransactionsPanel = () => {
 
     const openExplorer = () =>
       window.open(
-        buildExplorerUrl(
-          explorerNetwork.explorer || explorerNetwork.url,
-          pathSegment,
-          identifier
-        ),
+        buildExplorerUrl(explorer, pathSegment, identifier),
         '_blank'
       );
 
@@ -205,7 +197,7 @@ export const TransactionsPanel = () => {
         </button>
       </div>
     );
-  }, [activeAccount, explorerNetwork, isBitcoinBased, t]);
+  }, [activeAccount, explorer, isBitcoinBased, t]);
 
   // Configured explorer history, like UTXO, requires an actual scoped read.
   // Networks without an explorer retain the existing RPC settle behavior.

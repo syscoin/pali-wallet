@@ -25,11 +25,7 @@ import {
   createBrowsingNavigationContext,
   navigateWithContext,
 } from 'utils/navigationState';
-import {
-  buildExplorerUrl,
-  hasExplorer,
-  selectExplorerNetwork,
-} from 'utils/strings';
+import { buildExplorerUrl, selectExplorerUrl } from 'utils/strings';
 
 // A dialog/route may disappear while the device RPC is still pending. Keep
 // this latch at renderer-module scope so a new AccountHeader cannot start a
@@ -51,7 +47,7 @@ export const AccountHeader: React.FC = () => {
   const isBitcoinBased = useSelector(
     (state: RootState) => state.vault.isBitcoinBased
   );
-  const explorerNetwork = useSelector(selectExplorerNetwork);
+  const explorer = useSelector(selectExplorerUrl);
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
@@ -170,7 +166,7 @@ export const AccountHeader: React.FC = () => {
     const accountAddress = currentAccount?.address;
     const xpub = (currentAccount as any)?.xpub as string | undefined;
     const isImported = Boolean((currentAccount as any)?.isImported);
-    if (!accountAddress || !hasExplorer(explorerNetwork)) return;
+    if (!accountAddress || !explorer) return;
 
     // Prefer XPUB page for UTXO accounts when available, including imported extended-key accounts.
     // Fall back to /address for:
@@ -192,20 +188,13 @@ export const AccountHeader: React.FC = () => {
         : xpub!
       : accountAddress;
 
-    window.open(
-      buildExplorerUrl(
-        explorerNetwork.explorer || explorerNetwork.url,
-        pathSegment,
-        identifier
-      ),
-      '_blank'
-    );
+    window.open(buildExplorerUrl(explorer, pathSegment, identifier), '_blank');
   }, [
     currentAccount?.address,
     (currentAccount as any)?.xpub,
     (currentAccount as any)?.isImported,
     isBitcoinBased,
-    explorerNetwork,
+    explorer,
   ]);
 
   const handleVerifyAddress = useCallback(async () => {
@@ -305,7 +294,7 @@ export const AccountHeader: React.FC = () => {
       />
       <div className="flex min-w-0 flex-1 ml-[15px] items-center text-brand-white">
         <AccountExplorerAvatar
-          available={hasExplorer(explorerNetwork)}
+          available={Boolean(explorer)}
           onClick={openAccountInExplorer}
           header
         />

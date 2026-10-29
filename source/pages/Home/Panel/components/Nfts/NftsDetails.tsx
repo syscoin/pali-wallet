@@ -23,11 +23,8 @@ import { ellipsis } from 'utils/index';
 import { NFT_FALLBACK_IMAGE } from 'utils/nftFallback';
 import { getNftQuantity } from 'utils/nftQuantity';
 import { normalizeNftTokenId } from 'utils/nftTokenId';
-import {
-  buildExplorerUrl,
-  hasExplorer,
-  selectExplorerNetwork,
-} from 'utils/strings';
+import { ExplorerLink } from 'pages/Home/Panel/components/ExplorerLink';
+import { buildExplorerUrl, selectExplorerUrl } from 'utils/strings';
 
 const renderNftSection = (title: string, children: React.ReactNode) => (
   <div
@@ -64,14 +61,13 @@ const renderCopyRow = (
 
 export const NftsDetails = ({ nftData }: { nftData: any }) => {
   const { controllerEmitter } = useController();
-  const explorerNetwork = useSelector(selectExplorerNetwork);
+  const explorer = useSelector(selectExplorerUrl);
   const { activeNetwork, activeAccount, accounts } = useSelector(
     (state: RootState) => state.vault
   );
 
   // Use proper selector for assets
   const currentAccount = accounts[activeAccount.type]?.[activeAccount.id];
-  const explorer = explorerNetwork.explorer || explorerNetwork.url;
 
   const { alert } = useUtils();
 
@@ -260,6 +256,7 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
   };
 
   const openCollectionOnExplorer = () =>
+    explorer &&
     window.open(
       buildExplorerUrl(explorer, 'token', currentNft.contractAddress),
       '_blank',
@@ -361,7 +358,7 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
                         </button>
                       ))}
                     </div>
-                    {hasMoreTokens && hasExplorer(explorerNetwork) && (
+                    {hasMoreTokens && explorer && (
                       <button
                         type="button"
                         onClick={openCollectionOnExplorer}
@@ -555,23 +552,17 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
             )}
           </div>
 
-          {hasExplorer(explorerNetwork) && (
+          {explorer && (
             <div className="w-full flex items-center justify-center text-brand-white hover:text-brand-deepPink100 my-6">
-              <a
+              <ExplorerLink
                 href={buildExplorerUrl(
                   explorer,
                   'address',
                   currentNft.contractAddress
                 )}
-                target="_blank"
-                className="flex items-center justify-center gap-x-2"
-                rel="noreferrer"
               >
-                <ExternalLinkIcon size={16} />
-                <span className="font-normal font-poppins underline text-sm">
-                  {t('home.viewOnExplorer')}
-                </span>
-              </a>
+                {t('home.viewOnExplorer')}
+              </ExplorerLink>
             </div>
           )}
         </div>

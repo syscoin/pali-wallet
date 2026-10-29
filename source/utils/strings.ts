@@ -28,6 +28,11 @@ export function hasExplorer(network: {
   );
 }
 
+export function selectExplorerUrl(state: RootState) {
+  const network = selectExplorerNetwork(state);
+  return hasExplorer(network) ? network.explorer || network.url : undefined;
+}
+
 export function adjustUrl(url: string) {
   return url?.endsWith('/') ? url : `${url}/`;
 }

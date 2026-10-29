@@ -1,4 +1,8 @@
-import { hasExplorer, selectExplorerNetwork } from './strings';
+import {
+  hasExplorer,
+  selectExplorerNetwork,
+  selectExplorerUrl,
+} from './strings';
 import { networkRegistrationFingerprint } from './networkRegistration';
 
 it('distinguishes a blank new EVM explorer from a legacy or explicitly identical URL', () => {
@@ -54,4 +58,33 @@ it('uses saved explorer metadata only for the same active EVM chain and RPC', ()
   state.vaultGlobal.networks.ethereum[987] = saved;
   state.vaultGlobal.activeSlip44 = 57;
   expect(selectExplorerNetwork(state)).toBe(active);
+});
+
+it('selects the admitted explorer or legacy RPC fallback while preserving absence and UTXO', () => {
+  const network = {
+    kind: 'ethereum',
+    chainId: 123,
+    slip44: 60,
+    url: 'https://rpc.invalid/',
+    explorer: undefined,
+  };
+  const state: any = {
+    vault: { activeNetwork: network },
+    vaultGlobal: { activeSlip44: 60, networks: { ethereum: {} } },
+  };
+  expect(selectExplorerUrl(state)).toBe(network.url);
+  state.vault.activeNetwork = {
+    ...network,
+    explorer: network.url,
+    explorerExplicitlyAbsent: true,
+  };
+  expect(selectExplorerUrl(state)).toBeUndefined();
+  state.vault.activeNetwork = { ...network, explorer: network.url };
+  expect(selectExplorerUrl(state)).toBe(network.url);
+  state.vault.activeNetwork = {
+    ...network,
+    kind: 'syscoin',
+    explorerExplicitlyAbsent: true,
+  };
+  expect(selectExplorerUrl(state)).toBe(network.url);
 });

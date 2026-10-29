@@ -9,11 +9,7 @@ import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { formatUnits } from 'utils/ethersV6Compat';
 import { getWalletNavigationScope } from 'utils/navigationState';
-import {
-  buildExplorerUrl,
-  hasExplorer,
-  selectExplorerNetwork,
-} from 'utils/strings';
+import { buildExplorerUrl, selectExplorerUrl } from 'utils/strings';
 import {
   previewCancelTransaction,
   previewSpeedUpTransaction,
@@ -60,10 +56,7 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
   const { t } = useTranslation();
   const { navigate } = useUtils();
   // Select only what we need to minimize re-renders
-  const explorerNetwork = useSelector(selectExplorerNetwork);
-  const explorer = hasExplorer(explorerNetwork)
-    ? explorerNetwork.explorer || explorerNetwork.url
-    : undefined;
+  const explorer = useSelector(selectExplorerUrl);
   const currency = useSelector(
     (state: RootState) => state.vault.activeNetwork.currency
   );

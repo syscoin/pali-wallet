@@ -37,6 +37,7 @@ import { navigateBack } from 'utils/navigationState';
 import { retryableFetch } from 'utils/retryableFetch';
 import { isSptBalanceAvailable } from 'utils/sptBalance';
 import { buildExplorerUrl } from 'utils/strings';
+import { ExplorerLink } from 'pages/Home/Panel/components/ExplorerLink';
 import { translateTransactionLabel } from 'utils/transactionDisplay';
 
 import { AssetMarketLinks, CoinGeckoLogo } from './AssetMarketLinks';
@@ -584,44 +585,32 @@ export const SyscoinAssetDetails = ({
 
         <div className="w-full flex flex-col items-center justify-center gap-y-2 mb-6">
           <div className="text-brand-white hover:text-brand-deepPink100">
-            <a
+            <ExplorerLink
               href={buildExplorerUrl(
                 activeNetwork.explorer || activeNetwork.url,
                 'asset',
                 id
               )}
-              target="_blank"
-              className="flex items-center justify-center gap-x-2"
-              rel="noreferrer"
             >
-              <ExternalLinkIcon size={16} />
-              <span className="font-normal font-poppins underline text-sm">
-                {t('home.viewOnNamedExplorer', { explorer: 'Syscoin' })}
-              </span>
-            </a>
+              {t('home.viewOnNamedExplorer', { explorer: 'Syscoin' })}
+            </ExplorerLink>
           </div>
           {hasContract && nevmNetwork && (
             <div className="text-brand-white hover:text-brand-deepPink100">
-              <a
+              <ExplorerLink
                 href={buildExplorerUrl(
                   nevmNetwork.explorer,
                   'token',
                   asset.contract
                 )}
-                target="_blank"
-                className="flex items-center justify-center gap-x-2"
-                rel="noreferrer"
               >
-                <ExternalLinkIcon size={16} />
-                <span className="font-normal font-poppins underline text-sm">
-                  {t('home.viewOnNamedExplorer', {
-                    explorer:
-                      nevmNetwork === SYSCOIN_MAINNET_NETWORK
-                        ? 'NEVM'
-                        : 'Tanenbaum',
-                  })}
-                </span>
-              </a>
+                {t('home.viewOnNamedExplorer', {
+                  explorer:
+                    nevmNetwork === SYSCOIN_MAINNET_NETWORK
+                      ? 'NEVM'
+                      : 'Tanenbaum',
+                })}
+              </ExplorerLink>
             </div>
           )}
         </div>
