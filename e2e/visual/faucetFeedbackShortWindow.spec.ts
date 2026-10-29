@@ -234,10 +234,12 @@ for (const viewport of [
             await owner.evaluate((el) => el.scrollWidth <= el.clientWidth)
           ).toBe(true);
         }
-        const action = page.getByRole('button', {
-          name: next === 'success' ? en.faucet.Close : en.faucet.grabTokens,
-          exact: true,
-        });
+        const action = page
+          .locator('[data-page-action-footer]')
+          .getByRole('button', {
+            name: next === 'success' ? en.faucet.Close : en.faucet.grabTokens,
+            exact: true,
+          });
         // Start from a known, different control so reaching the footer requires
         // a real keyboard traversal, rather than retaining pointer focus.
         const back = page.getByRole('button', {
