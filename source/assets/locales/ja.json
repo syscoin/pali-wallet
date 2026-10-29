@@ -1184,6 +1184,7 @@
     "cancelFeeUnavailable": "キャンセル手数料を確認できません。もう一度お試しください。",
     "speedUpFeePreview": "ネットワーク手数料を確認中…",
     "speedUpFeeConsent": "最大ネットワーク手数料 {{fee}} {{currency}} でこの取引を高速化しますか？",
+    "speedUpAmountWouldChange": "この取引を高速化する前に、このアカウントに資金を追加してください。元の金額は変更されません。",
     "speedUpFeeUnavailable": "手数料を確認できませんでした。もう一度お試しください。"
   },
   "switchNetworkPage": {

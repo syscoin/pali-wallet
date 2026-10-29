@@ -1184,6 +1184,7 @@
     "cancelFeeUnavailable": "No se pudo comprobar la comisión de cancelación. Inténtalo de nuevo.",
     "speedUpFeePreview": "Comprobando la comisión de red…",
     "speedUpFeeConsent": "¿Acelerar esta transacción con una comisión de red máxima de {{fee}} {{currency}}?",
+    "speedUpAmountWouldChange": "Añade fondos a esta cuenta antes de acelerar la transacción. El importe original no cambiará.",
     "speedUpFeeUnavailable": "No se pudo comprobar la comisión. Inténtalo de nuevo."
   },
   "switchNetworkPage": {

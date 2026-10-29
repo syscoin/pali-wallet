@@ -85,6 +85,38 @@ diff --git a/node_modules/@sidhujag/sysweb3-keyring/cjs/transactions/ethereum.js
                      if (transactionResponse) {
                          return {
                              isCanceled: true,
+@@ -1366,7 +1404,6 @@
+                 newGasValues.maxPriorityFeePerGas.gt(newGasValues.maxFeePerGas))
+                 throw new Error('Invalid replacement fee');
+             const maximumFee = newGasValues.gasLimit.mul(isLegacy ? newGasValues.gasPrice : newGasValues.maxFeePerGas);
+-            let adjustedValue = txValue;
+             if (isLikelyMaxSend && txValue.add(maximumFee).gt(currentBalance)) {
+                 if (isContractCall) {
+                     console.error('[SpeedUp] Cannot adjust value for contract call - rejecting speedup');
+@@ -1377,16 +1414,19 @@
+                         message: 'Cannot speed up a likely max-send contract call; value cannot be adjusted to fit new gas',
+                     };
+                 }
+-                adjustedValue = currentBalance.gt(maximumFee)
+-                    ? currentBalance.sub(maximumFee)
+-                    : ethers_v6_1.Zero;
++                return {
++                    isSpeedUp: false,
++                    error: true,
++                    code: 'REPLACEMENT_VALUE_WOULD_CHANGE',
++                    message: 'Add funds before speeding up this transaction; the original amount will not be changed',
++                };
+             }
+             const txWithEditedFee = {
+                 chainId: activeNetwork.chainId,
+                 from: tx.from,
+                 to: tx.to,
+                 nonce: tx.nonce,
+-                value: adjustedValue,
++                value: txValue,
+                 data: txData,
+                 gasLimit: newGasValues.gasLimit,
+                 ...(tx.accessList != null ? { accessList: tx.accessList } : {}),
 diff --git a/node_modules/@sidhujag/sysweb3-keyring/cjs/transactions/evm-local-signer.js b/node_modules/@sidhujag/sysweb3-keyring/cjs/transactions/evm-local-signer.js
 --- a/node_modules/@sidhujag/sysweb3-keyring/cjs/transactions/evm-local-signer.js
 +++ b/node_modules/@sidhujag/sysweb3-keyring/cjs/transactions/evm-local-signer.js

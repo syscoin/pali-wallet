@@ -776,14 +776,26 @@ export const previewSpeedUpTransaction = async (
     signerAddress,
     { previewOnly: true }
   )) as
-    | { error?: boolean; isSpeedUp?: boolean; maximumFee?: string }
+    | {
+        code?: string;
+        error?: boolean;
+        isSpeedUp?: boolean;
+        maximumFee?: string;
+      }
     | undefined;
   const current = getWalletNavigationScope();
   const maximumFee = response?.maximumFee;
   if (
     current.account !== scope.account ||
     current.network !== scope.network ||
-    store.getState().vault.isBitcoinBased ||
+    store.getState().vault.isBitcoinBased
+  )
+    throw new Error('Transaction context changed');
+  if (response?.code === 'REPLACEMENT_VALUE_WOULD_CHANGE')
+    throw Object.assign(new Error('Replacement would change the amount'), {
+      code: 'REPLACEMENT_VALUE_WOULD_CHANGE',
+    });
+  if (
     response?.error === true ||
     response?.isSpeedUp !== false ||
     typeof maximumFee !== 'string' ||
@@ -833,12 +845,25 @@ const speedUpTransaction = async (
       return;
     }
 
-    const { isSpeedUp, error, transaction } = response as {
+    const { isSpeedUp, error, transaction, code } = response as {
+      code?: string;
       error: boolean;
       isSpeedUp: boolean;
       transaction: IEvmTransactionResponse;
     };
 
+    if (code === 'REPLACEMENT_VALUE_WOULD_CHANGE') {
+      const latest = getWalletNavigationScope();
+      if (
+        walletScope &&
+        (latest.account !== walletScope.account ||
+          latest.network !== walletScope.network ||
+          Number(store.getState().vault.activeNetwork?.chainId) !== chainId)
+      )
+        return;
+      alert.error(t('transactions.speedUpAmountWouldChange'));
+      return;
+    }
     if (!isSpeedUp && error) {
       alert.warning(t('transactions.transactionNotFoundOrConfirmed'));
       return;

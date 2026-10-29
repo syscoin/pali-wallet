@@ -1184,6 +1184,7 @@
     "cancelFeeUnavailable": "Impossible de vérifier les frais d’annulation. Réessayez.",
     "speedUpFeePreview": "Vérification des frais de réseau…",
     "speedUpFeeConsent": "Accélérer cette transaction avec des frais de réseau maximum de {{fee}} {{currency}} ?",
+    "speedUpAmountWouldChange": "Ajoutez des fonds à ce compte avant d’accélérer la transaction. Le montant initial ne sera pas modifié.",
     "speedUpFeeUnavailable": "Impossible de vérifier les frais. Veuillez réessayer."
   },
   "switchNetworkPage": {

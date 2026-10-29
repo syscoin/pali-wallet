@@ -1528,4 +1528,84 @@ describe('published keyring account-scoped replacement signing', () => {
     expect(beforeBroadcast).not.toHaveBeenCalled();
     expect(provider.sendTransaction).not.toHaveBeenCalled();
   });
+
+  it.each([0, 2])(
+    'rejects a native near-max speed-up without changing the amount or signing (type %s)',
+    async (type) => {
+      state.activeAccountType = payer.type;
+      state.activeAccountId = payer.id;
+      const original = transaction({
+        type,
+        data: '0x',
+        value: BigNumber.from('997899000000000000'),
+        ...(type === 0
+          ? { gasPrice: BigNumber.from('100000000000') }
+          : {
+              maxFeePerGas: BigNumber.from('100000000000'),
+              maxPriorityFeePerGas: BigNumber.from('10000000000'),
+            }),
+      });
+      const hash = useOriginal(original);
+      provider.getBalance.mockResolvedValue(
+        BigNumber.from('1000000000000000000')
+      );
+      const expected = {
+        isSpeedUp: false,
+        error: true,
+        code: 'REPLACEMENT_VALUE_WOULD_CHANGE',
+      };
+      await expect(
+        sdk.sendTransactionWithEditedFee(hash, type === 0, {
+          previewOnly: true,
+        })
+      ).resolves.toMatchObject(expected);
+      await expect(
+        sdk.sendTransactionWithEditedFee(hash, type === 0, {
+          approvedMaximumFee: '3024000000000000',
+        })
+      ).resolves.toMatchObject(expected);
+      expect(getKey).not.toHaveBeenCalled();
+      expect(sendLocalEvmTransaction).not.toHaveBeenCalled();
+      expect(provider.sendTransaction).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each([0, 2])(
+    'keeps the original native amount when an ample balance permits speed-up (type %s)',
+    async (type) => {
+      state.activeAccountType = payer.type;
+      state.activeAccountId = payer.id;
+      const original = transaction({
+        type,
+        data: '0x',
+        value: BigNumber.from('997899000000000000'),
+        ...(type === 0
+          ? { gasPrice: BigNumber.from('100000000000') }
+          : {
+              maxFeePerGas: BigNumber.from('100000000000'),
+              maxPriorityFeePerGas: BigNumber.from('10000000000'),
+            }),
+      });
+      const hash = useOriginal(original);
+      provider.getBalance.mockResolvedValue(
+        BigNumber.from('2000000000000000000')
+      );
+      const preview = await sdk.sendTransactionWithEditedFee(hash, type === 0, {
+        previewOnly: true,
+      });
+      expect(preview).toEqual({
+        isSpeedUp: false,
+        maximumFee: '3024000000000000',
+      });
+      await expect(
+        sdk.sendTransactionWithEditedFee(hash, type === 0, {
+          approvedMaximumFee: preview.maximumFee,
+        })
+      ).resolves.toMatchObject({ isSpeedUp: true });
+      const candidate = jest.mocked(sendLocalEvmTransaction).mock.calls[0][2];
+      expect(candidate.value.toString()).toBe('997899000000000000');
+      expect(candidate.to.toLowerCase()).toBe(TARGET);
+      expect(Number(candidate.nonce)).toBe(8);
+    }
+  );
 });

@@ -1184,6 +1184,7 @@
     "cancelFeeUnavailable": "Não foi possível verificar a taxa de cancelamento. Tente novamente.",
     "speedUpFeePreview": "Verificando a taxa de rede…",
     "speedUpFeeConsent": "Acelerar esta transação com uma taxa de rede máxima de {{fee}} {{currency}}?",
+    "speedUpAmountWouldChange": "Adicione fundos a esta conta antes de acelerar a transação. O valor original não será alterado.",
     "speedUpFeeUnavailable": "Não foi possível verificar a taxa. Tente novamente."
   },
   "switchNetworkPage": {

@@ -1184,6 +1184,7 @@
     "cancelFeeUnavailable": "Die Abbruchgebühr konnte nicht geprüft werden. Bitte erneut versuchen.",
     "speedUpFeePreview": "Netzwerkgebühr wird geprüft…",
     "speedUpFeeConsent": "Diese Transaktion mit einer maximalen Netzwerkgebühr von {{fee}} {{currency}} beschleunigen?",
+    "speedUpAmountWouldChange": "Füge diesem Konto Guthaben hinzu, bevor du die Transaktion beschleunigst. Der ursprüngliche Betrag bleibt unverändert.",
     "speedUpFeeUnavailable": "Die Gebühr konnte nicht geprüft werden. Bitte versuche es erneut."
   },
   "switchNetworkPage": {

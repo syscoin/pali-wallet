@@ -1184,6 +1184,7 @@
     "cancelFeeUnavailable": "Unable to check the cancellation fee. Please try again.",
     "speedUpFeePreview": "Checking the network fee…",
     "speedUpFeeConsent": "Speed up this transaction with a maximum network fee of {{fee}} {{currency}}?",
+    "speedUpAmountWouldChange": "Add funds to this account before speeding up this transaction. The original amount will not be changed.",
     "speedUpFeeUnavailable": "Unable to check the fee. Please try again."
   },
   "switchNetworkPage": {

@@ -1184,6 +1184,7 @@
     "cancelFeeUnavailable": "无法检查取消费用。请重试。",
     "speedUpFeePreview": "正在检查网络费用…",
     "speedUpFeeConsent": "是否以最高 {{fee}} {{currency}} 的网络费用加速此交易？",
+    "speedUpAmountWouldChange": "加速此交易前，请先向此账户充值。原始金额不会改变。",
     "speedUpFeeUnavailable": "无法检查费用。请重试。"
   },
   "switchNetworkPage": {

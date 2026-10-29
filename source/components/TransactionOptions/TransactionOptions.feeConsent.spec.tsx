@@ -40,6 +40,8 @@ const mockT = (key: string, values?: any) => {
       'Speed up this transaction with a maximum network fee of {{fee}} {{currency}}?',
     'transactions.speedUpFeeUnavailable':
       'Unable to check the fee. Please try again.',
+    'transactions.speedUpAmountWouldChange':
+      'Add funds to this account before speeding up this transaction. The original amount will not be changed.',
   };
   return (text[key] || key).replace(
     /{{(\w+)}}/g,
@@ -672,4 +674,79 @@ it('times out a cancellation quote and ignores its late result', async () => {
   await settleQuote(pending, { isCanceled: false, maximumFee: MAXIMUM_FEE });
   expect(screen.queryByRole('dialog')).toBeNull();
   expect(mockUpdate).not.toHaveBeenCalled();
+});
+
+it('shows the specific amount-preservation guidance when the speed-up preview would reduce the amount', async () => {
+  mockEmitter.mockResolvedValueOnce({
+    isSpeedUp: false,
+    error: true,
+    code: 'REPLACEMENT_VALUE_WOULD_CHANGE',
+  });
+  render(<Harness />);
+  await act(async () => openSpeedUp());
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(mockAlert.error).toHaveBeenCalledWith(
+    'Add funds to this account before speeding up this transaction. The original amount will not be changed.'
+  );
+  expect(mockUpdate).not.toHaveBeenCalled();
+  expect(mockEmitter).toHaveBeenCalledTimes(1);
+});
+
+it('shows amount-preservation guidance if the balance changes after fee approval', async () => {
+  mockEmitter.mockResolvedValueOnce(quote()).mockResolvedValueOnce({
+    isSpeedUp: false,
+    error: true,
+    code: 'REPLACEMENT_VALUE_WOULD_CHANGE',
+  });
+  render(<Harness />);
+  await act(async () => openSpeedUp());
+  await act(async () =>
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
+  );
+  expect(mockAlert.error).toHaveBeenCalledWith(
+    'Add funds to this account before speeding up this transaction. The original amount will not be changed.'
+  );
+  expect(mockAlert.success).not.toHaveBeenCalled();
+  expect(mockEmitter).toHaveBeenCalledTimes(2);
+});
+
+it('does not classify a stale amount-change preview as current', async () => {
+  const pending = deferred();
+  mockEmitter.mockReturnValueOnce(pending.promise);
+  const preview = previewSpeedUpTransaction(ORIGINAL, false, 1);
+  mockVault.activeNetwork.url = 'https://other-rpc.example';
+  pending.resolve({
+    isSpeedUp: false,
+    error: true,
+    code: 'REPLACEMENT_VALUE_WOULD_CHANGE',
+  });
+  await expect(preview).rejects.toThrow('Transaction context changed');
+});
+
+it('does not show amount guidance from a final response after the scope changes', async () => {
+  const pending = deferred();
+  const walletScope = getWalletNavigationScope();
+  mockEmitter.mockReturnValueOnce(pending.promise);
+  const operation = handleUpdateTransaction({
+    t: mockT,
+    updateData: {
+      alert: mockAlert,
+      chainId: 1,
+      isLegacy: false,
+      txHash: ORIGINAL,
+      updateType: UpdateTxAction.SpeedUp,
+      approvedMaximumFee: MAXIMUM_FEE,
+      walletScope,
+    },
+  });
+  mockVault.activeNetwork.url = 'https://other-rpc.example';
+  pending.resolve({
+    isSpeedUp: false,
+    error: true,
+    code: 'REPLACEMENT_VALUE_WOULD_CHANGE',
+  });
+  await operation;
+  expect(mockAlert.error).not.toHaveBeenCalled();
+  expect(mockAlert.warning).not.toHaveBeenCalled();
+  expect(mockAlert.success).not.toHaveBeenCalled();
 });

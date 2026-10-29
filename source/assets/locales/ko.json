@@ -1184,6 +1184,7 @@
     "cancelFeeUnavailable": "취소 수수료를 확인할 수 없습니다. 다시 시도하세요.",
     "speedUpFeePreview": "네트워크 수수료 확인 중…",
     "speedUpFeeConsent": "최대 네트워크 수수료 {{fee}} {{currency}}로 이 거래를 가속하시겠습니까?",
+    "speedUpAmountWouldChange": "이 거래의 속도를 높이기 전에 이 계정에 자금을 추가하세요. 원래 금액은 변경되지 않습니다.",
     "speedUpFeeUnavailable": "수수료를 확인할 수 없습니다. 다시 시도해 주세요."
   },
   "switchNetworkPage": {

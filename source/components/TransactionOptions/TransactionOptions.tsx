@@ -190,8 +190,14 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
         ),
         isButtonLoading: false,
       });
-    } catch {
-      fail();
+    } catch (error: any) {
+      if (error?.code === 'REPLACEMENT_VALUE_WOULD_CHANGE') {
+        if (!current()) return;
+        close();
+        alert.error(t('transactions.speedUpAmountWouldChange'));
+      } else {
+        fail();
+      }
     }
   };
 
