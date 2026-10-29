@@ -183,13 +183,20 @@ const ForgetWalletView = () => {
               </Card>
             </>
           )}
+          {!hasAccountFunds && (
+            <Card type="info">
+              <p className="text-white text-sm font-normal text-left">
+                {t('start.eraseFundsWarning')}
+              </p>
+            </Card>
+          )}
         </Form>
       </div>
 
       {/* Buttons container - pushed to bottom */}
       <PageActionFooter
-        className={hasAccountFunds ? 'funded-forget-footer' : undefined}
-        includeInFlow={hasAccountFunds}
+        className="funded-forget-footer"
+        includeInFlow
         error={submissionError}
       >
         <div className="flex gap-x-8 justify-between md:gap-x-40">
