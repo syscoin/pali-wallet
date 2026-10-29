@@ -39,7 +39,12 @@ jest.mock('@sidhujag/sysweb3-keyring', () => ({
 }));
 jest.mock('react-router-dom', () => ({ useLocation: () => mockLocation }));
 jest.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({
+    t: (key: string, options?: { networkType?: string }) =>
+      key === 'settings.searchNetworksPlaceholder'
+        ? `${key}:${options?.networkType}`
+        : key,
+  }),
 }));
 jest.mock('hooks/index', () => ({
   useQueryData: () => mockProposal,
@@ -494,7 +499,15 @@ it('keeps the pristine Name native control and existing affix/dropdown structure
   expect(name).toHaveAttribute('id', 'rpc_label');
   expect(name).toHaveAttribute('aria-required', 'true');
   expect(name).not.toHaveAttribute('aria-invalid', 'true');
-  expect(name).not.toHaveAttribute('aria-describedby');
+  expect(name).toHaveAttribute('placeholder', 'settings.label');
+  expect(name).toHaveAttribute('aria-describedby', 'rpc_label_extra');
+  expect(name).toHaveAccessibleDescription(
+    'settings.searchNetworksPlaceholder:EVM'
+  );
+  expect(document.querySelectorAll('#rpc_label_extra')).toHaveLength(1);
+  expect(document.getElementById('rpc_label_extra')).toHaveTextContent(
+    'settings.searchNetworksPlaceholder:EVM'
+  );
   expect(document.querySelectorAll('#rpc_label')).toHaveLength(1);
   const affix = name.closest('.ant-input-affix-wrapper');
   expect(affix).not.toBeNull();
@@ -506,6 +519,19 @@ it('keeps the pristine Name native control and existing affix/dropdown structure
   expect(anchor).not.toHaveAttribute('aria-required');
   expect(anchor.querySelector('.ant-form-item-feedback-icon')).toBeNull();
   await expectNameFeedbackScopeUnchanged(before);
+});
+
+it('updates the associated search hint when the network family changes', async () => {
+  const { user, name } = await openNameFeedbackForm();
+  expect(name).toHaveAccessibleDescription(
+    'settings.searchNetworksPlaceholder:EVM'
+  );
+  await user.click(screen.getByRole('switch'));
+  expect(name).toHaveAccessibleDescription(
+    'settings.searchNetworksPlaceholder:UTXO'
+  );
+  expect(name).toHaveAccessibleName('settings.label');
+  expect(name).toHaveAttribute('placeholder', 'settings.label');
 });
 
 it.each(['', '   ', '\u00a0\u00a0'])(
@@ -520,8 +546,13 @@ it.each(['', '   ', '\u00a0\u00a0'])(
     ).toBeVisible();
     await waitFor(() => expect(name).toHaveAttribute('aria-invalid', 'true'));
     expect(name).toHaveValue(value);
-    expect(name).toHaveAttribute('aria-describedby', 'rpc_label_help');
-    expect(name).toHaveAccessibleDescription('settings.networkNameRequired');
+    expect(name).toHaveAttribute(
+      'aria-describedby',
+      'rpc_label_help rpc_label_extra'
+    );
+    expect(name).toHaveAccessibleDescription(
+      'settings.networkNameRequired settings.searchNetworksPlaceholder:EVM'
+    );
     expect(document.querySelectorAll('#rpc_label_help')).toHaveLength(1);
     expect(document.getElementById('rpc_label_help')).toHaveTextContent(
       'settings.networkNameRequired'
@@ -545,7 +576,7 @@ it('clears stale Name feedback after ordinary correction while preserving focus 
   await user.type(name, '  Personal sandbox  ');
   await waitFor(() => {
     expect(name).not.toHaveAttribute('aria-invalid', 'true');
-    expect(name).not.toHaveAttribute('aria-describedby');
+    expect(name).toHaveAttribute('aria-describedby', 'rpc_label_extra');
     expect(
       screen.queryByText('settings.networkNameRequired')
     ).not.toBeInTheDocument();
@@ -553,7 +584,9 @@ it('clears stale Name feedback after ordinary correction while preserving focus 
   expect(name).toHaveFocus();
   expect(name).toHaveValue('  Personal sandbox  ');
   expect(name).toHaveAttribute('aria-required', 'true');
-  expect(name).toHaveAccessibleDescription('');
+  expect(name).toHaveAccessibleDescription(
+    'settings.searchNetworksPlaceholder:EVM'
+  );
   expect(document.querySelectorAll('#rpc_label')).toHaveLength(1);
   expect(name.closest('.ant-input-affix-wrapper')).not.toBeNull();
   const anchor = document.getElementById('custom-rpc-network-suggestions')!

@@ -1462,6 +1462,9 @@ const CustomRPCView = () => {
             <Form.Item
               name="label"
               className="w-full"
+              extra={t('settings.searchNetworksPlaceholder', {
+                networkType: isSyscoinRpc ? 'UTXO' : 'EVM',
+              })}
               hasFeedback={NETWORK_NAME_FEEDBACK}
               rules={[
                 {
@@ -1485,10 +1488,7 @@ const CustomRPCView = () => {
                 aria-controls={suggestionsId}
                 aria-activedescendant={activeSuggestionId}
                 disabled={isInputDisableByEditMode}
-                placeholder={`${t('settings.label')} - ${t(
-                  'settings.searchNetworksPlaceholder',
-                  { networkType: isSyscoinRpc ? 'UTXO' : 'EVM' }
-                )}`}
+                placeholder={t('settings.label')}
                 className={NETWORK_INPUT_CLASS}
                 onChange={(e) => {
                   invalidatePendingChecks();
