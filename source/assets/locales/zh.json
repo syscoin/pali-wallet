@@ -1,9 +1,4 @@
 {
-  "providerDefault": {
-    "defaultEnabled": "已成功将 Pali 设为默认钱包！",
-    "otherWalletInUse": "正在使用 MetaMask，Pali 已停用。",
-    "setPaliDefault": "将 Pali 设为默认钱包！"
-  },
   "transactionDisplay": {
     "blockHash": "区块哈希",
     "blockNumber": "区块编号",
@@ -625,7 +620,6 @@
     "watchOnly": "仅观察",
     "publicIdentifierInput": "地址 / XPUB / 描述符",
     "usingAnotherWallet": "您正在使用其他钱包。",
-    "defaultWalletStatus": "是默认钱包",
     "otherDefaultWalletHelpTitle": "如何将其他钱包设为默认？",
     "otherDefaultWalletHelp": "部分钱包在设置中提供此选项。浏览器会将最后安装或启用的钱包用作默认钱包。",
     "paliProviderEnabled": "Pali 的以太坊提供程序已启用",
@@ -802,7 +796,6 @@
     "watchOnlyNoPrivateKey": "这是一个观察账户。您可以接收资金并查看活动，但此钱包中没有该账户的私钥。",
     "seeOnExplorer": "在浏览器中查看",
     "manageEthProvider": "管理ETH提供商",
-    "windowObjectWasSet": "默认钱包已更新",
     "missingApiKey": "缺少/无效的API密钥 - 请在URL中添加您的API密钥（例如：?apikey=您的密钥）",
     "apiFormatError": "API响应不正确。请检查URL并确保它支持Etherscan/Blockscout API格式。",
     "apiConnectionError": "无法验证API。请检查您的连接并再试一次。",

@@ -44,8 +44,6 @@ jest.mock('react-i18next', () => ({
           '{{wallet}}',
           values?.wallet || ''
         );
-      if (key.startsWith('providerDefault.'))
-        return messages.providerDefault[key.split('.')[1]];
       return key;
     },
   }),

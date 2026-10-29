@@ -14,6 +14,7 @@ import { useLocation } from 'react-router-dom';
 
 import { TransactionType } from '../../types/transactions';
 import { PaliWhiteSmallIconSvg, ArrowDownSvg } from 'components/Icon/Icon';
+import { AccountExplorerAvatar } from 'components/AccountExplorerAvatar';
 import { Button, Icon, Tooltip } from 'components/index';
 import { ToastActionFooter } from 'components/ToastActionFooter';
 import { useUtils } from 'hooks/index';
@@ -1300,26 +1301,13 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
     isVerifyingERC20 ||
     isVerifyingTokenId;
 
-  const explorerAvailable = hasExplorer(explorerNetwork);
-  const explorerLabel =
-    t('home.viewAccountOnExplorer') +
-    (explorerAvailable ? '' : ` - ${t('settings.unavailable')}`);
-
   return (
     <div className="w-full md:max-w-sm">
       <div className="flex flex-col items-center justify-center">
-        <Tooltip
-          content={explorerAvailable ? t('home.viewOnExplorer') : explorerLabel}
-        >
-          <button
-            type="button"
-            aria-label={explorerLabel}
-            disabled={!explorerAvailable}
-            className="add-identicon ml-1 mr-2 my-2 cursor-pointer transition-all duration-200 hover:scale-105 hover:opacity-80 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue"
-            onClick={openAccountInExplorer}
-            title={explorerLabel}
-          />
-        </Tooltip>
+        <AccountExplorerAvatar
+          available={hasExplorer(explorerNetwork)}
+          onClick={openAccountInExplorer}
+        />
         <div className="flex min-w-0 max-w-full flex-wrap gap-1 justify-center items-center">
           <span className="shrink-0">
             <PaliWhiteSmallIconSvg />

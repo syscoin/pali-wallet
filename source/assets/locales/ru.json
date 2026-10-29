@@ -1,9 +1,4 @@
 {
-  "providerDefault": {
-    "defaultEnabled": "Pali установлен кошельком по умолчанию!",
-    "otherWalletInUse": "Используется MetaMask, а Pali отключён.",
-    "setPaliDefault": "Сделать Pali кошельком по умолчанию!"
-  },
   "transactionDisplay": {
     "blockHash": "Хеш блока",
     "blockNumber": "Номер блока",
@@ -625,7 +620,6 @@
     "watchOnly": "Только просмотр",
     "publicIdentifierInput": "Адрес / XPUB / Дескриптор",
     "usingAnotherWallet": "Вы используете другой кошелёк.",
-    "defaultWalletStatus": "— кошелёк по умолчанию",
     "otherDefaultWalletHelpTitle": "Как выбрать другой кошелёк по умолчанию?",
     "otherDefaultWalletHelp": "В некоторых кошельках это можно изменить в настройках. Браузер использует по умолчанию последний установленный или активированный кошелёк.",
     "paliProviderEnabled": "Провайдер Ethereum Pali включён",
@@ -802,7 +796,6 @@
     "watchOnlyNoPrivateKey": "Это аккаунт только для наблюдения. Вы можете получать средства и просматривать операции, но в этом кошельке нет приватного ключа для этого аккаунта.",
     "seeOnExplorer": "Посмотреть в проводнике",
     "manageEthProvider": "УПРАВЛЕНИЕ ETH-ПРОВАЙДЕРОМ",
-    "windowObjectWasSet": "Кошелёк по умолчанию обновлён",
     "missingApiKey": "Отсутствует/Недействительный API-ключ - Пожалуйста, добавьте ваш API-ключ к URL (например, ?apikey=ВАШ_КЛЮЧ)",
     "apiFormatError": "API не отвечает корректно. Пожалуйста, проверьте URL и убедитесь, что он поддерживает формат API Etherscan/Blockscout.",
     "apiConnectionError": "Не удается проверить API. Пожалуйста, проверьте соединение и попробуйте снова.",

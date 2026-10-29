@@ -1,9 +1,4 @@
 {
-  "providerDefault": {
-    "defaultEnabled": "Pali を既定のウォレットに設定しました！",
-    "otherWalletInUse": "MetaMask が使用されており、Pali は無効になっています。",
-    "setPaliDefault": "Pali を既定のウォレットに設定！"
-  },
   "transactionDisplay": {
     "blockHash": "ブロックハッシュ",
     "blockNumber": "ブロック番号",
@@ -625,7 +620,6 @@
     "watchOnly": "ウォッチ専用",
     "publicIdentifierInput": "アドレス / XPUB / ディスクリプター",
     "usingAnotherWallet": "別のウォレットを使用しています。",
-    "defaultWalletStatus": "が既定のウォレットです",
     "otherDefaultWalletHelpTitle": "別のウォレットを既定にするには？",
     "otherDefaultWalletHelp": "一部のウォレットでは設定で変更できます。ブラウザーは最後にインストールまたは有効化したウォレットを既定として使用します。",
     "paliProviderEnabled": "PaliのEthereumプロバイダーは有効です",
@@ -802,7 +796,6 @@
     "watchOnlyNoPrivateKey": "これはウォッチ専用アカウントです。資金の受け取りと履歴の確認はできますが、このウォレットにはこのアカウントの秘密鍵がありません。",
     "seeOnExplorer": "エクスプローラーで表示",
     "manageEthProvider": "ETHプロバイダーを管理",
-    "windowObjectWasSet": "既定のウォレットを更新しました",
     "missingApiKey": "APIキーが見つからない/無効 - URLにAPIキーを追加してください（例：?apikey=あなたのキー）",
     "apiFormatError": "APIが正しく応答しません。URLを確認し、Etherscan/Blockscout API形式をサポートしていることを確認してください。",
     "apiConnectionError": "APIを検証できません。接続を確認してもう一度お試しください。",

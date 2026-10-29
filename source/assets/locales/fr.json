@@ -1,9 +1,4 @@
 {
-  "providerDefault": {
-    "defaultEnabled": "Pali a été défini comme portefeuille par défaut !",
-    "otherWalletInUse": "MetaMask est utilisé et Pali est désactivé.",
-    "setPaliDefault": "Définir Pali comme portefeuille par défaut !"
-  },
   "transactionDisplay": {
     "blockHash": "Hash du bloc",
     "blockNumber": "Numéro du bloc",
@@ -625,7 +620,6 @@
     "watchOnly": "Lecture seule",
     "publicIdentifierInput": "Adresse / XPUB / Descripteur",
     "usingAnotherWallet": "Vous utilisez un autre portefeuille.",
-    "defaultWalletStatus": "est le portefeuille par défaut",
     "otherDefaultWalletHelpTitle": "Comment choisir un autre portefeuille par défaut ?",
     "otherDefaultWalletHelp": "Certains portefeuilles proposent cette option dans leurs réglages. Le navigateur utilise par défaut le dernier portefeuille installé ou activé.",
     "paliProviderEnabled": "Le fournisseur Ethereum de Pali est activé",
@@ -802,7 +796,6 @@
     "watchOnlyNoPrivateKey": "Ce compte est en lecture seule. Vous pouvez recevoir des fonds et consulter son activité, mais ce portefeuille ne possède pas de clé privée pour ce compte.",
     "seeOnExplorer": "Voir sur l'explorateur",
     "manageEthProvider": "GÉRER LE FOURNISSEUR ETH",
-    "windowObjectWasSet": "Portefeuille par défaut mis à jour",
     "missingApiKey": "Clé API Manquante/Invalide - Veuillez ajouter votre clé API à l'URL (ex., ?apikey=VOTRE_CLE)",
     "apiFormatError": "L'API ne répond pas correctement. Veuillez vérifier l'URL et vous assurer qu'elle prend en charge le format d'API Etherscan/Blockscout.",
     "apiConnectionError": "Impossible de valider l'API. Veuillez vérifier votre connexion et réessayer.",

@@ -11,6 +11,7 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
+import { AccountExplorerAvatar } from 'components/AccountExplorerAvatar';
 import { IconButton, Icon, Tooltip, ConfirmationModal } from 'components/index';
 import SkeletonLoader from 'components/Loader/SkeletonLoader';
 import { useUtils } from 'hooks/index';
@@ -286,11 +287,6 @@ export const AccountHeader: React.FC = () => {
     alert.info(t('home.addressCopied'), undefined, isCurrentCopy);
   }, [copied, alert, t, isCurrentCopy]);
 
-  const explorerAvailable = hasExplorer(explorerNetwork);
-  const explorerLabel =
-    t('home.viewAccountOnExplorer') +
-    (explorerAvailable ? '' : ` - ${t('settings.unavailable')}`);
-
   return (
     <div className="relative z-[55] flex items-center justify-between p-1 bg-bkg-3">
       <ConfirmationModal
@@ -308,19 +304,11 @@ export const AccountHeader: React.FC = () => {
         allowCloseWhileLoading
       />
       <div className="flex min-w-0 flex-1 ml-[15px] items-center text-brand-white">
-        <Tooltip
-          content={explorerAvailable ? t('home.viewOnExplorer') : explorerLabel}
-          childrenClassName="shrink-0"
-        >
-          <button
-            type="button"
-            aria-label={explorerLabel}
-            disabled={!explorerAvailable}
-            className="add-identicon ml-1 mr-2 my-2 cursor-pointer transition-all duration-200 hover:scale-105 hover:opacity-80 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue500"
-            onClick={openAccountInExplorer}
-            title={explorerLabel}
-          />
-        </Tooltip>
+        <AccountExplorerAvatar
+          available={hasExplorer(explorerNetwork)}
+          onClick={openAccountInExplorer}
+          header
+        />
 
         <div className="min-w-0 flex-1 items-center justify-center px-1 text-brand-white">
           {isSwitchInProgress ? (

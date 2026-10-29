@@ -132,6 +132,9 @@ jest.mock('components/Icon/Icon', () => ({
   PaliWhiteSmallIconSvg: () => null,
   ArrowDownSvg: () => null,
 }));
+jest.mock('components/Tooltip', () => ({
+  Tooltip: ({ children }: any) => <>{children}</>,
+}));
 jest.mock('components/index', () => ({
   Button: ({ children, variant, fullWidth, loading, icon, ...props }: any) => (
     <button

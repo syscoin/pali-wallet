@@ -1,9 +1,4 @@
 {
-  "providerDefault": {
-    "defaultEnabled": "Pali was successfully set as the default wallet!",
-    "otherWalletInUse": "MetaMask is in use and Pali is disabled.",
-    "setPaliDefault": "Set Pali as default wallet!"
-  },
   "transactionDisplay": {
     "blockHash": "Block Hash",
     "blockNumber": "Block Number",
@@ -625,7 +620,6 @@
     "watchOnly": "Watch-only",
     "publicIdentifierInput": "Address / XPUB / Descriptor",
     "usingAnotherWallet": "You are using another wallet.",
-    "defaultWalletStatus": "is the default wallet",
     "otherDefaultWalletHelpTitle": "How do I make another wallet the default?",
     "otherDefaultWalletHelp": "Some wallets offer this in their settings. The browser uses the last wallet installed or activated as the default.",
     "paliProviderEnabled": "Pali’s Ethereum provider is enabled",
@@ -802,7 +796,6 @@
     "watchOnlyNoPrivateKey": "This is a watch-only account. You can receive funds and view activity, but this wallet has no private key for this account.",
     "seeOnExplorer": "See on explorer",
     "manageEthProvider": "MANAGE ETH PROVIDER",
-    "windowObjectWasSet": "Default wallet updated",
     "missingApiKey": "Missing/Invalid API Key - Please add your API key to the URL (e.g., ?apikey=YOUR_KEY)",
     "apiFormatError": "API does not respond correctly. Please check the URL and ensure it supports Etherscan/Blockscout API format.",
     "apiConnectionError": "Unable to validate API. Please check your connection and try again.",
