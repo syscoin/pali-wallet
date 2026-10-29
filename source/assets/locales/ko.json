@@ -1281,7 +1281,8 @@
     "youCanGet": "24시간마다 지갑 주소당 {{quantity}} {{token}}을 받을 수 있습니다.",
     "firstAccessTitle": "수도꼭지로 ${{token}}을 받아 {{network}} 네트워크를 경험해 보세요!",
     "firstAccessDescription": "지갑 주소당 24시간마다 {{token}}을 받을 수 있습니다.",
-    "grabTokens": "수도꼭지로 이동"
+    "grabTokens": "수도꼭지로 이동",
+    "rateLimited": "수도꼭지에서 요청을 제한하고 있습니다. 자세한 내용은 수도꼭지를 확인하세요."
   },
   "nftDetails": {
     "information": "NFT 정보",

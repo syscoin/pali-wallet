@@ -1281,7 +1281,8 @@
     "youCanGet": "您每24小时可以获得 {{quantity}} {{token}} 每钱包地址。",
     "firstAccessTitle": "使用我们的水龙头获取 ${{token}} 开始体验 {{network}} 网络！",
     "firstAccessDescription": "您可以每24小时每个钱包地址获得{{token}}。",
-    "grabTokens": "前往水龙头"
+    "grabTokens": "前往水龙头",
+    "rateLimited": "水龙头正在限制请求。请访问水龙头了解更多信息。"
   },
   "nftDetails": {
     "information": "NFT 信息",

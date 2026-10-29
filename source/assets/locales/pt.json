@@ -1281,7 +1281,8 @@
     "youCanGet": "Você pode obter {{quantity}} {{token}} por endereço de carteira a cada 24 horas.",
     "firstAccessTitle": "Pegue ${{token}} com nossa torneira para começar a experienciar a rede {{network}}!",
     "firstAccessDescription": "Você pode obter {{token}} por endereço de carteira a cada 24 horas.",
-    "grabTokens": "Ir para o Faucet"
+    "grabTokens": "Ir para o Faucet",
+    "rateLimited": "O faucet está limitando as solicitações. Acesse o faucet para mais informações."
   },
   "nftDetails": {
     "information": "Informações do NFT",

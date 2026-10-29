@@ -1281,7 +1281,8 @@
     "youCanGet": "You can get {{quantity}} {{token}} per wallet address every 24h.",
     "firstAccessTitle": "Grab ${{token}} with our faucet to begin experiencing the {{network}} network!",
     "firstAccessDescription": "You can get {{token}} per wallet address every 24h.",
-    "grabTokens": "Go to Faucet"
+    "grabTokens": "Go to Faucet",
+    "rateLimited": "The faucet is rate limiting requests. Visit the faucet for more information."
   },
   "nftDetails": {
     "information": "NFT Information",

@@ -1281,7 +1281,8 @@
     "youCanGet": "Sie können {{quantity}} {{token}} pro Wallet-Adresse alle 24 Stunden erhalten.",
     "firstAccessTitle": "Holen Sie sich ${{token}} mit unserem Faucet, um das {{network}} Netzwerk zu erleben!",
     "firstAccessDescription": "Sie können {{token}} pro Wallet-Adresse alle 24 Stunden erhalten.",
-    "grabTokens": "Zum Faucet gehen"
+    "grabTokens": "Zum Faucet gehen",
+    "rateLimited": "Der Faucet begrenzt Anfragen. Weitere Informationen finden Sie beim Faucet."
   },
   "nftDetails": {
     "information": "NFT-Informationen",

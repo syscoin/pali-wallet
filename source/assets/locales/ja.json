@@ -1281,7 +1281,8 @@
     "youCanGet": "24時間ごとにウォレットアドレスあたり {{quantity}} {{token}} を取得できます。",
     "firstAccessTitle": "フォーセットで ${{token}} を取得して {{network}} ネットワークの体験を始めましょう！",
     "firstAccessDescription": "ウォレットアドレスごとに24時間ごとに{{token}}を取得できます。",
-    "grabTokens": "フォーセットに移動"
+    "grabTokens": "フォーセットに移動",
+    "rateLimited": "フォーセットはリクエストを制限しています。詳しくはフォーセットをご確認ください。"
   },
   "nftDetails": {
     "information": "NFT 情報",
