@@ -15,7 +15,7 @@ export const FaucetAccessModal = () => {
     activeNetwork: { chainId, kind },
   } = useSelector((state: RootState) => state.vault);
 
-  const currentNetworkData = faucetNetworkData?.[chainId];
+  const currentNetworkData = faucetNetworkData[chainId];
 
   return (
     <button
