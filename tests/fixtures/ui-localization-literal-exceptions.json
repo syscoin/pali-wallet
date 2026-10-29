@@ -174,8 +174,8 @@
       "file": "source/pages/Privacy/Privacy.tsx",
       "kind": "jsx-text",
       "text": "ETH",
-      "count": 1,
-      "reason": "Canonical asset ticker for the fixed Ethereum mainnet pool denominations; the symbol is not translated user guidance."
+      "count": 2,
+      "reason": "Canonical asset ticker in the Ethereum mainnet pool selector and selected-pool status; the symbol is not translated user guidance."
     },
     {
       "file": "source/pages/Privacy/PrivateDeposit.tsx",
