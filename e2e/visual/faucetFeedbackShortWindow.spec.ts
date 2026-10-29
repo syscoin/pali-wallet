@@ -32,20 +32,56 @@ async function fullyExposed(target: Locator) {
     const text = document.createRange();
     text.selectNodeContents(element);
     const fragments = Array.from(text.getClientRects());
+    // A Range may extend beyond its paragraph line box with normal font
+    // metrics. Check the rendered text against actual clipping edges instead.
+    const clipBounds = [];
+    for (
+      let ancestor: Element | null = element;
+      ancestor;
+      ancestor = ancestor.parentElement
+    ) {
+      const style = getComputedStyle(ancestor);
+      const clips = (value: string) =>
+        ['hidden', 'clip', 'auto', 'scroll'].includes(value);
+      if (clips(style.overflowX) || clips(style.overflowY)) {
+        const rect = ancestor.getBoundingClientRect();
+        clipBounds.push({
+          left: rect.left + ancestor.clientLeft,
+          top: rect.top + ancestor.clientTop,
+          right: rect.left + ancestor.clientLeft + ancestor.clientWidth,
+          bottom: rect.top + ancestor.clientTop + ancestor.clientHeight,
+          x: clips(style.overflowX),
+          y: clips(style.overflowY),
+        });
+      }
+    }
     return (
       box.width > 0 &&
       box.height > 0 &&
       box.top >= 0 &&
       box.left >= 0 &&
       box.right <= innerWidth &&
+      box.bottom <= innerHeight &&
       box.bottom <= (footer?.top ?? innerHeight) &&
       fragments.length > 0 &&
       fragments.every(
         (fragment) =>
           fragment.left >= box.left - 0.5 &&
           fragment.right <= box.right + 0.5 &&
-          fragment.top >= box.top - 0.5 &&
-          fragment.bottom <= box.bottom + 0.5
+          fragment.left >= 0 &&
+          fragment.right <= innerWidth &&
+          fragment.top >= 0 &&
+          fragment.bottom <= innerHeight &&
+          fragment.bottom <= (footer?.top ?? innerHeight) &&
+          clipBounds.every(
+            (clip) =>
+              (!clip.x ||
+                (fragment.left >= clip.left - 0.5 &&
+                  fragment.right <= clip.right + 0.5)) &&
+              (!clip.y ||
+                (fragment.top >= clip.top - 0.5 &&
+                  fragment.bottom <= clip.bottom + 0.5))
+          )
       ) &&
       points.every(([x, y]) => {
         const hit = document.elementFromPoint(x, y);
