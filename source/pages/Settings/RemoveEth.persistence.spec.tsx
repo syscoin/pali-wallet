@@ -40,13 +40,6 @@ jest.mock('react-i18next', () => ({
         ? jest.requireActual('../../assets/locales/en.json').settings[
             key.split('.')[1]
           ]
-        : key === 'settings.setWalletAsDefault'
-        ? jest
-            .requireActual('../../assets/locales/en.json')
-            .settings.setWalletAsDefault.replace(
-              '{{wallet}}',
-              values?.wallet || ''
-            )
         : key,
   }),
 }));

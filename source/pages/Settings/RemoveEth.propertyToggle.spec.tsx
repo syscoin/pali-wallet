@@ -39,11 +39,6 @@ jest.mock('react-i18next', () => ({
         key === 'settings.paliProviderDisabled'
       )
         return messages.settings[key.split('.')[1]];
-      if (key === 'settings.setWalletAsDefault')
-        return messages.settings.setWalletAsDefault.replace(
-          '{{wallet}}',
-          values?.wallet || ''
-        );
       return key;
     },
   }),
