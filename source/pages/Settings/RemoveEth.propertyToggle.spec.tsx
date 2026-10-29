@@ -30,7 +30,7 @@ jest.mock('react-router-dom', () => ({
 }));
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string, values?: { wallet?: string }) => {
+    t: (key: string) => {
       const messages = jest.requireActual('../../assets/locales/en.json');
       if (
         key === 'settings.disablePaliProvider' ||

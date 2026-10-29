@@ -60,12 +60,9 @@ const ExternalWatchAsset = () => {
     );
   };
 
-  // Get user's preferred currency and active network
+  // Get user's preferred currency and explorer metadata
   const { fiat } = useSelector((state: RootState) => state.price);
   const explorerNetwork = useSelector(selectExplorerNetwork);
-  const activeNetwork = useSelector(
-    (state: RootState) => state.vault.activeNetwork
-  );
   const userCurrency = (fiat.asset || 'usd').toLowerCase();
   const currencySymbol = getSymbolFromCurrency(userCurrency.toUpperCase());
 

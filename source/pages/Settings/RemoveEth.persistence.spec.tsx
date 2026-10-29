@@ -34,7 +34,7 @@ jest.mock('hooks/useController', () => ({
 }));
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string, values?: { wallet?: string }) =>
+    t: (key: string) =>
       key === 'settings.disablePaliProvider' ||
       key === 'settings.enablePaliProvider'
         ? jest.requireActual('../../assets/locales/en.json').settings[
