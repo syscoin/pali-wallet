@@ -71,6 +71,17 @@
   position: static;
 }
 
+@media (min-height: 500px) {
+  [data-navigation-scroll='wallet-layout']
+    .page-content:has(.funded-forget-footer) {
+    padding-top: 1.5rem;
+  }
+
+  [data-navigation-scroll='wallet-layout'] .funded-forget-footer {
+    padding-top: 0.5rem;
+  }
+}
+
 /* Long service-provided feedback must wrap without widening the wallet. */
 .faucet-feedback p {
   overflow-wrap: anywhere;
