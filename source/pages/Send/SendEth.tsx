@@ -44,7 +44,11 @@ import {
   getWalletNavigationScope,
 } from 'utils/index';
 import { isErc721BalanceAvailable } from 'utils/nftQuantity';
-import { buildExplorerUrl } from 'utils/strings';
+import {
+  buildExplorerUrl,
+  hasExplorer,
+  selectExplorerNetwork,
+} from 'utils/strings';
 import { getDefaultGasLimit } from 'utils/transactionUtils';
 import { isValidEthereumAddress } from 'utils/validations';
 
@@ -169,6 +173,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
   const isCurrentForm = useSendPreparationGuard(scopeKey, location.pathname);
   const beginAddressCopy = useRequestScope(scopeKey);
 
+  const explorerNetwork = useSelector(selectExplorerNetwork);
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
@@ -937,22 +942,17 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
 
   const openAccountInExplorer = useCallback(() => {
     const accountAddress = activeAccount?.address;
-    if (!accountAddress) return;
+    if (!accountAddress || !hasExplorer(explorerNetwork)) return;
 
     window.open(
       buildExplorerUrl(
-        activeNetwork.explorer || activeNetwork.url,
+        explorerNetwork.explorer || explorerNetwork.url,
         'address',
         accountAddress
       ),
       '_blank'
     );
-  }, [
-    activeAccount?.address,
-    isBitcoinBased,
-    activeNetwork.url,
-    activeNetwork.explorer,
-  ]);
+  }, [activeAccount?.address, isBitcoinBased, explorerNetwork]);
 
   const handleMaxButton = () => {
     // Only work with verified balances - no fallbacks
@@ -1300,16 +1300,24 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
     isVerifyingERC20 ||
     isVerifyingTokenId;
 
+  const explorerAvailable = hasExplorer(explorerNetwork);
+  const explorerLabel =
+    t('home.viewAccountOnExplorer') +
+    (explorerAvailable ? '' : ` - ${t('settings.unavailable')}`);
+
   return (
     <div className="w-full md:max-w-sm">
       <div className="flex flex-col items-center justify-center">
-        <Tooltip content={t('home.viewOnExplorer')}>
+        <Tooltip
+          content={explorerAvailable ? t('home.viewOnExplorer') : explorerLabel}
+        >
           <button
             type="button"
-            aria-label={t('home.viewAccountOnExplorer')}
+            aria-label={explorerLabel}
+            disabled={!explorerAvailable}
             className="add-identicon ml-1 mr-2 my-2 cursor-pointer transition-all duration-200 hover:scale-105 hover:opacity-80 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue"
             onClick={openAccountInExplorer}
-            title={t('home.viewAccountOnExplorer')}
+            title={explorerLabel}
           />
         </Tooltip>
         <div className="flex min-w-0 max-w-full flex-wrap gap-1 justify-center items-center">

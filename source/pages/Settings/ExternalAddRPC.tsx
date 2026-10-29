@@ -25,6 +25,7 @@ const networkKey = (network?: INetwork) =>
     network.currency,
     network.explorer,
     network.apiUrl,
+    ...(network.explorerExplicitlyAbsent ? [true] : []),
   ]);
 
 const CustomRPCExternal = () => {
@@ -258,11 +259,19 @@ const CustomRPCExternal = () => {
         values.chainId = parseInt(values.chainId, 10);
       }
       // Validate RPC URL and get network configuration
-      const network = await validateRpcUrlAndShowError(values.url, values);
-      if (!network) {
+      const validatedNetwork = await validateRpcUrlAndShowError(
+        values.url,
+        values
+      );
+      if (!validatedNetwork) {
         setLoading(false);
         return;
       }
+
+      // Preserve blank intent separately from the SDK's compatibility fallback.
+      const network = !values.explorer?.trim()
+        ? { ...validatedNetwork, explorerExplicitlyAbsent: true }
+        : validatedNetwork;
 
       // Validate API URL if provided (only for EVM networks)
       if (values.apiUrl && !(await validateApiUrlAndShowError(values.apiUrl))) {

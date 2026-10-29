@@ -17,7 +17,7 @@ import type {
   ITransactionInfoUtxo,
 } from 'types/useTransactionsInfo';
 import { getWalletNavigationScope } from 'utils/navigationState';
-import { buildExplorerUrl } from 'utils/strings';
+import { buildExplorerUrl, selectExplorerNetwork } from 'utils/strings';
 
 import { EvmTransactionsList } from './components/Transactions/EVM/EvmList';
 import { UtxoTransactionsList } from './components/Transactions/UTXO/UtxoList';
@@ -28,6 +28,7 @@ export const TransactionsPanel = () => {
     useSelector(selectActiveAccountWithTransactions);
   const { activeNetwork, isBitcoinBased, isSwitchingAccount } =
     useSelector(selectVaultCoreData);
+  const explorerNetwork = useSelector(selectExplorerNetwork);
   const hasHistoryStatus = isBitcoinBased || Boolean(activeNetwork.apiUrl);
   const historyMayBeIncomplete = !isBitcoinBased && !activeNetwork.apiUrl;
 
@@ -154,7 +155,11 @@ export const TransactionsPanel = () => {
 
   // ✅ OPTIMIZED: Memoized explorer component with proper dependencies
   const OpenTransactionExplorer = useMemo(() => {
-    if (!activeAccount) return null;
+    if (
+      !activeAccount ||
+      (!isBitcoinBased && explorerNetwork.explorerExplicitlyAbsent)
+    )
+      return null;
 
     const { xpub, address: userAddress, isImported } = activeAccount as any;
 
@@ -181,7 +186,7 @@ export const TransactionsPanel = () => {
     const openExplorer = () =>
       window.open(
         buildExplorerUrl(
-          activeNetwork.explorer || activeNetwork.url,
+          explorerNetwork.explorer || explorerNetwork.url,
           pathSegment,
           identifier
         ),
@@ -200,13 +205,7 @@ export const TransactionsPanel = () => {
         </button>
       </div>
     );
-  }, [
-    activeAccount,
-    activeNetwork.explorer,
-    activeNetwork.url,
-    isBitcoinBased,
-    t,
-  ]);
+  }, [activeAccount, explorerNetwork, isBitcoinBased, t]);
 
   // Configured explorer history, like UTXO, requires an actual scoped read.
   // Networks without an explorer retain the existing RPC settle behavior.

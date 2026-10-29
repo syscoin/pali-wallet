@@ -14,7 +14,11 @@ import { ITokenDetails } from 'types/tokens';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { formatCurrency } from 'utils/index';
 import { getWalletNavigationScope } from 'utils/navigationState';
-import { buildExplorerUrl } from 'utils/strings';
+import {
+  buildExplorerUrl,
+  hasExplorer,
+  selectExplorerNetwork,
+} from 'utils/strings';
 
 const DETAIL_FIELD_CLASS =
   'flex flex-col pt-2 w-full text-brand-white font-poppins font-thin';
@@ -58,6 +62,7 @@ const ExternalWatchAsset = () => {
 
   // Get user's preferred currency and active network
   const { fiat } = useSelector((state: RootState) => state.price);
+  const explorerNetwork = useSelector(selectExplorerNetwork);
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
@@ -327,19 +332,25 @@ const ExternalWatchAsset = () => {
 
                   <p className={DETAIL_FIELD_CLASS}>
                     {t('settings.contractAddress')}
-                    <button
-                      onClick={() => {
-                        const explorerUrl = buildExplorerUrl(
-                          activeNetwork.explorer,
-                          'address',
-                          assetInfo.contractAddress
-                        );
-                        window.open(explorerUrl, '_blank');
-                      }}
-                      className="text-content-secondary text-xs hover:text-content-primary cursor-pointer underline text-left min-w-0 break-all transition-colors duration-200"
-                    >
-                      {assetInfo.contractAddress}
-                    </button>
+                    {hasExplorer(explorerNetwork) ? (
+                      <button
+                        onClick={() => {
+                          const explorerUrl = buildExplorerUrl(
+                            explorerNetwork.explorer,
+                            'address',
+                            assetInfo.contractAddress
+                          );
+                          window.open(explorerUrl, '_blank');
+                        }}
+                        className="text-content-secondary text-xs hover:text-content-primary cursor-pointer underline text-left min-w-0 break-all transition-colors duration-200"
+                      >
+                        {assetInfo.contractAddress}
+                      </button>
+                    ) : (
+                      <span className="text-content-secondary text-xs min-w-0 break-all">
+                        {assetInfo.contractAddress}
+                      </span>
+                    )}
                   </p>
 
                   <p className={DETAIL_FIELD_CLASS}>

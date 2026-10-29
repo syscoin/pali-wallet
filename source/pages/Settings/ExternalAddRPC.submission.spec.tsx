@@ -184,6 +184,7 @@ it.each(['', '   ', '\u00a0\u00a0'])(
         [expect.objectContaining({ url: rpcA, explorer: rpcA, apiUrl: value })],
       ],
     ]);
+    expect(calls('addCustomRpc')[0][1][0].explorerExplicitlyAbsent).toBe(true);
     expect(calls('testExplorerApi')).toHaveLength(0);
     expect(calls('setActiveNetwork')).toHaveLength(1);
     expect(urlInput('explorer')).toHaveValue(value);
@@ -301,4 +302,17 @@ it('unlocks fields after a rejected submission and saves the corrected retry', a
   await waitFor(() => expect(window.close).toHaveBeenCalledTimes(1), {
     timeout: 3000,
   });
+});
+
+it('keeps a deliberately entered same-RPC explorer available', async () => {
+  mount();
+  const user = userEvent.setup();
+  await user.clear(urlInput('explorer'));
+  await user.type(urlInput('explorer'), rpcA);
+  await user.click(addButton());
+  await waitFor(() => expect(calls('addCustomRpc')).toHaveLength(1));
+  expect(calls('getRpc')[0][1][0].explorer).toBe(rpcA);
+  expect(
+    calls('addCustomRpc')[0][1][0].explorerExplicitlyAbsent
+  ).toBeUndefined();
 });

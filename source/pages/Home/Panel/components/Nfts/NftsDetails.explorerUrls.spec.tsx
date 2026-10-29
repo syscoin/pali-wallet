@@ -195,3 +195,20 @@ it.each(['contract', 'collection'])(
     expect(global.fetch).not.toHaveBeenCalled();
   }
 );
+
+it('keeps token selection while omitting explorer actions for an explicitly blank EVM explorer', async () => {
+  await mountNetwork({
+    kind: 'ethereum',
+    url: RPC,
+    explorer: RPC,
+    explorerExplicitlyAbsent: true,
+  });
+  expect(screen.getByRole('button', { name: '#7' })).toBeVisible();
+  expect(
+    screen.queryByRole('link', { name: 'home.viewOnExplorer' })
+  ).toBeNull();
+  expect(
+    screen.queryByRole('button', { name: 'send.viewAllOnExplorer' })
+  ).toBeNull();
+  expect(window.open).not.toHaveBeenCalled();
+});

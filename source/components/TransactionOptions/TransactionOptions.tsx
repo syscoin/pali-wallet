@@ -9,7 +9,11 @@ import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { formatUnits } from 'utils/ethersV6Compat';
 import { getWalletNavigationScope } from 'utils/navigationState';
-import { buildExplorerUrl } from 'utils/strings';
+import {
+  buildExplorerUrl,
+  hasExplorer,
+  selectExplorerNetwork,
+} from 'utils/strings';
 import {
   previewCancelTransaction,
   previewSpeedUpTransaction,
@@ -56,10 +60,10 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
   const { t } = useTranslation();
   const { navigate } = useUtils();
   // Select only what we need to minimize re-renders
-  const explorer = useSelector(
-    (state: RootState) =>
-      state.vault.activeNetwork.explorer || state.vault.activeNetwork.url
-  );
+  const explorerNetwork = useSelector(selectExplorerNetwork);
+  const explorer = hasExplorer(explorerNetwork)
+    ? explorerNetwork.explorer || explorerNetwork.url
+    : undefined;
   const currency = useSelector(
     (state: RootState) => state.vault.activeNetwork.currency
   );
@@ -216,6 +220,7 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
   }, [transaction.hash]);
 
   const openTransactionOnExplorer = useCallback(() => {
+    if (!explorer) return;
     const url = buildExplorerUrl(explorer, 'tx', transaction.hash);
     window.open(url, '_blank');
   }, [explorer, transaction.hash]);
@@ -265,24 +270,26 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
                       </li>
                     )}
                   </Menu.Item>
-                  <Menu.Item>
-                    {({ active }) => (
-                      <li
-                        className={`
+                  {explorer && (
+                    <Menu.Item>
+                      {({ active }) => (
+                        <li
+                          className={`
                     ${active ? 'bg-brand-blue400 bg-opacity-50' : ''}
                     ${MENU_ITEM_CLASS_NAME}
                     `}
-                        onClick={openTransactionOnExplorer}
-                      >
-                        <div className="w-5 mr-3">
-                          <ExternalLinkIcon />
-                        </div>
-                        <span className="text-sm text-brand-white">
-                          {t('transactions.seeOnBlockExplorer')}
-                        </span>
-                      </li>
-                    )}
-                  </Menu.Item>
+                          onClick={openTransactionOnExplorer}
+                        >
+                          <div className="w-5 mr-3">
+                            <ExternalLinkIcon />
+                          </div>
+                          <span className="text-sm text-brand-white">
+                            {t('transactions.seeOnBlockExplorer')}
+                          </span>
+                        </li>
+                      )}
+                    </Menu.Item>
+                  )}
                   <Menu.Item>
                     {({ active }) => (
                       <li

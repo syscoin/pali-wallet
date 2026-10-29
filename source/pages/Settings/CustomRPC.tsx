@@ -108,7 +108,10 @@ const networkFormValues = (
   url: network?.url ?? '',
   chainId: network?.chainId ?? '',
   symbol: network?.currency?.toUpperCase() ?? '',
-  explorer: network?.explorer?.trim() || network?.url || '',
+  explorer:
+    !isSyscoinRpc && network?.explorerExplicitlyAbsent
+      ? ''
+      : network?.explorer?.trim() || network?.url || '',
   apiUrl: isSyscoinRpc ? '' : network?.apiUrl ?? '',
 });
 
@@ -691,16 +694,22 @@ const CustomRPCView = () => {
     }
 
     // Validate RPC URL and get network configuration
-    const network = await validateRpcUrlAndShowError(
+    const validatedNetwork = await validateRpcUrlAndShowError(
       data.url,
       data,
       canContinue
     );
     if (!canContinue()) return;
-    if (!network) {
+    if (!validatedNetwork) {
       setLoading(false);
       return;
     }
+
+    // Preserve blank intent separately from the SDK's compatibility fallback.
+    const network =
+      !isSyscoinRpc && !data.explorer?.trim()
+        ? { ...validatedNetwork, explorerExplicitlyAbsent: true }
+        : validatedNetwork;
 
     // Validate API URL and show toast error if invalid (only for EVM)
     if (!isSyscoinRpc && data.apiUrl) {

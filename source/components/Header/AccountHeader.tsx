@@ -24,7 +24,11 @@ import {
   createBrowsingNavigationContext,
   navigateWithContext,
 } from 'utils/navigationState';
-import { buildExplorerUrl } from 'utils/strings';
+import {
+  buildExplorerUrl,
+  hasExplorer,
+  selectExplorerNetwork,
+} from 'utils/strings';
 
 // A dialog/route may disappear while the device RPC is still pending. Keep
 // this latch at renderer-module scope so a new AccountHeader cannot start a
@@ -46,6 +50,7 @@ export const AccountHeader: React.FC = () => {
   const isBitcoinBased = useSelector(
     (state: RootState) => state.vault.isBitcoinBased
   );
+  const explorerNetwork = useSelector(selectExplorerNetwork);
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
@@ -164,7 +169,7 @@ export const AccountHeader: React.FC = () => {
     const accountAddress = currentAccount?.address;
     const xpub = (currentAccount as any)?.xpub as string | undefined;
     const isImported = Boolean((currentAccount as any)?.isImported);
-    if (!accountAddress) return;
+    if (!accountAddress || !hasExplorer(explorerNetwork)) return;
 
     // Prefer XPUB page for UTXO accounts when available, including imported extended-key accounts.
     // Fall back to /address for:
@@ -188,7 +193,7 @@ export const AccountHeader: React.FC = () => {
 
     window.open(
       buildExplorerUrl(
-        activeNetwork.explorer || activeNetwork.url,
+        explorerNetwork.explorer || explorerNetwork.url,
         pathSegment,
         identifier
       ),
@@ -199,8 +204,7 @@ export const AccountHeader: React.FC = () => {
     (currentAccount as any)?.xpub,
     (currentAccount as any)?.isImported,
     isBitcoinBased,
-    activeNetwork.explorer,
-    activeNetwork.url,
+    explorerNetwork,
   ]);
 
   const handleVerifyAddress = useCallback(async () => {
@@ -282,6 +286,11 @@ export const AccountHeader: React.FC = () => {
     alert.info(t('home.addressCopied'), undefined, isCurrentCopy);
   }, [copied, alert, t, isCurrentCopy]);
 
+  const explorerAvailable = hasExplorer(explorerNetwork);
+  const explorerLabel =
+    t('home.viewAccountOnExplorer') +
+    (explorerAvailable ? '' : ` - ${t('settings.unavailable')}`);
+
   return (
     <div className="relative z-[55] flex items-center justify-between p-1 bg-bkg-3">
       <ConfirmationModal
@@ -300,15 +309,16 @@ export const AccountHeader: React.FC = () => {
       />
       <div className="flex min-w-0 flex-1 ml-[15px] items-center text-brand-white">
         <Tooltip
-          content={t('home.viewOnExplorer')}
+          content={explorerAvailable ? t('home.viewOnExplorer') : explorerLabel}
           childrenClassName="shrink-0"
         >
           <button
             type="button"
-            aria-label={t('home.viewAccountOnExplorer')}
+            aria-label={explorerLabel}
+            disabled={!explorerAvailable}
             className="add-identicon ml-1 mr-2 my-2 cursor-pointer transition-all duration-200 hover:scale-105 hover:opacity-80 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue500"
             onClick={openAccountInExplorer}
-            title={t('home.viewAccountOnExplorer')}
+            title={explorerLabel}
           />
         </Tooltip>
 

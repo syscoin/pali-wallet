@@ -261,3 +261,46 @@ it.each([
     expect(global.fetch).toHaveBeenCalledTimes(1);
   }
 );
+
+it('keeps the reviewed contract readable without offering an absent explorer link', async () => {
+  const result = await getEthRpc(
+    { url: RPC, explorer: RPC, symbol: 'SYN', label: 'Synthetic EVM' } as any,
+    false
+  );
+  const network = {
+    ...result.formattedNetwork,
+    explorerExplicitlyAbsent: true,
+  };
+  mockState = {
+    vault: {
+      isBitcoinBased: false,
+      activeNetwork: network,
+      activeAccount: { id: 0, type: 'HDAccount' },
+      accounts: {
+        HDAccount: { 0: { id: 0, address: OWNER, xpub: 'public-fixture' } },
+      },
+      accountAssets: { HDAccount: { 0: { ethereum: [], syscoin: [] } } },
+    },
+    vaultGlobal: {
+      networkStatus: 'idle',
+      activeSlip44: 60,
+      networks: { ethereum: { 1: network } },
+    },
+    price: { fiat: { asset: 'usd' } },
+    spamFilter: { config: { enabled: false }, dapps: {} },
+  };
+  mockQuery = {
+    host: HOST,
+    eventName: 'wallet_watchAsset',
+    asset: {
+      type: 'ERC20',
+      options: { address: TOKEN, symbol: 'SYN', decimals: 18 },
+    },
+  };
+  render(<ExternalWatchAsset />);
+  await act(async () => undefined);
+  expect(screen.getByText('Synthetic reviewed token')).toBeVisible();
+  expect(screen.getByText(TOKEN)).toBeVisible();
+  expect(screen.queryByRole('button', { name: TOKEN })).toBeNull();
+  expect(window.open).not.toHaveBeenCalled();
+});
