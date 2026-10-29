@@ -1232,7 +1232,7 @@
     "importedAccountsWont": "Imported accounts won't link to your initial Pali account Secret Recovery Phrase",
     "stillHaveFunds": "You still have funds in your wallet!",
     "saveProperly": "Save this seed phrase properly, so you can import this wallet in the future.",
-    "privateNotesBackupWarning": "If you have private notes, back them up separately. Generated private notes cannot be restored from your recovery phrase."
+    "privateNotesBackupWarning": "Back up any private notes separately; your recovery phrase cannot restore them."
   },
   "walletSeedPhrasePage": {
     "keepSeedPhrase": "Keep your seed phrase secret!",

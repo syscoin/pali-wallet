@@ -1232,7 +1232,7 @@
     "importedAccountsWont": "インポートされたアカウントは、初期のPaliアカウントのシークレットリカバリーフレーズにリンクされません",
     "stillHaveFunds": "ウォレットにまだ資金があります！",
     "saveProperly": "このシードフレーズを安全に保管して、将来このウォレットをインポートできるようにしてください。",
-    "privateNotesBackupWarning": "プライベートノートをお持ちの場合は、別途バックアップしてください。生成されたプライベートノートは、復元フレーズから復元できません。"
+    "privateNotesBackupWarning": "プライベートノートがある場合は別途バックアップしてください。復元フレーズでは復元できません。"
   },
   "walletSeedPhrasePage": {
     "keepSeedPhrase": "シードフレーズは秘密にしてください！",

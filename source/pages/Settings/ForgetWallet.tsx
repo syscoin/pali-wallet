@@ -128,14 +128,14 @@ const ForgetWalletView = () => {
       )}
 
       <div>
-        <p className="text-sm mb-6">
+        <p className="text-sm mb-3">
           {t('forgetWalletPage.importedAccountsWont')}
         </p>
         <Form
           validateMessages={{ default: '' }}
           form={form}
           onFinish={onSubmit}
-          className="password flex flex-col gap-4 items-center justify-center text-center w-full"
+          className="password flex flex-col gap-2 items-center justify-center text-center w-full"
           name="forget"
           autoComplete="off"
         >
@@ -172,7 +172,7 @@ const ForgetWalletView = () => {
               </Form.Item>
 
               <Card type="info">
-                <div className="flex flex-col items-start justify-start gap-2">
+                <div className="flex flex-col items-start justify-start gap-1">
                   <p className="text-brand-yellowInfo text-sm font-normal text-left">
                     {t('forgetWalletPage.stillHaveFunds')}
                   </p>
@@ -188,7 +188,7 @@ const ForgetWalletView = () => {
           )}
           {!hasAccountFunds && (
             <Card type="info">
-              <div className="flex flex-col items-start justify-start gap-2">
+              <div className="flex flex-col items-start justify-start gap-1">
                 <p className="text-white text-sm font-normal text-left">
                   {t('start.eraseFundsWarning')}
                 </p>

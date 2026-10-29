@@ -1232,7 +1232,7 @@
     "importedAccountsWont": "As contas importadas não se vincularão à Frase de Recuperação Secreta da sua conta Pali inicial.",
     "stillHaveFunds": "Você ainda tem fundos em sua carteira!",
     "saveProperly": "Guarde esta frase-semente corretamente para que você possa importar esta carteira no futuro.",
-    "privateNotesBackupWarning": "Se tiver notas privadas, faça uma cópia de segurança separada. As notas privadas geradas não podem ser restauradas com a sua frase de recuperação."
+    "privateNotesBackupWarning": "Se tiver notas privadas, faça backup separado; a frase de recuperação não as restaura."
   },
   "walletSeedPhrasePage": {
     "keepSeedPhrase": "Mantenha sua seed em segredo!",

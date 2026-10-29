@@ -1232,7 +1232,7 @@
     "importedAccountsWont": "Importierte Konten werden nicht mit Ihrer ursprünglichen Pali-Konto-Wiederherstellungsphrase verknüpft",
     "stillHaveFunds": "Sie haben noch Guthaben in Ihrer Wallet!",
     "saveProperly": "Speichern Sie diese Seed-Phrase ordnungsgemäß, damit Sie diese Wallet in Zukunft importieren können.",
-    "privateNotesBackupWarning": "Wenn du private Notizen hast, sichere sie separat. Generierte private Notizen können nicht mit deiner Wiederherstellungsphrase wiederhergestellt werden."
+    "privateNotesBackupWarning": "Sichere private Notizen separat; deine Wiederherstellungsphrase stellt sie nicht wieder her."
   },
   "walletSeedPhrasePage": {
     "keepSeedPhrase": "Halten Sie Ihre Seed-Phrase geheim!",
