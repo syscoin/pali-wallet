@@ -36,6 +36,18 @@ jest.mock('components/index', () => ({
   Icon: () => <svg aria-hidden="true" />,
 }));
 
+// Avoid browser animation timing in jsdom with fake timers. Keep the native
+// elements and styles while testing the component's controls.
+jest.mock('framer-motion', () => {
+  const React = jest.requireActual('react');
+  const native = (tag: string) =>
+    React.forwardRef(
+      ({ initial, animate, transition, ...props }: any, ref: any) =>
+        React.createElement(tag, { ...props, ref })
+    );
+  return { motion: { div: native('div'), button: native('button') } };
+});
+
 const mount = (enabled = false) => {
   const store = configureStore({
     reducer: {
