@@ -7670,12 +7670,20 @@ class MainController {
           (blacklistResult.severity === 'critical' ||
             blacklistResult.severity === 'high')
         ) {
-          throw new Error(
-            `Token transfer blocked: ${
-              blacklistResult.reason || 'The recipient address is blacklisted'
-            }. Severity: ${
-              blacklistResult.severity
-            }. Please verify the token recipient address before proceeding.`
+          throw Object.assign(
+            new Error(
+              `Token transfer blocked: ${
+                blacklistResult.reason || 'The recipient address is blacklisted'
+              }. Severity: ${
+                blacklistResult.severity
+              }. Please verify the token recipient address before proceeding.`
+            ),
+            {
+              code: 'PALI_TOKEN_RECIPIENT_BLOCKED',
+              recipientBlockReason: blacklistResult.reason,
+              recipientBlockSeverity: blacklistResult.severity,
+              transactionNotBroadcast: true,
+            }
           );
         }
       }
