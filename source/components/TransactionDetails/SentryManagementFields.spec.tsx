@@ -42,7 +42,7 @@ test('renders management fields with readable labels and empty optional values',
   expect(screen.getByText('Current: PQ voting public key')).toBeInTheDocument();
   expect(screen.getByText('Not set')).toBeInTheDocument();
   expect(screen.getByText('00abcd')).toBeInTheDocument();
-  expect(screen.getByText('Future field name')).toBeInTheDocument();
+  expect(screen.getByText('Future Field Name')).toBeInTheDocument();
   expect(screen.getByText('unchanged')).toBeInTheDocument();
   expect(screen.queryByText('previousPayoutAddress')).not.toBeInTheDocument();
 });
