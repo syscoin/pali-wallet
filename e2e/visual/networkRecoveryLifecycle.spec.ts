@@ -256,6 +256,115 @@ test('network-error recovery edit action is reachable by keyboard', async ({}, i
       exact: true,
     });
     await expect(failureIndicator).toHaveCount(1);
+    // Observe native focus before the original pointer action. This is the
+    // real error indicator, not a fixture-created control.
+    for (const viewport of [
+      { width: 320, height: 360 },
+      { width: 400, height: 620 },
+    ]) {
+      await page.setViewportSize(viewport);
+      let focused = false;
+      for (let step = 0; step < 30; step++) {
+        await page.keyboard.press('Tab');
+        focused = await failureIndicator.evaluate(
+          (element) => document.activeElement === element
+        );
+        if (focused) break;
+      }
+      expect(focused).toBe(true);
+      const identity = await failureIndicator.evaluate((element) => ({
+        focused: document.activeElement === element,
+        tag: element.tagName,
+        ariaLabel: element.getAttribute('aria-label'),
+        disabled: (element as HTMLButtonElement).disabled,
+        className: element.className,
+        bounds: element.getBoundingClientRect().toJSON(),
+        parent: element.parentElement?.outerHTML.slice(0, 500),
+      }));
+      expect(identity.ariaLabel).toBe(en.networkConnection.networkError);
+      expect(identity.disabled).toBe(false);
+      expect(identity.bounds.width).toBeGreaterThanOrEqual(24);
+      expect(identity.bounds.height).toBeGreaterThanOrEqual(24);
+      expect(identity.bounds.x).toBeGreaterThanOrEqual(0);
+      expect(identity.bounds.y).toBeGreaterThanOrEqual(0);
+      expect(identity.bounds.right).toBeLessThanOrEqual(viewport.width);
+      expect(identity.bounds.bottom).toBeLessThanOrEqual(viewport.height);
+      const hits = await failureIndicator.evaluate((element) => {
+        const box = element.getBoundingClientRect();
+        return [
+          [box.left + box.width / 2, box.top + 2],
+          [box.left + box.width / 2, box.bottom - 2],
+          [box.left + 2, box.top + box.height / 2],
+          [box.right - 2, box.top + box.height / 2],
+          [box.left + box.width / 2, box.top + box.height / 2],
+        ].map(([x, y]) => {
+          const hit = document.elementFromPoint(x, y);
+          return {
+            x,
+            y,
+            reachesButton: hit === element || element.contains(hit),
+          };
+        });
+      });
+      expect(hits.every((hit) => hit.reachesButton)).toBe(true);
+      const network = page
+        .getByTitle('Syscoin Mainnet', { exact: true })
+        .locator('xpath=ancestor::button[1]');
+      await expect(network).toBeEnabled();
+      const networkCenterHit = await network.evaluate((element) => {
+        const box = element.getBoundingClientRect();
+        const hit = document.elementFromPoint(
+          box.left + box.width / 2,
+          box.top + box.height / 2
+        );
+        return hit === element || element.contains(hit);
+      });
+      expect(networkCenterHit).toBe(true);
+      await snapshot(
+        page,
+        info,
+        `network-error-native-focus-before-${viewport.width}`,
+        {
+          viewport,
+          identity,
+          hits,
+          networkCenterHit,
+        }
+      );
+    }
+    await page.setViewportSize({ width: 320, height: 360 });
+    for (const menuName of ['network', 'general'] as const) {
+      const opener =
+        menuName === 'network'
+          ? page
+              .getByTitle('Syscoin Mainnet', { exact: true })
+              .locator('xpath=ancestor::button[1]')
+          : page.getByRole('button', {
+              name: en.generalMenu.generalOptions,
+              exact: true,
+            });
+      await opener.click();
+      await expect(page.getByRole('menu')).toBeVisible();
+      const target = page.locator('button.status-target');
+      const overlay = await target.evaluate((element) => {
+        const box = element.getBoundingClientRect();
+        const x = box.left + box.width / 2;
+        const y = box.top + box.height / 2;
+        const hit = document.elementFromPoint(x, y);
+        return {
+          x,
+          y,
+          hitsStatus: hit === element || element.contains(hit),
+          hitTag: hit?.tagName,
+        };
+      });
+      expect(overlay.hitsStatus).toBe(false);
+      await snapshot(page, info, `network-status-${menuName}-overlay`, overlay);
+      await page.mouse.click(overlay.x, overlay.y);
+      await expect(page).toHaveURL(/#\/home$/);
+      await expect(page.getByRole('menu')).toBeHidden();
+    }
+    await page.setViewportSize({ width: 400, height: 620 });
     await failureIndicator.click();
     await expect(page).toHaveURL(/#\/chain-fail-to-connect$/);
     const edit = page.getByText(en.chainError.editCurrentRpc, { exact: true });
@@ -305,6 +414,112 @@ test('network-error recovery edit action is reachable by keyboard', async ({}, i
       keyboardOpenedEditor: true,
       runtime: extensionEvidence(),
     });
+    // Navigate back through the same document, then select the fixture's
+    // healthy test network through the ordinary network menu.
+    await page.goBack();
+    await expect(page).toHaveURL(/#\/chain-fail-to-connect$/);
+    await page.goBack();
+    await expect(page).toHaveURL(/#\/home$/);
+    await wallet.switchNetwork('Syscoin Testnet', 'UTXO');
+    const statusButton = page.locator(
+      'div[style*="width: 8px"][style*="height: 8px"] button'
+    );
+    await expect(statusButton).toHaveCount(1);
+    await expect(statusButton).toBeDisabled();
+    let healthyReceivedTabFocus = false;
+    for (let step = 0; step < 30; step++) {
+      await page.keyboard.press('Tab');
+      healthyReceivedTabFocus ||= await statusButton.evaluate(
+        (element) => document.activeElement === element
+      );
+    }
+    expect(healthyReceivedTabFocus).toBe(false);
+    const healthy = await statusButton.evaluate((element) => ({
+      tag: element.tagName,
+      ariaLabel: element.getAttribute('aria-label'),
+      disabled: (element as HTMLButtonElement).disabled,
+      bounds: element.getBoundingClientRect().toJSON(),
+    }));
+    await snapshot(page, info, 'network-status-healthy-non-action', {
+      ...healthy,
+      healthyReceivedTabFocus,
+    });
+    await page
+      .getByRole('button', { name: en.generalMenu.generalOptions, exact: true })
+      .click();
+    await page
+      .getByRole('menuitem', { name: en.generalMenu.advanced, exact: true })
+      .click();
+    await expect(page).toHaveURL(/#\/settings\/advanced$/);
+    const refresh = page.locator('#advanced-refresh');
+    if ((await refresh.getAttribute('aria-checked')) !== 'true') {
+      await refresh.click();
+      await page
+        .getByRole('dialog')
+        .getByRole('button', { name: en.buttons.ok, exact: true })
+        .click();
+    }
+    await expect(refresh).toHaveAttribute('aria-checked', 'true');
+    await page.locator('#advanced-autolock').fill('0');
+    await page
+      .getByRole('button', { name: en.buttons.save, exact: true })
+      .click();
+    await expect(page.getByRole('dialog')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page).toHaveURL(/#\/home$/);
+    for (const viewport of [
+      { width: 320, height: 360 },
+      { width: 400, height: 620 },
+    ]) {
+      await page.setViewportSize(viewport);
+      const network = page
+        .getByTitle('Syscoin Testnet', { exact: true })
+        .locator('xpath=ancestor::button[1]');
+      const refreshButton = page.getByRole('button', {
+        name: en.header.refresh,
+        exact: true,
+      });
+      const general = page.getByRole('button', {
+        name: en.generalMenu.generalOptions,
+        exact: true,
+      });
+      await expect(statusButton).toBeDisabled();
+      await expect(refreshButton).toBeVisible();
+      const statusBox = (await statusButton.boundingBox())!;
+      const networkBox = (await network.boundingBox())!;
+      const refreshBox = (await refreshButton.boundingBox())!;
+      const generalBox = (await general.boundingBox())!;
+      expect(statusBox.x + statusBox.width).toBeLessThanOrEqual(networkBox.x);
+      expect(networkBox.x + networkBox.width).toBeLessThanOrEqual(refreshBox.x);
+      expect(refreshBox.x + refreshBox.width).toBeLessThanOrEqual(generalBox.x);
+      expect(generalBox.x + generalBox.width).toBeLessThanOrEqual(
+        viewport.width
+      );
+      for (const button of [network, refreshButton, general]) {
+        expect(
+          await button.evaluate((element) => {
+            const box = element.getBoundingClientRect();
+            const hit = document.elementFromPoint(
+              box.left + box.width / 2,
+              box.top + box.height / 2
+            );
+            return hit === element || element.contains(hit);
+          })
+        ).toBe(true);
+      }
+      await snapshot(
+        page,
+        info,
+        `network-status-refresh-adjacency-${viewport.width}`,
+        {
+          viewport,
+          statusBox,
+          networkBox,
+          refreshBox,
+          generalBox,
+        }
+      );
+    }
     expect(routes.deniedWrites).toEqual([]);
     status = 'passed';
   } finally {

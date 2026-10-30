@@ -276,17 +276,21 @@ export const ConnectionStatusIndicator = memo(
             type="button"
             disabled={!isClickable}
             aria-label={shouldShowIndicator ? tooltipContent : undefined}
-            className={`w-2 h-2 rounded-full shadow-sm border transition-opacity duration-200 flex-shrink-0 ${
-              shouldShowIndicator
-                ? `${statusColor} ${pulseClass} border-white/20 opacity-100`
-                : 'bg-transparent border-transparent opacity-0'
-            } ${
-              isClickable
-                ? 'cursor-pointer hover:scale-110 transition-transform'
-                : ''
-            }`}
+            className="status-target"
             onClick={isClickable ? handleClick : undefined}
-          />
+          >
+            <span
+              className={`w-2 h-2 rounded-full shadow-sm border transition-opacity duration-200 flex-shrink-0 ${
+                shouldShowIndicator
+                  ? `${statusColor} ${pulseClass} border-white/20 opacity-100`
+                  : 'bg-transparent border-transparent opacity-0'
+              } ${
+                isClickable
+                  ? 'cursor-pointer hover:scale-110 transition-transform'
+                  : ''
+              }`}
+            />
+          </button>
         </Tooltip>
       </div>
     );

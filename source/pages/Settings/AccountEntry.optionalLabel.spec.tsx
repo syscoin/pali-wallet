@@ -122,9 +122,7 @@ describe.each(['ordinary', 'smart', 'private import', 'watch import'])(
         mockSmartOnly = mode === 'smart';
         render(importing ? <ImportAccount /> : <CreateAccount />);
         const label = screen.getByRole('textbox', {
-          name: importing
-            ? 'settings.label (settings.optional)'
-            : 'settings.nameYourNewAccount (settings.optional)',
+          name: 'settings.label (settings.optional)',
         });
         if (value !== undefined) fireEvent.change(label, { target: { value } });
 
