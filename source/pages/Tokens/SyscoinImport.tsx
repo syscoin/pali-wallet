@@ -94,6 +94,14 @@ export const SyscoinImport: React.FC = () => {
   const [recentlyImportedGuids, setRecentlyImportedGuids] = useState<
     Set<string>
   >(new Set());
+  const [importSuccess, setImportSuccess] = useState<{
+    message: string;
+    scope: string;
+  } | null>(null);
+
+  useEffect(() => {
+    setImportSuccess(null);
+  }, [tokenImportScope]);
 
   const activeAccountAssets =
     accountAssets?.[activeAccountMeta.type]?.[activeAccountMeta.id];
@@ -306,6 +314,7 @@ export const SyscoinImport: React.FC = () => {
       throw new Error('A token import is already in progress');
     const operation = {};
     importOperationRef.current = operation;
+    setImportSuccess(null);
     const scope = tokenImportScope;
     const isCurrent = () =>
       ownedViewRef.current.active &&
@@ -343,9 +352,12 @@ export const SyscoinImport: React.FC = () => {
 
       if (isCurrent()) {
         setRecentlyImportedGuids((prev) => new Set(prev).add(asset.assetGuid));
-        alert.success(
-          t('tokens.hasBeenAddedToYourWallet', { token: asset.symbol })
-        );
+        setImportSuccess({
+          scope,
+          message: t('tokens.hasBeenAddedToYourWallet', {
+            token: asset.symbol,
+          }),
+        });
       }
     } catch (error) {
       console.error('Import error:', error);
@@ -443,6 +455,14 @@ export const SyscoinImport: React.FC = () => {
         >
           {t('tokens.addCustomTab')}
         </button>
+      </div>
+
+      <div role="status" aria-live="polite" className="shrink-0 px-4">
+        {importSuccess?.scope === tokenImportScope && (
+          <p className="py-2 break-words text-sm text-brand-white">
+            {importSuccess.message}
+          </p>
+        )}
       </div>
 
       {/* Content Area */}

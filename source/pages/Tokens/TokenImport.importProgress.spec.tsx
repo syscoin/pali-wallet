@@ -219,9 +219,18 @@ describe.each([false, true])(
       await act(async () => held.resolve());
       expect(importButton(first.symbol)).toBeDisabled();
       expect(importButton(second.symbol)).toBeEnabled();
-      expect(mockAlert.success).toHaveBeenCalledWith(
-        `${first.symbol} has been added to your wallet`
-      );
+      if (utxo) {
+        expect(
+          screen
+            .getByText(`${first.symbol} has been added to your wallet`)
+            .closest('[role="status"]')
+        ).toBeInTheDocument();
+        expect(mockAlert.success).not.toHaveBeenCalled();
+      } else {
+        expect(mockAlert.success).toHaveBeenCalledWith(
+          `${first.symbol} has been added to your wallet`
+        );
+      }
       await user.click(importButton(second.symbol));
       await waitFor(() => expect(saves()).toHaveLength(2));
       const identifiers = saves().map(([, [token]]) =>
@@ -229,7 +238,14 @@ describe.each([false, true])(
       );
       expect(identifiers).toEqual(utxo ? GUIDS : CONTRACTS);
       expect(importButton(second.symbol)).toBeDisabled();
-      expect(mockAlert.success).toHaveBeenCalledTimes(2);
+      if (utxo) {
+        expect(
+          screen.getByText(`${second.symbol} has been added to your wallet`)
+        ).toBeVisible();
+        expect(mockAlert.success).not.toHaveBeenCalled();
+      } else {
+        expect(mockAlert.success).toHaveBeenCalledTimes(2);
+      }
       expect(mockAlert.error).not.toHaveBeenCalled();
     });
 
