@@ -5,6 +5,7 @@ import { useSelector } from 'react-redux';
 import { DefaultModal, Button } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
+import { useToastFooter } from 'hooks/useToastFooter';
 import { HardWallets } from 'scripts/Background/controllers/message-handler/types';
 import { RootState } from 'state/store';
 import { handleTransactionError } from 'utils/errorHandling';
@@ -13,6 +14,7 @@ const ConnectHardwareWalletView: FC = () => {
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const importPending = useRef(false);
+  const actionFooter = useToastFooter({ includeInFlow: true });
   const [selectedHardwareWallet, setSelectedHardwareWallet] = useState<
     string | undefined
   >();
@@ -314,7 +316,7 @@ const ConnectHardwareWalletView: FC = () => {
                 </div>
               )}
             </div>
-            <div className="mt-8 w-full max-w-md">
+            <div ref={actionFooter} className="mt-8 w-full max-w-md">
               {selectedHardwareWallet && (
                 <div className="w-full gap-3 flex flex-col mb-6 mx-auto p-4 text-brand-white text-xs bg-alpha-whiteAlpha100 border border-dashed border-alpha-whiteAlpha300 rounded-[20px]">
                   <p className="font-medium">{t('settings.dontHaveWallet')}</p>
