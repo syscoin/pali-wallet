@@ -1,0 +1,30 @@
+{
+  "beforeSource": "c69f83008d31b5635fd48427196ecb8757667ac9",
+  "afterSource": "599bb8f1929200b8aaa77ab0a8486f82a97ee2af",
+  "images": [
+    {
+      "name": "sentry-fields-before-320.png",
+      "sha256": "c86d838e89df685befffa48aa5d281fef9372455d3a5b8ca38395070e1f531b6",
+      "width": 320,
+      "height": 360
+    },
+    {
+      "name": "sentry-fields-before-400.png",
+      "sha256": "bb2206c5ba62dedf8ea71a7f8136fe4f6ba0e87060941e780fa6c1aa3bce69ab",
+      "width": 400,
+      "height": 620
+    },
+    {
+      "name": "sentry-fields-after-320.png",
+      "sha256": "fcb5c972bda599e2e0136c77923180a84d8b4809c0153e8fe41a38ead4d6e4d5",
+      "width": 320,
+      "height": 360
+    },
+    {
+      "name": "sentry-fields-after-400.png",
+      "sha256": "e471b96e95a00c5d42e77a01405dd4802208618063afce77fed874db3a7da036",
+      "width": 400,
+      "height": 620
+    }
+  ]
+}
