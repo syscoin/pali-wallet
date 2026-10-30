@@ -1,5 +1,7 @@
 import { WALLET_BOOTSTRAP_TIMEOUT_MS } from './requestWalletState';
 
+const WALLET_WINDOWS_ERROR = 'Could not check wallet windows.';
+
 export const isOwnExtensionUrl = (url?: string) => {
   if (!url) return false;
   try {
@@ -60,7 +62,7 @@ export const hasExternalWalletPage = (
       chrome.tabs.query({}, (tabs) => {
         const error = chrome.runtime.lastError;
         finish(
-          error ? new Error('Could not check wallet windows.') : undefined,
+          error ? new Error(WALLET_WINDOWS_ERROR) : undefined,
           tabs?.some(
             (tab) =>
               isExternalWalletUrl(tab.url) ||
@@ -74,7 +76,7 @@ export const hasExternalWalletPage = (
       if (typeof chrome.runtime.getContexts === 'function') {
         chrome.runtime.getContexts({}, (contexts) => {
           const error = chrome.runtime.lastError;
-          if (error) finish(new Error('Could not check wallet windows.'));
+          if (error) finish(new Error(WALLET_WINDOWS_ERROR));
           else if (
             contexts?.some((context) =>
               isExternalWalletUrl(context.documentUrl)
@@ -85,7 +87,7 @@ export const hasExternalWalletPage = (
             try {
               queryTabs();
             } catch {
-              finish(new Error('Could not check wallet windows.'));
+              finish(new Error(WALLET_WINDOWS_ERROR));
             }
           }
         });
@@ -94,6 +96,6 @@ export const hasExternalWalletPage = (
         queryTabs();
       }
     } catch {
-      finish(new Error('Could not check wallet windows.'));
+      finish(new Error(WALLET_WINDOWS_ERROR));
     }
   });

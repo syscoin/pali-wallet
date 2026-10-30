@@ -40,6 +40,8 @@ CancelIcon.displayName = 'CancelIcon';
 
 const MENU_ITEM_CLASS_NAME =
   'flex items-center justify-start text-brand-white mb-2 w-full p-2 rounded-md transition-all duration-150 cursor-pointer hover:bg-brand-blue400 hover:bg-opacity-30';
+const ACTIVE_ITEM_CLASS_NAME = 'bg-brand-blue400 bg-opacity-50';
+const ITEM_TEXT_CLASS_NAME = 'text-sm text-brand-white';
 const CANCEL_ITEM_CLASS_NAME = MENU_ITEM_CLASS_NAME.replace('mb-2 ', '');
 
 const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
@@ -249,7 +251,7 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
                     {({ active }) => (
                       <li
                         className={`
-                    ${active ? 'bg-brand-blue400 bg-opacity-50' : ''}
+                    ${active ? ACTIVE_ITEM_CLASS_NAME : ''}
                     ${MENU_ITEM_CLASS_NAME}
                     `}
                         onClick={handleGoTxDetails}
@@ -257,7 +259,7 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
                         <div className="w-5 mr-3">
                           <ExternalLinkIcon />
                         </div>
-                        <span className="text-sm text-brand-white">
+                        <span className={ITEM_TEXT_CLASS_NAME}>
                           {t('transactions.seeDetails')}
                         </span>
                       </li>
@@ -268,7 +270,7 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
                       {({ active }) => (
                         <li
                           className={`
-                    ${active ? 'bg-brand-blue400 bg-opacity-50' : ''}
+                    ${active ? ACTIVE_ITEM_CLASS_NAME : ''}
                     ${MENU_ITEM_CLASS_NAME}
                     `}
                           onClick={openTransactionOnExplorer}
@@ -276,7 +278,7 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
                           <div className="w-5 mr-3">
                             <ExternalLinkIcon />
                           </div>
-                          <span className="text-sm text-brand-white">
+                          <span className={ITEM_TEXT_CLASS_NAME}>
                             {t('transactions.seeOnBlockExplorer')}
                           </span>
                         </li>
@@ -287,7 +289,7 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
                     {({ active }) => (
                       <li
                         className={`
-                    ${active ? 'bg-brand-blue400 bg-opacity-50' : ''}
+                    ${active ? ACTIVE_ITEM_CLASS_NAME : ''}
                     ${MENU_ITEM_CLASS_NAME}
                     `}
                         onClick={() => handleOnClick(UpdateTxAction.SpeedUp)}
@@ -295,7 +297,7 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
                         <div className="w-5 mr-3">
                           <SpeedUpIcon />
                         </div>
-                        <span className="text-sm text-brand-white">
+                        <span className={ITEM_TEXT_CLASS_NAME}>
                           {t('header.speedUp')}
                         </span>
                       </li>
@@ -305,7 +307,7 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
                     {({ active }) => (
                       <li
                         className={`
-                  ${active ? 'bg-brand-blue400 bg-opacity-50' : ''}
+                  ${active ? ACTIVE_ITEM_CLASS_NAME : ''}
                   ${CANCEL_ITEM_CLASS_NAME}
                   `}
                         onClick={() => handleOnClick(UpdateTxAction.Cancel)}
@@ -313,7 +315,7 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
                         <div className="w-5 mr-3">
                           <CancelIcon />
                         </div>
-                        <span className="text-sm text-brand-white">
+                        <span className={ITEM_TEXT_CLASS_NAME}>
                           {t('buttons.cancel')}
                         </span>
                       </li>

@@ -22,6 +22,9 @@ import {
 
 import RenderAccountsListByBitcoinBased from './RenderAccountsListByBitcoinBased';
 
+const ACCOUNT_MENU_ITEM_CLASS_NAME =
+  'py-1.5 cursor-pointer px-6 w-full backface-visibility-hidden flex items-center gap-3 justify-start text-white text-sm font-medium hover:bg-brand-blue500 hover:bg-opacity-20 active:bg-opacity-40 focus:outline-none transition-colors duration-200';
+
 export const AccountMenu: React.FC = () => {
   const location = useLocation();
   const { navigate, alert } = useUtils();
@@ -74,7 +77,7 @@ export const AccountMenu: React.FC = () => {
               returnContext
             );
           }}
-          className="py-1.5 cursor-pointer px-6 w-full backface-visibility-hidden flex items-center gap-3 justify-start text-white text-sm font-medium hover:bg-brand-blue500 hover:bg-opacity-20 active:bg-opacity-40 focus:outline-none transition-colors duration-200"
+          className={ACCOUNT_MENU_ITEM_CLASS_NAME}
         >
           <AddUserSvg className="mb-1 text-brand-white" />
 
@@ -113,7 +116,7 @@ export const AccountMenu: React.FC = () => {
                 returnContext
               );
             }}
-            className="py-1.5 cursor-pointer px-6 w-full backface-visibility-hidden flex items-center gap-3 justify-start text-white text-sm font-medium hover:bg-brand-blue500 hover:bg-opacity-20 active:bg-opacity-40 focus:outline-none transition-colors duration-200"
+            className={ACCOUNT_MENU_ITEM_CLASS_NAME}
           >
             <KeySvg className="mb-2 text-brand-white" />
 
@@ -140,7 +143,7 @@ export const AccountMenu: React.FC = () => {
               alert.error(t('send.sendError'));
             }
           }}
-          className="py-1.5 cursor-pointer px-6 w-full backface-visibility-hidden flex items-center gap-3 justify-start text-white text-sm font-medium hover:bg-brand-blue500 hover:bg-opacity-20 active:bg-opacity-40 focus:outline-none transition-colors duration-200"
+          className={ACCOUNT_MENU_ITEM_CLASS_NAME}
         >
           <HardWalletIconSvg className="mb-2 text-brand-white" />
 
