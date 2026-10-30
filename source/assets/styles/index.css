@@ -122,6 +122,14 @@
   margin-top: 0;
 }
 
+/* Give translated import tabs room to wrap at word boundaries. */
+@media (max-width: 360px) {
+  .token-import-tabs > button {
+    font-size: 14px;
+    padding-inline: 4px;
+  }
+}
+
 /* Pali Toast Styles */
 .pali-toast {
   font-family: 'Poppins', sans-serif !important;

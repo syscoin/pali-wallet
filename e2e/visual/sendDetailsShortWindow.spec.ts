@@ -301,15 +301,15 @@ for (const { width, height } of viewports) {
       await wheelReveal(page, importButton);
       await importButton.click();
       await expect(importButton).toBeDisabled();
-      // The normal success toast intentionally overlays the bottom edge until
-      // it expires. It is not a stable Send-page obstruction.
-      await expect(
-        page.getByText(`${SPT_SYMBOL} has been added to your wallet`, {
+      const successNotice = page
+        .getByRole('status')
+        .getByText(`${SPT_SYMBOL} has been added to your wallet`, {
           exact: true,
-        })
-      ).toBeHidden({ timeout: 10_000 });
+        });
+      await expect(successNotice).toBeVisible({ timeout: 10_000 });
       await page.getByRole('button', { name: 'Back', exact: true }).click();
       await wallet.ensureOnHome();
+      await expect(successNotice).toBeHidden({ timeout: 10_000 });
 
       for (const asset of ['native', 'spt'] as const) {
         await page.locator('#send-btn').click();

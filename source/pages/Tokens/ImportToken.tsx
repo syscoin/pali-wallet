@@ -869,7 +869,7 @@ export const ImportToken: React.FC = () => {
     <div className="flex min-w-0 w-full flex-col h-full bg-bkg-3 text-brand-white font-poppins">
       {/* Tab Navigation */}
       {activeNetwork.apiUrl && (
-        <div className="min-h-10 shrink-0 relative flex items-stretch justify-center w-full bg-bkg-1 -mt-2">
+        <div className="token-import-tabs min-h-10 shrink-0 relative flex items-stretch justify-center w-full bg-bkg-1 -mt-2">
           <button
             className={`w-1/2 min-w-0 min-h-10 px-2 py-1 break-words font-medium text-base leading-5 transition-all duration-300 ${
               activeTab === 'owned'

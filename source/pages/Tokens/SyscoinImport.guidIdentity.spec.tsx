@@ -4,7 +4,7 @@
  */
 import '@testing-library/jest-dom';
 import { configureStore } from '@reduxjs/toolkit';
-import { act, cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import axios from 'axios';
 import React from 'react';
@@ -172,6 +172,18 @@ const backendReply = (input: string) => {
 
 const assets = (): ITokenSysProps[] =>
   mockStore.getState().vault.accountAssets.HDAccount[0].syscoin;
+const expectSuccess = async (symbol: string) => {
+  const message = en.tokens.hasBeenAddedToYourWallet.replace(
+    '{{token}}',
+    symbol
+  );
+  await waitFor(() => {
+    const feedback = screen.getByText(message, { exact: true });
+    expect(feedback).toBeVisible();
+    expect(feedback.closest('[role="status"]')).not.toBeNull();
+  });
+};
+
 const button = (symbol = 'ALIAS') =>
   screen.getByRole('button', {
     name: en.tokens.importNamedToken.replace('{{symbol}}', symbol),
@@ -313,7 +325,7 @@ it('healthy canonical GUID keeps its exact held balance through the real form, S
     balance: '25.0',
   });
   expect(reads.some((read) => read.guid === GUID)).toBe(true);
-  expect(mockAlert.success).toHaveBeenCalledTimes(1);
+  await expectSuccess('ALIAS');
   expect(mockAlert.error).not.toHaveBeenCalled();
 });
 
@@ -329,7 +341,7 @@ it('healthy valid unowned GUID remains a zero-balance watch import', async () =>
     assetGuid: ZERO_GUID,
     balance: '0',
   });
-  expect(mockAlert.success).toHaveBeenCalledTimes(1);
+  await expectSuccess('ZERO');
   expect(mockAlert.error).not.toHaveBeenCalled();
 });
 
@@ -349,7 +361,7 @@ it('uses numeric GUID identity for a padded input instead of importing a false z
     refreshed: refreshed[0],
   };
   console.info('spt_guid_alias_balance=' + JSON.stringify(observation));
-  expect(mockAlert.success).toHaveBeenCalledTimes(1);
+  await expectSuccess('ALIAS');
   expect(mockAlert.error).not.toHaveBeenCalled();
   expect({
     preview,
@@ -406,7 +418,7 @@ it.each(['0', '0000'])(
       '0',
     ]);
     expect(button('ZERO')).toBeDisabled();
-    expect(mockAlert.success).toHaveBeenCalledTimes(1);
+    await expectSuccess('ZERO');
     expect(mockAlert.error).not.toHaveBeenCalled();
   }
 );
@@ -439,7 +451,7 @@ it('preserves a padded uint64 maximum as an exact decimal string without numeric
     '18446744073709551615',
   ]);
   expect(button('MAX')).toBeDisabled();
-  expect(mockAlert.success).toHaveBeenCalledTimes(1);
+  await expectSuccess('MAX');
   expect(mockAlert.error).not.toHaveBeenCalled();
 });
 
@@ -495,7 +507,7 @@ it('does not let a different GUID in HTTP metadata replace the canonical request
     assetGuid: GUID,
     balance: '25.0',
   });
-  expect(mockAlert.success).toHaveBeenCalledTimes(1);
+  await expectSuccess('ALIAS');
   expect(mockAlert.error).not.toHaveBeenCalled();
 });
 
@@ -517,6 +529,12 @@ it.each([
     expect(assets()).toEqual([]);
     expect(savedPayloads).toEqual([]);
     expect(mockAlert.success).not.toHaveBeenCalled();
+    expect(
+      screen.queryByText(
+        en.tokens.hasBeenAddedToYourWallet.replace('{{token}}', 'ALIAS'),
+        { exact: true }
+      )
+    ).not.toBeInTheDocument();
     expect(mockAlert.error).not.toHaveBeenCalled();
   }
 );
