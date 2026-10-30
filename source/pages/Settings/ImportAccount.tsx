@@ -1,6 +1,12 @@
 import { Input, Form } from 'antd';
 import { useForm } from 'antd/es/form/Form';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
@@ -26,6 +32,10 @@ const ImportAccountView = () => {
   //* States
   const [isAccountImported, setIsAccountImported] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const [importError, setImportError] = useState<{
+    message: string;
+    scope: string;
+  } | null>(null);
   const [watchOnly, setWatchOnly] = useState(false);
   const [showPrivateKey, setShowPrivateKey] = useState(false);
   const [publicDraft, setPublicDraft] = useState(false);
@@ -35,6 +45,7 @@ const ImportAccountView = () => {
   >('p2wpkh');
   const validationRevision = useRef(0);
   const importInFlight = useRef(false);
+  const importErrorRef = useRef<HTMLSpanElement>(null);
   const mounted = useRef(true);
 
   const {
@@ -54,6 +65,27 @@ const ImportAccountView = () => {
   });
   const inputScopeRef = useRef(inputScope);
   inputScopeRef.current = inputScope;
+  const visibleImportError =
+    importError?.scope === inputScope ? importError.message : undefined;
+
+  useLayoutEffect(() => {
+    if (!visibleImportError) return;
+    const footer = importErrorRef.current?.closest<HTMLElement>(
+      '[data-page-action-footer]'
+    );
+    const layout = footer?.closest<HTMLElement>(
+      '[data-navigation-scroll="wallet-layout"]'
+    );
+    const identifier = layout?.querySelector<HTMLElement>(
+      '#import-account-identifier'
+    );
+    if (!footer || !layout || !identifier) return;
+    const overlap =
+      identifier.getBoundingClientRect().bottom -
+      footer.getBoundingClientRect().top +
+      8;
+    if (overlap > 0) layout.scrollTop += overlap;
+  }, [visibleImportError]);
 
   useEffect(() => {
     mounted.current = true;
@@ -64,6 +96,7 @@ const ImportAccountView = () => {
   }, []);
 
   useEffect(() => {
+    setImportError(null);
     validationRevision.current += 1;
     setValidPrivateKey(false);
     setValidIdentifier(false);
@@ -89,6 +122,7 @@ const ImportAccountView = () => {
     const isCurrent = () =>
       mounted.current && inputScopeRef.current === inputScope;
     importInFlight.current = true;
+    setImportError(null);
     setIsImporting(true);
     try {
       const values = await form.validateFields(['privKey']);
@@ -121,11 +155,13 @@ const ImportAccountView = () => {
           error,
           t('settings.accountImportFailed')
         );
-        alert.error(
+        const visibleMessage =
           message === WATCH_ONLY_VALIDATION_TIMEOUT
             ? t('settings.watchOnlyValidationTimedOut')
-            : message
-        );
+            : message;
+        if (watchOnly)
+          setImportError({ scope: inputScope, message: visibleMessage });
+        else alert.error(visibleMessage);
       }
     } finally {
       importInFlight.current = false;
@@ -169,6 +205,7 @@ const ImportAccountView = () => {
           disabled={isImporting}
           onFinish={handleImportAccount}
           onValuesChange={(changed) => {
+            setImportError(null);
             if (Object.prototype.hasOwnProperty.call(changed, 'privKey')) {
               // A draft entered as a secret remains masked on switching modes
               // until it is cleared, or the user explicitly reveals it.
@@ -391,7 +428,13 @@ const ImportAccountView = () => {
               id="import-account-identifier"
             />
           </Form.Item>
-          <PageActionFooter>
+          <PageActionFooter
+            error={
+              visibleImportError ? (
+                <span ref={importErrorRef}>{visibleImportError}</span>
+              ) : undefined
+            }
+          >
             <Button
               variant="neutral"
               className="text-sm text-brand-royalblue"

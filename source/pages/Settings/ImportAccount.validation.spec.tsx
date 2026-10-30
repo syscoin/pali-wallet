@@ -50,7 +50,7 @@ jest.mock('hooks/useController', () => ({
   }),
 }));
 jest.mock('utils/index', () => ({
-  extractErrorMessage: (_error: unknown, fallback: string) => fallback,
+  extractErrorMessage: jest.requireActual('utils/index').extractErrorMessage,
 }));
 jest.mock('utils/navigationState', () => ({ navigateBack: jest.fn() }));
 jest.mock('utils/validatePrivateKey', () => ({
@@ -385,6 +385,42 @@ it('clears a failed import and permits a fresh validated retry', async () => {
   fireEvent.click(importButton());
   expect((await screen.findByRole('status')).textContent).toBe('Imported');
   expect(mockEmitter).toHaveBeenCalledTimes(2);
+});
+
+it('clears a watch-only import refusal on edit and permits a fresh retry', async () => {
+  let attempts = 0;
+  mockEmitter.mockImplementation(async (methods: string[], args: unknown[]) => {
+    if (methods[1] === 'validateWatchOnlyIdentifier')
+      return args[0] === PUBLIC_ADDRESS;
+    if (methods[1] === 'importWatchOnlyFromController') {
+      attempts += 1;
+      if (attempts === 1) throw new Error('Synthetic import failure');
+      return { id: 1 };
+    }
+    throw new Error('Unexpected private import');
+  });
+  render(<ImportAccount />);
+  fireEvent.click(screen.getByRole('checkbox', { name: 'settings.watchOnly' }));
+  const identifier = screen.getByLabelText('settings.publicIdentifierInput');
+  fireEvent.change(identifier, { target: { value: PUBLIC_ADDRESS } });
+  await waitFor(() =>
+    expect(importButton().hasAttribute('disabled')).toBe(false)
+  );
+  fireEvent.click(importButton());
+  const failure = await screen.findByRole('alert');
+  expect(failure.textContent).toBe('Synthetic import failure');
+  expect(mockAlert.error).not.toHaveBeenCalled();
+  expect((identifier as HTMLInputElement).value).toBe(PUBLIC_ADDRESS);
+  const label = screen.getByLabelText('settings.label (settings.optional)');
+  fireEvent.change(label, { target: { value: 'Retry label' } });
+  await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
+  fireEvent.click(importButton());
+  expect((await screen.findByRole('status')).textContent).toBe('Imported');
+  expect(attempts).toBe(2);
+  expect(mockEmitter).toHaveBeenCalledWith(
+    ['wallet', 'importWatchOnlyFromController'],
+    [PUBLIC_ADDRESS, 'Retry label']
+  );
 });
 
 it.each([

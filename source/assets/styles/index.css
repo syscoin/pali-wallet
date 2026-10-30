@@ -133,6 +133,7 @@
   }
   .token-import-tabs > button:last-child {
     width: 52%;
+    padding-inline: 0;
   }
 }
 
