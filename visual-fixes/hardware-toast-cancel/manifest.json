@@ -1,0 +1,30 @@
+{
+  "beforeSource": "c4ac1900d4a2e0e662849182db438d1d5f185e41",
+  "afterSource": "c69f83008d31b5635fd48427196ecb8757667ac9",
+  "images": [
+    {
+      "name": "hid-toast-before-320.png",
+      "sha256": "ab28e05ca8fd6755918f825521858d8783d126918b5e11f7c0390320a151b3a1",
+      "width": 320,
+      "height": 360
+    },
+    {
+      "name": "hid-toast-before-400.png",
+      "sha256": "30dae1fc4df44804e09da3a28b3ef1a76a1c789a2e6c2d0a6e6aafe741447a76",
+      "width": 400,
+      "height": 620
+    },
+    {
+      "name": "hid-toast-after-320.png",
+      "sha256": "e78e006f76650aec2e99a487c9498f306cce6b8ca61e96e52c976ea9247f38f4",
+      "width": 320,
+      "height": 360
+    },
+    {
+      "name": "hid-toast-after-400.png",
+      "sha256": "4978e8df535cc525cb496f0b94d84164064aecf3477072b2acf0ec15dcb23d2c",
+      "width": 400,
+      "height": 620
+    }
+  ]
+}
