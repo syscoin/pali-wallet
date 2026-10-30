@@ -4,6 +4,7 @@ import React, {
   useState,
   useRef,
   useEffect,
+  useLayoutEffect,
 } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
@@ -159,6 +160,31 @@ const ManageAccountsView = React.memo(() => {
     expectedContext: AccountRemovalContext;
   } | null>(null);
   const [isRemoving, setIsRemoving] = useState(false);
+  const removalPanelAnchorRef = useRef<HTMLSpanElement>(null);
+  useLayoutEffect(() => {
+    if (
+      isRemoving &&
+      document.hasFocus() &&
+      document.activeElement === document.body
+    )
+      removalPanelAnchorRef.current
+        ?.closest<HTMLElement>('[tabindex="-1"]')
+        ?.focus({ preventScroll: true });
+  }, [isRemoving]);
+  const [removalError, setRemovalError] = useState('');
+  const removalErrorRef = useRef<HTMLParagraphElement>(null);
+  useLayoutEffect(() => {
+    const error = removalErrorRef.current;
+    if (!removalError || !error) return;
+    error.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+    const dialog = error.closest('[role="dialog"]');
+    if (
+      document.hasFocus() &&
+      dialog &&
+      !dialog.contains(document.activeElement)
+    )
+      error.focus({ preventScroll: true });
+  }, [removalError]);
   const removalContext = useMemo(
     () => ({
       activeAccount: {
@@ -188,6 +214,7 @@ const ManageAccountsView = React.memo(() => {
   useEffect(() => {
     setAccountToRemove(null);
     setIsRemoving(false);
+    setRemovalError('');
   }, [completionContext]);
   const canConfirmRemoval =
     !isContextChanging &&
@@ -196,9 +223,17 @@ const ManageAccountsView = React.memo(() => {
     accountToRemove.expectedContext.address ===
       accounts[accountToRemove.accountType]?.[accountToRemove.account.id]
         ?.address;
+  const confirmationRef = useRef({
+    account: accountToRemove,
+    canConfirmRemoval,
+  });
+  confirmationRef.current = { account: accountToRemove, canConfirmRemoval };
 
   useEffect(() => {
-    if (accountToRemove && !canConfirmRemoval) setAccountToRemove(null);
+    if (accountToRemove && !canConfirmRemoval) {
+      setAccountToRemove(null);
+      setRemovalError('');
+    }
   }, [accountToRemove, canConfirmRemoval]);
 
   const editAccount = useCallback(
@@ -267,6 +302,7 @@ const ManageAccountsView = React.memo(() => {
   const handleRemoveClick = useCallback(
     (account: IKeyringAccountState, accountType: KeyringAccountType) => {
       if (isContextChanging || connectionUnavailable) return;
+      setRemovalError('');
       setAccountToRemove({
         account,
         accountType,
@@ -310,6 +346,7 @@ const ManageAccountsView = React.memo(() => {
     }
 
     const isCurrent = beginRemoval();
+    setRemovalError('');
     setIsRemoving(true);
     try {
       await controllerEmitter(
@@ -326,14 +363,24 @@ const ManageAccountsView = React.memo(() => {
         setAccountToRemove(null);
       }
     } catch (error: any) {
-      if (isCurrent())
-        alert.error(error.message || t('settings.failedToRemoveAccount'));
+      if (isCurrent()) {
+        const message = error.message || t('settings.failedToRemoveAccount');
+        if (
+          confirmationRef.current.account === accountToRemove &&
+          confirmationRef.current.canConfirmRemoval
+        )
+          setRemovalError(message);
+        else alert.error(message);
+      }
     } finally {
       if (isCurrent()) setIsRemoving(false);
     }
   };
 
-  const handleCancelRemove = () => setAccountToRemove(null);
+  const handleCancelRemove = () => {
+    setRemovalError('');
+    setAccountToRemove(null);
+  };
 
   const removeAccountDescription = useMemo(() => {
     if (!accountToRemove) return '';
@@ -512,7 +559,19 @@ const ManageAccountsView = React.memo(() => {
             accountToRemove.accountType === KeyringAccountType.Imported &&
             Boolean(accountToRemove.account.xprv)
           }
-        />
+        >
+          <span ref={removalPanelAnchorRef} hidden />
+          {removalError && (
+            <p
+              ref={removalErrorRef}
+              role="alert"
+              tabIndex={-1}
+              className="mt-2 text-warning-error [overflow-wrap:anywhere] focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-royalblue"
+            >
+              {removalError}
+            </p>
+          )}
+        </ConfirmationModal>
       )}
     </>
   );

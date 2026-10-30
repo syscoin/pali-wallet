@@ -429,9 +429,32 @@ for (const family of ['evm', 'utxo'] as const) {
             observedToasts: [],
             held: true,
           });
+          const firstSuccess = en.tokens.hasBeenAddedToYourWallet.replace(
+            '{{token}}',
+            symbols[0]
+          );
+          expect(pending.observedStatuses).not.toContain(firstSuccess);
+          observations.whileHeld = pending;
           expect(pending.heldForMs).toBeLessThan(9_000);
           await page.keyboard.press('Enter');
           await expect(page).toHaveURL(/#\/home\/details$/);
+          await expect(
+            page.getByText(symbols[1], { exact: true }).first()
+          ).toBeVisible();
+          await expect(importAction(0)).toHaveCount(0);
+          await expect(importAction(1)).toHaveCount(0);
+          const beforeRelease = await snapshot();
+          expect(beforeRelease).toMatchObject({
+            requested: [identifiers[0]],
+            forwarded: [],
+            replies: [],
+            unexpected: [],
+            held: true,
+            released: false,
+          });
+          expect(beforeRelease.observedStatuses).not.toContain(firstSuccess);
+          expect(beforeRelease.heldForMs).toBeLessThan(9_000);
+          observations.beforeReleaseOnDetails = beforeRelease;
           await page.evaluate(() =>
             (window as any).__tokenImportProgress.release()
           );
@@ -452,6 +475,7 @@ for (const family of ['evm', 'utxo'] as const) {
             unexpected: [],
           });
           delivery = await snapshot();
+          observations.afterReleaseOnDetails = delivery;
           expect(delivery.observedStatuses).not.toContain(
             en.tokens.hasBeenAddedToYourWallet.replace('{{token}}', symbols[0])
           );
