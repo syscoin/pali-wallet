@@ -209,7 +209,6 @@ test('cancelling the Ledger chooser never imports and leaves retry and close usa
           { width: 400, height: 620 },
         ]) {
           await hardware!.setViewportSize(viewport);
-          await hardware!.locator('#ledger-btn').click();
           const connect = hardware!.locator('#connect-btn');
           await expect(connect).toBeEnabled();
           await connect.scrollIntoViewIfNeeded();
@@ -292,6 +291,8 @@ test('cancelling the Ledger chooser never imports and leaves retry and close usa
             filters: [{ vendorId: 0x2c97 }],
           });
           await expect(error).toHaveCount(0, { timeout: 10000 });
+          await expect(hardware!.locator('#ledger-btn')).toBeVisible();
+          await hardware!.locator('#ledger-btn').click();
         }
       }
     );
