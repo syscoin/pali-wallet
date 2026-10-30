@@ -1420,6 +1420,21 @@
     "feeTitle": "Taxa de rede para sua operação Sentry autorizada",
     "feeHelp": "Autoriza as entradas da taxa de rede desta operação. O site envia a transação assinada.",
     "feeChanges": "Alterações autorizadas",
+    "managementFields": {
+      "action": "Ação",
+      "childKeyCommitment": "Compromisso da chave filha",
+      "collateralSatoshis": "Garantia (satoshis)",
+      "collateralSigningMessage": "Mensagem de assinatura da garantia",
+      "globalKeyVersion": "Versão global da chave",
+      "operatorPublicKey": "Chave pública do operador",
+      "operatorRewardBasisPoints": "Recompensa do operador (pontos-base)",
+      "ownerKeyId": "ID da chave do proprietário",
+      "payoutAddress": "Endereço de pagamento",
+      "pqOwnerPublicKey": "Chave pública PQ do proprietário",
+      "pqVotingPublicKey": "Chave pública PQ de votação",
+      "reason": "Motivo da revogação",
+      "votingKeyId": "ID da chave de votação"
+    },
     "feeType": "Operação de nó Sentry",
     "feeOperations": {
       "register": "Registrar nó",

@@ -1420,6 +1420,21 @@
     "feeTitle": "承認したSentry操作のネットワーク手数料",
     "feeHelp": "この操作のネットワーク手数料に使う入力を承認します。署名済みトランザクションはサイトが送信します。",
     "feeChanges": "承認された変更",
+    "managementFields": {
+      "action": "操作",
+      "childKeyCommitment": "子鍵コミットメント",
+      "collateralSatoshis": "担保（サトシ）",
+      "collateralSigningMessage": "担保署名メッセージ",
+      "globalKeyVersion": "グローバル鍵バージョン",
+      "operatorPublicKey": "オペレーター公開鍵",
+      "operatorRewardBasisPoints": "オペレーター報酬（ベーシスポイント）",
+      "ownerKeyId": "所有者鍵 ID",
+      "payoutAddress": "支払いアドレス",
+      "pqOwnerPublicKey": "所有者の PQ 公開鍵",
+      "pqVotingPublicKey": "投票用 PQ 公開鍵",
+      "reason": "失効理由",
+      "votingKeyId": "投票鍵 ID"
+    },
     "feeType": "Sentryノードの操作",
     "feeOperations": {
       "register": "ノードを登録",

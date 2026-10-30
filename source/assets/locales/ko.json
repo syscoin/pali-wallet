@@ -1420,6 +1420,21 @@
     "feeTitle": "승인한 Sentry 작업의 네트워크 수수료",
     "feeHelp": "이 작업의 네트워크 수수료 입력을 승인합니다. 사이트가 서명된 트랜잭션을 제출합니다.",
     "feeChanges": "승인된 변경 사항",
+    "managementFields": {
+      "action": "작업",
+      "childKeyCommitment": "하위 키 커밋먼트",
+      "collateralSatoshis": "담보 (사토시)",
+      "collateralSigningMessage": "담보 서명 메시지",
+      "globalKeyVersion": "전역 키 버전",
+      "operatorPublicKey": "운영자 공개 키",
+      "operatorRewardBasisPoints": "운영자 보상 (베이시스 포인트)",
+      "ownerKeyId": "소유자 키 ID",
+      "payoutAddress": "지급 주소",
+      "pqOwnerPublicKey": "소유자 PQ 공개 키",
+      "pqVotingPublicKey": "투표 PQ 공개 키",
+      "reason": "취소 사유",
+      "votingKeyId": "투표 키 ID"
+    },
     "feeType": "Sentry 노드 작업",
     "feeOperations": {
       "register": "노드 등록",

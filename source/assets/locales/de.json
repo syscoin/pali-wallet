@@ -1420,6 +1420,21 @@
     "feeTitle": "Netzwerkgebühr für Ihren autorisierten Sentry-Vorgang",
     "feeHelp": "Autorisiert die Eingänge für die Netzwerkgebühr dieses Vorgangs. Die Website übermittelt die signierte Transaktion.",
     "feeChanges": "Autorisierte Änderungen",
+    "managementFields": {
+      "action": "Aktion",
+      "childKeyCommitment": "Commitment des untergeordneten Schlüssels",
+      "collateralSatoshis": "Sicherheit (Satoshis)",
+      "collateralSigningMessage": "Signaturnachricht der Sicherheit",
+      "globalKeyVersion": "Globale Schlüsselversion",
+      "operatorPublicKey": "Öffentlicher Betreiberschlüssel",
+      "operatorRewardBasisPoints": "Betreibervergütung (Basispunkte)",
+      "ownerKeyId": "Eigentümer-Schlüssel-ID",
+      "payoutAddress": "Auszahlungsadresse",
+      "pqOwnerPublicKey": "Öffentlicher PQ-Eigentümerschlüssel",
+      "pqVotingPublicKey": "Öffentlicher PQ-Abstimmungsschlüssel",
+      "reason": "Widerrufsgrund",
+      "votingKeyId": "Abstimmungsschlüssel-ID"
+    },
     "feeType": "Sentry-Knotenvorgang",
     "feeOperations": {
       "register": "Knoten registrieren",

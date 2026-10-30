@@ -31,6 +31,8 @@ import {
   translateTransactionType,
 } from 'utils/transactionDisplay';
 
+import { SentryManagementFields } from './SentryManagementFields';
+
 export interface IDecodedTransaction {
   error?: string;
   fee?: number;
@@ -561,40 +563,35 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
             )}
             <ExpandableSection title={t('sentry.feeChanges')} defaultExpanded>
               <div className="space-y-3 min-w-0">
-                {'changes' in decodedTx.sentry
-                  ? Object.entries(decodedTx.sentry.changes).map(
-                      ([name, change]) => (
-                        <div key={name} className="break-all">
-                          <p className="text-white">
-                            {t(
-                              `sentry.${
-                                {
-                                  service: 'service',
-                                  operatorPayoutScript: 'operatorPayoutScript',
-                                  nevmAddress: 'nEVMAddress',
-                                }[name]
-                              }`
-                            )}
-                          </p>
-                          <p>
-                            {t('sentry.current')}:{' '}
-                            {change.previous || t('sentry.notSet')}
-                          </p>
-                          <p>
-                            {t('sentry.proposed')}:{' '}
-                            {change.next || t('sentry.notSet')}
-                          </p>
-                        </div>
-                      )
+                {'changes' in decodedTx.sentry ? (
+                  Object.entries(decodedTx.sentry.changes).map(
+                    ([name, change]) => (
+                      <div key={name} className="break-all">
+                        <p className="text-white">
+                          {t(
+                            `sentry.${
+                              {
+                                service: 'service',
+                                operatorPayoutScript: 'operatorPayoutScript',
+                                nevmAddress: 'nEVMAddress',
+                              }[name]
+                            }`
+                          )}
+                        </p>
+                        <p>
+                          {t('sentry.current')}:{' '}
+                          {change.previous || t('sentry.notSet')}
+                        </p>
+                        <p>
+                          {t('sentry.proposed')}:{' '}
+                          {change.next || t('sentry.notSet')}
+                        </p>
+                      </div>
                     )
-                  : Object.entries(decodedTx.sentry.fields).map(
-                      ([name, value]) => (
-                        <div key={name} className="break-all">
-                          <p>{name}</p>
-                          <p className="text-white">{value}</p>
-                        </div>
-                      )
-                    )}
+                  )
+                ) : (
+                  <SentryManagementFields fields={decodedTx.sentry.fields} />
+                )}
               </div>
             </ExpandableSection>
           </div>

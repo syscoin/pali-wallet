@@ -1420,6 +1420,21 @@
     "feeTitle": "您已授权的 Sentry 操作的网络费用",
     "feeHelp": "授权本次操作的网络费输入。网站会提交已签名的交易。",
     "feeChanges": "已授权的更改",
+    "managementFields": {
+      "action": "操作",
+      "childKeyCommitment": "子密钥承诺",
+      "collateralSatoshis": "抵押额（聪）",
+      "collateralSigningMessage": "抵押签名消息",
+      "globalKeyVersion": "全局密钥版本",
+      "operatorPublicKey": "运营者公钥",
+      "operatorRewardBasisPoints": "运营者奖励（基点）",
+      "ownerKeyId": "所有者密钥 ID",
+      "payoutAddress": "付款地址",
+      "pqOwnerPublicKey": "所有者 PQ 公钥",
+      "pqVotingPublicKey": "投票 PQ 公钥",
+      "reason": "撤销原因",
+      "votingKeyId": "投票密钥 ID"
+    },
     "feeType": "Sentry 节点操作",
     "feeOperations": {
       "register": "注册节点",

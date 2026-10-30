@@ -1420,6 +1420,21 @@
     "feeTitle": "Frais réseau pour votre opération Sentry autorisée",
     "feeHelp": "Autorise les entrées destinées aux frais réseau de cette opération. Le site soumet la transaction signée.",
     "feeChanges": "Modifications autorisées",
+    "managementFields": {
+      "action": "Action",
+      "childKeyCommitment": "Engagement de la clé enfant",
+      "collateralSatoshis": "Garantie (satoshis)",
+      "collateralSigningMessage": "Message de signature de la garantie",
+      "globalKeyVersion": "Version globale de la clé",
+      "operatorPublicKey": "Clé publique de l’opérateur",
+      "operatorRewardBasisPoints": "Récompense de l’opérateur (points de base)",
+      "ownerKeyId": "ID de clé du propriétaire",
+      "payoutAddress": "Adresse de paiement",
+      "pqOwnerPublicKey": "Clé publique PQ du propriétaire",
+      "pqVotingPublicKey": "Clé publique PQ de vote",
+      "reason": "Motif de révocation",
+      "votingKeyId": "ID de clé de vote"
+    },
     "feeType": "Opération de nœud Sentry",
     "feeOperations": {
       "register": "Enregistrer le nœud",

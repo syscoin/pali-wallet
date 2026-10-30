@@ -1420,6 +1420,21 @@
     "feeTitle": "Сетевая комиссия для разрешённой вами операции Sentry",
     "feeHelp": "Разрешает использовать входы для сетевой комиссии этой операции. Сайт отправляет подписанную транзакцию.",
     "feeChanges": "Разрешённые изменения",
+    "managementFields": {
+      "action": "Действие",
+      "childKeyCommitment": "Коммитмент дочернего ключа",
+      "collateralSatoshis": "Залог (сатоши)",
+      "collateralSigningMessage": "Сообщение подписи залога",
+      "globalKeyVersion": "Глобальная версия ключа",
+      "operatorPublicKey": "Публичный ключ оператора",
+      "operatorRewardBasisPoints": "Вознаграждение оператора (базисные пункты)",
+      "ownerKeyId": "ID ключа владельца",
+      "payoutAddress": "Адрес выплат",
+      "pqOwnerPublicKey": "Публичный PQ-ключ владельца",
+      "pqVotingPublicKey": "Публичный PQ-ключ голосования",
+      "reason": "Причина отзыва",
+      "votingKeyId": "ID ключа голосования"
+    },
     "feeType": "Операция узла Sentry",
     "feeOperations": {
       "register": "Зарегистрировать узел",

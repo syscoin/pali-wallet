@@ -1420,6 +1420,21 @@
     "feeTitle": "Network fee for your authorized Sentry operation",
     "feeHelp": "Authorizes the network-fee inputs for this operation. The site submits the signed transaction.",
     "feeChanges": "Authorized changes",
+    "managementFields": {
+      "action": "Action",
+      "childKeyCommitment": "Child key commitment",
+      "collateralSatoshis": "Collateral (satoshis)",
+      "collateralSigningMessage": "Collateral signing message",
+      "globalKeyVersion": "Global key version",
+      "operatorPublicKey": "Operator public key",
+      "operatorRewardBasisPoints": "Operator reward (basis points)",
+      "ownerKeyId": "Owner key ID",
+      "payoutAddress": "Payout address",
+      "pqOwnerPublicKey": "PQ owner public key",
+      "pqVotingPublicKey": "PQ voting public key",
+      "reason": "Revocation reason",
+      "votingKeyId": "Voting key ID"
+    },
     "feeType": "Sentry node operation",
     "feeOperations": {
       "register": "Register node",
