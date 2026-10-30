@@ -1746,7 +1746,10 @@ const CustomRPCView = () => {
         {!isSyscoinRpc && (
           <div className="w-full">
             <div className="flex items-center gap-2 mb-2">
-              <label className="text-sm text-white font-medium">
+              <label
+                htmlFor="rpc_apiUrl"
+                className="text-sm text-white font-medium"
+              >
                 {t('settings.blockExplorerApiUrl')}
               </label>
               <Tooltip content={t('send.apiKeyTooltip')} placement="top">

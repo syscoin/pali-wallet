@@ -391,6 +391,18 @@ const discoverUtxoAndReturn = async (
   );
 };
 
+it('associates the visible explorer API label with its input', async () => {
+  const user = open();
+  const label = screen.getByText('settings.blockExplorerApiUrl');
+  const field = screen.getByLabelText('settings.blockExplorerApiUrl');
+
+  expect(label.tagName).toBe('LABEL');
+  expect(field).toHaveAttribute('id', 'rpc_apiUrl');
+  expect(field).toBe(apiField());
+  await user.click(label);
+  expect(field).toHaveFocus();
+});
+
 it('does not inherit Alpha API when the ordinary catalogue selection changes to Beta', async () => {
   const user = open();
   await choose(user, 0);
