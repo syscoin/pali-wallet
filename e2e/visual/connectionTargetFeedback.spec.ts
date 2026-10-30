@@ -278,9 +278,8 @@ test('a new network target receives fresh feedback deadlines after an old balanc
     });
     const page = wallet.page;
     page.on('pageerror', (error) => pageErrors.push(error.message));
-    const indicator = page.locator(
-      'div[style*="width: 8px"][style*="height: 8px"] button.w-2.h-2'
-    );
+    const indicator = page.locator('button.status-target');
+    const indicatorDot = indicator.locator('span');
     const tooltip = page.getByRole('tooltip');
     const refresh = page.getByRole('button', {
       name: en.header.refresh,
@@ -341,7 +340,7 @@ test('a new network target receives fresh feedback deadlines after an old balanc
           ({ since, delay }) => Date.now() - since >= delay,
           { since: pendingAt, delay: SLOW_FEEDBACK_MS }
         );
-        await expect(indicator).toHaveClass(/bg-orange-500/);
+        await expect(indicatorDot).toHaveClass(/bg-orange-500/);
         await expect(tooltip).toHaveText(
           en.networkConnection.operationSlow.replace(
             '{{operation}}',
@@ -403,7 +402,7 @@ test('a new network target receives fresh feedback deadlines after an old balanc
             quality: null,
           });
         await indicator.hover();
-        await expect(indicator).toHaveClass(/bg-brand-blue500/);
+        await expect(indicatorDot).toHaveClass(/bg-brand-blue500/);
         await expect(tooltip).toHaveText(en.networkConnection.updatingBalances);
         const targetPendingAt = await page.evaluate(() => Date.now());
         observations.targetPendingAt = targetPendingAt;
@@ -422,7 +421,7 @@ test('a new network target receives fresh feedback deadlines after an old balanc
         expect(
           await page.evaluate((since) => Date.now() - since, targetPendingAt)
         ).toBeLessThan(SLOW_FEEDBACK_MS);
-        await expect(indicator).toHaveClass(/bg-brand-blue500/);
+        await expect(indicatorDot).toHaveClass(/bg-brand-blue500/);
         const afterOldResponse = await publicState(page);
         observations.afterOldResponse = afterOldResponse;
         expect(afterOldResponse).toMatchObject({
@@ -442,7 +441,7 @@ test('a new network target receives fresh feedback deadlines after an old balanc
           ({ since, delay }) => Date.now() - since >= delay,
           { since: targetPendingAt, delay: SLOW_FEEDBACK_MS }
         );
-        await expect(indicator).toHaveClass(/bg-orange-500/);
+        await expect(indicatorDot).toHaveClass(/bg-orange-500/);
         await expect(tooltip).toHaveText(
           en.networkConnection.operationSlow.replace(
             '{{operation}}',
@@ -454,7 +453,7 @@ test('a new network target receives fresh feedback deadlines after an old balanc
           ({ since, delay }) => Date.now() - since >= delay,
           { since: targetPendingAt, delay: CRITICAL_FEEDBACK_MS }
         );
-        await expect(indicator).toHaveClass(/bg-red-600/);
+        await expect(indicatorDot).toHaveClass(/bg-red-600/);
         await expect(tooltip).toHaveText(en.networkConnection.operationFailing);
         observations.targetCriticalAt = await page.evaluate(() => Date.now());
         observations.targetCritical = await publicState(page);
@@ -493,7 +492,7 @@ test('a new network target receives fresh feedback deadlines after an old balanc
         );
         expect(completed.quality?.hasSlowOperations).toBe(true);
         expect(completed.quality?.hasCriticalErrors).toBe(false);
-        await expect(indicator).toHaveClass(/bg-orange-500/);
+        await expect(indicatorDot).toHaveClass(/bg-orange-500/);
         await indicator.hover();
         await expect(tooltip).toHaveText(
           en.networkConnection.networkQualitySlow.replace(
@@ -557,7 +556,7 @@ test('a new network target receives fresh feedback deadlines after an old balanc
         expect(final.quality?.lastBalanceLatency).toBeLessThanOrEqual(1000);
         expect(final.quality?.hasSlowOperations).toBe(false);
         expect(final.quality?.hasCriticalErrors).toBe(false);
-        await expect(indicator).toHaveClass(/bg-green-500/);
+        await expect(indicatorDot).toHaveClass(/bg-green-500/);
         await indicator.hover();
         await expect(tooltip).toHaveText(
           en.networkConnection.operationCompleted

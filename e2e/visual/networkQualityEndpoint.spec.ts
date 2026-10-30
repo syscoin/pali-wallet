@@ -314,9 +314,8 @@ test('an edited same-chain RPC starts with its own network quality', async ({}, 
     });
     const page = wallet.page;
     page.on('pageerror', (error) => pageErrors.push(error.message));
-    const indicator = page.locator(
-      'div[style*="width: 8px"][style*="height: 8px"] button.w-2.h-2'
-    );
+    // The status control has no accessible name while its dot is hidden.
+    const indicator = page.locator('button.status-target');
     const tooltip = page.getByRole('tooltip');
     const refresh = page.getByRole('button', {
       name: en.header.refresh,
@@ -391,14 +390,19 @@ test('an edited same-chain RPC starts with its own network quality', async ({}, 
           OLD_SLOW_READ_MS
         );
         expect(old.quality?.hasCriticalErrors).toBe(false);
-        await indicator.hover();
-        await expect(indicator).toHaveClass(/bg-orange-500/);
-        await expect(tooltip).toHaveText(
-          en.networkConnection.networkQualitySlow.replace(
-            '{{latency}}',
-            String(old.quality?.lastBalanceLatency) + 'ms'
-          )
+        const slowLabel = en.networkConnection.networkQualitySlow.replace(
+          '{{latency}}',
+          String(old.quality?.lastBalanceLatency) + 'ms'
         );
+        const slowIndicator = page.getByRole('button', {
+          name: slowLabel,
+          exact: true,
+        });
+        await slowIndicator.hover();
+        await expect(slowIndicator.locator('span')).toHaveClass(
+          /bg-orange-500/
+        );
+        await expect(tooltip).toHaveText(slowLabel);
         observations.oldEndpointSlow = old;
       }
     );
@@ -497,8 +501,14 @@ test('an edited same-chain RPC starts with its own network quality', async ({}, 
             postLoading: true,
             quality: null,
           });
-        await indicator.hover();
-        await expect(indicator).toHaveClass(/bg-brand-blue500/);
+        const loadingIndicator = page.getByRole('button', {
+          name: en.networkConnection.updatingBalances,
+          exact: true,
+        });
+        await loadingIndicator.hover();
+        await expect(loadingIndicator.locator('span')).toHaveClass(
+          /bg-brand-blue500/
+        );
         await expect(tooltip).toHaveText(en.networkConnection.updatingBalances);
         const heldRead = reads.find(
           (row) => row.network === 'target' && row.held
@@ -572,8 +582,14 @@ test('an edited same-chain RPC starts with its own network quality', async ({}, 
         );
         expect(final.quality?.lastBalanceLatency).toBeGreaterThanOrEqual(0);
         expect(final.quality?.lastBalanceLatency).toBeLessThanOrEqual(1000);
-        await indicator.hover();
-        await expect(indicator).toHaveClass(/bg-green-500/);
+        const completedIndicator = page.getByRole('button', {
+          name: en.networkConnection.operationCompleted,
+          exact: true,
+        });
+        await completedIndicator.hover();
+        await expect(completedIndicator.locator('span')).toHaveClass(
+          /bg-green-500/
+        );
         await expect(tooltip).toHaveText(
           en.networkConnection.operationCompleted
         );

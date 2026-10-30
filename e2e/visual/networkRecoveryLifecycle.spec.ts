@@ -421,9 +421,7 @@ test('network-error recovery edit action is reachable by keyboard', async ({}, i
     await page.goBack();
     await expect(page).toHaveURL(/#\/home$/);
     await wallet.switchNetwork('Syscoin Testnet', 'UTXO');
-    const statusButton = page.locator(
-      'div[style*="width: 8px"][style*="height: 8px"] button'
-    );
+    const statusButton = page.locator('button.status-target');
     await expect(statusButton).toHaveCount(1);
     await expect(statusButton).toBeDisabled();
     let healthyReceivedTabFocus = false;
