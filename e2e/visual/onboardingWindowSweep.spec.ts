@@ -465,15 +465,65 @@ test('locked wallet and recovery warning remain readable and operable', async ({
     await checkWallet.waitFor();
     for (const size of sizes) {
       await page.setViewportSize(size);
-      // Start from the top and reach the real control with the keyboard before
-      // scrolling down. A visible button alone can still have a clipped ring.
-      await page.mouse.click(5, 5);
-      await page.keyboard.press(
-        process.platform === 'darwin' ? 'Meta+ArrowUp' : 'Control+Home'
-      );
+      const focusGeometry = () =>
+        checkWallet.evaluate((button) => {
+          let owner: Element | null = button.parentElement;
+          while (owner) {
+            const style = getComputedStyle(owner);
+            if (
+              /(auto|scroll|overlay)/.test(style.overflowY) &&
+              owner.scrollHeight > owner.clientHeight + 1
+            )
+              break;
+            owner = owner.parentElement;
+          }
+          owner ??= document.scrollingElement;
+          const rect = button.getBoundingClientRect();
+          const style = getComputedStyle(button);
+          const ownerRect = owner?.getBoundingClientRect();
+          return {
+            focused: button === document.activeElement,
+            focusVisible: button.matches(':focus-visible'),
+            button: {
+              top: rect.top,
+              bottom: rect.bottom,
+              left: rect.left,
+              right: rect.right,
+            },
+            outline: {
+              style: style.outlineStyle,
+              width: style.outlineWidth,
+              offset: style.outlineOffset,
+            },
+            viewport: { width: innerWidth, height: innerHeight },
+            owner: owner && {
+              tag: owner.tagName,
+              id: owner.id,
+              top: ownerRect?.top,
+              bottom: ownerRect?.bottom,
+              scrollTop: owner.scrollTop,
+              scrollHeight: owner.scrollHeight,
+              clientHeight: owner.clientHeight,
+            },
+          };
+        });
+      const attachFocusGeometry = async (phase: string) => {
+        await info.attach(
+          `recovery-focus-${phase}-${size.width}x${size.height}-geometry`,
+          {
+            body: JSON.stringify(await focusGeometry()),
+            contentType: 'application/json',
+          }
+        );
+      };
+      // Reset the actual scroll owner with native input, then reach the real
+      // control by Tab before scrolling down. Its visible box can hide a ring.
+      await page.mouse.move(size.width / 2, size.height / 2);
+      await page.mouse.wheel(0, -10000);
       await expect
-        .poll(() => page.evaluate(() => document.scrollingElement?.scrollTop))
+        .poll(async () => (await focusGeometry()).owner?.scrollTop)
         .toBe(0);
+      await page.mouse.click(5, 5);
       for (let attempt = 0; attempt < 12; attempt++) {
         await page.keyboard.press('Tab');
         if (
@@ -483,6 +533,7 @@ test('locked wallet and recovery warning remain readable and operable', async ({
         )
           break;
       }
+      await attachFocusGeometry('native-tab');
       await expect(checkWallet).toBeFocused();
       const focusOutlineVisible = () =>
         checkWallet.evaluate((button) => {
@@ -540,16 +591,17 @@ test('locked wallet and recovery warning remain readable and operable', async ({
       await page.mouse.move(size.width / 2, size.height / 2);
       await page.mouse.wheel(0, 10000);
       await expect
-        .poll(() =>
-          page.evaluate(() => {
-            const root = document.scrollingElement!;
-            return (
-              Math.abs(root.scrollHeight - root.clientHeight - root.scrollTop) <
-              1
-            );
-          })
-        )
+        .poll(async () => {
+          const { owner } = await focusGeometry();
+          return (
+            !!owner &&
+            Math.abs(
+              owner.scrollHeight - owner.clientHeight - owner.scrollTop
+            ) < 1
+          );
+        })
         .toBe(true);
+      await attachFocusGeometry('max-scroll');
       await expect(checkWallet).toBeFocused();
       await expect
         .poll(focusOutlineVisible, {
