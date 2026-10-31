@@ -211,7 +211,7 @@ const ImportPhrase: React.FC = () => {
                   : setShowModal(false)
               }
               style={{ padding: '15px 48px 15px 15px' }}
-              className={`${formBorderStatusStyle} ${textAreaNotVisibleStyle} bg-fields-input-primary overflow-hidden w-full h-[5.625rem] text-brand-graylight text-sm border focus:border-fields-input-borderfocus rounded-lg outline-none resize-none `}
+              className={`${formBorderStatusStyle} ${textAreaNotVisibleStyle} bg-fields-input-primary overflow-x-hidden overflow-y-auto w-full h-[5.625rem] text-brand-graylight text-sm border focus:border-fields-input-borderfocus rounded-lg outline-none resize-none `}
               placeholder={t('import.pasteYourWalletSeed')}
               onKeyPress={handleKeypress}
             />

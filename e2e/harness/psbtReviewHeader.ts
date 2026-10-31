@@ -13,6 +13,7 @@ export async function inspectPsbtReviewHeader(page: Page, info: TestInfo) {
     name: en.transactions.copyDetails,
     exact: true,
   });
+  let firstToastSeenAt = 0;
   for (const width of [400, 320]) {
     await page.setViewportSize({ width, height: width === 400 ? 620 : 360 });
     await expect(title).toBeVisible();
@@ -79,7 +80,7 @@ export async function inspectPsbtReviewHeader(page: Page, info: TestInfo) {
     });
     await page.mouse.move(0, 0);
     await info.attach(`psbt-review-header-${width}`, {
-      body: await page.screenshot({ animations: 'disabled' }),
+      body: await page.screenshot({ animations: 'allow' }),
       contentType: 'image/png',
     });
     await info.attach(`psbt-review-header-${width}-words`, {
@@ -119,10 +120,31 @@ export async function inspectPsbtReviewHeader(page: Page, info: TestInfo) {
       await page.keyboard.press('Tab');
     }
     await expect(copy).toBeFocused();
+    if (width === 320) {
+      // Do not let a prior success toast satisfy this independent copy. Let
+      // its natural lifetime and the app's deduplication window elapse.
+      expect(firstToastSeenAt).toBeGreaterThan(0);
+      await expect(
+        page.getByText(en.transactions.transactionJsonCopied, { exact: true })
+      ).not.toBeVisible();
+      await page.waitForFunction(
+        (firstSeen) => performance.now() - firstSeen >= 2100,
+        firstToastSeenAt
+      );
+      await expect(copy).toBeFocused();
+    }
+    // Native clipboard access requires the real browser window to be focused.
+    await page.bringToFront();
+    await expect
+      .poll(() => page.evaluate(() => document.hasFocus()))
+      .toBe(true);
+    await expect(copy).toBeFocused();
     await page.keyboard.press('Enter');
     await expect(
       page.getByText(en.transactions.transactionJsonCopied, { exact: true })
     ).toBeVisible();
+    if (width === 400)
+      firstToastSeenAt = await page.evaluate(() => performance.now());
   }
   if (original) await page.setViewportSize(original);
 }

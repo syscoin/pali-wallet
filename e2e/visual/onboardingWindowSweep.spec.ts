@@ -212,6 +212,146 @@ test('welcome, import and password setup stay reachable in small windows', async
               info,
               `import-empty-field-${suffix}`
             );
+            // Public synthetic mnemonics only: exercise native textarea scrolling
+            // after focus/Home has settled, with the same control at both sizes.
+            const seedField = page.locator('#import-wallet-input');
+            const seed24 = [...Array(23).fill('abandon'), 'art'].join(' \n');
+            const seed12 = UTXO_FIXTURE_SEED.split(' ').join(' \n');
+            for (const [name, seed] of [
+              ['24', seed24],
+              ['12', seed12],
+            ] as const) {
+              await seedField.fill(seed);
+              await expect(page.locator('#import-wallet-action')).toBeEnabled();
+              await wheelTo(page, seedField);
+              await seedField.focus();
+              await page.keyboard.press(
+                process.platform === 'darwin' ? 'Meta+ArrowUp' : 'Control+Home'
+              );
+              await page.keyboard.press('Home');
+              await page.evaluate(
+                () =>
+                  new Promise<void>((resolve) =>
+                    requestAnimationFrame(() =>
+                      requestAnimationFrame(() => resolve())
+                    )
+                  )
+              );
+              const start = await seedField.evaluate(
+                (element: HTMLTextAreaElement) => ({
+                  caret: element.selectionStart,
+                  scrollTop: element.scrollTop,
+                  scrollHeight: element.scrollHeight,
+                  clientHeight: element.clientHeight,
+                })
+              );
+              expect(start.caret, `${name}-word start caret ${suffix}`).toBe(0);
+              expect(
+                start.scrollTop,
+                `${name}-word initial scroll ${suffix}`
+              ).toBeLessThanOrEqual(1);
+              expect(
+                start.scrollHeight,
+                `${name}-word overflow ${suffix}`
+              ).toBeGreaterThan(start.clientHeight);
+              const rect = (await seedField.boundingBox())!;
+              const point = {
+                x: rect.x + rect.width / 2,
+                y: rect.y + rect.height / 2,
+              };
+              await page.mouse.move(point.x, point.y);
+              const hit = await page.evaluate(({ x, y }) => {
+                const field = document.querySelector('#import-wallet-input');
+                return document.elementFromPoint(x, y) === field;
+              }, point);
+              expect(hit, `${name}-word wheel targets textarea ${suffix}`).toBe(
+                true
+              );
+              await seedField.evaluate((element: HTMLTextAreaElement) => {
+                (window as any).__seedWheelTarget = false;
+                element.addEventListener(
+                  'wheel',
+                  (event) => {
+                    (window as any).__seedWheelTarget =
+                      event.target === element;
+                  },
+                  { once: true }
+                );
+              });
+              await page.mouse.wheel(0, 120);
+              await expect
+                .poll(() =>
+                  seedField.evaluate(
+                    (element: HTMLTextAreaElement) => element.scrollTop
+                  )
+                )
+                .toBeGreaterThan(start.scrollTop);
+              expect(
+                await page.evaluate(() => (window as any).__seedWheelTarget)
+              ).toBe(true);
+              const wheel = await seedField.evaluate(
+                (element: HTMLTextAreaElement) => ({
+                  scrollTop: element.scrollTop,
+                  overflowY: getComputedStyle(element).overflowY,
+                })
+              );
+              expect(wheel.overflowY).toBe('auto');
+              await seedField.focus();
+              await page.keyboard.press(
+                process.platform === 'darwin' ? 'Meta+ArrowDown' : 'Control+End'
+              );
+              await expect
+                .poll(
+                  () =>
+                    seedField.evaluate(
+                      (element: HTMLTextAreaElement) =>
+                        element.selectionStart === element.value.length &&
+                        element.scrollTop >=
+                          element.scrollHeight - element.clientHeight - 2
+                    ),
+                  { message: `${name}-word native End settles ${suffix}` }
+                )
+                .toBe(true);
+              const end = await seedField.evaluate(
+                (element: HTMLTextAreaElement) => ({
+                  caret: element.selectionStart,
+                  length: element.value.length,
+                  scrollTop: element.scrollTop,
+                  maxScroll: element.scrollHeight - element.clientHeight,
+                })
+              );
+              expect(end.caret, `${name}-word end caret ${suffix}`).toBe(
+                end.length
+              );
+              expect(
+                end.scrollTop,
+                `${name}-word end scroll ${suffix}`
+              ).toBeGreaterThanOrEqual(end.maxScroll - 2);
+              await page.keyboard.press(
+                process.platform === 'darwin' ? 'Meta+A' : 'Control+A'
+              );
+              const selection = await seedField.evaluate(
+                (element: HTMLTextAreaElement) => ({
+                  start: element.selectionStart,
+                  end: element.selectionEnd,
+                  length: element.value.length,
+                })
+              );
+              expect(selection.start).toBe(0);
+              expect(selection.end).toBe(selection.length);
+              await info.attach(`import-seed-wheel-${name}-${suffix}`, {
+                contentType: 'application/json',
+                body: JSON.stringify({
+                  point,
+                  hit,
+                  start,
+                  wheel,
+                  end,
+                  selection,
+                }),
+              });
+              await capture(page, `import-seed-wheel-${name}-${suffix}`, info);
+            }
             await page.locator('#import-wallet-input').fill('one two three');
             await page.waitForTimeout(150);
             await page.locator('#import-wallet-input').press('Tab');

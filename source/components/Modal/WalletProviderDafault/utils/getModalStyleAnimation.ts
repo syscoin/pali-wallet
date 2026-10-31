@@ -16,12 +16,18 @@ export const getContainerStyleAnimation = (
   } as MotionStyle;
   return {
     style,
-    animation: Object.assign({}, style, {
+    // Apply width and intrinsic height together in style. Animating width
+    // while Framer measures auto height can measure the still-narrow panel.
+    animation: {
+      minHeight: style.minHeight,
+      borderTopRightRadius: style.borderTopRightRadius,
+      borderTopLeftRadius: style.borderTopLeftRadius,
+      opacity: style.opacity,
       transition: {
         duration: 0.3,
         ease: 'easeInOut',
       },
-    }) as IMotionType,
+    } as IMotionType,
   };
 };
 

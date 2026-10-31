@@ -22,7 +22,13 @@ it.each([
     };
     expect(getContainerStyleAnimation(hovered, hidden)).toEqual({
       style,
-      animation: { ...style, transition: { duration: 0.3, ease: 'easeInOut' } },
+      animation: {
+        minHeight: style.minHeight,
+        borderTopRightRadius: style.borderTopRightRadius,
+        borderTopLeftRadius: style.borderTopLeftRadius,
+        opacity: style.opacity,
+        transition: { duration: 0.3, ease: 'easeInOut' },
+      },
     });
   }
 );
