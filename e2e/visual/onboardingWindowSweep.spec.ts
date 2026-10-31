@@ -237,6 +237,32 @@ test('welcome, import and password setup stay reachable in small windows', async
                     )
                   )
               );
+              // Home places the caret first but may leave top padding scrolled.
+              // Use the native wheel on this textarea to anchor its top edge.
+              const topRect = (await seedField.boundingBox())!;
+              const topPoint = {
+                x: topRect.x + topRect.width / 2,
+                y: topRect.y + topRect.height / 2,
+              };
+              await page.mouse.move(topPoint.x, topPoint.y);
+              expect(
+                await page.evaluate(({ x, y }) => {
+                  const field = document.querySelector('#import-wallet-input');
+                  return document.elementFromPoint(x, y) === field;
+                }, topPoint),
+                `${name}-word upward wheel targets textarea ${suffix}`
+              ).toBe(true);
+              await page.mouse.wheel(0, -120);
+              await expect
+                .poll(
+                  () =>
+                    seedField.evaluate(
+                      (element: HTMLTextAreaElement) =>
+                        element.selectionStart === 0 && element.scrollTop <= 1
+                    ),
+                  { message: `${name}-word native top settles ${suffix}` }
+                )
+                .toBe(true);
               const start = await seedField.evaluate(
                 (element: HTMLTextAreaElement) => ({
                   caret: element.selectionStart,
