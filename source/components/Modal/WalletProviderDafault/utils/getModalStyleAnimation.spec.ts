@@ -15,7 +15,7 @@ it.each([
     const style = {
       width: hovered ? '100vw' : '2.75rem',
       height: hovered ? 'auto' : '2.75rem',
-      minHeight: hovered ? '64px' : '2.75rem',
+      minHeight: hovered ? '64px' : '44px',
       borderTopRightRadius: hovered ? '20px' : '999px',
       borderTopLeftRadius: hovered ? '20px' : 'unset',
       opacity: hidden ? 0 : 1,

@@ -276,15 +276,15 @@ for (const viewport of [
                   }
                 ).__widgetTrace.samples
             );
+            await info.attach('provider-widget-frame-geometry', {
+              contentType: 'application/json',
+              body: JSON.stringify(samples),
+            });
             expect(samples.length).toBeGreaterThan(1);
             for (const sample of samples) {
               expect(sample.top).toBeGreaterThanOrEqual(viewport.height - 150);
               expect(sample.height).toBeLessThanOrEqual(150);
             }
-            await info.attach('provider-widget-frame-geometry', {
-              contentType: 'application/json',
-              body: JSON.stringify(samples),
-            });
             await capture(page);
             await page.keyboard.press('Tab');
             await expect(opener).not.toBeFocused();

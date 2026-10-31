@@ -329,12 +329,21 @@ test('welcome, import and password setup stay reachable in small windows', async
               await expect
                 .poll(
                   () =>
-                    seedField.evaluate(
-                      (element: HTMLTextAreaElement) =>
+                    seedField.evaluate((element: HTMLTextAreaElement) => {
+                      const bottomPadding = parseFloat(
+                        getComputedStyle(element).paddingBottom
+                      );
+                      const maxTextScroll = Math.max(
+                        0,
+                        element.scrollHeight -
+                          element.clientHeight -
+                          bottomPadding
+                      );
+                      return (
                         element.selectionStart === element.value.length &&
-                        element.scrollTop >=
-                          element.scrollHeight - element.clientHeight - 2
-                    ),
+                        element.scrollTop >= maxTextScroll - 2
+                      );
+                    }),
                   { message: `${name}-word native End settles ${suffix}` }
                 )
                 .toBe(true);
@@ -344,6 +353,12 @@ test('welcome, import and password setup stay reachable in small windows', async
                   length: element.value.length,
                   scrollTop: element.scrollTop,
                   maxScroll: element.scrollHeight - element.clientHeight,
+                  maxTextScroll: Math.max(
+                    0,
+                    element.scrollHeight -
+                      element.clientHeight -
+                      parseFloat(getComputedStyle(element).paddingBottom)
+                  ),
                 })
               );
               expect(end.caret, `${name}-word end caret ${suffix}`).toBe(
@@ -352,7 +367,7 @@ test('welcome, import and password setup stay reachable in small windows', async
               expect(
                 end.scrollTop,
                 `${name}-word end scroll ${suffix}`
-              ).toBeGreaterThanOrEqual(end.maxScroll - 2);
+              ).toBeGreaterThanOrEqual(end.maxTextScroll - 2);
               await page.keyboard.press(
                 process.platform === 'darwin' ? 'Meta+A' : 'Control+A'
               );
