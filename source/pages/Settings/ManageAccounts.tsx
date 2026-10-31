@@ -434,9 +434,11 @@ const ManageAccountsView = React.memo(() => {
               </span>
             </div>
             <span
-              className={`text-xs px-2 py-0.5 text-white ${
-                config.bgColor
-              } rounded-full flex-shrink-0${
+              className={`text-xs px-2 py-0.5 ${
+                accountType === KeyringAccountType.Imported || isSmartAccount
+                  ? 'text-black'
+                  : 'text-white'
+              } ${config.bgColor} rounded-full flex-shrink-0${
                 isSmartAccount
                   ? ' col-start-1 row-start-2 justify-self-start'
                   : ''

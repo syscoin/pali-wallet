@@ -3,6 +3,7 @@ import { HDNodeWallet } from 'ethers';
 
 import en from '../../source/assets/locales/en.json';
 import { E2E_CONFIG } from '../harness/config';
+import { captureForegroundContrast } from '../harness/foregroundContrast';
 import {
   createIsolatedVaultFixture,
   installIsolatedVaultRoutes,
@@ -156,6 +157,70 @@ for (const family of ['EVM', 'UTXO'] as const) {
         await page.locator('#general-settings-button').click();
         await page.getByRole('menuitem', { name, exact: true }).click();
       };
+      // Exercise the real account menu and manager for a public watch account.
+      await page.locator('#general-settings-button').click();
+      const importedMenuBadge = page
+        .locator('[id^="account-Imported-"]')
+        .getByText(en.components.imported, { exact: true });
+      const paliMenuBadge = page
+        .locator('[id^="account-HDAccount-"]')
+        .getByText('Pali', { exact: true });
+      for (const width of [400, 320]) {
+        await page.setViewportSize({
+          width,
+          height: width === 400 ? 620 : 360,
+        });
+        const importedMenuContrast = await captureForegroundContrast(
+          importedMenuBadge,
+          info,
+          `${family}-watch-menu-imported-${width}`
+        );
+        expect(importedMenuContrast.disabled).toBe(false);
+        const paliMenuContrast = await captureForegroundContrast(
+          paliMenuBadge,
+          info,
+          `${family}-watch-menu-pali-${width}`
+        );
+        expect(paliMenuContrast.disabled).toBe(false);
+      }
+      await page
+        .getByRole('menuitem', {
+          name: en.accountMenu.manageAccounts,
+          exact: true,
+        })
+        .click();
+      const accountList = page.locator(
+        'ul[data-navigation-scroll="settings-manage-accounts"]'
+      );
+      const importedManagerBadge = accountList.getByText(
+        en.components.imported,
+        {
+          exact: true,
+        }
+      );
+      const paliManagerBadge = accountList.getByText('Pali', { exact: true });
+      for (const width of [400, 320]) {
+        await page.setViewportSize({
+          width,
+          height: width === 400 ? 620 : 360,
+        });
+        const importedManagerContrast = await captureForegroundContrast(
+          importedManagerBadge,
+          info,
+          `${family}-watch-manager-imported-${width}`
+        );
+        expect(importedManagerContrast.disabled).toBe(false);
+        const paliManagerContrast = await captureForegroundContrast(
+          paliManagerBadge,
+          info,
+          `${family}-watch-manager-pali-${width}`
+        );
+        expect(paliManagerContrast.disabled).toBe(false);
+      }
+      await page
+        .getByRole('button', { name: en.buttons.back, exact: true })
+        .click();
+      await expect(page).toHaveURL(/#\/home(?:\?.*)?$/);
       await openSettings(en.accountMenu.yourKeys);
       await expect(
         page.getByText(en.settings.watchOnlyNoPrivateKey, { exact: true })

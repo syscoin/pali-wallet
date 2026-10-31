@@ -3,6 +3,7 @@ import path from 'path';
 
 import en from '../../source/assets/locales/en.json';
 import { E2E_CONFIG } from '../harness/config';
+import { captureForegroundContrast } from '../harness/foregroundContrast';
 import { PaliWallet } from '../harness/pali';
 import { verifyExecutingWorker } from '../harness/runtimeIdentity';
 import { extensionEvidence } from '../harness/testDappConformance';
@@ -81,7 +82,18 @@ test('a refused smart-account creation retries the same descriptor and survives 
         await wallet!.importSeedAndCreatePassword();
         await wallet!.switchNetwork('zkTanenbaum', 'EVM');
         await wallet!.ensureOnHome();
-        await wallet!.gotoRoute('#/settings/account/new');
+        await page
+          .getByRole('button', {
+            name: en.generalMenu.generalOptions,
+            exact: true,
+          })
+          .click();
+        await page
+          .getByRole('menuitem', {
+            name: en.accountMenu.createNewAccount,
+            exact: true,
+          })
+          .click();
         await expect(nameInput).toBeVisible();
         await nameInput.fill(LABEL);
         await expect(createSmart).toBeEnabled();
@@ -237,6 +249,42 @@ test('a refused smart-account creation retries the same descriptor and survives 
         await expect(accountRow).toBeVisible();
         await expect(accountRow).toContainText(LABEL);
         observations.restored = await publicAccounts(page);
+        const menuBadge = accountRow.getByText(en.smartAccountHub.badge, {
+          exact: true,
+        });
+        for (const width of [400, 320]) {
+          await page.setViewportSize({
+            width,
+            height: width === 400 ? 620 : 360,
+          });
+          const contrast = await captureForegroundContrast(
+            menuBadge,
+            info,
+            `smart-account-menu-badge-${width}`
+          );
+          expect(contrast.disabled).toBe(false);
+        }
+        await page
+          .getByRole('menuitem', {
+            name: en.accountMenu.manageAccounts,
+            exact: true,
+          })
+          .click();
+        const managerBadge = page
+          .locator('ul[data-navigation-scroll="settings-manage-accounts"]')
+          .getByText(en.receive.smartAccount, { exact: true });
+        for (const width of [400, 320]) {
+          await page.setViewportSize({
+            width,
+            height: width === 400 ? 620 : 360,
+          });
+          const contrast = await captureForegroundContrast(
+            managerBadge,
+            info,
+            `smart-account-manager-badge-${width}`
+          );
+          expect(contrast.disabled).toBe(false);
+        }
       }
     );
     expect(routes.deniedWrites).toEqual([]);
