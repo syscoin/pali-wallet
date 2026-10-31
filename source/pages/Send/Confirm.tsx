@@ -259,6 +259,7 @@ export const SendConfirm = () => {
     null
   );
   const [retryTrigger, setRetryTrigger] = useState(0);
+  const freshNativeEstimate = useRef(false);
 
   // Handle both normal navigation and restoration
   const basicTxValues = state?.tx;
@@ -356,6 +357,11 @@ export const SendConfirm = () => {
 
   // Manual retry function for fee calculation
   const retryFeeCalculation = () => {
+    freshNativeEstimate.current =
+      !isBitcoinBased &&
+      !isSmartAccountSend &&
+      !basicTxValues?.token &&
+      basicTxValues?.transactionType === TransactionType.NATIVE_ETH;
     setQuotedEvmFeeMode(undefined);
     setFeeCalculationError(null);
     setIsCalculatingFees(false);
@@ -705,18 +711,24 @@ export const SendConfirm = () => {
           BigNumber.from(1);
       }
 
+      const fresh = freshNativeEstimate.current;
+      freshNativeEstimate.current = false;
       const estimateGas = async (estimateWithValue: BigNumber) => {
-        const estimatedGasLimit = (await controllerEmitter(
-          ['wallet', 'ethereumTransaction', 'getTxGasLimit'],
-          [
-            {
-              data: '0x',
-              from: basicTxValues.sender,
-              to,
-              value: estimateWithValue.toHexString(),
-            },
-          ]
-        )) as any;
+        const transaction = {
+          data: '0x',
+          from: basicTxValues.sender,
+          to,
+          value: estimateWithValue.toHexString(),
+        };
+        const estimatedGasLimit = (await (fresh
+          ? controllerEmitter(
+              ['wallet', 'getFreshNativeEvmGasLimit'],
+              [transaction, state?.walletScope]
+            )
+          : controllerEmitter(
+              ['wallet', 'ethereumTransaction', 'getTxGasLimit'],
+              [transaction]
+            ))) as any;
 
         return BigNumber.from(estimatedGasLimit);
       };
@@ -746,7 +758,13 @@ export const SendConfirm = () => {
         throw error;
       }
     },
-    [basicTxValues, controllerEmitter, resolvedToAddress, isSmartAccountSend]
+    [
+      basicTxValues,
+      controllerEmitter,
+      resolvedToAddress,
+      isSmartAccountSend,
+      state?.walletScope,
+    ]
   );
 
   const getFormattedFee = (currentFee: number | string | undefined) => {
@@ -887,6 +905,25 @@ export const SendConfirm = () => {
     }
     const submitEmitter = submission.controllerEmitter;
     const approvedFeeSelection = feeSelectionRef.current;
+    // Capture the exact amount the user reviewed before any asynchronous reads.
+    const nativeMax =
+      !isBitcoinBased &&
+      !isSmartAccountSend &&
+      !basicTxValues?.token &&
+      basicTxValues?.isMax &&
+      (!basicTxValues?.transactionType ||
+        basicTxValues.transactionType === TransactionType.NATIVE_ETH);
+    let approvedNativeMax: BigNumber | undefined;
+    if (nativeMax) {
+      if (renderedFeeSelection !== approvedFeeSelection) return;
+      try {
+        approvedNativeMax = parseUnits(String(displayedAmount), 'ether');
+        if (approvedNativeMax.lte(0)) throw new Error('Invalid MAX review');
+      } catch {
+        alert.error(t('send.maxBalanceReviewRequired'));
+        return;
+      }
+    }
     const assertSmartAccountConfirmationCurrent = () => {
       if (
         !submission.isActive() ||
@@ -922,6 +959,15 @@ export const SendConfirm = () => {
       balance = refreshedBalance.nativeBalance || '0';
     } catch (error) {
       console.error('Failed to refresh balance before confirming:', error);
+      if (nativeMax) {
+        if (submission.isActive())
+          alert.error(t('send.maxBalanceReviewRequired'));
+        return;
+      }
+    }
+    if (nativeMax) {
+      if (!submission.isActive()) return;
+      if (feeSelectionRef.current !== approvedFeeSelection) return;
     }
 
     if (activeAccount && Number(balance) >= 0) {
@@ -1170,14 +1216,26 @@ export const SendConfirm = () => {
                     9
                   )
                 : BigNumber.from(gasPrice);
-              value = nativeMaxSendValue(balance, maxSendGasLimit, feeRate);
-
-              // Ensure value doesn't go negative
-              if (value.lt(0)) {
-                alert.error(t('send.insufficientFundsForGas'));
+              // The refreshed balance is an affordability check, not a new
+              // authorization to change the recipient's reviewed amount.
+              const affordableMax = nativeMaxSendValue(
+                balance,
+                maxSendGasLimit,
+                feeRate
+              );
+              if (
+                !submission.isActive() ||
+                feeSelectionRef.current !== approvedFeeSelection
+              ) {
                 setLoading(false);
                 return;
               }
+              if (!approvedNativeMax || affordableMax.lt(approvedNativeMax)) {
+                alert.error(t('send.maxBalanceReviewRequired'));
+                setLoading(false);
+                return;
+              }
+              value = approvedNativeMax;
             }
 
             if (isEIP1559Compatible === false) {
@@ -1951,7 +2009,7 @@ export const SendConfirm = () => {
         <IconButton
           aria-label={t('receive.retry')}
           onClick={retryFeeCalculation}
-          className="p-1 hover:bg-brand-blue600 rounded-full transition-all duration-200"
+          className="inline-flex min-h-[32px] min-w-[32px] items-center justify-center p-1 hover:bg-brand-blue600 rounded-full transition-all duration-200"
         >
           <Icon
             name="reload"
@@ -2011,10 +2069,13 @@ export const SendConfirm = () => {
                     <p className="text-brand-gray200 text-xs mb-1">
                       {t('send.tokenId')}
                     </p>
-                    <div className="text-white font-medium">
+                    <div className="text-white font-medium break-all">
                       {basicTxValues.token.tokenId ? (
                         basicTxValues.token.tokenId.length > 20 ? (
-                          <Tooltip content={basicTxValues.token.tokenId}>
+                          <Tooltip
+                            content={basicTxValues.token.tokenId}
+                            focusable
+                          >
                             #{ellipsis(basicTxValues.token.tokenId, 8, 8)}
                           </Tooltip>
                         ) : (
@@ -2282,7 +2343,7 @@ export const SendConfirm = () => {
                                 <IconButton
                                   aria-label={t('receive.retry')}
                                   onClick={retryFeeCalculation}
-                                  className="p-0.5 hover:bg-brand-blue600 rounded-full transition-all duration-200"
+                                  className="inline-flex min-h-[32px] min-w-[32px] items-center justify-center p-0.5 hover:bg-brand-blue600 rounded-full transition-all duration-200"
                                 >
                                   <Icon
                                     name="reload"
@@ -2310,6 +2371,37 @@ export const SendConfirm = () => {
                         ).add(smartAccountQuote.maximumFeeWei);
                         totalAmount = formatEther(totalWei);
                         totalCrypto = totalAmount;
+                      } else if (
+                        !isBitcoinBased &&
+                        !isSmartAccountSend &&
+                        !basicTxValues.token &&
+                        basicTxValues.isMax
+                      ) {
+                        // Match the exact reviewed amount and the fee displayed above.
+                        // Never fall back to the stale gross amount while loading.
+                        try {
+                          if (
+                            !confirmationFeeReady ||
+                            getCalculatedFee === undefined
+                          )
+                            throw new Error('MAX total unavailable');
+                          const shownFee =
+                            basicTxValues.fee > 0
+                              ? basicTxValues.fee
+                              : getCalculatedFee;
+                          totalAmount = formatEther(
+                            parseUnits(String(displayedAmount), 18).add(
+                              parseUnits(
+                                String(removeScientificNotation(shownFee)),
+                                18
+                              )
+                            )
+                          );
+                          totalCrypto = totalAmount;
+                        } catch {
+                          totalAmount = 0;
+                          totalCrypto = undefined;
+                        }
                       } else if (nativeTotal !== undefined) {
                         totalAmount = nativeTotal.amount;
                         totalCrypto = nativeTotal.formatted;
@@ -2354,7 +2446,9 @@ export const SendConfirm = () => {
                       return (
                         <div className="flex flex-col">
                           <span>
-                            {removeScientificNotation(totalCrypto)}{' '}
+                            {totalCrypto === undefined
+                              ? t('send.calculating')
+                              : removeScientificNotation(totalCrypto)}{' '}
                             {activeNetwork.currency.toUpperCase()}
                             {feeCalculationError && (
                               <span className="text-xs text-brand-gray200 ml-1">

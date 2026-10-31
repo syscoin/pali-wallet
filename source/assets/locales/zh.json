@@ -1,9 +1,4 @@
 {
-  "providerDefault": {
-    "defaultEnabled": "已成功将 Pali 设为默认钱包！",
-    "otherWalletInUse": "正在使用 MetaMask，Pali 已停用。",
-    "setPaliDefault": "将 Pali 设为默认钱包！"
-  },
   "transactionDisplay": {
     "blockHash": "区块哈希",
     "blockNumber": "区块编号",
@@ -160,7 +155,7 @@
     "forget": "忘记钱包",
     "generalOptions": "常规选项",
     "currency": "货币",
-    "manageEth": "设置默认钱包",
+    "manageEth": "管理以太坊提供程序",
     "infoHelp": "信息/帮助",
     "lock": "锁定",
     "advanced": "高级"
@@ -211,7 +206,6 @@
     "errorSwitching": "切换网络时出错",
     "speedUp": "加速",
     "cancelTx": "取消交易",
-    "cancelTxMessage": "您确定要取消此交易吗？",
     "speedTx": "加速交易"
   },
   "connections": {
@@ -265,6 +259,7 @@
     "importToken": "导入代币",
     "youHaveNoTokens": "暂无代币或NFT",
     "youHaveNoTxs": "暂无交易记录",
+    "historyMayBeIncomplete": "没有区块浏览器 API，交易记录可能不完整。",
     "seeAllTxs": "查看所有交易",
     "addressCopied": "地址复制成功",
     "hashCopied": "哈希复制成功",
@@ -313,7 +308,8 @@
     "youShould": "您现在应该已经记录了恢复短语和钱包密码以备将来参考。"
   },
   "createPhrase": {
-    "recoveryPhrase": "恢复短语"
+    "recoveryPhrase": "恢复短语",
+    "generationFailed": "无法生成新的恢复短语。请选择“生成”重试。"
   },
   "send": {
     "transactionFailureDetails": "交易失败：{{message}}",
@@ -366,9 +362,16 @@
     "gasPriceBelowEstimate": "Gas 价格低于 {{estimate}} GWEI。",
     "maxFeeBelowEstimate": "最高费用低于 {{estimate}} GWEI。",
     "priorityFeeBelowEstimate": "优先费低于 {{estimate}} GWEI。",
+    "erc20SetAllowanceZero": "请求撤销以下代币的授权：",
+    "erc20IncreaseAllowance": "请求增加以下代币的授权额度：",
+    "erc20DecreaseAllowance": "请求减少以下代币的授权额度：",
+    "erc20ApprovalRequest": "代币授权请求：",
     "grantAccess": "您授予对您的访问权限",
     "editPermission": "编辑权限",
     "invalidApprovalDetails": "授权详情无效。无法确认此请求。",
+    "revokeNftApproval": "撤销 NFT 授权",
+    "revokeNftApprovalDescription": "移除 {{token}} #{{tokenId}} 的授权地址",
+    "approvalResetAddress": "授权重置地址",
     "approveNftTransfer": "批准 NFT 转移",
     "allowTransferOf": "允许转移",
     "grantCollectionAccess": "授予收藏访问权限",
@@ -419,6 +422,7 @@
     "feeRateNormal": "费率 {{value}} {{currency}}/vbyte 高于正常值。",
     "send": "发送",
     "insufficientFunds": "余额不足",
+    "maxBalanceReviewRequired": "余额已变化或无法验证。请核对金额后重试。",
     "insufficientFundsForGas": "余额不足以支付燃料费用",
     "maxUnavailablePendingTx": "在有待确认的交易时无法使用MAX。请等待交易确认。",
     "networkCatchingUp": "网络仍在更新您的上一笔交易。请稍后重试。",
@@ -446,9 +450,9 @@
     "balanceVerified": "余额已验证",
     "tokenOwnershipVerified": "代币所有权已验证",
     "pleaseVerifyTokenOwnership": "请先验证代币所有权",
-    "youOnlyOwn": "您只拥有{amount}个此代币",
+    "youOnlyOwn": "您只拥有{{amount}}个此代币",
     "pleaseWaitForBalanceVerification": "请等待余额验证",
-    "insufficientFundsVerified": "资金不足（已验证余额：{balance}）",
+    "insufficientFundsVerified": "资金不足（已验证余额：{{balance}}）",
     "enterTokenId": "输入代币ID",
     "amountMustBePositiveInteger": "金额必须是正整数",
     "verifyingBalance": "验证余额中...",
@@ -615,11 +619,15 @@
     "watchOnlyValidationTimedOut": "仅观察账户验证超时。未导入任何内容。请重试。",
     "watchOnly": "仅观察",
     "publicIdentifierInput": "地址 / XPUB / 描述符",
-    "usingAnotherWallet": "您正在使用其他钱包。",
-    "defaultWalletStatus": "是默认钱包",
     "otherDefaultWalletHelpTitle": "如何将其他钱包设为默认？",
     "otherDefaultWalletHelp": "部分钱包在设置中提供此选项。浏览器会将最后安装或启用的钱包用作默认钱包。",
-    "setWalletAsDefault": "将 {{wallet}} 设为默认钱包",
+    "paliProviderEnabled": "Pali 的以太坊提供程序已启用",
+    "paliProviderDisabled": "Pali 的以太坊提供程序已停用",
+    "disablePaliProvider": "停用 Pali 的以太坊提供程序",
+    "enablePaliProvider": "启用 Pali 的以太坊提供程序",
+    "disablePaliProviderWarning": "停用 Pali 会断开所有已连接的网站。请在其他钱包的设置中配置该钱包。",
+    "disablePaliProviderFailed": "无法确认 Pali 的以太坊提供程序是否已停用。部分网站可能已断开连接。重试前请检查连接。",
+    "enablePaliProviderFailed": "无法确认 Pali 的以太坊提供程序是否已启用。重试前请检查设置。",
     "localSmartAccountGuardianMissing": "找不到本地智能账户守护者。",
     "recoveryValidatorNotConfigured": "尚未配置 P-256/WebAuthn 验证器。",
     "xmssProgressLevel": "XMSS 层级 {{level}}/22。",
@@ -669,6 +677,7 @@
     "recoverySeedHelp": "请输入此钱包的恢复短语。其他恢复短语无法恢复其中的账户。",
     "recoveryLimitations": "恢复会删除本地存储的已导入私钥的加密记录。如果没有这些私钥的独立备份，您可能会永久失去对这些账户的访问权限。硬件连接、自定义设置以及智能账户和通行密钥的设置需要各自的备份或重新连接。恢复不会转移您的资金。",
     "walletRecoveryFailed": "钱包恢复未能完成。请检查您的恢复短语后重试。如果仍然失败，请重启浏览器。请勿清除钱包存储数据。",
+    "walletRecoveryUnconfirmed": "无法确认钱包恢复是否完成。请检查钱包以查看当前状态。请勿清除钱包存储数据。",
     "walletRecoveryRestartRequired": "恢复必须完成后才能使用钱包。请重启浏览器，然后检查钱包，必要时再次尝试恢复。请勿清除钱包存储数据。",
     "walletWindowCheckSlow": "钱包窗口响应时间较长。请尝试重新检查。",
     "retryWalletWindowCheck": "重新检查窗口",
@@ -785,7 +794,6 @@
     "watchOnlyNoPrivateKey": "这是一个观察账户。您可以接收资金并查看活动，但此钱包中没有该账户的私钥。",
     "seeOnExplorer": "在浏览器中查看",
     "manageEthProvider": "管理ETH提供商",
-    "windowObjectWasSet": "Window对象设置成功",
     "missingApiKey": "缺少/无效的API密钥 - 请在URL中添加您的API密钥（例如：?apikey=您的密钥）",
     "apiFormatError": "API响应不正确。请检查URL并确保它支持Etherscan/Blockscout API格式。",
     "apiConnectionError": "无法验证API。请检查您的连接并再试一次。",
@@ -1167,8 +1175,12 @@
     "checkYourDevice": "请在 {{device}} 上批准此请求",
     "useYourPasskey": "使用您的通行密钥",
     "passkeyPrompt": "请按照浏览器提示使用通行密钥签名",
+    "cancelFeePreview": "正在检查取消交易的网络费用…",
+    "cancelFeeConsent": "以最高 {{fee}} {{currency}} 的 gas 费用取消此交易？",
+    "cancelFeeUnavailable": "无法检查取消费用。请重试。",
     "speedUpFeePreview": "正在检查网络费用…",
     "speedUpFeeConsent": "是否以最高 {{fee}} {{currency}} 的网络费用加速此交易？",
+    "speedUpAmountWouldChange": "加速此交易前，请先向此账户充值。原始金额不会改变。",
     "speedUpFeeUnavailable": "无法检查费用。请重试。"
   },
   "switchNetworkPage": {
@@ -1216,7 +1228,8 @@
     "removalFailed": "无法移除钱包。请重试。",
     "importedAccountsWont": "导入的账户不会链接到您初始的Pali账户密钥恢复短语",
     "stillHaveFunds": "您的钱包中仍有资金！",
-    "saveProperly": "请妥善保存此助记词，以便将来能够导入此钱包。"
+    "saveProperly": "请妥善保存此助记词，以便将来能够导入此钱包。",
+    "privateNotesBackupWarning": "如有私密票据，请单独备份；恢复短语无法恢复它们。"
   },
   "walletSeedPhrasePage": {
     "keepSeedPhrase": "请保密您的助记词！",
@@ -1266,7 +1279,8 @@
     "youCanGet": "您每24小时可以获得 {{quantity}} {{token}} 每钱包地址。",
     "firstAccessTitle": "使用我们的水龙头获取 ${{token}} 开始体验 {{network}} 网络！",
     "firstAccessDescription": "您可以每24小时每个钱包地址获得{{token}}。",
-    "grabTokens": "前往水龙头"
+    "grabTokens": "前往水龙头",
+    "rateLimited": "水龙头正在限制请求。请访问水龙头了解更多信息。"
   },
   "nftDetails": {
     "information": "NFT 信息",
@@ -1406,6 +1420,21 @@
     "feeTitle": "您已授权的 Sentry 操作的网络费用",
     "feeHelp": "授权本次操作的网络费输入。网站会提交已签名的交易。",
     "feeChanges": "已授权的更改",
+    "managementFields": {
+      "action": "操作",
+      "childKeyCommitment": "子密钥承诺",
+      "collateralSatoshis": "抵押额（聪）",
+      "collateralSigningMessage": "抵押签名消息",
+      "globalKeyVersion": "全局密钥版本",
+      "operatorPublicKey": "运营者公钥",
+      "operatorRewardBasisPoints": "运营者奖励（基点）",
+      "ownerKeyId": "所有者密钥 ID",
+      "payoutAddress": "付款地址",
+      "pqOwnerPublicKey": "所有者 PQ 公钥",
+      "pqVotingPublicKey": "投票 PQ 公钥",
+      "reason": "撤销原因",
+      "votingKeyId": "投票密钥 ID"
+    },
     "feeType": "Sentry 节点操作",
     "feeOperations": {
       "register": "注册节点",
@@ -1580,6 +1609,13 @@
     "clear": "清除已保存的数据",
     "networkRequired": "请在网络菜单中选择以太坊主网，以准备资金池数据。",
     "publicDataOnly": "仅下载资金池公开数据，不会发送您的钱包地址和隐私票据。",
+    "serviceSettings": "隐私服务",
+    "serviceOrigin": "服务来源",
+    "serviceHelp": "使用 HTTPS 或 localhost 上的 HTTP。更改服务会清除已准备的资金池数据；已保存的票据仍保留在钱包中。",
+    "serviceInvalid": "请输入不含路径或凭据的 HTTPS 来源，或 localhost 上的 HTTP 来源。",
+    "serviceLoadFailed": "无法加载隐私服务设置。",
+    "serviceSaveFailed": "无法保存隐私服务设置，请重试。",
+    "serviceSaved": "隐私服务已保存，请重新准备资金池。",
     "savedDeposits": "已保存的公开存款数：{{count}}",
     "verifiedBlock": "最近验证的区块：{{block}}",
     "progress": "{{completed}} / {{total}}",
@@ -1647,6 +1683,7 @@
       "title": "凭证提款",
       "open": "提款",
       "recipient": "收款地址",
+      "recipientInvalid": "请输入有效的以太坊地址。",
       "method": "发送方式",
       "direct": "直接发送",
       "relayed": "中继器",
@@ -1672,6 +1709,7 @@
       "jobId": "中继任务 ID",
       "directoryFailed": "无法加载中继器。请重试或选择直接发送。",
       "prepareFailed": "无法准备提款。请检查资金池数据和网络后重试。",
+      "prepareInterrupted": "准备已中断。请检查资金池数据，然后重试。",
       "checkStatus": "检查状态",
       "statusFailed": "无法检查中继器状态，请重试。",
       "statusUnknown": "提款提交状态未知，请在重试前检查。",

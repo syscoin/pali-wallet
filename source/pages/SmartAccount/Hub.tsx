@@ -296,11 +296,7 @@ const SmartAccountHub = () => {
         : key
     );
     setMetadata(account?.smartAccount || null);
-    if (
-      trusted.current &&
-      account?.isSmartAccount &&
-      account?.smartAccount?.isDeployed
-    ) {
+    if (trusted.current && account?.isSmartAccount) {
       refreshMetadata().catch(() => undefined);
     }
   }, [scopeKey]);

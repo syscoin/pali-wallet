@@ -104,7 +104,7 @@ export const SpamWarning: React.FC = () => {
                   />
                 </svg>
               </div>
-              <div className="absolute -top-1 -right-1 bg-orange-600 rounded-full px-2 py-0.5">
+              <div className="absolute -top-1 -right-1 bg-orange-700 rounded-full px-2 py-0.5">
                 <span className="text-white font-bold text-xs">
                   {popupData.requestCount}
                 </span>
@@ -153,7 +153,7 @@ export const SpamWarning: React.FC = () => {
           <button
             onClick={handleBlockSite}
             disabled={isLoading}
-            className="w-full bg-orange-600 hover:bg-orange-700 text-white font-medium py-3 px-4 rounded-lg transition-colors duration-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full bg-orange-700 hover:bg-orange-800 text-white font-medium py-3 px-4 rounded-lg transition-colors duration-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isLoading ? (
               <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>

@@ -123,6 +123,9 @@ describe('cancellation controller account and network admission', () => {
     expect(cancel).toHaveBeenCalledWith(HASH, true, 7, {
       assertCurrentContext: expect.any(Function),
       validateOriginal: expect.any(Function),
+      targetAccount: undefined,
+      previewOnly: false,
+      approvedMaximumFee: undefined,
     });
     expect(keyring.setVaultStateGetter).not.toHaveBeenCalled();
   });
@@ -217,14 +220,18 @@ describe('cancellation controller account and network admission', () => {
   });
 
   it.each([false, true])(
-    'preserves smart-account outer payer and restores the getter (reject=%s)',
+    'uses an isolated smart-account outer payer without changing the getter (reject=%s)',
     async (reject) => {
       mockState.vault.activeAccount = {
         type: KeyringAccountType.SmartAccount,
         id: 1,
       };
-      cancel.mockImplementation(async () => {
+      cancel.mockImplementation(async (_hash, _legacy, _nonce, options) => {
         expect(readVault().activeAccount).toEqual({
+          type: KeyringAccountType.SmartAccount,
+          id: 1,
+        });
+        expect(options.targetAccount).toEqual({
           type: KeyringAccountType.HDAccount,
           id: 0,
         });
@@ -239,9 +246,52 @@ describe('cancellation controller account and network admission', () => {
         id: 1,
       });
       expect(readVault()).toBe(mockState.vault);
-      expect(keyring.setVaultStateGetter).toHaveBeenCalledTimes(2);
+      expect(keyring.setVaultStateGetter).not.toHaveBeenCalled();
     }
   );
+
+  it('holds smart-account preview on its explicit payer without mutating the selected account', async () => {
+    mockState.vault.activeAccount = {
+      type: KeyringAccountType.SmartAccount,
+      id: 1,
+    };
+    let release!: () => void;
+    let entered!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    cancel.mockImplementation(async (_hash, _legacy, _nonce, options) => {
+      expect(options.previewOnly).toBe(true);
+      expect(options.targetAccount).toEqual({
+        type: KeyringAccountType.HDAccount,
+        id: 0,
+      });
+      options.assertCurrentContext();
+      entered();
+      await held;
+      options.assertCurrentContext();
+      return { isCanceled: false, maximumFee: '504000' };
+    });
+    const context = expected();
+    const first = wallet.cancelEvmTransaction(HASH, true, 7, PAYER, context, {
+      previewOnly: true,
+    });
+    await started;
+    expect(readVault().activeAccount).toEqual({
+      type: KeyringAccountType.SmartAccount,
+      id: 1,
+    });
+    expect(keyring.setVaultStateGetter).not.toHaveBeenCalled();
+    mockState.vault.accounts.HDAccount[0].address = `0x${'99'.repeat(20)}`;
+    const rejection = expect(first).rejects.toThrow();
+    release();
+    await rejection;
+    expect(readVault()).toBe(mockState.vault);
+    expect(keyring.setVaultStateGetter).not.toHaveBeenCalled();
+  });
 
   it('rejects a non-local smart-account payer instead of signing with its account', async () => {
     mockState.vault.activeAccount = {
@@ -281,6 +331,10 @@ describe('cancellation controller account and network admission', () => {
       });
       cancel.mockImplementation(async (_hash, _legacy, _nonce, options) => {
         expect(readVault().activeAccount).toEqual({
+          type: KeyringAccountType.SmartAccount,
+          id: 1,
+        });
+        expect(options.targetAccount).toEqual({
           type: KeyringAccountType.HDAccount,
           id: 0,
         });

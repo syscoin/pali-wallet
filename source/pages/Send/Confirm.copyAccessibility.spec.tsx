@@ -173,7 +173,12 @@ afterEach(() => {
 });
 
 type Review = 'native' | 'erc20' | 'spt' | 'nft';
-async function prepare(locale: keyof typeof resources, review: Review) {
+async function prepare(
+  locale: keyof typeof resources,
+  review: Review,
+  nftTokenId = '42',
+  nftStandard: 'ERC-721' | 'ERC-1155' = 'ERC-1155'
+) {
   const isSyscoin = review === 'spt';
   const sender = isSyscoin ? 'tsys1qpublicsenderfixture' : FROM;
   const recipient = isSyscoin ? 'tsys1qpublicrecipientfixture' : TO;
@@ -188,8 +193,8 @@ async function prepare(locale: keyof typeof resources, review: Review) {
           assetGuid: GUID,
           decimals: review === 'nft' ? 0 : 6,
           isNft: review === 'nft',
-          tokenStandard: review === 'nft' ? 'ERC-1155' : 'ERC-20',
-          tokenId: '42',
+          tokenStandard: review === 'nft' ? nftStandard : 'ERC-20',
+          tokenId: nftTokenId,
         };
   mockState = {
     vault: {
@@ -229,7 +234,7 @@ async function prepare(locale: keyof typeof resources, review: Review) {
           native: 'NATIVE_ETH',
           erc20: 'ERC20',
           spt: 'UTXO',
-          nft: 'ERC1155',
+          nft: nftStandard === 'ERC-721' ? 'ERC721' : 'ERC1155',
         }[review],
         defaultGasLimit: review === 'native' ? 21000 : 100000,
         ...(isSyscoin ? { fee: 0.00000344, psbt: 'synthetic-unsigned' } : {}),
@@ -315,5 +320,45 @@ describe.each(['en', 'de', 'fr'] as const)(
           expect(button).toHaveAccessibleName(resources[locale].buttons.copy);
       }
     );
+  }
+);
+
+it.each(['ERC-721', 'ERC-1155'] as const)(
+  'reveals the complete long %s token ID through keyboard focus',
+  async (standard) => {
+    const tokenId =
+      '115792089237316195423570985008687907853269984665640564039457584007913129639935';
+    const { user } = await prepare('en', 'nft', tokenId, standard);
+    const reference = screen.getByText(
+      `#${tokenId.slice(0, 8)}...${tokenId.slice(-8)}`
+    );
+
+    for (
+      let step = 0;
+      step < 20 && document.activeElement !== reference;
+      step++
+    )
+      await user.tab();
+
+    expect(reference).toHaveFocus();
+    const tooltip = await screen.findByRole('tooltip');
+    expect(tooltip).toHaveTextContent(tokenId);
+    expect(reference).toHaveAccessibleDescription(tokenId);
+  }
+);
+
+it.each(['ERC-721', 'ERC-1155'] as const)(
+  'allows the complete 20-digit %s token ID to wrap without a tooltip tab stop',
+  async (standard) => {
+    const tokenId = '12345678901234567890';
+    const { user } = await prepare('en', 'nft', tokenId, standard);
+    const reference = screen.getByText(`#${tokenId}`);
+    expect(reference).toHaveTextContent(`#${tokenId}`);
+    expect(reference).toHaveClass('break-all');
+    expect(reference).not.toHaveAttribute('tabindex');
+    for (let step = 0; step < 20; step++) {
+      await user.tab();
+      expect(reference).not.toHaveFocus();
+    }
   }
 );

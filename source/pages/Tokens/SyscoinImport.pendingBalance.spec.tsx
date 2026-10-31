@@ -7,11 +7,13 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
 } from '@testing-library/react';
 import React from 'react';
 import { Provider } from 'react-redux';
 import { MemoryRouter } from 'react-router-dom';
 
+import en from 'assets/locales/en.json';
 import SysAccountController from 'scripts/Background/controllers/account/syscoin';
 import SysAssetsController from 'scripts/Background/controllers/assets/syscoin';
 import vault, { createAccount, setNetworkChange } from 'state/vault';
@@ -54,10 +56,18 @@ jest.mock('hooks/index', () => ({
 }));
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string, values?: { symbol?: string }) =>
-      key === 'tokens.importNamedToken'
-        ? `Import ${values?.symbol} token`
-        : key,
+    t: (key: string, values?: { symbol?: string; token?: string }) => {
+      if (key === 'tokens.importNamedToken')
+        return `Import ${values?.symbol} token`;
+      if (key === 'tokens.hasBeenAddedToYourWallet')
+        return jest
+          .requireActual('assets/locales/en.json')
+          .tokens.hasBeenAddedToYourWallet.replace(
+            '{{token}}',
+            values?.token || ''
+          );
+      return key;
+    },
   }),
 }));
 jest.mock('components/Icon/Icon', () => ({
@@ -244,7 +254,14 @@ test.each([
       NETWORK.chainId,
       [stored]
     );
-    expect(mockAlert.success).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      const success = screen.getByText(
+        en.tokens.hasBeenAddedToYourWallet.replace('{{token}}', 'PENDINGSPT'),
+        { exact: true }
+      );
+      expect(success).toBeVisible();
+      expect(success.closest('[role="status"]')).not.toBeNull();
+    });
     expect(mockAlert.error).not.toHaveBeenCalled();
     expect(
       mockEmitter.mock.calls.every(([[, method]]) =>

@@ -42,12 +42,10 @@ import EditTx from '../../assets/all_assets/editTx.svg';
 import WhiteErrorIcon from '../../assets/all_assets/errorIconWhite.svg';
 import GreenCheck from '../../assets/all_assets/greencheck.svg';
 import Info from '../../assets/all_assets/info.svg';
-import Metamask from '../../assets/all_assets/metamask.svg';
 import SpeedUp from '../../assets/all_assets/speedUp.svg';
 import Wallet from '../../assets/all_assets/wallet.svg';
 
 const icons = {
-  appstoreadd: AntIcons.AppstoreAddOutlined,
   'arrow-down': AntIcons.ArrowDownOutlined,
   'arrow-left': AntIcons.ArrowLeftOutlined,
   'arrow-up': AntIcons.ArrowUpOutlined,
@@ -66,14 +64,12 @@ const icons = {
   export: AntIcons.ExportOutlined,
   eye: AntIcons.EyeOutlined,
   file: AntIcons.FileFilled,
-  'file-protect': AntIcons.FileProtectOutlined,
   globe: AntIcons.GlobalOutlined,
   home: AntIcons.HomeOutlined,
   image: AntIcons.PictureOutlined,
   info: AntIcons.InfoCircleOutlined,
   link: AntIcons.LinkOutlined,
   message: AntIcons.MessageOutlined,
-  partition: AntIcons.PartitionOutlined,
   question: AntIcons.QuestionCircleOutlined,
   reload: AntIcons.ReloadOutlined,
   rise: AntIcons.RiseOutlined,
@@ -1333,7 +1329,6 @@ const svgIcons = {
   Copy,
   Info,
   Wallet,
-  Metamask,
   WhiteSuccess: WhiteSuccessIconSvg,
   Edit: EditIconSvg,
   Network: NetworkIconSvg,

@@ -176,7 +176,141 @@ it('announces and disables the successfully imported SPT while the same view rem
   expect(
     screen.getByText('FIRSTSPT has been added to your wallet')
   ).toBeTruthy();
+  expect(
+    screen
+      .getByText('FIRSTSPT has been added to your wallet')
+      .closest('[role="status"]')
+  ).toBeTruthy();
   expect((importButton as HTMLButtonElement).disabled).toBe(true);
+});
+
+it('clears the previous success while another SPT import is pending or fails', async () => {
+  const secondToken = {
+    ...fixtureToken,
+    assetGuid: '123458',
+    symbol: 'SECONDSPT',
+  };
+  let rejectSecondSave!: (error: Error) => void;
+  const pendingSecondSave = new Promise<void>((_, reject) => {
+    rejectSecondSave = reject;
+  });
+  mockEmitter.mockImplementation(([, method], args) => {
+    if (method === 'getUserOwnedTokens')
+      return Promise.resolve([fixtureToken, secondToken]);
+    if (method === 'saveTokenInfo')
+      return args[0].assetGuid === fixtureToken.assetGuid
+        ? Promise.resolve(true)
+        : pendingSecondSave;
+    throw new Error(`Unexpected ${method}`);
+  });
+  const error = jest
+    .spyOn(console, 'error')
+    .mockImplementation(() => undefined);
+  try {
+    render(tree());
+    await act(async () => undefined);
+    const first = screen.getByRole('button', {
+      name: 'Import FIRSTSPT token',
+    });
+    const second = screen.getByRole('button', {
+      name: 'Import SECONDSPT token',
+    });
+    await act(async () => fireEvent.click(first));
+    expect(
+      screen.getByText('FIRSTSPT has been added to your wallet')
+    ).toBeTruthy();
+    expect((first as HTMLButtonElement).disabled).toBe(true);
+
+    await act(async () => fireEvent.click(second));
+    expect((second as HTMLButtonElement).disabled).toBe(true);
+    expect(
+      screen.queryByText('FIRSTSPT has been added to your wallet')
+    ).toBeNull();
+    expect(
+      screen.queryByText('SECONDSPT has been added to your wallet')
+    ).toBeNull();
+
+    await act(async () => rejectSecondSave(new Error('Second import failed')));
+    await act(async () => jest.advanceTimersByTimeAsync(0));
+    expect(screen.getByText('Second import failed')).toBeTruthy();
+    expect(
+      screen.queryByText('FIRSTSPT has been added to your wallet')
+    ).toBeNull();
+    expect(
+      screen.queryByText('SECONDSPT has been added to your wallet')
+    ).toBeNull();
+    expect((first as HTMLButtonElement).disabled).toBe(true);
+    expect((second as HTMLButtonElement).disabled).toBe(false);
+  } finally {
+    error.mockRestore();
+  }
+});
+
+it.each(['account', 'network', 'home'])(
+  'removes visible SPT success feedback when leaving via %s',
+  async (departure) => {
+    const view = render(tree());
+    await act(async () => undefined);
+    await act(async () =>
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Import FIRSTSPT token' })
+      )
+    );
+    expect(
+      screen.getByText('FIRSTSPT has been added to your wallet')
+    ).toBeTruthy();
+    const originalAccount = mockState.vault.activeAccount;
+    const originalNetwork = mockState.vault.activeNetwork;
+    if (departure === 'account')
+      mockState.vault.activeAccount = { type: 'HDAccount', id: 1 };
+    else if (departure === 'network')
+      mockState.vault.activeNetwork = {
+        ...originalNetwork,
+        url: 'https://replacement-blockbook.invalid',
+      };
+    if (departure === 'home')
+      fireEvent.click(screen.getByRole('link', { name: 'Home' }));
+    else view.rerender(tree());
+    await act(async () => jest.advanceTimersByTimeAsync(0));
+    expect(
+      screen.queryByText('FIRSTSPT has been added to your wallet')
+    ).toBeNull();
+    if (departure !== 'home') {
+      mockState.vault.activeAccount = originalAccount;
+      mockState.vault.activeNetwork = originalNetwork;
+      view.rerender(tree());
+      await act(async () => jest.advanceTimersByTimeAsync(0));
+      expect(
+        screen.queryByText('FIRSTSPT has been added to your wallet')
+      ).toBeNull();
+    }
+  }
+);
+
+it('keeps an unrelated warning and does not queue an import success toast', async () => {
+  const success = jest.spyOn(toast, 'success');
+  render(tree());
+  await act(async () => undefined);
+  await act(async () => {
+    toast.warn('Unrelated warning', { autoClose: false });
+  });
+  await act(async () =>
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Import FIRSTSPT token' })
+    )
+  );
+  expect(
+    screen.getByText('FIRSTSPT has been added to your wallet')
+  ).toBeTruthy();
+  expect(screen.getByText('Unrelated warning')).toBeTruthy();
+  fireEvent.click(screen.getByRole('link', { name: 'Home' }));
+  await act(async () => jest.advanceTimersByTimeAsync(0));
+  expect(
+    screen.queryByText('FIRSTSPT has been added to your wallet')
+  ).toBeNull();
+  expect(screen.getByText('Unrelated warning')).toBeTruthy();
+  expect(success).not.toHaveBeenCalled();
+  success.mockRestore();
 });
 
 it.each(['account', 'network', 'home'])(

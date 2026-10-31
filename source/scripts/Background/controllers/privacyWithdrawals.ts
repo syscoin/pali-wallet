@@ -200,7 +200,10 @@ export function createPrivacyWithdrawalsController(
   const intents = new Map<string, IIntent>(),
     submitting = new Set<string>();
   let closed = false,
-    preparing: IIntent | undefined;
+    preparing: IIntent | undefined,
+    queuedPreparation:
+      | { cancel: () => void; cancelled: boolean; release: () => void }
+      | undefined;
   const remove = (id: string) => {
     const value = intents.get(id);
     if (value?.timer) clearTimeout(value.timer);
@@ -241,6 +244,7 @@ export function createPrivacyWithdrawalsController(
     );
   let directory: Readonly<IPrivacyRelayerDirectory> | undefined;
   const cancelPreparation = () => {
+    queuedPreparation?.cancel();
     preparing?.abort.abort();
   };
   const relay = async (
@@ -430,7 +434,8 @@ export function createPrivacyWithdrawalsController(
       }
     },
     prepareWithdrawal: async (request) => {
-      if (preparing) throw fail('privacy_proof_busy');
+      if (queuedPreparation || (preparing && !preparing.abort.signal.aborted))
+        throw fail('privacy_proof_busy');
       if (
         !request ||
         typeof request !== 'object' ||
@@ -460,6 +465,34 @@ export function createPrivacyWithdrawalsController(
         session = capture(host);
       } catch {
         throw fail('privacy_withdrawal_context_changed');
+      }
+      // A canceled preparation can still be unwinding a public RPC read.
+      // Reserve the one waiting slot until it finishes instead of reporting a
+      // transient busy error. Cancellation must also retire that waiting slot.
+      if (preparing) {
+        let release!: () => void;
+        let cancel!: () => void;
+        const finished = new Promise<void>((resolve, reject) => {
+          release = resolve;
+          cancel = () => reject(fail('privacy_withdrawal_cancelled'));
+        });
+        const queued = {
+          cancelled: false,
+          release,
+          cancel: () => {
+            queued.cancelled = true;
+            cancel();
+          },
+        };
+        queuedPreparation = queued;
+        try {
+          await finished;
+          if (closed || queued.cancelled)
+            throw fail('privacy_withdrawal_cancelled');
+        } finally {
+          if (queuedPreparation === queued) queuedPreparation = undefined;
+        }
+        if (preparing) throw fail('privacy_proof_busy');
       }
       const intent: IIntent = { session, abort: new AbortController() };
       const id = randomId();
@@ -655,7 +688,10 @@ export function createPrivacyWithdrawalsController(
         remove(id);
         throw sanitize(error);
       } finally {
-        if (preparing === intent) preparing = undefined;
+        if (preparing === intent) {
+          preparing = undefined;
+          queuedPreparation?.release();
+        }
       }
     },
     submitWithdrawal: async (id) => {
@@ -664,7 +700,14 @@ export function createPrivacyWithdrawalsController(
         remove(id);
         throw fail('privacy_withdrawal_intent_expired');
       }
-      current(intent);
+      try {
+        current(intent);
+      } catch (error) {
+        // This guard runs before reservation or any broadcast. Discard a stale
+        // review and preserve that known outcome for the UI.
+        remove(id);
+        throw sanitize(error);
+      }
       const attempt = intent.attempt;
       if (submitting.has(attempt.noteId))
         throw fail('privacy_withdrawal_note_busy');

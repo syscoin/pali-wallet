@@ -289,6 +289,17 @@ module.exports = {
               // Only the unused NftImage component imports this old fallback.
               // A future real import still emits it through asset/resource.
               '**/placeholder.png',
+              // Superseded input status icons have no runtime references.
+              // A future import still emits them through asset/resource.
+              '**/input_success_icon.svg',
+              '**/input_error_icon.svg',
+              // Legacy success artwork is unused; current states use inline
+              // icons or faucet-success.svg. Imports still emit these files.
+              '**/successIcon.svg',
+              '**/successIconWhite.svg',
+              // No current Icon call site selects this legacy provider logo.
+              // A future explicit import still emits it as an asset.
+              '**/metamask.svg',
             ],
           },
         },

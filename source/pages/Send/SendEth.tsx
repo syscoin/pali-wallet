@@ -14,6 +14,7 @@ import { useLocation } from 'react-router-dom';
 
 import { TransactionType } from '../../types/transactions';
 import { PaliWhiteSmallIconSvg, ArrowDownSvg } from 'components/Icon/Icon';
+import { AccountExplorerAvatar } from 'components/AccountExplorerAvatar';
 import { Button, Icon, Tooltip } from 'components/index';
 import { ToastActionFooter } from 'components/ToastActionFooter';
 import { useUtils } from 'hooks/index';
@@ -26,7 +27,7 @@ import {
   selectValidEnsCache,
 } from 'state/vault/selectors';
 import { ENS_CACHE_TTL_MS } from 'state/vaultGlobal';
-import { ITokenEthProps } from 'types/tokens';
+import { ITokenEthProps, INftTokenIdsResult } from 'types/tokens';
 import {
   findEvmAddressPoisoningCollision,
   getTrustedEvmRecipients,
@@ -44,7 +45,7 @@ import {
   getWalletNavigationScope,
 } from 'utils/index';
 import { isErc721BalanceAvailable } from 'utils/nftQuantity';
-import { buildExplorerUrl } from 'utils/strings';
+import { buildExplorerUrl, selectExplorerUrl } from 'utils/strings';
 import { getDefaultGasLimit } from 'utils/transactionUtils';
 import { isValidEthereumAddress } from 'utils/validations';
 
@@ -169,6 +170,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
   const isCurrentForm = useSendPreparationGuard(scopeKey, location.pathname);
   const beginAddressCopy = useRequestScope(scopeKey);
 
+  const explorer = useSelector(selectExplorerUrl);
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
@@ -203,6 +205,8 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
   const submittedAssetSelectionRevision = useRef(0);
   const [isCalculatingGas, setIsCalculatingGas] = useState(false);
   const [cachedFeeData, setCachedFeeData] = useState<any>(null);
+  const [feeReadFailed, setFeeReadFailed] = useState(false);
+  const [feeRetry, setFeeRetry] = useState(0);
   const [isMaxSend, setIsMaxSend] = useState(initialIsMaxSend);
 
   // NFT-related state
@@ -668,23 +672,21 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                   activeAccount.address,
                   getAsset.tokenStandard || 'ERC-721',
                 ]
-              )) as { balance: number; tokenId: string }[] & {
-                hasMore?: boolean;
-                requiresManualEntry?: boolean;
-              };
+              )) as INftTokenIdsResult;
 
               if (!current()) return;
-              setNftTokenIds(result || []);
+              const tokens = result?.tokens || [];
+              setNftTokenIds(tokens);
 
               // Auto-select first token if only one
-              if (result && result.length === 1) {
-                setSelectedNftTokenId(result[0].tokenId);
+              if (tokens.length === 1) {
+                setSelectedNftTokenId(tokens[0].tokenId);
                 // Also set it in the form
-                form.setFieldValue('nftTokenId', result[0].tokenId);
-                if (result[0].balance > 0)
+                form.setFieldValue('nftTokenId', tokens[0].tokenId);
+                if (tokens[0].balance > 0)
                   ownedNftRef.current = nftOwnershipKey(
                     getAsset.contractAddress,
-                    result[0].tokenId
+                    tokens[0].tokenId
                   );
               }
             } catch {
@@ -937,22 +939,13 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
 
   const openAccountInExplorer = useCallback(() => {
     const accountAddress = activeAccount?.address;
-    if (!accountAddress) return;
+    if (!accountAddress || !explorer) return;
 
     window.open(
-      buildExplorerUrl(
-        activeNetwork.explorer || activeNetwork.url,
-        'address',
-        accountAddress
-      ),
+      buildExplorerUrl(explorer, 'address', accountAddress),
       '_blank'
     );
-  }, [
-    activeAccount?.address,
-    isBitcoinBased,
-    activeNetwork.url,
-    activeNetwork.explorer,
-  ]);
+  }, [activeAccount?.address, isBitcoinBased, explorer]);
 
   const handleMaxButton = () => {
     // Only work with verified balances - no fallbacks
@@ -1205,6 +1198,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
     if (selectedAsset || !activeAccount?.address || cachedFeeData) return;
     let current = true;
     setIsCalculatingGas(true);
+    setFeeReadFailed(false);
 
     const calculateGasFees = async () => {
       try {
@@ -1214,18 +1208,40 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
           'getFeeDataWithDynamicMaxPriorityFeePerGas',
         ])) as any;
 
-        if (current && feeData?.maxFeePerGas && feeData.maxPriorityFeePerGas) {
+        if (
+          feeData?.maxFeePerGas === undefined ||
+          feeData?.maxPriorityFeePerGas === undefined
+        ) {
+          throw new Error('Invalid fee quote');
+        }
+        const maxFeePerGas = BigNumber.from(feeData.maxFeePerGas);
+        const maxPriorityFeePerGas = BigNumber.from(
+          feeData.maxPriorityFeePerGas
+        );
+        const gasPrice =
+          feeData.gasPrice == null ? null : BigNumber.from(feeData.gasPrice);
+        if (
+          maxFeePerGas.lt(0) ||
+          maxPriorityFeePerGas.lt(0) ||
+          maxPriorityFeePerGas.gt(maxFeePerGas) ||
+          (gasPrice && gasPrice.lt(0)) ||
+          (maxFeePerGas.isZero() && (!gasPrice || gasPrice.lte(0)))
+        ) {
+          throw new Error('Invalid fee quote');
+        }
+        if (current && isCurrentForm(false) && !isCurrentForm()) {
+          setFeeReadFailed(true);
+        } else if (current && isCurrentForm()) {
           // Cache serializable fee rates; the backend handles the gas limit.
           setCachedFeeData({
-            maxFeePerGas: BigNumber.from(feeData.maxFeePerGas).toHexString(),
-            maxPriorityFeePerGas: BigNumber.from(
-              feeData.maxPriorityFeePerGas
-            ).toHexString(),
+            maxFeePerGas: maxFeePerGas.toHexString(),
+            maxPriorityFeePerGas: maxPriorityFeePerGas.toHexString(),
+            ...(gasPrice && { gasPrice: gasPrice.toHexString() }),
           });
         }
       } catch (error) {
         console.error('Error calculating gas fees:', error);
-        // Leave failed prefetches uncached; confirmation still validates fees.
+        if (current && isCurrentForm(false)) setFeeReadFailed(true);
       } finally {
         if (current) setIsCalculatingGas(false);
       }
@@ -1234,7 +1250,24 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
     return () => {
       current = false;
     };
-  }, [selectedAsset, activeAccount?.address, cachedFeeData]);
+  }, [
+    selectedAsset,
+    activeAccount?.address,
+    cachedFeeData,
+    feeRetry,
+    isCurrentForm,
+  ]);
+
+  useEffect(() => {
+    if (
+      cachedFeeData &&
+      !selectedAsset &&
+      form.getFieldValue('amount') &&
+      form.getFieldError('amount').length
+    ) {
+      void form.validateFields(['amount']).catch(() => undefined);
+    }
+  }, [cachedFeeData, selectedAsset, form]);
 
   // Close suggestions when clicking outside form
   useEffect(() => {
@@ -1263,15 +1296,10 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
   return (
     <div className="w-full md:max-w-sm">
       <div className="flex flex-col items-center justify-center">
-        <Tooltip content={t('home.viewOnExplorer')}>
-          <button
-            type="button"
-            aria-label={t('home.viewAccountOnExplorer')}
-            className="add-identicon ml-1 mr-2 my-2 cursor-pointer transition-all duration-200 hover:scale-105 hover:opacity-80 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue"
-            onClick={openAccountInExplorer}
-            title={t('home.viewAccountOnExplorer')}
-          />
-        </Tooltip>
+        <AccountExplorerAvatar
+          available={Boolean(explorer)}
+          onClick={openAccountInExplorer}
+        />
         <div className="flex min-w-0 max-w-full flex-wrap gap-1 justify-center items-center">
           <span className="shrink-0">
             <PaliWhiteSmallIconSvg />
@@ -1545,7 +1573,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
 
                     <Menu.Items
                       as="div"
-                      className={`scrollbar-styled absolute z-20 left-0 mt-2 py-3 w-56 h-56 text-brand-white font-poppins bg-brand-blue800 border border-fields-input-border focus:border-fields-input-borderfocus rounded-2xl shadow-2xl overflow-auto origin-top-right
+                      className={`pali-menu-focus scrollbar-styled absolute z-20 left-0 mt-2 py-3 w-56 h-56 text-brand-white font-poppins bg-brand-blue800 border border-fields-input-border focus:border-fields-input-borderfocus rounded-2xl shadow-2xl overflow-auto origin-top-right
                           transform transition-all duration-100 ease-out ${
                             open
                               ? 'opacity-100 scale-100 pointer-events-auto'
@@ -1654,7 +1682,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                 </button>
                 <Form.Item
                   name="amount"
-                  className="relative w-full"
+                  className="relative w-full break-words"
                   hasFeedback
                   rules={[
                     {
@@ -1783,7 +1811,10 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                                 const maxFeePerGas = BigNumber.from(
                                   cachedFeeData.maxFeePerGas
                                 );
-                                estimatedGasCost = gasLimit.mul(maxFeePerGas);
+                                const feeRate = maxFeePerGas.isZero()
+                                  ? BigNumber.from(cachedFeeData.gasPrice)
+                                  : maxFeePerGas;
+                                estimatedGasCost = gasLimit.mul(feeRate);
                               } else {
                                 // Use conservative fallback estimate
                                 const conservativeFee =
@@ -1798,8 +1829,9 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
 
                               if (remainingAfterSend.lt(estimatedGasCost)) {
                                 return Promise.reject(
-                                  t('send.insufficientFundsForGas') ||
-                                    'Insufficient funds for gas'
+                                  cachedFeeData?.maxFeePerGas
+                                    ? t('send.insufficientFundsForGas')
+                                    : t('send.feeUnavailable')
                                 );
                               }
                             } catch (error) {
@@ -1884,9 +1916,35 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                   />
                 </Form.Item>
 
+                <div>
+                  <span
+                    className="sr-only"
+                    role="status"
+                    aria-live="polite"
+                    aria-atomic="true"
+                  >
+                    {!selectedAsset && feeReadFailed
+                      ? t('send.feeUnavailable')
+                      : ''}
+                  </span>
+                  {!selectedAsset && feeReadFailed && (
+                    <button
+                      type="button"
+                      className="min-h-11 px-2 text-brand-royalbluemedium text-xs underline focus-visible:outline focus-visible:outline-2"
+                      onClick={() => setFeeRetry((attempt) => attempt + 1)}
+                    >
+                      {t('send.unableToCalculateFees')}
+                    </button>
+                  )}
+                </div>
+
                 {/* Verification Status Display */}
                 {selectedAsset && (
-                  <div className="absolute -bottom-6 left-0 right-0">
+                  <div
+                    className={`absolute ${
+                      verificationError ? '-bottom-7' : '-bottom-6'
+                    } left-0 right-0`}
+                  >
                     {/* ERC-20 token verification status */}
                     {!selectedAsset.isNft && (
                       <div className="flex items-center justify-center gap-1">
@@ -1895,7 +1953,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                             {renderVerificationSpinner(
                               'animate-spin h-3 w-3 text-brand-royalblue'
                             )}
-                            <p className="text-brand-royalblue text-[10px]">
+                            <p className="text-brand-royalbluemedium text-[10px]">
                               {t('send.verifyingBalance')}
                             </p>
                           </>
@@ -1906,7 +1964,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                             </p>
                             <button
                               type="button"
-                              className="text-brand-royalblue text-[10px] underline"
+                              className="inline-flex min-h-[32px] min-w-[32px] items-center justify-center text-brand-royalbluemedium text-[10px] underline"
                               onClick={() => {
                                 if (isCurrentForm())
                                   setSelectedAsset((asset) =>
@@ -2023,7 +2081,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                 ) && (
                   <div className="mt-2">
                     {isVerifyingTokenId ? (
-                      <p className="text-xs text-brand-royalblue flex items-center justify-center">
+                      <p className="text-xs text-brand-royalbluemedium flex items-center justify-center">
                         {renderVerificationSpinner(
                           'animate-spin -ml-1 mr-2 h-3 w-3 text-brand-royalblue'
                         )}

@@ -1053,7 +1053,7 @@ const EthSign: React.FC<ISign> = () => {
             {parameters.map((param: any, index: number) => (
               <div key={index} className="flex flex-col">
                 <span className="text-xs text-gray-400">params[{index}]:</span>
-                <pre className="text-xs text-gray-300 whitespace-pre-wrap break-all">
+                <pre className="text-xs text-gray-300 whitespace-pre-wrap break-words">
                   {typeof param === 'string' ? param : JSON.stringify(param)}
                 </pre>
               </div>
@@ -1084,7 +1084,7 @@ const EthSign: React.FC<ISign> = () => {
           data.eventName === 'personal_sign') && (
           <div className="bg-gray-900 rounded-lg p-4">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-medium text-gray-300 uppercase tracking-wide">
+              <span className="min-w-0 [overflow-wrap:anywhere] text-xs font-medium text-gray-300 uppercase tracking-wide [@media(max-width:360px)]:tracking-[0.2em]">
                 {t('send.parameterInterpretation')}
               </span>
             </div>
@@ -1155,7 +1155,7 @@ const EthSign: React.FC<ISign> = () => {
                     <span className="text-gray-400">
                       {t('send.actualParams')}
                     </span>
-                    <span className="font-mono break-all">
+                    <span className="font-mono break-words">
                       [{parameters.map((p) => `"${p}"`).join(', ')}]
                     </span>
                   </div>
@@ -1167,7 +1167,7 @@ const EthSign: React.FC<ISign> = () => {
                   </div>
                   <div>
                     <span className="text-gray-400">{t('send.message')}: </span>
-                    <span className="font-mono break-all">
+                    <span className="font-mono break-words">
                       {personalSignParams?.message}
                     </span>
                   </div>
@@ -1276,7 +1276,7 @@ const EthSign: React.FC<ISign> = () => {
                   alt=""
                 />
               </div>
-              <h1 className="text-xl font-semibold text-white mb-2">
+              <h1 className="text-center text-xl font-semibold text-white mb-2">
                 {getActionType()}
               </h1>
               <p className="text-sm text-gray-300 text-center mb-1">
@@ -1313,17 +1313,18 @@ const EthSign: React.FC<ISign> = () => {
                     </span>
                     <IconButton
                       aria-label={t('buttons.copy')}
+                      className="inline-flex min-h-[32px] min-w-[32px] items-center justify-center"
                       onClick={() => copy(message)}
                     >
                       <Icon
                         name="copy"
-                        className="text-brand-white hover:text-fields-input-borderfocus"
+                        className="text-brand-white hover:text-brand-blue100"
                         size={12}
                       />
                     </IconButton>
                   </div>
                   <div className="max-h-24 overflow-auto">
-                    <p className="text-sm text-white font-mono break-all">
+                    <p className="text-sm text-white font-mono whitespace-pre-wrap [overflow-wrap:anywhere]">
                       {message}
                     </p>
                   </div>

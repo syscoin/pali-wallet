@@ -152,6 +152,47 @@ it('shows clearing NEVM as an explicit registration removal', async () => {
   expect(await screen.findByText('Remove registration')).toBeTruthy();
 });
 
+it.each([
+  { previous: '', next: '', unchanged: true, proposed: 'Not set' },
+  {
+    previous: '00',
+    next: '',
+    unchanged: false,
+    proposed: 'Remove registration',
+  },
+  { previous: '00', next: '00', unchanged: true, proposed: '00' },
+  { previous: '', next: '0011', unchanged: false, proposed: '0011' },
+])(
+  'renders the exact payout change $previous -> $next',
+  async ({ previous, next, unchanged, proposed }) => {
+    mockEmitter.mockResolvedValue({
+      ...approval,
+      review: {
+        ...approval.review,
+        changes: {
+          ...approval.review.changes,
+          operatorPayoutScript: { previous, next },
+        },
+      },
+    });
+    render(<SentryOperation />);
+    const heading = await screen.findByRole('heading', {
+      name: `Operator payout script${unchanged ? ' · unchanged' : ''}`,
+    });
+    const change = heading.parentElement!;
+    const values = Array.from(change.querySelectorAll('dd')).map(
+      (node) => node.textContent
+    );
+    expect(values).toEqual([previous || 'Not set', proposed]);
+    expect(mockDispatch).not.toHaveBeenCalled();
+    expect(
+      mockEmitter.mock.calls.every(
+        ([methods]) => methods[1] === 'getSentryApproval'
+      )
+    ).toBe(true);
+  }
+);
+
 it('ignores a late response from a retired approval route', async () => {
   let resolveOld!: (value: typeof approval) => void;
   mockEmitter.mockImplementation((_method, args) =>

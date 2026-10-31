@@ -59,7 +59,7 @@ export const Start = (props: any) => {
       />
 
       <div className="flex min-h-full w-full flex-col items-center justify-center pb-6">
-        <p className="relative z-10 pt-[14rem] [@media(max-height:499px)]:pt-8 mb-2 text-center text-white text-opacity-92 font-poppins text-sm font-light leading-normal tracking-[0.175rem]">
+        <p className="relative z-10 pt-[14rem] login-welcome-spacing mb-2 text-center text-white text-opacity-92 font-poppins text-sm font-light leading-normal tracking-[0.175rem]">
           {t('start.welcomeTo')}
         </p>
 

@@ -130,6 +130,9 @@ describe('account removal confirmation context', () => {
     jest.spyOn(React, 'useEffect').mockImplementation((effect) => {
       effects.push(effect);
     });
+    jest.spyOn(React, 'useLayoutEffect').mockImplementation((effect) => {
+      effects.push(effect);
+    });
     mockChanging = false;
     mockUnavailable = false;
     mockCurrentUnavailable = false;

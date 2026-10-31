@@ -356,7 +356,7 @@ const SmartAccountEntry = ({
                   type="button"
                   disabled={disabled}
                   onClick={showMore}
-                  className="py-2 text-sm text-brand-royalblue"
+                  className="py-2 text-sm text-content-accent"
                 >
                   {t('buttons.loadMore')}
                 </button>

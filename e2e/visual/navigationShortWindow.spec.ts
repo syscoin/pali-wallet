@@ -177,7 +177,7 @@ test('short-window navigation keeps actions, instructions and errors unobscured'
           await reveal(
             wallet.page,
             wallet.page.getByRole('button', {
-              name: 'Set Metamask as default wallet',
+              name: en.settings.disablePaliProvider,
               exact: true,
             })
           );

@@ -165,6 +165,29 @@ it('starts direct with an empty recipient and no controller or directory call', 
   expect(mockEmitter).not.toHaveBeenCalled();
 });
 
+it('explains an invalid recipient after blur and clears the error when corrected', () => {
+  mount();
+  const input = screen.getByLabelText(en.privacy.withdrawal.recipient);
+  const next = screen.getByRole('button', {
+    name: en.privacy.withdrawal.continue,
+  });
+  fireEvent.blur(input);
+  expect(screen.queryByText(en.privacy.withdrawal.recipientInvalid)).toBeNull();
+  fireEvent.change(input, { target: { value: 'invalid' } });
+  fireEvent.blur(input);
+  expect(screen.getByRole('alert')).toHaveTextContent(
+    en.privacy.withdrawal.recipientInvalid
+  );
+  expect(input).toHaveAttribute('aria-invalid', 'true');
+  expect(input).toHaveAccessibleDescription(
+    en.privacy.withdrawal.recipientInvalid
+  );
+  expect(next).toBeDisabled();
+  fireEvent.change(input, { target: { value: RECIPIENT } });
+  expect(screen.queryByText(en.privacy.withdrawal.recipientInvalid)).toBeNull();
+  expect(next).toBeEnabled();
+});
+
 it('reviews the exact recipient, gas payer and receive amount, then submits once explicitly', async () => {
   mount();
   await prepare();
@@ -378,6 +401,49 @@ it('requires refreshing after a proven unbroadcast failure', async () => {
   ).toHaveLength(1);
 });
 
+it.each([
+  new Error('privacy_proof_cancelled'),
+  { message: 'privacy_proof_cancelled' },
+])(
+  'explains interrupted preparation and allows an explicit fresh review',
+  async (failure) => {
+    const original = mockEmitter.getMockImplementation()!;
+    let first = true;
+    mockEmitter.mockImplementation((path, ...rest) => {
+      if (path[1] === 'prepareWithdrawal' && first) {
+        first = false;
+        return Promise.reject(failure);
+      }
+      return original(path, ...rest);
+    });
+    mount();
+    fireEvent.change(screen.getByLabelText(en.privacy.withdrawal.recipient), {
+      target: { value: RECIPIENT },
+    });
+    fireEvent.click(
+      screen.getByRole('button', { name: en.privacy.withdrawal.continue })
+    );
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      en.privacy.withdrawal.prepareInterrupted
+    );
+    expect(
+      screen.queryByRole('button', { name: en.privacy.withdrawal.confirm })
+    ).not.toBeInTheDocument();
+    expect(
+      mockEmitter.mock.calls.filter(([path]) => path[1] === 'submitWithdrawal')
+    ).toHaveLength(0);
+    fireEvent.click(
+      screen.getByRole('button', { name: en.privacy.withdrawal.continue })
+    );
+    expect(
+      await screen.findByRole('heading', { name: en.privacy.withdrawal.review })
+    ).toBeVisible();
+    expect(
+      mockEmitter.mock.calls.filter(([path]) => path[1] === 'submitWithdrawal')
+    ).toHaveLength(0);
+  }
+);
+
 it('rejects a malformed public review instead of showing secret fields or a submit action', async () => {
   mockEmitter.mockResolvedValue({
     ...review(),
@@ -418,6 +484,40 @@ it('rejects malformed relay directory data without rendering extra fields', asyn
   expect(screen.queryByText('secret-data')).not.toBeInTheDocument();
 });
 
+it('distinguishes a failed relayer lookup from a successfully empty directory', async () => {
+  let reads = 0;
+  mockEmitter.mockImplementation(async ([, method]) => {
+    if (method !== 'getRelayers') return undefined;
+    reads += 1;
+    if (reads === 1) throw new Error('Synthetic directory failure');
+    return [];
+  });
+  mount();
+  fireEvent.click(screen.getByLabelText(en.privacy.withdrawal.relayed));
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    en.privacy.withdrawal.directoryFailed
+  );
+  expect(screen.queryByText(en.privacy.withdrawal.noRelayers)).toBeNull();
+
+  fireEvent.change(screen.getByLabelText(en.privacy.withdrawal.recipient), {
+    target: { value: RECIPIENT },
+  });
+  expect(screen.getByRole('alert')).toHaveTextContent(
+    en.privacy.withdrawal.directoryFailed
+  );
+  expect(screen.queryByText(en.privacy.withdrawal.noRelayers)).toBeNull();
+
+  fireEvent.click(screen.getByRole('button', { name: en.privacy.refresh }));
+  expect(
+    await screen.findByText(en.privacy.withdrawal.noRelayers)
+  ).toBeVisible();
+  expect(screen.queryByRole('alert')).toBeNull();
+  expect(reads).toBe(2);
+  expect(
+    screen.getByRole('button', { name: en.privacy.withdrawal.continue })
+  ).toBeDisabled();
+});
+
 it('prevents duplicate confirmation and drops a late submission after the account changes', async () => {
   const pending = deferred(),
     original = mockEmitter.getMockImplementation()!;
@@ -449,4 +549,65 @@ it('prevents duplicate confirmation and drops a late submission after the accoun
   expect(screen.getByLabelText(en.privacy.withdrawal.recipient)).toHaveValue(
     ''
   );
+});
+
+it.each([
+  ['zero address', '0x0000000000000000000000000000000000000000'],
+  ['invalid mixed checksum', '0x52908400098527886E0F7030069857D2E4169Ee7'],
+])(
+  'blocks %s with an associated recipient error and no preparation',
+  (_label, value) => {
+    mount();
+    const input = screen.getByLabelText(en.privacy.withdrawal.recipient);
+    const next = screen.getByRole('button', {
+      name: en.privacy.withdrawal.continue,
+    });
+    fireEvent.change(input, { target: { value } });
+    fireEvent.blur(input);
+    expect(input).toHaveAttribute('aria-invalid', 'true');
+    expect(input).toHaveAccessibleDescription(
+      en.privacy.withdrawal.recipientInvalid
+    );
+    expect(next).toBeDisabled();
+    expect(mockEmitter).not.toHaveBeenCalled();
+    fireEvent.change(input, { target: { value: RECIPIENT } });
+    expect(input).not.toHaveAttribute('aria-invalid', 'true');
+    expect(next).toBeEnabled();
+  }
+);
+
+it.each([
+  ['lowercase', '0x52908400098527886e0f7030069857d2e4169ee7'],
+  ['valid checksum', '0x52908400098527886E0F7030069857D2E4169EE7'],
+])('accepts a %s recipient without initiating preparation', (_label, value) => {
+  mount();
+  const input = screen.getByLabelText(en.privacy.withdrawal.recipient);
+  fireEvent.change(input, { target: { value } });
+  fireEvent.blur(input);
+  expect(input).not.toHaveAttribute('aria-invalid', 'true');
+  expect(
+    screen.getByRole('button', { name: en.privacy.withdrawal.continue })
+  ).toBeEnabled();
+  expect(mockEmitter).not.toHaveBeenCalled();
+});
+
+it('does not start relayed preparation for a zero recipient after choosing a relayer', async () => {
+  mount();
+  fireEvent.click(screen.getByLabelText(en.privacy.withdrawal.relayed));
+  const relayer = await screen.findByLabelText(en.privacy.withdrawal.relayer);
+  fireEvent.change(relayer, { target: { value: RELAYER_ID } });
+  const input = screen.getByLabelText(en.privacy.withdrawal.recipient);
+  fireEvent.change(input, {
+    target: { value: '0x0000000000000000000000000000000000000000' },
+  });
+  fireEvent.blur(input);
+  expect(input).toHaveAccessibleDescription(
+    en.privacy.withdrawal.recipientInvalid
+  );
+  expect(
+    screen.getByRole('button', { name: en.privacy.withdrawal.continue })
+  ).toBeDisabled();
+  expect(
+    mockEmitter.mock.calls.some(([path]) => path[1] === 'prepareWithdrawal')
+  ).toBe(false);
 });

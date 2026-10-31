@@ -108,6 +108,7 @@ import {
   ISmartAccountMetadata,
   IKeyringAccountState,
   KeyringAccountType,
+  initialActiveHdAccountState,
 } from 'types/network';
 import { IBlacklistCheckResult } from 'types/security';
 import {
@@ -115,6 +116,7 @@ import {
   IWatchAssetTokenProps,
   ISysAssetMetadata,
   ITokenDetails,
+  INftTokenIdsResult,
   WatchAssetType,
 } from 'types/tokens';
 import { ICustomRpcParams, IDecodedTx } from 'types/transactions';
@@ -131,7 +133,12 @@ import {
   PALI_NETWORKS_STATE,
 } from 'utils/constants';
 import { assertSupportedEvmFees } from 'utils/dappTransaction';
-import { Contract, formatUnits } from 'utils/ethersV6Compat';
+import {
+  Contract,
+  formatUnits,
+  getAddress,
+  isAddress,
+} from 'utils/ethersV6Compat';
 import { decodeTransactionData } from 'utils/ethUtil';
 import { getBlacklistTargetsForEvmCallWithContractType } from 'utils/evmCallBlacklist';
 import {
@@ -159,6 +166,11 @@ import type {
   IPrivateVaultController,
 } from 'utils/privacy/privateVaultTypes';
 import type { IPrivacyRelayerClient } from 'utils/privacy/relayers';
+import {
+  assertPrivacyServiceStable,
+  getPrivacyServiceOrigin,
+  privacyServiceRevision,
+} from 'utils/privacy/service';
 import type {
   IPrivacyDepositSession,
   IPrivacyTransactionsController,
@@ -169,7 +181,10 @@ import {
   privacyFeeQuantity,
   privacyWithdrawalFees,
 } from 'utils/privacy/withdrawalFees';
-import type { IPrivacyWithdrawalSession } from 'utils/privacy/withdrawalTransactionTypes';
+import type {
+  IPrivacyWithdrawalSession,
+  IPrivacyWithdrawalAttempt,
+} from 'utils/privacy/withdrawalTransactionTypes';
 import type {
   IPrivacyWithdrawalsController,
   IPrivacyWithdrawalsHost,
@@ -249,6 +264,10 @@ import {
 } from './balances/ReceiptBalanceRefresh';
 import { IBalancesManager } from './balances/types';
 import ChainListService from './chainlist';
+import {
+  freshSdkGasEstimate,
+  getSdkGasOverrides,
+} from './freshNativeGasEstimate';
 import { clearProviderCache } from './message-handler/requests';
 import { recordSendCallsBundle } from './message-handler/sendCallsBundles';
 import { PaliEvents, PaliSyscoinEvents } from './message-handler/types';
@@ -377,6 +396,17 @@ class MainController {
   >;
   private privacyTransactionsController?: Promise<IPrivacyTransactionsController>;
   private privacyWithdrawalsController?: Promise<IPrivacyWithdrawalsController>;
+  private knownUnbroadcast = new Map<
+    string,
+    {
+      attemptHash: string;
+      context: IPrivacyWithdrawalAttempt['context'];
+      intentId: string;
+      noteId: string;
+      profileId: string;
+      walletStateGeneration: number;
+    }
+  >();
   private privacyDepositSessions = new WeakMap<
     () => void,
     { provider: CustomJsonRpcProvider; session: IPrivateVaultSession }
@@ -507,6 +537,7 @@ class MainController {
     this.fiatQuoteGeneration += 1;
     this.walletSessionGeneration += 1;
     this.walletStateGeneration += 1;
+    this.knownUnbroadcast?.clear();
     this.networkRequestGeneration += 1;
     const privacyTransactions = this.privacyTransactionsController;
     this.privacyTransactionsController = undefined;
@@ -1912,9 +1943,9 @@ class MainController {
   }
 
   private async usePrivateVault<T>(
-    operation: (vault: IPrivateVaultController) => Promise<T>
+    operation: (vault: IPrivateVaultController) => Promise<T>,
+    session = this.capturePrivateVaultSession()
   ): Promise<T> {
-    const session = this.capturePrivateVaultSession();
     const vault = await this.getPrivateVaultController();
     session.assertCurrent();
     const result = await operation(vault);
@@ -1922,8 +1953,56 @@ class MainController {
     return result;
   }
 
-  public getPrivateVaultNotes() {
-    return this.usePrivateVault((vault) => vault.getNotes());
+  private async reconcileKnownUnbroadcast() {
+    if (!this.knownUnbroadcast?.size) return;
+    try {
+      const session = this.capturePrivateVaultSession();
+      const current = this.capturePrivacyDepositContext();
+      const profileId = await session.keyring.getPrivateRecordProfileId();
+      session.assertCurrent();
+      current.assertCurrent();
+      for (const [id, pending] of this.knownUnbroadcast) {
+        try {
+          const expected = pending.context,
+            actual = current.context;
+          if (
+            pending.walletStateGeneration !== this.walletStateGeneration ||
+            pending.profileId !== profileId ||
+            expected.slip44 !== actual.slip44 ||
+            expected.chainId !== actual.chainId ||
+            expected.rpcUrl !== actual.rpcUrl ||
+            expected.account.id !== actual.account.id ||
+            expected.account.type !== actual.account.type ||
+            expected.account.address.toLowerCase() !==
+              actual.account.address.toLowerCase()
+          )
+            continue;
+          const vault = await this.getPrivateVaultController();
+          current.assertCurrent();
+          await vault.clearKnownUnbroadcastWithdrawal(
+            pending.noteId,
+            pending.intentId,
+            pending.attemptHash,
+            pending.profileId,
+            session,
+            current.assertCurrent
+          );
+          this.knownUnbroadcast.delete(id);
+        } catch {
+          /* A stale journal does not block independent attempts. */
+        }
+      }
+    } catch {
+      /* Retain only while this worker can prove no send was entered. */
+    }
+  }
+
+  public async getPrivateVaultNotes() {
+    // Admission belongs to the current session even if reconciliation yields.
+    const session = this.capturePrivateVaultSession();
+    await this.reconcileKnownUnbroadcast();
+    session.assertCurrent();
+    return this.usePrivateVault((vault) => vault.getNotes(), session);
   }
 
   public importPrivateVaultNote(note: string) {
@@ -1940,7 +2019,9 @@ class MainController {
     return this.usePrivateVault((vault) => vault.revealNote(id, password));
   }
 
-  private capturePrivacyDepositContext(): IPrivacyDepositSession {
+  private capturePrivacyDepositContext(
+    requireDepositSigner = false
+  ): IPrivacyDepositSession {
     this.assertWalletReadyForSigning();
     const privateSession = this.capturePrivateVaultSession();
     const { vault, vaultGlobal } = store.getState();
@@ -1964,7 +2045,10 @@ class MainController {
         selected.type !== KeyringAccountType.Imported) ||
       account.isLedgerWallet ||
       account.isTrezorWallet ||
-      account.isSmartAccount
+      account.isSmartAccount ||
+      (requireDepositSigner &&
+        selected.type === KeyringAccountType.Imported &&
+        !account.xprv)
     )
       throw new Error('privacy_deposit_unsupported_account');
     const provider = this.ethereumTransaction.web3Provider;
@@ -1996,6 +2080,9 @@ class MainController {
         active?.isLedgerWallet ||
         active?.isTrezorWallet ||
         active?.isSmartAccount ||
+        (requireDepositSigner &&
+          ref.type === KeyringAccountType.Imported &&
+          !active?.xprv) ||
         active?.address?.toLowerCase() !==
           context.account.address.toLowerCase() ||
         this.ethereumTransaction.web3Provider !== provider
@@ -2047,7 +2134,7 @@ class MainController {
       return value;
     };
     return {
-      captureContext: () => this.capturePrivacyDepositContext(),
+      captureContext: () => this.capturePrivacyDepositContext(true),
       prepareNote: async (poolId, noteId, session) => {
         const saved = binding(session);
         session.assertCurrent();
@@ -2222,7 +2309,7 @@ class MainController {
   public async preparePrivacyDeposit(
     request: Parameters<IPrivacyTransactionsController['prepareDeposit']>[0]
   ) {
-    const session = this.capturePrivacyDepositContext();
+    const session = this.capturePrivacyDepositContext(true);
     const controller = await this.getPrivacyTransactionsController();
     session.assertCurrent();
     const result = await controller.prepareDeposit(request);
@@ -2245,6 +2332,37 @@ class MainController {
   private createPrivacyWithdrawalsHost(
     relayers: IPrivacyRelayerClient
   ): IPrivacyWithdrawalsHost {
+    const reservationIdentity = new WeakMap<
+      IPrivacyWithdrawalAttempt,
+      {
+        attemptHash: string;
+        profileId: string;
+        walletStateGeneration: number;
+      }
+    >();
+    const rememberKnownUnbroadcast = (attempt: IPrivacyWithdrawalAttempt) => {
+      const identity = reservationIdentity.get(attempt);
+      if (
+        !identity ||
+        identity.walletStateGeneration !== this.walletStateGeneration
+      )
+        return;
+      if (!this.knownUnbroadcast) this.knownUnbroadcast = new Map();
+      // Eviction keeps the existing unknown journal; it never authorizes reuse.
+      if (
+        !this.knownUnbroadcast.has(attempt.intentId) &&
+        this.knownUnbroadcast.size >= 8
+      ) {
+        const oldest = this.knownUnbroadcast.keys().next().value;
+        if (oldest) this.knownUnbroadcast.delete(oldest);
+      }
+      this.knownUnbroadcast.set(attempt.intentId, {
+        ...identity,
+        noteId: attempt.noteId,
+        intentId: attempt.intentId,
+        context: attempt.context,
+      });
+    };
     const sessions = new WeakMap<
       IEvmTransactionContext,
       {
@@ -2411,8 +2529,23 @@ class MainController {
         }
         const vault = await this.getPrivateVaultController();
         saved.assertCurrent();
-        await vault.reserveWithdrawalAttempt(attempt, saved.session);
-        saved.assertCurrent();
+        const walletStateGeneration = this.walletStateGeneration;
+        try {
+          await vault.reserveWithdrawalAttempt(
+            attempt,
+            saved.session,
+            (identity) =>
+              reservationIdentity.set(attempt, {
+                ...identity,
+                walletStateGeneration,
+              })
+          );
+          saved.assertCurrent();
+        } catch (error) {
+          // This host has not entered send: identity is scoped to that attempt.
+          rememberKnownUnbroadcast(attempt);
+          throw error;
+        }
       },
       recordSubmission: async (attempt, acknowledgement) => {
         const saved = binding(attempt.context);
@@ -2468,7 +2601,14 @@ class MainController {
             { createPrivacyRelayerClient },
           ]) =>
             createPrivacyWithdrawalsController(
-              this.createPrivacyWithdrawalsHost(createPrivacyRelayerClient())
+              this.createPrivacyWithdrawalsHost(
+                createPrivacyRelayerClient({
+                  getDirectoryUrl: async () =>
+                    `${await getPrivacyServiceOrigin()}/api/privacy/v1/relayers`,
+                  getServiceRevision: privacyServiceRevision,
+                  assertServiceCurrent: assertPrivacyServiceStable,
+                })
+              )
             )
         )
         .catch(() => {
@@ -2513,6 +2653,15 @@ class MainController {
     void this.privacyWithdrawalsController
       ?.then((controller) => controller.cancelPreparation())
       .catch(() => undefined);
+  }
+
+  public async invalidatePrivacyServiceWithdrawals() {
+    const previous = this.privacyWithdrawalsController;
+    this.privacyWithdrawalsController = undefined;
+    if (previous) {
+      const controller = await previous.catch(() => undefined);
+      controller?.close();
+    }
   }
 
   private authenticatePrivateVault(
@@ -5233,25 +5382,76 @@ class MainController {
   ) {
     const { keyring, assertCurrent } = this.accountMutationContext();
     assertPublicWatchOnlyIdentifier(identifier);
-    // The SDK only validates and constructs public account metadata here.
-    // Abandon a late result before the guarded durable creation below.
-    let validationTimer: ReturnType<typeof setTimeout> | undefined;
-    const importedAccount = await Promise.race([
-      (keyring as any).importWatchOnly(identifier, label),
-      new Promise<never>((_, reject) => {
-        validationTimer = setTimeout(
-          () => reject(new Error(WATCH_ONLY_VALIDATION_TIMEOUT)),
-          WATCH_ONLY_VALIDATION_TIMEOUT_MS
+    const { activeNetwork, accounts } = store.getState().vault;
+    let importedAccount: IKeyringAccountState;
+    let assertImportCurrent = assertCurrent;
+    if (activeNetwork?.kind === INetworkType.Ethereum) {
+      // EVM watch identities are public addresses, not Blockbook lookups.
+      // Keep admission tied to the network that accepted this draft.
+      if (!isAddress(identifier))
+        throw new Error(
+          'Watch-only EVM import requires a valid Ethereum address.'
         );
-      }),
-    ]).finally(() => {
-      if (validationTimer !== undefined) clearTimeout(validationTimer);
-    });
-    assertCurrent();
+      const address = getAddress(identifier);
+      const network = networkRegistrationFingerprint(activeNetwork);
+      const slip44 = store.getState().vaultGlobal.activeSlip44;
+      assertImportCurrent = () => {
+        assertCurrent();
+        const current = store.getState();
+        if (
+          current.vault.isBitcoinBased ||
+          current.vault.activeNetwork.kind !== INetworkType.Ethereum ||
+          networkRegistrationFingerprint(current.vault.activeNetwork) !==
+            network ||
+          current.vaultGlobal.activeSlip44 !== slip44
+        )
+          throw new Error(
+            'Network changed before watch-only import. Please retry.'
+          );
+        if (
+          Object.values(current.vault.accounts).some((bucket) =>
+            Object.values(bucket).some(
+              (account) =>
+                typeof account?.address === 'string' &&
+                account.address.toLowerCase() === address.toLowerCase()
+            )
+          )
+        )
+          throw new Error('Account already exists on your Wallet.');
+      };
+      assertImportCurrent();
+      let id = 0;
+      while (accounts.Imported[id]) id++;
+      importedAccount = {
+        ...initialActiveHdAccountState,
+        id,
+        address,
+        label: label || `Watch-only ${id + 1}`,
+        xpub: address,
+        xprv: '',
+        isImported: true,
+      };
+    } else {
+      // The SDK only validates and constructs public account metadata here.
+      // Abandon a late result before the guarded durable creation below.
+      let validationTimer: ReturnType<typeof setTimeout> | undefined;
+      importedAccount = await Promise.race([
+        (keyring as any).importWatchOnly(identifier, label),
+        new Promise<never>((_, reject) => {
+          validationTimer = setTimeout(
+            () => reject(new Error(WATCH_ONLY_VALIDATION_TIMEOUT)),
+            WATCH_ONLY_VALIDATION_TIMEOUT_MS
+          );
+        }),
+      ]).finally(() => {
+        if (validationTimer !== undefined) clearTimeout(validationTimer);
+      });
+    }
+    assertImportCurrent();
     await this.storeCreatedAccount(
       importedAccount,
       KeyringAccountType.Imported,
-      assertCurrent
+      assertImportCurrent
     );
     setTimeout(() => {
       this.getLatestUpdateForCurrentAccount(false, true).catch((err) => {
@@ -5534,7 +5734,8 @@ class MainController {
     expectedContext: {
       chainId: number;
       walletScope: IWalletNavigationScope;
-    }
+    },
+    options: { approvedMaximumFee?: string; previewOnly?: boolean } = {}
   ) {
     this.assertWalletReadyForSigning();
     const vault = store.getState().vault;
@@ -5703,10 +5904,6 @@ class MainController {
       }
     };
 
-    const shouldUseTargetAccount =
-      targetAccount &&
-      (targetAccount.id !== activeAccount.id ||
-        targetAccount.type !== activeAccount.type);
     const keyring = this.getActiveKeyring();
     const transactionController = keyring.ethereumTransaction;
     const provider = transactionController.web3Provider;
@@ -5752,25 +5949,18 @@ class MainController {
         throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
     };
     assertCurrentContext();
-    try {
-      if (shouldUseTargetAccount) {
-        keyring.setVaultStateGetter(() => ({
-          ...store.getState().vault,
-          activeAccount: targetAccount,
-        }));
+    return await transactionController.cancelSentTransaction(
+      txHash,
+      isLegacy,
+      fallbackNonce,
+      {
+        assertCurrentContext,
+        validateOriginal,
+        targetAccount,
+        previewOnly: options.previewOnly === true,
+        approvedMaximumFee: options.approvedMaximumFee,
       }
-
-      return await transactionController.cancelSentTransaction(
-        txHash,
-        isLegacy,
-        fallbackNonce,
-        { assertCurrentContext, validateOriginal }
-      );
-    } finally {
-      if (shouldUseTargetAccount) {
-        keyring.setVaultStateGetter(() => store.getState().vault);
-      }
-    }
+    );
   }
 
   public async setEvmTransactionCancelSubmitted(
@@ -6737,10 +6927,13 @@ class MainController {
               : target.type === 'token-recipient'
               ? 'Recipient address is blacklisted'
               : 'Recipient address is blacklisted';
-          throw new Error(
-            `Transaction blocked: ${
-              blacklistResult.reason || fallbackReason
-            }. Severity: ${blacklistResult.severity}`
+          throw Object.assign(
+            new Error(
+              `Transaction blocked: ${
+                blacklistResult.reason || fallbackReason
+              }. Severity: ${blacklistResult.severity}`
+            ),
+            { transactionNotBroadcast: true }
           );
         }
       }
@@ -7480,12 +7673,20 @@ class MainController {
           (blacklistResult.severity === 'critical' ||
             blacklistResult.severity === 'high')
         ) {
-          throw new Error(
-            `Token transfer blocked: ${
-              blacklistResult.reason || 'The recipient address is blacklisted'
-            }. Severity: ${
-              blacklistResult.severity
-            }. Please verify the token recipient address before proceeding.`
+          throw Object.assign(
+            new Error(
+              `Token transfer blocked: ${
+                blacklistResult.reason || 'The recipient address is blacklisted'
+              }. Severity: ${
+                blacklistResult.severity
+              }. Please verify the token recipient address before proceeding.`
+            ),
+            {
+              code: 'PALI_TOKEN_RECIPIENT_BLOCKED',
+              recipientBlockReason: blacklistResult.reason,
+              recipientBlockSeverity: blacklistResult.severity,
+              transactionNotBroadcast: true,
+            }
           );
         }
       }
@@ -9747,6 +9948,103 @@ class MainController {
     };
   }
 
+  // Explicit user Retry for a native EOA quote; ordinary estimates still use
+  // the long-lived SDK instance. No caller-selected network or signing path.
+  public async getFreshNativeEvmGasLimit(
+    input: { data: string; from: string; to: string; value: string },
+    expectedScope: IWalletNavigationScope
+  ) {
+    this.assertAssetMutationContext(expectedScope);
+    const state = store.getState();
+    const network = { ...state.vault.activeNetwork };
+    const ref = { ...state.vault.activeAccount };
+    const account = state.vault.accounts[ref.type]?.[ref.id];
+    const transaction = {
+      data: input?.data,
+      from: input?.from,
+      to: input?.to,
+      value: input?.value,
+    };
+    if (
+      state.vault.isBitcoinBased ||
+      network.kind !== INetworkType.Ethereum ||
+      account?.isSmartAccount ||
+      transaction.data !== '0x' ||
+      typeof transaction.from !== 'string' ||
+      transaction.from.toLowerCase() !== account?.address?.toLowerCase() ||
+      typeof transaction.to !== 'string' ||
+      !/^0x[\da-f]{40}$/i.test(transaction.to) ||
+      typeof transaction.value !== 'string' ||
+      !/^0x[\da-f]{1,64}$/i.test(transaction.value)
+    )
+      throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    const keyring = this.getActiveKeyring();
+    const session = this.walletSessionGeneration;
+    const generation = this.walletStateGeneration;
+    const sdk = this.ethereumTransaction;
+    const originalProvider = sdk.web3Provider;
+    const overrides = getSdkGasOverrides(sdk);
+    const gasPolicy = JSON.stringify(overrides);
+    const assertCurrent = () => {
+      this.assertCurrentWalletSession(session, keyring);
+      this.assertAssetMutationContext(expectedScope);
+      if (
+        this.isResettingWallet ||
+        generation !== this.walletStateGeneration ||
+        this.ethereumTransaction !== sdk ||
+        sdk.web3Provider !== originalProvider ||
+        JSON.stringify(getSdkGasOverrides(sdk)) !== gasPolicy
+      )
+        throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    };
+    assertCurrent();
+    const abort = new AbortController();
+    const invalidate = () =>
+      abort.abort(new Error(EVM_TRANSACTION_CONTEXT_CHANGED));
+    originalProvider.signal.addEventListener('abort', invalidate, {
+      once: true,
+    });
+    const unsubscribe = store.subscribe(() => {
+      if (abort.signal.aborted) return;
+      try {
+        assertCurrent();
+      } catch {
+        invalidate();
+      }
+    });
+    // Match the existing controllerEmitter default deadline; do not extend it.
+    const timeout = setTimeout(
+      () =>
+        abort.abort(
+          new DOMException('Network request timed out', 'AbortError')
+        ),
+      10000
+    );
+    try {
+      if (originalProvider.signal.aborted) invalidate();
+      return await this.withReceiptReadProvider(
+        abort.signal,
+        network,
+        (provider) =>
+          freshSdkGasEstimate(
+            overrides,
+            network,
+            transaction,
+            provider,
+            assertCurrent
+          )
+      );
+    } catch (error) {
+      if (abort.signal.aborted) throw abort.signal.reason;
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+      unsubscribe();
+      originalProvider.signal.removeEventListener('abort', invalidate);
+      abort.abort();
+    }
+  }
+
   // Get current block with latest data
   public async getCurrentBlock(): Promise<any> {
     const { isBitcoinBased } = store.getState().vault;
@@ -10474,12 +10772,18 @@ class MainController {
     contractAddress: string,
     ownerAddress: string,
     tokenStandard: 'ERC-721' | 'ERC-1155'
-  ): Promise<{ balance: number; tokenId: string }[]> {
-    return this.evmAssetsController.fetchNftTokenIds(
+  ): Promise<INftTokenIdsResult> {
+    const result = await this.evmAssetsController.fetchNftTokenIds(
       contractAddress,
       ownerAddress,
       tokenStandard
     );
+    // Chrome's JSON messaging drops custom properties attached to arrays.
+    return {
+      tokens: result,
+      hasMore: result.hasMore === true,
+      requiresManualEntry: result.requiresManualEntry === true,
+    };
   }
 
   /**

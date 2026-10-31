@@ -7,6 +7,28 @@ import { SyscoinAssetDetails } from './SyscoinDetails';
 let mockState: any;
 const mockFetch = jest.fn();
 const mockAlert = { info: jest.fn() };
+const originalScrollIntoView = Object.getOwnPropertyDescriptor(
+  HTMLElement.prototype,
+  'scrollIntoView'
+);
+beforeAll(() => {
+  // JSDOM has no layout or native scrolling; viewport behavior is covered in e2e.
+  Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+    configurable: true,
+    value: jest.fn(),
+  });
+});
+afterAll(() => {
+  if (originalScrollIntoView) {
+    Object.defineProperty(
+      HTMLElement.prototype,
+      'scrollIntoView',
+      originalScrollIntoView
+    );
+  } else {
+    delete (HTMLElement.prototype as any).scrollIntoView;
+  }
+});
 jest.mock('react-redux', () => ({
   useSelector: (selector: any) => selector(mockState),
 }));
@@ -238,4 +260,148 @@ it.each([
   render(<SyscoinAssetDetails id={asset.assetGuid} />);
   await act(async () => undefined);
   expect(screen.getByText(display as string)).toBeTruthy();
+});
+
+describe('focused Close visibility after asynchronous market changes', () => {
+  const observeScroll = () => {
+    const descriptor = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      'scrollIntoView'
+    );
+    const scroll = jest.fn();
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+      configurable: true,
+      value: scroll,
+    });
+    return {
+      scroll,
+      restore: () => {
+        if (descriptor) {
+          Object.defineProperty(
+            HTMLElement.prototype,
+            'scrollIntoView',
+            descriptor
+          );
+        } else {
+          delete (HTMLElement.prototype as any).scrollIntoView;
+        }
+      },
+    };
+  };
+
+  it('keeps an already-focused Close in view after the market response', async () => {
+    let finish!: (response: any) => void;
+    mockFetch.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        })
+    );
+    const witness = observeScroll();
+    try {
+      render(<SyscoinAssetDetails id={asset.assetGuid} />);
+      const close = screen.getByRole('button', { name: 'buttons.close' });
+      close.focus();
+      witness.scroll.mockClear();
+      await act(async () => finish({ ok: true, json: async () => market(12) }));
+      expect(screen.getByText('$12')).toBeTruthy();
+      expect(document.activeElement).toBe(close);
+      expect(witness.scroll).toHaveBeenCalledWith({
+        block: 'nearest',
+        inline: 'nearest',
+      });
+      expect(
+        witness.scroll.mock.instances.every(
+          (instance) => instance === close.parentElement
+        )
+      ).toBe(true);
+    } finally {
+      witness.restore();
+    }
+  });
+
+  it('does not move focus or request scrolling when a different control is focused', async () => {
+    let finish!: (response: any) => void;
+    mockFetch.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        })
+    );
+    const witness = observeScroll();
+    const other = document.createElement('button');
+    other.textContent = 'Unrelated action';
+    document.body.appendChild(other);
+    try {
+      render(<SyscoinAssetDetails id={asset.assetGuid} />);
+      other.focus();
+      witness.scroll.mockClear();
+      await act(async () => finish({ ok: true, json: async () => market(12) }));
+      expect(document.activeElement).toBe(other);
+      expect(witness.scroll).not.toHaveBeenCalled();
+    } finally {
+      other.remove();
+      witness.restore();
+    }
+  });
+
+  it('also preserves the focused action when the pending read fails', async () => {
+    let rejectRead!: (error: Error) => void;
+    mockFetch.mockImplementation(
+      () =>
+        new Promise((_, reject) => {
+          rejectRead = reject;
+        })
+    );
+    const witness = observeScroll();
+    const log = jest
+      .spyOn(console, 'error')
+      .mockImplementation(() => undefined);
+    try {
+      render(<SyscoinAssetDetails id={asset.assetGuid} />);
+      const close = screen.getByRole('button', { name: 'buttons.close' });
+      close.focus();
+      witness.scroll.mockClear();
+      await act(async () =>
+        rejectRead(new TypeError('Synthetic market failure'))
+      );
+      expect(document.activeElement).toBe(close);
+      expect(witness.scroll).toHaveBeenCalledWith({
+        block: 'nearest',
+        inline: 'nearest',
+      });
+      expect(
+        witness.scroll.mock.instances.every(
+          (instance) => instance === close.parentElement
+        )
+      ).toBe(true);
+    } finally {
+      log.mockRestore();
+      witness.restore();
+    }
+  });
+
+  it('ignores a stale response after the focused asset is left', async () => {
+    let finish!: (response: any) => void;
+    mockFetch.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        })
+    );
+    const witness = observeScroll();
+    try {
+      const view = render(<SyscoinAssetDetails id={asset.assetGuid} />);
+      const close = screen.getByRole('button', { name: 'buttons.close' });
+      close.focus();
+      view.rerender(<SyscoinAssetDetails id="unknown-asset" />);
+      expect(close.isConnected).toBe(false);
+      witness.scroll.mockClear();
+      await act(async () => finish({ ok: true, json: async () => market(12) }));
+      expect(screen.queryByText('$12')).toBeNull();
+      expect(witness.scroll).not.toHaveBeenCalled();
+    } finally {
+      witness.restore();
+    }
+  });
 });

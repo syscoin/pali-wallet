@@ -226,10 +226,13 @@ const guardianReplacementAuthenticatorKey = (
 ) =>
   `pali-smart-account-recovery-replacement:${chainId}:${account.toLowerCase()}`;
 
+const copyAddressMotion =
+  'transition-colors duration-200 hover:text-brand-white';
+
 const SmartAccountPolicy = () => {
   const location = useLocation();
   const routeState = location.state as any;
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { alert, navigate, useCopyClipboard } = useUtils();
   const [, copy] = useCopyClipboard();
   const { controllerEmitter, handleWalletLockedError } = useController();
@@ -812,14 +815,16 @@ const SmartAccountPolicy = () => {
         <>
           <p>
             {t('settings.smartAccountGuardianRecoveryReadyAt', {
-              time: new Date(
-                onChainPending.executableAt * 1000
-              ).toLocaleString(),
+              time: new Date(onChainPending.executableAt * 1000).toLocaleString(
+                i18n?.resolvedLanguage || i18n?.language
+              ),
             })}
           </p>
           <p>
             {t('settings.smartAccountGuardianExpiresAt', {
-              time: new Date(onChainPending.expiresAt * 1000).toLocaleString(),
+              time: new Date(onChainPending.expiresAt * 1000).toLocaleString(
+                i18n?.resolvedLanguage || i18n?.language
+              ),
             })}
           </p>
         </>
@@ -832,7 +837,7 @@ const SmartAccountPolicy = () => {
           {t('settings.smartAccountGuardianObservedAt', {
             time: new Date(
               guardianStatus.observedBlock.timestamp * 1000
-            ).toLocaleString(),
+            ).toLocaleString(i18n?.resolvedLanguage || i18n?.language),
           })}
         </p>
       )}
@@ -2766,7 +2771,7 @@ const SmartAccountPolicy = () => {
               : t('settings.smartAccountGuardianRecoveryReadyAt', {
                   time: new Date(
                     activeGuardianReplacement.recoveryOperation.readyAt * 1000
-                  ).toLocaleString(),
+                  ).toLocaleString(i18n?.resolvedLanguage || i18n?.language),
                 })
             : getSmartAccountActionErrorMessage(
                 error,
@@ -2936,7 +2941,7 @@ const SmartAccountPolicy = () => {
           {t(
             failed
               ? 'settings.smartAccountMetadataLoadFailed'
-              : 'common.loading'
+              : 'buttons.loading'
           )}
         </p>
         {failed && (
@@ -2996,7 +3001,7 @@ const SmartAccountPolicy = () => {
               </span>
               <button
                 type="button"
-                className="min-w-0 truncate text-right transition-colors duration-200 hover:text-brand-royalblue"
+                className={`min-w-0 truncate text-right ${copyAddressMotion}`}
                 onClick={() => copyAddress(displayedGuardianAddress)}
               >
                 {shortAddress(displayedGuardianAddress)}
@@ -3158,7 +3163,7 @@ const SmartAccountPolicy = () => {
                   {activePaliWalletOwnerAddress && (
                     <button
                       type="button"
-                      className="min-w-0 truncate text-brand-graylight transition-colors duration-200 hover:text-brand-royalblue"
+                      className={`min-w-0 truncate text-brand-graylight ${copyAddressMotion}`}
                       title={activePaliWalletOwnerAddress}
                       onClick={() => copyAddress(activePaliWalletOwnerAddress)}
                     >
@@ -3301,7 +3306,7 @@ const SmartAccountPolicy = () => {
                           {paliWalletOwnerAddress && (
                             <button
                               type="button"
-                              className="mt-1 max-w-full truncate text-xs text-brand-graylight transition-colors duration-200 hover:text-brand-royalblue"
+                              className={`mt-1 max-w-full truncate text-xs text-brand-graylight ${copyAddressMotion}`}
                               title={paliWalletOwnerAddress}
                               onClick={() =>
                                 copyAddress(paliWalletOwnerAddress)
@@ -3474,7 +3479,7 @@ const SmartAccountPolicy = () => {
                                 </span>
                                 <button
                                   type="button"
-                                  className="min-w-0 truncate text-right transition-colors duration-200 hover:text-brand-royalblue"
+                                  className={`min-w-0 truncate text-right ${copyAddressMotion}`}
                                   onClick={() =>
                                     copyAddress(displayedGuardianAddress)
                                   }

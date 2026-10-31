@@ -210,7 +210,7 @@ export const CreatedAccountSuccessfully = ({
           onClose={onClose}
         />
         <DialogBody className="w-full space-y-4">
-          <p>{phraseOne}</p>
+          <p className="[overflow-wrap:anywhere]">{phraseOne}</p>
           <p className="[overflow-wrap:anywhere]">{phraseTwo}</p>
         </DialogBody>
         <DialogFooter className="w-full">

@@ -1,4 +1,10 @@
-import { expect, test, type Page, type Worker } from '@playwright/test';
+import {
+  expect,
+  test,
+  type Page,
+  type TestInfo,
+  type Worker,
+} from '@playwright/test';
 import { createHash } from 'crypto';
 import fs from 'fs';
 import path from 'path';
@@ -101,7 +107,11 @@ async function installRemovalFailure(
   );
 }
 
-test('account removal preserves a refused commit and a retry survives a cold worker', async ({}, info) => {
+async function exerciseAccountRemoval(
+  width: 320 | 400,
+  info: TestInfo,
+  activation: 'pointer' | 'keyboard' = 'pointer'
+) {
   expect(process.env.PALI_TEST_DAPP_REVISION).toMatch(/^[a-f0-9]{40}$/);
   expect(path.isAbsolute(E2E_CONFIG.extensionPath)).toBe(true);
   const previous = { ...E2E_CONFIG };
@@ -117,10 +127,15 @@ test('account removal preserves a refused commit and a retry survives a cold wor
   let status: 'passed' | 'failed' = 'failed';
   const observations: Record<string, unknown> = {};
   try {
-    wallet = await PaliWallet.launch('account-removal-durability', {
-      offlineHttpProxy: server.url,
-      viewport: { width: 400, height: 620 },
-    });
+    wallet = await PaliWallet.launch(
+      width === 400
+        ? 'account-removal-durability'
+        : `account-removal-durability-320-${activation}`,
+      {
+        offlineHttpProxy: server.url,
+        viewport: { width, height: width === 320 ? 360 : 620 },
+      }
+    );
     const routes = await installIsolatedVaultRoutes(
       wallet.context,
       fixture,
@@ -192,14 +207,125 @@ test('account removal preserves a refused commit and a retry survives a cold wor
             exact: true,
           })
           .click();
-        await page
-          .getByRole('dialog')
-          .getByRole('button', {
-            name: en.buttons.remove,
-            exact: true,
-          })
-          .click();
+        const dialog = page.getByRole('dialog');
+        const remove = dialog.getByRole('button', {
+          name: en.buttons.remove,
+          exact: true,
+        });
+        if (activation === 'keyboard') {
+          await remove.focus();
+          await expect(remove).toBeFocused();
+          await page.keyboard.press('Enter');
+        } else {
+          await remove.click();
+        }
         await expect(page.getByText(FAILURE, { exact: true })).toBeVisible();
+        if (width === 320) {
+          const inlineError = dialog.getByRole('alert');
+          await expect(inlineError).toHaveText(FAILURE);
+          const immediate = await inlineError.evaluate((node) => {
+            const box = node.getBoundingClientRect();
+            const body = node.parentElement!.getBoundingClientRect();
+            const footer = node
+              .closest('[role=dialog]')!
+              .querySelector('footer')!
+              .getBoundingClientRect();
+            return {
+              top: box.top,
+              bottom: box.bottom,
+              bodyTop: body.top,
+              bodyBottom: body.bottom,
+              footerTop: footer.top,
+              viewportTop: 0,
+              viewportBottom: innerHeight,
+            };
+          });
+          expect(immediate.top).toBeGreaterThanOrEqual(
+            Math.max(immediate.bodyTop, immediate.viewportTop) - 1
+          );
+          expect(immediate.bottom).toBeLessThanOrEqual(
+            Math.min(
+              immediate.bodyBottom,
+              immediate.footerTop,
+              immediate.viewportBottom
+            ) + 1
+          );
+          expect(
+            await dialog.evaluate((node) =>
+              node.contains(document.activeElement)
+            )
+          ).toBe(true);
+          observations.immediateInlineError = immediate;
+          await info.attach('removal-inline-initial-320', {
+            body: await page.screenshot({ animations: 'disabled' }),
+            contentType: 'image/png',
+          });
+          const body = inlineError.locator('..');
+          const bodyBox = await body.boundingBox();
+          if (!bodyBox) throw new Error('Missing dialog body');
+          await page.mouse.move(
+            bodyBox.x + bodyBox.width / 2,
+            bodyBox.y + bodyBox.height / 2
+          );
+          for (let attempt = 0; attempt < 30; attempt++) {
+            if (await body.evaluate((node) => node.scrollTop <= 1)) break;
+            await page.mouse.wheel(0, -300);
+            await page.evaluate(
+              () =>
+                new Promise((resolve) =>
+                  requestAnimationFrame(() => requestAnimationFrame(resolve))
+                )
+            );
+          }
+          expect(
+            await body.evaluate((node) => node.scrollTop)
+          ).toBeLessThanOrEqual(1);
+          const question = dialog.locator('p').first();
+          await expect(question).toContainText(LABEL);
+          const reached = new Set<number>();
+          let lineCount = 0;
+          for (let attempt = 0; attempt < 30; attempt++) {
+            const sample = await question.evaluate((node) => {
+              const bodyClip = node.parentElement!.getBoundingClientRect();
+              const range = document.createRange();
+              range.selectNodeContents(node);
+              const rects = Array.from(range.getClientRects()).filter(
+                (r) => r.width > 0 && r.height > 0
+              );
+              return {
+                count: rects.length,
+                visible: rects.flatMap((r, i) =>
+                  r.top >= Math.max(bodyClip.top, 0) - 1 &&
+                  r.bottom <= Math.min(bodyClip.bottom, innerHeight) + 1
+                    ? [i]
+                    : []
+                ),
+              };
+            });
+            lineCount = sample.count;
+            sample.visible.forEach((i) => reached.add(i));
+            if (lineCount > 0 && reached.size === lineCount) break;
+            const box = await body.boundingBox();
+            if (!box) throw new Error('Missing dialog body');
+            await page.mouse.move(
+              box.x + box.width / 2,
+              box.y + box.height / 2
+            );
+            await page.mouse.wheel(0, 60);
+            await page.evaluate(
+              () =>
+                new Promise((resolve) =>
+                  requestAnimationFrame(() => requestAnimationFrame(resolve))
+                )
+            );
+          }
+          expect(lineCount).toBeGreaterThan(0);
+          expect(reached.size).toBe(lineCount);
+          observations.questionReachability = {
+            lineCount,
+            reached: reached.size,
+          };
+        }
         const afterFailure = await accountProjection(page);
         expect(afterFailure.live).toEqual(before.live);
         expect(afterFailure.saved).toEqual(before.saved);
@@ -217,13 +343,25 @@ test('account removal preserves a refused commit and a retry survives a cold wor
     await wallet.step(
       'retry commits the removal through the same confirmation',
       async () => {
-        await page
-          .getByRole('dialog')
-          .getByRole('button', {
-            name: en.buttons.remove,
-            exact: true,
-          })
-          .click();
+        const retryButton = page.getByRole('dialog').getByRole('button', {
+          name: en.buttons.remove,
+          exact: true,
+        });
+        if (activation === 'keyboard') {
+          for (let attempt = 0; attempt < 12; attempt++) {
+            if (
+              await retryButton.evaluate(
+                (node) => document.activeElement === node
+              )
+            )
+              break;
+            await page.keyboard.press('Tab');
+          }
+          await expect(retryButton).toBeFocused();
+          await page.keyboard.press('Enter');
+        } else {
+          await retryButton.click();
+        }
         await expect(page.getByRole('dialog')).toBeHidden();
         await expect(
           page.getByText(en.settings.accountRemovedSuccessfully, {
@@ -332,4 +470,16 @@ test('account removal preserves a refused commit and a retry survives a cold wor
       Object.assign(E2E_CONFIG, previous);
     }
   }
+}
+
+test('account removal preserves a refused commit and a retry survives a cold worker', async ({}, info) => {
+  await exerciseAccountRemoval(400, info);
+});
+
+test('narrow account removal reveals its refusal and retains the question and retry', async ({}, info) => {
+  await exerciseAccountRemoval(320, info);
+});
+
+test('narrow account removal remains reachable after keyboard refusal', async ({}, info) => {
+  await exerciseAccountRemoval(320, info, 'keyboard');
 });

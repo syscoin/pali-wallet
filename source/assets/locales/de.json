@@ -1,9 +1,4 @@
 {
-  "providerDefault": {
-    "defaultEnabled": "Pali wurde als Standard-Wallet festgelegt!",
-    "otherWalletInUse": "MetaMask wird verwendet und Pali ist deaktiviert.",
-    "setPaliDefault": "Pali als Standard-Wallet festlegen!"
-  },
   "transactionDisplay": {
     "blockHash": "Block-Hash",
     "blockNumber": "Blocknummer",
@@ -160,7 +155,7 @@
     "forget": "Wallet vergessen",
     "generalOptions": "ALLGEMEINE OPTIONEN",
     "currency": "Währung",
-    "manageEth": "Standard-Wallet festlegen",
+    "manageEth": "Ethereum-Anbieter verwalten",
     "infoHelp": "Info/Hilfe",
     "lock": "Sperren",
     "advanced": "Erweitert"
@@ -211,7 +206,6 @@
     "errorSwitching": "Fehler beim Netzwerkwechsel",
     "speedUp": "Beschleunigen",
     "cancelTx": "Transaktion abbrechen",
-    "cancelTxMessage": "Sind Sie sicher, dass Sie diese Transaktion abbrechen möchten?",
     "speedTx": "Transaktion beschleunigen"
   },
   "connections": {
@@ -265,6 +259,7 @@
     "importToken": "Token importieren",
     "youHaveNoTokens": "Keine Token oder NFTs vorhanden",
     "youHaveNoTxs": "Keine Transaktionshistorie",
+    "historyMayBeIncomplete": "Ohne eine Explorer-API ist der Transaktionsverlauf möglicherweise unvollständig.",
     "seeAllTxs": "Alle Transaktionen anzeigen",
     "addressCopied": "Adresse erfolgreich kopiert",
     "hashCopied": "Hash erfolgreich kopiert",
@@ -313,7 +308,8 @@
     "youShould": "Sie sollten nun Ihre Wiederherstellungsphrase und Ihr Wallet-Passwort für zukünftige Referenz notiert haben."
   },
   "createPhrase": {
-    "recoveryPhrase": "Wiederherstellungsphrase"
+    "recoveryPhrase": "Wiederherstellungsphrase",
+    "generationFailed": "Eine neue Wiederherstellungsphrase konnte nicht erstellt werden. Wähle „Generieren“, um es erneut zu versuchen."
   },
   "send": {
     "transactionFailureDetails": "Transaktion fehlgeschlagen: {{message}}",
@@ -366,9 +362,16 @@
     "gasPriceBelowEstimate": "Gaspreis unter {{estimate}} GWEI.",
     "maxFeeBelowEstimate": "Maximalgebühr unter {{estimate}} GWEI.",
     "priorityFeeBelowEstimate": "Prioritätsgebühr unter {{estimate}} GWEI.",
+    "erc20SetAllowanceZero": "Anfrage zum Widerruf der Erlaubnis für",
+    "erc20IncreaseAllowance": "Anfrage zur Erhöhung der Erlaubnis für",
+    "erc20DecreaseAllowance": "Anfrage zur Verringerung der Erlaubnis für",
+    "erc20ApprovalRequest": "Token-Genehmigungsanfrage für",
     "grantAccess": "Sie gewähren Zugriff auf Ihr",
     "editPermission": "Berechtigung bearbeiten",
     "invalidApprovalDetails": "Ungültige Genehmigungsdetails. Diese Anfrage kann nicht bestätigt werden.",
+    "revokeNftApproval": "NFT-Genehmigung widerrufen",
+    "revokeNftApprovalDescription": "Die genehmigte Adresse für {{token}} #{{tokenId}} entfernen",
+    "approvalResetAddress": "Adresse zum Zurücksetzen der Genehmigung",
     "approveNftTransfer": "NFT-Übertragung genehmigen",
     "allowTransferOf": "Übertragung erlauben von",
     "grantCollectionAccess": "Sammlungszugriff gewähren",
@@ -419,6 +422,7 @@
     "feeRateNormal": "Die Gebührenrate {{value}} {{currency}}/vByte ist höher als normal.",
     "send": "SENDEN",
     "insufficientFunds": "Unzureichende Mittel",
+    "maxBalanceReviewRequired": "Der Kontostand hat sich geändert oder konnte nicht geprüft werden. Prüfe den Betrag und versuche es erneut.",
     "insufficientFundsForGas": "Unzureichende Mittel zur Deckung der Gasgebühren",
     "maxUnavailablePendingTx": "MAX ist nicht verfügbar, solange eine Transaktion aussteht. Bitte warten Sie, bis sie bestätigt wurde.",
     "networkCatchingUp": "Das Netzwerk aktualisiert noch Ihre vorherige Transaktion. Bitte versuchen Sie es in Kürze erneut.",
@@ -446,9 +450,9 @@
     "balanceVerified": "Saldo verifiziert",
     "tokenOwnershipVerified": "Token-Besitz verifiziert",
     "pleaseVerifyTokenOwnership": "Bitte verifiziere zuerst den Token-Besitz",
-    "youOnlyOwn": "Du besitzt nur {amount} von diesem Token",
+    "youOnlyOwn": "Du besitzt nur {{amount}} von diesem Token",
     "pleaseWaitForBalanceVerification": "Bitte warte auf die Saldo-Verifizierung",
-    "insufficientFundsVerified": "Unzureichende Mittel (verifizierter Saldo: {balance})",
+    "insufficientFundsVerified": "Unzureichende Mittel (verifizierter Saldo: {{balance}})",
     "enterTokenId": "Token-ID eingeben",
     "amountMustBePositiveInteger": "Betrag muss eine positive ganze Zahl sein",
     "verifyingBalance": "Saldo wird verifiziert...",
@@ -615,11 +619,15 @@
     "watchOnlyValidationTimedOut": "Die Validierung des Beobachtungskontos hat zu lange gedauert. Es wurde nichts importiert. Bitte versuchen Sie es erneut.",
     "watchOnly": "Nur beobachten",
     "publicIdentifierInput": "Adresse / XPUB / Deskriptor",
-    "usingAnotherWallet": "Du verwendest eine andere Wallet.",
-    "defaultWalletStatus": "ist die Standard-Wallet",
     "otherDefaultWalletHelpTitle": "Wie wird eine andere Wallet zum Standard?",
     "otherDefaultWalletHelp": "Einige Wallets bieten dies in ihren Einstellungen an. Der Browser verwendet die zuletzt installierte oder aktivierte Wallet als Standard.",
-    "setWalletAsDefault": "{{wallet}} als Standard-Wallet festlegen",
+    "paliProviderEnabled": "Palis Ethereum-Anbieter ist aktiviert",
+    "paliProviderDisabled": "Palis Ethereum-Anbieter ist deaktiviert",
+    "disablePaliProvider": "Palis Ethereum-Anbieter deaktivieren",
+    "enablePaliProvider": "Palis Ethereum-Anbieter aktivieren",
+    "disablePaliProviderWarning": "Beim Deaktivieren von Pali werden alle verbundenen Websites getrennt. Richten Sie eine andere Wallet in deren Einstellungen ein.",
+    "disablePaliProviderFailed": "Die Deaktivierung von Palis Ethereum-Anbieter konnte nicht bestätigt werden. Einige Websites sind möglicherweise bereits getrennt. Prüfe die Verbindungen vor einem erneuten Versuch.",
+    "enablePaliProviderFailed": "Die Aktivierung von Palis Ethereum-Anbieter konnte nicht bestätigt werden. Prüfe die Einstellung vor einem erneuten Versuch.",
     "localSmartAccountGuardianMissing": "Lokaler Smart-Account-Wächter nicht gefunden.",
     "recoveryValidatorNotConfigured": "P-256/WebAuthn-Validator ist nicht konfiguriert.",
     "xmssProgressLevel": "XMSS-Stufe {{level}}/22.",
@@ -669,6 +677,7 @@
     "recoverySeedHelp": "Gib die Phrase für diese Wallet ein. Eine andere Phrase kann ihre Konten nicht wiederherstellen.",
     "recoveryLimitations": "Die Wiederherstellung löscht die lokal gespeicherten verschlüsselten Datensätze importierter privater Schlüssel. Ohne separate Sicherungen dieser Schlüssel kannst du dauerhaft den Zugriff auf diese Konten verlieren. Hardware-Verbindungen, benutzerdefinierte Einstellungen und die Smart-Account-/Passkey-Einrichtung benötigen eigene Sicherungen oder eine erneute Verbindung. Die Wiederherstellung bewegt dein Guthaben nicht.",
     "walletRecoveryFailed": "Die Wallet-Wiederherstellung konnte nicht abgeschlossen werden. Prüfe deine Phrase und versuche es erneut. Wenn es weiterhin fehlschlägt, starte deinen Browser neu. Lösche die gespeicherten Wallet-Daten nicht.",
+    "walletRecoveryUnconfirmed": "Die Wallet-Wiederherstellung konnte nicht bestätigt werden. Prüfe die Wallet, um ihren aktuellen Status zu sehen. Lösche die gespeicherten Wallet-Daten nicht.",
     "walletRecoveryRestartRequired": "Die Wiederherstellung muss abgeschlossen sein, bevor du die Wallet verwenden kannst. Starte deinen Browser neu, prüfe dann deine Wallet und versuche bei Bedarf erneut, sie wiederherzustellen. Lösche die gespeicherten Wallet-Daten nicht.",
     "walletWindowCheckSlow": "Wallet-Fenster brauchen länger, um zu antworten. Versuche die Prüfung erneut.",
     "retryWalletWindowCheck": "Fenster erneut prüfen",
@@ -785,7 +794,6 @@
     "watchOnlyNoPrivateKey": "Dies ist ein Watch-only-Konto. Sie können Guthaben empfangen und Aktivitäten ansehen, aber diese Wallet besitzt keinen privaten Schlüssel für dieses Konto.",
     "seeOnExplorer": "Im Explorer anzeigen",
     "manageEthProvider": "ETH-ANBIETER VERWALTEN",
-    "windowObjectWasSet": "Window-Objekt erfolgreich gesetzt",
     "missingApiKey": "Fehlender/Ungültiger API-Schlüssel - Bitte fügen Sie Ihren API-Schlüssel zur URL hinzu (z.B., ?apikey=IHR_SCHLÜSSEL)",
     "apiFormatError": "Die API antwortet nicht korrekt. Bitte überprüfen Sie die URL und stellen Sie sicher, dass sie das Etherscan/Blockscout-API-Format unterstützt.",
     "apiConnectionError": "API kann nicht validiert werden. Bitte überprüfen Sie Ihre Verbindung und versuchen Sie es erneut.",
@@ -1167,8 +1175,12 @@
     "checkYourDevice": "Prüfen Sie Ihr {{device}}, um diese Anfrage zu genehmigen",
     "useYourPasskey": "Verwenden Sie Ihren Passkey",
     "passkeyPrompt": "Folgen Sie der Browser-Aufforderung, um mit Ihrem Passkey zu signieren",
+    "cancelFeePreview": "Netzwerkgebühr für den Abbruch wird geprüft…",
+    "cancelFeeConsent": "Transaktion mit einer maximalen Gasgebühr von {{fee}} {{currency}} abbrechen?",
+    "cancelFeeUnavailable": "Die Abbruchgebühr konnte nicht geprüft werden. Bitte erneut versuchen.",
     "speedUpFeePreview": "Netzwerkgebühr wird geprüft…",
     "speedUpFeeConsent": "Diese Transaktion mit einer maximalen Netzwerkgebühr von {{fee}} {{currency}} beschleunigen?",
+    "speedUpAmountWouldChange": "Füge diesem Konto Guthaben hinzu, bevor du die Transaktion beschleunigst. Der ursprüngliche Betrag bleibt unverändert.",
     "speedUpFeeUnavailable": "Die Gebühr konnte nicht geprüft werden. Bitte versuche es erneut."
   },
   "switchNetworkPage": {
@@ -1216,7 +1228,8 @@
     "removalFailed": "Die Wallet konnte nicht entfernt werden. Bitte versuchen Sie es erneut.",
     "importedAccountsWont": "Importierte Konten werden nicht mit Ihrer ursprünglichen Pali-Konto-Wiederherstellungsphrase verknüpft",
     "stillHaveFunds": "Sie haben noch Guthaben in Ihrer Wallet!",
-    "saveProperly": "Speichern Sie diese Seed-Phrase ordnungsgemäß, damit Sie diese Wallet in Zukunft importieren können."
+    "saveProperly": "Speichern Sie diese Seed-Phrase ordnungsgemäß, damit Sie diese Wallet in Zukunft importieren können.",
+    "privateNotesBackupWarning": "Sichere private Notizen separat; deine Wiederherstellungsphrase stellt sie nicht wieder her."
   },
   "walletSeedPhrasePage": {
     "keepSeedPhrase": "Halten Sie Ihre Seed-Phrase geheim!",
@@ -1266,7 +1279,8 @@
     "youCanGet": "Sie können {{quantity}} {{token}} pro Wallet-Adresse alle 24 Stunden erhalten.",
     "firstAccessTitle": "Holen Sie sich ${{token}} mit unserem Faucet, um das {{network}} Netzwerk zu erleben!",
     "firstAccessDescription": "Sie können {{token}} pro Wallet-Adresse alle 24 Stunden erhalten.",
-    "grabTokens": "Zum Faucet gehen"
+    "grabTokens": "Zum Faucet gehen",
+    "rateLimited": "Der Faucet begrenzt Anfragen. Weitere Informationen finden Sie beim Faucet."
   },
   "nftDetails": {
     "information": "NFT-Informationen",
@@ -1406,6 +1420,21 @@
     "feeTitle": "Netzwerkgebühr für Ihren autorisierten Sentry-Vorgang",
     "feeHelp": "Autorisiert die Eingänge für die Netzwerkgebühr dieses Vorgangs. Die Website übermittelt die signierte Transaktion.",
     "feeChanges": "Autorisierte Änderungen",
+    "managementFields": {
+      "action": "Aktion",
+      "childKeyCommitment": "Commitment des untergeordneten Schlüssels",
+      "collateralSatoshis": "Sicherheit (Satoshis)",
+      "collateralSigningMessage": "Signaturnachricht der Sicherheit",
+      "globalKeyVersion": "Globale Schlüsselversion",
+      "operatorPublicKey": "Öffentlicher Betreiberschlüssel",
+      "operatorRewardBasisPoints": "Betreibervergütung (Basispunkte)",
+      "ownerKeyId": "Eigentümer-Schlüssel-ID",
+      "payoutAddress": "Auszahlungsadresse",
+      "pqOwnerPublicKey": "Öffentlicher PQ-Eigentümerschlüssel",
+      "pqVotingPublicKey": "Öffentlicher PQ-Abstimmungsschlüssel",
+      "reason": "Widerrufsgrund",
+      "votingKeyId": "Abstimmungsschlüssel-ID"
+    },
     "feeType": "Sentry-Knotenvorgang",
     "feeOperations": {
       "register": "Knoten registrieren",
@@ -1580,6 +1609,13 @@
     "clear": "Gespeicherte Daten löschen",
     "networkRequired": "Wähle Ethereum-Mainnet im Netzwerkmenü, um die Pooldaten vorzubereiten.",
     "publicDataOnly": "Es werden nur öffentliche Pooldaten heruntergeladen. Deine Wallet-Adresse und privaten Notizen werden nicht gesendet.",
+    "serviceSettings": "Privatsphäredienst",
+    "serviceOrigin": "Dienstursprung",
+    "serviceHelp": "Verwende HTTPS oder HTTP auf localhost. Beim Wechsel werden vorbereitete Pooldaten gelöscht; gespeicherte Notizen bleiben in deiner Wallet.",
+    "serviceInvalid": "Gib einen HTTPS-Ursprung oder HTTP auf localhost ohne Pfad oder Zugangsdaten ein.",
+    "serviceLoadFailed": "Die Einstellung des Privatsphäredienstes konnte nicht geladen werden.",
+    "serviceSaveFailed": "Die Einstellung des Privatsphäredienstes konnte nicht gespeichert werden. Versuche es erneut.",
+    "serviceSaved": "Privatsphäredienst gespeichert. Bereite den Pool erneut vor.",
     "savedDeposits": "Gespeicherte öffentliche Einzahlungen: {{count}}",
     "verifiedBlock": "Zuletzt verifizierter Block: {{block}}",
     "progress": "{{completed}} von {{total}}",
@@ -1647,6 +1683,7 @@
       "title": "Notiz auszahlen",
       "open": "Auszahlen",
       "recipient": "Empfängeradresse",
+      "recipientInvalid": "Gib eine gültige Ethereum-Adresse ein.",
       "method": "Senden über",
       "direct": "Direkt",
       "relayed": "Relayer",
@@ -1672,6 +1709,7 @@
       "jobId": "Relayer-Auftrags-ID",
       "directoryFailed": "Relayer konnten nicht geladen werden. Erneut versuchen oder Direkt wählen.",
       "prepareFailed": "Die Auszahlung konnte nicht vorbereitet werden. Prüfe Pooldaten und Netzwerk und versuche es erneut.",
+      "prepareInterrupted": "Die Vorbereitung wurde unterbrochen. Prüfe die Pooldaten und versuche es erneut.",
       "checkStatus": "Status prüfen",
       "statusFailed": "Der Relayer-Status konnte nicht geprüft werden. Erneut versuchen.",
       "statusUnknown": "Der Übermittlungsstatus der Auszahlung ist unbekannt. Vor einem erneuten Versuch prüfen.",

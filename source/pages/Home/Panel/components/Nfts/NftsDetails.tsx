@@ -18,11 +18,13 @@ import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { INetworkType } from 'types/network';
+import { INftTokenIdsResult } from 'types/tokens';
 import { ellipsis } from 'utils/index';
 import { NFT_FALLBACK_IMAGE } from 'utils/nftFallback';
 import { getNftQuantity } from 'utils/nftQuantity';
 import { normalizeNftTokenId } from 'utils/nftTokenId';
-import { buildExplorerUrl } from 'utils/strings';
+import { ExplorerLink } from 'pages/Home/Panel/components/ExplorerLink';
+import { buildExplorerUrl, selectExplorerUrl } from 'utils/strings';
 
 const renderNftSection = (title: string, children: React.ReactNode) => (
   <div
@@ -59,13 +61,13 @@ const renderCopyRow = (
 
 export const NftsDetails = ({ nftData }: { nftData: any }) => {
   const { controllerEmitter } = useController();
+  const explorer = useSelector(selectExplorerUrl);
   const { activeNetwork, activeAccount, accounts } = useSelector(
     (state: RootState) => state.vault
   );
 
   // Use proper selector for assets
   const currentAccount = accounts[activeAccount.type]?.[activeAccount.id];
-  const explorer = activeNetwork.explorer || activeNetwork.url;
 
   const { alert } = useUtils();
 
@@ -132,15 +134,13 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
             currentAccount.address,
             currentNft.tokenStandard || 'ERC-721',
           ]
-        )) as { balance: number; tokenId: string }[] & {
-          hasMore?: boolean;
-          requiresManualEntry?: boolean;
-        };
+        )) as INftTokenIdsResult;
         if (!current) return;
-        setNftTokenIds(result || []);
+        const tokens = result?.tokens || [];
+        setNftTokenIds(tokens);
         setHasMoreTokens(result?.hasMore || false);
-        if (result?.length > 0 && !selectedTokenId && !manualTokenId) {
-          setSelectedTokenId(result[0].tokenId);
+        if (tokens.length > 0 && !selectedTokenId && !manualTokenId) {
+          setSelectedTokenId(tokens[0].tokenId);
         }
       } catch (error) {
         console.error('Error loading NFT token IDs:', error);
@@ -256,6 +256,7 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
   };
 
   const openCollectionOnExplorer = () =>
+    explorer &&
     window.open(
       buildExplorerUrl(explorer, 'token', currentNft.contractAddress),
       '_blank',
@@ -357,11 +358,11 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
                         </button>
                       ))}
                     </div>
-                    {hasMoreTokens && (
+                    {hasMoreTokens && explorer && (
                       <button
                         type="button"
                         onClick={openCollectionOnExplorer}
-                        className="text-brand-royalblue text-xs hover:underline flex items-center gap-1"
+                        className="text-brand-royalbluemedium text-xs hover:underline flex items-center gap-1"
                       >
                         <span>{t('send.viewAllOnExplorer')}</span>
                         <ExternalLinkIcon size={12} />
@@ -551,23 +552,19 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
             )}
           </div>
 
-          <div className="w-full flex items-center justify-center text-brand-white hover:text-brand-deepPink100 my-6">
-            <a
-              href={buildExplorerUrl(
-                explorer,
-                'address',
-                currentNft.contractAddress
-              )}
-              target="_blank"
-              className="flex items-center justify-center gap-x-2"
-              rel="noreferrer"
-            >
-              <ExternalLinkIcon size={16} />
-              <span className="font-normal font-poppins underline text-sm">
+          {explorer && (
+            <div className="w-full flex items-center justify-center text-brand-white hover:text-brand-deepPink100 my-6">
+              <ExplorerLink
+                href={buildExplorerUrl(
+                  explorer,
+                  'address',
+                  currentNft.contractAddress
+                )}
+              >
                 {t('home.viewOnExplorer')}
-              </span>
-            </a>
-          </div>
+              </ExplorerLink>
+            </div>
+          )}
         </div>
       ) : (
         <p className="py-8 text-center text-brand-gray200">

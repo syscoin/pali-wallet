@@ -20,6 +20,10 @@ Only connect to dapps you trust. A connected dapp can see the account you approv
 
 Blockchain activity is public. Your address, transaction history, token approvals, UTXO activity, smart-account deployment, and smart-account activity may be visible on explorers and indexers.
 
+## Private notes
+
+Pali can use its default Privacy service or your own Sysnode service. To run your own service, see the [Sysnode standalone guide](https://github.com/syscoin/sysnode-backend/blob/main/docs/privacy-standalone.md).
+
 ## Smart-account privacy
 
 Smart-account modules and executions are public on-chain. If a dapp asks to install an ECDSA owner or recovery module, review the owner addresses and recovery settings before approving.

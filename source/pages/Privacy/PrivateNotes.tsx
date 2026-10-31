@@ -64,6 +64,7 @@ function NotesView() {
   const importField = useRef<HTMLTextAreaElement>(null);
   const clear = () => {
     owner.current.revision += 1;
+    setStatusNote(null);
     setImporting(false);
     setNoteText('');
     setPending(false);
@@ -209,13 +210,22 @@ function NotesView() {
             autoCapitalize="off"
             spellCheck={false}
             readOnly={pending}
-            aria-describedby="privacy-note-help"
+            aria-invalid={error === 'noteInvalid' || undefined}
+            aria-describedby={
+              error === 'noteInvalid'
+                ? 'privacy-note-help privacy-note-error'
+                : 'privacy-note-help'
+            }
           />
           <p id="privacy-note-help" className="text-xs text-brand-gray200">
             {t('privacy.noteSecret')}
           </p>
           {error && (
-            <p role="alert" className="text-xs text-brand-red">
+            <p
+              id="privacy-note-error"
+              role="alert"
+              className="text-xs text-brand-red"
+            >
               {t(`privacy.${error}`)}
             </p>
           )}
@@ -283,15 +293,17 @@ function NotesView() {
             )}
             {note.withdrawal && (
               <div className="space-y-2 text-xs text-brand-gray200">
-                <p>
-                  {t(
-                    `privacy.withdrawal.${
-                      note.withdrawal.phase === 'unknown'
-                        ? 'statusUnknown'
-                        : 'statusPending'
-                    }`
-                  )}
-                </p>
+                {note.phase !== 'spent' && (
+                  <p>
+                    {t(
+                      `privacy.withdrawal.${
+                        note.withdrawal.phase === 'unknown'
+                          ? 'statusUnknown'
+                          : 'statusPending'
+                      }`
+                    )}
+                  </p>
+                )}
                 {note.withdrawal.transactionHash && (
                   <p className="break-all">
                     {t('privacy.deposit.txHash')}:{' '}
@@ -464,11 +476,6 @@ function NotesView() {
                         setError('');
                       }}
                     />
-                    {error && (
-                      <p role="alert" className="text-xs text-brand-red">
-                        {t(`privacy.${error}`)}
-                      </p>
-                    )}
                   </Form>
                 )}
                 <button type="button" className={actionClass} onClick={clear}>

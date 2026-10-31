@@ -8,6 +8,7 @@ import { INetworkType } from 'types/network';
 import { PRIVACY_CHAIN_ID, PRIVACY_POOLS } from 'utils/privacy/registry';
 import type { PrivacyPoolId } from 'utils/privacy/types';
 
+import PrivacyServiceSettings from './PrivacyServiceSettings';
 import PrivateNotes from './PrivateNotes';
 import { usePrivacyIndex } from './usePrivacyIndex';
 
@@ -51,6 +52,12 @@ function PoolData({
         className="text-sm font-medium text-white"
       >
         {t('privacy.poolData')}
+        {' · '}
+        {
+          (PRIVACY_POOLS.find((pool) => pool.id === poolId) || { amount: '' })
+            .amount
+        }{' '}
+        ETH
       </h2>
       <div
         role="status"
@@ -69,7 +76,7 @@ function PoolData({
             className="h-1.5 overflow-hidden rounded-full bg-alpha-whiteAlpha300"
           >
             <div
-              className="h-full rounded-full bg-brand-royalblue"
+              className="h-full rounded-full bg-brand-blue100"
               style={{
                 width: percentage === undefined ? '25%' : `${percentage}%`,
               }}
@@ -144,6 +151,7 @@ function PoolData({
 export default function Privacy() {
   const { t } = useTranslation();
   const [poolId, setPoolId] = useState<PrivacyPoolId>(PRIVACY_POOLS[0].id);
+  const [serviceEpoch, setServiceEpoch] = useState(0);
   const { network, isBitcoinBased, changing } = useSelector(
     (state: RootState) => ({
       network: state.vault.activeNetwork,
@@ -166,6 +174,7 @@ export default function Privacy() {
     network.url,
     isBitcoinBased,
     changing,
+    serviceEpoch,
   ]);
 
   return (
@@ -177,6 +186,9 @@ export default function Privacy() {
         <p className="text-sm text-brand-gray200">{t('privacy.description')}</p>
         <p className="text-xs text-brand-gray200">{t('privacy.scopeNotice')}</p>
       </div>
+      <PrivacyServiceSettings
+        onSettled={() => setServiceEpoch((value) => value + 1)}
+      />
       <div className="space-y-2">
         <label htmlFor="privacy-pool" className="block text-sm text-white">
           {t('privacy.poolLabel')}
@@ -199,7 +211,7 @@ export default function Privacy() {
       <p className="text-xs text-brand-gray200">
         {t('privacy.publicDataOnly')}
       </p>
-      <PrivateNotes />
+      <PrivateNotes key={serviceEpoch} />
     </div>
   );
 }

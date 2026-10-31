@@ -235,3 +235,86 @@ it('reconstructs literal prototype-named keys and refuses truncated/extra value 
     'Unexpected locale values'
   );
 });
+
+it('shares repeated English base values only when the full generated expression is smaller', () => {
+  const original = JSON.parse(source('en'));
+  const base = { ...original, privacy: { title: original.privacy.title } };
+  const flatten = (node: any): string[] =>
+    typeof node === 'string' ? [node] : Object.values(node).flatMap(flatten);
+  const oldGenerated =
+    'module.exports=require("utils/restoreLocale").restoreLocale(require("assets/locales/en.json?baseStructure"),' +
+    JSON.stringify(flatten(base)) +
+    ');';
+  const { packed, generated } = compile('en', 'base');
+  expectExact(base, packed);
+  expect(generated).toContain('const p0=');
+  expect(Buffer.byteLength(generated)).toBeLessThan(
+    Buffer.byteLength(oldGenerated)
+  );
+});
+
+it.each(languages)(
+  '%s never grows the complete generated locale module in any projection',
+  (lng) => {
+    const original = JSON.parse(source(lng));
+    const flatten = (node: any): string[] =>
+      typeof node === 'string' ? [node] : Object.values(node).flatMap(flatten);
+    for (const scope of ['', 'base', 'privacy']) {
+      const projection =
+        scope === 'base'
+          ? { ...original, privacy: { title: original.privacy.title } }
+          : scope === 'privacy'
+          ? {
+              privacy: Object.fromEntries(
+                Object.entries(original.privacy).filter(
+                  ([key]) => key !== 'title'
+                )
+              ),
+            }
+          : original;
+      const structureName = scope ? `${scope}Structure` : 'localeStructure';
+      const before =
+        `module.exports=require("utils/restoreLocale").restoreLocale(require("assets/locales/en.json?${structureName}"),` +
+        JSON.stringify(flatten(projection)) +
+        ');';
+      const { packed, generated } = compile(lng, scope);
+      expectExact(projection, packed);
+      expect(Buffer.byteLength(generated)).toBeLessThanOrEqual(
+        Buffer.byteLength(before)
+      );
+    }
+  }
+);
+
+it.each(['unique', 'repeated'] as const)(
+  'preserves escaped synthetic strings in the %s-value encoding',
+  (mode) => {
+    const original = JSON.parse(source('en'));
+    let index = 0;
+    const escaped =
+      'quote " slash \\ newline\n separator\u2028 snow 雪 </script>';
+    const replaceLeaves = (node: any): any =>
+      typeof node === 'string'
+        ? mode === 'unique'
+          ? `${escaped} ${index++}`
+          : escaped
+        : Object.fromEntries(
+            Object.entries(node).map(([key, value]) => [
+              key,
+              replaceLeaves(value),
+            ])
+          );
+    const fixture = replaceLeaves(original);
+    const generated = compactLocaleJson.call(
+      { resourcePath: resourcePath('en'), addDependency: jest.fn() },
+      JSON.stringify(fixture)
+    );
+    const packed = execute(generated, (name) => {
+      if (name === 'utils/restoreLocale') return { restoreLocale };
+      if (name === 'assets/locales/en.json?localeStructure') return schema();
+      throw Error(`Unexpected locale dependency: ${name}`);
+    });
+    expectExact(fixture, packed);
+    expect(generated.startsWith('const p0=')).toBe(mode === 'repeated');
+  }
+);

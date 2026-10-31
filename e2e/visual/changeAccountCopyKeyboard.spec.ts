@@ -304,6 +304,147 @@ test('change-account Copy supports keyboard activation without changing the sele
       }
     );
     await wallet.step(
+      'ordinary short account identity stays readable and keyboard actions remain distinct at narrow width',
+      async () => {
+        expect(first.label).toBe('Account 1');
+        for (const viewport of [
+          { width: 320, height: 360 },
+          { width: 400, height: 620 },
+        ]) {
+          await approval.setViewportSize(viewport);
+          const label = firstRow.getByText(first.label, { exact: true });
+          const footer = approval
+            .getByRole('button', { name: en.buttons.cancel, exact: true })
+            .locator(
+              'xpath=ancestor::*[contains(concat(" ", normalize-space(@class), " "), " fixed ")][1]'
+            );
+          await expect(footer).toBeVisible();
+          await expect(label).toBeVisible();
+          if (viewport.width === 320) {
+            const search = approval.getByRole('searchbox', {
+              name: en.connections.searchAccounts,
+              exact: true,
+            });
+            await search.click();
+            await expect(search).toBeFocused();
+            await tabTo(approval, firstRow);
+            await expect(firstRow).toBeFocused();
+            const focusedRow = await firstRow.boundingBox();
+            const focusedFooter = await footer.boundingBox();
+            expect(focusedRow).not.toBeNull();
+            expect(focusedFooter).not.toBeNull();
+            observations.narrowFocusBeforeWheel = {
+              focused: true,
+              row: focusedRow,
+              footerTop: focusedFooter!.y,
+              entirelyAboveFooter:
+                focusedRow!.y >= 0 &&
+                focusedRow!.y + focusedRow!.height <= focusedFooter!.y,
+              labelCenterUnoccluded: await label.evaluate((element) => {
+                const bounds = element.getBoundingClientRect();
+                const hit = document.elementFromPoint(
+                  bounds.left + bounds.width / 2,
+                  bounds.top + bounds.height / 2
+                );
+                const row = element.closest('[role="button"][tabindex="0"]');
+                return (
+                  !!hit &&
+                  (hit === element || element.contains(hit) || hit === row)
+                );
+              }),
+            };
+            expect(observations.narrowFocusBeforeWheel).toMatchObject({
+              focused: true,
+              entirelyAboveFooter: true,
+              labelCenterUnoccluded: true,
+            });
+            await info.attach('change-account-native-focus-320', {
+              body: await approval.screenshot({
+                animations: 'disabled',
+                mask: [approval.locator('textarea,input[type=password]')],
+              }),
+              contentType: 'image/png',
+            });
+          }
+          for (let attempt = 0; attempt < 24; attempt++) {
+            const rowBox = await firstRow.boundingBox();
+            const footerBox = await footer.boundingBox();
+            expect(rowBox).not.toBeNull();
+            expect(footerBox).not.toBeNull();
+            if (rowBox!.y >= 0 && rowBox!.y + rowBox!.height <= footerBox!.y)
+              break;
+            await approval.mouse.move(
+              viewport.width / 2,
+              Math.min(viewport.height / 2, footerBox!.y - 8)
+            );
+            await approval.mouse.wheel(0, rowBox!.y < 0 ? -120 : 120);
+            await approval.waitForTimeout(100);
+          }
+          const rowBox = await firstRow.boundingBox();
+          const footerBox = await footer.boundingBox();
+          expect(rowBox).not.toBeNull();
+          expect(footerBox).not.toBeNull();
+          expect(rowBox!.x).toBeGreaterThanOrEqual(0);
+          expect(rowBox!.x + rowBox!.width).toBeLessThanOrEqual(viewport.width);
+          expect(rowBox!.y).toBeGreaterThanOrEqual(0);
+          expect(rowBox!.y + rowBox!.height).toBeLessThanOrEqual(footerBox!.y);
+          await expect(label).toBeInViewport({ ratio: 1 });
+          expect(
+            await label.evaluate((element) => {
+              const bounds = element.getBoundingClientRect();
+              const hit = document.elementFromPoint(
+                bounds.left + bounds.width / 2,
+                bounds.top + bounds.height / 2
+              );
+              const row = element.closest('[role="button"][tabindex="0"]');
+              return (
+                !!hit &&
+                (hit === element || element.contains(hit) || hit === row)
+              );
+            })
+          ).toBe(true);
+          const size = await label.evaluate((element) => ({
+            clientWidth: element.clientWidth,
+            scrollWidth: element.scrollWidth,
+          }));
+          expect(size.clientWidth).toBeGreaterThan(0);
+          expect(size.scrollWidth).toBeLessThanOrEqual(size.clientWidth + 1);
+          await info.attach(`change-account-short-label-${viewport.width}`, {
+            body: await approval.screenshot({
+              animations: 'disabled',
+              mask: [approval.locator('textarea,input[type=password]')],
+            }),
+            contentType: 'image/png',
+          });
+          if (viewport.width === 320) {
+            await info.attach('change-account-short-label-row-320', {
+              body: await firstRow.screenshot({ animations: 'disabled' }),
+              contentType: 'image/png',
+            });
+          }
+        }
+        await approval.setViewportSize({ width: 320, height: 360 });
+        await tabTo(approval, firstCopy);
+        await expect(firstCopy).toBeFocused();
+        await approval.keyboard.press('Enter');
+        await expect.poll(copyAudit).toEqual({
+          writes: Array(4).fill(first.address),
+          failures: 0,
+        });
+        await expect(secondRow).toHaveClass(/shadow-md/);
+        await expect(firstRow).not.toHaveClass(/shadow-md/);
+        await assertUnchanged();
+        await tabTo(approval, firstRow);
+        await approval.keyboard.press('Enter');
+        await expect(firstRow).toHaveClass(/shadow-md/);
+        await tabTo(approval, secondRow);
+        await approval.keyboard.press('Space');
+        await expect(secondRow).toHaveClass(/shadow-md/);
+        await expect(firstRow).not.toHaveClass(/shadow-md/);
+        await assertUnchanged();
+      }
+    );
+    await wallet.step(
       'cancel the original change request and retain the saved grant',
       async () => {
         await approval.evaluate(() =>

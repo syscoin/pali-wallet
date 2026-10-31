@@ -121,7 +121,7 @@ export const EditApprovedAllowanceValueModal = (
           <div className="flex min-w-0 flex-col items-center justify-center w-full">
             <div className="grid min-w-0 w-full gap-y-4 grid-cols-1 auto-cols-auto">
               <div className="grid items-center">
-                <Dialog.Description className="break-all text-left text-content-secondary text-sm">
+                <Dialog.Description className="[overflow-wrap:anywhere] text-left text-content-secondary text-sm">
                   {`${t('send.allow')} ${host} ${t('send.toWithdraw')}`}:
                 </Dialog.Description>
               </div>
@@ -159,7 +159,7 @@ export const EditApprovedAllowanceValueModal = (
                         </label>
                       </div>
                       <div className="flex flex-col gap-y-2 pl-5 text-left">
-                        <span className="break-all">
+                        <span className="[overflow-wrap:anywhere]">
                           {t('send.spendingLimitRequestedBy')} {host}
                         </span>
                         <span className="break-all">
@@ -221,7 +221,7 @@ export const EditApprovedAllowanceValueModal = (
                               currentRadioChecked === 'custom_limit'
                                 ? 'border bg-transparent border-slate-400'
                                 : ''
-                            } rounded outline-none focus-visible:ring-2 focus-visible:ring-content-primary`}
+                            } rounded outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-content-primary`}
                             disabled={currentRadioChecked !== 'custom_limit'}
                           />
                         </Form.Item>

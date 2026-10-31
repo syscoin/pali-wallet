@@ -1,9 +1,4 @@
 {
-  "providerDefault": {
-    "defaultEnabled": "Pali を既定のウォレットに設定しました！",
-    "otherWalletInUse": "MetaMask が使用されており、Pali は無効になっています。",
-    "setPaliDefault": "Pali を既定のウォレットに設定！"
-  },
   "transactionDisplay": {
     "blockHash": "ブロックハッシュ",
     "blockNumber": "ブロック番号",
@@ -160,7 +155,7 @@
     "forget": "ウォレットを忘れる",
     "generalOptions": "一般オプション",
     "currency": "通貨",
-    "manageEth": "デフォルトウォレットを設定",
+    "manageEth": "Ethereumプロバイダーを管理",
     "infoHelp": "情報/ヘルプ",
     "lock": "ロック",
     "advanced": "詳細設定"
@@ -211,7 +206,6 @@
     "errorSwitching": "ネットワーク切り替えエラー",
     "speedUp": "スピードアップ",
     "cancelTx": "取引をキャンセル",
-    "cancelTxMessage": "本当にこの取引をキャンセルしますか？",
     "speedTx": "取引をスピードアップ"
   },
   "connections": {
@@ -265,6 +259,7 @@
     "importToken": "トークンインポート",
     "youHaveNoTokens": "トークンやNFTがありません",
     "youHaveNoTxs": "取引履歴がありません",
+    "historyMayBeIncomplete": "エクスプローラー API がない場合、取引履歴が不完全になる可能性があります。",
     "seeAllTxs": "全取引を表示",
     "addressCopied": "アドレスが正常にコピーされました",
     "hashCopied": "ハッシュが正常にコピーされました",
@@ -313,7 +308,8 @@
     "youShould": "今後の参考のために、リカバリーフレーズとウォレットのパスワードを書き留めておく必要があります。"
   },
   "createPhrase": {
-    "recoveryPhrase": "リカバリーフレーズ"
+    "recoveryPhrase": "リカバリーフレーズ",
+    "generationFailed": "新しいリカバリーフレーズを生成できませんでした。「生成」を選択してもう一度お試しください。"
   },
   "send": {
     "transactionFailureDetails": "トランザクション失敗：{{message}}",
@@ -366,9 +362,16 @@
     "gasPriceBelowEstimate": "ガス価格が {{estimate}} GWEI を下回っています。",
     "maxFeeBelowEstimate": "最大手数料が {{estimate}} GWEI を下回っています。",
     "priorityFeeBelowEstimate": "優先手数料が {{estimate}} GWEI を下回っています。",
+    "erc20SetAllowanceZero": "承認取消の対象トークン：",
+    "erc20IncreaseAllowance": "承認額の増加対象トークン：",
+    "erc20DecreaseAllowance": "承認額の減少対象トークン：",
+    "erc20ApprovalRequest": "承認リクエストの対象トークン：",
     "grantAccess": "あなたのアクセスを許可します",
     "editPermission": "権限を編集",
     "invalidApprovalDetails": "承認の詳細が無効です。このリクエストは確認できません。",
+    "revokeNftApproval": "NFTの承認を取り消す",
+    "revokeNftApprovalDescription": "{{token}} #{{tokenId}} の承認済みアドレスを削除します",
+    "approvalResetAddress": "承認を解除するアドレス",
     "approveNftTransfer": "NFT転送を承認",
     "allowTransferOf": "転送を許可",
     "grantCollectionAccess": "コレクションへのアクセスを許可",
@@ -419,6 +422,7 @@
     "feeRateNormal": "手数料率 {{value}} {{currency}}/vbyte が通常より高くなっています。",
     "send": "送信",
     "insufficientFunds": "残高不足",
+    "maxBalanceReviewRequired": "残高が変更されたか確認できませんでした。金額を確認して、もう一度お試しください。",
     "insufficientFundsForGas": "ガス料金を支払うための残高が不足しています",
     "maxUnavailablePendingTx": "保留中のトランザクションがあるためMAXは利用できません。確認されるまでお待ちください。",
     "networkCatchingUp": "ネットワークが前のトランザクションを更新しています。しばらくしてから再試行してください。",
@@ -446,9 +450,9 @@
     "balanceVerified": "残高確認済み",
     "tokenOwnershipVerified": "トークンの所有権確認済み",
     "pleaseVerifyTokenOwnership": "最初にトークンの所有権を確認してください",
-    "youOnlyOwn": "このトークンを{amount}個のみ所有しています",
+    "youOnlyOwn": "このトークンを{{amount}}個のみ所有しています",
     "pleaseWaitForBalanceVerification": "残高の確認をお待ちください",
-    "insufficientFundsVerified": "資金不足（確認済み残高：{balance}）",
+    "insufficientFundsVerified": "資金不足（確認済み残高：{{balance}}）",
     "enterTokenId": "トークンIDを入力",
     "amountMustBePositiveInteger": "金額は正の整数である必要があります",
     "verifyingBalance": "残高を検証中...",
@@ -615,11 +619,15 @@
     "watchOnlyValidationTimedOut": "ウォッチ専用アカウントの検証がタイムアウトしました。何もインポートされていません。もう一度お試しください。",
     "watchOnly": "ウォッチ専用",
     "publicIdentifierInput": "アドレス / XPUB / ディスクリプター",
-    "usingAnotherWallet": "別のウォレットを使用しています。",
-    "defaultWalletStatus": "が既定のウォレットです",
     "otherDefaultWalletHelpTitle": "別のウォレットを既定にするには？",
     "otherDefaultWalletHelp": "一部のウォレットでは設定で変更できます。ブラウザーは最後にインストールまたは有効化したウォレットを既定として使用します。",
-    "setWalletAsDefault": "{{wallet}}を既定のウォレットにする",
+    "paliProviderEnabled": "PaliのEthereumプロバイダーは有効です",
+    "paliProviderDisabled": "PaliのEthereumプロバイダーは無効です",
+    "disablePaliProvider": "PaliのEthereumプロバイダーを無効にする",
+    "enablePaliProvider": "PaliのEthereumプロバイダーを有効にする",
+    "disablePaliProviderWarning": "Paliを無効にすると、接続済みのすべてのサイトが切断されます。別のウォレットはその設定で構成してください。",
+    "disablePaliProviderFailed": "PaliのEthereumプロバイダーの無効化を確認できませんでした。一部のサイトはすでに切断されている可能性があります。再試行する前に接続を確認してください。",
+    "enablePaliProviderFailed": "PaliのEthereumプロバイダーの有効化を確認できませんでした。再試行する前に設定を確認してください。",
     "localSmartAccountGuardianMissing": "ローカルのスマートアカウントガーディアンが見つかりません。",
     "recoveryValidatorNotConfigured": "P-256/WebAuthnバリデーターが設定されていません。",
     "xmssProgressLevel": "XMSSレベル {{level}}/22。",
@@ -669,6 +677,7 @@
     "recoverySeedHelp": "このウォレットのフレーズを入力してください。別のフレーズでは、このウォレットのアカウントを復元できません。",
     "recoveryLimitations": "復元すると、ローカルに保存されたインポート済み秘密鍵の暗号化された記録が削除されます。それらの鍵を別途バックアップしていない場合、それらのアカウントに永久にアクセスできなくなる可能性があります。ハードウェアの接続、カスタム設定、スマートアカウントやパスキーの設定には、それぞれのバックアップや再接続が必要です。復元によって資金が移動することはありません。",
     "walletRecoveryFailed": "ウォレットの復元を完了できませんでした。フレーズを確認してやり直してください。失敗が続く場合は、ブラウザーを再起動してください。ウォレットの保存データを消去しないでください。",
+    "walletRecoveryUnconfirmed": "ウォレットの復元を確認できませんでした。ウォレットを確認して現在の状態を確認してください。ウォレットの保存データを消去しないでください。",
     "walletRecoveryRestartRequired": "復元が完了するまでウォレットは使用できません。ブラウザーを再起動し、ウォレットを確認して、必要に応じて再度復元を試してください。ウォレットの保存データを消去しないでください。",
     "walletWindowCheckSlow": "ウォレットのウィンドウの応答に時間がかかっています。もう一度確認してください。",
     "retryWalletWindowCheck": "ウィンドウを再確認",
@@ -785,7 +794,6 @@
     "watchOnlyNoPrivateKey": "これはウォッチ専用アカウントです。資金の受け取りと履歴の確認はできますが、このウォレットにはこのアカウントの秘密鍵がありません。",
     "seeOnExplorer": "エクスプローラーで表示",
     "manageEthProvider": "ETHプロバイダーを管理",
-    "windowObjectWasSet": "Windowオブジェクトが正常に設定されました",
     "missingApiKey": "APIキーが見つからない/無効 - URLにAPIキーを追加してください（例：?apikey=あなたのキー）",
     "apiFormatError": "APIが正しく応答しません。URLを確認し、Etherscan/Blockscout API形式をサポートしていることを確認してください。",
     "apiConnectionError": "APIを検証できません。接続を確認してもう一度お試しください。",
@@ -1167,8 +1175,12 @@
     "checkYourDevice": "{{device}} でこのリクエストを承認してください",
     "useYourPasskey": "パスキーを使用してください",
     "passkeyPrompt": "ブラウザの指示に従ってパスキーで署名してください",
+    "cancelFeePreview": "キャンセルのネットワーク手数料を確認中…",
+    "cancelFeeConsent": "最大ガス手数料 {{fee}} {{currency}} でこの取引をキャンセルしますか？",
+    "cancelFeeUnavailable": "キャンセル手数料を確認できません。もう一度お試しください。",
     "speedUpFeePreview": "ネットワーク手数料を確認中…",
     "speedUpFeeConsent": "最大ネットワーク手数料 {{fee}} {{currency}} でこの取引を高速化しますか？",
+    "speedUpAmountWouldChange": "この取引を高速化する前に、このアカウントに資金を追加してください。元の金額は変更されません。",
     "speedUpFeeUnavailable": "手数料を確認できませんでした。もう一度お試しください。"
   },
   "switchNetworkPage": {
@@ -1216,7 +1228,8 @@
     "removalFailed": "ウォレットを削除できませんでした。もう一度お試しください。",
     "importedAccountsWont": "インポートされたアカウントは、初期のPaliアカウントのシークレットリカバリーフレーズにリンクされません",
     "stillHaveFunds": "ウォレットにまだ資金があります！",
-    "saveProperly": "このシードフレーズを安全に保管して、将来このウォレットをインポートできるようにしてください。"
+    "saveProperly": "このシードフレーズを安全に保管して、将来このウォレットをインポートできるようにしてください。",
+    "privateNotesBackupWarning": "プライベートノートがある場合は別途バックアップしてください。復元フレーズでは復元できません。"
   },
   "walletSeedPhrasePage": {
     "keepSeedPhrase": "シードフレーズは秘密にしてください！",
@@ -1266,7 +1279,8 @@
     "youCanGet": "24時間ごとにウォレットアドレスあたり {{quantity}} {{token}} を取得できます。",
     "firstAccessTitle": "フォーセットで ${{token}} を取得して {{network}} ネットワークの体験を始めましょう！",
     "firstAccessDescription": "ウォレットアドレスごとに24時間ごとに{{token}}を取得できます。",
-    "grabTokens": "フォーセットに移動"
+    "grabTokens": "フォーセットに移動",
+    "rateLimited": "フォーセットはリクエストを制限しています。詳しくはフォーセットをご確認ください。"
   },
   "nftDetails": {
     "information": "NFT 情報",
@@ -1406,6 +1420,21 @@
     "feeTitle": "承認したSentry操作のネットワーク手数料",
     "feeHelp": "この操作のネットワーク手数料に使う入力を承認します。署名済みトランザクションはサイトが送信します。",
     "feeChanges": "承認された変更",
+    "managementFields": {
+      "action": "操作",
+      "childKeyCommitment": "子鍵コミットメント",
+      "collateralSatoshis": "担保（サトシ）",
+      "collateralSigningMessage": "担保署名メッセージ",
+      "globalKeyVersion": "グローバル鍵バージョン",
+      "operatorPublicKey": "オペレーター公開鍵",
+      "operatorRewardBasisPoints": "オペレーター報酬（ベーシスポイント）",
+      "ownerKeyId": "所有者鍵 ID",
+      "payoutAddress": "支払いアドレス",
+      "pqOwnerPublicKey": "所有者の PQ 公開鍵",
+      "pqVotingPublicKey": "投票用 PQ 公開鍵",
+      "reason": "失効理由",
+      "votingKeyId": "投票鍵 ID"
+    },
     "feeType": "Sentryノードの操作",
     "feeOperations": {
       "register": "ノードを登録",
@@ -1580,6 +1609,13 @@
     "clear": "保存済みデータを削除",
     "networkRequired": "ネットワークメニューでEthereumメインネットを選択して、プールデータを準備してください。",
     "publicDataOnly": "ダウンロードするのはプールの公開データのみです。ウォレットアドレスや秘密のノートは送信されません。",
+    "serviceSettings": "プライバシーサービス",
+    "serviceOrigin": "サービスのオリジン",
+    "serviceHelp": "HTTPS、または localhost の HTTP を使用してください。サービスを変更すると準備済みのプールデータは消去されますが、保存したノートはウォレットに残ります。",
+    "serviceInvalid": "パスや認証情報を含まない HTTPS または localhost の HTTP オリジンを入力してください。",
+    "serviceLoadFailed": "プライバシーサービスの設定を読み込めませんでした。",
+    "serviceSaveFailed": "プライバシーサービスの設定を保存できませんでした。もう一度お試しください。",
+    "serviceSaved": "プライバシーサービスを保存しました。プールを再度準備してください。",
     "savedDeposits": "保存済みの公開入金数：{{count}}",
     "verifiedBlock": "最後に検証したブロック：{{block}}",
     "progress": "{{total}}件中{{completed}}件",
@@ -1647,6 +1683,7 @@
       "title": "ノートを出金",
       "open": "出金",
       "recipient": "受取先アドレス",
+      "recipientInvalid": "有効なEthereumアドレスを入力してください。",
       "method": "送信方法",
       "direct": "直接",
       "relayed": "リレイヤー",
@@ -1672,6 +1709,7 @@
       "jobId": "リレイヤージョブID",
       "directoryFailed": "リレイヤーを読み込めませんでした。再試行するか、直接送信を選択してください。",
       "prepareFailed": "出金を準備できませんでした。プールデータとネットワークを確認して再試行してください。",
+      "prepareInterrupted": "準備が中断されました。プールデータを確認して、もう一度お試しください。",
       "checkStatus": "状況を確認",
       "statusFailed": "リレイヤーの状況を確認できませんでした。再試行してください。",
       "statusUnknown": "出金の送信状況が不明です。再試行前に確認してください。",

@@ -296,6 +296,10 @@ export const ConnectWallet = () => {
     );
   }, [accountId, accountType, eligibleAccounts, visibleItems]);
 
+  const selectedAccount = eligibleAccounts.find(
+    ({ account, type }) => account.id === accountId && type === accountType
+  )?.account;
+
   return (
     <div ref={connectionFocusRef} className="flex flex-col w-full h-full">
       {/* Main scrollable content area */}
@@ -307,15 +311,17 @@ export const ConnectWallet = () => {
         ) : accounts && Object.keys(accounts).length > 0 ? (
           <>
             {/* Header section */}
-            <div className="text-center px-6 py-6 border-b border-brand-gray300">
+            <div className="text-center px-6 py-6 border-b border-brand-gray300 [@media(max-height:400px)]:py-2">
               <h3 className="text-xs text-brand-graylight uppercase tracking-wider mb-2">
                 {t('connections.connectRequest')}
               </h3>
-              <div className="flex items-center justify-center gap-2">
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-brand-royalblue to-brand-deepPurple flex items-center justify-center">
+              <div className="flex min-w-0 items-center justify-center gap-2">
+                <div className="w-8 h-8 shrink-0 rounded-full bg-gradient-to-br from-brand-royalblue to-brand-deepPurple flex items-center justify-center">
                   <Icon name="link" className="text-white" size={16} />
                 </div>
-                <p className="text-lg font-medium text-brand-white">{host}</p>
+                <p className="min-w-0 text-lg font-medium text-brand-white [overflow-wrap:anywhere]">
+                  {host}
+                </p>
               </div>
 
               {connectedAccount && (
@@ -342,14 +348,14 @@ export const ConnectWallet = () => {
             </div>
 
             {/* Accounts list */}
-            <div className="px-4 py-4">
+            <div className="px-4 py-4 [@media(max-height:400px)]:py-2">
               <input
                 type="search"
                 aria-label={t('connections.searchAccounts')}
                 placeholder={t('connections.searchAccounts')}
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                className="w-full mb-4 rounded-lg border border-brand-gray300 bg-bkg-2 p-3 text-sm text-brand-white"
+                className="w-full mb-4 rounded-lg border border-brand-gray300 bg-bkg-2 p-3 text-sm text-brand-white [@media(max-height:400px)]:mb-8"
               />
               {matchingAccounts.length === 0 && (
                 <p role="status" className="text-sm text-brand-graylight">
@@ -381,13 +387,14 @@ export const ConnectWallet = () => {
                           return (
                             <div
                               key={`${acc.id}-${keyringType}`}
-                              className={`w-full p-4 rounded-lg border transition-all duration-200 text-left group cursor-pointer
+                              className={`w-full p-4 rounded-lg border transition-all duration-200 text-left group cursor-pointer select-none
                                 ${
                                   isSelected
                                     ? 'border-brand-royalblue bg-bkg-4 shadow-md'
                                     : 'border-brand-gray300 bg-bkg-2 hover:bg-bkg-3 hover:border-brand-gray200'
                                 }`}
                               role="button"
+                              aria-pressed={isSelected}
                               aria-disabled={isConnecting}
                               tabIndex={isConnecting ? -1 : 0}
                               onClick={() => {
@@ -451,7 +458,7 @@ export const ConnectWallet = () => {
                                               );
                                             }
                                           }}
-                                          className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity duration-200"
+                                          className="inline-flex min-h-[32px] min-w-[32px] items-center justify-center opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity duration-200"
                                         >
                                           <Icon
                                             name="copy"
@@ -523,7 +530,7 @@ export const ConnectWallet = () => {
                     href="https://docs.syscoin.org/"
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-brand-royalblue hover:underline"
+                    className="text-brand-royalbluemedium hover:underline"
                   >
                     {t('connections.learnMore')}
                   </a>
@@ -532,7 +539,13 @@ export const ConnectWallet = () => {
             </div>
 
             {/* Add bottom padding to account for fixed buttons */}
-            <div className="pb-20"></div>
+            <div
+              className="pb-20"
+              style={{
+                paddingBottom:
+                  'max(5rem, calc(var(--pali-toast-footer-clearance, 0px) + 1rem))',
+              }}
+            ></div>
           </>
         ) : (
           <div className="flex items-center justify-center h-full">
@@ -548,6 +561,39 @@ export const ConnectWallet = () => {
         data-connection-actions
         className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 shadow-lg z-50"
       >
+        {selectedAccount && (
+          <div
+            aria-live="polite"
+            data-connection-selected-summary
+            className="hidden min-w-0 flex-col gap-1 pb-2 text-xs [@media(max-height:400px)]:flex"
+          >
+            <span className="text-brand-graylight">
+              {t('connections.connectAccount')}:
+            </span>
+            <span className="flex min-w-0 items-center gap-1 text-brand-white">
+              <span className="min-w-0 truncate">{selectedAccount.label}</span>
+              <span aria-hidden="true">·</span>
+              <span className="shrink-0">
+                {selectedAccount.address
+                  ? ellipsis(selectedAccount.address, 8, 4)
+                  : t('connections.noAddress')}
+              </span>
+            </span>
+          </div>
+        )}
+        {!selectedAccount && !isLoading && (
+          <div
+            aria-live="polite"
+            data-connection-selection-required
+            className="hidden pb-2 text-xs text-brand-graylight [@media(max-height:400px)]:block"
+          >
+            {t(
+              eligibleAccounts.length
+                ? 'connections.selectAccountToConnect'
+                : 'connections.noAccountsAvailable'
+            )}
+          </div>
+        )}
         <div className="flex gap-3 justify-center">
           <Button
             variant="secondary"
@@ -561,9 +607,7 @@ export const ConnectWallet = () => {
           <Button
             variant="primary"
             type="button"
-            disabled={
-              isConnecting || accountId === null || accountType === null
-            }
+            disabled={isConnecting || !selectedAccount}
             loading={isConnecting}
             onClick={onConfirm}
           >

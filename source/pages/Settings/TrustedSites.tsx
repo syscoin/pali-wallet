@@ -21,7 +21,7 @@ const EMPTY_STATE = {
 const TRUSTED_STYLE = {
   label: 'settings.trustedSiteMatch',
   icon: 'check',
-  className: 'bg-warning-success bg-opacity-20 text-warning-success',
+  className: 'bg-warning-success bg-opacity-20 text-content-primary',
 };
 
 const NOT_TRUSTED_WALLET_STYLE = {
@@ -87,7 +87,13 @@ const TrustedSitesView = () => {
             <span
               className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-pill text-xs whitespace-nowrap ${status.className}`}
             >
-              <Icon size={12} name={status.icon} />
+              <Icon
+                size={12}
+                name={status.icon}
+                className={
+                  status === TRUSTED_STYLE ? 'text-warning-success' : undefined
+                }
+              />
               {t(status.label)}
             </span>
           ) : (

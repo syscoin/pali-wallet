@@ -73,7 +73,7 @@ it.each([false, true])(
   async (smartAccountOnly) => {
     mockLocation = { state: { smartAccountOnly } };
     render(<CreateAccount />);
-    const name = 'settings.nameYourNewAccount (settings.optional)';
+    const name = 'settings.label (settings.optional)';
     const input = screen.getByRole('textbox', { name });
     expect(input).toHaveAttribute('placeholder', name);
     fireEvent.change(input, { target: { value: 'Travel account' } });

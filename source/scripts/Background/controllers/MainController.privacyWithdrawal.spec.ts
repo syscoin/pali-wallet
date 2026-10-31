@@ -1,3 +1,6 @@
+jest.mock('@trezor/connect-webextension', () => ({}));
+jest.unmock('syscoinjs-lib');
+jest.unmock('tiny-secp256k1');
 jest.mock('..', () => ({
   getController: jest.fn(),
   notificationManager: { cleanup: jest.fn() },
@@ -255,7 +258,7 @@ beforeEach(() => {
   walletPersistenceGate.blocked = false;
 });
 
-it.each(['healthy', 'snapshot', 'expiry'] as const)(
+it.each(['healthy', 'snapshot', 'expiry', 'service change'] as const)(
   'checks %s withdrawal admission after the actual sender preflight and before signing',
   async (state) => {
     const run = setup();
@@ -299,6 +302,8 @@ it.each(['healthy', 'snapshot', 'expiry'] as const)(
         throw new Error('privacy_verification_pending');
       });
     if (state === 'expiry') run.clock(review.expiresAt);
+    if (state === 'service change')
+      await run.wallet.invalidatePrivacyServiceWithdrawals();
     release.resolve();
     const settled = await result;
     if (state === 'healthy') {
@@ -319,6 +324,8 @@ it.each(['healthy', 'snapshot', 'expiry'] as const)(
         message:
           state === 'snapshot'
             ? 'privacy_verification_pending'
+            : state === 'service change'
+            ? 'privacy_withdrawal_cancelled'
             : 'privacy_withdrawal_intent_expired',
         transactionNotBroadcast: true,
       });
@@ -673,6 +680,32 @@ it('journals a successful acknowledgement to the original attempt when the selec
   expect(vault.clearUnbroadcastWithdrawalAttempt).not.toHaveBeenCalled();
 });
 
+it('preserves an acknowledgement already in flight when the privacy service changes', async () => {
+  const { wallet, vault } = setup();
+  const review = await prepare(wallet);
+  const entered = deferred(),
+    release = deferred();
+  wallet.sendAndSaveEthTransaction.mockImplementationOnce(
+    async (_tx, _legacy, _account, _metadata, options) => {
+      options.assertCurrentContext();
+      entered.resolve();
+      await release.promise;
+      await options.onBroadcast({ hash: HASH });
+      return { hash: HASH };
+    }
+  );
+  const pending = wallet.submitPrivacyWithdrawal(review.intentId);
+  await entered.promise;
+  await wallet.invalidatePrivacyServiceWithdrawals();
+  release.resolve();
+  await expect(pending).resolves.toMatchObject({
+    phase: 'submitted',
+    transactionHash: HASH,
+  });
+  expect(vault.recordWithdrawalSubmission).toHaveBeenCalledTimes(1);
+  expect(vault.clearUnbroadcastWithdrawalAttempt).not.toHaveBeenCalled();
+});
+
 it('retains an unknown reserved attempt when a broadcast acknowledgement arrives after lock', async () => {
   const { wallet, keyring, vault } = setup();
   const review = await prepare(wallet);
@@ -743,4 +776,149 @@ it('quotes relayer gas from chain and public fees only, without recipient or not
   expect(provider.getTransactionCount).not.toHaveBeenCalled();
   expect(provider.call).not.toHaveBeenCalled();
   expect(provider.estimateGas).not.toHaveBeenCalled();
+});
+
+it.each([
+  'session invalidation after commit',
+  'healthy pre-sign invalidation',
+  'sender entered with unknown outcome',
+] as const)('real Main host and vault reservation: %s', async (scenario) => {
+  const { createPrivateVaultController } = await import('./privateVault');
+  const ActualKeyring = jest.requireActual(
+    '@sidhujag/sysweb3-keyring'
+  ).KeyringManager;
+  const keyring: any = Object.create(ActualKeyring.prototype);
+  keyring.sessionPassword = { isCleared: () => false };
+  keyring.sessionMnemonic = { isCleared: () => false };
+  keyring.privateRecordSessionRevision = 0;
+  let testRoot = 'synthetic private vault test root';
+  keyring.getDecryptedMnemonic = () => testRoot;
+  keyring.isUnlocked = () => true;
+  const run = setup();
+  run.wallet.getActiveKeyring = () => keyring;
+  run.wallet.getWalletSetupStatus = () => false;
+  const records: Record<string, any> = {};
+  const storage = {
+    getItem: jest.fn(async (key: string) =>
+      records[key] ? structuredClone(records[key]) : null
+    ),
+    setItem: jest.fn(async (key: string, value: any) => {
+      records[key] = structuredClone(value);
+    }),
+  };
+  const vault = createPrivateVaultController(
+    {
+      captureSession: () => run.wallet.capturePrivateVaultSession(),
+      authenticate: jest.fn(),
+      readNote: async () => ({ phase: 'verified', blockNumber: 20000000 }),
+    },
+    {
+      storage,
+      mutex: new AsyncMutex(),
+      now: () => 1000,
+      randomId: () => NOTE_ID,
+    }
+  );
+  run.wallet.getPrivateVaultController.mockResolvedValue(vault);
+  await vault.importNote(NOTE);
+  const review = await prepare(run.wallet);
+  const committed = deferred(),
+    release = deferred();
+  if (scenario === 'session invalidation after commit') {
+    const write = storage.setItem.getMockImplementation()!;
+    storage.setItem.mockImplementationOnce(async (key, value) => {
+      await write(key, value);
+      committed.resolve();
+      await release.promise;
+    });
+  } else if (scenario === 'healthy pre-sign invalidation') {
+    const reserve = vault.reserveWithdrawalAttempt.bind(vault);
+    jest
+      .spyOn(vault, 'reserveWithdrawalAttempt')
+      .mockImplementation(async (...args) => {
+        await reserve(...args);
+        run.snapshotGuard.mockImplementation(() => {
+          throw new Error('privacy_verification_pending');
+        });
+      });
+  }
+  if (scenario === 'sender entered with unknown outcome')
+    run.wallet.sendAndSaveEthTransaction.mockRejectedValue(
+      new Error('transport indeterminate')
+    );
+  const clear = jest.spyOn(vault, 'clearUnbroadcastWithdrawalAttempt');
+  const result = run.controller.submitWithdrawal(review.intentId);
+  const outcome =
+    scenario === 'sender entered with unknown outcome'
+      ? expect(result).resolves.toMatchObject({ phase: 'unknown' })
+      : expect(result).rejects.toMatchObject({ transactionNotBroadcast: true });
+  if (scenario === 'session invalidation after commit') {
+    await committed.promise;
+    run.wallet.walletSessionGeneration += 1;
+    release.resolve();
+  }
+  await outcome;
+  if (scenario === 'sender entered with unknown outcome')
+    expect(run.wallet.sendAndSaveEthTransaction).toHaveBeenCalledTimes(1);
+  else expect(run.wallet.sendAndSaveEthTransaction).not.toHaveBeenCalled();
+  const session = run.wallet.capturePrivateVaultSession();
+  const saved = await vault.getWithdrawalAttempt(NOTE_ID, session);
+  if (scenario === 'session invalidation after commit') {
+    expect(clear).not.toHaveBeenCalled();
+    expect(saved).toMatchObject({ phase: 'unknown' });
+    expect((await vault.getNotes()).notes[0].phase).toBe('waiting');
+    run.state.vault.activeAccount = {
+      id: 1,
+      type: KeyringAccountType.HDAccount,
+    };
+    expect((await run.wallet.getPrivateVaultNotes()).notes[0].phase).toBe(
+      'waiting'
+    );
+    run.state.vault.activeAccount = {
+      id: 0,
+      type: KeyringAccountType.HDAccount,
+    };
+    run.state.vault.activeNetwork.url = 'https://other.example';
+    expect((await run.wallet.getPrivateVaultNotes()).notes[0].phase).toBe(
+      'waiting'
+    );
+    run.state.vault.activeNetwork.url = 'https://operator.example';
+    testRoot = 'different profile root';
+    expect((await run.wallet.getPrivateVaultNotes()).notes).toHaveLength(0);
+    testRoot = 'synthetic private vault test root';
+    const capability = run.wallet.knownUnbroadcast;
+    const bound = capability.get(review.intentId);
+    capability.set(review.intentId, {
+      ...bound,
+      attemptHash: '0x' + 'ff'.repeat(32),
+    });
+    expect((await run.wallet.getPrivateVaultNotes()).notes[0].phase).toBe(
+      'waiting'
+    );
+    capability.set(review.intentId, bound);
+    run.wallet.knownUnbroadcast = new Map(); // Simulate worker memory loss.
+    expect((await run.wallet.getPrivateVaultNotes()).notes[0].phase).toBe(
+      'waiting'
+    );
+    run.wallet.knownUnbroadcast = new Map([
+      ['stale', { ...bound, attemptHash: '0x' + 'ff'.repeat(32) }],
+      [review.intentId, bound],
+    ]);
+    expect((await run.wallet.getPrivateVaultNotes()).notes[0].phase).toBe(
+      'verified'
+    );
+    expect(run.wallet.knownUnbroadcast.has('stale')).toBe(true);
+    expect(run.wallet.knownUnbroadcast.has(review.intentId)).toBe(false);
+    expect(await vault.getWithdrawalAttempt(NOTE_ID, session)).toBeNull();
+  } else if (scenario === 'sender entered with unknown outcome') {
+    expect(clear).not.toHaveBeenCalled();
+    expect(saved).toMatchObject({ phase: 'unknown' });
+    expect((await run.wallet.getPrivateVaultNotes()).notes[0].phase).toBe(
+      'waiting'
+    );
+  } else {
+    expect(clear).toHaveBeenCalledTimes(1);
+    expect(saved).toBeNull();
+    expect((await vault.getNotes()).notes[0].phase).toBe('verified');
+  }
 });

@@ -124,6 +124,10 @@ SendIcon.displayName = 'SendIcon';
 const ReceiveIcon = memo(() => <ArrowDownLoadSvg className="w-5 h-5 mr-2" />);
 ReceiveIcon.displayName = 'ReceiveIcon';
 
+// Match the shared accent buttons while keeping the dashboard's joined shape.
+const dashboardActionClass =
+  'xl:p-18 h-8 font-medium flex flex-1 items-center justify-center text-bkg-1 hover:text-brand-white text-base border !transition-[transform,box-shadow] duration-300 xl:flex-none [&_path]:fill-current';
+
 export const Home = () => {
   // ALL hooks must be called first in consistent order
   const { getFiatAmount, isFiatAvailable } = usePrice();
@@ -324,7 +328,7 @@ export const Home = () => {
   }
 
   return (
-    <div className="h-full bg-bkg-3">
+    <div className="relative h-full bg-bkg-3">
       {currentAccount && isUnlocked && (
         <>
           {shouldShowFaucet && (
@@ -359,10 +363,10 @@ export const Home = () => {
                 />
               </div>
 
-              <div className="flex items-center justify-center pt-8 w-3/4 max-w-md floating-dots-content">
+              <div className="flex items-center justify-center pt-8 w-3/4 min-w-[min(18rem,calc(100%-2rem))] max-w-md floating-dots-content">
                 <Button
                   type="button"
-                  className="xl:p-18 h-8 font-medium flex flex-1 items-center justify-center text-brand-white text-base bg-button-secondary hover:bg-button-secondaryhover border border-button-secondary rounded-l-full transition-all duration-300 xl:flex-none"
+                  className={`${dashboardActionClass} bg-button-secondary hover:bg-button-secondaryhover border-button-secondary rounded-l-full`}
                   id="send-btn"
                   onClick={() =>
                     isBitcoinBased
@@ -377,7 +381,7 @@ export const Home = () => {
 
                 <Button
                   type="button"
-                  className="xl:p-18 h-8 font-medium flex flex-1 items-center justify-center text-brand-white text-base bg-button-primary hover:bg-button-primaryhover border border-button-primary rounded-r-full transition-all duration-300 xl:flex-none"
+                  className={`${dashboardActionClass} bg-button-primary hover:bg-button-primaryhover border-button-primary rounded-r-full`}
                   id="receive-btn"
                   onClick={() => navigate('/receive')}
                 >

@@ -32,6 +32,16 @@ export const StartFreshWallet = ({
   const [stage, setStage] = useState<ResetStage>('beginning');
   const [acknowledged, setAcknowledged] = useState(false);
   const [confirmation, setConfirmation] = useState('');
+  const revealConfirmation = (
+    event: React.SyntheticEvent<HTMLInputElement>
+  ) => {
+    const input = event.currentTarget;
+    requestAnimationFrame(() => {
+      if (input.isConnected && document.activeElement === input) {
+        input.scrollIntoView?.({ block: 'nearest' });
+      }
+    });
+  };
   const cancelRef = useRef<HTMLButtonElement>(null);
   const mounted = useRef(false);
   const showing = useRef(false);
@@ -213,10 +223,14 @@ export const StartFreshWallet = ({
                       value={confirmation}
                       disabled={!ready}
                       onChange={(event) => setConfirmation(event.target.value)}
+                      onFocus={revealConfirmation}
+                      onPointerDown={revealConfirmation}
+                      onKeyDown={revealConfirmation}
                       autoComplete="off"
                       autoCapitalize="characters"
                       spellCheck={false}
                       className="custom-input-normal"
+                      style={{ scrollMarginBlockEnd: 8 }}
                     />
                   </label>
                 </>

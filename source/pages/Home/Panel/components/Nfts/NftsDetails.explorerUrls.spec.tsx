@@ -62,7 +62,13 @@ beforeEach(() => {
   mockEmitter.mockImplementation(async (methods: string[], args: any[]) => {
     expect(methods).toEqual(['wallet', 'fetchNftTokenIds']);
     expect(args).toEqual([CONTRACT, OWNER, 'ERC-721']);
-    return Object.assign([{ tokenId: '7', balance: 1 }], { hasMore: true });
+    return JSON.parse(
+      JSON.stringify({
+        tokens: [{ tokenId: '7', balance: 1 }],
+        hasMore: true,
+        requiresManualEntry: false,
+      })
+    );
   });
   jest.spyOn(window, 'open').mockReturnValue(null);
 });
@@ -189,3 +195,20 @@ it.each(['contract', 'collection'])(
     expect(global.fetch).not.toHaveBeenCalled();
   }
 );
+
+it('keeps token selection while omitting explorer actions for an explicitly blank EVM explorer', async () => {
+  await mountNetwork({
+    kind: 'ethereum',
+    url: RPC,
+    explorer: RPC,
+    explorerExplicitlyAbsent: true,
+  });
+  expect(screen.getByRole('button', { name: '#7' })).toBeVisible();
+  expect(
+    screen.queryByRole('link', { name: 'home.viewOnExplorer' })
+  ).toBeNull();
+  expect(
+    screen.queryByRole('button', { name: 'send.viewAllOnExplorer' })
+  ).toBeNull();
+  expect(window.open).not.toHaveBeenCalled();
+});

@@ -33,7 +33,8 @@ const APPROVAL_INTERFACE = new Interface([
 const decodeApproval = async (
   method: string,
   value: string | number | boolean,
-  contractType: string
+  contractType: string,
+  authority = AUTHORITY
 ) => {
   jest
     .spyOn(validations, 'getContractType')
@@ -41,7 +42,7 @@ const decodeApproval = async (
 
   return (await decodeTransactionData(
     {
-      data: APPROVAL_INTERFACE.encodeFunctionData(method, [AUTHORITY, value]),
+      data: APPROVAL_INTERFACE.encodeFunctionData(method, [authority, value]),
       to: TOKEN_CONTRACT,
     } as any,
     {}
@@ -145,6 +146,23 @@ describe('ApprovalDetails', () => {
     expect(markup).toContain('transactions.approvedTo');
     expect(markup).toContain(`data-address="${AUTHORITY}"`);
     expect(markup).not.toContain('transactions.spender');
+  });
+
+  it('labels the zero address as the reset address for a valid ERC-721 revocation', async () => {
+    const zero = '0x0000000000000000000000000000000000000000';
+    const decodedTx = await decodeApproval('approve', 0, 'ERC-721', zero);
+    const values = getApprovalAddressValues(
+      decodedTx,
+      TOKEN_CONTRACT,
+      decodedTx.approvalType
+    );
+    const markup = renderToStaticMarkup(<ApprovalDetails {...values} />);
+
+    expect(values.isValid).toBe(true);
+    expect(values.isNftRevocation).toBe(true);
+    expect(markup).toContain('send.approvalResetAddress');
+    expect(markup).toContain(`data-address="${zero}"`);
+    expect(markup).not.toContain('transactions.approvedTo');
   });
 
   it('uses the full address component for setApprovalForAll operators', async () => {

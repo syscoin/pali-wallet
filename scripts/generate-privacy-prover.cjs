@@ -9,12 +9,24 @@ const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
 const zlib = require('zlib');
+const prettier = require('prettier');
+const { ESLint } = require('eslint');
 const {
   suspendSignalWrites,
   trampolineWitnessRuntime,
 } = require('./privacy-prover-adaptations.cjs');
 const ROOT = path.resolve(__dirname, '..');
 const OUT = path.join(ROOT, 'source/scripts/privacyProver');
+const generatedJsLinter = new ESLint({ cwd: ROOT, fix: true });
+const commonJsNotice =
+  '/* eslint-disable @typescript-eslint/no-var-requires -- The packaged prover uses CommonJS for both webpack and its standalone qualification harness. */\n';
+const aliasNotice =
+  '// eslint-disable-next-line @typescript-eslint/no-this-alias -- Preserve the pinned upstream arithmetic implementation.\n';
+const replaceOnce = (text, before, after) => {
+  if (text.split(before).length !== 2)
+    throw Error(`Expected one pinned source replacement: ${before}`);
+  return text.replace(before, after);
+};
 const REFS = {
   snarkjs: '869181cfaf7526fe8972073d31655493a04326d5',
   websnark: '4c0af6a8b65aabea3c09f377f63c44e7a58afa6d',
@@ -89,6 +101,16 @@ async function input(relative, url, expected) {
 }
 async function save(relative, value) {
   const file = path.join(OUT, relative);
+  if (relative.endsWith('.js')) {
+    value = prettier.format(String(value), {
+      ...(await prettier.resolveConfig(file)),
+      filepath: file,
+    });
+    const [result] = await generatedJsLinter.lintText(value, { filePath: file });
+    if (result.errorCount || result.fatalErrorCount)
+      throw Error(`Generated JavaScript does not pass lint: ${relative}`);
+    value = result.output || value;
+  }
   await fs.mkdir(path.dirname(file), { recursive: true });
   await fs.writeFile(file, value);
 }
@@ -153,7 +175,15 @@ async function save(relative, value) {
         'return module.require("crypto").randomBytes(1)[0];',
         'throw new Error("Web Crypto unavailable");'
       );
-    await save(`vendor/${file}`, text);
+    if (file === 'bigint.js')
+      text = replaceOnce(text, 'let exp = this;', `${aliasNotice}let exp = this;`);
+    if (file === 'bn128.js')
+      text = replaceOnce(
+        text,
+        'const self = this;',
+        `${aliasNotice}const self = this;`
+      );
+    await save(`vendor/${file}`, commonJsNotice + text);
   }
   const functions =
     `/* Generated at build time from Classic circuit; GPL-3.0-or-later. See LICENSES.md. */\n` +
@@ -171,7 +201,7 @@ async function save(relative, value) {
       )
       .join(',\n')}};\n` +
     `module.exports=function(metadata){return Object.assign(unstringifyBigInts(metadata),{templates,functions,getSignalIdx(name){const i=this.signalName2Idx[name];if(i!==undefined)return i;if(!isNaN(name))return Number(name);throw Error('privacy_proof_invalid_input');},inputIdx(i){if(i>=this.nInputs)throw Error('privacy_proof_invalid_input');return this.nOutputs+1+i;},signalNames(i){return String(i);},calculateWitness(input){return calculateWitness(this,input,{logFunction:()=>undefined});}});};\n`;
-  await save('witnessFactory.js', functions);
+  await save('witnessFactory.js', commonJsNotice + functions);
   let groth = (
     await input(
       'vendor/websnark/src/groth16.js',
@@ -241,7 +271,12 @@ async function save(relative, value) {
     )
   )
     throw Error('Dynamic execution remained');
-  await save('groth16Runtime.js', groth);
+  groth = replaceOnce(
+    groth,
+    '/* globals WebAssembly, Blob, Worker, navigator, Promise, window */',
+    '/* globals WebAssembly, Promise */'
+  );
+  await save('groth16Runtime.js', commonJsNotice + groth);
   const license = await input(
     'vendor/snarkjs/COPYING',
     `https://raw.githubusercontent.com/tornadocash/snarkjs/${REFS.snarkjs}/COPYING`

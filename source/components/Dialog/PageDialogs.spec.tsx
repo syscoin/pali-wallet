@@ -10,6 +10,7 @@ import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { MemoryRouter } from 'react-router-dom';
 
+import { FaucetAccessModal } from 'components/Modal/FaucetAccessModal';
 import { FaucetFirstAccessModal } from 'components/Modal/FaucetFirstAccessModal';
 import { ConnectWallet } from 'pages/Connections/ConnectWallet';
 import { EditApprovedAllowanceValueModal } from 'pages/Send/EditApprovedAllowanceValueModal';
@@ -181,6 +182,16 @@ it('gives the faucet a named dialog, keyboard dismissal and a trapped action', a
   await user.keyboard('{Escape}');
   expect(onClose).toHaveBeenCalledTimes(1);
   expect(mockNavigate).not.toHaveBeenCalled();
+});
+
+it('keeps both faucet controls usable when a network is absent from the registry', () => {
+  mockState.vault.activeNetwork.chainId = 999999;
+  const first = render(<FaucetFirstAccessModal onClose={jest.fn()} />);
+  expect(screen.getByRole('dialog')).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Go to Faucet' })).toBeTruthy();
+  first.unmount();
+  render(<FaucetAccessModal />);
+  expect(screen.getByRole('button')).toBeTruthy();
 });
 
 it('keeps the faucet action navigation and close ordering unchanged', async () => {

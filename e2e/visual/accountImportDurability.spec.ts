@@ -82,7 +82,10 @@ async function refuseFirstImport(worker: Worker, slip44: number) {
   );
 }
 
-test('a refused watch import remains retryable and its accepted retry survives a cold worker', async ({}, info) => {
+async function watchImportDurability(
+  width: 320 | 400,
+  info: import('@playwright/test').TestInfo
+) {
   expect(process.env.PALI_TEST_DAPP_REVISION).toMatch(/^[a-f0-9]{40}$/);
   expect(path.isAbsolute(E2E_CONFIG.extensionPath)).toBe(true);
   const previous = { ...E2E_CONFIG };
@@ -98,10 +101,15 @@ test('a refused watch import remains retryable and its accepted retry survives a
   let status: 'passed' | 'failed' = 'failed';
   const observations: Record<string, unknown> = {};
   try {
-    wallet = await PaliWallet.launch('account-import-durability', {
-      offlineHttpProxy: server.url,
-      viewport: { width: 400, height: 620 },
-    });
+    wallet = await PaliWallet.launch(
+      width === 400
+        ? 'account-import-durability'
+        : 'account-import-durability-320',
+      {
+        offlineHttpProxy: server.url,
+        viewport: { width, height: width === 320 ? 360 : 620 },
+      }
+    );
     const routes = await installIsolatedVaultRoutes(
       wallet.context,
       fixture,
@@ -148,6 +156,28 @@ test('a refused watch import remains retryable and its accepted retry survives a
           .getByRole('button', { name: en.buttons.import, exact: true })
           .click();
         await expect(page.getByText(FAILURE, { exact: true })).toBeVisible();
+        if (width === 320) {
+          const alert = page.getByRole('alert').filter({ hasText: FAILURE });
+          await expect(alert).toHaveText(FAILURE);
+          await expect(alert).toBeInViewport({ ratio: 1 });
+          const position = await page.evaluate(() => {
+            const field = document.querySelector<HTMLElement>(
+              '#import-account-identifier'
+            )!;
+            const footer = document.querySelector<HTMLElement>(
+              '[data-page-action-footer]'
+            )!;
+            const fieldRect = field.getBoundingClientRect();
+            const footerRect = footer.getBoundingClientRect();
+            return {
+              top: fieldRect.top,
+              bottom: fieldRect.bottom,
+              footerTop: footerRect.top,
+            };
+          });
+          expect(position.top).toBeGreaterThanOrEqual(0);
+          expect(position.bottom).toBeLessThanOrEqual(position.footerTop + 1);
+        }
         await expect(page).toHaveURL(/#\/settings\/account\/import$/);
         await expect(page.locator('#import-account-identifier')).toHaveValue(
           fixture.watchAddress
@@ -172,9 +202,23 @@ test('a refused watch import remains retryable and its accepted retry survives a
     await wallet.step(
       'retry the same form and acknowledge the durably accepted watch account',
       async () => {
-        await page
-          .getByRole('button', { name: en.buttons.import, exact: true })
-          .click();
+        const retry = page.getByRole('button', {
+          name: en.buttons.import,
+          exact: true,
+        });
+        if (width === 320) {
+          for (
+            let count = 0;
+            count < 48 &&
+            !(await retry.evaluate((node) => node === document.activeElement));
+            count++
+          )
+            await page.keyboard.press('Tab');
+          await expect(retry).toBeFocused();
+          await page.keyboard.press('Enter');
+        } else {
+          await retry.click();
+        }
         await expect(
           page.getByText(en.settings.accountImported, { exact: true })
         ).toBeVisible();
@@ -282,4 +326,12 @@ test('a refused watch import remains retryable and its accepted retry survives a
       Object.assign(E2E_CONFIG, previous);
     }
   }
+}
+
+test('a refused watch import remains retryable and its accepted retry survives a cold worker', async ({}, info) => {
+  await watchImportDurability(400, info);
+});
+
+test('a narrow watch import keeps its identifier clear of the refusal and permits keyboard retry', async ({}, info) => {
+  await watchImportDurability(320, info);
 });

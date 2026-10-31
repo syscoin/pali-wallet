@@ -341,7 +341,10 @@ for (const viewport of [
             ).toBe(true);
           }
         );
-        if (initialPhase === 'failed') {
+        if (
+          initialPhase === 'failed' ||
+          (mode === 'after' && viewport.width === 320)
+        ) {
           await wallet.step(
             'choose German through Languages without changing wallet state',
             async () => {
@@ -393,6 +396,38 @@ for (const viewport of [
           'Currency reports availability honestly and keeps an unsaved currency selectable',
           async () => {
             await openCurrency();
+            if (mode === 'after' && viewport.height <= 400) {
+              const selector = page.getByRole('button', {
+                name: copy.settings.setYourPreferred,
+                exact: true,
+              });
+              const footer = page.locator('[data-page-action-footer]');
+              const expectSelectorExposed = async () => {
+                const selectorBox = await selector.boundingBox();
+                const footerBox = await footer.boundingBox();
+                expect(selectorBox).not.toBeNull();
+                expect(footerBox).not.toBeNull();
+                expect(selectorBox!.y).toBeGreaterThanOrEqual(0);
+                expect(
+                  selectorBox!.y + selectorBox!.height
+                ).toBeLessThanOrEqual(Math.min(viewport.height, footerBox!.y));
+              };
+              await expectSelectorExposed();
+              let reachedByTab = false;
+              for (let i = 0; i < 16; i++) {
+                await page.keyboard.press('Tab');
+                if (
+                  await selector.evaluate(
+                    (element) => element === document.activeElement
+                  )
+                ) {
+                  reachedByTab = true;
+                  break;
+                }
+              }
+              expect(reachedByTab).toBe(true);
+              await expectSelectorExposed();
+            }
             if (initialPhase === 'failed') {
               if (mode === 'before') {
                 await expect(

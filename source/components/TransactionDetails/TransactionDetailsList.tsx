@@ -13,6 +13,7 @@ interface ITransactionDetailsListProps {
     className?: string;
     copyValue?: string;
     label: string;
+    showFullValue?: boolean;
     tooltip?: string;
     value: any; // optional tooltip content for short values (e.g., ENS -> address)
   }>;
@@ -24,7 +25,7 @@ const CopyIcon = React.memo(() => (
   <Icon
     wrapperClassname="flex items-center justify-center"
     name="copy"
-    className="px-1 text-brand-white hover:text-fields-input-borderfocus"
+    className="px-1 text-brand-white hover:text-content-accent"
   />
 ));
 CopyIcon.displayName = 'CopyIcon';
@@ -38,7 +39,15 @@ export const TransactionDetailsList: React.FC<ITransactionDetailsListProps> = ({
     <>
       {details.map(
         (
-          { label, value, canCopy, className, tooltip, copyValue }: any,
+          {
+            label,
+            value,
+            canCopy,
+            className,
+            tooltip,
+            copyValue,
+            showFullValue,
+          }: any,
           index: number
         ) => (
           <Fragment key={`detail-${index}`}>
@@ -47,8 +56,14 @@ export const TransactionDetailsList: React.FC<ITransactionDetailsListProps> = ({
                 <p className="text-xs font-normal text-white">
                   {translateTransactionLabel(label, t)}
                 </p>
-                <span className={className || ''}>
-                  {String(value).length >= 20 ? (
+                <span
+                  className={`${className || ''} ${
+                    showFullValue
+                      ? 'min-w-0 max-w-[70%] text-right break-words'
+                      : ''
+                  }`}
+                >
+                  {String(value).length >= 20 && !showFullValue ? (
                     <Tooltip
                       content={tooltip ?? value}
                       childrenClassName="flex"

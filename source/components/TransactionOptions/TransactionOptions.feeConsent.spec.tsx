@@ -30,11 +30,18 @@ const mockT = (key: string, values?: any) => {
     'buttons.cancel': 'Cancel',
     'header.speedUp': 'Speed Up',
     'header.speedTx': 'Speed Up Transaction',
+    'header.cancelTx': 'Cancel Transaction',
+    'transactions.cancelFeePreview': 'Checking cancellation fee…',
+    'transactions.cancelFeeConsent':
+      'Cancel with a maximum gas fee of {{fee}} {{currency}}?',
+    'transactions.cancelFeeUnavailable': 'Cancellation fee unavailable.',
     'transactions.speedUpFeePreview': 'Checking the network fee…',
     'transactions.speedUpFeeConsent':
       'Speed up this transaction with a maximum network fee of {{fee}} {{currency}}?',
     'transactions.speedUpFeeUnavailable':
       'Unable to check the fee. Please try again.',
+    'transactions.speedUpAmountWouldChange':
+      'Add funds to this account before speeding up this transaction. The original amount will not be changed.',
   };
   return (text[key] || key).replace(
     /{{(\w+)}}/g,
@@ -457,10 +464,12 @@ it('refuses final submission if the approved scope changed before dispatch', asy
   );
 });
 
-it('retains the existing Cancel flow without requesting a speed-up quote', async () => {
-  mockEmitter.mockResolvedValueOnce({ isCanceled: false });
+it('quotes the cancellation fee and submits the approved maximum once', async () => {
+  mockEmitter
+    .mockResolvedValueOnce({ isCanceled: false, maximumFee: MAXIMUM_FEE })
+    .mockResolvedValueOnce({ isCanceled: false });
   render(<Harness />);
-  fireEvent.click(screen.getByText('Cancel'));
+  await act(async () => fireEvent.click(screen.getByText('Cancel')));
   await act(async () => fireEvent.click(screen.getByText('Confirm')));
   expect(mockEmitter).toHaveBeenCalledWith(
     ['wallet', 'cancelEvmTransaction'],
@@ -470,6 +479,7 @@ it('retains the existing Cancel flow without requesting a speed-up quote', async
       0,
       ACCOUNT,
       { chainId: 1, walletScope: getWalletNavigationScope() },
+      { approvedMaximumFee: MAXIMUM_FEE },
     ]
   );
 });
@@ -477,9 +487,12 @@ it('retains the existing Cancel flow without requesting a speed-up quote', async
 it.each(['account', 'network', 'transaction', 'removed'])(
   'closes a cancellation confirmation when its %s context changes',
   async (change) => {
-    mockEmitter.mockResolvedValue({ isCanceled: false });
+    mockEmitter.mockResolvedValue({
+      isCanceled: false,
+      maximumFee: MAXIMUM_FEE,
+    });
     const view = render(<Harness />);
-    fireEvent.click(screen.getByText('Cancel'));
+    await act(async () => fireEvent.click(screen.getByText('Cancel')));
     const oldConfirm = mockModal.onClick;
     if (change === 'account')
       mockVault.accounts.HDAccount[0].address = NEXT_ACCOUNT;
@@ -500,19 +513,19 @@ it.each(['account', 'network', 'transaction', 'removed'])(
 );
 
 it('rechecks a retained cancellation callback before React updates the view', async () => {
-  mockEmitter.mockResolvedValue({ isCanceled: false });
+  mockEmitter.mockResolvedValue({ isCanceled: false, maximumFee: MAXIMUM_FEE });
   render(<Harness />);
-  fireEvent.click(screen.getByText('Cancel'));
+  await act(async () => fireEvent.click(screen.getByText('Cancel')));
   const confirm = mockModal.onClick;
   mockVault.activeNetwork.url = 'https://other-rpc.invalid';
   await act(async () => confirm());
-  expect(mockEmitter).not.toHaveBeenCalled();
+  expect(mockEmitter).toHaveBeenCalledTimes(1);
 });
 
 it('admits cancellation once even when its callback is retained', async () => {
-  mockEmitter.mockResolvedValue({ isCanceled: false });
+  mockEmitter.mockResolvedValue({ isCanceled: false, maximumFee: MAXIMUM_FEE });
   render(<Harness />);
-  fireEvent.click(screen.getByText('Cancel'));
+  await act(async () => fireEvent.click(screen.getByText('Cancel')));
   const confirm = mockModal.onClick;
   await act(async () => {
     confirm();
@@ -522,13 +535,13 @@ it('admits cancellation once even when its callback is retained', async () => {
 });
 
 it('does not let an old cancellation callback close a newer confirmation', async () => {
-  mockEmitter.mockResolvedValue({ isCanceled: false });
+  mockEmitter.mockResolvedValue({ isCanceled: false, maximumFee: MAXIMUM_FEE });
   render(<Harness />);
-  fireEvent.click(screen.getByText('Cancel'));
+  await act(async () => fireEvent.click(screen.getByText('Cancel')));
   const oldClose = mockModal.onClose;
   const oldConfirm = mockModal.onClick;
   act(() => oldClose());
-  fireEvent.click(screen.getByText('Cancel'));
+  await act(async () => fireEvent.click(screen.getByText('Cancel')));
   await act(async () => {
     oldClose();
     oldConfirm();
@@ -584,14 +597,156 @@ it.each([
 ])(
   'closes cancellation when same-hash %s identity changes',
   async (_label, fields) => {
-    mockEmitter.mockResolvedValue({ isCanceled: false });
+    mockEmitter.mockResolvedValue({
+      isCanceled: false,
+      maximumFee: MAXIMUM_FEE,
+    });
     const view = render(<Harness />);
-    fireEvent.click(screen.getByText('Cancel'));
+    await act(async () => fireEvent.click(screen.getByText('Cancel')));
     const oldConfirm = mockModal.onClick;
     view.rerender(<Harness tx={{ ...transaction, ...fields }} />);
     expect(screen.queryByRole('dialog')).toBeNull();
     await act(async () => oldConfirm());
     expect(mockUpdate).not.toHaveBeenCalled();
-    expect(mockEmitter).not.toHaveBeenCalled();
+    expect(mockEmitter).toHaveBeenCalledTimes(1);
   }
 );
+
+it('keeps cancellation disabled until its quote arrives and displays its exact cap', async () => {
+  const pending = deferred();
+  mockEmitter.mockReturnValueOnce(pending.promise);
+  render(<Harness />);
+  fireEvent.click(screen.getByText('Cancel'));
+  expect(
+    (screen.getByRole('button', { name: 'Loading' }) as HTMLButtonElement)
+      .disabled
+  ).toBe(true);
+  expect(mockUpdate).not.toHaveBeenCalled();
+  await settleQuote(pending, { isCanceled: false, maximumFee: MAXIMUM_FEE });
+  expect(
+    screen.getByText(
+      'Cancel with a maximum gas fee of 0.001234567890123456 ETH?'
+    )
+  ).toBeTruthy();
+  expect(mockUpdate).not.toHaveBeenCalled();
+});
+
+it.each([
+  undefined,
+  { isCanceled: true, maximumFee: MAXIMUM_FEE },
+  { isCanceled: false, maximumFee: '1e18' },
+])(
+  'fails closed when cancellation quote is malformed (%j)',
+  async (response) => {
+    mockEmitter.mockResolvedValueOnce(response);
+    render(<Harness />);
+    await act(async () => fireEvent.click(screen.getByText('Cancel')));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(mockAlert.error).toHaveBeenCalledWith(
+      'Cancellation fee unavailable.'
+    );
+    expect(mockUpdate).not.toHaveBeenCalled();
+  }
+);
+
+it('ignores a cancellation quote arriving after the modal is closed', async () => {
+  const pending = deferred();
+  mockEmitter.mockReturnValueOnce(pending.promise);
+  render(<Harness />);
+  fireEvent.click(screen.getByText('Cancel'));
+  const confirm = mockModal.onClick;
+  act(() => mockModal.onClose());
+  await settleQuote(pending, { isCanceled: false, maximumFee: MAXIMUM_FEE });
+  await act(async () => confirm());
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(mockUpdate).not.toHaveBeenCalled();
+});
+
+it('times out a cancellation quote and ignores its late result', async () => {
+  jest.useFakeTimers();
+  const pending = deferred();
+  mockEmitter.mockReturnValueOnce(pending.promise);
+  render(<Harness />);
+  fireEvent.click(screen.getByText('Cancel'));
+  act(() => jest.advanceTimersByTime(15_000));
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(mockAlert.error).toHaveBeenCalledWith('Cancellation fee unavailable.');
+  await settleQuote(pending, { isCanceled: false, maximumFee: MAXIMUM_FEE });
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(mockUpdate).not.toHaveBeenCalled();
+});
+
+it('shows the specific amount-preservation guidance when the speed-up preview would reduce the amount', async () => {
+  mockEmitter.mockResolvedValueOnce({
+    isSpeedUp: false,
+    error: true,
+    code: 'REPLACEMENT_VALUE_WOULD_CHANGE',
+  });
+  render(<Harness />);
+  await act(async () => openSpeedUp());
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(mockAlert.error).toHaveBeenCalledWith(
+    'Add funds to this account before speeding up this transaction. The original amount will not be changed.'
+  );
+  expect(mockUpdate).not.toHaveBeenCalled();
+  expect(mockEmitter).toHaveBeenCalledTimes(1);
+});
+
+it('shows amount-preservation guidance if the balance changes after fee approval', async () => {
+  mockEmitter.mockResolvedValueOnce(quote()).mockResolvedValueOnce({
+    isSpeedUp: false,
+    error: true,
+    code: 'REPLACEMENT_VALUE_WOULD_CHANGE',
+  });
+  render(<Harness />);
+  await act(async () => openSpeedUp());
+  await act(async () =>
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
+  );
+  expect(mockAlert.error).toHaveBeenCalledWith(
+    'Add funds to this account before speeding up this transaction. The original amount will not be changed.'
+  );
+  expect(mockAlert.success).not.toHaveBeenCalled();
+  expect(mockEmitter).toHaveBeenCalledTimes(2);
+});
+
+it('does not classify a stale amount-change preview as current', async () => {
+  const pending = deferred();
+  mockEmitter.mockReturnValueOnce(pending.promise);
+  const preview = previewSpeedUpTransaction(ORIGINAL, false, 1);
+  mockVault.activeNetwork.url = 'https://other-rpc.example';
+  pending.resolve({
+    isSpeedUp: false,
+    error: true,
+    code: 'REPLACEMENT_VALUE_WOULD_CHANGE',
+  });
+  await expect(preview).rejects.toThrow('Transaction context changed');
+});
+
+it('does not show amount guidance from a final response after the scope changes', async () => {
+  const pending = deferred();
+  const walletScope = getWalletNavigationScope();
+  mockEmitter.mockReturnValueOnce(pending.promise);
+  const operation = handleUpdateTransaction({
+    t: mockT,
+    updateData: {
+      alert: mockAlert,
+      chainId: 1,
+      isLegacy: false,
+      txHash: ORIGINAL,
+      updateType: UpdateTxAction.SpeedUp,
+      approvedMaximumFee: MAXIMUM_FEE,
+      walletScope,
+    },
+  });
+  mockVault.activeNetwork.url = 'https://other-rpc.example';
+  pending.resolve({
+    isSpeedUp: false,
+    error: true,
+    code: 'REPLACEMENT_VALUE_WOULD_CHANGE',
+  });
+  await operation;
+  expect(mockAlert.error).not.toHaveBeenCalled();
+  expect(mockAlert.warning).not.toHaveBeenCalled();
+  expect(mockAlert.success).not.toHaveBeenCalled();
+});

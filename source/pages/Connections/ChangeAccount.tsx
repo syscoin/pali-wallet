@@ -27,6 +27,8 @@ import { isAccountCompatibleWithNetwork } from 'utils/accountCompatibility';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { ellipsis } from 'utils/index';
 
+import { useConnectionFocusClearance } from './useConnectionFocusClearance';
+
 // Component to render account icon matching the app's pattern - moved outside to prevent recreation
 const AccountIcon = React.memo(
   ({
@@ -64,6 +66,7 @@ const AccountIcon = React.memo(
 AccountIcon.displayName = 'AccountIcon';
 
 export const ChangeAccount = () => {
+  const connectionFocusRef = useConnectionFocusClearance();
   const { controllerEmitter } = useController();
   const dapp = useSelector((state: RootState) => state.dapp.dapps);
   const accounts = useSelector((state: RootState) => state.vault.accounts);
@@ -390,7 +393,7 @@ export const ChangeAccount = () => {
   };
 
   return (
-    <div className="flex flex-col w-full h-full">
+    <div ref={connectionFocusRef} className="flex flex-col w-full h-full">
       {/* Main scrollable content area */}
       <div className="flex-1 overflow-y-auto remove-scrollbar">
         {/* Header section */}
@@ -480,6 +483,7 @@ export const ChangeAccount = () => {
                                   : 'border-brand-gray300 bg-bkg-2 hover:bg-bkg-3 hover:border-brand-gray200'
                               }`}
                             role="button"
+                            aria-pressed={isSelected}
                             aria-disabled={isChanging}
                             tabIndex={isChanging ? -1 : 0}
                             onClick={() =>
@@ -499,8 +503,8 @@ export const ChangeAccount = () => {
                               }
                             }}
                           >
-                            <div className="flex items-center justify-between gap-2 w-full">
-                              <div className="flex items-center gap-3 flex-1 min-w-0">
+                            <div className="flex flex-col gap-3 w-full [@media(min-width:400px)]:flex-row [@media(min-width:400px)]:items-center [@media(min-width:400px)]:justify-between [@media(min-width:400px)]:gap-2">
+                              <div className="flex items-center gap-3 w-full min-w-0 [@media(min-width:400px)]:w-auto [@media(min-width:400px)]:flex-1">
                                 <AccountIcon
                                   account={acc}
                                   size={40}
@@ -515,12 +519,13 @@ export const ChangeAccount = () => {
                                   <p className="font-medium text-sm text-brand-white mb-1 truncate">
                                     {acc.label}
                                   </p>
-                                  <div className="flex items-center gap-1">
+                                  <div className="flex items-center gap-1 min-w-0">
                                     <Tooltip
                                       content={acc.address}
                                       placement="top"
+                                      childrenClassName="min-w-0"
                                     >
-                                      <p className="text-xs text-brand-graylight">
+                                      <p className="text-xs text-brand-graylight truncate">
                                         {acc.address
                                           ? ellipsis(acc.address, 8, 4)
                                           : t('connections.noAddress')}
@@ -557,8 +562,8 @@ export const ChangeAccount = () => {
                                   </div>
                                 </div>
                               </div>
-                              <div className="flex items-center gap-3 flex-shrink-0">
-                                <div className="text-right">
+                              <div className="flex items-center justify-between gap-3 w-full flex-shrink-0 [@media(min-width:400px)]:w-auto">
+                                <div className="text-left [@media(min-width:400px)]:text-right">
                                   <LazyAccountBalance
                                     account={acc}
                                     accountType={keyringType}
@@ -567,7 +572,7 @@ export const ChangeAccount = () => {
                                     precision={8}
                                   />
                                   {tokens && tokens.length > 0 && (
-                                    <div className="mt-0.5 flex justify-end">
+                                    <div className="mt-0.5 flex justify-start [@media(min-width:400px)]:justify-end">
                                       <TokenIconStack tokens={tokens} />
                                     </div>
                                   )}
@@ -627,7 +632,7 @@ export const ChangeAccount = () => {
                 href="https://docs.syscoin.org/"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-brand-royalblue hover:underline"
+                className="text-brand-royalbluemedium hover:underline"
               >
                 {t('connections.learnMore')}
               </a>
@@ -640,7 +645,10 @@ export const ChangeAccount = () => {
       </div>
 
       {/* Fixed button container at bottom */}
-      <ToastActionFooter className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 shadow-lg z-50">
+      <ToastActionFooter
+        data-connection-actions
+        className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 shadow-lg z-50"
+      >
         {selectionError && (
           <p role="alert" className="text-xs text-brand-red mb-2">
             {selectionError}

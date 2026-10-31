@@ -133,14 +133,19 @@ for (const value of [
           });
           await expect(importButton).toBeEnabled();
           await importButton.click();
-          const notice = page.getByText(
-            en.tokens.hasBeenAddedToYourWallet.replace('{{token}}', SPT_SYMBOL),
-            { exact: true }
-          );
+          const notice = page
+            .getByRole('status')
+            .getByText(
+              en.tokens.hasBeenAddedToYourWallet.replace(
+                '{{token}}',
+                SPT_SYMBOL
+              ),
+              { exact: true }
+            );
           await expect(notice).toBeVisible();
-          await notice.click();
           await page.getByRole('button', { name: 'Back', exact: true }).click();
           await wallet!.ensureOnHome();
+          await expect(notice).toBeHidden();
           await page.locator('#assets-btn').click();
         }
       );

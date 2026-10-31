@@ -91,7 +91,7 @@ export const ConfirmPhrase = ({
               <Button
                 className={`bg-brand-deepPink100 ${
                   orgList.length ? 'opacity-60' : 'opacity-100'
-                } w-[17.5rem] h-10 text-white text-base font-base font-medium rounded-2xl`}
+                } w-[17.5rem] h-10 text-bkg-1 text-base font-base font-medium rounded-2xl`}
                 type="button"
                 disabled={orgList.length > 0}
                 onClick={() => {

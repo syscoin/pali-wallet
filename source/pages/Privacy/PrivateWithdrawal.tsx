@@ -1,3 +1,4 @@
+import { getAddress } from 'ethers';
 import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { shallowEqual, useSelector } from 'react-redux';
@@ -21,6 +22,13 @@ const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const ADDRESS = /^0x[0-9a-fA-F]{40}$/;
 const HASH = /^0x[0-9a-fA-F]{64}$/;
+const isValidRecipient = (value: string) => {
+  try {
+    return ADDRESS.test(value) && BigInt(getAddress(value)) !== BigInt(0);
+  } catch {
+    return false;
+  }
+};
 const uint = (value: unknown) => {
   if (typeof value !== 'string' || !/^(0|[1-9][0-9]{0,77})$/.test(value))
     throw new Error('Invalid withdrawal review');
@@ -124,8 +132,14 @@ function WithdrawalFlow({
 }: IPrivateWithdrawalProps & { emitter: (...args: any[]) => Promise<any> }) {
   const { t } = useTranslation();
   const [recipient, setRecipient] = useState('');
+  const [recipientTouched, setRecipientTouched] = useState(false);
+  const recipientInvalid =
+    recipientTouched &&
+    Boolean(recipient.trim()) &&
+    !isValidRecipient(recipient.trim());
   const [mode, setMode] = useState<'direct' | 'relayed'>('direct');
   const [relayers, setRelayers] = useState<IPrivacyRelayerChoice[]>([]);
+  const [directoryLoaded, setDirectoryLoaded] = useState(false);
   const [relayerId, setRelayerId] = useState('');
   const [busy, setBusy] = useState<'directory' | 'prepare' | 'submit' | null>(
     null
@@ -174,6 +188,7 @@ function WithdrawalFlow({
     const revision = ++owner.current.revision;
     setBusy('directory');
     setError('');
+    setDirectoryLoaded(false);
     setRelayerId('');
     try {
       const raw = await call('getRelayers', [], 20000);
@@ -217,6 +232,7 @@ function WithdrawalFlow({
           supportedPools.includes(note.poolId)
         )
       );
+      setDirectoryLoaded(true);
     } catch {
       if (current(revision)) {
         setRelayers([]);
@@ -229,7 +245,7 @@ function WithdrawalFlow({
   const prepare = async () => {
     if (
       owner.current.busy ||
-      !ADDRESS.test(recipient.trim()) ||
+      !isValidRecipient(recipient.trim()) ||
       (mode === 'relayed' && !relayerId)
     )
       return;
@@ -262,10 +278,15 @@ function WithdrawalFlow({
       setReview(next);
       setConsumed(false);
       setClock(Date.now());
-    } catch {
+    } catch (failure) {
       if (current(revision)) {
         cancel();
-        setError('prepareFailed');
+        const interrupted =
+          typeof failure === 'object' &&
+          failure !== null &&
+          'message' in failure &&
+          failure.message === 'privacy_proof_cancelled';
+        setError(interrupted ? 'prepareInterrupted' : 'prepareFailed');
       }
     } finally {
       if (current(revision)) {
@@ -372,13 +393,31 @@ function WithdrawalFlow({
             autoCapitalize="off"
             spellCheck={false}
             maxLength={42}
+            aria-invalid={recipientInvalid || undefined}
+            aria-describedby={
+              recipientInvalid
+                ? 'privacy-withdrawal-recipient-error'
+                : undefined
+            }
+            onBlur={() => setRecipientTouched(true)}
             disabled={busy === 'prepare'}
             onChange={(event) => {
               setRecipient(event.target.value);
-              setError('');
+              setError((currentError) =>
+                currentError === 'directoryFailed' ? currentError : ''
+              );
             }}
             className="w-full rounded-lg border border-alpha-whiteAlpha300 bg-bkg-4 p-3 text-xs"
           />
+          {recipientInvalid && (
+            <p
+              id="privacy-withdrawal-recipient-error"
+              role="alert"
+              className="text-xs text-brand-red"
+            >
+              {t('privacy.withdrawal.recipientInvalid')}
+            </p>
+          )}
           <fieldset disabled={Boolean(busy)} className="space-y-2">
             <legend>{t('privacy.withdrawal.method')}</legend>
             {(['direct', 'relayed'] as const).map((value) => (
@@ -441,7 +480,7 @@ function WithdrawalFlow({
                       </option>
                     ))}
                   </select>
-                  {!relayers.length && (
+                  {directoryLoaded && !relayers.length && (
                     <p className="text-xs">
                       {t('privacy.withdrawal.noRelayers')}
                     </p>
@@ -469,7 +508,7 @@ function WithdrawalFlow({
             variant="primary"
             disabled={
               Boolean(busy) ||
-              !ADDRESS.test(recipient.trim()) ||
+              !isValidRecipient(recipient.trim()) ||
               (mode === 'relayed' && !relayerId)
             }
             loading={busy === 'prepare'}

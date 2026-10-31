@@ -11,6 +11,7 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
+import { AccountExplorerAvatar } from 'components/AccountExplorerAvatar';
 import { IconButton, Icon, Tooltip, ConfirmationModal } from 'components/index';
 import SkeletonLoader from 'components/Loader/SkeletonLoader';
 import { useUtils } from 'hooks/index';
@@ -24,7 +25,7 @@ import {
   createBrowsingNavigationContext,
   navigateWithContext,
 } from 'utils/navigationState';
-import { buildExplorerUrl } from 'utils/strings';
+import { buildExplorerUrl, selectExplorerUrl } from 'utils/strings';
 
 // A dialog/route may disappear while the device RPC is still pending. Keep
 // this latch at renderer-module scope so a new AccountHeader cannot start a
@@ -46,6 +47,7 @@ export const AccountHeader: React.FC = () => {
   const isBitcoinBased = useSelector(
     (state: RootState) => state.vault.isBitcoinBased
   );
+  const explorer = useSelector(selectExplorerUrl);
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
@@ -164,7 +166,7 @@ export const AccountHeader: React.FC = () => {
     const accountAddress = currentAccount?.address;
     const xpub = (currentAccount as any)?.xpub as string | undefined;
     const isImported = Boolean((currentAccount as any)?.isImported);
-    if (!accountAddress) return;
+    if (!accountAddress || !explorer) return;
 
     // Prefer XPUB page for UTXO accounts when available, including imported extended-key accounts.
     // Fall back to /address for:
@@ -186,21 +188,13 @@ export const AccountHeader: React.FC = () => {
         : xpub!
       : accountAddress;
 
-    window.open(
-      buildExplorerUrl(
-        activeNetwork.explorer || activeNetwork.url,
-        pathSegment,
-        identifier
-      ),
-      '_blank'
-    );
+    window.open(buildExplorerUrl(explorer, pathSegment, identifier), '_blank');
   }, [
     currentAccount?.address,
     (currentAccount as any)?.xpub,
     (currentAccount as any)?.isImported,
     isBitcoinBased,
-    activeNetwork.explorer,
-    activeNetwork.url,
+    explorer,
   ]);
 
   const handleVerifyAddress = useCallback(async () => {
@@ -299,18 +293,11 @@ export const AccountHeader: React.FC = () => {
         allowCloseWhileLoading
       />
       <div className="flex min-w-0 flex-1 ml-[15px] items-center text-brand-white">
-        <Tooltip
-          content={t('home.viewOnExplorer')}
-          childrenClassName="shrink-0"
-        >
-          <button
-            type="button"
-            aria-label={t('home.viewAccountOnExplorer')}
-            className="add-identicon ml-1 mr-2 my-2 cursor-pointer transition-all duration-200 hover:scale-105 hover:opacity-80 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue500"
-            onClick={openAccountInExplorer}
-            title={t('home.viewAccountOnExplorer')}
-          />
-        </Tooltip>
+        <AccountExplorerAvatar
+          available={Boolean(explorer)}
+          onClick={openAccountInExplorer}
+          header
+        />
 
         <div className="min-w-0 flex-1 items-center justify-center px-1 text-brand-white">
           {isSwitchInProgress ? (

@@ -14,6 +14,7 @@ import {
 import { identifyClassicNote } from '../../source/utils/privacy/note';
 import { verifyPrivacyProof } from '../../source/utils/privacy/proverCore';
 import { E2E_CONFIG } from '../harness/config';
+import { captureForegroundContrast } from '../harness/foregroundContrast';
 import {
   createIsolatedVaultFixture,
   installIsolatedVaultRoutes,
@@ -774,6 +775,12 @@ test('privacy pool preparation verifies local note imports and preserves a good 
           en.privacy.syncing
         );
         await expect(wallet!.page.getByRole('progressbar')).toBeVisible();
+        await captureForegroundContrast(
+          wallet!.page.getByRole('progressbar').locator('div'),
+          info,
+          'privacy-downloading-progress',
+          'background'
+        );
         await capture('progress');
       }
     );
@@ -784,6 +791,12 @@ test('privacy pool preparation verifies local note imports and preserves a good 
         await expect.poll(() => finalAnchorHeld, { timeout: 30000 }).toBe(true);
         await expect(poolStatus(wallet!.page)).toContainText(
           en.privacy.verifying
+        );
+        await captureForegroundContrast(
+          wallet!.page.getByRole('progressbar').locator('div'),
+          info,
+          'privacy-verifying-progress',
+          'background'
         );
         await capture('verifying');
         releaseFinalAnchor();

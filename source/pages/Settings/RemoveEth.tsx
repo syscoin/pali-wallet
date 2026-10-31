@@ -1,9 +1,8 @@
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useNavigate, useLocation } from 'react-router-dom';
 
-import metamaskIcon from 'assets/all_assets/metamask.svg';
 import { Button, DefaultModal, Icon, PageActionFooter } from 'components/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
@@ -14,7 +13,7 @@ const RemoveEthView = () => {
     (state: RootState) => state.vaultGlobal
   );
   const { t } = useTranslation();
-  const [confirmed, setConfirmed] = useState<boolean>(false);
+  const [confirmed, setConfirmed] = useState<boolean | null>(null);
   const isEnabled = hasEthProperty;
   const [loading, setLoading] = useState<boolean>(false);
   const [saveError, setSaveError] = useState(false);
@@ -45,7 +44,7 @@ const RemoveEthView = () => {
           }
           await controllerEmitter(['wallet', 'removeWindowEthProperty']);
 
-          setConfirmed(true);
+          setConfirmed(false);
           break;
         case false:
           await controllerEmitter(['wallet', 'addWindowEthProperty']);
@@ -63,29 +62,27 @@ const RemoveEthView = () => {
     }
   };
 
-  const icon = useMemo(
-    () =>
-      isEnabled ? (
-        <img className="h-5 w-5" src={metamaskIcon} alt="" />
-      ) : (
-        <Icon
-          name="PaliWhiteSmall"
-          isSvg
-          className="h-5 w-5 text-brand-gray300 opacity-80"
-        />
-      ),
-    [isEnabled]
+  const icon = (
+    <Icon
+      name="PaliWhiteSmall"
+      isSvg
+      className="h-5 w-5 text-brand-gray300 opacity-80"
+    />
   );
 
   return (
     <>
       <DefaultModal
-        show={confirmed}
+        show={confirmed !== null}
         onClose={() => {
-          setConfirmed(false);
+          setConfirmed(null);
           navigateBack(navigate, location);
         }}
-        title={t('settings.windowObjectWasSet')}
+        title={t(
+          confirmed
+            ? 'settings.paliProviderEnabled'
+            : 'settings.paliProviderDisabled'
+        )}
         description={t('settings.yourWalletWasConfigured')}
       />
       <div className="flex w-full min-w-0 flex-col items-center gap-[38px]">
@@ -95,18 +92,13 @@ const RemoveEthView = () => {
             name="Wallet"
             isSvg
           />
-          {!isEnabled ? (
-            <p className="text-sm text-white">
-              {t('settings.usingAnotherWallet')}
-            </p>
-          ) : (
-            <>
-              <p className="text-sm text-white">Pali</p>
-              <p className="text-sm text-brand-gray200">
-                {t('settings.defaultWalletStatus')}
-              </p>
-            </>
-          )}
+          <p className="text-sm text-white">
+            {t(
+              isEnabled
+                ? 'settings.paliProviderEnabled'
+                : 'settings.paliProviderDisabled'
+            )}
+          </p>
         </div>
 
         {isEnabled && (
@@ -120,8 +112,24 @@ const RemoveEthView = () => {
           </div>
         )}
 
-        <PageActionFooter error={saveError ? t('send.failed') : undefined}>
+        <PageActionFooter
+          className="provider-settings-footer"
+          error={
+            saveError
+              ? t(
+                  isEnabled
+                    ? 'settings.disablePaliProviderFailed'
+                    : 'settings.enablePaliProviderFailed'
+                )
+              : undefined
+          }
+        >
           <div className="flex w-full flex-col gap-3">
+            {isEnabled && (
+              <p className="text-center text-xs text-white">
+                {t('settings.disablePaliProviderWarning')}
+              </p>
+            )}
             <button
               type="button"
               onClick={onSubmit}
@@ -132,9 +140,11 @@ const RemoveEthView = () => {
                 {icon}
               </span>
               <span className="min-w-0 whitespace-normal break-words">
-                {t('settings.setWalletAsDefault', {
-                  wallet: isEnabled ? 'Metamask' : 'Pali',
-                })}
+                {t(
+                  isEnabled
+                    ? 'settings.disablePaliProvider'
+                    : 'settings.enablePaliProvider'
+                )}
               </span>
             </button>
             <Button

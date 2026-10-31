@@ -309,3 +309,52 @@ it('keeps the working UTXO fallback instead of the first failed catalogue endpoi
     jest.useRealTimers();
   }
 });
+
+it.each(['blank', 'same-rpc'] as const)(
+  'retains the EVM explorer intent when the editor is %s',
+  async (choice) => {
+    const user = await open(INetworkType.Ethereum);
+    await choose(user, INetworkType.Ethereum);
+    fireEvent.change(screen.getByPlaceholderText('settings.explorer'), {
+      target: { value: choice === 'blank' ? '' : chains.ethereum.rpc[0].url },
+    });
+    const saved = await save(user);
+    expect(saved.explorer).toBe(chains.ethereum.rpc[0].url);
+    expect(saved.explorerExplicitlyAbsent).toBe(
+      choice === 'blank' ? true : undefined
+    );
+  }
+);
+
+it.each(['keep-empty', 'same-rpc'] as const)(
+  'reopens an intentionally blank EVM explorer and saves %s',
+  async (choice) => {
+    const chain = chains.ethereum;
+    const registered = {
+      kind: INetworkType.Ethereum,
+      chainId: chain.chainId,
+      slip44: 60,
+      label: chain.name,
+      currency: chain.nativeCurrency.symbol.toLowerCase(),
+      url: chain.rpc[0].url,
+      explorer: chain.rpc[0].url,
+      explorerExplicitlyAbsent: true,
+    };
+    mockNetworks.ethereum[chain.chainId] = registered;
+    mockLocation.state = {
+      isEditing: true,
+      selected: { kind: INetworkType.Ethereum, chainId: chain.chainId },
+      chain: INetworkType.Ethereum,
+    };
+    const user = userEvent.setup();
+    render(<CustomRPC />);
+    const field = screen.getByPlaceholderText('settings.explorer');
+    expect(field).toHaveValue('');
+    if (choice === 'same-rpc') await user.type(field, registered.url);
+    const saved = await save(user, 'editCustomRpc');
+    expect(saved.explorer).toBe(registered.url);
+    expect(saved.explorerExplicitlyAbsent).toBe(
+      choice === 'keep-empty' ? true : undefined
+    );
+  }
+);

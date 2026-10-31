@@ -1,9 +1,4 @@
 {
-  "providerDefault": {
-    "defaultEnabled": "Pali가 기본 지갑으로 설정되었습니다!",
-    "otherWalletInUse": "MetaMask가 사용 중이며 Pali는 비활성화되어 있습니다.",
-    "setPaliDefault": "Pali를 기본 지갑으로 설정!"
-  },
   "transactionDisplay": {
     "blockHash": "블록 해시",
     "blockNumber": "블록 번호",
@@ -160,7 +155,7 @@
     "forget": "지갑 삭제",
     "generalOptions": "일반 옵션",
     "currency": "통화",
-    "manageEth": "기본 지갑 설정",
+    "manageEth": "Ethereum 제공자 관리",
     "infoHelp": "정보/도움말",
     "lock": "잠금",
     "advanced": "고급"
@@ -211,7 +206,6 @@
     "errorSwitching": "네트워크 전환 오류",
     "speedUp": "가속",
     "cancelTx": "거래 취소",
-    "cancelTxMessage": "정말로 이 거래를 취소하시겠습니까?",
     "speedTx": "거래 가속"
   },
   "connections": {
@@ -265,6 +259,7 @@
     "importToken": "토큰 가져오기",
     "youHaveNoTokens": "토큰이나 NFT가 없습니다",
     "youHaveNoTxs": "거래 내역이 없습니다",
+    "historyMayBeIncomplete": "탐색기 API가 없으면 거래 내역이 불완전할 수 있습니다.",
     "seeAllTxs": "모든 거래 보기",
     "addressCopied": "주소가 성공적으로 복사되었습니다",
     "hashCopied": "해시가 성공적으로 복사되었습니다",
@@ -313,7 +308,8 @@
     "youShould": "향후 참조를 위해 복구 구문과 지갑 비밀번호를 기록해 두어야 합니다."
   },
   "createPhrase": {
-    "recoveryPhrase": "복구 구문"
+    "recoveryPhrase": "복구 구문",
+    "generationFailed": "새 복구 구문을 생성하지 못했습니다. 다시 시도하려면 생성을 선택하세요."
   },
   "send": {
     "transactionFailureDetails": "트랜잭션 실패: {{message}}",
@@ -366,9 +362,16 @@
     "gasPriceBelowEstimate": "가스 가격이 {{estimate}} GWEI보다 낮습니다.",
     "maxFeeBelowEstimate": "최대 수수료가 {{estimate}} GWEI보다 낮습니다.",
     "priorityFeeBelowEstimate": "우선 수수료가 {{estimate}} GWEI보다 낮습니다.",
+    "erc20SetAllowanceZero": "승인 철회 요청 대상 토큰:",
+    "erc20IncreaseAllowance": "승인 한도 증가 요청 대상 토큰:",
+    "erc20DecreaseAllowance": "승인 한도 감소 요청 대상 토큰:",
+    "erc20ApprovalRequest": "토큰 승인 요청 대상:",
     "grantAccess": "귀하의 액세스 권한을 부여합니다",
     "editPermission": "권한 편집",
     "invalidApprovalDetails": "승인 세부 정보가 올바르지 않습니다. 이 요청을 확인할 수 없습니다.",
+    "revokeNftApproval": "NFT 승인 취소",
+    "revokeNftApprovalDescription": "{{token}} #{{tokenId}}의 승인된 주소를 제거합니다",
+    "approvalResetAddress": "승인 초기화 주소",
     "approveNftTransfer": "NFT 전송 승인",
     "allowTransferOf": "전송 허용",
     "grantCollectionAccess": "컬렉션 액세스 권한 부여",
@@ -419,6 +422,7 @@
     "feeRateNormal": "수수료율 {{value}} {{currency}}/vbyte가 정상보다 높습니다.",
     "send": "보내기",
     "insufficientFunds": "잔액 부족",
+    "maxBalanceReviewRequired": "잔액이 변경되었거나 확인할 수 없습니다. 금액을 확인하고 다시 시도하세요.",
     "insufficientFundsForGas": "가스 수수료를 충당할 잔액이 부족합니다",
     "maxUnavailablePendingTx": "대기 중인 거래가 있어 MAX를 사용할 수 없습니다. 확인될 때까지 기다려 주세요.",
     "networkCatchingUp": "네트워크에서 이전 거래를 업데이트하고 있습니다. 잠시 후 다시 시도해 주세요.",
@@ -446,9 +450,9 @@
     "balanceVerified": "잔액 확인됨",
     "tokenOwnershipVerified": "토큰 소유권 확인됨",
     "pleaseVerifyTokenOwnership": "먼저 토큰 소유권을 확인해 주세요",
-    "youOnlyOwn": "이 토큰을 {amount}개만 소유하고 있습니다",
+    "youOnlyOwn": "이 토큰을 {{amount}}개만 소유하고 있습니다",
     "pleaseWaitForBalanceVerification": "잔액 확인을 기다려 주세요",
-    "insufficientFundsVerified": "자금 부족 (확인된 잔액: {balance})",
+    "insufficientFundsVerified": "자금 부족 (확인된 잔액: {{balance}})",
     "enterTokenId": "토큰 ID 입력",
     "amountMustBePositiveInteger": "금액은 양의 정수여야 합니다",
     "verifyingBalance": "잔액 확인 중...",
@@ -615,11 +619,15 @@
     "watchOnlyValidationTimedOut": "보기 전용 계정 확인에 너무 오래 걸렸습니다. 아무것도 가져오지 않았습니다. 다시 시도해 주세요.",
     "watchOnly": "보기 전용",
     "publicIdentifierInput": "주소 / XPUB / 디스크립터",
-    "usingAnotherWallet": "다른 지갑을 사용 중입니다.",
-    "defaultWalletStatus": "가 기본 지갑입니다",
     "otherDefaultWalletHelpTitle": "다른 지갑을 기본으로 설정하려면?",
     "otherDefaultWalletHelp": "일부 지갑의 설정에서 변경할 수 있습니다. 브라우저는 마지막으로 설치하거나 활성화한 지갑을 기본으로 사용합니다.",
-    "setWalletAsDefault": "{{wallet}}을(를) 기본 지갑으로 설정",
+    "paliProviderEnabled": "Pali Ethereum 제공자가 활성화되어 있습니다",
+    "paliProviderDisabled": "Pali Ethereum 제공자가 비활성화되어 있습니다",
+    "disablePaliProvider": "Pali Ethereum 제공자 비활성화",
+    "enablePaliProvider": "Pali Ethereum 제공자 활성화",
+    "disablePaliProviderWarning": "Pali를 비활성화하면 연결된 모든 사이트가 연결 해제됩니다. 다른 지갑은 해당 지갑의 설정에서 구성하세요.",
+    "disablePaliProviderFailed": "Pali Ethereum 제공자의 비활성화를 확인하지 못했습니다. 일부 사이트가 이미 연결 해제되었을 수 있습니다. 다시 시도하기 전에 연결을 확인하세요.",
+    "enablePaliProviderFailed": "Pali Ethereum 제공자의 활성화를 확인하지 못했습니다. 다시 시도하기 전에 설정을 확인하세요.",
     "localSmartAccountGuardianMissing": "로컬 스마트 계정 가디언을 찾을 수 없습니다.",
     "recoveryValidatorNotConfigured": "P-256/WebAuthn 검증자가 설정되지 않았습니다.",
     "xmssProgressLevel": "XMSS 단계 {{level}}/22.",
@@ -669,6 +677,7 @@
     "recoverySeedHelp": "이 지갑의 구문을 입력하세요. 다른 구문으로는 이 지갑의 계정을 복원할 수 없습니다.",
     "recoveryLimitations": "복구하면 로컬에 저장된 가져온 개인 키의 암호화된 기록이 삭제됩니다. 해당 키를 별도로 백업하지 않았다면 해당 계정에 대한 접근 권한을 영구적으로 잃을 수 있습니다. 하드웨어 연결, 사용자 지정 설정, 스마트 계정 및 패스키 설정에는 각각의 백업이나 재연결이 필요합니다. 복구는 자금을 이동하지 않습니다.",
     "walletRecoveryFailed": "지갑 복구를 완료하지 못했습니다. 구문을 확인하고 다시 시도하세요. 계속 실패하면 브라우저를 다시 시작하세요. 지갑 저장 데이터를 삭제하지 마세요.",
+    "walletRecoveryUnconfirmed": "지갑 복구를 확인하지 못했습니다. 지갑을 확인하여 현재 상태를 확인하세요. 지갑 저장 데이터를 삭제하지 마세요.",
     "walletRecoveryRestartRequired": "복구가 완료되어야 지갑을 사용할 수 있습니다. 브라우저를 다시 시작한 다음 지갑을 확인하고 필요하면 복구를 다시 시도하세요. 지갑 저장 데이터를 삭제하지 마세요.",
     "walletWindowCheckSlow": "지갑 창이 응답하는 데 시간이 더 걸리고 있습니다. 다시 확인해 주세요.",
     "retryWalletWindowCheck": "창 다시 확인",
@@ -785,7 +794,6 @@
     "watchOnlyNoPrivateKey": "이 계정은 보기 전용 계정입니다. 자금을 받고 활동 내역을 볼 수 있지만, 이 지갑에는 이 계정의 개인 키가 없습니다.",
     "seeOnExplorer": "탐색기에서 보기",
     "manageEthProvider": "ETH 공급자 관리",
-    "windowObjectWasSet": "윈도우 객체가 성공적으로 설정되었습니다",
     "missingApiKey": "API 키 누락/무효 - URL에 API 키를 추가해주세요 (예: ?apikey=귀하의_키)",
     "apiFormatError": "API가 올바르게 응답하지 않습니다. URL을 확인하고 Etherscan/Blockscout API 형식을 지원하는지 확인해주세요.",
     "apiConnectionError": "API를 검증할 수 없습니다. 연결을 확인하고 다시 시도해주세요.",
@@ -1167,8 +1175,12 @@
     "checkYourDevice": "{{device}}에서 이 요청을 승인하세요",
     "useYourPasskey": "패스키를 사용하세요",
     "passkeyPrompt": "브라우저 안내에 따라 패스키로 서명하세요",
+    "cancelFeePreview": "취소 네트워크 수수료 확인 중…",
+    "cancelFeeConsent": "최대 가스 수수료 {{fee}} {{currency}}로 이 거래를 취소하시겠습니까?",
+    "cancelFeeUnavailable": "취소 수수료를 확인할 수 없습니다. 다시 시도하세요.",
     "speedUpFeePreview": "네트워크 수수료 확인 중…",
     "speedUpFeeConsent": "최대 네트워크 수수료 {{fee}} {{currency}}로 이 거래를 가속하시겠습니까?",
+    "speedUpAmountWouldChange": "이 거래의 속도를 높이기 전에 이 계정에 자금을 추가하세요. 원래 금액은 변경되지 않습니다.",
     "speedUpFeeUnavailable": "수수료를 확인할 수 없습니다. 다시 시도해 주세요."
   },
   "switchNetworkPage": {
@@ -1216,7 +1228,8 @@
     "removalFailed": "지갑을 삭제할 수 없습니다. 다시 시도해 주세요.",
     "importedAccountsWont": "가져온 계정은 초기 Pali 계정 비밀 복구 구문에 연결되지 않습니다",
     "stillHaveFunds": "지갑에 아직 자금이 있습니다!",
-    "saveProperly": "이 시드 구문을 안전하게 저장하여 나중에 이 지갑을 가져올 수 있도록 하세요."
+    "saveProperly": "이 시드 구문을 안전하게 저장하여 나중에 이 지갑을 가져올 수 있도록 하세요.",
+    "privateNotesBackupWarning": "비공개 노트가 있다면 별도 백업하세요. 복구 구문으로는 복원할 수 없습니다."
   },
   "walletSeedPhrasePage": {
     "keepSeedPhrase": "시드 구문을 비밀로 유지하세요!",
@@ -1266,7 +1279,8 @@
     "youCanGet": "24시간마다 지갑 주소당 {{quantity}} {{token}}을 받을 수 있습니다.",
     "firstAccessTitle": "수도꼭지로 ${{token}}을 받아 {{network}} 네트워크를 경험해 보세요!",
     "firstAccessDescription": "지갑 주소당 24시간마다 {{token}}을 받을 수 있습니다.",
-    "grabTokens": "수도꼭지로 이동"
+    "grabTokens": "수도꼭지로 이동",
+    "rateLimited": "수도꼭지에서 요청을 제한하고 있습니다. 자세한 내용은 수도꼭지를 확인하세요."
   },
   "nftDetails": {
     "information": "NFT 정보",
@@ -1406,6 +1420,21 @@
     "feeTitle": "승인한 Sentry 작업의 네트워크 수수료",
     "feeHelp": "이 작업의 네트워크 수수료 입력을 승인합니다. 사이트가 서명된 트랜잭션을 제출합니다.",
     "feeChanges": "승인된 변경 사항",
+    "managementFields": {
+      "action": "작업",
+      "childKeyCommitment": "하위 키 커밋먼트",
+      "collateralSatoshis": "담보 (사토시)",
+      "collateralSigningMessage": "담보 서명 메시지",
+      "globalKeyVersion": "전역 키 버전",
+      "operatorPublicKey": "운영자 공개 키",
+      "operatorRewardBasisPoints": "운영자 보상 (베이시스 포인트)",
+      "ownerKeyId": "소유자 키 ID",
+      "payoutAddress": "지급 주소",
+      "pqOwnerPublicKey": "소유자 PQ 공개 키",
+      "pqVotingPublicKey": "투표 PQ 공개 키",
+      "reason": "취소 사유",
+      "votingKeyId": "투표 키 ID"
+    },
     "feeType": "Sentry 노드 작업",
     "feeOperations": {
       "register": "노드 등록",
@@ -1580,6 +1609,13 @@
     "clear": "저장된 데이터 삭제",
     "networkRequired": "네트워크 메뉴에서 이더리움 메인넷을 선택하여 풀 데이터를 준비하세요.",
     "publicDataOnly": "풀 공개 데이터만 다운로드합니다. 지갑 주소와 비공개 노트는 전송되지 않습니다.",
+    "serviceSettings": "프라이버시 서비스",
+    "serviceOrigin": "서비스 오리진",
+    "serviceHelp": "HTTPS 또는 localhost의 HTTP를 사용하세요. 서비스를 변경하면 준비된 풀 데이터가 지워지지만 저장된 노트는 지갑에 남습니다.",
+    "serviceInvalid": "경로와 인증 정보가 없는 HTTPS 또는 localhost HTTP 오리진을 입력하세요.",
+    "serviceLoadFailed": "프라이버시 서비스 설정을 불러오지 못했습니다.",
+    "serviceSaveFailed": "프라이버시 서비스 설정을 저장하지 못했습니다. 다시 시도하세요.",
+    "serviceSaved": "프라이버시 서비스가 저장되었습니다. 풀을 다시 준비하세요.",
     "savedDeposits": "저장된 공개 입금 수: {{count}}",
     "verifiedBlock": "마지막으로 검증한 블록: {{block}}",
     "progress": "{{total}}개 중 {{completed}}개",
@@ -1647,6 +1683,7 @@
       "title": "노트 출금",
       "open": "출금",
       "recipient": "수신 주소",
+      "recipientInvalid": "올바른 이더리움 주소를 입력하세요.",
       "method": "전송 방식",
       "direct": "직접",
       "relayed": "릴레이어",
@@ -1672,6 +1709,7 @@
       "jobId": "릴레이어 작업 ID",
       "directoryFailed": "릴레이어를 불러오지 못했습니다. 다시 시도하거나 직접 전송을 선택하세요.",
       "prepareFailed": "출금을 준비하지 못했습니다. 풀 데이터와 네트워크를 확인하고 다시 시도하세요.",
+      "prepareInterrupted": "준비가 중단되었습니다. 풀 데이터를 확인한 후 다시 시도하세요.",
       "checkStatus": "상태 확인",
       "statusFailed": "릴레이어 상태를 확인하지 못했습니다. 다시 시도하세요.",
       "statusUnknown": "출금 전송 상태를 알 수 없습니다. 다시 시도하기 전에 확인하세요.",

@@ -621,7 +621,8 @@ const cancelTransaction = async (
   t: (key: string, options?: { hash: string }) => string,
   fallbackNonce: number | undefined,
   signerAddress: string | undefined,
-  walletScope: IWalletNavigationScope
+  walletScope: IWalletNavigationScope,
+  approvedMaximumFee: string | undefined
 ) => {
   // Safety check: this function is only for EVM networks
   const { isBitcoinBased } = store.getState().vault;
@@ -641,7 +642,14 @@ const cancelTransaction = async (
       throw new Error('Transaction context changed');
     const response = await controllerEmitter(
       ['wallet', 'cancelEvmTransaction'],
-      [txHash, isLegacy, fallbackNonce, signerAddress, { chainId, walletScope }]
+      [
+        txHash,
+        isLegacy,
+        fallbackNonce,
+        signerAddress,
+        { chainId, walletScope },
+        { approvedMaximumFee },
+      ]
     );
 
     if (!response) {
@@ -699,6 +707,41 @@ const cancelTransaction = async (
   }
 };
 
+export const previewCancelTransaction = async (
+  txHash: string,
+  isLegacy: boolean,
+  chainId: number,
+  nonce: number | undefined,
+  signerAddress: string | undefined,
+  walletScope: IWalletNavigationScope
+): Promise<string> => {
+  const response = (await controllerEmitter(
+    ['wallet', 'cancelEvmTransaction'],
+    [
+      txHash,
+      isLegacy,
+      nonce,
+      signerAddress,
+      { chainId, walletScope },
+      { previewOnly: true },
+    ]
+  )) as
+    | { error?: boolean; isCanceled?: boolean; maximumFee?: string }
+    | undefined;
+  const current = getWalletNavigationScope();
+  const maximumFee = response?.maximumFee;
+  if (
+    current.account !== walletScope.account ||
+    current.network !== walletScope.network ||
+    response?.error === true ||
+    response?.isCanceled !== false ||
+    typeof maximumFee !== 'string' ||
+    !/^(0|[1-9][0-9]{0,77})$/.test(maximumFee)
+  )
+    throw new Error('Cancellation fee unavailable');
+  return maximumFee;
+};
+
 const requestSpeedUp = (
   txHash: string,
   isLegacy: boolean,
@@ -733,14 +776,26 @@ export const previewSpeedUpTransaction = async (
     signerAddress,
     { previewOnly: true }
   )) as
-    | { error?: boolean; isSpeedUp?: boolean; maximumFee?: string }
+    | {
+        code?: string;
+        error?: boolean;
+        isSpeedUp?: boolean;
+        maximumFee?: string;
+      }
     | undefined;
   const current = getWalletNavigationScope();
   const maximumFee = response?.maximumFee;
   if (
     current.account !== scope.account ||
     current.network !== scope.network ||
-    store.getState().vault.isBitcoinBased ||
+    store.getState().vault.isBitcoinBased
+  )
+    throw new Error('Transaction context changed');
+  if (response?.code === 'REPLACEMENT_VALUE_WOULD_CHANGE')
+    throw Object.assign(new Error('Replacement would change the amount'), {
+      code: 'REPLACEMENT_VALUE_WOULD_CHANGE',
+    });
+  if (
     response?.error === true ||
     response?.isSpeedUp !== false ||
     typeof maximumFee !== 'string' ||
@@ -783,19 +838,35 @@ const speedUpTransaction = async (
       chainId,
       signerAddress,
       { approvedMaximumFee }
-    );
+    ).catch((error) => {
+      if (error?.code === 'REPLACEMENT_VALUE_WOULD_CHANGE') return error;
+      throw error;
+    });
 
     if (!response) {
       alert.error(t('transactions.transactionSpeedUpFailed'));
       return;
     }
 
-    const { isSpeedUp, error, transaction } = response as {
+    const { isSpeedUp, error, transaction, code } = response as {
+      code?: string;
       error: boolean;
       isSpeedUp: boolean;
       transaction: IEvmTransactionResponse;
     };
 
+    if (code === 'REPLACEMENT_VALUE_WOULD_CHANGE') {
+      const latest = getWalletNavigationScope();
+      if (
+        walletScope &&
+        (latest.account !== walletScope.account ||
+          latest.network !== walletScope.network ||
+          Number(store.getState().vault.activeNetwork?.chainId) !== chainId)
+      )
+        return;
+      alert.error(t('transactions.speedUpAmountWouldChange'));
+      return;
+    }
     if (!isSpeedUp && error) {
       alert.warning(t('transactions.transactionNotFoundOrConfirmed'));
       return;
@@ -883,7 +954,8 @@ export const handleUpdateTransaction = async ({
         t,
         nonce,
         signerAddress,
-        walletScope
+        walletScope,
+        approvedMaximumFee
       );
     case UpdateTxAction.SpeedUp:
       return await speedUpTransaction(

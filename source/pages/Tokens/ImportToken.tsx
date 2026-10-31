@@ -869,7 +869,7 @@ export const ImportToken: React.FC = () => {
     <div className="flex min-w-0 w-full flex-col h-full bg-bkg-3 text-brand-white font-poppins">
       {/* Tab Navigation */}
       {activeNetwork.apiUrl && (
-        <div className="min-h-10 shrink-0 relative flex items-stretch justify-center w-full bg-bkg-1 -mt-2">
+        <div className="token-import-tabs min-h-10 shrink-0 relative flex items-stretch justify-center w-full bg-bkg-1 -mt-2">
           <button
             className={`w-1/2 min-w-0 min-h-10 px-2 py-1 break-words font-medium text-base leading-5 transition-all duration-300 ${
               activeTab === 'owned'
@@ -907,7 +907,7 @@ export const ImportToken: React.FC = () => {
             <p>{t('settings.apiConnectionError')}</p>
             {/* SYSCOIN: Retry only on user action; the API cooldown still applies. */}
             <button
-              className="mt-2 text-brand-royalblue underline"
+              className="mt-2 text-brand-royalbluemedium underline"
               onClick={loadOwnedTokens}
               type="button"
             >
@@ -928,7 +928,7 @@ export const ImportToken: React.FC = () => {
               {t('tokens.missingTokenManualImport')}
             </p>
             <button
-              className="h-10 px-6 rounded-full bg-brand-royalblue text-brand-white text-sm font-medium hover:bg-brand-royalbluemedium transition-colors"
+              className="h-10 px-6 rounded-full bg-brand-royalblue text-brand-white text-sm font-medium hover:bg-brand-royalbluemedium hover:text-bkg-1"
               type="button"
               onClick={() => handleTabChange('custom')}
             >
@@ -1047,7 +1047,7 @@ export const ImportToken: React.FC = () => {
                     <div role="alert" className="mt-2 px-5 text-sm">
                       <p>{t('send.unableToLoad')}</p>
                       <button
-                        className="mt-2 text-brand-royalbluemedium underline"
+                        className="mt-2 inline-flex min-h-[32px] min-w-[32px] items-center justify-center text-brand-royalbluemedium underline"
                         type="button"
                         onClick={() => {
                           setTokenIdResult(null);

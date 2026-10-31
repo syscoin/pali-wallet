@@ -268,7 +268,8 @@ beforeEach(() => {
       return assets.getUserOwnedTokens(args[0]);
     if (method === 'saveTokenInfo') return wallet.saveTokenInfo(...args);
     if (method === 'getOnlyMarketData') return null;
-    if (method === 'fetchNftTokenIds') return [];
+    if (method === 'fetchNftTokenIds')
+      return { tokens: [], hasMore: false, requiresManualEntry: true };
     throw new Error(`Unexpected controller call: ${method}`);
   });
 });

@@ -39,7 +39,9 @@ const advance = (milliseconds: number) =>
 const backdrop = (container: HTMLElement) =>
   Array.from(container.querySelectorAll('div')).find(
     (node) =>
-      node.classList.contains('fixed') && node.classList.contains('inset-0')
+      node.classList.contains('fixed') &&
+      node.classList.contains('inset-0') &&
+      node.classList.contains('z-50')
   );
 const expectInFlow = (status: HTMLElement) => {
   expect(status).toHaveAttribute('aria-live', 'polite');
@@ -84,9 +86,9 @@ it('retains the initial fixed pointer-blocking backdrop through the two-second b
   advance(149);
   expect(screen.queryByRole('status')).not.toBeInTheDocument();
   advance(1);
-  expect(screen.getByRole('status')).toHaveClass(
-    'fixed',
-    'pointer-events-none'
+  expectInFlow(screen.getByRole('status'));
+  expect(screen.getByRole('status')).toHaveTextContent(
+    en.networkConnection.updatingBalances
   );
   expect(backdrop(view.container)).toBeUndefined();
   advance(350);
@@ -96,7 +98,7 @@ it('retains the initial fixed pointer-blocking backdrop through the two-second b
   expect(initial).not.toHaveClass('pointer-events-none');
   advance(MAX_BLOCKING_LOADING_MS - 501);
   expect(backdrop(view.container)).toBe(initial);
-  expect(screen.getByRole('status')).toHaveClass('fixed');
+  expectInFlow(screen.getByRole('status'));
   advance(1);
   expect(backdrop(view.container)).toBeUndefined();
   const status = screen.getByRole('status');
@@ -169,7 +171,7 @@ it.each([false, true])(
       advance(500);
       expect(backdrop(view.container)).toBeDefined();
       expect(backdrop(view.container)).not.toHaveClass('pointer-events-none');
-      expect(screen.getByRole('status')).toHaveStyle({ top: '0px' });
+      expect(screen.getByRole('status')).toHaveClass('inset-0', 'z-[55]');
     }
     advance(MAX_BLOCKING_LOADING_MS);
     const status = screen.getByRole('status');
@@ -199,7 +201,7 @@ it('cancels all owned pending timers when loading ends and starts a fresh full d
   view.rerender(<PageLoadingOverlay isLoading />);
   expect(jest.getTimerCount()).toBe(3);
   advance(MAX_BLOCKING_LOADING_MS - 1);
-  expect(screen.getByRole('status')).toHaveClass('fixed');
+  expectInFlow(screen.getByRole('status'));
   advance(1);
   expectInFlow(screen.getByRole('status'));
 });

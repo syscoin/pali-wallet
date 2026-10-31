@@ -4,6 +4,7 @@ import path from 'path';
 
 import en from '../../source/assets/locales/en.json';
 import { E2E_CONFIG } from '../harness/config';
+import { captureForegroundContrast } from '../harness/foregroundContrast';
 import {
   createIsolatedVaultFixture,
   installIsolatedVaultRoutes,
@@ -300,15 +301,15 @@ for (const { width, height } of viewports) {
       await wheelReveal(page, importButton);
       await importButton.click();
       await expect(importButton).toBeDisabled();
-      // The normal success toast intentionally overlays the bottom edge until
-      // it expires. It is not a stable Send-page obstruction.
-      await expect(
-        page.getByText(`${SPT_SYMBOL} has been added to your wallet`, {
+      const successNotice = page
+        .getByRole('status')
+        .getByText(`${SPT_SYMBOL} has been added to your wallet`, {
           exact: true,
-        })
-      ).toBeHidden({ timeout: 10_000 });
+        });
+      await expect(successNotice).toBeVisible({ timeout: 10_000 });
       await page.getByRole('button', { name: 'Back', exact: true }).click();
       await wallet.ensureOnHome();
+      await expect(successNotice).toBeHidden({ timeout: 10_000 });
 
       for (const asset of ['native', 'spt'] as const) {
         await page.locator('#send-btn').click();
@@ -374,6 +375,51 @@ for (const { width, height } of viewports) {
         await expect(
           page.getByText('Lock Time:', { exact: true })
         ).toBeAttached();
+        // Shortened identifiers should remain one readable line, even when
+        // the value needs to move below its label in a narrow wallet window.
+        const originRow = page
+          .getByText('Origin contract:', { exact: true })
+          .first()
+          .locator('..');
+        const shortenedOrigin = originRow.locator('span.ant-typography').last();
+        await expect(shortenedOrigin).toContainText('...');
+        const originLayout = await shortenedOrigin.evaluate((element) => {
+          const range = document.createRange();
+          range.selectNodeContents(element);
+          return {
+            lines: range.getClientRects().length,
+            clipped: element.scrollWidth > element.clientWidth,
+          };
+        });
+        expect(originLayout).toEqual({ lines: 1, clipped: false });
+        // These passive asset quantities are part of the unsigned review, not
+        // disabled controls. Read the real composed colors on their opaque
+        // cards, while preserving every existing amount and Cancel assertion.
+        const assetAmounts = page
+          .locator('span.ant-typography')
+          .filter({ hasText: new RegExp(`^[0-9][0-9.,]*\\s+${SPT_SYMBOL}$`) });
+        expect(await assetAmounts.count()).toBeGreaterThanOrEqual(2);
+        const reviewedAssetAmounts = await assetAmounts.allTextContents();
+        for (let index = 0; index < reviewedAssetAmounts.length; index += 1) {
+          const result = await captureForegroundContrast(
+            assetAmounts.nth(index),
+            test.info(),
+            `${asset}-${width}x${height}-asset-amount-${index}`
+          );
+          expect(result.disabled).toBe(false);
+          expect(result.minimum).toBe(4.5);
+        }
+        await expect(assetAmounts).toHaveText(reviewedAssetAmounts);
+        const nativeAmount = page
+          .locator('span.ant-typography')
+          .filter({ hasText: /^[0-9][0-9.,]*\s+TSYS$/ })
+          .first();
+        const nativeResult = await captureForegroundContrast(
+          nativeAmount,
+          test.info(),
+          `${asset}-${width}x${height}-native-amount-control`
+        );
+        expect(nativeResult.disabled).toBe(false);
         await wheelReveal(page, confirm);
         await capture(page, `${asset}-${height}-confirm-expanded`);
         await observe(page, confirm, `${asset}-${height}-confirm`);
@@ -676,6 +722,17 @@ for (const { width, height } of viewports) {
       const explorer = page.getByText('View on Explorer', { exact: true });
       await wheelReveal(page, explorer);
       await observe(page, explorer, `evm-${height}-explorer`);
+      const timestampRow = page
+        .getByText('Timestamp', { exact: true })
+        .locator('..');
+      const expectedTimestamp = await page.evaluate(() =>
+        new Date(1700000000 * 1000).toLocaleString('en')
+      );
+      const timestamp = timestampRow.getByText(expectedTimestamp, {
+        exact: true,
+      });
+      await expect(timestamp).toBeVisible();
+      await expect(timestamp).toBeInViewport({ ratio: 1 });
       await capture(page, `evm-${height}-details`);
       expect
         .soft(

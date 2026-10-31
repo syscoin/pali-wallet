@@ -4,6 +4,8 @@ import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 
+import { AppLayout } from 'components/Layout/AppLayout';
+
 import { SendSys } from './SendSys';
 
 let mockAssets: any[];
@@ -21,9 +23,27 @@ jest.mock('state/store', () => ({
 jest.mock('react-redux', () => ({
   useSelector: (select: any) => select(mockState),
 }));
-jest.mock('react-router-dom', () => ({ useLocation: () => mockLocation }));
+jest.mock('react-router-dom', () => ({
+  useLocation: () => mockLocation,
+  useNavigate: () => mockNavigate,
+  Outlet: () => null,
+}));
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
+}));
+jest.mock('components/Header/Header', () => ({
+  Header: () => <nav>Wallet navigation</nav>,
+}));
+jest.mock('components/Loading/PageLoadingOverlay', () => ({
+  PageLoadingOverlay: () => null,
+}));
+jest.mock('hooks/useAppReady', () => ({ useAppReady: jest.fn() }));
+jest.mock('hooks/useBrowsingNavigationScroll', () => ({
+  useBrowsingNavigationScroll: jest.fn(),
+}));
+jest.mock('hooks/usePageLoadingState', () => ({
+  ...jest.requireActual('hooks/usePageLoadingState'),
+  usePageLoadingState: () => ({ isLoading: false, isContextChanging: false }),
 }));
 jest.mock('hooks/controllerStatus', () => ({
   getControllerStatus: () => ({
@@ -64,6 +84,7 @@ jest.mock('components/index', () => ({
   ),
   Fee: () => null,
   Icon: () => null,
+  IconButton: (props: any) => <button {...props} />,
   Tooltip: ({ children }: any) => <>{children}</>,
 }));
 jest.mock('jdenticon', () => ({ toSvg: () => '<svg></svg>' }));
@@ -171,6 +192,7 @@ beforeEach(() => {
       },
     },
   };
+  mockState.vaultGlobal = { networkStatus: 'idle' };
   mockLocation = { pathname: '/send/sys', state: null };
   mockEmitter.mockImplementation(async (path: string[]) => {
     const method = path[path.length - 1];
@@ -300,6 +322,7 @@ it.each(['{Enter}', ' '])('selects a highlighted SPT using %s', async (key) => {
   trigger().focus();
   await user.keyboard('{ArrowDown}');
   const menu = screen.getByRole('menu');
+  expect(menu).toHaveClass('pali-menu-focus');
   await waitFor(() => {
     expect(menu).toHaveFocus();
     expect(
@@ -311,6 +334,11 @@ it.each(['{Enter}', ' '])('selects a highlighted SPT using %s', async (key) => {
     menu.getAttribute('aria-activedescendant')!
   );
   expect(active).toHaveTextContent('SPTONE');
+  expect(active).toHaveAttribute('data-headlessui-state', 'active');
+  expect(optionButton('SYS send.native')).not.toHaveAttribute(
+    'data-headlessui-state',
+    'active'
+  );
   await user.keyboard(key);
   await waitFor(() => expect(trigger('SPTONE')).toBeInTheDocument());
   await user.click(screen.getByRole('button', { name: 'send.max' }));
@@ -352,4 +380,25 @@ it('preserves the selected asset and typed amount when Escape dismisses another 
   await waitFor(() => expect(trigger('SPTONE')).toHaveFocus());
   expect(trigger('SPTONE')).toBeInTheDocument();
   expect(amount().value).toBe('1.23');
+});
+
+it('keeps the send title truthful when switching native and SPT assets', async () => {
+  const user = userEvent.setup();
+  await act(async () =>
+    render(
+      <AppLayout>
+        <SendSys />
+      </AppLayout>
+    )
+  );
+  const title = () => screen.getByText('send.send', { exact: true });
+  expect(title()).toBeVisible();
+  expect(trigger()).toBeVisible();
+  await selectPointer(user, 'SPTONE');
+  expect(trigger('SPTONE')).toBeVisible();
+  expect(title()).toBeVisible();
+  await open(user, 'SPTONE');
+  await user.click(optionButton('SYS send.native'));
+  await waitFor(() => expect(trigger()).toBeVisible());
+  expect(title()).toBeVisible();
 });

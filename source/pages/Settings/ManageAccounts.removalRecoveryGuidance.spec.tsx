@@ -273,7 +273,20 @@ it.each(cases)(
     });
     const warning = copy.settings.importedAccountRemovalWarning;
     const expected = privateImport ? `${question} ${warning}` : question;
-    expect(within(dialog).getByText(expected, { exact: true })).toBeVisible();
+    const description = within(dialog).getByText(expected, { exact: true });
+    expect(description).toBeVisible();
+    if (privateImport) {
+      expect(dialog).toHaveAccessibleDescription(expected);
+    } else {
+      expect(dialog).not.toHaveAttribute('aria-describedby');
+    }
+    const scrollBody = description.closest('.overflow-y-auto');
+    expect(scrollBody).not.toBeNull();
+    const remove = within(dialog).getByRole('button', {
+      name: copy.buttons.remove,
+    });
+    // Only the imported signing-key warning shares a scrollport with Remove.
+    expect(scrollBody!.contains(remove)).toBe(privateImport);
     if (!privateImport) expect(dialog).not.toHaveTextContent(warning);
     await user.click(
       within(dialog).getByRole('button', { name: copy.buttons.cancel })

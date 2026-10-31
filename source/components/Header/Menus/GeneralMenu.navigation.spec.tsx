@@ -34,10 +34,13 @@ jest.mock('react-redux', () => ({
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (copyKey: string, copyValues?: any) =>
-      jest
-        .requireActual('../../../../tests/helpers/localizedUiCopy')
-        .localizedUiCopy(copyKey, copyValues) ??
-      (((key: string) => key) as any)(copyKey, copyValues),
+      copyKey === 'generalMenu.manageEth'
+        ? jest.requireActual('../../../assets/locales/en.json').generalMenu
+            .manageEth
+        : jest
+            .requireActual('../../../../tests/helpers/localizedUiCopy')
+            .localizedUiCopy(copyKey, copyValues) ??
+          (((key: string) => key) as any)(copyKey, copyValues),
   }),
 }));
 jest.mock('hooks/index', () => ({
@@ -134,7 +137,7 @@ const Layout = () => {
 
 const destinations = [
   ['settings.connectedSites', '/settings/networks/connected-sites'],
-  ['generalMenu.manageEth', '/settings/remove-eth'],
+  ['Manage Ethereum provider', '/settings/remove-eth'],
   ['smartAccountHub.menuEntry', '/home/smart-account'],
   ['privacy.title', '/privacy'],
   ['sentry.sentryOperators', '/settings/sentry'],

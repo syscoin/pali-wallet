@@ -115,13 +115,6 @@
       "reason": "Percentage and 24-hour market interval units, not an untranslated English sentence."
     },
     {
-      "file": "source/pages/Home/Panel/components/Assets/AssetMarketLinks.tsx",
-      "kind": "prop:alt",
-      "text": "CoinGecko",
-      "count": 1,
-      "reason": "Proper name of the linked market-data service in its logo alternative text."
-    },
-    {
       "file": "source/pages/Home/Panel/components/Assets/EvmDetails.tsx",
       "kind": "jsx-text",
       "text": "% (24h)",
@@ -136,13 +129,6 @@
       "reason": "Proper name of the linked CoinGecko service; surrounding market labels are translated."
     },
     {
-      "file": "source/pages/Home/Panel/components/Assets/EvmDetails.tsx",
-      "kind": "prop:alt",
-      "text": "CoinGecko",
-      "count": 1,
-      "reason": "Proper market-data service name for the CoinGecko logo alternative text."
-    },
-    {
       "file": "source/pages/Home/Panel/components/Assets/SyscoinDetails.tsx",
       "kind": "jsx-text",
       "text": "% (24h)",
@@ -155,13 +141,6 @@
       "text": "CoinGecko",
       "count": 1,
       "reason": "Proper name of the linked CoinGecko service; market headings are localized separately."
-    },
-    {
-      "file": "source/pages/Home/Panel/components/Assets/SyscoinDetails.tsx",
-      "kind": "prop:alt",
-      "text": "CoinGecko",
-      "count": 1,
-      "reason": "Proper name of the CoinGecko market-data logo, not a description or instruction."
     },
     {
       "file": "source/pages/Home/Panel/components/Assets/SyscoinList.tsx",
@@ -195,8 +174,8 @@
       "file": "source/pages/Privacy/Privacy.tsx",
       "kind": "jsx-text",
       "text": "ETH",
-      "count": 1,
-      "reason": "Canonical asset ticker for the fixed Ethereum mainnet pool denominations; the symbol is not translated user guidance."
+      "count": 2,
+      "reason": "Canonical asset ticker in the Ethereum mainnet pool selector and selected-pool status; the symbol is not translated user guidance."
     },
     {
       "file": "source/pages/Privacy/PrivateDeposit.tsx",
@@ -323,13 +302,6 @@
       "text": "UTXO",
       "count": 1,
       "reason": "UTXO protocol-family acronym for the network list section."
-    },
-    {
-      "file": "source/pages/Settings/RemoveEth.tsx",
-      "kind": "jsx-text",
-      "text": "Pali",
-      "count": 1,
-      "reason": "Exact product name in the asset-removal illustration; removal guidance is localized."
     },
     {
       "file": "source/pages/SmartAccount/Hub.tsx",

@@ -26,10 +26,11 @@ import {
 } from 'utils/navigationState';
 import { navigateBack } from 'utils/navigationState';
 import { getNftQuantity } from 'utils/nftQuantity';
-import { buildExplorerUrl } from 'utils/strings';
+import { buildExplorerUrl, selectExplorerUrl } from 'utils/strings';
 import { getTokenTypeBadgeColor } from 'utils/tokens';
+import { ExplorerLink } from 'pages/Home/Panel/components/ExplorerLink';
 
-import { AssetMarketLinks } from './AssetMarketLinks';
+import { AssetMarketLinks, CoinGeckoLogo } from './AssetMarketLinks';
 
 const hasMarketValue = Number.isFinite;
 
@@ -44,6 +45,7 @@ export const EvmAssetDetails = ({
 }: IEvmAssetDetailsProps) => {
   const { controllerEmitter } = useController();
   const location = useLocation();
+  const explorer = useSelector(selectExplorerUrl);
   const { activeAccount, accountAssets, activeNetwork, accounts } = useSelector(
     (state: RootState) => state.vault
   );
@@ -182,11 +184,7 @@ export const EvmAssetDetails = ({
               className="text-xs text-gray-400 hover:text-brand-royalblue transition-colors duration-200"
             >
               <span className="flex items-center gap-1">
-                <img
-                  src="https://www.coingecko.com/favicon-96x96.png"
-                  alt="CoinGecko"
-                  className="w-4 h-4"
-                />
+                <CoinGeckoLogo className="w-4 h-4" />
                 CoinGecko
               </span>
             </a>
@@ -233,13 +231,13 @@ export const EvmAssetDetails = ({
                   href={`https://www.coingecko.com/en/coins/${coinGeckoId}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-brand-royalblue font-medium hover:text-brand-deepPink100 transition-colors duration-200 flex items-center gap-1"
+                  className="text-brand-royalbluemedium font-medium hover:text-brand-deepPink100 transition-colors duration-200 flex items-center gap-1"
                 >
                   #{tokenData.market_cap_rank}
                   <ExternalLinkIcon size={12} />
                 </a>
               ) : (
-                <span className="text-brand-royalblue font-medium">
+                <span className="text-brand-royalbluemedium font-medium">
                   #{tokenData.market_cap_rank}
                 </span>
               )}
@@ -399,7 +397,7 @@ export const EvmAssetDetails = ({
                   returnContext
                 );
               }}
-              className="w-full py-2 px-4 bg-brand-royalblue bg-opacity-20 text-brand-royalblue text-sm font-medium rounded-lg hover:bg-opacity-30 transition-all duration-200 flex items-center justify-center gap-2"
+              className="w-full py-2 px-4 bg-brand-royalblue bg-opacity-20 text-brand-royalbluemedium text-sm font-medium rounded-lg hover:bg-opacity-30 hover:text-brand-white transition-all duration-200 flex items-center justify-center gap-2"
               aria-label={t('send.viewCollectionItems')}
             >
               <Icon name="eye" size={16} />
@@ -589,25 +587,21 @@ export const EvmAssetDetails = ({
             </div>
           )}
 
-          <div className="w-full flex items-center justify-center text-brand-white hover:text-brand-deepPink100 mb-6">
-            <a
-              href={buildExplorerUrl(
-                activeNetwork.explorer || activeNetwork.url,
-                'token',
-                currentAsset.contractAddress
-              )}
-              target="_blank"
-              className="flex items-center justify-center gap-x-2"
-              rel="noreferrer"
-            >
-              <ExternalLinkIcon size={16} />
-              <span className="font-normal font-poppins underline text-sm">
+          {explorer && (
+            <div className="w-full flex items-center justify-center text-brand-white hover:text-brand-deepPink100 mb-6">
+              <ExplorerLink
+                href={buildExplorerUrl(
+                  explorer,
+                  'token',
+                  currentAsset.contractAddress
+                )}
+              >
                 {isNft
                   ? t('home.viewCollectionOnExplorer')
                   : t('home.viewOnExplorer')}
-              </span>
-            </a>
-          </div>
+              </ExplorerLink>
+            </div>
+          )}
         </div>
       ) : null}
 

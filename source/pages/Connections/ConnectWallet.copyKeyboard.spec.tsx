@@ -101,7 +101,9 @@ jest.mock('utils/browser', () => ({ dispatchBackgroundEvent: jest.fn() }));
 jest.mock('utils/index', () => ({ ellipsis: (value: string) => value }));
 
 const row = (label: string) =>
-  screen.getByText(label).closest('[role="button"]') as HTMLElement;
+  screen
+    .getByText(label, { selector: 'p' })
+    .closest('[role="button"]') as HTMLElement;
 const selected = (label: string) => row(label).classList.contains('shadow-md');
 const copyButton = (label: string) =>
   within(row(label)).getByRole('button', { name: 'transactions.copyAddress' });
@@ -115,6 +117,11 @@ const setup = async () => {
   await screen.findByText('Beta');
   expect(selected('Alpha')).toBe(true);
   expect(selected('Beta')).toBe(false);
+  expect(row('Alpha')).toHaveAttribute('aria-pressed', 'true');
+  expect(row('Beta')).toHaveAttribute('aria-pressed', 'false');
+  expect(screen.getAllByRole('button', { pressed: true })).toEqual([
+    row('Alpha'),
+  ]);
   expect(copyButton('Beta')).toHaveAccessibleName('transactions.copyAddress');
   return user;
 };
@@ -155,6 +162,11 @@ it.each(['{Enter}', ' '])(
     await user.keyboard(key);
     expect(selected('Beta')).toBe(true);
     expect(selected('Alpha')).toBe(false);
+    expect(row('Alpha')).toHaveAttribute('aria-pressed', 'false');
+    expect(row('Beta')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getAllByRole('button', { pressed: true })).toEqual([
+      row('Beta'),
+    ]);
     expect(mockCopy).not.toHaveBeenCalled();
     expectNoMutation();
   }
@@ -180,6 +192,8 @@ it.each(['{Enter}', ' '])(
     expect(mockCopy).toHaveBeenCalledWith(
       mockState.vault.accounts.HDAccount[1].address
     );
+    expect(row('Alpha')).toHaveAttribute('aria-pressed', 'true');
+    expect(row('Beta')).toHaveAttribute('aria-pressed', 'false');
     expect(mockAlert.info).toHaveBeenCalledWith('home.addressCopied');
     expectNoMutation();
   }

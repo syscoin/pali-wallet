@@ -120,6 +120,9 @@ describe('cancellation reviewed original admission', () => {
     expect(cancel).toHaveBeenCalledWith(HASH, true, NONCE, {
       assertCurrentContext: expect.any(Function),
       validateOriginal: expect.any(Function),
+      targetAccount: undefined,
+      previewOnly: false,
+      approvedMaximumFee: undefined,
     });
   });
 
@@ -269,7 +272,11 @@ describe('cancellation reviewed original admission', () => {
       id: 1,
     };
     await expect(run()).resolves.toMatchObject({ isCanceled: true });
-    expect(keyring.setVaultStateGetter).toHaveBeenCalledTimes(2);
+    expect(keyring.setVaultStateGetter).not.toHaveBeenCalled();
+    expect(cancel.mock.calls[0][3].targetAccount).toEqual({
+      type: KeyringAccountType.HDAccount,
+      id: 0,
+    });
     expect(admitted).toHaveBeenCalledWith(NONCE);
   });
 });

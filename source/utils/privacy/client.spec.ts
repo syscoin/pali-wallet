@@ -155,6 +155,22 @@ test('only sends a public pool identifier to Sysnode, without cookies or wallet 
   expect(fetch.mock.calls[0][1]).not.toHaveProperty('body');
 });
 
+test('the selected local privacy service receives the same public-only request', async () => {
+  const fetch = jest.fn<
+    ReturnType<typeof global.fetch>,
+    Parameters<typeof global.fetch>
+  >(async () => new Response(JSON.stringify(snapshot)));
+  global.fetch = fetch;
+  expect(
+    await fetchPrivacySnapshot(id, signal(), 'http://127.0.0.1:8800')
+  ).toEqual(snapshot);
+  expect(fetch).toHaveBeenCalledWith(
+    'http://127.0.0.1:8800/api/privacy/v1/pools/eth-0.1/snapshot',
+    expect.objectContaining({ credentials: 'omit', redirect: 'error' })
+  );
+  expect(fetch.mock.calls[0][1]).not.toHaveProperty('body');
+});
+
 test('accepts bounded cold-index progress, not an incomplete empty snapshot', async () => {
   const data = {
     phase: 'syncing',

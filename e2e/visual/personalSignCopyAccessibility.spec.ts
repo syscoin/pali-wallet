@@ -321,6 +321,8 @@ for (const locale of locales) {
             await expect(copy).toBeEnabled();
             const previewGeometry = await visibleGeometry(popup, preview);
             const copyGeometry = await visibleGeometry(popup, copy);
+            expect(copyGeometry.bounds.width).toBeGreaterThanOrEqual(32);
+            expect(copyGeometry.bounds.height).toBeGreaterThanOrEqual(32);
             await copy.click();
             await expect
               .poll(async () => (await copyAudit()).writes)

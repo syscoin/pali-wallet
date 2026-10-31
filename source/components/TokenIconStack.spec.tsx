@@ -119,7 +119,7 @@ it.each(cases)(
     if (remaining) {
       expect(overflow.props.children).toEqual(['+', remaining]);
       expect(overflow.props.className).toBe(
-        'ml-1 text-[10px] text-brand-royalblue'
+        'ml-1 text-[10px] text-content-secondary'
       );
     } else expect(overflow).toBe(false);
   }

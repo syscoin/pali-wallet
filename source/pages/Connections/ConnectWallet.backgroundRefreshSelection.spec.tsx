@@ -165,7 +165,7 @@ async function chooseBeta(method: 'pointer' | 'keyboard' = 'pointer') {
       </MemoryRouter>
     </Provider>
   );
-  await screen.findByText('Beta');
+  await screen.findByText('Beta', { selector: 'p' });
   expect(isSelected('Alpha')).toBe(true);
   if (method === 'pointer') {
     await user.click(row('Beta'));
@@ -208,7 +208,7 @@ async function deliverPriceSnapshot() {
   expect(store.getState().vault.activeNetwork).not.toBe(
     previous.vault.activeNetwork
   );
-  await screen.findByText('Beta');
+  await screen.findByText('Beta', { selector: 'p' });
 }
 
 it('keeps the selected account on a targeted balance delivery', async () => {
@@ -335,7 +335,7 @@ it.each(['chainId', 'url', 'slip44', 'kind'] as const)(
     }
     await deliver({ type: 'CONTROLLER_STATE_CHANGE', data: incoming });
     await waitFor(() => expect(lookupCalls()).toHaveLength(2));
-    await screen.findByText('Beta');
+    await screen.findByText('Beta', { selector: 'p' });
     expect(isSelected('Alpha')).toBe(true);
     expect(isSelected('Beta')).toBe(false);
     expect(mutationCalls()).toEqual([]);
@@ -353,12 +353,21 @@ it.each(['removed', 'incompatible'] as const)(
     else accounts.HDAccount[1].address = 'sys1qsynthetic-incompatible';
     await deliver({ type: 'CONTROLLER_ACCOUNTS_CHANGE', data: accounts });
     expect(screen.queryByText('Beta')).not.toBeInTheDocument();
-    // The existing submission guard must fail closed even if selection state
-    // still contains the old ID. This suite does not change picker UX policy.
+    // The stale selection is neither presented nor actionable.
+    expect(confirm()).toBeDisabled();
+    expect(
+      screen.getByText('connections.selectAccountToConnect')
+    ).toBeInTheDocument();
     await user.click(confirm());
     expect(mutationCalls()).toEqual([]);
     expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
     expect(window.close).not.toHaveBeenCalled();
+    await user.click(row('Alpha'));
+    expect(isSelected('Alpha')).toBe(true);
+    expect(confirm()).toBeEnabled();
+    expect(
+      screen.queryByText('connections.selectAccountToConnect')
+    ).not.toBeInTheDocument();
     await user.click(cancel());
     expect(window.close).toHaveBeenCalledTimes(1);
     expect(mutationCalls()).toEqual([]);

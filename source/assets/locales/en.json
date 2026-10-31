@@ -1,9 +1,4 @@
 {
-  "providerDefault": {
-    "defaultEnabled": "Pali was successfully set as the default wallet!",
-    "otherWalletInUse": "MetaMask is in use and Pali is disabled.",
-    "setPaliDefault": "Set Pali as default wallet!"
-  },
   "transactionDisplay": {
     "blockHash": "Block Hash",
     "blockNumber": "Block Number",
@@ -160,7 +155,7 @@
     "forget": "Forget wallet",
     "generalOptions": "GENERAL OPTIONS",
     "currency": "Currency",
-    "manageEth": "Set default wallet",
+    "manageEth": "Manage Ethereum provider",
     "infoHelp": "Info/Help",
     "lock": "Lock",
     "advanced": "Advanced"
@@ -211,7 +206,6 @@
     "errorSwitching": "Error switching networks",
     "speedUp": "Speed Up",
     "cancelTx": "Cancel Transaction",
-    "cancelTxMessage": "Are you sure that you want to cancel this transaction?",
     "speedTx": "Speed Up Transaction"
   },
   "connections": {
@@ -265,6 +259,7 @@
     "importToken": "Import Token",
     "youHaveNoTokens": "You have no tokens or NFTs.",
     "youHaveNoTxs": "You have no transaction history.",
+    "historyMayBeIncomplete": "Transaction history may be incomplete without an explorer API.",
     "seeAllTxs": "See all your transactions",
     "addressCopied": "Address successfully copied",
     "hashCopied": "Hash successfully copied",
@@ -313,7 +308,8 @@
     "youShould": "You should now have your recovery phrase and your wallet password written down for future reference."
   },
   "createPhrase": {
-    "recoveryPhrase": "Recovery Phrase"
+    "recoveryPhrase": "Recovery Phrase",
+    "generationFailed": "Could not generate a new recovery phrase. Select Generate to try again."
   },
   "send": {
     "transactionFailureDetails": "Transaction failed: {{message}}",
@@ -366,9 +362,16 @@
     "gasPriceBelowEstimate": "Gas price below {{estimate}} GWEI.",
     "maxFeeBelowEstimate": "Max fee below {{estimate}} GWEI.",
     "priorityFeeBelowEstimate": "Priority fee below {{estimate}} GWEI.",
+    "erc20SetAllowanceZero": "Request to revoke allowance for",
+    "erc20IncreaseAllowance": "Request to increase allowance for",
+    "erc20DecreaseAllowance": "Request to decrease allowance for",
+    "erc20ApprovalRequest": "Token approval request for",
     "grantAccess": "You grant access to your",
     "editPermission": "Edit permission",
     "invalidApprovalDetails": "Invalid approval details. This request cannot be confirmed.",
+    "revokeNftApproval": "Revoke NFT Approval",
+    "revokeNftApprovalDescription": "Remove the approved address for {{token}} #{{tokenId}}",
+    "approvalResetAddress": "Approval reset address",
     "approveNftTransfer": "Approve NFT Transfer",
     "allowTransferOf": "Allow transfer of",
     "grantCollectionAccess": "Grant Collection Access",
@@ -389,7 +392,7 @@
     "cantCompleteTxs": "Can't complete transaction. Try again later.",
     "txSuccessfull": "Transaction successful",
     "txSuccessfullMessage": "Your transaction has been successfully submitted. You can see more details under activity on your home page.",
-    "estimatedGasFee": "Estimated GasFee",
+    "estimatedGasFee": "Estimated gas fee",
     "amountAndFee": "Amount + gas fee",
     "spendingLimit": "Spending limit permission",
     "allow": "Allow",
@@ -419,6 +422,7 @@
     "feeRateNormal": "Fee rate {{value}} {{currency}}/vbyte is higher than normal.",
     "send": "SEND",
     "insufficientFunds": "Insufficient funds",
+    "maxBalanceReviewRequired": "Balance changed or could not be verified. Review the amount and try again.",
     "insufficientFundsForGas": "Insufficient funds to cover gas fees",
     "maxUnavailablePendingTx": "MAX is unavailable while you have a pending transaction. Please wait for it to confirm.",
     "networkCatchingUp": "The network is still updating your previous transaction. Please try again shortly.",
@@ -446,9 +450,9 @@
     "balanceVerified": "Balance verified",
     "tokenOwnershipVerified": "Token ownership verified",
     "pleaseVerifyTokenOwnership": "Please verify token ownership first",
-    "youOnlyOwn": "You only own {amount} of this token",
+    "youOnlyOwn": "You only own {{amount}} of this token",
     "pleaseWaitForBalanceVerification": "Please wait for balance verification",
-    "insufficientFundsVerified": "Insufficient funds (verified balance: {balance})",
+    "insufficientFundsVerified": "Insufficient funds (verified balance: {{balance}})",
     "enterTokenId": "Enter token ID",
     "amountMustBePositiveInteger": "Amount must be a positive integer",
     "verifyingBalance": "Verifying balance...",
@@ -615,11 +619,15 @@
     "watchOnlyValidationTimedOut": "Watch-only validation took too long. Nothing was imported. Please try again.",
     "watchOnly": "Watch-only",
     "publicIdentifierInput": "Address / XPUB / Descriptor",
-    "usingAnotherWallet": "You are using another wallet.",
-    "defaultWalletStatus": "is the default wallet",
     "otherDefaultWalletHelpTitle": "How do I make another wallet the default?",
     "otherDefaultWalletHelp": "Some wallets offer this in their settings. The browser uses the last wallet installed or activated as the default.",
-    "setWalletAsDefault": "Set {{wallet}} as default wallet",
+    "paliProviderEnabled": "Pali’s Ethereum provider is enabled",
+    "paliProviderDisabled": "Pali’s Ethereum provider is disabled",
+    "disablePaliProvider": "Disable Pali’s Ethereum provider",
+    "enablePaliProvider": "Enable Pali’s Ethereum provider",
+    "disablePaliProviderWarning": "Disabling Pali disconnects all connected sites. Configure another wallet in its own settings.",
+    "disablePaliProviderFailed": "Could not confirm disabling Pali’s Ethereum provider. Some sites may already be disconnected. Check connections before retrying.",
+    "enablePaliProviderFailed": "Could not confirm enabling Pali’s Ethereum provider. Check the setting before retrying.",
     "localSmartAccountGuardianMissing": "Local smart-account guardian not found.",
     "recoveryValidatorNotConfigured": "P-256/WebAuthn validator is not configured.",
     "xmssProgressLevel": "XMSS level {{level}}/22.",
@@ -669,6 +677,7 @@
     "recoverySeedHelp": "Enter the phrase for this wallet. A different phrase cannot restore its accounts.",
     "recoveryLimitations": "Recovery deletes the locally stored encrypted records of imported private keys. Without separate backups of those keys, you may permanently lose access to those accounts. Hardware connections, custom settings and smart-account/passkey setup need their own backups or reconnection. Recovery does not move your funds.",
     "walletRecoveryFailed": "Wallet recovery could not be completed. Check your phrase and try again. If it keeps failing, restart your browser. Do not clear wallet storage.",
+    "walletRecoveryUnconfirmed": "Wallet recovery could not be confirmed. Check wallet to see its current state. Do not clear wallet storage.",
     "walletRecoveryRestartRequired": "Recovery needs to finish before you can use the wallet. Restart your browser, then check your wallet and try recovery again if needed. Do not clear wallet storage.",
     "walletWindowCheckSlow": "Wallet windows are taking longer to respond. Try checking again.",
     "retryWalletWindowCheck": "Retry window check",
@@ -687,7 +696,7 @@
     "clickHereSupport": "Contact our team on discord channel #pali_support",
     "refreshButtonWarning": "Enabling the refresh button will create additional network requests to update your wallet data. This may impact performance and could hit rate limits on public RPC providers. Consider using paid RPC services for better reliability.",
     "hereYouCanEnable": "Here, you can enable advanced settings in Pali. Use them responsibly and at your own risk.",
-    "advancedSettingsWasSet": "Advanced settings was set successfully",
+    "advancedSettingsWasSet": "Advanced settings were set successfully",
     "yourWalletWasConfigured": "Your wallet was configured successfully. You can change it at any time.",
     "enableRefresh": "Enable wallet refresh button",
     "minutes": "Minutes",
@@ -785,7 +794,6 @@
     "watchOnlyNoPrivateKey": "This is a watch-only account. You can receive funds and view activity, but this wallet has no private key for this account.",
     "seeOnExplorer": "See on explorer",
     "manageEthProvider": "MANAGE ETH PROVIDER",
-    "windowObjectWasSet": "Window object set successfully",
     "missingApiKey": "Missing/Invalid API Key - Please add your API key to the URL (e.g., ?apikey=YOUR_KEY)",
     "apiFormatError": "API does not respond correctly. Please check the URL and ensure it supports Etherscan/Blockscout API format.",
     "apiConnectionError": "Unable to validate API. Please check your connection and try again.",
@@ -1167,8 +1175,12 @@
     "checkYourDevice": "Check your {{device}} to approve this request",
     "useYourPasskey": "Use your passkey",
     "passkeyPrompt": "Follow your browser prompt to sign with your passkey",
+    "cancelFeePreview": "Checking the cancellation network fee…",
+    "cancelFeeConsent": "Cancel this transaction with a maximum gas fee of {{fee}} {{currency}}?",
+    "cancelFeeUnavailable": "Unable to check the cancellation fee. Please try again.",
     "speedUpFeePreview": "Checking the network fee…",
     "speedUpFeeConsent": "Speed up this transaction with a maximum network fee of {{fee}} {{currency}}?",
+    "speedUpAmountWouldChange": "Add funds to this account before speeding up this transaction. The original amount will not be changed.",
     "speedUpFeeUnavailable": "Unable to check the fee. Please try again."
   },
   "switchNetworkPage": {
@@ -1215,8 +1227,9 @@
   "forgetWalletPage": {
     "removalFailed": "The wallet could not be removed. Please try again.",
     "importedAccountsWont": "Imported accounts won't link to your initial Pali account Secret Recovery Phrase",
-    "stillHaveFunds": "You still have funds in you wallet!",
-    "saveProperly": "Save this seed phrase properly, so you can import this wallet in the future."
+    "stillHaveFunds": "You still have funds in your wallet!",
+    "saveProperly": "Save this seed phrase properly, so you can import this wallet in the future.",
+    "privateNotesBackupWarning": "Back up any private notes separately; your recovery phrase cannot restore them."
   },
   "walletSeedPhrasePage": {
     "keepSeedPhrase": "Keep your seed phrase secret!",
@@ -1266,7 +1279,8 @@
     "youCanGet": "You can get {{quantity}} {{token}} per wallet address every 24h.",
     "firstAccessTitle": "Grab ${{token}} with our faucet to begin experiencing the {{network}} network!",
     "firstAccessDescription": "You can get {{token}} per wallet address every 24h.",
-    "grabTokens": "Go to Faucet"
+    "grabTokens": "Go to Faucet",
+    "rateLimited": "The faucet is rate limiting requests. Visit the faucet for more information."
   },
   "nftDetails": {
     "information": "NFT Information",
@@ -1406,6 +1420,21 @@
     "feeTitle": "Network fee for your authorized Sentry operation",
     "feeHelp": "Authorizes the network-fee inputs for this operation. The site submits the signed transaction.",
     "feeChanges": "Authorized changes",
+    "managementFields": {
+      "action": "Action",
+      "childKeyCommitment": "Child key commitment",
+      "collateralSatoshis": "Collateral (satoshis)",
+      "collateralSigningMessage": "Collateral signing message",
+      "globalKeyVersion": "Global key version",
+      "operatorPublicKey": "Operator public key",
+      "operatorRewardBasisPoints": "Operator reward (basis points)",
+      "ownerKeyId": "Owner key ID",
+      "payoutAddress": "Payout address",
+      "pqOwnerPublicKey": "PQ owner public key",
+      "pqVotingPublicKey": "PQ voting public key",
+      "reason": "Revocation reason",
+      "votingKeyId": "Voting key ID"
+    },
     "feeType": "Sentry node operation",
     "feeOperations": {
       "register": "Register node",
@@ -1579,7 +1608,14 @@
     "pause": "Pause",
     "clear": "Clear cache",
     "networkRequired": "Select Ethereum Mainnet.",
-    "publicDataOnly": "No notes or addresses sent to Sysnode.",
+    "publicDataOnly": "No notes or addresses sent to the privacy service.",
+    "serviceSettings": "Privacy service",
+    "serviceOrigin": "Service origin",
+    "serviceHelp": "Use HTTPS, or HTTP on localhost. Changing the service clears prepared pool data; saved notes remain in your wallet.",
+    "serviceInvalid": "Enter an HTTPS origin or a localhost HTTP origin, without a path or credentials.",
+    "serviceLoadFailed": "Could not load the privacy service setting.",
+    "serviceSaveFailed": "Could not save the privacy service setting. Try again.",
+    "serviceSaved": "Privacy service saved. Prepare the pool again.",
     "savedDeposits": "Deposits: {{count}}",
     "verifiedBlock": "Block: {{block}}",
     "progress": "{{completed}} of {{total}}",
@@ -1647,6 +1683,7 @@
       "title": "Withdraw note",
       "open": "Withdraw",
       "recipient": "Recipient address",
+      "recipientInvalid": "Enter a valid Ethereum address.",
       "method": "Send with",
       "direct": "Direct",
       "relayed": "Relayer",
@@ -1672,6 +1709,7 @@
       "jobId": "Relayer job ID",
       "directoryFailed": "Could not load relayers. Retry or choose Direct.",
       "prepareFailed": "Could not prepare this withdrawal. Check the pool data and your network, then retry.",
+      "prepareInterrupted": "Preparation was interrupted. Check the pool data, then try again.",
       "checkStatus": "Check status",
       "statusFailed": "Could not check the relayer status. Try again.",
       "statusUnknown": "Withdrawal submission status unknown. Check before trying again.",

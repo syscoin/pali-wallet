@@ -23,3 +23,7 @@ dapp 可以请求公开账户地址、provider 状态、网络状态、签名、
 ## 机构 Passkey 隐私
 
 如果 dapp 或机构提供 sponsor URL，该服务可能会收到与账户执行相关的 sponsor 请求。批准前请查看机构策略文本和 URL。
+
+## 私密票据
+
+Pali 可以使用默认隐私服务或您自己的 Sysnode 服务。要运行自己的服务，请参阅 [Sysnode 指南](https://github.com/syscoin/sysnode-backend/blob/main/docs/privacy-standalone.md)。

@@ -1,4 +1,5 @@
 /** @jest-environment jsdom */
+import '@testing-library/jest-dom';
 import { configureStore } from '@reduxjs/toolkit';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import React from 'react';
@@ -82,7 +83,7 @@ const holdRemoval = () => {
   const operation = deferred();
   mockEmitter.mockImplementation(() => {
     const current = mockStore.getState() as any;
-    // The actual controller publishes removal before awaiting persistence.
+    // Simulate the original target disappearing while a response is pending.
     mockStore.dispatch({
       type: 'fixture/replace',
       payload: {
@@ -111,7 +112,7 @@ const RouteOwner = () => {
     </Routes>
   );
 };
-const openRemoval = () => {
+const openRemoval = (beforeConfirm?: (dialog: HTMLElement) => void) => {
   render(
     <Provider store={mockStore}>
       <MemoryRouter initialEntries={['/home', '/settings/manage-accounts']}>
@@ -125,6 +126,7 @@ const openRemoval = () => {
     })
   );
   const dialog = screen.getByRole('dialog', { name: 'settings.removeAccount' });
+  beforeConfirm?.(dialog);
   fireEvent.click(
     within(dialog).getByRole('button', { name: 'buttons.remove' })
   );
@@ -188,7 +190,7 @@ beforeEach(() => {
 });
 
 it.each(['success', 'error'])(
-  'retains %s feedback for a removal that settles in the current view',
+  'retains %s feedback when the original target disappears while removal is pending',
   async (outcome) => {
     const operation = holdRemoval();
     openRemoval();
@@ -209,6 +211,238 @@ it.each(['success', 'error'])(
     }
   }
 );
+
+it('shows a retained-account refusal in the same dialog, clears it on retry, and closes only after success', async () => {
+  const first = deferred();
+  const retry = deferred();
+  mockEmitter
+    .mockImplementationOnce(() => first.promise)
+    .mockImplementationOnce(() =>
+      retry.promise.then(() => {
+        const current = mockStore.getState() as any;
+        mockStore.dispatch({
+          type: 'fixture/replace',
+          payload: {
+            ...current,
+            vault: {
+              ...current.vault,
+              accounts: {
+                ...current.vault.accounts,
+                HDAccount: { 0: current.vault.accounts.HDAccount[0] },
+              },
+            },
+          },
+        });
+      })
+    );
+
+  openRemoval();
+  const dialog = screen.getByRole('dialog', { name: 'settings.removeAccount' });
+  expect(
+    within(dialog).getByRole('button', { name: 'buttons.cancel' })
+  ).toBeDisabled();
+  await act(async () => {
+    first.reject(new Error('Removal persistence failed'));
+  });
+
+  expect(
+    (mockStore.getState() as any).vault.accounts.HDAccount[1].address
+  ).toBe(TARGET);
+  expect(within(dialog).getByRole('alert')).toBeVisible();
+  expect(within(dialog).getByRole('alert')).toHaveTextContent(
+    'Removal persistence failed'
+  );
+  expect(mockAlert.error).not.toHaveBeenCalled();
+  expect(mockAlert.success).not.toHaveBeenCalled();
+
+  fireEvent.click(
+    within(dialog).getByRole('button', { name: 'buttons.remove' })
+  );
+  expect(mockEmitter).toHaveBeenCalledTimes(2);
+  expect(mockEmitter.mock.calls[1]).toEqual(mockEmitter.mock.calls[0]);
+  expect(within(dialog).queryByRole('alert')).toBeNull();
+  expect(
+    within(dialog).getByRole('button', { name: 'buttons.cancel' })
+  ).toBeDisabled();
+  expect(
+    screen.getByRole('dialog', { name: 'settings.removeAccount' })
+  ).toBeVisible();
+  expect(
+    (mockStore.getState() as any).vault.accounts.HDAccount[1].address
+  ).toBe(TARGET);
+
+  await act(async () => retry.resolve());
+  expect(
+    screen.queryByRole('dialog', { name: 'settings.removeAccount' })
+  ).toBeNull();
+  expect(
+    (mockStore.getState() as any).vault.accounts.HDAccount[1]
+  ).toBeUndefined();
+  expect(mockAlert.success).toHaveBeenCalledWith(
+    'settings.accountRemovedSuccessfully'
+  );
+  expect(mockAlert.error).not.toHaveBeenCalled();
+});
+
+it('requests that the inline refusal be scrolled into view without changing focus', async () => {
+  const original = Object.getOwnPropertyDescriptor(
+    Element.prototype,
+    'scrollIntoView'
+  );
+  const reveal = jest.fn();
+  Object.defineProperty(Element.prototype, 'scrollIntoView', {
+    configurable: true,
+    writable: true,
+    value: reveal,
+  });
+  try {
+    const operation = deferred();
+    mockEmitter.mockReturnValueOnce(operation.promise);
+    openRemoval();
+    const dialog = screen.getByRole('dialog', {
+      name: 'settings.removeAccount',
+    });
+    const panel = dialog.querySelector<HTMLElement>('[tabindex="-1"]');
+    expect(panel).not.toBeNull();
+    panel!.focus();
+    expect(panel).toHaveFocus();
+
+    await act(async () =>
+      operation.reject(new Error('Removal persistence failed'))
+    );
+    const error = within(dialog).getByRole('alert');
+    expect(reveal).toHaveBeenCalledWith({
+      block: 'nearest',
+      inline: 'nearest',
+    });
+    expect(reveal.mock.contexts).toContain(error);
+    expect(panel).toHaveFocus();
+  } finally {
+    if (original)
+      Object.defineProperty(Element.prototype, 'scrollIntoView', original);
+    else Reflect.deleteProperty(Element.prototype, 'scrollIntoView');
+  }
+});
+
+it('keeps existing dialog focus while removal is pending and after refusal', async () => {
+  const operation = deferred();
+  mockEmitter.mockReturnValueOnce(operation.promise);
+  let panel: HTMLElement | null = null;
+  openRemoval((dialog) => {
+    panel = dialog.querySelector<HTMLElement>('[aria-busy]');
+    expect(panel).not.toBeNull();
+    panel!.focus();
+    expect(panel).toHaveFocus();
+  });
+
+  const dialog = screen.getByRole('dialog', { name: 'settings.removeAccount' });
+  expect(panel).toHaveFocus();
+  expect(panel).toHaveAttribute('aria-busy', 'true');
+  expect(
+    within(dialog).getByRole('button', { name: 'buttons.cancel' })
+  ).toBeDisabled();
+  expect(
+    within(dialog).getByRole('button', { name: 'buttons.remove' })
+  ).toBeDisabled();
+  expect(
+    (mockStore.getState() as any).vault.accounts.HDAccount[1].address
+  ).toBe(TARGET);
+
+  await act(async () =>
+    operation.reject(new Error('Removal persistence failed'))
+  );
+  expect(
+    screen.getByRole('dialog', { name: 'settings.removeAccount' })
+  ).toBeVisible();
+  expect(within(dialog).getByRole('alert')).toHaveTextContent(
+    'Removal persistence failed'
+  );
+  expect(panel).toHaveFocus();
+  expect(panel).toHaveAttribute('aria-busy', 'false');
+  expect(
+    within(dialog).getByRole('button', { name: 'buttons.cancel' })
+  ).toBeEnabled();
+  expect(
+    within(dialog).getByRole('button', { name: 'buttons.remove' })
+  ).toBeEnabled();
+  expect(mockAlert.error).not.toHaveBeenCalled();
+});
+
+it('clears a refusal when the confirmation is cancelled and reopened', async () => {
+  const operation = deferred();
+  mockEmitter.mockReturnValueOnce(operation.promise);
+  openRemoval();
+  await act(async () =>
+    operation.reject(new Error('Removal persistence failed'))
+  );
+  const dialog = screen.getByRole('dialog', { name: 'settings.removeAccount' });
+  expect(within(dialog).getByRole('alert')).toHaveTextContent(
+    'Removal persistence failed'
+  );
+  fireEvent.click(
+    within(dialog).getByRole('button', { name: 'buttons.cancel' })
+  );
+  expect(screen.queryByRole('dialog')).toBeNull();
+  fireEvent.click(
+    screen.getByRole('button', {
+      name: `buttons.remove: Old wallet account (${TARGET})`,
+    })
+  );
+  const reopened = screen.getByRole('dialog', {
+    name: 'settings.removeAccount',
+  });
+  expect(within(reopened).queryByRole('alert')).toBeNull();
+  expect(
+    (mockStore.getState() as any).vault.accounts.HDAccount[1].address
+  ).toBe(TARGET);
+  expect(mockEmitter).toHaveBeenCalledTimes(1);
+  expect(mockAlert.error).not.toHaveBeenCalled();
+});
+
+it('does not carry a refusal into a newly scoped confirmation', async () => {
+  const operation = deferred();
+  mockEmitter.mockReturnValueOnce(operation.promise);
+  openRemoval();
+  await act(async () =>
+    operation.reject(new Error('Removal persistence failed'))
+  );
+  expect(
+    within(screen.getByRole('dialog')).getByRole('alert')
+  ).toHaveTextContent('Removal persistence failed');
+
+  await act(async () => {
+    const current = mockStore.getState() as any;
+    mockStore.dispatch({
+      type: 'fixture/replace',
+      payload: {
+        ...current,
+        vault: {
+          ...current.vault,
+          activeNetwork: {
+            ...current.vault.activeNetwork,
+            chainId: 5701,
+            url: 'https://new-wallet-rpc.invalid',
+          },
+        },
+      },
+    });
+  });
+  expect(screen.queryByRole('dialog')).toBeNull();
+  fireEvent.click(
+    screen.getByRole('button', {
+      name: `buttons.remove: Old wallet account (${TARGET})`,
+    })
+  );
+  const reopened = screen.getByRole('dialog', {
+    name: 'settings.removeAccount',
+  });
+  expect(within(reopened).queryByRole('alert')).toBeNull();
+  expect(
+    (mockStore.getState() as any).vault.accounts.HDAccount[1].address
+  ).toBe(TARGET);
+  expect(mockEmitter).toHaveBeenCalledTimes(1);
+  expect(mockAlert.error).not.toHaveBeenCalled();
+});
 
 it.each(['success', 'error'])(
   'does not show old-wallet %s feedback after Browser Back and wallet replacement',

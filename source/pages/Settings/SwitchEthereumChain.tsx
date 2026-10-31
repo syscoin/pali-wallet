@@ -103,7 +103,7 @@ const SwitchChain: React.FC = () => {
           </div>
         </div>
 
-        <div className="w-full px-4 flex flex-wrap items-center justify-between">
+        <div className="w-full px-4 flex flex-wrap items-center justify-between gap-y-3">
           {switchError && (
             <p
               role="alert"

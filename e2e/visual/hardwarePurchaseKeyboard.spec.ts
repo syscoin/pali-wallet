@@ -4,6 +4,7 @@ import path from 'path';
 import en from '../../source/assets/locales/en.json';
 import { E2E_CONFIG } from '../harness/config';
 import { clickClosingPopup } from '../harness/dismissRejectedApproval';
+import { captureForegroundContrast } from '../harness/foregroundContrast';
 import { PaliWallet } from '../harness/pali';
 import { extensionEvidence } from '../harness/testDappConformance';
 import {
@@ -91,7 +92,6 @@ test('hardware purchase links are keyboard reachable for both vendors', async ({
         await wallet.step(
           `open ${vendor.name} hardware setup at ${viewport.width}px`,
           async (capture) => {
-            await wallet!.gotoRoute('#/home');
             await wallet!.ensureOnHome();
             await wallet!.page
               .getByRole('button', {
@@ -113,6 +113,23 @@ test('hardware purchase links are keyboard reachable for both vendors', async ({
             await hardware.setViewportSize(viewport);
             await hardware.locator(vendor.button).click();
             await expect(hardware.locator('#connect-btn')).toBeEnabled();
+            if (mode === 'after') {
+              const connectLabel = hardware.locator('#connect-btn');
+              await hardware.mouse.move(0, 0);
+              await captureForegroundContrast(
+                connectLabel,
+                info,
+                `${label}-connect-rest`
+              );
+              await connectLabel.hover();
+              await captureForegroundContrast(
+                connectLabel,
+                info,
+                `${label}-connect-hover`
+              );
+              await hardware.mouse.move(0, 0);
+            }
+
             await expect
               .poll(() =>
                 hardware!.evaluate(() => document.activeElement?.tagName)

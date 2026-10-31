@@ -98,10 +98,13 @@ let seenMethods: string[];
 let observedBoundary:
   | { hasDraft: boolean; hasTicket: boolean; path: string }
   | undefined;
+let expectedBoundary: { hasDraft: boolean; hasTicket: boolean; path: string };
+let draftMatchesPublicVector = false;
 
 const Probe = () => {
   const { secrets } = useOnboardingSecrets();
   const location = useLocation();
+  draftMatchesPublicVector = secrets.phrase === VALID12;
   observedBoundary = {
     path: location.pathname,
     hasDraft: Boolean(secrets.phrase),
@@ -177,6 +180,8 @@ beforeEach(() => {
   jest.clearAllMocks();
   seenMethods = [];
   observedBoundary = undefined;
+  draftMatchesPublicVector = false;
+  expectedBoundary = { path: '/import', hasDraft: false, hasTicket: false };
   window.history.replaceState(null, '', '/import');
   window.matchMedia = jest.fn(() => ({
     matches: false,
@@ -253,11 +258,7 @@ afterEach(() => {
   expect(chrome.storage.local.remove).not.toHaveBeenCalled();
   // RTL's registered auto-cleanup can precede this hook. Assert the real last
   // public provider projection, rather than query an already-unmounted DOM.
-  expect(observedBoundary).toEqual({
-    path: '/import',
-    hasDraft: false,
-    hasTicket: false,
-  });
+  expect(observedBoundary).toEqual(expectedBoundary);
   cleanup();
   global.chrome = originalChrome;
   global.fetch = originalFetch;
@@ -327,6 +328,33 @@ describe('recovery phrase validation localization', () => {
     expect(mockEmitter.mock.calls.some(([, args]) => args[0] === VALID12)).toBe(
       true
     );
+  });
+
+  it('accepts pasted recovery words separated by line breaks and other whitespace', async () => {
+    const { user } = await mount('en');
+    for (const separator of ['\n', '\r\n', '\t', '\u00a0']) {
+      mockEmitter.mockClear();
+      await enter(user, VALID12.replace(/ /g, separator));
+      await waitFor(() => expect(button('en')).toBeEnabled());
+      expect(
+        mockEmitter.mock.calls.some(([, args]) => args[0] === VALID12)
+      ).toBe(true);
+    }
+  });
+
+  it('hands the normalized pasted phrase to the import flow after submission', async () => {
+    const { user } = await mount('en');
+    await enter(user, VALID12.replace(/ /g, '\n'));
+    await waitFor(() => expect(button('en')).toBeEnabled());
+    await user.click(button('en'));
+    expectedBoundary = {
+      path: '/create-password-import',
+      hasDraft: true,
+      hasTicket: false,
+    };
+    await waitFor(() => expect(observedBoundary).toEqual(expectedBoundary));
+    expect(mockEmitter.mock.calls.at(-1)?.[1][0]).toBe(VALID12);
+    expect(draftMatchesPublicVector).toBe(true);
   });
 
   it.each(['clear', 'invalid replacement'])(

@@ -42,7 +42,7 @@ export const WalletProviderDefaultModal = () => {
         }
       }}
       aria-hidden={isNotVisible}
-      className="fixed left-0 bottom-0 z-40 bg-brand-blue400 flex"
+      className="fixed left-0 bottom-0 z-40 bg-brand-blue400 flex aria-hidden:pointer-events-none"
       style={containerStyleAnimation.style}
       animate={containerStyleAnimation.animation}
     >
@@ -55,7 +55,7 @@ export const WalletProviderDefaultModal = () => {
         disabled={isNotVisible}
         onMouseEnter={() => setIsHovered(true)}
         onClick={() => setIsHovered(!isHovered)}
-        className="focus-visible:ring-2 focus-visible:ring-white"
+        className="shrink-0 focus-visible:ring-2 focus-visible:ring-white"
         style={containerIconStyleAnimation.style}
         animate={containerIconStyleAnimation.animation}
       >
@@ -69,7 +69,7 @@ export const WalletProviderDefaultModal = () => {
       {isHovered && !isNotVisible && (
         <motion.div
           id="default-wallet-options"
-          className="flex items-center p-4 "
+          className="flex min-w-0 flex-1 items-center p-4"
           initial={{ opacity: 0, y: 0 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 1 }}
@@ -78,7 +78,7 @@ export const WalletProviderDefaultModal = () => {
           <button
             type="button"
             aria-label={t('buttons.close')}
-            className="cursor-pointer focus-visible:ring-2 focus-visible:ring-white"
+            className="shrink-0 cursor-pointer focus-visible:ring-2 focus-visible:ring-white"
             onClick={close}
           >
             <Icon isSvg name="Close" />

@@ -1,9 +1,4 @@
 {
-  "providerDefault": {
-    "defaultEnabled": "Pali foi definida como a carteira padrão!",
-    "otherWalletInUse": "MetaMask está em uso e Pali está desativada.",
-    "setPaliDefault": "Definir Pali como carteira padrão!"
-  },
   "transactionDisplay": {
     "blockHash": "Hash do bloco",
     "blockNumber": "Número do bloco",
@@ -160,7 +155,7 @@
     "forget": "Esquecer carteira",
     "generalOptions": "OPÇÕES GERAIS",
     "currency": "Moeda",
-    "manageEth": "Definir carteira padrão",
+    "manageEth": "Gerenciar provedor Ethereum",
     "infoHelp": "Info/Ajuda",
     "lock": "Bloquear",
     "advanced": "Avançado"
@@ -211,7 +206,6 @@
     "errorSwitching": "Erro ao trocar redes",
     "speedUp": "Acelerar",
     "cancelTx": "Cancelar Transação",
-    "cancelTxMessage": "Tem certeza de que deseja cancelar esta transação?",
     "speedTx": "Acelerar Transação"
   },
   "connections": {
@@ -265,6 +259,7 @@
     "importToken": "Importar Token",
     "youHaveNoTokens": "Você não tem tokens ou NFTs",
     "youHaveNoTxs": "Você não tem histórico de transações",
+    "historyMayBeIncomplete": "O histórico de transações pode estar incompleto sem uma API de explorador.",
     "seeAllTxs": "Ver todas as transações",
     "addressCopied": "Endereço copiado com sucesso",
     "hashCopied": "Hash copiado com sucesso",
@@ -313,7 +308,8 @@
     "youShould": "Agora você deve ter sua frase de recuperação e senha da carteira anotadas para referência futura."
   },
   "createPhrase": {
-    "recoveryPhrase": "Frase de Recuperação"
+    "recoveryPhrase": "Frase de Recuperação",
+    "generationFailed": "Não foi possível gerar uma nova frase de recuperação. Selecione Gerar para tentar novamente."
   },
   "send": {
     "transactionFailureDetails": "Falha na transação: {{message}}",
@@ -366,9 +362,16 @@
     "gasPriceBelowEstimate": "Preço do gas abaixo de {{estimate}} GWEI.",
     "maxFeeBelowEstimate": "Taxa máxima abaixo de {{estimate}} GWEI.",
     "priorityFeeBelowEstimate": "Taxa de prioridade abaixo de {{estimate}} GWEI.",
+    "erc20SetAllowanceZero": "Solicitação para revogar a permissão de",
+    "erc20IncreaseAllowance": "Solicitação para aumentar a permissão de",
+    "erc20DecreaseAllowance": "Solicitação para reduzir a permissão de",
+    "erc20ApprovalRequest": "Solicitação de aprovação do token",
     "grantAccess": "Você concede acesso ao seu",
     "editPermission": "Editar permissão",
     "invalidApprovalDetails": "Detalhes de aprovação inválidos. Esta solicitação não pode ser confirmada.",
+    "revokeNftApproval": "Revogar autorização do NFT",
+    "revokeNftApprovalDescription": "Remover o endereço autorizado para {{token}} #{{tokenId}}",
+    "approvalResetAddress": "Endereço para redefinir a autorização",
     "approveNftTransfer": "Aprovar Transferência de NFT",
     "allowTransferOf": "Permitir transferência de",
     "grantCollectionAccess": "Conceder Acesso à Coleção",
@@ -419,6 +422,7 @@
     "feeRateNormal": "A taxa de {{value}} {{currency}}/vbyte é mais alta que o normal.",
     "send": "ENVIAR",
     "insufficientFunds": "Fundos insuficientes",
+    "maxBalanceReviewRequired": "O saldo mudou ou não pôde ser verificado. Confira o valor e tente novamente.",
     "insufficientFundsForGas": "Fundos insuficientes para cobrir as taxas de gás",
     "maxUnavailablePendingTx": "MAX não está disponível enquanto você tiver uma transação pendente. Aguarde a confirmação.",
     "networkCatchingUp": "A rede ainda está atualizando sua transação anterior. Tente novamente em instantes.",
@@ -446,9 +450,9 @@
     "balanceVerified": "Saldo verificado",
     "tokenOwnershipVerified": "Propriedade do token verificada",
     "pleaseVerifyTokenOwnership": "Por favor, verifique a propriedade do token primeiro",
-    "youOnlyOwn": "Você possui apenas {amount} deste token",
+    "youOnlyOwn": "Você possui apenas {{amount}} deste token",
     "pleaseWaitForBalanceVerification": "Por favor, aguarde a verificação do saldo",
-    "insufficientFundsVerified": "Fundos insuficientes (saldo verificado: {balance})",
+    "insufficientFundsVerified": "Fundos insuficientes (saldo verificado: {{balance}})",
     "enterTokenId": "Inserir ID do token",
     "amountMustBePositiveInteger": "A quantidade deve ser um número inteiro positivo",
     "verifyingBalance": "Verificando saldo...",
@@ -615,11 +619,15 @@
     "watchOnlyValidationTimedOut": "A validação de somente leitura demorou demais. Nada foi importado. Tente novamente.",
     "watchOnly": "Somente leitura",
     "publicIdentifierInput": "Endereço / XPUB / Descritor",
-    "usingAnotherWallet": "Você está usando outra carteira.",
-    "defaultWalletStatus": "é a carteira padrão",
     "otherDefaultWalletHelpTitle": "Como definir outra carteira como padrão?",
     "otherDefaultWalletHelp": "Algumas carteiras oferecem isso nos ajustes. O navegador usa como padrão a última carteira instalada ou ativada.",
-    "setWalletAsDefault": "Definir {{wallet}} como carteira padrão",
+    "paliProviderEnabled": "O provedor Ethereum da Pali está ativado",
+    "paliProviderDisabled": "O provedor Ethereum da Pali está desativado",
+    "disablePaliProvider": "Desativar o provedor Ethereum da Pali",
+    "enablePaliProvider": "Ativar o provedor Ethereum da Pali",
+    "disablePaliProviderWarning": "Desativar a Pali desconecta todos os sites conectados. Configure outra carteira nas próprias configurações dela.",
+    "disablePaliProviderFailed": "Não foi possível confirmar a desativação do provedor Ethereum da Pali. Alguns sites podem já estar desconectados. Verifique as conexões antes de tentar novamente.",
+    "enablePaliProviderFailed": "Não foi possível confirmar a ativação do provedor Ethereum da Pali. Verifique a configuração antes de tentar novamente.",
     "localSmartAccountGuardianMissing": "Guardião local da conta inteligente não encontrado.",
     "recoveryValidatorNotConfigured": "O validador P-256/WebAuthn não está configurado.",
     "xmssProgressLevel": "Nível XMSS {{level}}/22.",
@@ -669,6 +677,7 @@
     "recoverySeedHelp": "Digite a frase desta carteira. Uma frase diferente não pode restaurar suas contas.",
     "recoveryLimitations": "A recuperação exclui os registros criptografados das chaves privadas importadas armazenados localmente. Sem backups separados dessas chaves, você pode perder permanentemente o acesso a essas contas. As conexões de hardware, as configurações personalizadas e a configuração de contas inteligentes e passkeys precisam de seus próprios backups ou de uma nova conexão. A recuperação não movimenta seus fundos.",
     "walletRecoveryFailed": "Não foi possível concluir a recuperação da carteira. Confira sua frase e tente novamente. Se continuar falhando, reinicie seu navegador. Não apague os dados de armazenamento da carteira.",
+    "walletRecoveryUnconfirmed": "Não foi possível confirmar a recuperação da carteira. Verifique a carteira para ver seu estado atual. Não apague os dados de armazenamento da carteira.",
     "walletRecoveryRestartRequired": "É preciso concluir a recuperação antes de usar a carteira. Reinicie seu navegador, depois verifique sua carteira e tente recuperá-la novamente se necessário. Não apague os dados de armazenamento da carteira.",
     "walletWindowCheckSlow": "As janelas da carteira estão demorando mais para responder. Tente verificar novamente.",
     "retryWalletWindowCheck": "Verificar as janelas novamente",
@@ -785,7 +794,6 @@
     "watchOnlyNoPrivateKey": "Esta é uma conta somente de observação. Você pode receber fundos e visualizar as atividades, mas esta carteira não possui a chave privada desta conta.",
     "seeOnExplorer": "Ver no explorador",
     "manageEthProvider": "GERENCIAR PROVEDOR ETH",
-    "windowObjectWasSet": "Objeto window definido com sucesso",
     "missingApiKey": "Chave API Ausente/Inválida - Por favor adicione sua chave API à URL (ex., ?apikey=SUA_CHAVE)",
     "apiFormatError": "A API não responde corretamente. Por favor verifique a URL e certifique-se de que suporte o formato de API Etherscan/Blockscout.",
     "apiConnectionError": "Não é possível validar a API. Por favor verifique sua conexão e tente novamente.",
@@ -1167,8 +1175,12 @@
     "checkYourDevice": "Verifique seu {{device}} para aprovar esta solicitação",
     "useYourPasskey": "Use sua chave de acesso",
     "passkeyPrompt": "Siga as instruções do navegador para assinar com sua chave de acesso",
+    "cancelFeePreview": "Verificando a taxa de rede de cancelamento…",
+    "cancelFeeConsent": "Cancelar esta transação com uma taxa máxima de gás de {{fee}} {{currency}}?",
+    "cancelFeeUnavailable": "Não foi possível verificar a taxa de cancelamento. Tente novamente.",
     "speedUpFeePreview": "Verificando a taxa de rede…",
     "speedUpFeeConsent": "Acelerar esta transação com uma taxa de rede máxima de {{fee}} {{currency}}?",
+    "speedUpAmountWouldChange": "Adicione fundos a esta conta antes de acelerar a transação. O valor original não será alterado.",
     "speedUpFeeUnavailable": "Não foi possível verificar a taxa. Tente novamente."
   },
   "switchNetworkPage": {
@@ -1216,7 +1228,8 @@
     "removalFailed": "Não foi possível remover a carteira. Tente novamente.",
     "importedAccountsWont": "As contas importadas não se vincularão à Frase de Recuperação Secreta da sua conta Pali inicial.",
     "stillHaveFunds": "Você ainda tem fundos em sua carteira!",
-    "saveProperly": "Guarde esta frase-semente corretamente para que você possa importar esta carteira no futuro."
+    "saveProperly": "Guarde esta frase-semente corretamente para que você possa importar esta carteira no futuro.",
+    "privateNotesBackupWarning": "Se tiver notas privadas, faça backup separado; a frase de recuperação não as restaura."
   },
   "walletSeedPhrasePage": {
     "keepSeedPhrase": "Mantenha sua seed em segredo!",
@@ -1266,7 +1279,8 @@
     "youCanGet": "Você pode obter {{quantity}} {{token}} por endereço de carteira a cada 24 horas.",
     "firstAccessTitle": "Pegue ${{token}} com nossa torneira para começar a experienciar a rede {{network}}!",
     "firstAccessDescription": "Você pode obter {{token}} por endereço de carteira a cada 24 horas.",
-    "grabTokens": "Ir para o Faucet"
+    "grabTokens": "Ir para o Faucet",
+    "rateLimited": "O faucet está limitando as solicitações. Acesse o faucet para mais informações."
   },
   "nftDetails": {
     "information": "Informações do NFT",
@@ -1406,6 +1420,21 @@
     "feeTitle": "Taxa de rede para sua operação Sentry autorizada",
     "feeHelp": "Autoriza as entradas da taxa de rede desta operação. O site envia a transação assinada.",
     "feeChanges": "Alterações autorizadas",
+    "managementFields": {
+      "action": "Ação",
+      "childKeyCommitment": "Compromisso da chave filha",
+      "collateralSatoshis": "Garantia (satoshis)",
+      "collateralSigningMessage": "Mensagem de assinatura da garantia",
+      "globalKeyVersion": "Versão global da chave",
+      "operatorPublicKey": "Chave pública do operador",
+      "operatorRewardBasisPoints": "Recompensa do operador (pontos-base)",
+      "ownerKeyId": "ID da chave do proprietário",
+      "payoutAddress": "Endereço de pagamento",
+      "pqOwnerPublicKey": "Chave pública PQ do proprietário",
+      "pqVotingPublicKey": "Chave pública PQ de votação",
+      "reason": "Motivo da revogação",
+      "votingKeyId": "ID da chave de votação"
+    },
     "feeType": "Operação de nó Sentry",
     "feeOperations": {
       "register": "Registrar nó",
@@ -1580,6 +1609,13 @@
     "clear": "Limpar dados salvos",
     "networkRequired": "Selecione a rede principal Ethereum no menu de redes para preparar os dados do pool.",
     "publicDataOnly": "Apenas dados públicos do pool são baixados. Seu endereço de carteira e suas notas privadas não são enviados.",
+    "serviceSettings": "Serviço de privacidade",
+    "serviceOrigin": "Origem do serviço",
+    "serviceHelp": "Use HTTPS ou HTTP no localhost. Alterar o serviço limpa os dados preparados do pool; suas notas salvas permanecem na carteira.",
+    "serviceInvalid": "Informe uma origem HTTPS ou HTTP no localhost, sem caminho ou credenciais.",
+    "serviceLoadFailed": "Não foi possível carregar a configuração do serviço de privacidade.",
+    "serviceSaveFailed": "Não foi possível salvar a configuração do serviço de privacidade. Tente novamente.",
+    "serviceSaved": "Serviço de privacidade salvo. Prepare o pool novamente.",
     "savedDeposits": "Depósitos públicos salvos: {{count}}",
     "verifiedBlock": "Último bloco verificado: {{block}}",
     "progress": "{{completed}} de {{total}}",
@@ -1647,6 +1683,7 @@
       "title": "Sacar nota",
       "open": "Sacar",
       "recipient": "Endereço do destinatário",
+      "recipientInvalid": "Insira um endereço Ethereum válido.",
       "method": "Enviar por",
       "direct": "Direto",
       "relayed": "Relayer",
@@ -1672,6 +1709,7 @@
       "jobId": "ID de tarefa do relayer",
       "directoryFailed": "Não foi possível carregar os relayers. Tente novamente ou escolha Direto.",
       "prepareFailed": "Não foi possível preparar o saque. Verifique os dados do pool e sua rede e tente novamente.",
+      "prepareInterrupted": "A preparação foi interrompida. Verifique os dados do pool e tente novamente.",
       "checkStatus": "Verificar status",
       "statusFailed": "Não foi possível verificar o status do relayer. Tente novamente.",
       "statusUnknown": "Status de envio do saque desconhecido. Verifique antes de tentar novamente.",
