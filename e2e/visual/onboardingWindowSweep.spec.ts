@@ -465,6 +465,97 @@ test('locked wallet and recovery warning remain readable and operable', async ({
     await checkWallet.waitFor();
     for (const size of sizes) {
       await page.setViewportSize(size);
+      // Start from the top and reach the real control with the keyboard before
+      // scrolling down. A visible button alone can still have a clipped ring.
+      await page.mouse.click(5, 5);
+      await page.keyboard.press(
+        process.platform === 'darwin' ? 'Meta+ArrowUp' : 'Control+Home'
+      );
+      await expect
+        .poll(() => page.evaluate(() => document.scrollingElement?.scrollTop))
+        .toBe(0);
+      for (let attempt = 0; attempt < 12; attempt++) {
+        await page.keyboard.press('Tab');
+        if (
+          await checkWallet.evaluate(
+            (button) => button === document.activeElement
+          )
+        )
+          break;
+      }
+      await expect(checkWallet).toBeFocused();
+      const focusOutlineVisible = () =>
+        checkWallet.evaluate((button) => {
+          const style = getComputedStyle(button);
+          const width = parseFloat(style.outlineWidth);
+          const offset = parseFloat(style.outlineOffset);
+          if (
+            !button.matches(':focus-visible') ||
+            style.outlineStyle === 'none' ||
+            !Number.isFinite(width) ||
+            !Number.isFinite(offset) ||
+            width <= 0
+          )
+            return false;
+          const rect = button.getBoundingClientRect();
+          const outset = Math.max(0, width + offset);
+          const outline = {
+            left: rect.left - outset,
+            top: rect.top - outset,
+            right: rect.right + outset,
+            bottom: rect.bottom + outset,
+          };
+          if (
+            outline.left < 0 ||
+            outline.top < 0 ||
+            outline.right > innerWidth ||
+            outline.bottom > innerHeight
+          )
+            return false;
+          for (
+            let parent = button.parentElement;
+            parent;
+            parent = parent.parentElement
+          ) {
+            const parentStyle = getComputedStyle(parent);
+            const clip = parent.getBoundingClientRect();
+            if (
+              /(auto|scroll|hidden|clip)/.test(parentStyle.overflowX) &&
+              (outline.left < clip.left || outline.right > clip.right)
+            )
+              return false;
+            if (
+              /(auto|scroll|hidden|clip)/.test(parentStyle.overflowY) &&
+              (outline.top < clip.top || outline.bottom > clip.bottom)
+            )
+              return false;
+          }
+          return true;
+        });
+      await expect
+        .poll(focusOutlineVisible, {
+          message: `native Tab focus ${size.width}x${size.height}`,
+        })
+        .toBe(true);
+      await page.mouse.move(size.width / 2, size.height / 2);
+      await page.mouse.wheel(0, 10000);
+      await expect
+        .poll(() =>
+          page.evaluate(() => {
+            const root = document.scrollingElement!;
+            return (
+              Math.abs(root.scrollHeight - root.clientHeight - root.scrollTop) <
+              1
+            );
+          })
+        )
+        .toBe(true);
+      await expect(checkWallet).toBeFocused();
+      await expect
+        .poll(focusOutlineVisible, {
+          message: `max-scroll focus ${size.width}x${size.height}`,
+        })
+        .toBe(true);
       await wheelTo(page, checkWallet);
       expect
         .soft(

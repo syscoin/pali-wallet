@@ -77,6 +77,7 @@ export const CreatePasswordImport = () => {
       </p>
       <Button
         id="recovery-check-wallet"
+        className="mb-2"
         variant="primary"
         type="button"
         onClick={reloadWalletForRecovery}
