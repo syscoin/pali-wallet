@@ -2331,7 +2331,7 @@ it('clears a verified note without losing v3 capacity or unrelated custody', asy
 });
 
 it.each([256, 512] as const)(
-  'round-trips a worst-case encrypted %i-note v3 vault and preserves it on failed writes',
+  'preserves and rewrites a worst-case encrypted %i-note v3 vault',
   async (capacity) => {
     const max = Number.MAX_SAFE_INTEGER;
     const hash = '0x' + 'ab'.repeat(32);
@@ -2366,7 +2366,20 @@ it.each([256, 512] as const)(
         jobId: 'j'.repeat(128),
       },
     }));
-    const f = fixture();
+    // Cache real identities across repeated full-vault reads and re-persistence.
+    const identities = new Map<
+      string,
+      ReturnType<typeof identifyClassicNote>
+    >();
+    const identify = (note: string) => {
+      let identity = identities.get(note);
+      if (!identity) {
+        identity = identifyClassicNote(note);
+        identities.set(note, identity);
+      }
+      return identity;
+    };
+    const f = fixture(undefined, identify);
     const keyring = f.getKeyring();
     const profileId = await keyring.getPrivateRecordProfileId();
     const shardDomain = 'org.syscoin.pali.privacy.notes.shard.v2';
@@ -2444,6 +2457,27 @@ it.each([256, 512] as const)(
       'privacy_vault_unavailable'
     );
     expect(keccak256(toUtf8Bytes(JSON.stringify(f.records[key])))).toBe(before);
+    // Exercise the real serializer and atomic write at full retained capacity,
+    // then reload and verify the other worst-case journals survived.
+    expect(await restarted.clearCompletedNotes([notes[0].id])).toEqual({
+      removed: [notes[0].id],
+      unresolved: [],
+    });
+    expect(f.revalidateCompletion).toHaveBeenCalledTimes(2);
+    const afterRestart = f.create();
+    expect(await afterRestart.getCapacity()).toMatchObject({
+      capacity,
+      noteCount: capacity - 1,
+    });
+    const remaining = (await afterRestart.getNotes()).notes;
+    expect(remaining).toHaveLength(capacity - 1);
+    expect(remaining.some((entry) => entry.id === notes[0].id)).toBe(false);
+    expect(
+      await afterRestart.getWithdrawalAttempt(notes[1].id, f.captureSession())
+    ).toEqual(notes[1].withdrawal);
+    expect(
+      await afterRestart.getDepositAttempt(notes[1].id, f.captureSession())
+    ).toEqual(notes[1].deposit);
     // Non-secret diagnostic measurements; reviewed after execution, not timing gates.
     console.info('Synthetic worst-case encrypted vault', {
       capacity,
@@ -2452,4 +2486,71 @@ it.each([256, 512] as const)(
     });
   },
   180000
+);
+
+it.each(['tier', 'count', 'schema', 'bytes'] as const)(
+  'rejects an authenticated malformed v3 %s without changing storage',
+  async (kind) => {
+    const { f, key } = await capacityFixture(capacityNotes(2));
+    await f.controller.setCapacity(256);
+    const bundle = structuredClone(f.records[key]);
+    const keyring = f.getKeyring();
+    const plain = await keyring.decryptPrivateRecord({
+      domain: PRIVATE_VAULT_DOMAIN,
+      recordId: bundle.root.recordId,
+      envelope: bundle.root,
+    });
+    const root = JSON.parse(new TextDecoder().decode(plain));
+    plain.fill(0);
+    if (kind === 'tier') root.capacity = 1024;
+    if (kind === 'count') root.noteCount = 257;
+    if (kind === 'schema') root.unexpected = true;
+    if (kind === 'bytes') {
+      root.capacity = 128;
+      // Envelopes satisfy the pre-decrypt size bound, but their combined
+      // encoded size exceeds this selected tier's 4 MiB bundle limit.
+      bundle.shards = Array.from({ length: 97 }, (_, index) => ({
+        ...bundle.shards[0],
+        recordId: `00000000-0000-4000-8000-${(2000000 + index)
+          .toString(16)
+          .padStart(12, '0')}`,
+        ciphertext: 'A'.repeat(Math.ceil((32 * 1024 + 16) / 3) * 4),
+      }));
+      root.shards = bundle.shards.map((shard: any, index: number) => ({
+        recordId: shard.recordId,
+        count: index === 0 ? 2 : 0,
+        hash: keccak256(
+          new TextEncoder().encode(
+            JSON.stringify([
+              shard.version,
+              shard.domain,
+              shard.recordId,
+              shard.profileId,
+              shard.nonce,
+              shard.ciphertext,
+            ])
+          )
+        ),
+      }));
+    }
+    const rootPlain = new TextEncoder().encode(JSON.stringify(root));
+    bundle.root = await keyring.encryptPrivateRecord({
+      domain: PRIVATE_VAULT_DOMAIN,
+      recordId: bundle.root.recordId,
+      plaintext: rootPlain,
+    });
+    rootPlain.fill(0);
+    if (kind === 'bytes')
+      expect(
+        new TextEncoder().encode(JSON.stringify(bundle)).length
+      ).toBeGreaterThan(4 * 1024 * 1024);
+    f.records[key] = bundle;
+    const saved = structuredClone(bundle);
+    const writes = f.storage.setItem.mock.calls.length;
+    await expect(f.create().getCapacity()).rejects.toThrow(
+      'privacy_vault_corrupt'
+    );
+    expect(f.storage.setItem).toHaveBeenCalledTimes(writes);
+    expect(f.records[key]).toEqual(saved);
+  }
 );

@@ -1275,3 +1275,90 @@ it('does not restore a cleared note from a list request started before the clear
     screen.queryByText(en.privacy.notePhase.spent)
   ).not.toBeInTheDocument();
 });
+
+it.each(['resolve', 'reject'] as const)(
+  'does not restore removed-note relayer status when a pending check later %s',
+  async (outcome) => {
+    const removedId = '00000000-0000-4000-8000-000000000001';
+    const survivorId = '00000000-0000-4000-8000-000000000002';
+    const tx = '0x' + '11'.repeat(32);
+    const job = 'synthetic-job';
+    const removed = {
+      ...note,
+      id: removedId,
+      phase: 'spent',
+      withdrawal: {
+        mode: 'relayed',
+        phase: 'submitted',
+        transactionHash: tx,
+        jobId: job,
+      },
+    };
+    const survivor = {
+      ...note,
+      id: survivorId,
+      phase: 'waiting',
+      withdrawal: { mode: 'relayed', phase: 'unknown', jobId: 'other-job' },
+    };
+    let records = [removed, survivor];
+    let resolveStatus!: (value: unknown) => void;
+    let rejectStatus!: (reason: unknown) => void;
+    const status = new Promise((resolve, reject) => {
+      resolveStatus = resolve;
+      rejectStatus = reject;
+    });
+    mockEmitter.mockImplementation(async ([, method], [batch] = []) => {
+      if (method === 'getNotes') return { notes: records };
+      if (method === 'statusByNote') return status;
+      if (method === 'clearCompletedNotes') {
+        records = records.filter((entry) => !batch.includes(entry.id));
+        return { removed: batch, unresolved: [] };
+      }
+      throw new Error('Unexpected call');
+    });
+    render(<PrivateNotes />);
+    expect(
+      await screen.findByText(en.privacy.withdrawal.statusUnknown)
+    ).toBeVisible();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Reported spent notes (1)' })
+    );
+    const removedRow = screen
+      .getAllByRole('listitem')
+      .find((row) => within(row).queryByText(en.privacy.notePhase.spent));
+    expect(removedRow).toBeDefined();
+    fireEvent.click(
+      within(removedRow!).getByRole('button', {
+        name: en.privacy.withdrawal.checkStatus,
+      })
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: en.privacy.capacity.clear })
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: en.privacy.capacity.confirmClear })
+    );
+    expect(
+      await screen.findByText('Removed: 1. Still saved: 0.')
+    ).toBeVisible();
+    await act(async () => {
+      if (outcome === 'resolve') resolveStatus({ claimedStatus: 'CONFIRMED' });
+      else rejectStatus(new Error('offline'));
+    });
+    expect(screen.getByText(en.privacy.withdrawal.statusUnknown)).toBeVisible();
+    expect(
+      screen.queryByText(en.privacy.withdrawal.statusFailed)
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(
+        en.privacy.withdrawal.reportedStatus.replace('{{status}}', 'CONFIRMED')
+      )
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Reported spent notes (1)' })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: en.privacy.withdrawal.checkStatus })
+    ).toBeEnabled();
+  }
+);
