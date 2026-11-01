@@ -135,6 +135,9 @@ describe('network management transition safety', () => {
     jest.spyOn(React, 'useEffect').mockImplementation((effect) => {
       effects.push(effect);
     });
+    jest.spyOn(React, 'useLayoutEffect').mockImplementation((effect) => {
+      effects.push(effect);
+    });
   });
   afterEach(() => jest.restoreAllMocks());
 
