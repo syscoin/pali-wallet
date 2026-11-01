@@ -901,6 +901,13 @@ test('privacy pool preparation verifies local note imports and preserves a good 
         await importNote(FUNDED_NOTE);
         await expect(notes.getByRole('listitem')).toHaveCount(1);
         await importNote(SPENT_NOTE);
+        const reportedSpent = notes.getByRole('button', {
+          name: en.privacy.capacity.reportedSpent.replace('{{count}}', '1'),
+          exact: true,
+        });
+        await expect(reportedSpent).toHaveAttribute('aria-expanded', 'false');
+        await reportedSpent.click();
+        await expect(reportedSpent).toHaveAttribute('aria-expanded', 'true');
         await expect(notes.getByRole('listitem')).toHaveCount(2);
         await expect(notes).toContainText(en.privacy.notePhase.spent);
         expect(await auditEncryptedNotes(wallet!.page)).toEqual({
