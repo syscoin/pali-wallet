@@ -369,6 +369,17 @@ module.exports = {
   optimization: {
     splitChunks: {
       cacheGroups: {
+        // These exact modules are duplicated in both initial UI bundles.
+        // Share that group between the pages; the worker keeps its static copy.
+        uiSharedVendors: {
+          test: /[\\/]node_modules[\\/](?:lodash[\\/]lodash\.js|@remix-run[\\/]router[\\/]dist[\\/]router\.js|jdenticon[\\/]dist[\\/]jdenticon-module\.mjs|react-router-dom[\\/]dist[\\/]index\.js)$/,
+          chunks(chunk) {
+            return chunk.name === 'app' || chunk.name === 'external';
+          },
+          name: 'ui-shared-vendors',
+          minChunks: 2,
+          enforce: true,
+        },
         // Share only identical privacy modules across pre-registered background chunks.
         privacyBackgroundShared: {
           test(module) {
