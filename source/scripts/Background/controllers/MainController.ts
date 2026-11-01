@@ -2068,9 +2068,11 @@ class MainController {
       { readCompletionRpc },
       { getPrivacyPool },
     ] = await Promise.all([
-      import('utils/privacy/spentCompletion'),
-      import('utils/privacy/client'),
-      import('utils/privacy/registry'),
+      import(
+        /* webpackChunkName: "private-vault" */ 'utils/privacy/spentCompletion'
+      ),
+      import(/* webpackChunkName: "private-vault" */ 'utils/privacy/client'),
+      import(/* webpackChunkName: "private-vault" */ 'utils/privacy/registry'),
     ]);
     assertCurrent();
     if (
