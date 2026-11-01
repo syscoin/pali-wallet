@@ -2477,7 +2477,11 @@ it.each([256, 512] as const)(
     expect(remaining.some((entry) => entry.id === notes[0].id)).toBe(false);
     expect(
       await afterRestart.getWithdrawalAttempt(notes[1].id, f.captureSession())
-    ).toEqual(notes[1].withdrawal);
+    ).toEqual({
+      ...notes[1].withdrawal,
+      noteId: notes[1].id,
+      poolId: 'eth-100',
+    });
     expect(
       await afterRestart.getDepositAttempt(notes[1].id, f.captureSession())
     ).toEqual(notes[1].deposit);

@@ -954,6 +954,10 @@ it('supports keyboard cancellation and refreshes only safe metadata', async () =
   );
   await user.tab();
   expect(
+    screen.getByRole('button', { name: en.privacy.capacity.settings })
+  ).toHaveFocus();
+  await user.tab();
+  expect(
     screen.getByRole('button', { name: en.privacy.deposit.title })
   ).toHaveFocus();
   await user.tab();
