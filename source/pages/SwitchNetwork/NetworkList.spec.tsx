@@ -85,6 +85,7 @@ describe('network picker controls', () => {
     };
     jest.spyOn(React, 'useMemo').mockImplementation((callback) => callback());
     jest.spyOn(React, 'useEffect').mockImplementation(() => undefined);
+    jest.spyOn(React, 'useLayoutEffect').mockImplementation(() => undefined);
     jest.spyOn(React, 'useRef').mockImplementation((initial?: any) => {
       const index = cursor++;
       if (!(index in slots)) slots[index] = { current: initial };

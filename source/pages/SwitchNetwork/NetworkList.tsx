@@ -6,6 +6,7 @@ import { Button } from 'components/Button';
 import { ChainIcon } from 'components/ChainIcon';
 import { useQueryData } from 'hooks/index';
 import { useController } from 'hooks/useController';
+import { useToastFooter } from 'hooks/useToastFooter';
 import { useUtils } from 'hooks/useUtils';
 import { RootState } from 'state/store';
 import { INetwork, INetworkType } from 'types/network';
@@ -38,6 +39,7 @@ export const NetworkList = ({
   const { networks } = useSelector((state: RootState) => state.vaultGlobal);
 
   const { navigate, alert } = useUtils();
+  const actionFooter = useToastFooter({ includeInFlow: true });
 
   // Get query data for external popup handling
   const queryData = useQueryData();
@@ -303,7 +305,7 @@ export const NetworkList = ({
             );
           })}
         </div>
-        <div className="mt-4">
+        <div ref={actionFooter} className="mt-4">
           <Button
             variant="neutral"
             className="text-sm text-brand-royalblue"
