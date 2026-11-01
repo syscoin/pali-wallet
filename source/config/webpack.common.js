@@ -372,7 +372,7 @@ module.exports = {
         // These exact modules are duplicated in both initial UI bundles.
         // Share that group between the pages; the worker keeps its static copy.
         uiSharedVendors: {
-          test: /[\\/]node_modules[\\/](?:lodash[\\/]lodash\.js|@remix-run[\\/]router[\\/]dist[\\/]router\.js|jdenticon[\\/]dist[\\/]jdenticon-module\.mjs|react-router-dom[\\/]dist[\\/]index\.js)$/,
+          test: /[\\/]node_modules[\\/](?:lodash[\\/]lodash\.js|jdenticon[\\/]dist[\\/]jdenticon-module\.mjs)$/,
           chunks(chunk) {
             return (
               chunk.canBeInitial() &&
