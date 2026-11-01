@@ -323,6 +323,31 @@ test('inactive custom UTXO network removal retains its vault after storage refus
           exact: true,
         });
         await expect(error).toBeVisible();
+        const toast = page.locator('.Toastify__toast--error').filter({
+          has: error,
+        });
+        await toast.evaluate(async (element) => {
+          await Promise.all(
+            element
+              .getAnimations()
+              .map((animation) => animation.finished.catch(() => undefined))
+          );
+        });
+        const close = page
+          .getByRole('button', { name: en.buttons.close, exact: true })
+          .last();
+        await expect(close).toBeInViewport();
+        expect(
+          await close.evaluate((element) => {
+            const rect = element.getBoundingClientRect();
+            const target = document.elementFromPoint(
+              rect.left + rect.width / 2,
+              rect.top + rect.height / 2
+            );
+            return target === element || element.contains(target);
+          })
+        ).toBe(true);
+        await expect(error).toBeVisible();
         expect(await snapshot(page)).toEqual(observations.before);
         await expect(row()).toHaveCount(1);
         await expect(row().locator('button').last()).toBeEnabled();

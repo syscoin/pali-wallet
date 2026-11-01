@@ -15,6 +15,7 @@ import { getControllerStatus } from 'hooks/controllerStatus';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { usePageLoadingState } from 'hooks/usePageLoadingState';
+import { useToastFooter } from 'hooks/useToastFooter';
 import store, { RootState } from 'state/store';
 import { INetworkType, INetwork } from 'types/network';
 import { truncate } from 'utils/index';
@@ -26,6 +27,7 @@ import {
 import { networkRegistrationFingerprint } from 'utils/networkRegistration';
 
 const ManageNetworkView = () => {
+  const actionFooter = useToastFooter({ includeInFlow: true });
   const networks = useSelector(
     (state: RootState) => state.vaultGlobal.networks
   );
@@ -392,7 +394,7 @@ const ManageNetworkView = () => {
           </li>
         ))}
       </ul>
-      <div className="w-full px-2 md:static">
+      <div ref={actionFooter} className="w-full px-2 md:static">
         <Button
           variant="neutral"
           className="text-sm text-brand-royalblue"
