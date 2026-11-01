@@ -1426,7 +1426,8 @@ it.each(['acknowledged', 'acknowledgement lost'])(
       screen.getByRole('button', { name: en.privacy.capacity.settings })
     );
     await screen.findByText('Saved notes: 2 / 128');
-    expect(screen.getByText(transactionHash)).toBeVisible();
+    const transactionLabel = `${en.privacy.deposit.txHash}: ${transactionHash}`;
+    expect(screen.getByText(transactionLabel)).toBeVisible();
     fireEvent.change(screen.getByLabelText(en.privacy.capacity.label), {
       target: { value: '256' },
     });
@@ -1435,7 +1436,7 @@ it.each(['acknowledged', 'acknowledgement lost'])(
       expect(screen.queryByText('0.1 ETH')).not.toBeInTheDocument()
     );
     expect(screen.getByText('1 ETH')).toBeVisible();
-    expect(screen.queryByText(transactionHash)).not.toBeInTheDocument();
+    expect(screen.queryByText(transactionLabel)).not.toBeInTheDocument();
     expect(
       screen.queryByText(en.privacy.withdrawal.statusPending)
     ).not.toBeInTheDocument();
