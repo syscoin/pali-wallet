@@ -125,26 +125,32 @@ export default function PrivateVaultCapacitySettings({
       {data && (
         <p>{t('privacy.capacity.storedBytes', { bytes: data.storedBytes })}</p>
       )}
-      <label htmlFor="privacy-capacity">{t('privacy.capacity.label')}</label>
-      <select
-        className="w-full rounded-lg border border-alpha-whiteAlpha300 bg-bkg-4 p-3 text-white"
-        id="privacy-capacity"
-        value={choice}
-        disabled={pending || !data}
-        onChange={(event) =>
-          setChoice(Number(event.target.value) as PrivateVaultCapacity)
-        }
-      >
-        <option value={128}>
-          {t('privacy.capacity.option', { count: 128, size: 4 })}
-        </option>
-        <option value={256}>
-          {t('privacy.capacity.option', { count: 256, size: 8 })}
-        </option>
-        <option value={512}>
-          {t('privacy.capacity.option', { count: 512, size: 16 })}
-        </option>
-      </select>
+      {data && (
+        <>
+          <label htmlFor="privacy-capacity">
+            {t('privacy.capacity.label')}
+          </label>
+          <select
+            className="w-full rounded-lg border border-alpha-whiteAlpha300 bg-bkg-4 p-3 text-white"
+            id="privacy-capacity"
+            value={choice}
+            disabled={pending || !data}
+            onChange={(event) =>
+              setChoice(Number(event.target.value) as PrivateVaultCapacity)
+            }
+          >
+            <option value={128}>
+              {t('privacy.capacity.option', { count: 128, size: 4 })}
+            </option>
+            <option value={256}>
+              {t('privacy.capacity.option', { count: 256, size: 8 })}
+            </option>
+            <option value={512}>
+              {t('privacy.capacity.option', { count: 512, size: 16 })}
+            </option>
+          </select>
+        </>
+      )}
       <p>{t('privacy.capacity.compatibility')}</p>
       {error && (
         <p role="alert">

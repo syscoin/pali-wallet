@@ -79,21 +79,29 @@ it('offers retry after an initial capacity read failure', async () => {
     .fn()
     .mockRejectedValueOnce(new Error('unavailable'))
     .mockResolvedValueOnce({
-      capacity: 128,
+      capacity: 256,
       noteCount: 2,
-      bundleLimitBytes: 4 * 1024 * 1024,
+      bundleLimitBytes: 8 * 1024 * 1024,
       storedBytes: 4321,
     });
   render(<PrivateVaultCapacitySettings controllerEmitter={emitter} />);
   expect(screen.getByRole('status')).toHaveTextContent(en.privacy.checking);
+  expect(
+    screen.queryByLabelText(en.privacy.capacity.label)
+  ).not.toBeInTheDocument();
   expect(await screen.findByRole('alert')).toHaveTextContent(
     en.privacy.capacity.loadError
   );
   expect(screen.queryByText(en.privacy.capacity.error)).not.toBeInTheDocument();
+  expect(
+    screen.queryByLabelText(en.privacy.capacity.label)
+  ).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: en.privacy.retry }));
   expect(
     await screen.findByText('Serialized encrypted vault: 4321 bytes.')
   ).toBeVisible();
+  expect(screen.getByLabelText(en.privacy.capacity.label)).toHaveValue('256');
+  expect(screen.getByText('Saved notes: 2 / 256')).toBeVisible();
   await waitFor(() =>
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
   );
