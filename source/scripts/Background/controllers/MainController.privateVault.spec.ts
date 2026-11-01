@@ -30,6 +30,8 @@ import store from 'state/store';
 import { KeyringAccountType } from 'types/network';
 import { AsyncMutex, walletPersistenceMutex } from 'utils/asyncMutex';
 import type { IPrivacyTransactionsHost } from 'utils/privacy/transactionTypes';
+import * as completion from 'utils/privacy/spentCompletion';
+import * as privacyClient from 'utils/privacy/client';
 import { chromeStorage } from 'utils/storageAPI';
 
 import MainController from './MainController';
@@ -741,3 +743,153 @@ it('retains the shared read-only context for withdrawal callers', () => {
   const f = importedDepositGuardFixture('');
   expect(() => f.wallet.capturePrivacyDepositContext()).not.toThrow();
 });
+
+it('completion proof wiring binds selected RPC and routes only the explicit clear request', async () => {
+  const { wallet, vault } = depositFixture();
+  wallet.networkRequestGeneration = 0;
+  const expectedResult = {
+    removed: ['00000000-0000-4000-8000-000000000001'],
+    unresolved: [],
+  };
+  (vault as any).clearCompletedNotes = jest.fn(async () => expectedResult);
+  await expect(
+    wallet.clearPrivateVaultCompletedNotes(expectedResult.removed)
+  ).resolves.toEqual(expectedResult);
+  expect((vault as any).clearCompletedNotes).toHaveBeenCalledWith(
+    expectedResult.removed
+  );
+  const rpc = jest
+    .spyOn(privacyClient, 'readCompletionRpc')
+    .mockResolvedValue('0x1');
+  let request: any;
+  jest
+    .spyOn(completion, 'prepareSpentCompletion')
+    .mockImplementation(async (value) => {
+      request = value;
+      value.assertCurrent();
+      return { revalidate: async () => value.assertCurrent() };
+    });
+  const session = wallet.capturePrivateVaultSession();
+  await wallet.preparePrivateVaultCompletionProof(
+    {
+      poolId: 'eth-1',
+      commitment: '0x' + '01'.repeat(32),
+      nullifierHash: '0x' + '02'.repeat(32),
+    },
+    {
+      phase: 'submitted',
+      mode: 'relayed',
+      transactionHash: '0x' + '03'.repeat(32),
+      endpoint: 'https://relay.example',
+      jobId: 'synthetic-job',
+    },
+    undefined,
+    session
+  );
+  expect(request.withdrawal).toEqual({
+    phase: 'submitted',
+    mode: 'relayed',
+    transactionHash: '0x' + '03'.repeat(32),
+  });
+  const signal = new AbortController().signal;
+  await request.rpc('eth_chainId', [], signal);
+  expect(rpc).toHaveBeenCalledWith(
+    'https://operator.example',
+    'eth_chainId',
+    [],
+    signal
+  );
+});
+
+it.each([
+  'rpc',
+  'network',
+  'account',
+  'provider',
+  'wallet-session',
+  'network-aba',
+])(
+  'completion proof wiring rejects a changed %s before commit',
+  async (change) => {
+    const { wallet, state } = depositFixture();
+    wallet.networkRequestGeneration = 0;
+    jest
+      .spyOn(completion, 'prepareSpentCompletion')
+      .mockImplementation(async (value) => {
+        value.assertCurrent();
+        return { revalidate: async () => value.assertCurrent() };
+      });
+    const session = wallet.capturePrivateVaultSession();
+    const lease = await wallet.preparePrivateVaultCompletionProof(
+      {
+        poolId: 'eth-1',
+        commitment: '0x' + '01'.repeat(32),
+        nullifierHash: '0x' + '02'.repeat(32),
+      },
+      {
+        phase: 'submitted',
+        mode: 'relayed',
+        transactionHash: '0x' + '03'.repeat(32),
+      },
+      undefined,
+      session
+    );
+    if (change === 'rpc')
+      state.vault.activeNetwork.url = 'https://other.example';
+    if (change === 'network') state.vault.activeNetwork.chainId = 57;
+    if (change === 'account') state.vault.activeAccount.id = 1;
+    if (change === 'provider') wallet.ethereumTransaction.web3Provider = {};
+    if (change === 'wallet-session') wallet.walletSessionGeneration++;
+    if (change === 'network-aba') wallet.networkRequestGeneration++;
+    await expect(lease.revalidate()).rejects.toThrow();
+  }
+);
+
+it.each([
+  'unknown-withdrawal',
+  'missing-hash',
+  'invalid-direct-nonce',
+  'unknown-deposit',
+])(
+  'completion proof wiring rejects %s before invoking the verifier',
+  async (kind) => {
+    const { wallet } = depositFixture();
+    wallet.networkRequestGeneration = 0;
+    const verifier = jest.spyOn(completion, 'prepareSpentCompletion');
+    const session = wallet.capturePrivateVaultSession();
+    const withdrawal: any = {
+      phase: 'submitted',
+      mode: 'relayed',
+      transactionHash: '0x' + '03'.repeat(32),
+    };
+    let deposit: any;
+    if (kind === 'unknown-withdrawal') withdrawal.phase = 'unknown';
+    if (kind === 'missing-hash') delete withdrawal.transactionHash;
+    if (kind === 'invalid-direct-nonce')
+      Object.assign(withdrawal, {
+        mode: 'direct',
+        from: '0x' + '11'.repeat(20),
+        nonce: 'not-a-nonce',
+      });
+    if (kind === 'unknown-deposit')
+      deposit = {
+        phase: 'unknown',
+        transactionHash: '0x' + '04'.repeat(32),
+        from: '0x' + '11'.repeat(20),
+        nonce: '1',
+      };
+    await expect(
+      wallet.preparePrivateVaultCompletionProof(
+        {
+          poolId: 'eth-1',
+          commitment: '0x' + '01'.repeat(32),
+          nullifierHash: '0x' + '02'.repeat(32),
+        },
+        withdrawal,
+        deposit,
+        session
+      )
+    ).rejects.toThrow('privacy_spent_proof_unavailable');
+    expect(verifier).not.toHaveBeenCalled();
+  }
+);

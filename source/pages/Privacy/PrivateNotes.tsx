@@ -12,6 +12,8 @@ import type { IPrivateNoteView } from 'utils/privacy/privateVaultTypes';
 import PrivateDeposit from './PrivateDeposit';
 import PrivateNoteBackupDialog from './PrivateNoteBackupDialog';
 import PrivateWithdrawal from './PrivateWithdrawal';
+import PrivateVaultCapacitySettings from './PrivateVaultCapacitySettings';
+import PrivateVaultClearCompleted from './PrivateVaultClearCompleted';
 import { usePrivateNotes } from './usePrivateNotes';
 
 const actionClass =
@@ -39,8 +41,15 @@ function importError(error: unknown): string {
 
 function NotesView() {
   const { t } = useTranslation();
-  const { controllerEmitter, loading, notes, refresh, remember, unavailable } =
-    usePrivateNotes();
+  const {
+    controllerEmitter,
+    loading,
+    notes,
+    refresh,
+    remember,
+    forget,
+    unavailable,
+  } = usePrivateNotes();
   const verificationPending = notes.some(
     ({ phase }) => phase === 'waiting' || phase === 'not-found'
   );
@@ -52,6 +61,8 @@ function NotesView() {
   const [selected, setSelected] = useState<string | null>(null);
   const [revealed, setRevealed] = useState('');
   const [deposit, setDeposit] = useState(false);
+  const [capacitySettings, setCapacitySettings] = useState(false);
+  const [showSpent, setShowSpent] = useState(false);
   const [backupNoteId, setBackupNoteId] = useState<string | null>(null);
   const [withdrawing, setWithdrawing] = useState<IPrivateNoteView | null>(null);
   const [statusNote, setStatusNote] = useState<string | null>(null);
@@ -59,10 +70,12 @@ function NotesView() {
   const [reportedStatus, setReportedStatus] = useState<{
     id: string;
     status: string;
-  }>();
+  } | null>(null);
   const owner = useRef({ active: true, revision: 0 });
   const importField = useRef<HTMLTextAreaElement>(null);
+  const statusRevisions = useRef(new Map<string, number>());
   const clear = () => {
+    setCapacitySettings(false);
     owner.current.revision += 1;
     setStatusNote(null);
     setImporting(false);
@@ -142,6 +155,22 @@ function NotesView() {
           {t('privacy.yourNotes')}
         </h2>
         <div className="flex flex-wrap items-center gap-2">
+          {!importing && (
+            <button
+              type="button"
+              className={actionClass}
+              onClick={() => {
+                if (capacitySettings) setCapacitySettings(false);
+                else {
+                  clear();
+                  setCapacitySettings(true);
+                }
+              }}
+              aria-expanded={capacitySettings}
+            >
+              {t('privacy.capacity.settings')}
+            </button>
+          )}
           {!importing && (
             <button
               type="button"
@@ -244,6 +273,57 @@ function NotesView() {
           </div>
         </form>
       )}
+      {capacitySettings && (
+        <PrivateVaultCapacitySettings controllerEmitter={controllerEmitter} />
+      )}
+      {!capacitySettings &&
+        !importing &&
+        !selected &&
+        notes.some((note) => note.phase === 'spent') && (
+          <div className="space-y-2 text-xs">
+            <button
+              type="button"
+              className={actionClass}
+              aria-expanded={showSpent}
+              onClick={() => setShowSpent((value) => !value)}
+            >
+              {t('privacy.capacity.reportedSpent', {
+                count: notes.filter((note) => note.phase === 'spent').length,
+              })}
+            </button>
+          </div>
+        )}
+      {!capacitySettings && !importing && !selected && (
+        <PrivateVaultClearCompleted
+          controllerEmitter={controllerEmitter}
+          noteIds={notes
+            .filter(
+              (note) =>
+                note.phase === 'spent' ||
+                (note.withdrawal?.phase === 'submitted' &&
+                  note.withdrawal.transactionHash)
+            )
+            .map((note) => note.id)}
+          onRemoved={(ids) => {
+            for (const id of ids)
+              statusRevisions.current.set(
+                id,
+                (statusRevisions.current.get(id) || 0) + 1
+              );
+            forget(ids);
+            setStatusNote((current) =>
+              current && ids.includes(current) ? null : current
+            );
+            setStatusError((current) =>
+              current && ids.includes(current) ? null : current
+            );
+            setReportedStatus((current) =>
+              current && ids.includes(current.id) ? null : current
+            );
+          }}
+          onComplete={() => void refresh()}
+        />
+      )}
       <div
         role="status"
         aria-live="polite"
@@ -275,216 +355,226 @@ function NotesView() {
         </button>
       )}
       <ul className="space-y-2">
-        {notes.map((note) => (
-          <li
-            key={note.id}
-            className="rounded-lg border border-alpha-whiteAlpha300 p-3 space-y-2"
-          >
-            <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-              <span className="font-medium text-white">{note.amount} ETH</span>
-              <span className="text-brand-gray200">
-                {t(`privacy.notePhase.${note.phase}`)}
-              </span>
-            </div>
-            {note.blockNumber !== undefined && (
-              <p className="text-xs text-brand-gray200">
-                {t('privacy.noteAsOfBlock', { block: note.blockNumber })}
-              </p>
-            )}
-            {note.withdrawal && (
-              <div className="space-y-2 text-xs text-brand-gray200">
-                {note.phase !== 'spent' && (
-                  <p>
-                    {t(
-                      `privacy.withdrawal.${
-                        note.withdrawal.phase === 'unknown'
-                          ? 'statusUnknown'
-                          : 'statusPending'
-                      }`
-                    )}
-                  </p>
-                )}
-                {note.withdrawal.transactionHash && (
-                  <p className="break-all">
-                    {t('privacy.deposit.txHash')}:{' '}
-                    {note.withdrawal.transactionHash}
-                  </p>
-                )}
-                {note.withdrawal.jobId && (
-                  <p className="break-all">
-                    {t('privacy.withdrawal.jobId')}: {note.withdrawal.jobId}
-                  </p>
-                )}
-                {note.withdrawal.mode === 'relayed' &&
-                  note.withdrawal.jobId && (
-                    <button
-                      type="button"
-                      className={actionClass}
-                      disabled={statusNote !== null}
-                      onClick={async () => {
-                        const revision = owner.current.revision;
-                        setStatusNote(note.id);
-                        setStatusError(null);
-                        try {
-                          const result = await controllerEmitter(
-                            ['privacyWithdrawals', 'statusByNote'],
-                            [note.id],
-                            30000,
-                            false
-                          );
-                          if (current(revision)) {
-                            const status = (
-                              result as { claimedStatus?: unknown } | null
-                            )?.claimedStatus;
-                            if (
-                              [
-                                'QUEUED',
-                                'ACCEPTED',
-                                'SENT',
-                                'MINED',
-                                'RESUBMITTED',
-                                'CONFIRMED',
-                                'FAILED',
-                              ].includes(
-                                typeof status === 'string' ? status : ''
-                              )
-                            )
-                              setReportedStatus({
-                                id: note.id,
-                                status: String(status),
-                              });
-                            await refresh(true);
-                          }
-                        } catch {
-                          if (current(revision)) setStatusError(note.id);
-                        } finally {
-                          if (current(revision)) setStatusNote(null);
-                        }
-                      }}
-                    >
-                      {t('privacy.withdrawal.checkStatus')}
-                    </button>
-                  )}
-                {statusError === note.id && (
-                  <p role="alert">{t('privacy.withdrawal.statusFailed')}</p>
-                )}
-                {reportedStatus?.id === note.id && (
-                  <p>
-                    {t('privacy.withdrawal.reportedStatus', {
-                      status: reportedStatus.status,
-                    })}
-                  </p>
-                )}
+        {notes
+          .filter((note) => note.phase !== 'spent' || showSpent)
+          .map((note) => (
+            <li
+              key={note.id}
+              className="rounded-lg border border-alpha-whiteAlpha300 p-3 space-y-2"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                <span className="font-medium text-white">
+                  {note.amount} ETH
+                </span>
+                <span className="text-brand-gray200">
+                  {t(`privacy.notePhase.${note.phase}`)}
+                </span>
               </div>
-            )}
-            {note.phase === 'verified' && !note.withdrawal && (
-              <button
-                type="button"
-                className={actionClass}
-                onClick={() => {
-                  clear();
-                  setWithdrawing(note);
-                }}
-              >
-                {t('privacy.withdrawal.open')}
-              </button>
-            )}
-            {selected !== note.id ? (
-              <button
-                type="button"
-                className={actionClass}
-                aria-label={t('privacy.revealNoteLabel', {
-                  amount: note.amount,
-                })}
-                onClick={() => {
-                  clear();
-                  setSelected(note.id);
-                }}
-              >
-                {t('privacy.revealNote')}
-              </button>
-            ) : (
-              <div className="space-y-2">
-                {revealed ? (
-                  <>
-                    <label
-                      htmlFor="privacy-revealed-note"
-                      className="block text-xs text-white"
-                    >
-                      {t('privacy.privateNote')}
-                    </label>
-                    <textarea
-                      id="privacy-revealed-note"
-                      className={fieldClass}
-                      readOnly
-                      rows={3}
-                      value={revealed}
-                      autoComplete="off"
-                      spellCheck={false}
-                    />
-                    <p className="text-xs text-brand-gray200">
-                      {t('privacy.noteSecret')}
+              {note.blockNumber !== undefined && (
+                <p className="text-xs text-brand-gray200">
+                  {t('privacy.noteAsOfBlock', { block: note.blockNumber })}
+                </p>
+              )}
+              {note.withdrawal && (
+                <div className="space-y-2 text-xs text-brand-gray200">
+                  {note.phase !== 'spent' && (
+                    <p>
+                      {t(
+                        `privacy.withdrawal.${
+                          note.withdrawal.phase === 'unknown'
+                            ? 'statusUnknown'
+                            : 'statusPending'
+                        }`
+                      )}
                     </p>
-                  </>
-                ) : (
-                  <Form form={form} autoComplete="off">
-                    <label
-                      htmlFor="privacy-note-password"
-                      className="block text-xs text-white mb-2"
-                    >
-                      {t('privacy.revealPassword')}
-                    </label>
-                    <ValidatedPasswordInput
-                      id="privacy-note-password"
-                      form={form}
-                      validationTrigger="submit"
-                      errorMessage={t('privacy.noteRevealFailed')}
-                      placeholder={t('settings.enterYourPassword')}
-                      onValidate={async (password) => {
-                        const revision = owner.current.revision;
-                        try {
-                          const value = await controllerEmitter(
-                            ['privateVault', 'revealNote'],
-                            [note.id, password],
-                            30000,
-                            false
-                          );
-                          if (!current(revision)) return undefined;
-                          if (
-                            typeof value !== 'string' ||
-                            !value ||
-                            value.length > 512
-                          )
-                            throw new Error();
-                          return { value, revision };
-                        } catch {
-                          // The shared password input logs errors; never pass through
-                          // a controller response that could contain a secret.
-                          throw new Error('privacy_note_reveal_failed');
-                        }
-                      }}
-                      onValidationSuccess={(result) => {
-                        if (result && current(result.revision)) {
-                          form.resetFields();
-                          setError('');
-                          setRevealed(result.value);
-                        }
-                      }}
-                      onValidationError={() => setError('noteRevealFailed')}
-                      onValidationReset={() => {
-                        setRevealed('');
-                        setError('');
-                      }}
-                    />
-                  </Form>
-                )}
-                <button type="button" className={actionClass} onClick={clear}>
-                  {t('privacy.hideNote')}
+                  )}
+                  {note.withdrawal.transactionHash && (
+                    <p className="break-all">
+                      {t('privacy.deposit.txHash')}:{' '}
+                      {note.withdrawal.transactionHash}
+                    </p>
+                  )}
+                  {note.withdrawal.jobId && (
+                    <p className="break-all">
+                      {t('privacy.withdrawal.jobId')}: {note.withdrawal.jobId}
+                    </p>
+                  )}
+                  {note.withdrawal.mode === 'relayed' &&
+                    note.withdrawal.jobId && (
+                      <button
+                        type="button"
+                        className={actionClass}
+                        disabled={statusNote !== null}
+                        onClick={async () => {
+                          const revision = owner.current.revision;
+                          const statusRevision =
+                            statusRevisions.current.get(note.id) || 0;
+                          const statusCurrent = () =>
+                            current(revision) &&
+                            (statusRevisions.current.get(note.id) || 0) ===
+                              statusRevision;
+                          setStatusNote(note.id);
+                          setStatusError(null);
+                          try {
+                            const result = await controllerEmitter(
+                              ['privacyWithdrawals', 'statusByNote'],
+                              [note.id],
+                              30000,
+                              false
+                            );
+                            if (statusCurrent()) {
+                              const status = (
+                                result as { claimedStatus?: unknown } | null
+                              )?.claimedStatus;
+                              if (
+                                [
+                                  'QUEUED',
+                                  'ACCEPTED',
+                                  'SENT',
+                                  'MINED',
+                                  'RESUBMITTED',
+                                  'CONFIRMED',
+                                  'FAILED',
+                                ].includes(
+                                  typeof status === 'string' ? status : ''
+                                )
+                              )
+                                setReportedStatus({
+                                  id: note.id,
+                                  status: String(status),
+                                });
+                              await refresh(true);
+                            }
+                          } catch {
+                            if (statusCurrent()) setStatusError(note.id);
+                          } finally {
+                            if (statusCurrent()) setStatusNote(null);
+                          }
+                        }}
+                      >
+                        {t('privacy.withdrawal.checkStatus')}
+                      </button>
+                    )}
+                  {statusError === note.id && (
+                    <p role="alert">{t('privacy.withdrawal.statusFailed')}</p>
+                  )}
+                  {reportedStatus?.id === note.id && (
+                    <p>
+                      {t('privacy.withdrawal.reportedStatus', {
+                        status: reportedStatus.status,
+                      })}
+                    </p>
+                  )}
+                </div>
+              )}
+              {note.phase === 'verified' && !note.withdrawal && (
+                <button
+                  type="button"
+                  className={actionClass}
+                  onClick={() => {
+                    clear();
+                    setWithdrawing(note);
+                  }}
+                >
+                  {t('privacy.withdrawal.open')}
                 </button>
-              </div>
-            )}
-          </li>
-        ))}
+              )}
+              {selected !== note.id ? (
+                <button
+                  type="button"
+                  className={actionClass}
+                  aria-label={t('privacy.revealNoteLabel', {
+                    amount: note.amount,
+                  })}
+                  onClick={() => {
+                    clear();
+                    setSelected(note.id);
+                  }}
+                >
+                  {t('privacy.revealNote')}
+                </button>
+              ) : (
+                <div className="space-y-2">
+                  {revealed ? (
+                    <>
+                      <label
+                        htmlFor="privacy-revealed-note"
+                        className="block text-xs text-white"
+                      >
+                        {t('privacy.privateNote')}
+                      </label>
+                      <textarea
+                        id="privacy-revealed-note"
+                        className={fieldClass}
+                        readOnly
+                        rows={3}
+                        value={revealed}
+                        autoComplete="off"
+                        spellCheck={false}
+                      />
+                      <p className="text-xs text-brand-gray200">
+                        {t('privacy.noteSecret')}
+                      </p>
+                    </>
+                  ) : (
+                    <Form form={form} autoComplete="off">
+                      <label
+                        htmlFor="privacy-note-password"
+                        className="block text-xs text-white mb-2"
+                      >
+                        {t('privacy.revealPassword')}
+                      </label>
+                      <ValidatedPasswordInput
+                        id="privacy-note-password"
+                        form={form}
+                        validationTrigger="submit"
+                        errorMessage={t('privacy.noteRevealFailed')}
+                        placeholder={t('settings.enterYourPassword')}
+                        onValidate={async (password) => {
+                          const revision = owner.current.revision;
+                          try {
+                            const value = await controllerEmitter(
+                              ['privateVault', 'revealNote'],
+                              [note.id, password],
+                              30000,
+                              false
+                            );
+                            if (!current(revision)) return undefined;
+                            if (
+                              typeof value !== 'string' ||
+                              !value ||
+                              value.length > 512
+                            )
+                              throw new Error();
+                            return { value, revision };
+                          } catch {
+                            // The shared password input logs errors; never pass through
+                            // a controller response that could contain a secret.
+                            throw new Error('privacy_note_reveal_failed');
+                          }
+                        }}
+                        onValidationSuccess={(result) => {
+                          if (result && current(result.revision)) {
+                            form.resetFields();
+                            setError('');
+                            setRevealed(result.value);
+                          }
+                        }}
+                        onValidationError={() => setError('noteRevealFailed')}
+                        onValidationReset={() => {
+                          setRevealed('');
+                          setError('');
+                        }}
+                      />
+                    </Form>
+                  )}
+                  <button type="button" className={actionClass} onClick={clear}>
+                    {t('privacy.hideNote')}
+                  </button>
+                </div>
+              )}
+            </li>
+          ))}
       </ul>
     </section>
   );

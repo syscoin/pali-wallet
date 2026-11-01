@@ -451,6 +451,52 @@ it('rejects caller transaction overrides and redacts host preparation errors', a
   ).rejects.toThrow(/^privacy_deposit_prepare_failed$/);
 });
 
+it('reports note capacity only from note preparation and releases reservations', async () => {
+  const f = setup();
+  jest
+    .mocked(f.host.prepareNote)
+    .mockRejectedValue(new Error('privacy_note_limit'));
+  for (let i = 0; i <= PRIVACY_DEPOSIT_MAX_INTENTS; i++) {
+    await expect(
+      f.controller.prepareDeposit({ poolId: 'eth-1' })
+    ).rejects.toMatchObject({
+      message: 'privacy_deposit_note_limit',
+      transactionNotBroadcast: true,
+    });
+  }
+  expect(f.host.withCommitment).not.toHaveBeenCalled();
+  expect(f.host.prepareFees).not.toHaveBeenCalled();
+  expect(f.host.sendTransaction).not.toHaveBeenCalled();
+  jest
+    .mocked(f.host.prepareNote)
+    .mockResolvedValue({ id: NOTE_ID, poolId: 'eth-1' });
+  jest
+    .mocked(f.host.prepareFees)
+    .mockRejectedValue(new Error('privacy_note_limit'));
+  await expect(
+    f.controller.prepareDeposit({ poolId: 'eth-1' })
+  ).rejects.toThrow(/^privacy_deposit_prepare_failed$/);
+});
+
+it('does not report capacity after its preparation context changes', async () => {
+  const f = setup();
+  let reject!: (error: Error) => void;
+  const pending = new Promise<{ id: string; poolId: 'eth-1' }>(
+    (_resolve, fail) => {
+      reject = fail;
+    }
+  );
+  jest.mocked(f.host.prepareNote).mockReturnValue(pending);
+  const preparing = f.controller.prepareDeposit({ poolId: 'eth-1' });
+  const result = expect(preparing).rejects.toThrow(
+    'privacy_deposit_context_changed'
+  );
+  f.change();
+  reject(new Error('privacy_note_limit'));
+  await result;
+  expect(f.host.sendTransaction).not.toHaveBeenCalled();
+});
+
 it('bounds concurrent preparation including expired in-flight host work', async () => {
   const f = setup();
   const held = deferred<{ id: string; poolId: 'eth-1' }>();

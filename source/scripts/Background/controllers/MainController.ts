@@ -161,6 +161,9 @@ import {
 import { getNetworkChain } from 'utils/network';
 import { networkRegistrationFingerprint } from 'utils/networkRegistration';
 import { normalizeNftTokenId } from 'utils/nftTokenId';
+import type { IClassicNoteIdentity } from 'utils/privacy/note';
+import type { SpentCompletionRequest } from 'utils/privacy/spentCompletion';
+import type { IPrivacyWithdrawalJournal } from 'utils/privacy/withdrawalTransactionTypes';
 import type {
   IPrivacyNoteReader,
   IPrivateVaultController,
@@ -273,6 +276,7 @@ import { recordSendCallsBundle } from './message-handler/sendCallsBundles';
 import { PaliEvents, PaliSyscoinEvents } from './message-handler/types';
 import type {
   IPrivateVaultDepositController,
+  IPrivateVaultDepositJournal,
   IPrivateVaultWithdrawalController,
   IPrivateVaultSession,
 } from './privateVault';
@@ -1926,6 +1930,13 @@ class MainController {
         .then(({ createPrivateVaultController }) =>
           createPrivateVaultController({
             captureSession: () => this.capturePrivateVaultSession(),
+            prepareCompletionProof: (identity, withdrawal, deposit, session) =>
+              this.preparePrivateVaultCompletionProof(
+                identity,
+                withdrawal,
+                deposit,
+                session
+              ),
             readNote: (identity) =>
               this.privateVaultNoteReader
                 ? this.privateVaultNoteReader(identity)
@@ -1997,12 +2008,150 @@ class MainController {
     }
   }
 
+  // Only invoked by the explicit user-confirmed clear action. Keep the
+  // configured RPC, account, provider and wallet session bound through proof
+  // preparation and the vault's later pre-write revalidation.
+  private async preparePrivateVaultCompletionProof(
+    identity: IClassicNoteIdentity,
+    withdrawal: IPrivacyWithdrawalJournal,
+    deposit: IPrivateVaultDepositJournal | undefined,
+    session: IPrivateVaultSession
+  ) {
+    session.assertCurrent();
+    const state = store.getState();
+    const ref = state.vault.activeAccount;
+    const account = state.vault.accounts[ref.type]?.[ref.id];
+    const network = state.vault.activeNetwork;
+    if (
+      state.vault.isBitcoinBased ||
+      network.kind !== 'ethereum' ||
+      network.chainId !== 1 ||
+      typeof network.url !== 'string' ||
+      !account?.address ||
+      !/^0x[0-9a-fA-F]{40}$/.test(account.address) ||
+      this.isNetworkSwitching ||
+      this.isAccountSwitching
+    )
+      throw new Error('privacy_spent_proof_unavailable');
+    const rpcUrl = network.url;
+    const accountType = ref.type,
+      accountId = ref.id,
+      address = account.address.toLowerCase();
+    const slip44 = state.vaultGlobal.activeSlip44;
+    const walletGeneration = this.walletStateGeneration;
+    const networkGeneration = this.networkRequestGeneration;
+    const provider = this.ethereumTransaction.web3Provider;
+    const assertCurrent = () => {
+      session.assertCurrent();
+      const now = store.getState(),
+        selected = now.vault.activeAccount;
+      const active = now.vault.accounts[selected.type]?.[selected.id];
+      if (
+        walletGeneration !== this.walletStateGeneration ||
+        networkGeneration !== this.networkRequestGeneration ||
+        this.isNetworkSwitching ||
+        this.isAccountSwitching ||
+        now.vault.isBitcoinBased ||
+        now.vault.activeNetwork.kind !== 'ethereum' ||
+        now.vault.activeNetwork.chainId !== 1 ||
+        now.vault.activeNetwork.url !== rpcUrl ||
+        now.vaultGlobal.activeSlip44 !== slip44 ||
+        selected.type !== accountType ||
+        selected.id !== accountId ||
+        active?.address?.toLowerCase() !== address ||
+        this.ethereumTransaction.web3Provider !== provider
+      )
+        throw new Error('privacy_spent_proof_unavailable');
+    };
+    const [
+      { prepareSpentCompletion },
+      { readCompletionRpc },
+      { getPrivacyPool },
+    ] = await Promise.all([
+      import('utils/privacy/spentCompletion'),
+      import('utils/privacy/client'),
+      import('utils/privacy/registry'),
+    ]);
+    assertCurrent();
+    if (
+      withdrawal.phase !== 'submitted' ||
+      typeof withdrawal.transactionHash !== 'string' ||
+      !/^0x[0-9a-fA-F]{64}$/.test(withdrawal.transactionHash)
+    )
+      throw new Error('privacy_spent_proof_unavailable');
+    let submittedWithdrawal: SpentCompletionRequest['withdrawal'];
+    if (withdrawal.mode === 'direct') {
+      if (
+        typeof withdrawal.from !== 'string' ||
+        !/^0x[0-9a-fA-F]{40}$/.test(withdrawal.from) ||
+        typeof withdrawal.nonce !== 'string' ||
+        !/^(?:0|[1-9][0-9]{0,19})$/.test(withdrawal.nonce)
+      )
+        throw new Error('privacy_spent_proof_unavailable');
+      submittedWithdrawal = {
+        phase: 'submitted',
+        mode: 'direct',
+        transactionHash: withdrawal.transactionHash,
+        from: withdrawal.from,
+        nonce: withdrawal.nonce,
+      };
+    } else if (withdrawal.mode === 'relayed') {
+      submittedWithdrawal = {
+        phase: 'submitted',
+        mode: 'relayed',
+        transactionHash: withdrawal.transactionHash,
+      };
+    } else throw new Error('privacy_spent_proof_unavailable');
+    let submittedDeposit: SpentCompletionRequest['deposit'];
+    if (deposit) {
+      if (
+        deposit.phase !== 'submitted' ||
+        typeof deposit.transactionHash !== 'string' ||
+        !/^0x[0-9a-fA-F]{64}$/.test(deposit.transactionHash) ||
+        typeof deposit.from !== 'string' ||
+        !/^0x[0-9a-fA-F]{40}$/.test(deposit.from) ||
+        typeof deposit.nonce !== 'string' ||
+        !/^(?:0|[1-9][0-9]{0,19})$/.test(deposit.nonce)
+      )
+        throw new Error('privacy_spent_proof_unavailable');
+      submittedDeposit = {
+        phase: 'submitted',
+        transactionHash: deposit.transactionHash,
+        from: deposit.from,
+        nonce: deposit.nonce,
+      };
+    }
+    return prepareSpentCompletion({
+      poolAddress: getPrivacyPool(identity.poolId).address,
+      nullifierHash: identity.nullifierHash,
+      withdrawal: submittedWithdrawal,
+      deposit: submittedDeposit,
+      assertCurrent,
+      rpc: (method, params, signal) =>
+        readCompletionRpc(rpcUrl, method, params, signal),
+    });
+  }
+
+  public clearPrivateVaultCompletedNotes(ids: string[]) {
+    return this.usePrivateVault((vault) => vault.clearCompletedNotes(ids));
+  }
+
   public async getPrivateVaultNotes() {
     // Admission belongs to the current session even if reconciliation yields.
     const session = this.capturePrivateVaultSession();
     await this.reconcileKnownUnbroadcast();
     session.assertCurrent();
     return this.usePrivateVault((vault) => vault.getNotes(), session);
+  }
+
+  public getPrivateVaultCapacity() {
+    return this.usePrivateVault((vault) => vault.getCapacity());
+  }
+
+  public setPrivateVaultCapacity(
+    capacity: Parameters<IPrivateVaultController['setCapacity']>[0]
+  ) {
+    return this.usePrivateVault((vault) => vault.setCapacity(capacity));
   }
 
   public importPrivateVaultNote(note: string) {

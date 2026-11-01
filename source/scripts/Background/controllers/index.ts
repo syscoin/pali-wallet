@@ -354,9 +354,12 @@ const MasterController = (
       wallet.invalidatePrivacyServiceWithdrawals()
     ),
     privateVault: {
+      clearCompletedNotes: (ids) => wallet.clearPrivateVaultCompletedNotes(ids),
       createDepositNote: (poolId) =>
         wallet.createPrivateVaultDepositNote(poolId),
       getNotes: () => wallet.getPrivateVaultNotes(),
+      getCapacity: () => wallet.getPrivateVaultCapacity(),
+      setCapacity: (capacity) => wallet.setPrivateVaultCapacity(capacity),
       importNote: (note) => wallet.importPrivateVaultNote(note),
       revealNote: (id, password) => wallet.revealPrivateVaultNote(id, password),
     },

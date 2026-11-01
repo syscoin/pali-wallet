@@ -2,6 +2,7 @@ import { Interface, parseEther, toQuantity } from 'ethers';
 
 import {
   fetchPrivacySnapshot,
+  readCompletionRpc,
   validateSnapshot,
   verifySnapshotAnchor,
 } from './client';
@@ -304,4 +305,100 @@ test('a changed timestamp at the same block/hash invalidates its anchor', async 
   await expect(
     verifySnapshotAnchor(id, snapshot, 'https://rpc.example/', signal())
   ).rejects.toThrow('privacy_anchor_changed');
+});
+
+test('completion RPC only sends exact public hash and canonical block queries with private fetch settings', async () => {
+  const seen: any[] = [];
+  global.fetch = jest.fn(async (_url: any, init: any) => {
+    const request = JSON.parse(init.body);
+    seen.push({
+      ...request,
+      credentials: init.credentials,
+      redirect: init.redirect,
+      signal: init.signal,
+    });
+    return new Response(
+      JSON.stringify({ jsonrpc: '2.0', id: request.id, result: { ok: true } })
+    );
+  }) as any;
+  const abort = new AbortController();
+  for (const [method, params] of [
+    ['eth_chainId', []],
+    ['eth_getBlockByNumber', ['finalized', false]],
+    ['eth_getBlockByNumber', ['0x1', false]],
+    ['eth_getTransactionReceipt', [hash(1)]],
+    ['eth_getTransactionByHash', [hash(2)]],
+  ] as Array<[string, unknown[]]>) {
+    await expect(
+      readCompletionRpc('http://127.0.0.1:8545', method, params, abort.signal)
+    ).resolves.toEqual({ ok: true });
+  }
+  expect(seen).toHaveLength(5);
+  expect(
+    seen.every(
+      (x) =>
+        x.credentials === 'omit' &&
+        x.redirect === 'error' &&
+        x.signal === abort.signal
+    )
+  ).toBe(true);
+  expect(seen.map((x) => x.method)).toEqual([
+    'eth_chainId',
+    'eth_getBlockByNumber',
+    'eth_getBlockByNumber',
+    'eth_getTransactionReceipt',
+    'eth_getTransactionByHash',
+  ]);
+});
+
+test('completion RPC rejects unallowlisted queries, unsafe URLs and malformed parameters before fetch', async () => {
+  global.fetch = jest.fn() as any;
+  for (const [url, method, params] of [
+    ['https://rpc.example', 'eth_call', [{ data: hash(1) }]],
+    ['http://rpc.example', 'eth_chainId', []],
+    ['https://user:pass@rpc.example', 'eth_chainId', []],
+    ['https://rpc.example', 'eth_getBlockByNumber', ['latest', false]],
+    ['https://rpc.example', 'eth_getBlockByNumber', ['finalized', true]],
+    ['https://rpc.example', 'eth_getTransactionReceipt', ['not-a-hash']],
+  ] as Array<[string, string, unknown[]]>) {
+    await expect(
+      readCompletionRpc(url, method, params, signal())
+    ).rejects.toThrow();
+  }
+  expect(global.fetch).not.toHaveBeenCalled();
+});
+
+test('completion RPC bounds receipt response before parsing and rejects mismatched response IDs', async () => {
+  global.fetch = jest.fn(async (_url: any, init: any) => {
+    const request = JSON.parse(init.body);
+    return new Response(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: request.id,
+        result: 'x'.repeat(4 * 1024 * 1024),
+      })
+    );
+  }) as any;
+  await expect(
+    readCompletionRpc(
+      'https://rpc.example',
+      'eth_getTransactionReceipt',
+      [hash(1)],
+      signal()
+    )
+  ).rejects.toThrow();
+  global.fetch = jest.fn(async (_url: any, init: any) => {
+    const request = JSON.parse(init.body);
+    return new Response(
+      JSON.stringify({ jsonrpc: '2.0', id: request.id + 1, result: null })
+    );
+  }) as any;
+  await expect(
+    readCompletionRpc(
+      'https://rpc.example',
+      'eth_getTransactionReceipt',
+      [hash(1)],
+      signal()
+    )
+  ).rejects.toThrow();
 });

@@ -160,7 +160,7 @@ async function rpc(
   if (!response.ok) throw new Error('privacy_rpc_unavailable');
   const body: any = await readJson(
     response,
-    method === 'eth_getBlockByNumber'
+    method === 'eth_getBlockByNumber' || method === 'eth_getTransactionReceipt'
       ? MAX_BLOCK_RPC_BYTES
       : MAX_SCALAR_RPC_BYTES
   );
@@ -173,6 +173,36 @@ async function rpc(
   )
     throw new Error('privacy_rpc_unavailable');
   return body.result;
+}
+
+// Explicit user-requested completion checks only. The caller must disclose that
+// requesting withdrawal and related deposit hashes can link them to the RPC.
+// The shared streaming reader caps raw response bytes before JSON parsing.
+export async function readCompletionRpc(
+  rpcUrl: string,
+  method: string,
+  params: unknown[],
+  signal: AbortSignal
+): Promise<unknown> {
+  const quantity = (value: unknown) =>
+    typeof value === 'string' &&
+    value.length <= 66 &&
+    /^0x(?:0|[1-9a-f][0-9a-f]*)$/.test(value);
+  const hash = (value: unknown) =>
+    typeof value === 'string' && /^0x[0-9a-f]{64}$/.test(value);
+  const allowed =
+    Array.isArray(params) &&
+    ((method === 'eth_chainId' && params.length === 0) ||
+      (method === 'eth_getBlockByNumber' &&
+        params.length === 2 &&
+        (params[0] === 'finalized' || quantity(params[0])) &&
+        params[1] === false) ||
+      ((method === 'eth_getTransactionReceipt' ||
+        method === 'eth_getTransactionByHash') &&
+        params.length === 1 &&
+        hash(params[0])));
+  if (!allowed) throw new Error('privacy_rpc_unavailable');
+  return rpc(validatePrivacyRpcUrl(rpcUrl), method, params, signal);
 }
 
 // Read the selected Ethereum RPC independently of Sysnode, never its RPC URL.

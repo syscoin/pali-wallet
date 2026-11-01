@@ -17,6 +17,7 @@ import type {
   IPrivateNoteStatus,
   IPrivateNoteView,
   IPrivateVaultController,
+  PrivateVaultCapacity,
 } from 'utils/privacy/privateVaultTypes';
 import { getPrivacyPool } from 'utils/privacy/registry';
 import type { IPrivacyDepositAttempt } from 'utils/privacy/transactionTypes';
@@ -36,7 +37,12 @@ import type {
 
 export const PRIVATE_VAULT_STORAGE_PREFIX = 'state-private-vault-v1:';
 export const PRIVATE_VAULT_DOMAIN = 'org.syscoin.pali.privacy.notes.v1';
-const MAX_NOTES = 128;
+const MAX_NOTES = 128; // Legacy v1/v2 bound.
+const MAX_V3_NOTES = 512;
+const capacityValid = (value: unknown): value is PrivateVaultCapacity =>
+  value === 128 || value === 256 || value === 512;
+const capacityBudget = (capacity: PrivateVaultCapacity): number =>
+  (capacity / 128) * 4 * 1024 * 1024;
 const MAX_PLAINTEXT_BYTES = 64 * 1024;
 const MAX_SHARD_BYTES = 32 * 1024;
 const MAX_SHARD_NOTES = 16;
@@ -184,6 +190,14 @@ interface IHost {
   ) => Promise<string>;
   captureSession: () => IPrivateVaultSession;
   readNote: IPrivacyNoteReader;
+  // Background-only callback. It receives public identity and journal metadata,
+  // never the raw bearer note. The host must bind its bounded RPC to session.
+  prepareCompletionProof?: (
+    identity: IClassicNoteIdentity,
+    withdrawal: IPrivacyWithdrawalJournal,
+    deposit: IPrivateVaultDepositJournal | undefined,
+    session: IPrivateVaultSession
+  ) => Promise<{ revalidate: () => Promise<void> }>;
 }
 
 interface IStoredNote {
@@ -200,6 +214,9 @@ interface IManifest {
 }
 interface IContext {
   chunked?: boolean;
+  capacity?: PrivateVaultCapacity;
+  capacityFormat?: boolean;
+  storedBytes?: number;
   profileId: string;
   session: IPrivateVaultSession;
 }
@@ -212,7 +229,7 @@ interface IShardReference {
 interface IVaultBundle {
   root: IEncryptedPrivateRecord;
   shards: IEncryptedPrivateRecord[];
-  version: 2;
+  version: 2 | 3;
 }
 
 const envelopeHash = (value: IEncryptedPrivateRecord): string =>
@@ -864,12 +881,18 @@ export function createPrivateVaultController(
       context,
       storage.getItem(PRIVATE_VAULT_STORAGE_PREFIX + context.profileId)
     );
+    context.capacity = 128;
+    context.storedBytes = 0;
     if (stored === null || stored === undefined)
       return { manifest: { version: 1, notes: [] } };
     try {
+      const serialized = new TextEncoder().encode(JSON.stringify(stored));
+      context.storedBytes = serialized.length;
+      serialized.fill(0);
       let data: IManifest;
       let recordId: string;
-      context.chunked = stored.version === 2;
+      context.capacityFormat = stored.version === 3;
+      context.chunked = stored.version === 2 || context.capacityFormat;
       if (context.chunked) {
         const bundle = stored as IVaultBundle;
         if (
@@ -879,7 +902,8 @@ export function createPrivateVaultController(
           Object.keys(bundle).length !== 3 ||
           !Array.isArray(bundle.shards) ||
           bundle.shards.length < 1 ||
-          bundle.shards.length > MAX_NOTES
+          bundle.shards.length >
+            (context.capacityFormat ? MAX_V3_NOTES : MAX_NOTES)
         )
           throw new Error('privacy_vault_corrupt');
         checkEnvelope(
@@ -897,7 +921,7 @@ export function createPrivateVaultController(
           );
         if (
           new TextEncoder().encode(JSON.stringify(bundle)).length >
-          MAX_BUNDLE_BYTES
+          (context.capacityFormat ? capacityBudget(512) : MAX_BUNDLE_BYTES)
         )
           throw new Error('privacy_vault_corrupt');
         const root = await decrypt(
@@ -908,15 +932,25 @@ export function createPrivateVaultController(
         );
         if (
           !root ||
-          root.version !== 2 ||
-          Object.keys(root).length !== 3 ||
+          root.version !== bundle.version ||
+          Object.keys(root).length !== (context.capacityFormat ? 4 : 3) ||
+          (context.capacityFormat && !capacityValid(root.capacity)) ||
           !Number.isInteger(root.noteCount) ||
           root.noteCount < 0 ||
-          root.noteCount > MAX_NOTES ||
+          root.noteCount >
+            (context.capacityFormat ? root.capacity : MAX_NOTES) ||
           !Array.isArray(root.shards) ||
           root.shards.length !== bundle.shards.length
         )
           throw new Error('privacy_vault_corrupt');
+        if (context.capacityFormat) {
+          context.capacity = root.capacity;
+          if (
+            new TextEncoder().encode(JSON.stringify(bundle)).length >
+            capacityBudget(root.capacity)
+          )
+            throw new Error('privacy_vault_corrupt');
+        }
         const recordIds = new Set([bundle.root.recordId]);
         const notes: IStoredNote[] = [];
         for (const [index, envelope] of bundle.shards.entries()) {
@@ -948,7 +982,7 @@ export function createPrivateVaultController(
           )
             throw new Error('privacy_vault_corrupt');
           notes.push(...shard.notes);
-          if (notes.length > MAX_NOTES)
+          if (notes.length > (context.capacity || MAX_NOTES))
             throw new Error('privacy_vault_corrupt');
         }
         if (notes.length !== root.noteCount)
@@ -968,7 +1002,7 @@ export function createPrivateVaultController(
         !data ||
         data.version !== 1 ||
         !Array.isArray(data.notes) ||
-        data.notes.length > MAX_NOTES
+        data.notes.length > (context.capacity || MAX_NOTES)
       )
         throw new Error('privacy_vault_corrupt');
       const ids = new Set<string>();
@@ -1114,7 +1148,8 @@ export function createPrivateVaultController(
     recordId?: string,
     beforeWrite?: () => Promise<void>
   ) => {
-    if (notes.length > MAX_NOTES) throw new Error('privacy_note_limit');
+    if (notes.length > (context.capacity || MAX_NOTES))
+      throw new Error('privacy_note_limit');
     const manifest = { version: 1, notes };
     const plain = new TextEncoder().encode(JSON.stringify(manifest));
     const fitsSingle = plain.length <= MAX_PLAINTEXT_BYTES;
@@ -1173,15 +1208,29 @@ export function createPrivateVaultController(
         context,
         PRIVATE_VAULT_DOMAIN,
         rootId,
-        { version: 2, noteCount: notes.length, shards: references },
+        context.capacityFormat
+          ? {
+              version: 3,
+              noteCount: notes.length,
+              capacity: context.capacity!,
+              shards: references,
+            }
+          : { version: 2, noteCount: notes.length, shards: references },
         MAX_PLAINTEXT_BYTES
       );
-      stored = { version: 2, root, shards };
+      stored = { version: context.capacityFormat ? 3 : 2, root, shards };
       const encoded = new TextEncoder().encode(JSON.stringify(stored));
-      const fits = encoded.length <= MAX_BUNDLE_BYTES;
+      const fits =
+        encoded.length <=
+        (context.capacityFormat
+          ? capacityBudget(context.capacity!)
+          : MAX_BUNDLE_BYTES);
       encoded.fill(0);
       if (!fits) throw new Error('privacy_note_limit');
     }
+    const serialized = new TextEncoder().encode(JSON.stringify(stored));
+    context.storedBytes = serialized.length;
+    serialized.fill(0);
     await assertProfile(context);
     if (beforeWrite) await beforeWrite();
     context.session.assertCurrent();
@@ -1199,7 +1248,7 @@ export function createPrivateVaultController(
     context.session.assertCurrent();
     getPrivacyPool(poolId);
     const { manifest, recordId } = await load(context);
-    if (manifest.notes.length >= MAX_NOTES)
+    if (manifest.notes.length >= (context.capacity || MAX_NOTES))
       throw new Error('privacy_note_limit');
     const raw = generate(poolId);
     const identity = identify(raw);
@@ -1653,6 +1702,127 @@ export function createPrivateVaultController(
           recordId
         );
       }),
+    // One explicitly user-triggered record per call. A storage acknowledgement
+    // can be ambiguous; callers must refresh the list after every error.
+    clearCompletedNotes: async (ids) => {
+      try {
+        if (
+          !Array.isArray(ids) ||
+          ids.length > 1 ||
+          ids.some((id) => typeof id !== 'string' || !UUID.test(id)) ||
+          new Set(ids).size !== ids.length
+        )
+          throw new Error('privacy_vault_unavailable');
+        const deadline = Date.now() + 60_000;
+        const context = await capture();
+        const removed: string[] = [];
+        const unresolved: string[] = [];
+        for (const id of ids) {
+          context.session.assertCurrent();
+          const candidate = await mutex.runExclusive(async () => {
+            const { manifest } = await load(context);
+            const note = manifest.notes.find((entry) => entry.id === id);
+            if (
+              !note ||
+              !note.withdrawal ||
+              note.withdrawal.phase !== 'submitted' ||
+              !note.withdrawal.transactionHash ||
+              (note.deposit &&
+                (note.deposit.phase !== 'submitted' ||
+                  !note.deposit.transactionHash))
+            )
+              return undefined;
+            await assertProfile(context);
+            const identity = identify(note.note);
+            return {
+              metadata: JSON.stringify({
+                id: note.id,
+                createdAt: note.createdAt,
+                origin: note.origin,
+                deposit: note.deposit,
+                withdrawal: note.withdrawal,
+              }),
+              identity: { ...identity },
+              withdrawal: { ...note.withdrawal },
+              deposit: note.deposit ? { ...note.deposit } : undefined,
+            };
+          });
+          if (!candidate || !host.prepareCompletionProof) {
+            unresolved.push(id);
+            continue;
+          }
+          let proof: { revalidate: () => Promise<void> };
+          try {
+            if (Date.now() >= deadline) throw new Error('deadline');
+            proof = await host.prepareCompletionProof(
+              { ...candidate.identity },
+              candidate.withdrawal,
+              candidate.deposit,
+              context.session
+            );
+            context.session.assertCurrent();
+            if (!proof || typeof proof.revalidate !== 'function')
+              throw new Error('invalid');
+          } catch {
+            context.session.assertCurrent();
+            unresolved.push(id);
+            continue;
+          }
+          const cleared = await mutex.runExclusive(async () => {
+            context.session.assertCurrent();
+            const { manifest, recordId } = await load(context);
+            const note = manifest.notes.find((entry) => entry.id === id);
+            if (
+              !note ||
+              JSON.stringify({
+                id: note.id,
+                createdAt: note.createdAt,
+                origin: note.origin,
+                deposit: note.deposit,
+                withdrawal: note.withdrawal,
+              }) !== candidate.metadata
+            )
+              return false;
+            const identity = identify(note.note);
+            if (
+              identity.poolId !== candidate.identity.poolId ||
+              identity.commitment !== candidate.identity.commitment ||
+              identity.nullifierHash !== candidate.identity.nullifierHash
+            )
+              return false;
+            await assertProfile(context);
+            let proofRejected = false;
+            try {
+              await persist(
+                context,
+                manifest.notes.filter((entry) => entry.id !== id),
+                recordId,
+                async () => {
+                  try {
+                    if (Date.now() >= deadline) throw new Error('deadline');
+                    await proof.revalidate();
+                    await assertProfile(context);
+                    if (Date.now() >= deadline) throw new Error('deadline');
+                  } catch (error) {
+                    proofRejected = true;
+                    throw error;
+                  }
+                }
+              );
+            } catch (error) {
+              context.session.assertCurrent();
+              if (proofRejected) return false;
+              throw error;
+            }
+            return true;
+          });
+          (cleared ? removed : unresolved).push(id);
+        }
+        return { removed, unresolved };
+      } catch (error) {
+        throw publicError(error);
+      }
+    },
     createDepositNote: async (poolId) => {
       try {
         const context = await capture();
@@ -1684,6 +1854,53 @@ export function createPrivateVaultController(
         throw publicError(error);
       }
     },
+    getCapacity: async () => {
+      try {
+        const context = await capture();
+        return await mutex.runExclusive(async () => {
+          context.session.assertCurrent();
+          const { manifest } = await load(context);
+          await assertProfile(context);
+          const capacity = context.capacity || 128;
+          return {
+            capacity,
+            noteCount: manifest.notes.length,
+            bundleLimitBytes: capacityBudget(capacity),
+            storedBytes: context.storedBytes || 0,
+          };
+        });
+      } catch (error) {
+        throw publicError(error);
+      }
+    },
+    setCapacity: async (capacity) => {
+      try {
+        if (!capacityValid(capacity))
+          throw new Error('privacy_vault_unavailable');
+        const context = await capture();
+        return await mutex.runExclusive(async () => {
+          context.session.assertCurrent();
+          const { manifest, recordId } = await load(context);
+          if (manifest.notes.length > capacity)
+            throw new Error('privacy_note_limit');
+          if (context.capacity !== capacity) {
+            context.capacity = capacity;
+            context.capacityFormat = true;
+            context.chunked = true;
+            await persist(context, manifest.notes, recordId);
+          }
+          await assertProfile(context);
+          return {
+            capacity,
+            noteCount: manifest.notes.length,
+            bundleLimitBytes: capacityBudget(capacity),
+            storedBytes: context.storedBytes || 0,
+          };
+        });
+      } catch (error) {
+        throw publicError(error);
+      }
+    },
     importNote: async (rawNote) => {
       try {
         const identity = identify(rawNote);
@@ -1708,7 +1925,7 @@ export function createPrivateVaultController(
             await assertProfile(context);
             return view(existing, identity, status);
           }
-          if (manifest.notes.length >= MAX_NOTES)
+          if (manifest.notes.length >= (context.capacity || MAX_NOTES))
             throw new Error('privacy_note_limit');
           const note: IStoredNote = {
             id: nextId(),

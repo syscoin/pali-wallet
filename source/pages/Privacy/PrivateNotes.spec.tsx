@@ -434,6 +434,9 @@ it.each([
     fireEvent.click(
       screen.getByRole('button', { name: en.privacy.refreshNotes })
     );
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Reported spent notes (1)' })
+    );
     expect(await screen.findByText(en.privacy.notePhase.spent)).toBeVisible();
     expect(screen.getByText('As of block 22000001')).toBeVisible();
     expect(screen.getByText('Verified balance: 0 ETH')).toBeVisible();
@@ -528,6 +531,10 @@ it.each(['prepared', 'spent', 'waiting', 'not-found'] as const)(
   async (phase) => {
     mockEmitter.mockResolvedValue({ notes: [{ ...note, phase }] });
     render(<PrivateNotes />);
+    if (phase === 'spent')
+      fireEvent.click(
+        await screen.findByRole('button', { name: 'Reported spent notes (1)' })
+      );
     expect(await screen.findByText(en.privacy.notePhase[phase])).toBeVisible();
     expect(
       screen.queryByRole('button', { name: /withdraw/i })
@@ -1023,6 +1030,9 @@ it('quietly polls saved-note status every 15 seconds without clearing displayed 
       notes: [{ ...note, phase: 'spent', blockNumber: 22000010 }],
     })
   );
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Reported spent notes (1)' })
+  );
   expect(screen.getByText(en.privacy.notePhase.spent)).toBeVisible();
   expect(screen.getByText('As of block 22000010')).toBeVisible();
   mockEmitter.mockResolvedValue({
@@ -1173,3 +1183,95 @@ it.each(['deposit', 'import', 'reveal', 'escape'] as const)(
     ]);
   }
 );
+
+it('keeps pending withdrawals visible and retains an unverified reported-spent note after a failed completion check', async () => {
+  const pendingId = '00000000-0000-4000-8000-000000000001';
+  const spentId = '00000000-0000-4000-8000-000000000002';
+  const tx = '0x' + '11'.repeat(32);
+  const notes = [
+    {
+      ...note,
+      id: pendingId,
+      phase: 'waiting',
+      withdrawal: { mode: 'direct', phase: 'submitted', transactionHash: tx },
+    },
+    {
+      ...note,
+      id: spentId,
+      phase: 'spent',
+      withdrawal: { mode: 'direct', phase: 'submitted', transactionHash: tx },
+    },
+  ];
+  mockEmitter.mockImplementation(async ([, method], [batch] = []) => {
+    if (method === 'getNotes') return { notes };
+    if (method === 'clearCompletedNotes')
+      return { removed: [], unresolved: batch };
+    throw new Error('Unexpected call');
+  });
+  render(<PrivateNotes />);
+  expect(
+    await screen.findByText(en.privacy.withdrawal.statusPending)
+  ).toBeVisible();
+  expect(
+    screen.queryByText(en.privacy.notePhase.spent)
+  ).not.toBeInTheDocument();
+  fireEvent.click(
+    screen.getByRole('button', { name: en.privacy.capacity.clear })
+  );
+  fireEvent.click(
+    screen.getByRole('button', { name: en.privacy.capacity.confirmClear })
+  );
+  expect(await screen.findByText('Removed: 0. Still saved: 2.')).toBeVisible();
+  expect(screen.getByText(en.privacy.withdrawal.statusPending)).toBeVisible();
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Reported spent notes (1)' })
+  );
+  expect(screen.getByText(en.privacy.notePhase.spent)).toBeVisible();
+});
+
+it('does not restore a cleared note from a list request started before the clear', async () => {
+  const id = '00000000-0000-4000-8000-000000000001';
+  const tx = '0x' + '11'.repeat(32);
+  const saved = {
+    ...note,
+    id,
+    phase: 'spent',
+    withdrawal: { mode: 'direct', phase: 'submitted', transactionHash: tx },
+  };
+  const oldRead = deferred();
+  let reads = 0;
+  mockEmitter.mockImplementation(async ([, method], [batch] = []) => {
+    if (method === 'getNotes') {
+      reads++;
+      if (reads === 1) return { notes: [saved] };
+      if (reads === 2) return oldRead.promise;
+      return { notes: [] };
+    }
+    if (method === 'clearCompletedNotes')
+      return { removed: batch, unresolved: [] };
+    throw new Error('Unexpected call');
+  });
+  render(<PrivateNotes />);
+  expect(
+    await screen.findByRole('button', { name: 'Reported spent notes (1)' })
+  ).toBeVisible();
+  fireEvent.click(
+    screen.getByRole('button', { name: en.privacy.refreshNotes })
+  );
+  await waitFor(() => expect(reads).toBe(2));
+  fireEvent.click(
+    screen.getByRole('button', { name: en.privacy.capacity.clear })
+  );
+  fireEvent.click(
+    screen.getByRole('button', { name: en.privacy.capacity.confirmClear })
+  );
+  expect(await screen.findByText('Removed: 1. Still saved: 0.')).toBeVisible();
+  await waitFor(() => expect(reads).toBe(3));
+  await act(async () => oldRead.resolve({ notes: [saved] }));
+  expect(
+    screen.queryByRole('button', { name: 'Reported spent notes (1)' })
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByText(en.privacy.notePhase.spent)
+  ).not.toBeInTheDocument();
+});

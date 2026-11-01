@@ -366,6 +366,57 @@ it('rejects unsupported accounts before contacting the controller', () => {
   expect(mockBack).toHaveBeenCalled();
 });
 
+it('shows a dedicated capacity error from a serialized controller failure', async () => {
+  mockEmitter.mockRejectedValue({
+    message: 'privacy_deposit_note_limit',
+    transactionNotBroadcast: true,
+  });
+  mount();
+  fireEvent.click(
+    screen.getByRole('button', { name: en.privacy.deposit.continue })
+  );
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    en.privacy.deposit.noteCapacity
+  );
+  expect(
+    screen.queryByText(en.privacy.deposit.prepareFailed)
+  ).not.toBeInTheDocument();
+});
+
+it('does not show a stale capacity failure after the view is hidden', async () => {
+  let reject!: (error: unknown) => void;
+  mockEmitter.mockReturnValue(
+    new Promise((_resolve, fail) => {
+      reject = fail;
+    })
+  );
+  mount();
+  fireEvent.click(
+    screen.getByRole('button', { name: en.privacy.deposit.continue })
+  );
+  visible = false;
+  fireEvent(document, new Event('visibilitychange'));
+  await act(async () => reject({ message: 'privacy_deposit_note_limit' }));
+  visible = true;
+  fireEvent(document, new Event('visibilitychange'));
+  expect(
+    screen.getByRole('button', { name: en.privacy.deposit.continue })
+  ).toBeVisible();
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+});
+
+it('keeps unexpected serialized preparation errors generic', async () => {
+  mockEmitter.mockRejectedValue({ message: 'private secret' });
+  mount();
+  fireEvent.click(
+    screen.getByRole('button', { name: en.privacy.deposit.continue })
+  );
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    en.privacy.deposit.prepareFailed
+  );
+  expect(screen.queryByText('private secret')).not.toBeInTheDocument();
+});
+
 it('renders only a safe generic preparation error for malformed review data', async () => {
   mockEmitter.mockResolvedValue({
     ...review(),
