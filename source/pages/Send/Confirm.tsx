@@ -2268,7 +2268,7 @@ export const SendConfirm = () => {
                         isCalculatingFees ||
                         (!customFee.isCustom && !(fee.maxFeePerGas > 0))
                       }
-                      className="flex h-11 w-11 shrink-0 items-center justify-center rounded hover:text-fields-input-borderfocus focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue500 disabled:cursor-not-allowed"
+                      className="flex h-11 w-11 shrink-0 items-center justify-center rounded hover:text-fields-input-borderfocus focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue200 disabled:cursor-not-allowed"
                       onClick={() => setIsOpenEditFeeModal(true)}
                     >
                       <span aria-hidden="true">

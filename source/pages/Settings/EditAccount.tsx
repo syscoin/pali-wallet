@@ -225,7 +225,7 @@ const EditAccountView = () => {
             type="button"
             aria-label={t('buttons.copy')}
             onClick={handleCopyToClipboard}
-            className="flex min-h-[44px] shrink-0 items-center gap-1 rounded px-2 text-sm text-white transition-colors hover:bg-alpha-whiteAlpha100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue500"
+            className="flex min-h-[44px] shrink-0 items-center gap-1 rounded px-2 text-sm text-white transition-colors hover:bg-alpha-whiteAlpha100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue200"
           >
             <Icon isSvg className="w-4" name={copied ? 'greenCheck' : 'Copy'} />
             <span aria-live="polite">

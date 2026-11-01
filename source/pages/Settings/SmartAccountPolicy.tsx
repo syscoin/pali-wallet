@@ -845,7 +845,7 @@ const SmartAccountPolicy = () => {
         type="button"
         disabled={guardianStatusLoading}
         onClick={() => setGuardianStatusRefresh((value) => value + 1)}
-        className="rounded underline underline-offset-4 transition-colors hover:text-white focus-visible:ring-2 focus-visible:ring-brand-blue500 disabled:opacity-60"
+        className="rounded underline underline-offset-4 transition-colors hover:text-white focus-visible:ring-2 focus-visible:ring-brand-blue200 disabled:opacity-60"
       >
         {t('settings.smartAccountGuardianRefreshStatus')}
       </button>
@@ -3515,7 +3515,7 @@ const SmartAccountPolicy = () => {
                                 href="https://sysnode.info/account#recovery-alerts"
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="mt-2 inline-flex max-w-full items-center gap-2 rounded text-xs font-semibold text-brand-blue100 underline underline-offset-4 transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue500"
+                                className="mt-2 inline-flex max-w-full items-center gap-2 rounded text-xs font-semibold text-brand-blue100 underline underline-offset-4 transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue200"
                               >
                                 {t('settings.smartAccountRecoveryEmailAlerts')}
                                 <span aria-hidden="true">↗</span>

@@ -312,7 +312,7 @@ export const AccountHeader: React.FC = () => {
               </span>
               <IconButton
                 aria-label={t('buttons.edit')}
-                className="flex h-6 w-6 shrink-0 items-center justify-center rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue500"
+                className="flex h-6 w-6 shrink-0 items-center justify-center rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue200"
                 onClick={() => editAccount(currentAccount)}
                 type="primary"
                 shape="circle"
@@ -359,7 +359,7 @@ export const AccountHeader: React.FC = () => {
                     aria-label={t('home.clickToVerify', {
                       currency: activeNetwork.currency.toUpperCase(),
                     })}
-                    className="min-w-0 truncate text-left text-xs cursor-pointer rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue500"
+                    className="min-w-0 truncate text-left text-xs cursor-pointer rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue200"
                     onClick={handleHardwareAddressClick}
                   >
                     {ellipsis(currentAccount?.address, 6, 14)}

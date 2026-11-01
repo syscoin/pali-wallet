@@ -1,6 +1,7 @@
 import { expect, test, type Locator } from '@playwright/test';
 
 import { E2E_CONFIG } from '../harness/config';
+import { focusRingContrast } from '../harness/focusRingGeometry';
 import { PaliWallet } from '../harness/pali';
 import {
   createUtxoFixture,
@@ -228,6 +229,7 @@ test('edited account Copy remains keyboard-operable and fully exposed in narrow 
           break;
       }
       await expect(copy).toBeFocused();
+      expect(await focusRingContrast(copy)).toBeGreaterThanOrEqual(3);
       await expect.poll(() => exposed(copy)).toBe(true);
       const box = (await copy.boundingBox())!;
       expect(box.height).toBeGreaterThanOrEqual(44);

@@ -28,7 +28,7 @@ export const AccountExplorerAvatar = ({
         className={
           'add-identicon ml-1 mr-2 my-2 cursor-pointer transition-all duration-200 hover:scale-105 hover:opacity-80 rounded-full focus-visible:outline-none focus-visible:ring-2 ' +
           (header
-            ? 'focus-visible:ring-brand-blue500'
+            ? 'focus-visible:ring-brand-blue200'
             : 'focus-visible:ring-brand-royalblue')
         }
         onClick={onClick}

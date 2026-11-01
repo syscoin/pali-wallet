@@ -1,3 +1,5 @@
+import type { Locator } from '@playwright/test';
+
 export type FocusRing = { color: number[]; inset: boolean; spread: number };
 export type FocusBox = {
   borderBottom: number;
@@ -76,4 +78,69 @@ export function ringEdgeIsVisible(edge: { count: number; matching: number }) {
     edge.matching <= edge.count &&
     edge.matching / edge.count >= 0.9
   );
+}
+// Compare the actual keyboard-focus ring with the opaque surface it borders.
+export async function focusRingContrast(control: Locator) {
+  const paint = await control.evaluate((element) => {
+    let parent = element.parentElement;
+    let background = '';
+    let opaque = getComputedStyle(element).opacity === '1';
+    while (parent) {
+      const style = getComputedStyle(parent);
+      opaque &&= style.opacity === '1';
+      const color = style.backgroundColor;
+      if (
+        !background &&
+        color !== 'transparent' &&
+        color !== 'rgba(0, 0, 0, 0)'
+      ) {
+        background = color;
+      }
+      parent = parent.parentElement;
+    }
+    return {
+      focused:
+        document.activeElement === element && element.matches(':focus-visible'),
+      shadow: getComputedStyle(element).boxShadow,
+      background,
+      opaque,
+    };
+  });
+  const ring = parseFocusRing(paint.shadow);
+  const match = paint.background.match(/^rgba?\(([^)]+)\)$/);
+  const channels = match?.[1]
+    .split(/[ ,/]+/)
+    .filter(Boolean)
+    .map(Number);
+  if (
+    !paint.focused ||
+    !paint.opaque ||
+    !ring ||
+    ring.inset ||
+    !channels ||
+    channels.length < 3 ||
+    (channels[3] ?? 1) !== 1 ||
+    channels.slice(0, 3).some((v) => !Number.isFinite(v))
+  ) {
+    throw new Error(
+      `Cannot measure focused ring against an opaque background: ${JSON.stringify(
+        paint
+      )}`
+    );
+  }
+  const luminance = (rgb: number[]) =>
+    rgb.slice(0, 3).reduce((sum, value, i) => {
+      const channel = value / 255;
+      return (
+        sum +
+        (channel <= 0.04045
+          ? channel / 12.92
+          : ((channel + 0.055) / 1.055) ** 2.4) *
+          [0.2126, 0.7152, 0.0722][i]
+      );
+    }, 0);
+  const [low, high] = [luminance(ring.color), luminance(channels)].sort(
+    (a, b) => a - b
+  );
+  return (high + 0.05) / (low + 0.05);
 }
