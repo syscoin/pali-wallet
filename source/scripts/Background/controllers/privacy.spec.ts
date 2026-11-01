@@ -1000,3 +1000,56 @@ test('a snapshot cache failure is sanitized and does not start recovery network 
   expect(run.fetchSnapshot).toHaveBeenCalledTimes(fetches);
   expect(run.verifyAnchor).toHaveBeenCalledTimes(checks);
 });
+
+test('a revoked lease can wait only for its one successful automatic refresh', async () => {
+  const run = setup();
+  await run.controller.start(id);
+  await run.controller.resumePending(id);
+  const lease = await run.readSnapshot(id);
+  const download = deferred<PrivacySnapshot>();
+  run.fetchSnapshot.mockImplementationOnce(() => download.promise);
+  const refresh = run.controller.resumePending(id);
+  const waiting = lease.waitForScheduledRefresh!();
+  download.resolve(snapshot([leaf(1), leaf(2), leaf(3)]));
+  expect(await waiting).toBe(true);
+  await refresh;
+  expect(() => lease.assertSnapshotCurrent(lease.snapshot)).toThrow(
+    'privacy_verification_pending'
+  );
+  expect((await run.readSnapshot(id)).snapshot.leafCount).toBe(3);
+});
+
+test('a pause during a refresh cannot authorize retry of an old lease', async () => {
+  const run = setup();
+  await run.controller.start(id);
+  await run.controller.resumePending(id);
+  const lease = await run.readSnapshot(id);
+  const download = deferred<PrivacySnapshot>();
+  run.fetchSnapshot.mockImplementationOnce(() => download.promise);
+  const refresh = run.controller.resumePending(id);
+  const waiting = lease.waitForScheduledRefresh!();
+  const paused = run.controller.pause(id);
+  download.resolve(snapshot([leaf(1), leaf(2), leaf(3)]));
+  await paused;
+  await refresh;
+  expect(await waiting).toBe(false);
+});
+
+test('failed or repeated refreshes never authorize reuse of an old lease', async () => {
+  const failed = setup();
+  await failed.controller.start(id);
+  await failed.controller.resumePending(id);
+  const failedLease = await failed.readSnapshot(id);
+  failed.fetchSnapshot.mockRejectedValueOnce(new Error('offline'));
+  const failedRefresh = failed.controller.resumePending(id);
+  expect(await failedLease.waitForScheduledRefresh!()).toBe(false);
+  await failedRefresh;
+
+  const repeated = setup();
+  await repeated.controller.start(id);
+  await repeated.controller.resumePending(id);
+  const oldLease = await repeated.readSnapshot(id);
+  await repeated.controller.resumePending(id);
+  await repeated.controller.resumePending(id);
+  expect(await oldLease.waitForScheduledRefresh!()).toBe(false);
+});

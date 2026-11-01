@@ -7,6 +7,8 @@ export interface IPrivacySnapshotAccess {
   getPath: (
     leafIndex: number
   ) => Promise<{ pathElements: string[]; pathIndices: number[] }>;
+  /** Wait only for the one controller-identified refresh that revoked this lease. */
+  waitForScheduledRefresh?: () => Promise<boolean>;
   /** Frozen, owned by the verifying background controller. Never accepted from UI flags. */
   snapshot: PrivacySnapshot;
 }

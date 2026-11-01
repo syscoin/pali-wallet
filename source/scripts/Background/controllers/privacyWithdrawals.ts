@@ -28,6 +28,8 @@ import type {
 
 export const PRIVACY_WITHDRAWAL_GAS = '650000';
 export const PRIVACY_WITHDRAWAL_INTENT_TTL_MS = 60000;
+// Match the prover's existing timeout across both preparation attempts.
+const PREPARATION_RECOVERY_BUDGET_MS = 120000;
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const WORD = /^0x[0-9a-f]{64}$/;
@@ -500,194 +502,268 @@ export function createPrivacyWithdrawalsController(
         throw fail('privacy_withdrawal_intent_invalid');
       intents.set(id, intent);
       preparing = intent;
+      const preparationStarted = performance.now();
+      let recoveryTimer: ReturnType<typeof setTimeout> | undefined;
       try {
-        current(intent);
-        let used = false;
-        const review = await host.withNote(
-          request.noteId,
-          intent.session,
-          async (note, poolId) => {
-            if (used) throw fail('privacy_withdrawal_note_invalid');
-            used = true;
+        let originalIdentity:
+          | ReturnType<typeof identifyClassicNote>
+          | undefined;
+        for (let retry = 0; ; retry++) {
+          try {
             current(intent);
-            const identity = identifyClassicNote(note),
-              pool = getPrivacyPool(poolId);
-            if (identity.poolId !== poolId || submitting.has(request.noteId))
-              throw fail('privacy_withdrawal_note_busy');
-            const access = await host.getSnapshot(poolId);
-            if (typeof access?.getPath !== 'function')
-              throw fail('privacy_verification_pending');
-            intent.lease = Object.freeze({
-              snapshot: access.snapshot,
-              assertSnapshotCurrent: access.assertSnapshotCurrent,
-              getPath: access.getPath,
-            });
-            current(intent);
-            let fee = '0',
-              relayer = `0x${'0'.repeat(40)}`,
-              maximum = BigInt(0),
-              service = '0';
-            let directFees: ReturnType<typeof fees> | undefined;
-            if (request.mode === 'direct') {
-              directFees = fees(await host.quoteDirectFees(intent.session));
-              current(intent);
-              maximum = directFees.maximum;
-            } else {
-              if (!directory) throw fail('privacy_relayer_directory_pending');
-              intent.selection = await host.relayers.checkRelayer(
-                directory,
-                request.relayerId!,
-                poolId,
-                intent.abort.signal
-              );
-              current(intent);
-              const price = await host.quoteRelayerGasPrice(intent.session);
-              current(intent);
-              const quote = quotePrivacyRelayerFee(
-                poolId,
-                intent.selection.advertisedServiceFeePercent,
-                PRIVACY_WITHDRAWAL_GAS,
-                quantity(price, true).toString()
-              );
-              fee = quote.feeWei;
-              service = quote.serviceFeeWei;
-              maximum = BigInt(quote.networkFeeWei);
-              relayer = intent.selection.rewardAccount;
-            }
-            const prove =
-              host.prove ||
-              (
-                await import(
-                  /* webpackChunkName: "privacy-withdrawal" */ 'utils/privacy/withdrawal'
+            let used = false;
+            const review = await host.withNote(
+              request.noteId,
+              intent.session,
+              async (note, poolId) => {
+                if (used) throw fail('privacy_withdrawal_note_invalid');
+                used = true;
+                current(intent);
+                const identity = identifyClassicNote(note),
+                  pool = getPrivacyPool(poolId);
+                if (
+                  identity.poolId !== poolId ||
+                  submitting.has(request.noteId)
                 )
-              ).provePrivacyWithdrawal;
-            current(intent);
-            const proof = await prove(
-              {
-                note,
-                snapshot: intent.lease.snapshot,
-                recipient,
-                relayer,
-                fee,
-                refund: '0',
-              },
-              {
-                assertCurrent: () => current(intent),
-                assertSnapshotCurrent: intent.lease.assertSnapshotCurrent,
-                getPath: intent.lease.getPath,
-                signal: intent.abort.signal,
-                onProgress: host.onProgress,
+                  throw fail('privacy_withdrawal_note_busy');
+                if (
+                  originalIdentity &&
+                  (originalIdentity.poolId !== identity.poolId ||
+                    originalIdentity.commitment !== identity.commitment ||
+                    originalIdentity.nullifierHash !== identity.nullifierHash)
+                )
+                  throw fail('privacy_withdrawal_note_invalid');
+                originalIdentity = identity;
+                const access = await host.getSnapshot(poolId);
+                if (typeof access?.getPath !== 'function')
+                  throw fail('privacy_verification_pending');
+                intent.lease = Object.freeze({
+                  snapshot: access.snapshot,
+                  assertSnapshotCurrent: access.assertSnapshotCurrent,
+                  getPath: access.getPath,
+                  waitForScheduledRefresh: access.waitForScheduledRefresh,
+                });
+                current(intent);
+                let fee = '0',
+                  relayer = `0x${'0'.repeat(40)}`,
+                  maximum = BigInt(0),
+                  service = '0';
+                let directFees: ReturnType<typeof fees> | undefined;
+                if (request.mode === 'direct') {
+                  directFees = fees(await host.quoteDirectFees(intent.session));
+                  current(intent);
+                  maximum = directFees.maximum;
+                } else {
+                  if (!directory)
+                    throw fail('privacy_relayer_directory_pending');
+                  intent.selection = await host.relayers.checkRelayer(
+                    directory,
+                    request.relayerId!,
+                    poolId,
+                    intent.abort.signal
+                  );
+                  current(intent);
+                  const price = await host.quoteRelayerGasPrice(intent.session);
+                  current(intent);
+                  const quote = quotePrivacyRelayerFee(
+                    poolId,
+                    intent.selection.advertisedServiceFeePercent,
+                    PRIVACY_WITHDRAWAL_GAS,
+                    quantity(price, true).toString()
+                  );
+                  fee = quote.feeWei;
+                  service = quote.serviceFeeWei;
+                  maximum = BigInt(quote.networkFeeWei);
+                  relayer = intent.selection.rewardAccount;
+                }
+                const prove =
+                  host.prove ||
+                  (
+                    await import(
+                      /* webpackChunkName: "privacy-withdrawal" */ 'utils/privacy/withdrawal'
+                    )
+                  ).provePrivacyWithdrawal;
+                current(intent);
+                const proof = await prove(
+                  {
+                    note,
+                    snapshot: intent.lease.snapshot,
+                    recipient,
+                    relayer,
+                    fee,
+                    refund: '0',
+                  },
+                  {
+                    assertCurrent: () => current(intent),
+                    assertSnapshotCurrent: intent.lease.assertSnapshotCurrent,
+                    getPath: intent.lease.getPath,
+                    signal: intent.abort.signal,
+                    onProgress: host.onProgress,
+                  }
+                );
+                current(intent);
+                const expected = [
+                  intent.lease.snapshot.root,
+                  identity.nullifierHash,
+                  recipient,
+                  relayer,
+                  fee,
+                  '0',
+                ].map((value) => BigInt(value).toString());
+                if (
+                  !proof ||
+                  !PROOF.test(proof.proof) ||
+                  !Array.isArray(proof.publicSignals) ||
+                  proof.publicSignals.length !== 6 ||
+                  proof.publicSignals.some((value, i) => value !== expected[i])
+                )
+                  throw fail('privacy_proof_verification_failed');
+                const createdAt = now(),
+                  expiresAt = createdAt + PRIVACY_WITHDRAWAL_INTENT_TTL_MS;
+                if (
+                  !Number.isSafeInteger(createdAt) ||
+                  createdAt < 0 ||
+                  !Number.isSafeInteger(expiresAt)
+                )
+                  throw fail('privacy_withdrawal_clock_invalid');
+                const base = {
+                  intentId: id,
+                  noteId: request.noteId,
+                  poolId,
+                  createdAt,
+                  expiresAt,
+                  context: intent.session.context,
+                  recipient,
+                  fee,
+                  refund: '0' as const,
+                  relayer,
+                  root: intent.lease.snapshot.root,
+                  nullifierHash: identity.nullifierHash,
+                  proof: proof.proof,
+                };
+                intent.attempt =
+                  request.mode === 'direct'
+                    ? Object.freeze({
+                        ...base,
+                        mode: 'direct' as const,
+                        transaction: Object.freeze({
+                          chainId: 1 as const,
+                          from: intent.session.context.account.address,
+                          to: pool.address,
+                          value: '0x0',
+                          data: ABI.encodeFunctionData('withdraw', [
+                            proof.proof,
+                            base.root,
+                            base.nullifierHash,
+                            recipient,
+                            relayer,
+                            fee,
+                            '0',
+                          ]),
+                          ...directFees!.fields,
+                        }),
+                      })
+                    : Object.freeze({
+                        ...base,
+                        mode: 'relayed' as const,
+                        endpoint: intent.selection!.endpoint,
+                        ensHash: intent.selection!.ensHash,
+                        rewardAccount: relayer,
+                      });
+                intent.expiresAt = expiresAt;
+                intent.timer = setTimeout(
+                  () => remove(id),
+                  PRIVACY_WITHDRAWAL_INTENT_TTL_MS
+                );
+                const result: IPrivacyWithdrawalReview = {
+                  intentId: id,
+                  noteId: request.noteId,
+                  poolId,
+                  amount: pool.amount,
+                  poolAddress: pool.address,
+                  mode: request.mode,
+                  recipient,
+                  account: { ...intent.session.context.account },
+                  chainId: 1,
+                  expiresAt,
+                  feeWei: fee,
+                  receiveWei: (
+                    parseEther(pool.amount) - BigInt(fee)
+                  ).toString(),
+                  gasLimit: PRIVACY_WITHDRAWAL_GAS,
+                  maxNetworkFeeWei: maximum.toString(),
+                  serviceFeeWei: service,
+                };
+                if (intent.selection) {
+                  result.relayerEndpoint = intent.selection.endpoint;
+                  result.relayerId = intent.selection.ensHash;
+                  result.relayerName = intent.selection.directory.relayers.find(
+                    (entry) => entry.ensHash === intent.selection!.ensHash
+                  )!.ensName;
+                }
+                return result;
               }
             );
             current(intent);
-            const expected = [
-              intent.lease.snapshot.root,
-              identity.nullifierHash,
-              recipient,
-              relayer,
-              fee,
-              '0',
-            ].map((value) => BigInt(value).toString());
+            if (!intent.attempt || intents.get(id) !== intent)
+              throw fail('privacy_withdrawal_cancelled');
+            return review;
+          } catch (error) {
+            const lease = intent.lease;
             if (
-              !proof ||
-              !PROOF.test(proof.proof) ||
-              !Array.isArray(proof.publicSignals) ||
-              proof.publicSignals.length !== 6 ||
-              proof.publicSignals.some((value, i) => value !== expected[i])
+              retry !== 0 ||
+              !(error instanceof Error) ||
+              error.message !== 'privacy_verification_pending' ||
+              !lease?.waitForScheduledRefresh
             )
-              throw fail('privacy_proof_verification_failed');
-            const createdAt = now(),
-              expiresAt = createdAt + PRIVACY_WITHDRAWAL_INTENT_TTL_MS;
-            if (
-              !Number.isSafeInteger(createdAt) ||
-              createdAt < 0 ||
-              !Number.isSafeInteger(expiresAt)
-            )
-              throw fail('privacy_withdrawal_clock_invalid');
-            const base = {
-              intentId: id,
-              noteId: request.noteId,
-              poolId,
-              createdAt,
-              expiresAt,
-              context: intent.session.context,
-              recipient,
-              fee,
-              refund: '0' as const,
-              relayer,
-              root: intent.lease.snapshot.root,
-              nullifierHash: identity.nullifierHash,
-              proof: proof.proof,
-            };
-            intent.attempt =
-              request.mode === 'direct'
-                ? Object.freeze({
-                    ...base,
-                    mode: 'direct' as const,
-                    transaction: Object.freeze({
-                      chainId: 1 as const,
-                      from: intent.session.context.account.address,
-                      to: pool.address,
-                      value: '0x0',
-                      data: ABI.encodeFunctionData('withdraw', [
-                        proof.proof,
-                        base.root,
-                        base.nullifierHash,
-                        recipient,
-                        relayer,
-                        fee,
-                        '0',
-                      ]),
-                      ...directFees!.fields,
-                    }),
-                  })
-                : Object.freeze({
-                    ...base,
-                    mode: 'relayed' as const,
-                    endpoint: intent.selection!.endpoint,
-                    ensHash: intent.selection!.ensHash,
-                    rewardAccount: relayer,
-                  });
-            intent.expiresAt = expiresAt;
-            intent.timer = setTimeout(
-              () => remove(id),
-              PRIVACY_WITHDRAWAL_INTENT_TTL_MS
-            );
-            const result: IPrivacyWithdrawalReview = {
-              intentId: id,
-              noteId: request.noteId,
-              poolId,
-              amount: pool.amount,
-              poolAddress: pool.address,
-              mode: request.mode,
-              recipient,
-              account: { ...intent.session.context.account },
-              chainId: 1,
-              expiresAt,
-              feeWei: fee,
-              receiveWei: (parseEther(pool.amount) - BigInt(fee)).toString(),
-              gasLimit: PRIVACY_WITHDRAWAL_GAS,
-              maxNetworkFeeWei: maximum.toString(),
-              serviceFeeWei: service,
-            };
-            if (intent.selection) {
-              result.relayerEndpoint = intent.selection.endpoint;
-              result.relayerId = intent.selection.ensHash;
-              result.relayerName = intent.selection.directory.relayers.find(
-                (entry) => entry.ensHash === intent.selection!.ensHash
-              )!.ensName;
-            }
-            return result;
+              throw error;
+            // withNote has unwound before waiting. Discard all derived state;
+            // never reuse a proof, fee quote, relayer selection or old lease.
+            if (intent.timer) clearTimeout(intent.timer);
+            intent.timer = undefined;
+            intent.attempt = undefined;
+            intent.expiresAt = undefined;
+            intent.lease = undefined;
+            intent.selection = undefined;
+            current(intent);
+            if (intents.get(id) !== intent) throw error;
+            const remaining =
+              PREPARATION_RECOVERY_BUDGET_MS -
+              (performance.now() - preparationStarted);
+            if (!Number.isFinite(remaining) || remaining <= 0) throw error;
+            recoveryTimer = setTimeout(() => intent.abort.abort(), remaining);
+            const refreshed = await new Promise<boolean>((resolve, reject) => {
+              const signal = intent.abort.signal;
+              const cancel = () => {
+                signal.removeEventListener('abort', cancel);
+                reject(fail('privacy_withdrawal_cancelled'));
+              };
+              if (signal.aborted) return cancel();
+              signal.addEventListener('abort', cancel, { once: true });
+              Promise.resolve()
+                .then(() => lease.waitForScheduledRefresh!())
+                .then(
+                  (value) => {
+                    signal.removeEventListener('abort', cancel);
+                    resolve(value);
+                  },
+                  (reason) => {
+                    signal.removeEventListener('abort', cancel);
+                    reject(reason);
+                  }
+                );
+            });
+            if (!refreshed) throw error;
+            current(intent);
+            if (intents.get(id) !== intent)
+              throw fail('privacy_withdrawal_cancelled');
           }
-        );
-        current(intent);
-        if (!intent.attempt || intents.get(id) !== intent)
-          throw fail('privacy_withdrawal_cancelled');
-        return review;
+        }
       } catch (error) {
         remove(id);
         throw sanitize(error);
       } finally {
+        if (recoveryTimer) clearTimeout(recoveryTimer);
         if (preparing === intent) {
           preparing = undefined;
           queuedPreparation?.release();
