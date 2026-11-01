@@ -383,6 +383,9 @@ module.exports = {
           },
           name: 'ui-shared-vendors',
           priority: 20,
+          // Share these dependencies across both UI runtimes without
+          // partitioning the group by per-entrypoint export usage.
+          usedExports: false,
           minChunks: 2,
           enforce: true,
         },
