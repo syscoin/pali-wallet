@@ -374,9 +374,15 @@ module.exports = {
         uiSharedVendors: {
           test: /[\\/]node_modules[\\/](?:lodash[\\/]lodash\.js|@remix-run[\\/]router[\\/]dist[\\/]router\.js|jdenticon[\\/]dist[\\/]jdenticon-module\.mjs|react-router-dom[\\/]dist[\\/]index\.js)$/,
           chunks(chunk) {
-            return chunk.name === 'app' || chunk.name === 'external';
+            return (
+              chunk.canBeInitial() &&
+              [...chunk.groupsIterable].some(
+                (group) => group.name === 'app' || group.name === 'external'
+              )
+            );
           },
           name: 'ui-shared-vendors',
+          priority: 20,
           minChunks: 2,
           enforce: true,
         },
