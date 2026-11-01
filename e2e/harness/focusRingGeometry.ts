@@ -81,13 +81,36 @@ export function ringEdgeIsVisible(edge: { count: number; matching: number }) {
 }
 // Compare the actual keyboard-focus ring with the opaque surface it borders.
 export async function focusRingContrast(control: Locator) {
-  const paint = await control.evaluate((element) => {
+  const paint = await control.evaluate(async (element) => {
+    const ancestry: Element[] = [];
+    for (let node: Element | null = element; node; node = node.parentElement)
+      ancestry.push(node);
+    const finiteAnimations = ancestry.flatMap((node) =>
+      node.getAnimations().filter((animation) => {
+        const timing = animation.effect?.getComputedTiming();
+        return (
+          animation.playState === 'running' &&
+          timing !== undefined &&
+          Number.isFinite(timing.iterations) &&
+          Number.isFinite(timing.endTime)
+        );
+      })
+    );
+    await Promise.all(
+      finiteAnimations.map((animation) =>
+        animation.finished.catch(() => undefined)
+      )
+    );
     let parent = element.parentElement;
     let background = '';
-    let opaque = getComputedStyle(element).opacity === '1';
+    const nonOpaque = ancestry.flatMap((node) => {
+      const opacity = getComputedStyle(node).opacity;
+      return opacity === '1'
+        ? []
+        : [{ tag: node.tagName, id: node.id, opacity }];
+    });
     while (parent) {
       const style = getComputedStyle(parent);
-      opaque &&= style.opacity === '1';
       const color = style.backgroundColor;
       if (
         !background &&
@@ -103,7 +126,7 @@ export async function focusRingContrast(control: Locator) {
         document.activeElement === element && element.matches(':focus-visible'),
       shadow: getComputedStyle(element).boxShadow,
       background,
-      opaque,
+      nonOpaque,
     };
   });
   const ring = parseFocusRing(paint.shadow);
@@ -114,7 +137,7 @@ export async function focusRingContrast(control: Locator) {
     .map(Number);
   if (
     !paint.focused ||
-    !paint.opaque ||
+    paint.nonOpaque.length > 0 ||
     !ring ||
     ring.inset ||
     !channels ||
