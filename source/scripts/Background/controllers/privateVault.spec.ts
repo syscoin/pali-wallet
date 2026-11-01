@@ -189,9 +189,11 @@ function fixture(
   );
   const readNote = jest.fn(async () => status);
   const revalidateCompletion = jest.fn(async () => undefined);
-  const prepareCompletionProof = jest.fn(async () => ({
-    revalidate: revalidateCompletion,
-  }));
+  const prepareCompletionProof = jest.fn(
+    async (): Promise<{ revalidate: () => Promise<void> }> => ({
+      revalidate: revalidateCompletion,
+    })
+  );
   const create = () =>
     createPrivateVaultController(
       { captureSession, authenticate, readNote, prepareCompletionProof },

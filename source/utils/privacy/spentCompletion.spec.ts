@@ -23,7 +23,7 @@ function fixture() {
     recipient,
     nullifier,
     relayer,
-    1n,
+    BigInt(1),
   ]);
   const blocks: Record<string, any> = {
     finalized: { number: '0x80', hash: finalHash },
