@@ -25,14 +25,18 @@ function capacityData(value: unknown): IPrivateVaultCapacity {
 
 export default function PrivateVaultCapacitySettings({
   controllerEmitter,
+  noteCount,
 }: {
+  noteCount?: number;
   controllerEmitter: (...args: any[]) => Promise<unknown>;
 }) {
   const { t } = useTranslation();
   const [data, setData] = useState<IPrivateVaultCapacity>();
   const [choice, setChoice] = useState<PrivateVaultCapacity>(128);
   const [pending, setPending] = useState(true);
-  const [error, setError] = useState(false);
+  const [error, setError] = useState<'load' | 'save'>();
+  const saveFailed = useRef(false);
+  const seenCount = useRef(noteCount);
   const owner = useRef({ active: true, revision: 0 });
   const current = (revision: number) =>
     owner.current.active &&
@@ -41,17 +45,18 @@ export default function PrivateVaultCapacitySettings({
   const load = () => {
     const revision = ++owner.current.revision;
     setPending(true);
-    setError(false);
+    setError(saveFailed.current ? 'save' : undefined);
     void controllerEmitter(['privateVault', 'getCapacity'], [], 30000, false)
       .then((value) => {
         const next = capacityData(value);
         if (current(revision)) {
           setData(next);
-          setChoice(next.capacity);
+          if (!data) setChoice(next.capacity);
+          setError(saveFailed.current ? 'save' : undefined);
         }
       })
       .catch(() => {
-        if (current(revision)) setError(true);
+        if (current(revision)) setError('load');
       })
       .finally(() => {
         if (current(revision)) setPending(false);
@@ -65,11 +70,21 @@ export default function PrivateVaultCapacitySettings({
       owner.current.revision++;
     };
   }, []);
+  // A clear may finish while this panel is open. Wait for any read/save to
+  // finish, then refresh authoritative count and bytes without discarding a
+  // tier the user has selected but not saved.
+  useEffect(() => {
+    if (pending || noteCount === undefined || seenCount.current === noteCount)
+      return;
+    seenCount.current = noteCount;
+    load();
+  }, [noteCount, pending]);
   const save = async () => {
     if (pending || !data || choice === data.capacity) return;
     const revision = ++owner.current.revision;
     setPending(true);
-    setError(false);
+    saveFailed.current = false;
+    setError(undefined);
     try {
       const next = capacityData(
         await controllerEmitter(
@@ -84,7 +99,10 @@ export default function PrivateVaultCapacitySettings({
         setChoice(next.capacity);
       }
     } catch {
-      if (current(revision)) setError(true);
+      if (current(revision)) {
+        saveFailed.current = true;
+        setError('save');
+      }
     } finally {
       if (current(revision)) setPending(false);
     }
@@ -130,10 +148,14 @@ export default function PrivateVaultCapacitySettings({
       <p>{t('privacy.capacity.compatibility')}</p>
       {error && (
         <p role="alert">
-          {t(data ? 'privacy.capacity.error' : 'privacy.capacity.loadError')}
+          {t(
+            error === 'save'
+              ? 'privacy.capacity.error'
+              : 'privacy.capacity.loadError'
+          )}
         </p>
       )}
-      {error && !data && (
+      {error === 'load' && (
         <button
           type="button"
           className="rounded p-1 text-brand-royalbluemedium underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-white disabled:opacity-50"

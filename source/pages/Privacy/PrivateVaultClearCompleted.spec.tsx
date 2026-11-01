@@ -71,3 +71,35 @@ it('fails closed on malformed results and refreshes after a partial operation', 
   );
   await waitFor(() => expect(done).toHaveBeenCalledTimes(1));
 });
+
+it('reports a committed in-flight removal after unmount without starting the next record', async () => {
+  const ids = [
+    '00000000-0000-4000-8000-000000000001',
+    '00000000-0000-4000-8000-000000000002',
+  ];
+  let finish!: (value: unknown) => void;
+  const pending = new Promise((resolve) => {
+    finish = resolve;
+  });
+  const emit = jest.fn(() => pending);
+  const removed = jest.fn();
+  const view = render(
+    <PrivateVaultClearCompleted
+      controllerEmitter={emit}
+      noteIds={ids}
+      onComplete={jest.fn()}
+      onRemoved={removed}
+    />
+  );
+  fireEvent.click(
+    screen.getByRole('button', { name: en.privacy.capacity.clear })
+  );
+  fireEvent.click(
+    screen.getByRole('button', { name: en.privacy.capacity.confirmClear })
+  );
+  expect(emit).toHaveBeenCalledTimes(1);
+  view.unmount();
+  finish({ removed: [ids[0]], unresolved: [] });
+  await waitFor(() => expect(removed).toHaveBeenCalledWith([ids[0]]));
+  expect(emit).toHaveBeenCalledTimes(1);
+});

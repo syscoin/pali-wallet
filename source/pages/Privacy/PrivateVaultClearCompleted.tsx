@@ -67,7 +67,9 @@ export default function PrivateVaultClearCompleted({
           all.some((id) => typeof id !== 'string' || !batch.includes(id))
         )
           throw new Error('privacy_vault_unavailable');
-        if (current(revision) && value.removed.length) onRemoved(value.removed);
+        // A committed removal still belongs to the parent notes view when
+        // opening another panel has unmounted this confirmation control.
+        if (value.removed.length) onRemoved(value.removed);
         removed += value.removed.length;
         unresolved += value.unresolved.length;
         if (current(revision))
@@ -79,10 +81,8 @@ export default function PrivateVaultClearCompleted({
         onComplete();
       }
     } catch {
-      if (current(revision)) {
-        setError(true);
-        onComplete();
-      }
+      if (current(revision)) setError(true);
+      onComplete();
     } finally {
       if (current(revision)) {
         owner.current.busy = false;

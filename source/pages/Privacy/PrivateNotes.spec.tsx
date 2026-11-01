@@ -1366,3 +1366,83 @@ it.each(['resolve', 'reject'] as const)(
     ).toBeEnabled();
   }
 );
+
+it.each(['acknowledged', 'acknowledgement lost'])(
+  'reconciles a completed removal after opening capacity settings when the write is %s',
+  async (outcome) => {
+    let finish!: () => void;
+    const removedId = '00000000-0000-4000-8000-000000000001';
+    const transactionHash = '0x' + '17'.repeat(32);
+    const completed = {
+      ...note,
+      id: removedId,
+      phase: 'waiting',
+      withdrawal: { mode: 'direct', phase: 'submitted', transactionHash },
+    };
+    const survivor = {
+      ...note,
+      id: '00000000-0000-4000-8000-000000000002',
+      poolId: 'eth-1',
+      amount: '1',
+    };
+    let records = [completed, survivor];
+    const clearing = new Promise((resolve, reject) => {
+      finish = () => {
+        records = [survivor];
+        if (outcome === 'acknowledged')
+          resolve({ removed: [removedId], unresolved: [] });
+        else reject(new Error('storage acknowledgement lost'));
+      };
+    });
+    mockEmitter.mockImplementation(async ([, method]) => {
+      if (method === 'getNotes') return { notes: records };
+      if (method === 'clearCompletedNotes') return clearing;
+      if (method === 'getCapacity')
+        return {
+          capacity: 128,
+          noteCount: records.length,
+          bundleLimitBytes: 4 * 1024 * 1024,
+          storedBytes: records.length * 1024,
+        };
+      throw new Error('Unexpected call');
+    });
+    render(<PrivateNotes />);
+    await screen.findByText('0.1 ETH');
+    fireEvent.click(
+      screen.getByRole('button', { name: en.privacy.capacity.clear })
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: en.privacy.capacity.confirmClear })
+    );
+    await waitFor(() =>
+      expect(mockEmitter).toHaveBeenCalledWith(
+        ['privateVault', 'clearCompletedNotes'],
+        [[removedId]],
+        120000,
+        false
+      )
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: en.privacy.capacity.settings })
+    );
+    await screen.findByText('Saved notes: 2 / 128');
+    expect(screen.getByText(transactionHash)).toBeVisible();
+    fireEvent.change(screen.getByLabelText(en.privacy.capacity.label), {
+      target: { value: '256' },
+    });
+    await act(async () => finish());
+    await waitFor(() =>
+      expect(screen.queryByText('0.1 ETH')).not.toBeInTheDocument()
+    );
+    expect(screen.getByText('1 ETH')).toBeVisible();
+    expect(screen.queryByText(transactionHash)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(en.privacy.withdrawal.statusPending)
+    ).not.toBeInTheDocument();
+    expect(await screen.findByText('Saved notes: 1 / 128')).toBeVisible();
+    expect(
+      screen.getByText('Serialized encrypted vault: 1024 bytes.')
+    ).toBeVisible();
+    expect(screen.getByLabelText(en.privacy.capacity.label)).toHaveValue('256');
+  }
+);

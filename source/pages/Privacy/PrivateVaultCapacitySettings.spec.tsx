@@ -98,3 +98,94 @@ it('offers retry after an initial capacity read failure', async () => {
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
   );
 });
+
+it('defers a count refresh during save and preserves an unsaved choice on a later refresh', async () => {
+  let finishSave!: (value: unknown) => void;
+  const saved = new Promise((resolve) => {
+    finishSave = resolve;
+  });
+  const state = (capacity: 128 | 256 | 512, noteCount: number) => ({
+    capacity,
+    noteCount,
+    storedBytes: noteCount * 100,
+    bundleLimitBytes: (capacity / 128) * 4 * 1024 * 1024,
+  });
+  const emitter = jest
+    .fn()
+    .mockResolvedValueOnce(state(128, 2))
+    .mockReturnValueOnce(saved)
+    .mockResolvedValueOnce(state(256, 1))
+    .mockResolvedValueOnce(state(256, 0));
+  const { rerender } = render(
+    <PrivateVaultCapacitySettings controllerEmitter={emitter} noteCount={2} />
+  );
+  expect(await screen.findByText('Saved notes: 2 / 128')).toBeVisible();
+  const setting = screen.getByLabelText(en.privacy.capacity.label);
+  fireEvent.change(setting, { target: { value: '256' } });
+  fireEvent.click(
+    screen.getByRole('button', { name: en.privacy.capacity.save })
+  );
+  expect(setting).toBeDisabled();
+  rerender(
+    <PrivateVaultCapacitySettings controllerEmitter={emitter} noteCount={1} />
+  );
+  expect(emitter).toHaveBeenCalledTimes(2);
+  finishSave(state(256, 2));
+  expect(await screen.findByText('Saved notes: 1 / 256')).toBeVisible();
+  expect(emitter).toHaveBeenNthCalledWith(
+    3,
+    ['privateVault', 'getCapacity'],
+    [],
+    30000,
+    false
+  );
+  expect(setting).toHaveValue('256');
+  await waitFor(() => expect(setting).toBeEnabled());
+  fireEvent.change(setting, { target: { value: '512' } });
+  rerender(
+    <PrivateVaultCapacitySettings controllerEmitter={emitter} noteCount={0} />
+  );
+  expect(await screen.findByText('Saved notes: 0 / 256')).toBeVisible();
+  expect(setting).toHaveValue('512');
+});
+
+it('keeps a rejected save visible after passive refresh and retries a failed refresh', async () => {
+  const state = (noteCount: number) => ({
+    capacity: 256,
+    noteCount,
+    storedBytes: 100,
+    bundleLimitBytes: 8 * 1024 * 1024,
+  });
+  const emitter = jest
+    .fn()
+    .mockResolvedValueOnce(state(2))
+    .mockRejectedValueOnce(new Error('save refused'))
+    .mockRejectedValueOnce(new Error('load unavailable'))
+    .mockResolvedValueOnce(state(1));
+  const { rerender } = render(
+    <PrivateVaultCapacitySettings controllerEmitter={emitter} noteCount={2} />
+  );
+  expect(await screen.findByText('Saved notes: 2 / 256')).toBeVisible();
+  const setting = screen.getByLabelText(en.privacy.capacity.label);
+  fireEvent.change(setting, { target: { value: '128' } });
+  fireEvent.click(
+    screen.getByRole('button', { name: en.privacy.capacity.save })
+  );
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    en.privacy.capacity.error
+  );
+  rerender(
+    <PrivateVaultCapacitySettings controllerEmitter={emitter} noteCount={1} />
+  );
+  await waitFor(() =>
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      en.privacy.capacity.loadError
+    )
+  );
+  fireEvent.click(screen.getByRole('button', { name: en.privacy.retry }));
+  expect(await screen.findByText('Saved notes: 1 / 256')).toBeVisible();
+  expect(screen.getByRole('alert')).toHaveTextContent(
+    en.privacy.capacity.error
+  );
+  expect(setting).toHaveValue('128');
+});

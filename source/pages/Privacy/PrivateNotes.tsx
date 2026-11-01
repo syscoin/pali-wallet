@@ -274,7 +274,10 @@ function NotesView() {
         </form>
       )}
       {capacitySettings && (
-        <PrivateVaultCapacitySettings controllerEmitter={controllerEmitter} />
+        <PrivateVaultCapacitySettings
+          controllerEmitter={controllerEmitter}
+          noteCount={notes.length}
+        />
       )}
       {!capacitySettings &&
         !importing &&
@@ -305,6 +308,8 @@ function NotesView() {
             )
             .map((note) => note.id)}
           onRemoved={(ids) => {
+            if (!owner.current.active || document.visibilityState === 'hidden')
+              return;
             for (const id of ids)
               statusRevisions.current.set(
                 id,
@@ -321,7 +326,10 @@ function NotesView() {
               current && ids.includes(current.id) ? null : current
             );
           }}
-          onComplete={() => void refresh()}
+          onComplete={() => {
+            if (owner.current.active && document.visibilityState !== 'hidden')
+              void refresh();
+          }}
         />
       )}
       <div
