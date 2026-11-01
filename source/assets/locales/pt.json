@@ -1700,6 +1700,7 @@
       "backupFailed": "Não foi possível abrir o backup da nota. Tente novamente."
     },
     "withdrawal": {
+      "watchOnlyDirectUnavailable": "O saque direto requer uma chave privada. Esta conta é somente para observação.",
       "title": "Sacar nota",
       "open": "Sacar",
       "recipient": "Endereço do destinatário",

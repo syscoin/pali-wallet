@@ -1700,6 +1700,7 @@
       "backupFailed": "无法打开票据备份。请重试。"
     },
     "withdrawal": {
+      "watchOnlyDirectUnavailable": "直接提款需要私钥。此账户为只读账户。",
       "title": "凭证提款",
       "open": "提款",
       "recipient": "收款地址",

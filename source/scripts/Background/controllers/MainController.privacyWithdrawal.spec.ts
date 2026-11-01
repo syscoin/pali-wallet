@@ -243,6 +243,13 @@ const prepare = (wallet: any) =>
     mode: 'direct',
   });
 
+const selectImportedAccount = (state: any, xprv = '') => {
+  state.vault.activeAccount = { id: 0, type: KeyringAccountType.Imported };
+  const account = { id: 0, address: ADDRESS, xprv };
+  state.vault.accounts[KeyringAccountType.Imported] = { 0: account };
+  return account;
+};
+
 beforeEach(() => {
   jest
     .mocked(getBlacklistTargetsForEvmCallWithContractType)
@@ -496,6 +503,78 @@ it('quotes a fresh pending nonce and rechecks it even while the actual SDK read 
     jest.useRealTimers();
   }
 });
+
+it('refuses watch-only Direct preparation before note access, proof or fee reads', async () => {
+  const { wallet, state, host, provider, vault } = setup();
+  selectImportedAccount(state);
+  await expect(prepare(wallet)).rejects.toThrow(
+    'privacy_withdrawal_context_changed'
+  );
+  expect(vault.withWithdrawalNote).not.toHaveBeenCalled();
+  expect(host.prove).not.toHaveBeenCalled();
+  expect(provider.send).not.toHaveBeenCalled();
+  expect(wallet.sendAndSaveEthTransaction).not.toHaveBeenCalled();
+  // Reading a saved withdrawal remains available to watch-only accounts.
+  await expect(
+    wallet.getPrivacyWithdrawalStatus(NOTE_ID)
+  ).resolves.toMatchObject({
+    noteId: NOTE_ID,
+    phase: 'unknown',
+  });
+});
+
+it('allows an imported signing account to prepare and submit Direct withdrawal', async () => {
+  const { wallet, state, events } = setup();
+  selectImportedAccount(state, 'synthetic-encrypted-key');
+  const review = await prepare(wallet);
+  expect(review.account.type).toBe(KeyringAccountType.Imported);
+  await expect(
+    wallet.submitPrivacyWithdrawal(review.intentId)
+  ).resolves.toMatchObject({
+    phase: 'submitted',
+    transactionHash: HASH,
+  });
+  expect(events).toEqual(['reserve', 'send', 'record']);
+});
+
+it.each(['preparation', 'confirmation'] as const)(
+  'refuses Direct %s after the imported signing capability disappears',
+  async (phase) => {
+    const { wallet, state, host, vault } = setup();
+    const account = selectImportedAccount(state, 'synthetic-encrypted-key');
+    if (phase === 'preparation') {
+      const entered = deferred(),
+        release = deferred();
+      const prove = jest.mocked(host.prove!).getMockImplementation()!;
+      jest
+        .mocked(host.prove!)
+        .mockImplementationOnce(async (request, options) => {
+          entered.resolve();
+          await release.promise;
+          return prove(request, options);
+        });
+      const preparing = prepare(wallet);
+      const rejected = expect(preparing).rejects.toThrow(
+        'privacy_withdrawal_context_changed'
+      );
+      await entered.promise;
+      account.xprv = '';
+      release.resolve();
+      await rejected;
+    } else {
+      const review = await prepare(wallet);
+      account.xprv = '';
+      await expect(
+        wallet.submitPrivacyWithdrawal(review.intentId)
+      ).rejects.toMatchObject({
+        message: 'privacy_withdrawal_context_changed',
+        transactionNotBroadcast: true,
+      });
+    }
+    expect(vault.reserveWithdrawalAttempt).not.toHaveBeenCalled();
+    expect(wallet.sendAndSaveEthTransaction).not.toHaveBeenCalled();
+  }
+);
 
 it('carries the actual controller cloned context through fixed-gas Main preparation, reservation and sender', async () => {
   const { wallet, provider, vault, host, events } = setup();

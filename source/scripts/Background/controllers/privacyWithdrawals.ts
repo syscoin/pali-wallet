@@ -146,8 +146,11 @@ function fees(value: IPrivacyDepositFees) {
     maximum: gas * maximum,
   };
 }
-function capture(host: IPrivacyWithdrawalsHost): IPrivacyWithdrawalSession {
-  const session = host.captureSession(),
+function capture(
+  host: IPrivacyWithdrawalsHost,
+  requireSigner = false
+): IPrivacyWithdrawalSession {
+  const session = host.captureSession(requireSigner),
     context = session.context;
   session.assertCurrent();
   if (
@@ -464,7 +467,7 @@ export function createPrivacyWithdrawalsController(
       }
       let session: IPrivacyWithdrawalSession;
       try {
-        session = capture(host);
+        session = capture(host, request.mode === 'direct');
       } catch {
         throw fail('privacy_withdrawal_context_changed');
       }

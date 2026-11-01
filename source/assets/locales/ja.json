@@ -1700,6 +1700,7 @@
       "backupFailed": "ノートのバックアップを開けませんでした。再試行してください。"
     },
     "withdrawal": {
+      "watchOnlyDirectUnavailable": "直接出金には秘密鍵が必要です。このアカウントは閲覧専用です。",
       "title": "ノートを出金",
       "open": "出金",
       "recipient": "受取先アドレス",

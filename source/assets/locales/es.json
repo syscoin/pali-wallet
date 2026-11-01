@@ -1700,6 +1700,7 @@
       "backupFailed": "No se pudo abrir la copia de la nota. Reintenta."
     },
     "withdrawal": {
+      "watchOnlyDirectUnavailable": "El retiro directo requiere una clave privada. Esta cuenta es de solo observación.",
       "title": "Retirar nota",
       "open": "Retirar",
       "recipient": "Dirección del destinatario",

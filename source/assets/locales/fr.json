@@ -1700,6 +1700,7 @@
       "backupFailed": "Impossible d’ouvrir la sauvegarde de la note. Réessayez."
     },
     "withdrawal": {
+      "watchOnlyDirectUnavailable": "Un retrait direct nécessite une clé privée. Ce compte est en lecture seule.",
       "title": "Retirer une note",
       "open": "Retirer",
       "recipient": "Adresse du destinataire",

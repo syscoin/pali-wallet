@@ -257,6 +257,7 @@ afterEach(() => {
 it.each([
   'reservation interrupted',
   'healthy accepted',
+  'watch-only accepted',
   'post entered unknown',
 ] as const)('relayed reservation and recovery: %s', async (scenario) => {
   const { createPrivateVaultController } = await import('./privateVault');
@@ -270,6 +271,15 @@ it.each([
   keyring.getDecryptedMnemonic = () => 'synthetic private vault test root';
   keyring.isUnlocked = () => true;
   const run = setup();
+  if (scenario === 'watch-only accepted') {
+    run.state.vault.activeAccount = {
+      id: 0,
+      type: KeyringAccountType.Imported,
+    };
+    run.state.vault.accounts[KeyringAccountType.Imported] = {
+      0: { id: 0, address: ADDRESS, xprv: '' },
+    };
+  }
   run.wallet.getActiveKeyring = () => keyring;
   run.wallet.getWalletSetupStatus = () => false;
   const records: Record<string, any> = {};
@@ -377,7 +387,7 @@ it.each([
   } else {
     const result = await submission;
     expect(fetcher).toHaveBeenCalledTimes(1);
-    if (scenario === 'healthy accepted') {
+    if (scenario === 'healthy accepted' || scenario === 'watch-only accepted') {
       expect(result).toMatchObject({ phase: 'submitted', jobId });
       expect((await run.wallet.getPrivateVaultNotes()).notes[0]).toMatchObject({
         phase: 'waiting',

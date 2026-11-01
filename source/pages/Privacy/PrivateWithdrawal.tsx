@@ -129,7 +129,11 @@ function WithdrawalFlow({
   note,
   onBack,
   emitter,
-}: IPrivateWithdrawalProps & { emitter: (...args: any[]) => Promise<any> }) {
+  canSign,
+}: IPrivateWithdrawalProps & {
+  emitter: (...args: any[]) => Promise<any>;
+  canSign: boolean;
+}) {
   const { t } = useTranslation();
   const [recipient, setRecipient] = useState('');
   const [recipientTouched, setRecipientTouched] = useState(false);
@@ -137,7 +141,9 @@ function WithdrawalFlow({
     recipientTouched &&
     Boolean(recipient.trim()) &&
     !isValidRecipient(recipient.trim());
-  const [mode, setMode] = useState<'direct' | 'relayed'>('direct');
+  const [mode, setMode] = useState<'direct' | 'relayed'>(
+    canSign ? 'direct' : 'relayed'
+  );
   const [relayers, setRelayers] = useState<IPrivacyRelayerChoice[]>([]);
   const [directoryLoaded, setDirectoryLoaded] = useState(false);
   const [relayerId, setRelayerId] = useState('');
@@ -242,6 +248,9 @@ function WithdrawalFlow({
       if (current(revision)) setBusy(null);
     }
   };
+  useEffect(() => {
+    if (!canSign) void loadRelayers();
+  }, []);
   const prepare = async () => {
     if (
       owner.current.busy ||
@@ -426,6 +435,12 @@ function WithdrawalFlow({
                   type="radio"
                   name="privacy-withdrawal-mode"
                   value={value}
+                  disabled={value === 'direct' && !canSign}
+                  aria-describedby={
+                    value === 'direct' && !canSign
+                      ? 'privacy-withdrawal-watch-only-reason'
+                      : undefined
+                  }
                   checked={mode === value}
                   onChange={() => {
                     setMode(value);
@@ -438,6 +453,11 @@ function WithdrawalFlow({
               </label>
             ))}
           </fieldset>
+          {!canSign && (
+            <p id="privacy-withdrawal-watch-only-reason" className="text-xs">
+              {t('privacy.withdrawal.watchOnlyDirectUnavailable')}
+            </p>
+          )}
           <p className="text-xs text-brand-gray200">
             {t(
               `privacy.withdrawal.${
@@ -681,16 +701,18 @@ export default function PrivateWithdrawal(props: IPrivateWithdrawalProps) {
   const { t } = useTranslation();
   const { controllerEmitter, isUnlocked, isLoading, connectionUnavailable } =
     useController();
-  const { scope, eligible } = useSelector((state: RootState) => {
+  const { scope, eligible, canSign } = useSelector((state: RootState) => {
     const { vault, vaultGlobal } = state;
     const ref = vault.activeAccount,
-      account = vault.accounts?.[ref.type]?.[ref.id];
+      account = vault.accounts?.[ref.type]?.[ref.id],
+      canSign = ref.type !== 'Imported' || Boolean(account?.xprv);
     return {
       scope: JSON.stringify([
         ref.type,
         ref.id,
         account?.address,
         account?.xpub,
+        canSign,
         vault.activeNetwork.url,
         vault.activeNetwork.chainId,
         vault.isBitcoinBased,
@@ -698,6 +720,7 @@ export default function PrivateWithdrawal(props: IPrivateWithdrawalProps) {
         vaultGlobal.lastLogin,
         vault.passkeyCredentialProfile?.credentialIdHash,
       ]),
+      canSign,
       eligible:
         !vault.isBitcoinBased &&
         vault.activeNetwork.kind === 'ethereum' &&
@@ -743,6 +766,7 @@ export default function PrivateWithdrawal(props: IPrivateWithdrawalProps) {
       key={`${scope}:${props.note.id}`}
       {...props}
       emitter={controllerEmitter}
+      canSign={canSign}
     />
   );
 }

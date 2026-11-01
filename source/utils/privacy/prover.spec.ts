@@ -138,6 +138,77 @@ it('rejects a delayed reply after wallet-session ownership changes', async () =>
   answer();
   await rejected;
 });
+it.each(['handshake', 'active'])(
+  'preserves local scheduled-refresh pending while %s is in progress',
+  async (phase) => {
+    jest.useFakeTimers();
+    try {
+      if (phase === 'handshake')
+        (chrome.runtime.sendMessage as jest.Mock).mockImplementation(
+          () => new Promise(() => undefined)
+        );
+      let current = true;
+      const job = runPrivacyProof(fixture.input, {
+        assertCurrent: () => {
+          if (!current) throw Error('privacy_verification_pending');
+        },
+      });
+      const rejected = expect(job).rejects.toThrow(
+        'privacy_verification_pending'
+      );
+      await flush();
+      if (phase === 'active') expect(sent[0]?.type).toBe('prove');
+      else expect(sent).toHaveLength(0);
+      current = false;
+      jest.advanceTimersByTime(250);
+      await rejected;
+      if (phase === 'active') expect(port.disconnect).toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
+  }
+);
+it('preserves local pending on a worker message without relabeling worker errors', async () => {
+  let current = true;
+  const job = runPrivacyProof(fixture.input, {
+    assertCurrent: () => {
+      if (!current) throw Error('privacy_verification_pending');
+    },
+  });
+  const rejected = expect(job).rejects.toThrow('privacy_verification_pending');
+  await flush();
+  current = false;
+  answer();
+  await rejected;
+
+  const invalid = runPrivacyProof(fixture.input, {
+    assertCurrent: () => undefined,
+    onProgress: () => {
+      throw Error('privacy_verification_pending');
+    },
+  });
+  const invalidResult = expect(invalid).rejects.toThrow('privacy_proof_failed');
+  await flush();
+  port.onMessage.emit({
+    id: sent.at(-1).id,
+    type: 'progress',
+    progress: { stage: 'artifacts' },
+  });
+  await invalidResult;
+});
+it('keeps explicit cancellation when a later refresh also invalidates the lease', async () => {
+  let current = true;
+  const job = runPrivacyProof(fixture.input, {
+    assertCurrent: () => {
+      if (!current) throw Error('privacy_verification_pending');
+    },
+  });
+  const rejected = expect(job).rejects.toThrow('privacy_proof_cancelled');
+  await flush();
+  cancelPrivacyProof();
+  current = false;
+  await rejected;
+});
 it('rejects altered public signals from the worker', async () => {
   const job = runPrivacyProof(fixture.input, {
     assertCurrent: () => undefined,

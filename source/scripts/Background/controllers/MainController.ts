@@ -2552,8 +2552,8 @@ class MainController {
     };
     return {
       relayers,
-      captureSession: () => {
-        const captured = this.capturePrivacyDepositContext();
+      captureSession: (requireSigner = false) => {
+        const captured = this.capturePrivacyDepositContext(requireSigner);
         const saved = this.privacyDepositSessions.get(captured.assertCurrent);
         if (!saved) throw new Error('privacy_withdrawal_context_changed');
         capturedSessions.set(captured.assertCurrent, {

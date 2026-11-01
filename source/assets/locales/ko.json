@@ -1700,6 +1700,7 @@
       "backupFailed": "노트 백업을 열지 못했습니다. 다시 시도하세요."
     },
     "withdrawal": {
+      "watchOnlyDirectUnavailable": "직접 출금하려면 개인 키가 필요합니다. 이 계정은 보기 전용입니다.",
       "title": "노트 출금",
       "open": "출금",
       "recipient": "수신 주소",

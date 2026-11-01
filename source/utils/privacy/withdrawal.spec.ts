@@ -157,6 +157,15 @@ it('rejects a spent note from the locally supplied whole-pool feed', async () =>
     'privacy_note_spent'
   );
 });
+it('preserves a locally reported pending lease while guarding preparation', async () => {
+  const options = guards();
+  options.assertCurrent.mockImplementation(() => {
+    throw Error('privacy_verification_pending');
+  });
+  await expect(preparePrivacyWithdrawal(request(), options)).rejects.toThrow(
+    'privacy_verification_pending'
+  );
+});
 it('requires the caller to authenticate original snapshot freshness', async () => {
   const options = guards();
   options.assertSnapshotCurrent.mockImplementation(() => {

@@ -611,3 +611,101 @@ it('does not start relayed preparation for a zero recipient after choosing a rel
     mockEmitter.mock.calls.some(([path]) => path[1] === 'prepareWithdrawal')
   ).toBe(false);
 });
+
+it('starts watch-only withdrawals with Relayer and explains why Direct is unavailable', async () => {
+  mockState.vault.activeAccount = { type: 'Imported', id: 0 };
+  mockState.vault.accounts.Imported = {
+    0: { address: ADDRESS, xpub: ADDRESS, xprv: '' },
+  };
+  mount();
+  expect(screen.getByLabelText(en.privacy.withdrawal.direct)).toBeDisabled();
+  expect(screen.getByLabelText(en.privacy.withdrawal.relayed)).toBeChecked();
+  expect(
+    screen.getByText(en.privacy.withdrawal.watchOnlyDirectUnavailable)
+  ).toBeVisible();
+  expect(
+    screen.getByLabelText(en.privacy.withdrawal.direct)
+  ).toHaveAccessibleDescription(
+    en.privacy.withdrawal.watchOnlyDirectUnavailable
+  );
+  const select = await screen.findByRole('combobox', {
+    name: en.privacy.withdrawal.relayer,
+  });
+  fireEvent.change(select, { target: { value: RELAYER_ID } });
+  await prepare();
+  expect(mockEmitter).toHaveBeenCalledWith(
+    ['privacyWithdrawals', 'prepareWithdrawal'],
+    [
+      {
+        noteId: NOTE_ID,
+        recipient: RECIPIENT,
+        mode: 'relayed',
+        relayerId: RELAYER_ID,
+      },
+    ],
+    120000,
+    false
+  );
+});
+
+it('cancels a pending direct review when imported signer capability changes', async () => {
+  mockState.vault.activeAccount = { type: 'Imported', id: 0 };
+  mockState.vault.accounts.Imported = {
+    0: { address: ADDRESS, xpub: ADDRESS, xprv: 'synthetic-encrypted-key' },
+  };
+  const pending = deferred();
+  const original = mockEmitter.getMockImplementation()!;
+  mockEmitter.mockImplementation((path, ...rest) =>
+    path[1] === 'prepareWithdrawal' ? pending.promise : original(path, ...rest)
+  );
+  const view = mount();
+  fireEvent.change(screen.getByLabelText(en.privacy.withdrawal.recipient), {
+    target: { value: RECIPIENT },
+  });
+  fireEvent.click(
+    screen.getByRole('button', { name: en.privacy.withdrawal.continue })
+  );
+  expect(screen.getByText(en.privacy.withdrawal.proving)).toBeVisible();
+  mockState.vault.accounts.Imported[0].xprv = '';
+  view.rerender(<PrivateWithdrawal note={note} onBack={mockBack} />);
+  expect(screen.getByLabelText(en.privacy.withdrawal.direct)).toBeDisabled();
+  expect(screen.getByLabelText(en.privacy.withdrawal.relayed)).toBeChecked();
+  await act(async () => pending.resolve(review()));
+  expect(
+    screen.queryByRole('heading', { name: en.privacy.withdrawal.review })
+  ).not.toBeInTheDocument();
+  expect(
+    mockEmitter.mock.calls.filter(([path]) => path[1] === 'cancelPreparation')
+  ).toHaveLength(1);
+  expect(
+    mockEmitter.mock.calls.some(([path]) => path[1] === 'submitWithdrawal')
+  ).toBe(false);
+});
+
+it.each(['empty', 'failed'] as const)(
+  'keeps watch-only Direct disabled when the initial relayer directory is %s',
+  async (outcome) => {
+    mockState.vault.activeAccount = { type: 'Imported', id: 0 };
+    mockState.vault.accounts.Imported = {
+      0: { address: ADDRESS, xpub: ADDRESS, xprv: '' },
+    };
+    mockEmitter.mockImplementation(async ([, method]) => {
+      if (method !== 'getRelayers') return undefined;
+      if (outcome === 'failed') throw new Error('Synthetic directory failure');
+      return [];
+    });
+    mount();
+    expect(screen.getByLabelText(en.privacy.withdrawal.direct)).toBeDisabled();
+    expect(screen.getByLabelText(en.privacy.withdrawal.relayed)).toBeChecked();
+    expect(
+      await screen.findByText(
+        outcome === 'failed'
+          ? en.privacy.withdrawal.directoryFailed
+          : en.privacy.withdrawal.noRelayers
+      )
+    ).toBeVisible();
+    expect(
+      screen.getByRole('button', { name: en.privacy.withdrawal.continue })
+    ).toBeDisabled();
+  }
+);

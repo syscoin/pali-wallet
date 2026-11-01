@@ -323,7 +323,8 @@ it('offers a clear network requirement from the deposit entry and preserves loca
   expect(await screen.findByText(en.privacy.notePhase.verified)).toBeVisible();
 });
 
-it('opens withdrawal only from a verified note with an empty recipient and refreshes on return', async () => {
+it('opens direct withdrawal from a verified note for a signer with an empty recipient and refreshes on return', async () => {
+  mockState.vault.accounts.Imported[0].xprv = 'synthetic-withdrawal-signer';
   render(<PrivateNotes />);
   fireEvent.click(
     await screen.findByRole('button', { name: en.privacy.withdrawal.open })

@@ -1700,6 +1700,7 @@
       "backupFailed": "Could not open the note backup. Try again."
     },
     "withdrawal": {
+      "watchOnlyDirectUnavailable": "Direct withdrawal requires a private key. This account is watch-only.",
       "title": "Withdraw note",
       "open": "Withdraw",
       "recipient": "Recipient address",
