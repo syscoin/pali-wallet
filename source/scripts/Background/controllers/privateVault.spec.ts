@@ -2366,14 +2366,16 @@ it.each([256, 512] as const)(
         jobId: 'j'.repeat(128),
       },
     }));
-    // Cache real identities across repeated full-vault reads and re-persistence.
+    // The first measured read repeats identity work exactly as production does.
+    // Cache only later reads so the persistence assertions stay bounded.
+    let cacheIdentities = false;
     const identities = new Map<
       string,
       ReturnType<typeof identifyClassicNote>
     >();
     const identify = (note: string) => {
       let identity = identities.get(note);
-      if (!identity) {
+      if (!cacheIdentities || !identity) {
         identity = identifyClassicNote(note);
         identities.set(note, identity);
       }
@@ -2442,6 +2444,7 @@ it.each([256, 512] as const)(
     const restarted = f.create();
     expect((await restarted.getNotes()).notes).toHaveLength(capacity);
     const readMs = Date.now() - start;
+    cacheIdentities = true;
     expect(await restarted.getCapacity()).toMatchObject({
       capacity,
       noteCount: capacity,
