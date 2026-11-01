@@ -143,6 +143,45 @@ it('associates the watch-only label and gives each import field a unique accessi
   ).toBe('import-account-identifier');
 });
 
+it('validates and imports the same key after trimming surrounding whitespace', async () => {
+  const key = `0x${'aB'.repeat(32)}`;
+  (validatePrivateKeyValue as jest.Mock).mockImplementation(
+    async (value) => value === key
+  );
+  render(<ImportAccount />);
+  fireEvent.change(input(), { target: { value: ` \t${key}\n ` } });
+  await waitFor(() =>
+    expect(importButton().hasAttribute('disabled')).toBe(false)
+  );
+  expect((input() as HTMLInputElement).value).toBe(key);
+  expect(validatePrivateKeyValue).toHaveBeenCalledWith(
+    key,
+    true,
+    expect.anything()
+  );
+  await act(async () => submitForm());
+  await waitFor(() =>
+    expect(mockEmitter).toHaveBeenCalledWith(
+      ['wallet', 'importAccountFromPrivateKey'],
+      [key, undefined, { utxoAddressType: 'p2wpkh' }]
+    )
+  );
+  expect(mockEmitter).toHaveBeenCalledTimes(1);
+});
+
+it('keeps whitespace inside a private key invalid', async () => {
+  (validatePrivateKeyValue as jest.Mock).mockResolvedValue(false);
+  render(<ImportAccount />);
+  const malformed = 'synthetic internal whitespace';
+  fireEvent.change(input(), { target: { value: ` ${malformed} ` } });
+  await waitFor(() =>
+    expect(screen.getByText('settings.invalidPrivateKeyFormat')).toBeTruthy()
+  );
+  expect((input() as HTMLInputElement).value).toBe(malformed);
+  expect(importButton().hasAttribute('disabled')).toBe(true);
+  expect(mockEmitter).not.toHaveBeenCalled();
+});
+
 it('masks private input by default and reveals only through its explicit non-submit control', async () => {
   render(<ImportAccount />);
   const privateKey = input() as HTMLInputElement;

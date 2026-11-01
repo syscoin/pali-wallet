@@ -302,6 +302,9 @@ const ImportAccountView = () => {
             name="privKey"
             className="w-full"
             hasFeedback
+            normalize={(value) =>
+              !watchOnly && typeof value === 'string' ? value.trim() : value
+            }
             rules={[
               { required: true, message: '' },
               () => ({
