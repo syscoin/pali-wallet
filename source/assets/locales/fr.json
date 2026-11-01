@@ -1656,6 +1656,7 @@
       "option": "{{count}} notes (jusqu’à {{size}} Mio)",
       "explanation": "Une limite plus élevée peut utiliser plus de stockage local et ralentir le coffre.",
       "compatibility": "Modifier la limite met à niveau le format du coffre ; les anciennes versions peuvent ne pas le lire. Aucune note n’est supprimée.",
+      "loadError": "Impossible de charger la limite de notes. Réessayez.",
       "error": "Impossible de modifier la limite. Vérifiez que les notes enregistrées tiennent dans la limite, puis réessayez.",
       "save": "Enregistrer la limite",
       "reportedSpent": "Notes signalées comme dépensées ({{count}})",

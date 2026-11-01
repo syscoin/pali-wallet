@@ -1656,6 +1656,7 @@
       "option": "{{count}} Notizen (bis zu {{size}} MiB)",
       "explanation": "Höhere Limits können mehr lokalen Speicher benötigen und den Tresor verlangsamen.",
       "compatibility": "Das Ändern des Limits aktualisiert das Tresorformat; ältere Wallet-Versionen können es möglicherweise nicht lesen. Keine Notizen werden entfernt.",
+      "loadError": "Das Notizlimit konnte nicht geladen werden. Versuche es erneut.",
       "error": "Das Limit konnte nicht geändert werden. Prüfe, ob die gespeicherten Notizen hineinpassen, und versuche es erneut.",
       "save": "Limit speichern",
       "reportedSpent": "Als ausgegeben gemeldete Notizen ({{count}})",

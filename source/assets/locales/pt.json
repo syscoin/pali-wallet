@@ -1656,6 +1656,7 @@
       "option": "{{count}} notas (até {{size}} MiB)",
       "explanation": "Limites maiores podem usar mais armazenamento local e tornar o cofre mais lento.",
       "compatibility": "Alterar o limite atualiza o formato do cofre; versões antigas da carteira talvez não consigam lê-lo. Nenhuma nota é removida.",
+      "loadError": "Não foi possível carregar o limite de notas. Tente novamente.",
       "error": "Não foi possível alterar o limite. Verifique se as notas salvas cabem e tente novamente.",
       "save": "Salvar limite",
       "reportedSpent": "Notas informadas como gastas ({{count}})",

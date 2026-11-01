@@ -1656,6 +1656,7 @@
       "option": "{{count}} notas (hasta {{size}} MiB)",
       "explanation": "Los límites mayores pueden usar más almacenamiento local y ralentizar el almacén.",
       "compatibility": "Cambiar el límite actualiza el formato del almacén; las versiones antiguas podrían no leerlo. No se elimina ninguna nota.",
+      "loadError": "No se pudo cargar el límite de notas. Inténtalo de nuevo.",
       "error": "No se pudo cambiar el límite. Comprueba que quepan las notas guardadas y reintenta.",
       "save": "Guardar límite",
       "reportedSpent": "Notas indicadas como gastadas ({{count}})",

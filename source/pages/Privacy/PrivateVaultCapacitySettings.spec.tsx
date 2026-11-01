@@ -1,6 +1,6 @@
 /** @jest-environment jsdom */
 import '@testing-library/jest-dom';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 import en from 'assets/locales/en.json';
 import PrivateVaultCapacitySettings from './PrivateVaultCapacitySettings';
@@ -85,9 +85,16 @@ it('offers retry after an initial capacity read failure', async () => {
       storedBytes: 4321,
     });
   render(<PrivateVaultCapacitySettings controllerEmitter={emitter} />);
-  expect(await screen.findByRole('alert')).toBeVisible();
+  expect(screen.getByRole('status')).toHaveTextContent(en.privacy.checking);
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    en.privacy.capacity.loadError
+  );
+  expect(screen.queryByText(en.privacy.capacity.error)).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: en.privacy.retry }));
   expect(
     await screen.findByText('Serialized encrypted vault: 4321 bytes.')
   ).toBeVisible();
+  await waitFor(() =>
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  );
 });

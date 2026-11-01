@@ -1656,6 +1656,7 @@
       "option": "{{count}} notes (up to {{size}} MiB)",
       "explanation": "Higher limits can use more local storage and make vault operations slower.",
       "compatibility": "Changing the limit upgrades the vault format; older wallet versions may not read it. No notes are removed.",
+      "loadError": "Could not load the note limit. Try again.",
       "error": "Could not change the limit. Check that your saved notes fit and try again.",
       "save": "Save limit",
       "reportedSpent": "Reported spent notes ({{count}})",

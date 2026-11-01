@@ -95,6 +95,7 @@ export default function PrivateVaultCapacitySettings({
       aria-busy={pending}
     >
       <p>{t('privacy.capacity.explanation')}</p>
+      {pending && <p role="status">{t('privacy.checking')}</p>}
       {data && (
         <p>
           {t('privacy.capacity.usage', {
@@ -127,7 +128,11 @@ export default function PrivateVaultCapacitySettings({
         </option>
       </select>
       <p>{t('privacy.capacity.compatibility')}</p>
-      {error && <p role="alert">{t('privacy.capacity.error')}</p>}
+      {error && (
+        <p role="alert">
+          {t(data ? 'privacy.capacity.error' : 'privacy.capacity.loadError')}
+        </p>
+      )}
       {error && !data && (
         <button
           type="button"

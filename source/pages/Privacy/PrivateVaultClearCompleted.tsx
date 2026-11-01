@@ -91,7 +91,7 @@ export default function PrivateVaultClearCompleted({
     }
   };
   return (
-    <div className="space-y-2" aria-busy={pending}>
+    <div className="space-y-2 text-xs" aria-busy={pending}>
       {noteIds.length > 0 &&
         (!confirming ? (
           <button
