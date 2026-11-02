@@ -113,7 +113,7 @@ const compileFixture = async () => {
         {family?.startsWith('status-') && <StatusModal {...props} status={family.slice(7)} />}
         {family === 'wallet-ready' && <WalletReadyModal {...props} phraseOne={description} />}
         {family === 'account-created' && <CreatedAccountSuccessfully {...props} phraseOne={description} phraseTwo="0x0000000000000000000000000000000000000064" />}
-        {family === 'import-warning' && <ImportWalletWarning {...props} phraseOne={query.has('locale') ? copy.settings.recoveryIntro : description} phraseTwo={query.has('locale') ? copy.settings.recoverySeedHelp : 'This is a disposable component fixture.'} phraseThree={query.has('locale') ? copy.settings.recoveryLimitations : 'No recovery action will be submitted.'} />}
+        {family === 'import-warning' && <ImportWalletWarning {...props} phraseOne={query.has('locale') ? copy.settings.recoveryIntro : description} phraseTwo={query.has('locale') ? copy.settings.recoverySeedHelp : 'This is a disposable component fixture.'} phraseThree={query.has('locale') ? copy.settings.recoveryLimitations + ' ' + copy.forgetWalletPage.privateNotesBackupWarning : 'No recovery action will be submitted.'} />}
         {family === 'hardware-choice' && <ConnectHardwareWallet {...props} phraseOne={description} />}
       </main>;
     }

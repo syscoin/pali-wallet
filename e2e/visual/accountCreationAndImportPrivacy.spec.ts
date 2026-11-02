@@ -458,7 +458,10 @@ test('account actions are distinct and reachable; private import stays masked ac
           await expect(page.locator('#password')).toBeVisible();
           await page.locator('#import-wallet-link').click();
           await expect(
-            page.getByText(en.settings.recoveryLimitations, { exact: true })
+            page.getByText(
+              `${en.settings.recoveryLimitations} ${en.forgetWalletPage.privateNotesBackupWarning}`,
+              { exact: true }
+            )
           ).toBeVisible();
           await page.keyboard.press('Escape');
           await expect(page.locator('#password')).toBeVisible();
