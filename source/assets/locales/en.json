@@ -675,7 +675,7 @@
     "recoveryTitle": "Recover wallet",
     "recoveryIntro": "Use your Secret Recovery Phrase to restore only the first seed-derived (HD) account and choose a new password. Re-add other accounts derived from the same phrase.",
     "recoverySeedHelp": "Enter the phrase for this wallet. A different phrase cannot restore its accounts.",
-    "recoveryLimitations": "Recovery deletes the locally stored encrypted records of imported private keys. Without separate backups of those keys, you may permanently lose access to those accounts. Hardware connections, custom settings and smart-account/passkey setup need their own backups or reconnection. Recovery does not move your funds.",
+    "recoveryLimitations": "Recovery deletes saved private notes and locally encrypted imported private keys. Without separate key backups, you may permanently lose access to those accounts. Hardware connections, custom settings and smart-account/passkey setup need separate backups or reconnection. Recovery does not move your funds.",
     "walletRecoveryFailed": "Wallet recovery could not be completed. Check your phrase and try again. If it keeps failing, restart your browser. Do not clear wallet storage.",
     "walletRecoveryUnconfirmed": "Wallet recovery could not be confirmed. Check wallet to see its current state. Do not clear wallet storage.",
     "walletRecoveryRestartRequired": "Recovery needs to finish before you can use the wallet. Restart your browser, then check your wallet and try recovery again if needed. Do not clear wallet storage.",
@@ -928,7 +928,7 @@
   },
   "start": {
     "eraseAndStartFresh": "Erase and start fresh",
-    "eraseWarning": "Erases all locally saved accounts, imported keys and settings.",
+    "eraseWarning": "Erases all locally saved accounts, imported keys, private notes and settings.",
     "eraseFundsWarning": "Funds stay on-chain. Without the recovery phrase and separate key backups, access may be lost forever.",
     "eraseAcknowledge": "I accept possible permanent loss of access without backups.",
     "eraseTypeConfirmation": "Type {{word}}.",

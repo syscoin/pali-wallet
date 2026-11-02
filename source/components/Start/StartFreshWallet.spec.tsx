@@ -36,6 +36,11 @@ jest.mock('react-i18next', () => ({
     t: (key: string, values?: { word?: string }) =>
       key === 'start.eraseTypeConfirmation'
         ? `Type ${values?.word} to confirm.`
+        : key === 'start.eraseWarning'
+        ? jest.requireActual('../../assets/locales/en.json').start.eraseWarning
+        : key === 'forgetWalletPage.privateNotesBackupWarning'
+        ? jest.requireActual('../../assets/locales/en.json').forgetWalletPage
+            .privateNotesBackupWarning
         : key,
   }),
 }));
@@ -130,6 +135,16 @@ it('opens only a non-destructive warning, focuses Cancel and keeps admission out
     expect(screen.getByRole('button', { name: 'buttons.cancel' })).toHaveFocus()
   );
   expect(screen.getByRole('dialog')).toHaveAccessibleName('start.eraseConfirm');
+  expect(
+    screen.getByText(
+      /Erases all locally saved accounts, imported keys, private notes and settings\./
+    )
+  ).toBeVisible();
+  expect(
+    screen.getByText(
+      /Back up any private notes separately; your recovery phrase cannot restore them\./
+    )
+  ).toBeVisible();
   expect(
     screen.getByRole('button', { name: 'start.eraseConfirm' })
   ).toBeDisabled();

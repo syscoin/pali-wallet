@@ -192,6 +192,7 @@ export const StartFreshWallet = ({
             />
             <DialogBody className="space-y-4">
               <p>{t('start.eraseWarning')}</p>
+              <p>{t('forgetWalletPage.privateNotesBackupWarning')}</p>
               <p>{t('start.eraseFundsWarning')}</p>
               {status && (
                 <p role={beginning ? 'status' : 'alert'}>{t(status)}</p>

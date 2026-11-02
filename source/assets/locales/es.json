@@ -675,7 +675,7 @@
     "recoveryTitle": "Recuperar billetera",
     "recoveryIntro": "Usa tu Frase Secreta de Recuperación para restaurar solo la primera cuenta derivada de la semilla (HD) y elegir una nueva contraseña. Vuelve a añadir las demás cuentas derivadas de la misma frase.",
     "recoverySeedHelp": "Introduce la frase de esta billetera. Una frase diferente no puede restaurar sus cuentas.",
-    "recoveryLimitations": "La recuperación elimina los registros cifrados de las claves privadas importadas que se guardan localmente. Sin copias de seguridad independientes de esas claves, puedes perder permanentemente el acceso a esas cuentas. Las conexiones de hardware, los ajustes personalizados y la configuración de cuentas inteligentes y passkeys requieren sus propias copias de seguridad o una nueva conexión. La recuperación no mueve tus fondos.",
+    "recoveryLimitations": "La recuperación elimina las notas privadas guardadas y las claves privadas importadas cifradas localmente. Sin copias separadas de esas claves, puedes perder para siempre el acceso a esas cuentas. Las conexiones de hardware, los ajustes y la configuración de cuentas inteligentes y passkeys requieren sus propias copias o una nueva conexión. La recuperación no mueve tus fondos.",
     "walletRecoveryFailed": "No se pudo completar la recuperación de la billetera. Comprueba tu frase y vuelve a intentarlo. Si sigue fallando, reinicia tu navegador. No borres los datos de almacenamiento de la billetera.",
     "walletRecoveryUnconfirmed": "No se pudo confirmar la recuperación de la cartera. Comprueba la cartera para ver su estado actual. No borres los datos de almacenamiento de la cartera.",
     "walletRecoveryRestartRequired": "La recuperación debe finalizar antes de que puedas usar la billetera. Reinicia tu navegador, después verifica tu billetera y vuelve a intentar la recuperación si es necesario. No borres los datos de almacenamiento de la billetera.",
@@ -928,7 +928,7 @@
   },
   "start": {
     "eraseAndStartFresh": "Borrar y empezar de nuevo",
-    "eraseWarning": "Borra todas las cuentas, claves importadas y ajustes locales.",
+    "eraseWarning": "Borra las cuentas, claves importadas, notas privadas y ajustes locales.",
     "eraseFundsWarning": "Los fondos siguen en la cadena. Sin la semilla y copias separadas de las claves, puedes perder el acceso para siempre.",
     "eraseAcknowledge": "Acepto que, sin copias de seguridad, puedo perder el acceso para siempre.",
     "eraseTypeConfirmation": "Escribe {{word}}.",
