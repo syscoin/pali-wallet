@@ -1728,7 +1728,7 @@
       "acceptedHelp": "Der Relayer hat eine Auftrags-ID vergeben. Die Auszahlung ist damit noch nicht in einem Block enthalten.",
       "submittedHelp": "Warte, bis die öffentlichen Pooldaten die Auszahlung bestätigen.",
       "jobId": "Relayer-Auftrags-ID",
-      "directoryFailed": "Relayer konnten nicht geladen werden. Erneut versuchen oder Direkt wählen.",
+      "directoryFailed": "Relayer konnten nicht geladen werden. Bitte erneut versuchen.",
       "prepareFailed": "Die Auszahlung konnte nicht vorbereitet werden. Prüfe Pooldaten und Netzwerk und versuche es erneut.",
       "prepareInterrupted": "Die Vorbereitung wurde unterbrochen. Prüfe die Pooldaten und versuche es erneut.",
       "checkStatus": "Status prüfen",

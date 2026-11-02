@@ -707,5 +707,19 @@ it.each(['empty', 'failed'] as const)(
     expect(
       screen.getByRole('button', { name: en.privacy.withdrawal.continue })
     ).toBeDisabled();
+    if (outcome === 'failed') {
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Could not load relayers. Try again.'
+      );
+      mockEmitter.mockResolvedValue([]);
+      fireEvent.click(screen.getByRole('button', { name: en.privacy.refresh }));
+      expect(
+        await screen.findByText(en.privacy.withdrawal.noRelayers)
+      ).toBeVisible();
+      expect(screen.queryByRole('alert')).toBeNull();
+      expect(
+        screen.getByLabelText(en.privacy.withdrawal.direct)
+      ).toBeDisabled();
+    }
   }
 );

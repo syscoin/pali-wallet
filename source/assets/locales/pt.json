@@ -1728,7 +1728,7 @@
       "acceptedHelp": "O relayer tem um ID de tarefa. Isso não significa que o saque foi incluído em um bloco.",
       "submittedHelp": "Aguarde os dados públicos do pool confirmarem o saque.",
       "jobId": "ID de tarefa do relayer",
-      "directoryFailed": "Não foi possível carregar os relayers. Tente novamente ou escolha Direto.",
+      "directoryFailed": "Não foi possível carregar os relayers. Tente novamente.",
       "prepareFailed": "Não foi possível preparar o saque. Verifique os dados do pool e sua rede e tente novamente.",
       "prepareInterrupted": "A preparação foi interrompida. Verifique os dados do pool e tente novamente.",
       "checkStatus": "Verificar status",

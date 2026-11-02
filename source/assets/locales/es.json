@@ -1728,7 +1728,7 @@
       "acceptedHelp": "El relayer tiene un ID de trabajo. Esto no significa que el retiro se haya incluido en un bloque.",
       "submittedHelp": "Espera a que los datos públicos del fondo confirmen el retiro.",
       "jobId": "ID de trabajo del relayer",
-      "directoryFailed": "No se pudieron cargar los relayers. Reintenta o elige Directo.",
+      "directoryFailed": "No se pudieron cargar los relayers. Inténtalo de nuevo.",
       "prepareFailed": "No se pudo preparar el retiro. Comprueba los datos del fondo y la red, y reintenta.",
       "prepareInterrupted": "La preparación se interrumpió. Comprueba los datos del pool y vuelve a intentarlo.",
       "checkStatus": "Consultar estado",

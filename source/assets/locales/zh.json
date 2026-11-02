@@ -1728,7 +1728,7 @@
       "acceptedHelp": "中继器已分配任务 ID，但这并不表示提款已被打包进区块。",
       "submittedHelp": "请等待公开资金池数据确认提款。",
       "jobId": "中继任务 ID",
-      "directoryFailed": "无法加载中继器。请重试或选择直接发送。",
+      "directoryFailed": "无法加载中继器。请重试。",
       "prepareFailed": "无法准备提款。请检查资金池数据和网络后重试。",
       "prepareInterrupted": "准备已中断。请检查资金池数据，然后重试。",
       "checkStatus": "检查状态",

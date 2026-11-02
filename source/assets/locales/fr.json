@@ -1728,7 +1728,7 @@
       "acceptedHelp": "Le relais a un identifiant de tâche. Cela ne signifie pas que le retrait est inclus dans un bloc.",
       "submittedHelp": "Attendez que les données publiques du pool confirment le retrait.",
       "jobId": "Identifiant de tâche du relais",
-      "directoryFailed": "Impossible de charger les relais. Réessayez ou choisissez Direct.",
+      "directoryFailed": "Impossible de charger les relais. Réessayez.",
       "prepareFailed": "Impossible de préparer le retrait. Vérifiez les données du pool et votre réseau, puis réessayez.",
       "prepareInterrupted": "La préparation a été interrompue. Vérifiez les données du pool, puis réessayez.",
       "checkStatus": "Vérifier le statut",

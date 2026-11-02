@@ -1728,7 +1728,7 @@
       "acceptedHelp": "The relayer has a job ID. This does not mean the withdrawal is mined.",
       "submittedHelp": "Wait for public pool data to confirm the withdrawal.",
       "jobId": "Relayer job ID",
-      "directoryFailed": "Could not load relayers. Retry or choose Direct.",
+      "directoryFailed": "Could not load relayers. Try again.",
       "prepareFailed": "Could not prepare this withdrawal. Check the pool data and your network, then retry.",
       "prepareInterrupted": "Preparation was interrupted. Check the pool data, then try again.",
       "checkStatus": "Check status",
