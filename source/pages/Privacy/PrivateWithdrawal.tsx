@@ -294,7 +294,8 @@ function WithdrawalFlow({
           typeof failure === 'object' &&
           failure !== null &&
           'message' in failure &&
-          failure.message === 'privacy_proof_cancelled';
+          (failure.message === 'privacy_proof_cancelled' ||
+            failure.message === 'privacy_verification_pending');
         setError(interrupted ? 'prepareInterrupted' : 'prepareFailed');
       }
     } finally {

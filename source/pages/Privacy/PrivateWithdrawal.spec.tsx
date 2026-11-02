@@ -404,6 +404,8 @@ it('requires refreshing after a proven unbroadcast failure', async () => {
 it.each([
   new Error('privacy_proof_cancelled'),
   { message: 'privacy_proof_cancelled' },
+  new Error('privacy_verification_pending'),
+  { message: 'privacy_verification_pending' },
 ])(
   'explains interrupted preparation and allows an explicit fresh review',
   async (failure) => {
@@ -443,6 +445,28 @@ it.each([
     ).toHaveLength(0);
   }
 );
+
+it('keeps other preparation failures generic', async () => {
+  const original = mockEmitter.getMockImplementation()!;
+  mockEmitter.mockImplementation((path, ...rest) =>
+    path[1] === 'prepareWithdrawal'
+      ? Promise.reject(new Error('privacy_proof_failed'))
+      : original(path, ...rest)
+  );
+  mount();
+  fireEvent.change(screen.getByLabelText(en.privacy.withdrawal.recipient), {
+    target: { value: RECIPIENT },
+  });
+  fireEvent.click(
+    screen.getByRole('button', { name: en.privacy.withdrawal.continue })
+  );
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    en.privacy.withdrawal.prepareFailed
+  );
+  expect(
+    screen.queryByRole('button', { name: en.privacy.withdrawal.confirm })
+  ).not.toBeInTheDocument();
+});
 
 it('rejects a malformed public review instead of showing secret fields or a submit action', async () => {
   mockEmitter.mockResolvedValue({
