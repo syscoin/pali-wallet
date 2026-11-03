@@ -25,7 +25,10 @@ const budget = {
   // that reviewed feature; app/external/background startup caps stay unchanged.
   // The lazy export/restore dialog and its nine translated catalogs add about
   // 39 KB more. Allow another 40 KB of packaged files; startup caps remain fixed.
-  package: 9420000,
+  // Finalized failed-withdrawal recovery adds about 22 KB for receipt/root
+  // verification, retained history, consent UI and translations. Allow 30 KB
+  // for that feature only; all startup ceilings above remain unchanged.
+  package: 9450000,
 };
 const allFiles = (root) =>
   fs.readdirSync(root, { withFileTypes: true }).flatMap((entry) => {

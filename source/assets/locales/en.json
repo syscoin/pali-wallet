@@ -1784,6 +1784,15 @@
       "unknown": "Submission status unknown",
       "submitted": "Transaction submitted",
       "notBroadcast": "The transaction was not sent. Refresh the review before confirming again."
+    },
+    "recovery": {
+      "action": "Recover failed withdrawal",
+      "help": "Recovery is available only after the transaction is finalized as failed and its original proof can no longer execute. Your note and withdrawal history stay saved. A new withdrawal requires a fresh review.",
+      "disclosure": "This check shares the transaction hash, original proof root and public note nullifier with your selected Ethereum RPC.",
+      "password": "Wallet password",
+      "failed": "Recovery could not be confirmed. The original proof may still be usable, the note may be spent, or the evidence may be unavailable. Refresh before trying again.",
+      "checking": "Checking finalized transaction and proof expiry…",
+      "confirm": "Check and recover"
     }
   }
 }

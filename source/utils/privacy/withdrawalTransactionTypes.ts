@@ -45,7 +45,19 @@ export interface IPrivacyWithdrawalAcknowledgement {
   transactionHash?: string;
 }
 
-export interface IPrivacyWithdrawalJournal {
+export interface IPrivacyWithdrawalRecoveryReceipt {
+  blockHash: string;
+  /** Canonical decimal Ethereum block number. */
+  blockNumber: string;
+  root: string;
+}
+
+export interface IPrivacyWithdrawalRecovery
+  extends IPrivacyWithdrawalRecoveryReceipt {
+  recoveredAt: number;
+}
+
+interface IPrivacyWithdrawalJournalFields {
   attemptHash: string;
   createdAt: number;
   endpoint?: string;
@@ -59,6 +71,21 @@ export interface IPrivacyWithdrawalJournal {
   phase: 'unknown' | 'submitted';
   proofHash: string;
   transactionHash?: string;
+}
+
+/** Inert local evidence retained when a recovered note starts a fresh attempt. */
+export interface IPrivacyRetiredWithdrawal
+  extends IPrivacyWithdrawalJournalFields {
+  mode: 'direct';
+  phase: 'submitted';
+  recovery: IPrivacyWithdrawalRecovery;
+  transactionHash: string;
+}
+
+export interface IPrivacyWithdrawalJournal
+  extends IPrivacyWithdrawalJournalFields {
+  recovery?: IPrivacyWithdrawalRecovery;
+  retired?: readonly IPrivacyRetiredWithdrawal[];
 }
 
 export interface IPrivacyWithdrawalStatusRecord
