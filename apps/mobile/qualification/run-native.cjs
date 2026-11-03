@@ -182,8 +182,10 @@ async function ios() {
       };
       run('xcrun', [
         'simctl',
-        'openurl',
+        'launch',
         device,
+        PACKAGE,
+        '-PaliQualificationURL',
         `pali-wallet-qualification://run?phase=create&scenario=${scenario}`,
       ]);
       const created = await waitReport(
@@ -212,8 +214,10 @@ async function ios() {
       );
       run('xcrun', [
         'simctl',
-        'openurl',
+        'launch',
         device,
+        PACKAGE,
+        '-PaliQualificationURL',
         `pali-wallet-qualification://run?phase=restart&scenario=${scenario}&address=${created.address}`,
       ]);
       const restored = await waitReport(

@@ -162,3 +162,32 @@ test('Android cleanup screenshot file-write failure preserves the original datab
   assert(!artifact.data.includes('cleanup write failure'));
   assert(calls.every((call) => call.options.timeout === 180000));
 });
+
+test('the real iOS runner launches the isolated app directly with its public argument', async () => {
+  const { runInNewContext } = require('node:vm');
+  const source = readFileSync(require.resolve('./run-native.cjs'), 'utf8');
+  const calls = [];
+  const spawn = (command, args) => {
+    calls.push({ command, args });
+    const ok = (stdout) => ({ status: 0, stdout });
+    if (command === 'plutil') return ok(args.includes('CFBundleIdentifier') ? 'com.paliwallet.qualification' : 'PaliQualification');
+    if (args.includes('runtimes')) return ok(JSON.stringify({ runtimes: [{ isAvailable: true, identifier: 'com.apple.CoreSimulator.SimRuntime.iOS-26-5', version: '26.5' }] }));
+    if (args.includes('devicetypes')) return ok(JSON.stringify({ devicetypes: [{ identifier: 'com.apple.CoreSimulator.SimDeviceType.iPhone-17' }] }));
+    if (args.includes('create')) return ok('public-device');
+    if (args.includes('get_app_container')) return ok('/public-container');
+    if (args.includes('launch')) return { status: 7, stderr: 'stop fixture after observing launch arguments' };
+    return ok('');
+  };
+  await runInNewContext(source, {
+    require(name) {
+      if (name === 'fs') return { existsSync: () => true, mkdirSync() {}, writeFileSync() {} };
+      if (name === 'child_process') return { spawnSync: spawn };
+      if (name === './command-runner.cjs') return require('./command-runner.cjs');
+      return require(name);
+    },
+    process: { env: { CI: 'true', PALI_NATIVE_QUALIFICATION: '1' }, argv: ['node', 'runner', 'ios', '/public-app'] },
+    console: { error() {}, log() {} }, setTimeout,
+  });
+  assert.deepEqual(Array.from(calls.find((call) => call.args.includes('launch')).args), ['simctl', 'launch', 'public-device', 'com.paliwallet.qualification', '-PaliQualificationURL', 'pali-wallet-qualification://run?phase=create&scenario=import']);
+  assert(!calls.some((call) => call.args.includes('openurl')));
+});

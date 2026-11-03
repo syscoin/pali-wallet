@@ -125,10 +125,23 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/pali-native-android"
+          export ANDROID_AVD_HOME="$RUNNER_TEMP/pali-android-avd"
+          mkdir -p "$ANDROID_AVD_HOME"
           trap 'status=$?; if [ -f "$RUNNER_TEMP/pali-emulator.log" ]; then cp "$RUNNER_TEMP/pali-emulator.log" "$RUNNER_TEMP/pali-native-android/emulator.log"; if [ "$status" -ne 0 ]; then tail -100 "$RUNNER_TEMP/pali-emulator.log"; fi; fi; exit "$status"' EXIT
           sudo chmod a+rw /dev/kvm
           sdkmanager 'platform-tools' 'emulator' 'system-images;android-35;google_apis;x86_64'
-          echo no | avdmanager create avd --name PaliQualification --package 'system-images;android-35;google_apis;x86_64' --force
+          echo no | avdmanager create avd --name PaliQualification --path "$ANDROID_AVD_HOME/PaliQualification.avd" --package 'system-images;android-35;google_apis;x86_64' --force 2>&1 | tee "$RUNNER_TEMP/pali-native-android/avd-create.log"
+          {
+            printf 'ANDROID_AVD_HOME=%s\n' "$ANDROID_AVD_HOME"
+            printf 'ANDROID_USER_HOME=%s\n' "${ANDROID_USER_HOME:-unset}"
+            printf 'ANDROID_EMULATOR_HOME=%s\n' "${ANDROID_EMULATOR_HOME:-unset}"
+            printf 'ANDROID_SDK_HOME=%s\n' "${ANDROID_SDK_HOME:-unset}"
+            avdmanager list avd
+            find "$ANDROID_AVD_HOME" -maxdepth 2 -type f -name '*.ini' -print
+          } > "$RUNNER_TEMP/pali-native-android/avd-inventory.log" 2>&1
+          "$ANDROID_HOME/emulator/emulator" -list-avds > "$RUNNER_TEMP/pali-native-android/emulator-avds.log" 2>&1
+          test -f "$ANDROID_AVD_HOME/PaliQualification.ini"
+          grep -Fxq PaliQualification "$RUNNER_TEMP/pali-native-android/emulator-avds.log"
           "$ANDROID_HOME/emulator/emulator" -avd PaliQualification -no-window -no-audio -no-snapshot -no-boot-anim -gpu swiftshader > "$RUNNER_TEMP/pali-emulator.log" 2>&1 &
           PALI_EMULATOR_PID=$!
           for attempt in $(seq 1 60); do

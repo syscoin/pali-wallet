@@ -3,6 +3,7 @@ import Constants from 'expo-constants';
 import * as FileSystem from 'expo-file-system/legacy';
 import React, { useEffect, useState } from 'react';
 import { Linking, Platform, Text, View } from 'react-native';
+import { assertQualificationBuild, parseQualificationLaunch } from './launch-parameters.ts';
 
 import type { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import type { KeyringRuntime } from '../src/custody/keyringRuntime.ts';
@@ -29,6 +30,14 @@ async function launchParameters(): Promise<{
   scenario: Scenario;
   address: string | null;
 }> {
+  assertQualificationBuild(Constants.expoConfig?.ios?.bundleIdentifier, Constants.expoConfig?.android?.package);
+  if (Platform.OS === 'ios') {
+    // NSArgumentDomain is read only by this dedicated fixture entry. Direct
+    // simctl launch avoids SpringBoard's confirmation for external URL opens.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { Settings } = require('react-native') as typeof import('react-native');
+    return parseQualificationLaunch(Settings.get('PaliQualificationURL'));
+  }
   const initial = await Linking.getInitialURL();
   const raw =
     initial ??
@@ -43,20 +52,7 @@ async function launchParameters(): Promise<{
         reject(Error('QUALIFICATION_LINK_MISSING'));
       }, 15000);
     }));
-  const url = new URL(raw);
-  const phase = url.searchParams.get('phase');
-  const scenario = url.searchParams.get('scenario');
-  if (
-    url.protocol !== 'pali-wallet-qualification:' ||
-    !['create', 'restart'].includes(phase ?? '') ||
-    !['import', 'generate'].includes(scenario ?? '')
-  )
-    throw Error('QUALIFICATION_LINK_INVALID');
-  return {
-    phase: phase as Phase,
-    scenario: scenario as Scenario,
-    address: url.searchParams.get('address'),
-  };
+  return parseQualificationLaunch(raw);
 }
 
 function QualificationApp() {
@@ -91,13 +87,6 @@ function QualificationApp() {
       };
       try {
         parameters = await launchParameters();
-        if (
-          Constants.expoConfig?.ios?.bundleIdentifier !==
-            'com.paliwallet.qualification' ||
-          Constants.expoConfig?.android?.package !==
-            'com.paliwallet.qualification'
-        )
-          throw Error('QUALIFICATION_BUILD_IDENTIFIER_REQUIRED');
         globalThis.fetch = (() => {
           networkCalls++;
           throw Error('QUALIFICATION_NETWORK_FORBIDDEN');
