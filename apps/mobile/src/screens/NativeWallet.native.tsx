@@ -27,7 +27,7 @@ function SecretInput({ label, value, onChange, multiline = false, disabled = fal
     accessibilityLabel={label} value={value} onChangeText={onChange} editable={!disabled}
     autoCapitalize="none" autoCorrect={false} spellCheck={false} autoComplete="off"
     importantForAutofill="noExcludeDescendants" textContentType="none"
-    secureTextEntry={!multiline} multiline={multiline} contextMenuHidden={!multiline}
+    secureTextEntry={!multiline} multiline={multiline} contextMenuHidden={false}
     maxLength={multiline ? 4096 : 1024} selectionColor={colors.pink}
     placeholderTextColor={colors.muted} style={[s.input, multiline && s.phraseInput]}
   /></View>;

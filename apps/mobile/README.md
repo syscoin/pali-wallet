@@ -1,6 +1,6 @@
 # Pali Mobile
 
-A React Native / Expo SDK 58 mobile foundation in the extension repository. It provides a watch-only account experience, a separate interactive design preview, and an opt-in native custody development flow. **This is not a shipping self-custody wallet. Signing and sending are not implemented.**
+A React Native / Expo SDK 58 mobile foundation in the extension repository. It provides native wallet setup, a watch-only account experience, and a separate interactive design preview. **This is not a shipping self-custody wallet. Signing and sending are not implemented.**
 
 The implementation starts from extension source `4470e54e8777cca2a4fe7c712409f60eeb4fa401`. The handoff's reference checkout at `88cc9c9a8959b5dccc7ff43f136d60203782918a` adds documentation changes. The supplied screen deck and video are product references, not evidence of native security or working transaction support.
 
@@ -25,7 +25,7 @@ npm run ios       # macOS, full Xcode and iOS build dependencies required
 npm run android   # Android SDK, Java and an emulator/device required
 ```
 
-The native custody development entry is hidden by default. Set `EXPO_PUBLIC_PALI_NATIVE_CUSTODY=1` when building to expose create/import, password unlock and verified seed backup. Use only test wallets until native binary and physical-device qualification is complete. The web build never accepts recovery phrases or loads the native keyring.
+Native onboarding offers wallet creation, phrase restoration, and watch-only accounts directly. No build flag or user setting enables custody. Every custody session must pass the native cryptographic and storage checks before creation or authentication. Use only test wallets until native binary and physical-device qualification is complete. The web build never accepts recovery phrases or loads the native keyring.
 
 The commands disable Expo CLI telemetry. Over-the-air updates are disabled in app configuration. These settings do not replace review of release builds or third-party dependency behavior.
 
@@ -33,7 +33,7 @@ The commands disable Expo CLI telemetry. Over-the-air updates are disabled in ap
 
 - Native mode can add a public EVM address and observe supported network balances. It is explicitly watch-only; it holds no signing key. Public account configuration uses the platform protected-storage adapter, not browser storage. A storage/read failure must not be treated as a new empty account.
 - The interactive preview demonstrates portfolio, asset/activity, send review, receive and settings layouts with sample data. It has no transaction authority. Preview information must remain separate from saved public accounts.
-- The opt-in native custody flow uses the published shared software keyring, an encrypted transactional SQLCipher store, and native cryptographic primitives. It supports a new 12-word wallet or an existing 12/24-word phrase, password unlock, and a wallet-bound seed-backup check. It exposes only the first Ethereum address. It is not an extension data migration path.
+- The native custody flow uses the published shared software keyring, an encrypted transactional SQLCipher store, and native cryptographic primitives. It supports a new 12-word wallet or an existing 12/24-word phrase, password unlock, and a wallet-bound seed-backup check. It exposes only the first Ethereum address. It is not an extension data migration path.
 - Native custody begins only after crypto known-answer checks and private storage initialization. Missing keys, corrupt data and ambiguous writes fail closed; reopening never silently resets a wallet.
 - Signing, broadcasting, biometrics, WalletConnect, hardware wallets, smart accounts and private-note operations remain unavailable. The private-note backup codec is separate from this seed-backup flow.
 - Watch-only remains an account type in the intended combined account selector, and an independent onboarding option. Optional native transaction alerts still need delivery, enrollment and privacy controls; balance polling alone is not a notification service.

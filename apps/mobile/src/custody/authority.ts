@@ -20,7 +20,7 @@ export class CustodyOperationError extends Error {
 }
 
 /**
- * Native host orchestration. The opt-in development factory must qualify crypto
+ * Native host orchestration. The native factory must qualify crypto
  * and storage first; physical-device/release qualification remains separate.
  * JS input strings cannot be promised secure zeroization.
  */

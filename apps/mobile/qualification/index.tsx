@@ -112,6 +112,29 @@ function QualificationApp() {
           forbiddenTransport as unknown as typeof XMLHttpRequest;
         globalThis.WebSocket =
           forbiddenTransport as unknown as typeof WebSocket;
+        await check('Hermes text and string capabilities', async () => {
+          expect(typeof ''.isWellFormed === 'function');
+          expect('Pali'.isWellFormed() && !'\ud800'.isWellFormed());
+          expect(
+            typeof TextEncoder === 'function' &&
+              typeof TextDecoder === 'function'
+          );
+          const text = 'Pali 🔐';
+          expect(
+            new TextDecoder('utf-8', { fatal: true }).decode(
+              new TextEncoder().encode(text)
+            ) === text
+          );
+          let invalidRejected = false;
+          try {
+            new TextDecoder('utf-8', { fatal: true }).decode(
+              new Uint8Array([255])
+            );
+          } catch {
+            invalidRejected = true;
+          }
+          expect(invalidRejected);
+        });
         const nativeCrypto = await check(
           'native crypto bridge and full vectors',
           async () => {

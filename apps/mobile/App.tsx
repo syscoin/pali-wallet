@@ -501,7 +501,7 @@ function AppContent() {
         onPreview={startPreview}
         onWatch={() => go('add')}
         onDesign={openDesign}
-        onWallet={Platform.OS !== 'web' && process.env.EXPO_PUBLIC_PALI_NATIVE_CUSTODY === '1' ? () => {
+        onWallet={Platform.OS !== 'web' ? () => {
           authority.current?.lock(); setSheet(null); setPreview(false); go('native');
         } : undefined}
       />

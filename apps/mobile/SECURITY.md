@@ -2,7 +2,7 @@
 
 ## Current trust boundary
 
-The default mobile experience remains watch-only. An opt-in native development entry accepts test recovery phrases and uses the shared software keyring for creation/import, unlock and seed backup. This entry is hidden unless `EXPO_PUBLIC_PALI_NATIVE_CUSTODY=1`; the flag is a build/release control, not an authorization boundary. Runtime crypto/storage checks and session capabilities remain mandatory. There is no signing or broadcast implementation. The design preview has no authority and must remain isolated from real wallet state. No screen, URL or QR payload may enable an unsupported capability.
+Native onboarding offers create, restore and watch-only choices. The native wallet development flow accepts test recovery phrases and uses the shared software keyring for creation/import, unlock and seed backup. Runtime crypto/storage checks and session capabilities are mandatory; UI visibility is never an authorization boundary. There is no signing or broadcast implementation. The design preview has no authority and must remain isolated from real wallet state. No screen, URL or QR payload may enable an unsupported capability.
 
 A native watch-only account may persist public addresses in platform protected storage. That does not establish a secure vault implementation. Public addresses and their association with this device still deserve privacy protection. Network requests disclose queried addresses to the configured service; never add an analytics, crash-reporting or address-enrichment service without a separate product/privacy decision.
 
