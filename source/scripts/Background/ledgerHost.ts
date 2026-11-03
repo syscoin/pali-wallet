@@ -226,7 +226,9 @@ export class LedgerHostBroker {
           else if (window.id)
             void this.api.windows.remove(window.id).catch(() => undefined);
         },
-        () => void this.disconnect()
+        () => {
+          if (generation === this.generation) void this.disconnect();
+        }
       );
     else if (this.windowId !== undefined)
       void this.focusOwnedWindow().catch(() => undefined);

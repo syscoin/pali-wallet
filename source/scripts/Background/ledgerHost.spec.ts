@@ -163,6 +163,48 @@ describe('Ledger authority host broker', () => {
     await f.broker.disconnect();
   });
 
+  it('ignores a cancelled window creation that rejects after a replacement connects', async () => {
+    const f = fixture();
+    let failCreation!: (error: Error) => void;
+    f.api.windows.create.mockImplementationOnce(
+      () =>
+        new Promise((_, reject) => {
+          failCreation = reject;
+        })
+    );
+    const original = f.broker.host.connect();
+    const rejected = expect(original).rejects.toMatchObject({
+      code: 'HARDWARE_REQUEST_CANCELLED',
+    });
+    await f.broker.disconnect();
+    await rejected;
+    const replacementReady = f.broker.host.connect();
+    const url = f.api.windows.create.mock.calls[1][0].url;
+    const replacement = f.port({
+      name: `pali-ledger-host:${url.split('#')[1]}`,
+      sender: { id: 'pali', url, frameId: 0, tab: { windowId: 41 } },
+    });
+    await flush();
+    replacement.onMessage.emit({ type: 'ready' });
+    await replacementReady;
+    failCreation(new Error('Cancelled window failed to open'));
+    await flush();
+    expect(f.broker.host.getStatus().connected).toBe(true);
+    expect(replacement.disconnect).not.toHaveBeenCalled();
+    const result = f.broker.host.evm.getAddress({ accountIndex: 0 });
+    await flush();
+    const request = replacement.postMessage.mock.calls.find(
+      ([value]) => value.type === 'request'
+    )[0];
+    replacement.onMessage.emit({
+      id: request.id,
+      ok: true,
+      value: { address: 'public' },
+    });
+    await expect(result).resolves.toEqual({ address: 'public' });
+    await f.broker.disconnect();
+  });
+
   it.each([
     'foreign-extension',
     'content-script',
