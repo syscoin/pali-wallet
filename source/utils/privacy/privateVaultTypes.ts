@@ -18,6 +18,7 @@ export interface IPrivateNoteView extends Omit<IPrivateNoteStatus, 'phase'> {
   phase: IPrivateNoteStatus['phase'] | 'prepared';
   poolId: PrivacyPoolId;
   withdrawal?: {
+    canCheckRecovery?: true;
     jobId?: string;
     mode: 'direct' | 'relayed';
     phase: 'unknown' | 'submitted';
@@ -28,9 +29,9 @@ export interface IPrivateNoteView extends Omit<IPrivateNoteStatus, 'phase'> {
 export type PrivateVaultCapacity = 128 | 256 | 512;
 
 export interface IPrivateVaultCapacity {
+  bundleLimitBytes: number;
   capacity: PrivateVaultCapacity;
   noteCount: number;
-  bundleLimitBytes: number;
   storedBytes: number;
 }
 
@@ -43,11 +44,12 @@ export interface IPrivateVaultController {
     ids: string[]
   ) => Promise<{ removed: string[]; unresolved: string[] }>;
   createDepositNote: (poolId: PrivacyPoolId) => Promise<IPrivateNoteView>;
-  getNotes: () => Promise<IPrivateVaultView>;
   getCapacity: () => Promise<IPrivateVaultCapacity>;
+  getNotes: () => Promise<IPrivateVaultView>;
+  importNote: (note: string) => Promise<IPrivateNoteView>;
+  recoverFailedWithdrawal: (id: string, password: string) => Promise<void>;
+  revealNote: (id: string, password: string) => Promise<string>;
   setCapacity: (
     capacity: PrivateVaultCapacity
   ) => Promise<IPrivateVaultCapacity>;
-  importNote: (note: string) => Promise<IPrivateNoteView>;
-  revealNote: (id: string, password: string) => Promise<string>;
 }

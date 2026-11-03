@@ -25,6 +25,11 @@ export function readPrivateNote(value: unknown): IPrivateNoteView {
       (!withdrawal ||
         !['direct', 'relayed'].includes(withdrawal.mode) ||
         !['unknown', 'submitted'].includes(withdrawal.phase) ||
+        (withdrawal.canCheckRecovery !== undefined &&
+          (withdrawal.canCheckRecovery !== true ||
+            withdrawal.mode !== 'direct' ||
+            withdrawal.phase !== 'submitted' ||
+            !withdrawal.transactionHash)) ||
         (withdrawal.jobId !== undefined &&
           (withdrawal.mode !== 'relayed' ||
             typeof withdrawal.jobId !== 'string' ||
@@ -46,6 +51,9 @@ export function readPrivateNote(value: unknown): IPrivateNoteView {
     ...(withdrawal
       ? {
           withdrawal: {
+            ...(withdrawal.canCheckRecovery
+              ? { canCheckRecovery: true as const }
+              : {}),
             mode: withdrawal.mode,
             phase: withdrawal.phase,
             ...(withdrawal.jobId ? { jobId: withdrawal.jobId } : {}),

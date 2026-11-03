@@ -5,6 +5,7 @@ import {
   PRIVACY_CHAIN_ID,
   PRIVACY_MAX_LEAVES,
   PRIVACY_TREE_LEVELS,
+  PRIVACY_POOLS,
 } from './registry';
 import { PrivacyIndexProgress, PrivacyPoolId, PrivacySnapshot } from './types';
 
@@ -27,6 +28,7 @@ const ABI = new Interface([
   'function levels() view returns (uint32)',
   'function denomination() view returns (uint256)',
   'function isKnownRoot(bytes32 root) view returns (bool)',
+  'function isSpent(bytes32 nullifierHash) view returns (bool)',
 ]);
 
 async function readJson(response: Response, limit: number): Promise<unknown> {
@@ -202,6 +204,36 @@ export async function readCompletionRpc(
         params.length === 1 &&
         hash(params[0])));
   if (!allowed) throw new Error('privacy_rpc_unavailable');
+  return rpc(validatePrivacyRpcUrl(rpcUrl), method, params, signal);
+}
+
+/** Explicit failed-withdrawal recovery only; no arbitrary contract calls. */
+export async function readWithdrawalRecoveryRpc(
+  rpcUrl: string,
+  method: string,
+  params: unknown[],
+  signal: AbortSignal
+): Promise<unknown> {
+  if (method !== 'eth_call')
+    return readCompletionRpc(rpcUrl, method, params, signal);
+  const call: any =
+    Array.isArray(params) && params.length === 2 ? params[0] : undefined;
+  if (
+    !call ||
+    typeof call !== 'object' ||
+    Array.isArray(call) ||
+    Object.keys(call).sort().join(',') !== 'data,to' ||
+    !PRIVACY_POOLS.some((pool) => pool.address === call.to) ||
+    typeof params[1] !== 'string' ||
+    params[1].length > 66 ||
+    !/^0x(?:0|[1-9a-f][0-9a-f]*)$/.test(params[1]) ||
+    typeof call.data !== 'string' ||
+    !/^0x[0-9a-f]{72}$/.test(call.data) ||
+    !['isKnownRoot', 'isSpent'].some(
+      (name) => call.data.slice(0, 10) === ABI.getFunction(name)!.selector
+    )
+  )
+    throw new Error('privacy_rpc_unavailable');
   return rpc(validatePrivacyRpcUrl(rpcUrl), method, params, signal);
 }
 

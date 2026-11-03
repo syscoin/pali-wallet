@@ -1784,6 +1784,15 @@
       "unknown": "Übermittlungsstatus unbekannt",
       "submitted": "Transaktion übermittelt",
       "notBroadcast": "Die Transaktion wurde nicht gesendet. Aktualisiere die Prüfung vor einer erneuten Bestätigung."
+    },
+    "recovery": {
+      "action": "Fehlgeschlagene Auszahlung wiederherstellen",
+      "help": "Die Wiederherstellung ist erst nach endgültig fehlgeschlagener Transaktion möglich, wenn der ursprüngliche Nachweis nicht mehr ausführbar ist. Notiz und Verlauf bleiben gespeichert. Eine neue Auszahlung erfordert eine neue Prüfung.",
+      "disclosure": "Diese Prüfung übermittelt Transaktionshash, ursprüngliche Nachweiswurzel und öffentlichen Nullifikator der Notiz an deinen ausgewählten Ethereum-RPC.",
+      "password": "Wallet-Passwort",
+      "failed": "Die Wiederherstellung konnte nicht bestätigt werden. Der ursprüngliche Nachweis ist eventuell noch nutzbar, die Notiz bereits ausgegeben oder der Beleg nicht verfügbar. Aktualisiere vor einem erneuten Versuch.",
+      "checking": "Endgültige Transaktion und Ablauf des Nachweises werden geprüft…",
+      "confirm": "Prüfen und wiederherstellen"
     }
   }
 }
