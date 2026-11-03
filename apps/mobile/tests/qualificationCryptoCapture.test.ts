@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { URL as NodeURL } from 'node:url';
 import test from 'node:test';
-import { captureQualificationCryptoLoad } from '../qualification/capture-crypto-load.ts';
+import { captureQualificationCryptoLoad, captureQualificationModuleLoad } from '../qualification/capture-crypto-load.ts';
 import type { MetroErrorUtils } from '../src/crypto/quickCryptoLoad.ts';
 
 async function withGuard(run: () => Promise<void>): Promise<void> {
@@ -54,8 +54,25 @@ test('production entries and bootstrap cannot import the qualification-only raw 
   for (const path of ['../index.ts', '../src/entry.native.tsx', '../src/platform/cryptoBootstrap.native.ts']) {
     const source = readFileSync(new NodeURL(path, import.meta.url), 'utf8');
     assert(!source.includes('captureQualificationCryptoLoad'));
+    assert(!source.includes('captureQualificationModuleLoad'));
     assert(!/from ['"].*qualification\//.test(source));
   }
   const pkg = JSON.parse(readFileSync(new NodeURL('../package.json', import.meta.url), 'utf8'));
   assert.equal(pkg.main, 'index.ts');
 });
+
+test('SDK capture returns the exact loaded module and stops before wallet construction on failure', async () => withGuard(async () => {
+  const module = { publicFixture: true };
+  assert.equal(await captureQualificationModuleLoad('software-sdk-load', () => module, async () => {
+    throw Error('successful loads must not write');
+  }, () => undefined), module);
+  const original = new Error('exact SDK dependency failure');
+  let loads = 0, creates = 0, artifact = '';
+  await assert.rejects(captureQualificationModuleLoad('software-sdk-load', () => {
+    loads++; throw original;
+  }, async (text) => { artifact = text; }, () => undefined).then(() => { creates++; }), (error) => error === original);
+  assert.equal(loads, 1);
+  assert.equal(creates, 0);
+  assert.equal(JSON.parse(artifact).stage, 'software-sdk-load');
+  assert.equal(JSON.parse(artifact).error.message, original.message);
+}));

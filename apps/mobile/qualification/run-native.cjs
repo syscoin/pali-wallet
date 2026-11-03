@@ -88,17 +88,18 @@ const validateReport = (text, phase, scenario) => {
     );
   return report;
 };
-const captureFixtureLoadError = (text, scenario) => {
+const captureFixtureLoadError = (text, scenario, stage = 'quick-crypto-load') => {
   try {
-    if (scenario !== 'import' || typeof text !== 'string' || Buffer.byteLength(text, 'utf8') > 65536) return false;
+    if (!['quick-crypto-load', 'software-sdk-load'].includes(stage) || scenario !== 'import' || typeof text !== 'string' || Buffer.byteLength(text, 'utf8') > 65536) return false;
     const value = JSON.parse(text);
-    if (value.version !== 1 || value.stage !== 'quick-crypto-load' ||
+    if (value.version !== 1 || value.stage !== stage ||
         !value.error || typeof value.error !== 'object' ||
         Object.keys(value).some((key) => !['version', 'stage', 'diagnostic', 'error'].includes(key)) ||
         Object.keys(value.error).some((key) => !['name', 'message', 'stack'].includes(key)) ||
         !['name', 'message', 'stack'].every((key) => typeof value.error[key] === 'string') ||
         (value.diagnostic !== undefined && !isCryptoDiagnostic({ bootstrap: 'quick-crypto-load', load: value.diagnostic }))) return false;
-    fs.writeFileSync(path.join(output, `${platform}-import-fixture-load-error.json`), redact(text));
+    const suffix = stage === 'quick-crypto-load' ? 'load-error' : 'sdk-load-error';
+    fs.writeFileSync(path.join(output, `${platform}-import-fixture-${suffix}.json`), redact(text));
     return true;
   } catch { return false; }
 };
@@ -287,9 +288,11 @@ async function ios() {
       });
     } finally {
       if (container) {
-        try {
-          captureFixtureLoadError(fs.readFileSync(path.join(container, 'Documents', 'pali-native-qualification-load-error.json'), 'utf8'), scenario);
-        } catch { /* A missing fixture error file cannot replace the primary failure. */ }
+        for (const [stage, suffix] of [['quick-crypto-load', 'load-error'], ['software-sdk-load', 'sdk-load-error']]) {
+          try {
+            captureFixtureLoadError(fs.readFileSync(path.join(container, 'Documents', `pali-native-qualification-${suffix}.json`), 'utf8'), scenario, stage);
+          } catch { /* A missing fixture error file cannot replace the primary failure. */ }
+        }
       }
       run(
         'xcrun',
@@ -435,7 +438,9 @@ async function android() {
       });
     } finally {
       try {
-        captureFixtureLoadError(run('adb', ['shell', 'cat', `/data/user/0/${PACKAGE}/files/pali-native-qualification-load-error.json`], true), scenario);
+        for (const [stage, suffix] of [['quick-crypto-load', 'load-error'], ['software-sdk-load', 'sdk-load-error']]) {
+          captureFixtureLoadError(run('adb', ['shell', 'cat', `/data/user/0/${PACKAGE}/files/pali-native-qualification-${suffix}.json`], true), scenario, stage);
+        }
         const processId = run('adb', ['shell', 'pidof', '-s', PACKAGE], true);
         const logs = run('adb', ['logcat', '-b', 'main', '-b', 'system', '-b', 'crash', '-d', '-t', '300', '-v', 'brief', '*:E'], true);
         const exitInfo = run('adb', ['shell', 'dumpsys', 'activity', 'exit-info', PACKAGE], true);

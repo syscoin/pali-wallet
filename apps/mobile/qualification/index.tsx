@@ -4,7 +4,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import React, { useEffect, useState } from 'react';
 import { Linking, Platform, Text, View } from 'react-native';
 import { assertQualificationBuild, parseQualificationLaunch } from './launch-parameters.ts';
-import { captureQualificationCryptoLoad } from './capture-crypto-load.ts';
+import { captureQualificationCryptoLoad, captureQualificationModuleLoad } from './capture-crypto-load.ts';
 import { qualifyNativeHandleContract } from './native-handle-contract.ts';
 import { ensureNativeProcessCompatibility } from '../src/platform/processCompatibility.ts';
 
@@ -188,15 +188,32 @@ function QualificationApp() {
             await ensureNativeCryptoReady();
           },
           openStorage: async () => {
-            storage = await openNativeWalletStorage({
+            storage = await check('open SQLCipher and device key', () => openNativeWalletStorage({
               randomBytes: (length) =>
                 nativeCrypto.getRandomValues(new Uint8Array(length)),
               digest: async (bytes) =>
                 new Uint8Array(
                   await nativeCrypto.subtle.digest('SHA-256', bytes)
                 ),
-            });
+            }));
             return storage;
+          },
+          loadSdk: async () => {
+            const sdk = await check('load software SDK', () => captureQualificationModuleLoad(
+              'software-sdk-load',
+              // Capture only this first dependency evaluation, before any SDK
+              // instance, wallet phrase or session can exist. No retry on failure.
+              // eslint-disable-next-line @typescript-eslint/no-require-imports
+              () => require('@sidhujag/sysweb3-keyring/cjs/software.js') as typeof import('@sidhujag/sysweb3-keyring/cjs/software.js'),
+              async (text) => {
+                if (!FileSystem.documentDirectory) throw Error('QUALIFICATION_REPORT_UNAVAILABLE');
+                await FileSystem.writeAsStringAsync(`${FileSystem.documentDirectory}pali-native-qualification-sdk-load-error.json`, text);
+              },
+              () => undefined
+            ));
+            stage = 'initialize native custody';
+            setStatus(stage);
+            return sdk;
           },
         });
         authority = new NativeCustodyAuthority({
@@ -206,7 +223,7 @@ function QualificationApp() {
           },
         });
         backup = new SeedBackupFlow(authority, () => runtime?.backup);
-        await check('open SQLCipher and device key', () =>
+        await check('initialize native custody', () =>
           authority!.initialize()
         );
         if (parameters.phase === 'create') {

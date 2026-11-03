@@ -308,9 +308,17 @@ test('raw load evidence copies only bounded public-import error envelopes and re
   assert.equal(capture(valid, 'import'), true);
   assert.equal(writes[0].file, '/public/ios-import-fixture-load-error.json');
   assert(!writes[0].text.includes('PUBLIC_PASSWORD'));
+  const sdk = valid.replace('quick-crypto-load', 'software-sdk-load');
+  assert.equal(capture(sdk, 'import', 'software-sdk-load'), true);
+  assert.equal(writes[1].file, '/public/ios-import-fixture-sdk-load-error.json');
+  assert(!writes[1].text.includes('PUBLIC_PASSWORD'));
+  assert.equal(capture(sdk, 'import'), false);
+  assert.equal(capture(valid, 'import', 'software-sdk-load'), false);
+  assert.equal(capture(sdk, 'generate', 'software-sdk-load'), false);
+  assert.equal(capture(sdk, 'import', 'wallet'), false);
   for (const [text, scenario] of [[valid, 'generate'], ['x'.repeat(65537), 'import'], ['broken', 'import'], [JSON.stringify({ version: 1, stage: 'wallet', error: {} }), 'import']])
     assert.equal(capture(text, scenario), false);
   failWrite = true;
   assert.equal(capture(valid, 'import'), false);
-  assert.equal(writes.length, 1);
+  assert.equal(writes.length, 2);
 });

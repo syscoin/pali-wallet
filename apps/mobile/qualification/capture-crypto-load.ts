@@ -11,25 +11,35 @@ function errorField(error: unknown, field: 'name' | 'message' | 'stack', limit: 
   } catch { return ''; }
 }
 
-/** CI entry only: exact failure evidence before any wallet exists. Never imported by production. */
+/** CI entry only: exact load errors before SDK/session creation. Never imported by production. */
+export async function captureQualificationModuleLoad<T>(
+  stage: 'quick-crypto-load' | 'software-sdk-load',
+  load: () => T,
+  write: (text: string) => Promise<void>,
+  observe: (diagnostic: CryptoLoadDiagnostic) => void
+): Promise<T> {
+  if (!['quick-crypto-load', 'software-sdk-load'].includes(stage)) throw Error('QUALIFICATION_CAPTURE_STAGE_INVALID');
+  let diagnostic: CryptoLoadDiagnostic | undefined;
+  try {
+    return loadQuickCrypto(load, (value) => { diagnostic = value; observe(value); });
+  } catch (error) {
+    const detail = { name: errorField(error, 'name', 128), message: errorField(error, 'message', 8192), stack: errorField(error, 'stack', 32768) };
+    let text = JSON.stringify({ version: 1, stage, diagnostic, error: detail });
+    const encoder = new TextEncoder();
+    while (encoder.encode(text).byteLength > MAX_ERROR_BYTES) {
+      if (detail.stack.length) detail.stack = detail.stack.slice(0, Math.floor(detail.stack.length / 2));
+      else detail.message = detail.message.slice(0, Math.floor(detail.message.length / 2));
+      text = JSON.stringify({ version: 1, stage, diagnostic, error: detail });
+    }
+    try { await write(text); } catch { /* Evidence failure cannot permit wallet creation. */ }
+    throw error;
+  }
+}
+
 export async function captureQualificationCryptoLoad(
   load: () => unknown,
   write: (text: string) => Promise<void>,
   observe: (diagnostic: CryptoLoadDiagnostic) => void
 ): Promise<void> {
-  let diagnostic: CryptoLoadDiagnostic | undefined;
-  try {
-    loadQuickCrypto(load, (value) => { diagnostic = value; observe(value); });
-  } catch (error) {
-    const detail = { name: errorField(error, 'name', 128), message: errorField(error, 'message', 8192), stack: errorField(error, 'stack', 32768) };
-    let text = JSON.stringify({ version: 1, stage: 'quick-crypto-load', diagnostic, error: detail });
-    const encoder = new TextEncoder();
-    while (encoder.encode(text).byteLength > MAX_ERROR_BYTES) {
-      if (detail.stack.length) detail.stack = detail.stack.slice(0, Math.floor(detail.stack.length / 2));
-      else detail.message = detail.message.slice(0, Math.floor(detail.message.length / 2));
-      text = JSON.stringify({ version: 1, stage: 'quick-crypto-load', diagnostic, error: detail });
-    }
-    try { await write(text); } catch { /* Evidence failure cannot permit wallet creation. */ }
-    throw error;
-  }
+  await captureQualificationModuleLoad('quick-crypto-load', load, write, observe);
 }
