@@ -1,3 +1,15 @@
 {
-  "cleanUrls": true
+  "cleanUrls": true,
+  "redirects": [
+    {
+      "source": "/guide/v2",
+      "destination": "/privacy",
+      "permanent": true
+    },
+    {
+      "source": "/guide/v2/",
+      "destination": "/privacy",
+      "permanent": true
+    }
+  ]
 }

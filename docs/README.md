@@ -8,6 +8,7 @@ The current user guides and developer API reference are published at [docs.paliw
 - [EVM and UTXO modes](https://docs.paliwallet.com/docs/users/evm-and-utxo-modes)
 - [Recovery and backups](https://docs.paliwallet.com/docs/users/recovery-and-backups)
 - [Privacy and safety](https://docs.paliwallet.com/docs/users/privacy-and-safety)
+- [Privacy policy](https://docs.paliwallet.com/privacy)
 - [Smart-account validators](https://docs.paliwallet.com/docs/users/smart-account-validators)
 
 For a regular installation, follow the store link in the installation guide. ZIPs and browser packages retained in this directory are historical artifacts, not the current release. To build and load a development extension, follow the repository [Getting Started guide](../README.md#getting-started).

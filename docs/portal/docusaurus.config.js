@@ -187,6 +187,10 @@ const config = {
                 label: 'Pali Wallet GitHub',
                 href: 'https://github.com/syscoin/pali-wallet',
               },
+              {
+                label: 'Privacy policy',
+                href: 'https://docs.paliwallet.com/privacy',
+              },
             ],
           },
         ],

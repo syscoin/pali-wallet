@@ -42,5 +42,9 @@
   "link.item.label.Gas and Funding": {
     "message": "가스와 자금",
     "description": "The label of footer link with label=Gas and Funding linking to /docs/passkeys-institutions/gas-funding"
+  },
+  "link.item.label.Privacy policy": {
+    "message": "개인정보 처리방침 (영어)",
+    "description": "The label of the footer link to the canonical English privacy policy at https://docs.paliwallet.com/privacy"
   }
 }
