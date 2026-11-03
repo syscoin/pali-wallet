@@ -1,5 +1,12 @@
 import { Form } from 'antd';
-import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, {
+  lazy,
+  Suspense,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
@@ -11,10 +18,17 @@ import type { IPrivateNoteView } from 'utils/privacy/privateVaultTypes';
 
 import PrivateDeposit from './PrivateDeposit';
 import PrivateNoteBackupDialog from './PrivateNoteBackupDialog';
-import PrivateWithdrawal from './PrivateWithdrawal';
 import PrivateVaultCapacitySettings from './PrivateVaultCapacitySettings';
 import PrivateVaultClearCompleted from './PrivateVaultClearCompleted';
+import PrivateWithdrawal from './PrivateWithdrawal';
 import { usePrivateNotes } from './usePrivateNotes';
+
+const PrivateNoteBundleDialog = lazy(
+  () =>
+    import(
+      /* webpackChunkName: "private-note-bundle-dialog" */ './PrivateNoteBundleDialog'
+    )
+);
 
 const actionClass =
   'rounded p-1 text-xs text-brand-royalbluemedium underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-white disabled:opacity-50';
@@ -65,6 +79,9 @@ function NotesView() {
   const [capacitySettings, setCapacitySettings] = useState(false);
   const [showSpent, setShowSpent] = useState(false);
   const [backupNoteId, setBackupNoteId] = useState<string | null>(null);
+  const [bundleMode, setBundleMode] = useState<'export' | 'import' | null>(
+    null
+  );
   const [withdrawing, setWithdrawing] = useState<IPrivateNoteView | null>(null);
   const [statusNote, setStatusNote] = useState<string | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
@@ -208,6 +225,31 @@ function NotesView() {
             >
               {t('privacy.importNote')}
             </button>
+          )}
+          {!importing && (
+            <>
+              <button
+                type="button"
+                className={actionClass}
+                disabled={loading || unavailable || !notes.length}
+                onClick={() => {
+                  clear();
+                  setBundleMode('export');
+                }}
+              >
+                {t('privacy.bundle.exportTitle')}
+              </button>
+              <button
+                type="button"
+                className={actionClass}
+                onClick={() => {
+                  clear();
+                  setBundleMode('import');
+                }}
+              >
+                {t('privacy.bundle.importTitle')}
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -599,6 +641,15 @@ function NotesView() {
         noteId={backupNoteId}
         onClose={() => setBackupNoteId(null)}
       />
+      {bundleMode && (
+        <Suspense fallback={null}>
+          <PrivateNoteBundleDialog
+            mode={bundleMode}
+            onClose={() => setBundleMode(null)}
+            onRestored={() => void refresh()}
+          />
+        </Suspense>
+      )}
     </>
   );
 }
