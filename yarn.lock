@@ -3056,10 +3056,10 @@
   resolved "https://registry.npmjs.org/@sidhujag/sysweb3-core/-/sysweb3-core-1.0.29.tgz#ba86f171956513e423d2c328c9098ddbc76774d1"
   integrity sha512-ZQGSdwHG2Q9FX+PbHj3MnV6I413z+pN2Sm2qjoi1TrOqWZHXVnzfhjvxkj9s3djfTD56OAiu1nW2TUhX98rrdQ==
 
-"@sidhujag/sysweb3-keyring@1.0.627":
-  version "1.0.627"
-  resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-keyring/-/sysweb3-keyring-1.0.627.tgz#e30fe3d808d1133610aafff8618b6da82850c25c"
-  integrity sha512-I8L7NLSp8B5zyVzR/8pPQ9XGBgksd19Ls+2ekC5MWlmvIddpbKKbraozCTLGAsLyBVFBKIwmh8Efjt4KjwRIQg==
+"@sidhujag/sysweb3-keyring@1.0.628":
+  version "1.0.628"
+  resolved "https://registry.npmjs.org/@sidhujag/sysweb3-keyring/-/sysweb3-keyring-1.0.628.tgz#08469b11d13c433d98ffff2d40183a5812a08dcb"
+  integrity sha512-/NS/7P4YGSpMcsX+h+gmSxHIAmqcJCM3JFIfKZ/DZC6GPfUGLqVMLpK/eDrT+VkL8HkjOBdgJrZZGpOvfQbM9A==
   dependencies:
     "@bitcoinerlab/secp256k1" "^1.2.0"
     "@ledgerhq/hw-app-eth" "^6.47.1"
@@ -5088,13 +5088,13 @@ available-typed-arrays@^1.0.7:
   dependencies:
     possible-typed-array-names "^1.0.0"
 
-axios@1.12.2, axios@1.13.5, axios@^1.12.2, axios@^1.18.1:
-  version "1.18.1"
-  resolved "https://registry.yarnpkg.com/axios/-/axios-1.18.1.tgz#d63f9863bcd8938815c86f9e2abd380189d96dfe"
-  integrity sha512-3nTvFlvpn9Zu/RkHUqtc7/+al4UpRW5az71ap5zccp6e8RAYEzhMTecX8Dz1wWDYrPpUoB1HAQEGEAEvUr7S9g==
+axios@1.12.2, axios@1.13.5, axios@^1.12.2, axios@^1.18.1, axios@^1.21.0:
+  version "1.21.0"
+  resolved "https://registry.yarnpkg.com/axios/-/axios-1.21.0.tgz#30c363a2652d9649e8b4d2645b34c64ca541ff67"
+  integrity sha512-YCzXMB53Q9PZBsh7yN7wtapit4WepwcHS2fP8QhGsBxSz5YtgYobV7GGlWlAJi+RxfU77GQTQi2DSLUma42EYA==
   dependencies:
     follow-redirects "^1.16.0"
-    form-data "^4.0.5"
+    form-data "^4.0.6"
     https-proxy-agent "^5.0.1"
     proxy-from-env "^2.1.0"
 
@@ -7226,7 +7226,7 @@ eth-chains@^1.0.0:
   resolved "https://registry.yarnpkg.com/eth-chains/-/eth-chains-1.0.0.tgz#1386496ee1aa231a4d050fde6a87fe36741ecb83"
   integrity sha512-SnJrJPSr5I3rKpW6RZT/qhX8qbmE5bsMeeHoRWBXkvbifudfi3YLKHXZMdLsg+Yv+PP8oqSyPxOvQxKwjNVqmQ==
 
-eth-object@^1.0.3, "eth-object@git+https://github.com/syscoin/eth-object.git", "eth-object@https://github.com/syscoin/eth-object.git":
+eth-object@^1.0.3, "eth-object@https://github.com/syscoin/eth-object.git":
   version "1.0.3"
   resolved "git+https://github.com/syscoin/eth-object.git#b5ff300f57c136138b31d6e570c816a147e0f1c9"
   dependencies:
@@ -7637,7 +7637,7 @@ fork-ts-checker-webpack-plugin@^8.0.0:
     semver "^7.3.5"
     tapable "^2.2.1"
 
-form-data@^4.0.0, form-data@^4.0.5:
+form-data@^4.0.0, form-data@^4.0.5, form-data@^4.0.6:
   version "4.0.6"
   resolved "https://registry.yarnpkg.com/form-data/-/form-data-4.0.6.tgz#28e864e1b786dbebb68db1f452f9635278665827"
   integrity sha512-vKatAh4SlVfgbv+YtmhiRjhEMJsYpsG1Y2rMQtR+SVSbytsSD1YGzDIcrAJmdFec88u/+VoGmxnl+80gL1tRCQ==
