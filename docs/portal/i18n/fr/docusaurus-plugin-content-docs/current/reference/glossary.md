@@ -37,3 +37,7 @@ Unspent Transaction Output. Le modèle de compte utilisé par les chaînes de ty
 ## WebAuthn
 
 Le standard de navigateur derrière les passkeys. Il permet aux utilisateurs d'approuver des actions cryptographiques via des authenticators de plateforme, des clés matérielles ou des fournisseurs de passkey synchronisées.
+
+## SLH-DSA
+
+Le signataire local utilise **SLH-DSA-SHA2-128-24**, un profil expérimental à nombre limité de signatures proposé dans le projet initial [NIST SP 800-230](https://csrc.nist.gov/pubs/sp/800/230/ipd). Il ne s’agit pas d’un jeu de paramètres à usage général approuvé par FIPS 205. Sur les réseaux configurés, Pali prend en charge ECDSA, les passkeys P-256 WebAuthn, SLH-DSA et les validateurs composites ; les modules compatibles doivent être déployés et les clés ou identifiants locaux nécessaires disponibles.

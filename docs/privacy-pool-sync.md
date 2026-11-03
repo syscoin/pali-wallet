@@ -1,15 +1,21 @@
 # Public privacy-pool preparation
 
-This increment prepares public Tornado Classic ETH pool data. It does not create
-notes, deposit, withdraw, generate withdrawal proofs, or claim that a wallet
-address is private. The Privacy page states that scope. Only an explicit Prepare
-action opts a pool into preparation and background updates; opening the wallet
-or page does not opt any pool in or trigger a balance-related lookup.
+Pool preparation verifies public Tornado Classic ETH pool data. The Privacy
+page also supports note import, deposit and withdrawal; those separate operations
+are described in [private ETH notes and transactions](./privacy-transactions.md).
+Preparing a pool does not itself create a note or make a wallet address private.
+Only an explicit Prepare action opts a pool into preparation and background
+updates; opening the wallet or page does not opt a pool in.
 
 ## Data and verification
 
-The anonymous Sysnode endpoint is
-`https://sysnode.info/api/privacy/v1/pools/<public-pool-id>/snapshot`.
+The default public-data endpoint is
+`https://sysnode.info/api/privacy/v1/pools/<public-pool-id>/snapshot`. Users can
+select another Privacy service origin: HTTPS, or HTTP for `localhost` or
+`127.0.0.1`, without a path, credentials, query or fragment. The service origin
+is separate from the selected Ethereum RPC and the optional relayer endpoint.
+Changing it clears prepared public pool data and requires preparation again;
+it does not remove saved private notes.
 The four fixed Ethereum mainnet pool identities and deployment blocks come from
 `tornadocash/tornado-cli@378ddf8b8b92a4924037d7b64a94dbfd5a7dd6e8/config.js`.
 Requests contain no account address, private note, commitment, leaf position or
@@ -50,10 +56,10 @@ updates; Clear disables updates and removes the public cache. Browser restart
 restores only opted-in alarms, without immediately making remote requests.
 The visible page polls local status slowly while ready and faster during work.
 
-## Private-vault follow-through
+## Current private-vault flow
 
-The agreed transaction UX is a Private vault overview, initially Ethereum only,
-with explicit Deposit and Withdraw actions. It is not an ordinary receiving
+The Private vault is an Ethereum-mainnet-only overview with explicit Deposit
+and Withdraw actions. It is not an ordinary receiving
 address or an implicit route for normal Send. Classic deposits use the supported
 fixed denominations. Notes must be generated and durably encrypted before a
 deposit can be submitted; pending/confirmed state follows real receipts.
@@ -63,16 +69,16 @@ reauthentication and remain separate from a normal account private-key field.
 A seed-only backup must not claim to recover randomly generated notes unless
 that recovery mechanism has actually been implemented and tested.
 
-Withdrawal proofs must be generated locally by a separately packaged worker
-compatible with the deployed Groth16 circuit and verifier. Executable code belongs
-in the extension; larger public proving data needs pinned integrity checks.
+Withdrawal proofs are generated locally by packaged workers compatible with the
+deployed Groth16 circuit and verifier. Executable code is packaged in the
+extension, and the public proving key is integrity-pinned.
 Neither Sysnode nor a relayer may receive the note or witness.
 
 Relaying is optional. Direct submission requires gas from the submitting account
 and exposes that account's link to the withdrawal. Relayed submission discloses
-its fee before approval. No automatic fallback may change that choice. Note
-custody, proving and transaction submission require their own complete tests
-before the preparation page becomes a spending surface.
+its fee before approval. No automatic fallback may change that choice. The
+Privacy service, Ethereum RPC and selected relayer each have distinct trust
+and metadata exposure; none guarantees anonymity.
 
 ## Checks
 

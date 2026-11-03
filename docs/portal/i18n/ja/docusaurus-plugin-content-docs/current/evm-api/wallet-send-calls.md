@@ -2,7 +2,7 @@
 title: wallet_sendCalls
 ---
 
-PaliはEVMバッチリクエスト向けにEIP-5792スタイルの`wallet_sendCalls`をサポートします。これは、複数の呼び出しを1つのWebAuthn assertionで承認できるpasskeyスマートアカウントにとって特に重要です。
+PaliはEVMバッチ要求向けにEIP-5792形式の`wallet_sendCalls`をサポートします。対応するPaliスマートアカウントは複数の呼び出しを1回のアカウント実行として認可できます。
 
 ## capabilitiesを確認する
 
@@ -13,7 +13,7 @@ const capabilities = await window.ethereum.request({
 });
 ```
 
-Paliはpasskeyスマートアカウントではアトミックサポートを報告し、通常のEOAではアトミック実行を未サポートとして報告します。
+Paliは対応するPaliスマートアカウントについてアトミック対応を、通常のEOAについてアトミック実行非対応を報告します。
 
 ## バッチを送信する
 
@@ -23,7 +23,7 @@ const result = await window.ethereum.request({
   params: [
     {
       version: '2.0.0',
-      from: passkeyAccount,
+      from: smartAccount,
       chainId: '0x39',
       atomicRequired: true,
       calls: [
@@ -43,13 +43,13 @@ const result = await window.ethereum.request({
 });
 ```
 
-## Passkeyでの動作
+## スマートアカウントの動作
 
-Passkeyスマートアカウントの場合、Paliは選択されたすべての呼び出しを1つのスマートアカウント実行バッチとして準備し、1つのpasskey assertionをリクエストし、1つのトランザクションを送信します。アカウントが未デプロイの場合、デプロイと任意の初期policy実行を最初のトランザクション経路に含められます。
+ユーザーは要求されたバッチ全体を承認または拒否します。個々の呼び出しを選択解除することはできません。Paliスマートアカウントでは、Paliはバッチ全体を1回のアカウント実行として準備し、アクティブなバリデーターの認可を求め、宛先をウォレットのブロックリストと照合して1件のトランザクションを送信します。PasskeyバリデーターはWebAuthn assertionを使用し、設定済みのローカルECDSA所有者はアクションハッシュに署名します。
 
 ## EOAでの動作
 
-通常のEVMアカウントの場合、Paliは呼び出しを提示し、選択された呼び出しを順次送信します。これはオンチェーンのアトミック性と同じではありません。dappが真のアトミック実行を必要とする場合は、passkeyスマートアカウントまたは呼び出しをアトミックにバッチ処理するよう設計されたコントラクトを使用してください。
+通常のEVMアカウントでは、Paliは要求されたバッチ全体を承認または拒否するよう表示し、呼び出しを順次送信します。これはオンチェーンのアトミック実行ではありません。アトミック実行が必要な場合は、対応するPaliスマートアカウントまたはアトミックなバッチ処理用コントラクトを使用してください。
 
 ## ステータスメソッド
 

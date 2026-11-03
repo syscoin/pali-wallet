@@ -37,3 +37,7 @@ Unspent Transaction Output。Bitcoin 类链和 Syscoin UTXO 使用的账户模�
 ## WebAuthn
 
 Passkey 背后的浏览器标准。它允许用户通过平台 authenticator、硬件密钥或同步 Passkey provider 批准加密操作。
+
+## SLH-DSA
+
+本地签名器使用 **SLH-DSA-SHA2-128-24**，这是 [NIST SP 800-230](https://csrc.nist.gov/pubs/sp/800/230/ipd) 初始草案中提出的实验性有限签名配置，并非 FIPS 205 批准的通用参数集。 在已配置的网络上，Pali 支持 ECDSA、P-256 WebAuthn 通行密钥、SLH-DSA 和组合验证器；兼容模块必须已部署，所需本地密钥或凭据也必须可用。

@@ -28,7 +28,7 @@ Esta página documenta comportamentos que dapps devem considerar.
 
 ## Atomicidade
 
-- Smart accounts com passkey podem executar chamadas em lote selecionadas por meio de uma execução de smart account.
+- O usuário aprova ou rejeita o lote inteiro; não é possível desmarcar chamadas individuais. Uma conta inteligente Pali pode executar o lote em uma única execução.
 - Chamadas em lote de EOAs regulares são envios sequenciais pela carteira e não devem ser tratadas como execução verdadeiramente atômica.
 
 ## Subscriptions

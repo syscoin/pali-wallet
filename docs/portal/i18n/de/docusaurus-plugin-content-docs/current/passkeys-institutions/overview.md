@@ -7,7 +7,7 @@ Pali Smart Accounts sind Contract-Konten, die Pali für Nutzer erstellen, verbin
 ## Einfach erklärt
 
 - Eine Konto-Adresse hält die Assets und ist die Adresse, die Dapps sehen.
-- Das Konto kann Passkey, ECDSA oder eine Composite-Policy nutzen.
+- In konfigurierten Netzwerken unterstützt Pali ECDSA, P-256-WebAuthn-Passkeys, SLH-DSA und Composite-Validatoren; kompatible Module müssen bereitgestellt und die benötigten lokalen Schlüssel oder Zugangsdaten verfügbar sein.
 - Guardian-Recovery kann den aktiven Validator nach einer Wartezeit ersetzen.
 - `wallet_sendCalls` kann mehrere Calls als eine atomare Aktion ausführen.
 

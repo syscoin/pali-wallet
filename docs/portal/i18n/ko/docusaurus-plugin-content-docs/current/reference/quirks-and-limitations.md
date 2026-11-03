@@ -28,7 +28,7 @@ title: Quirk 및 제한 사항
 
 ## Atomicity
 
-- Pali smart account는 하나의 smart account execution을 통해 선택된 batch call을 execute할 수 있습니다.
+- 사용자는 전체 요청 배치를 승인하거나 거부하며 개별 호출을 선택 해제할 수 없습니다. Pali 스마트 계정은 배치를 하나의 계정 실행으로 처리할 수 있습니다.
 - 일반 EOA batch call은 순차적인 wallet send이며 진정한 atomic execution으로 취급해서는 안 됩니다.
 
 ## Subscription

@@ -2,7 +2,7 @@
 title: wallet_sendCalls
 ---
 
-Pali поддерживает EIP-5792-style `wallet_sendCalls` для EVM batch requests. Это особенно важно для Pali smart accounts, где несколько вызовов могут быть авторизованы одним WebAuthn assertion.
+Pali поддерживает `wallet_sendCalls` в стиле EIP-5792 для пакетных EVM-запросов. Поддерживаемый смарт-аккаунт Pali может авторизовать несколько вызовов как одно исполнение.
 
 ## Проверить capabilities
 
@@ -13,7 +13,7 @@ const capabilities = await window.ethereum.request({
 });
 ```
 
-Pali сообщает atomic support для Pali smart accounts и неподдерживаемое atomic execution для обычных EOAs.
+Pali сообщает об атомарной поддержке для поддерживаемых смарт-аккаунтов Pali и об отсутствии атомарного исполнения для обычных EOA.
 
 ## Отправить batch
 
@@ -23,7 +23,7 @@ const result = await window.ethereum.request({
   params: [
     {
       version: '2.0.0',
-      from: passkeyAccount,
+      from: smartAccount,
       chainId: '0x39',
       atomicRequired: true,
       calls: [
@@ -43,13 +43,13 @@ const result = await window.ethereum.request({
 });
 ```
 
-## Поведение passkey
+## Поведение смарт-аккаунта
 
-Для Pali smart accounts Pali подготавливает все выбранные вызовы как один smart account execution batch, запрашивает один passkey assertion и отправляет одну транзакцию. Локальные smart accounts представляют подтвержденные on-chain deployments.
+Пользователь одобряет или отклоняет весь запрошенный пакет; отдельные вызовы нельзя исключить. Для смарт-аккаунта Pali подготавливает весь пакет как одно исполнение, запрашивает авторизацию активного валидатора, проверяет адреса по списку блокировки кошелька и отправляет одну транзакцию. Passkey-валидатор использует WebAuthn assertion; настроенные локальные ECDSA-владельцы подписывают хеш действия.
 
 ## Поведение EOA
 
-Для обычных EVM accounts Pali показывает вызовы и отправляет выбранные вызовы последовательно. Это не то же самое, что on-chain atomicity. Если dapp требует настоящего atomic execution, используйте Pali smart account или контракт, designed to batch calls atomically.
+Для обычного EVM-аккаунта Pali показывает весь пакет для одобрения или отклонения и отправляет вызовы последовательно. Это не атомарное исполнение в блокчейне. Если dapp нужна атомарность, используйте поддерживаемый смарт-аккаунт Pali или контракт для атомарных пакетов.
 
 ## Методы статуса
 

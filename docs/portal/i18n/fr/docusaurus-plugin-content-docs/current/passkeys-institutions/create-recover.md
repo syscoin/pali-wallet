@@ -4,7 +4,7 @@ title: Créer et récupérer des comptes intelligents
 
 `wallet_prepareSmartAccount` crée un compte intelligent Pali pour l’intégration des utilisateurs par une dapp. Pali dérive le compte, le déploie via la factory configurée, installe le validateur demandé si nécessaire, connecte le compte à la dapp demandeuse et enregistre des métadonnées durables du compte dans l’état local du portefeuille.
 
-L’état local du portefeuille représente les comptes intelligents que Pali peut utiliser. Un compte intelligent peut être contrôlé par un validateur de passkey, un validateur ECDSA, un validateur composite ou des modules de récupération par gardiens installés après sa création.
+L’état local du portefeuille représente les comptes intelligents que Pali peut utiliser. Un compte peut utiliser un validateur ECDSA, passkey, SLH-DSA ou composite. Un exécuteur de récupération par gardiens installé séparément peut remplacer un validateur après le délai configuré.
 
 ## Structure du compte intelligent et de la factory
 
@@ -12,7 +12,7 @@ Le système de comptes intelligents comporte les éléments suivants :
 
 - **Factory :** calcule des adresses déterministes et déploie des comptes avec les données initiales des modules.
 - **Compte intelligent :** exécute des appels, suit les modules installés et demande aux validateurs d’approuver les signatures.
-- **Validateurs :** autorisent des actions. Pali prend en charge ECDSA, les passkeys P-256 WebAuthn et les validateurs composites.
+- **Validateurs :** Sur les réseaux configurés, Pali prend en charge ECDSA, les passkeys P-256 WebAuthn, SLH-DSA et les validateurs composites ; les modules compatibles doivent être déployés et les clés ou identifiants locaux nécessaires disponibles.
 - **Exécuteurs :** ajoutent des fonctionnalités au compte. Pali utilise la récupération par gardiens comme module exécuteur.
 
 Les paramètres de compte de la factory comprennent :

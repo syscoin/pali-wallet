@@ -7,7 +7,7 @@ As smart accounts da Pali são contas de contrato que a Pali pode criar, conecta
 ## Ideia simples
 
 - Um único endereço mantém os fundos e é o endereço visto pelas dapps.
-- A conta pode usar passkey, ECDSA ou uma política composta.
+- Em redes configuradas, a Pali suporta ECDSA, passkeys P-256 WebAuthn, SLH-DSA e validadores compostos; os módulos compatíveis devem estar implantados e as chaves ou credenciais locais necessárias devem estar disponíveis.
 - Guardian recovery pode substituir o validador ativo depois de uma espera.
 - `wallet_sendCalls` pode executar várias chamadas como uma ação atômica.
 

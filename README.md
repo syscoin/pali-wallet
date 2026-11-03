@@ -54,8 +54,14 @@ Then run the following:
   - Load the extension via `opera:extensions`
   - Check the `Developer Mode` and load as unpacked from extension’s extracted directory.
 
-### Production
+### Production and releases
 
-- `yarn run build` builds the extension for all the browsers to `build/BROWSER` directory respectively.
+- `yarn run build:chrome` builds the production Chrome extension in `build/chrome/` and creates a versioned ZIP in `build/`.
+- `yarn run build:canary` builds the diagnostic Canary variant. Use the production Chrome ZIP for a regular release.
+- `yarn run build` also runs the Firefox and Opera build scripts. These targets require their own browser validation; a successful build does not establish release readiness.
 
-Note: By default the `manifest.json` is set with version `0.0.0`. The webpack loader will update the version in the build with that of the `package.json` version. In order to release a new version, update version in `package.json` and run script.
+Keep the release version synchronized in `package.json`, the root `manifest.json`, and the Manifest V3 configuration in `source/config/consts.js`. The Chrome manifest-generation step uses the package version when regenerating `manifest.json`, which is copied into the build.
+
+The [release workflow](.github/workflows/release.yml) runs on pushes to `master`, `develop`, and `pre-release`. It skips release builds when the package version is unchanged. A version change builds the Chrome production and Canary ZIPs, checks that exactly one of each exists and that the release tag is new, then creates a **draft prerelease** tied to the triggering commit. Review the artifacts and required checks before publishing. Creating a GitHub draft does not submit or publish the extension to the Chrome Web Store.
+
+See the [documentation index](docs/README.md) for user guides, API documentation, and implementation notes.

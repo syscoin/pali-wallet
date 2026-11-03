@@ -16,7 +16,11 @@ EVM dapp 通常要求一个账户签署一个交易对象。UTXO dapp 通常会�
 
 ## 最小集成形状
 
+请传入结构化 Pali PSBT 对象，而非原始 Base64 字符串。`syscoinjs-lib` 导出 `{ psbt: <base64>, assets: <JSON 字符串> }`；适用时请提供资产映射。`sys_sign` 返回相同格式的签名对象，该对象可能仍为部分签名。 返回的 `assets` 字段为空；请单独保留所需的资产元数据。
+
 ```js
+import { utils as sys } from 'syscoinjs-lib';
+
 const [address] = await window.pali.request({
   method: 'sys_requestAccounts',
 });
@@ -25,9 +29,11 @@ const changeAddress = await window.pali.request({
   method: 'wallet_getChangeAddress',
 });
 
+// Supply your constructed syscoinjs PSBT and optional asset map.
+const paliPsbt = sys.exportPsbtToJson(psbt, assetsMap);
 const signedPsbt = await window.pali.request({
   method: 'sys_sign',
-  params: [psbtBase64],
+  params: [paliPsbt],
 });
 ```
 

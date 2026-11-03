@@ -4,8 +4,9 @@ The Privacy page imports existing Tornado Classic ETH notes for the four pinned
 Ethereum mainnet pools. It identifies each note locally, checks it against a
 verified public pool snapshot, and saves admitted notes in the current wallet's
 encrypted private vault. The page supports local status and balance display and
-password-confirmed note backup. Deposits, withdrawals, proofs, and relayer
-selection are not implemented in this stage.
+password-confirmed note backup. It also supports deposits and direct or relayed
+withdrawals. See [private ETH notes and transactions](./privacy-transactions.md)
+for the current transaction, proof, account and provider scope.
 
 Classic is not advertised as post-quantum privacy. Its public Pedersen
 commitments and nullifiers permit additional candidate-linking attacks after
@@ -61,8 +62,10 @@ Revealing a saved note uses the wallet's existing password throttling. The page
 hides revealed notes on a wallet/context change, document hide, or unmount.
 Browser strings cannot be guaranteed to be erased from process memory; the
 application avoids keeping plaintext notes in persistent or shared UI state.
-The wallet seed alone does not recreate randomly generated notes from another
-wallet: users must retain their note backups.
+The wallet recovery phrase alone cannot recreate randomly generated notes,
+including after recovery or reset. While the wallet is unlocked and the password
+is known, reveal and separately back up each note. Anyone holding a note can
+withdraw with it; keep each backup secret and secure.
 
 The UI polls only local verified state for saved-note status. Public pool sync
 is separately opt-in and runs at the shared 15-minute boundary. Pausing sync

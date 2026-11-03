@@ -25,19 +25,27 @@ UTXOアプリケーションは、トランザクションを慎重に構築し�
   <figcaption>PaliはUTXO PSBTに署名する前に、ユーザーへ確認を求めます。</figcaption>
 </figure>
 
+生のBase64文字列ではなく、構造化されたPali PSBTオブジェクトを渡します。`syscoinjs-lib`は`{ psbt: <base64>, assets: <JSON文字列> }`を出力します。必要に応じてアセットマップを指定してください。`sys_sign`は同じ形式の署名済みオブジェクトを返しますが、部分署名のままの場合があります。 返される`assets`フィールドは空です。必要なアセットメタデータは別途保持してください。
+
 ```js
+import { utils as sys } from 'syscoinjs-lib';
+
+// Supply your constructed syscoinjs PSBT and optional asset map.
+const paliPsbt = sys.exportPsbtToJson(psbt, assetsMap);
 const signed = await window.pali.request({
   method: 'sys_sign',
-  params: [psbtBase64],
+  params: [paliPsbt],
 });
 ```
 
 ## 署名して送信する
 
+`sys_signAndSend`は完全なトランザクションに署名して配信し、`txid`を含むオブジェクトを返します。
+
 ```js
-const txid = await window.pali.request({
+const { txid } = await window.pali.request({
   method: 'sys_signAndSend',
-  params: [psbtBase64],
+  params: [paliPsbt],
 });
 ```
 

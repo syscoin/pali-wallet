@@ -25,19 +25,27 @@ UTXO 应用应谨慎构造交易，通过 Pali 请求签名，并仅在用户批
   <figcaption>Pali 会在签署 UTXO PSBT 之前提示用户确认。</figcaption>
 </figure>
 
+请传入结构化 Pali PSBT 对象，而非原始 Base64 字符串。`syscoinjs-lib` 导出 `{ psbt: <base64>, assets: <JSON 字符串> }`；适用时请提供资产映射。`sys_sign` 返回相同格式的签名对象，该对象可能仍为部分签名。 返回的 `assets` 字段为空；请单独保留所需的资产元数据。
+
 ```js
+import { utils as sys } from 'syscoinjs-lib';
+
+// Supply your constructed syscoinjs PSBT and optional asset map.
+const paliPsbt = sys.exportPsbtToJson(psbt, assetsMap);
 const signed = await window.pali.request({
   method: 'sys_sign',
-  params: [psbtBase64],
+  params: [paliPsbt],
 });
 ```
 
 ## 签名并发送
 
+`sys_signAndSend` 对完整交易签名并广播，返回包含 `txid` 的对象。
+
 ```js
-const txid = await window.pali.request({
+const { txid } = await window.pali.request({
   method: 'sys_signAndSend',
-  params: [psbtBase64],
+  params: [paliPsbt],
 });
 ```
 

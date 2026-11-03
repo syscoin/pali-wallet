@@ -37,3 +37,7 @@ Unspent Transaction Output. El modelo de cuenta usado por cadenas tipo Bitcoin y
 ## WebAuthn
 
 El estándar de navegador detrás de las passkeys. Permite a los usuarios aprobar acciones criptográficas mediante autenticadores de plataforma, llaves hardware o proveedores de passkey sincronizadas.
+
+## SLH-DSA
+
+El firmante local usa **SLH-DSA-SHA2-128-24**, un perfil experimental de firmas limitadas propuesto en el borrador inicial [NIST SP 800-230](https://csrc.nist.gov/pubs/sp/800/230/ipd). No es un conjunto de parámetros de uso general aprobado en FIPS 205. En redes configuradas, Pali admite ECDSA, passkeys P-256 WebAuthn, SLH-DSA y validadores compuestos; deben estar desplegados los módulos compatibles y disponibles las claves o credenciales locales necesarias.

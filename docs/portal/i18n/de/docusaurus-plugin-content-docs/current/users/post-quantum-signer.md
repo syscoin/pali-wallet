@@ -2,7 +2,7 @@
 title: Post-Quantum-Signierer fuer Smart Accounts
 ---
 
-Pali Smart Accounts koennen verschiedene Validatoren verwenden. Einer davon ist ein lokaler Post-Quantum-Signierer auf Basis von **SLH-DSA-SHA2-128s**, einer hashbasierten Signaturfamilie, die vom NIST in FIPS 205 standardisiert wurde.
+Der lokale Signierer verwendet **SLH-DSA-SHA2-128-24**, ein experimentelles Profil mit begrenzter Signaturzahl aus dem ersten Entwurf von [NIST SP 800-230](https://csrc.nist.gov/pubs/sp/800/230/ipd). Es ist kein in FIPS 205 für allgemeine Verwendung zugelassener Parametersatz.
 
 Einfach gesagt: Ein Smart Account kann damit Aktionen mit einem Signaturverfahren genehmigen, das gegen bekannte Quantenangriffe auf heutige ECDSA-Signaturen ausgelegt ist.
 
@@ -40,7 +40,7 @@ Wenn Pali meldet, dass der lokale Signierer fehlt oder nicht zum aktiven Validat
 
 ## Signaturlimit
 
-Das aktuelle SLH-DSA-Profil hat eine absolute Kapazitaet von `2^24` Signaturen pro vorbereitetem lokalen Signierer. Pali reserviert `1,000` Signaturen fuer Rotationsversuche weg von diesem Schluessel, daher stoppt normales Signieren bei `2^24 - 1,000`. Das sind weiterhin mehr als 16 Millionen Signaturen, sodass normale Nutzer dieses Limit voraussichtlich nicht erreichen.
+Die Grenze von `2^24` Signaturen gilt über die gesamte Lebensdauer des Schlüssels für alle Nutzungen und Kopien zusammen. Pali reserviert `1,000` Signaturen für die Rotation; normales Signieren endet bei `2^24 - 1,000` lokal erfassten Signaturen. Die Neuerzeugung erhält lokal verfügbare Nutzungsdaten; eine Wiederherstellung nur aus der Seed-Phrase oder einem älteren Backup stellt fehlende Daten nicht wieder her, und Geräte synchronisieren ihre Zähler nicht. Die globale Grenze ist in diesen Fällen daher nicht sichergestellt.
 
 Wenn das normale Budget erschoepft ist, signiert Pali keine normalen Operationen mehr mit diesem Schluessel und bewahrt die Reserve fuer Validator-Rotationsversuche auf. Pali signiert nicht stillschweigend mit einem erschoepften Signierer.
 

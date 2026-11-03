@@ -25,19 +25,27 @@ UTXO-приложения должны тщательно составлять �
   <figcaption>Pali запрашивает подтверждение пользователя перед подписанием UTXO PSBT.</figcaption>
 </figure>
 
+Передавайте структурированный объект Pali PSBT, а не строку Base64. `syscoinjs-lib` экспортирует `{ psbt: <base64>, assets: <строка JSON> }`; при необходимости передайте карту активов. `sys_sign` возвращает подписанный объект того же формата, который может остаться частично подписанным. Возвращаемое поле `assets` пустое; сохраняйте необходимые метаданные активов отдельно.
+
 ```js
+import { utils as sys } from 'syscoinjs-lib';
+
+// Supply your constructed syscoinjs PSBT and optional asset map.
+const paliPsbt = sys.exportPsbtToJson(psbt, assetsMap);
 const signed = await window.pali.request({
   method: 'sys_sign',
-  params: [psbtBase64],
+  params: [paliPsbt],
 });
 ```
 
 ## Подписание и отправка
 
+`sys_signAndSend` подписывает и отправляет полную транзакцию и возвращает объект с `txid`.
+
 ```js
-const txid = await window.pali.request({
+const { txid } = await window.pali.request({
   method: 'sys_signAndSend',
-  params: [psbtBase64],
+  params: [paliPsbt],
 });
 ```
 

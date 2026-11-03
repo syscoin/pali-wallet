@@ -2,7 +2,7 @@
 title: Signataire post-quantique pour comptes intelligents
 ---
 
-Les comptes intelligents Pali peuvent utiliser différents validateurs. L'un d'eux est un signataire post-quantique local basé sur **SLH-DSA-SHA2-128s**, une famille de signatures à base de hachage standardisée par le NIST dans FIPS 205.
+Le signataire local utilise **SLH-DSA-SHA2-128-24**, un profil expérimental à nombre limité de signatures proposé dans le projet initial [NIST SP 800-230](https://csrc.nist.gov/pubs/sp/800/230/ipd). Il ne s’agit pas d’un jeu de paramètres à usage général approuvé par FIPS 205.
 
 En clair : cela permet à un compte intelligent d'approuver des actions avec une signature conçue pour résister aux attaques quantiques connues contre les signatures ECDSA actuelles.
 
@@ -40,7 +40,7 @@ Si Pali indique que le signataire local manque ou ne correspond pas au validateu
 
 ## Limite de signatures
 
-Le profil SLH-DSA actuel a une capacité absolue de `2^24` signatures par signataire local préparé. Pali réserve `1,000` signatures pour les tentatives de rotation hors de cette clé, donc la signature normale s'arrête à `2^24 - 1,000`. Cela reste plus de 16 millions de signatures ; un utilisateur normal ne devrait donc pas atteindre cette limite.
+La limite de `2^24` signatures vaut pour toute la durée de vie de la clé, tous usages et toutes copies confondus. Pali réserve `1,000` signatures à la rotation ; la signature normale s’arrête à `2^24 - 1,000` signatures enregistrées localement. La régénération conserve l’historique local disponible, mais une restauration à partir de la seule phrase de récupération ou d’une ancienne sauvegarde ne retrouve pas l’historique manquant, et les appareils ne synchronisent pas leurs compteurs. La limite globale n’est donc pas garantie dans ces cas.
 
 Si le budget normal est épuisé, Pali cesse de signer les opérations normales avec cette clé et conserve la réserve pour les tentatives de rotation du validateur. Pali ne signe pas silencieusement avec un signataire épuisé.
 

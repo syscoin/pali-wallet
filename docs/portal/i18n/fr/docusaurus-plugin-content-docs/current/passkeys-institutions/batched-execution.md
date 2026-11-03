@@ -18,7 +18,7 @@ await window.ethereum.request({
 });
 ```
 
-Cuando `atomicRequired` es true, Pali prepara los calls seleccionados como una sola ejecución de smart account. Las llamadas de despliegue de contrato con target vacío no están soportadas en este flujo.
+Pour chaque demande `wallet_sendCalls`, l’utilisateur approuve ou refuse tout le lot sans pouvoir désélectionner des appels. Un compte intelligent Pali compatible prépare le lot complet en une exécution. Les appels EOA sont séquentiels ; ceux déjà diffusés ne peuvent pas être annulés si un appel ultérieur échoue. Ce parcours de compte intelligent ne prend pas en charge les déploiements de contrat à destination vide.
 
 <figure className="pali-video-card">
   <video controls poster="/img/screens/smart-account-batch-sendcalls-video.png" src="/video/smart-account-batch-sendcalls.mp4" title="Smart-account wallet_sendCalls batch flow"></video>
