@@ -1,0 +1,44 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'org.paliwallet'
+version = '0.1.0'
+
+android {
+  namespace 'expo.modules.paliwalletcrypto'
+  defaultConfig { versionCode 1; versionName '0.1.0' }
+}
+
+def verifiedKdf = configurations.create('paliVerifiedKdf') {
+  canBeConsumed = false
+  canBeResolved = true
+  transitive = false
+}
+
+dependencies {
+  // Lightweight KDF classes only; never register this as a global JCA provider.
+  implementation('org.bouncycastle:bcprov-jdk18on:1.86') {
+    version { strictly '1.86' }
+  }
+  paliVerifiedKdf 'org.bouncycastle:bcprov-jdk18on:1.86'
+  testImplementation 'junit:junit:4.13.2'
+}
+
+def verifyKdf = tasks.register('verifyPaliKdfArtifact') {
+  inputs.files(verifiedKdf)
+  doLast {
+    def digest = java.security.MessageDigest.getInstance('SHA-256')
+    verifiedKdf.singleFile.withInputStream { stream ->
+      byte[] chunk = new byte[65536]
+      int length
+      while ((length = stream.read(chunk)) != -1) digest.update(chunk, 0, length)
+    }
+    def actual = digest.digest().encodeHex().toString()
+    if (actual != '2af190b300cbb0b35e248ccf5f4a06b6072030aeb3da7a98ec73abe5b4cb371f') {
+      throw new GradleException('Pali KDF artifact checksum mismatch')
+    }
+  }
+}
+tasks.named('preBuild').configure { dependsOn(verifyKdf) }

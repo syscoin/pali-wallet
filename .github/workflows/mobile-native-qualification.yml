@@ -1,0 +1,129 @@
+name: Mobile native qualification
+
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - 'apps/mobile/src/**'
+      - 'apps/mobile/modules/**'
+      - 'apps/mobile/qualification/**'
+      - 'apps/mobile/package*.json'
+      - 'apps/mobile/app.json'
+      - 'apps/mobile/metro.config.js'
+      - 'apps/mobile/plugins/**'
+      - 'apps/mobile/scripts/configure-native-qualification.cjs'
+      - 'source/utils/nativeBalance.ts'
+      - '.nvmrc'
+      - '.github/workflows/mobile-native-qualification.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-native-qualification-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  EXPO_NO_TELEMETRY: '1'
+  EXPO_NO_DOTENV: '1'
+  PALI_NATIVE_QUALIFICATION: '1'
+
+jobs:
+  ios:
+    name: iOS native custody and cold restart
+    runs-on: macos-26
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: apps/mobile
+    env:
+      QUALIFICATION_ARTIFACTS: ${{ runner.temp }}/pali-native-ios
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version-file: '.nvmrc'
+          cache: npm
+          cache-dependency-path: apps/mobile/package-lock.json
+      - run: npm ci --ignore-scripts
+      - run: node --test qualification/*.test.cjs
+      - run: xcodebuild -version
+      - run: node scripts/configure-native-qualification.cjs
+      - run: npx --no-install expo prebuild --platform ios --no-install
+      - run: pod install --project-directory=ios
+      - name: Build real iOS simulator binary
+        run: >-
+          xcodebuild -workspace ios/PaliQualification.xcworkspace
+          -scheme PaliQualification -configuration Release -sdk iphonesimulator
+          -derivedDataPath "$RUNNER_TEMP/pali-native-ios-build"
+          CODE_SIGNING_ALLOWED=NO build
+      - name: Exercise native bridge and two-process persistence
+        run: >-
+          node qualification/run-native.cjs ios
+          "$RUNNER_TEMP/pali-native-ios-build/Build/Products/Release-iphonesimulator/PaliQualification.app"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        if: always()
+        with:
+          name: native-ios-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/pali-native-ios/
+          if-no-files-found: warn
+          retention-days: 14
+
+  android:
+    name: Android native custody and cold restart
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: apps/mobile
+    env:
+      QUALIFICATION_ARTIFACTS: ${{ runner.temp }}/pali-native-android
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version-file: '.nvmrc'
+          cache: npm
+          cache-dependency-path: apps/mobile/package-lock.json
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - run: npm ci --ignore-scripts
+      - run: node --test qualification/*.test.cjs
+      - name: Install pinned native toolchain
+        run: sdkmanager 'ndk;27.1.12297006' 'platforms;android-37' 'build-tools;37.0.0'
+      - run: node scripts/configure-native-qualification.cjs
+      - run: npx --no-install expo prebuild --platform android --no-install
+      - name: Build real Android binary
+        run: cd android && ./gradlew :app:assembleRelease --no-daemon --max-workers 2 -PreactNativeArchitectures=arm64-v8a,x86_64
+      - name: Start isolated API 35 emulator
+        run: |
+          sudo chmod a+rw /dev/kvm
+          sdkmanager 'platform-tools' 'emulator' 'system-images;android-35;google_apis;x86_64'
+          echo no | avdmanager create avd --name PaliQualification --package 'system-images;android-35;google_apis;x86_64' --force
+          "$ANDROID_HOME/emulator/emulator" -avd PaliQualification -no-window -no-audio -no-snapshot -no-boot-anim -gpu swiftshader_indirect > "$RUNNER_TEMP/pali-emulator.log" 2>&1 &
+          adb wait-for-device
+          for attempt in $(seq 1 120); do
+            if [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" = '1' ]; then exit 0; fi
+            sleep 3
+          done
+          exit 1
+      - name: Exercise native bridge and two-process persistence
+        run: node qualification/run-native.cjs android android/app/build/outputs/apk/release/app-release.apk
+      - name: Stop isolated emulator
+        if: always()
+        run: adb emu kill || true
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        if: always()
+        with:
+          name: native-android-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/pali-native-android/
+          if-no-files-found: warn
+          retention-days: 14

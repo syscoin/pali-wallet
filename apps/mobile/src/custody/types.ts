@@ -21,10 +21,21 @@ export type CustodyErrorCode =
   | 'BUSY'
   | 'INVALID_INPUT'
   | 'INVALID_CREDENTIAL'
+  | 'AUTH_THROTTLED'
   | 'CANCELLED'
   | 'OPERATION_FAILED'
   | 'UNAVAILABLE'
   | 'CLEANUP_FAILED';
+
+/** Explicit host errors; untyped SDK errors must never supply UI classifications. */
+export class CustodyRuntimeError extends Error {
+  readonly code: 'INVALID_INPUT' | 'INVALID_CREDENTIAL' | 'OPERATION_FAILED' | 'CANCELLED' | 'AUTH_THROTTLED' | 'CLEANUP_FAILED';
+  constructor(code: CustodyRuntimeError['code']) {
+    super(code);
+    this.name = 'CustodyRuntimeError';
+    this.code = code;
+  }
+}
 
 export type CustodyStoredState =
   | Readonly<{ presence: 'empty'; backup: 'unconfirmed' }>

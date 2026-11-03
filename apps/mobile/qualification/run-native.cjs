@@ -1,0 +1,426 @@
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
+const { spawnSync } = require('child_process');
+const { Buffer } = require('node:buffer');
+
+if (process.env.CI !== 'true' || process.env.PALI_NATIVE_QUALIFICATION !== '1')
+  throw Error('Run only against isolated qualification devices');
+const platform = process.argv[2];
+const artifact = path.resolve(process.argv[3] || '');
+const output = path.resolve(
+  process.env.QUALIFICATION_ARTIFACTS ||
+    '/private/tmp/pali-native-qualification'
+);
+const PACKAGE = 'com.paliwallet.qualification';
+const PUBLIC_PHRASE =
+  'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
+const PUBLIC_PASSWORD = 'PUBLIC native qualification password 2026';
+if (!['ios', 'android'].includes(platform) || !fs.existsSync(artifact))
+  throw Error('Expected platform and built qualification artifact');
+fs.mkdirSync(output, { recursive: true });
+const run = (command, args, optional = false) => {
+  const result = spawnSync(command, args, {
+    encoding: 'utf8',
+    timeout: 180000,
+    maxBuffer: 8 * 1024 * 1024,
+  });
+  if (result.status !== 0 && !optional)
+    throw Error(`${command} failed: ${result.stderr?.slice(0, 2000)}`);
+  return result.status === 0 ? result.stdout.trim() : null;
+};
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const hash = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex');
+const validateReport = (text, phase, scenario) => {
+  if (
+    !text ||
+    text.length > 100000 ||
+    text.includes(PUBLIC_PHRASE) ||
+    text.includes(PUBLIC_PASSWORD)
+  )
+    throw Error('Invalid qualification report');
+  const report = JSON.parse(text);
+  const allowed = new Set([
+    'version',
+    'status',
+    'phase',
+    'scenario',
+    'platform',
+    'osVersion',
+    'sessionId',
+    'address',
+    'fingerprint',
+    'checks',
+    'networkCalls',
+    'nativeBridgeExercised',
+    'sdkVersion',
+    'pendingProcessTermination',
+    'failedStage',
+    'cryptoEvidence',
+  ]);
+  if (
+    Object.keys(report).some((key) => !allowed.has(key)) ||
+    report.phase !== phase ||
+    report.scenario !== scenario ||
+    report.platform !== platform ||
+    report.version !== 1
+  )
+    throw Error('Unexpected qualification report schema');
+  fs.writeFileSync(
+    path.join(output, `${platform}-${scenario}-${phase}.json`),
+    `${JSON.stringify(report, null, 2)}\n`
+  );
+  if (
+    report.status !== 'passed' ||
+    report.networkCalls !== 0 ||
+    report.nativeBridgeExercised !== true ||
+    !/^[0-9a-f]{64}$/.test(report.fingerprint || '') ||
+    report.cryptoEvidence?.passed !== true ||
+    report.cryptoEvidence?.productionIterations !== 900000
+  )
+    throw Error(
+      `Native qualification failed at ${report.failedStage || phase}`
+    );
+  return report;
+};
+const waitReport = async (read, phase, scenario) => {
+  const deadline = Date.now() + 300000;
+  while (Date.now() < deadline) {
+    const text = read();
+    if (text) return validateReport(text, phase, scenario);
+    await sleep(1000);
+  }
+  throw Error(`Native ${platform} ${scenario} ${phase} timed out`);
+};
+const databaseEvidence = (bytes) => {
+  if (
+    bytes.length < 4096 ||
+    bytes.subarray(0, 16).toString() === 'SQLite format 3\0' ||
+    bytes.includes(Buffer.from(PUBLIC_PHRASE)) ||
+    bytes.includes(Buffer.from(PUBLIC_PASSWORD))
+  )
+    throw Error(
+      'Native database is empty, plaintext SQLite or contains fixture credentials'
+    );
+  return {
+    bytes: bytes.length,
+    sha256: hash(bytes),
+    plaintextHeader: false,
+    fixtureCredentialsPresent: false,
+  };
+};
+
+async function ios() {
+  const info = path.join(artifact, 'Info.plist');
+  if (
+    run('plutil', [
+      '-extract',
+      'CFBundleIdentifier',
+      'raw',
+      '-o',
+      '-',
+      info,
+    ]) !== PACKAGE
+  )
+    throw Error('Refusing a production app identifier');
+  const executable = run('plutil', [
+    '-extract',
+    'CFBundleExecutable',
+    'raw',
+    '-o',
+    '-',
+    info,
+  ]);
+  const runtimes = JSON.parse(
+    run('xcrun', ['simctl', 'list', 'runtimes', '-j'])
+  ).runtimes;
+  const runtime = runtimes
+    .filter(
+      (item) =>
+        item.isAvailable &&
+        item.identifier === 'com.apple.CoreSimulator.SimRuntime.iOS-26-5'
+    )
+    .sort((a, b) =>
+      a.version.localeCompare(b.version, undefined, { numeric: true })
+    )
+    .at(-1);
+  const types = JSON.parse(
+    run('xcrun', ['simctl', 'list', 'devicetypes', '-j'])
+  ).devicetypes;
+  const type = types.find((item) => item.identifier.endsWith('.iPhone-17'));
+  if (!runtime || !type) throw Error('No installed iOS simulator runtime');
+  const reports = [];
+  for (const scenario of ['import', 'generate']) {
+    const device = run('xcrun', [
+      'simctl',
+      'create',
+      `PaliQualification-${scenario}-${Date.now()}`,
+      type.identifier,
+      runtime.identifier,
+    ]);
+    try {
+      run('xcrun', ['simctl', 'boot', device]);
+      run('xcrun', ['simctl', 'bootstatus', device, '-b']);
+      run('xcrun', ['simctl', 'install', device, artifact]);
+      const container = run('xcrun', [
+        'simctl',
+        'get_app_container',
+        device,
+        PACKAGE,
+        'data',
+      ]);
+      const read = (phase) => {
+        try {
+          return fs.readFileSync(
+            path.join(
+              container,
+              'Documents',
+              `pali-native-qualification-${phase}.json`
+            ),
+            'utf8'
+          );
+        } catch {
+          return null;
+        }
+      };
+      run('xcrun', [
+        'simctl',
+        'openurl',
+        device,
+        `pali-wallet-qualification://run?phase=create&scenario=${scenario}`,
+      ]);
+      const created = await waitReport(
+        () => read('create'),
+        'create',
+        scenario
+      );
+      run('xcrun', [
+        'simctl',
+        'io',
+        device,
+        'screenshot',
+        path.join(output, `ios-${scenario}-create.png`),
+      ]);
+      run('xcrun', ['simctl', 'terminate', device, PACKAGE]);
+      const database = databaseEvidence(
+        fs.readFileSync(
+          path.join(
+            container,
+            'Library',
+            'Application Support',
+            'PaliWallet',
+            'wallet.sqlite'
+          )
+        )
+      );
+      run('xcrun', [
+        'simctl',
+        'openurl',
+        device,
+        `pali-wallet-qualification://run?phase=restart&scenario=${scenario}&address=${created.address}`,
+      ]);
+      const restored = await waitReport(
+        () => read('restart'),
+        'restart',
+        scenario
+      );
+      if (
+        created.sessionId === restored.sessionId ||
+        created.address !== restored.address ||
+        created.fingerprint !== restored.fingerprint
+      )
+        throw Error('Cold restart identity or backup fingerprint mismatch');
+      run('xcrun', [
+        'simctl',
+        'io',
+        device,
+        'screenshot',
+        path.join(output, `ios-${scenario}-restart.png`),
+      ]);
+      reports.push({
+        scenario,
+        database,
+        processRestartVerified: true,
+        sessionChanged: true,
+      });
+    } finally {
+      run(
+        'xcrun',
+        [
+          'simctl',
+          'io',
+          device,
+          'screenshot',
+          path.join(output, `ios-${scenario}-final.png`),
+        ],
+        true
+      );
+      run('xcrun', ['simctl', 'shutdown', device], true);
+      run('xcrun', ['simctl', 'delete', device], true);
+    }
+  }
+  return {
+    platform,
+    appExecutableSha256: hash(fs.readFileSync(path.join(artifact, executable))),
+    runtime: runtime.identifier,
+    reports,
+  };
+}
+
+async function android() {
+  const sdk = process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT;
+  if (!sdk) throw Error('Android SDK missing');
+  const tools = fs
+    .readdirSync(path.join(sdk, 'build-tools'))
+    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+    .at(-1);
+  const badging = run(path.join(sdk, 'build-tools', tools, 'aapt'), [
+    'dump',
+    'badging',
+    artifact,
+  ]);
+  if (!badging.startsWith(`package: name='${PACKAGE}'`))
+    throw Error('Refusing a production app identifier');
+  const nativeLibraries = run(path.join(sdk, 'build-tools', tools, 'aapt'), [
+    'list',
+    artifact,
+  ])
+    .split('\n')
+    .filter((file) => /^lib\/.*\.so$/.test(file));
+  for (const abi of ['arm64-v8a', 'x86_64']) {
+    for (const library of [
+      'libQuickCrypto.so',
+      'libNitroModules.so',
+      'libexpo-sqlite.so',
+    ]) {
+      if (!nativeLibraries.includes(`lib/${abi}/${library}`))
+        throw Error('Required JNI library missing from qualification APK');
+    }
+  }
+  run('adb', ['root']);
+  run('adb', ['wait-for-device']);
+  const reports = [];
+  for (const scenario of ['import', 'generate']) {
+    run('adb', ['uninstall', PACKAGE], true); // Dedicated test package only.
+    try {
+      run('adb', ['install', artifact]);
+      const read = (phase) =>
+        run(
+          'adb',
+          [
+            'shell',
+            'cat',
+            `/data/user/0/${PACKAGE}/files/pali-native-qualification-${phase}.json`,
+          ],
+          true
+        );
+      // adb shell constructs a remote command; preserve '&' inside the URI.
+      const launch = (link) =>
+        run('adb', [
+          'shell',
+          'am',
+          'start',
+          '-W',
+          '-a',
+          'android.intent.action.VIEW',
+          '-d',
+          `'${link}'`,
+          '-n',
+          `${PACKAGE}/.MainActivity`,
+        ]);
+      launch(
+        `pali-wallet-qualification://run?phase=create&scenario=${scenario}`
+      );
+      const created = await waitReport(
+        () => read('create'),
+        'create',
+        scenario
+      );
+      const oldPid = run('adb', ['shell', 'pidof', '-s', PACKAGE]);
+      run('adb', ['shell', 'am', 'force-stop', PACKAGE]);
+      if (run('adb', ['shell', 'pidof', '-s', PACKAGE], true))
+        throw Error('App process did not stop');
+      const captured = spawnSync(
+        'adb',
+        [
+          'exec-out',
+          'cat',
+          `/data/user/0/${PACKAGE}/no_backup/PaliWallet/wallet.sqlite`,
+        ],
+        { maxBuffer: 64 * 1024 * 1024 }
+      );
+      if (captured.status !== 0)
+        throw Error('Could not inspect encrypted test database');
+      const database = databaseEvidence(captured.stdout);
+      launch(
+        `pali-wallet-qualification://run?phase=restart&scenario=${scenario}&address=${created.address}`
+      );
+      const restored = await waitReport(
+        () => read('restart'),
+        'restart',
+        scenario
+      );
+      const newPid = run('adb', ['shell', 'pidof', '-s', PACKAGE]);
+      if (
+        oldPid === newPid ||
+        created.sessionId === restored.sessionId ||
+        created.address !== restored.address ||
+        created.fingerprint !== restored.fingerprint
+      )
+        throw Error('Cold restart identity or backup fingerprint mismatch');
+      const screenshot = spawnSync('adb', ['exec-out', 'screencap', '-p']);
+      if (screenshot.status === 0)
+        fs.writeFileSync(
+          path.join(output, `android-${scenario}-restart.png`),
+          screenshot.stdout
+        );
+      reports.push({
+        scenario,
+        database,
+        processRestartVerified: true,
+        sessionChanged: true,
+      });
+    } finally {
+      const screenshot = spawnSync('adb', ['exec-out', 'screencap', '-p']);
+      if (screenshot.status === 0)
+        fs.writeFileSync(
+          path.join(output, `android-${scenario}-final.png`),
+          screenshot.stdout
+        );
+      run('adb', ['shell', 'am', 'force-stop', PACKAGE], true);
+      run('adb', ['uninstall', PACKAGE], true);
+    }
+  }
+  return {
+    platform,
+    apkSha256: hash(fs.readFileSync(artifact)),
+    nativeLibraries,
+    osVersion: run('adb', ['shell', 'getprop', 'ro.build.version.release']),
+    reports,
+  };
+}
+
+(async () => {
+  const report = await (platform === 'ios' ? ios() : android());
+  fs.writeFileSync(
+    path.join(output, `${platform}-qualification.json`),
+    `${JSON.stringify(
+      {
+        status: 'passed',
+        sourceRevision: process.env.GITHUB_SHA || null,
+        runnerImage: process.env.ImageVersion || null,
+        ...report,
+      },
+      null,
+      2
+    )}\n`
+  );
+  console.log(
+    `${platform}: native import/create and two-process restart qualification passed`
+  );
+})().catch(() => {
+  console.error(
+    'Native qualification failed; inspect stage reports and build output.'
+  );
+  process.exitCode = 1;
+});

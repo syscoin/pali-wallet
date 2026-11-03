@@ -34,6 +34,7 @@ import {
   styles,
 } from './src/ui';
 import { Welcome, AddWatchAccount } from './src/screens/Onboarding';
+import { NativeWalletScreen } from './src/screens/NativeWallet';
 import { DesignStudio } from './src/design/Studio';
 import { SettingsScreen, InformationScreen } from './src/screens/Settings';
 import {
@@ -166,6 +167,7 @@ const blankSnapshot: PublicSnapshot = {
 };
 type Route =
   | 'welcome'
+  | 'native'
   | 'design'
   | 'add'
   | 'home'
@@ -212,7 +214,7 @@ function AppContent() {
   const [snapshot, setSnapshot] = useState(blankSnapshot);
   const route: Route =
     !preview &&
-    !['welcome', 'add', 'locked', 'design'].includes(requestedRoute) &&
+    !['welcome', 'add', 'locked', 'design', 'native'].includes(requestedRoute) &&
     snapshot.status !== 'ready'
       ? snapshot.accounts.length
         ? 'locked'
@@ -287,14 +289,14 @@ function AppContent() {
         setSheet(null);
         setAmount('');
         setRecipient('');
-        if (!preview && authority.current?.getSnapshot().accounts.length)
+        if (requestedRoute !== 'native' && !preview && authority.current?.getSnapshot().accounts.length)
           go('locked');
       }
     });
     return () => sub.remove();
-  }, [preview, setSheet]);
+  }, [preview, requestedRoute, setSheet]);
   useEffect(() => {
-    if (route === 'design' || Platform.OS === 'web') return;
+    if (route === 'design' || route === 'native' || Platform.OS === 'web') return;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
       if (sheet) {
         setSheet(null);
@@ -452,6 +454,7 @@ function AppContent() {
   const navigateInfo = (s: string) => go(s as Route);
   const back = () => go('home');
   if (route === 'design') return <DesignStudio onExit={exit} />;
+  if (route === 'native') return <NativeWalletScreen onExit={exit} />;
   let content: React.ReactNode;
   if (loading)
     content = (
@@ -498,6 +501,9 @@ function AppContent() {
         onPreview={startPreview}
         onWatch={() => go('add')}
         onDesign={openDesign}
+        onWallet={Platform.OS !== 'web' && process.env.EXPO_PUBLIC_PALI_NATIVE_CUSTODY === '1' ? () => {
+          authority.current?.lock(); setSheet(null); setPreview(false); go('native');
+        } : undefined}
       />
     );
   else if (route === 'add')

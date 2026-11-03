@@ -1,0 +1,7 @@
+{
+  "name": "pali-wallet-crypto",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Narrow native cryptography boundary for Pali Wallet",
+  "license": "MIT"
+}

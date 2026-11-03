@@ -1,0 +1,7 @@
+{
+  "name": "pali-wallet-storage",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Private native wallet directory policy for Pali",
+  "license": "MIT"
+}

@@ -17,6 +17,7 @@ type WelcomeProps = {
   onPreview: () => void;
   onDesign?: () => void;
   onWatch: () => void;
+  onWallet?: () => void;
 };
 
 type AddWatchAccountProps = {
@@ -28,7 +29,7 @@ function BrandMark({ small = false }: { small?: boolean }) {
   return <PaliMark size={small ? 32 : 112} />;
 }
 
-export function Welcome({ onPreview, onWatch, onDesign }: WelcomeProps) {
+export function Welcome({ onPreview, onWatch, onDesign, onWallet }: WelcomeProps) {
   return (
     <ScrollView
       style={styles.screen}
@@ -64,8 +65,7 @@ export function Welcome({ onPreview, onWatch, onDesign }: WelcomeProps) {
           <Text style={styles.titleAccent}>A clearer view.</Text>
         </Text>
         <Text style={styles.welcomeDescription}>
-          Follow your balances with a public address. Your recovery phrase and
-          private keys stay with you.
+          {onWallet ? 'Create a wallet that stays with you, or follow a public address.' : 'Follow your balances with a public address. Your recovery phrase and private keys stay with you.'}
         </Text>
       </View>
 
@@ -74,11 +74,16 @@ export function Welcome({ onPreview, onWatch, onDesign }: WelcomeProps) {
           <Icon name="shield" size={18} color={colors.green} />
         </View>
         <Text style={styles.trustText}>
-          Watch-only. No access to spend your funds.
+          {onWallet ? 'Your wallet. Your recovery phrase. Your control.' : 'Watch-only. No access to spend your funds.'}
         </Text>
       </View>
 
       <View style={styles.welcomeActions}>
+        {onWallet && <Pressable accessibilityRole="button" onPress={onWallet}
+          style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}>
+          <Text style={styles.primaryButtonText}>Set up your wallet</Text>
+          <Icon name="arrow-right" size={21} color={colors.bg} />
+        </Pressable>}
         {onDesign && (
           <Pressable
             accessibilityRole="button"

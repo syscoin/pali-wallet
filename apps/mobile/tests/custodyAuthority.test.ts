@@ -10,6 +10,7 @@ import type {
   CustodySnapshot,
   CustodyStoredState,
 } from '../src/custody/types.ts';
+import { CustodyRuntimeError } from '../src/custody/types.ts';
 
 const ADDRESS = '0x52908400098527886E0F7030069857D2E4169EE7';
 const PASSWORD = 'test-only password';
@@ -146,6 +147,21 @@ test('credential rejection is explicit; thrown or malformed results are operatio
     assert.equal(f.authority.getSnapshot().error, code);
     assert.equal(f.authority.getSnapshot().account, null);
     assert.equal(f.unlocked, false);
+  }
+});
+
+test('only typed runtime throttling and input errors reach the public classification', async () => {
+  for (const typed of [true, false]) {
+    const f = fixture(true);
+    await f.authority.initialize();
+    f.runtime.session.unlock = async () => {
+      if (typed) throw new CustodyRuntimeError('AUTH_THROTTLED');
+      throw new Error('AUTH_THROTTLED');
+    };
+    await rejectsCode(f.authority.unlock(PASSWORD), typed ? 'AUTH_THROTTLED' : 'OPERATION_FAILED');
+    assert.equal(f.authority.getSnapshot().phase, 'locked');
+    assert.equal(f.authority.getSnapshot().account, null);
+    await f.authority.dispose();
   }
 });
 

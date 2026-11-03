@@ -1,6 +1,6 @@
 # Pali Mobile
 
-A React Native / Expo SDK 58 mobile foundation in the extension repository. It provides a native watch-only account experience and a separate interactive design preview. **This is not a shipping self-custody wallet, and it cannot create a wallet, import a recovery phrase, sign, or send funds.**
+A React Native / Expo SDK 58 mobile foundation in the extension repository. It provides a watch-only account experience, a separate interactive design preview, and an opt-in native custody development flow. **This is not a shipping self-custody wallet. Signing and sending are not implemented.**
 
 The implementation starts from extension source `4470e54e8777cca2a4fe7c712409f60eeb4fa401`. The handoff's reference checkout at `88cc9c9a8959b5dccc7ff43f136d60203782918a` adds documentation changes. The supplied screen deck and video are product references, not evidence of native security or working transaction support.
 
@@ -25,13 +25,18 @@ npm run ios       # macOS, full Xcode and iOS build dependencies required
 npm run android   # Android SDK, Java and an emulator/device required
 ```
 
+The native custody development entry is hidden by default. Set `EXPO_PUBLIC_PALI_NATIVE_CUSTODY=1` when building to expose create/import, password unlock and verified seed backup. Use only test wallets until native binary and physical-device qualification is complete. The web build never accepts recovery phrases or loads the native keyring.
+
 The commands disable Expo CLI telemetry. Over-the-air updates are disabled in app configuration. These settings do not replace review of release builds or third-party dependency behavior.
 
 ## Current behavior
 
 - Native mode can add a public EVM address and observe supported network balances. It is explicitly watch-only; it holds no signing key. Public account configuration uses the platform protected-storage adapter, not browser storage. A storage/read failure must not be treated as a new empty account.
 - The interactive preview demonstrates portfolio, asset/activity, send review, receive and settings layouts with sample data. It has no transaction authority. Preview information must remain separate from saved public accounts.
-- Recovery phrases and PINs are not accepted. Device-wallet creation, seed import, signing, WalletConnect, hardware wallets, smart accounts and private-note operations are unavailable.
+- The opt-in native custody flow uses the published shared software keyring, an encrypted transactional SQLCipher store, and native cryptographic primitives. It supports a new 12-word wallet or an existing 12/24-word phrase, password unlock, and a wallet-bound seed-backup check. It exposes only the first Ethereum address. It is not an extension data migration path.
+- Native custody begins only after crypto known-answer checks and private storage initialization. Missing keys, corrupt data and ambiguous writes fail closed; reopening never silently resets a wallet.
+- Signing, broadcasting, biometrics, WalletConnect, hardware wallets, smart accounts and private-note operations remain unavailable. The private-note backup codec is separate from this seed-backup flow.
+- Watch-only remains an account type in the intended combined account selector, and an independent onboarding option. Optional native transaction alerts still need delivery, enrollment and privacy controls; balance polling alone is not a notification service.
 - RPC services can observe queried addresses and network metadata. A public address is not a secret, but the association between addresses, devices and users can be private. See [SECURITY.md](SECURITY.md).
 
 ## Shared code and boundaries
@@ -55,7 +60,7 @@ npm run test:ui
 
 These checks cover the code that can run locally. A successful web export is not an iOS/Android build or a security qualification. Record native device tests and exact build revisions separately.
 
-The dedicated mobile CI workflow uses this package's lockfile and runs these checks plus Android/iOS JavaScript exports. It does not compile, sign or publish a native application.
+The existing mobile workflow runs host tests, browser tests and JavaScript exports. `mobile-native-qualification.yml` separately builds isolated iOS simulator and Android emulator applications, exercises the real bridge and production KDF, then kills and reopens each process to check durable wallet identity. Its public test fixtures are reachable only through a CI-specific entry point and application identifier. Neither workflow publishes an application; a passing simulator/emulator run does not establish physical-device or store-release readiness.
 
 Product quality includes safe-area layout, keyboard avoidance, accessible touch targets and labels, text scaling, reduced motion, predictable back navigation, and honest loading/error states. Sample balances, mock receipts and preview acknowledgments must never appear as live account facts.
 

@@ -1,0 +1,12 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'org.syscoin.pali.storage'
+version = '1.0.0'
+
+android {
+  namespace 'org.syscoin.pali.storage'
+  defaultConfig { versionCode 1; versionName '1.0.0' }
+}
