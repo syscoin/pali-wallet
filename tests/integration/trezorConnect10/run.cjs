@@ -244,6 +244,11 @@ async function run() {
     });
     proxy.on('connection', (socket) => {
       proxySockets.add(socket);
+      // Chromium can reset a denied socket before reading the 403 response.
+      // Observe every proxy socket, including those that never form a tunnel.
+      socket.on('error', (error) => {
+        if (!['ECONNRESET', 'EPIPE'].includes(error.code)) fixtureError = error;
+      });
       socket.on('close', () => proxySockets.delete(socket));
     });
     proxy.on('connect', (request, socket, head) => {
