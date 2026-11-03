@@ -437,3 +437,108 @@ test('invalid account output and close failures expose only safe error codes', a
   assert.equal(f.authority.getSnapshot().phase, 'disposed');
   assert.equal(JSON.stringify(f.authority.getSnapshot()).includes(PHRASE), false);
 });
+
+test('a known existing wallet cannot become onboarding after a successful unlock loses its store', async () => {
+  const f = fixture(true);
+  f.setStored({ presence: 'existing', backup: 'confirmed' });
+  await f.authority.initialize();
+  f.runtime.session.unlock = async () => {
+    f.setStored({ presence: 'empty', backup: 'unconfirmed' });
+    f.unlocked = true;
+    return { authenticated: true };
+  };
+  await rejectsCode(f.authority.unlock(PASSWORD), 'UNAVAILABLE');
+  assert.equal(f.authority.getSnapshot().phase, 'unavailable');
+  assert.equal(f.authority.getSnapshot().presence, 'existing');
+  await rejectsCode(f.authority.create(PASSWORD), 'NOT_READY');
+  assert.equal(f.events.includes('create'), false);
+  assert.equal(f.unlocked, false);
+});
+
+test('successful creation without durable records quarantines instead of permitting another creation', async () => {
+  const f = fixture();
+  await f.authority.initialize();
+  f.runtime.session.createWallet = async () => { f.unlocked = true; };
+  await rejectsCode(f.authority.create(PASSWORD), 'UNAVAILABLE');
+  assert.equal(f.authority.getSnapshot().phase, 'unavailable');
+  await rejectsCode(f.authority.create(PASSWORD), 'NOT_READY');
+  assert.equal(f.unlocked, false);
+});
+
+test('synchronous disposal inside open waits for and closes the late runtime', async () => {
+  const f = fixture(true);
+  const release = deferred<CustodyRuntime>();
+  let disposal: Promise<void> | undefined;
+  let finished = false;
+  const authority = new NativeCustodyAuthority({
+    open() {
+      disposal = authority.dispose();
+      void disposal.then(() => { finished = true; });
+      return release.promise;
+    },
+  });
+  const opening = authority.initialize();
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  const finishedBeforeRuntime = finished;
+  release.resolve(f.runtime);
+  await opening;
+  await disposal;
+  assert.equal(finishedBeforeRuntime, false);
+  assert.equal(f.events.filter((event) => event === 'close').length, 1);
+  assert.equal(f.unlocked, false);
+  assert.equal(authority.getSnapshot().phase, 'disposed');
+});
+
+test('a stale successful create/import still requires durable records before allowing onboarding', async () => {
+  for (const operation of ['create', 'import'] as const) {
+    const f = fixture();
+    await f.authority.initialize();
+    const entered = deferred<void>();
+    const release = deferred<void>();
+    const succeedWithoutCommit = async () => {
+      entered.resolve(); await release.promise; f.unlocked = true;
+    };
+    f.runtime.session.createWallet = succeedWithoutCommit;
+    f.runtime.session.importWallet = succeedWithoutCommit;
+    const pending = operation === 'create'
+      ? f.authority.create(PASSWORD)
+      : f.authority.importPhrase(PHRASE, PASSWORD);
+    await entered.promise;
+    f.authority.lock();
+    release.resolve();
+    await rejectsCode(pending, 'CANCELLED');
+    assert.equal(f.authority.getSnapshot().phase, 'unavailable');
+    await rejectsCode(f.authority.create(PASSWORD), 'NOT_READY');
+    assert.equal(f.unlocked, false);
+  }
+});
+
+test('a failed create with a verified empty store may be retried', async () => {
+  const f = fixture();
+  await f.authority.initialize();
+  const original = f.runtime.session.createWallet;
+  f.runtime.session.createWallet = async () => { throw new Error('before commit'); };
+  await rejectsCode(f.authority.create(PASSWORD), 'OPERATION_FAILED');
+  assert.equal(f.authority.getSnapshot().phase, 'empty');
+  f.runtime.session.createWallet = original;
+  await f.authority.create(PASSWORD);
+  assert.equal(f.authority.getSnapshot().phase, 'backup-required');
+});
+
+test('a read that completes after disposal cannot change the terminal snapshot', async () => {
+  const f = fixture(true);
+  const entered = deferred<void>();
+  const state = deferred<CustodyStoredState>();
+  f.runtime.storage.readState = async () => {
+    entered.resolve(); return state.promise;
+  };
+  const opening = f.authority.initialize();
+  await entered.promise;
+  const disposal = f.authority.dispose();
+  const terminal = f.authority.getSnapshot();
+  state.resolve({ presence: 'existing', backup: 'confirmed' });
+  await opening;
+  await disposal;
+  assert.equal(f.authority.getSnapshot(), terminal);
+  assert.equal(f.events.at(-1), 'close');
+});

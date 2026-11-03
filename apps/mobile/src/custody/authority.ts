@@ -109,22 +109,27 @@ export class NativeCustodyAuthority {
     if (this.lockFailed) throw new CustodyOperationError('CLEANUP_FAILED');
   }
 
-  private async readState(): Promise<void> {
+  private async readState(requireExisting = false): Promise<void> {
     try {
       const raw: CustodyStoredState | undefined = await this.runtime?.storage.readState();
       if (
         !raw ||
         (raw.presence !== 'empty' && raw.presence !== 'existing') ||
         (raw.backup !== 'unconfirmed' && raw.backup !== 'confirmed') ||
-        (raw.presence === 'empty' && raw.backup !== 'unconfirmed')
+        (raw.presence === 'empty' &&
+          (raw.backup !== 'unconfirmed' || requireExisting ||
+            this.snapshot.presence === 'existing'))
       ) {
         throw new CustodyOperationError('UNAVAILABLE');
       }
-      this.snapshot = Object.freeze({
-        ...this.snapshot,
-        presence: raw.presence,
-        backup: raw.backup,
-      });
+      // An async read that finishes after disposal cannot mutate terminal state.
+      if (this.snapshot.phase !== 'disposed') {
+        this.snapshot = Object.freeze({
+          ...this.snapshot,
+          presence: raw.presence,
+          backup: raw.backup,
+        });
+      }
     } catch {
       this.failUnavailable();
       throw new CustodyOperationError('UNAVAILABLE');
@@ -135,7 +140,15 @@ export class NativeCustodyAuthority {
     if (this.snapshot.phase === 'disposed')
       return Promise.reject(new CustodyOperationError('CANCELLED'));
     if (this.initialization) return this.initialization;
-    this.initialization = (async () => {
+    // Publish admission before invoking an injected factory. It can synchronously
+    // dispose us, and disposal must wait for the runtime it is about to return.
+    let resolveInitialization!: () => void;
+    let rejectInitialization!: (error: CustodyOperationError) => void;
+    this.initialization = new Promise<void>((resolve, reject) => {
+      resolveInitialization = resolve;
+      rejectInitialization = reject;
+    });
+    void (async () => {
       try {
         this.runtime = await this.factory.open();
         this.requestLock();
@@ -151,7 +164,9 @@ export class NativeCustodyAuthority {
         this.failUnavailable();
         throw new CustodyOperationError('UNAVAILABLE');
       }
-    })();
+    })().then(resolveInitialization, () =>
+      rejectInitialization(new CustodyOperationError('UNAVAILABLE'))
+    );
     return this.initialization;
   }
 
@@ -205,6 +220,7 @@ export class NativeCustodyAuthority {
     const runtime = this.runtime;
     const revision = this.revision;
     let attempted = false;
+    let operationSucceeded = false;
     let credentialRejected = false;
     const assertCurrent = () => {
       if (revision !== this.revision || this.snapshot.phase === 'disposed')
@@ -221,8 +237,13 @@ export class NativeCustodyAuthority {
         await this.drainLocks();
         assertCurrent();
         attempted = true;
-        if (operation === 'create') await runtime.session.createWallet(password);
-        else if (operation === 'import') await runtime.session.importWallet(phrase!, password);
+        if (operation === 'create') {
+          await runtime.session.createWallet(password);
+          operationSucceeded = true;
+        } else if (operation === 'import') {
+          await runtime.session.importWallet(phrase!, password);
+          operationSucceeded = true;
+        }
         else {
           const result = await runtime.session.unlock(password);
           assertCurrent();
@@ -234,10 +255,8 @@ export class NativeCustodyAuthority {
           }
         }
         assertCurrent();
-        await this.readState();
+        await this.readState(true);
         assertCurrent();
-        if (this.snapshot.presence !== 'existing')
-          throw new CustodyOperationError('OPERATION_FAILED');
         if (operation !== 'unlock' && this.snapshot.backup !== 'unconfirmed') {
           this.failUnavailable();
           throw new CustodyOperationError('UNAVAILABLE');
@@ -258,7 +277,7 @@ export class NativeCustodyAuthority {
         this.requestLock();
         try { await this.drainLocks(); } catch { /* quarantined by requestLock */ }
         if (attempted && operation !== 'unlock' && this.snapshot.phase !== 'disposed') {
-          try { await this.readState(); } catch { this.failUnavailable(); }
+          try { await this.readState(operationSucceeded); } catch { this.failUnavailable(); }
         }
         if (this.snapshot.phase === 'disposed' || revision !== this.revision) {
           if (this.snapshot.phase !== 'disposed' && this.snapshot.phase !== 'unavailable') {
