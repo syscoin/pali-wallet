@@ -130,7 +130,7 @@ for (const diagnosticsAvailable of [true, false]) test(`Android cleanup preserve
       if (args.some((value) => value.endsWith('pali-native-qualification-startup.json'))) return { status: 1, stderr: 'not present' };
       if (args.some((value) => value.endsWith('pali-native-qualification-load-error.json'))) return { status: 1, stderr: 'not present' };
       if (args[0] === 'exec-out') return { status: null, stdout: Buffer.from('PRIVATE_DATABASE_BYTES'), error: Object.assign(Error('database read timeout'), { code: 'ETIMEDOUT' }) };
-      return ok(JSON.stringify({ version: 1, status: 'passed', phase: 'create', scenario: 'import', platform: 'android', networkCalls: 0, nativeBridgeExercised: true, fingerprint: 'a'.repeat(64), cryptoEvidence: { passed: true, productionIterations: 900000 }, mnemonicEntropyVerified: false }));
+      return ok(JSON.stringify({ version: 1, status: 'passed', phase: 'create', scenario: 'import', platform: 'android', networkCalls: 0, nativeBridgeExercised: true, fingerprint: 'a'.repeat(64), cryptoEvidence: { passed: true, productionIterations: 900000 }, mnemonicEntropyVerified: false, storageDiagnostic: { stage: 'ready' } }));
     }
     if (args.includes('pidof')) return ok(++pidReads === 1 ? '1234' : '');
     if (args.includes('logcat')) return diagnosticsAvailable ? ok('F/libc: SIGABRT libhermes.so synthetic_secret_token_42 PUBLIC native qualification password 2026') : { status: 1, stderr: 'synthetic_secret_token_42' };
@@ -218,20 +218,58 @@ test('the real iOS runner launches the isolated app directly with its public arg
 function reportWaitFixture() {
   const { runInNewContext } = require('node:vm');
   const { isCryptoDiagnostic } = require('../src/crypto/diagnostics.ts');
+  const { isStorageQualificationDiagnostic } = require('./storage-diagnostics.ts');
   const source = readFileSync(require.resolve('./run-native.cjs'), 'utf8');
   const start = source.indexOf('const validateReport =');
   const end = source.indexOf('const databaseEvidence =', start);
   let now = 0;
-  const wait = runInNewContext(source.slice(start, end) + '\nwaitReport;', {
-    isCryptoDiagnostic, PUBLIC_PHRASE: 'public fixture', PUBLIC_PASSWORD: 'public password', platform: 'android',
-    fs: { writeFileSync() {} }, path: { join: () => 'unused' }, output: 'unused',
+  const saved = [];
+  const { waitReport: wait, validateReport: validate } = runInNewContext(source.slice(start, end) + '\n({ waitReport, validateReport });', {
+    isCryptoDiagnostic, isStorageQualificationDiagnostic, PUBLIC_PHRASE: 'public fixture', PUBLIC_PASSWORD: 'public password', platform: 'android',
+    fs: { writeFileSync(_file, text) { saved.push(JSON.parse(text)); } }, path: { join: () => 'unused' }, output: 'unused',
     Date: { now: () => now }, sleep: async (milliseconds) => { now += milliseconds; },
   });
   const report = JSON.stringify({ version: 1, status: 'passed', phase: 'create', scenario: 'import', platform: 'android',
     networkCalls: 0, nativeBridgeExercised: true, mnemonicEntropyVerified: false,
-    fingerprint: 'a'.repeat(64), cryptoEvidence: { passed: true, productionIterations: 900000 } });
-  return { wait, report, now: () => now };
+    fingerprint: 'a'.repeat(64), cryptoEvidence: { passed: true, productionIterations: 900000 }, storageDiagnostic: { stage: 'ready' } });
+  return { wait, validate, saved, report, now: () => now };
 }
+
+test('the actual report parser preserves producer storage evidence and rejects unknown or inconsistent payloads before writing', () => {
+  const { createStorageQualificationDiagnostic } = require('./storage-diagnostics.ts');
+  const { WalletStorageError } = require('../src/storage/types.ts');
+  const fixture = reportWaitFixture();
+  const ready = createStorageQualificationDiagnostic();
+  ready.observe('ready');
+  const passed = { ...JSON.parse(fixture.report), storageDiagnostic: ready.report(), sdkVersion: '1.0.628',
+    osVersion: '26.5', sessionId: 'public-session', address: '0x9858EfFD232B4033E47d90003D41EC34EcaEda94', checks: [] };
+  assert.equal(fixture.validate(JSON.stringify(passed), 'create', 'import').status, 'passed');
+  const failed = createStorageQualificationDiagnostic();
+  failed.observe('sqlcipher-journal-readback');
+  failed.capture(new WalletStorageError('STORAGE_UNAVAILABLE'));
+  const failure = { ...passed, status: 'failed', failedStage: 'open SQLCipher and device key', storageDiagnostic: failed.report() };
+  assert.throws(() => fixture.validate(JSON.stringify(failure), 'create', 'import'), /sqlcipher-journal-readback/);
+  assert.deepEqual(fixture.saved.at(-1).storageDiagnostic, failed.report());
+  const beforeOpen = { ...failure, failedStage: 'native crypto bridge and full vectors', storageDiagnostic: {} };
+  assert.throws(() => fixture.validate(JSON.stringify(beforeOpen), 'create', 'import'), /Native qualification failed/);
+  const afterOpen = { ...failure, failedStage: 'load software SDK', storageDiagnostic: ready.report() };
+  assert.throws(() => fixture.validate(JSON.stringify(afterOpen), 'create', 'import'), /Native qualification failed/);
+  for (const candidate of [
+    { ...passed, storageDiagnostic: undefined },
+    { ...passed, storageDiagnostic: { stage: 'key-read' } },
+    { ...passed, storageDiagnostic: { stage: 'ready', code: 'STORAGE_UNAVAILABLE' } },
+    { ...failure, storageDiagnostic: { stage: 'SECRET path', code: 'STORAGE_UNAVAILABLE' } },
+    { ...failure, storageDiagnostic: { stage: 'key-read', code: 'SECRET code' } },
+    { ...failure, storageDiagnostic: { stage: 'key-read', message: 'SECRET error' } },
+    { ...failure, storageDiagnostic: { stage: 'ready' } },
+    { ...failure, storageDiagnostic: {} },
+    { ...afterOpen, storageDiagnostic: failed.report() },
+  ]) {
+    const count = fixture.saved.length;
+    assert.throws(() => fixture.validate(JSON.stringify(candidate), 'create', 'import'), /Unexpected qualification report schema/);
+    assert.equal(fixture.saved.length, count);
+  }
+});
 
 test('Android liveness maps only pidof exit one to absence and preserves transport or command failure', () => {
   const { runInNewContext } = require('node:vm');

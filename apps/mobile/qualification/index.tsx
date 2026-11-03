@@ -6,6 +6,7 @@ import { Linking, Platform, Text, View } from 'react-native';
 import { assertQualificationBuild, parseQualificationLaunch } from './launch-parameters.ts';
 import { captureQualificationCryptoLoad, captureQualificationModuleLoad } from './capture-crypto-load.ts';
 import { qualifyNativeHandleContract } from './native-handle-contract.ts';
+import { createStorageQualificationDiagnostic } from './storage-diagnostics.ts';
 import { ensureNativeProcessCompatibility } from '../src/platform/processCompatibility.ts';
 
 import type { NativeCustodyAuthority } from '../src/custody/authority.ts';
@@ -76,6 +77,7 @@ function QualificationApp() {
       let cryptoEvidence: FullCryptoQualification | undefined;
       let fullCryptoCase: CryptoFullCase | undefined;
       let qualificationLoadDiagnostic: CryptoLoadDiagnostic | undefined;
+      const storageDiagnostic = createStorageQualificationDiagnostic();
       const mnemonicEntropy: Uint8Array[] = [];
       let observingGeneration = false;
       let mnemonicEntropyVerified = false;
@@ -188,14 +190,19 @@ function QualificationApp() {
             await ensureNativeCryptoReady();
           },
           openStorage: async () => {
-            storage = await check('open SQLCipher and device key', () => openNativeWalletStorage({
-              randomBytes: (length) =>
-                nativeCrypto.getRandomValues(new Uint8Array(length)),
-              digest: async (bytes) =>
-                new Uint8Array(
-                  await nativeCrypto.subtle.digest('SHA-256', bytes)
-                ),
-            }));
+            try {
+              storage = await check('open SQLCipher and device key', () => openNativeWalletStorage({
+                randomBytes: (length) =>
+                  nativeCrypto.getRandomValues(new Uint8Array(length)),
+                digest: async (bytes) =>
+                  new Uint8Array(
+                    await nativeCrypto.subtle.digest('SHA-256', bytes)
+                  ),
+              }, storageDiagnostic.observe));
+            } catch (error) {
+              storageDiagnostic.capture(error);
+              throw error;
+            }
             return storage;
           },
           loadSdk: async () => {
@@ -339,6 +346,7 @@ function QualificationApp() {
           mnemonicEntropyVerified,
           nativeBridgeExercised: true,
           sdkVersion: '1.0.628',
+          storageDiagnostic: storageDiagnostic.report(),
           pendingProcessTermination: parameters.phase === 'create',
         };
         await writeReport(parameters.phase, report);
@@ -360,6 +368,7 @@ function QualificationApp() {
           checks,
           networkCalls,
           failedStage: stage,
+          storageDiagnostic: storageDiagnostic.report(),
           cryptoDiagnostic: { bootstrap: qualificationLoadDiagnostic ? 'quick-crypto-load' : nativeCryptoCheckpoint(), ...(fullCryptoCase ? { fullCase: fullCryptoCase } : {}), ...(nativeCryptoInstallDiagnostic() ? { install: nativeCryptoInstallDiagnostic() } : {}), ...((qualificationLoadDiagnostic ?? nativeCryptoLoadDiagnostic()) ? { load: qualificationLoadDiagnostic ?? nativeCryptoLoadDiagnostic() } : {}) },
         };
         await writeReport(parameters?.phase ?? 'startup', report).catch(() => undefined);

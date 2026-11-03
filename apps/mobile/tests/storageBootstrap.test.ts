@@ -8,6 +8,7 @@ import path from 'node:path';
 import { openWalletStorage } from '../src/storage/coordinator.ts';
 import type { NativeStoragePorts } from '../src/storage/coordinator.ts';
 import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
+import { createStorageQualificationDiagnostic } from '../qualification/storage-diagnostics.ts';
 import {
   digest,
   INSTALLATION,
@@ -109,6 +110,52 @@ test('new storage provisions once, verifies device key metadata, and reopens wit
       presence: 'existing',
       backup: 'unconfirmed',
     });
+    assert.equal(f.record, record);
+    await second.close();
+    assert.equal(f.held, false);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('storage failure retains its opening checkpoint and closes its lease before reporting', async () => {
+  const f = await setup();
+  const diagnostic = createStorageQualificationDiagnostic();
+  f.ports.observeOpen = diagnostic.observe;
+  let reads = 0;
+  f.ports.keyStore.get = async () => {
+    reads++;
+    throw Error('SECRET keychain payload');
+  };
+  try {
+    await assert.rejects(openWalletStorage(f.ports), (error) => {
+      diagnostic.capture(error);
+      return error instanceof Error && error.message === 'STORAGE_UNAVAILABLE';
+    });
+    assert.equal(reads, 1);
+    assert.equal(f.opened, 0);
+    assert.equal(f.held, false);
+    assert.deepEqual(diagnostic.report(), {
+      stage: 'key-read',
+      code: 'STORAGE_UNAVAILABLE',
+    });
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('throwing opening observers preserve successful provisioning and reopening', async () => {
+  const f = await setup();
+  f.ports.observeOpen = () => { throw Error('observer failed'); };
+  try {
+    const first = await openWalletStorage(f.ports);
+    assert.deepEqual(await first.readState(), {
+      presence: 'empty',
+      backup: 'unconfirmed',
+    });
+    const record = f.record;
+    await first.close();
+    const second = await openWalletStorage(f.ports);
     assert.equal(f.record, record);
     await second.close();
     assert.equal(f.held, false);

@@ -1,5 +1,7 @@
 import { SqliteWalletStorage } from './sqlite.ts';
 import { WalletStorageError } from './types.ts';
+import { observeStorageOpen } from './openStages.ts';
+import type { StorageOpenObserver } from './openStages.ts';
 import type {
   OpenWalletStorage,
   SqlConnection,
@@ -37,6 +39,8 @@ export interface NativeStoragePorts {
   randomBytes(length: number): Uint8Array;
   digest: StorageDigest;
   now?: () => number;
+  /** Optional value-free qualification checkpoints; never a storage policy. */
+  observeOpen?: StorageOpenObserver;
 }
 type KeyRecord = {
   version: 1;
@@ -79,6 +83,7 @@ export async function openWalletStorage(
 ): Promise<OpenWalletStorage> {
   let lease: StorageLease;
   try {
+    observeStorageOpen(ports.observeOpen, 'policy-acquire');
     lease = await ports.policy.acquire();
   } catch {
     throw new WalletStorageError('STORAGE_UNAVAILABLE');
@@ -86,11 +91,13 @@ export async function openWalletStorage(
   let connection: SqlConnection | undefined;
   let storage: SqliteWalletStorage | undefined;
   try {
+    observeStorageOpen(ports.observeOpen, 'key-read');
     let raw = await ports.keyStore.get();
     let record: KeyRecord;
     if (raw === null) {
       if (lease.databaseExists)
         throw new WalletStorageError('STORAGE_KEY_MISSING');
+      observeStorageOpen(ports.observeOpen, 'key-generate');
       const key = ports.randomBytes(32);
       const installation = ports.randomBytes(16);
       try {
@@ -112,18 +119,26 @@ export async function openWalletStorage(
         if (installation instanceof Uint8Array) installation.fill(0);
       }
       raw = JSON.stringify(record);
+      observeStorageOpen(ports.observeOpen, 'key-write-provisioning');
       await ports.keyStore.set(raw);
+      observeStorageOpen(ports.observeOpen, 'key-readback-provisioning');
       if ((await ports.keyStore.get()) !== raw) throw corrupt();
     } else record = decodeKey(raw);
+    observeStorageOpen(ports.observeOpen, 'policy-inspect');
     const current = await ports.policy.inspect(lease.token);
     if (record.status === 'ready' && !current.databaseExists)
       throw new WalletStorageError('STORAGE_ORPHAN_KEY');
-    if (!current.databaseExists) await ports.policy.createDatabase(lease.token);
+    if (!current.databaseExists) {
+      observeStorageOpen(ports.observeOpen, 'policy-create-database');
+      await ports.policy.createDatabase(lease.token);
+    }
+    observeStorageOpen(ports.observeOpen, 'database-open');
     connection = await ports.openDatabase(
       lease.directory,
       record.key,
       lease.token
     );
+    observeStorageOpen(ports.observeOpen, 'schema-open');
     storage = await SqliteWalletStorage.open(
       connection,
       ports.digest,
@@ -134,12 +149,17 @@ export async function openWalletStorage(
     if (record.status === 'provisioning') {
       // An uncommitted bootstrap has never been exposed to an SDK authority.
       // Finding wallet records here is ambiguous and must not be auto-repaired.
+      observeStorageOpen(ports.observeOpen, 'provisioning-state');
       if ((await storage.readState()).presence !== 'empty') throw corrupt();
       const ready = JSON.stringify({ ...record, status: 'ready' });
+      observeStorageOpen(ports.observeOpen, 'key-write-ready');
       await ports.keyStore.set(ready);
+      observeStorageOpen(ports.observeOpen, 'key-readback-ready');
       if ((await ports.keyStore.get()) !== ready) throw corrupt();
     }
+    observeStorageOpen(ports.observeOpen, 'policy-protect-final');
     await ports.policy.protect(lease.token);
+    observeStorageOpen(ports.observeOpen, 'ready');
     const owned = storage;
     let closing: Promise<void> | null = null;
     return Object.freeze({

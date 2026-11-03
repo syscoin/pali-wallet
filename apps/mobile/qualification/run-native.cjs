@@ -5,6 +5,7 @@ const { spawnSync } = require('child_process');
 const { Buffer } = require('node:buffer');
 const { summarizeAndroidLog, summarizeAndroidExitInfo, latestAndroidExitPid } = require('./log-diagnostics.cjs');
 const { isCryptoDiagnostic } = require('../src/crypto/diagnostics.ts');
+const { isStorageQualificationDiagnostic } = require('./storage-diagnostics.ts');
 const { createCommandRunner, describeQualificationFailure, COLD_BOOT_TIMEOUT_MS } = require('./command-runner.cjs');
 
 if (process.env.CI !== 'true' || process.env.PALI_NATIVE_QUALIFICATION !== '1')
@@ -60,10 +61,12 @@ const validateReport = (text, phase, scenario) => {
     'cryptoEvidence',
     'cryptoDiagnostic',
     'mnemonicEntropyVerified',
+    'storageDiagnostic',
   ]);
   if (
     Object.keys(report).some((key) => !allowed.has(key)) ||
     (report.cryptoDiagnostic !== undefined && !isCryptoDiagnostic(report.cryptoDiagnostic)) ||
+    !isStorageQualificationDiagnostic(report.storageDiagnostic, report.status, report.failedStage) ||
     report.phase !== phase ||
     report.scenario !== scenario ||
     report.platform !== platform ||
@@ -84,7 +87,7 @@ const validateReport = (text, phase, scenario) => {
     report.cryptoEvidence?.productionIterations !== 900000
   )
     throw Error(
-      `Native qualification failed at ${report.failedStage || phase} (${JSON.stringify(report.cryptoDiagnostic || {})})`
+      `Native qualification failed at ${report.failedStage || phase} (${JSON.stringify(report.cryptoDiagnostic || {})}; storage ${JSON.stringify(report.storageDiagnostic)})`
     );
   return report;
 };

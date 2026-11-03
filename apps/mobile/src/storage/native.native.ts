@@ -11,6 +11,8 @@ import {
 import type { StoragePolicy } from './coordinator.ts';
 import { requireSqlCipher } from './sqlCipher.ts';
 import { WalletStorageError } from './types.ts';
+import { observeStorageOpen } from './openStages.ts';
+import type { StorageOpenObserver } from './openStages.ts';
 import type {
   OpenWalletStorage,
   SqlConnection,
@@ -18,10 +20,14 @@ import type {
 } from './types.ts';
 
 /** Only call after qualified native crypto bootstrap; importing this does not open storage. */
-export async function openNativeWalletStorage(crypto: {
-  randomBytes(length: number): Uint8Array;
-  digest: StorageDigest;
-}): Promise<OpenWalletStorage> {
+export async function openNativeWalletStorage(
+  crypto: {
+    randomBytes(length: number): Uint8Array;
+    digest: StorageDigest;
+  },
+  observeOpen?: StorageOpenObserver
+): Promise<OpenWalletStorage> {
+  observeStorageOpen(observeOpen, 'native-module');
   const policy = requireNativeModule<StoragePolicy>('PaliWalletStorage');
   const keyOptions: SecureStore.SecureStoreOptions = {
     keychainService: WALLET_KEY_SERVICE,
@@ -31,19 +37,22 @@ export async function openNativeWalletStorage(crypto: {
   return openWalletStorage({
     policy,
     ...crypto,
+    observeOpen,
     keyStore: {
       get: () => SecureStore.getItemAsync(WALLET_KEY_NAME, keyOptions),
       set: (value) =>
         SecureStore.setItemAsync(WALLET_KEY_NAME, value, keyOptions),
     },
     openDatabase: async (directory, keyHex, token) => {
+      observeStorageOpen(observeOpen, 'sqlite-open');
       const db = await openDatabaseAsync(
         WALLET_DATABASE_NAME,
         { useNewConnection: true, enableChangeListener: false },
         directory
       );
       try {
-        await requireSqlCipher(db, keyHex);
+        await requireSqlCipher(db, keyHex, observeOpen);
+        observeStorageOpen(observeOpen, 'policy-protect-database');
         await policy.protect(token);
         const protectedConnection: SqlConnection = {
           execAsync: async (sql) => {

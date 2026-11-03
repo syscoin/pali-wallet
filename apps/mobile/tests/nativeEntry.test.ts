@@ -6,6 +6,7 @@ import { runInNewContext } from 'node:vm';
 import test from 'node:test';
 import ts from 'typescript';
 import { isCryptoDiagnostic } from '../src/crypto/diagnostics.ts';
+import { isStorageQualificationDiagnostic } from '../qualification/storage-diagnostics.ts';
 import { loadAfterNativeCrypto } from '../src/startup/loadAfterCrypto.ts';
 
 const root = fileURLToPath(new NodeURL('../', import.meta.url));
@@ -104,12 +105,12 @@ test('native report validation requires the generated mnemonic entropy evidence'
   const end = source.indexOf('const waitReport =', start);
   assert(start >= 0 && end > start);
   const validate = runInNewContext(source.slice(start, end) + '\nvalidateReport;', {
-    isCryptoDiagnostic, PUBLIC_PHRASE: 'public fixture', PUBLIC_PASSWORD: 'public password', platform: 'ios',
+    isCryptoDiagnostic, isStorageQualificationDiagnostic, PUBLIC_PHRASE: 'public fixture', PUBLIC_PASSWORD: 'public password', platform: 'ios',
     fs: { writeFileSync() {} }, path: { join: () => 'unused' }, output: 'unused',
   }) as (text: string, phase: string, scenario: string) => unknown;
   const report = { version: 1, status: 'passed', phase: 'create', scenario: 'generate', platform: 'ios',
     networkCalls: 0, nativeBridgeExercised: true, fingerprint: 'a'.repeat(64),
-    cryptoEvidence: { passed: true, productionIterations: 900000 }, cryptoDiagnostic: { bootstrap: 'ready', fullCase: 'random-view-boundaries' }, mnemonicEntropyVerified: true };
+    cryptoEvidence: { passed: true, productionIterations: 900000 }, cryptoDiagnostic: { bootstrap: 'ready', fullCase: 'random-view-boundaries' }, mnemonicEntropyVerified: true, storageDiagnostic: { stage: 'ready' } };
   assert.doesNotThrow(() => validate(JSON.stringify(report), 'create', 'generate'));
   assert.throws(() => validate(JSON.stringify({ ...report, cryptoDiagnostic: { bootstrap: 'NATIVE_RAW_ERROR_SECRET' } }), 'create', 'generate'));
   assert.throws(() => validate(JSON.stringify({ ...report, mnemonicEntropyVerified: false }), 'create', 'generate'));
@@ -124,13 +125,13 @@ test('a pre-parameter startup failure is read immediately instead of waiting for
   const start = source.indexOf('const validateReport =');
   const end = source.indexOf('const databaseEvidence =', start);
   const wait = runInNewContext(source.slice(start, end) + '\nwaitReport;', {
-    isCryptoDiagnostic, PUBLIC_PHRASE: 'public fixture', PUBLIC_PASSWORD: 'public password', platform: 'android',
+    isCryptoDiagnostic, isStorageQualificationDiagnostic, PUBLIC_PHRASE: 'public fixture', PUBLIC_PASSWORD: 'public password', platform: 'android',
     fs: { writeFileSync() {} }, path: { join: () => 'unused' }, output: 'unused',
   }) as (read: () => string | null, phase: string, scenario: string, startup: () => string) => Promise<unknown>;
   let phaseReads = 0;
   await assert.rejects(wait(() => { phaseReads++; return null; }, 'create', 'import', () => JSON.stringify({
     version: 1, status: 'failed', phase: 'unknown', scenario: 'unknown', platform: 'android',
-    failedStage: 'parameters', cryptoDiagnostic: { bootstrap: 'unchecked' },
+    failedStage: 'parameters', cryptoDiagnostic: { bootstrap: 'unchecked' }, storageDiagnostic: {},
   })), /Native qualification failed at parameters/);
   assert.equal(phaseReads, 0);
   const entry = readFileSync(new NodeURL('../qualification/index.tsx', import.meta.url), 'utf8');
