@@ -8,7 +8,11 @@ import { identifyClassicNote } from 'utils/privacy/note';
 import type { IPrivateNoteStatus } from 'utils/privacy/privateVaultTypes';
 import { getPrivacyPool } from 'utils/privacy/registry';
 import type { IPrivacyDepositAttempt } from 'utils/privacy/transactionTypes';
-import type { IPrivacyWithdrawalAttempt } from 'utils/privacy/withdrawalTransactionTypes';
+import { prepareWithdrawalRecovery as prepareWithdrawalRecoveryProof } from 'utils/privacy/withdrawalRecovery';
+import type {
+  IPrivacyWithdrawalAttempt,
+  IPrivacyWithdrawalJournal,
+} from 'utils/privacy/withdrawalTransactionTypes';
 
 import { createPrivacyTransactionsController } from './privacyTransactions';
 import {
@@ -121,6 +125,20 @@ function withdrawalAttempt(
     },
   };
 }
+
+async function failedWithdrawalFixture(mode: 'direct' | 'relayed' = 'direct') {
+  const f = fixture();
+  const note = await f.controller.importNote(NOTE);
+  const session = f.captureSession();
+  const attempt = withdrawalAttempt(note.id, mode);
+  await f.controller.reserveWithdrawalAttempt(attempt, session);
+  await f.controller.recordWithdrawalSubmission(
+    attempt,
+    { transactionHash: TX_HASH },
+    session
+  );
+  return { f, note, session, attempt };
+}
 const originalCrypto = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
 
 const deferred = () => {
@@ -195,9 +213,39 @@ function fixture(
       revalidate: revalidateCompletion,
     })
   );
+  const revalidateRecovery = jest.fn(async () => undefined);
+  const prepareWithdrawalRecovery = jest.fn<
+    Promise<{
+      receipt: { blockHash: string; blockNumber: string; root: string };
+      revalidate: () => Promise<void>;
+    }>,
+    [
+      ReturnType<typeof identifyClassicNote>,
+      IPrivacyWithdrawalJournal,
+      IPrivateVaultSession
+    ]
+  >(
+    async (): Promise<{
+      receipt: { blockHash: string; blockNumber: string; root: string };
+      revalidate: () => Promise<void>;
+    }> => ({
+      receipt: {
+        root: '0x' + '01'.repeat(32),
+        blockNumber: '123',
+        blockHash: '0x' + 'cd'.repeat(32),
+      },
+      revalidate: revalidateRecovery,
+    })
+  );
   const create = () =>
     createPrivateVaultController(
-      { captureSession, authenticate, readNote, prepareCompletionProof },
+      {
+        captureSession,
+        authenticate,
+        readNote,
+        prepareCompletionProof,
+        prepareWithdrawalRecovery,
+      },
       { storage, mutex, now: () => 456, generate, identify }
     );
   const controller = create();
@@ -211,6 +259,8 @@ function fixture(
     readNote,
     prepareCompletionProof,
     revalidateCompletion,
+    prepareWithdrawalRecovery,
+    revalidateRecovery,
     captureSession,
     setStatus: (value: IPrivateNoteStatus) => {
       status = value;
@@ -3559,3 +3609,388 @@ it('a duplicate raw-note import cannot strip an existing restore guard', async (
     f.controller.withWithdrawalNote(imported.id, session, () => undefined)
   ).rejects.toThrow('privacy_note_restore_required');
 });
+
+it('failed withdrawal recovery retains the original journal and survives restart with fresh-review eligibility', async () => {
+  const { f, note, session } = await failedWithdrawalFixture();
+  const before = (await decryptedVault(f)).notes[0];
+  expect((await f.controller.getNotes()).notes[0].phase).toBe('waiting');
+  await f.controller.recoverFailedWithdrawal(note.id, 'correct-password');
+  const after = (await decryptedVault(f)).notes[0];
+  expect(after).toEqual({
+    ...before,
+    withdrawal: {
+      ...before.withdrawal,
+      recovery: {
+        root: '0x' + '01'.repeat(32),
+        blockNumber: '123',
+        blockHash: '0x' + 'cd'.repeat(32),
+        recoveredAt: 456,
+      },
+    },
+  });
+  expect(f.prepareWithdrawalRecovery).toHaveBeenCalledWith(
+    identifyClassicNote(NOTE),
+    before.withdrawal,
+    expect.objectContaining({ generation: session.generation })
+  );
+  expect(f.revalidateRecovery).toHaveBeenCalledTimes(1);
+  const restarted = f.create();
+  expect((await restarted.getNotes()).notes[0]).toMatchObject({
+    id: note.id,
+    phase: 'verified',
+  });
+  expect((await restarted.getNotes()).notes[0].withdrawal).toBeUndefined();
+  expect(await restarted.getWithdrawalAttempt(note.id, session)).toBeNull();
+  await expect(
+    restarted.withWithdrawalNote(note.id, session, (raw) => raw)
+  ).resolves.toBe(NOTE);
+  const backup = await restarted.exportBackupSnapshot(
+    'correct-password',
+    session
+  );
+  expect(backup.notes[0].history?.withdrawals).toEqual([
+    {
+      mode: 'direct',
+      outcome: 'submitted',
+      from: '0x' + '11'.repeat(20),
+      nonce: '7',
+      transactionHash: TX_HASH,
+    },
+  ]);
+  expect(JSON.stringify(backup)).not.toMatch(
+    /proofHash|inputHash|recoveredAt|blockHash/
+  );
+  expect(Object.keys(after.withdrawal)).toContain('recovery');
+  await restarted.importNote(NOTE);
+  expect((await decryptedVault(f)).notes[0].withdrawal).toEqual(
+    after.withdrawal
+  );
+  const restore = fixture();
+  const restoreSession = restore.captureSession();
+  const plan = await restore.controller.prepareRestore(
+    backup.notes,
+    restoreSession
+  );
+  await restore.controller.commitRestore(
+    plan,
+    backup.notes,
+    'correct-password',
+    restoreSession
+  );
+  const restored = (await restore.controller.getNotes()).notes[0];
+  expect(restored.phase).toBe('waiting');
+  await expect(
+    restore.controller.recoverFailedWithdrawal(restored.id, 'correct-password')
+  ).rejects.toThrow('privacy_note_restore_required');
+  expect(restore.prepareWithdrawalRecovery).not.toHaveBeenCalled();
+});
+
+it('recovers the reproduced reverted withdrawal through real receipt/root verification only after proof expiry', async () => {
+  const { f, note, session } = await failedWithdrawalFixture();
+  const attempt = withdrawalAttempt(note.id);
+  const blockHash = '0x' + 'cd'.repeat(32);
+  let known = true;
+  const abi = new Interface([
+    'function isKnownRoot(bytes32) view returns(bool)',
+    'function isSpent(bytes32) view returns(bool)',
+  ]);
+  f.prepareWithdrawalRecovery.mockImplementation(
+    (identity, withdrawal, captured) =>
+      prepareWithdrawalRecoveryProof({
+        poolAddress: getPrivacyPool(identity.poolId).address,
+        nullifierHash: identity.nullifierHash,
+        withdrawal,
+        assertCurrent: () => captured.assertCurrent(),
+        rpc: async (method, params) => {
+          if (method === 'eth_chainId') return '0x1';
+          if (method === 'eth_getBlockByNumber')
+            return { number: '0x7b', hash: blockHash };
+          if (method === 'eth_getTransactionReceipt')
+            return {
+              transactionHash: TX_HASH,
+              blockNumber: '0x7b',
+              blockHash,
+              status: '0x0',
+            };
+          if (method === 'eth_getTransactionByHash')
+            return {
+              hash: TX_HASH,
+              blockNumber: '0x7b',
+              blockHash,
+              ...(
+                attempt as Extract<
+                  IPrivacyWithdrawalAttempt,
+                  { mode: 'direct' }
+                >
+              ).transaction,
+              chainId: '0x1',
+              value: '0x0',
+              input: (
+                attempt as Extract<
+                  IPrivacyWithdrawalAttempt,
+                  { mode: 'direct' }
+                >
+              ).transaction.data,
+            };
+          if (method === 'eth_call') {
+            const call = params[0] as { data: string };
+            const name = call.data.startsWith(
+              abi.getFunction('isKnownRoot')!.selector
+            )
+              ? 'isKnownRoot'
+              : 'isSpent';
+            return abi.encodeFunctionResult(name, [
+              name === 'isKnownRoot' ? known : false,
+            ]);
+          }
+          throw new Error('Unexpected synthetic RPC');
+        },
+      })
+  );
+  await expect(
+    f.controller.withWithdrawalNote(note.id, session, () => undefined)
+  ).rejects.toThrow('privacy_withdrawal_attempt_exists');
+  await expect(
+    f.controller.recoverFailedWithdrawal(note.id, 'correct-password')
+  ).rejects.toThrow('privacy_withdrawal_recovery_unavailable');
+  expect((await f.controller.getNotes()).notes[0].phase).toBe('waiting');
+  known = false;
+  await f.controller.recoverFailedWithdrawal(note.id, 'correct-password');
+  await expect(
+    f
+      .create()
+      .withWithdrawalNote(note.id, session, () => 'fresh review allowed')
+  ).resolves.toBe('fresh review allowed');
+  expect((await decryptedVault(f)).notes[0].withdrawal.recovery).toMatchObject({
+    blockNumber: '123',
+    blockHash,
+    root: attempt.root,
+  });
+});
+
+it.each(['direct cleanup', 'known-unbroadcast cleanup'] as const)(
+  'failed withdrawal recovery preserves history after a fresh reservation and %s',
+  async (cleanup) => {
+    const { f, note, session, attempt } = await failedWithdrawalFixture();
+    await f.controller.recoverFailedWithdrawal(note.id, 'correct-password');
+    const recovered = (await decryptedVault(f)).notes[0].withdrawal;
+    const next = { ...attempt, intentId: UUID };
+    await f.controller.reserveWithdrawalAttempt(next, session);
+    const pending = await f.controller.getWithdrawalAttempt(note.id, session);
+    expect(pending?.retired).toEqual([recovered]);
+    expect((await f.controller.getNotes()).notes[0].phase).toBe('waiting');
+    if (cleanup === 'direct cleanup') {
+      await f.controller.clearUnbroadcastWithdrawalAttempt(next, session);
+    } else {
+      await f.controller.clearKnownUnbroadcastWithdrawal(
+        note.id,
+        next.intentId,
+        pending!.attemptHash,
+        await f.getKeyring().getPrivateRecordProfileId(),
+        session,
+        () => undefined
+      );
+    }
+    expect((await decryptedVault(f)).notes[0].withdrawal).toEqual(recovered);
+    expect(await f.create().getWithdrawalAttempt(note.id, session)).toBeNull();
+    await f.controller.reserveWithdrawalAttempt(next, session);
+    await f.controller.recordWithdrawalSubmission(
+      next,
+      { transactionHash: '0x' + 'de'.repeat(32) },
+      session
+    );
+    const backup = await f.controller.exportBackupSnapshot(
+      'correct-password',
+      session
+    );
+    expect(backup.notes[0].history?.withdrawals).toHaveLength(2);
+  }
+);
+
+it('failed withdrawal recovery authenticates before RPC and refuses relayed or unknown attempts', async () => {
+  const direct = await failedWithdrawalFixture();
+  await expect(
+    direct.f.controller.recoverFailedWithdrawal(direct.note.id, 'wrong')
+  ).rejects.toThrow('Invalid password');
+  expect(direct.f.prepareWithdrawalRecovery).not.toHaveBeenCalled();
+  const relayed = await failedWithdrawalFixture('relayed');
+  const before = structuredClone(relayed.f.records);
+  await expect(
+    relayed.f.controller.recoverFailedWithdrawal(
+      relayed.note.id,
+      'correct-password'
+    )
+  ).rejects.toThrow('privacy_withdrawal_recovery_unavailable');
+  expect(relayed.f.prepareWithdrawalRecovery).not.toHaveBeenCalled();
+  expect(relayed.f.records).toEqual(before);
+  const unknown = fixture();
+  const note = await unknown.controller.importNote(NOTE);
+  await unknown.controller.reserveWithdrawalAttempt(
+    withdrawalAttempt(note.id),
+    unknown.captureSession()
+  );
+  await expect(
+    unknown.controller.recoverFailedWithdrawal(note.id, 'correct-password')
+  ).rejects.toThrow('privacy_withdrawal_recovery_unavailable');
+  expect(unknown.prepareWithdrawalRecovery).not.toHaveBeenCalled();
+});
+
+it('failed withdrawal recovery also preserves prior history when the fresh attempt is relayed', async () => {
+  const { f, note, session } = await failedWithdrawalFixture();
+  await f.controller.recoverFailedWithdrawal(note.id, 'correct-password');
+  const recovered = (await decryptedVault(f)).notes[0].withdrawal;
+  const next = { ...withdrawalAttempt(note.id, 'relayed'), intentId: UUID };
+  await f.controller.reserveWithdrawalAttempt(next, session);
+  await f.controller.clearUnbroadcastWithdrawalAttempt(next, session);
+  expect((await decryptedVault(f)).notes[0].withdrawal).toEqual(recovered);
+});
+
+it('failed withdrawal recovery keeps an applied recovery marker after an ambiguous storage acknowledgement', async () => {
+  const { f, note, session } = await failedWithdrawalFixture();
+  const write = f.storage.setItem.getMockImplementation()!;
+  f.storage.setItem.mockImplementationOnce(async (key, value) => {
+    await write(key, value);
+    throw new Error('acknowledgement lost');
+  });
+  await expect(
+    f.controller.recoverFailedWithdrawal(note.id, 'correct-password')
+  ).rejects.toThrow('privacy_vault_unavailable');
+  expect(await f.create().getWithdrawalAttempt(note.id, session)).toBeNull();
+  await expect(
+    f.create().recoverFailedWithdrawal(note.id, 'correct-password')
+  ).rejects.toThrow('privacy_withdrawal_recovery_unavailable');
+  expect(f.prepareWithdrawalRecovery).toHaveBeenCalledTimes(1);
+  expect((await decryptedVault(f)).notes[0].withdrawal.recovery).toBeDefined();
+});
+
+it('failed withdrawal recovery retains the blocking journal when final proof revalidation fails', async () => {
+  const { f, note, session } = await failedWithdrawalFixture();
+  const before = structuredClone(f.records);
+  f.revalidateRecovery.mockRejectedValueOnce(new Error('root remains valid'));
+  await expect(
+    f.controller.recoverFailedWithdrawal(note.id, 'correct-password')
+  ).rejects.toThrow();
+  expect(f.records).toEqual(before);
+  await expect(
+    f.create().withWithdrawalNote(note.id, session, () => undefined)
+  ).rejects.toThrow('privacy_withdrawal_attempt_exists');
+});
+
+it('failed withdrawal recovery cannot clear a restore guard added while RPC proof is pending', async () => {
+  const { f, note, session } = await failedWithdrawalFixture();
+  const entered = deferred(),
+    release = deferred();
+  f.prepareWithdrawalRecovery.mockImplementationOnce(async () => {
+    entered.resolve();
+    await release.promise;
+    return {
+      receipt: {
+        root: '0x' + '01'.repeat(32),
+        blockNumber: '123',
+        blockHash: '0x' + 'cd'.repeat(32),
+      },
+      revalidate: f.revalidateRecovery,
+    };
+  });
+  const recovering = f.controller.recoverFailedWithdrawal(
+    note.id,
+    'correct-password'
+  );
+  const rejected = expect(recovering).rejects.toThrow(
+    'privacy_withdrawal_recovery_unavailable'
+  );
+  await entered.promise;
+  const entries = [
+    { note: NOTE, createdAt: 1, reconciliationRequired: true as const },
+  ];
+  const other = f.create();
+  const plan = await other.prepareRestore(entries, session);
+  await other.commitRestore(plan, entries, 'correct-password', session);
+  const guarded = structuredClone(f.records);
+  release.resolve();
+  await rejected;
+  expect(f.records).toEqual(guarded);
+  expect(f.revalidateRecovery).not.toHaveBeenCalled();
+  await expect(
+    f.controller.recoverFailedWithdrawal(note.id, 'correct-password')
+  ).rejects.toThrow('privacy_note_restore_required');
+});
+
+it('failed withdrawal recovery refuses a session change during encryption before writing', async () => {
+  const { f, note } = await failedWithdrawalFixture();
+  const before = structuredClone(f.records);
+  const keyring = f.getKeyring(),
+    encrypt = keyring.encryptPrivateRecord.bind(keyring);
+  jest
+    .spyOn(keyring, 'encryptPrivateRecord')
+    .mockImplementationOnce(async (request) => {
+      const result = await encrypt(request);
+      f.lock();
+      return result;
+    });
+  await expect(
+    f.controller.recoverFailedWithdrawal(note.id, 'correct-password')
+  ).rejects.toThrow('privacy_vault_session_changed');
+  expect(f.records).toEqual(before);
+});
+
+it('failed withdrawal recovery reserves backup capacity before a seventeenth historical outcome', async () => {
+  const { f, note, session } = await failedWithdrawalFixture();
+  await f.controller.recoverFailedWithdrawal(note.id, 'correct-password');
+  const stored = (await decryptedVault(f)).notes[0];
+  const previous = structuredClone(stored.withdrawal);
+  stored.withdrawal.retired = Array.from({ length: 15 }, (_, i) => ({
+    ...previous,
+    intentId: `00000000-0000-4000-8000-${String(i + 100).padStart(12, '0')}`,
+    attemptHash: '0x' + (i + 1).toString(16).padStart(64, '0'),
+    transactionHash: '0x' + (i + 100).toString(16).padStart(64, '0'),
+  }));
+  await storeCanonicalManifest(f, { version: 1, notes: [stored] });
+  const backup = await f
+    .create()
+    .exportBackupSnapshot('correct-password', session);
+  expect(backup.notes[0].history?.withdrawals).toHaveLength(16);
+  const before = structuredClone(f.records);
+  await expect(
+    f
+      .create()
+      .reserveWithdrawalAttempt(
+        { ...withdrawalAttempt(note.id), intentId: UUID },
+        session
+      )
+  ).rejects.toThrow();
+  expect(f.records).toEqual(before);
+  expect((await f.create().getNotes()).notes[0].phase).toBe('verified');
+});
+
+it.each([
+  'unknown',
+  'relayed',
+  'bad block',
+  'missing marker',
+  'recursive',
+  'duplicate',
+] as const)(
+  'failed withdrawal recovery rejects malformed persisted history: %s',
+  async (invalid) => {
+    const { f, note } = await failedWithdrawalFixture();
+    await f.controller.recoverFailedWithdrawal(note.id, 'correct-password');
+    const stored = (await decryptedVault(f)).notes[0];
+    const retired = structuredClone(stored.withdrawal);
+    retired.intentId = UUID;
+    retired.attemptHash = '0x' + 'bc'.repeat(32);
+    retired.transactionHash = '0x' + 'de'.repeat(32);
+    if (invalid === 'unknown') retired.phase = 'unknown';
+    if (invalid === 'relayed') retired.mode = 'relayed';
+    if (invalid === 'bad block') retired.recovery.blockNumber = '0123';
+    if (invalid === 'missing marker') delete retired.recovery;
+    if (invalid === 'recursive') retired.retired = [structuredClone(retired)];
+    if (invalid === 'duplicate')
+      retired.attemptHash = stored.withdrawal.attemptHash;
+    stored.withdrawal.retired = [retired];
+    await storeCanonicalManifest(f, { version: 1, notes: [stored] });
+    await expect(f.create().getNotes()).rejects.toThrow(
+      'privacy_vault_corrupt'
+    );
+  }
+);

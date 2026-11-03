@@ -1784,6 +1784,15 @@
       "unknown": "Status do envio desconhecido",
       "submitted": "Transação enviada",
       "notBroadcast": "A transação não foi enviada. Atualize a revisão antes de confirmar novamente."
+    },
+    "recovery": {
+      "action": "Recuperar saque que falhou",
+      "help": "A recuperação só está disponível quando a transação está finalizada como falha e sua prova original não pode mais ser executada. A nota e o histórico são preservados. Um novo saque exige nova revisão.",
+      "disclosure": "Esta verificação compartilha o hash da transação, a raiz da prova e o anulador público da nota com o RPC Ethereum selecionado.",
+      "password": "Senha da carteira",
+      "failed": "Não foi possível confirmar a recuperação. A prova original pode continuar válida, a nota pode ter sido gasta ou as evidências podem estar indisponíveis. Atualize antes de tentar novamente.",
+      "checking": "Verificando a transação finalizada e a expiração da prova…",
+      "confirm": "Verificar e recuperar"
     }
   }
 }

@@ -42,6 +42,7 @@ interface ILocalJournal {
   mode?: 'direct' | 'relayed';
   nonce?: string;
   phase: 'unknown' | 'submitted';
+  retired?: readonly ILocalJournal[];
   transactionHash?: string;
 }
 export interface IRestorableNote {
@@ -188,19 +189,17 @@ export function privateNoteCurrentHistory(
       : undefined,
     withdrawal
       ? {
-          withdrawals: [
-            {
-              outcome: withdrawal.phase,
-              mode: withdrawal.mode,
-              ...(withdrawal.from
-                ? { from: withdrawal.from, nonce: withdrawal.nonce }
+          withdrawals: [...(withdrawal.retired ?? []), withdrawal].map(
+            (entry) => ({
+              outcome: entry.phase,
+              mode: entry.mode,
+              ...(entry.from ? { from: entry.from, nonce: entry.nonce } : {}),
+              ...(entry.transactionHash
+                ? { transactionHash: entry.transactionHash }
                 : {}),
-              ...(withdrawal.transactionHash
-                ? { transactionHash: withdrawal.transactionHash }
-                : {}),
-              ...(withdrawal.jobId ? { jobId: withdrawal.jobId } : {}),
-            },
-          ],
+              ...(entry.jobId ? { jobId: entry.jobId } : {}),
+            })
+          ),
         }
       : undefined
   );

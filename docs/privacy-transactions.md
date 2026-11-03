@@ -25,8 +25,10 @@ their IDs, order, note counts and ciphertext hashes. The default limit is 128
 saved notes (up to 4 MiB encoded); users may select 256 (8 MiB) or 512 (16 MiB).
 Higher limits can use more local storage and slow vault operations. The SDK's
 per-record limit remains unchanged, and admitted notes retain room for their
-journals. Older single-record vaults remain readable; changing the limit writes
-the newer format, which older wallet versions may not read. Changing the limit
+journals. Earlier prerelease single-record layouts are not accepted by this
+reader; keep the original data and use its matching version to reveal/export
+notes before moving them. The current bundle format is version 1, and older
+wallet versions may not read its newer safety metadata. Changing the limit
 does not remove notes. A lower limit is rejected if the existing notes do not
 fit; the user must first reduce the saved count through an available safe action.
 
@@ -40,6 +42,17 @@ A note marked spent without a locally recorded submitted withdrawal and hash
 cannot be cleared by this action. Checks and removals are performed one note at
 a time; if interrupted, earlier removals may already be committed. Refresh the
 list after an error before trying again.
+
+For a locally recorded direct withdrawal that failed, **Recover failed withdrawal**
+checks the original transaction and its proof before changing the saved hold.
+Recovery requires a finalized reverted receipt, matching original calldata,
+an unspent nullifier and an original proof root that the pinned pool no longer
+accepts at that finalized block. A revert or an elapsed timeout alone never
+releases a note. The RPC receives the transaction hash, proof root and public
+nullifier; confirm this disclosure and your wallet password before checking.
+The original journal and recovery evidence remain encrypted in the vault. A
+new withdrawal requires a fresh review. Relayed, unknown and restored guarded
+attempts remain blocked by this action.
 
 The initial sender integration supports HD and imported software accounts.
 Hardware and smart accounts are rejected before note creation or RPC preflight:

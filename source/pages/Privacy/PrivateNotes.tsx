@@ -21,6 +21,7 @@ import PrivateNoteBackupDialog from './PrivateNoteBackupDialog';
 import PrivateVaultCapacitySettings from './PrivateVaultCapacitySettings';
 import PrivateVaultClearCompleted from './PrivateVaultClearCompleted';
 import PrivateWithdrawal from './PrivateWithdrawal';
+import PrivateWithdrawalRecovery from './PrivateWithdrawalRecovery';
 import { usePrivateNotes } from './usePrivateNotes';
 
 const PrivateNoteBundleDialog = lazy(
@@ -432,6 +433,13 @@ function NotesView() {
               )}
               {note.withdrawal && (
                 <div className="space-y-2 text-xs text-brand-gray200">
+                  {note.withdrawal.canCheckRecovery && (
+                    <PrivateWithdrawalRecovery
+                      id={note.id}
+                      controllerEmitter={controllerEmitter}
+                      onRecovered={() => void refresh()}
+                    />
+                  )}
                   {note.phase !== 'spent' && (
                     <p>
                       {t(
