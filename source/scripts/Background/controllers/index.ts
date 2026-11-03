@@ -21,6 +21,7 @@ import {
   CHAIN_IDS,
   PALI_NETWORKS_STATE,
 } from 'utils/constants';
+import type { INoteBackupController } from 'utils/privacy/noteBackupTypes';
 import type { IPrivateVaultController } from 'utils/privacy/privateVaultTypes';
 import type { IPrivacyTransactionsController } from 'utils/privacy/transactionTypes';
 import type { PrivacyController } from 'utils/privacy/types';
@@ -49,6 +50,7 @@ export interface IMasterController {
     isReady: boolean;
     maxAttempts: number;
   };
+  noteBackups: INoteBackupController;
   privacy: PrivacyController;
   privacySettings: {
     getServiceOrigin: () => Promise<string>;
@@ -353,6 +355,19 @@ const MasterController = (
     privacySettings: createPrivacySettings(privacy, () =>
       wallet.invalidatePrivacyServiceWithdrawals()
     ),
+    noteBackups: {
+      begin: () => wallet.beginNoteBackup(),
+      cancel: (id) => wallet.cancelNoteBackup(id),
+      exportEncrypted: (id, walletPassword, backupPassword) =>
+        wallet.exportEncryptedNoteBackup(id, walletPassword, backupPassword),
+      prepareImport: (id, file, backupPassword) =>
+        wallet.prepareNoteBackupImport(id, file, backupPassword),
+      commitImport: (id, walletPassword) =>
+        wallet.commitNoteBackupImport(id, walletPassword),
+      readCommitReceipt: (id) => wallet.readNoteBackupCommitReceipt(id),
+      verifyExport: (id, file, backupPassword) =>
+        wallet.verifyNoteBackupExport(id, file, backupPassword),
+    },
     privateVault: {
       clearCompletedNotes: (ids) => wallet.clearPrivateVaultCompletedNotes(ids),
       createDepositNote: (poolId) =>

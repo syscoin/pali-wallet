@@ -174,6 +174,15 @@ const mockMasterController: jest.Mocked<IMasterController> = {
     getServiceOrigin: jest.fn(),
     setServiceOrigin: jest.fn(),
   },
+  noteBackups: {
+    begin: jest.fn(),
+    cancel: jest.fn(),
+    commitImport: jest.fn(),
+    exportEncrypted: jest.fn(),
+    prepareImport: jest.fn(),
+    readCommitReceipt: jest.fn(),
+    verifyExport: jest.fn(),
+  },
   privateVault: {
     clearCompletedNotes: jest.fn(),
     createDepositNote: jest.fn(),

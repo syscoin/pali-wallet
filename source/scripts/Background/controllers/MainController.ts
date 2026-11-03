@@ -162,6 +162,7 @@ import { getNetworkChain } from 'utils/network';
 import { networkRegistrationFingerprint } from 'utils/networkRegistration';
 import { normalizeNftTokenId } from 'utils/nftTokenId';
 import type { IClassicNoteIdentity } from 'utils/privacy/note';
+import type { INoteBackupController } from 'utils/privacy/noteBackupTypes';
 import type {
   IPrivacyNoteReader,
   IPrivateVaultController,
@@ -278,6 +279,7 @@ import type {
   IPrivateVaultDepositController,
   IPrivateVaultDepositJournal,
   IPrivateVaultWithdrawalController,
+  IPrivateVaultRestoreController,
   IPrivateVaultSession,
 } from './privateVault';
 import {
@@ -396,8 +398,11 @@ class MainController {
   private privateVaultController?: Promise<
     IPrivateVaultController &
       IPrivateVaultDepositController &
-      IPrivateVaultWithdrawalController
+      IPrivateVaultWithdrawalController &
+      IPrivateVaultRestoreController
   >;
+  private noteBackupController?: Promise<Readonly<INoteBackupController>>;
+  private noteBackupInvalidators?: Set<() => void>;
   private privacyTransactionsController?: Promise<IPrivacyTransactionsController>;
   private privacyWithdrawalsController?: Promise<IPrivacyWithdrawalsController>;
   private knownUnbroadcast = new Map<
@@ -539,7 +544,7 @@ class MainController {
     resetNetworks?: boolean;
   }) {
     this.fiatQuoteGeneration += 1;
-    this.walletSessionGeneration += 1;
+    this.advanceWalletSession();
     this.walletStateGeneration += 1;
     this.knownUnbroadcast?.clear();
     this.networkRequestGeneration += 1;
@@ -952,7 +957,7 @@ class MainController {
       );
     }
     // Invalidate pending secret exports/unlocks, including an A -> B -> A switch.
-    this.walletSessionGeneration += 1;
+    this.advanceWalletSession();
     const switchGeneration = this.walletSessionGeneration;
     const walletStateGeneration = this.walletStateGeneration;
     const isCurrentSwitch = () =>
@@ -1918,10 +1923,112 @@ class MainController {
     };
   }
 
+  private advanceWalletSession(): void {
+    this.walletSessionGeneration += 1;
+    // Revoke decoded file staging synchronously, before a lock or account switch
+    // can yield. A pending KDF can finish only into a revoked operation.
+    this.noteBackupInvalidators?.forEach((invalidate) => invalidate());
+  }
+
+  private getNoteBackupController(): Promise<Readonly<INoteBackupController>> {
+    if (!this.noteBackupController) {
+      this.noteBackupController = Promise.all([
+        import(/* webpackChunkName: "note-backup" */ './noteBackup'),
+        this.getPrivateVaultController(),
+      ])
+        .then(([{ createExtensionNoteBackupController }, vault]) =>
+          createExtensionNoteBackupController({
+            vault,
+            captureSession: () => this.capturePrivateVaultSession(),
+            crypto: globalThis.crypto,
+            monotonicNow: () => performance.now(),
+            randomId: () => crypto.randomUUID(),
+            scheduleExpiry: (expire, delay) => {
+              const timer = setTimeout(expire, delay);
+              return () => clearTimeout(timer);
+            },
+            subscribeInvalidation: (invalidate) => {
+              this.noteBackupInvalidators ??= new Set();
+              this.noteBackupInvalidators.add(invalidate);
+              return () => this.noteBackupInvalidators?.delete(invalidate);
+            },
+          })
+        )
+        .catch(() => {
+          this.noteBackupController = undefined;
+          throw new Error('BACKUP_UNAVAILABLE');
+        });
+    }
+    return this.noteBackupController;
+  }
+
+  private async useNoteBackup<T>(
+    operation: (controller: Readonly<INoteBackupController>) => Promise<T>
+  ): Promise<T> {
+    const session = this.capturePrivateVaultSession();
+    const controller = await this.getNoteBackupController();
+    session.assertCurrent();
+    const result = await operation(controller);
+    session.assertCurrent();
+    return result;
+  }
+
+  public beginNoteBackup() {
+    return this.useNoteBackup((controller) => controller.begin());
+  }
+
+  public async cancelNoteBackup(id: string): Promise<void> {
+    // Cancellation remains available after locking, and cannot create a service
+    // or disturb an unrelated operation in another extension page.
+    const controller = await this.noteBackupController;
+    await controller?.cancel(id);
+  }
+
+  public exportEncryptedNoteBackup(
+    id: string,
+    walletPassword: string,
+    backupPassword: string
+  ) {
+    return this.useNoteBackup((controller) =>
+      controller.exportEncrypted(id, walletPassword, backupPassword)
+    );
+  }
+
+  public prepareNoteBackupImport(
+    id: string,
+    file: string,
+    backupPassword: string
+  ) {
+    return this.useNoteBackup((controller) =>
+      controller.prepareImport(id, file, backupPassword)
+    );
+  }
+
+  public commitNoteBackupImport(id: string, walletPassword: string) {
+    return this.useNoteBackup((controller) =>
+      controller.commitImport(id, walletPassword)
+    );
+  }
+
+  public readNoteBackupCommitReceipt(id: string) {
+    return this.useNoteBackup((controller) => controller.readCommitReceipt(id));
+  }
+
+  public verifyNoteBackupExport(
+    id: string,
+    file: string,
+    backupPassword: string
+  ) {
+    return this.useNoteBackup((controller) =>
+      controller.verifyExport(id, file, backupPassword)
+    );
+  }
+
   private getPrivateVaultController(): Promise<
     IPrivateVaultController &
       IPrivateVaultDepositController &
-      IPrivateVaultWithdrawalController
+      IPrivateVaultWithdrawalController &
+      IPrivateVaultRestoreController
   > {
     if (!this.privateVaultController) {
       this.privateVaultController = import(
@@ -3884,7 +3991,7 @@ class MainController {
 
   public lock() {
     this.fiatQuoteGeneration += 1;
-    this.walletSessionGeneration += 1;
+    this.advanceWalletSession();
     this.networkRequestGeneration += 1;
     this.isNetworkSwitching = false;
     const controller = getController();
@@ -4426,7 +4533,7 @@ class MainController {
           throw new Error('Account is not available on the active network');
         }
         if (activeAccount.id !== id || activeAccount.type !== type)
-          this.walletSessionGeneration += 1;
+          this.advanceWalletSession();
 
         // Account context changed; rapid polling should not continue against the old active account.
         this.stopAllRapidPolling();
