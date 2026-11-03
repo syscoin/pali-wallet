@@ -257,6 +257,21 @@ describe('controller action sender authorization', () => {
 
     expect(sendResponse).toHaveBeenCalledWith(error);
   });
+
+  it('preserves typed hardware cancellation through the controller response', async () => {
+    await rejectControllerAction(
+      Object.assign(new Error('Ledger window was closed'), {
+        code: 'HARDWARE_REQUEST_CANCELLED',
+      })
+    );
+    expect(sendResponse).toHaveBeenCalledWith({
+      error: {
+        message: 'Ledger window was closed',
+        code: 'HARDWARE_REQUEST_CANCELLED',
+      },
+      success: false,
+    });
+  });
 });
 
 describe('controller actions during wallet setup', () => {

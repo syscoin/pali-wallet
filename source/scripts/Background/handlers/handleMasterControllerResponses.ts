@@ -106,6 +106,8 @@ const controllerErrorResponse = (error: any) => {
   } = {};
   if (typeof error?.transactionNotBroadcast === 'boolean')
     submission.transactionNotBroadcast = error.transactionNotBroadcast;
+  if (error?.code === 'HARDWARE_REQUEST_CANCELLED')
+    submission.code = error.code;
   if (
     error?.code === 'PALI_TOKEN_RECIPIENT_BLOCKED' &&
     error?.transactionNotBroadcast === true &&

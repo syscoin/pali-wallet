@@ -76,6 +76,10 @@ export class LedgerHostBroker {
   ): Promise<T> {
     if (options?.signal?.aborted) throw CANCELLED();
     const generation = this.generation;
+    const assertCurrent = () => {
+      if (options?.signal?.aborted || generation !== this.generation)
+        throw CANCELLED();
+    };
     const progress = (status: 'pending' | 'completed' | 'error') => {
       try {
         options?.onProgress?.({ status });
@@ -89,9 +93,11 @@ export class LedgerHostBroker {
     options?.signal?.addEventListener('abort', abort, { once: true });
     progress('pending');
     try {
+      assertCurrent();
       const result = await operation();
-      if (options?.signal?.aborted) throw CANCELLED();
+      assertCurrent();
       progress('completed');
+      assertCurrent();
       return result;
     } catch (error) {
       progress('error');
@@ -246,6 +252,7 @@ export class LedgerHostBroker {
   }
 
   private async request(method: LedgerMethod, request: unknown): Promise<any> {
+    const generation = this.generation;
     const params = snapshotLedgerMessage(request);
     const id = ++this.sequence;
     const envelope = snapshotLedgerMessage({
@@ -254,7 +261,7 @@ export class LedgerHostBroker {
       method,
       request: params,
     });
-    const generation = this.generation;
+    if (generation !== this.generation) throw CANCELLED();
     await this.connect();
     if (generation !== this.generation || !this.port) throw CANCELLED();
     return new Promise((resolve, reject) => {

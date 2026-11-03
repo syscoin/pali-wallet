@@ -5909,6 +5909,12 @@ class MainController {
 
         if (expired || error.code === 'HARDWARE_REQUEST_TIMEOUT')
           throw timeoutError();
+        if (error.code === 'HARDWARE_REQUEST_CANCELLED') {
+          throw Object.assign(
+            new Error('Ledger operation was cancelled by the user.'),
+            { code: 'HARDWARE_REQUEST_CANCELLED' }
+          );
+        }
         if (error.code === 'HARDWARE_SIGNER_BUSY') {
           throw Object.assign(
             new Error(

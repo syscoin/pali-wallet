@@ -33,6 +33,24 @@ describe.each(Object.keys(resources))(
         interpolation: { escapeValue: true },
       })
     );
+    it('presents typed hardware cancellation as a localized neutral notice', () => {
+      const alert = { error: jest.fn(), info: jest.fn() };
+      expect(
+        handleTransactionError(
+          {
+            code: 'HARDWARE_REQUEST_CANCELLED',
+            message: 'Ledger window was closed',
+          },
+          alert,
+          i18n.t
+        )
+      ).toBe(true);
+      expect(alert.info).toHaveBeenCalledWith(
+        i18n.t('transactions.transactionCancelled')
+      );
+      expect(alert.error).not.toHaveBeenCalled();
+    });
+
     it('localizes the local recipient refusal while retaining classifier, raw reason and severity', () => {
       const error = Object.assign(
         new Error('Token transfer blocked: provider A&B. Severity: high.'),

@@ -247,6 +247,133 @@ describe('Ledger authority host broker', () => {
     await f.broker.disconnect();
   });
 
+  it('does not open a window when pending progress synchronously aborts', async () => {
+    const f = fixture();
+    const cancellation = new AbortController();
+    const pending = f.broker.host.connect(undefined, {
+      signal: cancellation.signal,
+      onProgress: ({ status }) => {
+        if (status === 'pending') cancellation.abort();
+      },
+    });
+    const rejected = expect(pending).rejects.toMatchObject({
+      code: 'HARDWARE_REQUEST_CANCELLED',
+    });
+    try {
+      expect(f.api.windows.create).not.toHaveBeenCalled();
+    } finally {
+      await f.broker.disconnect();
+      await rejected;
+    }
+  });
+
+  it('does not join a replacement started from pending progress', async () => {
+    const f = fixture();
+    let replacementReady!: Promise<void>;
+    const original = f.broker.host.connect(undefined, {
+      onProgress: ({ status }) => {
+        if (status !== 'pending') return;
+        void f.broker.disconnect();
+        replacementReady = f.broker.host.connect();
+      },
+    });
+    const result = original.then(
+      () => 'completed',
+      (error) => error.code
+    );
+    expect(f.api.windows.create).toHaveBeenCalledTimes(1);
+    const replacement = f.port();
+    await flush();
+    replacement.onMessage.emit({ type: 'ready' });
+    await replacementReady;
+    await expect(result).resolves.toBe('HARDWARE_REQUEST_CANCELLED');
+    expect(f.broker.host.getStatus().connected).toBe(true);
+    await f.broker.disconnect();
+  });
+
+  it('discards a reply if the session changes before the caller resumes', async () => {
+    const f = fixture();
+    const connected = f.broker.host.connect();
+    const port = f.port();
+    await flush();
+    port.onMessage.emit({ type: 'ready' });
+    await connected;
+    const pending = f.broker.host.evm.getAddress({ accountIndex: 0 });
+    const result = pending.then(
+      () => 'completed',
+      (error) => error.code
+    );
+    await flush();
+    const request = port.postMessage.mock.calls.find(
+      ([value]) => value.type === 'request'
+    )[0];
+    port.onMessage.emit({
+      id: request.id,
+      ok: true,
+      value: { address: 'public' },
+    });
+    await f.broker.disconnect();
+    await expect(result).resolves.toBe('HARDWARE_REQUEST_CANCELLED');
+  });
+
+  it.each(['abort', 'disconnect'])(
+    'discards success when completed progress synchronously triggers %s',
+    async (action) => {
+      const f = fixture();
+      const cancellation = new AbortController();
+      const pending = f.broker.host.connect(undefined, {
+        signal: cancellation.signal,
+        onProgress: ({ status }) => {
+          if (status !== 'completed') return;
+          if (action === 'abort') cancellation.abort();
+          else void f.broker.disconnect();
+        },
+      });
+      const result = pending.then(
+        () => 'completed',
+        (error) => error.code
+      );
+      const port = f.port();
+      await flush();
+      port.onMessage.emit({ type: 'ready' });
+      await expect(result).resolves.toBe('HARDWARE_REQUEST_CANCELLED');
+      expect(f.broker.host.getStatus().connected).toBe(false);
+      await f.broker.disconnect();
+    }
+  );
+
+  it('does not dispatch into a replacement created while snapshotting a request', async () => {
+    const f = fixture();
+    let replacementReady!: Promise<void>;
+    const pending = f.broker.host.evm.getAddress({
+      toJSON() {
+        void f.broker.disconnect();
+        replacementReady = f.broker.host.connect();
+        return { accountIndex: 0 };
+      },
+    } as any);
+    const result = pending.then(
+      () => 'completed',
+      (error) => error.code
+    );
+    const replacement = f.port();
+    await flush();
+    replacement.onMessage.emit({ type: 'ready' });
+    await replacementReady;
+    await flush();
+    try {
+      expect(
+        replacement.postMessage.mock.calls.filter(
+          ([value]) => value.type === 'request'
+        )
+      ).toHaveLength(0);
+      await expect(result).resolves.toBe('HARDWARE_REQUEST_CANCELLED');
+      expect(f.broker.host.getStatus().connected).toBe(true);
+    } finally {
+      await f.broker.disconnect();
+    }
+  });
+
   it.each([
     'foreign-extension',
     'content-script',
