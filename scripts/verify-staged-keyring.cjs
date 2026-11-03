@@ -1,4 +1,4 @@
-// Temporary SDK staging gate. Remove with the staged archive after npm release.
+// Temporary package staging gate. Remove with the staged archives after release.
 const assert = require('node:assert/strict');
 const { createHash } = require('node:crypto');
 const fs = require('node:fs');
@@ -7,13 +7,13 @@ const path = require('node:path');
 const digest = (bytes, algorithm = 'sha256', encoding = 'hex') =>
   createHash(algorithm).update(bytes).digest(encoding);
 
-function verify(root = path.resolve(__dirname, '..')) {
-  const staging = path.join(root, 'vendor/sysweb3-keyring');
+function verifyPackage(root, directory, name, archiveName) {
+  const staging = path.join(root, 'vendor', directory);
   const metadata = JSON.parse(
     fs.readFileSync(path.join(staging, 'provenance.json'))
   );
-  assert.equal(metadata.name, '@sidhujag/sysweb3-keyring');
-  assert.equal(metadata.archive, 'keyring.tgz');
+  assert.equal(metadata.name, name);
+  assert.equal(metadata.archive, archiveName);
   assert.match(metadata.sourceCommit, /^[0-9a-f]{40}$/);
   const archive = fs.readFileSync(path.join(staging, metadata.archive));
   assert.equal(
@@ -62,6 +62,18 @@ function verify(root = path.resolve(__dirname, '..')) {
     archiveSha256: metadata.archiveSha256,
     files: Object.keys(actual).length,
   };
+}
+
+function verify(root = path.resolve(__dirname, '..')) {
+  const keyring = verifyPackage(
+    root,
+    'sysweb3-keyring',
+    '@sidhujag/sysweb3-keyring',
+    'keyring.tgz'
+  );
+  verifyPackage(root, 'syscoinjs-lib', 'syscoinjs-lib', 'library.tgz');
+  // Preserve the original verifier's result for existing callers.
+  return keyring;
 }
 
 if (require.main === module) console.log(JSON.stringify(verify()));
