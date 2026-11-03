@@ -1,3 +1,4 @@
+export function nativeCryptoInstallDiagnostic(): undefined { return undefined; }
 export function nativeCryptoCheckpoint(): 'unchecked' { return 'unchecked'; }
 export function nativeCryptoStatus(): 'unavailable' { return 'unavailable'; }
 export async function ensureNativeCryptoReady(): Promise<Crypto> {

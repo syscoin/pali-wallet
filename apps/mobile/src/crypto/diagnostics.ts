@@ -1,4 +1,4 @@
-/** Public operation labels only. Never include native errors, keys or inputs. */
+/** Fixed public labels only. Never include raw errors, global values, keys or inputs. */
 export const CRYPTO_BOOTSTRAP_STEPS = [
   "unchecked",
   "quick-crypto-load",
@@ -60,11 +60,41 @@ export const CRYPTO_FULL_CASES = [
   "opaque-key-owner-and-disposal"
 ] as const;
 export type CryptoFullCase = typeof CRYPTO_FULL_CASES[number];
-export type CryptoDiagnostic = Readonly<{ bootstrap: CryptoBootstrapStep; fullCase?: CryptoFullCase }>;
+export const CRYPTO_INSTALLER_KINDS = ['unreadable', 'missing', 'noncallable', 'callable'] as const;
+export const CRYPTO_INSTALL_ERROR_KINDS = ['type-error', 'reference-error', 'range-error', 'syntax-error', 'error', 'other'] as const;
+export const CRYPTO_GLOBAL_SHAPES = [
+  'absent-extensible', 'absent-fixed',
+  'data-writable-configurable', 'data-writable-fixed', 'data-readonly-configurable', 'data-readonly-fixed',
+  'accessor-settable-configurable', 'accessor-settable-fixed', 'accessor-readonly-configurable', 'accessor-readonly-fixed',
+  'inspection-failed',
+] as const;
+export type CryptoGlobalShape = typeof CRYPTO_GLOBAL_SHAPES[number];
+export type CryptoInstallDiagnostic = Readonly<{
+  installer: typeof CRYPTO_INSTALLER_KINDS[number];
+  error: typeof CRYPTO_INSTALL_ERROR_KINDS[number];
+  globals: Readonly<{ buffer: CryptoGlobalShape; crypto: CryptoGlobalShape; base64To: CryptoGlobalShape; base64From: CryptoGlobalShape }>;
+}>;
+export type CryptoDiagnostic = Readonly<{ bootstrap: CryptoBootstrapStep; fullCase?: CryptoFullCase; install?: CryptoInstallDiagnostic }>;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isCryptoInstallDiagnostic(value: unknown): value is CryptoInstallDiagnostic {
+  if (!isRecord(value) || !isRecord(value.globals)) return false;
+  const fields = ['buffer', 'crypto', 'base64To', 'base64From'];
+  return Object.keys(value).length === 3 &&
+    Object.keys(value).every((key) => ['installer', 'error', 'globals'].includes(key)) &&
+    CRYPTO_INSTALLER_KINDS.includes(value.installer as CryptoInstallDiagnostic['installer']) &&
+    CRYPTO_INSTALL_ERROR_KINDS.includes(value.error as CryptoInstallDiagnostic['error']) &&
+    Object.keys(value.globals).length === fields.length &&
+    fields.every((key) => CRYPTO_GLOBAL_SHAPES.includes((value.globals as Record<string, unknown>)[key] as CryptoGlobalShape));
+}
+
 export function isCryptoDiagnostic(value: unknown): value is CryptoDiagnostic {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-  const data = value as Record<string, unknown>;
-  return Object.keys(data).every((key) => key === 'bootstrap' || key === 'fullCase') &&
-    CRYPTO_BOOTSTRAP_STEPS.includes(data.bootstrap as CryptoBootstrapStep) &&
-    (data.fullCase === undefined || CRYPTO_FULL_CASES.includes(data.fullCase as CryptoFullCase));
+  if (!isRecord(value)) return false;
+  return Object.keys(value).every((key) => key === 'bootstrap' || key === 'fullCase' || key === 'install') &&
+    CRYPTO_BOOTSTRAP_STEPS.includes(value.bootstrap as CryptoBootstrapStep) &&
+    (value.fullCase === undefined || CRYPTO_FULL_CASES.includes(value.fullCase as CryptoFullCase)) &&
+    (value.install === undefined || isCryptoInstallDiagnostic(value.install));
 }

@@ -1,10 +1,13 @@
 import 'expo';
-import type { CryptoBootstrapStep } from '../crypto/diagnostics.ts';
+import type { CryptoBootstrapStep, CryptoInstallDiagnostic } from '../crypto/diagnostics.ts';
+import { installQuickCrypto } from '../crypto/quickCryptoInstall.ts';
 import { createNativeWalletCrypto, disposeWalletCrypto, qualifyWalletCrypto } from '../crypto/native';
 
 let initialization: Promise<Crypto> | undefined;
 let checkpoint: CryptoBootstrapStep = 'unchecked';
 export function nativeCryptoCheckpoint(): CryptoBootstrapStep { return checkpoint; }
+let installDiagnostic: CryptoInstallDiagnostic | undefined;
+export function nativeCryptoInstallDiagnostic(): CryptoInstallDiagnostic | undefined { return installDiagnostic; }
 
 let status: 'unchecked' | 'checking' | 'ready' | 'unavailable' = 'unchecked';
 
@@ -24,9 +27,9 @@ export function ensureNativeCryptoReady(): Promise<Crypto> {
         // synchronous compatibility installation.
         checkpoint = 'quick-crypto-load';
         // eslint-disable-next-line @typescript-eslint/no-require-imports
-        const quickCrypto = require('react-native-quick-crypto') as { install(): void };
+        const quickCrypto: unknown = require('react-native-quick-crypto');
         checkpoint = 'quick-crypto-install';
-        quickCrypto.install();
+        installQuickCrypto(quickCrypto, (diagnostic) => { installDiagnostic = diagnostic; });
         checkpoint = 'provider-create';
         provider = createNativeWalletCrypto((step) => { checkpoint = step; });
         await qualifyWalletCrypto(provider, (step) => { checkpoint = step; });

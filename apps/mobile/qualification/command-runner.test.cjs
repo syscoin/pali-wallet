@@ -16,7 +16,6 @@ test('only explicit cold-boot wait receives600s while ordinary commands keep180s
   const source = readFileSync(require.resolve('./run-native.cjs'), 'utf8');
   assert.match(source, /\['simctl', 'bootstatus', device, '-b'\], false, COLD_BOOT_TIMEOUT_MS/);
   assert.equal((source.match(/false, COLD_BOOT_TIMEOUT_MS/g) || []).length, 1);
-  assert.match(source, /const deadline = Date\.now\(\) \+ 300000/);
 });
 
 test('primary timed-out command survives optional cleanup failure with bounded redacted diagnostics', () => {
@@ -133,6 +132,8 @@ test('Android cleanup screenshot file-write failure preserves the original datab
       return ok(JSON.stringify({ version: 1, status: 'passed', phase: 'create', scenario: 'import', platform: 'android', networkCalls: 0, nativeBridgeExercised: true, fingerprint: 'a'.repeat(64), cryptoEvidence: { passed: true, productionIterations: 900000 }, mnemonicEntropyVerified: false }));
     }
     if (args.includes('pidof')) return ok(++pidReads === 1 ? '1234' : '');
+    if (args.includes('logcat')) return ok('F/libc: SIGABRT libhermes.so synthetic_secret_token_42');
+    if (args.includes('exit-info')) return ok('process=com.paliwallet.qualification reason=5 (APP CRASH(NATIVE))\n description=synthetic_secret_token_42');
     return ok('');
   };
   const fakeProcess = { env: { CI: 'true', PALI_NATIVE_QUALIFICATION: '1', QUALIFICATION_ARTIFACTS: '/public-output', ANDROID_HOME: '/public-sdk' }, argv: ['node', 'runner', 'android', '/public.apk'], exitCode: 0 };
@@ -157,6 +158,12 @@ test('Android cleanup screenshot file-write failure preserves the original datab
   assert.equal(shell.status, 0);
   assert.equal(shell.stdout, 'pali-wallet-qualification://run?phase=create&scenario=import');
   assert(writes.some((write) => write.file.endsWith('/android-import-create-launch.log')));
+  const logcat = calls.find((call) => call.args.includes('logcat'));
+  assert.deepEqual(Array.from(logcat.args), ['logcat', '-b', 'main', '-b', 'crash', '-d', '-t', '300', '-v', 'brief', 'AndroidRuntime:E', 'ReactNativeJS:E', 'libc:F', 'DEBUG:F', '*:S']);
+  assert(calls.some((call) => JSON.stringify(call.args) === JSON.stringify(['shell', 'dumpsys', 'activity', 'exit-info', 'com.paliwallet.qualification'])));
+  const runtime = writes.find((write) => write.file.endsWith('/android-import-runtime-diagnostics.json'));
+  assert.deepEqual(JSON.parse(runtime.data), { processRunning: false, codes: ['SIGABRT'], modules: [], libraries: ['libhermes.so'], exitReasons: ['CRASH_NATIVE'] });
+  assert(!runtime.data.includes('synthetic_secret_token_42'));
   assert(screenshotWriteFailed);
   const artifact = writes.find((write) => write.file.endsWith('/android-failure.json'));
   assert(artifact);
@@ -197,4 +204,80 @@ test('the real iOS runner launches the isolated app directly with its public arg
   });
   assert.deepEqual(Array.from(calls.find((call) => call.args.includes('launch')).args), ['simctl', 'launch', 'public-device', 'com.paliwallet.qualification', '-PaliQualificationURL', 'pali-wallet-qualification://run?phase=create&scenario=import']);
   assert(!calls.some((call) => call.args.includes('openurl')));
+});
+
+function reportWaitFixture() {
+  const { runInNewContext } = require('node:vm');
+  const { isCryptoDiagnostic } = require('../src/crypto/diagnostics.ts');
+  const source = readFileSync(require.resolve('./run-native.cjs'), 'utf8');
+  const start = source.indexOf('const validateReport =');
+  const end = source.indexOf('const databaseEvidence =', start);
+  let now = 0;
+  const wait = runInNewContext(source.slice(start, end) + '\nwaitReport;', {
+    isCryptoDiagnostic, PUBLIC_PHRASE: 'public fixture', PUBLIC_PASSWORD: 'public password', platform: 'android',
+    fs: { writeFileSync() {} }, path: { join: () => 'unused' }, output: 'unused',
+    Date: { now: () => now }, sleep: async (milliseconds) => { now += milliseconds; },
+  });
+  const report = JSON.stringify({ version: 1, status: 'passed', phase: 'create', scenario: 'import', platform: 'android',
+    networkCalls: 0, nativeBridgeExercised: true, mnemonicEntropyVerified: false,
+    fingerprint: 'a'.repeat(64), cryptoEvidence: { passed: true, productionIterations: 900000 } });
+  return { wait, report, now: () => now };
+}
+
+test('Android liveness maps only pidof exit one to absence and preserves transport or command failure', () => {
+  const { runInNewContext } = require('node:vm');
+  const { spawnSync } = require('node:child_process');
+  const source = readFileSync(require.resolve('./run-native.cjs'), 'utf8');
+  const start = source.indexOf('const androidProcessRunning =');
+  const end = source.indexOf('const sleep =', start);
+  const probe = (spawn) => runInNewContext(source.slice(start, end) + '\nandroidProcessRunning;', {
+    PACKAGE: 'com.paliwallet.qualification', run: createCommandRunner(spawn),
+  });
+  for (const [exit, expected] of [[0, true], [1, false], [2, 'error']]) {
+    const isRunning = probe((_command, args, options) => spawnSync('bash', ['-c',
+      `pidof() { if [ ${exit} -eq 0 ]; then printf 1234; fi; return ${exit}; }; ${args[1]}`,
+    ], options));
+    if (expected === 'error') assert.throws(isRunning, (error) => error.failure.status === 2);
+    else assert.equal(isRunning(), expected);
+  }
+  const offline = probe(() => ({ status: 1, stderr: 'device offline' }));
+  assert.throws(offline, (error) => error.failure.status === 1);
+  const timedOut = probe(() => ({ status: null, error: { code: 'ETIMEDOUT' } }));
+  assert.throws(timedOut, (error) => error.failure.timedOut === true);
+});
+
+test('Android report waiting grants startup five seconds before checking process liveness', async () => {
+  const fixture = reportWaitFixture();
+  const checks = [];
+  const report = await fixture.wait(() => fixture.now() === 7000 ? fixture.report : null, 'create', 'import', undefined, () => {
+    checks.push(fixture.now());
+    return fixture.now() >= 5000;
+  });
+  assert.equal(report.status, 'passed');
+  assert.deepEqual(checks, [5000, 6000]);
+});
+
+test('Android report waiting detects process exit after startup grace without consuming the deadline', async () => {
+  const fixture = reportWaitFixture();
+  await assert.rejects(fixture.wait(() => null, 'create', 'import', undefined, () => false), /process exited before report/);
+  assert.equal(fixture.now(), 5000);
+});
+
+test('a final report written during process exit takes precedence over liveness failure', async () => {
+  const fixture = reportWaitFixture();
+  let written = false;
+  const report = await fixture.wait(() => written ? fixture.report : null, 'create', 'import', undefined, () => {
+    written = true;
+    return false;
+  });
+  assert.equal(report.status, 'passed');
+  assert.equal(fixture.now(), 5000);
+});
+
+test('report waiting keeps the five-minute deadline with or without Android liveness checks', async () => {
+  for (const isRunning of [undefined, () => true]) {
+    const fixture = reportWaitFixture();
+    await assert.rejects(fixture.wait(() => null, 'create', 'import', undefined, isRunning), /timed out/);
+    assert.equal(fixture.now(), 300000);
+  }
 });

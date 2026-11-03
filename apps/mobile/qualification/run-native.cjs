@@ -3,7 +3,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { spawnSync } = require('child_process');
 const { Buffer } = require('node:buffer');
-const { summarizeAndroidLog } = require('./log-diagnostics.cjs');
+const { summarizeAndroidLog, summarizeAndroidExitInfo } = require('./log-diagnostics.cjs');
 const { isCryptoDiagnostic } = require('../src/crypto/diagnostics.ts');
 const { createCommandRunner, describeQualificationFailure, COLD_BOOT_TIMEOUT_MS } = require('./command-runner.cjs');
 
@@ -26,6 +26,10 @@ const redact = (value) => value
   .split(PUBLIC_PHRASE).join('[public phrase redacted]')
   .split(PUBLIC_PASSWORD).join('[public password redacted]');
 const run = createCommandRunner(spawnSync, redact);
+const androidProcessRunning = () => Boolean(run('adb', [
+  'shell',
+  `pidof -s ${PACKAGE}; pali_pidof_status=$?; if [ "$pali_pidof_status" -eq 1 ]; then exit 0; fi; exit "$pali_pidof_status"`,
+]));
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const hash = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex');
 const validateReport = (text, phase, scenario) => {
@@ -84,16 +88,27 @@ const validateReport = (text, phase, scenario) => {
     );
   return report;
 };
-const waitReport = async (read, phase, scenario, readStartup) => {
-  const deadline = Date.now() + 300000;
-  while (Date.now() < deadline) {
+const waitReport = async (read, phase, scenario, readStartup, isRunning) => {
+  const startedAt = Date.now();
+  const deadline = startedAt + 300000;
+  const readAvailable = () => {
     const startup = readStartup?.();
     if (startup) {
       validateReport(startup, 'unknown', 'unknown');
       throw Error('Unexpected successful startup-failure report');
     }
     const text = read();
-    if (text) return validateReport(text, phase, scenario);
+    return text ? validateReport(text, phase, scenario) : undefined;
+  };
+  while (Date.now() < deadline) {
+    const report = readAvailable();
+    if (report) return report;
+    if (isRunning && Date.now() - startedAt >= 5000 && !isRunning()) {
+      // A process may write its final report between the first read and exit.
+      const finalReport = readAvailable();
+      if (finalReport) return finalReport;
+      throw Error(`Native ${platform} ${scenario} ${phase} process exited before report`);
+    }
     await sleep(1000);
   }
   throw Error(`Native ${platform} ${scenario} ${phase} timed out`);
@@ -351,7 +366,8 @@ async function android() {
         () => read('create'),
         'create',
         scenario,
-        () => read('startup')
+        () => read('startup'),
+        androidProcessRunning
       );
       const oldPid = run('adb', ['shell', 'pidof', '-s', PACKAGE]);
       run('adb', ['shell', 'am', 'force-stop', PACKAGE]);
@@ -372,7 +388,8 @@ async function android() {
         () => read('restart'),
         'restart',
         scenario,
-        () => read('startup')
+        () => read('startup'),
+        androidProcessRunning
       );
       const newPid = run('adb', ['shell', 'pidof', '-s', PACKAGE]);
       if (
@@ -395,8 +412,9 @@ async function android() {
     } finally {
       try {
         const processId = run('adb', ['shell', 'pidof', '-s', PACKAGE], true);
-        const logs = run('adb', ['logcat', '-d', '-t', '300', '-v', 'brief', 'AndroidRuntime:E', 'ReactNativeJS:E', '*:S'], true);
-        fs.writeFileSync(path.join(output, `android-${scenario}-runtime-diagnostics.json`), JSON.stringify({ processRunning: Boolean(processId), ...summarizeAndroidLog(logs) }, null, 2));
+        const logs = run('adb', ['logcat', '-b', 'main', '-b', 'crash', '-d', '-t', '300', '-v', 'brief', 'AndroidRuntime:E', 'ReactNativeJS:E', 'libc:F', 'DEBUG:F', '*:S'], true);
+        const exitInfo = run('adb', ['shell', 'dumpsys', 'activity', 'exit-info', PACKAGE], true);
+        fs.writeFileSync(path.join(output, `android-${scenario}-runtime-diagnostics.json`), JSON.stringify({ processRunning: Boolean(processId), ...summarizeAndroidLog(logs), ...summarizeAndroidExitInfo(exitInfo) }, null, 2));
       } catch { /* Diagnostic collection cannot replace the primary failure. */ }
       try {
         const screenshot = run.binary('adb', ['exec-out', 'screencap', '-p'], true);

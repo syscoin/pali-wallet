@@ -1,1 +1,1 @@
-export { ensureNativeCryptoReady, nativeCryptoStatus, nativeCryptoCheckpoint } from './cryptoBootstrap.web.ts';
+export { ensureNativeCryptoReady, nativeCryptoStatus, nativeCryptoCheckpoint, nativeCryptoInstallDiagnostic } from './cryptoBootstrap.web.ts';
