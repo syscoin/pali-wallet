@@ -166,13 +166,7 @@ it.each([
     );
     render(
       <Provider store={mockStore}>
-        <MemoryRouter
-          initialEntries={['/home?tab=assets']}
-          future={{
-            ['v7_startTransition']: true,
-            ['v7_relativeSplatPath']: true,
-          }}
-        >
+        <MemoryRouter initialEntries={['/home?tab=assets']}>
           <AssetsPanel />
         </MemoryRouter>
       </Provider>

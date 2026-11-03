@@ -162,10 +162,6 @@ const mount = (route: 'receive' | 'edit') =>
             state: { id: 0, accountType: TYPE },
           },
         ]}
-        future={{
-          ['v7_startTransition']: true,
-          ['v7_relativeSplatPath']: true,
-        }}
       >
         <Routes>
           <Route element={<AppLayout />}>

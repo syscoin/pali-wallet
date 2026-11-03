@@ -165,13 +165,7 @@ const mount = async () => {
   const view = render(
     <I18nextProvider i18n={i18n}>
       <Provider store={mockStore}>
-        <MemoryRouter
-          future={{
-            ['v7_startTransition']: true,
-            ['v7_relativeSplatPath']: true,
-          }}
-          initialEntries={['/home']}
-        >
+        <MemoryRouter initialEntries={['/home']}>
           <RouteObservation />
           <Routes>
             <Route

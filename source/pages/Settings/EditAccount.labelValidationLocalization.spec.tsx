@@ -91,10 +91,6 @@ const showEditor = async (locale: keyof typeof resources): Promise<i18n> => {
   render(
     <I18nextProvider i18n={instance}>
       <MemoryRouter
-        future={{
-          ['v7_startTransition']: true,
-          ['v7_relativeSplatPath']: true,
-        }}
         initialEntries={[
           {
             pathname: '/settings/edit-account',

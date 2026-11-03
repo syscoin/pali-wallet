@@ -108,7 +108,6 @@ const Tree = ({
   accountType?: KeyringAccountType;
 }) => (
   <MemoryRouter
-    future={{ ['v7_startTransition']: true, ['v7_relativeSplatPath']: true }}
     initialEntries={[
       {
         pathname: '/settings/edit-account',

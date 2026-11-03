@@ -194,13 +194,7 @@ const previewBalance = (symbol = 'ALIAS') =>
 const mount = () => {
   render(
     <Provider store={mockStore}>
-      <MemoryRouter
-        initialEntries={['/tokens/add?tab=custom']}
-        future={{
-          ['v7_startTransition']: true,
-          ['v7_relativeSplatPath']: true,
-        }}
-      >
+      <MemoryRouter initialEntries={['/tokens/add?tab=custom']}>
         <AddToken />
       </MemoryRouter>
     </Provider>

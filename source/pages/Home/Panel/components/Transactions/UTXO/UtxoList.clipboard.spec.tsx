@@ -176,7 +176,6 @@ const mount = () =>
       <MemoryRouter
         initialEntries={['/home?tab=activity']}
         // eslint-disable-next-line camelcase
-        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
       >
         <TxsPanel />
       </MemoryRouter>

@@ -18,13 +18,6 @@ const mockCreateBrowsingNavigationContext = jest.fn<
   typeof mockReturnContext,
   [unknown]
 >(() => mockReturnContext);
-// React Router's public future-flag names are intentionally snake case.
-const routerFutureFlags = {
-  // eslint-disable-next-line camelcase
-  v7_startTransition: true,
-  // eslint-disable-next-line camelcase
-  v7_relativeSplatPath: true,
-};
 
 jest.mock('hooks/index', () => ({
   useUtils: () => ({ navigate: mockNavigate, alert: { error: jest.fn() } }),
@@ -68,7 +61,7 @@ jest.mock('utils/navigationState', () => ({
 const openAccountMenu = async () => {
   const user = userEvent.setup();
   render(
-    <MemoryRouter initialEntries={['/home']} future={routerFutureFlags}>
+    <MemoryRouter initialEntries={['/home']}>
       <Menu>
         <Menu.Button>Accounts</Menu.Button>
         <Menu.Items>

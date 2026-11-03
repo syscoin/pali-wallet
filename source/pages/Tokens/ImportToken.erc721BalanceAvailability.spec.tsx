@@ -242,13 +242,7 @@ afterEach(() => {
 const ordinaryImportAndPreview = async () => {
   render(
     <Provider store={mockStore}>
-      <MemoryRouter
-        initialEntries={['/tokens/add?tab=custom']}
-        future={{
-          ['v7_startTransition']: true,
-          ['v7_relativeSplatPath']: true,
-        }}
-      >
+      <MemoryRouter initialEntries={['/tokens/add?tab=custom']}>
         <Routes>
           <Route path="/tokens/add" element={<AddToken />} />
           <Route path="/home/details" element={<Details />} />
@@ -537,14 +531,7 @@ it.each(['list', 'collection'] as const)(
       );
     const tree = () => (
       <Provider store={mockStore}>
-        <MemoryRouter
-          future={{
-            ['v7_startTransition']: true,
-            ['v7_relativeSplatPath']: true,
-          }}
-        >
-          {content()}
-        </MemoryRouter>
+        <MemoryRouter>{content()}</MemoryRouter>
       </Provider>
     );
     const rendered = render(tree());

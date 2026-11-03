@@ -188,10 +188,6 @@ describe.each([
                 state: { id: '123456', hash: null },
               },
             ]}
-            future={{
-              ['v7_startTransition']: true,
-              ['v7_relativeSplatPath']: true,
-            }}
           >
             <Routes>
               <Route path="/home/details" element={<DetailsView />} />
@@ -281,10 +277,6 @@ describe.each(['TSPT', 'W'.repeat(32)])(
                   state: { id: '223456', hash: null },
                 },
               ]}
-              future={{
-                ['v7_startTransition']: true,
-                ['v7_relativeSplatPath']: true,
-              }}
             >
               <Routes>
                 <Route path="/home/details" element={<DetailsView />} />

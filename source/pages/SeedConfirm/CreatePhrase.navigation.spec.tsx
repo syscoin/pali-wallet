@@ -93,7 +93,7 @@ const Probe = () => {
 };
 const mount = (strict = false) => {
   const tree = (
-    <BrowserRouter>
+    <BrowserRouter useTransitions={false}>
       <OnboardingSecretsProvider>
         <Probe />
         <Routes>

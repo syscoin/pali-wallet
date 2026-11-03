@@ -186,13 +186,7 @@ it.each([
   async ({ first, second, expectedCount }) => {
     render(
       <Provider store={mockStore}>
-        <MemoryRouter
-          initialEntries={['/tokens/add?tab=custom']}
-          future={{
-            ['v7_startTransition']: true,
-            ['v7_relativeSplatPath']: true,
-          }}
-        >
+        <MemoryRouter initialEntries={['/tokens/add?tab=custom']}>
           <AddToken />
         </MemoryRouter>
       </Provider>
@@ -480,13 +474,7 @@ it.each([
     });
     render(
       <Provider store={mockStore}>
-        <MemoryRouter
-          initialEntries={['/tokens/add?tab=owned']}
-          future={{
-            ['v7_startTransition']: true,
-            ['v7_relativeSplatPath']: true,
-          }}
-        >
+        <MemoryRouter initialEntries={['/tokens/add?tab=owned']}>
           <AddToken />
         </MemoryRouter>
       </Provider>

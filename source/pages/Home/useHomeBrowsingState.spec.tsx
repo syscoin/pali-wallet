@@ -126,7 +126,6 @@ const App = ({
       { pathname: '/home', search: '?tab=assets&filter=keep', state },
     ]}
     // eslint-disable-next-line camelcase -- React Router API field names
-    future={{ v7_relativeSplatPath: true, v7_startTransition: true }}
   >
     <Routes>
       <Route

@@ -152,13 +152,7 @@ afterEach(() => {
 const page = (nftData = collection) => (
   <I18nextProvider i18n={i18n}>
     <Provider store={store}>
-      <MemoryRouter
-        future={{
-          ['v7_startTransition']: true,
-          ['v7_relativeSplatPath']: true,
-        }}
-        initialEntries={['/home/details']}
-      >
+      <MemoryRouter initialEntries={['/home/details']}>
         <NftsDetails nftData={nftData} />
       </MemoryRouter>
     </Provider>
