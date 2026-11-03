@@ -16,7 +16,6 @@ import { createPrivateVaultController } from './privateVault';
 import type { IPrivateVaultHost, IPrivateVaultSession } from './privateVault';
 
 jest.unmock('syscoinjs-lib');
-jest.unmock('tiny-secp256k1');
 jest.mock('@trezor/connect-webextension', () => ({}));
 
 const NOTE = `tornado-eth-1-1-0x${'01'.repeat(62)}`;

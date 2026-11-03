@@ -1,5 +1,4 @@
 jest.unmock('syscoinjs-lib');
-jest.unmock('tiny-secp256k1');
 
 import { createUtxoFixture, fixtureRead } from '../../e2e/harness/utxoFixture';
 

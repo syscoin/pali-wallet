@@ -23,7 +23,6 @@ import { getWalletNavigationScope } from 'utils/navigationState';
 import { AddToken } from './AddToken';
 
 jest.unmock('syscoinjs-lib');
-jest.unmock('tiny-secp256k1');
 
 type InventoryMode = 'held' | 'empty' | 'unavailable';
 const locales = ['en', 'de', 'es', 'fr', 'ja', 'ko', 'pt', 'ru', 'zh'];

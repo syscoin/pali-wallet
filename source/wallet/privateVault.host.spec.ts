@@ -18,7 +18,6 @@ import type {
 } from './privateVault';
 
 jest.unmock('syscoinjs-lib');
-jest.unmock('tiny-secp256k1');
 jest.mock('@trezor/connect-webextension', () => ({}));
 
 const ROOT = 'synthetic shared private vault test root';

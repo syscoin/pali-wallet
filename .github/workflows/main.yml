@@ -266,6 +266,40 @@ jobs:
           CURRENT_SHA256="$(sha256sum "${CURRENT_ZIP}" | cut -d ' ' -f 1)"
           echo "current_zip=${CURRENT_ZIP}" >> "$GITHUB_OUTPUT"
           echo "current_sha256=${CURRENT_SHA256}" >> "$GITHUB_OUTPUT"
+      - name: Verify Trezor import and cancellation in the real extension worker
+        timeout-minutes: 3
+        env:
+          PALI_TEST_DAPP_EXTENSION_PATH: ${{ github.workspace }}/build/chrome
+        run: |
+          export PALI_TEST_SOURCE_REVISION="$(git rev-parse HEAD)"
+          export PALI_TEST_SOURCE_DIFF_SHA256="$(git diff --binary HEAD | sha256sum | cut -d ' ' -f 1)"
+          export PALI_TEST_BUILD_MANIFEST="${RUNNER_TEMP}/pali-trezor-build-manifest.json"
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const { createHash } = require('node:crypto');
+          const root = process.env.PALI_TEST_DAPP_EXTENSION_PATH;
+          const files = {};
+          function visit(relative = '') {
+            for (const name of fs.readdirSync(path.join(root, relative)).sort()) {
+              const entry = path.posix.join(relative, name);
+              const full = path.join(root, entry);
+              const stat = fs.lstatSync(full);
+              if (stat.isDirectory()) visit(entry);
+              else if (stat.isFile()) files[entry] = createHash('sha256').update(fs.readFileSync(full)).digest('hex');
+              else throw Error('Unexpected build entry');
+            }
+          }
+          visit();
+          fs.writeFileSync(process.env.PALI_TEST_BUILD_MANIFEST, JSON.stringify({
+            sourceRevision: process.env.PALI_TEST_SOURCE_REVISION,
+            sourceDiffSha256: process.env.PALI_TEST_SOURCE_DIFF_SHA256,
+            files,
+          }));
+          NODE
+          export PALI_TEST_BUILD_MANIFEST_SHA256="$(sha256sum "${PALI_TEST_BUILD_MANIFEST}" | cut -d ' ' -f 1)"
+          EVIDENCE_DIR="${GITHUB_WORKSPACE}/e2e/artifacts/pr-conformance-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          node tests/integration/trezorConnect10/run.cjs > "${EVIDENCE_DIR}/trezor-connect10.json"
       - name: Run isolated test dapp conformance
         env:
           PALI_E2E_RUN_ID: pr-conformance-${{ github.run_id }}-${{ github.run_attempt }}

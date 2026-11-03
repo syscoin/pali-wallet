@@ -1,18 +1,3 @@
-// Mock problematic modules BEFORE any imports
-jest.mock('tiny-secp256k1', () => ({
-  isPoint: jest.fn(() => true),
-  isPrivate: jest.fn(() => true),
-  pointFromScalar: jest.fn(() => Buffer.alloc(33)),
-  pointCompress: jest.fn((point: Buffer) => point),
-  pointMultiply: jest.fn(() => Buffer.alloc(33)),
-  privateAdd: jest.fn(() => Buffer.alloc(32)),
-  privateSub: jest.fn(() => Buffer.alloc(32)),
-  sign: jest.fn(() => ({ signature: Buffer.alloc(64) })),
-  signSchnorr: jest.fn(() => Buffer.alloc(64)),
-  verify: jest.fn(() => true),
-  verifySchnorr: jest.fn(() => true),
-}));
-
 // Setup for asset management tests
 import '@testing-library/jest-dom';
 import { TextEncoder, TextDecoder } from 'util';

@@ -1,16 +1,5 @@
 // Comprehensive mocks for crypto dependencies that block our asset tests
 
-// Mock tiny-secp256k1 to avoid ecc library errors
-jest.mock('tiny-secp256k1', () => ({
-  pointFromScalar: jest.fn(),
-  isPoint: jest.fn().mockReturnValue(true),
-  isPrivate: jest.fn().mockReturnValue(true),
-  pointAddScalar: jest.fn(),
-  privateAdd: jest.fn(),
-  sign: jest.fn(),
-  verify: jest.fn().mockReturnValue(true),
-}));
-
 // Mock syscoinjs-lib to avoid crypto dependencies
 jest.mock('syscoinjs-lib', () => ({
   networks: {

@@ -26,6 +26,13 @@ describe('Trezor Suite Desktop manifest policy', () => {
     expect(MV3_OPTIONS.version).toBe(packageJson.version);
   });
 
+  it('allows only the HTTPS Suite Web origin to initiate the external channel', () => {
+    expect(manifest.externally_connectable).toEqual({
+      matches: ['https://suite.trezor.io/*'],
+    });
+    expect(manifest.externally_connectable.ids).toBeUndefined();
+  });
+
   it('limits the plaintext websocket exception to the exact Suite endpoint', () => {
     expect(directives.get('connect-src')).toEqual([
       "'self'",

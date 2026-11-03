@@ -5821,6 +5821,14 @@ class MainController {
       console.error('[MainController] Trezor import failed:', error);
 
       // Provide more specific error messages
+      if (error.code === 'HARDWARE_SIGNER_BUSY') {
+        throw Object.assign(
+          new Error(
+            'Finish or close the pending Trezor request in Trezor Suite, then try again.'
+          ),
+          { code: 'HARDWARE_SIGNER_BUSY' }
+        );
+      }
       if (error.message?.includes('device is in use')) {
         throw new Error(
           'Trezor device is being used by another application. Please close other apps and try again.'

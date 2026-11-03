@@ -1,10 +1,7 @@
 jest.unmock('syscoinjs-lib');
-jest.unmock('tiny-secp256k1');
 jest.mock('@trezor/connect-webextension', () => ({
   __esModule: true,
-  DEVICE_EVENT: 'device-event',
   default: {
-    on: jest.fn(),
     dispose: jest.fn(async () => undefined),
     init: jest.fn(async () => undefined),
     ethereumGetAddress: jest.fn(async ({ path }) => {
@@ -219,7 +216,14 @@ describe.each(['Trezor', 'Ledger'] as const)(
       failNextVaultWrite = false;
       writes = 0;
       global.chrome = {
-        runtime: { id: 'hardware-import-synthetic' },
+        runtime: {
+          id: 'hardware-import-synthetic',
+          getManifest: () => ({ ['manifest_version']: 3 }),
+          onConnect: { addListener: jest.fn() },
+          onMessageExternal: { addListener: jest.fn() },
+        },
+        tabs: { get: jest.fn(), create: jest.fn(), update: jest.fn() },
+        windows: { getCurrent: jest.fn() },
         storage: {
           local: {
             get: (
@@ -374,7 +378,7 @@ describe.each(['Trezor', 'Ledger'] as const)(
       if (kind === 'Trezor')
         deviceRead().mockResolvedValueOnce({
           success: false,
-          payload: { error: 'cancelled by user' },
+          error: { code: 'Method_Cancel', message: 'cancelled by user' },
         } as any);
       else deviceRead().mockRejectedValueOnce(new Error('cancelled by user'));
       const operation = importAccount();
@@ -385,6 +389,26 @@ describe.each(['Trezor', 'Ledger'] as const)(
       expect(project(store.getState().vault)).toEqual(before);
       expect(project(await loadSlip44State(60))).toEqual(before);
     });
+
+    if (kind === 'Trezor')
+      it('preserves the pending Suite request guidance without importing or retrying', async () => {
+        const before = project(store.getState().vault);
+        const attempt = jest
+          .spyOn(manager, 'importTrezorAccount')
+          .mockRejectedValueOnce(
+            Object.assign(new Error('Trezor request pending'), {
+              code: 'HARDWARE_SIGNER_BUSY',
+            })
+          );
+        await expect(importAccount()).rejects.toMatchObject({
+          code: 'HARDWARE_SIGNER_BUSY',
+          message:
+            'Finish or close the pending Trezor request in Trezor Suite, then try again.',
+        });
+        expect(attempt).toHaveBeenCalledTimes(1);
+        expect(writes).toBe(0);
+        expect(project(store.getState().vault)).toEqual(before);
+      });
 
     it('keeps a held account unpublished until the native write succeeds', async () => {
       const before = project(store.getState().vault);

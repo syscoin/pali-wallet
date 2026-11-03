@@ -1,19 +1,18 @@
 jest.unmock('syscoinjs-lib');
-jest.unmock('tiny-secp256k1');
 jest.mock('@trezor/connect-webextension', () => ({
   __esModule: true,
   default: {
+    init: jest.fn(),
     ethereumSignTransaction: jest.fn(),
     dispose: jest.fn(),
-    on: jest.fn(),
   },
-  DEVICE_EVENT: 'device-event',
 }));
 
 import { HardwareWalletManager } from '@sidhujag/sysweb3-keyring/cjs/hardware-wallet-manager';
 import { LedgerKeyring } from '@sidhujag/sysweb3-keyring/cjs/ledger';
 import { EthereumTransactions } from '@sidhujag/sysweb3-keyring/cjs/transactions/ethereum';
 import { TrezorKeyring } from '@sidhujag/sysweb3-keyring/cjs/trezor';
+import TrezorTransport from '@sidhujag/sysweb3-keyring/cjs/trezor/connect';
 import { Interface } from 'ethers/abi';
 import { Transaction } from 'ethers/transaction';
 import { Wallet } from 'ethers/wallet';
@@ -73,9 +72,29 @@ describe.each(['Ledger', 'Trezor'] as const)(
       if (kind === 'Trezor') await jest.advanceTimersByTimeAsync(2000);
     };
 
-    beforeEach(() => {
+    beforeEach(async () => {
       jest.clearAllMocks();
       jest.useFakeTimers();
+      Object.assign(chrome, {
+        runtime: {
+          ...chrome.runtime,
+          id: 'pali-public-hardware-fixture',
+          getManifest: () => ({ ['manifest_version']: 3 }),
+          onConnect: { addListener: jest.fn() },
+          onMessageExternal: { addListener: jest.fn() },
+        },
+        tabs: { get: jest.fn(), create: jest.fn(), update: jest.fn() },
+        windows: { getCurrent: jest.fn() },
+      });
+      if (kind === 'Trezor') {
+        await TrezorTransport.init({
+          manifest: {
+            appName: 'Pali public fixture',
+            appUrl: 'https://paliwallet.com',
+            email: 'test@example.invalid',
+          },
+        });
+      }
       const denyNetwork = () => {
         throw new Error('Hardware fixture must not access a network');
       };
@@ -186,9 +205,9 @@ describe.each(['Ledger', 'Trezor'] as const)(
           return {
             success: true,
             payload: {
-              r: signature.r,
-              s: signature.s,
-              v: signature.v.toString(16),
+              r: signature.r.slice(2),
+              s: signature.s.slice(2),
+              v: signature.v,
             },
           };
         }
@@ -265,8 +284,8 @@ describe.each(['Ledger', 'Trezor'] as const)(
         if (connectRejection)
           TrezorConnect.ethereumSignTransaction.mockResolvedValueOnce({
             success: false,
-            payload: {
-              error: 'denied by the user',
+            error: {
+              message: 'denied by the user',
               code: 'Failure_ActionCancelled',
             },
           });

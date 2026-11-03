@@ -1,5 +1,4 @@
 jest.unmock('syscoinjs-lib');
-jest.unmock('tiny-secp256k1');
 
 import { utils as sys } from 'syscoinjs-lib';
 

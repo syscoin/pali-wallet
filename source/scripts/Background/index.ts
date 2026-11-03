@@ -36,6 +36,13 @@ const RETRY_DELAY = 2000; // 2 seconds
 
 console.log('[Background] Initializing controller...');
 
+// Connect 10 registers the Suite reply channel during module evaluation. Load
+// its packaged worker chunk before MV3 seals importScripts; no device request
+// or Suite connection begins until the user invokes a hardware operation.
+void import(
+  /* webpackChunkName: "trezor-connect" */ '@trezor/connect-webextension'
+).catch(() => undefined);
+
 // Classic service workers must discover packaged imports during evaluation.
 // Register this chunk now; recovery admission still runs only on user request.
 void import(

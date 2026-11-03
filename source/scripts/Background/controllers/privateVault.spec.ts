@@ -24,7 +24,6 @@ import {
 } from './privateVault';
 
 jest.unmock('syscoinjs-lib');
-jest.unmock('tiny-secp256k1');
 jest.mock('@trezor/connect-webextension', () => ({}));
 
 // Synthetic roots and notes only. The released SDK's actual AEAD methods run;

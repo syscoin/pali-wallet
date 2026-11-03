@@ -1,5 +1,4 @@
 jest.unmock('syscoinjs-lib');
-jest.unmock('tiny-secp256k1');
 
 import { SyscoinTransactions } from '@sidhujag/sysweb3-keyring/cjs/transactions/syscoin';
 import { assertPsbtAccountScope } from '@sidhujag/sysweb3-keyring/cjs/utils/psbt-account-scope';

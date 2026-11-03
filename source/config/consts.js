@@ -100,9 +100,11 @@ const MV3_OPTIONS = {
   host_permissions: [
     'http://*/*',
     'https://*/*',
-    '*://connect.trezor.io/9/*',
     'http://localhost:8545/',
   ],
+  externally_connectable: {
+    matches: ['https://suite.trezor.io/*'],
+  },
   content_security_policy: {
     extension_pages:
       "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src 'self' https: wss: http://localhost:* http://127.0.0.1:* ws://127.0.0.1:21335/connect-ws; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; font-src 'self' data:;",
