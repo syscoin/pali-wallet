@@ -8,6 +8,7 @@ import {
   waitFor,
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import i18next from 'i18next';
 import React from 'react';
 
 import en from 'assets/locales/en.json';
@@ -34,10 +35,20 @@ const mockRestored = jest.fn();
 let mockState: any;
 let mockStatus: any;
 let visible = true;
-const mockTranslate = (key: string, values: any = {}) =>
-  String(
-    key.split('.').reduce((value: any, part) => value?.[part], en) || key
-  ).replace(/{{(\w+)}}/g, (_, name) => String(values[name]));
+let mockRealTranslation = false;
+const translationInstance = i18next.createInstance();
+void translationInstance.init({
+  initImmediate: false,
+  lng: 'en',
+  resources: { en: { translation: en } },
+  interpolation: { escapeValue: true },
+});
+const mockTranslate = (key: string, values: any = {}): string =>
+  mockRealTranslation
+    ? String(translationInstance.t(key, values))
+    : String(
+        key.split('.').reduce((value: any, part) => value?.[part], en) || key
+      ).replace(/{{(\w+)}}/g, (_, name) => String(values[name]));
 jest.mock('react-redux', () => ({
   useSelector: (select: any) => select(mockState),
 }));
@@ -115,6 +126,7 @@ afterAll(() => {
 });
 beforeEach(() => {
   visible = true;
+  mockRealTranslation = false;
   mockClose.mockReset();
   mockRestored.mockReset();
   jest.mocked(URL.createObjectURL).mockClear();
@@ -253,6 +265,20 @@ it('verifies only a user-selected saved file and clears its password after the a
     false
   );
   expect(screen.queryByLabelText(copy.filePassword)).not.toBeInTheDocument();
+});
+
+it('renders snapshot date slashes literally while React still escapes interpolated markup', async () => {
+  mockRealTranslation = true;
+  jest
+    .spyOn(Date.prototype, 'toLocaleString')
+    .mockReturnValue('11/3/2026 <img src=x>');
+  render(dialog());
+  await createExport();
+  expect(
+    screen.getByText('Snapshot time: 11/3/2026 <img src=x>')
+  ).toBeVisible();
+  expect(document.querySelector('img[src="x"]')).toBeNull();
+  expect(document.body.textContent).not.toContain('&#x2F;');
 });
 
 it.each(['mismatch', 'short', 'bytes', 'surrogate'])(

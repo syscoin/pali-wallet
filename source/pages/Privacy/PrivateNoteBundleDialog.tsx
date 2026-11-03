@@ -564,6 +564,7 @@ function BundleBody({
                         time: new Date(exportInfo.createdAt).toLocaleString(
                           i18n?.resolvedLanguage
                         ),
+                        interpolation: { escapeValue: false },
                       })}
                     </p>
                   )}
