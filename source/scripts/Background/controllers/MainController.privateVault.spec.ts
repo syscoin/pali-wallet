@@ -29,9 +29,9 @@ import { walletPersistenceGate } from 'state/paliStorage';
 import store from 'state/store';
 import { KeyringAccountType } from 'types/network';
 import { AsyncMutex, walletPersistenceMutex } from 'utils/asyncMutex';
-import type { IPrivacyTransactionsHost } from 'utils/privacy/transactionTypes';
-import * as completion from 'utils/privacy/spentCompletion';
 import * as privacyClient from 'utils/privacy/client';
+import * as completion from 'utils/privacy/spentCompletion';
+import type { IPrivacyTransactionsHost } from 'utils/privacy/transactionTypes';
 import { chromeStorage } from 'utils/storageAPI';
 
 import MainController from './MainController';
@@ -119,7 +119,11 @@ function depositFixture() {
     withDepositCommitment: jest.fn(async (_id, _session, use) =>
       use('0x' + '01'.repeat(32))
     ),
-    reserveDepositAttempt: jest.fn(async () => undefined),
+    reserveDepositAttempt: jest.fn(
+      async (_attempt, _session, onRestoreFence) => {
+        onRestoreFence(() => undefined);
+      }
+    ),
     recordDepositBroadcast: jest.fn(async () => undefined),
     clearUnbroadcastDepositAttempt: jest.fn(async () => undefined),
   };
@@ -130,6 +134,7 @@ function depositFixture() {
     getPrivateVaultController: jest.fn(async () => vault),
     sendAndSaveEthTransaction: jest.fn(
       async (_tx, _legacy, _target, _metadata, options) => {
+        options.assertBeforeSign?.();
         await options.onBroadcast({ hash: DEPOSIT_HASH });
         return { hash: DEPOSIT_HASH };
       }

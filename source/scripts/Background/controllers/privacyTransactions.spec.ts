@@ -62,6 +62,7 @@ function setup() {
     })),
     beforeSubmission: jest.fn(async () => {
       events.push('durable-marker');
+      return () => undefined;
     }),
     sendTransaction: jest.fn(async (_tx, _session, onBroadcast) => {
       events.push('send');
@@ -215,7 +216,7 @@ it('consumes confirmation before awaiting and invalidates sibling intents for th
     poolId: 'eth-1',
     noteId: NOTE_ID,
   });
-  const marker = deferred<void>();
+  const marker = deferred<() => void>();
   jest.mocked(f.host.beforeSubmission).mockReturnValue(marker.promise);
   const sending = f.controller.submitDeposit(first.intentId);
   await expect(f.controller.submitDeposit(first.intentId)).rejects.toThrow(
@@ -225,7 +226,7 @@ it('consumes confirmation before awaiting and invalidates sibling intents for th
     'intent_expired'
   );
   expect(f.host.sendTransaction).not.toHaveBeenCalled();
-  marker.resolve();
+  marker.resolve(() => undefined);
   await sending;
   expect(f.host.sendTransaction).toHaveBeenCalledTimes(1);
 });
@@ -247,6 +248,7 @@ it('never sends after failed durable reservation or context change during reserv
   const changed = setup();
   jest.mocked(changed.host.beforeSubmission).mockImplementation(async () => {
     changed.change();
+    return () => undefined;
   });
   const other = await changed.controller.prepareDeposit({ poolId: 'eth-1' });
   await expect(
@@ -346,6 +348,7 @@ it('honors the durable per-note guard across a controller restart after an unkno
   jest.mocked(f.host.beforeSubmission).mockImplementation(async (attempt) => {
     if (reserved.has(attempt.noteId)) throw new Error('prior unknown attempt');
     reserved.add(attempt.noteId);
+    return () => undefined;
   });
   jest
     .mocked(f.host.sendTransaction)
@@ -433,6 +436,7 @@ it('supports exact legacy quantities without changing the fixed call', async () 
   expect(f.host.sendTransaction).toHaveBeenCalledWith(
     expect.objectContaining({ nonce: '0x7', gasPrice: '0x64' }),
     expect.any(Object),
+    expect.any(Function),
     expect.any(Function)
   );
 });

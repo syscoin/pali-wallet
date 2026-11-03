@@ -64,7 +64,8 @@ export interface IPrivacyRelayerChoice {
   supportedPools: readonly PrivacyPoolId[];
 }
 export interface IPrivacyWithdrawalsHost {
-  beforeSubmission: (attempt: IPrivacyWithdrawalAttempt) => Promise<void>;
+  /** Durably reserve the attempt and return its synchronous final-submission fence. */
+  beforeSubmission: (attempt: IPrivacyWithdrawalAttempt) => Promise<() => void>;
   captureSession: (requireSigner?: boolean) => IPrivacyWithdrawalSession;
   getSnapshot: (poolId: PrivacyPoolId) => Promise<IPrivacySnapshotAccess>;
   getWithdrawalAttempt: (

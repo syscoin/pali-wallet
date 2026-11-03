@@ -66,8 +66,8 @@ export interface IPrivacyDepositSubmission {
 }
 
 export interface IPrivacyTransactionsHost {
-  /** Atomically reserve this note/intent durably. Reject prior submitted/unknown attempts. */
-  beforeSubmission: (attempt: IPrivacyDepositAttempt) => Promise<void>;
+  /** Durably reserve this intent and return its synchronous final-signing fence. */
+  beforeSubmission: (attempt: IPrivacyDepositAttempt) => Promise<() => void>;
   /** Capture the active account/network/session; assertCurrent must fence ABA changes. */
   captureContext: () => IPrivacyDepositSession;
   /** Read-only gas/fee/nonce/balance preflight against the captured provider. Never sign. */
@@ -88,11 +88,12 @@ export interface IPrivacyTransactionsHost {
   ) => Promise<void>;
   /** Optional recovery of a matching reservation after proven pre-broadcast failure. */
   recordNotBroadcast?: (attempt: IPrivacyDepositAttempt) => Promise<void>;
-  /** Invoke onBroadcast immediately on acknowledgement, before current-context/history checks. */
+  /** Assert the fence at final signing; record acknowledgments before later context checks. */
   sendTransaction: (
     transaction: PrivacyDepositTransaction,
     session: IPrivacyDepositSession,
-    onBroadcast: (response: { hash: string }) => Promise<void>
+    onBroadcast: (response: { hash: string }) => Promise<void>,
+    assertBeforeSign: () => void
   ) => Promise<{ hash: string }>;
   /** The implementation reads/decrypts locally; only the commitment enters this callback. */
   withCommitment: <T>(

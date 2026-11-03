@@ -132,8 +132,13 @@ function setup() {
       session.assertCurrent();
       return use(NOTE, 'eth-1');
     }),
-    reserveWithdrawalAttempt: jest.fn(async (_attempt, session) => {
+    reserveWithdrawalAttempt: jest.fn(async (_attempt, session, onIdentity) => {
       session.assertCurrent();
+      onIdentity?.({
+        assertRestoreCurrent: () => undefined,
+        attemptHash: HASH,
+        profileId: '0x' + '11'.repeat(32),
+      });
       events.push('reserve');
     }),
     recordWithdrawalSubmission: jest.fn(async (_attempt, _ack, session) => {
