@@ -1687,6 +1687,7 @@ class MainController {
     // This pre-admitted export owns authenticationMutex; setup cannot begin
     // its reset until it finishes. Session checks still reject a later lock.
     this.assertCurrentWalletSession(generation);
+    const walletStateGeneration = this.walletStateGeneration;
     const keyring = this.getActiveKeyring();
     // Check rate limiting before password validation
     const remainingLockout = await this.checkRateLimit();
@@ -1705,7 +1706,10 @@ class MainController {
       return seed;
     } catch (error) {
       // Record failed attempt if it's a password error
-      if (error.message === INVALID_PASSWORD_ERROR) {
+      if (
+        error.message === INVALID_PASSWORD_ERROR &&
+        walletStateGeneration === this.walletStateGeneration
+      ) {
         await this.recordFailedAttempt();
       }
       throw error;
@@ -1731,6 +1735,7 @@ class MainController {
     generation: number
   ) {
     this.assertCurrentWalletSession(generation);
+    const walletStateGeneration = this.walletStateGeneration;
     const keyring = this.getActiveKeyring();
     // Check rate limiting before password validation
     const remainingLockout = await this.checkRateLimit();
@@ -1753,7 +1758,10 @@ class MainController {
       return privateKey;
     } catch (error) {
       // Record failed attempt if it's a password error
-      if (error.message === INVALID_PASSWORD_ERROR) {
+      if (
+        error.message === INVALID_PASSWORD_ERROR &&
+        walletStateGeneration === this.walletStateGeneration
+      ) {
         await this.recordFailedAttempt();
       }
       throw error;
@@ -2970,8 +2978,29 @@ class MainController {
     await this.prepareWalletRecoveryAccess();
     this.assertCurrentWalletSession(generation);
     const keyring = this.getActiveKeyring();
+    const walletStateGeneration = this.walletStateGeneration;
     const result = await keyring.unlock(pwd);
     if (
+      !result ||
+      typeof result !== 'object' ||
+      Array.isArray(result) ||
+      typeof result.canLogin !== 'boolean' ||
+      (result.needsAccountCreation !== undefined &&
+        typeof result.needsAccountCreation !== 'boolean')
+    ) {
+      await keyring.lockWallet();
+      throw new Error('Invalid wallet authentication result');
+    }
+    // A lifecycle lock or network change cancels delivery, not the SDK's
+    // credential verdict. Charge it once to the same wallet before checking
+    // that session; a reset/replacement must never inherit the old attempt.
+    if (
+      !result.canLogin &&
+      walletStateGeneration === this.walletStateGeneration
+    )
+      await this.recordFailedAttempt();
+    if (
+      walletStateGeneration !== this.walletStateGeneration ||
       generation !== this.walletSessionGeneration ||
       keyring !== this.getActiveKeyring()
     ) {
@@ -3003,23 +3032,23 @@ class MainController {
       );
     }
 
-    const wasUnlocked = this.getActiveKeyring().isUnlocked();
+    const keyring = this.getActiveKeyring();
+    const wasUnlocked = keyring.isUnlocked();
     try {
       const result = await this.unlockKeyring(pwd, generation);
 
       if (result.canLogin) {
+        this.assertCurrentWalletSession(generation, keyring);
         console.log('[MainController] Wallet unlocked successfully');
         // Reset rate limit on successful login
         await this.resetRateLimit();
-        this.assertCurrentWalletSession(generation, this.getActiveKeyring());
+        this.assertCurrentWalletSession(generation, keyring);
         if (!wasUnlocked) {
           await clearNavigationState();
-          this.assertCurrentWalletSession(generation, this.getActiveKeyring());
+          this.assertCurrentWalletSession(generation, keyring);
         }
       } else {
         console.warn('[MainController] Wallet unlock returned canLogin=false');
-        // Record failed attempt
-        await this.recordFailedAttempt();
       }
 
       return result;
@@ -3506,7 +3535,6 @@ class MainController {
     // Ensure clean network state during login
     store.dispatch(resetNetworkStatus());
     const controller = getController();
-    let invalidPassword = false;
     let authenticated = false;
 
     try {
@@ -3554,7 +3582,6 @@ class MainController {
       );
 
       if (!canLogin) {
-        invalidPassword = true;
         console.error('[MainController] Unlock failed - invalid password');
         throw new Error(INVALID_PASSWORD_ERROR);
       }
@@ -3725,12 +3752,6 @@ class MainController {
         } catch (lockError) {
           console.error('[MainController] Session cleanup failed:', lockError);
         }
-      }
-
-      // Count the keyring's explicit authentication rejection, never arbitrary
-      // storage/session errors whose message happens to mention a password.
-      if (invalidPassword) {
-        await this.recordFailedAttempt();
       }
 
       throw error;
