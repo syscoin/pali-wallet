@@ -85,8 +85,12 @@ class PaliWalletCryptoModule : Module() {
     Function("info") { mapOf("apiVersion" to 1, "implementation" to "android-jca-bc") }
     Function("createContext") { PaliCryptoContext() }
     OnDestroy { queue.cancel(); dispatcher.close() }
-    Class("Key", PaliCryptoKey::class) {}
+    Class("Key", PaliCryptoKey::class) {
+      // Expo requires a constructor declaration even for factory-only handles.
+      Constructor { throw CryptoOperationException() }
+    }
     Class("Context", PaliCryptoContext::class) {
+      Constructor { throw CryptoOperationException() }
       Function("close") { context: PaliCryptoContext -> context.close() }
       Function("importKey") { context: PaliCryptoContext, kind: String, usages: List<String>, bytes: ByteArray ->
         operation { context.importKey(kind, usages, bytes) }

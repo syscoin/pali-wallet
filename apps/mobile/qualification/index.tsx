@@ -5,6 +5,7 @@ import React, { useEffect, useState } from 'react';
 import { Linking, Platform, Text, View } from 'react-native';
 import { assertQualificationBuild, parseQualificationLaunch } from './launch-parameters.ts';
 import { captureQualificationCryptoLoad } from './capture-crypto-load.ts';
+import { qualifyNativeHandleContract } from './native-handle-contract.ts';
 
 import type { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import type { KeyringRuntime } from '../src/custody/keyringRuntime.ts';
@@ -151,6 +152,10 @@ function QualificationApp() {
             return provider;
           }
         );
+        await check('native factory handles reject direct construction', async () => {
+          const { requireNativeModule } = await import('expo-modules-core');
+          qualifyNativeHandleContract(requireNativeModule('PaliWalletCrypto'));
+        });
         // The observer delegates every request to the qualified native CSPRNG.
         // Install it before importing any wallet/ethers/BIP39 graph, because
         // noble retains the global crypto object from module evaluation.
