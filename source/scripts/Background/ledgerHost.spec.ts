@@ -50,9 +50,118 @@ const flush = async () => {
   await Promise.resolve();
 };
 
+it('rejects unowned device pages before lazily constructing browser device APIs', async () => {
+  const original = global.chrome;
+  const onConnect = event();
+  const api = { runtime: { onConnect } };
+  Object.defineProperty(api, 'windows', {
+    get: () => {
+      throw new Error('Device API touched during software startup');
+    },
+  });
+  try {
+    global.chrome = api as any;
+    let host: any;
+    jest.isolateModules(() => {
+      const { getLedgerHost } = jest.requireActual('./ledgerHost');
+      host = getLedgerHost();
+      expect(getLedgerHost()).toBe(host);
+    });
+    expect(onConnect.addListener).toHaveBeenCalledTimes(1);
+    expect(host.getStatus()).toEqual({ connected: false });
+    await host.disconnect();
+    const unowned = {
+      name: `pali-ledger-host:${'0'.repeat(48)}`,
+      disconnect: jest.fn(),
+    };
+    const unrelated = { name: 'pali-ordinary-page', disconnect: jest.fn() };
+    onConnect.emit(unowned);
+    onConnect.emit(unrelated);
+    expect(unowned.disconnect).toHaveBeenCalledTimes(1);
+    expect(unrelated.disconnect).not.toHaveBeenCalled();
+  } finally {
+    global.chrome = original;
+  }
+});
+
 describe('Ledger authority host broker', () => {
   beforeEach(() => jest.useFakeTimers());
   afterEach(() => jest.useRealTimers());
+
+  it('focuses an already connected owned window before dispatching the next request', async () => {
+    const f = fixture();
+    const connected = f.broker.host.connect();
+    const port = f.port();
+    await flush();
+    port.onMessage.emit({ type: 'ready' });
+    await connected;
+    expect(f.api.windows.update).not.toHaveBeenCalled();
+    const result = f.broker.host.evm.getAddress({ accountIndex: 0 });
+    await flush();
+    expect(f.api.windows.update).toHaveBeenCalledWith(41, { focused: true });
+    const message = port.postMessage.mock.calls.find(
+      ([value]) => value.type === 'request'
+    )[0];
+    port.onMessage.emit({
+      id: message.id,
+      ok: true,
+      value: { address: 'public' },
+    });
+    await expect(result).resolves.toEqual({ address: 'public' });
+    await f.broker.disconnect();
+  });
+
+  it('cancels the request when its owned window can no longer be focused', async () => {
+    const f = fixture();
+    const connected = f.broker.host.connect();
+    const port = f.port();
+    await flush();
+    port.onMessage.emit({ type: 'ready' });
+    await connected;
+    f.api.windows.update.mockRejectedValueOnce(new Error('Window not found'));
+    await expect(
+      f.broker.host.evm.getAddress({ accountIndex: 0 })
+    ).rejects.toMatchObject({ code: 'HARDWARE_REQUEST_CANCELLED' });
+    expect(
+      port.postMessage.mock.calls.filter(([value]) => value.type === 'request')
+    ).toHaveLength(0);
+    expect(f.broker.host.getStatus().connected).toBe(false);
+  });
+
+  it('does not close a replacement session when an older focus request fails late', async () => {
+    const f = fixture();
+    const connected = f.broker.host.connect();
+    const original = f.port();
+    await flush();
+    original.onMessage.emit({ type: 'ready' });
+    await connected;
+    let failFocus!: (error: Error) => void;
+    f.api.windows.update.mockImplementationOnce(
+      () =>
+        new Promise((_, reject) => {
+          failFocus = reject;
+        })
+    );
+    const oldRequest = f.broker.host.evm.getAddress({ accountIndex: 0 });
+    const rejected = expect(oldRequest).rejects.toMatchObject({
+      code: 'HARDWARE_REQUEST_CANCELLED',
+    });
+    await f.broker.disconnect();
+    const replacementReady = f.broker.host.connect();
+    const url = f.api.windows.create.mock.calls[1][0].url;
+    const replacement = f.port({
+      name: `pali-ledger-host:${url.split('#')[1]}`,
+      sender: { id: 'pali', url, frameId: 0, tab: { windowId: 41 } },
+    });
+    await flush();
+    replacement.onMessage.emit({ type: 'ready' });
+    await replacementReady;
+    failFocus(new Error('Old window disappeared'));
+    await rejected;
+    expect(f.broker.host.getStatus().connected).toBe(true);
+    expect(replacement.disconnect).not.toHaveBeenCalled();
+    await f.broker.disconnect();
+  });
 
   it.each([
     'foreign-extension',

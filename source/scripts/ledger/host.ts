@@ -1,5 +1,4 @@
 import { createLedgerDmkHost } from '@sidhujag/sysweb3-keyring/esm/ledger-host';
-
 import { i18next } from './i18n';
 import {
   invokeLedgerHost,
@@ -19,6 +18,10 @@ const status = node('status');
 const review = node('review');
 const details = node('details');
 const t = (key: string) => i18next.t(`ledgerHost.${key}`);
+const setStatus = (key: string) => {
+  status.dataset.i18n = key;
+  status.textContent = t(key);
+};
 
 const localize = () => {
   for (const element of document.querySelectorAll<HTMLElement>('[data-i18n]'))
@@ -64,7 +67,7 @@ const host = createLedgerDmkHost({
 
 const nonce = window.location.hash.slice(1);
 if (!/^[0-9a-f]{48}$/.test(nonce)) {
-  status.textContent = t('unavailable');
+  setStatus('unavailable');
 } else {
   const port = chrome.runtime.connect({ name: `${LEDGER_HOST_PORT}${nonce}` });
   let lastActivity = Date.now();
@@ -73,7 +76,7 @@ if (!/^[0-9a-f]{48}$/.test(nonce)) {
       return;
     connect.hidden = false;
     connect.disabled = false;
-    status.textContent = t('disconnected');
+    setStatus('disconnected');
     port.postMessage({ type: 'device-disconnected' });
   };
   const statusTimer = setInterval(detectDisconnect, 1000);
@@ -95,7 +98,7 @@ if (!/^[0-9a-f]{48}$/.test(nonce)) {
     review.hidden = true;
     details.textContent = '';
     void host.disconnect();
-    status.textContent = t('disconnected');
+    setStatus('disconnected');
     port.disconnect();
   };
   port.onDisconnect.addListener(shutdown);
@@ -104,17 +107,17 @@ if (!/^[0-9a-f]{48}$/.test(nonce)) {
     if (connect.disabled || active || !alive) return;
     lastActivity = Date.now();
     connect.disabled = true;
-    status.textContent = t('connecting');
+    setStatus('connecting');
     try {
       // Must start directly from this visible page's user gesture.
       await host.connect({ useGrantedDevices: false });
       if (!alive) return;
-      status.textContent = t('ready');
+      setStatus('ready');
       connect.hidden = true;
       port.postMessage({ type: 'ready' });
     } catch {
       if (!alive) return;
-      status.textContent = t('connectFailed');
+      setStatus('connectFailed');
       connect.disabled = false;
     }
   };
@@ -143,7 +146,7 @@ if (!/^[0-9a-f]{48}$/.test(nonce)) {
     }
     active = true;
     lastActivity = Date.now();
-    status.textContent = t('reviewDevice');
+    setStatus('reviewDevice');
     try {
       const value = await invokeLedgerHost(
         host,
@@ -152,7 +155,7 @@ if (!/^[0-9a-f]{48}$/.test(nonce)) {
       );
       if (alive) {
         port.postMessage({ id: message.id, ok: true, value });
-        status.textContent = t('complete');
+        setStatus('complete');
       }
     } catch (error) {
       if (alive) {
@@ -164,7 +167,7 @@ if (!/^[0-9a-f]{48}$/.test(nonce)) {
           code,
           message: t('operationFailed'),
         });
-        status.textContent = t('operationFailed');
+        setStatus('operationFailed');
       }
     } finally {
       active = false;
