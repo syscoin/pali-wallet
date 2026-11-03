@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 
 const mockListeners: ((message: any) => void)[] = [];
+const mockLanguageListeners: (() => void)[] = [];
 let mockConnected = false;
 let mockConfig: any;
 const mockHost = {
@@ -32,7 +33,10 @@ jest.mock(
   { virtual: true }
 );
 jest.mock('./i18n', () => ({
-  i18next: { t: (key) => key, on: jest.fn() },
+  i18next: {
+    t: (key) => key,
+    on: jest.fn((_event, listener) => mockLanguageListeners.push(listener)),
+  },
 }));
 
 const flush = async () => {
@@ -46,6 +50,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   jest.useFakeTimers();
   mockListeners.length = 0;
+  mockLanguageListeners.length = 0;
   mockConnected = false;
   const html = fs.readFileSync(
     path.resolve(__dirname, '../../../views/ledger.html'),
@@ -113,4 +118,16 @@ it('disconnects the authority immediately for an oversized malformed envelope', 
   });
   expect(mockPort.disconnect).toHaveBeenCalledTimes(1);
   expect(mockHost.evm.getAddress).not.toHaveBeenCalled();
+});
+
+it('preserves current status when delayed localization arrives after cancellation', () => {
+  window.dispatchEvent(new Event('pagehide'));
+  expect(document.getElementById('status')!.textContent).toBe(
+    'ledgerHost.disconnected'
+  );
+  for (const localize of mockLanguageListeners) localize();
+  expect(document.getElementById('status')!.textContent).toBe(
+    'ledgerHost.disconnected'
+  );
+  expect(button('connect').disabled).toBe(true);
 });
