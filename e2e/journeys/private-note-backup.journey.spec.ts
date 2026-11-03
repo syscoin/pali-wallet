@@ -432,6 +432,26 @@ test('private note files: real download, saved-file verification and fenced rest
         await expect(
           dialog.getByRole('button', { name: copy.saveFile, exact: true })
         ).toBeVisible({ timeout: 120000 });
+        const countBounds = await dialog
+          .getByText(copy.exportReady.replace('{{count}}', '2'), {
+            exact: true,
+          })
+          .evaluate((element) => {
+            const body = element.closest('div.overflow-y-auto');
+            if (!body) throw new Error('Missing dialog scroll body');
+            const count = element.getBoundingClientRect();
+            const visible = body.getBoundingClientRect();
+            return {
+              top: count.top,
+              bottom: count.bottom,
+              visibleTop: visible.top,
+              visibleBottom: visible.bottom,
+            };
+          });
+        expect(countBounds.top).toBeGreaterThanOrEqual(countBounds.visibleTop);
+        expect(countBounds.bottom).toBeLessThanOrEqual(
+          countBounds.visibleBottom
+        );
         await expect(dialog).not.toContainText('&#x2F;');
         screenshots.push(
           await wallet!.shot('backup-ready-before-save-320x480')
@@ -549,7 +569,7 @@ test('private note files: real download, saved-file verification and fenced rest
       )
     );
     await wallet.step(
-      'restore the downloaded file into a fresh wallet with a different wallet password',
+      'restore the downloaded file into a wallet with a different seed and password',
       async (capture) => {
         const page = wallet!.page;
         await wallet!.importSeedAndCreatePassword();
@@ -578,6 +598,7 @@ test('private note files: real download, saved-file verification and fenced rest
           (observations.initialRestore as { profileSha256: string })
             .profileSha256
         );
+        observations.differentSeedAndPasswordVerified = true;
       }
     );
     await wallet.step(
@@ -594,7 +615,7 @@ test('private note files: real download, saved-file verification and fenced rest
         observations.duplicateRestore = {
           added: 0,
           duplicates: 2,
-          newlyGuarded: 0,
+          newOrUpdatedReconciliationHolds: 0,
           visibleNotes: 2,
         };
       }

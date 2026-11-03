@@ -521,7 +521,7 @@ function BundleBody({
             }
           }}
         >
-          <DialogBody>
+          <DialogBody key={stage}>
             <div className="space-y-4 text-left text-xs">
               {stage === 'form' && (
                 <div className="space-y-3">
