@@ -29,7 +29,6 @@ import isNil from 'lodash/isNil';
 import * as syscoinjs from 'syscoinjs-lib';
 
 import { getController, notificationManager } from '..';
-import { getLedgerHost } from '../ledgerHost';
 import {
   clearNavigationState,
   clearTransactionNavigationState,
@@ -37,6 +36,7 @@ import {
   IWalletNavigationScope,
 } from '../../../utils/navigationState';
 import { checkForUpdates } from '../handlers/handlePaliUpdates';
+import { getLedgerHost } from '../ledgerHost';
 import {
   AccountRecoveryRequiredError,
   assertCompleteHDAccountData,
@@ -5870,52 +5870,96 @@ class MainController {
 
   public async importLedgerAccountFromController(label?: string) {
     const { keyring, assertCurrent } = this.accountMutationContext();
+    // Discovery and device reads have their own budgets. Bound their combined
+    // lifetime before the UI's five-minute RPC timeout can abandon this import.
+    const deadlineAt = performance.now() + 240000;
+    let expired = false;
+    let devicePending = true;
+    let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
+    const timeoutError = () =>
+      Object.assign(
+        new Error('Ledger account import timed out. Please try again.'),
+        { code: 'HARDWARE_REQUEST_TIMEOUT' }
+      );
+    const assertImportCurrent = () => {
+      if (expired || performance.now() >= deadlineAt) throw timeoutError();
+      assertCurrent();
+    };
     let importedAccount;
     try {
-      importedAccount = await keyring.importLedgerAccount(label);
-    } catch (error) {
-      console.error('[MainController] Ledger import failed:', error);
+      try {
+        const deadline = new Promise<never>((_, reject) => {
+          deadlineTimer = setTimeout(() => {
+            expired = true;
+            // Revoke the device request synchronously; late public metadata
+            // cannot reach the guarded durable account creation below.
+            if (devicePending)
+              void getLedgerHost()
+                .disconnect()
+                .catch(() => undefined);
+            reject(timeoutError());
+          }, 240000);
+        });
+        importedAccount = await Promise.race([
+          keyring.importLedgerAccount(label),
+          deadline,
+        ]);
+      } catch (error) {
+        console.error('[MainController] Ledger import failed:', error);
 
-      // Provide more specific error messages
-      if (error.message?.includes('Ledger device locked')) {
+        if (expired || error.code === 'HARDWARE_REQUEST_TIMEOUT')
+          throw timeoutError();
+        if (error.code === 'HARDWARE_SIGNER_BUSY') {
+          throw Object.assign(
+            new Error(
+              'Finish or close the pending Ledger request, then try again.'
+            ),
+            { code: 'HARDWARE_SIGNER_BUSY' }
+          );
+        }
+        // Provide more specific error messages
+        if (error.message?.includes('Ledger device locked')) {
+          throw new Error(
+            'Ledger device is locked. Please unlock it and open the Syscoin app.'
+          );
+        } else if (error.message?.includes('app not open')) {
+          throw new Error(
+            'Please open the app on your Ledger device and try again.'
+          );
+        } else if (error.message?.includes('disconnected')) {
+          throw new Error(
+            'Ledger device was disconnected. Please reconnect and try again.'
+          );
+        } else if (error.message?.includes('cancelled')) {
+          throw new Error('Ledger operation was cancelled by the user.');
+        }
+
         throw new Error(
-          'Ledger device is locked. Please unlock it and open the Syscoin app.'
+          'Could not import your account. Please ensure your Ledger is connected and the Syscoin app is open.'
         );
-      } else if (error.message?.includes('app not open')) {
-        throw new Error(
-          'Please open the app on your Ledger device and try again.'
-        );
-      } else if (error.message?.includes('disconnected')) {
-        throw new Error(
-          'Ledger device was disconnected. Please reconnect and try again.'
-        );
-      } else if (error.message?.includes('cancelled')) {
-        throw new Error('Ledger operation was cancelled by the user.');
+      } finally {
+        devicePending = false;
       }
-
-      throw new Error(
-        'Could not import your account. Please ensure your Ledger is connected and the Syscoin app is open.'
+      assertImportCurrent();
+      await this.storeCreatedAccount(
+        importedAccount,
+        KeyringAccountType.Ledger,
+        assertImportCurrent
       );
+    } finally {
+      if (deadlineTimer !== undefined) clearTimeout(deadlineTimer);
     }
-    assertCurrent();
 
-    await this.storeCreatedAccount(
-      importedAccount,
-      KeyringAccountType.Ledger,
-      assertCurrent
+    // A committed import is complete. Optional network refresh must not delay
+    // its acknowledgement or make a healthy import appear to have timed out.
+    void this.getLatestUpdateForCurrentAccount(false, true).catch(
+      (updateError) => {
+        console.error(
+          '[MainController] Failed to update Ledger account after import:',
+          updateError
+        );
+      }
     );
-
-    // Update account with initial data
-    try {
-      await this.getLatestUpdateForCurrentAccount(false, true);
-    } catch (updateError) {
-      console.error(
-        '[MainController] Failed to update Ledger account after import:',
-        updateError
-      );
-      // Non-critical - account exists, just initial update failed
-    }
-
     return importedAccount;
   }
 

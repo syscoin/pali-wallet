@@ -266,8 +266,8 @@ jobs:
           CURRENT_SHA256="$(sha256sum "${CURRENT_ZIP}" | cut -d ' ' -f 1)"
           echo "current_zip=${CURRENT_ZIP}" >> "$GITHUB_OUTPUT"
           echo "current_sha256=${CURRENT_SHA256}" >> "$GITHUB_OUTPUT"
-      - name: Verify Trezor import and cancellation in the real extension worker
-        timeout-minutes: 3
+      - name: Verify hardware import and cancellation in the real extension worker
+        timeout-minutes: 4
         env:
           PALI_TEST_DAPP_EXTENSION_PATH: ${{ github.workspace }}/build/chrome
         run: |
@@ -300,6 +300,7 @@ jobs:
           export PALI_TEST_BUILD_MANIFEST_SHA256="$(sha256sum "${PALI_TEST_BUILD_MANIFEST}" | cut -d ' ' -f 1)"
           EVIDENCE_DIR="${GITHUB_WORKSPACE}/e2e/artifacts/pr-conformance-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           node tests/integration/trezorConnect10/run.cjs > "${EVIDENCE_DIR}/trezor-connect10.json"
+          node tests/integration/ledgerHost/run.cjs > "${EVIDENCE_DIR}/ledger-host.json"
       - name: Run isolated test dapp conformance
         env:
           PALI_E2E_RUN_ID: pr-conformance-${{ github.run_id }}-${{ github.run_attempt }}
