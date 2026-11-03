@@ -4,6 +4,7 @@
   "moduleDirectories": ["source", "node_modules"],
   "modulePathIgnorePatterns": ["node_modules"],
   "testPathIgnorePatterns": [
+    "<rootDir>/apps/mobile/",
     "<rootDir>/tests/account/",
     "<rootDir>/e2e/",
     "<rootDir>/tests/integration/recoveryEnrollment/"

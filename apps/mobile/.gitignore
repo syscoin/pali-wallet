@@ -1,0 +1,8 @@
+node_modules/
+.expo/
+dist/
+dist-*/
+ios/
+android/
+playwright-report/
+test-results/
