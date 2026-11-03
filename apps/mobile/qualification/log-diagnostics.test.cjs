@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { summarizeAndroidLog, summarizeAndroidExitInfo } = require('./log-diagnostics.cjs');
+const { summarizeAndroidLog, summarizeAndroidExitInfo, latestAndroidExitPid } = require('./log-diagnostics.cjs');
 
 test('Android runtime evidence retains only fixed code/module/library identifiers', () => {
   const log = `FATAL EXCEPTION: main\njava.lang.UnsatisfiedLinkError: libQuickCrypto.so secret-phrase secret-password\n at com.example.NativeBridge.install(NativeBridge.java:123)\nReferenceError: PaliWalletCrypto secret-phrase`;
@@ -68,4 +68,11 @@ test('Android exit history has bounded input and output and never copies unknown
   assert.deepEqual(summarizeAndroidExitInfo('x'.repeat(128 * 1024) + '\nprocess=com.paliwallet.qualification reason=5 (APP CRASH(NATIVE))'), { exitReasons: [] });
   const history = Array.from({ length: 17 }, (_, index) => `process=com.paliwallet.qualification reason=${index} (ignored)`).join('\n');
   assert.equal(summarizeAndroidExitInfo(history).exitReasons.length, 8);
+});
+
+test('crash collection scopes to the latest dedicated application exit PID only', () => {
+  assert.equal(latestAndroidExitPid('  timestamp=public pid=1234 realUid=10123\n  process=com.paliwallet.qualification reason=4 (APP CRASH(EXCEPTION))'), 1234);
+  assert.equal(latestAndroidExitPid('  timestamp=public pid=1234\n  process=com.other.app reason=4 (APP CRASH(EXCEPTION))'), undefined);
+  assert.equal(latestAndroidExitPid('  timestamp=public pid=2147483648\n  process=com.paliwallet.qualification reason=4'), undefined);
+  assert.equal(latestAndroidExitPid('pid=1234 secret message'), undefined);
 });

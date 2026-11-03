@@ -59,4 +59,10 @@ function summarizeAndroidExitInfo(value) {
   }
   return { exitReasons };
 }
-module.exports = { summarizeAndroidLog, summarizeAndroidExitInfo };
+function latestAndroidExitPid(value) {
+  const text = typeof value === 'string' ? value.slice(0, 128 * 1024) : '';
+  const match = text.match(/^[ \t]*timestamp=[^\r\n]*?\bpid=([0-9]{1,10})\b[^\r\n]*\r?\n[ \t]*process=com\.paliwallet\.qualification reason=/m);
+  const pid = Number(match?.[1]);
+  return Number.isSafeInteger(pid) && pid > 0 && pid <= 2147483647 ? pid : undefined;
+}
+module.exports = { summarizeAndroidLog, summarizeAndroidExitInfo, latestAndroidExitPid };

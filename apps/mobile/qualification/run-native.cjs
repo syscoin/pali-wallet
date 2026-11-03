@@ -3,7 +3,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { spawnSync } = require('child_process');
 const { Buffer } = require('node:buffer');
-const { summarizeAndroidLog, summarizeAndroidExitInfo } = require('./log-diagnostics.cjs');
+const { summarizeAndroidLog, summarizeAndroidExitInfo, latestAndroidExitPid } = require('./log-diagnostics.cjs');
 const { isCryptoDiagnostic } = require('../src/crypto/diagnostics.ts');
 const { createCommandRunner, describeQualificationFailure, COLD_BOOT_TIMEOUT_MS } = require('./command-runner.cjs');
 
@@ -418,7 +418,28 @@ async function android() {
         const processId = run('adb', ['shell', 'pidof', '-s', PACKAGE], true);
         const logs = run('adb', ['logcat', '-b', 'main', '-b', 'system', '-b', 'crash', '-d', '-t', '300', '-v', 'brief', '*:E'], true);
         const exitInfo = run('adb', ['shell', 'dumpsys', 'activity', 'exit-info', PACKAGE], true);
-        fs.writeFileSync(path.join(output, `android-${scenario}-runtime-diagnostics.json`), JSON.stringify({ processRunning: Boolean(processId), logcatAvailable: logs !== null, exitInfoAvailable: exitInfo !== null, ...summarizeAndroidLog(logs), ...summarizeAndroidExitInfo(exitInfo) }, null, 2));
+        const exitPid = latestAndroidExitPid(exitInfo);
+        const crashBytes = run.binary('adb', ['logcat', '-b', 'crash', '-d', '-v', 'brief', ...(exitPid ? ['--pid', String(exitPid)] : [])], true, 1024 * 1024);
+        const crashLog = crashBytes?.toString('utf8');
+        const processBytes = exitPid ? run.binary('adb', ['logcat', '-b', 'main', '-b', 'system', '-b', 'crash', '-d', '-v', 'brief', '--pid', String(exitPid), '*:E'], true, 1024 * 1024) : null;
+        const processLog = processBytes?.toString('utf8');
+        const exitSummary = summarizeAndroidExitInfo(exitInfo);
+        // Isolated CI fixtures only: preserve bounded, redacted fatal evidence
+        // separately from the fixed public diagnostic schema.
+        if (scenario === 'import' && crashLog) fs.writeFileSync(path.join(output, `android-${scenario}-fixture-crash.log`), redact(crashLog).slice(0, 128 * 1024));
+        if (scenario === 'import' && processLog) fs.writeFileSync(path.join(output, `android-${scenario}-fixture-process.log`), redact(processLog).slice(0, 128 * 1024));
+        if (scenario === 'import' && exitInfo) fs.writeFileSync(path.join(output, `android-${scenario}-fixture-exit-info.log`), redact(exitInfo).slice(0, 32 * 1024));
+        if (scenario === 'import' && exitPid && exitSummary.exitReasons[0] === 'CRASH_NATIVE') {
+          const inventory = run('adb', ['shell', 'ls', '-t', '/data/tombstones'], true) || '';
+          for (const file of inventory.split(/\s+/).filter((name) => /^tombstone_[0-9]+$/.test(name)).slice(0, 4)) {
+            const tombstone = run.binary('adb', ['exec-out', 'head', '-c', '131072', `/data/tombstones/${file}`], true, 131072)?.toString('utf8');
+            if (tombstone && new RegExp(`\\bpid: ${exitPid}\\b`).test(tombstone)) {
+              fs.writeFileSync(path.join(output, `android-${scenario}-fixture-tombstone.log`), redact(tombstone));
+              break;
+            }
+          }
+        }
+        fs.writeFileSync(path.join(output, `android-${scenario}-runtime-diagnostics.json`), JSON.stringify({ processRunning: Boolean(processId), logcatAvailable: logs !== null, exitInfoAvailable: exitInfo !== null, crashLogAvailable: crashBytes !== null, processLogAvailable: processBytes !== null, crashLogScoped: Boolean(exitPid), ...summarizeAndroidLog(`${logs || ''}\n${crashLog || ''}\n${processLog || ''}`), ...exitSummary }, null, 2));
       } catch { /* Diagnostic collection cannot replace the primary failure. */ }
       try {
         const screenshot = run.binary('adb', ['exec-out', 'screencap', '-p'], true);
