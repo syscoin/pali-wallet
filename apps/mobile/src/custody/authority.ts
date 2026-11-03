@@ -79,7 +79,9 @@ export class NativeCustodyAuthority {
   }
 
   private failUnavailable(): void {
-    if (this.snapshot.phase !== 'disposed') {
+    // Cleanup still runs for late sessions; quarantine is announced only once
+    // so an observer that requests lock cannot sustain a failure event loop.
+    if (this.snapshot.phase !== 'disposed' && this.snapshot.phase !== 'unavailable') {
       this.publish({ phase: 'unavailable', account: null, error: 'UNAVAILABLE' });
     }
   }

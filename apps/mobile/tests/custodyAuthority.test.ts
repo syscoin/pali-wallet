@@ -561,3 +561,33 @@ test('initialization preserves quarantine after cleanup fails during its storage
   assert.equal(f.authority.getSnapshot().phase, 'unavailable');
   await rejectsCode(f.authority.unlock(PASSWORD), 'NOT_READY');
 });
+
+test('an unavailable observer requesting lock cannot sustain a rejected-cleanup event loop', async () => {
+  const f = fixture(true);
+  await f.authority.initialize();
+  let lockCalls = 0;
+  let notifications = 0;
+  const originalLock = f.runtime.session.lock;
+  f.runtime.session.lock = async () => {
+    lockCalls++;
+    await originalLock();
+    throw new Error('cleanup failed');
+  };
+  f.authority.subscribe((state) => {
+    if (state.phase === 'unavailable') {
+      notifications++;
+      // Bound the regression so the old implementation cannot hang the runner.
+      if (notifications < 8) f.authority.lock();
+    }
+  });
+  f.authority.lock();
+  for (let i = 0; i < 100; i++) await Promise.resolve();
+  assert.equal(f.authority.getSnapshot().phase, 'unavailable');
+  assert.equal(lockCalls, 2);
+  assert.equal(notifications, 2);
+  // Quarantine suppresses repeated failure notifications, not actual cleanup.
+  f.authority.lock();
+  for (let i = 0; i < 20; i++) await Promise.resolve();
+  assert.equal(lockCalls, 3);
+  assert.equal(f.unlocked, false);
+});
