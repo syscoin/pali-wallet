@@ -1,4 +1,4 @@
-import { omit } from 'lodash';
+import omit from 'lodash/omit';
 
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 import type { IEvmTransactionResponse } from 'scripts/Background/controllers/transactions/types';

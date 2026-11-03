@@ -27,31 +27,6 @@ jest.mock('@trezor/connect-webextension', () => ({
     }),
   },
 }));
-jest.mock('@ledgerhq/hw-transport-webhid', () => ({
-  __esModule: true,
-  default: {
-    create: jest.fn(async () => ({
-      on: jest.fn(),
-      close: jest.fn(async () => undefined),
-    })),
-  },
-}));
-jest.mock('@ledgerhq/hw-app-eth', () => {
-  const getAddress = jest.fn(async (path: string) => {
-    const { HDNodeWallet } = jest.requireActual('ethers');
-    const wallet = HDNodeWallet.fromPhrase(
-      'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about',
-      undefined,
-      `m/${path}`
-    );
-    return { address: wallet.address, publicKey: wallet.publicKey.slice(2) };
-  });
-  return {
-    __esModule: true,
-    default: jest.fn(() => ({ getAddress })),
-    deviceGetAddress: getAddress,
-  };
-});
 jest.mock('scripts/Background', () => ({
   getController: jest.fn(),
   notificationManager: { cleanup: jest.fn() },
@@ -88,7 +63,26 @@ import { AsyncMutex } from 'utils/asyncMutex';
 import { ReceiptBalanceRefresh } from './balances/ReceiptBalanceRefresh';
 
 const TrezorConnect = jest.requireMock('@trezor/connect-webextension').default;
-const ledgerDevice = jest.requireMock('@ledgerhq/hw-app-eth');
+const ledgerDevice = {
+  deviceGetAddress: jest.fn(
+    async ({ accountIndex }: { accountIndex: number }) => {
+      const { HDNodeWallet } = jest.requireActual('ethers');
+      const wallet = HDNodeWallet.fromPhrase(
+        'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about',
+        undefined,
+        `m/44'/60'/0'/0/${accountIndex}`
+      );
+      return { address: wallet.address, publicKey: wallet.publicKey.slice(2) };
+    }
+  ),
+};
+const ledgerHost = {
+  connect: jest.fn(async () => undefined),
+  disconnect: jest.fn(async () => undefined),
+  getStatus: () => ({ connected: true }),
+  evm: { getAddress: ledgerDevice.deviceGetAddress },
+  utxo: {},
+};
 const PHRASE = 'test test test test test test test test test test test junk';
 const FAILURE = 'Synthetic hardware vault write refusal';
 const originalChrome = global.chrome;
@@ -127,7 +121,9 @@ describe.each(['Trezor', 'Ledger'] as const)(
         : ((ledgerDevice as any).deviceGetAddress as jest.Mock);
     const devicePaths = () =>
       deviceRead().mock.calls.map((args: any[]) =>
-        kind === 'Trezor' ? args[0].path : `m/${args[0]}`
+        kind === 'Trezor'
+          ? args[0].path
+          : `m/44'/60'/0'/0/${args[0].accountIndex}`
       );
     const holdNextCommit = () => {
       const nativeSet = chrome.storage.local.set;
@@ -266,7 +262,7 @@ describe.each(['Trezor', 'Ledger'] as const)(
           },
         },
       } as any;
-      manager = new KeyringManager();
+      manager = new KeyringManager(undefined, ledgerHost as any);
       manager.setStorage(chrome.storage.local);
       manager.setVaultStateGetter(() => store.getState().vault);
       const initialAccount = await manager.initializeWalletSecurely(

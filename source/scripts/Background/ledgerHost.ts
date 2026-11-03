@@ -283,5 +283,25 @@ export class LedgerHostBroker {
 }
 
 let broker: LedgerHostBroker | undefined;
-export const getLedgerHost = (): LedgerHost =>
-  (broker ??= new LedgerHostBroker()).host;
+const activeHost = () => (broker ??= new LedgerHostBroker()).host;
+// Software wallet initialization must not initialize device-only browser APIs.
+const lazyHost: LedgerHost = {
+  connect: (...args) => activeHost().connect(...args),
+  disconnect: () => broker?.host.disconnect() ?? Promise.resolve(),
+  getStatus: () => broker?.host.getStatus() ?? { connected: false },
+  evm: {
+    getAddress: (...args) => activeHost().evm.getAddress(...args),
+    signTransaction: (...args) => activeHost().evm.signTransaction(...args),
+    signPersonalMessage: (...args) =>
+      activeHost().evm.signPersonalMessage(...args),
+    signTypedData: (...args) => activeHost().evm.signTypedData(...args),
+  },
+  utxo: {
+    getXpub: (...args) => activeHost().utxo.getXpub(...args),
+    getAddress: (...args) => activeHost().utxo.getAddress(...args),
+    getAccount: (...args) => activeHost().utxo.getAccount(...args),
+    signMessage: (...args) => activeHost().utxo.signMessage(...args),
+    signPsbt: (...args) => activeHost().utxo.signPsbt(...args),
+  },
+};
+export const getLedgerHost = (): LedgerHost => lazyHost;
