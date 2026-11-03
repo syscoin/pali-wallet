@@ -88,6 +88,20 @@ const validateReport = (text, phase, scenario) => {
     );
   return report;
 };
+const captureFixtureLoadError = (text, scenario) => {
+  try {
+    if (scenario !== 'import' || typeof text !== 'string' || Buffer.byteLength(text, 'utf8') > 65536) return false;
+    const value = JSON.parse(text);
+    if (value.version !== 1 || value.stage !== 'quick-crypto-load' ||
+        !value.error || typeof value.error !== 'object' ||
+        Object.keys(value).some((key) => !['version', 'stage', 'diagnostic', 'error'].includes(key)) ||
+        Object.keys(value.error).some((key) => !['name', 'message', 'stack'].includes(key)) ||
+        !['name', 'message', 'stack'].every((key) => typeof value.error[key] === 'string') ||
+        (value.diagnostic !== undefined && !isCryptoDiagnostic({ bootstrap: 'quick-crypto-load', load: value.diagnostic }))) return false;
+    fs.writeFileSync(path.join(output, `${platform}-import-fixture-load-error.json`), redact(text));
+    return true;
+  } catch { return false; }
+};
 const waitReport = async (read, phase, scenario, readStartup, isRunning) => {
   const startedAt = Date.now();
   const deadline = startedAt + 300000;
@@ -179,11 +193,12 @@ async function ios() {
       type.identifier,
       runtime.identifier,
     ]);
+    let container;
     try {
       run('xcrun', ['simctl', 'boot', device]);
       run('xcrun', ['simctl', 'bootstatus', device, '-b'], false, COLD_BOOT_TIMEOUT_MS);
       run('xcrun', ['simctl', 'install', device, artifact]);
-      const container = run('xcrun', [
+      container = run('xcrun', [
         'simctl',
         'get_app_container',
         device,
@@ -271,6 +286,11 @@ async function ios() {
         sessionChanged: true,
       });
     } finally {
+      if (container) {
+        try {
+          captureFixtureLoadError(fs.readFileSync(path.join(container, 'Documents', 'pali-native-qualification-load-error.json'), 'utf8'), scenario);
+        } catch { /* A missing fixture error file cannot replace the primary failure. */ }
+      }
       run(
         'xcrun',
         [
@@ -415,6 +435,7 @@ async function android() {
       });
     } finally {
       try {
+        captureFixtureLoadError(run('adb', ['shell', 'cat', `/data/user/0/${PACKAGE}/files/pali-native-qualification-load-error.json`], true), scenario);
         const processId = run('adb', ['shell', 'pidof', '-s', PACKAGE], true);
         const logs = run('adb', ['logcat', '-b', 'main', '-b', 'system', '-b', 'crash', '-d', '-t', '300', '-v', 'brief', '*:E'], true);
         const exitInfo = run('adb', ['shell', 'dumpsys', 'activity', 'exit-info', PACKAGE], true);

@@ -4,13 +4,14 @@ import * as FileSystem from 'expo-file-system/legacy';
 import React, { useEffect, useState } from 'react';
 import { Linking, Platform, Text, View } from 'react-native';
 import { assertQualificationBuild, parseQualificationLaunch } from './launch-parameters.ts';
+import { captureQualificationCryptoLoad } from './capture-crypto-load.ts';
 
 import type { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import type { KeyringRuntime } from '../src/custody/keyringRuntime.ts';
 import type { SeedBackupFlow } from '../src/custody/seedBackup.ts';
 import { ensureNativeCryptoReady, nativeCryptoCheckpoint, nativeCryptoInstallDiagnostic, nativeCryptoLoadDiagnostic } from '../src/platform/cryptoBootstrap';
 import type { OpenWalletStorage } from '../src/storage/types.ts';
-import type { CryptoFullCase } from '../src/crypto/diagnostics.ts';
+import type { CryptoFullCase, CryptoLoadDiagnostic } from '../src/crypto/diagnostics.ts';
 import type { FullCryptoQualification } from '../src/crypto/qualificationFull.ts';
 
 // Public BIP39 fixture only. This entry is selected exclusively by the isolated
@@ -72,6 +73,7 @@ function QualificationApp() {
       let backup: SeedBackupFlow | undefined;
       let cryptoEvidence: FullCryptoQualification | undefined;
       let fullCryptoCase: CryptoFullCase | undefined;
+      let qualificationLoadDiagnostic: CryptoLoadDiagnostic | undefined;
       const mnemonicEntropy: Uint8Array[] = [];
       let observingGeneration = false;
       let mnemonicEntropyVerified = false;
@@ -127,6 +129,17 @@ function QualificationApp() {
         const nativeCrypto = await check(
           'native crypto bridge and full vectors',
           async () => {
+            // This cold-load preflight is exclusive to the isolated public
+            // fixture. A failure is final; no installer or wallet is started.
+            await captureQualificationCryptoLoad(
+              // eslint-disable-next-line @typescript-eslint/no-require-imports
+              () => require('react-native-quick-crypto'),
+              async (text) => {
+                if (!FileSystem.documentDirectory) throw Error('QUALIFICATION_REPORT_UNAVAILABLE');
+                await FileSystem.writeAsStringAsync(`${FileSystem.documentDirectory}pali-native-qualification-load-error.json`, text);
+              },
+              (diagnostic) => { qualificationLoadDiagnostic = diagnostic; }
+            );
             const provider = await ensureNativeCryptoReady();
             const { createNativeWalletCrypto } = await import('../src/crypto/native');
             const { qualifyWalletCryptoFull } = await import('../src/crypto/qualificationFull.ts');
@@ -296,7 +309,7 @@ function QualificationApp() {
           checks,
           networkCalls,
           cryptoEvidence,
-          cryptoDiagnostic: { bootstrap: nativeCryptoCheckpoint(), ...(fullCryptoCase ? { fullCase: fullCryptoCase } : {}), ...(nativeCryptoInstallDiagnostic() ? { install: nativeCryptoInstallDiagnostic() } : {}), ...(nativeCryptoLoadDiagnostic() ? { load: nativeCryptoLoadDiagnostic() } : {}) },
+          cryptoDiagnostic: { bootstrap: qualificationLoadDiagnostic ? 'quick-crypto-load' : nativeCryptoCheckpoint(), ...(fullCryptoCase ? { fullCase: fullCryptoCase } : {}), ...(nativeCryptoInstallDiagnostic() ? { install: nativeCryptoInstallDiagnostic() } : {}), ...((qualificationLoadDiagnostic ?? nativeCryptoLoadDiagnostic()) ? { load: qualificationLoadDiagnostic ?? nativeCryptoLoadDiagnostic() } : {}) },
           mnemonicEntropyVerified,
           nativeBridgeExercised: true,
           sdkVersion: '1.0.628',
@@ -321,7 +334,7 @@ function QualificationApp() {
           checks,
           networkCalls,
           failedStage: stage,
-          cryptoDiagnostic: { bootstrap: nativeCryptoCheckpoint(), ...(fullCryptoCase ? { fullCase: fullCryptoCase } : {}), ...(nativeCryptoInstallDiagnostic() ? { install: nativeCryptoInstallDiagnostic() } : {}), ...(nativeCryptoLoadDiagnostic() ? { load: nativeCryptoLoadDiagnostic() } : {}) },
+          cryptoDiagnostic: { bootstrap: qualificationLoadDiagnostic ? 'quick-crypto-load' : nativeCryptoCheckpoint(), ...(fullCryptoCase ? { fullCase: fullCryptoCase } : {}), ...(nativeCryptoInstallDiagnostic() ? { install: nativeCryptoInstallDiagnostic() } : {}), ...((qualificationLoadDiagnostic ?? nativeCryptoLoadDiagnostic()) ? { load: qualificationLoadDiagnostic ?? nativeCryptoLoadDiagnostic() } : {}) },
         };
         await writeReport(parameters?.phase ?? 'startup', report).catch(() => undefined);
         setStatus('QUALIFICATION FAILED');

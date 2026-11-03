@@ -128,6 +128,7 @@ for (const diagnosticsAvailable of [true, false]) test(`Android cleanup preserve
     if (args.includes('screencap')) return ok(Buffer.from('public PNG fixture'));
     if (args.includes('cat')) {
       if (args.some((value) => value.endsWith('pali-native-qualification-startup.json'))) return { status: 1, stderr: 'not present' };
+      if (args.some((value) => value.endsWith('pali-native-qualification-load-error.json'))) return { status: 1, stderr: 'not present' };
       if (args[0] === 'exec-out') return { status: null, stdout: Buffer.from('PRIVATE_DATABASE_BYTES'), error: Object.assign(Error('database read timeout'), { code: 'ETIMEDOUT' }) };
       return ok(JSON.stringify({ version: 1, status: 'passed', phase: 'create', scenario: 'import', platform: 'android', networkCalls: 0, nativeBridgeExercised: true, fingerprint: 'a'.repeat(64), cryptoEvidence: { passed: true, productionIterations: 900000 }, mnemonicEntropyVerified: false }));
     }
@@ -288,4 +289,28 @@ test('report waiting keeps the five-minute deadline with or without Android live
     await assert.rejects(fixture.wait(() => null, 'create', 'import', undefined, isRunning), /timed out/);
     assert.equal(fixture.now(), 300000);
   }
+});
+
+test('raw load evidence copies only bounded public-import error envelopes and redacts fixture credentials', () => {
+  const { runInNewContext } = require('node:vm');
+  const { isCryptoDiagnostic } = require('../src/crypto/diagnostics.ts');
+  const source = readFileSync(require.resolve('./run-native.cjs'), 'utf8');
+  const start = source.indexOf('const captureFixtureLoadError =');
+  const end = source.indexOf('const waitReport =', start);
+  const writes = [];
+  let failWrite = false;
+  const capture = runInNewContext(source.slice(start, end) + '\ncaptureFixtureLoadError;', {
+    Buffer, isCryptoDiagnostic, platform: 'ios', output: '/public', path: require('node:path'),
+    redact: (value) => value.replaceAll('PUBLIC_PASSWORD', '[redacted]'),
+    fs: { writeFileSync(file, text) { if (failWrite) throw Error('write failed'); writes.push({ file, text }); } },
+  });
+  const valid = JSON.stringify({ version: 1, stage: 'quick-crypto-load', error: { name: 'Error', message: 'PUBLIC_PASSWORD', stack: 'public stack' } });
+  assert.equal(capture(valid, 'import'), true);
+  assert.equal(writes[0].file, '/public/ios-import-fixture-load-error.json');
+  assert(!writes[0].text.includes('PUBLIC_PASSWORD'));
+  for (const [text, scenario] of [[valid, 'generate'], ['x'.repeat(65537), 'import'], ['broken', 'import'], [JSON.stringify({ version: 1, stage: 'wallet', error: {} }), 'import']])
+    assert.equal(capture(text, scenario), false);
+  failWrite = true;
+  assert.equal(capture(valid, 'import'), false);
+  assert.equal(writes.length, 1);
 });
