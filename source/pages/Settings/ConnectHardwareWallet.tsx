@@ -75,6 +75,11 @@ const ConnectHardwareWalletView: FC = () => {
           break;
       }
     } catch (error) {
+      if (error?.code === 'HARDWARE_REQUEST_CANCELLED') {
+        setSelectedHardwareWallet(undefined);
+        alert.info(t('send.canceled'));
+        return;
+      }
       // Log error for debugging
       console.log('Hardware wallet connection error:', error);
 

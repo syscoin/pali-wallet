@@ -239,6 +239,8 @@ describe('hardware setup navigation', () => {
   });
 
   it('leaves a cancelled Ledger host request idle and allows one fresh import', async () => {
+    mockAlert.info.mockClear();
+    mockAlert.error.mockClear();
     const originalHid = Object.getOwnPropertyDescriptor(navigator, 'hid');
     const requestDevice = jest.fn();
     Object.defineProperty(navigator, 'hid', {
@@ -260,14 +262,6 @@ describe('hardware setup navigation', () => {
       )
       .mockResolvedValueOnce(undefined);
     jest.spyOn(console, 'log').mockImplementation(() => undefined);
-    jest
-      .spyOn(jest.requireMock('utils/errorHandling'), 'handleTransactionError')
-      .mockImplementationOnce(
-        (_error, alert: { info: (message: string) => void }) => {
-          alert.info('Ledger request cancelled');
-          return true;
-        }
-      );
 
     try {
       render(<ConnectHardwareWallet />);
@@ -297,6 +291,8 @@ describe('hardware setup navigation', () => {
         await pending;
       });
       expect(mockEmitter).toHaveBeenCalledTimes(1);
+      expect(mockAlert.info).toHaveBeenCalledWith('send.canceled');
+      expect(mockAlert.error).not.toHaveBeenCalled();
       expect(screen.queryByRole('button', { name: 'Finish setup' })).toBeNull();
       expect(
         screen

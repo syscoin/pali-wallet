@@ -67,7 +67,7 @@ test('cancelling the Ledger chooser never imports and leaves retry and close usa
       const evidence = {
         chooserFilters: [] as unknown[],
         importMethods: [] as string[][],
-        importResults: [] as { failed: boolean }[],
+        importResults: [] as { code?: string; failed: boolean }[],
       };
       (window as any).__hardwareChooserCancellation = evidence;
       const hid = (navigator as any).hid || {};
@@ -98,6 +98,10 @@ test('cancelling the Ledger chooser never imports and leaves retry and close usa
             args[args.length - 1] = (...replies: any[]) => {
               const response = replies[0];
               evidence.importResults.push({
+                code:
+                  typeof response?.error?.code === 'string'
+                    ? response.error.code
+                    : undefined,
                 failed: Boolean(
                   response &&
                     (response.error ||
@@ -226,7 +230,10 @@ test('cancelling the Ledger chooser never imports and leaves retry and close usa
                 )
               )
               .toEqual(
-                Array.from({ length: imports }, () => ({ failed: true }))
+                Array.from({ length: imports }, () => ({
+                  failed: true,
+                  code: 'HARDWARE_REQUEST_CANCELLED',
+                }))
               );
             const evidence = await hardware!.evaluate(
               () => (window as any).__hardwareChooserCancellation
@@ -246,7 +253,7 @@ test('cancelling the Ledger chooser never imports and leaves retry and close usa
             ).toHaveCount(0);
             await expect(hardware!.locator('#ledger-btn')).toBeVisible();
             await expect(
-              hardware!.getByText(en.settings.errorCreatingHardWallet, {
+              hardware!.getByText(en.send.canceled, {
                 exact: true,
               })
             ).toBeVisible();
@@ -277,6 +284,9 @@ test('cancelling the Ledger chooser never imports and leaves retry and close usa
                       rect.right <= innerWidth,
                     cancelReceivesCenter:
                       !!hit && (element === hit || element.contains(hit)),
+                    neutralNotice:
+                      toast?.classList.contains('Toastify__toast--info') ===
+                      true,
                     toastVisible:
                       !!toast &&
                       !!bounds &&
@@ -292,15 +302,19 @@ test('cancelling the Ledger chooser never imports and leaves retry and close usa
                       bounds.left >= 0 &&
                       bounds.right <= innerWidth,
                   };
-                }, en.settings.errorCreatingHardWallet)
+                }, en.send.canceled)
               )
               .toEqual({
                 cancelInViewport: true,
                 cancelReceivesCenter: true,
+                neutralNotice: true,
                 toastVisible: true,
                 toastInViewport: true,
               });
-            await info.attach(`hardware-error-cancel-${viewport.width}`, {
+            await expect(
+              hardware!.locator('.Toastify__toast--error')
+            ).toHaveCount(0);
+            await info.attach(`hardware-cancel-notice-${viewport.width}`, {
               body: await hardware!.screenshot({ animations: 'allow' }),
               contentType: 'image/png',
             });
@@ -308,7 +322,7 @@ test('cancelling the Ledger chooser never imports and leaves retry and close usa
             // The generic harness screenshot fast-forwards finite animations,
             // which would otherwise skip the UI's duplicate-message interval.
             await expect(
-              hardware!.getByText(en.settings.errorCreatingHardWallet, {
+              hardware!.getByText(en.send.canceled, {
                 exact: true,
               })
             ).toHaveCount(0, { timeout: 10000 });
