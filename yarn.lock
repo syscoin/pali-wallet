@@ -10939,10 +10939,9 @@ symbol-tree@^3.2.4:
   resolved "https://registry.yarnpkg.com/symbol-tree/-/symbol-tree-3.2.4.tgz#430637d248ba77e078883951fb9aa0eed7c63fa2"
   integrity sha512-9QNk5KwDF+Bvz+PyObkmSYjI5ksVUYtjW7AU22r2NKcfLJcXp96hkDWU3+XndOsUb+AQ9QhfzfCT2O+CNWT5Tw==
 
-syscoinjs-lib@^1.0.275:
-  version "1.0.275"
-  resolved "https://registry.yarnpkg.com/syscoinjs-lib/-/syscoinjs-lib-1.0.275.tgz#e70379458953b55e82b4656bdfad4bef7ff6976a"
-  integrity sha512-el+6wWDxVObR/f7+Q1aZTgg7goUEEQTfNYoF+CSMvv/VZKd8I2qqImb4LV1opkIPXTwydRBhaFpM7wE+93J8XA==
+syscoinjs-lib@1.0.276:
+  version "1.0.276"
+  resolved "file:vendor/syscoinjs-lib/library.tgz#3c5fa4bae3ce8f16cbdc92a89451b3295877a379"
   dependencies:
     "@bitcoinerlab/secp256k1" "^1.2.0"
     axios "^1.18.1"
