@@ -34,3 +34,18 @@ Operation identity includes account, network, endpoint and a session/generation 
 Build and inspect signed release artifacts for both platforms. Test supported physical iOS and Android devices, including the slowest supported hardware, with cold start, unlock latency, large state, long histories, offline/slow RPC, background/resume and memory pressure. Verify accessibility, text scaling, safe areas, software keyboards and native back gestures. Validate transport security and release permissions against actual binaries.
 
 Source review, unit tests, a browser preview, prior extension QA, the attached PDF and the video do not establish these properties. Keep a release checklist with exact commit, OS/device, build configuration, observed result and unresolved limitations. Do not describe this foundation as production-ready until the applicable gates have evidence.
+
+## Native startup import order
+
+The native entry registers a minimal loading shell, qualifies and installs native
+crypto, then evaluates the application graph. This order is a security boundary:
+BIP39's noble dependency snapshots `globalThis.crypto` when its module loads.
+The web entry uses its usual watch-only application startup. If native crypto
+qualification fails, watch-only UI may load, while the memoized rejected native
+gate continues to prohibit custody. No fallback RNG is installed.
+
+The isolated native qualification entry obeys the same ordering and checks the
+real generated mnemonic against entropy observed from the qualified native
+provider. Node ordering probes reproduce both the stale import failure and the
+ordered success using the installed BIP39/noble browser module; those probes do
+not replace native simulator/device qualification.

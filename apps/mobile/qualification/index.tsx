@@ -4,15 +4,12 @@ import * as FileSystem from 'expo-file-system/legacy';
 import React, { useEffect, useState } from 'react';
 import { Linking, Platform, Text, View } from 'react-native';
 
-import { NativeCustodyAuthority } from '../src/custody/authority.ts';
-import { createKeyringRuntimeFactory } from '../src/custody/keyringRuntime.ts';
+import type { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import type { KeyringRuntime } from '../src/custody/keyringRuntime.ts';
-import { SeedBackupFlow } from '../src/custody/seedBackup.ts';
+import type { SeedBackupFlow } from '../src/custody/seedBackup.ts';
 import { ensureNativeCryptoReady } from '../src/platform/cryptoBootstrap';
-import { openNativeWalletStorage } from '../src/storage/native';
 import type { OpenWalletStorage } from '../src/storage/types.ts';
-import { createNativeWalletCrypto } from '../src/crypto/native';
-import { qualifyWalletCryptoFull } from '../src/crypto/qualificationFull.ts';
+import type { FullCryptoQualification } from '../src/crypto/qualificationFull.ts';
 
 // Public BIP39 fixture only. This entry is selected exclusively by the isolated
 // qualification configuration and never imported by the production entry.
@@ -76,9 +73,10 @@ function QualificationApp() {
       let runtime: KeyringRuntime | undefined;
       let authority: NativeCustodyAuthority | undefined;
       let backup: SeedBackupFlow | undefined;
-      let cryptoEvidence:
-        | Awaited<ReturnType<typeof qualifyWalletCryptoFull>>
-        | undefined;
+      let cryptoEvidence: FullCryptoQualification | undefined;
+      const mnemonicEntropy: Uint8Array[] = [];
+      let observingGeneration = false;
+      let mnemonicEntropyVerified = false;
       let networkCalls = 0;
       const check = async <T,>(
         name: string,
@@ -139,6 +137,8 @@ function QualificationApp() {
           'native crypto bridge and full vectors',
           async () => {
             const provider = await ensureNativeCryptoReady();
+            const { createNativeWalletCrypto } = await import('../src/crypto/native');
+            const { qualifyWalletCryptoFull } = await import('../src/crypto/qualificationFull.ts');
             cryptoEvidence = await qualifyWalletCryptoFull(
               provider,
               createNativeWalletCrypto
@@ -146,6 +146,29 @@ function QualificationApp() {
             return provider;
           }
         );
+        // The observer delegates every request to the qualified native CSPRNG.
+        // Install it before importing any wallet/ethers/BIP39 graph, because
+        // noble retains the global crypto object from module evaluation.
+        const observedCrypto: Crypto = Object.freeze({
+          subtle: nativeCrypto.subtle,
+          getRandomValues<T extends ArrayBufferView>(array: T): T {
+            const result = nativeCrypto.getRandomValues(array);
+            if (observingGeneration && result?.byteLength === 16) {
+              if (mnemonicEntropy.length >= 32) throw Error('QUALIFICATION_ENTROPY_BOUND');
+              mnemonicEntropy.push(new Uint8Array(result.buffer, result.byteOffset, result.byteLength).slice());
+            }
+            return result;
+          },
+          randomUUID: () => nativeCrypto.randomUUID(),
+        });
+        Object.defineProperty(globalThis, 'crypto', { value: observedCrypto, configurable: true, enumerable: true, writable: false });
+        const [{ NativeCustodyAuthority }, { createKeyringRuntimeFactory }, { SeedBackupFlow }, { openNativeWalletStorage }, bip39] = await Promise.all([
+          import('../src/custody/authority.ts'),
+          import('../src/custody/keyringRuntime.ts'),
+          import('../src/custody/seedBackup.ts'),
+          import('../src/storage/native'),
+          import('bip39'),
+        ]);
         const factory = createKeyringRuntimeFactory({
           ensureCryptoReady: async () => {
             await ensureNativeCryptoReady();
@@ -177,7 +200,11 @@ function QualificationApp() {
           await check('create or import real SDK wallet', async () => {
             if (parameters!.scenario === 'import')
               await authority!.importPhrase(PUBLIC_PHRASE, PUBLIC_PASSWORD);
-            else await authority!.create(PUBLIC_PASSWORD);
+            else {
+              observingGeneration = true;
+              try { await authority!.create(PUBLIC_PASSWORD); }
+              finally { observingGeneration = false; }
+            }
           });
           expect(authority.getSnapshot().phase === 'backup-required');
           await check('fresh password-backed seed confirmation', async () => {
@@ -185,6 +212,14 @@ function QualificationApp() {
             expect(presentation.words.length === 12);
             if (parameters!.scenario === 'import')
               expect(presentation.words.join(' ') === PUBLIC_PHRASE);
+            else {
+              const generatedEntropy = bip39.mnemonicToEntropy(presentation.words.join(' '));
+              mnemonicEntropyVerified = mnemonicEntropy.some((bytes) =>
+                Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('') === generatedEntropy);
+              expect(mnemonicEntropyVerified && mnemonicEntropy.length > 0);
+              mnemonicEntropy.forEach((bytes) => bytes.fill(0));
+              mnemonicEntropy.length = 0;
+            }
             let rejected = false;
             try {
               await backup!.confirm(presentation.id, [
@@ -269,6 +304,7 @@ function QualificationApp() {
           checks,
           networkCalls,
           cryptoEvidence,
+          mnemonicEntropyVerified,
           nativeBridgeExercised: true,
           sdkVersion: '1.0.628',
           pendingProcessTermination: parameters.phase === 'create',
@@ -276,6 +312,9 @@ function QualificationApp() {
         await writeReport(parameters.phase, report);
         setStatus('QUALIFICATION PASSED');
       } catch {
+        observingGeneration = false;
+        mnemonicEntropy.forEach((bytes) => bytes.fill(0));
+        mnemonicEntropy.length = 0;
         backup?.dispose();
         await authority?.dispose().catch(() => undefined);
         const report = {

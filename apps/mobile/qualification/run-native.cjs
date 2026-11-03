@@ -57,6 +57,7 @@ const validateReport = (text, phase, scenario) => {
     'pendingProcessTermination',
     'failedStage',
     'cryptoEvidence',
+    'mnemonicEntropyVerified',
   ]);
   if (
     Object.keys(report).some((key) => !allowed.has(key)) ||
@@ -74,6 +75,7 @@ const validateReport = (text, phase, scenario) => {
     report.status !== 'passed' ||
     report.networkCalls !== 0 ||
     report.nativeBridgeExercised !== true ||
+    report.mnemonicEntropyVerified !== (phase === 'create' && scenario === 'generate') ||
     !/^[0-9a-f]{64}$/.test(report.fingerprint || '') ||
     report.cryptoEvidence?.passed !== true ||
     report.cryptoEvidence?.productionIterations !== 900000

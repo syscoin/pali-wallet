@@ -7,6 +7,13 @@ against an already modified production identifier. Use an isolated checkout.
 
 The workflow builds release-mode iOS simulator and Android emulator binaries,
 including the actual Expo modules, Hermes, SQLCipher and published software SDK.
+The qualification entry defers all wallet/ethers/BIP39 imports until the native
+crypto gate has completed. During fresh generation, a bounded in-memory observer
+delegates RNG requests to the qualified native provider and verifies that the
+actual SDK-generated mnemonic decodes to one of its 128-bit entropy outputs.
+Only the verification boolean is reported; observed entropy buffers are cleared.
+This also detects a dependency that captured an earlier global RNG at import.
+
 It runs both public-mnemonic import and fresh random generation. Each scenario
 creates a wallet, verifies a fresh password-backed seed challenge, records the
 wallet-bound backup receipt, tests lock/wrong-password/correct-password, then
