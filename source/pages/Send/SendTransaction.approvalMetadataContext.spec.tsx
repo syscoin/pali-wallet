@@ -45,9 +45,11 @@ jest.mock('react-redux', () => ({
 jest.mock('react-router-dom', () => ({ useLocation: () => mockLocation }));
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string) =>
+    t: (key: string, options?: { token?: string; tokenId?: string }) =>
       key === 'send.tokenId'
         ? jest.requireActual('../../assets/locales/en.json').send.tokenId
+        : key === 'send.revokeNftApprovalDescription'
+        ? `Remove ${options?.token} #${options?.tokenId}`
         : key,
   }),
 }));
@@ -314,12 +316,20 @@ type MetadataRequest = {
   resolve: (value: typeof TOKEN_INFO) => void;
 };
 
-const prepareApproval = async (expectedInitialRequests = 1) => {
-  const abi = new Interface(['function approve(address,uint256)']);
-  mockQuery.tx.data = abi.encodeFunctionData('approve', [SPENDER, '1000000']);
+const prepareApproval = async (
+  expectedInitialRequests = 1,
+  raw = '1000000',
+  method = 'approve'
+) => {
+  const abi = new Interface([
+    'function approve(address,uint256)',
+    'function increaseAllowance(address,uint256)',
+    'function decreaseAllowance(address,uint256)',
+  ]);
+  mockQuery.tx.data = abi.encodeFunctionData(method, [SPENDER, raw]);
   mockQuery.decodedTx = {
-    method: 'approve',
-    inputs: [SPENDER, '1000000'],
+    method,
+    inputs: [SPENDER, raw],
     names: ['spender', 'amount'],
     types: ['address', 'uint256'],
   };
@@ -382,6 +392,44 @@ const expectReadyAllowance = async (data: string) => {
     ).toBe(false);
   });
 };
+
+it('changes the approval heading with the real allowance editor and preserves the reviewed bytes', async () => {
+  const { pending, abi } = await prepareApproval();
+  await act(async () => pending[0].resolve(TOKEN_INFO));
+  const positive = abi.encodeFunctionData('approve', [SPENDER, '1000000']);
+  const zero = abi.encodeFunctionData('approve', [SPENDER, '0']);
+  await expectReadyAllowance(positive);
+  expect(screen.getByText('send.grantAccess')).toBeDefined();
+  await editAllowance('0');
+  await expectReadyAllowance(zero);
+  expect(screen.getByText('send.erc20SetAllowanceZero')).toBeDefined();
+  expect(screen.queryByText('send.grantAccess')).toBeNull();
+  await editAllowance('1');
+  await expectReadyAllowance(positive);
+  expect(screen.getByText('send.grantAccess')).toBeDefined();
+  expect(screen.queryByText('send.erc20SetAllowanceZero')).toBeNull();
+});
+
+it.each([
+  ['approve', '0', 'send.erc20SetAllowanceZero'],
+  ['approve', '1000000', 'send.grantAccess'],
+  ['increaseAllowance', '1000000', 'send.erc20IncreaseAllowance'],
+  ['decreaseAllowance', '1000000', 'send.erc20DecreaseAllowance'],
+])(
+  'renders the %s request heading and retains its actual bytes',
+  async (method, raw, key) => {
+    const { pending, abi } = await prepareApproval(1, raw, method);
+    await act(async () => pending[0].resolve(TOKEN_INFO));
+    const original = abi.encodeFunctionData(method, [SPENDER, raw]);
+    await expectReadyAllowance(original);
+    expect(screen.getByText(key)).toBeDefined();
+    await act(async () => mockButtonHandlers['buttons.confirm']());
+    const sent = mockEmitter.mock.calls.find(
+      ([path]) => path[1] === 'sendAndSaveEthTransaction'
+    );
+    expect(sent?.[1][0].data).toBe(original);
+  }
+);
 
 it.each([0, 6])(
   'uses the real allowance editor with healthy %s-decimal metadata',
@@ -564,6 +612,46 @@ it.each([
   }
 );
 
+it('does not treat a missing NFT token ID as zero or enable confirmation', async () => {
+  const zero = '0x0000000000000000000000000000000000000000';
+  const abi = new Interface(['function approve(address,uint256)']);
+  mockQuery.tx.data = abi.encodeFunctionData('approve', [zero, 42]);
+  mockQuery.decodedTx = {
+    method: 'approve',
+    inputs: [zero, ''],
+    names: ['to', 'tokenId'],
+    types: ['address', 'uint256'],
+  };
+  mockQuery.txMetadata = {
+    isApproval: true,
+    approvalType: 'erc721-single',
+    tokenStandard: 'ERC-721',
+  };
+  const invoke = mockEmitter.getMockImplementation()!;
+  mockEmitter.mockImplementation(async (path, args) => {
+    if (path[1] === 'getTokenDetails') return { symbol: 'COLLECTIBLE' };
+    if (path[1] === 'isContractAddress') return true;
+    return invoke(path, args);
+  });
+  const view = await prepare();
+  expect(screen.getByText('send.invalidApprovalDetails')).toBeDefined();
+  expect(
+    (
+      screen.getByRole('button', {
+        name: 'buttons.confirm',
+      }) as HTMLButtonElement
+    ).disabled
+  ).toBe(true);
+  expect(screen.queryByText('send.revokeNftApproval')).toBeNull();
+  expect(screen.queryByText('Token ID: 0')).toBeNull();
+  expect(
+    mockEmitter.mock.calls.some(
+      ([path]) => path[1] === 'sendAndSaveEthTransaction'
+    )
+  ).toBe(false);
+  view.unmount();
+});
+
 it('does not read metadata when the initial wallet differs from the original approved context', async () => {
   mockQuery.approvedContext = {
     account: { ...mockState.vault.activeAccount, address: mockQuery.tx.from },
@@ -641,5 +729,76 @@ it.each(['erc721-single', 'nft-all'])(
       screen.queryByRole('button', { name: 'send.editPermission' })
     ).toBeNull();
     if (isSingle) expect(screen.getByText('Token ID: 7')).toBeDefined();
+  }
+);
+
+it.each([
+  {
+    authority: '0x0000000000000000000000000000000000000000',
+    tokenId: 0,
+    revoked: true,
+  },
+  {
+    authority: '0x0000000000000000000000000000000000000000',
+    tokenId: '42',
+    revoked: true,
+  },
+  { authority: SPENDER, tokenId: '42', revoked: false },
+])(
+  'reviews single NFT approval accurately without changing calldata: $revoked $tokenId',
+  async ({ authority, tokenId, revoked }) => {
+    const abi = new Interface(['function approve(address,uint256)']);
+    const calldata = abi.encodeFunctionData('approve', [authority, tokenId]);
+    mockQuery.tx.data = calldata;
+    mockQuery.decodedTx = {
+      method: 'approve',
+      inputs: [authority, tokenId],
+      names: ['to', 'tokenId'],
+      types: ['address', 'uint256'],
+    };
+    mockQuery.txMetadata = {
+      isApproval: true,
+      approvalType: 'erc721-single',
+      tokenStandard: 'ERC-721',
+    };
+    const invoke = mockEmitter.getMockImplementation()!;
+    mockEmitter.mockImplementation(async (path, args) => {
+      if (path[1] === 'getTokenDetails') return { symbol: 'COLLECTIBLE' };
+      if (path[1] === 'isContractAddress') return true;
+      return invoke(path, args);
+    });
+    const view = await prepare();
+    await waitFor(() =>
+      expect(
+        JSON.parse(screen.getByTestId('reviewed-approval').textContent!)
+          .isNftRevocation
+      ).toBe(revoked)
+    );
+    if (revoked) {
+      expect(screen.getByText('send.revokeNftApproval')).toBeDefined();
+      await waitFor(() =>
+        expect(screen.getByText(`Remove COLLECTIBLE #${tokenId}`)).toBeDefined()
+      );
+      expect(screen.queryByText('send.approveNftTransfer')).toBeNull();
+      expect(
+        JSON.parse(screen.getByTestId('reviewed-approval').textContent!)
+          .authorityLabelKey
+      ).toBe('send.approvalResetAddress');
+    } else {
+      expect(screen.getByText('send.approveNftTransfer')).toBeDefined();
+      expect(screen.queryByText('send.revokeNftApproval')).toBeNull();
+      expect(
+        JSON.parse(screen.getByTestId('reviewed-approval').textContent!)
+          .authorityLabelKey
+      ).toBe('transactions.approvedTo');
+    }
+    expect(screen.getByText(`Token ID: ${tokenId}`)).toBeDefined();
+    expect(screen.getByTestId('transaction-hex').textContent).toBe(calldata);
+    await act(async () => mockButtonHandlers['buttons.confirm']());
+    const sent = mockEmitter.mock.calls.find(
+      ([path]) => path[1] === 'sendAndSaveEthTransaction'
+    );
+    expect(sent?.[1][0].data).toBe(calldata);
+    view.unmount();
   }
 );

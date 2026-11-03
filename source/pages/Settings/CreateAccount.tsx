@@ -131,12 +131,8 @@ const CreateAccount = () => {
             <Input
               type="text"
               className="custom-input-normal relative"
-              placeholder={`${t('settings.nameYourNewAccount')} (${t(
-                'settings.optional'
-              )})`}
-              aria-label={`${t('settings.nameYourNewAccount')} (${t(
-                'settings.optional'
-              )})`}
+              placeholder={`${t('settings.label')} (${t('settings.optional')})`}
+              aria-label={`${t('settings.label')} (${t('settings.optional')})`}
               onChange={(e) => setAccountName(e.target.value)}
               id="account-name-input"
             />

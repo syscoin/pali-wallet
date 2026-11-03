@@ -188,9 +188,15 @@ function fixture(
     }
   );
   const readNote = jest.fn(async () => status);
+  const revalidateCompletion = jest.fn(async () => undefined);
+  const prepareCompletionProof = jest.fn(
+    async (): Promise<{ revalidate: () => Promise<void> }> => ({
+      revalidate: revalidateCompletion,
+    })
+  );
   const create = () =>
     createPrivateVaultController(
-      { captureSession, authenticate, readNote },
+      { captureSession, authenticate, readNote, prepareCompletionProof },
       { storage, mutex, now: () => 456, generate, identify }
     );
   const controller = create();
@@ -202,6 +208,8 @@ function fixture(
     mutex,
     authenticate,
     readNote,
+    prepareCompletionProof,
+    revalidateCompletion,
     captureSession,
     setStatus: (value: IPrivateNoteStatus) => {
       status = value;
@@ -420,6 +428,58 @@ it('preserves encrypted shard roots made with the original UTF-8 encoding', asyn
   expect(await restored.revealNote(notes[31].id, 'correct-password')).toBe(
     notes[31].note
   );
+});
+
+it('migrates capacity only on an explicit choice and survives restart', async () => {
+  const { f, key } = await capacityFixture();
+  const before = structuredClone(f.records[key]);
+  expect(await f.controller.getCapacity()).toEqual({
+    capacity: 128,
+    noteCount: 128,
+    bundleLimitBytes: 4 * 1024 * 1024,
+    storedBytes: new TextEncoder().encode(JSON.stringify(before)).length,
+  });
+  await f.controller.setCapacity(128);
+  expect(f.records[key]).toEqual(before);
+  expect(await f.controller.setCapacity(256)).toMatchObject({
+    capacity: 256,
+    noteCount: 128,
+    bundleLimitBytes: 8 * 1024 * 1024,
+  });
+  expect(f.records[key].version).toBe(3);
+  const restarted = f.create();
+  expect(await restarted.getCapacity()).toMatchObject({
+    capacity: 256,
+    noteCount: 128,
+    bundleLimitBytes: 8 * 1024 * 1024,
+  });
+  const extra = `tornado-eth-1-1-0x${(99999).toString(16).padStart(124, '0')}`;
+  await restarted.importNote(extra);
+  const saved = structuredClone(f.records[key]);
+  await expect(restarted.setCapacity(128)).rejects.toThrow(
+    'privacy_note_limit'
+  );
+  expect(f.records[key]).toEqual(saved);
+  expect((await f.create().getNotes()).notes).toHaveLength(129);
+  expect(await restarted.setCapacity(512)).toMatchObject({
+    capacity: 512,
+    noteCount: 129,
+    bundleLimitBytes: 16 * 1024 * 1024,
+  });
+});
+
+it('rejects unsupported capacity values without mutating legacy records', async () => {
+  const f = fixture();
+  await expect(f.controller.setCapacity(1024 as any)).rejects.toThrow(
+    'privacy_vault_unavailable'
+  );
+  expect(f.storage.setItem).not.toHaveBeenCalled();
+  expect(await f.controller.getCapacity()).toEqual({
+    capacity: 128,
+    noteCount: 0,
+    bundleLimitBytes: 4 * 1024 * 1024,
+    storedBytes: 0,
+  });
 });
 
 it('bounds sharding for escaped long endpoints and both journal types', async () => {
@@ -1894,3 +1954,612 @@ it.each([
     /^privacy_vault_corrupt$/
   );
 });
+
+it.each([
+  'switch during committed write',
+  'healthy pre-sign cancellation',
+] as const)('reservation review: %s', async (scenario) => {
+  const { createPrivacyWithdrawalsController } = await import(
+    './privacyWithdrawals'
+  );
+  const f = fixture();
+  const saved = await f.controller.importNote(NOTE);
+  const originalSession = f.captureSession();
+  const captured = {
+    context: depositAttempt(saved.id).context,
+    assertCurrent: originalSession.assertCurrent,
+  };
+  const identity = identifyClassicNote(NOTE);
+  const root = '0x' + '01'.repeat(32);
+  const proof = '0x' + 'ab'.repeat(256);
+  let forceCancel = false;
+  const send = jest.fn();
+  const clear = jest.fn(async (attempt) =>
+    f.controller.clearUnbroadcastWithdrawalAttempt(attempt, originalSession)
+  );
+  const snapshot: any = { root };
+  const host: any = {
+    captureSession: () => captured,
+    withNote: (id, _session, use) =>
+      f.controller.withWithdrawalNote(id, originalSession, use),
+    getSnapshot: async () => ({
+      snapshot,
+      getPath: async () => ({}),
+      assertSnapshotCurrent: () => {
+        if (forceCancel) throw new Error('privacy_verification_pending');
+      },
+    }),
+    quoteDirectFees: async () => ({
+      gasLimit: '650000',
+      nonce: '7',
+      maxFeePerGas: '100',
+      maxPriorityFeePerGas: '1',
+    }),
+    prove: async (request) => ({
+      proof,
+      publicSignals: [
+        root,
+        identity.nullifierHash,
+        request.recipient,
+        request.relayer,
+        request.fee,
+        request.refund,
+      ].map((x) => BigInt(x).toString()),
+    }),
+    beforeSubmission: async (attempt) => {
+      captured.assertCurrent();
+      await f.controller.reserveWithdrawalAttempt(attempt, originalSession);
+      captured.assertCurrent();
+      if (scenario === 'healthy pre-sign cancellation') forceCancel = true;
+    },
+    recordNotBroadcast: clear,
+    recordSubmission: jest.fn(),
+    sendTransaction: send,
+    relayers: {},
+  };
+  const controller = createPrivacyWithdrawalsController(host, {
+    now: () => 456,
+    randomId: () => INTENT_ID,
+  });
+  const review = await controller.prepareWithdrawal({
+    noteId: saved.id,
+    recipient: '0x' + '22'.repeat(20),
+    mode: 'direct',
+  });
+  const committed = deferred(),
+    release = deferred();
+  if (scenario === 'switch during committed write') {
+    const write = f.storage.setItem.getMockImplementation()!;
+    f.storage.setItem.mockImplementationOnce(async (key, value) => {
+      await write(key, value);
+      committed.resolve();
+      await release.promise;
+    });
+  }
+  const result = controller.submitWithdrawal(review.intentId);
+  const rejected = expect(result).rejects.toMatchObject({
+    transactionNotBroadcast: true,
+  });
+  if (scenario === 'switch during committed write') {
+    await committed.promise;
+    f.replaceKeyring();
+    release.resolve();
+  }
+  await rejected;
+  expect(send).not.toHaveBeenCalled();
+  const newSession = f.captureSession();
+  const persisted = await f.create().getWithdrawalAttempt(saved.id, newSession);
+  if (scenario === 'switch during committed write') {
+    expect(clear).not.toHaveBeenCalled();
+    expect(persisted).toMatchObject({ phase: 'unknown' });
+    expect((await f.create().getNotes()).notes[0].phase).toBe('waiting');
+    await expect(
+      f.create().withWithdrawalNote(saved.id, newSession, jest.fn())
+    ).rejects.toThrow('privacy_withdrawal_attempt_exists');
+  } else {
+    expect(clear).toHaveBeenCalledTimes(1);
+    expect(persisted).toBeNull();
+    expect((await f.create().getNotes()).notes[0].phase).toBe('verified');
+  }
+  controller.close();
+});
+
+it('preserves the prior vault if a capacity migration write fails', async () => {
+  const { f, key } = await capacityFixture(capacityNotes(2));
+  const before = structuredClone(f.records[key]);
+  f.storage.setItem.mockRejectedValueOnce(new Error('storage unavailable'));
+  await expect(f.controller.setCapacity(256)).rejects.toThrow(
+    'privacy_vault_unavailable'
+  );
+  expect(f.records[key]).toEqual(before);
+  expect(await f.create().getCapacity()).toMatchObject({
+    capacity: 128,
+    noteCount: 2,
+  });
+});
+
+async function completedClearFixture() {
+  const f = fixture();
+  const completed = await f.controller.importNote(NOTE);
+  const unrelated = await f.controller.importNote(SECOND_NOTE);
+  const session = f.captureSession();
+  const attempt = withdrawalAttempt(completed.id, 'relayed');
+  await f.controller.reserveWithdrawalAttempt(attempt, session);
+  await f.controller.recordWithdrawalSubmission(
+    attempt,
+    { transactionHash: TX_HASH },
+    session
+  );
+  return { f, completed, unrelated, session, attempt };
+}
+
+it('clear completed removes only the proven unchanged note and preserves unresolved records', async () => {
+  const { f, completed, unrelated } = await completedClearFixture();
+  const result = await f.controller.clearCompletedNotes([completed.id]);
+  expect(result).toEqual({ removed: [completed.id], unresolved: [] });
+  expect(await f.controller.clearCompletedNotes([unrelated.id])).toEqual({
+    removed: [],
+    unresolved: [unrelated.id],
+  });
+  expect((await f.controller.getNotes()).notes.map((note) => note.id)).toEqual([
+    unrelated.id,
+  ]);
+  expect(f.prepareCompletionProof).toHaveBeenCalledTimes(1);
+  expect(f.revalidateCompletion).toHaveBeenCalledTimes(1);
+  expect(JSON.stringify(f.prepareCompletionProof.mock.calls)).not.toContain(
+    NOTE
+  );
+  expect((await f.create().getNotes()).notes.map((note) => note.id)).toEqual([
+    unrelated.id,
+  ]);
+});
+
+it.each(['initial', 'revalidation'])(
+  'clear completed retains the encrypted note after %s proof failure',
+  async (kind) => {
+    const { f, completed } = await completedClearFixture();
+    const count = f.storage.setItem.mock.calls.length;
+    if (kind === 'initial')
+      f.prepareCompletionProof.mockRejectedValueOnce(new Error('offline'));
+    else f.revalidateCompletion.mockRejectedValueOnce(new Error('reorg'));
+    expect(await f.controller.clearCompletedNotes([completed.id])).toEqual({
+      removed: [],
+      unresolved: [completed.id],
+    });
+    expect(f.storage.setItem).toHaveBeenCalledTimes(count);
+    expect(
+      (await f.controller.getNotes()).notes.some(
+        (note) => note.id === completed.id
+      )
+    ).toBe(true);
+  }
+);
+
+it('clear completed leaves unknown or no-hash journals untouched', async () => {
+  const f = fixture();
+  const note = await f.controller.importNote(NOTE);
+  const session = f.captureSession();
+  const attempt = withdrawalAttempt(note.id, 'relayed');
+  await f.controller.reserveWithdrawalAttempt(attempt, session);
+  expect(await f.controller.clearCompletedNotes([note.id])).toEqual({
+    removed: [],
+    unresolved: [note.id],
+  });
+  await f.controller.recordWithdrawalSubmission(
+    attempt,
+    { jobId: UUID },
+    session
+  );
+  expect(await f.controller.clearCompletedNotes([note.id])).toEqual({
+    removed: [],
+    unresolved: [note.id],
+  });
+  expect(f.prepareCompletionProof).not.toHaveBeenCalled();
+});
+
+it('clear completed fails closed when the session changes while proof is pending', async () => {
+  const { f, completed } = await completedClearFixture();
+  let release!: (value: { revalidate: () => Promise<void> }) => void;
+  const pending = new Promise<{ revalidate: () => Promise<void> }>(
+    (resolve) => {
+      release = resolve;
+    }
+  );
+  f.prepareCompletionProof.mockReturnValueOnce(pending);
+  const action = f.controller.clearCompletedNotes([completed.id]);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  f.lock();
+  release({ revalidate: async () => undefined });
+  await expect(action).rejects.toThrow('privacy_vault_session_changed');
+  f.unlock();
+  expect(
+    (await f.controller.getNotes()).notes.some(
+      (note) => note.id === completed.id
+    )
+  ).toBe(true);
+});
+
+it('clear completed refuses a journal changed while proof is pending', async () => {
+  const { f, completed, session, attempt } = await completedClearFixture();
+  let release!: (value: { revalidate: () => Promise<void> }) => void;
+  const pending = new Promise<{ revalidate: () => Promise<void> }>(
+    (resolve) => {
+      release = resolve;
+    }
+  );
+  f.prepareCompletionProof.mockReturnValueOnce(pending);
+  const action = f.controller.clearCompletedNotes([completed.id]);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await f.controller.recordWithdrawalSubmission(
+    attempt,
+    { jobId: UUID },
+    session
+  );
+  release({ revalidate: async () => undefined });
+  expect(await action).toEqual({ removed: [], unresolved: [completed.id] });
+  expect(
+    (await f.controller.getNotes()).notes.some(
+      (note) => note.id === completed.id
+    )
+  ).toBe(true);
+});
+
+it('clear completed rejects duplicate, malformed and oversized requests', async () => {
+  const f = fixture();
+  await expect(
+    f.controller.clearCompletedNotes([UUID, UUID])
+  ).rejects.toThrow();
+  await expect(
+    f.controller.clearCompletedNotes([UUID, INTENT_ID])
+  ).rejects.toThrow();
+  await expect(
+    f.controller.clearCompletedNotes(['not-a-uuid'])
+  ).rejects.toThrow();
+  await expect(
+    f.controller.clearCompletedNotes(
+      Array.from(
+        { length: 17 },
+        (_, i) => `00000000-0000-4000-8000-${i.toString(16).padStart(12, '0')}`
+      )
+    )
+  ).rejects.toThrow();
+  expect(f.prepareCompletionProof).not.toHaveBeenCalled();
+});
+
+it('clear completed fails closed when session changes during final proof revalidation', async () => {
+  const { f, completed } = await completedClearFixture();
+  const count = f.storage.setItem.mock.calls.length;
+  f.revalidateCompletion.mockImplementationOnce(async () => {
+    f.lock();
+  });
+  await expect(
+    f.controller.clearCompletedNotes([completed.id])
+  ).rejects.toThrow('privacy_vault_session_changed');
+  expect(f.storage.setItem).toHaveBeenCalledTimes(count);
+  f.unlock();
+  expect(
+    (await f.controller.getNotes()).notes.some(
+      (note) => note.id === completed.id
+    )
+  ).toBe(true);
+});
+
+it('clear completed reports a storage failure and preserves unrelated notes', async () => {
+  const { f, completed, unrelated } = await completedClearFixture();
+  f.storage.setItem.mockRejectedValueOnce(new Error('private backend error'));
+  await expect(
+    f.controller.clearCompletedNotes([completed.id])
+  ).rejects.toThrow('privacy_vault_unavailable');
+  expect((await f.controller.getNotes()).notes.map((note) => note.id)).toEqual([
+    completed.id,
+    unrelated.id,
+  ]);
+});
+
+it('clear completed requires caller refresh after an ambiguous committed write', async () => {
+  const { f, completed, unrelated } = await completedClearFixture();
+  f.storage.setItem.mockImplementationOnce(async (key, value) => {
+    f.records[key] = structuredClone(value);
+    throw new Error('acknowledgement lost');
+  });
+  await expect(
+    f.controller.clearCompletedNotes([completed.id])
+  ).rejects.toThrow('privacy_vault_unavailable');
+  expect((await f.create().getNotes()).notes.map((note) => note.id)).toEqual([
+    unrelated.id,
+  ]);
+});
+
+it('clear completed preserves a note with an unknown deposit journal even after a withdrawal is submitted', async () => {
+  const f = fixture(() => NOTE);
+  f.setStatus({ phase: 'not-found' });
+  const note = await f.controller.createDepositNote('eth-1');
+  const session = f.captureSession();
+  await f.controller.reserveDepositAttempt(depositAttempt(note.id), session);
+  f.setStatus({ phase: 'verified' });
+  const withdrawal = withdrawalAttempt(note.id, 'relayed');
+  await f.controller.reserveWithdrawalAttempt(withdrawal, session);
+  await f.controller.recordWithdrawalSubmission(
+    withdrawal,
+    { transactionHash: TX_HASH },
+    session
+  );
+  expect(await f.controller.clearCompletedNotes([note.id])).toEqual({
+    removed: [],
+    unresolved: [note.id],
+  });
+  expect(f.prepareCompletionProof).not.toHaveBeenCalled();
+  expect((await f.controller.getNotes()).notes).toHaveLength(1);
+});
+
+it('clear completed refuses to write if proof revalidation exhausts its deadline', async () => {
+  const { f, completed } = await completedClearFixture();
+  const count = f.storage.setItem.mock.calls.length;
+  let clock = 1_000;
+  const spy = jest.spyOn(Date, 'now').mockImplementation(() => clock);
+  try {
+    f.revalidateCompletion.mockImplementationOnce(async () => {
+      clock += 60_000;
+    });
+    expect(await f.controller.clearCompletedNotes([completed.id])).toEqual({
+      removed: [],
+      unresolved: [completed.id],
+    });
+    expect(f.storage.setItem).toHaveBeenCalledTimes(count);
+    expect(
+      (await f.controller.getNotes()).notes.some(
+        (note) => note.id === completed.id
+      )
+    ).toBe(true);
+  } finally {
+    spy.mockRestore();
+  }
+});
+
+it('clears a verified note without losing v3 capacity or unrelated custody', async () => {
+  const { f, completed, unrelated } = await completedClearFixture();
+  await f.controller.setCapacity(256);
+  expect(await f.controller.clearCompletedNotes([completed.id])).toEqual({
+    removed: [completed.id],
+    unresolved: [],
+  });
+  expect(await f.create().getCapacity()).toMatchObject({
+    capacity: 256,
+    noteCount: 1,
+  });
+  expect((await f.create().getNotes()).notes.map((entry) => entry.id)).toEqual([
+    unrelated.id,
+  ]);
+});
+
+it.each([256, 512] as const)(
+  'preserves and rewrites a worst-case encrypted %i-note v3 vault',
+  async (capacity) => {
+    const max = Number.MAX_SAFE_INTEGER;
+    const hash = '0x' + 'ab'.repeat(32);
+    const endpoint = 'https://a' + '\u0000'.repeat(2039);
+    expect(endpoint).toHaveLength(2048);
+    expect(new URL(endpoint).protocol).toBe('https:');
+    const notes = capacityNotes(capacity).map((entry) => ({
+      ...entry,
+      note: entry.note.replace('tornado-eth-1-1-', 'tornado-eth-100-1-'),
+      createdAt: max,
+      origin: 'generated' as const,
+      deposit: {
+        intentId: entry.id,
+        attemptHash: hash,
+        createdAt: max,
+        from: '0x' + '11'.repeat(20),
+        nonce: '18446744073709551615',
+        phase: 'submitted' as const,
+        transactionHash: hash,
+      },
+      withdrawal: {
+        intentId: entry.id,
+        attemptHash: hash,
+        proofHash: hash,
+        inputHash: hash,
+        createdAt: max,
+        mode: 'relayed' as const,
+        phase: 'submitted' as const,
+        endpoint,
+        ensHash: hash,
+        transactionHash: hash,
+        jobId: 'j'.repeat(128),
+      },
+    }));
+    // The first measured read repeats identity work exactly as production does.
+    // Cache only later reads so the persistence assertions stay bounded.
+    let cacheIdentities = false;
+    const identities = new Map<
+      string,
+      ReturnType<typeof identifyClassicNote>
+    >();
+    const identify = (note: string) => {
+      let identity = identities.get(note);
+      if (!cacheIdentities || !identity) {
+        identity = identifyClassicNote(note);
+        identities.set(note, identity);
+      }
+      return identity;
+    };
+    const f = fixture(undefined, identify);
+    const keyring = f.getKeyring();
+    const profileId = await keyring.getPrivateRecordProfileId();
+    const shardDomain = 'org.syscoin.pali.privacy.notes.shard.v2';
+    const shards = [];
+    const references = [];
+    for (let i = 0; i < notes.length; i += 2) {
+      const recordId = `00000000-0000-4000-8000-${(1000000 + i)
+        .toString(16)
+        .padStart(12, '0')}`;
+      const plaintext = new TextEncoder().encode(
+        JSON.stringify({ version: 1, notes: notes.slice(i, i + 2) })
+      );
+      expect(plaintext.length).toBeLessThanOrEqual(32 * 1024);
+      const shard = await keyring.encryptPrivateRecord({
+        domain: shardDomain,
+        recordId,
+        plaintext,
+      });
+      plaintext.fill(0);
+      shards.push(shard);
+      references.push({
+        recordId,
+        count: 2,
+        hash: keccak256(
+          new TextEncoder().encode(
+            JSON.stringify([
+              shard.version,
+              shard.domain,
+              shard.recordId,
+              shard.profileId,
+              shard.nonce,
+              shard.ciphertext,
+            ])
+          )
+        ),
+      });
+    }
+    const rootPlain = new TextEncoder().encode(
+      JSON.stringify({
+        version: 3,
+        noteCount: capacity,
+        capacity,
+        shards: references,
+      })
+    );
+    expect(rootPlain.length).toBeLessThanOrEqual(64 * 1024);
+    const root = await keyring.encryptPrivateRecord({
+      domain: PRIVATE_VAULT_DOMAIN,
+      recordId: UUID,
+      plaintext: rootPlain,
+    });
+    rootPlain.fill(0);
+    const key = PRIVATE_VAULT_STORAGE_PREFIX + profileId;
+    f.records[key] = { version: 3, root, shards };
+    const bytes = new TextEncoder().encode(
+      JSON.stringify(f.records[key])
+    ).length;
+    expect(bytes).toBeLessThanOrEqual((capacity / 128) * 4 * 1024 * 1024);
+    const start = Date.now();
+    const restarted = f.create();
+    expect((await restarted.getNotes()).notes).toHaveLength(capacity);
+    const readMs = Date.now() - start;
+    cacheIdentities = true;
+    expect(await restarted.getCapacity()).toMatchObject({
+      capacity,
+      noteCount: capacity,
+      storedBytes: bytes,
+    });
+    const before = keccak256(toUtf8Bytes(JSON.stringify(f.records[key])));
+    await expect(restarted.setCapacity(128)).rejects.toThrow(
+      'privacy_note_limit'
+    );
+    expect(keccak256(toUtf8Bytes(JSON.stringify(f.records[key])))).toBe(before);
+    f.storage.setItem.mockRejectedValueOnce(new Error('storage unavailable'));
+    await expect(restarted.clearCompletedNotes([notes[0].id])).rejects.toThrow(
+      'privacy_vault_unavailable'
+    );
+    expect(keccak256(toUtf8Bytes(JSON.stringify(f.records[key])))).toBe(before);
+    // Exercise the real serializer and atomic write at full retained capacity,
+    // then reload and verify the other worst-case journals survived.
+    expect(await restarted.clearCompletedNotes([notes[0].id])).toEqual({
+      removed: [notes[0].id],
+      unresolved: [],
+    });
+    expect(f.revalidateCompletion).toHaveBeenCalledTimes(2);
+    const afterRestart = f.create();
+    expect(await afterRestart.getCapacity()).toMatchObject({
+      capacity,
+      noteCount: capacity - 1,
+    });
+    const remaining = (await afterRestart.getNotes()).notes;
+    expect(remaining).toHaveLength(capacity - 1);
+    expect(remaining.some((entry) => entry.id === notes[0].id)).toBe(false);
+    expect(
+      await afterRestart.getWithdrawalAttempt(notes[1].id, f.captureSession())
+    ).toEqual({
+      ...notes[1].withdrawal,
+      noteId: notes[1].id,
+      poolId: 'eth-100',
+    });
+    expect(
+      await afterRestart.getDepositAttempt(notes[1].id, f.captureSession())
+    ).toEqual(notes[1].deposit);
+    // Non-secret diagnostic measurements; reviewed after execution, not timing gates.
+    console.info('Synthetic worst-case encrypted vault', {
+      capacity,
+      bytes,
+      readMs,
+    });
+  },
+  180000
+);
+
+it.each(['tier', 'count', 'schema', 'bytes'] as const)(
+  'rejects an authenticated malformed v3 %s without changing storage',
+  async (kind) => {
+    const { f, key } = await capacityFixture(capacityNotes(2));
+    await f.controller.setCapacity(256);
+    const bundle = structuredClone(f.records[key]);
+    const keyring = f.getKeyring();
+    const plain = await keyring.decryptPrivateRecord({
+      domain: PRIVATE_VAULT_DOMAIN,
+      recordId: bundle.root.recordId,
+      envelope: bundle.root,
+    });
+    const root = JSON.parse(new TextDecoder().decode(plain));
+    plain.fill(0);
+    if (kind === 'tier') root.capacity = 1024;
+    if (kind === 'count') root.noteCount = 257;
+    if (kind === 'schema') root.unexpected = true;
+    if (kind === 'bytes') {
+      root.capacity = 128;
+      // Envelopes satisfy the pre-decrypt size bound, but their combined
+      // encoded size exceeds this selected tier's 4 MiB bundle limit.
+      bundle.shards = Array.from({ length: 97 }, (_, index) => ({
+        ...bundle.shards[0],
+        recordId: `00000000-0000-4000-8000-${(2000000 + index)
+          .toString(16)
+          .padStart(12, '0')}`,
+        ciphertext: 'A'.repeat(Math.ceil((32 * 1024 + 16) / 3) * 4),
+      }));
+      root.shards = bundle.shards.map((shard: any, index: number) => ({
+        recordId: shard.recordId,
+        count: index === 0 ? 2 : 0,
+        hash: keccak256(
+          new TextEncoder().encode(
+            JSON.stringify([
+              shard.version,
+              shard.domain,
+              shard.recordId,
+              shard.profileId,
+              shard.nonce,
+              shard.ciphertext,
+            ])
+          )
+        ),
+      }));
+    }
+    const rootPlain = new TextEncoder().encode(JSON.stringify(root));
+    bundle.root = await keyring.encryptPrivateRecord({
+      domain: PRIVATE_VAULT_DOMAIN,
+      recordId: bundle.root.recordId,
+      plaintext: rootPlain,
+    });
+    rootPlain.fill(0);
+    if (kind === 'bytes')
+      expect(
+        new TextEncoder().encode(JSON.stringify(bundle)).length
+      ).toBeGreaterThan(4 * 1024 * 1024);
+    f.records[key] = bundle;
+    const saved = structuredClone(bundle);
+    const writes = f.storage.setItem.mock.calls.length;
+    await expect(f.create().getCapacity()).rejects.toThrow(
+      'privacy_vault_corrupt'
+    );
+    expect(f.storage.setItem).toHaveBeenCalledTimes(writes);
+    expect(f.records[key]).toEqual(saved);
+  }
+);

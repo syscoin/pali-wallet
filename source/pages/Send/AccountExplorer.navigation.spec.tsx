@@ -132,6 +132,9 @@ jest.mock('components/Icon/Icon', () => ({
   PaliWhiteSmallIconSvg: () => null,
   ArrowDownSvg: () => null,
 }));
+jest.mock('components/Tooltip', () => ({
+  Tooltip: ({ children }: any) => <>{children}</>,
+}));
 jest.mock('components/index', () => ({
   Button: ({ children, variant, fullWidth, loading, icon, ...props }: any) => (
     <button
@@ -381,5 +384,52 @@ describe.each(CASES)(
         expect(network.url).toBe(data.url);
       }
     );
+  }
+);
+
+it.each([
+  ['Home', AccountHeader],
+  ['Send', SendEth],
+])(
+  '%s keeps the account avatar noninteractive for an explicitly absent explorer',
+  async (_name, Component) => {
+    const { formattedNetwork } = await getEthRpc(
+      { url: RPC, explorer: RPC, label: 'Synthetic', symbol: 'SYS' } as any,
+      false
+    );
+    const network = { ...formattedNetwork, explorerExplicitlyAbsent: true };
+    const account = {
+      id: 0,
+      label: 'Synthetic account',
+      address: ADDRESS,
+      balances: { ethereum: '10', syscoin: '10' },
+    };
+    mockState = {
+      vault: {
+        accounts: { HDAccount: { 0: account } },
+        activeAccount: { id: 0, type: KeyringAccountType.HDAccount },
+        activeNetwork: network,
+        isBitcoinBased: false,
+        accountTransactions: {},
+      },
+      vaultGlobal: { networkStatus: 'connected', isSwitchingAccount: false },
+      price: { fiat: { asset: 'USD' } },
+      testAssets: { ethereum: [], syscoin: [] },
+    };
+    mockLocation = {
+      pathname: Component === AccountHeader ? '/home' : '/send/eth',
+      search: '',
+      hash: '',
+      state: null,
+      key: 'public-avatar',
+    };
+    const open = jest.spyOn(window, 'open').mockReturnValue(null);
+    render(<Component />);
+    const avatar = screen.getByRole('button', {
+      name: 'home.viewAccountOnExplorer - settings.unavailable',
+    });
+    expect(avatar).toBeDisabled();
+    fireEvent.click(avatar);
+    expect(open).not.toHaveBeenCalled();
   }
 );

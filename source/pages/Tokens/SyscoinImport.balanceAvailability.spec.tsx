@@ -4,7 +4,7 @@
  */
 import '@testing-library/jest-dom';
 import { configureStore } from '@reduxjs/toolkit';
-import { act, cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import axios from 'axios';
 import React from 'react';
@@ -253,7 +253,14 @@ const observeImport = async (mode: InventoryMode) => {
   expect(savedPayloads).toHaveLength(1);
   expect(savedPayloads[0].assetGuid).toBe(GUID);
   expect(assets()[0].assetGuid).toBe(GUID);
-  expect(mockAlert.success).toHaveBeenCalledTimes(1);
+  await waitFor(() => {
+    const success = screen.getByText(
+      copy('tokens.hasBeenAddedToYourWallet').replace('{{token}}', SYMBOL),
+      { exact: true }
+    );
+    expect(success).toBeVisible();
+    expect(success.closest('[role="status"]')).not.toBeNull();
+  });
   expect(mockAlert.error).not.toHaveBeenCalled();
   expect(reads.some((read) => read.path === `/api/v2/asset/${GUID}`)).toBe(
     true

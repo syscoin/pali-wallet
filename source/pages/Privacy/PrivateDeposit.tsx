@@ -182,8 +182,18 @@ function DepositFlow({
       setReview(next);
       setConsumed(false);
       setClock(Date.now());
-    } catch {
-      if (current(revision)) setError('prepareFailed');
+    } catch (failure) {
+      if (current(revision)) {
+        const message =
+          failure && typeof failure === 'object' && 'message' in failure
+            ? failure.message
+            : undefined;
+        setError(
+          message === 'privacy_deposit_note_limit'
+            ? 'noteCapacity'
+            : 'prepareFailed'
+        );
+      }
     } finally {
       if (current(revision)) {
         owner.current.busy = false;
@@ -499,6 +509,7 @@ export default function PrivateDeposit(props: IPrivateDepositProps) {
         vault.activeNetwork.chainId === 1 &&
         ['HDAccount', 'Imported'].includes(ref.type) &&
         account &&
+        (ref.type !== 'Imported' || Boolean(account.xprv)) &&
         !account.isLedgerWallet &&
         !account.isTrezorWallet &&
         !account.isSmartAccount,

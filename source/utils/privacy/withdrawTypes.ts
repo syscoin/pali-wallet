@@ -65,7 +65,7 @@ export interface IPrivacyRelayerChoice {
 }
 export interface IPrivacyWithdrawalsHost {
   beforeSubmission: (attempt: IPrivacyWithdrawalAttempt) => Promise<void>;
-  captureSession: () => IPrivacyWithdrawalSession;
+  captureSession: (requireSigner?: boolean) => IPrivacyWithdrawalSession;
   getSnapshot: (poolId: PrivacyPoolId) => Promise<IPrivacySnapshotAccess>;
   getWithdrawalAttempt: (
     noteId: string,

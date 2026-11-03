@@ -82,6 +82,17 @@ export function createPrivacyController(
     }
   >();
   const snapshotRevisions = new Map<PrivacyPoolId, number>();
+  // A lease may wait for the one automatic public refresh that replaced it.
+  // Explicit lifecycle changes increment the revision independently and cannot
+  // be mistaken for that refresh.
+  const scheduledRefreshes = new Map<
+    PrivacyPoolId,
+    {
+      previousRevision: number;
+      previousGeneration: number;
+      task: Promise<void>;
+    }
+  >();
   const revision = (poolId: PrivacyPoolId) =>
     snapshotRevisions.get(poolId) || 0;
   const invalidateSnapshot = (poolId: PrivacyPoolId) =>
@@ -355,9 +366,17 @@ export function createPrivacyController(
   async function resumePending(poolId: PrivacyPoolId): Promise<void> {
     getPrivacyPool(poolId);
     if (tasks.has(poolId)) return;
+    const previousRevision = revision(poolId);
+    const previousGeneration = verifiedTrees.get(poolId)?.generation;
     invalidateSnapshot(poolId);
     const task = process(poolId);
     tasks.set(poolId, task);
+    if (previousGeneration !== undefined)
+      scheduledRefreshes.set(poolId, {
+        previousRevision,
+        previousGeneration,
+        task,
+      });
     try {
       await task;
     } finally {
@@ -429,6 +448,33 @@ export function createPrivacyController(
       return {
         snapshot: trusted.snapshot,
         assertSnapshotCurrent,
+        waitForScheduledRefresh: async () => {
+          const refresh = scheduledRefreshes.get(poolId);
+          if (
+            !refresh ||
+            refresh.previousRevision !== capturedRevision ||
+            refresh.previousGeneration !== trusted.generation ||
+            revision(poolId) !== capturedRevision + 1
+          )
+            return false;
+          await refresh.task;
+          return serialize(poolId, async () => {
+            const next = verifiedTrees.get(poolId);
+            const latest = await cache.get(poolId);
+            return (
+              scheduledRefreshes.get(poolId) === refresh &&
+              revision(poolId) === capturedRevision + 1 &&
+              !!next &&
+              next !== trusted &&
+              isFresh(poolId, next, latest) &&
+              !!latest &&
+              !latest.running &&
+              latest.status.phase === 'ready' &&
+              latest.generation === next.generation &&
+              latest.status.leafCount === next.snapshot.leafCount
+            );
+          });
+        },
         getPath: async (leafIndex) => {
           const assertCurrent = () => assertSnapshotCurrent(trusted.snapshot);
           assertCurrent();

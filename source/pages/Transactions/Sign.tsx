@@ -287,7 +287,7 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
                   alt=""
                 />
               </div>
-              <h1 className="text-xl font-semibold text-white mb-2">
+              <h1 className="text-center text-xl font-semibold text-white mb-2">
                 {t('transactions.signatureRequest')}
               </h1>
               <p className="text-sm text-gray-300 text-center">

@@ -31,6 +31,40 @@ const HASH = '0x' + '34'.repeat(32);
 
 afterEach(cleanup);
 
+it('shows a complete timestamp while keeping long identifiers abbreviated', async () => {
+  const instance = createInstance();
+  await instance.use(initReactI18next).init({
+    initImmediate: false,
+    lng: 'en',
+    react: { useSuspense: false },
+    resources: { en: { translation: en } },
+  });
+  const timestamp = '11/14/2023, 10:13:20 PM';
+  const onCopy = jest.fn();
+  render(
+    <I18nextProvider i18n={instance}>
+      <TransactionDetailsList
+        details={[
+          { label: 'Timestamp', value: timestamp, showFullValue: true },
+          { label: 'Block Hash', value: HASH, canCopy: true },
+        ]}
+        onCopy={onCopy}
+      />
+    </I18nextProvider>
+  );
+  const row = screen.getByText(en.transactionDisplay.timestamp).parentElement!;
+  expect(within(row).getByText(timestamp)).toBeVisible();
+  const hashRow = screen.getByText(en.transactionDisplay.blockHash)
+    .parentElement!;
+  expect(within(hashRow).queryByText(HASH)).not.toBeInTheDocument();
+  await userEvent.click(
+    within(hashRow).getByRole('button', {
+      name: `${en.buttons.copy}: ${en.transactionDisplay.blockHash}`,
+    })
+  );
+  expect(onCopy).toHaveBeenCalledWith(HASH, 'Block Hash');
+});
+
 it.each(locales)(
   'localizes the %s display while preserving exact raw copy labels and values',
   async (locale) => {

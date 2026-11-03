@@ -16,6 +16,8 @@ export interface INetwork {
   currency: string;
   default?: boolean;
   explorer?: string;
+  /** A new EVM registration deliberately left the explorer field blank. */
+  explorerExplicitlyAbsent?: boolean;
   key?: string;
   kind: INetworkType;
   label: string;

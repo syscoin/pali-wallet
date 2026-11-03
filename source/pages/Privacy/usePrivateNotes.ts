@@ -144,5 +144,26 @@ export function usePrivateNotes() {
     [isActive]
   );
 
-  return { controllerEmitter, loading, notes, refresh, remember, unavailable };
+  const forget = useCallback(
+    (ids: string[]) => {
+      if (!ids.length || !isActive()) return;
+      const removed = new Set(ids);
+      // Invalidate any older list response before removing committed records.
+      owner.current.request += 1;
+      owner.current.pending = false;
+      setLoading(false);
+      setNotes((current) => current.filter(({ id }) => !removed.has(id)));
+    },
+    [isActive]
+  );
+
+  return {
+    controllerEmitter,
+    loading,
+    notes,
+    refresh,
+    remember,
+    forget,
+    unavailable,
+  };
 }

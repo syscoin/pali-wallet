@@ -180,7 +180,7 @@ export const PasswordForm: React.FC<IPasswordForm> = ({ onSubmit }) => {
             id="create-password-action"
             disabled={Object.keys(formErrors).length > 0}
             useDefaultWidth={false}
-            className={`${buttonIsValidStyle} bg-brand-deepPink100 w-full h-10 text-white text-base font-base font-medium rounded-2xl`}
+            className={`${buttonIsValidStyle} bg-brand-deepPink100 w-full h-10 text-bkg-1 text-base font-base font-medium rounded-2xl`}
             loading={isLoading}
           >
             {t('buttons.next')}

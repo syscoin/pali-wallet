@@ -1315,8 +1315,8 @@ test('ordinary ERC20 market numbers retain readable geometry across valid numeri
     const card = () =>
       page
         .getByRole('heading', {
-          // The real h4 includes both the favicon alt and visible link label.
-          name: en.tokens.marketInformation + ' CoinGecko CoinGecko',
+          // The decorative favicon is hidden; the heading includes the visible link label.
+          name: en.tokens.marketInformation + ' CoinGecko',
           exact: true,
         })
         .locator('..');
@@ -1485,6 +1485,9 @@ test('ordinary ERC20 market numbers retain readable geometry across valid numeri
             await page.keyboard.press('Enter');
             await expect(page).toHaveURL(/#\/home\/details/);
             await expect(card()).toHaveCount(1);
+            await expect(
+              card().getByRole('link', { name: 'CoinGecko', exact: true })
+            ).toHaveAttribute('href', 'https://www.coingecko.com');
             await expect(
               card().getByText(value.priceText, { exact: true })
             ).toBeAttached();

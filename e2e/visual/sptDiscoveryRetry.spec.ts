@@ -5,6 +5,7 @@ import path from 'path';
 
 import en from '../../source/assets/locales/en.json';
 import { E2E_CONFIG } from '../harness/config';
+import { captureForegroundContrast } from '../harness/foregroundContrast';
 import {
   createIsolatedVaultFixture,
   installIsolatedVaultRoutes,
@@ -150,6 +151,18 @@ test('SPT discovery failure offers Retry without claiming the wallet has no addi
           // the real controller rejects the owned-token discovery request.
           await expect(error).toBeVisible({ timeout: 25_000 });
           await expect(retry).toBeEnabled();
+          for (const viewport of [
+            { width: 400, height: 620 },
+            { width: 320, height: 360 },
+          ]) {
+            await page.setViewportSize(viewport);
+            await captureForegroundContrast(
+              retry,
+              info,
+              'spt-discovery-retry-' + viewport.width
+            );
+          }
+          await page.setViewportSize({ width: 400, height: 620 });
           await assertNotEmpty();
           expect(discoveryResponses.length).toBeGreaterThan(0);
           expect(

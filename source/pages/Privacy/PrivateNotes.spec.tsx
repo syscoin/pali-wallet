@@ -162,6 +162,7 @@ const depositNoteId = '00000000-0000-4000-8000-000000000001';
 const depositIntentId = '00000000-0000-4000-8000-000000000002';
 const depositHash = '0x' + 'ab'.repeat(32);
 function depositReview() {
+  const createdAt = Date.now();
   return {
     intentId: depositIntentId,
     noteId: depositNoteId,
@@ -170,8 +171,8 @@ function depositReview() {
     poolAddress: PRIVACY_POOLS[0].address,
     chainId: 1,
     account: { id: 0, type: 'Imported', address: '0x' + '11'.repeat(20) },
-    createdAt: Date.now(),
-    expiresAt: Date.now() + 60000,
+    createdAt,
+    expiresAt: createdAt + 60000,
     valueWei: '100000000000000000',
     gasLimit: '100000',
     nonce: '7',
@@ -183,6 +184,7 @@ function depositReview() {
 }
 
 it('keeps the deposit review mounted during password backup, then refreshes notes after submit', async () => {
+  mockState.vault.accounts.Imported[0].xprv = 'synthetic-deposit-signer';
   let submitted = false;
   mockEmitter.mockImplementation(async ([, method]) => {
     if (method === 'getNotes')
@@ -263,6 +265,7 @@ it('keeps the deposit review mounted during password backup, then refreshes note
 });
 
 it('refreshes saved prepared notes on cancel without sending a transaction', async () => {
+  mockState.vault.accounts.Imported[0].xprv = 'synthetic-deposit-signer';
   let prepared = false;
   mockEmitter.mockImplementation(async ([, method]) => {
     if (method === 'getNotes')
@@ -320,7 +323,8 @@ it('offers a clear network requirement from the deposit entry and preserves loca
   expect(await screen.findByText(en.privacy.notePhase.verified)).toBeVisible();
 });
 
-it('opens withdrawal only from a verified note with an empty recipient and refreshes on return', async () => {
+it('opens direct withdrawal from a verified note for a signer with an empty recipient and refreshes on return', async () => {
+  mockState.vault.accounts.Imported[0].xprv = 'synthetic-withdrawal-signer';
   render(<PrivateNotes />);
   fireEvent.click(
     await screen.findByRole('button', { name: en.privacy.withdrawal.open })
@@ -390,6 +394,70 @@ it('keeps a reserved withdrawal out of balance and checks a saved relay job only
     [['privacyWithdrawals', 'statusByNote'], [note.id], 30000, false],
   ]);
 });
+
+it.each([
+  ['direct', 'submitted'],
+  ['direct', 'unknown'],
+  ['relayed', 'submitted'],
+  ['relayed', 'unknown'],
+])(
+  'removes stale %s %s submission guidance after public verification marks the note spent',
+  async (mode, phase) => {
+    let spent = false;
+    mockEmitter.mockImplementation(async ([, method]) => {
+      if (method === 'getNotes')
+        return {
+          notes: [
+            {
+              ...note,
+              phase: spent ? 'spent' : 'waiting',
+              blockNumber: spent ? 22000001 : 22000000,
+              withdrawal: {
+                mode,
+                phase,
+                transactionHash: depositHash,
+                ...(mode === 'relayed' ? { jobId: depositIntentId } : {}),
+              },
+            },
+          ],
+        };
+      throw new Error('Unexpected call');
+    });
+    render(<PrivateNotes />);
+    expect(
+      await screen.findByText(
+        phase === 'unknown'
+          ? en.privacy.withdrawal.statusUnknown
+          : en.privacy.withdrawal.statusPending
+      )
+    ).toBeVisible();
+    spent = true;
+    fireEvent.click(
+      screen.getByRole('button', { name: en.privacy.refreshNotes })
+    );
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Reported spent notes (1)' })
+    );
+    expect(await screen.findByText(en.privacy.notePhase.spent)).toBeVisible();
+    expect(screen.getByText('As of block 22000001')).toBeVisible();
+    expect(screen.getByText('Verified balance: 0 ETH')).toBeVisible();
+    expect(
+      screen.queryByText(en.privacy.withdrawal.statusPending)
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(en.privacy.withdrawal.statusUnknown)
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText(`${en.privacy.deposit.txHash}: ${depositHash}`)
+    ).toBeVisible();
+    expect(
+      screen.getByRole('button', { name: 'Reveal 0.1 ETH note for backup' })
+    ).toBeVisible();
+    expect(
+      screen.queryByRole('button', { name: en.privacy.withdrawal.open })
+    ).not.toBeInTheDocument();
+  }
+);
 
 it('projects only public withdrawal metadata and validates its hash and job ID', () => {
   const value = {
@@ -464,6 +532,10 @@ it.each(['prepared', 'spent', 'waiting', 'not-found'] as const)(
   async (phase) => {
     mockEmitter.mockResolvedValue({ notes: [{ ...note, phase }] });
     render(<PrivateNotes />);
+    if (phase === 'spent')
+      fireEvent.click(
+        await screen.findByRole('button', { name: 'Reported spent notes (1)' })
+      );
     expect(await screen.findByText(en.privacy.notePhase[phase])).toBeVisible();
     expect(
       screen.queryByRole('button', { name: /withdraw/i })
@@ -629,6 +701,58 @@ it.each([
   expect(screen.queryByText(code)).not.toBeInTheDocument();
 });
 
+it('associates an invalid note error with the import field and clears it on edit', async () => {
+  mockEmitter.mockImplementation(async ([, method]) => {
+    if (method === 'getNotes') return { notes: [] };
+    throw new Error('privacy_note_invalid');
+  });
+  render(<PrivateNotes />);
+  const input = await openImport();
+  fireEvent.change(input, { target: { value: 'unsupported-note' } });
+  fireEvent.click(screen.getByRole('button', { name: en.privacy.importNote }));
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    en.privacy.noteInvalid
+  );
+  expect(input).toHaveAttribute('aria-invalid', 'true');
+  expect(input).toHaveAttribute(
+    'aria-describedby',
+    'privacy-note-help privacy-note-error'
+  );
+  expect(input).toHaveAccessibleDescription(
+    `${en.privacy.noteSecret} ${en.privacy.noteInvalid}`
+  );
+  fireEvent.change(input, { target: { value: 'edited-note' } });
+  expect(input).not.toHaveAttribute('aria-invalid');
+  expect(input).toHaveAttribute('aria-describedby', 'privacy-note-help');
+  expect(input).toHaveAccessibleDescription(en.privacy.noteSecret);
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+});
+
+it.each([
+  'privacy_note_not_found',
+  'privacy_verification_pending',
+  'privacy_note_limit',
+  'synthetic offline failure',
+])(
+  'keeps %s as an alert without marking the note syntax invalid',
+  async (code) => {
+    mockEmitter.mockImplementation(async ([, method]) => {
+      if (method === 'getNotes') return { notes: [] };
+      throw new Error(code);
+    });
+    render(<PrivateNotes />);
+    const input = await openImport();
+    fireEvent.change(input, { target: { value: 'synthetic-note' } });
+    fireEvent.click(
+      screen.getByRole('button', { name: en.privacy.importNote })
+    );
+    expect(await screen.findByRole('alert')).toBeVisible();
+    expect(input).not.toHaveAttribute('aria-invalid');
+    expect(input).toHaveAttribute('aria-describedby', 'privacy-note-help');
+    expect(input).toHaveAccessibleDescription(en.privacy.noteSecret);
+  }
+);
+
 it('reveals only after explicit password confirmation and hides the backup', async () => {
   render(<PrivateNotes />);
   const password = await beginReveal();
@@ -683,11 +807,22 @@ it('sanitizes reveal errors before the shared password input logs them', async (
       );
     });
     render(<PrivateNotes />);
-    fireEvent.change(await beginReveal(), {
-      target: { value: 'private-password' },
+    const password = await beginReveal();
+    await userEvent.type(password, 'private-password');
+    await userEvent.click(
+      screen.getByRole('button', { name: en.buttons.confirm })
+    );
+    expect(
+      await screen.findAllByText(en.privacy.noteRevealFailed)
+    ).toHaveLength(1);
+    await waitFor(() => {
+      expect(password).toHaveAttribute('aria-invalid', 'true');
+      const ids = password.getAttribute('aria-describedby')?.split(/\s+/) || [];
+      expect(
+        ids.map((id) => document.getElementById(id)?.textContent).join(' ')
+      ).toContain(en.privacy.noteRevealFailed);
+      expect(screen.getAllByText(en.privacy.noteRevealFailed)).toHaveLength(1);
     });
-    fireEvent.click(screen.getByRole('button', { name: en.buttons.confirm }));
-    expect(await screen.findByText(en.privacy.noteRevealFailed)).toBeVisible();
     const logged = log.mock.calls
       .map((args) => args.map(String).join(' '))
       .join(' ');
@@ -820,6 +955,10 @@ it('supports keyboard cancellation and refreshes only safe metadata', async () =
   );
   await user.tab();
   expect(
+    screen.getByRole('button', { name: en.privacy.capacity.settings })
+  ).toHaveFocus();
+  await user.tab();
+  expect(
     screen.getByRole('button', { name: en.privacy.deposit.title })
   ).toHaveFocus();
   await user.tab();
@@ -896,6 +1035,9 @@ it('quietly polls saved-note status every 15 seconds without clearing displayed 
       notes: [{ ...note, phase: 'spent', blockNumber: 22000010 }],
     })
   );
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Reported spent notes (1)' })
+  );
   expect(screen.getByText(en.privacy.notePhase.spent)).toBeVisible();
   expect(screen.getByText('As of block 22000010')).toBeVisible();
   mockEmitter.mockResolvedValue({
@@ -958,3 +1100,351 @@ it('ignores a poll older than a successful import and avoids overlapping polls',
   expect(screen.getByText('1 ETH')).toBeVisible();
   expect(screen.getAllByText(en.privacy.notePhase.verified)).toHaveLength(2);
 });
+
+it.each(['deposit', 'import', 'reveal', 'escape'] as const)(
+  'keeps relay status retryable after %s and ignores an earlier completion',
+  async (navigation) => {
+    if (navigation === 'deposit')
+      mockState.vault.accounts.Imported[0].xprv = 'synthetic-deposit-signer';
+    const first = deferred();
+    const second = deferred();
+    const saved = {
+      ...note,
+      withdrawal: {
+        mode: 'relayed',
+        phase: 'submitted',
+        jobId: depositIntentId,
+      },
+    };
+    let statusCalls = 0;
+    mockEmitter.mockImplementation(async ([, method]) => {
+      if (method === 'getNotes') return { notes: [saved] };
+      if (method === 'statusByNote') {
+        statusCalls++;
+        return statusCalls === 1 ? first.promise : second.promise;
+      }
+      throw new Error(`Unexpected call: ${method}`);
+    });
+    render(<PrivateNotes />);
+    const label = en.privacy.withdrawal.checkStatus;
+    const button = await screen.findByRole('button', { name: label });
+    await userEvent.click(button);
+    expect(button).toBeDisabled();
+    expect(statusCalls).toBe(1);
+
+    if (navigation === 'deposit') {
+      await userEvent.click(
+        screen.getByRole('button', { name: en.privacy.deposit.title })
+      );
+      await screen.findByRole('heading', { name: en.privacy.deposit.title });
+      await userEvent.click(
+        screen.getByRole('button', { name: en.buttons.cancel })
+      );
+    } else if (navigation === 'import') {
+      await openImport();
+      await userEvent.click(
+        screen.getByRole('button', { name: en.buttons.cancel })
+      );
+    } else if (navigation === 'reveal') {
+      await beginReveal();
+      await userEvent.click(
+        screen.getByRole('button', { name: en.privacy.hideNote })
+      );
+    } else {
+      await userEvent.tab();
+      expect(
+        screen.getByRole('region', { name: en.privacy.yourNotes })
+      ).toContainElement(document.activeElement as HTMLElement);
+      expect(document.activeElement?.tagName).toBe('BUTTON');
+      await userEvent.keyboard('{Escape}');
+    }
+
+    const retry = await screen.findByRole('button', { name: label });
+    expect(retry).toBeEnabled();
+    await userEvent.click(retry);
+    expect(statusCalls).toBe(2);
+    expect(retry).toBeDisabled();
+
+    await act(async () => first.resolve({ claimedStatus: 'CONFIRMED' }));
+    expect(retry).toBeDisabled();
+    expect(
+      screen.queryByText(
+        en.privacy.withdrawal.reportedStatus.replace('{{status}}', 'CONFIRMED')
+      )
+    ).not.toBeInTheDocument();
+
+    await act(async () => second.resolve({ claimedStatus: 'QUEUED' }));
+    await waitFor(() => expect(retry).toBeEnabled());
+    expect(
+      screen.getByText(
+        en.privacy.withdrawal.reportedStatus.replace('{{status}}', 'QUEUED')
+      )
+    ).toBeVisible();
+    expect(
+      mockEmitter.mock.calls.filter(([path]) => path[1] === 'statusByNote')
+    ).toEqual([
+      [['privacyWithdrawals', 'statusByNote'], [note.id], 30000, false],
+      [['privacyWithdrawals', 'statusByNote'], [note.id], 30000, false],
+    ]);
+  }
+);
+
+it('keeps pending withdrawals visible and retains an unverified reported-spent note after a failed completion check', async () => {
+  const pendingId = '00000000-0000-4000-8000-000000000001';
+  const spentId = '00000000-0000-4000-8000-000000000002';
+  const tx = '0x' + '11'.repeat(32);
+  const notes = [
+    {
+      ...note,
+      id: pendingId,
+      phase: 'waiting',
+      withdrawal: { mode: 'direct', phase: 'submitted', transactionHash: tx },
+    },
+    {
+      ...note,
+      id: spentId,
+      phase: 'spent',
+      withdrawal: { mode: 'direct', phase: 'submitted', transactionHash: tx },
+    },
+  ];
+  mockEmitter.mockImplementation(async ([, method], [batch] = []) => {
+    if (method === 'getNotes') return { notes };
+    if (method === 'clearCompletedNotes')
+      return { removed: [], unresolved: batch };
+    throw new Error('Unexpected call');
+  });
+  render(<PrivateNotes />);
+  expect(
+    await screen.findByText(en.privacy.withdrawal.statusPending)
+  ).toBeVisible();
+  expect(
+    screen.queryByText(en.privacy.notePhase.spent)
+  ).not.toBeInTheDocument();
+  fireEvent.click(
+    screen.getByRole('button', { name: en.privacy.capacity.clear })
+  );
+  fireEvent.click(
+    screen.getByRole('button', { name: en.privacy.capacity.confirmClear })
+  );
+  expect(await screen.findByText('Removed: 0. Still saved: 2.')).toBeVisible();
+  expect(screen.getByText(en.privacy.withdrawal.statusPending)).toBeVisible();
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Reported spent notes (1)' })
+  );
+  expect(screen.getByText(en.privacy.notePhase.spent)).toBeVisible();
+});
+
+it('does not restore a cleared note from a list request started before the clear', async () => {
+  const id = '00000000-0000-4000-8000-000000000001';
+  const tx = '0x' + '11'.repeat(32);
+  const saved = {
+    ...note,
+    id,
+    phase: 'spent',
+    withdrawal: { mode: 'direct', phase: 'submitted', transactionHash: tx },
+  };
+  const oldRead = deferred();
+  let reads = 0;
+  mockEmitter.mockImplementation(async ([, method], [batch] = []) => {
+    if (method === 'getNotes') {
+      reads++;
+      if (reads === 1) return { notes: [saved] };
+      if (reads === 2) return oldRead.promise;
+      return { notes: [] };
+    }
+    if (method === 'clearCompletedNotes')
+      return { removed: batch, unresolved: [] };
+    throw new Error('Unexpected call');
+  });
+  render(<PrivateNotes />);
+  expect(
+    await screen.findByRole('button', { name: 'Reported spent notes (1)' })
+  ).toBeVisible();
+  fireEvent.click(
+    screen.getByRole('button', { name: en.privacy.refreshNotes })
+  );
+  await waitFor(() => expect(reads).toBe(2));
+  fireEvent.click(
+    screen.getByRole('button', { name: en.privacy.capacity.clear })
+  );
+  fireEvent.click(
+    screen.getByRole('button', { name: en.privacy.capacity.confirmClear })
+  );
+  expect(await screen.findByText('Removed: 1. Still saved: 0.')).toBeVisible();
+  await waitFor(() => expect(reads).toBe(3));
+  await act(async () => oldRead.resolve({ notes: [saved] }));
+  expect(
+    screen.queryByRole('button', { name: 'Reported spent notes (1)' })
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByText(en.privacy.notePhase.spent)
+  ).not.toBeInTheDocument();
+});
+
+it.each(['resolve', 'reject'] as const)(
+  'does not restore removed-note relayer status when a pending check later %s',
+  async (outcome) => {
+    const removedId = '00000000-0000-4000-8000-000000000001';
+    const survivorId = '00000000-0000-4000-8000-000000000002';
+    const tx = '0x' + '11'.repeat(32);
+    const job = 'synthetic-job';
+    const removed = {
+      ...note,
+      id: removedId,
+      phase: 'spent',
+      withdrawal: {
+        mode: 'relayed',
+        phase: 'submitted',
+        transactionHash: tx,
+        jobId: job,
+      },
+    };
+    const survivor = {
+      ...note,
+      id: survivorId,
+      phase: 'waiting',
+      withdrawal: { mode: 'relayed', phase: 'unknown', jobId: 'other-job' },
+    };
+    let records = [removed, survivor];
+    let resolveStatus!: (value: unknown) => void;
+    let rejectStatus!: (reason: unknown) => void;
+    const status = new Promise((resolve, reject) => {
+      resolveStatus = resolve;
+      rejectStatus = reject;
+    });
+    mockEmitter.mockImplementation(async ([, method], [batch] = []) => {
+      if (method === 'getNotes') return { notes: records };
+      if (method === 'statusByNote') return status;
+      if (method === 'clearCompletedNotes') {
+        records = records.filter((entry) => !batch.includes(entry.id));
+        return { removed: batch, unresolved: [] };
+      }
+      throw new Error('Unexpected call');
+    });
+    render(<PrivateNotes />);
+    expect(
+      await screen.findByText(en.privacy.withdrawal.statusUnknown)
+    ).toBeVisible();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Reported spent notes (1)' })
+    );
+    const removedRow = screen
+      .getAllByRole('listitem')
+      .find((row) => within(row).queryByText(en.privacy.notePhase.spent));
+    expect(removedRow).toBeDefined();
+    fireEvent.click(
+      within(removedRow!).getByRole('button', {
+        name: en.privacy.withdrawal.checkStatus,
+      })
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: en.privacy.capacity.clear })
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: en.privacy.capacity.confirmClear })
+    );
+    expect(
+      await screen.findByText('Removed: 1. Still saved: 0.')
+    ).toBeVisible();
+    await act(async () => {
+      if (outcome === 'resolve') resolveStatus({ claimedStatus: 'CONFIRMED' });
+      else rejectStatus(new Error('offline'));
+    });
+    expect(screen.getByText(en.privacy.withdrawal.statusUnknown)).toBeVisible();
+    expect(
+      screen.queryByText(en.privacy.withdrawal.statusFailed)
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(
+        en.privacy.withdrawal.reportedStatus.replace('{{status}}', 'CONFIRMED')
+      )
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Reported spent notes (1)' })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: en.privacy.withdrawal.checkStatus })
+    ).toBeEnabled();
+  }
+);
+
+it.each(['acknowledged', 'acknowledgement lost'])(
+  'reconciles a completed removal after opening capacity settings when the write is %s',
+  async (outcome) => {
+    let finish!: () => void;
+    const removedId = '00000000-0000-4000-8000-000000000001';
+    const transactionHash = '0x' + '17'.repeat(32);
+    const completed = {
+      ...note,
+      id: removedId,
+      phase: 'waiting',
+      withdrawal: { mode: 'direct', phase: 'submitted', transactionHash },
+    };
+    const survivor = {
+      ...note,
+      id: '00000000-0000-4000-8000-000000000002',
+      poolId: 'eth-1',
+      amount: '1',
+    };
+    let records = [completed, survivor];
+    const clearing = new Promise((resolve, reject) => {
+      finish = () => {
+        records = [survivor];
+        if (outcome === 'acknowledged')
+          resolve({ removed: [removedId], unresolved: [] });
+        else reject(new Error('storage acknowledgement lost'));
+      };
+    });
+    mockEmitter.mockImplementation(async ([, method]) => {
+      if (method === 'getNotes') return { notes: records };
+      if (method === 'clearCompletedNotes') return clearing;
+      if (method === 'getCapacity')
+        return {
+          capacity: 128,
+          noteCount: records.length,
+          bundleLimitBytes: 4 * 1024 * 1024,
+          storedBytes: records.length * 1024,
+        };
+      throw new Error('Unexpected call');
+    });
+    render(<PrivateNotes />);
+    await screen.findByText('0.1 ETH');
+    fireEvent.click(
+      screen.getByRole('button', { name: en.privacy.capacity.clear })
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: en.privacy.capacity.confirmClear })
+    );
+    await waitFor(() =>
+      expect(mockEmitter).toHaveBeenCalledWith(
+        ['privateVault', 'clearCompletedNotes'],
+        [[removedId]],
+        120000,
+        false
+      )
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: en.privacy.capacity.settings })
+    );
+    await screen.findByText('Saved notes: 2 / 128');
+    const transactionLabel = `${en.privacy.deposit.txHash}: ${transactionHash}`;
+    expect(screen.getByText(transactionLabel)).toBeVisible();
+    fireEvent.change(screen.getByLabelText(en.privacy.capacity.label), {
+      target: { value: '256' },
+    });
+    await act(async () => finish());
+    await waitFor(() =>
+      expect(screen.queryByText('0.1 ETH')).not.toBeInTheDocument()
+    );
+    expect(screen.getByText('1 ETH')).toBeVisible();
+    expect(screen.queryByText(transactionLabel)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(en.privacy.withdrawal.statusPending)
+    ).not.toBeInTheDocument();
+    expect(await screen.findByText('Saved notes: 1 / 128')).toBeVisible();
+    expect(
+      screen.getByText('Serialized encrypted vault: 1024 bytes.')
+    ).toBeVisible();
+    expect(screen.getByLabelText(en.privacy.capacity.label)).toHaveValue('256');
+  }
+);

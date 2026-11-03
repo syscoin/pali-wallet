@@ -99,7 +99,7 @@ const ImportableAssetsListComponent: React.FC<IImportableAssetsListProps> = ({
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-8">
-        <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-brand-blue500"></div>
+        <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-brand-royalbluemedium"></div>
       </div>
     );
   }

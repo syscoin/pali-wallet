@@ -77,7 +77,7 @@ const pending = () => {
   return { promise, resolve, reject };
 };
 const tooltip = () => screen.getByTestId('indicator-tooltip');
-const indicator = () => tooltip().querySelector('button')!;
+const dot = () => tooltip().querySelector('button > span')!;
 const advance = async (ms: number) =>
   act(async () => {
     await jest.advanceTimersByTimeAsync(ms);
@@ -293,7 +293,7 @@ it.each([4800, 8800])(
       await advance(250);
       expect({
         targetAge: 250,
-        className: indicator().className,
+        className: dot().className,
         message: tooltip().getAttribute('data-content'),
       }).toEqual({
         targetAge: 250,
@@ -309,13 +309,13 @@ it('a fresh admitted target owns its ordinary five-second warning threshold', as
   const switched = switchTarget();
   try {
     await advance(4999);
-    expect(indicator()).toHaveClass('bg-brand-blue500');
+    expect(dot()).toHaveClass('bg-brand-blue500');
     expect(tooltip()).toHaveAttribute(
       'data-content',
       'networkConnection.switchingNetwork'
     );
     await advance(1);
-    expect(indicator()).toHaveClass('bg-orange-500');
+    expect(dot()).toHaveClass('bg-orange-500');
   } finally {
     await finishTarget(switched);
   }
@@ -346,7 +346,7 @@ it.each(['success', 'error'])(
       'data-content',
       'networkConnection.operationCompleted'
     );
-    expect(indicator()).toHaveClass('bg-green-500');
+    expect(dot()).toHaveClass('bg-green-500');
   }
 );
 
@@ -355,17 +355,17 @@ it('retires an already-visible old warning on the first new-target render', asyn
   mockReadBalance.mockReturnValueOnce(old.promise);
   const previous = begin();
   await advance(6000);
-  expect(indicator()).toHaveClass('bg-orange-500');
+  expect(dot()).toHaveClass('bg-orange-500');
   const switched = switchTarget();
   try {
     expect(observations.at(-1)?.message).toBe(
       'networkConnection.switchingNetwork'
     );
-    expect(indicator()).toHaveClass('bg-brand-blue500');
+    expect(dot()).toHaveClass('bg-brand-blue500');
     await act(async () => {
       await previous;
     });
-    expect(indicator()).toHaveClass('bg-brand-blue500');
+    expect(dot()).toHaveClass('bg-brand-blue500');
   } finally {
     await finishTarget(switched, old);
   }
@@ -390,19 +390,19 @@ it('keeps one target warning and critical deadlines despite unrelated Redux upda
       mockStore.dispatch(globalActions.setIsPollingUpdate(true));
     });
     await advance(3999);
-    expect(indicator()).toHaveClass('bg-brand-blue500');
+    expect(dot()).toHaveClass('bg-brand-blue500');
     act(() => {
       mockStore.dispatch(globalActions.setLastLogin());
     });
     await advance(1);
-    expect(indicator()).toHaveClass('bg-orange-500');
+    expect(dot()).toHaveClass('bg-orange-500');
     await advance(3999);
-    expect(indicator()).toHaveClass('bg-orange-500');
+    expect(dot()).toHaveClass('bg-orange-500');
     act(() => {
       mockStore.dispatch(globalActions.setIsPollingUpdate(false));
     });
     await advance(1);
-    expect(indicator()).toHaveClass('bg-red-600');
+    expect(dot()).toHaveClass('bg-red-600');
     expect(tooltip()).toHaveAttribute(
       'data-content',
       'networkConnection.operationFailing'
@@ -429,11 +429,11 @@ it('keeps the same target deadline when configuration progresses into its balanc
       mockStore.getState().vaultGlobal.loadingStates.isLoadingBalances
     ).toBe(true);
     await advance(999);
-    expect(indicator()).toHaveClass('bg-brand-blue500');
+    expect(dot()).toHaveClass('bg-brand-blue500');
     await advance(1);
-    expect(indicator()).toHaveClass('bg-orange-500');
+    expect(dot()).toHaveClass('bg-orange-500');
     await advance(4000);
-    expect(indicator()).toHaveClass('bg-red-600');
+    expect(dot()).toHaveClass('bg-red-600');
   } finally {
     await act(async () => {
       balance.resolve('2');

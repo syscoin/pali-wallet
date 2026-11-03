@@ -18,6 +18,12 @@ let waitingPort:
   | undefined;
 let active: { abort: AbortController; id: string } | undefined;
 const cancelled = () => new Error('privacy_proof_cancelled');
+const pending = (error: unknown) =>
+  error instanceof Error && error.message === 'privacy_verification_pending';
+const abortError = (signal: AbortSignal) =>
+  pending(signal.reason)
+    ? new Error('privacy_verification_pending')
+    : cancelled();
 
 const isTrustedHost = (sender?: chrome.runtime.MessageSender) =>
   sender?.id === chrome.runtime.id &&
@@ -78,7 +84,7 @@ function connect(
       cleanup();
       resolve(port);
     };
-    const abort = () => fail(cancelled());
+    const abort = () => fail(abortError(signal));
     const requestConnect = () => {
       if (waitingPort !== waiter || signal.aborted || connectSent) return;
       connectSent = true;
@@ -160,8 +166,8 @@ export async function runPrivacyProof(
   const guard = setInterval(() => {
     try {
       options.assertCurrent();
-    } catch {
-      job.abort.abort();
+    } catch (error) {
+      job.abort.abort(pending(error) ? error : undefined);
     }
   }, 250);
   let port: chrome.runtime.Port | undefined;
@@ -181,12 +187,21 @@ export async function runPrivacyProof(
         if (error) reject(error);
         else resolve(value!);
       };
-      const onAbort = () => finish(cancelled());
+      const onAbort = () => finish(abortError(job.abort.signal));
       const onDisconnect = () => finish(new Error('privacy_proof_unavailable'));
       const onMessage = (message: any) => {
         if (message?.id !== job.id || settled) return;
         try {
           options.assertCurrent();
+        } catch (error) {
+          finish(
+            pending(error)
+              ? new Error('privacy_verification_pending')
+              : new Error('privacy_proof_failed')
+          );
+          return;
+        }
+        try {
           if (job.abort.signal.aborted) throw cancelled();
           if (message.type === 'progress') {
             const progress = message.progress as IPrivacyProofProgress;

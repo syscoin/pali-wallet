@@ -8,19 +8,27 @@ export const getContainerStyleAnimation = (
 ) => {
   const style = {
     width: isHovered ? `100vw` : `2.75rem`,
-    height: isHovered ? `64px` : `2.75rem`,
+    height: isHovered ? `auto` : `2.75rem`,
+    // Keep animation endpoints in the same unit to avoid oversized interpolation.
+    minHeight: isHovered ? `64px` : `44px`,
     borderTopRightRadius: isHovered ? `20px` : `999px`,
     borderTopLeftRadius: isHovered ? `20px` : `unset`,
     opacity: isNotVisible ? 0 : 1,
   } as MotionStyle;
   return {
     style,
-    animation: Object.assign({}, style, {
+    // Apply width and intrinsic height together in style. Animating width
+    // while Framer measures auto height can measure the still-narrow panel.
+    animation: {
+      minHeight: style.minHeight,
+      borderTopRightRadius: style.borderTopRightRadius,
+      borderTopLeftRadius: style.borderTopLeftRadius,
+      opacity: style.opacity,
       transition: {
         duration: 0.3,
         ease: 'easeInOut',
       },
-    }) as IMotionType,
+    } as IMotionType,
   };
 };
 

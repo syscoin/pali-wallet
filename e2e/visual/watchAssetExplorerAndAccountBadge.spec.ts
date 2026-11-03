@@ -29,6 +29,23 @@ import {
   UTXO_FIXTURE_SEED,
 } from '../harness/utxoFixture';
 
+async function returnHomeThroughControls(wallet: PaliWallet) {
+  if (!/#\/home(?:\?.*)?$/.test(wallet.page.url())) {
+    await wallet.page
+      .getByRole('button', { name: en.buttons.close, exact: true })
+      .first()
+      .click();
+  }
+  await expect(wallet.page).toHaveURL(/#\/home(?:\?.*)?$/);
+}
+async function openGeneralSettings(wallet: PaliWallet, label: string) {
+  await returnHomeThroughControls(wallet);
+  await wallet.page
+    .getByRole('button', { name: en.generalMenu.generalOptions, exact: true })
+    .click();
+  await wallet.page.getByRole('menuitem', { name: label, exact: true }).click();
+}
+
 const CHAIN = 10; // Production intentionally uses explorer history, not RPC block scans.
 const LABEL = 'Synthetic Explorer Review';
 const RPC = 'https://rpc.explorer-review.synthetic.invalid/';
@@ -366,7 +383,17 @@ async function withFixture(
         await wallet!.importSeedAndCreatePassword();
         await wallet!.ensureOnHome();
         await wallet!.switchNetwork('Syscoin NEVM Testnet', 'EVM');
-        await wallet!.gotoRoute('#/settings/networks/custom-rpc');
+        await wallet!.page
+          .getByRole('button')
+          .filter({ hasText: /UTXO|EVM/ })
+          .first()
+          .click();
+        await wallet!.page
+          .getByText(en.networkMenu.customRpc, { exact: true })
+          .click();
+        await expect(wallet!.page).toHaveURL(
+          /#\/settings\/networks\/custom-rpc$/
+        );
         const page = wallet!.page;
         await page
           .getByRole('combobox', { name: en.settings.label, exact: true })
@@ -389,7 +416,7 @@ async function withFixture(
         await expect(page).not.toHaveURL(/#\/settings\/networks\/custom-rpc$/);
         expect(apiValidation).toContain('block:eth_block_number');
         // Normal menu activation also waits for the registry's debounced UI publication.
-        await wallet!.gotoRoute('#/home');
+        await returnHomeThroughControls(wallet!);
         await wallet!.switchNetwork(LABEL, 'EVM');
         await expect
           .poll(() => publicState(page))
@@ -469,7 +496,8 @@ test('pending transaction badges follow ordinary account selection and empty-his
       await wallet.step(
         'badge: enable normal Refresh and show the first account pending history',
         async () => {
-          await wallet.gotoRoute('#/settings/advanced');
+          await openGeneralSettings(wallet, en.generalMenu.advanced);
+          await expect(page).toHaveURL(/#\/settings\/advanced$/);
           await page.locator('#advanced-refresh').click();
           await page.getByRole('dialog').locator('#confirm-btn').click();
           await page
@@ -479,7 +507,7 @@ test('pending transaction badges follow ordinary account selection and empty-his
             .getByRole('dialog')
             .getByRole('button', { name: en.buttons.ok, exact: true })
             .click();
-          await wallet.gotoRoute('#/home');
+          await returnHomeThroughControls(wallet);
           await wallet.ensureOnHome();
           await page
             .getByRole('button', { name: en.header.refresh, exact: true })
@@ -552,7 +580,8 @@ test('pending transaction badges follow ordinary account selection and empty-his
       await wallet.step(
         'badge: create and select an ordinary empty account without inheriting the badge',
         async () => {
-          await wallet.gotoRoute('#/settings/account/new');
+          await openGeneralSettings(wallet, en.accountMenu.createNewAccount);
+          await expect(page).toHaveURL(/#\/settings\/account\/new$/);
           await page
             .locator('#account-name-input')
             .fill('Empty synthetic account');

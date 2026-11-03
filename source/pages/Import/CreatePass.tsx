@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Navigate } from 'react-router-dom';
 
@@ -13,14 +13,21 @@ import { reloadWalletForRecovery } from 'utils/reloadWalletForRecovery';
 
 export const CreatePasswordImport = () => {
   const { controllerEmitter } = useController();
-  const { secrets, clear } = useOnboardingSecrets();
+  const { secrets, clear, consumeContinuation } = useOnboardingSecrets();
   const [created, setCreated] = useState(false);
   const [recoveryFailed, setRecoveryFailed] = useState(false);
   const creationRequested = useRef(false);
+  const mounted = useRef(true);
   const { t } = useTranslation();
 
   const { navigate, alert } = useUtils();
   const { phrase, recoveryTicket } = secrets;
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   const onSubmit = async ({ password }: { password: string }) => {
     if (creationRequested.current) return;
@@ -37,6 +44,7 @@ export const CreatePasswordImport = () => {
         false
       );
     } catch {
+      if (!mounted.current) return;
       // The worker may have finished despite a lost acknowledgement. Never
       // replay creation: recover through the authoritative wallet startup.
       if (recoveryTicket) {
@@ -47,24 +55,30 @@ export const CreatePasswordImport = () => {
       reloadWalletForRecovery();
       return;
     }
+    if (!mounted.current) return;
     // Creation changes authentication just like unlock. Discard any cached
     // locked reply before entering protected routes. If confirmation fails,
     // recover through the existing-wallet screen, without repeating creation.
     const confirmed = await refreshControllerStatus();
+    if (!mounted.current) return;
     if (confirmed) {
-      navigate('/home', { state: { isWalletImported: true } });
+      const destination = consumeContinuation();
+      if (destination) navigate(destination, { replace: true });
+      else navigate('/home', { state: { isWalletImported: true } });
     } else {
       reloadWalletForRecovery();
     }
   };
 
   return recoveryFailed ? (
-    <OnboardingLayout title={t('settings.recoveryTitle')}>
+    <OnboardingLayout scrollable title={t('settings.recoveryTitle')}>
       <p role="alert" className="mb-6 text-brand-gray200 text-center text-sm">
-        {t('settings.walletRecoveryFailed')}
+        {t('settings.walletRecoveryUnconfirmed')}
       </p>
       <Button
         id="recovery-check-wallet"
+        className="mb-2 scroll-mb-2"
+        variant="primary"
         type="button"
         onClick={reloadWalletForRecovery}
       >

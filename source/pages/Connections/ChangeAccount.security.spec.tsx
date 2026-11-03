@@ -99,6 +99,7 @@ describe('large account-change approval list', () => {
     memos = [];
     refs = [];
     jest.spyOn(React, 'useEffect').mockImplementation(() => undefined);
+    jest.spyOn(React, 'useLayoutEffect').mockImplementation(() => undefined);
     jest.spyOn(React, 'useRef').mockImplementation((initial?: any) => {
       const index = refIndex++;
       return (refs[index] ||= { current: initial });

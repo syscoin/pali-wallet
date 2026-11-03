@@ -70,7 +70,7 @@ const AboutView: FC = () => {
 
           <a
             id="user-support-btn"
-            className="inline-flex text-brand-white text-xs rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue500"
+            className="inline-flex text-brand-white text-xs rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue200"
             href="https://discord.com/invite/syscoin"
             target="_blank"
             rel="noopener noreferrer"
@@ -80,7 +80,7 @@ const AboutView: FC = () => {
 
           <div className="flex items-center">
             <a
-              className="min-w-0 break-all text-xs underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue500"
+              className="min-w-0 break-all text-xs underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue200"
               href="https://discord.com/invite/syscoin"
               target="_blank"
               rel="noopener noreferrer"
@@ -92,7 +92,7 @@ const AboutView: FC = () => {
               onClick={copySupportUrl}
               type="primary"
               shape="circle"
-              className="flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded hover:bg-alpha-whiteAlpha100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue500"
+              className="flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded hover:bg-alpha-whiteAlpha100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue200"
             >
               <CopyIcon />
             </IconButton>

@@ -18,5 +18,6 @@ export const networkRegistrationFingerprint = (
         network.default ?? null,
         network.coingeckoId ?? null,
         network.coingeckoPlatformId ?? null,
+        ...(network.explorerExplicitlyAbsent ? [true] : []),
       ])
     : undefined;

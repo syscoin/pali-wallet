@@ -1116,10 +1116,12 @@ for (const scenario of [
             .poll(() => expectedBalanceFailures.length)
             .toBeGreaterThan(before);
           await waitNetwork(stable.network, 'error');
-          const indicator = page.locator(
-            'button.w-2.h-2.rounded-full.bg-red-600'
-          );
+          const indicator = page.getByRole('button', {
+            name: en.networkConnection.networkError,
+            exact: true,
+          });
           await expect(indicator).toHaveCount(1);
+          await expect(indicator.locator('span')).toHaveClass(/bg-red-600/);
           await expect(indicator).toBeEnabled();
           expect(await indicator.getAttribute('aria-label')).toBeTruthy();
           await indicator.click();

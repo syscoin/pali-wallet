@@ -706,16 +706,18 @@ test('SPT details retain known preview contract metadata and expose a consistent
         importedBaseline = await publicState(page);
         observations.importedBaseline = importedBaseline;
         observations.localImportCompleted = true;
-        const notice = page.getByText(
-          en.tokens.hasBeenAddedToYourWallet.replace('{{token}}', SYMBOL),
-          { exact: true }
-        );
-        await notice.click();
-        await expect(notice).toBeHidden();
+        const notice = page
+          .getByRole('status')
+          .getByText(
+            en.tokens.hasBeenAddedToYourWallet.replace('{{token}}', SYMBOL),
+            { exact: true }
+          );
+        await expect(notice).toBeVisible();
         const back = page.getByRole('button', { name: 'Back', exact: true });
         await tabTo(page, back);
         await page.keyboard.press('Enter');
         await expect(page).toHaveURL(/#\/home(?:\?.*)?$/);
+        await expect(notice).toBeHidden();
         await unchanged(importedBaseline);
       }
     );

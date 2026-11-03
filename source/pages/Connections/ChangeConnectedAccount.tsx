@@ -163,10 +163,12 @@ export const ChangeConnectedAccount = () => {
             {t('connections.accountMismatch')}
           </h3>
           <div className="flex items-center justify-center gap-2">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-brand-royalblue to-brand-deepPurple flex items-center justify-center">
+            <div className="w-8 h-8 shrink-0 rounded-full bg-gradient-to-br from-brand-royalblue to-brand-deepPurple flex items-center justify-center">
               <Icon name="warning" className="text-white" size={16} />
             </div>
-            <p className="text-lg font-medium text-brand-white">{host}</p>
+            <p className="min-w-0 [overflow-wrap:anywhere] text-lg font-medium text-brand-white">
+              {host}
+            </p>
           </div>
           <p className="text-xs text-brand-graylight mt-2">
             {t('connections.dappRequiresAccount')}

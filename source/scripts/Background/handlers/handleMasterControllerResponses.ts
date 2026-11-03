@@ -98,11 +98,25 @@ const normalizeControllerErrorMessage = (error: unknown): string => {
 const controllerErrorResponse = (error: any) => {
   const message = normalizeControllerErrorMessage(error);
   const submission: {
+    code?: string;
+    recipientBlockReason?: string;
+    recipientBlockSeverity?: string;
     transactionHash?: string;
     transactionNotBroadcast?: boolean;
   } = {};
   if (typeof error?.transactionNotBroadcast === 'boolean')
     submission.transactionNotBroadcast = error.transactionNotBroadcast;
+  if (
+    error?.code === 'PALI_TOKEN_RECIPIENT_BLOCKED' &&
+    error?.transactionNotBroadcast === true &&
+    (error?.recipientBlockSeverity === 'critical' ||
+      error?.recipientBlockSeverity === 'high')
+  ) {
+    submission.code = error.code;
+    submission.recipientBlockSeverity = error.recipientBlockSeverity;
+    if (typeof error.recipientBlockReason === 'string')
+      submission.recipientBlockReason = error.recipientBlockReason;
+  }
   if (
     typeof error?.transactionHash === 'string' &&
     /^0x[0-9a-fA-F]{64}$/.test(error.transactionHash)

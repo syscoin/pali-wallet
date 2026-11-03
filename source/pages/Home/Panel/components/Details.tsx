@@ -9,7 +9,7 @@ import { RootState } from 'state/store';
 import { selectActiveAccountTransactions } from 'state/vault/selectors';
 import { TransactionsType } from 'state/vault/types';
 import { getWalletNavigationScope, navigateBack } from 'utils/navigationState';
-import { buildExplorerUrl } from 'utils/strings';
+import { buildExplorerUrl, selectExplorerUrl } from 'utils/strings';
 
 import { AssetDetails } from './AssetDetails';
 import { NftsDetails } from './Nfts';
@@ -18,6 +18,7 @@ import { replacementHash } from './Transactions/EVM/replacementWinner';
 
 export const DetailsView = () => {
   const { t } = useTranslation();
+  const explorer = useSelector(selectExplorerUrl);
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
@@ -104,10 +105,8 @@ export const DetailsView = () => {
   }, [hasDetails, navigate, location]);
 
   const openExplorer = () => {
-    window.open(
-      buildExplorerUrl(activeNetwork.explorer || activeNetwork.url, 'tx', hash),
-      '_blank'
-    );
+    if (!explorer) return;
+    window.open(buildExplorerUrl(explorer, 'tx', hash), '_blank');
   };
 
   if (!hasDetails) return null;
@@ -133,7 +132,7 @@ export const DetailsView = () => {
         />
       )}
 
-      {!isAsset && !isNft ? (
+      {!isAsset && !isNft && Boolean(explorer) ? (
         <li className="mt-6 mb-4 flex items-center justify-center">
           <button
             type="button"

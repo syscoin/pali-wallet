@@ -5,6 +5,7 @@ import path from 'path';
 
 import en from '../../source/assets/locales/en.json';
 import { E2E_CONFIG } from '../harness/config';
+import { captureForegroundContrast } from '../harness/foregroundContrast';
 import {
   createIsolatedVaultFixture,
   installIsolatedVaultRoutes,
@@ -101,7 +102,7 @@ test('connection selection stays on the reviewed account until real switch and g
   const observations: Record<string, unknown> = {};
   const deniedTrustedRequests: string[] = [];
   try {
-    wallet = await PaliWallet.launch('connection-pending-selection', {
+    wallet = await PaliWallet.launch('connection-pending-selection-contrast', {
       offlineHttpProxy: server.url,
       viewport: { width: 400, height: 620 },
     });
@@ -166,6 +167,39 @@ test('connection selection stays on the reviewed account until real switch and g
       });
     const reviewedRow = row(reviewed!.label);
     const otherRow = row(SECOND_LABEL);
+    const healthyLabelPixels = new Map<number, Buffer>();
+    const captureLabelPixels = async () => {
+      await otherRow.hover();
+      await otherRow.evaluate(async (element) => {
+        const animations = new Set<Animation>();
+        for (
+          let node: Element | null = element;
+          node;
+          node = node.parentElement
+        ) {
+          for (const animation of node.getAnimations()) {
+            if (
+              Number.isFinite(
+                Number(animation.effect?.getComputedTiming().endTime)
+              )
+            )
+              animations.add(animation);
+          }
+        }
+        await Promise.all(
+          [...animations].map((animation) =>
+            animation.finished.catch(() => undefined)
+          )
+        );
+        await new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+        );
+      });
+      return otherRow
+        .getByText(SECOND_LABEL, { exact: true })
+        .screenshot({ animations: 'allow' });
+    };
+
     const confirm = approval.getByRole('button', {
       name: en.buttons.confirm,
       exact: true,
@@ -176,12 +210,99 @@ test('connection selection stays on the reviewed account until real switch and g
         await expect(approval.getByText(ORIGIN, { exact: true })).toBeVisible();
         await expect(approval.getByRole('dialog')).toHaveCount(0);
         await expect(otherRow).toHaveClass(/shadow-md/);
+        await approval.setViewportSize({ width: 320, height: 360 });
+        const compactSelection = approval.locator(
+          '[data-connection-selected-summary]'
+        );
+        await expect(compactSelection).toBeVisible();
+        await expect(compactSelection).toContainText(SECOND_LABEL);
+        await expect(compactSelection).toContainText(
+          `${before!.active.address.slice(
+            0,
+            8
+          )}...${before!.active.address.slice(-4)}`
+        );
+        const searchBounds = await approval
+          .getByRole('searchbox', { name: en.connections.searchAccounts })
+          .boundingBox();
+        const actionBounds = await approval
+          .locator('[data-connection-actions]')
+          .boundingBox();
+        expect(searchBounds).not.toBeNull();
+        expect(actionBounds).not.toBeNull();
+        expect(searchBounds!.y + searchBounds!.height).toBeLessThanOrEqual(
+          actionBounds!.y + 1
+        );
+        const groupBounds = await approval
+          .getByRole('heading', { name: en.receive.hdAccount, exact: true })
+          .boundingBox();
+        expect(groupBounds).not.toBeNull();
+        expect(
+          groupBounds!.y >= actionBounds!.y ||
+            groupBounds!.y + groupBounds!.height <= actionBounds!.y + 1
+        ).toBe(true);
+        const copyControl = reviewedRow.getByRole('button', {
+          name: en.transactions.copyAddress,
+          exact: true,
+        });
+        await copyControl.focus();
+        await expect(copyControl).toBeFocused();
+        await expect
+          .poll(() =>
+            copyControl.evaluate((element) => getComputedStyle(element).opacity)
+          )
+          .toBe('1');
+        const copyBox = await copyControl.boundingBox();
+        expect(copyBox).not.toBeNull();
+        expect(copyBox!.width).toBeGreaterThanOrEqual(32);
+        expect(copyBox!.height).toBeGreaterThanOrEqual(32);
+        await info.attach('connection-copy-target-screenshot', {
+          body: await approval.screenshot(),
+          contentType: 'image/png',
+        });
+        await approval.mouse.move(160, 160);
+        await approval.mouse.wheel(0, 1500);
+        const help = approval.getByRole('link', {
+          name: en.connections.learnMore,
+          exact: true,
+        });
+        await expect
+          .poll(async () => {
+            const link = await help.boundingBox();
+            const footer = await approval
+              .locator('[data-connection-actions]')
+              .boundingBox();
+            return Boolean(link && footer && link.y + link.height <= footer.y);
+          })
+          .toBe(true);
+        expect(
+          await help.evaluate((element) => {
+            const rect = element.getBoundingClientRect();
+            const hit = document.elementFromPoint(
+              rect.left + rect.width / 2,
+              rect.top + rect.height / 2
+            );
+            return hit === element || Boolean(hit && element.contains(hit));
+          })
+        ).toBe(true);
+        await info.attach('connection-help-bottom-screenshot', {
+          body: await approval.screenshot(),
+          contentType: 'image/png',
+        });
+        await approval.setViewportSize({ width: 400, height: 620 });
         await reviewedRow.click();
         await expect(reviewedRow).toHaveClass(/shadow-md/);
         await otherRow.press('Enter');
         await expect(otherRow).toHaveClass(/shadow-md/);
         await reviewedRow.press('Space');
         await expect(reviewedRow).toHaveClass(/shadow-md/);
+        await approval.setViewportSize({ width: 320, height: 360 });
+        await expect(compactSelection).toBeVisible();
+        await expect(compactSelection).toContainText(reviewed!.label);
+        await expect(compactSelection).toContainText(
+          `${reviewed!.address.slice(0, 8)}...${reviewed!.address.slice(-4)}`
+        );
+        await approval.setViewportSize({ width: 400, height: 620 });
         expect(await publicState(page)).toEqual(before);
         await approval.evaluate(
           (target) => {
@@ -261,6 +382,14 @@ test('connection selection stays on the reviewed account until real switch and g
           },
           { id: reviewed!.id, origin: ORIGIN }
         );
+        for (const viewport of [
+          { width: 400, height: 620 },
+          { width: 320, height: 360 },
+        ]) {
+          await approval.setViewportSize(viewport);
+          healthyLabelPixels.set(viewport.width, await captureLabelPixels());
+        }
+        await approval.setViewportSize({ width: 400, height: 620 });
         await capture(approval);
       }
     );
@@ -305,6 +434,55 @@ test('connection selection stays on the reviewed account until real switch and g
             },
           });
         await assertBusySelection();
+        for (const viewport of [
+          { width: 400, height: 620 },
+          { width: 320, height: 360 },
+        ]) {
+          await approval.setViewportSize(viewport);
+          // Focusing a busy row must preserve the healthy label's rendered
+          // ellipsis. Comparing within this run avoids platform font baselines.
+          expect(
+            (await captureLabelPixels()).equals(
+              healthyLabelPixels.get(viewport.width)!
+            )
+          ).toBe(true);
+          const pendingConfirm = approval.getByRole('button', {
+            name: en.buttons.confirm,
+            exact: true,
+          });
+          await expect(pendingConfirm).toBeDisabled();
+          await expect(pendingConfirm).toHaveAttribute('aria-busy', 'true');
+          const spinner = pendingConfirm.locator(':scope > svg');
+          const progress = await captureForegroundContrast(
+            pendingConfirm,
+            info,
+            `connection-busy-progress-${viewport.width}`,
+            'currentColor-icon'
+          );
+          // The spinner inherits this stable button's foreground. Measure its
+          // backing without requiring the rotating SVG to become stationary.
+          expect(
+            await spinner.evaluate((node) => getComputedStyle(node).color)
+          ).toBe(
+            await pendingConfirm.evaluate(
+              (node) => getComputedStyle(node).color
+            )
+          );
+          // This is active progress, even though the action stays disabled.
+          expect(progress.unsupported).toEqual([]);
+          expect(progress.ratio).toBeGreaterThanOrEqual(3);
+          expect(
+            await spinner.evaluate((element) =>
+              Number.parseFloat(getComputedStyle(element).width)
+            )
+          ).toBe(20);
+          expect(
+            await spinner.evaluate(
+              (element) => getComputedStyle(element).animationName
+            )
+          ).not.toBe('none');
+        }
+        await approval.setViewportSize({ width: 400, height: 620 });
         const state = await publicState(page);
         expect(state.active).toEqual({
           id: reviewed!.id,

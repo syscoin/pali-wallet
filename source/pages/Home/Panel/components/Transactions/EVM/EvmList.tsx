@@ -442,13 +442,13 @@ const EvmTransactionItem = React.memo(
     return (
       <div className="flex flex-col w-full border-b border-dashed border-bkg-deepBlue">
         <div className="flex justify-between py-2 w-full">
-          <div className="flex items-start gap-2">
+          <div className="flex min-w-0 flex-1 items-start gap-2">
             <div className="flex-shrink-0 pt-0.5">
               {getTxStatusIcons(getTxType(tx, isTxSent), false)}
             </div>
             <div className="flex flex-col min-w-0">
-              <div className="flex items-center gap-2">
-                <span className="text-white text-xs font-normal">
+              <div className="flex min-w-0 flex-wrap items-center gap-x-2">
+                <span className="min-w-0 break-words text-white text-xs font-normal">
                   {transactionLabel}
                 </span>
                 {isContractCall && displayTx?.to && (
@@ -494,12 +494,12 @@ const EvmTransactionItem = React.memo(
                   </Tooltip>
                 )}
                 {isSpeedUp && (
-                  <span className="text-warning-success ml-1 text-xs">
+                  <span className="text-green-400 ml-1 text-xs">
                     ({t('header.speedUp')})
                   </span>
                 )}
                 {isCancel && !isConfirmed && (
-                  <span className="text-warning-success ml-1 text-xs">
+                  <span className="text-green-400 ml-1 text-xs">
                     ({t('transactions.cancelSubmitted')})
                   </span>
                 )}
@@ -515,7 +515,7 @@ const EvmTransactionItem = React.memo(
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-4 min-w-0">
+          <div className="flex max-w-[50%] shrink-0 items-center gap-4 min-w-0">
             {renderValueDisplay()}
             <div className="m-auto">
               {isConfirmed ||

@@ -17,7 +17,7 @@ import type {
   ITransactionInfoUtxo,
 } from 'types/useTransactionsInfo';
 import { getWalletNavigationScope } from 'utils/navigationState';
-import { buildExplorerUrl } from 'utils/strings';
+import { buildExplorerUrl, selectExplorerUrl } from 'utils/strings';
 
 import { EvmTransactionsList } from './components/Transactions/EVM/EvmList';
 import { UtxoTransactionsList } from './components/Transactions/UTXO/UtxoList';
@@ -28,7 +28,9 @@ export const TransactionsPanel = () => {
     useSelector(selectActiveAccountWithTransactions);
   const { activeNetwork, isBitcoinBased, isSwitchingAccount } =
     useSelector(selectVaultCoreData);
+  const explorer = useSelector(selectExplorerUrl);
   const hasHistoryStatus = isBitcoinBased || Boolean(activeNetwork.apiUrl);
+  const historyMayBeIncomplete = !isBitcoinBased && !activeNetwork.apiUrl;
 
   const { t } = useTranslation();
   const historyStatus = useSelector(
@@ -89,10 +91,23 @@ export const TransactionsPanel = () => {
   const NoTransactionsComponent = useMemo(
     () => (
       <div className="flex items-center justify-center pt-3 pb-6 text-brand-white text-sm">
-        <p>{t('home.youHaveNoTxs')}</p>
+        <p
+          role={historyMayBeIncomplete ? 'status' : undefined}
+          className={
+            historyMayBeIncomplete
+              ? 'min-w-0 break-words px-4 text-center'
+              : undefined
+          }
+        >
+          {t(
+            historyMayBeIncomplete
+              ? 'home.historyMayBeIncomplete'
+              : 'home.youHaveNoTxs'
+          )}
+        </p>
       </div>
     ),
-    [t]
+    [historyMayBeIncomplete, t]
   );
 
   const TransactionSkeleton = useMemo(
@@ -140,7 +155,7 @@ export const TransactionsPanel = () => {
 
   // ✅ OPTIMIZED: Memoized explorer component with proper dependencies
   const OpenTransactionExplorer = useMemo(() => {
-    if (!activeAccount) return null;
+    if (!activeAccount || !explorer) return null;
 
     const { xpub, address: userAddress, isImported } = activeAccount as any;
 
@@ -166,11 +181,7 @@ export const TransactionsPanel = () => {
 
     const openExplorer = () =>
       window.open(
-        buildExplorerUrl(
-          activeNetwork.explorer || activeNetwork.url,
-          pathSegment,
-          identifier
-        ),
+        buildExplorerUrl(explorer, pathSegment, identifier),
         '_blank'
       );
 
@@ -186,13 +197,7 @@ export const TransactionsPanel = () => {
         </button>
       </div>
     );
-  }, [
-    activeAccount,
-    activeNetwork.explorer,
-    activeNetwork.url,
-    isBitcoinBased,
-    t,
-  ]);
+  }, [activeAccount, explorer, isBitcoinBased, t]);
 
   // Configured explorer history, like UTXO, requires an actual scoped read.
   // Networks without an explorer retain the existing RPC settle behavior.
@@ -256,7 +261,7 @@ export const TransactionsPanel = () => {
           {historyUnavailable && <p role="status">{t('send.unableToLoad')}</p>}
           <button
             type="button"
-            className="underline"
+            className="inline-flex min-h-[32px] min-w-[32px] items-center justify-center underline"
             disabled={historyState === 'pending' || isRetrying}
             onClick={retryHistory}
           >
@@ -280,6 +285,11 @@ export const TransactionsPanel = () => {
           id="activity-panel-list"
           className="p-4 mt-8 w-full  mb-9 text-white text-base bg-brand-blue600"
         >
+          {historyMayBeIncomplete && (
+            <p role="status" className="mb-3 text-sm text-brand-gray200">
+              {t('home.historyMayBeIncomplete')}
+            </p>
+          )}
           {isBitcoinBased ? (
             <UtxoTransactionsList userTransactions={utxoTransactions} />
           ) : (

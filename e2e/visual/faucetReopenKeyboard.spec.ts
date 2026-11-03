@@ -259,6 +259,45 @@ test('the dismissed Home faucet banner reopens by Tab with Enter and Space', asy
       async (capture) => {
         await expect(banner).toHaveAttribute('type', 'button');
         await tabTo(page, banner);
+        // Sample the focused target's inset ring and four edge points.
+        const ring = await banner.evaluate(async (element) => {
+          await Promise.all(
+            element
+              .getAnimations({ subtree: true })
+              .filter(
+                (animation) =>
+                  animation.playState === 'running' &&
+                  Number.isFinite(animation.effect?.getComputedTiming().endTime)
+              )
+              .map((animation) => animation.finished.catch(() => undefined))
+          );
+          await new Promise(requestAnimationFrame);
+          await new Promise(requestAnimationFrame);
+          const rect = element.getBoundingClientRect();
+          const style = getComputedStyle(element);
+          const points = [
+            [rect.left + rect.width / 2, rect.top + 1],
+            [rect.left + rect.width / 2, rect.bottom - 1],
+            [rect.left + 1, rect.top + rect.height / 2],
+            [rect.right - 1, rect.top + rect.height / 2],
+          ];
+          return {
+            focused: element.matches(':focus-visible'),
+            inset: style.getPropertyValue('--tw-ring-inset').trim(),
+            shadow: style.boxShadow,
+            hits: points.map(([x, y]) => {
+              const hit =
+                x >= 0 && y >= 0 && x < innerWidth && y < innerHeight
+                  ? document.elementFromPoint(x, y)
+                  : null;
+              return !!hit && (hit === element || element.contains(hit));
+            }),
+          };
+        });
+        expect(ring.focused).toBe(true);
+        expect(ring.inset).toBe('inset');
+        expect(ring.shadow).toMatch(/inset/);
+        expect(ring.hits).toEqual([true, true, true, true]);
         observations.enter = { focused: true, before: await publicState(page) };
         await capture(page);
         await page.keyboard.press('Enter');

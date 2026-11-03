@@ -336,6 +336,7 @@ test('ordinary dapp transaction review preserves every native-value decimal befo
               .locator('..')
               .locator('..');
             await expect(fee).toContainText(en.send.estimatedGasFee);
+            await expect(fee).toContainText('Estimated gas fee');
             await expect(fee).toContainText('0.000021 TSYS');
             const pending = await rpcObservation(dapp!, id);
             expect(pending.method).toBe('eth_sendTransaction');

@@ -437,7 +437,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
   return (
     <Menu
       as="div"
-      className={`absolute z-[9999] left-4 inline-block text-left ${
+      className={`absolute z-[9999] left-6 inline-block text-left ${
         refreshEnabled ? 'right-36' : 'right-24'
       }`}
     >
@@ -448,7 +448,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
             onClick={() => {
               resetSearchOnOpen.current = !menuprops.open;
             }}
-            className={`group relative inline-flex gap-x-2 items-center justify-start ml-2 w-max max-w-full text-white text-sm font-medium rounded-lg px-2 py-1.5 focus:outline-none transition-all duration-300 ease-in-out ${
+            className={`group relative inline-flex gap-x-2 items-center justify-start w-max max-w-full text-white text-sm font-medium rounded-lg px-2 py-1.5 focus:outline-none transition-all duration-300 ease-in-out ${
               disabled
                 ? 'opacity-50 cursor-not-allowed'
                 : 'hover:bg-gradient-to-r hover:from-brand-blue600/20 hover:to-brand-blue500/20 hover:backdrop-blur-sm cursor-pointer hover:shadow-lg hover:shadow-brand-blue600/10 active:scale-[0.98]'
@@ -567,9 +567,9 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                         }
                       )
                     }
-                    className="flex items-center justify-start mb-4 mx-3 px-2 py-1 text-base bg-brand-blue200 hover:bg-opacity-70 border border-solid border-brand-royalblue rounded-full cursor-pointer transition-all duration-200"
+                    className="flex items-center justify-start mb-4 mx-3 px-2 py-1 text-base text-bkg-1 hover:text-content-primary bg-brand-blue200 hover:bg-opacity-70 border border-solid border-brand-royalblue rounded-full cursor-pointer transition-[transform,box-shadow] duration-200"
                   >
-                    <WhiteSuccessIconSvg />
+                    <WhiteSuccessIconSvg className="!text-inherit [&_path]:fill-current" />
 
                     <span className="px-3 text-base">
                       {t('networkMenu.trustedSites')}

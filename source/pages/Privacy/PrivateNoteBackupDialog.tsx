@@ -39,7 +39,6 @@ function BackupBody({
   const { t } = useTranslation();
   const [form] = Form.useForm();
   const [note, setNote] = useState('');
-  const [error, setError] = useState(false);
   const panel = useRef<HTMLDivElement>(null);
   const owner = useRef({ active: true, revision: 0 });
   const current = (revision: number) =>
@@ -117,22 +116,14 @@ function BackupBody({
                   onValidationSuccess={(result) => {
                     if (result && current(result.revision)) {
                       form.resetFields();
-                      setError(false);
                       setNote(result.value);
                     }
                   }}
                   onValidationReset={() => {
                     owner.current.revision++;
-                    setError(false);
                     setNote('');
                   }}
-                  onValidationError={() => setError(true)}
                 />
-                {error && (
-                  <p role="alert" className="text-brand-red">
-                    {t('privacy.noteRevealFailed')}
-                  </p>
-                )}
               </Form>
             )}
           </div>

@@ -387,3 +387,53 @@ it.each(['reset', 'network'] as const)(
     expect(clear).toHaveBeenCalledWith(budgets[0]);
   }
 );
+
+it('persists an EVM public address without Blockbook and retains the real SDK watch-only guards', async () => {
+  const address = '0x52908400098527886E0F7030069857D2E4169EE7';
+  store.dispatch(
+    restoreVaultSnapshot({
+      ...store.getState().vault,
+      activeNetwork: {
+        kind: INetworkType.Ethereum,
+        slip44: 60,
+        chainId: 5700,
+        currency: 'tsys',
+        label: 'EVM public watch control',
+        url: 'https://evm-watch.synthetic.invalid',
+      },
+      isBitcoinBased: false,
+    } as any)
+  );
+  store.dispatch(setActiveSlip44(60));
+  await persistCommittedWalletState(true);
+  const account = await wallet.importWatchOnlyFromController(
+    address.toLowerCase(),
+    'Public EVM'
+  );
+  expect(account).toMatchObject({
+    id: 0,
+    address,
+    xpub: address,
+    xprv: '',
+    isImported: true,
+    isLedgerWallet: false,
+    isTrezorWallet: false,
+  });
+  expect(manager.importWatchOnly).not.toHaveBeenCalled();
+  expect(reads).toEqual([]);
+  const saved = await loadSlip44State(60);
+  expect(saved?.accounts.Imported[0]).toEqual(
+    store.getState().vault.accounts.Imported[0]
+  );
+  expect(store.getState().vault.activeAccount).toEqual({
+    id: 0,
+    type: KeyringAccountType.Imported,
+  });
+  expect((manager as any).isWatchOnlyAccount(account)).toBe(true);
+  await expect(manager.getPubkey(0, false)).rejects.toThrow(
+    'Public key not available for single-address imported accounts'
+  );
+  await expect(manager.getBip32Path(0, false)).rejects.toThrow(
+    'BIP32 path not available for single-address imported accounts'
+  );
+});

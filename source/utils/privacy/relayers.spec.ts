@@ -108,6 +108,63 @@ test('directory is one anonymous fixed bulk request with immutable projected fie
   expect(Object.isFrozen(result.source)).toBe(true);
 });
 
+test('configured privacy service supplies the directory and a change revokes its selections', async () => {
+  let revision = 1;
+  const fetcher = jest
+    .fn<Promise<Response>, [RequestInfo | URL, RequestInit?]>()
+    .mockResolvedValueOnce(response(directory()))
+    .mockResolvedValueOnce(response(status()));
+  const client = createPrivacyRelayerClient({
+    fetcher,
+    now: () => NOW,
+    getDirectoryUrl: async () =>
+      'http://127.0.0.1:8800/api/privacy/v1/relayers',
+    getServiceRevision: () => revision,
+    assertServiceCurrent: (expected) => {
+      if (revision !== expected) throw new Error('privacy_service_changed');
+    },
+  });
+  const result = await client.getDirectory();
+  expect(fetcher.mock.calls[0][0]).toBe(
+    'http://127.0.0.1:8800/api/privacy/v1/relayers'
+  );
+  const selection = await client.checkRelayer(result, ensHash, 'eth-1');
+  client.assertSelectionCurrent(selection);
+  revision += 1;
+  expect(() => client.assertSelectionCurrent(selection)).toThrow(
+    'privacy_service_changed'
+  );
+  await expect(client.checkRelayer(result, ensHash, 'eth-1')).rejects.toThrow(
+    'privacy_service_changed'
+  );
+});
+
+test('an old directory response cannot be accepted after the service changes', async () => {
+  let revision = 1;
+  let release!: (value: Response) => void;
+  const fetcher = jest.fn(
+    () =>
+      new Promise<Response>((resolve) => {
+        release = resolve;
+      })
+  );
+  const client = createPrivacyRelayerClient({
+    fetcher,
+    now: () => NOW,
+    getDirectoryUrl: async () => 'https://old.example/api/privacy/v1/relayers',
+    getServiceRevision: () => revision,
+    assertServiceCurrent: (expected) => {
+      if (revision !== expected) throw new Error('privacy_service_changed');
+    },
+  });
+  const pending = client.getDirectory();
+  await Promise.resolve();
+  await Promise.resolve();
+  revision += 1;
+  release(response(directory()));
+  await expect(pending).rejects.toThrow('privacy_service_changed');
+});
+
 test('only the explicitly selected endpoint is checked and identity remains pinned', async () => {
   const run = setup();
   const result = await run.client.getDirectory();

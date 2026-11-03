@@ -18,10 +18,20 @@ of the same sender nonce across both types of transaction.
 
 As transaction journals grow, the vault can move from one encrypted record to
 an atomic bundle of bounded encrypted chunks. Its encrypted index authenticates
-their IDs, order, note counts and ciphertext hashes. The existing 128-note limit
-and the SDK's per-record limit remain unchanged; previously accepted notes do
-not lose their spending capacity as their journals grow. Older single-record
-vaults remain readable and migrate only when needed.
+their IDs, order, note counts and ciphertext hashes. The default limit is 128
+saved notes (up to 4 MiB encoded); users may select 256 (8 MiB) or 512 (16 MiB).
+Higher limits can use more local storage and slow vault operations. The SDK's
+per-record limit remains unchanged, and admitted notes retain room for their
+journals. Older single-record vaults remain readable; changing the limit writes
+the newer format, which older wallet versions may not read. Changing the limit
+does not remove notes.
+
+An explicit **Clear completed notes** action checks known withdrawal receipts
+against the selected Ethereum RPC and removes a note only after its matching
+withdrawal and any recorded deposit transaction are finalized. Notes with
+unverified or unresolved journals remain saved. The RPC receives the known
+withdrawal transaction hash and, when present, the related deposit transaction
+hash, so the provider may link them. This check relies on that RPC's responses.
 
 The initial sender integration supports HD and imported software accounts.
 Hardware and smart accounts are rejected before note creation or RPC preflight:

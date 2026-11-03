@@ -20,6 +20,14 @@ Only connect to dapps you trust. A connected dapp can see the account you approv
 
 Blockchain activity is public. Your address, transaction history, token approvals, UTXO activity, smart-account deployment, and smart-account activity may be visible on explorers and indexers.
 
+## Private notes
+
+Pali can use its default Privacy service or your own Sysnode service. To run your own service, see the [Sysnode standalone guide](https://github.com/syscoin/sysnode-backend/blob/main/docs/privacy-standalone.md).
+
+The default limit is 128 saved notes (up to 4 MiB). In **Note capacity**, you can choose 256 (up to 8 MiB) or 512 (up to 16 MiB); higher limits can use more local storage and slow vault operations. Changing the limit removes no notes, but older wallet versions may not read the updated vault format.
+
+Use **Clear completed notes** to verify and remove completed notes. A known withdrawal must be finalized, as must any recorded related deposit; unverified notes remain saved. The selected Ethereum RPC receives the withdrawal transaction hash and, if present, the related deposit transaction hash, so its provider can link them. The check relies on that RPC's responses.
+
 ## Smart-account privacy
 
 Smart-account modules and executions are public on-chain. If a dapp asks to install an ECDSA owner or recovery module, review the owner addresses and recovery settings before approving.

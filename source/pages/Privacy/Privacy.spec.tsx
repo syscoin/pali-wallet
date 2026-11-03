@@ -479,3 +479,29 @@ it('rejects a wrong-pool or malformed status', () => {
     false
   );
 });
+
+it('names pool status with the selected denomination without starting a sync', async () => {
+  const user = userEvent.setup();
+  render(<Privacy />);
+  expect(
+    screen.getByRole('region', { name: `${en.privacy.poolData} · 0.1 ETH` })
+  ).toBeVisible();
+  await user.selectOptions(
+    screen.getByRole('combobox', { name: en.privacy.poolLabel }),
+    'eth-1'
+  );
+  expect(
+    screen.getByRole('region', { name: `${en.privacy.poolData} · 1 ETH` })
+  ).toBeVisible();
+  await waitFor(() =>
+    expect(mockEmitter).toHaveBeenLastCalledWith(
+      ['privacy', 'getStatus'],
+      ['eth-1'],
+      10000,
+      false
+    )
+  );
+  expect(
+    mockEmitter.mock.calls.every((call) => call[0][1] === 'getStatus')
+  ).toBe(true);
+});

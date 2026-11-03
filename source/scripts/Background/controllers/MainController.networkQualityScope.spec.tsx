@@ -152,6 +152,7 @@ let pendingSwitch: Promise<unknown> | undefined;
 let nextChain = OLD.chainId;
 const tooltip = () => screen.getByTestId('quality-tooltip');
 const indicator = () => tooltip().querySelector('button')!;
+const indicatorDot = () => indicator().querySelector('span')!;
 const advance = async (ms: number) =>
   act(async () => {
     await jest.advanceTimersByTimeAsync(ms);
@@ -490,7 +491,7 @@ it('normal CustomRPC save and menu activation do not attribute old endpoint late
   });
   expect({
     quality: store.getState().vaultGlobal.networkQuality,
-    className: indicator().className,
+    className: indicatorDot().className,
     message: tooltip().getAttribute('data-content'),
   }).toEqual({
     quality: undefined,
@@ -513,7 +514,7 @@ it('a real different-chain activation clears old quality', async () => {
   await chooseSaved(other.label);
   await waitForHydration();
   expect(store.getState().vaultGlobal.networkQuality).toBeUndefined();
-  expect(indicator()).toHaveClass('bg-brand-blue500');
+  expect(indicatorDot()).toHaveClass('bg-brand-blue500');
 });
 
 it('an explicit reconnect to the exact same endpoint preserves recent known latency', async () => {
@@ -531,7 +532,7 @@ it('an explicit reconnect to the exact same endpoint preserves recent known late
     </Provider>
   );
   expect(store.getState().vaultGlobal.networkQuality).toEqual(known);
-  expect(indicator()).toHaveClass('bg-orange-500');
+  expect(indicatorDot()).toHaveClass('bg-orange-500');
   expect(tooltip()).toHaveAttribute(
     'data-content',
     'networkConnection.operationSlow'
@@ -567,7 +568,7 @@ it.each([
     await chooseSaved(target.label);
     await waitForHydration();
     expect(store.getState().vaultGlobal.networkQuality).toEqual(known);
-    expect(indicator()).toHaveClass('bg-orange-500');
+    expect(indicatorDot()).toHaveClass('bg-orange-500');
   }
 );
 

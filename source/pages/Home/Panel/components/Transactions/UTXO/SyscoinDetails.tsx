@@ -47,7 +47,7 @@ const CopyIcon = memo(() => (
   <Icon
     wrapperClassname="flex items-center justify-center"
     name="copy"
-    className="px-1 text-brand-white hover:text-fields-input-borderfocus"
+    className="px-1 text-brand-white hover:text-content-accent"
   />
 ));
 CopyIcon.displayName = 'CopyIcon';

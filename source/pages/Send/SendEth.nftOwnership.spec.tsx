@@ -203,7 +203,12 @@ beforeEach(() => {
   });
   mockEmitter.mockImplementation((path: string[], args?: any[]) => {
     const method = path.at(-1);
-    if (method === 'fetchNftTokenIds') return Promise.resolve(mockDiscovered);
+    if (method === 'fetchNftTokenIds')
+      return Promise.resolve({
+        tokens: mockDiscovered,
+        hasMore: false,
+        requiresManualEntry: false,
+      });
     if (method === 'verifyERC721Ownership')
       return verifyERC721OwnershipHelper(
         args![0],

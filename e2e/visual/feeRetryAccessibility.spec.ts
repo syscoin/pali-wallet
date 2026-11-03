@@ -463,7 +463,10 @@ for (const locale of locales) {
             const geometry = [];
             for (let index = 0; index < expectedActions; index++) {
               await expect(retry.nth(index)).toHaveAttribute('type', 'button');
-              geometry.push(await actionGeometry(page, retry.nth(index)));
+              const action = await actionGeometry(page, retry.nth(index));
+              expect(action.bounds.width).toBeGreaterThanOrEqual(32);
+              expect(action.bounds.height).toBeGreaterThanOrEqual(32);
+              geometry.push(action);
             }
             const feeErrors = page.getByText(locale.text.send.unableToLoad, {
               exact: true,

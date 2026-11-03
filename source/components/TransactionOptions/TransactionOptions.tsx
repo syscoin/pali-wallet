@@ -9,8 +9,12 @@ import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { formatUnits } from 'utils/ethersV6Compat';
 import { getWalletNavigationScope } from 'utils/navigationState';
-import { buildExplorerUrl } from 'utils/strings';
-import { previewSpeedUpTransaction, UpdateTxAction } from 'utils/transactions';
+import { buildExplorerUrl, selectExplorerUrl } from 'utils/strings';
+import {
+  previewCancelTransaction,
+  previewSpeedUpTransaction,
+  UpdateTxAction,
+} from 'utils/transactions';
 import { ITransactionOptions } from 'utils/types';
 
 // Memoize frequently used transaction option icons
@@ -36,6 +40,8 @@ CancelIcon.displayName = 'CancelIcon';
 
 const MENU_ITEM_CLASS_NAME =
   'flex items-center justify-start text-brand-white mb-2 w-full p-2 rounded-md transition-all duration-150 cursor-pointer hover:bg-brand-blue400 hover:bg-opacity-30';
+const ACTIVE_ITEM_CLASS_NAME = 'bg-brand-blue400 bg-opacity-50';
+const ITEM_TEXT_CLASS_NAME = 'text-sm text-brand-white';
 const CANCEL_ITEM_CLASS_NAME = MENU_ITEM_CLASS_NAME.replace('mb-2 ', '');
 
 const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
@@ -52,10 +58,7 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
   const { t } = useTranslation();
   const { navigate } = useUtils();
   // Select only what we need to minimize re-renders
-  const explorer = useSelector(
-    (state: RootState) =>
-      state.vault.activeNetwork.explorer || state.vault.activeNetwork.url
-  );
+  const explorer = useSelector(selectExplorerUrl);
   const currency = useSelector(
     (state: RootState) => state.vault.activeNetwork.currency
   );
@@ -81,7 +84,8 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
     chainId,
   ]);
 
-  const previewSpeedUp = async () => {
+  const previewReplacement = async (actionType: UpdateTxAction) => {
+    const isCancel = actionType === UpdateTxAction.Cancel;
     preview.current?.cancel();
     const startingScope = getWalletNavigationScope();
     let cancelled = false;
@@ -115,7 +119,8 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
           chainId,
           isLegacy: isLegacyTransaction,
           txHash: transaction.hash,
-          updateType: UpdateTxAction.SpeedUp,
+          updateType: actionType,
+          nonce: transaction.nonce,
           signerAddress: transaction.from,
           approvedMaximumFee: maximumFee,
           walletScope: startingScope,
@@ -126,8 +131,12 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
     preview.current = { cancel, close };
     const modal = {
       buttonText: t('buttons.confirm'),
-      title: t('header.speedTx'),
-      description: t('transactions.speedUpFeePreview'),
+      title: t(isCancel ? 'header.cancelTx' : 'header.speedTx'),
+      description: t(
+        isCancel
+          ? 'transactions.cancelFeePreview'
+          : 'transactions.speedUpFeePreview'
+      ),
       isButtonLoading: true,
       // This stage only reads a quote; cancelling it cannot cancel a send.
       allowCloseWhileLoading: true,
@@ -139,87 +148,60 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
     const fail = () => {
       if (!current()) return;
       close();
-      alert.error(t('transactions.speedUpFeeUnavailable'));
+      alert.error(
+        t(
+          isCancel
+            ? 'transactions.cancelFeeUnavailable'
+            : 'transactions.speedUpFeeUnavailable'
+        )
+      );
     };
     const timer = setTimeout(fail, 15_000);
     try {
-      const fee = await previewSpeedUpTransaction(
-        transaction.hash,
-        isLegacyTransaction,
-        chainId,
-        transaction.from
-      );
+      const fee = isCancel
+        ? await previewCancelTransaction(
+            transaction.hash,
+            isLegacyTransaction,
+            chainId,
+            transaction.nonce,
+            transaction.from,
+            startingScope
+          )
+        : await previewSpeedUpTransaction(
+            transaction.hash,
+            isLegacyTransaction,
+            chainId,
+            transaction.from
+          );
       if (!current()) return;
       clearTimeout(timer);
       maximumFee = fee;
       setModalData({
         ...modal,
-        description: t('transactions.speedUpFeeConsent', {
-          fee: formatUnits(fee, 18),
-          currency: currency?.toUpperCase(),
-        }),
+        description: t(
+          isCancel
+            ? 'transactions.cancelFeeConsent'
+            : 'transactions.speedUpFeeConsent',
+          {
+            fee: formatUnits(fee, 18),
+            currency: currency?.toUpperCase(),
+          }
+        ),
         isButtonLoading: false,
       });
-    } catch {
-      fail();
+    } catch (error: any) {
+      if (error?.code === 'REPLACEMENT_VALUE_WOULD_CHANGE') {
+        if (!current()) return;
+        close();
+        alert.error(t('transactions.speedUpAmountWouldChange'));
+      } else {
+        fail();
+      }
     }
   };
 
   const handleOnClick = (actionType: UpdateTxAction) => {
-    if (actionType === UpdateTxAction.SpeedUp) {
-      void previewSpeedUp();
-      return;
-    }
-    preview.current?.cancel();
-    const startingScope = getWalletNavigationScope();
-    let cancelled = false;
-    const cancel = () => {
-      cancelled = true;
-    };
-    const close = () => {
-      cancel();
-      if (preview.current?.close !== close) return;
-      preview.current = undefined;
-      setIsOpenModal(false);
-    };
-    preview.current = { cancel, close };
-    setIsOpenModal(true);
-
-    switch (actionType) {
-      case UpdateTxAction.Cancel:
-        setModalData({
-          buttonText: t('buttons.confirm'),
-          title: t('header.cancelTx'),
-          description: t('header.cancelTxMessage'),
-          onClose: close,
-          onClick: () => {
-            const current = getWalletNavigationScope();
-            if (
-              cancelled ||
-              current.account !== startingScope.account ||
-              current.network !== startingScope.network
-            ) {
-              close();
-              return;
-            }
-            close();
-            void handleUpdateTransaction({
-              updateData: {
-                alert,
-                chainId,
-                isLegacy: isLegacyTransaction,
-                txHash: transaction.hash,
-                updateType: UpdateTxAction.Cancel,
-                nonce: transaction.nonce,
-                signerAddress: transaction.from,
-                walletScope: startingScope,
-              },
-              t,
-            });
-          },
-        });
-        break;
-    }
+    void previewReplacement(actionType);
   };
 
   const handleGoTxDetails = useCallback(() => {
@@ -233,6 +215,7 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
   }, [transaction.hash]);
 
   const openTransactionOnExplorer = useCallback(() => {
+    if (!explorer) return;
     const url = buildExplorerUrl(explorer, 'tx', transaction.hash);
     window.open(url, '_blank');
   }, [explorer, transaction.hash]);
@@ -268,7 +251,7 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
                     {({ active }) => (
                       <li
                         className={`
-                    ${active ? 'bg-brand-blue400 bg-opacity-50' : ''}
+                    ${active ? ACTIVE_ITEM_CLASS_NAME : ''}
                     ${MENU_ITEM_CLASS_NAME}
                     `}
                         onClick={handleGoTxDetails}
@@ -276,35 +259,37 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
                         <div className="w-5 mr-3">
                           <ExternalLinkIcon />
                         </div>
-                        <span className="text-sm text-brand-white">
+                        <span className={ITEM_TEXT_CLASS_NAME}>
                           {t('transactions.seeDetails')}
                         </span>
                       </li>
                     )}
                   </Menu.Item>
-                  <Menu.Item>
-                    {({ active }) => (
-                      <li
-                        className={`
-                    ${active ? 'bg-brand-blue400 bg-opacity-50' : ''}
+                  {explorer && (
+                    <Menu.Item>
+                      {({ active }) => (
+                        <li
+                          className={`
+                    ${active ? ACTIVE_ITEM_CLASS_NAME : ''}
                     ${MENU_ITEM_CLASS_NAME}
                     `}
-                        onClick={openTransactionOnExplorer}
-                      >
-                        <div className="w-5 mr-3">
-                          <ExternalLinkIcon />
-                        </div>
-                        <span className="text-sm text-brand-white">
-                          {t('transactions.seeOnBlockExplorer')}
-                        </span>
-                      </li>
-                    )}
-                  </Menu.Item>
+                          onClick={openTransactionOnExplorer}
+                        >
+                          <div className="w-5 mr-3">
+                            <ExternalLinkIcon />
+                          </div>
+                          <span className={ITEM_TEXT_CLASS_NAME}>
+                            {t('transactions.seeOnBlockExplorer')}
+                          </span>
+                        </li>
+                      )}
+                    </Menu.Item>
+                  )}
                   <Menu.Item>
                     {({ active }) => (
                       <li
                         className={`
-                    ${active ? 'bg-brand-blue400 bg-opacity-50' : ''}
+                    ${active ? ACTIVE_ITEM_CLASS_NAME : ''}
                     ${MENU_ITEM_CLASS_NAME}
                     `}
                         onClick={() => handleOnClick(UpdateTxAction.SpeedUp)}
@@ -312,7 +297,7 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
                         <div className="w-5 mr-3">
                           <SpeedUpIcon />
                         </div>
-                        <span className="text-sm text-brand-white">
+                        <span className={ITEM_TEXT_CLASS_NAME}>
                           {t('header.speedUp')}
                         </span>
                       </li>
@@ -322,7 +307,7 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
                     {({ active }) => (
                       <li
                         className={`
-                  ${active ? 'bg-brand-blue400 bg-opacity-50' : ''}
+                  ${active ? ACTIVE_ITEM_CLASS_NAME : ''}
                   ${CANCEL_ITEM_CLASS_NAME}
                   `}
                         onClick={() => handleOnClick(UpdateTxAction.Cancel)}
@@ -330,7 +315,7 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
                         <div className="w-5 mr-3">
                           <CancelIcon />
                         </div>
-                        <span className="text-sm text-brand-white">
+                        <span className={ITEM_TEXT_CLASS_NAME}>
                           {t('buttons.cancel')}
                         </span>
                       </li>

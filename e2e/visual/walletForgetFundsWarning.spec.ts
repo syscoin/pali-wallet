@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+
 import fs from 'fs';
 
 import en from '../../source/assets/locales/en.json';
@@ -13,6 +14,8 @@ import {
   startUtxoFixtureServer,
   UTXO_FIXTURE_SEED,
 } from '../harness/utxoFixture';
+
+test.use({ trace: 'off', video: 'off', screenshot: 'off' });
 
 async function publicBalances(page: Page) {
   return page.evaluate(async () => {
@@ -43,10 +46,12 @@ test('Forget Wallet retains its funds warning after ordinary creation selects an
   });
   let wallet: PaliWallet | undefined;
   let status: 'passed' | 'failed' = 'failed';
+  let passwordValidatedOnForgetPage = false;
   const observations: Record<string, unknown> = {};
   try {
     wallet = await PaliWallet.launch('wallet-forget-funds-warning', {
       offlineHttpProxy: server.url,
+      recordVideo: false,
       viewport: { width: 400, height: 620 },
     });
     const routes = await installIsolatedVaultRoutes(
@@ -125,6 +130,125 @@ test('Forget Wallet retains its funds warning after ordinary creation selects an
         ).toBeDisabled();
       }
     );
+    // Validate with the explicit Confirm button, never the destructive action.
+    // Do not take screenshots or serialize fields after the seed is revealed.
+    await page.setViewportSize({ width: 320, height: 360 });
+    const password = page.locator('#forget_password');
+    await password.fill(E2E_CONFIG.password);
+    const confirm = page.getByRole('button', {
+      name: en.buttons.confirm,
+      exact: true,
+    });
+    await password.focus();
+    for (
+      let count = 0;
+      count < 20 &&
+      !(await confirm.evaluate(
+        (element) => element === document.activeElement
+      ));
+      count++
+    ) {
+      await page.keyboard.press('Tab');
+    }
+    await expect(confirm).toBeFocused();
+    await page.keyboard.press('Enter');
+    passwordValidatedOnForgetPage = true;
+    const action = page.getByRole('button', {
+      name: en.buttons.forget,
+      exact: true,
+    });
+    await expect(action).toBeEnabled();
+    const geometry = () =>
+      page.evaluate(
+        ({ warningText, actionText }) => {
+          const warning = [...document.querySelectorAll('p')].find(
+            (element) => element.textContent?.trim() === warningText
+          );
+          const card = warning?.closest('div.border-dashed');
+          const button = [...document.querySelectorAll('button')].find(
+            (element) => element.textContent?.trim() === actionText
+          );
+          if (!card || !button)
+            throw new Error('Missing funded warning or action');
+          const rect = (element: Element) => {
+            const box = element.getBoundingClientRect();
+            return {
+              left: box.left,
+              top: box.top,
+              right: box.right,
+              bottom: box.bottom,
+            };
+          };
+          const visibleAndHit = (element: Element) => {
+            const box = element.getBoundingClientRect();
+            if (
+              box.left < 0 ||
+              box.top < 0 ||
+              box.right > innerWidth ||
+              box.bottom > innerHeight
+            )
+              return false;
+            const hit = document.elementFromPoint(
+              (box.left + box.right) / 2,
+              (box.top + box.bottom) / 2
+            );
+            return !!hit && (hit === element || element.contains(hit));
+          };
+          return {
+            card: rect(card),
+            button: rect(button),
+            height: innerHeight,
+            warningVisible: visibleAndHit(card),
+            actionVisible: visibleAndHit(button),
+          };
+        },
+        {
+          warningText: en.forgetWalletPage.stillHaveFunds,
+          actionText: en.buttons.forget,
+        }
+      );
+    const afterConfirm = await geometry();
+    // A destructive action must not be available while its warning is wholly below the view.
+    expect(
+      afterConfirm.actionVisible && afterConfirm.card.top >= afterConfirm.height
+    ).toBe(false);
+    const port = page.locator('[data-navigation-scroll="wallet-layout"]');
+    await expect(port).toHaveCount(1);
+    await page.mouse.move(160, 180);
+    for (let count = 0; count < 12; count++) {
+      const scroll = await port.evaluate((element) => ({
+        top: element.scrollTop,
+        max: element.scrollHeight - element.clientHeight,
+      }));
+      if (scroll.top >= scroll.max - 1) break;
+      await page.mouse.wheel(0, 300);
+      await page.evaluate(
+        () =>
+          new Promise<void>((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+          )
+      );
+    }
+    const bottom = await geometry();
+    expect(bottom.warningVisible).toBe(true);
+    expect(bottom.actionVisible).toBe(true);
+    await expect(action).toBeEnabled();
+    await page.setViewportSize({ width: 400, height: 620 });
+    await page.mouse.move(200, 310);
+    for (let count = 0; count < 12; count++) {
+      if (await port.evaluate((element) => element.scrollTop <= 1)) break;
+      await page.mouse.wheel(0, -300);
+      await page.evaluate(
+        () =>
+          new Promise<void>((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+          )
+      );
+    }
+    const wide = await geometry();
+    expect(wide.warningVisible).toBe(true);
+    expect(wide.actionVisible).toBe(true);
+    await expect(action).toBeEnabled();
     expect(routes.deniedWrites).toEqual([]);
     status = info.errors.length === 0 ? 'passed' : 'failed';
   } finally {
@@ -137,7 +261,7 @@ test('Forget Wallet retains its funds warning after ordinary creation selects an
           simulated: true,
           publicSyntheticOnly: true,
           controllerStateReplaced: false,
-          passwordValidatedOnForgetPage: false,
+          passwordValidatedOnForgetPage,
           forgetSubmitted: false,
         },
         null,

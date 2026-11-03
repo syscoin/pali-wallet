@@ -49,18 +49,18 @@ export const useWalletProviderDefault = () => {
   const modalText = useMemo(
     () =>
       isEnabled ? (
-        <span className="text-white text-sm">
-          <p>{t('providerDefault.defaultEnabled')}</p>
+        <span className="min-w-0 break-words text-white text-sm">
+          <p>{t('settings.paliProviderEnabled')}</p>
         </span>
       ) : (
-        <span className="text-white text-sm ">
-          <p>{t('providerDefault.otherWalletInUse')}</p>
+        <span className="min-w-0 break-words text-white text-sm">
+          <p>{t('settings.paliProviderDisabled')}</p>
           <button
             type="button"
             className="underline font-bold cursor-pointer focus-visible:ring-2 focus-visible:ring-white"
             onClick={turnPaliAsDefault}
           >
-            {t('providerDefault.setPaliDefault')}
+            {t('settings.enablePaliProvider')}
           </button>
         </span>
       ),

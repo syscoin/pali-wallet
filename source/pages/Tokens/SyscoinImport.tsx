@@ -94,6 +94,14 @@ export const SyscoinImport: React.FC = () => {
   const [recentlyImportedGuids, setRecentlyImportedGuids] = useState<
     Set<string>
   >(new Set());
+  const [importSuccess, setImportSuccess] = useState<{
+    message: string;
+    scope: string;
+  } | null>(null);
+
+  useEffect(() => {
+    setImportSuccess(null);
+  }, [tokenImportScope]);
 
   const activeAccountAssets =
     accountAssets?.[activeAccountMeta.type]?.[activeAccountMeta.id];
@@ -306,6 +314,7 @@ export const SyscoinImport: React.FC = () => {
       throw new Error('A token import is already in progress');
     const operation = {};
     importOperationRef.current = operation;
+    setImportSuccess(null);
     const scope = tokenImportScope;
     const isCurrent = () =>
       ownedViewRef.current.active &&
@@ -343,9 +352,12 @@ export const SyscoinImport: React.FC = () => {
 
       if (isCurrent()) {
         setRecentlyImportedGuids((prev) => new Set(prev).add(asset.assetGuid));
-        alert.success(
-          t('tokens.hasBeenAddedToYourWallet', { token: asset.symbol })
-        );
+        setImportSuccess({
+          scope,
+          message: t('tokens.hasBeenAddedToYourWallet', {
+            token: asset.symbol,
+          }),
+        });
       }
     } catch (error) {
       console.error('Import error:', error);
@@ -417,7 +429,7 @@ export const SyscoinImport: React.FC = () => {
   return (
     <div className="flex min-w-0 w-full flex-col h-full bg-bkg-3 text-brand-white font-poppins">
       {/* Tab Navigation */}
-      <div className="min-h-10 shrink-0 relative flex items-stretch justify-center w-full bg-bkg-1 -mt-2">
+      <div className="token-import-tabs min-h-10 shrink-0 relative flex items-stretch justify-center w-full bg-bkg-1 -mt-2">
         <button
           aria-pressed={activeTab === 'owned'}
           className={`w-1/2 min-w-0 min-h-10 px-2 py-1 break-words font-medium text-base leading-5 transition-all duration-300 ${
@@ -445,6 +457,14 @@ export const SyscoinImport: React.FC = () => {
         </button>
       </div>
 
+      <div role="status" aria-live="polite" className="shrink-0 px-4">
+        {importSuccess?.scope === tokenImportScope && (
+          <p className="py-2 break-words text-sm text-brand-white">
+            {importSuccess.message}
+          </p>
+        )}
+      </div>
+
       {/* Content Area */}
       <div
         data-navigation-scroll="token-import"
@@ -455,7 +475,7 @@ export const SyscoinImport: React.FC = () => {
             <p>{t('settings.apiConnectionError')}</p>
             <button
               type="button"
-              className="mt-2 min-h-11 px-2 text-brand-royalblue underline"
+              className="mt-2 min-h-11 px-2 text-brand-royalbluemedium underline"
               disabled={isLoadingOwned}
               onClick={loadOwnedTokens}
             >

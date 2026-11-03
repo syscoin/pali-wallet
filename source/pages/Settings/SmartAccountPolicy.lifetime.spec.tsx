@@ -467,6 +467,7 @@ describe('SmartAccountPolicy async UI lifetime', () => {
         metadata(false);
       const pending = deferred<any>();
       const view = mountWithHydration(pending);
+      expect(screen.getByRole('status').textContent).toBe('buttons.loading');
       expect(
         screen.queryByRole('button', { name: 'settings.registerSmartAccount' })
       ).toBeNull();
@@ -478,6 +479,7 @@ describe('SmartAccountPolicy async UI lifetime', () => {
         )
       );
       await act(async () => pending.resolve(metadata(true)));
+      expect(screen.queryByText('buttons.loading')).toBeNull();
       expect(
         screen.getByText('settings.smartAccountCurrentApprovalMethod')
       ).toBeTruthy();

@@ -85,6 +85,8 @@ test('network-management icon actions expose their purpose and full network iden
         await first.scrollIntoViewIfNeeded();
         await first.click();
         await expect(page).toHaveURL(/#\/settings\/networks\/custom-rpc$/);
+        // A URL change can precede the editor render; wait for the new screen.
+        await expect(page.locator('form#rpc')).toBeVisible();
         await page.getByRole('button', { name: 'Back', exact: true }).click();
         await expect(page).toHaveURL(/#\/settings\/networks\/edit$/);
       }

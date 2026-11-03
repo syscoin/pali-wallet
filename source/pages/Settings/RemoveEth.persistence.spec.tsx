@@ -34,14 +34,12 @@ jest.mock('hooks/useController', () => ({
 }));
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string, values?: { wallet?: string }) =>
-      key === 'settings.setWalletAsDefault'
-        ? jest
-            .requireActual('../../assets/locales/en.json')
-            .settings.setWalletAsDefault.replace(
-              '{{wallet}}',
-              values?.wallet || ''
-            )
+    t: (key: string) =>
+      key === 'settings.disablePaliProvider' ||
+      key === 'settings.enablePaliProvider'
+        ? jest.requireActual('../../assets/locales/en.json').settings[
+            key.split('.')[1]
+          ]
         : key,
   }),
 }));
@@ -229,12 +227,12 @@ const mount = () =>
   );
 const disableProvider = async () => {
   fireEvent.click(
-    screen.getByRole('button', { name: 'Set Metamask as default wallet' })
+    screen.getByRole('button', { name: 'Disable Pali’s Ethereum provider' })
   );
   await waitFor(() =>
     expect(
       screen.getByRole('button', {
-        name: /Set (Pali|Metamask) as default wallet/,
+        name: /(Disable|Enable) Pali’s Ethereum provider/,
       })
     ).toBeEnabled()
   );
@@ -249,7 +247,7 @@ it('persists provider disablement and healthy namespace disconnection through th
   mount();
   await disableProvider();
   expect(screen.getByRole('dialog')).toHaveTextContent(
-    'settings.windowObjectWasSet'
+    'settings.paliProviderDisabled'
   );
   expect(store.getState().vaultGlobal.hasEthProperty).toBe(false);
   expect(dapp.isConnected(HOST)).toBe(false);
@@ -280,7 +278,9 @@ it('keeps the provider enabled and the grant reviewable when a requested revocat
     livePermission: true,
     persistedPermission: true,
   });
-  expect(screen.getByRole('alert')).toHaveTextContent('send.failed');
+  expect(screen.getByRole('alert')).toHaveTextContent(
+    'settings.disablePaliProviderFailed'
+  );
   expect(mockEmitter).not.toHaveBeenCalledWith([
     'wallet',
     'removeWindowEthProperty',
@@ -308,11 +308,13 @@ it('retries a refused permission write from the same screen without re-enabling 
   mount();
   refusePermissionWrite = true;
   await disableProvider();
-  expect(screen.getByRole('alert')).toHaveTextContent('send.failed');
+  expect(screen.getByRole('alert')).toHaveTextContent(
+    'settings.disablePaliProviderFailed'
+  );
   await disableProvider();
   expect(screen.queryByRole('alert')).toBeNull();
   expect(screen.getByRole('dialog')).toHaveTextContent(
-    'settings.windowObjectWasSet'
+    'settings.paliProviderDisabled'
   );
   expect(dapp.isConnected(HOST)).toBe(false);
   expect(records.state.vaultGlobal.hasEthProperty).toBe(false);
@@ -339,7 +341,9 @@ it('keeps earlier durable revocations when a later host fails, then retries only
   expect(records.state.dapp.dapps[secondHost]).toBeDefined();
   expect(records.state.vaultGlobal.hasEthProperty).toBe(true);
   expect(screen.queryByRole('dialog')).toBeNull();
-  expect(screen.getByRole('alert')).toHaveTextContent('send.failed');
+  expect(screen.getByRole('alert')).toHaveTextContent(
+    'settings.disablePaliProviderFailed'
+  );
   mockEmitter.mockClear();
   await disableProvider();
   expect(
@@ -365,12 +369,14 @@ it('does not claim success when the provider preference fails after durable revo
   expect(dapp.isConnected(HOST)).toBe(false);
   expect(records.state.dapp.dapps[HOST]).toBeUndefined();
   expect(records.state.vaultGlobal.hasEthProperty).toBe(true);
-  expect(screen.getByRole('alert')).toHaveTextContent('send.failed');
+  expect(screen.getByRole('alert')).toHaveTextContent(
+    'settings.disablePaliProviderFailed'
+  );
   expect(screen.queryByRole('dialog')).toBeNull();
   await disableProvider();
   expect(records.state.vaultGlobal.hasEthProperty).toBe(false);
   expect(screen.getByRole('dialog')).toHaveTextContent(
-    'settings.windowObjectWasSet'
+    'settings.paliProviderDisabled'
   );
 });
 
@@ -379,7 +385,7 @@ it('enables the provider without revoking existing namespace permissions', async
   await persistCommittedWalletState(true);
   mount();
   fireEvent.click(
-    screen.getByRole('button', { name: 'Set Pali as default wallet' })
+    screen.getByRole('button', { name: 'Enable Pali’s Ethereum provider' })
   );
   await screen.findByRole('dialog');
   expect(records.state.vaultGlobal.hasEthProperty).toBe(true);
@@ -410,7 +416,7 @@ it('does not revoke a newly approved origin outside the requested disconnect sna
     });
   mount();
   fireEvent.click(
-    screen.getByRole('button', { name: 'Set Metamask as default wallet' })
+    screen.getByRole('button', { name: 'Disable Pali’s Ethereum provider' })
   );
   await writeStarted;
   const approval = dapp.requestPermissions(
@@ -464,7 +470,7 @@ it('finishes disabling when another view already durably disconnected a later re
     });
   mount();
   fireEvent.click(
-    screen.getByRole('button', { name: 'Set Metamask as default wallet' })
+    screen.getByRole('button', { name: 'Disable Pali’s Ethereum provider' })
   );
   await writeStarted;
   const otherView = dapp.disconnect(secondHost, true, {
@@ -477,14 +483,14 @@ it('finishes disabling when another view already durably disconnected a later re
   await waitFor(() =>
     expect(
       screen.getByRole('button', {
-        name: /Set (Pali|Metamask) as default wallet/,
+        name: /(Disable|Enable) Pali’s Ethereum provider/,
       })
     ).toBeEnabled()
   );
   expect(records.state.dapp.dapps).toEqual({});
   expect(screen.queryByRole('alert')).toBeNull();
   expect(screen.getByRole('dialog')).toHaveTextContent(
-    'settings.windowObjectWasSet'
+    'settings.paliProviderDisabled'
   );
   expect(records.state.vaultGlobal.hasEthProperty).toBe(false);
 });
@@ -512,7 +518,7 @@ it('still revokes a newly approved permission for a host in the clicked global d
     });
   mount();
   fireEvent.click(
-    screen.getByRole('button', { name: 'Set Metamask as default wallet' })
+    screen.getByRole('button', { name: 'Disable Pali’s Ethereum provider' })
   );
   await writeStarted;
   let approvedPermission: any;

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { StatusModal } from 'components/Modal/StatusModal';
@@ -18,14 +18,19 @@ export const FaucetApiFeedback: React.FC<FaucetApiFeedbackProps> = ({
   const { t } = useTranslation();
 
   const [copied, copyText] = useCopyClipboard();
+  const [copyNoticeDismissed, setCopyNoticeDismissed] = useState(false);
 
-  const handleCopyToClipboard = () => copyText(apiResponse);
+  const handleCopyToClipboard = () => {
+    setCopyNoticeDismissed(false);
+    return copyText(apiResponse);
+  };
 
   return (
     <>
       <StatusModal
         status="success"
-        show={copied}
+        show={copied && !copyNoticeDismissed}
+        onClose={() => setCopyNoticeDismissed(true)}
         title={t(`settings.successfullyCopied`)}
         description=""
       />
@@ -36,7 +41,7 @@ export const FaucetApiFeedback: React.FC<FaucetApiFeedbackProps> = ({
             type="button"
             aria-label={t('buttons.copy')}
             onClick={handleCopyToClipboard}
-            className="text-white text-sm underline overflow-hidden text-left cursor-pointer"
+            className="text-white text-sm underline [overflow-wrap:anywhere] text-left cursor-pointer"
           >
             {apiResponse}
           </button>

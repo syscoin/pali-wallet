@@ -199,7 +199,7 @@ const mount = async () => {
     </I18nextProvider>
   );
   const dot = () =>
-    view.container.querySelector('.rounded-full') as HTMLElement;
+    view.container.querySelector('button.status-target > span') as HTMLElement;
   const checkNoExtraActions = (reads: number) => {
     expect(mockSubmit).not.toHaveBeenCalled();
     expect(mockPersist).not.toHaveBeenCalled();

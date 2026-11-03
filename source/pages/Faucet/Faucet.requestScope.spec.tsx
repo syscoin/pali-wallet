@@ -462,6 +462,68 @@ it('healthy: matching network/address success keeps the exact hash, wording and 
   );
 });
 
+it('explains an HTTP 429 without exposing the transport error or inventing a cooldown', async () => {
+  await mount();
+  (axios.get as jest.Mock).mockRejectedValueOnce({
+    message: 'Request failed with status code 429',
+    response: { status: 429, data: { message: 'Synthetic server limit' } },
+  });
+  request();
+  expect(
+    await screen.findByText(mockTranslate('faucet.rateLimited'))
+  ).toBeTruthy();
+  expect(screen.queryByText('Request failed with status code 429')).toBeNull();
+  expect(screen.queryByText('Synthetic server limit')).toBeNull();
+  expect(screen.getByRole('button', { name: 'Go to Faucet' })).toBeTruthy();
+  expect(mockAlarms).not.toHaveBeenCalled();
+});
+
+it('keeps non-429 HTTP failure feedback and the external faucet action', async () => {
+  await mount();
+  (axios.get as jest.Mock).mockRejectedValueOnce({
+    message: 'Request failed with status code 503',
+    response: { status: 503, data: { message: 'Synthetic unavailable' } },
+  });
+  request();
+  expect(
+    await screen.findByText('Request failed with status code 503')
+  ).toBeTruthy();
+  expect(screen.queryByText(mockTranslate('faucet.rateLimited'))).toBeNull();
+  expect(screen.getByRole('button', { name: 'Go to Faucet' })).toBeTruthy();
+});
+
+it('continues showing a successful HTTP response that refuses a claim', async () => {
+  await mount();
+  (axios.get as jest.Mock).mockResolvedValueOnce({
+    data: { data: { status: false, message: 'Synthetic faucet refusal' } },
+  });
+  request();
+  expect(await screen.findByText('Synthetic faucet refusal')).toBeTruthy();
+  expect(screen.queryByText(mockTranslate('faucet.rateLimited'))).toBeNull();
+  expect(screen.getByRole('button', { name: 'Go to Faucet' })).toBeTruthy();
+});
+
+it('does not show a retired account’s late HTTP 429 on the newly selected account', async () => {
+  await mount();
+  let reject!: (error: unknown) => void;
+  const pending = new Promise((_resolve, fail) => {
+    reject = fail;
+  });
+  (axios.get as jest.Mock).mockReturnValueOnce(pending);
+  request();
+  await selectAccountB();
+  await act(async () => {
+    reject({
+      message: 'Request failed with status code 429',
+      response: { status: 429 },
+    });
+    await pending.catch(() => undefined);
+  });
+  expect(screen.queryByText(mockTranslate('faucet.rateLimited'))).toBeNull();
+  expect(screen.getByText('Public B')).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Request Now' })).toBeTruthy();
+});
+
 // The existing clipboard-hook boundary records action reachability and exact
 // payload, not OS clipboard acceptance or success-modal timing.
 it.each([

@@ -6,6 +6,7 @@ interface IPageActionFooterProps {
   children: React.ReactNode;
   className?: string;
   error?: React.ReactNode;
+  includeInFlow?: boolean;
 }
 
 /** Bottom-aligned page action and feedback, with in-flow space when scrolling. */
@@ -13,8 +14,9 @@ export const PageActionFooter = ({
   children,
   className = '',
   error,
+  includeInFlow = false,
 }: IPageActionFooterProps) => {
-  const footerRef = useToastFooter();
+  const footerRef = useToastFooter({ includeInFlow });
   useLayoutEffect(() => {
     const footer = footerRef.current;
     const layout = footer?.closest<HTMLElement>(

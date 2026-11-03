@@ -4,6 +4,8 @@ import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 
+import { AppLayout } from 'components/Layout/AppLayout';
+
 import { SendEth } from './SendEth';
 
 const mockEmitter = jest.fn();
@@ -31,9 +33,27 @@ jest.mock('state/store', () => ({
 jest.mock('react-redux', () => ({
   useSelector: (select: any) => select(mockState),
 }));
-jest.mock('react-router-dom', () => ({ useLocation: () => mockLocation }));
+jest.mock('react-router-dom', () => ({
+  useLocation: () => mockLocation,
+  useNavigate: () => mockNavigate,
+  Outlet: () => null,
+}));
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
+}));
+jest.mock('components/Header/Header', () => ({
+  Header: () => <nav>Wallet navigation</nav>,
+}));
+jest.mock('components/Loading/PageLoadingOverlay', () => ({
+  PageLoadingOverlay: () => null,
+}));
+jest.mock('hooks/useAppReady', () => ({ useAppReady: jest.fn() }));
+jest.mock('hooks/useBrowsingNavigationScroll', () => ({
+  useBrowsingNavigationScroll: jest.fn(),
+}));
+jest.mock('hooks/usePageLoadingState', () => ({
+  ...jest.requireActual('hooks/usePageLoadingState'),
+  usePageLoadingState: () => ({ isLoading: false, isContextChanging: false }),
 }));
 jest.mock('hooks/controllerStatus', () => ({
   getControllerStatus: () => mockStatus,
@@ -95,6 +115,7 @@ jest.mock('components/index', () => ({
   Button: jest.requireActual('components/Button/Button').Button,
   Tooltip: ({ children }: any) => <>{children}</>,
   Icon: () => null,
+  IconButton: (props: any) => <button {...props} />,
 }));
 jest.mock('components/ToastActionFooter', () => ({
   ToastActionFooter: ({ children }: any) => <footer>{children}</footer>,
@@ -409,12 +430,18 @@ it.each(['{Enter}', ' '])(
   async (key) => {
     const user = await mount();
     const menu = await open(user);
+    expect(menu).toHaveClass('pali-menu-focus');
     await user.keyboard('{Home}{ArrowDown}');
     const selected = document.getElementById(
       menu.getAttribute('aria-activedescendant')!
     );
     expect(selected?.tagName).toBe('BUTTON');
     expect(selected).toHaveTextContent('PRECISE');
+    expect(selected).toHaveAttribute('data-headlessui-state', 'active');
+    expect(screen.getAllByRole('menuitem')[0]).not.toHaveAttribute(
+      'data-headlessui-state',
+      'active'
+    );
     await user.keyboard(key);
     await waitFor(() =>
       expect(
@@ -456,4 +483,27 @@ it('preserves native MAX and exact verified ERC20 MAX across asset selection', a
   );
   await user.click(screen.getByRole('button', { name: 'send.max' }));
   expect(amount().value).toBe('1.234567');
+});
+
+it('keeps the send title truthful when switching native and ERC20 assets', async () => {
+  const user = userEvent.setup();
+  await act(async () =>
+    render(
+      <AppLayout>
+        <SendEth />
+      </AppLayout>
+    )
+  );
+  const title = () => screen.getByText('send.send', { exact: true });
+  expect(title()).toBeVisible();
+  expect(screen.getByRole('button', { name: 'ETH' })).toBeVisible();
+  await selectWithPointer(user, 'PRECISE');
+  expect(title()).toBeVisible();
+  expect(screen.getByRole('button', { name: 'PRECISE' })).toBeVisible();
+  await open(user, 'PRECISE');
+  await user.click(screen.getByRole('menuitem', { name: /ETH/ }));
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: 'ETH' })).toBeVisible()
+  );
+  expect(title()).toBeVisible();
 });

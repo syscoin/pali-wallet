@@ -25,6 +25,7 @@ export interface IApprovalAddressValues {
   approvalType?: ApprovalType;
   authority: string;
   authorityLabelKey: string;
+  isNftRevocation?: boolean;
   isValid: boolean;
   method: string;
   tokenContract: string;
@@ -35,7 +36,12 @@ const hasValidApprovalValue = (
   approvalType?: ApprovalType
 ): boolean => {
   const value = decodedTx?.inputs?.[1];
-  if (value === null || value === undefined) return false;
+  if (
+    value === null ||
+    value === undefined ||
+    (typeof value === 'string' && !value.trim())
+  )
+    return false;
 
   if (approvalType === 'nft-all') return typeof value === 'boolean';
 
@@ -56,22 +62,75 @@ export const getApprovalAddressValues = (
   const expectedMethods = approvalType
     ? EXPECTED_APPROVAL_METHODS[approvalType]
     : [];
+  const isValid =
+    Boolean(approvalType) &&
+    isAddress(authority) &&
+    isAddress(tokenContract) &&
+    expectedMethods.includes(method) &&
+    hasValidApprovalValue(decodedTx, approvalType);
+  const isNftRevocation =
+    isValid &&
+    approvalType === 'erc721-single' &&
+    authority.toLowerCase() === '0x0000000000000000000000000000000000000000';
 
   return {
     approvalType,
     authority,
-    authorityLabelKey: approvalType
+    authorityLabelKey: isNftRevocation
+      ? 'send.approvalResetAddress'
+      : approvalType
       ? AUTHORITY_LABEL_KEYS[approvalType]
       : 'transactions.approvedTo',
-    isValid:
-      Boolean(approvalType) &&
-      isAddress(authority) &&
-      isAddress(tokenContract) &&
-      expectedMethods.includes(method) &&
-      hasValidApprovalValue(decodedTx, approvalType),
+    isNftRevocation,
+    isValid,
     method,
     tokenContract,
   };
+};
+
+// Describe the requested operation, not an unverified contract outcome.
+// Use the effective decoded calldata so edits and the heading stay aligned.
+export const getErc20ApprovalHeadingKey = (
+  decodedTx: Pick<IDecodedTx, 'inputs' | 'method'> | undefined
+): string => {
+  try {
+    const value = decodedTx?.inputs?.[1];
+    if (
+      value === null ||
+      value === undefined ||
+      (typeof value === 'string' && !value.trim())
+    )
+      return 'send.erc20ApprovalRequest';
+    const amount = toEthersBigNumberish(value);
+    if (amount < BigInt(0) || amount >= BigInt(1) << BigInt(256))
+      return 'send.erc20ApprovalRequest';
+    if (decodedTx?.method === 'approve')
+      return amount === BigInt(0)
+        ? 'send.erc20SetAllowanceZero'
+        : 'send.grantAccess';
+    if (decodedTx?.method === 'increaseAllowance')
+      return 'send.erc20IncreaseAllowance';
+    if (decodedTx?.method === 'decreaseAllowance')
+      return 'send.erc20DecreaseAllowance';
+  } catch {
+    // Invalid or unavailable calldata must not be described as a grant.
+  }
+  return 'send.erc20ApprovalRequest';
+};
+
+export const formatApprovalNftTokenId = (value: unknown): string => {
+  if (
+    value === null ||
+    value === undefined ||
+    (typeof value === 'string' && !value.trim())
+  )
+    return '';
+  try {
+    const tokenId = toEthersBigNumberish(value as any);
+    return tokenId >= BigInt(0) ? tokenId.toString() : '';
+  } catch {
+    return '';
+  }
 };
 
 export const canEditApprovalAmount = (

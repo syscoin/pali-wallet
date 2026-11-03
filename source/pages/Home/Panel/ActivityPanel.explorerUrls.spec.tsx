@@ -1,14 +1,20 @@
 /** @jest-environment jsdom */
 import '@testing-library/jest-dom';
 import { configureStore } from '@reduxjs/toolkit';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from '@testing-library/react';
 import React from 'react';
 import { Provider } from 'react-redux';
 import { MemoryRouter } from 'react-router-dom';
 
 import { TxsPanel } from '../TxsPanel';
 import vaultReducer from 'state/vault';
-import globalReducer from 'state/vaultGlobal';
+import globalReducer, { setNetwork } from 'state/vaultGlobal';
 import { INetworkType, KeyringAccountType } from 'types/network';
 
 let mockStore: any;
@@ -52,7 +58,11 @@ type AccountKind =
   | 'imported-xpub'
   | 'imported-address'
   | 'utxo-address';
-const openFromActivity = (kind: AccountKind, explorer?: string) => {
+const openFromActivity = (
+  kind: AccountKind,
+  explorer?: string,
+  explorerExplicitlyAbsent = false
+) => {
   const isBitcoinBased = kind !== 'evm';
   const type = kind.startsWith('imported')
     ? KeyringAccountType.Imported
@@ -95,6 +105,7 @@ const openFromActivity = (kind: AccountKind, explorer?: string) => {
           label: 'Synthetic public network',
           url: 'https://rpc.synthetic.invalid/base/',
           explorer,
+          explorerExplicitlyAbsent,
         },
         isBitcoinBased,
         accountTransactions: {
@@ -129,8 +140,15 @@ const openFromActivity = (kind: AccountKind, explorer?: string) => {
       isBitcoinBased ? 'Public UTXO history' : 'Public EVM history'
     )
   ).toBeVisible();
-  fireEvent.click(screen.getByRole('button', { name: 'home.seeAllTxs' }));
-  expect(open).toHaveBeenCalledTimes(1);
+  const link = screen.queryByRole('button', { name: 'home.seeAllTxs' });
+  if (explorerExplicitlyAbsent && !isBitcoinBased) {
+    expect(link).toBeNull();
+    expect(open).not.toHaveBeenCalled();
+  } else {
+    expect(link).not.toBeNull();
+    fireEvent.click(link!);
+    expect(open).toHaveBeenCalledTimes(1);
+  }
   return open;
 };
 afterEach(() => {
@@ -234,3 +252,56 @@ it.each([
     );
   }
 );
+
+it('hides Activity explorer only for an explicitly blank new EVM registration', () => {
+  expect(
+    openFromActivity('evm', 'https://rpc.synthetic.invalid/base/', true)
+  ).not.toHaveBeenCalled();
+});
+
+it('retains an intentional same-RPC explorer when no absence marker is set', () => {
+  expect(
+    openFromActivity('evm', 'https://rpc.synthetic.invalid/base/')
+  ).toHaveBeenCalledWith(
+    `https://rpc.synthetic.invalid/base/address/${EVM_ADDRESS}`,
+    '_blank'
+  );
+});
+
+it('updates Activity for a saved explorer and API edit without changing the live network', () => {
+  const open = openFromActivity('evm', 'https://explorer.synthetic.invalid/');
+  open.mockClear();
+  const active = mockStore.getState().vault.activeNetwork;
+  act(() =>
+    mockStore.dispatch(
+      setNetwork({
+        network: {
+          ...active,
+          apiUrl: 'https://index.synthetic.invalid/',
+          explorerExplicitlyAbsent: true,
+        },
+        isEdit: false,
+      })
+    )
+  );
+  expect(mockStore.getState().vault.activeNetwork).toBe(active);
+  expect(screen.queryByRole('button', { name: 'home.seeAllTxs' })).toBeNull();
+  act(() =>
+    mockStore.dispatch(
+      setNetwork({
+        network: {
+          ...active,
+          apiUrl: 'https://index.synthetic.invalid/',
+          explorerExplicitlyAbsent: false,
+        },
+        isEdit: true,
+      })
+    )
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'home.seeAllTxs' }));
+  expect(open).toHaveBeenCalledWith(
+    `https://explorer.synthetic.invalid/address/${EVM_ADDRESS}`,
+    '_blank'
+  );
+  expect(mockStore.getState().vault.activeNetwork).toBe(active);
+});

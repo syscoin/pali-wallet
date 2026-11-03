@@ -50,7 +50,7 @@ jest.mock('hooks/useController', () => ({
   }),
 }));
 jest.mock('utils/index', () => ({
-  extractErrorMessage: (_error: unknown, fallback: string) => fallback,
+  extractErrorMessage: jest.requireActual('utils/index').extractErrorMessage,
 }));
 jest.mock('utils/navigationState', () => ({ navigateBack: jest.fn() }));
 jest.mock('utils/validatePrivateKey', () => ({
@@ -141,6 +141,45 @@ it('associates the watch-only label and gives each import field a unique accessi
   expect(
     screen.getByRole('textbox', { name: 'settings.publicIdentifierInput' }).id
   ).toBe('import-account-identifier');
+});
+
+it('validates and imports the same key after trimming surrounding whitespace', async () => {
+  const key = `0x${'aB'.repeat(32)}`;
+  (validatePrivateKeyValue as jest.Mock).mockImplementation(
+    async (value) => value === key
+  );
+  render(<ImportAccount />);
+  fireEvent.change(input(), { target: { value: ` \t${key}\n ` } });
+  await waitFor(() =>
+    expect(importButton().hasAttribute('disabled')).toBe(false)
+  );
+  expect((input() as HTMLInputElement).value).toBe(key);
+  expect(validatePrivateKeyValue).toHaveBeenCalledWith(
+    key,
+    true,
+    expect.anything()
+  );
+  await act(async () => submitForm());
+  await waitFor(() =>
+    expect(mockEmitter).toHaveBeenCalledWith(
+      ['wallet', 'importAccountFromPrivateKey'],
+      [key, undefined, { utxoAddressType: 'p2wpkh' }]
+    )
+  );
+  expect(mockEmitter).toHaveBeenCalledTimes(1);
+});
+
+it('keeps whitespace inside a private key invalid', async () => {
+  (validatePrivateKeyValue as jest.Mock).mockResolvedValue(false);
+  render(<ImportAccount />);
+  const malformed = 'synthetic internal whitespace';
+  fireEvent.change(input(), { target: { value: ` ${malformed} ` } });
+  await waitFor(() =>
+    expect(screen.getByText('settings.invalidPrivateKeyFormat')).toBeTruthy()
+  );
+  expect((input() as HTMLInputElement).value).toBe(malformed);
+  expect(importButton().hasAttribute('disabled')).toBe(true);
+  expect(mockEmitter).not.toHaveBeenCalled();
 });
 
 it('masks private input by default and reveals only through its explicit non-submit control', async () => {
@@ -385,6 +424,42 @@ it('clears a failed import and permits a fresh validated retry', async () => {
   fireEvent.click(importButton());
   expect((await screen.findByRole('status')).textContent).toBe('Imported');
   expect(mockEmitter).toHaveBeenCalledTimes(2);
+});
+
+it('clears a watch-only import refusal on edit and permits a fresh retry', async () => {
+  let attempts = 0;
+  mockEmitter.mockImplementation(async (methods: string[], args: unknown[]) => {
+    if (methods[1] === 'validateWatchOnlyIdentifier')
+      return args[0] === PUBLIC_ADDRESS;
+    if (methods[1] === 'importWatchOnlyFromController') {
+      attempts += 1;
+      if (attempts === 1) throw new Error('Synthetic import failure');
+      return { id: 1 };
+    }
+    throw new Error('Unexpected private import');
+  });
+  render(<ImportAccount />);
+  fireEvent.click(screen.getByRole('checkbox', { name: 'settings.watchOnly' }));
+  const identifier = screen.getByLabelText('settings.publicIdentifierInput');
+  fireEvent.change(identifier, { target: { value: PUBLIC_ADDRESS } });
+  await waitFor(() =>
+    expect(importButton().hasAttribute('disabled')).toBe(false)
+  );
+  fireEvent.click(importButton());
+  const failure = await screen.findByRole('alert');
+  expect(failure.textContent).toBe('Synthetic import failure');
+  expect(mockAlert.error).not.toHaveBeenCalled();
+  expect((identifier as HTMLInputElement).value).toBe(PUBLIC_ADDRESS);
+  const label = screen.getByLabelText('settings.label (settings.optional)');
+  fireEvent.change(label, { target: { value: 'Retry label' } });
+  await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
+  fireEvent.click(importButton());
+  expect((await screen.findByRole('status')).textContent).toBe('Imported');
+  expect(attempts).toBe(2);
+  expect(mockEmitter).toHaveBeenCalledWith(
+    ['wallet', 'importWatchOnlyFromController'],
+    [PUBLIC_ADDRESS, 'Retry label']
+  );
 });
 
 it.each([

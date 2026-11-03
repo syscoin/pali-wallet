@@ -75,7 +75,7 @@ export const CopyCard: React.FC<ICopyCard> = ({
     <button
       type="button"
       aria-label={`${t('buttons.copy')} ${label}`}
-      className={`${className} bg-bkg-4 border border-bkg-4 p-4 text-left text-xs rounded-lg cursor-pointer w-full max-w-xs md:max-w-md hover:border-fields-input-borderfocus focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue500`}
+      className={`${className} bg-bkg-4 border border-bkg-4 p-4 text-left text-xs rounded-lg cursor-pointer w-full max-w-xs md:max-w-md hover:border-fields-input-borderfocus focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue200`}
       onClick={onClick}
     >
       <div className="flex items-center justify-between w-full">

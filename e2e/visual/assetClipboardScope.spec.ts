@@ -140,8 +140,7 @@ for (const outcome of ['success', 'refusal'] as const) {
         });
         await expect(button).toBeEnabled();
         if (lastImportNoticeAt) {
-          // The app deliberately deduplicates identical notices for 2 seconds.
-          // Keep each import's positive feedback control outside that window.
+          // Preserve the existing inter-import timing for the two-account case.
           await expect
             .poll(() => page.evaluate(() => Date.now()))
             .toBeGreaterThanOrEqual(lastImportNoticeAt + 2000);
@@ -152,18 +151,18 @@ for (const outcome of ['success', 'refusal'] as const) {
           .toMatchObject({
             guids: [SPT_GUID],
           });
-        const successNotice = page.getByText(
-          en.tokens.hasBeenAddedToYourWallet.replace('{{token}}', SPT_SYMBOL),
-          { exact: true }
-        );
+        const successNotice = page
+          .getByRole('status')
+          .getByText(
+            en.tokens.hasBeenAddedToYourWallet.replace('{{token}}', SPT_SYMBOL),
+            { exact: true }
+          );
         await expect(successNotice).toBeVisible();
         lastImportNoticeAt = await page.evaluate(() => Date.now());
-        // The real app omits a close button and dismisses toasts on click.
-        await successNotice.click();
-        await expect(successNotice).toBeHidden();
         await expect(button).toBeDisabled();
         await page.getByRole('button', { name: 'Back', exact: true }).click();
         await wallet!.ensureOnHome();
+        await expect(successNotice).toBeHidden();
         expect((await publicSelection(page)).guids).toContain(SPT_GUID);
       };
       await wallet.step(

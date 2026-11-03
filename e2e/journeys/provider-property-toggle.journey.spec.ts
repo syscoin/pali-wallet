@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import fs from 'fs';
 import path from 'path';
 
+import en from '../../source/assets/locales/en.json';
 import { E2E_CONFIG } from '../harness/config';
 import { startDappServer } from '../harness/dappServer';
 import {
@@ -93,7 +94,7 @@ test('settings: disable and re-enable Ethereum without reloading or reconnecting
       async () => {
         await wallet.gotoRoute('#/settings/remove-eth');
         await wallet.page
-          .getByRole('button', { name: 'Set Metamask as default wallet' })
+          .getByRole('button', { name: en.settings.disablePaliProvider })
           .click();
         await expect
           .poll(() => page.evaluate(() => Boolean(window.ethereum)))
@@ -128,7 +129,7 @@ test('settings: disable and re-enable Ethereum without reloading or reconnecting
         // Reopen only the settings UI; the connected dapp is never reloaded.
         await wallet.gotoRoute('#/settings/remove-eth');
         await wallet.page
-          .getByRole('button', { name: 'Set Pali as default wallet' })
+          .getByRole('button', { name: en.settings.enablePaliProvider })
           .click();
         await expect
           .poll(() =>

@@ -34,6 +34,7 @@ const publicState = (page: Page) =>
             label: network.label,
             url: network.url,
             explorer: network.explorer ?? '',
+            explorerExplicitlyAbsent: network.explorerExplicitlyAbsent === true,
             apiUrl: network.apiUrl ?? '',
             currency: network.currency,
             slip44: network.slip44,
@@ -72,6 +73,7 @@ for (const scenario of scenarios) {
       label,
       url: scenario.url,
       explorer: `${scenario.url}/`,
+      explorerExplicitlyAbsent: true,
       apiUrl: '',
       currency: 'test',
       slip44: 60,
@@ -258,6 +260,7 @@ for (const scenario of scenarios) {
             )
             .toBe(true);
           await expect(page.locator('#rpc_url')).toHaveValue(scenario.url);
+          await expect(page.locator('#rpc_explorer')).toHaveValue('');
           await expect(
             page.getByRole('button', { name: en.buttons.save, exact: true })
           ).toBeEnabled();
@@ -305,9 +308,7 @@ for (const scenario of scenarios) {
           await expect(row).toHaveCount(1);
           await row.locator('button').first().click();
           await expect(page.locator('#rpc_url')).toHaveValue(scenario.url);
-          await expect(page.locator('#rpc_explorer')).toHaveValue(
-            expected.explorer
-          );
+          await expect(page.locator('#rpc_explorer')).toHaveValue('');
           await expect(page.locator('#rpc_apiUrl')).toHaveValue('');
           observations.reopened = {
             url: await page.locator('#rpc_url').inputValue(),

@@ -329,6 +329,19 @@ export const DialogBody = ({
   );
 };
 
+/** Associates essential dialog copy with its accessible description. */
+export const DialogDescription = ({
+  children,
+  className = '',
+}: {
+  children: ReactNode;
+  className?: string;
+}) => (
+  <HeadlessDialog.Description as="p" className={className}>
+    {children}
+  </HeadlessDialog.Description>
+);
+
 export const DialogFooter = ({
   children,
   className = '',

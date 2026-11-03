@@ -148,6 +148,9 @@ export const useFaucetComponentStates = () => {
     try {
       const data = await claimFaucet(activeNetwork.chainId, account.address);
       if (!isCurrent()) return;
+      // claimFaucet returns Axios errors; preserve the response status before
+      // converting other failed responses to the existing message path.
+      if (data?.response?.status === 429) throw data;
       if (!data?.data?.status) {
         const message = data?.data?.message || data?.message;
         throw Object.assign(new Error(message || 'Unknown error'), {
@@ -182,7 +185,9 @@ export const useFaucetComponentStates = () => {
           revision,
           status: FaucetStatusResponse.ERROR,
           errorMessage:
-            error.message && error.code !== 'PALI_FAUCET_NO_MESSAGE'
+            error?.response?.status === 429
+              ? t('faucet.rateLimited')
+              : error.message && error.code !== 'PALI_FAUCET_NO_MESSAGE'
               ? error.message
               : t('send.failed'),
         });

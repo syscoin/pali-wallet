@@ -784,6 +784,11 @@ for (const scenario of [
         }
         await expect(menu).toBeFocused();
         await expect(menu).toHaveAttribute('aria-activedescendant', id!);
+        // Headless UI scrolls the newly active item on its next animation
+        // frame. Wait for that native scroll before inspecting its geometry.
+        await expect
+          .poll(async () => (await geometry(choice)).contained)
+          .toBe(true);
       };
       const activateWithKeyboard = async (menu: Locator, choice: Locator) => {
         await focusChoiceWithKeyboard(menu, choice);

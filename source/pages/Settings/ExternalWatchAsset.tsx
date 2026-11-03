@@ -14,11 +14,15 @@ import { ITokenDetails } from 'types/tokens';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { formatCurrency } from 'utils/index';
 import { getWalletNavigationScope } from 'utils/navigationState';
-import { buildExplorerUrl } from 'utils/strings';
+import {
+  buildExplorerUrl,
+  hasExplorer,
+  selectExplorerNetwork,
+} from 'utils/strings';
 
 const DETAIL_FIELD_CLASS =
   'flex flex-col pt-2 w-full text-brand-white font-poppins font-thin';
-const DETAIL_VALUE_CLASS = 'text-brand-royalblue text-xs';
+const DETAIL_VALUE_CLASS = 'text-content-secondary text-xs';
 
 const ExternalWatchAsset = () => {
   const { host, ...data } = useQueryData();
@@ -56,11 +60,9 @@ const ExternalWatchAsset = () => {
     );
   };
 
-  // Get user's preferred currency and active network
+  // Get user's preferred currency and explorer metadata
   const { fiat } = useSelector((state: RootState) => state.price);
-  const activeNetwork = useSelector(
-    (state: RootState) => state.vault.activeNetwork
-  );
+  const explorerNetwork = useSelector(selectExplorerNetwork);
   const userCurrency = (fiat.asset || 'usd').toLowerCase();
   const currencySymbol = getSymbolFromCurrency(userCurrency.toUpperCase());
 
@@ -206,7 +208,7 @@ const ExternalWatchAsset = () => {
 
               <p className="text-sm text-gray-400 mb-6">{t(formatError)}</p>
 
-              <div className="text-xs text-gray-500 mb-6 p-4 bg-gray-800/50 rounded-lg">
+              <div className="text-xs text-gray-400 mb-6 p-4 bg-gray-800/50 rounded-lg">
                 <p className="mb-2">{t('components.expectedFormat')}</p>
                 <code className="text-green-400">
                   {`// ERC-20 Token
@@ -250,7 +252,7 @@ const ExternalWatchAsset = () => {
                   : assetError}
               </p>
 
-              <div className="text-xs text-gray-500 mb-6 p-4 bg-gray-800/50 rounded-lg">
+              <div className="text-xs text-gray-400 mb-6 p-4 bg-gray-800/50 rounded-lg">
                 <p>{t('components.pleaseVerifyThat')}</p>
                 <ul className="text-left mt-2 space-y-1">
                   <li>{t('components.contractAddressCorrect')}</li>
@@ -327,19 +329,25 @@ const ExternalWatchAsset = () => {
 
                   <p className={DETAIL_FIELD_CLASS}>
                     {t('settings.contractAddress')}
-                    <button
-                      onClick={() => {
-                        const explorerUrl = buildExplorerUrl(
-                          activeNetwork.explorer,
-                          'address',
-                          assetInfo.contractAddress
-                        );
-                        window.open(explorerUrl, '_blank');
-                      }}
-                      className="text-brand-royalblue text-xs hover:text-brand-deepPink100 cursor-pointer underline text-left transition-colors duration-200"
-                    >
-                      {assetInfo.contractAddress}
-                    </button>
+                    {hasExplorer(explorerNetwork) ? (
+                      <button
+                        onClick={() => {
+                          const explorerUrl = buildExplorerUrl(
+                            explorerNetwork.explorer,
+                            'address',
+                            assetInfo.contractAddress
+                          );
+                          window.open(explorerUrl, '_blank');
+                        }}
+                        className="text-content-secondary text-xs hover:text-content-primary cursor-pointer underline text-left min-w-0 break-all transition-colors duration-200"
+                      >
+                        {assetInfo.contractAddress}
+                      </button>
+                    ) : (
+                      <span className="text-content-secondary text-xs min-w-0 break-all">
+                        {assetInfo.contractAddress}
+                      </span>
+                    )}
                   </p>
 
                   <p className={DETAIL_FIELD_CLASS}>
@@ -352,7 +360,7 @@ const ExternalWatchAsset = () => {
                   {assetInfo.tokenStandard === 'ERC-1155' && (
                     <p className={DETAIL_FIELD_CLASS}>
                       {t('send.tokenId')}
-                      <span className="text-brand-royalblue text-xs break-all">
+                      <span className="text-content-secondary text-xs break-all">
                         {assetInfo.tokenId}
                       </span>
                     </p>
@@ -360,7 +368,7 @@ const ExternalWatchAsset = () => {
 
                   <p className={DETAIL_FIELD_CLASS}>
                     {t('send.balance')}
-                    <span className="text-brand-royalblue text-xs break-all">
+                    <span className="text-content-secondary text-xs break-all">
                       {assetInfo.tokenStandard === 'ERC-1155'
                         ? assetInfo.rawBalance
                         : assetInfo.tokenStandard === 'ERC-721' &&

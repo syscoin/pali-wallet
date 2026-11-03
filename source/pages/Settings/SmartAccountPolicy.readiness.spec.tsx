@@ -23,6 +23,8 @@ const STORAGE_KEY = `pali-smart-account-recovery-replacement:${CHAIN_ID}:${ACCOU
 let mockVault: any;
 let mockScope: string;
 let mockChainTimestamp: number;
+let mockLocale = 'en';
+const mockDateAlert = jest.fn();
 const mockEmitter = jest.fn();
 const mockLocation = {
   hash: '',
@@ -65,7 +67,7 @@ jest.mock('hooks/controllerStatus', () => ({
 }));
 jest.mock('hooks/useUtils', () => ({
   useUtils: () => ({
-    alert: { error: jest.fn(), success: jest.fn() },
+    alert: { error: mockDateAlert, success: jest.fn() },
     navigate: jest.fn(),
     useCopyClipboard: () => [null, jest.fn()],
   }),
@@ -76,7 +78,11 @@ jest.mock('react-redux', () => ({
 }));
 jest.mock('react-router-dom', () => ({ useLocation: () => mockLocation }));
 jest.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({
+    i18n: { resolvedLanguage: mockLocale, language: mockLocale },
+    t: (key: string, values?: { time?: string }) =>
+      values?.time ? `${key}: ${values.time}` : key,
+  }),
 }));
 jest.mock('utils/navigationState', () => ({
   ...jest.requireActual('utils/navigationState'),
@@ -125,6 +131,7 @@ beforeEach(() => {
   jest.useFakeTimers();
   jest.setSystemTime(NOW);
   jest.clearAllMocks();
+  mockLocale = 'en';
   localStorage.clear();
   mockScope = 'account:1-network:57057';
   mockChainTimestamp = NOW.getTime() / 1000;
@@ -369,3 +376,68 @@ it('does not read hidden pages and refreshes on becoming visible', async () => {
   await settle();
   expect(finalize().disabled).toBe(false);
 });
+
+it.each(['de', 'fr'])(
+  'reformats observed guardian dates in %s without changing chain readiness or the local intent',
+  async (locale) => {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    const view = render(<SmartAccountPolicy />);
+    await settle();
+    expect(finalize().disabled).toBe(true);
+    mockLocale = locale;
+    view.rerender(<SmartAccountPolicy />);
+    await settle();
+    for (const [key, seconds] of [
+      [
+        'settings.smartAccountGuardianRecoveryReadyAt',
+        NOW.getTime() / 1000 + 60,
+      ],
+      [
+        'settings.smartAccountGuardianExpiresAt',
+        NOW.getTime() / 1000 + 60 + 604800,
+      ],
+      ['settings.smartAccountGuardianObservedAt', mockChainTimestamp],
+    ] as const) {
+      expect(
+        screen.getByText(
+          `${key}: ${new Date(seconds * 1000).toLocaleString(locale)}`
+        )
+      ).toBeTruthy();
+    }
+    expect(finalize().disabled).toBe(true);
+    expect(localStorage.getItem(STORAGE_KEY)).toBe(saved);
+    expect(
+      mockEmitter.mock.calls.some(
+        ([[, method]]) => method === 'finalizeSmartAccountGuardianRecovery'
+      )
+    ).toBe(false);
+  }
+);
+
+it.each(['de', 'fr'])(
+  'formats the chain-not-ready error deadline in %s after a backward local clock change',
+  async (locale) => {
+    mockLocale = locale;
+    mockChainTimestamp += 60;
+    jest.setSystemTime(NOW.getTime() - 120000);
+    const saved = localStorage.getItem(STORAGE_KEY);
+    const read = mockEmitter.getMockImplementation()!;
+    mockEmitter.mockImplementation((path, ...args) =>
+      path[1] === 'finalizeSmartAccountGuardianRecovery'
+        ? Promise.reject(new Error('PALI_GUARDIAN_RECOVERY_NOT_READY'))
+        : read(path, ...args)
+    );
+    render(<SmartAccountPolicy />);
+    await settle();
+    expect(finalize().disabled).toBe(false);
+    fireEvent.click(finalize());
+    await settle();
+    await settle();
+    expect(mockDateAlert).toHaveBeenCalledWith(
+      `settings.smartAccountGuardianRecoveryReadyAt: ${new Date(
+        NOW.getTime() + 60000
+      ).toLocaleString(locale)}`
+    );
+    expect(localStorage.getItem(STORAGE_KEY)).toBe(saved);
+  }
+);

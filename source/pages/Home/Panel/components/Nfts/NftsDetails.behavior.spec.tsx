@@ -73,7 +73,12 @@ beforeEach(() => {
     },
   };
   mockEmitter.mockImplementation(([, method], args) => {
-    if (method === 'fetchNftTokenIds') return Promise.resolve([]);
+    if (method === 'fetchNftTokenIds')
+      return Promise.resolve({
+        tokens: [],
+        hasMore: false,
+        requiresManualEntry: true,
+      });
     if (method === 'verifyERC721Ownership')
       return new Promise((resolve) => pending.set(args[2][0], resolve));
     throw new Error(`Unexpected ${method}`);
@@ -159,7 +164,11 @@ it('does not replace the next collection with an old enumeration reply', async (
         ? new Promise((resolve) => {
             finishOld = resolve;
           })
-        : Promise.resolve([{ tokenId: '222', balance: 1 }]);
+        : Promise.resolve({
+            tokens: [{ tokenId: '222', balance: 1 }],
+            hasMore: false,
+            requiresManualEntry: false,
+          });
     }
     throw new Error(`Unexpected ${method}`);
   });
@@ -171,7 +180,13 @@ it('does not replace the next collection with an old enumeration reply', async (
   );
   await act(async () => undefined);
   expect(screen.getByRole('button', { name: '#222' })).toBeTruthy();
-  await act(async () => finishOld([{ tokenId: '111', balance: 1 }]));
+  await act(async () =>
+    finishOld({
+      tokens: [{ tokenId: '111', balance: 1 }],
+      hasMore: false,
+      requiresManualEntry: false,
+    })
+  );
   expect(screen.queryByRole('button', { name: '#111' })).toBeNull();
   expect(screen.getByRole('button', { name: '#222' })).toBeTruthy();
 });

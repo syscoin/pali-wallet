@@ -289,6 +289,17 @@ module.exports = {
               // Only the unused NftImage component imports this old fallback.
               // A future real import still emits it through asset/resource.
               '**/placeholder.png',
+              // Superseded input status icons have no runtime references.
+              // A future import still emits them through asset/resource.
+              '**/input_success_icon.svg',
+              '**/input_error_icon.svg',
+              // Legacy success artwork is unused; current states use inline
+              // icons or faucet-success.svg. Imports still emit these files.
+              '**/successIcon.svg',
+              '**/successIconWhite.svg',
+              // No current Icon call site selects this legacy provider logo.
+              // A future explicit import still emits it as an asset.
+              '**/metamask.svg',
             ],
           },
         },
@@ -358,6 +369,26 @@ module.exports = {
   optimization: {
     splitChunks: {
       cacheGroups: {
+        // These exact modules are duplicated in both initial UI bundles.
+        // Share that group between the pages; the worker keeps its static copy.
+        uiSharedVendors: {
+          test: /[\\/]node_modules[\\/](?:lodash[\\/]lodash\.js|jdenticon[\\/]dist[\\/]jdenticon-module\.mjs)$/,
+          chunks(chunk) {
+            return (
+              chunk.canBeInitial() &&
+              [...chunk.groupsIterable].some(
+                (group) => group.name === 'app' || group.name === 'external'
+              )
+            );
+          },
+          name: 'ui-shared-vendors',
+          priority: 20,
+          // Share these dependencies across both UI runtimes without
+          // partitioning the group by per-entrypoint export usage.
+          usedExports: false,
+          minChunks: 2,
+          enforce: true,
+        },
         // Share only identical privacy modules across pre-registered background chunks.
         privacyBackgroundShared: {
           test(module) {

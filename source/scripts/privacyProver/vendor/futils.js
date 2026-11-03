@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-var-requires -- The packaged prover uses CommonJS for both webpack and its standalone qualification harness. */
 /*
     Copyright 2018 0kims association.
 
@@ -17,37 +18,36 @@
     snarkjs. If not, see <https://www.gnu.org/licenses/>.
 */
 
-const bigInt = require("./bigint.js");
+const bigInt = require('./bigint.js');
 
-exports.mulScalar = (F, base, e) =>{
-    let res = F.zero;
-    let rem = bigInt(e);
-    let exp = base;
+exports.mulScalar = (F, base, e) => {
+  let res = F.zero;
+  let rem = bigInt(e);
+  let exp = base;
 
-    while (! rem.isZero()) {
-        if (rem.isOdd()) {
-            res = F.add(res, exp);
-        }
-        exp = F.double(exp);
-        rem = rem.shr(1);
+  while (!rem.isZero()) {
+    if (rem.isOdd()) {
+      res = F.add(res, exp);
     }
+    exp = F.double(exp);
+    rem = rem.shr(1);
+  }
 
-    return res;
+  return res;
 };
 
+exports.exp = (F, base, e) => {
+  let res = F.one;
+  let rem = bigInt(e);
+  let exp = base;
 
-exports.exp = (F, base, e) =>{
-    let res = F.one;
-    let rem = bigInt(e);
-    let exp = base;
-
-    while (! rem.isZero()) {
-        if (rem.isOdd()) {
-            res = F.mul(res, exp);
-        }
-        exp = F.square(exp);
-        rem = rem.shr(1);
+  while (!rem.isZero()) {
+    if (rem.isOdd()) {
+      res = F.mul(res, exp);
     }
+    exp = F.square(exp);
+    rem = rem.shr(1);
+  }
 
-    return res;
+  return res;
 };

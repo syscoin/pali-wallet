@@ -44,6 +44,20 @@ const literals = new Set();
 const dynamicPrefixes = new Set();
 const translationCalls = new Map();
 
+// A conditional key selects one translation, rather than providing fallbacks.
+// Check both finite branches so loading/error variants cannot hide missing keys.
+function finiteKeyLiterals(node) {
+  if (ts.isStringLiteralLike(node)) return [node];
+  if (ts.isParenthesizedExpression(node) || ts.isAsExpression(node))
+    return finiteKeyLiterals(node.expression);
+  if (ts.isConditionalExpression(node))
+    return [
+      ...finiteKeyLiterals(node.whenTrue),
+      ...finiteKeyLiterals(node.whenFalse),
+    ];
+  return [];
+}
+
 for (const file of files) {
   const src = fs.readFileSync(file, 'utf8');
   const sourceFile = ts.createSourceFile(
@@ -79,22 +93,21 @@ for (const file of files) {
           callee.name.text === 't');
       const [keyArg] = node.arguments;
 
-      if (
-        isTranslationCall &&
-        keyArg &&
-        ts.isStringLiteralLike(keyArg) &&
-        /^[a-zA-Z][a-zA-Z0-9_]*\.[a-zA-Z0-9_.-]+$/.test(keyArg.text)
-      ) {
-        const position = sourceFile.getLineAndCharacterOfPosition(
-          keyArg.getStart(sourceFile)
-        );
-        const locations = translationCalls.get(keyArg.text) || [];
-        locations.push(
-          `${path.relative(ROOT, file)}:${position.line + 1}:${
-            position.character + 1
-          }`
-        );
-        translationCalls.set(keyArg.text, locations);
+      if (isTranslationCall && keyArg) {
+        for (const literal of finiteKeyLiterals(keyArg)) {
+          if (!/^[a-zA-Z][a-zA-Z0-9_]*\.[a-zA-Z0-9_.-]+$/.test(literal.text))
+            continue;
+          const position = sourceFile.getLineAndCharacterOfPosition(
+            literal.getStart(sourceFile)
+          );
+          const locations = translationCalls.get(literal.text) || [];
+          locations.push(
+            `${path.relative(ROOT, file)}:${position.line + 1}:${
+              position.character + 1
+            }`
+          );
+          translationCalls.set(literal.text, locations);
+        }
       }
     }
     ts.forEachChild(node, visit);

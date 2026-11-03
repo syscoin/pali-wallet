@@ -60,6 +60,53 @@
   box-shadow: 0 -8px 12px -12px rgb(0 0 0 / 45%);
 }
 
+/* The provider settings explanation and error must remain in the same scroll
+ * flow as the actions, so a short popup never covers explanatory text. */
+[data-navigation-scroll='wallet-layout'] .provider-settings-footer {
+  position: static;
+}
+
+/* A funded wallet's warning precedes Forget in the normal scroll flow. */
+[data-navigation-scroll='wallet-layout'] .funded-forget-footer {
+  position: static;
+}
+
+@media (min-height: 500px) {
+  [data-navigation-scroll='wallet-layout']
+    .page-content:has(.funded-forget-footer) {
+    padding-top: 1.5rem;
+  }
+
+  [data-navigation-scroll='wallet-layout'] .funded-forget-footer {
+    padding-top: 0.5rem;
+  }
+}
+
+/* Long service-provided feedback must wrap without widening the wallet. */
+.faucet-feedback p {
+  overflow-wrap: anywhere;
+}
+
+/* Keep the currency selector fully exposed in a short wallet window. */
+@media (max-height: 400px) {
+  [data-navigation-scroll='wallet-layout'] .currency-settings-footer {
+    position: static;
+  }
+
+  /* Keep short Faucet feedback above its sticky action in a short popup. */
+  [data-navigation-scroll='wallet-layout'] .page-content:has(.faucet-feedback) {
+    padding-top: 0.5rem;
+  }
+
+  .faucet-feedback h1 {
+    margin-top: 0.5rem;
+  }
+
+  .faucet-feedback p {
+    max-width: 100%;
+  }
+}
+
 /** ALERTS/TOASTS **/
 
 /* PSBT approvals use one bounded content scroller above their action row. */
@@ -73,6 +120,21 @@
   position: relative;
   bottom: auto;
   margin-top: 0;
+}
+
+/* Give translated import tabs room to wrap at word boundaries. */
+@media (max-width: 360px) {
+  .token-import-tabs > button {
+    font-size: 14px;
+    padding-inline: 4px;
+  }
+  .token-import-tabs > button:first-child {
+    width: 48%;
+  }
+  .token-import-tabs > button:last-child {
+    width: 52%;
+    padding-inline: 0;
+  }
 }
 
 /* Pali Toast Styles */
@@ -529,4 +591,38 @@ input[type='number']::-webkit-inner-spin-button {
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+.faucet-title > h2 {
+  max-height: min(8rem, 34dvh) !important;
+}
+
+@media (max-width: 360px) and (max-height: 400px) {
+  .faucet-title > h2 {
+    font-size: 14px;
+    line-height: 20px;
+    text-wrap: balance;
+  }
+}
+
+/* Enlarge the actionable status dot without moving its header slot. */
+.status-target {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+}
+
+.status-target:not(:disabled) {
+  cursor: pointer;
+}
+
+.status-target:focus-visible {
+  border-radius: 50%;
+  outline: 2px solid white;
+  outline-offset: -2px;
 }

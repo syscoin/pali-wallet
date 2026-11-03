@@ -145,7 +145,9 @@ test('NFT Send keeps the current collection and requires ownership of manual IDs
             name: en.tokens.addCustomTab,
             exact: true,
           });
-          if (await tab.count()) await tab.first().click();
+          await expect(tab).toBeVisible();
+          await tab.click();
+          await expect(page.locator('#custom-token-contract')).toBeEditable();
           await page
             .locator('#custom-token-contract')
             .fill(collection.contract);
@@ -171,7 +173,9 @@ test('NFT Send keeps the current collection and requires ownership of manual IDs
             responses: [] as {
               contract: string;
               error: boolean;
+              hasMore: boolean | undefined;
               ids: string[];
+              requiresManualEntry: boolean | undefined;
             }[],
           };
           (chrome.runtime.sendMessage as any) = (...args: any[]) => {
@@ -190,14 +194,16 @@ test('NFT Send keeps the current collection and requires ownership of manual IDs
                   response?.error ||
                   response?.success === false
               );
-              // Record only public collection IDs. Never replace a response.
+              // Observe the plain runtime DTO; never replace its held response.
+              const result = response?.result ?? response;
               evidence.responses.push({
                 contract,
                 error,
-                ids: (Array.isArray(response)
-                  ? response
-                  : response?.result || []
-                ).map((entry: any) => String(entry.tokenId)),
+                ids: (Array.isArray(result?.tokens) ? result.tokens : []).map(
+                  (entry: any) => String(entry.tokenId)
+                ),
+                hasMore: result?.hasMore,
+                requiresManualEntry: result?.requiresManualEntry,
               });
               const deliver = () => callback(response);
               if (contract === firstContract && !held) {
@@ -272,6 +278,9 @@ test('NFT Send keeps the current collection and requires ownership of manual IDs
             contract: collection.contract,
             error: false,
             ids: [collection.tokenId],
+            hasMore: false,
+            // Enumerated collections retain the existing manual-entry option.
+            requiresManualEntry: true,
           }))
         );
         expect(deniedWrites).toEqual([]);

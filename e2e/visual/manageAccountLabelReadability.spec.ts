@@ -10,8 +10,13 @@ import fr from '../../source/assets/locales/fr.json';
 import { ellipsis } from '../../source/utils/format';
 import {
   getPaliEntryPointAddress,
+  paliCompositeValidatorInterface,
+  paliEcdsaValidatorInterface,
   paliEntryPointInterface,
+  paliP256WebAuthnValidatorInterface,
   paliSmartAccountFactoryInterface,
+  paliSmartAccountInterface,
+  paliSlhDsaValidatorInterface,
 } from '../../source/utils/smartAccount/contracts';
 import {
   PALI_CREATE2_DEPLOYER_ADDRESS,
@@ -408,6 +413,107 @@ const publicHubSnapshot = (page: Page) =>
 
 // The method/parameter gate runs before the shared fixture's fulfill handler.
 // The pure fixture then independently checks the canonical ABI and log result.
+const hubHydrationReply = (
+  call: any,
+  fixture: ReturnType<typeof createVisualFixture>
+): string | undefined => {
+  // Hydration batches these reads in parallel with getCode, even for a not-yet
+  // deployed account. Scope the fixture to that exact account and empty state.
+  if (
+    call?.method !== 'eth_call' ||
+    call.params?.length !== 2 ||
+    call.params[1] !== 'latest'
+  )
+    return undefined;
+  const tx = call.params[0];
+  if (
+    !tx ||
+    typeof tx !== 'object' ||
+    Array.isArray(tx) ||
+    Object.keys(tx).some((key) => !['to', 'data', 'from'].includes(key))
+  )
+    return undefined;
+  const lower = (value: unknown) =>
+    typeof value === 'string' ? value.toLowerCase() : '';
+  if (
+    tx.from !== undefined &&
+    ![fixture.address, fixture.smartAccountAddress].some(
+      (owner) => lower(owner) === lower(tx.from)
+    )
+  )
+    return undefined;
+  const expected = new Map<string, string>();
+  const add = (
+    target: string,
+    iface: typeof paliSmartAccountInterface,
+    fn: string,
+    args: unknown[],
+    result: unknown[] | null
+  ) =>
+    expected.set(
+      `${lower(target)}:${lower(iface.encodeFunctionData(fn, args))}`,
+      result === null ? '0x' : iface.encodeFunctionResult(fn, result)
+    );
+  const zero = '0x' + '00'.repeat(32);
+  for (const [id, iface, reads] of [
+    [
+      'p256WebAuthnValidator',
+      paliP256WebAuthnValidatorInterface,
+      [['authData', [[zero, zero, zero, zero, 0]]]],
+    ],
+    [
+      'ecdsaValidator',
+      paliEcdsaValidatorInterface,
+      [
+        ['owners', [[]]],
+        ['threshold', [0]],
+      ],
+    ],
+    [
+      'compositeValidator',
+      paliCompositeValidatorInterface,
+      [
+        ['childValidators', [[]]],
+        ['threshold', [0]],
+      ],
+    ],
+    [
+      'slhDsaValidator',
+      paliSlhDsaValidatorInterface,
+      [['authData', [[zero, zero]]]],
+    ],
+  ] as const) {
+    const module = fixture.infrastructure.find(
+      (contract) => contract.id === id
+    );
+    if (!module) continue;
+    // The counterfactual account has no runtime; these calls return empty bytes.
+    add(
+      fixture.smartAccountAddress,
+      paliSmartAccountInterface,
+      'isModuleInstalled',
+      [1, module.address, '0x'],
+      null
+    );
+    for (const [fn, result] of reads)
+      add(
+        module.address,
+        iface,
+        fn,
+        [fixture.smartAccountAddress],
+        result as unknown as unknown[]
+      );
+  }
+  add(
+    fixture.smartAccountAddress,
+    paliSmartAccountInterface,
+    'activeValidator',
+    [],
+    null
+  );
+  return expected.get(`${lower(tx.to)}:${lower(tx.data)}`);
+};
+
 const allowsHubCarrierRpc = (
   call: any,
   fixture: ReturnType<typeof createVisualFixture>
@@ -478,8 +584,9 @@ const allowsHubCarrierRpc = (
       typeof tx === 'object' &&
       !Array.isArray(tx) &&
       Object.keys(tx).every((key) => ['to', 'data', 'from'].includes(key)) &&
-      lower(tx.to) === lower(fixture.factory.address) &&
-      calls.includes(lower(tx.data)) &&
+      ((lower(tx.to) === lower(fixture.factory.address) &&
+        calls.includes(lower(tx.data))) ||
+        hubHydrationReply(call, fixture) !== undefined) &&
       (tx.from === undefined || owners.includes(lower(tx.from)))
     );
   }
@@ -530,12 +637,79 @@ const allowsHubCarrierRpc = (
   return false;
 };
 
+const verifyHubHydrationFence = (
+  fixture: ReturnType<typeof createVisualFixture>
+) => {
+  const make = (to: string, data: string) => ({
+    jsonrpc: '2.0',
+    id: 1,
+    method: 'eth_call',
+    params: [{ to, data }, 'latest'] as const,
+  });
+  const installed = make(
+    fixture.smartAccountAddress,
+    paliSmartAccountInterface.encodeFunctionData('isModuleInstalled', [
+      1,
+      fixture.validator.address,
+      '0x',
+    ])
+  );
+  expect(allowsHubCarrierRpc(installed, fixture)).toBe(true);
+  expect(hubHydrationReply(installed, fixture)).toBe('0x');
+  const owners = make(
+    fixture.validator.address,
+    paliEcdsaValidatorInterface.encodeFunctionData('owners', [
+      fixture.smartAccountAddress,
+    ])
+  );
+  expect(allowsHubCarrierRpc(owners, fixture)).toBe(true);
+  expect([
+    ...paliEcdsaValidatorInterface.decodeFunctionResult(
+      'owners',
+      hubHydrationReply(owners, fixture)!
+    )[0],
+  ]).toEqual([]);
+  for (const rejected of [
+    make(fixture.address, installed.params[0].data),
+    make(
+      fixture.smartAccountAddress,
+      paliSmartAccountInterface.encodeFunctionData('isModuleInstalled', [
+        2,
+        fixture.validator.address,
+        '0x',
+      ])
+    ),
+    make(
+      fixture.smartAccountAddress,
+      paliSmartAccountInterface.encodeFunctionData('isModuleInstalled', [
+        1,
+        fixture.validator.address,
+        '0x01',
+      ])
+    ),
+    make(
+      fixture.validator.address,
+      paliEcdsaValidatorInterface.encodeFunctionData('owners', [
+        fixture.address,
+      ])
+    ),
+    make(fixture.address, owners.params[0].data),
+    { ...owners, params: [owners.params[0], 'pending'] },
+    { ...owners, params: [owners.params[0], 'latest', {}] },
+    { ...owners, params: [{ ...owners.params[0], value: '0x1' }, 'latest'] },
+    { ...owners, method: 'eth_sendRawTransaction' },
+    { ...owners, extra: true },
+  ])
+    expect(allowsHubCarrierRpc(rejected, fixture)).toBe(false);
+};
+
 async function installHubCarrierGate(
   context: PaliWallet['context'],
   fixture: ReturnType<typeof createVisualFixture>
 ) {
   const reads: any[] = [],
-    denied: string[] = [];
+    denied: string[] = [],
+    rejectedCalls: unknown[] = [];
   await context.route('**/*', async (route) => {
     const request = route.request(),
       url = new URL(request.url());
@@ -549,6 +723,20 @@ async function installHubCarrierGate(
     const calls = Array.isArray(payload) ? payload : [payload];
     const reject = async (reason: string) => {
       denied.push(reason);
+      if (rejectedCalls.length < 12) {
+        const detail = {
+          reason,
+          method: request.method(),
+          path: url.pathname,
+          calls,
+        };
+        if (
+          !rejectedCalls.some(
+            (previous) => JSON.stringify(previous) === JSON.stringify(detail)
+          )
+        )
+          rejectedCalls.push(detail);
+      }
       await route.abort('blockedbyclient');
     };
     if (
@@ -562,18 +750,19 @@ async function installHubCarrierGate(
       !calls.every((call) => allowsHubCarrierRpc(call, fixture))
     )
       return reject('rpc-envelope-or-params');
-    const reply = visualFixtureRead(
-      fixture,
-      request.url(),
-      request.method(),
-      payload
-    );
-    const responses = Array.isArray(reply?.body) ? reply.body : [reply?.body];
-    if (
-      !reply ||
-      reply.unsupported?.length ||
-      responses.some((item: any) => !item || item.error)
-    )
+    const replies = calls.map((call: any) => {
+      const hydration = hubHydrationReply(call, fixture);
+      if (hydration !== undefined)
+        return { jsonrpc: '2.0', id: call.id, result: hydration };
+      const reply = visualFixtureRead(
+        fixture,
+        request.url(),
+        request.method(),
+        call
+      );
+      return reply && !reply.unsupported?.length ? reply.body : undefined;
+    });
+    if (replies.some((item: any) => !item || item.error))
       return reject('rpc-unsupported-or-error');
     reads.push(
       ...calls.map((call: any) => ({
@@ -581,9 +770,17 @@ async function installHubCarrierGate(
         params: call.params,
       }))
     );
+    if (
+      calls.some((call: any) => hubHydrationReply(call, fixture) !== undefined)
+    )
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(Array.isArray(payload) ? replies : replies[0]),
+      });
     return route.fallback();
   });
-  return { reads, denied };
+  return { reads, denied, rejectedCalls };
 }
 
 async function hubProxyDenial(
@@ -924,6 +1121,7 @@ for (const locale of [
       .digest('hex');
     const previous = { ...E2E_CONFIG },
       fixture = createVisualFixture();
+    verifyHubHydrationFence(fixture);
     const server = await startUtxoFixtureServer();
     Object.assign(E2E_CONFIG, {
       seedPhrase: VISUAL_FIXTURE_SEED,

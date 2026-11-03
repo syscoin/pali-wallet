@@ -3,6 +3,7 @@ import { utils as sys } from 'syscoinjs-lib';
 
 import en from '../../source/assets/locales/en.json';
 import { E2E_CONFIG } from '../harness/config';
+import { focusRingContrast } from '../harness/focusRingGeometry';
 import { PaliWallet } from '../harness/pali';
 import {
   createUtxoFixture,
@@ -436,6 +437,7 @@ test('About support links and URL copy are named keyboard controls in small wind
           break;
       }
       await expect(copy).toBeFocused();
+      expect(await focusRingContrast(copy)).toBeGreaterThanOrEqual(3);
       const box = (await copy.boundingBox())!;
       expect(box.x).toBeGreaterThanOrEqual(0);
       expect(box.x + box.width).toBeLessThanOrEqual(viewport.width);

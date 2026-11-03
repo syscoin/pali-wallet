@@ -30,12 +30,13 @@ export const FaucetFirstAccessModal = ({
     activeNetwork: { chainId, kind },
   } = useSelector((state: RootState) => state.vault);
 
-  const currentNetworkData = faucetNetworkData?.[chainId];
+  const currentNetworkData = faucetNetworkData[chainId];
 
   return (
     <DialogPrimitive show onClose={onClose}>
       <CenterPanel padded={false} scroll={false} className="flex flex-col">
         <DialogHeader
+          className="faucet-title"
           title={t('faucet.firstAccessTitle', {
             token: currentNetworkData?.token,
             network: currentNetworkData?.network,

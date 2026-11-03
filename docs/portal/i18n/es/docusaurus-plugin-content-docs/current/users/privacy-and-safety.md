@@ -23,3 +23,11 @@ La actividad de blockchain es pública. Tu dirección, historial de transaccione
 ## Privacidad de passkey institucional
 
 Si una dapp o institución proporciona una URL de sponsor, ese servicio puede recibir solicitudes de sponsor relacionadas con la ejecución de la cuenta. Revisa el texto de política institucional y la URL antes de aprobar.
+
+## Notas privadas
+
+Pali puede usar el servicio de privacidad predeterminado o tu propio servicio Sysnode. Para ejecutar tu propio servicio, consulta la [guía de Sysnode](https://github.com/syscoin/sysnode-backend/blob/main/docs/privacy-standalone.md).
+
+El límite predeterminado es de 128 notas guardadas (hasta 4 MiB). En **Capacidad de notas** puedes elegir 256 (hasta 8 MiB) o 512 (hasta 16 MiB); los límites mayores pueden usar más almacenamiento local y ralentizar las operaciones del almacén. Cambiar el límite no elimina notas, pero las versiones antiguas de la billetera podrían no leer el formato actualizado.
+
+Usa **Borrar notas completadas** para verificar y eliminar notas completadas. Un retiro conocido y cualquier depósito relacionado registrado deben estar finalizados; las notas no verificadas permanecen guardadas. El RPC de Ethereum seleccionado recibe el hash del retiro y, si existe, el del depósito relacionado, por lo que su proveedor puede vincularlos. La verificación depende de las respuestas de ese RPC.

@@ -30,15 +30,15 @@ jest.mock('react-router-dom', () => ({
 }));
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string, values?: { wallet?: string }) => {
+    t: (key: string) => {
       const messages = jest.requireActual('../../assets/locales/en.json');
-      if (key === 'settings.setWalletAsDefault')
-        return messages.settings.setWalletAsDefault.replace(
-          '{{wallet}}',
-          values?.wallet || ''
-        );
-      if (key.startsWith('providerDefault.'))
-        return messages.providerDefault[key.split('.')[1]];
+      if (
+        key === 'settings.disablePaliProvider' ||
+        key === 'settings.enablePaliProvider' ||
+        key === 'settings.paliProviderEnabled' ||
+        key === 'settings.paliProviderDisabled'
+      )
+        return messages.settings[key.split('.')[1]];
       return key;
     },
   }),
@@ -59,10 +59,12 @@ it.each([true, false])(
     render(<RemoveEth />);
     const action = screen.getByRole('button', {
       name: enabled
-        ? 'Set Metamask as default wallet'
-        : 'Set Pali as default wallet',
+        ? 'Disable Pali’s Ethereum provider'
+        : 'Enable Pali’s Ethereum provider',
     });
-    expect(action.closest('[data-page-action-footer]')).not.toBeNull();
+    expect(action.closest('[data-page-action-footer]')).toHaveClass(
+      'provider-settings-footer'
+    );
     expect(action).toHaveClass('w-full', 'min-w-0', 'min-h-[44px]');
     expect(action).not.toHaveClass('w-[352px]');
     expect(action).toHaveAttribute('type', 'button');
@@ -71,6 +73,15 @@ it.each([true, false])(
         .getByRole('button', { name: 'buttons.close' })
         .closest('[data-page-action-footer]')
     ).toBe(action.closest('[data-page-action-footer]'));
+    const warning = screen.queryByText('settings.disablePaliProviderWarning');
+    if (enabled) {
+      expect(warning).toBeVisible();
+      expect(warning!.closest('[data-page-action-footer]')).toBe(
+        action.closest('[data-page-action-footer]')
+      );
+    } else {
+      expect(warning).toBeNull();
+    }
   }
 );
 
@@ -88,7 +99,7 @@ it('blocks overlapping settings choices while normal property delivery is pendin
   render(<RemoveEth />);
 
   const disable = screen.getByRole('button', {
-    name: 'Set Metamask as default wallet',
+    name: 'Disable Pali’s Ethereum provider',
   });
   fireEvent.click(disable);
   expect(disable).toBeDisabled();
@@ -105,7 +116,7 @@ it('blocks overlapping settings choices while normal property delivery is pendin
   await act(async () => complete());
   await waitFor(() =>
     expect(
-      screen.getByRole('button', { name: 'Set Pali as default wallet' })
+      screen.getByRole('button', { name: 'Enable Pali’s Ethereum provider' })
     ).toBeEnabled()
   );
   expect(
@@ -133,19 +144,17 @@ it('uses the authoritative preference without optimistic success or late setter 
   const DefaultWallet = () => useWalletProviderDefault().modalText;
   const view = render(<DefaultWallet />);
 
-  fireEvent.click(screen.getByText('Set Pali as default wallet!'));
-  fireEvent.click(screen.getByText('Set Pali as default wallet!'));
+  fireEvent.click(screen.getByText('Enable Pali’s Ethereum provider'));
+  fireEvent.click(screen.getByText('Enable Pali’s Ethereum provider'));
   expect(mockEmitter).toHaveBeenCalledTimes(1);
   expect(mockEmitter).toHaveBeenCalledWith(['wallet', 'addWindowEthProperty']);
 
-  expect(
-    screen.queryByText('Pali was successfully set as the default wallet!')
-  ).toBeNull();
+  expect(screen.queryByText('Pali’s Ethereum provider is enabled')).toBeNull();
   await act(async () => complete());
   mockHasEthProperty = true;
   view.rerender(<DefaultWallet />);
   expect(
-    screen.getByText('Pali was successfully set as the default wallet!')
+    screen.getByText('Pali’s Ethereum provider is enabled')
   ).toBeInTheDocument();
   expect(mockEmitter).toHaveBeenCalledTimes(1);
 });
@@ -159,8 +168,8 @@ it.each([true, false])(
     try {
       render(<RemoveEth />);
       const label = enabled
-        ? 'Set Metamask as default wallet'
-        : 'Set Pali as default wallet';
+        ? 'Disable Pali’s Ethereum provider'
+        : 'Enable Pali’s Ethereum provider';
       fireEvent.click(screen.getByRole('button', { name: label }));
       await waitFor(() =>
         expect(screen.getByRole('button', { name: label })).toBeEnabled()
@@ -190,14 +199,37 @@ it('default-wallet rejection shows no false success and permits a later explicit
   const DefaultWallet = () => useWalletProviderDefault().modalText;
   try {
     render(<DefaultWallet />);
-    fireEvent.click(screen.getByText('Set Pali as default wallet!'));
+    fireEvent.click(screen.getByText('Enable Pali’s Ethereum provider'));
     await waitFor(() => expect(error).toHaveBeenCalled());
     expect(
-      screen.queryByText('Pali was successfully set as the default wallet!')
+      screen.queryByText('Pali’s Ethereum provider is enabled')
     ).toBeNull();
-    fireEvent.click(screen.getByText('Set Pali as default wallet!'));
+    fireEvent.click(screen.getByText('Enable Pali’s Ethereum provider'));
     expect(mockEmitter).toHaveBeenCalledTimes(2);
   } finally {
     error.mockRestore();
+  }
+});
+
+it('identifies a failed provider enablement and leaves it retryable', async () => {
+  mockHasEthProperty = false;
+  mockEmitter
+    .mockReset()
+    .mockRejectedValueOnce(new Error('storage unavailable'));
+  const log = jest.spyOn(console, 'error').mockImplementation();
+  try {
+    render(<RemoveEth />);
+    const enable = screen.getByRole('button', {
+      name: 'Enable Pali’s Ethereum provider',
+    });
+    fireEvent.click(enable);
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'settings.enablePaliProviderFailed'
+      )
+    );
+    expect(enable).toBeEnabled();
+  } finally {
+    log.mockRestore();
   }
 });

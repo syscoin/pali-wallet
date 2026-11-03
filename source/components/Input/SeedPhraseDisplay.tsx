@@ -1,5 +1,5 @@
 import { isEmpty } from 'lodash';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 interface ISeedPhraseDisplayProps {
@@ -43,6 +43,7 @@ export const SeedPhraseDisplay: React.FC<ISeedPhraseDisplayProps> = ({
   displayMode = 'words',
 }) => {
   const { t } = useTranslation();
+  const fieldId = useId();
   const [revealedPhrase, setRevealedPhrase] = useState<string>();
   const visible =
     isEnabled && Boolean(seedPhrase) && revealedPhrase === seedPhrase;
@@ -68,15 +69,19 @@ export const SeedPhraseDisplay: React.FC<ISeedPhraseDisplayProps> = ({
     // ForgetWallet style - TextArea (view-only, no copy to prevent clipboard attacks)
     return (
       <div className={`w-full md:max-w-md ${className}`}>
-        <div className="relative">
+        <label htmlFor={fieldId} className="mb-2 block text-left text-sm">
+          {t('createPhrase.recoveryPhrase')}
+        </label>
+        <div className="relative rounded-[10px] border border-border-default focus-within:border-fields-input-borderfocus">
           <textarea
+            id={fieldId}
             className={`${
               !isEnabled
                 ? 'opacity-50 cursor-not-allowed bg-gray-800'
                 : 'opacity-100 bg-fields-input-primary'
             } ${
               showEyeToggle && !visible ? 'filter blur-sm' : ''
-            } p-2 pl-4 pr-12 w-full h-[90px] text-brand-graylight text-sm border border-border-default focus:border-fields-input-borderfocus rounded-[10px] outline-none resize-none select-none`}
+            } block p-2 pl-4 pr-12 w-full h-[90px] text-brand-graylight text-sm border-0 rounded-[10px] outline-none resize-none select-none`}
             placeholder={!isEnabled ? t('settings.enterYourPassword') : ''}
             value={displayPhrase}
             readOnly={true}

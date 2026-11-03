@@ -71,4 +71,16 @@ describe('Format', () => {
     );
     expect(outputLenght).toBe(12);
   });
+
+  it('normalizes single line breaks, tabs and nonbreaking spaces between seed words', () => {
+    const words = Array(11).fill('abandon').concat('about');
+    const expected = words.join(' ');
+    for (const separator of ['\n', '\r\n', '\t', '\u00a0']) {
+      expect(formatSeedPhrase(` \t${words.join(separator)}\n `)).toBe(expected);
+    }
+    expect(formatSeedPhrase(words.slice(1).join('\n'))).toEqual({
+      seedLength: 11,
+      seedLengthError: true,
+    });
+  });
 });

@@ -105,7 +105,11 @@ beforeEach(async () => {
   mockEmitter.mockImplementation(([family, method], args) => {
     expect(family).toBe('wallet');
     if (method === 'fetchNftTokenIds')
-      return Promise.resolve([{ tokenId: '7', balance: 1 }]);
+      return Promise.resolve({
+        tokens: [{ tokenId: '7', balance: 1 }],
+        hasMore: false,
+        requiresManualEntry: false,
+      });
     if (method === 'verifyERC721Ownership') {
       const reply = deferred();
       requests.push({ args, reply });

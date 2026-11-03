@@ -15,6 +15,8 @@ const { EthereumTransactions } = jest.requireActual(
   '@sidhujag/sysweb3-keyring/cjs/transactions/ethereum'
 );
 const mockEmitter = jest.fn();
+let mockEstimateProvider: any;
+let mockFreshProviders: any[] = [];
 const mockAuth = {
   isUnlocked: true,
   isLoading: false,
@@ -42,6 +44,11 @@ const mockState: any = {
     },
     accountTransactions: {},
   },
+  vaultGlobal: {
+    activeSlip44: 60,
+    networkStatus: 'connected',
+    isSwitchingAccount: false,
+  },
   price: { fiat: { asset: 'USD' } },
 };
 const mockLocation: any = {
@@ -61,11 +68,18 @@ const mockLocation: any = {
 };
 jest.mock('state/store', () => ({
   __esModule: true,
-  default: { getState: () => mockState },
+  default: { getState: () => mockState, subscribe: () => () => undefined },
 }));
 jest.mock('@sidhujag/sysweb3-keyring', () => ({
   KeyringManager: jest.fn(),
-  CustomJsonRpcProvider: jest.fn(),
+  CustomJsonRpcProvider: jest.fn((signal: AbortSignal) => {
+    const reader = { ...mockEstimateProvider, signal, destroy: jest.fn() };
+    mockFreshProviders.push(reader);
+    return reader;
+  }),
+  EthereumTransactions: jest.requireActual(
+    '@sidhujag/sysweb3-keyring/cjs/transactions/ethereum'
+  ).EthereumTransactions,
   PsbtUtils: {},
 }));
 jest.mock('scripts/Background', () => ({
@@ -219,12 +233,14 @@ beforeEach(() => {
   jest.clearAllMocks();
   jest.spyOn(console, 'error').mockImplementation();
   capability = undefined;
+  mockFreshProviders = [];
   london = false;
   mockState.vault.activeNetwork.chainId += 1;
   mockLocation.key += '-next';
   delete mockLocation.state.tx.cachedGasData;
   window.history.replaceState(null, '', '/');
   provider = {
+    signal: new AbortController().signal,
     getGasPrice: jest.fn().mockResolvedValue(BigNumber.from(1000000000)),
     getBlock: jest.fn(async () => block()),
     estimateGas: jest.fn().mockResolvedValue(BigNumber.from(21000)),
@@ -235,6 +251,7 @@ beforeEach(() => {
       throw new Error(`Unexpected RPC ${method}`);
     }),
   };
+  mockEstimateProvider = provider;
   sdk = new EthereumTransactions(
     () => mockState.vault.activeNetwork,
     () => {
@@ -248,7 +265,12 @@ beforeEach(() => {
   );
   Object.defineProperty(sdk, 'web3Provider', { get: () => provider });
   wallet = Object.create(MainController.prototype);
-  wallet.getActiveKeyring = () => ({ ethereumTransaction: sdk });
+  const keyring = { ethereumTransaction: sdk, isUnlocked: () => true };
+  wallet.getActiveKeyring = () => keyring;
+  wallet.getWalletSetupStatus = () => undefined;
+  wallet.isUnlocked = () => true;
+  wallet.walletSessionGeneration = 0;
+  wallet.walletStateGeneration = 0;
   mockEmitter.mockImplementation((path: string[], args: any[] = []) => {
     let target: any = { wallet };
     for (const key of path.slice(0, -1)) target = target[key];
@@ -355,4 +377,18 @@ it('retains a fee transport error and recovers only after an explicit retry', as
   await advance();
   expect(screen.queryByText('send.unableToLoad')).toBeNull();
   expect(confirm()).toBeEnabled();
+  expect(mockEmitter).toHaveBeenCalledWith(
+    ['wallet', 'getFreshNativeEvmGasLimit'],
+    [
+      {
+        data: '0x',
+        from: mockLocation.state.tx.sender,
+        to: mockLocation.state.tx.receivingAddress,
+        value: BigNumber.from(10).pow(18).toHexString(),
+      },
+      mockScope,
+    ]
+  );
+  expect(mockFreshProviders).toHaveLength(1);
+  expect(mockFreshProviders[0].destroy).toHaveBeenCalledTimes(1);
 });

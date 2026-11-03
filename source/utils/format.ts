@@ -222,22 +222,19 @@ export const truncate = (
 };
 
 /**
- * remove double spaces, numbers and symbols
+ * normalize whitespace and replace numbers and symbols with spaces
  *
  * transform in lowerCase
  */
 export const formatSeedPhrase = (seed: string) => {
-  const withoutDoubleSpacesRegex = /\s{2,}/g;
+  const whitespaceRegex = /\s+/g;
   const onlyLettersAndSpacesRegex = /[^a-zA-Z\s]/g;
 
   const onlyLettersAndSpacesSeed = seed.replace(onlyLettersAndSpacesRegex, ' ');
   const lowerCaseTransform = onlyLettersAndSpacesSeed.toLowerCase();
-  const seedWithoutDoubleSpaces = lowerCaseTransform.replace(
-    withoutDoubleSpacesRegex,
-    ' '
-  );
+  const normalizedSeed = lowerCaseTransform.replace(whitespaceRegex, ' ');
 
-  const formattedSeed = seedWithoutDoubleSpaces.trim();
+  const formattedSeed = normalizedSeed.trim();
   const seedLength = formattedSeed.split(' ').length;
 
   const allowedWordCounts = new Set([12, 15, 18, 21, 24]);

@@ -68,7 +68,12 @@ function guard(snapshot: PrivacySnapshot, options: IPrivacyWithdrawalOptions) {
       if (result instanceof Promise) void result.catch(() => undefined);
       throw new Error();
     }
-  } catch {
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message === 'privacy_verification_pending'
+    )
+      throw new Error('privacy_verification_pending');
     throw new Error('privacy_vault_session_changed');
   }
   try {

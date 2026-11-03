@@ -222,7 +222,19 @@ export function createPrivacyTransactionsController(
       };
       intents.set(id, intent); // Reserve capacity before any asynchronous host work.
       try {
-        const note = await host.prepareNote(pool.id, request.noteId, session);
+        let note: Awaited<ReturnType<IPrivacyTransactionsHost['prepareNote']>>;
+        try {
+          note = await host.prepareNote(pool.id, request.noteId, session);
+        } catch (error) {
+          if (
+            error instanceof Error &&
+            error.message === 'privacy_note_limit'
+          ) {
+            assertCurrent(session);
+            throw failure('privacy_deposit_note_limit');
+          }
+          throw error;
+        }
         assertCurrent(session);
         if (
           !note ||
@@ -287,6 +299,7 @@ export function createPrivacyTransactionsController(
             'privacy_deposit_context_changed',
             'privacy_deposit_closed',
             'privacy_deposit_note_invalid',
+            'privacy_deposit_note_limit',
             'privacy_deposit_note_busy',
             'privacy_deposit_fee_invalid',
             'privacy_deposit_intent_expired',

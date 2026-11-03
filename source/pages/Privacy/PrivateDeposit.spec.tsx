@@ -43,6 +43,7 @@ jest.mock('components/Button', () => ({
   ),
 }));
 function review(poolId = 'eth-0.1', intentId = INTENT_ID) {
+  const createdAt = Date.now();
   const pool = PRIVACY_POOLS.find(({ id }) => id === poolId)!;
   const value =
     poolId === 'eth-0.1'
@@ -56,8 +57,8 @@ function review(poolId = 'eth-0.1', intentId = INTENT_ID) {
     chainId: 1,
     poolAddress: pool.address,
     account: { id: 0, type: 'HDAccount', address: '0x' + '11'.repeat(20) },
-    createdAt: Date.now(),
-    expiresAt: Date.now() + 60000,
+    createdAt,
+    expiresAt: createdAt + 60000,
     valueWei: String(value),
     gasLimit: '100000',
     nonce: '7',
@@ -365,6 +366,57 @@ it('rejects unsupported accounts before contacting the controller', () => {
   expect(mockBack).toHaveBeenCalled();
 });
 
+it('shows a dedicated capacity error from a serialized controller failure', async () => {
+  mockEmitter.mockRejectedValue({
+    message: 'privacy_deposit_note_limit',
+    transactionNotBroadcast: true,
+  });
+  mount();
+  fireEvent.click(
+    screen.getByRole('button', { name: en.privacy.deposit.continue })
+  );
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    en.privacy.deposit.noteCapacity
+  );
+  expect(
+    screen.queryByText(en.privacy.deposit.prepareFailed)
+  ).not.toBeInTheDocument();
+});
+
+it('does not show a stale capacity failure after the view is hidden', async () => {
+  let reject!: (error: unknown) => void;
+  mockEmitter.mockReturnValue(
+    new Promise((_resolve, fail) => {
+      reject = fail;
+    })
+  );
+  mount();
+  fireEvent.click(
+    screen.getByRole('button', { name: en.privacy.deposit.continue })
+  );
+  visible = false;
+  fireEvent(document, new Event('visibilitychange'));
+  await act(async () => reject({ message: 'privacy_deposit_note_limit' }));
+  visible = true;
+  fireEvent(document, new Event('visibilitychange'));
+  expect(
+    screen.getByRole('button', { name: en.privacy.deposit.continue })
+  ).toBeVisible();
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+});
+
+it('keeps unexpected serialized preparation errors generic', async () => {
+  mockEmitter.mockRejectedValue({ message: 'private secret' });
+  mount();
+  fireEvent.click(
+    screen.getByRole('button', { name: en.privacy.deposit.continue })
+  );
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    en.privacy.deposit.prepareFailed
+  );
+  expect(screen.queryByText('private secret')).not.toBeInTheDocument();
+});
+
 it('renders only a safe generic preparation error for malformed review data', async () => {
   mockEmitter.mockResolvedValue({
     ...review(),
@@ -393,6 +445,44 @@ it('returns through onBack and discards an unsubmitted review', async () => {
     ['privacyTransactions', 'discardDeposit'],
     [INTENT_ID],
     10000,
+    false
+  );
+});
+
+it('refuses an imported account with no private key before controller contact', () => {
+  mockState.vault.activeAccount = { type: 'Imported', id: 0 };
+  mockState.vault.accounts.Imported = {
+    0: {
+      address: '0x' + '11'.repeat(20),
+      xpub: '0x' + '11'.repeat(20),
+      xprv: '',
+    },
+  };
+  mount();
+  expect(screen.getByText(en.privacy.deposit.unavailable)).toBeVisible();
+  expect(
+    screen.queryByRole('button', { name: en.privacy.deposit.continue })
+  ).not.toBeInTheDocument();
+  expect(mockEmitter).not.toHaveBeenCalled();
+});
+it('preserves imported software signer preparation', async () => {
+  mockState.vault.activeAccount = { type: 'Imported', id: 0 };
+  mockState.vault.accounts.Imported = {
+    0: {
+      address: '0x' + '11'.repeat(20),
+      xpub: 'public',
+      xprv: 'synthetic-private-key',
+    },
+  };
+  mount();
+  await prepare();
+  expect(
+    screen.getByLabelText(en.privacy.deposit.backupAck)
+  ).toBeInTheDocument();
+  expect(mockEmitter).toHaveBeenCalledWith(
+    ['privacyTransactions', 'prepareDeposit'],
+    [{ poolId: 'eth-0.1' }],
+    90000,
     false
   );
 });

@@ -226,6 +226,76 @@ it('ends a failed prefetch without retrying or blocking confirmation preparation
   expect(feeCalls()).toHaveLength(1);
 });
 
+it('retries an unavailable fee quote without losing a valid fixed amount', async () => {
+  jest.spyOn(console, 'error').mockImplementation(() => undefined);
+  let attempts = 0;
+  setFeeReader(() =>
+    ++attempts === 1
+      ? Promise.reject(new Error('offline'))
+      : Promise.resolve(QUOTE)
+  );
+  render(<SendEth />);
+  await screen.findByRole('button', { name: 'send.unableToCalculateFees' });
+  fireEvent.change(screen.getByPlaceholderText('send.receiver'), {
+    target: { value: RECIPIENT },
+  });
+  const amount = screen.getByPlaceholderText('send.amount');
+  fireEvent.change(amount, { target: { value: '9.9995' } });
+  fireEvent.click(next());
+  await waitFor(() =>
+    expect(screen.getAllByText('send.feeUnavailable').length).toBeGreaterThan(1)
+  );
+  expect(mockNavigateWithContext).not.toHaveBeenCalled();
+  fireEvent.click(
+    screen.getByRole('button', { name: 'send.unableToCalculateFees' })
+  );
+  await waitFor(() => expect(feeCalls()).toHaveLength(2));
+  await waitFor(() => expect(next()).toBeEnabled());
+  expect(amount).toHaveValue(9.9995);
+  await waitFor(() =>
+    expect(screen.queryByText('send.feeUnavailable')).toBeNull()
+  );
+  fireEvent.click(next());
+  await waitFor(() => expect(mockNavigateWithContext).toHaveBeenCalledTimes(1));
+  expect(mockNavigateWithContext.mock.calls[0][2].tx.amount).toBe('9.9995');
+});
+
+it('keeps the conservative check after a retry fails and reports a real shortfall after a high quote', async () => {
+  jest.spyOn(console, 'error').mockImplementation(() => undefined);
+  let attempts = 0;
+  setFeeReader(() =>
+    ++attempts < 3
+      ? Promise.reject(new Error('offline'))
+      : Promise.resolve({ ...QUOTE, maxFeePerGas: '100000000000' })
+  );
+  render(<SendEth />);
+  await screen.findByRole('button', { name: 'send.unableToCalculateFees' });
+  fireEvent.change(screen.getByPlaceholderText('send.receiver'), {
+    target: { value: RECIPIENT },
+  });
+  fireEvent.change(screen.getByPlaceholderText('send.amount'), {
+    target: { value: '9.9995' },
+  });
+  fireEvent.click(next());
+  await waitFor(() =>
+    expect(screen.getAllByText('send.feeUnavailable').length).toBeGreaterThan(1)
+  );
+  fireEvent.click(
+    screen.getByRole('button', { name: 'send.unableToCalculateFees' })
+  );
+  await waitFor(() => expect(feeCalls()).toHaveLength(2));
+  await screen.findByRole('button', { name: 'send.unableToCalculateFees' });
+  expect(mockNavigateWithContext).not.toHaveBeenCalled();
+  fireEvent.click(
+    screen.getByRole('button', { name: 'send.unableToCalculateFees' })
+  );
+  await waitFor(() => expect(feeCalls()).toHaveLength(3));
+  await waitFor(() => expect(next()).toBeEnabled());
+  fireEvent.click(next());
+  await screen.findByText('send.insufficientFundsForGas');
+  expect(mockNavigateWithContext).not.toHaveBeenCalled();
+});
+
 it('caches a successful prefetch once as serializable fee rates', async () => {
   render(<SendEth />);
   await flush();
@@ -238,6 +308,144 @@ it('caches a successful prefetch once as serializable fee rates', async () => {
     },
   });
   expect(feeCalls()).toHaveLength(1);
+});
+
+it('uses the gas price of a valid legacy quote for fixed-amount validation', async () => {
+  setFeeReader(() =>
+    Promise.resolve({
+      gasPrice: '1000000000',
+      maxFeePerGas: '0',
+      maxPriorityFeePerGas: '0',
+    })
+  );
+  render(<SendEth />);
+  await flush();
+  expect(
+    screen.queryByRole('button', { name: 'send.unableToCalculateFees' })
+  ).toBeNull();
+  fireEvent.change(screen.getByPlaceholderText('send.receiver'), {
+    target: { value: RECIPIENT },
+  });
+  fireEvent.change(screen.getByPlaceholderText('send.amount'), {
+    target: { value: '9.9995' },
+  });
+  fireEvent.click(next());
+  await waitFor(() => expect(mockNavigateWithContext).toHaveBeenCalledTimes(1));
+  expect(
+    mockNavigateWithContext.mock.calls[0][2].tx.cachedGasData.gasPrice
+  ).toBe('0x3b9aca00');
+});
+
+it('does not treat a legacy quote without a gas price as free', async () => {
+  jest.spyOn(console, 'error').mockImplementation(() => undefined);
+  setFeeReader(() =>
+    Promise.resolve({ maxFeePerGas: '0', maxPriorityFeePerGas: '0' })
+  );
+  render(<SendEth />);
+  await screen.findByRole('button', { name: 'send.unableToCalculateFees' });
+  fireEvent.change(screen.getByPlaceholderText('send.receiver'), {
+    target: { value: RECIPIENT },
+  });
+  fireEvent.change(screen.getByPlaceholderText('send.amount'), {
+    target: { value: '9.9995' },
+  });
+  fireEvent.click(next());
+  await waitFor(() =>
+    expect(screen.getAllByText('send.feeUnavailable').length).toBeGreaterThan(1)
+  );
+  expect(mockNavigateWithContext).not.toHaveBeenCalled();
+});
+
+it('accepts a zero priority fee with a positive EIP-1559 cap', async () => {
+  setFeeReader(() =>
+    Promise.resolve({ maxFeePerGas: '1000000000', maxPriorityFeePerGas: '0' })
+  );
+  render(<SendEth />);
+  await flush();
+  expect((await preview()).cachedGasData).toMatchObject({
+    maxFeePerGas: '0x3b9aca00',
+    maxPriorityFeePerGas: '0x00',
+  });
+});
+
+it.each([
+  { maxFeePerGas: '100', maxPriorityFeePerGas: '101' },
+  { maxFeePerGas: '-1', maxPriorityFeePerGas: '0' },
+  { maxFeePerGas: 'invalid', maxPriorityFeePerGas: '0' },
+  { maxFeePerGas: '100', maxPriorityFeePerGas: '10', gasPrice: '-1' },
+])('does not accept invalid fee rates %#', async (quote) => {
+  jest.spyOn(console, 'error').mockImplementation(() => undefined);
+  setFeeReader(() => Promise.resolve(quote));
+  render(<SendEth />);
+  await screen.findByRole('button', { name: 'send.unableToCalculateFees' });
+  fireEvent.change(screen.getByPlaceholderText('send.receiver'), {
+    target: { value: RECIPIENT },
+  });
+  fireEvent.change(screen.getByPlaceholderText('send.amount'), {
+    target: { value: '9.9995' },
+  });
+  fireEvent.click(next());
+  await waitFor(() =>
+    expect(screen.getAllByText('send.feeUnavailable').length).toBeGreaterThan(1)
+  );
+  expect(mockNavigateWithContext).not.toHaveBeenCalled();
+});
+
+it('does not apply a pending retry after the network changes', async () => {
+  jest.spyOn(console, 'error').mockImplementation(() => undefined);
+  const stale = deferred();
+  let attempts = 0;
+  setFeeReader(() => {
+    attempts++;
+    if (attempts === 1) return Promise.reject(new Error('offline'));
+    if (attempts === 2) return stale.promise;
+    return Promise.resolve(QUOTE);
+  });
+  const view = render(<SendEth />);
+  await screen.findByRole('button', { name: 'send.unableToCalculateFees' });
+  fireEvent.click(
+    screen.getByRole('button', { name: 'send.unableToCalculateFees' })
+  );
+  await waitFor(() => expect(feeCalls()).toHaveLength(2));
+  mockState.vault.activeNetwork = {
+    ...mockState.vault.activeNetwork,
+    chainId: 2,
+    url: 'https://other-rpc.invalid',
+  };
+  view.rerender(<SendEth />);
+  await waitFor(() => expect(feeCalls()).toHaveLength(3));
+  await act(async () => stale.resolve({ ...QUOTE, maxFeePerGas: '999999999' }));
+  await waitFor(() => expect(next()).toBeEnabled());
+  expect((await preview()).cachedGasData.maxFeePerGas).toBe('0x3b9aca00');
+});
+
+it('offers a retry when auth becomes unavailable during the quote read', async () => {
+  const pending = deferred();
+  let attempts = 0;
+  setFeeReader(() =>
+    ++attempts === 1 ? pending.promise : Promise.resolve(QUOTE)
+  );
+  render(<SendEth />);
+  try {
+    mockStatus.connectionUnavailable = true;
+    await act(async () => pending.resolve(QUOTE));
+    expect(
+      screen.getByRole('button', { name: 'send.unableToCalculateFees' })
+    ).toBeTruthy();
+    mockStatus.connectionUnavailable = false;
+    fireEvent.click(
+      screen.getByRole('button', { name: 'send.unableToCalculateFees' })
+    );
+    await waitFor(() => expect(feeCalls()).toHaveLength(2));
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('button', { name: 'send.unableToCalculateFees' })
+      ).toBeNull()
+    );
+    expect((await preview()).cachedGasData.maxFeePerGas).toBe('0x3b9aca00');
+  } finally {
+    mockStatus.connectionUnavailable = false;
+  }
 });
 
 it('keeps Next busy only while the current prefetch is pending', async () => {

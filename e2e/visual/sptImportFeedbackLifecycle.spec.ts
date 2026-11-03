@@ -167,20 +167,19 @@ import {
                   transportError: null as string | null,
                   controllerError: false,
                   heldForMs: 0,
-                  observedToastMessages: [] as string[],
+                  observedFeedbackMessages: [] as string[],
                 };
-                // Observe transient feedback without waiting for it to disappear.
-                // This never changes the toast or the application's timing.
-                const observeToasts = () => {
+                // Observe both page status and toasts without changing timing.
+                const observeFeedback = () => {
                   document
-                    .querySelectorAll('.Toastify__toast-body')
+                    .querySelectorAll('.Toastify__toast-body, [role="status"]')
                     .forEach((node) => {
                       const text = node.textContent || '';
-                      if (!evidence.observedToastMessages.includes(text))
-                        evidence.observedToastMessages.push(text);
+                      if (!evidence.observedFeedbackMessages.includes(text))
+                        evidence.observedFeedbackMessages.push(text);
                     });
                 };
-                const observer = new MutationObserver(observeToasts);
+                const observer = new MutationObserver(observeFeedback);
                 observer.observe(document.body, {
                   childList: true,
                   subtree: true,
@@ -227,7 +226,7 @@ import {
                 };
                 (window as any).__sptImportReply = {
                   snapshot: () => {
-                    observeToasts();
+                    observeFeedback();
                     return { ...evidence, held: !!held };
                   },
                   release: () => {
@@ -289,14 +288,15 @@ import {
               await page.evaluate(() =>
                 (window as any).__sptImportReply.release()
               );
-              // The global toast uses a zero-delay insertion; allow its ordinary
-              // render turn, then inspect all observations without retrying away
-              // a transient toast. A separate fresh-profile positive control must
-              // observe the same exact text when the original view stays current.
+              // Allow the ordinary render turn, then inspect all observations
+              // without retrying away transient stale feedback. A separate
+              // positive control verifies the current view's exact status text.
               await page.waitForTimeout(300);
               if (view === 'current')
                 await expect(
-                  page.getByText(successMessage, { exact: true })
+                  page
+                    .getByRole('status')
+                    .getByText(successMessage, { exact: true })
                 ).toBeVisible();
               delivery = await page.evaluate(() =>
                 (window as any).__sptImportReply.snapshot()
@@ -304,13 +304,13 @@ import {
               expect(delivery).toMatchObject({ released: true, held: false });
               expect((delivery as any).heldForMs).toBeLessThan(9_000);
               if (view === 'current') {
-                expect((delivery as any).observedToastMessages).toContain(
+                expect((delivery as any).observedFeedbackMessages).toContain(
                   successMessage
                 );
               } else {
-                expect((delivery as any).observedToastMessages).not.toContain(
-                  successMessage
-                );
+                expect(
+                  (delivery as any).observedFeedbackMessages
+                ).not.toContain(successMessage);
                 await expect(selectedLabel).toContainText(secondLabel);
               }
               const current = await projection();

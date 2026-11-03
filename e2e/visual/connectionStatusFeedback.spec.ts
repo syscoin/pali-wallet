@@ -149,10 +149,9 @@ test('a new UI refresh retires prior success while its balance read is pending',
       name: en.header.refresh,
       exact: true,
     });
-    // This is the actual existing 8px header indicator, not an injected marker.
-    const indicator = page.locator(
-      'div[style*="width: 8px"][style*="height: 8px"] button.w-2.h-2'
-    );
+    // This is the real header status button and its visible indicator.
+    const indicator = page.locator('button.status-target');
+    const indicatorDot = indicator.locator('span');
     const tooltip = page.getByRole('tooltip');
     await wallet.step(
       'connection-feedback: enable ordinary refresh on the current network',
@@ -178,7 +177,7 @@ test('a new UI refresh retires prior success while its balance read is pending',
             return state.status === 'idle' && !state.loadingBalances;
           })
           .toBe(true);
-        await expect(indicator).not.toHaveClass(/bg-green-500/);
+        await expect(indicatorDot).not.toHaveClass(/bg-green-500/);
         const preparedAt = Date.now();
         await expect
           .poll(() => Date.now() - preparedAt > PROVIDER_READ_CACHE_MS)
@@ -201,13 +200,13 @@ test('a new UI refresh retires prior success while its balance read is pending',
           .toBe(true);
         await indicator.hover();
         await expect(tooltip).toHaveText(en.networkConnection.updatingBalances);
-        await expect(indicator).toHaveClass(/bg-brand-blue500/);
+        await expect(indicatorDot).toHaveClass(/bg-brand-blue500/);
         observations.firstPending = await publicState(page);
         releaseFirst();
         await expect
           .poll(async () => (await publicState(page)).loadingBalances)
           .toBe(false);
-        await expect(indicator).toHaveClass(/bg-green-500/);
+        await expect(indicatorDot).toHaveClass(/bg-green-500/);
         await indicator.hover();
         await expect(tooltip).toHaveText(
           en.networkConnection.operationCompleted
@@ -241,8 +240,8 @@ test('a new UI refresh retires prior success while its balance read is pending',
           .toBe(true);
         await indicator.hover();
         await expect(tooltip).toHaveText(en.networkConnection.updatingBalances);
-        await expect(indicator).not.toHaveClass(/bg-green-500/);
-        await expect(indicator).toHaveClass(/bg-brand-blue500/);
+        await expect(indicatorDot).not.toHaveClass(/bg-green-500/);
+        await expect(indicatorDot).toHaveClass(/bg-brand-blue500/);
         observations.secondPending = await publicState(page);
         const pendingObservedAt = await page.evaluate(() => Date.now());
         observations.secondPendingAt = pendingObservedAt;
@@ -260,7 +259,7 @@ test('a new UI refresh retires prior success while its balance read is pending',
           en.networkConnection.operationInProgress.replace('...', '')
         );
         await expect(tooltip).toHaveText(slow);
-        await expect(indicator).toHaveClass(/bg-orange-500/);
+        await expect(indicatorDot).toHaveClass(/bg-orange-500/);
         expect(
           reads
             .filter((row) => row.phase === 'second')
@@ -292,7 +291,7 @@ test('a new UI refresh retires prior success while its balance read is pending',
         expect(final.account).toEqual(
           (observations.firstCompleted as typeof final).account
         );
-        await expect(indicator).toHaveClass(/bg-orange-500/);
+        await expect(indicatorDot).toHaveClass(/bg-orange-500/);
         await expect(tooltip).toHaveText(
           en.networkConnection.networkQualitySlow.replace(
             '{{latency}}',

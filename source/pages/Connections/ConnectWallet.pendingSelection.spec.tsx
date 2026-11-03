@@ -96,7 +96,9 @@ jest.mock('utils/browser', () => ({ dispatchBackgroundEvent: jest.fn() }));
 jest.mock('utils/index', () => ({ ellipsis: (value: string) => value }));
 
 const row = (label: string) =>
-  screen.getByText(label).closest('[role="button"]') as HTMLElement;
+  screen
+    .getByText(label, { selector: 'p' })
+    .closest('[role="button"]') as HTMLElement;
 const selected = (label: string) => row(label).classList.contains('shadow-md');
 const copyButton = (label: string) =>
   within(row(label)).getByRole('button', { name: 'transactions.copyAddress' });

@@ -393,3 +393,39 @@
   backface-visibility: hidden;
   transform-style: preserve-3d;
 }
+
+/* Locked and external screens keep their compact fallback. The first-install
+   Import control is a link; existing-wallet recovery uses a button. */
+@media (max-width: 399px), (max-height: 619px) {
+  .login-animated-bg:not(:has(a#import-wallet-link)) {
+    background-image: none !important;
+    background-color: #07152a;
+  }
+  .login-animated-bg:not(:has(a#import-wallet-link)) > [class^='particle-'] {
+    display: none;
+  }
+  .login-animated-bg:not(:has(a#import-wallet-link)) .login-welcome-spacing {
+    padding-top: 2rem;
+  }
+}
+
+/* First-install Welcome has room for the original artwork at600px and above.
+   Scale it with the viewport instead of cropping it in a narrow window. */
+@media (min-height: 600px) {
+  .login-animated-bg:has(a#import-wallet-link) {
+    background-size: 100% auto;
+  }
+}
+
+@media (max-height: 599px) {
+  .login-animated-bg:has(a#import-wallet-link) {
+    background-image: none !important;
+    background-color: #07152a;
+  }
+  .login-animated-bg:has(a#import-wallet-link) > [class^='particle-'] {
+    display: none;
+  }
+  .login-animated-bg:has(a#import-wallet-link) .login-welcome-spacing {
+    padding-top: 2rem;
+  }
+}

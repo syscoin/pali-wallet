@@ -4,6 +4,7 @@ import path from 'path';
 
 import { E2E_CONFIG } from '../harness/config';
 import { PaliWallet } from '../harness/pali';
+import { inspectPsbtReviewHeader } from '../harness/psbtReviewHeader';
 import {
   approve,
   extensionEvidence,
@@ -21,7 +22,7 @@ import {
   verifyFixtureSignature,
 } from '../harness/utxoFixture';
 
-test('offline UTXO: normal sign, cancel, and mixed-owner sponsor boundary', async () => {
+test('offline UTXO: normal sign, cancel, and mixed-owner sponsor boundary', async ({}, info) => {
   test.setTimeout(180000);
   const extensionPath = process.env.PALI_TEST_DAPP_EXTENSION_PATH;
   if (!extensionPath || !path.isAbsolute(extensionPath))
@@ -117,6 +118,7 @@ test('offline UTXO: normal sign, cancel, and mixed-owner sponsor boundary', asyn
       async (capture) => {
         const id = await startRequest(dapp, 'sys_sign', [fixture.single]);
         const popup = await popupFor(wallet!.context, dapp, id);
+        await inspectPsbtReviewHeader(popup, info);
         await capture(popup);
         await popup
           .getByRole('button', { name: 'Cancel', exact: true })

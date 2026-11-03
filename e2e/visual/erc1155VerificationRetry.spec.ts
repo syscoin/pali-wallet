@@ -241,6 +241,28 @@ test('manual ERC1155 verification distinguishes failed reads and retries the unc
         await expect(
           page.getByRole('button', { name: en.receive.retry, exact: true })
         ).toBeEnabled();
+        const retryControl = page.getByRole('button', {
+          name: en.receive.retry,
+          exact: true,
+        });
+        observations.retryGeometry = [];
+        for (const viewport of [
+          { width: 400, height: 620 },
+          { width: 320, height: 360 },
+        ]) {
+          await page.setViewportSize(viewport);
+          await retryControl.scrollIntoViewIfNeeded();
+          const box = await retryControl.boundingBox();
+          expect(box).not.toBeNull();
+          expect(box!.width).toBeGreaterThanOrEqual(32);
+          expect(box!.height).toBeGreaterThanOrEqual(32);
+          (observations.retryGeometry as unknown[]).push({ viewport, box });
+          await info.attach(`erc1155-retry-observed-${viewport.width}`, {
+            body: await page.screenshot(),
+            contentType: 'image/png',
+          });
+        }
+        await page.setViewportSize({ width: 400, height: 620 });
         const retryContrast = await page
           .getByRole('button', { name: en.receive.retry, exact: true })
           .evaluate((element) => {

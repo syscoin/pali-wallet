@@ -40,6 +40,8 @@ jest.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 jest.mock('components/index', () => ({
+  PageActionFooter: jest.requireActual('components/PageActionFooter')
+    .PageActionFooter,
   Button: ({ children }: React.PropsWithChildren) => (
     <button>{children}</button>
   ),

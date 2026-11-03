@@ -30,6 +30,10 @@ import DAppController from './DAppController';
 import { createExternalWalletView } from './externalWalletCreation';
 import MainController from './MainController';
 import { createPrivacyController } from './privacy';
+import {
+  createPrivacySettings,
+  fetchConfiguredPrivacySnapshot,
+} from './privacySettings';
 
 export interface IMasterController {
   appRoute: (newRoute?: string, external?: boolean) => string;
@@ -46,6 +50,13 @@ export interface IMasterController {
     maxAttempts: number;
   };
   privacy: PrivacyController;
+  privacySettings: {
+    getServiceOrigin: () => Promise<string>;
+    setServiceOrigin: (
+      origin: string,
+      expectedOrigin: string
+    ) => Promise<string>;
+  };
   privacyTransactions: Pick<
     IPrivacyTransactionsController,
     'prepareDeposit' | 'submitDeposit' | 'discardDeposit'
@@ -322,7 +333,9 @@ const MasterController = (
         url: state.vault.activeNetwork.url,
       };
     },
-    undefined,
+    {
+      fetchSnapshot: fetchConfiguredPrivacySnapshot,
+    },
     (reader) => wallet.setPrivateVaultNoteReader(reader),
     (reader) => wallet.setPrivacySnapshotReader(reader)
   );
@@ -337,10 +350,16 @@ const MasterController = (
     callGetLatestUpdateForAccount,
     wallet,
     privacy,
+    privacySettings: createPrivacySettings(privacy, () =>
+      wallet.invalidatePrivacyServiceWithdrawals()
+    ),
     privateVault: {
+      clearCompletedNotes: (ids) => wallet.clearPrivateVaultCompletedNotes(ids),
       createDepositNote: (poolId) =>
         wallet.createPrivateVaultDepositNote(poolId),
       getNotes: () => wallet.getPrivateVaultNotes(),
+      getCapacity: () => wallet.getPrivateVaultCapacity(),
+      setCapacity: (capacity) => wallet.setPrivateVaultCapacity(capacity),
       importNote: (note) => wallet.importPrivateVaultNote(note),
       revealNote: (id, password) => wallet.revealPrivateVaultNote(id, password),
     },

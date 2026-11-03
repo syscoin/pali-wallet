@@ -22,7 +22,7 @@ const GetStarted: React.FC = () => {
         id="unlock-btn"
         type="submit"
         onClick={handleClick}
-        className="bg-brand-deepPink100 w-[17.5rem] mt-3 h-10 text-white text-base font-base font-medium rounded-2xl"
+        className="bg-brand-deepPink100 w-[17.5rem] mt-3 h-10 text-bkg-1 text-base font-base font-medium rounded-2xl"
         loading={isLoading}
       >
         {t('start.getStarted')}

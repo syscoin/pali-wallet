@@ -1,3 +1,10 @@
+/** Plain JSON response for NFT enumeration across the extension transport. */
+export interface INftTokenIdsResult {
+  hasMore: boolean;
+  requiresManualEntry: boolean;
+  tokens: { balance: number; tokenId: string }[];
+}
+
 /** A saved account asset is always scoped to its EVM chain. */
 export interface ITokenEthProps {
   balance?: number;

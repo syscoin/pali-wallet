@@ -31,6 +31,8 @@ import {
   translateTransactionType,
 } from 'utils/transactionDisplay';
 
+import { SentryManagementFields } from './SentryManagementFields';
+
 export interface IDecodedTransaction {
   error?: string;
   fee?: number;
@@ -156,17 +158,29 @@ const CopyableField: React.FC<{
   }, [copied, alert, copyMessage, label, t]);
 
   return (
-    <div className={`flex justify-between items-center gap-4 ${className}`}>
+    <div
+      className={`flex justify-between items-center gap-4 ${
+        displayValue && displayValue !== value ? 'flex-wrap' : ''
+      } ${className}`}
+    >
       <Typography.Text
         className={`text-brand-gray200 text-xs flex-shrink-0 ${labelClassName}`}
       >
         {label}:
       </Typography.Text>
-      <div className="flex items-center gap-1">
+      <div
+        className={`flex items-center gap-1 ${
+          displayValue && displayValue !== value
+            ? 'ml-auto max-w-full shrink-0'
+            : ''
+        }`}
+      >
         <Tooltip content={value}>
           <Typography.Text
             className={`text-white text-xs text-right ${
               monospace ? 'font-mono' : ''
+            } ${
+              displayValue && displayValue !== value ? 'min-w-0 truncate' : ''
             } ${valueClassName}`}
           >
             {displayValue || value}
@@ -200,7 +214,7 @@ const ExpandableSection: React.FC<{
         type="button"
         aria-expanded={expanded}
         onClick={() => setExpanded(!expanded)}
-        className="flex w-full items-center gap-2 text-left text-white text-sm hover:text-fields-input-borderfocus transition-colors mb-2 cursor-pointer"
+        className="flex w-full items-center gap-2 text-left text-white text-sm hover:text-content-accent transition-colors mb-2 cursor-pointer"
       >
         {expanded ? (
           <DownOutlined aria-hidden="true" className="text-xs" />
@@ -466,11 +480,14 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
 
       {/* Main Transaction Details */}
       <div className="bg-brand-blue800 rounded-lg p-4 space-y-3">
-        <div className="flex justify-between items-center mb-3">
-          <Typography.Text strong className="text-white text-sm sm:text-base">
+        <div className="flex flex-wrap justify-between items-center gap-2 mb-3">
+          <Typography.Text
+            strong
+            className="break-normal text-white text-sm sm:text-base"
+          >
             {t('send.transactionDetails')}
           </Typography.Text>
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2">
             {/* Toggle details button for dapp popup mode */}
             {!showTechnicalDetails && (
               <button
@@ -546,40 +563,35 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
             )}
             <ExpandableSection title={t('sentry.feeChanges')} defaultExpanded>
               <div className="space-y-3 min-w-0">
-                {'changes' in decodedTx.sentry
-                  ? Object.entries(decodedTx.sentry.changes).map(
-                      ([name, change]) => (
-                        <div key={name} className="break-all">
-                          <p className="text-white">
-                            {t(
-                              `sentry.${
-                                {
-                                  service: 'service',
-                                  operatorPayoutScript: 'operatorPayoutScript',
-                                  nevmAddress: 'nEVMAddress',
-                                }[name]
-                              }`
-                            )}
-                          </p>
-                          <p>
-                            {t('sentry.current')}:{' '}
-                            {change.previous || t('sentry.notSet')}
-                          </p>
-                          <p>
-                            {t('sentry.proposed')}:{' '}
-                            {change.next || t('sentry.notSet')}
-                          </p>
-                        </div>
-                      )
+                {'changes' in decodedTx.sentry ? (
+                  Object.entries(decodedTx.sentry.changes).map(
+                    ([name, change]) => (
+                      <div key={name} className="break-all">
+                        <p className="text-white">
+                          {t(
+                            `sentry.${
+                              {
+                                service: 'service',
+                                operatorPayoutScript: 'operatorPayoutScript',
+                                nevmAddress: 'nEVMAddress',
+                              }[name]
+                            }`
+                          )}
+                        </p>
+                        <p>
+                          {t('sentry.current')}:{' '}
+                          {change.previous || t('sentry.notSet')}
+                        </p>
+                        <p>
+                          {t('sentry.proposed')}:{' '}
+                          {change.next || t('sentry.notSet')}
+                        </p>
+                      </div>
                     )
-                  : Object.entries(decodedTx.sentry.fields).map(
-                      ([name, value]) => (
-                        <div key={name} className="break-all">
-                          <p>{name}</p>
-                          <p className="text-white">{value}</p>
-                        </div>
-                      )
-                    )}
+                  )
+                ) : (
+                  <SentryManagementFields fields={decodedTx.sentry.fields} />
+                )}
               </div>
             </ExpandableSection>
           </div>
@@ -986,7 +998,7 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
                             {activeNetwork.currency.toUpperCase()}
                           </Typography.Text>
                           {assetInfo && assetAmount && (
-                            <Typography.Text className="text-brand-royalblue text-xs sm:text-sm font-medium block mt-1">
+                            <Typography.Text className="text-brand-royalbluemedium text-xs sm:text-sm font-medium block mt-1">
                               {assetAmount} {assetInfo.symbol || 'SYSX'}
                             </Typography.Text>
                           )}
@@ -1198,7 +1210,7 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
                             </Typography.Text>
                           )}
                           {input.assetInfo && (
-                            <Typography.Text className="text-brand-royalblue text-xs font-medium block mt-1">
+                            <Typography.Text className="text-brand-royalbluemedium text-xs font-medium block mt-1">
                               {input.assetInfo.value
                                 ? formatSyscoinValue(
                                     input.assetInfo.value.toString(),

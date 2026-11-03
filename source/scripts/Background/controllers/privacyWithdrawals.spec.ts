@@ -362,6 +362,57 @@ it.each(['context', 'snapshot', 'close', 'cancel'] as const)(
   }
 );
 
+it.each(['direct', 'relayed'] as const)(
+  'reports a stale %s snapshot as not broadcast before submission',
+  async (mode) => {
+    const run = setup();
+    try {
+      if (mode === 'relayed') await run.controller.getRelayers();
+      const review = await run.controller.prepareWithdrawal(
+        mode === 'direct' ? direct() : relayed()
+      );
+      run.invalidate();
+      await expect(
+        run.controller.submitWithdrawal(review.intentId)
+      ).rejects.toMatchObject({
+        message: 'privacy_verification_pending',
+        transactionNotBroadcast: true,
+      });
+      expect(run.host.beforeSubmission).not.toHaveBeenCalled();
+      expect(run.host.sendTransaction).not.toHaveBeenCalled();
+      expect(run.fetcher).not.toHaveBeenCalled();
+      await expect(
+        run.controller.submitWithdrawal(review.intentId)
+      ).rejects.toThrow('privacy_withdrawal_intent_expired');
+    } finally {
+      run.controller.close();
+    }
+  }
+);
+
+it('reports a stale relayer selection as not broadcast before submission', async () => {
+  const run = setup();
+  try {
+    await run.controller.getRelayers();
+    const review = await run.controller.prepareWithdrawal(relayed());
+    jest
+      .mocked(run.host.relayers.assertSelectionCurrent)
+      .mockImplementation(() => {
+        throw new Error('privacy_relayer_stale');
+      });
+    await expect(
+      run.controller.submitWithdrawal(review.intentId)
+    ).rejects.toMatchObject({
+      message: 'privacy_relayer_stale',
+      transactionNotBroadcast: true,
+    });
+    expect(run.host.beforeSubmission).not.toHaveBeenCalled();
+    expect(run.fetcher).not.toHaveBeenCalled();
+  } finally {
+    run.controller.close();
+  }
+});
+
 it('allows only one active proof and TTL begins after completion, not before', async () => {
   jest.useFakeTimers();
   const run = setup(),
@@ -390,6 +441,147 @@ it('allows only one active proof and TTL begins after completion, not before', a
   await expect(
     run.controller.submitWithdrawal(review.intentId)
   ).rejects.toThrow('privacy_withdrawal_intent_expired');
+});
+
+it('waits for a canceled fee read before starting one fresh preparation', async () => {
+  const run = setup();
+  const started = deferred<void>();
+  const blocked = deferred<void>();
+  jest.mocked(run.host.quoteDirectFees).mockImplementationOnce(async () => {
+    started.resolve();
+    await blocked.promise;
+    return {
+      gasLimit: '650000',
+      nonce: '7',
+      maxFeePerGas: '30000000000',
+      maxPriorityFeePerGas: '1000000000',
+    };
+  });
+  const first = run.controller.prepareWithdrawal(direct());
+  const firstRejected = expect(first).rejects.toThrow(/^privacy_/);
+  await started.promise;
+  run.controller.cancelPreparation();
+  const retry = run.controller.prepareWithdrawal(direct());
+  let retrySettled = false;
+  void retry.then(
+    () => (retrySettled = true),
+    () => (retrySettled = true)
+  );
+  await Promise.resolve();
+  expect(retrySettled).toBe(false);
+  expect(run.host.prove).not.toHaveBeenCalled();
+  await expect(run.controller.prepareWithdrawal(direct())).rejects.toThrow(
+    'privacy_proof_busy'
+  );
+  blocked.resolve();
+  await firstRejected;
+  expect((await retry).intentId).toBeTruthy();
+  expect(run.host.prove).toHaveBeenCalledTimes(1);
+  expect(run.host.beforeSubmission).not.toHaveBeenCalled();
+  expect(run.fetcher).not.toHaveBeenCalled();
+  run.controller.close();
+});
+
+it.each(['cancel', 'close'] as const)(
+  '%s retires a waiting retry without starting a later proof',
+  async (action) => {
+    const run = setup();
+    const started = deferred<void>();
+    const blocked = deferred<void>();
+    jest.mocked(run.host.quoteDirectFees).mockImplementationOnce(async () => {
+      started.resolve();
+      await blocked.promise;
+      return {
+        gasLimit: '650000',
+        nonce: '7',
+        maxFeePerGas: '30000000000',
+        maxPriorityFeePerGas: '1000000000',
+      };
+    });
+    const first = run.controller.prepareWithdrawal(direct());
+    const firstRejected = expect(first).rejects.toThrow(/^privacy_/);
+    await started.promise;
+    run.controller.cancelPreparation();
+    const retry = run.controller.prepareWithdrawal(direct());
+    const retryRejected = expect(retry).rejects.toThrow(
+      'privacy_withdrawal_cancelled'
+    );
+    if (action === 'close') run.controller.close();
+    else run.controller.cancelPreparation();
+    await retryRejected;
+    blocked.resolve();
+    await firstRejected;
+    expect(run.host.withNote).toHaveBeenCalledTimes(1);
+    expect(run.host.prove).not.toHaveBeenCalled();
+    expect(run.host.beforeSubmission).not.toHaveBeenCalled();
+    expect(run.fetcher).not.toHaveBeenCalled();
+    run.controller.close();
+  }
+);
+
+it('rejects a waiting retry if its captured wallet context changes', async () => {
+  const run = setup();
+  const started = deferred<void>();
+  const blocked = deferred<void>();
+  jest.mocked(run.host.quoteDirectFees).mockImplementationOnce(async () => {
+    started.resolve();
+    await blocked.promise;
+    return {
+      gasLimit: '650000',
+      nonce: '7',
+      maxFeePerGas: '30000000000',
+      maxPriorityFeePerGas: '1000000000',
+    };
+  });
+  const first = run.controller.prepareWithdrawal(direct());
+  const firstRejected = expect(first).rejects.toThrow(/^privacy_/);
+  await started.promise;
+  run.controller.cancelPreparation();
+  const retry = run.controller.prepareWithdrawal(direct());
+  const retryRejected = expect(retry).rejects.toThrow(
+    'privacy_withdrawal_context_changed'
+  );
+  run.change();
+  blocked.resolve();
+  await firstRejected;
+  await retryRejected;
+  expect(run.host.withNote).toHaveBeenCalledTimes(1);
+  expect(run.host.prove).not.toHaveBeenCalled();
+  expect(run.host.beforeSubmission).not.toHaveBeenCalled();
+  expect(run.fetcher).not.toHaveBeenCalled();
+  run.controller.close();
+});
+
+it('rejects a waiting retry if its snapshot becomes invalid', async () => {
+  const run = setup();
+  const started = deferred<void>();
+  const blocked = deferred<void>();
+  jest.mocked(run.host.quoteDirectFees).mockImplementationOnce(async () => {
+    started.resolve();
+    await blocked.promise;
+    return {
+      gasLimit: '650000',
+      nonce: '7',
+      maxFeePerGas: '30000000000',
+      maxPriorityFeePerGas: '1000000000',
+    };
+  });
+  const first = run.controller.prepareWithdrawal(direct());
+  const firstRejected = expect(first).rejects.toThrow(/^privacy_/);
+  await started.promise;
+  run.controller.cancelPreparation();
+  const retry = run.controller.prepareWithdrawal(direct());
+  const retryRejected = expect(retry).rejects.toThrow(
+    'privacy_verification_pending'
+  );
+  run.invalidate();
+  blocked.resolve();
+  await firstRejected;
+  await retryRejected;
+  expect(run.host.prove).not.toHaveBeenCalled();
+  expect(run.host.beforeSubmission).not.toHaveBeenCalled();
+  expect(run.fetcher).not.toHaveBeenCalled();
+  run.controller.close();
 });
 
 it.each(['context', 'snapshot'] as const)(
@@ -954,4 +1146,202 @@ it('does not fall back to a full-tree proof build when a production snapshot has
   );
   expect(host.prove).not.toHaveBeenCalled();
   expect(host.quoteDirectFees).not.toHaveBeenCalled();
+});
+
+it('restarts preparation once after its scheduled refresh without holding the note or broadcasting', async () => {
+  const run = setup();
+  const originalRead = jest
+    .mocked(run.host.getSnapshot)
+    .getMockImplementation()!;
+  const originalWithNote = jest
+    .mocked(run.host.withNote)
+    .getMockImplementation()!;
+  let noteInUse = false;
+  let stale = false;
+  const wait = jest.fn(async () => {
+    expect(noteInUse).toBe(false);
+    return true;
+  });
+  jest
+    .mocked(run.host.withNote)
+    .mockImplementation(async (id, session, use) => {
+      noteInUse = true;
+      try {
+        return await originalWithNote(id, session, use);
+      } finally {
+        noteInUse = false;
+      }
+    });
+  jest.mocked(run.host.getSnapshot).mockImplementationOnce(async (poolId) => {
+    const access = await originalRead(poolId);
+    return {
+      ...access,
+      assertSnapshotCurrent: (snapshot) => {
+        if (stale) throw new Error('privacy_verification_pending');
+        access.assertSnapshotCurrent(snapshot);
+      },
+      waitForScheduledRefresh: wait,
+    };
+  });
+  const originalQuote = jest
+    .mocked(run.host.quoteDirectFees)
+    .getMockImplementation()!;
+  jest
+    .mocked(run.host.quoteDirectFees)
+    .mockImplementationOnce(async (session) => {
+      const result = await originalQuote(session);
+      stale = true;
+      return result;
+    });
+  try {
+    const review = await run.controller.prepareWithdrawal(direct());
+    expect(review.noteId).toBe(NOTE_ID);
+    expect(wait).toHaveBeenCalledTimes(1);
+    expect(run.host.withNote).toHaveBeenCalledTimes(2);
+    expect(run.host.getSnapshot).toHaveBeenCalledTimes(2);
+    expect(run.host.quoteDirectFees).toHaveBeenCalledTimes(2);
+    expect(run.host.prove).toHaveBeenCalledTimes(1);
+    expect(run.host.sendTransaction).not.toHaveBeenCalled();
+    expect(run.host.beforeSubmission).not.toHaveBeenCalled();
+  } finally {
+    run.controller.close();
+  }
+});
+
+it('does not retry a snapshot invalidation without an identified successful scheduled refresh', async () => {
+  const run = setup();
+  const originalRead = jest
+    .mocked(run.host.getSnapshot)
+    .getMockImplementation()!;
+  let stale = false;
+  const wait = jest.fn(async () => false);
+  jest.mocked(run.host.getSnapshot).mockImplementationOnce(async (poolId) => {
+    const access = await originalRead(poolId);
+    return {
+      ...access,
+      assertSnapshotCurrent: (snapshot) => {
+        if (stale) throw new Error('privacy_verification_pending');
+        access.assertSnapshotCurrent(snapshot);
+      },
+      waitForScheduledRefresh: wait,
+    };
+  });
+  const originalQuote = jest
+    .mocked(run.host.quoteDirectFees)
+    .getMockImplementation()!;
+  jest
+    .mocked(run.host.quoteDirectFees)
+    .mockImplementationOnce(async (session) => {
+      const result = await originalQuote(session);
+      stale = true;
+      return result;
+    });
+  try {
+    await expect(run.controller.prepareWithdrawal(direct())).rejects.toThrow(
+      'privacy_verification_pending'
+    );
+    expect(wait).toHaveBeenCalledTimes(1);
+    expect(run.host.withNote).toHaveBeenCalledTimes(1);
+    expect(run.host.sendTransaction).not.toHaveBeenCalled();
+  } finally {
+    run.controller.close();
+  }
+});
+
+it.each(['cancel', 'context'] as const)(
+  'does not reacquire the note when %s changes during refresh',
+  async (action) => {
+    const run = setup();
+    const originalRead = jest
+      .mocked(run.host.getSnapshot)
+      .getMockImplementation()!;
+    const waiting = deferred<void>();
+    const finish = deferred<boolean>();
+    let stale = false;
+    jest.mocked(run.host.getSnapshot).mockImplementationOnce(async (poolId) => {
+      const access = await originalRead(poolId);
+      return {
+        ...access,
+        assertSnapshotCurrent: (snapshot) => {
+          if (stale) throw new Error('privacy_verification_pending');
+          access.assertSnapshotCurrent(snapshot);
+        },
+        waitForScheduledRefresh: () => {
+          waiting.resolve();
+          return finish.promise;
+        },
+      };
+    });
+    const quote = jest
+      .mocked(run.host.quoteDirectFees)
+      .getMockImplementation()!;
+    jest
+      .mocked(run.host.quoteDirectFees)
+      .mockImplementationOnce(async (session) => {
+        const result = await quote(session);
+        stale = true;
+        return result;
+      });
+    try {
+      const preparing = run.controller.prepareWithdrawal(direct());
+      const rejected = expect(preparing).rejects.toThrow(
+        action === 'cancel'
+          ? 'privacy_withdrawal_cancelled'
+          : 'privacy_withdrawal_context_changed'
+      );
+      await waiting.promise;
+      if (action === 'cancel') {
+        run.controller.cancelPreparation();
+        await rejected; // The refresh remains unresolved when cancellation finishes.
+        finish.resolve(true);
+      } else {
+        run.change();
+        finish.resolve(true);
+        await rejected;
+      }
+      expect(run.host.withNote).toHaveBeenCalledTimes(1);
+      expect(run.host.prove).not.toHaveBeenCalled();
+      expect(run.host.sendTransaction).not.toHaveBeenCalled();
+    } finally {
+      run.controller.close();
+    }
+  }
+);
+
+it('does not retry a second invalidation during the same preparation', async () => {
+  const run = setup();
+  const originalRead = jest
+    .mocked(run.host.getSnapshot)
+    .getMockImplementation()!;
+  let quoteCount = 0;
+  const wait = jest.fn(async () => true);
+  jest.mocked(run.host.getSnapshot).mockImplementation(async (poolId) => {
+    const access = await originalRead(poolId);
+    const acquiredAt = quoteCount;
+    return {
+      ...access,
+      assertSnapshotCurrent: (snapshot) => {
+        if (quoteCount !== acquiredAt)
+          throw new Error('privacy_verification_pending');
+        access.assertSnapshotCurrent(snapshot);
+      },
+      waitForScheduledRefresh: wait,
+    };
+  });
+  const quote = jest.mocked(run.host.quoteDirectFees).getMockImplementation()!;
+  jest.mocked(run.host.quoteDirectFees).mockImplementation(async (session) => {
+    const result = await quote(session);
+    quoteCount++;
+    return result;
+  });
+  try {
+    await expect(run.controller.prepareWithdrawal(direct())).rejects.toThrow(
+      'privacy_verification_pending'
+    );
+    expect(wait).toHaveBeenCalledTimes(1);
+    expect(run.host.withNote).toHaveBeenCalledTimes(2);
+    expect(run.host.sendTransaction).not.toHaveBeenCalled();
+  } finally {
+    run.controller.close();
+  }
 });

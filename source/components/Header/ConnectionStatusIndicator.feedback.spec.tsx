@@ -75,6 +75,7 @@ const pending = () => {
 };
 const tooltip = () => screen.getByTestId('indicator-tooltip');
 const indicator = () => tooltip().querySelector('button')!;
+const dot = () => indicator().querySelector('span')!;
 const advance = async (ms: number) =>
   act(async () => {
     await jest.advanceTimersByTimeAsync(ms);
@@ -169,7 +170,7 @@ afterEach(() => {
 });
 it('idle indicator is not presented as activity', () => {
   expect(tooltip()).toHaveAttribute('data-content', '');
-  expect(indicator()).toHaveClass('opacity-0');
+  expect(dot()).toHaveClass('opacity-0');
 });
 it('one current refresh progresses to success then hides', async () => {
   const read = pending();
@@ -179,7 +180,7 @@ it('one current refresh progresses to success then hides', async () => {
     'data-content',
     'networkConnection.updatingBalances'
   );
-  expect(indicator()).toHaveClass('bg-brand-blue500');
+  expect(dot()).toHaveClass('bg-brand-blue500');
   await advance(100);
   await act(async () => {
     read.resolve('2');
@@ -189,7 +190,7 @@ it('one current refresh progresses to success then hides', async () => {
     'data-content',
     'networkConnection.operationCompleted'
   );
-  expect(indicator()).toHaveClass('bg-green-500');
+  expect(dot()).toHaveClass('bg-green-500');
   await advance(2000);
   expect(tooltip()).toHaveAttribute('data-content', '');
 });
@@ -199,13 +200,13 @@ it('a first pending refresh shows slow and critical feedback', async () => {
   const work = begin();
   try {
     await advance(5000);
-    expect(indicator()).toHaveClass('bg-orange-500');
+    expect(dot()).toHaveClass('bg-orange-500');
     await advance(4000);
     expect(tooltip()).toHaveAttribute(
       'data-content',
       'networkConnection.operationFailing'
     );
-    expect(indicator()).toHaveClass('bg-red-600');
+    expect(dot()).toHaveClass('bg-red-600');
   } finally {
     await act(async () => {
       read.resolve('2');
@@ -227,7 +228,7 @@ it('an actual current refresh failure remains an actionable error', async () => 
     'data-content',
     'networkConnection.networkError'
   );
-  expect(indicator()).toHaveClass('bg-red-600');
+  expect(dot()).toHaveClass('bg-red-600');
   fireEvent.click(indicator());
   expect(mockNavigate).toHaveBeenCalledWith('/chain-fail-to-connect');
 });
@@ -267,7 +268,7 @@ it.each([0, 350, 6250, 9500])(
           ? 'networkConnection.operationSlow'
           : 'networkConnection.updatingBalances'
       );
-      expect(indicator()).not.toHaveClass('bg-green-500');
+      expect(dot()).not.toHaveClass('bg-green-500');
     } finally {
       await act(async () => {
         second.resolve('2');
@@ -291,7 +292,7 @@ it.each([
       read.resolve('2');
       await work;
     });
-    expect(indicator()).toHaveClass(String(color));
+    expect(dot()).toHaveClass(String(color));
     expect(tooltip()).toHaveAttribute('data-content', String(message));
   }
 );

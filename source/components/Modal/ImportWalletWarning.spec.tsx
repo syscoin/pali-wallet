@@ -78,8 +78,8 @@ const locales = [
     translations: enTranslations,
     consequences: [
       'only the first seed-derived (HD) account',
-      'deletes the locally stored encrypted records of imported private keys',
-      'Without separate backups of those keys, you may permanently lose access',
+      'deletes saved private notes and locally encrypted imported private keys',
+      'Without separate key backups, you may permanently lose access',
     ],
   },
   {
@@ -87,8 +87,8 @@ const locales = [
     translations: esTranslations,
     consequences: [
       'solo la primera cuenta derivada de la semilla (HD)',
-      'elimina los registros cifrados de las claves privadas importadas que se guardan localmente',
-      'Sin copias de seguridad independientes de esas claves, puedes perder permanentemente el acceso',
+      'elimina las notas privadas guardadas y las claves privadas importadas cifradas localmente',
+      'Sin copias separadas de esas claves, puedes perder para siempre el acceso',
     ],
   },
   {
@@ -96,8 +96,8 @@ const locales = [
     translations: frTranslations,
     consequences: [
       'uniquement le premier compte dérivé de la phrase (HD)',
-      'supprime les enregistrements chiffrés des clés privées importées stockés localement',
-      'Sans sauvegardes distinctes de ces clés, vous risquez de perdre définitivement l’accès',
+      'supprime les notes privées enregistrées et les clés privées importées chiffrées localement',
+      'Sans sauvegarde séparée de ces clés, vous risquez de perdre définitivement l’accès',
     ],
   },
   {
@@ -105,7 +105,7 @@ const locales = [
     translations: ptTranslations,
     consequences: [
       'apenas a primeira conta derivada da seed (HD)',
-      'exclui os registros criptografados das chaves privadas importadas armazenados localmente',
+      'exclui notas privadas salvas e chaves privadas importadas criptografadas localmente',
       'Sem backups separados dessas chaves, você pode perder permanentemente o acesso',
     ],
   },
@@ -114,8 +114,8 @@ const locales = [
     translations: deTranslations,
     consequences: [
       'nur das erste vom Seed abgeleitete Konto (HD)',
-      'löscht die lokal gespeicherten verschlüsselten Datensätze importierter privater Schlüssel',
-      'Ohne separate Sicherungen dieser Schlüssel kannst du dauerhaft den Zugriff',
+      'löscht gespeicherte private Notizen und lokal verschlüsselte importierte private Schlüssel',
+      'Ohne separate Schlüsselsicherungen kannst du den Zugriff',
     ],
   },
   {
@@ -123,8 +123,8 @@ const locales = [
     translations: ruTranslations,
     consequences: [
       'только первый аккаунт, полученный из сид-фразы (HD)',
-      'удаляет локально сохранённые зашифрованные записи импортированных приватных ключей',
-      'Без отдельных резервных копий этих ключей вы можете навсегда потерять доступ',
+      'удаляет сохранённые приватные заметки и локально зашифрованные импортированные приватные ключи',
+      'Без отдельных копий этих ключей вы можете навсегда потерять доступ',
     ],
   },
   {
@@ -132,8 +132,8 @@ const locales = [
     translations: jaTranslations,
     consequences: [
       'シードから派生した最初のアカウント（HD）のみを復元',
-      'ローカルに保存されたインポート済み秘密鍵の暗号化された記録が削除',
-      'それらの鍵を別途バックアップしていない場合、それらのアカウントに永久にアクセスできなくなる',
+      '保存済みのプライベートノートと、ローカルに暗号化保存されたインポート済み秘密鍵が削除',
+      '鍵を別途バックアップしないと、それらのアカウントへのアクセスを永久に失う',
     ],
   },
   {
@@ -141,8 +141,8 @@ const locales = [
     translations: zhTranslations,
     consequences: [
       '仅恢复由助记词派生的第一个账户（HD）',
-      '删除本地存储的已导入私钥的加密记录',
-      '如果没有这些私钥的独立备份，您可能会永久失去',
+      '删除已保存的私密票据和本地加密的导入私钥',
+      '没有私钥的独立备份，您可能永久失去',
     ],
   },
   {
@@ -150,11 +150,23 @@ const locales = [
     translations: koTranslations,
     consequences: [
       '시드에서 파생된 첫 번째 계정(HD)만 복원',
-      '로컬에 저장된 가져온 개인 키의 암호화된 기록이 삭제',
-      '해당 키를 별도로 백업하지 않았다면 해당 계정에 대한 접근 권한을 영구적으로 잃을',
+      '저장된 비공개 노트와 로컬에 암호화된 가져온 개인 키가 삭제',
+      '키를 별도 백업하지 않으면 해당 계정에 대한 접근을 영구적으로 잃을',
     ],
   },
 ];
+
+const privateNoteDeletion: Record<string, string> = {
+  en: 'Recovery deletes saved private notes',
+  de: 'löscht gespeicherte private Notizen',
+  es: 'elimina las notas privadas guardadas',
+  fr: 'supprime les notes privées enregistrées',
+  ja: '保存済みのプライベートノートと、ローカルに暗号化保存されたインポート済み秘密鍵が削除されます。',
+  ko: '저장된 비공개 노트와 로컬에 암호화된 가져온 개인 키가 삭제됩니다.',
+  pt: 'exclui notas privadas salvas',
+  ru: 'удаляет сохранённые приватные заметки',
+  zh: '删除已保存的私密票据',
+};
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -202,9 +214,13 @@ it.each(locales)(
     expect(paragraphs).toEqual([
       translations.settings.recoveryIntro,
       translations.settings.recoverySeedHelp,
-      translations.settings.recoveryLimitations,
+      `${translations.settings.recoveryLimitations} ${translations.forgetWalletPage.privateNotesBackupWarning}`,
     ]);
     const observed = paragraphs.join(' ');
+    expect(observed).toContain(privateNoteDeletion[language]);
+    expect(observed).toContain(
+      translations.forgetWalletPage.privateNotesBackupWarning
+    );
     consequences.forEach((consequence) => {
       expect(observed).toContain(consequence);
     });
@@ -216,7 +232,7 @@ it.each(locales)(
         'Enter the phrase for this wallet. A different phrase cannot restore its accounts.'
       );
       expect(observed).toContain(
-        'Hardware connections, custom settings and smart-account/passkey setup need their own backups or reconnection.'
+        'Hardware connections, custom settings and smart-account/passkey setup need separate backups or reconnection.'
       );
       expect(observed).toContain('Recovery does not move your funds.');
     }

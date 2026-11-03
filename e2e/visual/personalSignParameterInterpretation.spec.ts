@@ -15,6 +15,7 @@ import {
   installIsolatedVaultRoutes,
 } from '../harness/isolatedVaultFixture';
 import { PaliWallet } from '../harness/pali';
+import { checkReviewHeadingContainment } from '../harness/reviewGeometry';
 import {
   approve,
   extensionEvidence,
@@ -450,6 +451,15 @@ for (const viewport of viewports) {
             );
             expect(await publicState(wallet!.page)).toEqual(baseline);
             await interpretation.scrollIntoViewIfNeeded();
+            if (scenario.name === 'canonical-text') {
+              await checkReviewHeadingContainment(
+                popup,
+                heading,
+                interpretation,
+                info,
+                `parameter-heading-${viewport.width}`
+              );
+            }
             const image = info.outputPath(
               `${scenario.name}-${viewport.width}.png`
             );
@@ -462,6 +472,36 @@ for (const viewport of viewports) {
               .getByText(`${en.send.message}:`, { exact: true })
               .locator('xpath=..');
             const messageGeometry = await messageRowGeometry(popup, messageRow);
+            if (scenario.name === 'canonical-text') {
+              // Short ordinary words should wrap at spaces, while the other
+              // scenarios still exercise long address and hex values.
+              const wordLines = await messageRow
+                .locator('span')
+                .last()
+                .evaluate((element) => {
+                  const node = element.firstChild;
+                  if (!node || node.nodeType !== Node.TEXT_NODE)
+                    throw new Error('Missing interpreted message text');
+                  const text = node.textContent || '';
+                  return [...text.matchAll(/\S+/g)].map((match) => {
+                    const range = document.createRange();
+                    range.setStart(node, match.index!);
+                    range.setEnd(node, match.index! + match[0].length);
+                    return {
+                      word: match[0],
+                      lines: new Set(
+                        [...range.getClientRects()].map((rect) =>
+                          Math.round(rect.top)
+                        )
+                      ).size,
+                    };
+                  });
+                });
+              expect(wordLines.map(({ word }) => word)).toEqual(
+                MESSAGE.split(/\s+/)
+              );
+              expect(wordLines.every(({ lines }) => lines === 1)).toBe(true);
+            }
             const messageImage = info.outputPath(
               `${scenario.name}-message-row-${viewport.width}.png`
             );

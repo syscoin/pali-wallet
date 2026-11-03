@@ -8,11 +8,17 @@ import en from 'assets/locales/en.json';
 import { AppLayout } from './AppLayout';
 
 let mockPath = '/receive';
+let mockLocationState: Record<string, unknown> = {};
 let mockChanging = false;
 let mockUnavailable = false;
 const mockNavigate = jest.fn();
 jest.mock('react-router-dom', () => ({
-  useLocation: () => ({ pathname: mockPath, search: '', hash: '', state: {} }),
+  useLocation: () => ({
+    pathname: mockPath,
+    search: '',
+    hash: '',
+    state: mockLocationState,
+  }),
   useNavigate: () => mockNavigate,
   Outlet: () => <main>Page content</main>,
 }));
@@ -87,6 +93,7 @@ const precedes = (first: Element, second: Element) =>
 beforeEach(() => {
   jest.useFakeTimers();
   mockPath = '/receive';
+  mockLocationState = {};
   mockChanging = false;
   mockUnavailable = false;
   jest.clearAllMocks();
@@ -219,4 +226,33 @@ it('keeps unavailable-worker progress outside guards while unmounting a cached s
     screen.queryByText('Cached synthetic plaintext')
   ).not.toBeInTheDocument();
   expect(screen.getByRole('navigation').closest('[inert]')).toBeNull();
+});
+
+it.each(['/send/eth', '/send/sys'])(
+  'shows a generic send title on %s',
+  (path) => {
+    mockPath = path;
+    render(
+      <AppLayout>
+        <p>Selected asset is shown in the form</p>
+      </AppLayout>
+    );
+    expect(screen.getByText(en.send.send, { exact: true })).toBeVisible();
+    expect(
+      screen.queryByText(`${en.send.send} TSYS`, { exact: true })
+    ).toBeNull();
+  }
+);
+
+it('preserves explicit title overrides and the receive network label', () => {
+  mockPath = '/send/sys';
+  mockLocationState = { pageTitle: 'Custom title' };
+  const view = render(<AppLayout />);
+  expect(screen.getByText('Custom title', { exact: true })).toBeVisible();
+  mockPath = '/receive';
+  mockLocationState = {};
+  view.rerender(<AppLayout />);
+  expect(
+    screen.getByText(`${en.receive.receiveTitle} TSYS`, { exact: true })
+  ).toBeVisible();
 });

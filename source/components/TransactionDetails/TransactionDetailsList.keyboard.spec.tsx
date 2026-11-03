@@ -253,10 +253,9 @@ async function metadata() {
   return {
     user,
     method: metadataRow('Method', en.transactions.methodNames.execute),
-    time: metadataRow('Timestamp', timestamp),
   };
 }
-it.each(['method', 'time'] as const)(
+it.each(['method'] as const)(
   'retains hover access to full top-level %s metadata',
   async (field) => {
     const data = await metadata();
@@ -270,7 +269,7 @@ it.each(['method', 'time'] as const)(
     ).toBeVisible();
   }
 );
-it.each(['method', 'time'] as const)(
+it.each(['method'] as const)(
   'exposes and dismisses full top-level %s metadata using Tab and Escape',
   async (field) => {
     const data = await metadata();
@@ -297,6 +296,25 @@ it.each(['method', 'time'] as const)(
     expect(item.reference).not.toHaveAttribute('aria-describedby');
   }
 );
+it('shows the complete timestamp without adding a tooltip or Tab stop', async () => {
+  const { user } = await metadata();
+  const row = screen.getByText('Timestamp', { exact: true }).parentElement!;
+  const value = within(row).getByText(timestamp, { exact: true });
+  expect(value).toBeVisible();
+  await user.hover(value);
+  expect(screen.queryByRole('tooltip')).toBeNull();
+  expect(row.querySelector('button, [tabindex]')).toBeNull();
+  for (let index = 0; index < 30; index++) {
+    await user.tab();
+    expect(row).not.toContainElement(document.activeElement as HTMLElement);
+    if (
+      document.activeElement ===
+      screen.getByRole('button', { name: 'After details' })
+    )
+      break;
+  }
+  expect(screen.getByRole('button', { name: 'After details' })).toHaveFocus();
+});
 it('keeps short top-level metadata visible without an extra Tab stop', async () => {
   const { user } = await metadata();
   const row = screen.getByText('Block Number', { exact: true }).parentElement!;

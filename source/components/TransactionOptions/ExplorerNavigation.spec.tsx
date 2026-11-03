@@ -405,3 +405,26 @@ it('bounds the actual pending menu while preserving Escape and safe Details navi
   expect(mockState.vault.activeNetwork).toEqual(network);
   expect(mockRows).toEqual(rows);
 });
+
+it('keeps pending transaction actions while omitting the unavailable explorer', async () => {
+  mockState.vault.activeNetwork.explorer = RPC;
+  mockState.vault.activeNetwork.explorerExplicitlyAbsent = true;
+  const opened = jest.spyOn(window, 'open').mockImplementation(() => null);
+  const view = render(
+    <MemoryRouter>
+      <EvmTransactionsList userTransactions={mockRows} />
+    </MemoryRouter>
+  );
+  const trigger = view.container.querySelector<HTMLButtonElement>(
+    '#transaction-options button'
+  );
+  expect(trigger).not.toBeNull();
+  await userEvent.click(trigger!);
+  expect(
+    screen.queryByRole('menuitem', { name: 'transactions.seeOnBlockExplorer' })
+  ).toBeNull();
+  expect(
+    screen.getByRole('menuitem', { name: 'transactions.seeDetails' })
+  ).toBeVisible();
+  expect(opened).not.toHaveBeenCalled();
+});

@@ -25,13 +25,29 @@ export interface IPrivateNoteView extends Omit<IPrivateNoteStatus, 'phase'> {
   };
 }
 
+export type PrivateVaultCapacity = 128 | 256 | 512;
+
+export interface IPrivateVaultCapacity {
+  capacity: PrivateVaultCapacity;
+  noteCount: number;
+  bundleLimitBytes: number;
+  storedBytes: number;
+}
+
 export interface IPrivateVaultView {
   notes: IPrivateNoteView[];
 }
 
 export interface IPrivateVaultController {
+  clearCompletedNotes: (
+    ids: string[]
+  ) => Promise<{ removed: string[]; unresolved: string[] }>;
   createDepositNote: (poolId: PrivacyPoolId) => Promise<IPrivateNoteView>;
   getNotes: () => Promise<IPrivateVaultView>;
+  getCapacity: () => Promise<IPrivateVaultCapacity>;
+  setCapacity: (
+    capacity: PrivateVaultCapacity
+  ) => Promise<IPrivateVaultCapacity>;
   importNote: (note: string) => Promise<IPrivateNoteView>;
   revealNote: (id: string, password: string) => Promise<string>;
 }

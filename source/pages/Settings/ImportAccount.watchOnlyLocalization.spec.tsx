@@ -417,6 +417,12 @@ it.each(locales)(
     const firstImport = new Promise<never>((_resolve, reject) => {
       rejectImport = reject;
     });
+    let resolveRetry!: (account: { address: string; id: number }) => void;
+    const retryImport = new Promise<{ address: string; id: number }>(
+      (resolve) => {
+        resolveRetry = resolve;
+      }
+    );
     let importAttempts = 0;
     mockEmitter.mockImplementation((methods: string[], args: unknown[]) => {
       const method = methods.join('.');
@@ -424,9 +430,7 @@ it.each(locales)(
         return Promise.resolve(args[0] === PUBLIC_IDENTIFIER);
       if (method === 'wallet.importWatchOnlyFromController') {
         importAttempts += 1;
-        return importAttempts === 1
-          ? firstImport
-          : Promise.resolve({ id: 1, address: PUBLIC_IDENTIFIER });
+        return importAttempts === 1 ? firstImport : retryImport;
       }
       throw new Error('No private import or unrelated operation is allowed');
     });
@@ -485,19 +489,17 @@ it.each(locales)(
       rejectImport(new Error(WATCH_ONLY_VALIDATION_TIMEOUT));
     });
 
-    await waitFor(() =>
-      expect(mockAlert.error).toHaveBeenCalledWith(
-        translation.settings.watchOnlyValidationTimedOut
-      )
+    const failure = await screen.findByRole('alert');
+    expect(failure).toBeVisible();
+    expect(failure.textContent).toBe(
+      translation.settings.watchOnlyValidationTimedOut
     );
-    expect(mockAlert.error).toHaveBeenCalledTimes(1);
-    expect(mockAlert.error).not.toHaveBeenCalledWith(
-      WATCH_ONLY_VALIDATION_TIMEOUT
-    );
+    expect(failure).not.toHaveTextContent(WATCH_ONLY_VALIDATION_TIMEOUT);
     if (locale !== 'en')
-      expect(mockAlert.error).not.toHaveBeenCalledWith(
+      expect(failure).not.toHaveTextContent(
         en.settings.watchOnlyValidationTimedOut
       );
+    expect(mockAlert.error).not.toHaveBeenCalled();
     expect(identifier).toHaveValue(PUBLIC_IDENTIFIER);
     expect(label).toHaveValue(publicLabel);
     expect(checkbox).toBeChecked();
@@ -518,6 +520,10 @@ it.each(locales)(
     submit.focus();
     expect(submit).toHaveFocus();
     await user.keyboard('{Enter}');
+    await waitFor(() => expect(importAttempts).toBe(2));
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(submit).toBeDisabled();
+    await act(async () => resolveRetry({ id: 1, address: PUBLIC_IDENTIFIER }));
     expect(await screen.findByText('Unexpected import')).toHaveAttribute(
       'role',
       'status'
@@ -550,7 +556,7 @@ it.each(locales)(
           methods.join('.') === 'wallet.importAccountFromPrivateKey'
       )
     ).toBe(false);
-    expect(mockAlert.error).toHaveBeenCalledTimes(1);
+    expect(mockAlert.error).not.toHaveBeenCalled();
     expect(mockNavigate).not.toHaveBeenCalled();
     expect(dispatch).not.toHaveBeenCalled();
     expect(JSON.stringify(store.getState())).toBe(snapshot);

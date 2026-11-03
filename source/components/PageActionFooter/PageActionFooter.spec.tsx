@@ -79,3 +79,62 @@ it('measures changing action height for native focus scrolling and cleans up', (
     container.remove();
   }
 });
+
+it('reserves toast space for a visible in-flow footer and releases it when scrolled away', () => {
+  let pending: FrameRequestCallback | undefined;
+  const frame = jest
+    .spyOn(window, 'requestAnimationFrame')
+    .mockImplementation((callback) => {
+      pending = callback;
+      return 1;
+    });
+  const view = render(
+    <PageActionFooter includeInFlow>
+      <button>Save</button>
+    </PageActionFooter>
+  );
+  const footer = screen.getByRole('button', { name: 'Save' }).parentElement!;
+  footer.style.position = 'static';
+  footer.style.opacity = '1';
+  footer.style.visibility = 'visible';
+  const rect = jest.spyOn(footer, 'getBoundingClientRect');
+  const box = (top: number) =>
+    ({
+      x: 0,
+      y: top,
+      top,
+      bottom: top + 80,
+      left: 0,
+      right: 320,
+      width: 320,
+      height: 80,
+      toJSON: () => undefined,
+    } as DOMRect);
+  try {
+    rect.mockReturnValue(box(window.innerHeight - 80));
+    document.dispatchEvent(new Event('scroll'));
+    expect(pending).toBeDefined();
+    const callback = pending!;
+    pending = undefined;
+    callback(0);
+    expect(
+      document.documentElement.style.getPropertyValue(
+        '--pali-toast-footer-clearance'
+      )
+    ).toBe('80px');
+    rect.mockReturnValue(box(window.innerHeight + 10));
+    document.dispatchEvent(new Event('scroll'));
+    expect(pending).toBeDefined();
+    const nextCallback = pending!;
+    pending = undefined;
+    nextCallback(0);
+    expect(
+      document.documentElement.style.getPropertyValue(
+        '--pali-toast-footer-clearance'
+      )
+    ).toBe('0px');
+  } finally {
+    view.unmount();
+    frame.mockRestore();
+  }
+});

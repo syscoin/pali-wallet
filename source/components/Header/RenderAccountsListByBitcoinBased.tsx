@@ -290,9 +290,12 @@ const RenderAccountsListByBitcoinBased =
                       title={isSmartAccount ? badgeLabel : undefined}
                       className={`inline-flex h-[20px] flex-shrink-0 items-center gap-1 ${
                         isSmartAccount ? 'px-1' : 'px-2'
-                      } text-xs leading-none text-white ${
-                        badgeInfo.bgColor
-                      } rounded-full font-medium`}
+                      } text-xs leading-none ${
+                        accountType === KeyringAccountType.Imported ||
+                        isSmartAccount
+                          ? 'text-black'
+                          : 'text-white'
+                      } ${badgeInfo.bgColor} rounded-full font-medium`}
                     >
                       {isAccountActive(account.id, accountType) && (
                         <Icon

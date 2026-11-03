@@ -14,14 +14,21 @@ it.each([
   (hovered, hidden) => {
     const style = {
       width: hovered ? '100vw' : '2.75rem',
-      height: hovered ? '64px' : '2.75rem',
+      height: hovered ? 'auto' : '2.75rem',
+      minHeight: hovered ? '64px' : '44px',
       borderTopRightRadius: hovered ? '20px' : '999px',
       borderTopLeftRadius: hovered ? '20px' : 'unset',
       opacity: hidden ? 0 : 1,
     };
     expect(getContainerStyleAnimation(hovered, hidden)).toEqual({
       style,
-      animation: { ...style, transition: { duration: 0.3, ease: 'easeInOut' } },
+      animation: {
+        minHeight: style.minHeight,
+        borderTopRightRadius: style.borderTopRightRadius,
+        borderTopLeftRadius: style.borderTopLeftRadius,
+        opacity: style.opacity,
+        transition: { duration: 0.3, ease: 'easeInOut' },
+      },
     });
   }
 );

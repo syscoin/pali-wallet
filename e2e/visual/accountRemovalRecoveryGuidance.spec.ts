@@ -196,14 +196,168 @@ test('account removal explains private-import backup needs and Cancel preserves 
         expect.soft(copy).toMatch(/recovery phrase|seed/i);
         expect.soft(copy).toContain(en.settings.importedAccountRemovalWarning);
         await page.setViewportSize({ width: 320, height: 360 });
+        const description = dialog
+          .locator('p')
+          .filter({ hasText: en.settings.importedAccountRemovalWarning });
+        await expect(description).toHaveCount(1);
+        const descriptionText = await description.textContent();
+        expect(descriptionText).toBeTruthy();
+        await expect(dialog).toHaveAccessibleDescription(descriptionText!);
+        const body = description.locator(
+          'xpath=ancestor::div[contains(concat(" ", normalize-space(@class), " "), " overflow-y-auto ")][1]'
+        );
+        const sample = () =>
+          description.evaluate(
+            (paragraph, values) => {
+              const body = paragraph.closest('.overflow-y-auto');
+              const text = paragraph.firstChild;
+              const dialog = paragraph.closest('[role="dialog"]');
+              const button = dialog?.querySelector('#confirm-btn');
+              if (!body || !text || text.nodeType !== Node.TEXT_NODE || !button)
+                throw new Error('Removal confirmation geometry unavailable');
+              const bodyBox = body.getBoundingClientRect();
+              const clip = {
+                left: Math.max(0, bodyBox.left + body.clientLeft),
+                top: Math.max(0, bodyBox.top + body.clientTop),
+                right: Math.min(
+                  innerWidth,
+                  bodyBox.left + body.clientLeft + body.clientWidth
+                ),
+                bottom: Math.min(
+                  innerHeight,
+                  bodyBox.top + body.clientTop + body.clientHeight
+                ),
+              };
+              const fragments = (value: string) => {
+                const data = text.textContent || '';
+                const start = data.indexOf(value);
+                if (start < 0 || data.indexOf(value, start + 1) !== -1)
+                  throw new Error('Confirmation text range unavailable');
+                const range = document.createRange();
+                range.setStart(text, start);
+                range.setEnd(text, start + value.length);
+                return Array.from(
+                  range.getClientRects(),
+                  (r) =>
+                    r.width > 0 &&
+                    r.height > 0 &&
+                    r.left >= clip.left - 0.5 &&
+                    r.right <= clip.right + 0.5 &&
+                    r.top >= clip.top - 0.5 &&
+                    r.bottom <= clip.bottom + 0.5
+                );
+              };
+              const rect = button.getBoundingClientRect();
+              const x = (rect.left + rect.right) / 2;
+              const y = (rect.top + rect.bottom) / 2;
+              const hit =
+                x >= 0 && x < innerWidth && y >= 0 && y < innerHeight
+                  ? document.elementFromPoint(x, y)
+                  : null;
+              return {
+                warning: fragments(values.warning),
+                address: fragments(values.address),
+                actionHit: Boolean(
+                  hit && (hit === button || button.contains(hit))
+                ),
+              };
+            },
+            {
+              warning: en.settings.importedAccountRemovalWarning,
+              address: target!.address,
+            }
+          );
+        const initial = await sample();
+        expect(initial.warning.length).toBeGreaterThan(0);
+        expect(initial.address.length).toBeGreaterThan(0);
+        if (initial.actionHit) {
+          expect(initial.warning.every(Boolean)).toBe(true);
+          expect(initial.address.every(Boolean)).toBe(true);
+        }
+        const warningSeen = new Set<number>();
+        const addressSeen = new Set<number>();
+        let actionReachable = false;
+        for (let attempt = 0; attempt < 24; attempt++) {
+          const current = await sample();
+          current.warning.forEach((visible, i) => {
+            if (visible) warningSeen.add(i);
+          });
+          current.address.forEach((visible, i) => {
+            if (visible) addressSeen.add(i);
+          });
+          if (
+            current.actionHit &&
+            warningSeen.size === current.warning.length &&
+            addressSeen.size === current.address.length
+          ) {
+            actionReachable = true;
+            break;
+          }
+          const box = await body.boundingBox();
+          if (!box)
+            throw new Error('Removal confirmation scrollport unavailable');
+          await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+          await page.mouse.wheel(0, 90);
+          await page.evaluate(
+            () =>
+              new Promise<void>((resolve) =>
+                requestAnimationFrame(() =>
+                  requestAnimationFrame(() => resolve())
+                )
+              )
+          );
+        }
+        expect(actionReachable).toBe(true);
         await expect(
           dialog.getByRole('button', { name: en.buttons.cancel, exact: true })
         ).toBeInViewport();
+        const remove = dialog.getByRole('button', {
+          name: en.buttons.remove,
+          exact: true,
+        });
+        await expect(remove).toBeEnabled();
+        await expect(remove).toBeInViewport();
+        for (
+          let attempt = 0;
+          attempt < 20 &&
+          !(await remove.evaluate((node) => node === document.activeElement));
+          attempt++
+        )
+          await page.keyboard.press('Tab');
+        await expect(remove).toBeFocused();
+        expect((await sample()).actionHit).toBe(true);
+        await page.keyboard.press('Shift+Tab');
         await expect(
-          dialog.getByRole('button', { name: en.buttons.remove, exact: true })
-        ).toBeInViewport();
+          dialog.getByRole('button', { name: en.buttons.cancel, exact: true })
+        ).toBeFocused();
         await wallet!.shot('imported-removal-public-guidance-short');
         await page.setViewportSize({ width: 400, height: 620 });
+        for (
+          let attempt = 0;
+          attempt < 24 && (await body.evaluate((node) => node.scrollTop)) > 0;
+          attempt++
+        ) {
+          const box = await body.boundingBox();
+          if (!box)
+            throw new Error('Removal confirmation scrollport unavailable');
+          await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+          await page.mouse.wheel(0, -90);
+          await page.evaluate(
+            () =>
+              new Promise<void>((resolve) =>
+                requestAnimationFrame(() =>
+                  requestAnimationFrame(() => resolve())
+                )
+              )
+          );
+        }
+        expect(await body.evaluate((node) => node.scrollTop)).toBe(0);
+        const wide = await sample();
+        expect(wide.warning.length).toBeGreaterThan(0);
+        expect(wide.address.length).toBeGreaterThan(0);
+        expect(wide.warning.every(Boolean)).toBe(true);
+        expect(wide.address.every(Boolean)).toBe(true);
+        expect(wide.actionHit).toBe(true);
       }
       await wallet!.shot(`${kind}-removal-public-guidance`);
       await dialog

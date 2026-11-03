@@ -24,6 +24,7 @@ const { RpcResponseIntegrityError } = jest.requireActual(
   '@sidhujag/sysweb3-keyring/cjs/providers'
 );
 const mockEmitter = jest.fn();
+let mockEnsNameToAddress: Record<string, string> = {};
 const mockScope = { account: 'gas-read-account', network: 'gas-read-network' };
 const mockAuth = {
   isUnlocked: true,
@@ -51,6 +52,11 @@ const mockState: any = {
     },
     accountTransactions: {},
   },
+  vaultGlobal: {
+    activeSlip44: 60,
+    networkStatus: 'connected',
+    isSwitchingAccount: false,
+  },
   price: { fiat: { asset: 'USD' } },
 };
 const mockLocation: any = {
@@ -60,11 +66,18 @@ const mockLocation: any = {
 };
 jest.mock('state/store', () => ({
   __esModule: true,
-  default: { getState: () => mockState },
+  default: { getState: () => mockState, subscribe: () => () => undefined },
 }));
 jest.mock('@sidhujag/sysweb3-keyring', () => ({
   KeyringManager: jest.fn(),
-  CustomJsonRpcProvider: jest.fn(),
+  CustomJsonRpcProvider: jest.fn((signal: AbortSignal) => {
+    const value = { ...mockEstimateProvider, signal, destroy: jest.fn() };
+    mockFreshProviders.push(value);
+    return value;
+  }),
+  EthereumTransactions: jest.requireActual(
+    '@sidhujag/sysweb3-keyring/cjs/transactions/ethereum'
+  ).EthereumTransactions,
   PsbtUtils: {},
 }));
 jest.mock('scripts/Background', () => ({
@@ -94,7 +107,7 @@ jest.mock('hooks/controllerStatus', () => ({
   getControllerStatus: () => mockAuth,
 }));
 jest.mock('state/vault/selectors', () => ({
-  selectEnsNameToAddress: () => ({}),
+  selectEnsNameToAddress: () => mockEnsNameToAddress,
   selectValidEnsCache: () => ({}),
 }));
 jest.mock('components/Icon/Icon', () => ({ LoadingSvg: () => <svg /> }));
@@ -150,6 +163,9 @@ const previousGlobals = {
   MessageChannel: globalThis.MessageChannel,
   matchMedia: window.matchMedia,
 };
+let mockEstimateProvider: any;
+let mockFreshProviders: any[] = [];
+let mountResult: ReturnType<typeof render>;
 let sdk: any;
 let provider: any;
 let wallet: any;
@@ -208,6 +224,8 @@ beforeEach(() => {
   jest.spyOn(console, 'error').mockImplementation();
   jest.spyOn(console, 'warn').mockImplementation();
   gasOutcomes.length = 0;
+  mockEnsNameToAddress = {};
+  mockFreshProviders = [];
   modern = true;
   mockState.vault.activeNetwork.chainId += 1;
   mockLocation.key += '-next';
@@ -225,6 +243,7 @@ beforeEach(() => {
   };
   window.history.replaceState(null, '', '/');
   provider = {
+    signal: new AbortController().signal,
     getGasPrice: jest.fn().mockResolvedValue(BigNumber.from(1000000000)),
     getBlock: jest.fn(async () => block()),
     estimateGas: jest.fn().mockResolvedValue(BigNumber.from(21000)),
@@ -234,6 +253,7 @@ beforeEach(() => {
       throw new Error(`Unexpected RPC ${method}`);
     }),
   };
+  mockEstimateProvider = provider;
   sdk = new EthereumTransactions(
     () => mockState.vault.activeNetwork,
     () => {
@@ -247,7 +267,12 @@ beforeEach(() => {
   );
   Object.defineProperty(sdk, 'web3Provider', { get: () => provider });
   wallet = Object.create(MainController.prototype);
-  wallet.getActiveKeyring = () => ({ ethereumTransaction: sdk });
+  const keyring = { ethereumTransaction: sdk, isUnlocked: () => true };
+  wallet.getActiveKeyring = () => keyring;
+  wallet.getWalletSetupStatus = () => undefined;
+  wallet.isUnlocked = () => true;
+  wallet.walletSessionGeneration = 0;
+  wallet.walletStateGeneration = 0;
   mockEmitter.mockImplementation(
     async (methods: string[], params: any[] = []) => {
       // No mocked getTxGasLimit result: traverse the actual MainController getter
@@ -257,6 +282,7 @@ beforeEach(() => {
         'getRecommendedGasPrice',
         'getFeeDataWithDynamicMaxPriorityFeePerGas',
         'getTxGasLimit',
+        'getFreshNativeEvmGasLimit',
       ];
       const method = methods.at(-1)!;
       if (!allowed.includes(method))
@@ -265,11 +291,17 @@ beforeEach(() => {
       for (const name of methods.slice(0, -1)) target = target[name];
       try {
         const value = await target[method](...params);
-        if (method === 'getTxGasLimit')
+        if (
+          method === 'getTxGasLimit' ||
+          method === 'getFreshNativeEvmGasLimit'
+        )
           gasOutcomes.push({ state: 'resolved', value: value.toString() });
         return value;
       } catch (error) {
-        if (method === 'getTxGasLimit')
+        if (
+          method === 'getTxGasLimit' ||
+          method === 'getFreshNativeEvmGasLimit'
+        )
           gasOutcomes.push({
             state: 'rejected',
             code: error.code,
@@ -289,6 +321,7 @@ afterEach(() => {
         'getRecommendedGasPrice',
         'getFeeDataWithDynamicMaxPriorityFeePerGas',
         'getTxGasLimit',
+        'getFreshNativeEvmGasLimit',
       ].includes(path.at(-1))
     )
   ).toBe(true);
@@ -306,7 +339,7 @@ async function mount(mode: Mode) {
       maxPriorityFeePerGas: '0x3b9aca00',
     };
   await act(async () => {
-    render(<SendConfirm />);
+    mountResult = render(<SendConfirm />);
   });
   await advance();
 }
@@ -441,3 +474,85 @@ it.each(modes)(
     // The read-only emitter allowlist in afterEach refuses every submission.
   }
 );
+
+it('consumes fresh-read mode once, so later resolved-recipient changes use the ordinary SDK path', async () => {
+  mockLocation.state.tx.receivingAddress = 'recipient.eth';
+  mockEnsNameToAddress = {
+    'recipient.eth': '0x2222222222222222222222222222222222222222',
+  };
+  provider.estimateGas.mockRejectedValueOnce(
+    new RpcResponseIntegrityError('Synthetic stale estimate', false)
+  );
+  await mount('prefetched');
+  expect(confirm()).toBeDisabled();
+  await act(async () => {
+    fireEvent.click(screen.getByRole('button', { name: 'receive.retry' }));
+  });
+  await advance();
+  expect(confirm()).toBeEnabled();
+  expect(
+    mockEmitter.mock.calls.filter(
+      ([path]) => path.at(-1) === 'getFreshNativeEvmGasLimit'
+    )
+  ).toHaveLength(1);
+  expect(mockFreshProviders).toHaveLength(1);
+  expect(mockFreshProviders[0].destroy).toHaveBeenCalledTimes(1);
+  // The confirmation deliberately retains its original route payload. A new
+  // verified ENS cache result is a real recomputation trigger and changes the
+  // fee cache key without replacing that protected transaction entry.
+  mockEnsNameToAddress = {
+    'recipient.eth': '0x3333333333333333333333333333333333333333',
+  };
+  await act(async () => {
+    mountResult.rerender(<SendConfirm />);
+  });
+  await advance();
+  expect(confirm()).toBeEnabled();
+  expect(
+    mockEmitter.mock.calls.filter(
+      ([path]) => path.at(-1) === 'getFreshNativeEvmGasLimit'
+    )
+  ).toHaveLength(1);
+  expect(
+    mockEmitter.mock.calls.filter(([path]) => path.at(-1) === 'getTxGasLimit')
+  ).toHaveLength(2);
+  expect(mockLocation.state.tx.receivingAddress).toBe('recipient.eth');
+  expect(provider.estimateGas).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      to: '0x3333333333333333333333333333333333333333',
+    })
+  );
+});
+
+it('keeps every exact MAX refinement on the same explicit fresh-read attempt', async () => {
+  mockLocation.state.tx.isMax = true;
+  mockLocation.state.tx.amount = '100';
+  provider.estimateGas.mockRejectedValueOnce(
+    new RpcResponseIntegrityError('Synthetic stale estimate', false)
+  );
+  await mount('prefetched');
+  provider.estimateGas
+    .mockResolvedValueOnce(BigNumber.from(21000))
+    .mockResolvedValueOnce(BigNumber.from(30000))
+    .mockResolvedValueOnce(BigNumber.from(30000));
+  await act(async () => {
+    fireEvent.click(screen.getByRole('button', { name: 'receive.retry' }));
+  });
+  await advance();
+  expect(confirm()).toBeEnabled();
+  const retries = mockEmitter.mock.calls.filter(
+    ([path]) => path.at(-1) === 'getFreshNativeEvmGasLimit'
+  );
+  const total = BigNumber.from(10).pow(18).mul(100),
+    rate = BigNumber.from(3000000000),
+    buffer = BigNumber.from(1000000000000);
+  expect(retries.map(([, args]) => args[0].value)).toEqual(
+    [500000, 25200, 36000].map((gas) =>
+      total.sub(rate.mul(gas)).sub(buffer).toHexString()
+    )
+  );
+  for (const [, args] of retries) expect(args[1]).toEqual(mockScope);
+  expect(mockFreshProviders).toHaveLength(3);
+  for (const reader of mockFreshProviders)
+    expect(reader.destroy).toHaveBeenCalledTimes(1);
+});

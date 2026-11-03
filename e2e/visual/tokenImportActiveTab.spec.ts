@@ -5,6 +5,8 @@ import fs from 'fs';
 import path from 'path';
 
 import en from '../../source/assets/locales/en.json';
+import fr from '../../source/assets/locales/fr.json';
+import ru from '../../source/assets/locales/ru.json';
 import { E2E_CONFIG } from '../harness/config';
 import {
   createIsolatedVaultFixture,
@@ -310,3 +312,208 @@ const importedProjection = (page: Page, family: 'evm' | 'utxo') =>
     }
   });
 });
+
+const expectTabWordsAndHits = async (tab: Locator) => {
+  const observed = await tab.evaluate((element: HTMLElement) => {
+    const box = element.getBoundingClientRect();
+    const clip = { left: 0, top: 0, right: innerWidth, bottom: innerHeight };
+    for (let node = element.parentElement; node; node = node.parentElement) {
+      const style = getComputedStyle(node);
+      const bounds = node.getBoundingClientRect();
+      if (/auto|hidden|scroll|clip/.test(style.overflowX)) {
+        clip.left = Math.max(clip.left, bounds.left + node.clientLeft);
+        clip.right = Math.min(
+          clip.right,
+          bounds.left + node.clientLeft + node.clientWidth
+        );
+      }
+      if (/auto|hidden|scroll|clip/.test(style.overflowY)) {
+        clip.top = Math.max(clip.top, bounds.top + node.clientTop);
+        clip.bottom = Math.min(
+          clip.bottom,
+          bounds.top + node.clientTop + node.clientHeight
+        );
+      }
+    }
+    const points = [
+      [box.left + box.width / 2, box.top + box.height / 2],
+      [box.left + 2, box.top + box.height / 2],
+      [box.right - 2, box.top + box.height / 2],
+      [box.left + box.width / 2, box.top + 2],
+      [box.left + box.width / 2, box.bottom - 2],
+    ];
+    const text = element.firstChild;
+    if (!text || text.nodeType !== Node.TEXT_NODE)
+      throw new Error('Expected the tab label text');
+    const words = Array.from((text.textContent || '').matchAll(/\S+/g)).map(
+      (match) => {
+        const range = document.createRange();
+        range.setStart(text, match.index!);
+        range.setEnd(text, match.index! + match[0].length);
+        return Array.from(range.getClientRects())
+          .filter((rect) => rect.width > 0 && rect.height > 0)
+          .map((rect) => ({
+            left: rect.left,
+            right: rect.right,
+            top: rect.top,
+            bottom: rect.bottom,
+          }));
+      }
+    );
+    return {
+      box: {
+        left: box.left,
+        right: box.right,
+        top: box.top,
+        bottom: box.bottom,
+      },
+      clip,
+      words,
+      scrollWidth: element.scrollWidth,
+      clientWidth: element.clientWidth,
+      hit: points.every(([x, y]) => {
+        const target = document.elementFromPoint(x, y);
+        return target && (target === element || element.contains(target));
+      }),
+    };
+  });
+  expect(observed.box.left).toBeGreaterThanOrEqual(observed.clip.left - 0.5);
+  expect(observed.box.right).toBeLessThanOrEqual(observed.clip.right + 0.5);
+  expect(observed.box.top).toBeGreaterThanOrEqual(observed.clip.top - 0.5);
+  expect(observed.box.bottom).toBeLessThanOrEqual(observed.clip.bottom + 0.5);
+  expect(observed.hit).toBe(true);
+  expect(observed.scrollWidth).toBeLessThanOrEqual(observed.clientWidth + 1);
+  expect(observed.words.length).toBeGreaterThan(0);
+  for (const word of observed.words) {
+    expect(word).toHaveLength(1);
+    expect(word[0].left).toBeGreaterThanOrEqual(observed.box.left - 1);
+    expect(word[0].right).toBeLessThanOrEqual(observed.box.right + 1);
+    expect(word[0].top).toBeGreaterThanOrEqual(observed.box.top - 1);
+    expect(word[0].bottom).toBeLessThanOrEqual(observed.box.bottom + 1);
+  }
+};
+
+for (const locale of [
+  { code: 'en', copy: en, option: '' },
+  { code: 'fr', copy: fr, option: 'French Français' },
+  { code: 'ru', copy: ru, option: 'Russian Русский' },
+]) {
+  for (const family of ['utxo', 'evm'] as const) {
+    for (const viewport of [
+      { width: 320, height: 360 },
+      { width: 400, height: 620 },
+    ]) {
+      test(`${locale.code} ${family} import tabs keep words whole and keyboard reachable at ${viewport.width}px`, async ({}, info) => {
+        test.setTimeout(120_000);
+        expect(info.config.workers).toBe(1);
+        expect(info.retry).toBe(0);
+        expect(process.env.PALI_TEST_DAPP_REVISION).toMatch(/^[a-f0-9]{40}$/);
+        expect(path.isAbsolute(E2E_CONFIG.extensionPath)).toBe(true);
+        expect(E2E_CONFIG.extensionPath).toBe(
+          process.env.PALI_TEST_DAPP_EXTENSION_PATH
+        );
+        expect(extensionEvidence().sourceRevision).toBe(
+          process.env.PALI_TEST_DAPP_REVISION
+        );
+        const previous = { ...E2E_CONFIG };
+        const server = await startUtxoFixtureServer();
+        const fixture = createIsolatedVaultFixture();
+        Object.assign(E2E_CONFIG, {
+          seedPhrase: UTXO_FIXTURE_SEED,
+          password: 'TabWordsSyntheticOnly!2026',
+          rpcUrl: server.url,
+        });
+        let wallet: PaliWallet | undefined;
+        let status: 'passed' | 'failed' = 'failed';
+        try {
+          wallet = await PaliWallet.launch(
+            `tab-words-${locale.code}-${family}-${viewport.width}`,
+            { offlineHttpProxy: server.url, recordVideo: false, viewport }
+          );
+          const routes = await installIsolatedVaultRoutes(
+            wallet.context,
+            fixture,
+            server.url
+          );
+          const page = wallet.page;
+          await wallet.importSeedAndCreatePassword();
+          await wallet.switchNetwork(
+            family === 'utxo' ? 'Syscoin Testnet' : 'Syscoin NEVM Testnet',
+            family === 'utxo' ? 'UTXO' : 'EVM'
+          );
+          await wallet.ensureOnHome();
+          if (locale.code !== 'en') {
+            await wallet.gotoRoute('#/settings/languages');
+            await page
+              .getByRole('button', {
+                name: en.settings.setYourPreferredLanguage,
+              })
+              .click();
+            await page
+              .getByRole('menuitem', { name: locale.option, exact: true })
+              .click();
+            await page
+              .getByRole('button', { name: en.buttons.save, exact: true })
+              .click();
+            await expect
+              .poll(() =>
+                page.evaluate(
+                  async () =>
+                    (
+                      await chrome.storage.local.get('language')
+                    ).language
+                )
+              )
+              .toBe(locale.code);
+            await expect(
+              page.getByText(locale.copy.settings.languageWasSet, {
+                exact: true,
+              })
+            ).toBeVisible();
+            await page.keyboard.press('Escape');
+            await wallet.ensureOnHome();
+          }
+          await page.locator('#assets-btn').click();
+          await page
+            .getByRole('button', {
+              name: locale.copy.home.importToken,
+              exact: true,
+            })
+            .click();
+          const owned = page.getByRole('button', {
+            name: locale.copy.tokens.yourTokens,
+            exact: true,
+          });
+          await expect(owned).toHaveCount(1);
+          const custom = owned.locator('..').getByRole('button', {
+            name: locale.copy.tokens.addCustomTab,
+            exact: true,
+          });
+          await expect(custom).toHaveCount(1);
+          await wallet.shot(
+            `tab-words-${locale.code}-${family}-${viewport.width}`
+          );
+          for (const tab of [owned, custom]) {
+            await tabTo(page, tab);
+            await expect(tab).toBeFocused();
+            await expectTabWordsAndHits(tab);
+          }
+          await page.keyboard.press('Space');
+          await expect(custom).toHaveAttribute('aria-pressed', 'true');
+          expect(routes.deniedWrites).toEqual([]);
+          status = 'passed';
+        } finally {
+          try {
+            await wallet?.dispose(status);
+          } finally {
+            try {
+              await server.close();
+            } finally {
+              Object.assign(E2E_CONFIG, previous);
+            }
+          }
+        }
+      });
+    }
+  }
+}

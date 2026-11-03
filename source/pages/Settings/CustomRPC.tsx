@@ -108,7 +108,10 @@ const networkFormValues = (
   url: network?.url ?? '',
   chainId: network?.chainId ?? '',
   symbol: network?.currency?.toUpperCase() ?? '',
-  explorer: network?.explorer?.trim() || network?.url || '',
+  explorer:
+    !isSyscoinRpc && network?.explorerExplicitlyAbsent
+      ? ''
+      : network?.explorer?.trim() || network?.url || '',
   apiUrl: isSyscoinRpc ? '' : network?.apiUrl ?? '',
 });
 
@@ -691,16 +694,22 @@ const CustomRPCView = () => {
     }
 
     // Validate RPC URL and get network configuration
-    const network = await validateRpcUrlAndShowError(
+    const validatedNetwork = await validateRpcUrlAndShowError(
       data.url,
       data,
       canContinue
     );
     if (!canContinue()) return;
-    if (!network) {
+    if (!validatedNetwork) {
       setLoading(false);
       return;
     }
+
+    // Preserve blank intent separately from the SDK's compatibility fallback.
+    const network =
+      !isSyscoinRpc && !data.explorer?.trim()
+        ? { ...validatedNetwork, explorerExplicitlyAbsent: true }
+        : validatedNetwork;
 
     // Validate API URL and show toast error if invalid (only for EVM)
     if (!isSyscoinRpc && data.apiUrl) {
@@ -1284,7 +1293,7 @@ const CustomRPCView = () => {
           {/* Currency and RPC info - more compact */}
           <div className="flex items-center justify-start gap-1.5 text-xs text-brand-gray200 group-hover:text-brand-white/90 transition-colors duration-300">
             <span className="inline-flex items-center gap-1 font-medium text-left">
-              <span className="text-brand-royalblue group-hover:text-white font-semibold text-xs">
+              <span className="text-content-secondary group-hover:text-white font-semibold text-xs">
                 ${chain.nativeCurrency.symbol.toUpperCase()}
               </span>
               <span className="text-brand-gray200 group-hover:text-brand-white/50 text-xs">
@@ -1322,7 +1331,7 @@ const CustomRPCView = () => {
       {testingRpcs && currentRpcTest && (
         <div className="mb-4 p-4 bg-alpha-whiteAlpha100 border border-alpha-whiteAlpha300 rounded-lg">
           <div className="flex items-center gap-3">
-            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-brand-royalblue"></div>
+            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-brand-blue100"></div>
             <div className="flex-1">
               <p className="text-sm font-medium text-white">
                 {t('settings.testingRpcProgress', {
@@ -1337,7 +1346,7 @@ const CustomRPCView = () => {
           </div>
           <div className="w-full bg-alpha-whiteAlpha200 rounded-full h-2 mt-2">
             <div
-              className="bg-brand-royalblue h-2 rounded-full transition-all duration-300"
+              className="bg-brand-blue100 h-2 rounded-full transition-all duration-300"
               style={{
                 width: `${
                   (currentRpcTest.index / currentRpcTest.total) * 100
@@ -1453,6 +1462,9 @@ const CustomRPCView = () => {
             <Form.Item
               name="label"
               className="w-full"
+              extra={t('settings.searchNetworksPlaceholder', {
+                networkType: isSyscoinRpc ? 'UTXO' : 'EVM',
+              })}
               hasFeedback={NETWORK_NAME_FEEDBACK}
               rules={[
                 {
@@ -1476,10 +1488,7 @@ const CustomRPCView = () => {
                 aria-controls={suggestionsId}
                 aria-activedescendant={activeSuggestionId}
                 disabled={isInputDisableByEditMode}
-                placeholder={`${t('settings.label')} - ${t(
-                  'settings.searchNetworksPlaceholder',
-                  { networkType: isSyscoinRpc ? 'UTXO' : 'EVM' }
-                )}`}
+                placeholder={t('settings.label')}
                 className={NETWORK_INPUT_CLASS}
                 onChange={(e) => {
                   invalidatePendingChecks();
@@ -1737,7 +1746,10 @@ const CustomRPCView = () => {
         {!isSyscoinRpc && (
           <div className="w-full">
             <div className="flex items-center gap-2 mb-2">
-              <label className="text-sm text-white font-medium">
+              <label
+                htmlFor="rpc_apiUrl"
+                className="text-sm text-white font-medium"
+              >
                 {t('settings.blockExplorerApiUrl')}
               </label>
               <Tooltip content={t('send.apiKeyTooltip')} placement="top">

@@ -163,8 +163,8 @@ test('both default-wallet choices remain unobscured beside Close in small window
   await withWallet('qa119-default-wallet-regression', async (wallet) => {
     const page = wallet.page;
     for (const label of [
-      'Set Metamask as default wallet',
-      'Set Pali as default wallet',
+      en.settings.disablePaliProvider,
+      en.settings.enablePaliProvider,
     ]) {
       await wallet.gotoRoute('#/settings/remove-eth');
       const action = page.getByRole('button', { name: label, exact: true });
@@ -176,15 +176,19 @@ test('both default-wallet choices remain unobscured beside Close in small window
         const close = page
           .locator('[data-page-action-footer]')
           .getByRole('button', { name: en.buttons.close, exact: true });
+        // Provider help and actions now share the page's scroll flow so the
+        // footer cannot cover help in short windows. Expose the action area
+        // before checking that both controls are visible at the same time.
+        await close.scrollIntoViewIfNeeded();
         await expect.poll(() => exposed(action)).toBe(true);
         await expect.poll(() => exposed(close)).toBe(true);
         expect((await action.boundingBox())!.height).toBeGreaterThanOrEqual(44);
         await capture(
           page,
           info,
-          `default-${label.includes('Metamask') ? 'metamask' : 'pali'}-${
-            viewport.width
-          }x${viewport.height}`
+          `default-${
+            label === en.settings.disablePaliProvider ? 'metamask' : 'pali'
+          }-${viewport.width}x${viewport.height}`
         );
       }
       // Only this disposable browser's provider preference is changed.

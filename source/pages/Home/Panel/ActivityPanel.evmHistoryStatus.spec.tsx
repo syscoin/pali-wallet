@@ -272,13 +272,20 @@ it('preserves cached current-account rows when configured explorer history fails
   expect(currentRows()).toEqual([transaction]);
 });
 
-it('retains the no-API healthy RPC fallback and ordinary empty state', async () => {
+it('shows incomplete history after a no-API RPC fallback returns no rows', async () => {
   mockStore.dispatch(setActiveNetwork({ ...network, apiUrl: undefined }));
   await expect(fetchInitial()).resolves.toBeUndefined();
   expect(reads).toEqual([]);
   expect(provider.sendBatch).toHaveBeenCalled();
   await renderAfterSettleTime();
-  expect(screen.getByText('home.youHaveNoTxs')).toBeVisible();
+  expect(screen.getByText('home.historyMayBeIncomplete')).toBeVisible();
+  expect(screen.getByText('home.historyMayBeIncomplete')).toHaveAttribute(
+    'role',
+    'status'
+  );
+  expect(screen.queryByText('home.youHaveNoTxs')).toBeNull();
+  expect(screen.queryByText('send.unableToLoad')).toBeNull();
+  expect(screen.queryByRole('button', { name: 'receive.retry' })).toBeNull();
 });
 
 it('retains cached rows across a healthy empty explorer response', async () => {
@@ -396,3 +403,71 @@ it('does not let a failed old endpoint read overwrite the new current ready stat
     current
   );
 });
+
+it('retains saved EVM rows and shows incomplete history without an explorer API', async () => {
+  mockStore.dispatch(setActiveNetwork({ ...network, apiUrl: undefined }));
+  setRows([transaction]);
+  await renderAfterSettleTime();
+  expect(screen.getByText(HASH)).toBeVisible();
+  expect(screen.getByText('home.historyMayBeIncomplete')).toBeVisible();
+  expect(screen.getByText('home.historyMayBeIncomplete')).toHaveAttribute(
+    'role',
+    'status'
+  );
+  expect(screen.queryByText('home.youHaveNoTxs')).toBeNull();
+  expect(reads).toEqual([]);
+});
+
+it('switches to scoped explorer loading and healthy empty state when an API is configured', async () => {
+  mockStore.dispatch(setActiveNetwork({ ...network, apiUrl: undefined }));
+  await renderAfterSettleTime();
+  expect(screen.getByText('home.historyMayBeIncomplete')).toBeVisible();
+  act(() => mockStore.dispatch(setActiveNetwork(network)));
+  expect(screen.queryByText('home.historyMayBeIncomplete')).toBeNull();
+  expect(screen.queryByText('home.youHaveNoTxs')).toBeNull();
+  jest.useRealTimers();
+  await act(async () => fetchInitial());
+  expect(screen.getByText('home.youHaveNoTxs')).toBeVisible();
+  expect(screen.queryByText('home.historyMayBeIncomplete')).toBeNull();
+  expect(reads).toEqual(['txlist', 'pendingtxlist', 'tokentx']);
+});
+
+it.each([
+  ['older', 79],
+  ['recent', 95],
+])(
+  'keeps no-API history visibly qualified for a synthetic %s transaction',
+  async (_label, txBlock) => {
+    mockStore.dispatch(setActiveNetwork({ ...network, apiUrl: undefined }));
+    const requested: number[] = [];
+    provider.sendBatch.mockImplementation(
+      async (method: string, params: any[]) => {
+        if (method !== 'eth_getBlockByNumber')
+          throw new Error('Unexpected provider method');
+        return params.map(([number]) => {
+          const height = Number(BigInt(number));
+          requested.push(height);
+          return {
+            number,
+            timestamp: '0x6553f100',
+            transactions:
+              height === txBlock
+                ? [{ ...transaction, blockNumber: number, nonce: '0x1' }]
+                : [],
+          };
+        });
+      }
+    );
+    await fetchInitial();
+    await renderAfterSettleTime();
+    const found = currentRows().some((row: any) => row.hash === HASH);
+    expect(found).toBe(requested.includes(txBlock));
+    if (txBlock === 95) {
+      expect(found).toBe(true);
+      expect(screen.getByText(HASH)).toBeVisible();
+    }
+    expect(screen.getByText('home.historyMayBeIncomplete')).toBeVisible();
+    expect(screen.queryByText('home.youHaveNoTxs')).toBeNull();
+    expect(reads).toEqual([]);
+  }
+);
