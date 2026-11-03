@@ -51,13 +51,18 @@ describe.each(['Ledger', 'Trezor'] as const)(
     let networkSpies: jest.SpyInstance[];
 
     const params = (legacy = false) => ({
+      chainId: state.activeNetwork.chainId,
       from: wallet.address,
       to: recipient,
       value: '12345',
       data: '0x',
       gasLimit: '21000',
       ...(legacy
-        ? { gasPrice: '100' }
+        ? {
+            gasPrice: '100',
+            maxFeePerGas: undefined,
+            maxPriorityFeePerGas: undefined,
+          }
         : { maxFeePerGas: '100', maxPriorityFeePerGas: '2' }),
     });
     const send = (legacy = false) =>
@@ -353,6 +358,7 @@ describe.each(['Ledger', 'Trezor'] as const)(
           async (legacy) => {
             const tokenAddress = `0x${'44'.repeat(20)}`;
             const sending = sdk[method]({
+              networkUrl: state.activeNetwork.url,
               tokenAddress,
               receiver: recipient,
               tokenAmount:

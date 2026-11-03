@@ -370,6 +370,7 @@ describe('published keyring account-scoped replacement signing', () => {
         const dynamicQuote = jest
           .spyOn(sdk, 'getFeeDataWithDynamicMaxPriorityFeePerGas')
           .mockResolvedValue({
+            gasPrice: BigNumber.from(0),
             maxFeePerGas: BigNumber.from(0),
             maxPriorityFeePerGas: BigNumber.from(0),
           });
@@ -500,6 +501,7 @@ describe('published keyring account-scoped replacement signing', () => {
         jest
           .spyOn(sdk, 'getFeeDataWithDynamicMaxPriorityFeePerGas')
           .mockResolvedValue({
+            gasPrice: BigNumber.from(100),
             maxFeePerGas: BigNumber.from(100),
             maxPriorityFeePerGas: BigNumber.from(101),
           });
@@ -1133,6 +1135,7 @@ describe('published keyring account-scoped replacement signing', () => {
     const quote = jest
       .spyOn(sdk, 'getFeeDataWithDynamicMaxPriorityFeePerGas')
       .mockResolvedValue({
+        gasPrice: BigNumber.from(0),
         maxFeePerGas: BigNumber.from(0),
         maxPriorityFeePerGas: BigNumber.from(0),
       });
