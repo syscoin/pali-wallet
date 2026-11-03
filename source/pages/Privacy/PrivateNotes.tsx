@@ -645,7 +645,12 @@ function NotesView() {
         <Suspense fallback={null}>
           <PrivateNoteBundleDialog
             mode={bundleMode}
-            onClose={() => setBundleMode(null)}
+            onClose={() => {
+              setBundleMode(null);
+              // A dismissed, unconfirmed restore may already be durable.
+              // Refresh the public inventory without replaying its commit.
+              void refresh();
+            }}
             onRestored={() => void refresh()}
           />
         </Suspense>
