@@ -7,8 +7,9 @@ import { createWalletCrypto } from '../src/crypto/provider.ts';
 import type { NativeCryptoModule } from '../src/crypto/provider.ts';
 import { qualifyWalletCrypto } from '../src/crypto/qualification.ts';
 import { isCryptoDiagnostic } from '../src/crypto/diagnostics.ts';
-import type { CryptoInstallDiagnostic } from '../src/crypto/diagnostics.ts';
+import type { CryptoInstallDiagnostic, CryptoLoadDiagnostic } from '../src/crypto/diagnostics.ts';
 import { installQuickCrypto } from '../src/crypto/quickCryptoInstall.ts';
+import { loadQuickCrypto } from '../src/crypto/quickCryptoLoad.ts';
 
 test('crypto diagnostics accept only public operation labels and no error payload', () => {
   assert(isCryptoDiagnostic({ bootstrap: 'provider-info' }));
@@ -95,5 +96,40 @@ test('the actual pinned installer records readonly globals without bypassing its
   assert.equal(diagnostic?.globals.base64To, 'accessor-readonly-configurable');
   assert.equal(diagnostic?.globals.buffer, 'absent-extensible');
   assert.equal(diagnostic?.error, 'type-error');
+  assert.equal(getterCalls, 0);
+});
+
+test('load diagnostics retain fixed module markers and reject any additional payload', () => {
+  const original = new TypeError('QuickCrypto NitroModules HybridObject QuickBase64 TurboModule synthetic_secret_token_42');
+  let diagnostic: CryptoLoadDiagnostic | undefined;
+  let handler: (error: unknown, isFatal?: boolean) => void = () => undefined;
+  assert.throws(() => loadQuickCrypto(() => { throw original; }, (value) => { diagnostic = value; }, {
+    getGlobalHandler: () => handler, setGlobalHandler: (value) => { handler = value; },
+  }), (error) => error === original);
+  assert.deepEqual(diagnostic, { error: 'type-error', markers: {
+    quickCrypto: true, nitroModules: true, nativeHybrid: true, quickBase64: true, turboModule: true,
+  } });
+  assert(!JSON.stringify(diagnostic).includes('synthetic_secret_token_42'));
+  assert(isCryptoDiagnostic({ bootstrap: 'quick-crypto-load', load: diagnostic }));
+  for (const load of [
+    { ...diagnostic, message: 'secret' }, { ...diagnostic, error: 'secret' },
+    { ...diagnostic, markers: { ...diagnostic!.markers, arbitrary: true } },
+    { ...diagnostic, markers: { ...diagnostic!.markers, quickCrypto: 'secret' } },
+  ]) assert.equal(isCryptoDiagnostic({ bootstrap: 'quick-crypto-load', load }), false);
+});
+
+test('load marker inspection is bounded and never invokes exception getters', () => {
+  let getterCalls = 0;
+  for (const original of [
+    Object.defineProperty(new Error(), 'message', { get() { getterCalls++; throw Error('secret'); } }),
+    new Error('x'.repeat(4096) + 'QuickCrypto NitroModules'),
+  ]) {
+    let diagnostic: CryptoLoadDiagnostic | undefined;
+    let handler: (error: unknown, isFatal?: boolean) => void = () => undefined;
+    assert.throws(() => loadQuickCrypto(() => { throw original; }, (value) => { diagnostic = value; }, {
+      getGlobalHandler: () => handler, setGlobalHandler: (value) => { handler = value; },
+    }), (error) => error === original);
+    assert.deepEqual(diagnostic?.markers, { quickCrypto: false, nitroModules: false, nativeHybrid: false, quickBase64: false, turboModule: false });
+  }
   assert.equal(getterCalls, 0);
 });

@@ -1,6 +1,7 @@
 import 'expo';
-import type { CryptoBootstrapStep, CryptoInstallDiagnostic } from '../crypto/diagnostics.ts';
+import type { CryptoBootstrapStep, CryptoInstallDiagnostic, CryptoLoadDiagnostic } from '../crypto/diagnostics.ts';
 import { installQuickCrypto } from '../crypto/quickCryptoInstall.ts';
+import { loadQuickCrypto } from '../crypto/quickCryptoLoad.ts';
 import { createNativeWalletCrypto, disposeWalletCrypto, qualifyWalletCrypto } from '../crypto/native';
 
 let initialization: Promise<Crypto> | undefined;
@@ -8,6 +9,8 @@ let checkpoint: CryptoBootstrapStep = 'unchecked';
 export function nativeCryptoCheckpoint(): CryptoBootstrapStep { return checkpoint; }
 let installDiagnostic: CryptoInstallDiagnostic | undefined;
 export function nativeCryptoInstallDiagnostic(): CryptoInstallDiagnostic | undefined { return installDiagnostic; }
+let loadDiagnostic: CryptoLoadDiagnostic | undefined;
+export function nativeCryptoLoadDiagnostic(): CryptoLoadDiagnostic | undefined { return loadDiagnostic; }
 
 let status: 'unchecked' | 'checking' | 'ready' | 'unavailable' = 'unchecked';
 
@@ -26,8 +29,11 @@ export function ensureNativeCryptoReady(): Promise<Crypto> {
         // SDK loading must remain behind runtime qualification, including this
         // synchronous compatibility installation.
         checkpoint = 'quick-crypto-load';
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        const quickCrypto: unknown = require('react-native-quick-crypto');
+        const quickCrypto: unknown = loadQuickCrypto(
+          // eslint-disable-next-line @typescript-eslint/no-require-imports
+          () => require('react-native-quick-crypto'),
+          (diagnostic) => { loadDiagnostic = diagnostic; }
+        );
         checkpoint = 'quick-crypto-install';
         installQuickCrypto(quickCrypto, (diagnostic) => { installDiagnostic = diagnostic; });
         checkpoint = 'provider-create';

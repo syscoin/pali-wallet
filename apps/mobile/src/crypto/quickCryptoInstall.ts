@@ -10,7 +10,7 @@ function globalShape(target: object, key: string): CryptoGlobalShape {
   } catch { return 'inspection-failed'; }
 }
 
-function errorKind(error: unknown): CryptoInstallDiagnostic['error'] {
+export function cryptoErrorKind(error: unknown): CryptoInstallDiagnostic['error'] {
   // Never read exception properties: even name/message getters can contain data.
   try {
     if (error instanceof TypeError) return 'type-error';
@@ -38,7 +38,7 @@ export function installQuickCrypto(
     installer = install === undefined ? 'missing' : typeof install === 'function' ? 'callable' : 'noncallable';
     Reflect.apply(install as () => void, module, []);
   } catch (error) {
-    try { onFailure(Object.freeze({ installer, error: errorKind(error), globals })); }
+    try { onFailure(Object.freeze({ installer, error: cryptoErrorKind(error), globals })); }
     catch { /* Diagnostic observers cannot replace the original failure. */ }
     throw error;
   }

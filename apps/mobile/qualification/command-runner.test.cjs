@@ -114,7 +114,7 @@ test('binary commands use180s and diagnostics never expose database stdout', () 
   assert.equal(options.timeout, 180000);
 });
 
-test('Android cleanup screenshot file-write failure preserves the original database command failure', async () => {
+for (const diagnosticsAvailable of [true, false]) test(`Android cleanup preserves the database failure when diagnostics are ${diagnosticsAvailable ? 'available' : 'unavailable'}`, async () => {
   const { runInNewContext } = require('node:vm');
   const source = readFileSync(require.resolve('./run-native.cjs'), 'utf8');
   const writes = [], calls = [];
@@ -132,8 +132,8 @@ test('Android cleanup screenshot file-write failure preserves the original datab
       return ok(JSON.stringify({ version: 1, status: 'passed', phase: 'create', scenario: 'import', platform: 'android', networkCalls: 0, nativeBridgeExercised: true, fingerprint: 'a'.repeat(64), cryptoEvidence: { passed: true, productionIterations: 900000 }, mnemonicEntropyVerified: false }));
     }
     if (args.includes('pidof')) return ok(++pidReads === 1 ? '1234' : '');
-    if (args.includes('logcat')) return ok('F/libc: SIGABRT libhermes.so synthetic_secret_token_42');
-    if (args.includes('exit-info')) return ok('process=com.paliwallet.qualification reason=5 (APP CRASH(NATIVE))\n description=synthetic_secret_token_42');
+    if (args.includes('logcat')) return diagnosticsAvailable ? ok('F/libc: SIGABRT libhermes.so synthetic_secret_token_42') : { status: 1, stderr: 'synthetic_secret_token_42' };
+    if (args.includes('exit-info')) return diagnosticsAvailable ? ok('process=com.paliwallet.qualification reason=5 (APP CRASH(NATIVE))\n description=synthetic_secret_token_42') : { status: 1, stderr: 'synthetic_secret_token_42' };
     return ok('');
   };
   const fakeProcess = { env: { CI: 'true', PALI_NATIVE_QUALIFICATION: '1', QUALIFICATION_ARTIFACTS: '/public-output', ANDROID_HOME: '/public-sdk' }, argv: ['node', 'runner', 'android', '/public.apk'], exitCode: 0 };
@@ -159,10 +159,10 @@ test('Android cleanup screenshot file-write failure preserves the original datab
   assert.equal(shell.stdout, 'pali-wallet-qualification://run?phase=create&scenario=import');
   assert(writes.some((write) => write.file.endsWith('/android-import-create-launch.log')));
   const logcat = calls.find((call) => call.args.includes('logcat'));
-  assert.deepEqual(Array.from(logcat.args), ['logcat', '-b', 'main', '-b', 'crash', '-d', '-t', '300', '-v', 'brief', 'AndroidRuntime:E', 'ReactNativeJS:E', 'libc:F', 'DEBUG:F', '*:S']);
+  assert.deepEqual(Array.from(logcat.args), ['logcat', '-b', 'main', '-b', 'system', '-b', 'crash', '-d', '-t', '300', '-v', 'brief', '*:E']);
   assert(calls.some((call) => JSON.stringify(call.args) === JSON.stringify(['shell', 'dumpsys', 'activity', 'exit-info', 'com.paliwallet.qualification'])));
   const runtime = writes.find((write) => write.file.endsWith('/android-import-runtime-diagnostics.json'));
-  assert.deepEqual(JSON.parse(runtime.data), { processRunning: false, codes: ['SIGABRT'], modules: [], libraries: ['libhermes.so'], exitReasons: ['CRASH_NATIVE'] });
+  assert.deepEqual(JSON.parse(runtime.data), { processRunning: false, logcatAvailable: diagnosticsAvailable, exitInfoAvailable: diagnosticsAvailable, codes: diagnosticsAvailable ? ['SIGABRT'] : [], modules: [], libraries: diagnosticsAvailable ? ['libhermes.so'] : [], exitReasons: diagnosticsAvailable ? ['CRASH_NATIVE'] : [] });
   assert(!runtime.data.includes('synthetic_secret_token_42'));
   assert(screenshotWriteFailed);
   const artifact = writes.find((write) => write.file.endsWith('/android-failure.json'));

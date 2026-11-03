@@ -412,9 +412,9 @@ async function android() {
     } finally {
       try {
         const processId = run('adb', ['shell', 'pidof', '-s', PACKAGE], true);
-        const logs = run('adb', ['logcat', '-b', 'main', '-b', 'crash', '-d', '-t', '300', '-v', 'brief', 'AndroidRuntime:E', 'ReactNativeJS:E', 'libc:F', 'DEBUG:F', '*:S'], true);
+        const logs = run('adb', ['logcat', '-b', 'main', '-b', 'system', '-b', 'crash', '-d', '-t', '300', '-v', 'brief', '*:E'], true);
         const exitInfo = run('adb', ['shell', 'dumpsys', 'activity', 'exit-info', PACKAGE], true);
-        fs.writeFileSync(path.join(output, `android-${scenario}-runtime-diagnostics.json`), JSON.stringify({ processRunning: Boolean(processId), ...summarizeAndroidLog(logs), ...summarizeAndroidExitInfo(exitInfo) }, null, 2));
+        fs.writeFileSync(path.join(output, `android-${scenario}-runtime-diagnostics.json`), JSON.stringify({ processRunning: Boolean(processId), logcatAvailable: logs !== null, exitInfoAvailable: exitInfo !== null, ...summarizeAndroidLog(logs), ...summarizeAndroidExitInfo(exitInfo) }, null, 2));
       } catch { /* Diagnostic collection cannot replace the primary failure. */ }
       try {
         const screenshot = run.binary('adb', ['exec-out', 'screencap', '-p'], true);

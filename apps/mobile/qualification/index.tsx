@@ -8,7 +8,7 @@ import { assertQualificationBuild, parseQualificationLaunch } from './launch-par
 import type { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import type { KeyringRuntime } from '../src/custody/keyringRuntime.ts';
 import type { SeedBackupFlow } from '../src/custody/seedBackup.ts';
-import { ensureNativeCryptoReady, nativeCryptoCheckpoint, nativeCryptoInstallDiagnostic } from '../src/platform/cryptoBootstrap';
+import { ensureNativeCryptoReady, nativeCryptoCheckpoint, nativeCryptoInstallDiagnostic, nativeCryptoLoadDiagnostic } from '../src/platform/cryptoBootstrap';
 import type { OpenWalletStorage } from '../src/storage/types.ts';
 import type { CryptoFullCase } from '../src/crypto/diagnostics.ts';
 import type { FullCryptoQualification } from '../src/crypto/qualificationFull.ts';
@@ -296,7 +296,7 @@ function QualificationApp() {
           checks,
           networkCalls,
           cryptoEvidence,
-          cryptoDiagnostic: { bootstrap: nativeCryptoCheckpoint(), ...(fullCryptoCase ? { fullCase: fullCryptoCase } : {}), ...(nativeCryptoInstallDiagnostic() ? { install: nativeCryptoInstallDiagnostic() } : {}) },
+          cryptoDiagnostic: { bootstrap: nativeCryptoCheckpoint(), ...(fullCryptoCase ? { fullCase: fullCryptoCase } : {}), ...(nativeCryptoInstallDiagnostic() ? { install: nativeCryptoInstallDiagnostic() } : {}), ...(nativeCryptoLoadDiagnostic() ? { load: nativeCryptoLoadDiagnostic() } : {}) },
           mnemonicEntropyVerified,
           nativeBridgeExercised: true,
           sdkVersion: '1.0.628',
@@ -321,7 +321,7 @@ function QualificationApp() {
           checks,
           networkCalls,
           failedStage: stage,
-          cryptoDiagnostic: { bootstrap: nativeCryptoCheckpoint(), ...(fullCryptoCase ? { fullCase: fullCryptoCase } : {}), ...(nativeCryptoInstallDiagnostic() ? { install: nativeCryptoInstallDiagnostic() } : {}) },
+          cryptoDiagnostic: { bootstrap: nativeCryptoCheckpoint(), ...(fullCryptoCase ? { fullCase: fullCryptoCase } : {}), ...(nativeCryptoInstallDiagnostic() ? { install: nativeCryptoInstallDiagnostic() } : {}), ...(nativeCryptoLoadDiagnostic() ? { load: nativeCryptoLoadDiagnostic() } : {}) },
         };
         await writeReport(parameters?.phase ?? 'startup', report).catch(() => undefined);
         setStatus('QUALIFICATION FAILED');

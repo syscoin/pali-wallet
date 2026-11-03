@@ -23,6 +23,14 @@ test('Android runtime evidence discards identifier-shaped secrets embedded in me
   });
 });
 
+test('Java crash classification retains fixed common exceptions from arbitrary error tags', () => {
+  const log = 'E/UnknownTag: java.lang.IllegalStateException java.lang.NullPointerException RuntimeException NoSuchMethodError NoSuchFieldError VerifyError ClassCastException ExceptionInInitializerError StackOverflowError OutOfMemoryError synthetic_secret_token_42';
+  assert.deepEqual(summarizeAndroidLog(log), {
+    codes: ['IllegalStateException', 'NullPointerException', 'RuntimeException', 'NoSuchMethodError', 'NoSuchFieldError', 'VerifyError', 'ClassCastException', 'ExceptionInInitializerError', 'StackOverflowError', 'OutOfMemoryError'],
+    modules: [], libraries: [],
+  });
+});
+
 test('Android exit history maps only the dedicated process reason codes to fixed labels', () => {
   const history = `ApplicationExitInfo #0:
     timestamp=public pid=1234

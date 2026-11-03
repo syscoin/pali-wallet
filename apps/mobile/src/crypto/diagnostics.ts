@@ -74,7 +74,11 @@ export type CryptoInstallDiagnostic = Readonly<{
   error: typeof CRYPTO_INSTALL_ERROR_KINDS[number];
   globals: Readonly<{ buffer: CryptoGlobalShape; crypto: CryptoGlobalShape; base64To: CryptoGlobalShape; base64From: CryptoGlobalShape }>;
 }>;
-export type CryptoDiagnostic = Readonly<{ bootstrap: CryptoBootstrapStep; fullCase?: CryptoFullCase; install?: CryptoInstallDiagnostic }>;
+export type CryptoLoadDiagnostic = Readonly<{
+  error: CryptoInstallDiagnostic['error'];
+  markers: Readonly<{ quickCrypto: boolean; nitroModules: boolean; nativeHybrid: boolean; quickBase64: boolean; turboModule: boolean }>;
+}>;
+export type CryptoDiagnostic = Readonly<{ bootstrap: CryptoBootstrapStep; fullCase?: CryptoFullCase; install?: CryptoInstallDiagnostic; load?: CryptoLoadDiagnostic }>;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -91,10 +95,20 @@ function isCryptoInstallDiagnostic(value: unknown): value is CryptoInstallDiagno
     fields.every((key) => CRYPTO_GLOBAL_SHAPES.includes((value.globals as Record<string, unknown>)[key] as CryptoGlobalShape));
 }
 
+function isCryptoLoadDiagnostic(value: unknown): value is CryptoLoadDiagnostic {
+  if (!isRecord(value) || !isRecord(value.markers)) return false;
+  const fields = ['quickCrypto', 'nitroModules', 'nativeHybrid', 'quickBase64', 'turboModule'];
+  return Object.keys(value).length === 2 && Object.keys(value).every((key) => key === 'error' || key === 'markers') &&
+    CRYPTO_INSTALL_ERROR_KINDS.includes(value.error as CryptoLoadDiagnostic['error']) &&
+    Object.keys(value.markers).length === fields.length &&
+    fields.every((key) => typeof (value.markers as Record<string, unknown>)[key] === 'boolean');
+}
+
 export function isCryptoDiagnostic(value: unknown): value is CryptoDiagnostic {
   if (!isRecord(value)) return false;
-  return Object.keys(value).every((key) => key === 'bootstrap' || key === 'fullCase' || key === 'install') &&
+  return Object.keys(value).every((key) => key === 'bootstrap' || key === 'fullCase' || key === 'install' || key === 'load') &&
     CRYPTO_BOOTSTRAP_STEPS.includes(value.bootstrap as CryptoBootstrapStep) &&
     (value.fullCase === undefined || CRYPTO_FULL_CASES.includes(value.fullCase as CryptoFullCase)) &&
-    (value.install === undefined || isCryptoInstallDiagnostic(value.install));
+    (value.install === undefined || isCryptoInstallDiagnostic(value.install)) &&
+    (value.load === undefined || isCryptoLoadDiagnostic(value.load));
 }
