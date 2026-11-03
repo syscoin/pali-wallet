@@ -38,7 +38,6 @@ jobs:
       run:
         working-directory: apps/mobile
     env:
-      QUALIFICATION_ARTIFACTS: ${{ runner.temp }}/pali-native-ios
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -62,6 +61,8 @@ jobs:
           -derivedDataPath "$RUNNER_TEMP/pali-native-ios-build"
           CODE_SIGNING_ALLOWED=NO build
       - name: Exercise native bridge and two-process persistence
+        env:
+          QUALIFICATION_ARTIFACTS: ${{ runner.temp }}/pali-native-ios
         run: >-
           node qualification/run-native.cjs ios
           "$RUNNER_TEMP/pali-native-ios-build/Build/Products/Release-iphonesimulator/PaliQualification.app"
@@ -80,8 +81,6 @@ jobs:
     defaults:
       run:
         working-directory: apps/mobile
-    env:
-      QUALIFICATION_ARTIFACTS: ${{ runner.temp }}/pali-native-android
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -116,6 +115,8 @@ jobs:
           done
           exit 1
       - name: Exercise native bridge and two-process persistence
+        env:
+          QUALIFICATION_ARTIFACTS: ${{ runner.temp }}/pali-native-android
         run: node qualification/run-native.cjs android android/app/build/outputs/apk/release/app-release.apk
       - name: Stop isolated emulator
         if: always()
