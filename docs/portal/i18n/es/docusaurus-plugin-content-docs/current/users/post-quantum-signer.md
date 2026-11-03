@@ -2,7 +2,7 @@
 title: Firmante poscuántico para cuentas inteligentes
 ---
 
-Las cuentas inteligentes de Pali pueden usar distintos validadores. Uno de ellos es un firmante poscuántico local basado en **SLH-DSA-SHA2-128s**, una familia de firmas hash estandarizada por NIST en FIPS 205.
+El firmante local usa **SLH-DSA-SHA2-128-24**, un perfil experimental de firmas limitadas propuesto en el borrador inicial [NIST SP 800-230](https://csrc.nist.gov/pubs/sp/800/230/ipd). No es un conjunto de parámetros de uso general aprobado en FIPS 205.
 
 En palabras simples: permite que una cuenta inteligente apruebe acciones con una firma diseñada para resistir ataques cuánticos conocidos contra firmas ECDSA actuales.
 
@@ -40,7 +40,7 @@ Si Pali indica que falta el firmante local o no coincide con el validador activo
 
 ## Límite de firmas
 
-El perfil SLH-DSA actual tiene una capacidad absoluta de `2^24` firmas por firmante local preparado. Pali reserva `1,000` firmas para reintentos de rotación fuera de esa clave, así que la firma normal se detiene en `2^24 - 1,000`. Sigue siendo más de 16 millones de firmas, así que un usuario normal probablemente no llegará a ese límite.
+El límite de `2^24` firmas se aplica durante toda la vida de la clave, sumando todos sus usos y copias. Pali reserva `1,000` firmas para la rotación; la firma normal se detiene en `2^24 - 1,000` firmas registradas localmente. Regenerar conserva el historial disponible localmente, pero restaurar solo la frase semilla o una copia antigua no recupera el historial perdido y los dispositivos no sincronizan sus contadores. Por ello el límite global no queda garantizado en estos casos.
 
 Si se agota el presupuesto normal, Pali deja de firmar operaciones normales con esa clave y conserva la reserva para reintentos de rotación del validador. No firma silenciosamente con un firmante agotado.
 

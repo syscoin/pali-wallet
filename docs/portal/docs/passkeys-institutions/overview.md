@@ -7,7 +7,7 @@ Pali smart accounts are contract wallets that Pali can create, connect, and oper
 For non-technical users, the important idea is simple:
 
 - **One account address:** the smart account is the address dapps see and funds are held there.
-- **Flexible sign-in:** a passkey, a wallet-owned ECDSA key, or a co-managed policy can authorize actions.
+- **Flexible authorization:** a passkey, a wallet-owned ECDSA key, an SLH-DSA signer, or a composite policy can authorize actions when the required modules and local credentials are available.
 - **Better recovery options:** guardian recovery can replace the active validator after a timelock.
 - **Batch actions:** multiple contract calls can be approved as one reviewed action.
 - **Clear wallet prompts:** Pali shows what a dapp is asking for before creating or changing the account.
@@ -18,7 +18,7 @@ The current Pali account design is based on ERC-7579-style modules and ERC-4337-
 
 - `PaliSmartAccount` is the account contract. It executes calls, validates signatures through installed validator modules, and exposes EIP-1271 signature checks.
 - `PaliSmartAccountFactory` derives deterministic account addresses and deploys accounts with initial modules.
-- Validator modules decide who can authorize actions. Pali currently supports ECDSA, P-256 WebAuthn passkeys, and a composite validator.
+- Validator modules decide who can authorize actions. On configured networks, Pali supports ECDSA, P-256 WebAuthn passkeys, SLH-DSA and composite validators, subject to the required deployed modules and local keys or credentials.
 - Executor modules add account features that are not ordinary signatures. Pali currently uses a guardian recovery executor.
 - Pali stores durable account metadata locally so it can reconstruct deterministic accounts by wallet anchor, account index, chain, factory, and module configuration.
 

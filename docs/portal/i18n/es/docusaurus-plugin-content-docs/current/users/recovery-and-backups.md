@@ -12,6 +12,10 @@ Anota la frase semilla de tu billetera y mantenla offline. Cualquiera con la fra
 
 La opción **Sugerir una contraseña fácil de recordar** crea una contraseña de desbloqueo, no tu Frase Secreta de Recuperación. Guárdala en tu gestor de contraseñas. Una passkey de una cuenta inteligente no sustituye la contraseña de desbloqueo de la billetera.
 
+## Respaldo de notas privadas
+
+Antes de recuperar, olvidar, borrar o sustituir una billetera, respalda cada nota privada por separado mientras esté desbloqueada y aún conozcas la contraseña. En Privacidad, elige **Mostrar para respaldo** para cada nota guardada y mantén secreto el respaldo: quien lo tenga puede retirar. La frase de recuperación no recrea notas generadas aleatoriamente y la recuperación elimina las notas privadas guardadas. Si ya olvidaste la contraseña, no puedes usar Pali para revelar las notas cifradas anteriores y crear un respaldo nuevo antes de la recuperación.
+
 ## Si olvidas la contraseña
 
 En la pantalla bloqueada, selecciona **¿Olvidaste la contraseña? Recupera con la semilla**, introduce la Frase Secreta de Recuperación de esta billetera y elige una nueva contraseña. No necesitas la contraseña anterior. Una frase diferente se rechaza antes de restablecer la billetera.

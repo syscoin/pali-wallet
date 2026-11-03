@@ -4,7 +4,7 @@ title: Smart Accounts erstellen und wiederherstellen
 
 `wallet_prepareSmartAccount` erstellt einen Pali Smart Account für das Dapp-Onboarding. Pali leitet das Konto ab, stellt es über die konfigurierte Factory bereit, installiert bei Bedarf den gewünschten Validator, verbindet das Konto mit der anfragenden Dapp und schreibt dauerhafte Kontometadaten in den lokalen Wallet-Zustand.
 
-Der lokale Wallet-Zustand bildet Smart Accounts ab, die Pali bedienen kann. Ein Smart Account kann von einem Passkey-Validator, einem ECDSA-Validator, einem Composite-Validator oder von nach der Erstellung installierten Guardian-Recovery-Modulen kontrolliert werden.
+Der lokale Wallet-Zustand bildet die Smart Accounts ab, die Pali bedienen kann. Ein Konto kann einen ECDSA-, Passkey-, SLH-DSA- oder Composite-Validator verwenden. Ein separat installiertes Guardian-Recovery-Executor-Modul kann nach der konfigurierten Wartezeit einen Validator ersetzen.
 
 ## Struktur von Smart Account und Factory
 
@@ -12,7 +12,7 @@ Das Smart-Account-System besteht aus folgenden Teilen:
 
 - **Factory:** berechnet deterministische Adressen und stellt Konten mit anfänglichen Moduldaten bereit.
 - **Smart Account:** führt Aufrufe aus, verfolgt installierte Module und fordert Validator-Module zur Freigabe von Signaturen auf.
-- **Validatoren:** autorisieren Aktionen. Pali unterstützt ECDSA-, P-256-WebAuthn-Passkey- und Composite-Validatoren.
+- **Validatoren:** In konfigurierten Netzwerken unterstützt Pali ECDSA, P-256-WebAuthn-Passkeys, SLH-DSA und Composite-Validatoren; kompatible Module müssen bereitgestellt und die benötigten lokalen Schlüssel oder Zugangsdaten verfügbar sein.
 - **Executors:** ergänzen Kontofunktionen. Pali verwendet Guardian-Recovery als Executor-Modul.
 
 Zu den Kontoparametern der Factory gehören:

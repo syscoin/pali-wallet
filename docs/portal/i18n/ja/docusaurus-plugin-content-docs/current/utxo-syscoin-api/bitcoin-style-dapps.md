@@ -16,7 +16,11 @@ EVM dappsは通常、1つのアカウントにトランザクションオブジ�
 
 ## 最小の連携形
 
+生のBase64文字列ではなく、構造化されたPali PSBTオブジェクトを渡します。`syscoinjs-lib`は`{ psbt: <base64>, assets: <JSON文字列> }`を出力します。必要に応じてアセットマップを指定してください。`sys_sign`は同じ形式の署名済みオブジェクトを返しますが、部分署名のままの場合があります。 返される`assets`フィールドは空です。必要なアセットメタデータは別途保持してください。
+
 ```js
+import { utils as sys } from 'syscoinjs-lib';
+
 const [address] = await window.pali.request({
   method: 'sys_requestAccounts',
 });
@@ -25,9 +29,11 @@ const changeAddress = await window.pali.request({
   method: 'wallet_getChangeAddress',
 });
 
+// Supply your constructed syscoinjs PSBT and optional asset map.
+const paliPsbt = sys.exportPsbtToJson(psbt, assetsMap);
 const signedPsbt = await window.pali.request({
   method: 'sys_sign',
-  params: [psbtBase64],
+  params: [paliPsbt],
 });
 ```
 

@@ -28,7 +28,7 @@ Esta página documenta comportamiento que las dapps deben tener en cuenta.
 
 ## Atomicidad
 
-- Las cuentas inteligentes passkey pueden ejecutar llamadas de lote seleccionadas mediante una ejecución de cuenta inteligente.
+- El usuario aprueba o rechaza el lote completo; no puede deseleccionar llamadas individuales. Una cuenta inteligente Pali puede ejecutar el lote en una sola ejecución.
 - Las llamadas por lotes de EOA regulares son envíos secuenciales de billetera y no deben tratarse como verdadera ejecución atómica.
 
 ## Suscripciones

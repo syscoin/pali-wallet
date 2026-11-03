@@ -37,3 +37,7 @@ Unspent Transaction Output. Das Account-Modell, das von Bitcoin-ähnlichen Chain
 ## WebAuthn
 
 Der Browserstandard hinter Passkeys. Er ermöglicht Benutzern, kryptografische Aktionen über Plattform-Authenticators, Hardware-Schlüssel oder synchronisierte Passkey-Anbieter freizugeben.
+
+## SLH-DSA
+
+Der lokale Signierer verwendet **SLH-DSA-SHA2-128-24**, ein experimentelles Profil mit begrenzter Signaturzahl aus dem ersten Entwurf von [NIST SP 800-230](https://csrc.nist.gov/pubs/sp/800/230/ipd). Es ist kein in FIPS 205 für allgemeine Verwendung zugelassener Parametersatz. In konfigurierten Netzwerken unterstützt Pali ECDSA, P-256-WebAuthn-Passkeys, SLH-DSA und Composite-Validatoren; kompatible Module müssen bereitgestellt und die benötigten lokalen Schlüssel oder Zugangsdaten verfügbar sein.

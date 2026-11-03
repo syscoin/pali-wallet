@@ -12,6 +12,10 @@ Notez la phrase de récupération de votre portefeuille et gardez-la hors ligne.
 
 L’option **Suggérer un mot de passe mémorisable** crée un mot de passe de déverrouillage, pas votre phrase de récupération secrète. Enregistrez-le dans votre gestionnaire de mots de passe. Une passkey de compte intelligent ne remplace pas le mot de passe de déverrouillage du portefeuille.
 
+## Sauvegardes des notes privées
+
+Avant de récupérer, oublier, effacer ou remplacer un portefeuille, sauvegardez chaque note privée séparément tant qu’il est déverrouillé et que vous connaissez encore son mot de passe. Dans Confidentialité, choisissez **Afficher pour sauvegarder** pour chaque note enregistrée et gardez la sauvegarde secrète : quiconque la possède peut retirer. La phrase de récupération ne recrée pas les notes générées aléatoirement et la récupération supprime les notes privées enregistrées. Si le mot de passe est déjà oublié, vous ne pouvez pas utiliser Pali pour révéler les anciennes notes chiffrées et créer une nouvelle sauvegarde avant la récupération.
+
 ## Si vous oubliez le mot de passe
 
 Sur l’écran verrouillé, sélectionnez **Mot de passe oublié ? Récupérez avec la phrase**, saisissez la phrase de récupération secrète de ce portefeuille et choisissez un nouveau mot de passe. L’ancien mot de passe n’est pas nécessaire. Une autre phrase est refusée avant la réinitialisation du portefeuille.

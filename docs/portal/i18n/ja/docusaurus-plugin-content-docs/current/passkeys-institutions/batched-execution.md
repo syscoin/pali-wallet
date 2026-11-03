@@ -2,7 +2,7 @@
 title: バッチ実行
 ---
 
-Paliスマートアカウントは `wallet_sendCalls` によるbatch executionをサポートします。ユーザーは複数のcallsを確認し、1つのaccount actionとして承認します。`atomicRequired` がtrueの場合、Paliは選択されたcallsを1つのsmart-account executionとして準備します。targetが空のcontract deployment callはこのflowではサポートされません。
+Paliスマートアカウントは `wallet_sendCalls` によるbatch executionをサポートします。 すべての`wallet_sendCalls`要求で、ユーザーはバッチ全体を承認または拒否し、個々の呼び出しを選択解除できません。対応するPaliスマートアカウントは全体を1回のアカウント実行として準備します。EOAの呼び出しは順次送信され、後続が失敗しても配信済みの呼び出しは取り消せません。このスマートアカウントのフローでは、宛先が空のコントラクトデプロイ呼び出しはサポートされません。
 
 <figure>
   <a className="pali-media-link" href="/img/screens/send-calls-smart-account-batch.png" target="_blank" rel="noreferrer">

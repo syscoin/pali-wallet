@@ -16,7 +16,11 @@ EVM-dapps bitten normalerweise einen Account, ein Transaktionsobjekt zu signiere
 
 ## Minimale Integrationsform
 
+Übergeben Sie ein strukturiertes Pali-PSBT-Objekt, keinen reinen Base64-String. `syscoinjs-lib` exportiert `{ psbt: <base64>, assets: <JSON-String> }`; geben Sie gegebenenfalls die Asset-Map an. `sys_sign` liefert ein signiertes Objekt im gleichen Format, das teilweise signiert bleiben kann. Das zurückgegebene Feld `assets` ist leer; bewahren Sie benötigte Asset-Metadaten separat auf.
+
 ```js
+import { utils as sys } from 'syscoinjs-lib';
+
 const [address] = await window.pali.request({
   method: 'sys_requestAccounts',
 });
@@ -25,9 +29,11 @@ const changeAddress = await window.pali.request({
   method: 'wallet_getChangeAddress',
 });
 
+// Supply your constructed syscoinjs PSBT and optional asset map.
+const paliPsbt = sys.exportPsbtToJson(psbt, assetsMap);
 const signedPsbt = await window.pali.request({
   method: 'sys_sign',
-  params: [psbtBase64],
+  params: [paliPsbt],
 });
 ```
 

@@ -12,6 +12,10 @@ Write down your wallet seed phrase and keep it offline. Anyone with the seed phr
 
 The optional **Suggest a memorable password** action creates an unlock password, not your Secret Recovery Phrase. Save it in your password manager. A smart-account passkey does not replace the wallet unlock password.
 
+## Private note backups
+
+Before recovering, forgetting, erasing or replacing a wallet, separately back up every private note while the wallet is unlocked and you still know its password. In Privacy, choose **Reveal for backup** for each saved note and keep the backup secret: anyone who has it can withdraw. The recovery phrase does not recreate randomly generated notes, and recovery deletes the saved private notes. If the password is already forgotten, you cannot use Pali to reveal the old encrypted notes and create a new backup before recovery.
+
 ## If you forget the password
 
 On the locked screen, select **Forgot password? Recover with seed**, enter this wallet's Secret Recovery Phrase, and choose a new password. The old password is not required. A different phrase is refused before the wallet is reset.

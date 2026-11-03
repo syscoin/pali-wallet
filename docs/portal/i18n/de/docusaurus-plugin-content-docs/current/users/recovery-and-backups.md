@@ -12,6 +12,10 @@ Schreiben Sie die Seed-Phrase Ihrer Wallet auf und bewahren Sie sie offline auf.
 
 Die Option **Ein merkbares Passwort vorschlagen** erzeugt ein Passwort zum Entsperren, nicht Ihre geheime Wiederherstellungsphrase. Speichern Sie es in Ihrem Passwortmanager. Ein Smart-Account-Passkey ersetzt das Passwort zum Entsperren der Wallet nicht.
 
+## Backups privater Notizen
+
+Sichere vor Wiederherstellung, Entfernen, Löschen oder Austausch einer Wallet jede private Notiz separat, solange die Wallet entsperrt ist und du ihr Passwort noch kennst. Wähle unter Privatsphäre für jede gespeicherte Notiz **Für Backup anzeigen** und halte das Backup geheim: Wer es besitzt, kann auszahlen. Die Wiederherstellungsphrase erzeugt zufällig erzeugte Notizen nicht erneut, und die Wiederherstellung löscht die gespeicherten privaten Notizen. Ist das Passwort bereits vergessen, kannst du die alten verschlüsselten Notizen vor der Wiederherstellung in Pali nicht mehr anzeigen und neu sichern.
+
 ## Wenn Sie das Passwort vergessen
 
 Wählen Sie auf dem gesperrten Bildschirm **Passwort vergessen? Mit Seed wiederherstellen**, geben Sie die geheime Wiederherstellungsphrase dieser Wallet ein und legen Sie ein neues Passwort fest. Das alte Passwort wird nicht benötigt. Eine andere Phrase wird abgelehnt, bevor die Wallet zurückgesetzt wird.

@@ -28,7 +28,7 @@ Cette page documente les comportements dont les dapps doivent tenir compte.
 
 ## Atomicité
 
-- Les comptes intelligents passkey peuvent exécuter des appels groupés sélectionnés via une seule exécution de compte intelligent.
+- L’utilisateur approuve ou refuse le lot entier ; il ne peut pas désélectionner les appels. Un compte intelligent Pali peut exécuter le lot en une seule exécution.
 - Les appels groupés EOA ordinaires sont des envois séquentiels du portefeuille et ne doivent pas être traités comme une véritable exécution atomique.
 
 ## Subscriptions

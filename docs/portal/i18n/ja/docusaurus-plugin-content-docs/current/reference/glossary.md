@@ -37,3 +37,7 @@ Unspent Transaction Output。Bitcoin風チェーンとSyscoin UTXOで使用さ�
 ## WebAuthn
 
 passkeysの背後にあるブラウザ標準。ユーザーはプラットフォーム認証器、ハードウェアキー、または同期済みpasskeyプロバイダーを通じて暗号操作を承認できます。
+
+## SLH-DSA
+
+ローカル署名者は **SLH-DSA-SHA2-128-24** を使用します。これは [NIST SP 800-230](https://csrc.nist.gov/pubs/sp/800/230/ipd) 初期草案で提案された署名回数制限付きの実験的プロファイルであり、FIPS 205 で承認された汎用パラメーターセットではありません。 設定済みのネットワークでは、Pali は ECDSA、P-256 WebAuthn パスキー、SLH-DSA、複合バリデーターに対応します。互換モジュールのデプロイと、必要なローカル鍵または認証情報が必要です。

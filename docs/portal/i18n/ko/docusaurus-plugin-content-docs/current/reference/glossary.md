@@ -37,3 +37,7 @@ Unspent Transaction Output. Bitcoin-like chain과 Syscoin UTXO가 사용하는 a
 ## WebAuthn
 
 passkey의 기반이 되는 browser standard입니다. 사용자가 platform authenticator, hardware key 또는 synced passkey provider를 통해 cryptographic action을 승인할 수 있게 합니다.
+
+## SLH-DSA
+
+로컬 서명자는 **SLH-DSA-SHA2-128-24**를 사용합니다. 이는 [NIST SP 800-230](https://csrc.nist.gov/pubs/sp/800/230/ipd) 초기 초안에서 제안된 서명 횟수 제한이 있는 실험적 프로필이며, FIPS 205에서 일반 용도로 승인된 매개변수 세트가 아닙니다. 설정된 네트워크에서 Pali는 ECDSA, P-256 WebAuthn 패스키, SLH-DSA 및 복합 검증기를 지원합니다. 호환 모듈이 배포되어 있고 필요한 로컬 키 또는 자격 증명을 사용할 수 있어야 합니다.

@@ -7,7 +7,7 @@ Les comptes intelligents Pali sont des comptes de contrat que Pali peut créer, 
 ## Idée simple
 
 - Une seule adresse conserve les fonds et reste celle que voient les dapps.
-- Le compte peut utiliser une passkey, ECDSA ou une politique composite.
+- Sur les réseaux configurés, Pali prend en charge ECDSA, les passkeys P-256 WebAuthn, SLH-DSA et les validateurs composites ; les modules compatibles doivent être déployés et les clés ou identifiants locaux nécessaires disponibles.
 - Le parcours de récupération par gardiens peut remplacer le validateur actif après un délai.
 - `wallet_sendCalls` peut exécuter plusieurs appels dans une seule opération atomique.
 

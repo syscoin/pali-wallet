@@ -2,7 +2,7 @@
 title: wallet_sendCalls
 ---
 
-Pali prend en charge `wallet_sendCalls` de style EIP-5792 pour les requêtes groupées EVM. C'est particulièrement important pour les comptes intelligents passkey, où plusieurs appels peuvent être autorisés avec une seule assertion WebAuthn.
+Pali prend en charge `wallet_sendCalls` de type EIP-5792 pour les lots EVM. Un compte intelligent Pali compatible peut autoriser plusieurs appels en une exécution.
 
 ## Vérifier les capacités
 
@@ -13,7 +13,7 @@ const capabilities = await window.ethereum.request({
 });
 ```
 
-Pali indique la prise en charge atomique pour les comptes intelligents passkey et l'absence de prise en charge de l'exécution atomique pour les EOAs ordinaires.
+Pali indique la prise en charge atomique des comptes intelligents Pali compatibles et l’absence d’exécution atomique pour les EOA ordinaires.
 
 ## Envoyer un lot
 
@@ -23,7 +23,7 @@ const result = await window.ethereum.request({
   params: [
     {
       version: '2.0.0',
-      from: passkeyAccount,
+      from: smartAccount,
       chainId: '0x39',
       atomicRequired: true,
       calls: [
@@ -43,13 +43,13 @@ const result = await window.ethereum.request({
 });
 ```
 
-## Comportement passkey
+## Comportement des comptes intelligents
 
-Pour les comptes intelligents passkey, Pali prépare tous les appels sélectionnés comme un seul lot d'exécution de compte intelligent, demande une seule assertion passkey et soumet une seule transaction. Si le compte n'est pas déployé, le déploiement et l'exécution de politique initiale optionnelle peuvent faire partie du premier chemin de transaction.
+L’utilisateur approuve ou refuse le lot demandé dans son ensemble ; il ne peut pas désélectionner les appels individuels. Pour un compte intelligent Pali, Pali prépare tout le lot en une exécution, demande l’autorisation du validateur actif, vérifie les destinations par rapport à la liste de blocage du portefeuille et soumet une transaction. Un validateur passkey utilise une assertion WebAuthn ; les propriétaires ECDSA locaux configurés signent le hachage de l’action.
 
 ## Comportement EOA
 
-Pour les comptes EVM ordinaires, Pali présente les appels et envoie les appels sélectionnés séquentiellement. Ce n'est pas équivalent à l'atomicité on-chain. Si une dapp exige une exécution réellement atomique, utilisez un compte intelligent passkey ou un contrat conçu pour grouper des appels atomiquement.
+Pour un compte EVM ordinaire, Pali présente le lot entier à approuver ou à refuser et envoie ses appels séquentiellement. Ce n’est pas une exécution atomique on-chain. Si la dapp exige l’atomicité, utilisez un compte intelligent Pali compatible ou un contrat conçu pour les lots atomiques.
 
 ## Méthodes d'état
 

@@ -2,7 +2,9 @@
 title: Contas inteligentes SLH-DSA
 ---
 
-As contas inteligentes da Pali aceitam validadores modulares. O validador pós-quântico usa assinaturas locais **SLH-DSA-SHA2-128s** gerenciadas pela Pali. Nas APIs, o id do autenticador é `slh-dsa`.
+As contas inteligentes da Pali aceitam validadores modulares. O validador pós-quântico usa assinaturas locais **SLH-DSA-SHA2-128-24** gerenciadas pela Pali. Nas APIs, o id do autenticador é `slh-dsa`.
+
+O assinador local usa **SLH-DSA-SHA2-128-24**, um perfil experimental de assinaturas limitadas proposto no rascunho inicial [NIST SP 800-230](https://csrc.nist.gov/pubs/sp/800/230/ipd). Ele não é um conjunto de parâmetros de uso geral aprovado no FIPS 205. O limite de `2^24` assinaturas vale por toda a vida da chave, somando todos os usos e cópias. A Pali reserva `1,000` assinaturas para rotação; a assinatura normal para em `2^24 - 1,000` assinaturas registradas localmente. A regeneração preserva o histórico disponível localmente, mas uma restauração apenas da frase-semente ou de um backup antigo não recupera o histórico ausente, e dispositivos não sincronizam contadores. Portanto, o limite global não fica garantido nesses casos.
 
 :::caution Nota alfa
 As contas inteligentes da Pali e o SLH-DSA ainda são infraestrutura inicial. Use redes de teste compatíveis ou contas com pequenos saldos, mantenha recuperação ou um validador alternativo e não crie UX de dapp baseada em tempos fixos de configuração ou assinatura.

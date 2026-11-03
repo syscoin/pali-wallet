@@ -48,7 +48,7 @@ const result = await window.ethereum.request({
 
 ## Atomic UX
 
-When `atomicRequired` is true, the user should approve or reject the full batch. Pali's smart-account path prepares all selected calls as a single account execution. Dapps should not ask users to approve partial batches when the business logic requires all-or-nothing behavior.
+For every `wallet_sendCalls` request, the user approves or rejects the full batch; individual calls cannot be deselected. A supported Pali smart account prepares the complete batch as one account execution. EOA calls run sequentially, and already broadcast calls cannot be rolled back if a later call fails.
 
 ## Gas payment
 

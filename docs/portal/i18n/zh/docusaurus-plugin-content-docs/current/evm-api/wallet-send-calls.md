@@ -2,7 +2,7 @@
 title: wallet_sendCalls
 ---
 
-Pali 为 EVM 批量请求支持 EIP-5792 风格的 `wallet_sendCalls`。这对 Passkey 智能账户尤其重要，因为多个调用可以通过一次 WebAuthn assertion 授权。
+Pali 为 EVM 批量请求支持 EIP-5792 风格的 `wallet_sendCalls`。受支持的 Pali 智能账户可以将多个调用授权为一次账户执行。
 
 ## 检查能力
 
@@ -13,7 +13,7 @@ const capabilities = await window.ethereum.request({
 });
 ```
 
-Pali 会为 Passkey 智能账户报告 atomic 支持，并为普通 EOA 报告不支持 atomic execution。
+Pali 对受支持的 Pali 智能账户报告原子支持，对普通 EOA 报告不支持原子执行。
 
 ## 发送批量操作
 
@@ -23,7 +23,7 @@ const result = await window.ethereum.request({
   params: [
     {
       version: '2.0.0',
-      from: passkeyAccount,
+      from: smartAccount,
       chainId: '0x39',
       atomicRequired: true,
       calls: [
@@ -43,13 +43,13 @@ const result = await window.ethereum.request({
 });
 ```
 
-## Passkey 行为
+## 智能账户行为
 
-对于 Passkey 智能账户，Pali 会将所有选定调用准备为一个智能账户执行批量操作，请求一次 Passkey assertion，并提交一笔交易。如果账户尚未部署，部署和可选的初始策略执行可以成为首次交易路径的一部分。
+用户批准或拒绝整个请求批次，无法取消单个调用。对于 Pali 智能账户，Pali 将完整批次准备为一次账户执行，请求活动验证器授权，依据钱包阻止名单检查目标，并提交一笔交易。Passkey 验证器使用 WebAuthn assertion；已配置的本地 ECDSA 所有者签署操作哈希。
 
 ## EOA 行为
 
-对于普通 EVM 账户，Pali 会展示这些调用，并按顺序发送选定调用。这与链上原子性不同。如果 dapp 需要真正的 atomic execution，请使用 Passkey 智能账户或专门设计用于原子批量调用的合约。
+对于普通 EVM 账户，Pali 展示整个批次供用户批准或拒绝，并按顺序发送调用。这不是链上原子执行。若 dapp 需要原子执行，请使用受支持的 Pali 智能账户或专为原子批处理设计的合约。
 
 ## 状态方法
 

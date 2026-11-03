@@ -2,7 +2,7 @@
 title: 批量执行
 ---
 
-Pali 智能账户通过 `wallet_sendCalls` 支持批量执行。用户查看多个 calls，并将它们作为一次账户操作授权。当 `atomicRequired` 为 true 时，Pali 会把选中的 calls 准备为一次智能账户执行。该流程不支持 target 为空的合约部署 calls。
+Pali 智能账户通过 `wallet_sendCalls` 支持批量执行。 每个 `wallet_sendCalls` 请求都由用户批准或拒绝整个批次，无法取消单个调用。受支持的 Pali 智能账户将完整批次准备为一次账户执行。EOA 调用按顺序发送；后续调用失败时，已广播的调用无法回滚。此智能账户流程不支持目标为空的合约部署调用。
 
 <figure>
   <a className="pali-media-link" href="/img/screens/send-calls-smart-account-batch.png" target="_blank" rel="noreferrer">

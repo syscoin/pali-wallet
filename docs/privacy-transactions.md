@@ -4,7 +4,10 @@ The Privacy screen uses the four pinned Tornado Classic ETH pools on Ethereum
 mainnet. It is separate from ordinary wallet accounts: a note is a bearer secret,
 and knowing the wallet recovery phrase is not sufficient to recover a randomly
 generated note. Keep the password-gated note backup before deleting a wallet or
-moving to another installation. Imported notes are accepted only after local
+moving to another installation or starting recovery. While the wallet is unlocked
+and the password is known, use **Reveal for backup** on each saved note and keep
+the backups secret; a forgotten password does not let the user reveal the old
+encrypted vault. Imported notes are accepted only after local
 pool data establishes their commitment; an accepted spent note is labelled spent.
 
 ## Custody and transaction admission
@@ -24,7 +27,8 @@ Higher limits can use more local storage and slow vault operations. The SDK's
 per-record limit remains unchanged, and admitted notes retain room for their
 journals. Older single-record vaults remain readable; changing the limit writes
 the newer format, which older wallet versions may not read. Changing the limit
-does not remove notes.
+does not remove notes. A lower limit is rejected if the existing notes do not
+fit; the user must first reduce the saved count through an available safe action.
 
 An explicit **Clear completed notes** action checks known withdrawal receipts
 against the selected Ethereum RPC and removes a note only after its matching
@@ -32,11 +36,18 @@ withdrawal and any recorded deposit transaction are finalized. Notes with
 unverified or unresolved journals remain saved. The RPC receives the known
 withdrawal transaction hash and, when present, the related deposit transaction
 hash, so the provider may link them. This check relies on that RPC's responses.
+A note marked spent without a locally recorded submitted withdrawal and hash
+cannot be cleared by this action. Checks and removals are performed one note at
+a time; if interrupted, earlier removals may already be committed. Refresh the
+list after an error before trying again.
 
 The initial sender integration supports HD and imported software accounts.
 Hardware and smart accounts are rejected before note creation or RPC preflight:
 the installed hardware sender can replace a supplied nonce, which does not satisfy
-this feature's reviewed-nonce contract. Ordinary wallet sending is unaffected.
+this feature's reviewed-nonce contract. Deposit and direct withdrawal require a
+signing-capable account; an imported watch-only account can supply context for
+relayed withdrawal, but cannot sign a deposit or direct withdrawal. Ordinary
+wallet sending is unaffected.
 
 An acknowledged transaction is not presented as a confirmed deposit or spent
 note. Ambiguous transport outcomes retain the encrypted reservation and do not
@@ -91,9 +102,11 @@ recipient contract execution. Fee, nonce and gas-payer balance reads contain no
 note-specific call. There is no withdrawal `eth_estimateGas`, `isSpent`, or
 note-specific `eth_call`.
 
-Relayer use is optional. Pali obtains a bulk public directory from Sysnode only
-when requested. The selected endpoint's status is checked again before proof
-construction and submission. Pool support, reward account and fee parameters
+Relayer use is optional. Pali obtains a bulk public directory from the configured
+Privacy service only when requested. That service defaults to `https://sysnode.info`
+and is distinct from the selected Ethereum RPC and the chosen relayer endpoint.
+The selected endpoint's status is checked again before proof construction and
+submission. Pool support, reward account and fee parameters
 must match the reviewed selection. The fee calculation uses exact integer
 arithmetic; an advertised fee is not a promise that a relayer will accept a job.
 Pali submits the reviewed proof once and never falls back to direct sending.

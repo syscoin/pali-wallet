@@ -28,7 +28,7 @@ This page documents behavior dapps should account for.
 
 ## Atomicity
 
-- Pali smart accounts can execute selected batch calls through one smart-account execution.
+- The user approves or rejects the entire requested batch; individual calls cannot be deselected. A Pali smart account can execute the batch through one smart-account execution.
 - Regular EOA batch calls are sequential wallet sends and should not be treated as true atomic execution.
 
 ## Subscriptions
