@@ -23,7 +23,9 @@ const budget = {
   // Encrypted whole-note files add 35,425 measured packaged bytes for the
   // codec, bounded orchestration and registered extension adapter. Allow 40 KB for
   // that reviewed feature; app/external/background startup caps stay unchanged.
-  package: 9380000,
+  // The lazy export/restore dialog and its nine translated catalogs add about
+  // 39 KB more. Allow another 40 KB of packaged files; startup caps remain fixed.
+  package: 9420000,
 };
 const allFiles = (root) =>
   fs.readdirSync(root, { withFileTypes: true }).flatMap((entry) => {

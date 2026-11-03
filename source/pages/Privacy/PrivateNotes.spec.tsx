@@ -143,6 +143,76 @@ beforeEach(() => {
 });
 afterEach(() => jest.useRealTimers());
 
+it('refreshes an initially empty inventory when an unconfirmed restore is dismissed without replaying it', async () => {
+  const id = '00000000-0000-4000-8000-000000000099';
+  let committed = false;
+  mockEmitter.mockImplementation(async ([, method]) => {
+    if (method === 'getNotes')
+      return { notes: committed ? [{ ...note, phase: 'waiting' }] : [] };
+    if (method === 'begin') return id;
+    if (method === 'prepareImport')
+      return { id, added: 1, duplicates: 0, guarded: 1, expiresAt: 300000 };
+    if (method === 'commitImport') {
+      committed = true;
+      throw new Error('BACKUP_COMMIT_UNCONFIRMED');
+    }
+    if (method === 'cancel') return undefined;
+    throw new Error('Unexpected call');
+  });
+  render(<PrivateNotes />);
+  await screen.findByText(en.privacy.noNotes);
+  fireEvent.click(
+    screen.getByRole('button', { name: en.privacy.bundle.importTitle })
+  );
+  const dialog = await screen.findByRole('dialog', {
+    name: en.privacy.bundle.importTitle,
+  });
+  const file = new File([new Uint8Array(80)], 'fixture.palibak');
+  Object.defineProperty(file, 'arrayBuffer', {
+    value: async () => new Uint8Array(80).buffer,
+  });
+  fireEvent.change(
+    within(dialog).getByLabelText(en.privacy.bundle.selectFile),
+    {
+      target: { files: [file] },
+    }
+  );
+  fireEvent.change(
+    within(dialog).getByLabelText(en.privacy.bundle.filePassword),
+    {
+      target: { value: 'synthetic file password' },
+    }
+  );
+  fireEvent.click(
+    within(dialog).getByRole('button', { name: en.privacy.bundle.reviewImport })
+  );
+  const walletPassword = await within(dialog).findByLabelText(
+    en.privacy.bundle.walletPassword
+  );
+  fireEvent.change(walletPassword, {
+    target: { value: 'synthetic wallet password' },
+  });
+  fireEvent.click(
+    within(dialog).getByRole('button', {
+      name: en.privacy.bundle.confirmRestore,
+    })
+  );
+  await within(dialog).findByText(en.privacy.bundle.unconfirmed);
+  expect(
+    mockEmitter.mock.calls.filter(([method]) => method[1] === 'getNotes')
+  ).toHaveLength(1);
+  fireEvent.click(
+    within(dialog).getAllByRole('button', { name: en.buttons.close }).at(-1)!
+  );
+  await screen.findByRole('button', { name: 'Reveal 0.1 ETH note for backup' });
+  expect(
+    mockEmitter.mock.calls.filter(([method]) => method[1] === 'getNotes')
+  ).toHaveLength(2);
+  expect(
+    mockEmitter.mock.calls.filter(([method]) => method[1] === 'commitImport')
+  ).toHaveLength(1);
+});
+
 async function openImport() {
   fireEvent.click(
     await screen.findByRole('button', { name: en.privacy.importNote })
