@@ -115,7 +115,7 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: node --test qualification/*.test.cjs
       - name: Install pinned native toolchain
-        run: sdkmanager 'ndk;27.1.12297006' 'platforms;android-37' 'build-tools;37.0.0'
+        run: sdkmanager 'ndk;27.1.12297006' 'platforms;android-37.0' 'build-tools;37.0.0'
       - run: node scripts/configure-native-qualification.cjs
       - run: npx --no-install expo prebuild --platform android --no-install
       - name: Build real Android binary

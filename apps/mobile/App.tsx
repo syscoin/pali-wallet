@@ -241,6 +241,9 @@ function AppContent() {
     navigationGeneration.current++;
     setRoute(next);
   };
+  const openWallet = () => {
+    authority.current?.lock(); setSheet(null); setPreview(false); go('native');
+  };
   const announce = (message: string) => {
     setToast(message);
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -493,6 +496,7 @@ function AppContent() {
           body={startupError}
           tone="amber"
         />
+        {Platform.OS !== 'web' && <Button title="Open wallet" onPress={openWallet} />}
       </Screen>
     );
   else if (route === 'welcome')
@@ -501,9 +505,7 @@ function AppContent() {
         onPreview={startPreview}
         onWatch={() => go('add')}
         onDesign={openDesign}
-        onWallet={Platform.OS !== 'web' ? () => {
-          authority.current?.lock(); setSheet(null); setPreview(false); go('native');
-        } : undefined}
+        onWallet={Platform.OS !== 'web' ? openWallet : undefined}
       />
     );
   else if (route === 'add')
@@ -540,6 +542,7 @@ function AppContent() {
               variant="quiet"
               onPress={startPreview}
             />
+            {Platform.OS !== 'web' && <Button title="Open wallet" variant="secondary" onPress={openWallet} />}
           </>
         }
       >
@@ -839,6 +842,7 @@ function AppContent() {
         onHideBalances={setHideBalances}
         onNavigate={navigateInfo}
         onExit={exit}
+        onWallet={Platform.OS !== 'web' && !preview ? openWallet : undefined}
       />
     );
   else if (['security', 'backup', 'connections', 'about'].includes(route))
