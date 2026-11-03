@@ -27,30 +27,35 @@ const cases = [
         {
           note: note(1),
           createdAt: 1699999999000,
+          reconciliationRequired: true,
           history: {
-            deposit: {
-              outcome: 'submitted',
-              from: '0x' + '11'.repeat(20),
-              nonce: '7',
-              transactionHash: '0x' + '22'.repeat(32),
-            },
-            withdrawal: {
-              outcome: 'unknown',
-              mode: 'relayed',
-              jobId: 'synthetic_job_1',
-            },
+            deposits: [
+              {
+                outcome: 'submitted',
+                from: '0x' + '11'.repeat(20),
+                nonce: '7',
+                transactionHash: '0x' + '22'.repeat(32),
+              },
+            ],
+            withdrawals: [
+              { outcome: 'unknown', mode: 'relayed', jobId: 'synthetic_job_1' },
+              { outcome: 'unknown', mode: 'relayed', jobId: 'synthetic_job_2' },
+            ],
           },
         },
         {
           note: note(2, '0.1'),
           createdAt: 1699999999001,
+          reconciliationRequired: true,
           history: {
-            withdrawal: {
-              outcome: 'unknown',
-              mode: 'direct',
-              from: '0x' + '33'.repeat(20),
-              nonce: '18446744073709551615',
-            },
+            withdrawals: [
+              {
+                outcome: 'unknown',
+                mode: 'direct',
+                from: '0x' + '33'.repeat(20),
+                nonce: '18446744073709551615',
+              },
+            ],
           },
         },
       ],
@@ -63,7 +68,9 @@ const cases = [
       format: 'pali-private-notes',
       version: 1,
       createdAt: 0,
-      notes: [{ note: note(3, '100'), createdAt: 0 }],
+      notes: [
+        { note: note(3, '100'), createdAt: 0, reconciliationRequired: true },
+      ],
     },
   },
 ];

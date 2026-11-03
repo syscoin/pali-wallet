@@ -1,5 +1,21 @@
 import { identifyClassicNote } from '../utils/privacy/note';
 import { assertJsonWorkBudget } from '../utils/requestPayloadBudget';
+import {
+  snapshotBackupObject as object,
+  snapshotBackupArray,
+  validateNoteBackupHistory,
+} from './noteBackupHistory';
+import type { INoteBackupHistory } from './noteBackupHistory';
+export {
+  NOTE_BACKUP_MAX_HISTORY_HINTS,
+  validateNoteBackupHistory,
+  mergeNoteBackupHistories,
+} from './noteBackupHistory';
+export type {
+  INoteBackupDepositHistory,
+  INoteBackupWithdrawalHistory,
+  INoteBackupHistory,
+} from './noteBackupHistory';
 
 export const NOTE_BACKUP_FORMAT = 'pali-private-notes';
 export const NOTE_BACKUP_HEADER_BYTES = 64;
@@ -12,37 +28,13 @@ export const NOTE_BACKUP_KDF_ITERATIONS = 900_000;
 const MAGIC = [80, 65, 76, 73, 78, 79, 84, 69]; // PALINOTE
 const DATE_MAX = 8_640_000_000_000_000;
 const MAX_JSON_DEPTH = 8;
-const MAX_JSON_NODES = 12_000;
+const MAX_JSON_NODES = 65_536;
 const MAX_JSON_TOKEN_CHARS = 2048;
-const HASH = /^0x[0-9a-f]{64}$/;
-const ADDRESS = /^0x[0-9a-f]{40}$/;
-const NONCE = /^(?:0|[1-9][0-9]{0,19})$/;
-const MAX_NONCE = (BigInt(1) << BigInt(64)) - BigInt(1);
-
-type Outcome = 'unknown' | 'submitted';
-/** Historical hints only: never restore these as an active reservation or job. */
-export interface INoteBackupDepositHistory {
-  from: string;
-  nonce: string;
-  outcome: Outcome;
-  transactionHash?: string;
-}
-/** Historical hints only; this codec never fetches, resumes or submits a job. */
-export interface INoteBackupWithdrawalHistory {
-  from?: string;
-  jobId?: string;
-  mode: 'direct' | 'relayed';
-  nonce?: string;
-  outcome: Outcome;
-  transactionHash?: string;
-}
 export interface INoteBackupEntry {
   createdAt: number;
-  history?: Readonly<{
-    deposit?: Readonly<INoteBackupDepositHistory>;
-    withdrawal?: Readonly<INoteBackupWithdrawalHistory>;
-  }>;
+  history?: Readonly<INoteBackupHistory>;
   note: string;
+  reconciliationRequired?: true;
 }
 /** Secret-bearing data. Keep inside the trusted wallet authority, never UI state. */
 export interface INoteBackupPayload {
@@ -79,50 +71,6 @@ const wellFormed = (text: string): boolean => {
   }
   return true;
 };
-const object = (
-  value: unknown,
-  allowed: readonly string[]
-): Record<string, any> => {
-  if (!value || typeof value !== 'object' || Array.isArray(value))
-    return fail('BACKUP_INVALID_PAYLOAD');
-  const prototype = Object.getPrototypeOf(value);
-  if (prototype !== Object.prototype && prototype !== null)
-    return fail('BACKUP_INVALID_PAYLOAD');
-  const keys = Reflect.ownKeys(value);
-  if (keys.length > allowed.length) return fail('BACKUP_INVALID_PAYLOAD');
-  const snapshot: Record<string, any> = Object.create(null);
-  for (const key of keys) {
-    if (typeof key !== 'string' || !allowed.includes(key))
-      return fail('BACKUP_INVALID_PAYLOAD');
-    const property = Object.getOwnPropertyDescriptor(value, key);
-    if (!property || !property.enumerable || !('value' in property))
-      return fail('BACKUP_INVALID_PAYLOAD');
-    snapshot[key] = property.value;
-  }
-  return snapshot;
-};
-/** Snapshot dense own data slots; never invoke a caller's iterator or map. */
-const noteArray = (value: unknown): unknown[] => {
-  if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype)
-    return fail('BACKUP_INVALID_PAYLOAD');
-  const length = Object.getOwnPropertyDescriptor(value, 'length')?.value;
-  if (
-    !Number.isSafeInteger(length) ||
-    length < 0 ||
-    length > NOTE_BACKUP_MAX_NOTES
-  )
-    return fail('BACKUP_INVALID_PAYLOAD');
-  const keys = Reflect.ownKeys(value);
-  if (keys.length !== length + 1) return fail('BACKUP_INVALID_PAYLOAD');
-  const snapshot: unknown[] = [];
-  for (let index = 0; index < length; index++) {
-    const property = Object.getOwnPropertyDescriptor(value, String(index));
-    if (!property || !property.enumerable || !('value' in property))
-      return fail('BACKUP_INVALID_PAYLOAD');
-    snapshot.push(property.value);
-  }
-  return snapshot;
-};
 const timestamp = (value: unknown): number => {
   if (
     typeof value !== 'number' ||
@@ -133,96 +81,6 @@ const timestamp = (value: unknown): number => {
     return fail('BACKUP_INVALID_PAYLOAD');
   return value;
 };
-const hash = (value: unknown): string | undefined => {
-  if (value === undefined) return undefined;
-  if (typeof value !== 'string' || !HASH.test(value))
-    return fail('BACKUP_INVALID_PAYLOAD');
-  return value;
-};
-const senderNonce = (raw: Record<string, any>, required: boolean) => {
-  if (!required && raw.from === undefined && raw.nonce === undefined) return {};
-  if (
-    typeof raw.from !== 'string' ||
-    !ADDRESS.test(raw.from) ||
-    typeof raw.nonce !== 'string' ||
-    !NONCE.test(raw.nonce) ||
-    BigInt(raw.nonce) > MAX_NONCE
-  )
-    return fail('BACKUP_INVALID_PAYLOAD');
-  return { from: raw.from, nonce: raw.nonce };
-};
-const outcome = (value: unknown): Outcome => {
-  if (value !== 'unknown' && value !== 'submitted')
-    return fail('BACKUP_INVALID_PAYLOAD');
-  return value;
-};
-function history(value: unknown): INoteBackupEntry['history'] {
-  if (value === undefined) return undefined;
-  const raw = object(value, ['deposit', 'withdrawal']);
-  if (raw.deposit === undefined && raw.withdrawal === undefined)
-    return fail('BACKUP_INVALID_PAYLOAD');
-  let deposit: Readonly<INoteBackupDepositHistory> | undefined;
-  let withdrawal: Readonly<INoteBackupWithdrawalHistory> | undefined;
-  if (raw.deposit !== undefined) {
-    const entry = object(raw.deposit, [
-      'outcome',
-      'transactionHash',
-      'from',
-      'nonce',
-    ]);
-    const state = outcome(entry.outcome);
-    const transactionHash = hash(entry.transactionHash);
-    if (state === 'submitted' && !transactionHash)
-      return fail('BACKUP_INVALID_PAYLOAD');
-    const identity = senderNonce(entry, true) as {
-      from: string;
-      nonce: string;
-    };
-    deposit = Object.freeze({
-      outcome: state,
-      ...identity,
-      ...(transactionHash ? { transactionHash } : {}),
-    });
-  }
-  if (raw.withdrawal !== undefined) {
-    const entry = object(raw.withdrawal, [
-      'outcome',
-      'mode',
-      'transactionHash',
-      'from',
-      'nonce',
-      'jobId',
-    ]);
-    const state = outcome(entry.outcome);
-    if (entry.mode !== 'direct' && entry.mode !== 'relayed')
-      return fail('BACKUP_INVALID_PAYLOAD');
-    const transactionHash = hash(entry.transactionHash);
-    const identity = senderNonce(entry, entry.mode === 'direct');
-    if (entry.mode === 'relayed' && entry.from !== undefined)
-      return fail('BACKUP_INVALID_PAYLOAD');
-    if (
-      entry.jobId !== undefined &&
-      (entry.mode !== 'relayed' ||
-        typeof entry.jobId !== 'string' ||
-        !/^[A-Za-z0-9_-]{1,128}$/.test(entry.jobId))
-    )
-      return fail('BACKUP_INVALID_PAYLOAD');
-    if (state === 'submitted' && !transactionHash && !entry.jobId)
-      return fail('BACKUP_INVALID_PAYLOAD');
-    withdrawal = Object.freeze({
-      outcome: state,
-      mode: entry.mode,
-      ...identity,
-      ...(transactionHash ? { transactionHash } : {}),
-      ...(entry.jobId === undefined ? {} : { jobId: entry.jobId }),
-    });
-  }
-  return Object.freeze({
-    ...(deposit ? { deposit } : {}),
-    ...(withdrawal ? { withdrawal } : {}),
-  });
-}
-
 /** Recompute identities; return a detached frozen allowlist, never caller objects. */
 export function validateNoteBackupPayload(
   value: unknown
@@ -233,27 +91,45 @@ export function validateNoteBackupPayload(
       return fail('BACKUP_INVALID_PAYLOAD');
     const createdAt = timestamp(raw.createdAt);
     const identities = new Set<string>();
-    const notes = noteArray(raw.notes).map((item: unknown) => {
-      const entry = object(item, ['note', 'createdAt', 'history']);
-      if (
-        typeof entry.note !== 'string' ||
-        entry.note.length > MAX_JSON_TOKEN_CHARS ||
-        !wellFormed(entry.note) ||
-        entry.note !== entry.note.trim().toLowerCase()
-      )
-        return fail('BACKUP_INVALID_PAYLOAD');
-      const identity = identifyClassicNote(entry.note);
-      const key = `${identity.poolId}:${identity.commitment}`;
-      if (identities.has(key)) return fail('BACKUP_INVALID_PAYLOAD');
-      identities.add(key);
-      const noteCreatedAt = timestamp(entry.createdAt);
-      const hints = history(entry.history);
-      return Object.freeze({
-        note: entry.note,
-        createdAt: noteCreatedAt,
-        ...(hints ? { history: hints } : {}),
-      });
-    });
+    const notes = snapshotBackupArray(raw.notes, NOTE_BACKUP_MAX_NOTES).map(
+      (item: unknown) => {
+        const entry = object(item, [
+          'note',
+          'createdAt',
+          'reconciliationRequired',
+          'history',
+        ]);
+        if (
+          typeof entry.note !== 'string' ||
+          entry.note.length > MAX_JSON_TOKEN_CHARS ||
+          !wellFormed(entry.note) ||
+          entry.note !== entry.note.trim().toLowerCase()
+        )
+          return fail('BACKUP_INVALID_PAYLOAD');
+        const identity = identifyClassicNote(entry.note);
+        const key = `${identity.poolId}:${identity.commitment}`;
+        if (identities.has(key)) return fail('BACKUP_INVALID_PAYLOAD');
+        identities.add(key);
+        const noteCreatedAt = timestamp(entry.createdAt);
+        if (
+          entry.reconciliationRequired !== undefined &&
+          entry.reconciliationRequired !== true
+        )
+          return fail('BACKUP_INVALID_PAYLOAD');
+        const hints =
+          entry.history === undefined
+            ? undefined
+            : validateNoteBackupHistory(entry.history);
+        return Object.freeze({
+          note: entry.note,
+          createdAt: noteCreatedAt,
+          ...(entry.reconciliationRequired === true
+            ? { reconciliationRequired: true as const }
+            : {}),
+          ...(hints ? { history: hints } : {}),
+        });
+      }
+    );
     // Fixed property order is the canonical wire encoding. No normalization of
     // passwords or alternate encodings is implicit in this payload validator.
     const payload = Object.freeze({

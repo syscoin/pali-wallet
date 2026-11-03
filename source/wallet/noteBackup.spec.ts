@@ -12,6 +12,9 @@ import {
   NOTE_BACKUP_HEADER_BYTES,
   NOTE_BACKUP_KDF_ITERATIONS,
   NOTE_BACKUP_MAX_FILE_BYTES,
+  NOTE_BACKUP_MAX_HISTORY_HINTS,
+  mergeNoteBackupHistories,
+  validateNoteBackupHistory,
   validateNoteBackupPayload,
 } from './noteBackup';
 import vectors from './noteBackup.vectors.json';
@@ -167,18 +170,22 @@ it('uses fresh entropy and non-extractable fixed-cost AES keys, never plaintext 
 
 it('preserves historical uncertainty as inert allowlisted data', () => {
   const payload = validateNoteBackupPayload(vectors.vectors[1].payload);
-  expect(payload.notes[0].history?.withdrawal).toEqual({
+  expect(payload.notes[0].history?.withdrawals?.[0]).toEqual({
     outcome: 'unknown',
     mode: 'relayed',
     jobId: 'synthetic_job_1',
   });
   expect(Object.isFrozen(payload)).toBe(true);
   expect(Object.isFrozen(payload.notes)).toBe(true);
-  expect(Object.isFrozen(payload.notes[0].history?.withdrawal)).toBe(true);
+  expect(Object.isFrozen(payload.notes[0].history?.withdrawals)).toBe(true);
   expect('submit' in payload).toBe(false);
   expect('spendable' in payload.notes[0]).toBe(false);
 });
 
+const badWithdrawal = (value: unknown) => ({
+  ...PAYLOAD,
+  notes: [{ ...PAYLOAD.notes[0], history: { withdrawals: [value] } }],
+});
 it.each([
   { ...PAYLOAD, version: 2 },
   { ...PAYLOAD, chainId: 2 },
@@ -187,58 +194,29 @@ it.each([
   { ...PAYLOAD, notes: [{ ...PAYLOAD.notes[0], note: `${NOTE} ` }] },
   { ...PAYLOAD, notes: [{ ...PAYLOAD.notes[0], note: NOTE.toUpperCase() }] },
   { ...PAYLOAD, notes: [{ ...PAYLOAD.notes[0], privateKey: 'secret' }] },
+  badWithdrawal({
+    outcome: 'unknown',
+    mode: 'relayed',
+    relayerEndpointHint: 'https://secret:credential@example.test',
+  }),
+  badWithdrawal({ outcome: 'unknown', mode: 'direct' }),
+  badWithdrawal({ outcome: 'submitted', mode: 'relayed' }),
+  badWithdrawal({ outcome: 'unknown', mode: 'relayed', jobId: '../run' }),
+  badWithdrawal({ outcome: 'unknown', mode: 'relayed', proof: 'secret' }),
   {
     ...PAYLOAD,
-    notes: [
-      {
-        ...PAYLOAD.notes[0],
-        history: {
-          withdrawal: {
-            outcome: 'unknown',
-            mode: 'relayed',
-            relayerEndpointHint: 'https://secret:credential@example.test',
-          },
-        },
-      },
-    ],
+    notes: [{ ...PAYLOAD.notes[0], reconciliationRequired: false }],
+  },
+  {
+    ...PAYLOAD,
+    notes: [{ ...PAYLOAD.notes[0], history: { withdrawals: [] } }],
   },
   {
     ...PAYLOAD,
     notes: [
       {
         ...PAYLOAD.notes[0],
-        history: { withdrawal: { outcome: 'unknown', mode: 'direct' } },
-      },
-    ],
-  },
-  {
-    ...PAYLOAD,
-    notes: [
-      {
-        ...PAYLOAD.notes[0],
-        history: { withdrawal: { outcome: 'submitted', mode: 'relayed' } },
-      },
-    ],
-  },
-  {
-    ...PAYLOAD,
-    notes: [
-      {
-        ...PAYLOAD.notes[0],
-        history: {
-          withdrawal: { outcome: 'unknown', mode: 'relayed', jobId: '../run' },
-        },
-      },
-    ],
-  },
-  {
-    ...PAYLOAD,
-    notes: [
-      {
-        ...PAYLOAD.notes[0],
-        history: {
-          withdrawal: { outcome: 'unknown', mode: 'relayed', proof: 'secret' },
-        },
+        history: { withdrawal: { outcome: 'unknown', mode: 'relayed' } },
       },
     ],
   },
@@ -280,11 +258,13 @@ it('rejects accessors without invoking them, duplicate notes and invalid nonce b
           {
             ...PAYLOAD.notes[0],
             history: {
-              deposit: {
-                outcome: 'unknown',
-                from: '0x' + '11'.repeat(20),
-                nonce,
-              },
+              deposits: [
+                {
+                  outcome: 'unknown',
+                  from: '0x' + '11'.repeat(20),
+                  nonce,
+                },
+              ],
             },
           },
         ],
@@ -403,6 +383,121 @@ it('accepts exactly 512 distinct notes and rejects the 513th before identity wor
   ).toThrow('BACKUP_INVALID_PAYLOAD');
 });
 
+it('retains conflicting history, sorts deterministically and collapses only exact duplicates', () => {
+  const first = { outcome: 'unknown', mode: 'relayed', jobId: 'job_1' };
+  const conflicting = { outcome: 'submitted', mode: 'relayed', jobId: 'job_1' };
+  const deposit = {
+    outcome: 'unknown',
+    from: '0x' + '11'.repeat(20),
+    nonce: '1',
+  };
+  const merged = mergeNoteBackupHistories(
+    { withdrawals: [first, conflicting, first] },
+    { deposits: [deposit], withdrawals: [first] }
+  )!;
+  expect(merged.withdrawals).toHaveLength(2);
+  expect(merged.deposits).toHaveLength(1);
+  expect(merged.withdrawals!.map((value) => JSON.stringify(value))).toEqual(
+    [...merged.withdrawals!.map((value) => JSON.stringify(value))].sort()
+  );
+  expect(mergeNoteBackupHistories(merged, merged)).toEqual(merged);
+  expect(Object.isFrozen(merged.withdrawals![0])).toBe(true);
+  expect(mergeNoteBackupHistories(undefined, undefined)).toBeUndefined();
+});
+
+it('enforces one 16-hint budget across both history arrays and rejects unsafe hint containers', () => {
+  const withdrawals = Array.from(
+    { length: NOTE_BACKUP_MAX_HISTORY_HINTS },
+    (_, i) => ({ outcome: 'unknown', mode: 'relayed', jobId: `job_${i}` })
+  );
+  const maximal = validateNoteBackupHistory({ withdrawals });
+  expect(maximal.withdrawals).toHaveLength(16);
+  expect(() =>
+    mergeNoteBackupHistories(maximal, {
+      deposits: [
+        { outcome: 'unknown', from: '0x' + '11'.repeat(20), nonce: '0' },
+      ],
+    })
+  ).toThrow('BACKUP_INVALID_PAYLOAD');
+  const getter = jest.fn(() => withdrawals[0]);
+  const accessor = Object.defineProperty([], '0', {
+    get: getter,
+    enumerable: true,
+  });
+  for (const value of [
+    { withdrawals: Array(1) },
+    { withdrawals: accessor },
+    { withdrawals: Object.assign([], { map: getter }) },
+    { withdrawals: [] },
+    { withdrawals, endpoint: 'https://credential@example.test' },
+    { withdrawals: [...withdrawals, withdrawals[0]] },
+  ]) {
+    expect(() => validateNoteBackupHistory(value)).toThrow(
+      'BACKUP_INVALID_PAYLOAD'
+    );
+  }
+  expect(getter).not.toHaveBeenCalled();
+});
+
+it('preserves a reconciliation-required marker even without historical hints across repeated backups', async () => {
+  const payload = {
+    ...PAYLOAD,
+    notes: [{ ...PAYLOAD.notes[0], reconciliationRequired: true }],
+  };
+  const opened = await codec().decrypt(
+    await codec().encrypt(payload, PASSWORD),
+    PASSWORD
+  );
+  expect(opened).toEqual(payload);
+  expect(opened.notes[0].reconciliationRequired).toBe(true);
+  expect(opened.notes[0].history).toBeUndefined();
+  expect(
+    await codec().decrypt(await codec().encrypt(opened, PASSWORD), PASSWORD)
+  ).toEqual(opened);
+});
+
+it('round-trips 512 notes with 16 distinct hints each within global work and byte bounds', async () => {
+  const withdrawals = Array.from({ length: 16 }, (_, i) => ({
+    outcome: 'submitted',
+    mode: 'direct',
+    from: '0x' + '11'.repeat(20),
+    nonce: String(i),
+    transactionHash: '0x' + (i + 1).toString(16).padStart(64, '0'),
+  }));
+  const notes = Array.from({ length: 512 }, (_, i) => ({
+    note: `tornado-eth-1-1-0x${(i + 1).toString(16).padStart(124, '0')}`,
+    createdAt: 0,
+    reconciliationRequired: true,
+    history: { withdrawals },
+  }));
+  const expected = validateNoteBackupPayload({ ...PAYLOAD, notes });
+  const file = await codec().encrypt(expected, PASSWORD);
+  expect(file.byteLength).toBeLessThanOrEqual(NOTE_BACKUP_MAX_FILE_BYTES);
+  const opened = await codec().decrypt(file, PASSWORD);
+  expect(opened).toEqual(expected);
+  expect(opened.notes[511].history!.withdrawals).toHaveLength(16);
+}, 30000);
+
+it('rejects authenticated unsorted or duplicate history encodings', async () => {
+  const first = { outcome: 'unknown', mode: 'relayed', jobId: 'a' };
+  const last = { outcome: 'unknown', mode: 'relayed', jobId: 'z' };
+  for (const withdrawals of [
+    [last, first],
+    [first, first],
+  ]) {
+    const payload = {
+      ...PAYLOAD,
+      notes: [{ ...PAYLOAD.notes[0], history: { withdrawals } }],
+    };
+    await expect(
+      codec().decrypt(
+        packIndependent(Buffer.from(JSON.stringify(payload))),
+        PASSWORD
+      )
+    ).rejects.toMatchObject({ code: 'BACKUP_INVALID_PAYLOAD' });
+  }
+});
+
 it('rejects bad framing, flags, suites and lengths before any KDF work', async () => {
   const good = new Uint8Array(Buffer.from(vectors.vectors[0].fileHex, 'hex'));
   const importKey = jest.fn();
@@ -489,7 +584,7 @@ it.each([
   ),
   Buffer.from('['.repeat(20) + '0' + ']'.repeat(20)),
   Buffer.from('["' + 'a'.repeat(2049) + '"]'),
-  Buffer.from('[' + Array(12001).fill('0').join(',') + ']'),
+  Buffer.from('[' + Array(65537).fill('0').join(',') + ']'),
   Buffer.from([0xff, 0xfe]),
 ])(
   'rejects authenticated noncanonical, oversized-work or malformed payload %#',
