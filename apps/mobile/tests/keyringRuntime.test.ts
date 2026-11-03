@@ -1,9 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { createKeyringRuntimeFactory, type KeyringRuntime } from '../src/custody/keyringRuntime.ts';
+import { createKeyringRuntimeFactory, type KeyringRuntime, type KeyringRuntimeDependencies } from '../src/custody/keyringRuntime.ts';
 import { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import type { OpenWalletStorage } from '../src/storage/types.ts';
+import { WalletStorageError } from '../src/storage/types.ts';
 
 const PHRASE = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 const PASSWORD = 'Only a public test password';
@@ -12,10 +13,12 @@ process.env.NODE_ENV = 'production';
 delete process.env.SYSWEB3_PBKDF2_ENC_ITERS;
 delete process.env.SYSWEB3_PBKDF2_AUTH_ITERS;
 
-function memoryDisk() {
+function memoryDisk(loadSdk?: KeyringRuntimeDependencies['loadSdk']) {
   const records = new Map<string, unknown>();
   let confirmation: string | undefined;
   let failures = 0;
+  let failureWrites = 0;
+  let successWrites = 0;
   let failAcknowledgement = false;
   let networkCalls = 0;
   const originalFetch = globalThis.fetch;
@@ -34,9 +37,9 @@ function memoryDisk() {
       },
     },
     authGuard: {
-      async checkAllowed() {},
-      async recordFailure() { failures++; },
-      async recordSuccess() { failures = 0; },
+      async checkAllowed() { if (failures >= 5) throw new WalletStorageError('AUTH_THROTTLED'); },
+      async recordFailure() { failures++; failureWrites++; },
+      async recordSuccess() { failures = 0; successWrites++; },
     },
     async readState() {
       const vault = records.has('vault');
@@ -52,10 +55,12 @@ function memoryDisk() {
   });
   const factory = createKeyringRuntimeFactory({ ensureCryptoReady: async () => {
     assert.ok(globalThis.crypto.subtle, 'Node supplies real WebCrypto for this control');
-  }, openStorage: open });
+  }, openStorage: open, loadSdk });
   return {
     records, factory,
     get failures() { return failures; },
+    get failureWrites() { return failureWrites; },
+    get successWrites() { return successWrites; },
     loseNextAcknowledgement() { failAcknowledgement = true; },
     denyNetwork() {
       globalThis.fetch = async () => { networkCalls++; throw new Error('Network is forbidden in local custody'); };
@@ -134,4 +139,90 @@ test('backup uses fresh SDK authentication and a wallet-bound storage receipt', 
   assert.deepEqual(await runtime.storage.readState(), { presence: 'existing', backup: 'confirmed' });
   await runtime.storage.close();
   await assert.rejects(runtime.session.unlock(PASSWORD), /CANCELLED/);
+});
+
+async function controlledSdk() {
+  const sdk = await import('@sidhujag/sysweb3-keyring/cjs/software.js');
+  let entered = () => {};
+  let release = Promise.resolve();
+  let holding = false;
+  let unlockCalls = 0;
+  let hydrations = 0;
+  class ControlledKeyring extends sdk.SoftwareKeyring {
+    constructor(host: ConstructorParameters<typeof sdk.SoftwareKeyring>[0]) {
+      super(host);
+      const hydrate = this.createFirstAccount;
+      this.createFirstAccount = async (...args) => { hydrations++; return hydrate(...args); };
+    }
+    async unlock(password: string) {
+      unlockCalls++;
+      // Start the actual SDK KDF/decryption before yielding to the lifecycle
+      // lock. No credential outcome or cryptographic primitive is replaced.
+      const result = super.unlock(password);
+      if (holding) { entered(); await release; }
+      return result;
+    }
+  }
+  return {
+    loadSdk: async () => ({ ...sdk, SoftwareKeyring: ControlledKeyring }),
+    get hydrations() { return hydrations; },
+    get unlockCalls() { return unlockCalls; },
+    hold() {
+      holding = true;
+      const started = new Promise<void>((resolve) => { entered = resolve; });
+      let finish!: () => void;
+      release = new Promise<void>((resolve) => { finish = resolve; });
+      return { started, finish: () => { holding = false; finish(); } };
+    },
+  };
+}
+
+test('lifecycle cancellation still records each explicit wrong-password failure and reaches backoff', async () => {
+  const controlled = await controlledSdk();
+  const disk = memoryDisk(controlled.loadSdk);
+  const runtime = await disk.factory.open();
+  try {
+    await runtime.session.importWallet(PHRASE, PASSWORD);
+    await runtime.session.lock();
+    const hydrated = controlled.hydrations;
+    for (let attempt = 1; attempt <= 5; attempt++) {
+      const hold = controlled.hold();
+      const pending = runtime.session.unlock('wrong password');
+      await hold.started;
+      await runtime.session.lock();
+      hold.finish();
+      await assert.rejects(pending, /CANCELLED/);
+      assert.equal(disk.failures, attempt);
+      assert.equal(disk.failureWrites, attempt);
+      assert.equal(disk.successWrites, 0);
+      assert.equal(controlled.hydrations, hydrated);
+    }
+    await assert.rejects(runtime.session.unlock(PASSWORD), /AUTH_THROTTLED/);
+    assert.equal(controlled.unlockCalls, 5, 'backoff rejects before another SDK KDF');
+    await assert.rejects(runtime.session.readEthereumAddress(), /NOT_READY/);
+  } finally { await runtime.storage.close(); }
+});
+
+test('cancelled successful authentication neither clears failures nor hydrates an account', async () => {
+  const controlled = await controlledSdk();
+  const disk = memoryDisk(controlled.loadSdk);
+  const runtime = await disk.factory.open();
+  try {
+    await runtime.session.importWallet(PHRASE, PASSWORD);
+    await runtime.session.lock();
+    assert.equal((await runtime.session.unlock('wrong password')).authenticated, false);
+    assert.equal(disk.failures, 1);
+    const hydrated = controlled.hydrations;
+    const hold = controlled.hold();
+    const pending = runtime.session.unlock(PASSWORD);
+    await hold.started;
+    await runtime.session.lock();
+    hold.finish();
+    await assert.rejects(pending, /CANCELLED/);
+    assert.equal(disk.failures, 1);
+    assert.equal(disk.failureWrites, 1);
+    assert.equal(disk.successWrites, 0);
+    assert.equal(controlled.hydrations, hydrated);
+    await assert.rejects(runtime.session.readEthereumAddress(), /NOT_READY/);
+  } finally { await runtime.storage.close(); }
 });

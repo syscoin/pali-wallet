@@ -120,13 +120,15 @@ export function createKeyringRuntimeFactory(
           await storage.authGuard.checkAllowed();
           current(captured);
           const result = await keyring.unlock(password);
-          current(captured);
           if (!result || typeof result.canLogin !== 'boolean') throw new Error('UNAVAILABLE');
           if (!result.canLogin) {
+            // A definitive rejected credential still counts when lock/background
+            // revokes the session while its unabortable KDF is finishing.
             await storage.authGuard.recordFailure();
             current(captured);
             return false;
           }
+          current(captured);
           await storage.authGuard.recordSuccess();
           current(captured);
           return true;
