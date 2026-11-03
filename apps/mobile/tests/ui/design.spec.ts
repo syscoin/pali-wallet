@@ -15,6 +15,27 @@ async function choose(page: Page, id: string, mobile = false) {
   await page.getByRole('textbox', { name: 'Search design screens' }).fill(id);
   await page.getByTestId(`design-open-${id}`).click();
 }
+test('design Back closes panels, follows local history and exits to welcome', async ({
+  page,
+}) => {
+  await open(page, 390, 844);
+  await choose(page, 'transfer.eth-details', true);
+  await expect(page.getByTestId('design-phone')).toContainText('Send ETH');
+  await page
+    .getByRole('button', { name: 'Design notes and account scenario' })
+    .click();
+  await expect(page.getByText('SAFETY BOUNDARY', { exact: true })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByText('SAFETY BOUNDARY', { exact: true })).not.toBeVisible();
+  await expect(page.getByTestId('design-phone')).toContainText('Send ETH');
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('design-phone')).toContainText('Portfolio value');
+  await page.keyboard.press('Escape');
+  await expect(
+    page.getByRole('button', { name: 'Review full wallet design', exact: true })
+  ).toBeVisible();
+  await expect(page.getByTestId('design-phone')).toHaveCount(0);
+});
 test('full design covers product roots and never requests a live endpoint', async ({
   page,
 }) => {

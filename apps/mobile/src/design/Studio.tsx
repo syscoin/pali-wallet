@@ -1,6 +1,8 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  BackHandler,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -1128,7 +1130,7 @@ export function DesignStudio({ onExit }: { onExit: () => void }) {
     setFeedback(null);
     setShowCatalog(false);
   };
-  const back = () => {
+  const back = useCallback(() => {
     const previous = history[history.length - 1];
     if (previous) {
       setHistory((entries) => entries.slice(0, -1));
@@ -1136,8 +1138,33 @@ export function DesignStudio({ onExit }: { onExit: () => void }) {
       setFamily(getScreen(previous).family);
       setState('ready');
       setFeedback(null);
-    } else go('wallet.home');
-  };
+    } else onExit();
+  }, [history, onExit]);
+  const handleBack = useCallback(() => {
+    if (showInspector) setShowInspector(false);
+    else if (showCatalog) setShowCatalog(false);
+    else back();
+    return true;
+  }, [back, showCatalog, showInspector]);
+  useEffect(() => {
+    if (Platform.OS !== 'web') {
+      const subscription = BackHandler.addEventListener(
+        'hardwareBackPress',
+        handleBack
+      );
+      return () => subscription.remove();
+    }
+    const keydown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !event.defaultPrevented) {
+        event.preventDefault();
+        handleBack();
+      }
+    };
+    window.addEventListener('keydown', keydown);
+    return () => {
+      window.removeEventListener('keydown', keydown);
+    };
+  }, [handleBack]);
   const pickFamily = (id: FamilyId) => {
     setFamily(id);
     if (!showCatalog) {

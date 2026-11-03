@@ -294,6 +294,7 @@ function AppContent() {
     return () => sub.remove();
   }, [preview, setSheet]);
   useEffect(() => {
+    if (route === 'design' || Platform.OS === 'web') return;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
       if (sheet) {
         setSheet(null);
