@@ -152,7 +152,7 @@ describe('hardware setup navigation', () => {
     expect(close).toHaveBeenCalledTimes(1);
   });
 
-  it('clears a failed Ledger import and permits one fresh WebHID-backed retry', async () => {
+  it('clears a failed Ledger host import and permits one fresh controller retry', async () => {
     const originalHid = Object.getOwnPropertyDescriptor(navigator, 'hid');
     const requestDevice = jest.fn().mockResolvedValue([{ vendorId: 0x2c97 }]);
     Object.defineProperty(navigator, 'hid', {
@@ -183,10 +183,7 @@ describe('hardware setup navigation', () => {
           screen.getByRole('button', { name: 'buttons.connect' })
         );
       });
-      expect(requestDevice).toHaveBeenCalledTimes(1);
-      expect(requestDevice).toHaveBeenCalledWith({
-        filters: [{ vendorId: 0x2c97 }],
-      });
+      expect(requestDevice).not.toHaveBeenCalled();
       expect(mockEmitter).toHaveBeenCalledTimes(1);
       expect(mockEmitter).toHaveBeenNthCalledWith(
         1,
@@ -224,7 +221,7 @@ describe('hardware setup navigation', () => {
       await act(async () => {
         fireEvent.click(connect);
       });
-      expect(requestDevice).toHaveBeenCalledTimes(2);
+      expect(requestDevice).not.toHaveBeenCalled();
       expect(mockEmitter).toHaveBeenCalledTimes(2);
       expect(mockEmitter).toHaveBeenNthCalledWith(
         2,
@@ -241,22 +238,36 @@ describe('hardware setup navigation', () => {
     }
   });
 
-  it('leaves a cancelled Ledger chooser idle without starting an account import', async () => {
+  it('leaves a cancelled Ledger host request idle and allows one fresh import', async () => {
     const originalHid = Object.getOwnPropertyDescriptor(navigator, 'hid');
-    let cancelChooser!: () => void;
-    const requestDevice = jest
-      .fn()
-      .mockImplementationOnce(
-        () =>
-          new Promise<unknown[]>((resolve) => {
-            cancelChooser = () => resolve([]);
-          })
-      )
-      .mockResolvedValueOnce([{ vendorId: 0x2c97 }]);
+    const requestDevice = jest.fn();
     Object.defineProperty(navigator, 'hid', {
       configurable: true,
       value: { requestDevice },
     });
+    let cancelHostRequest!: () => void;
+    mockEmitter
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((_resolve, reject) => {
+            cancelHostRequest = () =>
+              reject(
+                Object.assign(new Error('Ledger request cancelled'), {
+                  code: 'HARDWARE_REQUEST_CANCELLED',
+                })
+              );
+          })
+      )
+      .mockResolvedValueOnce(undefined);
+    jest.spyOn(console, 'log').mockImplementation(() => undefined);
+    jest
+      .spyOn(jest.requireMock('utils/errorHandling'), 'handleTransactionError')
+      .mockImplementationOnce(
+        (_error, alert: { info: (message: string) => void }) => {
+          alert.info('Ledger request cancelled');
+          return true;
+        }
+      );
 
     try {
       render(<ConnectHardwareWallet />);
@@ -268,8 +279,13 @@ describe('hardware setup navigation', () => {
       await act(async () => {
         await mockConnect();
       });
-      expect(requestDevice).toHaveBeenCalledTimes(1);
-      expect(mockEmitter).not.toHaveBeenCalled();
+      expect(requestDevice).not.toHaveBeenCalled();
+      expect(mockEmitter).toHaveBeenCalledTimes(1);
+      expect(mockEmitter).toHaveBeenCalledWith(
+        ['wallet', 'importLedgerAccountFromController'],
+        [],
+        300000
+      );
       expect(
         screen
           .getByRole('button', { name: 'buttons.cancel' })
@@ -277,28 +293,30 @@ describe('hardware setup navigation', () => {
       ).toBe(true);
 
       await act(async () => {
-        cancelChooser();
+        cancelHostRequest();
         await pending;
       });
-      expect(mockEmitter).not.toHaveBeenCalled();
+      expect(mockEmitter).toHaveBeenCalledTimes(1);
       expect(screen.queryByRole('button', { name: 'Finish setup' })).toBeNull();
       expect(
         screen
           .getByRole('button', { name: 'buttons.connect' })
           .hasAttribute('disabled')
-      ).toBe(false);
+      ).toBe(true);
       expect(
         screen
           .getByRole('button', { name: 'buttons.cancel' })
           .hasAttribute('disabled')
       ).toBe(false);
 
+      fireEvent.click(screen.getByRole('button', { name: 'Ledger' }));
       await act(async () => {
         await mockConnect();
       });
-      expect(requestDevice).toHaveBeenCalledTimes(2);
-      expect(mockEmitter).toHaveBeenCalledTimes(1);
-      expect(mockEmitter).toHaveBeenCalledWith(
+      expect(requestDevice).not.toHaveBeenCalled();
+      expect(mockEmitter).toHaveBeenCalledTimes(2);
+      expect(mockEmitter).toHaveBeenNthCalledWith(
+        2,
         ['wallet', 'importLedgerAccountFromController'],
         [],
         300000

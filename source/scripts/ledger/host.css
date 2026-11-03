@@ -1,0 +1,121 @@
+@import '../../assets/fonts/index.css';
+
+:root {
+  color-scheme: dark;
+  font-family: Inter, system-ui, sans-serif;
+  color: #f8faff;
+  background: #101827;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  min-width: 320px;
+}
+main {
+  max-width: 520px;
+  margin: auto;
+  padding: 32px 28px;
+}
+header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 40px;
+  font-size: 18px;
+  font-weight: 600;
+}
+header img {
+  width: 32px;
+  height: 32px;
+}
+.eyebrow {
+  color: #8ba9de;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+h1 {
+  font-size: 30px;
+  letter-spacing: -0.03em;
+  margin: 12px 0;
+}
+p {
+  color: #bdc9dc;
+  line-height: 1.55;
+  font-size: 14px;
+}
+.panel {
+  padding: 18px;
+  background: #192438;
+  border: 1px solid #2a3951;
+  border-radius: 16px;
+  margin: 24px 0;
+}
+#status {
+  min-height: 44px;
+  color: #e1eafd;
+}
+button {
+  font: inherit;
+  font-size: 14px;
+  border: 1px solid #394b68;
+  border-radius: 12px;
+  padding: 14px 18px;
+  color: #eaf1ff;
+  background: #1e2c43;
+  cursor: pointer;
+  width: 100%;
+}
+button.primary {
+  background: #447aed;
+  border-color: #447aed;
+  font-weight: 600;
+}
+button:focus-visible,
+summary:focus-visible {
+  outline: 3px solid #a9c5ff;
+  outline-offset: 3px;
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+.actions {
+  display: grid;
+  gap: 10px;
+  margin-top: 20px;
+}
+.warning {
+  border-color: #887045;
+  background: #292517;
+}
+.warning h2 {
+  color: #ffdda0;
+  font-size: 18px;
+  margin-top: 0;
+}
+summary {
+  color: #dce8ff;
+  font-size: 14px;
+  cursor: pointer;
+  padding: 8px 0;
+}
+pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 260px;
+  overflow: auto;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #c2d3ed;
+}
+.footnote {
+  font-size: 12px;
+  color: #8799b4;
+  margin-top: 24px;
+}
+[hidden] {
+  display: none !important;
+}

@@ -19,13 +19,11 @@ import { Wallet } from 'ethers/wallet';
 import http from 'http';
 import https from 'https';
 
-// These are the installed keyring's transitive hardware packages, not new
-// runtime dependencies of Pali. Connect is the explicitly mocked I/O boundary.
-const { ledgerService } = jest.requireActual('@ledgerhq/hw-app-eth');
+// The semantic Ledger host and Connect are the explicitly mocked device boundaries.
 const TrezorConnect = jest.requireMock('@trezor/connect-webextension').default;
 
-// Public deterministic test key only. Real SDK serializers, Ledger APDU encoder,
-// Trezor request adapter and retry classification; no physical device or RPC.
+// Public deterministic test key only. Real SDK serializers and authority checks;
+// the semantic host signs exact approved bytes, with no physical device or RPC.
 const wallet = new Wallet(`0x${'11'.repeat(32)}`);
 const recipient = `0x${'22'.repeat(20)}`;
 const deferred = <T>() => {
@@ -142,53 +140,36 @@ describe.each(['Ledger', 'Trezor'] as const)(
         return wallet.signingKey.sign(tx.unsignedHash);
       });
       transport = {
-        decorateAppAPIMethods: jest.fn(),
-        send: jest.fn(
-          async (
-            cla: number,
-            ins: number,
-            p1: number,
-            p2: number,
-            data: Buffer
-          ) => {
-            expect([cla, ins, p2]).toEqual([0xe0, 0x04, 0]);
-            if (p1 === 0) deviceBytes = Buffer.alloc(0);
-            const chunk = p1 === 0 ? data.subarray(1 + data[0] * 4) : data;
-            deviceBytes = Buffer.concat([deviceBytes, chunk]);
-            if (deviceBytes.length < expectedUnsigned.length / 2)
-              return Buffer.alloc(65);
-            expect(deviceBytes.toString('hex')).toBe(expectedUnsigned);
-            const signature = await device(`0x${deviceBytes.toString('hex')}`);
-            const tx = Transaction.from(`0x${deviceBytes.toString('hex')}`);
-            const deviceV =
-              tx.type === 0
-                ? Number(
-                    (tx.chainId * BigInt(2) + BigInt(35 + signature.yParity)) %
-                      BigInt(256)
-                  )
-                : signature.yParity;
-            return Buffer.concat([
-              Buffer.from([deviceV]),
-              Buffer.from(signature.r.slice(2), 'hex'),
-              Buffer.from(signature.s.slice(2), 'hex'),
-            ]);
-          }
-        ),
+        getStatus: () => ({ connected: true }),
+        connect: jest.fn(),
+        disconnect: jest.fn(),
+        utxo: {},
+        evm: {
+          getAddress: jest.fn(async () => ({
+            address: wallet.address,
+            publicKey: wallet.signingKey.publicKey,
+          })),
+          signTransaction: jest.fn(
+            async ({ unsignedTxHex, expectedAddress, accountIndex }) => {
+              expect(expectedAddress).toBe(wallet.address);
+              expect(accountIndex).toBe(0);
+              expectedUnsigned = unsignedTxHex.replace(/^0x/, '');
+              deviceBytes = Buffer.from(expectedUnsigned, 'hex');
+              const parsed = Transaction.from(`0x${expectedUnsigned}`);
+              expect(parsed.unsignedSerialized.slice(2)).toBe(expectedUnsigned);
+              const signature = await device(
+                `0x${deviceBytes.toString('hex')}`
+              );
+              return {
+                r: signature.r.slice(2),
+                s: signature.s.slice(2),
+                v: signature.v.toString(16),
+              };
+            }
+          ),
+        },
       };
-      manager.getLedgerConnection = jest.fn().mockResolvedValue(transport);
-      jest
-        .spyOn(ledgerService, 'resolveTransaction')
-        .mockImplementation(async (raw: string) => {
-          expectedUnsigned = raw;
-          return {
-            domains: [],
-            plugin: [],
-            externalPlugin: [],
-            nfts: [],
-            erc20Tokens: [],
-          };
-        });
-      const ledger = new LedgerKeyring(manager);
+      const ledger = new LedgerKeyring(manager, transport);
       const trezor: any = Object.create(TrezorKeyring.prototype);
       trezor.initialized = true;
       trezor.hardwareWalletManager = manager;
@@ -340,6 +321,22 @@ describe.each(['Ledger', 'Trezor'] as const)(
       }
     );
 
+    it('rejects a valid signature from the wrong device account before broadcast', async () => {
+      const otherWallet = new Wallet(`0x${'33'.repeat(32)}`);
+      device.mockImplementationOnce(async (unsigned: string) =>
+        otherWallet.signingKey.sign(Transaction.from(unsigned).unsignedHash)
+      );
+      const sending = send();
+      const assertion = expect(sending).rejects.toMatchObject({
+        transactionNotBroadcast: true,
+      });
+      await finishDelay();
+      await assertion;
+      expect(device).toHaveBeenCalledTimes(1);
+      expect(provider.sendTransaction).not.toHaveBeenCalled();
+      expect(otherProvider.sendTransaction).not.toHaveBeenCalled();
+    });
+
     describe.each([
       [
         'ERC20 zero decimals',
@@ -433,7 +430,7 @@ describe.each(['Ledger', 'Trezor'] as const)(
       }
     );
 
-    it('preserves a multi-chunk calldata payload through the actual adapter', async () => {
+    it('preserves a large calldata payload through the semantic host', async () => {
       const data = `0x${'12'.repeat(600)}`;
       const sending = sdk.sendFormattedTransaction(
         { ...params(), data, gasLimit: '200000' },
@@ -447,7 +444,7 @@ describe.each(['Ledger', 'Trezor'] as const)(
       ).toBe(data);
       expect(device).toHaveBeenCalledTimes(1);
       if (kind === 'Ledger')
-        expect(transport.send.mock.calls.length).toBeGreaterThan(1);
+        expect(transport.evm.signTransaction).toHaveBeenCalledTimes(1);
     });
   }
 );

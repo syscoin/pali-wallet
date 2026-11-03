@@ -11,7 +11,7 @@ const installed = (name: string, anchor?: string) =>
     anchor ? { paths: [path.dirname(require.resolve(anchor))] } : undefined
   );
 const bn4 = installed('bn.js', 'asn1.js');
-const bn5 = installed('bn.js', '@ethersproject/bignumber');
+const bn5 = installed('bn.js', 'syscoinjs-lib');
 const byteFile = (anchor?: string) =>
   path.resolve(
     path.dirname(installed('uint8array-tools', anchor)),
@@ -214,6 +214,73 @@ it('deduplicates the installed identical versions while preserving BN5 and newer
   });
 });
 
+it('deduplicates identical BN5 copies without sharing the BN4 constructor', async () => {
+  const anchors = [
+    'syscoinjs-lib',
+    'syscointx-js',
+    'coinselectsyscoin',
+    'browserify-rsa',
+    'browserify-sign',
+    'rlp',
+  ];
+  const paths = anchors.map((anchor, index) => {
+    const original = installed('bn.js', anchor);
+    const packageRoot = path.resolve(path.dirname(original), '..');
+    const metadata = JSON.parse(
+      fs.readFileSync(path.join(packageRoot, 'package.json'), 'utf8')
+    );
+    expect(metadata.version).toBe('5.2.4');
+    expect(fs.readFileSync(original).equals(fs.readFileSync(bn5))).toBe(true);
+    const root = path.join(
+      directory,
+      'node_modules',
+      `bn5-copy-${index}`,
+      'node_modules',
+      'bn.js'
+    );
+    const resource = path.join(root, 'lib', 'bn.js');
+    fs.mkdirSync(path.dirname(resource), { recursive: true });
+    fs.copyFileSync(
+      path.join(packageRoot, 'package.json'),
+      path.join(root, 'package.json')
+    );
+    fs.copyFileSync(original, resource);
+    return resource;
+  });
+  const source = `
+    ${paths
+      .map(
+        (resource, index) =>
+          `import BN${index} from ${JSON.stringify(resource)};`
+      )
+      .join('\n')}
+    import Version4BN from ${JSON.stringify(bn4)};
+    const constructors = [${paths.map((_, index) => `BN${index}`).join(',')}];
+    export default {
+      shared: constructors.every(BN => BN === BN0),
+      separateBn4: constructors.every(BN => BN !== Version4BN),
+      values: constructors.map(BN => new BN('9007199254740993').muln(3).toString()),
+    };`;
+  const baseline = await compile(source, false);
+  const deduplicated = await compile(source);
+  const bnResources = (resources: string[]) =>
+    resources.filter((resource) => /\/bn\.js\/lib\/bn\.js$/.test(resource));
+  expect(bnResources(baseline.resources)).toHaveLength(anchors.length + 1);
+  expect(bnResources(deduplicated.resources).sort()).toEqual([bn4, bn5].sort());
+  expect(baseline.result).toEqual({
+    shared: false,
+    separateBn4: true,
+    values: Array(anchors.length).fill('27021597764222979'),
+  });
+  expect(deduplicated.result).toEqual({ ...baseline.result, shared: true });
+  const bufferEdges = deduplicated.dependencies.filter(
+    (dependency) => dependency.from === bn5 && dependency.request === 'buffer'
+  );
+  expect(bufferEdges).toHaveLength(1);
+  expect(bufferEdges[0].resource).toBeUndefined();
+  expect(bufferEdges[0].identifier).toMatch(/^ignored\|.*\|buffer$/);
+});
+
 it.each([
   {
     name: 'bn.js',
@@ -221,6 +288,13 @@ it.each([
     otherVersion: '4.12.3',
     file: 'lib/bn.js',
     canonical: bn4,
+  },
+  {
+    name: 'bn.js',
+    version: '5.2.4',
+    otherVersion: '5.2.3',
+    file: 'lib/bn.js',
+    canonical: bn5,
   },
   {
     name: 'uint8array-tools',
@@ -293,37 +367,43 @@ it.each([
   }
 );
 
-it('does not merge same-source BN when its browser dependency mapping differs', async () => {
-  const root = path.join(directory, 'node_modules', 'bn.js');
-  const resource = path.join(root, 'lib', 'bn.js');
-  fs.mkdirSync(path.dirname(resource), { recursive: true });
-  const metadata = JSON.parse(
-    fs.readFileSync(path.resolve(path.dirname(bn4), '../package.json'), 'utf8')
-  );
-  fs.writeFileSync(
-    path.join(root, 'package.json'),
-    JSON.stringify({
-      ...metadata,
-      browser: { buffer: require.resolve('buffer/') },
-    })
-  );
-  fs.copyFileSync(bn4, resource);
-  const { resources, result, dependencies } = await compile(`
-    import OriginalBN from ${JSON.stringify(bn4)};
+it.each([bn4, bn5])(
+  'does not merge same-source BN at %s when its browser dependency mapping differs',
+  async (canonical) => {
+    const root = path.join(directory, 'node_modules', 'bn.js');
+    const resource = path.join(root, 'lib', 'bn.js');
+    fs.mkdirSync(path.dirname(resource), { recursive: true });
+    const metadata = JSON.parse(
+      fs.readFileSync(
+        path.resolve(path.dirname(canonical), '../package.json'),
+        'utf8'
+      )
+    );
+    fs.writeFileSync(
+      path.join(root, 'package.json'),
+      JSON.stringify({
+        ...metadata,
+        browser: { buffer: require.resolve('buffer/') },
+      })
+    );
+    fs.copyFileSync(canonical, resource);
+    const { resources, result, dependencies } = await compile(`
+    import OriginalBN from ${JSON.stringify(canonical)};
     import ChangedBN from ${JSON.stringify(resource)};
     export default {
       separate: OriginalBN !== ChangedBN,
       bufferHex: new ChangedBN('ff', 16).toBuffer('be').toString('hex'),
     };`);
-  expect(resources).toEqual(expect.arrayContaining([bn4, resource]));
-  expect(result).toEqual({ separate: true, bufferHex: 'ff' });
-  expect(
-    dependencies.find(
-      (dependency) =>
-        dependency.from === resource && dependency.request === 'buffer'
-    )?.resource
-  ).toBe(require.resolve('buffer/'));
-});
+    expect(resources).toEqual(expect.arrayContaining([canonical, resource]));
+    expect(result).toEqual({ separate: true, bufferHex: 'ff' });
+    expect(
+      dependencies.find(
+        (dependency) =>
+          dependency.from === resource && dependency.request === 'buffer'
+      )?.resource
+    ).toBe(require.resolve('buffer/'));
+  }
+);
 
 it('preserves deterministic elliptic secp256k1 signing, verification and recovery', async () => {
   const source = `

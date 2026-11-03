@@ -1,0 +1,24 @@
+{
+  "ledgerHost": {
+    "eyebrow": "Hardware wallet",
+    "title": "Connect your Ledger",
+    "description": "Keep this window open while you connect your device. Your private keys stay on your Ledger.",
+    "start": "Unlock your Ledger, then choose Connect Ledger.",
+    "connect": "Connect Ledger",
+    "connecting": "Choose your Ledger in the device picker.",
+    "ready": "Connected. Waiting for your wallet request.",
+    "connectFailed": "Could not connect. Unlock your device and try again.",
+    "reviewDevice": "Follow the instructions on your Ledger. Verify every detail on its screen.",
+    "complete": "Request complete. You can return to Pali.",
+    "busy": "Finish the current Ledger request first.",
+    "operationFailed": "The Ledger request did not complete. Return to Pali to review or try again.",
+    "unavailable": "Open this window from Pali to connect a Ledger.",
+    "disconnected": "Disconnected. Return to Pali to connect again.",
+    "warningTitle": "Device details may be limited",
+    "warning": "This request may use blind signing. Your Ledger may not display every transaction or message detail. Continue only if you understand and trust this exact request.",
+    "details": "Review the exact request",
+    "cancel": "Cancel request",
+    "approve": "Continue to device review",
+    "footnote": "Pali does not send this request to Ledger’s metadata or transaction-checking services. Closing this window cancels pending requests."
+  }
+}

@@ -13,6 +13,14 @@ const dependencies = [
     match: /[\\/]node_modules[\\/]bn\.js[\\/]lib[\\/]bn\.js$/,
   },
   {
+    name: 'bn.js',
+    version: '5.2.4',
+    anchor: 'syscoinjs-lib',
+    file: 'lib/bn.js',
+    browserBufferIgnored: true,
+    match: /[\\/]node_modules[\\/]bn\.js[\\/]lib[\\/]bn\.js$/,
+  },
+  {
     name: 'uint8array-tools',
     version: '0.0.8',
     anchor: 'bip32',

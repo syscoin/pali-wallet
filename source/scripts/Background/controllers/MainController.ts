@@ -29,6 +29,7 @@ import isNil from 'lodash/isNil';
 import * as syscoinjs from 'syscoinjs-lib';
 
 import { getController, notificationManager } from '..';
+import { getLedgerHost } from '../ledgerHost';
 import {
   clearNavigationState,
   clearTransactionNavigationState,
@@ -918,7 +919,7 @@ class MainController {
       console.log(
         `[MainController] Initializing keyring for slip44: ${slip44}`
       );
-      const keyring = new KeyringManager();
+      const keyring = new KeyringManager(undefined, getLedgerHost());
       // Set up storage access for each keyring
       keyring.setStorage(chrome.storage.local);
       keyring.setVaultStateGetter(() => store.getState().vault);
@@ -1266,7 +1267,7 @@ class MainController {
   // Create a keyring on demand with storage access
   private createKeyringOnDemand(): KeyringManager {
     // Create new keyring with the wallet state
-    const keyring = new KeyringManager();
+    const keyring = new KeyringManager(undefined, getLedgerHost());
 
     // Set up storage access - this gives it access to the global encrypted vault
     keyring.setStorage(chrome.storage.local);

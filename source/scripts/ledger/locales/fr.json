@@ -1,0 +1,24 @@
+{
+  "ledgerHost": {
+    "eyebrow": "Portefeuille matériel",
+    "title": "Connectez votre Ledger",
+    "description": "Gardez cette fenêtre ouverte pendant la connexion de votre appareil. Vos clés privées restent sur votre Ledger.",
+    "start": "Déverrouillez votre Ledger, puis sélectionnez « Connecter Ledger ».",
+    "connect": "Connecter Ledger",
+    "connecting": "Choisissez votre Ledger dans le sélecteur d’appareils.",
+    "ready": "Connecté. En attente d’une demande de votre portefeuille.",
+    "connectFailed": "Connexion impossible. Déverrouillez votre appareil et réessayez.",
+    "reviewDevice": "Suivez les instructions sur votre Ledger. Vérifiez chaque détail sur son écran.",
+    "complete": "Demande terminée. Vous pouvez revenir à Pali.",
+    "busy": "Terminez d’abord la demande Ledger en cours.",
+    "operationFailed": "La demande Ledger n’a pas abouti. Revenez à Pali pour la vérifier ou réessayer.",
+    "unavailable": "Ouvrez cette fenêtre depuis Pali pour connecter un Ledger.",
+    "disconnected": "Déconnecté. Revenez à Pali pour vous reconnecter.",
+    "warningTitle": "L’appareil peut afficher des détails limités",
+    "warning": "Cette demande peut utiliser la signature à l’aveugle. Votre Ledger peut ne pas afficher tous les détails de la transaction ou du message. Ne continuez que si vous comprenez cette demande précise et lui faites confiance.",
+    "details": "Vérifier la demande exacte",
+    "cancel": "Annuler la demande",
+    "approve": "Continuer la vérification sur l’appareil",
+    "footnote": "Pali n’envoie pas cette demande aux services de métadonnées ou de vérification des transactions de Ledger. Fermer cette fenêtre annule les demandes en attente."
+  }
+}

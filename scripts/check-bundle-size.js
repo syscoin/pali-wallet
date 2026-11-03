@@ -13,6 +13,8 @@ const budget = {
   // Count every mandatory MV3 warm chunk below, including the optional feature.
   background: 4400000,
   contentScript: 16000,
+  // The isolated device page loads only when a Ledger operation is requested.
+  ledgerHost: 3100000,
   // Retain the shared-favicon and unused NFT-placeholder copy savings.
   // Keep a rounded, small-buffer ceiling below its package allowance;
   // CI measures the actual shipped artifact. Startup budgets stay unchanged.
@@ -30,7 +32,10 @@ const budget = {
   // for that feature only; all startup ceilings above remain unchanged.
   // Connect 10 plus the reviewed lifecycle adapter adds under 200 KB after
   // removing the legacy UTXO helper graph. Startup caps remain unchanged.
-  package: 9650000,
+  // DMK's isolated ESM host adds device/signing code. After byte-identical BN
+  // deduplication and page-only translations, the composed package is 12.05 MB.
+  // Keep normal wallet startup caps fixed and allow 12.15 MB for this feature.
+  package: 12150000,
 };
 const allFiles = (root) =>
   fs.readdirSync(root, { withFileTypes: true }).flatMap((entry) => {
@@ -74,6 +79,8 @@ const scripts = {
   ],
   contentScript: [path.join(directory, 'js/contentScript.bundle.js')],
 };
+if (fs.existsSync(path.join(directory, 'ledger.html')))
+  scripts.ledgerHost = pageScripts('ledger');
 const report = Object.fromEntries(
   Object.entries(scripts).map(([name, files]) => [
     name,

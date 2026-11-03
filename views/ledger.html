@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pali · Ledger</title>
+  </head>
+  <body>
+    <main>
+      <header>
+        <img src="assets/all_assets/favicon-32.png" alt="" /><span
+          >Pali Wallet</span
+        >
+      </header>
+      <span class="eyebrow" data-i18n="eyebrow"></span>
+      <h1 data-i18n="title"></h1>
+      <p data-i18n="description"></p>
+      <div class="panel">
+        <p id="status" role="status" aria-live="polite" data-i18n="start"></p>
+      </div>
+      <button
+        id="connect"
+        class="primary"
+        disabled
+        data-i18n="connect"
+      ></button>
+      <section
+        id="review"
+        class="panel warning"
+        hidden
+        aria-labelledby="review-title"
+      >
+        <h2 id="review-title" data-i18n="warningTitle"></h2>
+        <p data-i18n="warning"></p>
+        <details>
+          <summary data-i18n="details"></summary>
+          <pre id="details"></pre>
+        </details>
+        <div class="actions">
+          <button id="cancel" data-i18n="cancel"></button
+          ><button id="approve" data-i18n="approve"></button>
+        </div>
+      </section>
+      <p class="footnote" data-i18n="footnote"></p>
+    </main>
+  </body>
+</html>

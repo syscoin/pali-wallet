@@ -1,0 +1,24 @@
+{
+  "ledgerHost": {
+    "eyebrow": "Carteira de hardware",
+    "title": "Conecte seu Ledger",
+    "description": "Mantenha esta janela aberta enquanto conecta seu dispositivo. Suas chaves privadas permanecem no seu Ledger.",
+    "start": "Desbloqueie seu Ledger e selecione “Conectar Ledger”.",
+    "connect": "Conectar Ledger",
+    "connecting": "Escolha seu Ledger no seletor de dispositivos.",
+    "ready": "Conectado. Aguardando uma solicitação da sua carteira.",
+    "connectFailed": "Não foi possível conectar. Desbloqueie seu dispositivo e tente novamente.",
+    "reviewDevice": "Siga as instruções no seu Ledger. Confira cada detalhe na tela do dispositivo.",
+    "complete": "Solicitação concluída. Você pode voltar ao Pali.",
+    "busy": "Conclua primeiro a solicitação atual do Ledger.",
+    "operationFailed": "A solicitação do Ledger não foi concluída. Volte ao Pali para revisá-la ou tentar novamente.",
+    "unavailable": "Abra esta janela pelo Pali para conectar um Ledger.",
+    "disconnected": "Desconectado. Volte ao Pali para conectar novamente.",
+    "warningTitle": "O dispositivo pode exibir detalhes limitados",
+    "warning": "Esta solicitação pode usar assinatura cega. Seu Ledger pode não exibir todos os detalhes da transação ou mensagem. Continue somente se você entender esta solicitação específica e confiar nela.",
+    "details": "Revisar a solicitação exata",
+    "cancel": "Cancelar solicitação",
+    "approve": "Continuar a revisão no dispositivo",
+    "footnote": "O Pali não envia esta solicitação aos serviços de metadados ou de verificação de transações da Ledger. Fechar esta janela cancela as solicitações pendentes."
+  }
+}

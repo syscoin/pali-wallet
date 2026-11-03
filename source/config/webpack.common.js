@@ -40,6 +40,7 @@ module.exports = {
     slhDsaOffscreen: join(sourcePath, 'scripts/slhDsa', 'offscreen.ts'),
     app: join(sourcePath, 'pages/App', 'index.tsx'),
     external: join(sourcePath, 'pages/External', 'index.tsx'),
+    ledgerHost: join(sourcePath, 'scripts/ledger', 'host.ts'),
   },
   output: {
     path: join(destPath, targetBrowser),
@@ -63,13 +64,6 @@ module.exports = {
       utils: resolve(__dirname, '../../source/utils'),
       helpers: resolve(__dirname, '../../source/helpers'),
       ...ethersPublicAliases,
-      // Drop Ledger's embedded ERC-20 signature dataset (~130KB); it is only
-      // the offline fallback - resolveTransaction fetches the live list from
-      // the Ledger CDN by default. See stub for details.
-      '@ledgerhq/cryptoassets-evm-signatures/data/evm/index$': resolve(
-        __dirname,
-        'stubs/ledger-erc20-signatures.js'
-      ),
       // Ensure consistent process resolution across all modules
       'process/browser.js': require.resolve('process/browser.js'),
       'process/browser': require.resolve('process/browser.js'),
@@ -272,6 +266,13 @@ module.exports = {
       },
     }),
 
+    new HtmlWebpackPlugin({
+      template: join(viewsPath, 'ledger.html'),
+      inject: 'body',
+      chunks: ['ledgerHost'],
+      filename: 'ledger.html',
+      minify: { removeComments: true, collapseWhitespace: true },
+    }),
     new MiniCssExtractPlugin({ filename: 'css/[name].css' }),
     // Copy assets, excluding only imported image files to prevent duplication
     new CopyWebpackPlugin({

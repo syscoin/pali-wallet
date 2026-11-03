@@ -1,0 +1,24 @@
+{
+  "ledgerHost": {
+    "eyebrow": "Hardware-Wallet",
+    "title": "Verbinden Sie Ihren Ledger",
+    "description": "Lassen Sie dieses Fenster geöffnet, während Sie Ihr Gerät verbinden. Ihre privaten Schlüssel bleiben auf Ihrem Ledger.",
+    "start": "Entsperren Sie Ihren Ledger und wählen Sie dann „Ledger verbinden“.",
+    "connect": "Ledger verbinden",
+    "connecting": "Wählen Sie Ihren Ledger in der Geräteauswahl aus.",
+    "ready": "Verbunden. Warten auf eine Anfrage Ihrer Wallet.",
+    "connectFailed": "Verbindung fehlgeschlagen. Entsperren Sie Ihr Gerät und versuchen Sie es erneut.",
+    "reviewDevice": "Folgen Sie den Anweisungen auf Ihrem Ledger. Prüfen Sie jedes Detail auf seinem Bildschirm.",
+    "complete": "Anfrage abgeschlossen. Sie können zu Pali zurückkehren.",
+    "busy": "Schließen Sie zuerst die aktuelle Ledger-Anfrage ab.",
+    "operationFailed": "Die Ledger-Anfrage wurde nicht abgeschlossen. Kehren Sie zu Pali zurück, um sie zu prüfen oder es erneut zu versuchen.",
+    "unavailable": "Öffnen Sie dieses Fenster über Pali, um einen Ledger zu verbinden.",
+    "disconnected": "Verbindung getrennt. Kehren Sie zu Pali zurück, um sich erneut zu verbinden.",
+    "warningTitle": "Das Gerät zeigt möglicherweise nicht alle Details",
+    "warning": "Bei dieser Anfrage kann blindes Signieren verwendet werden. Ihr Ledger zeigt möglicherweise nicht alle Details der Transaktion oder Nachricht an. Fahren Sie nur fort, wenn Sie genau diese Anfrage verstehen und ihr vertrauen.",
+    "details": "Genaue Anfrage prüfen",
+    "cancel": "Anfrage abbrechen",
+    "approve": "Zur Prüfung auf dem Gerät",
+    "footnote": "Pali sendet diese Anfrage nicht an die Metadaten- oder Transaktionsprüfdienste von Ledger. Wenn Sie dieses Fenster schließen, werden ausstehende Anfragen abgebrochen."
+  }
+}
