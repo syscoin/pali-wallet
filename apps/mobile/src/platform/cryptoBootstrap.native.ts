@@ -3,6 +3,7 @@ import type { CryptoBootstrapStep, CryptoInstallDiagnostic, CryptoLoadDiagnostic
 import { installQuickCrypto } from '../crypto/quickCryptoInstall.ts';
 import { loadQuickCrypto } from '../crypto/quickCryptoLoad.ts';
 import { createNativeWalletCrypto, disposeWalletCrypto, qualifyWalletCrypto } from '../crypto/native';
+import { ensureNativeProcessCompatibility } from './processCompatibility.ts';
 
 let initialization: Promise<Crypto> | undefined;
 let checkpoint: CryptoBootstrapStep = 'unchecked';
@@ -24,6 +25,7 @@ export function ensureNativeCryptoReady(): Promise<Crypto> {
       let provider: Crypto | undefined;
       const originalCrypto = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
       try {
+        ensureNativeProcessCompatibility();
         // Node-style hashing/entropy and the wallet's WebCrypto have separate
         // adapters. Vault AES-GCM never uses QuickCrypto's untyped final error.
         // SDK loading must remain behind runtime qualification, including this

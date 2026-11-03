@@ -6,6 +6,7 @@ import { Linking, Platform, Text, View } from 'react-native';
 import { assertQualificationBuild, parseQualificationLaunch } from './launch-parameters.ts';
 import { captureQualificationCryptoLoad } from './capture-crypto-load.ts';
 import { qualifyNativeHandleContract } from './native-handle-contract.ts';
+import { ensureNativeProcessCompatibility } from '../src/platform/processCompatibility.ts';
 
 import type { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import type { KeyringRuntime } from '../src/custody/keyringRuntime.ts';
@@ -104,6 +105,9 @@ function QualificationApp() {
           forbiddenTransport as unknown as typeof XMLHttpRequest;
         globalThis.WebSocket =
           forbiddenTransport as unknown as typeof WebSocket;
+        await check('native process compatibility', async () => {
+          ensureNativeProcessCompatibility();
+        });
         await check('Hermes text and string capabilities', async () => {
           expect(typeof ''.isWellFormed === 'function');
           expect('Pali'.isWellFormed() && !'\ud800'.isWellFormed());
