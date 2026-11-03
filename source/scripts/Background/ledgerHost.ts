@@ -75,6 +75,7 @@ export class LedgerHostBroker {
     options?: LedgerOperationOptions
   ): Promise<T> {
     if (options?.signal?.aborted) throw CANCELLED();
+    const generation = this.generation;
     const progress = (status: 'pending' | 'completed' | 'error') => {
       try {
         options?.onProgress?.({ status });
@@ -83,7 +84,7 @@ export class LedgerHostBroker {
       }
     };
     const abort = () => {
-      void this.disconnect();
+      if (generation === this.generation) void this.disconnect();
     };
     options?.signal?.addEventListener('abort', abort, { once: true });
     progress('pending');
