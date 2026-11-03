@@ -3,6 +3,8 @@ const path = require('path');
 const crypto = require('crypto');
 const { spawnSync } = require('child_process');
 const { Buffer } = require('node:buffer');
+const { summarizeAndroidLog } = require('./log-diagnostics.cjs');
+const { isCryptoDiagnostic } = require('../src/crypto/diagnostics.ts');
 const { createCommandRunner, describeQualificationFailure, COLD_BOOT_TIMEOUT_MS } = require('./command-runner.cjs');
 
 if (process.env.CI !== 'true' || process.env.PALI_NATIVE_QUALIFICATION !== '1')
@@ -52,10 +54,12 @@ const validateReport = (text, phase, scenario) => {
     'pendingProcessTermination',
     'failedStage',
     'cryptoEvidence',
+    'cryptoDiagnostic',
     'mnemonicEntropyVerified',
   ]);
   if (
     Object.keys(report).some((key) => !allowed.has(key)) ||
+    (report.cryptoDiagnostic !== undefined && !isCryptoDiagnostic(report.cryptoDiagnostic)) ||
     report.phase !== phase ||
     report.scenario !== scenario ||
     report.platform !== platform ||
@@ -76,13 +80,18 @@ const validateReport = (text, phase, scenario) => {
     report.cryptoEvidence?.productionIterations !== 900000
   )
     throw Error(
-      `Native qualification failed at ${report.failedStage || phase}`
+      `Native qualification failed at ${report.failedStage || phase} (${JSON.stringify(report.cryptoDiagnostic || {})})`
     );
   return report;
 };
-const waitReport = async (read, phase, scenario) => {
+const waitReport = async (read, phase, scenario, readStartup) => {
   const deadline = Date.now() + 300000;
   while (Date.now() < deadline) {
+    const startup = readStartup?.();
+    if (startup) {
+      validateReport(startup, 'unknown', 'unknown');
+      throw Error('Unexpected successful startup-failure report');
+    }
     const text = read();
     if (text) return validateReport(text, phase, scenario);
     await sleep(1000);
@@ -191,7 +200,8 @@ async function ios() {
       const created = await waitReport(
         () => read('create'),
         'create',
-        scenario
+        scenario,
+        () => read('startup')
       );
       run('xcrun', [
         'simctl',
@@ -223,7 +233,8 @@ async function ios() {
       const restored = await waitReport(
         () => read('restart'),
         'restart',
-        scenario
+        scenario,
+        () => read('startup')
       );
       if (
         created.sessionId === restored.sessionId ||
@@ -316,8 +327,8 @@ async function android() {
           true
         );
       // adb shell constructs a remote command; preserve '&' inside the URI.
-      const launch = (link) =>
-        run('adb', [
+      const launch = (link, phase) => {
+        const result = run('adb', [
           'shell',
           'am',
           'start',
@@ -329,13 +340,18 @@ async function android() {
           '-n',
           `${PACKAGE}/.MainActivity`,
         ]);
+        fs.writeFileSync(path.join(output, `android-${scenario}-${phase}-launch.log`), redact(result).slice(-4096));
+        return result;
+      };
       launch(
-        `pali-wallet-qualification://run?phase=create&scenario=${scenario}`
+        `pali-wallet-qualification://run?phase=create&scenario=${scenario}`,
+        'create'
       );
       const created = await waitReport(
         () => read('create'),
         'create',
-        scenario
+        scenario,
+        () => read('startup')
       );
       const oldPid = run('adb', ['shell', 'pidof', '-s', PACKAGE]);
       run('adb', ['shell', 'am', 'force-stop', PACKAGE]);
@@ -349,12 +365,14 @@ async function android() {
       );
       const database = databaseEvidence(captured);
       launch(
-        `pali-wallet-qualification://run?phase=restart&scenario=${scenario}&address=${created.address}`
+        `pali-wallet-qualification://run?phase=restart&scenario=${scenario}&address=${created.address}`,
+        'restart'
       );
       const restored = await waitReport(
         () => read('restart'),
         'restart',
-        scenario
+        scenario,
+        () => read('startup')
       );
       const newPid = run('adb', ['shell', 'pidof', '-s', PACKAGE]);
       if (
@@ -375,6 +393,11 @@ async function android() {
         sessionChanged: true,
       });
     } finally {
+      try {
+        const processId = run('adb', ['shell', 'pidof', '-s', PACKAGE], true);
+        const logs = run('adb', ['logcat', '-d', '-t', '300', '-v', 'brief', 'AndroidRuntime:E', 'ReactNativeJS:E', '*:S'], true);
+        fs.writeFileSync(path.join(output, `android-${scenario}-runtime-diagnostics.json`), JSON.stringify({ processRunning: Boolean(processId), ...summarizeAndroidLog(logs) }, null, 2));
+      } catch { /* Diagnostic collection cannot replace the primary failure. */ }
       try {
         const screenshot = run.binary('adb', ['exec-out', 'screencap', '-p'], true);
         if (screenshot) fs.writeFileSync(path.join(output, `android-${scenario}-final.png`), screenshot);

@@ -128,6 +128,7 @@ test('Android cleanup screenshot file-write failure preserves the original datab
     if (command.endsWith('/aapt')) return ok(['arm64-v8a', 'x86_64'].flatMap((abi) => ['libQuickCrypto.so', 'libNitroModules.so', 'libexpo-sqlite.so'].map((file) => `lib/${abi}/${file}`)).join('\n'));
     if (args.includes('screencap')) return ok(Buffer.from('public PNG fixture'));
     if (args.includes('cat')) {
+      if (args.some((value) => value.endsWith('pali-native-qualification-startup.json'))) return { status: 1, stderr: 'not present' };
       if (args[0] === 'exec-out') return { status: null, stdout: Buffer.from('PRIVATE_DATABASE_BYTES'), error: Object.assign(Error('database read timeout'), { code: 'ETIMEDOUT' }) };
       return ok(JSON.stringify({ version: 1, status: 'passed', phase: 'create', scenario: 'import', platform: 'android', networkCalls: 0, nativeBridgeExercised: true, fingerprint: 'a'.repeat(64), cryptoEvidence: { passed: true, productionIterations: 900000 }, mnemonicEntropyVerified: false }));
     }
@@ -150,6 +151,12 @@ test('Android cleanup screenshot file-write failure preserves the original datab
     },
     process: fakeProcess, console: { error() {}, log() {} }, setTimeout,
   });
+  const launch = calls.find((call) => call.args.includes('start'));
+  const quotedUrl = launch.args[launch.args.indexOf('-d') + 1];
+  const shell = require('node:child_process').spawnSync('bash', ['-c', `printf '%s' ${quotedUrl}`], { encoding: 'utf8' });
+  assert.equal(shell.status, 0);
+  assert.equal(shell.stdout, 'pali-wallet-qualification://run?phase=create&scenario=import');
+  assert(writes.some((write) => write.file.endsWith('/android-import-create-launch.log')));
   assert(screenshotWriteFailed);
   const artifact = writes.find((write) => write.file.endsWith('/android-failure.json'));
   assert(artifact);

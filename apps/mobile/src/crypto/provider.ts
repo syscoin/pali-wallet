@@ -1,3 +1,4 @@
+import type { CryptoBootstrapStep } from './diagnostics.ts';
 /** Native-only subset used by the shared wallet SDK. No key export or fallback. */
 export type NativeKey = object;
 
@@ -86,10 +87,13 @@ function usagesFor(kind: KeyKind, usages: readonly KeyUsage[]): readonly KeyUsag
 }
 
 /** The bridge argument is injectable for contract tests, never a crypto fallback. */
-export function createWalletCrypto(module: NativeCryptoModule): Crypto {
+export function createWalletCrypto(module: NativeCryptoModule, onStep?: (step: CryptoBootstrapStep) => void): Crypto {
+  const step = (label: CryptoBootstrapStep) => { try { onStep?.(label); } catch { /* Diagnostic only. */ } };
+  step('provider-info');
   const info = nativeSync(() => module.info());
   if (info?.apiVersion !== 1 || !['apple-cryptokit-commoncrypto', 'android-jca-bc'].includes(info.implementation))
     throw error('NativeCryptoError', 'Unsupported native crypto module');
+  step('provider-context');
   const context = nativeSync(() => module.createContext());
   const keys = new WeakMap<object, KeyRecord>();
   let closed = false;

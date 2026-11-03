@@ -8,8 +8,9 @@ import { assertQualificationBuild, parseQualificationLaunch } from './launch-par
 import type { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import type { KeyringRuntime } from '../src/custody/keyringRuntime.ts';
 import type { SeedBackupFlow } from '../src/custody/seedBackup.ts';
-import { ensureNativeCryptoReady } from '../src/platform/cryptoBootstrap';
+import { ensureNativeCryptoReady, nativeCryptoCheckpoint } from '../src/platform/cryptoBootstrap';
 import type { OpenWalletStorage } from '../src/storage/types.ts';
+import type { CryptoFullCase } from '../src/crypto/diagnostics.ts';
 import type { FullCryptoQualification } from '../src/crypto/qualificationFull.ts';
 
 // Public BIP39 fixture only. This entry is selected exclusively by the isolated
@@ -70,6 +71,7 @@ function QualificationApp() {
       let authority: NativeCustodyAuthority | undefined;
       let backup: SeedBackupFlow | undefined;
       let cryptoEvidence: FullCryptoQualification | undefined;
+      let fullCryptoCase: CryptoFullCase | undefined;
       const mnemonicEntropy: Uint8Array[] = [];
       let observingGeneration = false;
       let mnemonicEntropyVerified = false;
@@ -130,7 +132,8 @@ function QualificationApp() {
             const { qualifyWalletCryptoFull } = await import('../src/crypto/qualificationFull.ts');
             cryptoEvidence = await qualifyWalletCryptoFull(
               provider,
-              createNativeWalletCrypto
+              createNativeWalletCrypto,
+              (name) => { fullCryptoCase = name; }
             );
             return provider;
           }
@@ -293,6 +296,7 @@ function QualificationApp() {
           checks,
           networkCalls,
           cryptoEvidence,
+          cryptoDiagnostic: { bootstrap: nativeCryptoCheckpoint(), ...(fullCryptoCase ? { fullCase: fullCryptoCase } : {}) },
           mnemonicEntropyVerified,
           nativeBridgeExercised: true,
           sdkVersion: '1.0.628',
@@ -317,9 +321,9 @@ function QualificationApp() {
           checks,
           networkCalls,
           failedStage: stage,
+          cryptoDiagnostic: { bootstrap: nativeCryptoCheckpoint(), ...(fullCryptoCase ? { fullCase: fullCryptoCase } : {}) },
         };
-        if (parameters)
-          await writeReport(parameters.phase, report).catch(() => undefined);
+        await writeReport(parameters?.phase ?? 'startup', report).catch(() => undefined);
         setStatus('QUALIFICATION FAILED');
       }
     };
@@ -350,7 +354,7 @@ function QualificationApp() {
   );
 }
 
-async function writeReport(phase: Phase, report: object) {
+async function writeReport(phase: Phase | 'startup', report: object) {
   if (!FileSystem.documentDirectory)
     throw Error('QUALIFICATION_REPORT_UNAVAILABLE');
   const output = `${FileSystem.documentDirectory}pali-native-qualification-${phase}.json`;

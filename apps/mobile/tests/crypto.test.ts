@@ -8,6 +8,7 @@ import { promisify } from 'node:util';
 import { createWalletCrypto, disposeWalletCrypto } from '../src/crypto/provider.ts';
 import type { NativeCryptoContext, NativeCryptoModule, NativeKey } from '../src/crypto/provider.ts';
 import { qualifyWalletCrypto } from '../src/crypto/qualification.ts';
+import { CRYPTO_FULL_CASES, isCryptoDiagnostic } from '../src/crypto/diagnostics.ts';
 import { qualifyWalletCryptoFull } from '../src/crypto/qualificationFull.ts';
 
 const fixtures = JSON.parse(readFileSync(new URL('./crypto-vectors.json', import.meta.url), 'utf8'));
@@ -78,12 +79,18 @@ function bridge() {
 
 test('startup known answers pass through the bounded facade using a Node bridge control', async () => {
   const { provider } = bridge();
-  await qualifyWalletCrypto(provider);
+  const checkpoints: string[] = [];
+  await qualifyWalletCrypto(provider, (step) => { checkpoints.push(step); throw Error('ignored observer error'); });
+  assert.equal(checkpoints[0], 'self-test-sha256');
+  assert.equal(checkpoints.at(-1), 'self-test-key-metadata');
+  assert(checkpoints.every((bootstrap) => isCryptoDiagnostic({ bootstrap })));
 });
 
 test('full native-harness qualification routine passes against its Node reference control', async () => {
   const { provider } = bridge();
-  const report = await qualifyWalletCryptoFull(provider, () => bridge().provider);
+  const checkpoints: string[] = [];
+  const report = await qualifyWalletCryptoFull(provider, () => bridge().provider, (name) => { checkpoints.push(name); });
+  assert.deepEqual(checkpoints, CRYPTO_FULL_CASES);
   assert.equal(report.passed, true);
   assert.equal(report.productionIterations, 900000);
   assert.equal(report.cases.length, 29);

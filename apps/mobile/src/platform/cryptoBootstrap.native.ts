@@ -1,7 +1,11 @@
 import 'expo';
+import type { CryptoBootstrapStep } from '../crypto/diagnostics.ts';
 import { createNativeWalletCrypto, disposeWalletCrypto, qualifyWalletCrypto } from '../crypto/native';
 
 let initialization: Promise<Crypto> | undefined;
+let checkpoint: CryptoBootstrapStep = 'unchecked';
+export function nativeCryptoCheckpoint(): CryptoBootstrapStep { return checkpoint; }
+
 let status: 'unchecked' | 'checking' | 'ready' | 'unavailable' = 'unchecked';
 
 export function nativeCryptoStatus(): typeof status { return status; }
@@ -18,15 +22,20 @@ export function ensureNativeCryptoReady(): Promise<Crypto> {
         // adapters. Vault AES-GCM never uses QuickCrypto's untyped final error.
         // SDK loading must remain behind runtime qualification, including this
         // synchronous compatibility installation.
+        checkpoint = 'quick-crypto-load';
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         const quickCrypto = require('react-native-quick-crypto') as { install(): void };
+        checkpoint = 'quick-crypto-install';
         quickCrypto.install();
-        provider = createNativeWalletCrypto();
-        await qualifyWalletCrypto(provider);
+        checkpoint = 'provider-create';
+        provider = createNativeWalletCrypto((step) => { checkpoint = step; });
+        await qualifyWalletCrypto(provider, (step) => { checkpoint = step; });
+        checkpoint = 'provider-install';
         Object.defineProperty(globalThis, 'crypto', {
           value: provider, configurable: true, enumerable: true, writable: false,
         });
         if (globalThis.crypto !== provider) throw new Error('Crypto installation failed');
+        checkpoint = 'ready';
         status = 'ready';
         return provider;
       } catch {

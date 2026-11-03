@@ -1,3 +1,5 @@
+import { CRYPTO_FULL_CASES } from './diagnostics.ts';
+import type { CryptoFullCase } from './diagnostics.ts';
 import vectors from '../../tests/crypto-vectors.json' with { type: 'json' };
 import { Buffer } from 'buffer';
 import { disposeWalletCrypto } from './provider.ts';
@@ -31,10 +33,16 @@ export type FullCryptoQualification = Readonly<{
  */
 export async function qualifyWalletCryptoFull(
   provider: Crypto,
-  freshProvider?: () => Crypto
+  freshProvider?: () => Crypto,
+  onCase?: (name: CryptoFullCase) => void
 ): Promise<FullCryptoQualification> {
   const cases: { name: string; milliseconds: number }[] = [];
+  const step = (name: string) => {
+    if (!CRYPTO_FULL_CASES.includes(name as CryptoFullCase)) throw Error('CRYPTO_DIAGNOSTIC_INVALID');
+    try { onCase?.(name as CryptoFullCase); } catch { /* Diagnostic observers cannot alter qualification. */ }
+  };
   const run = async (name: string, operation: () => Promise<void>) => {
+    step(name);
     const start = performance.now();
     try { await operation(); }
     catch { throw new Error(`CRYPTO_QUALIFICATION_FAILED:${name}`); }
@@ -60,13 +68,16 @@ export async function qualifyWalletCryptoFull(
     }
   }
   const hkdf = vectors.hkdf;
+  step('sdk-hkdf-key-import');
   const root = await subtle.importKey('raw', unhex(hkdf.rootUtf8Hex), 'HKDF', false, ['deriveBits', 'deriveKey']);
   await run('sdk-hkdf-profile', async () => {
     same(await subtle.deriveBits({ name: 'HKDF', hash: 'SHA-256', salt: unhex(hkdf.saltHex), info: unhex(hkdf.profileInfoHex) }, root, 256), hkdf.profileHex);
   });
+  step('sdk-hkdf-domain-key');
   const domain = await subtle.deriveKey({ name: 'HKDF', hash: 'SHA-256', salt: unhex(hkdf.saltHex), info: unhex(hkdf.keyInfoHex) }, root,
     { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
   for (const vector of vectors.aes) {
+    step(`${vector.id}:key-import`);
     const key = await subtle.importKey('raw', unhex(vector.keyHex), 'AES-GCM', false, ['encrypt', 'decrypt']);
     const params = { name: 'AES-GCM', iv: unhex(vector.ivHex), additionalData: unhex(vector.aadHex ?? ''), tagLength: 128 };
     await run(`${vector.id}:known-answer`, async () => {
