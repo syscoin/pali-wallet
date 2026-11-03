@@ -164,6 +164,7 @@ const mountActualRoutes = () =>
   render(
     <Provider store={store}>
       <MemoryRouter
+        useTransitions={false}
         initialEntries={[
           {
             pathname: '/settings/networks/custom-rpc',
@@ -448,7 +449,9 @@ it.each([
     ).toHaveLength(1);
     expect(globalThis.fetch).toHaveBeenCalledTimes(1);
     const user = userEvent.setup();
-    await user.click(screen.getByRole('button', { name: /^Source EVM/ }));
+    await user.click(
+      await screen.findByRole('button', { name: /^Source EVM/ })
+    );
     await user.click(
       screen.getByRole('menuitem', { name: 'networkMenu.evmNetworks' })
     );

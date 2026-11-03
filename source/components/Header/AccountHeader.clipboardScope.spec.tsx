@@ -161,15 +161,7 @@ const RouteControl = () => {
 const mount = () =>
   render(
     <Provider store={mockStore}>
-      <MemoryRouter
-        initialEntries={['/home']}
-        future={{
-          // eslint-disable-next-line camelcase
-          v7_startTransition: true,
-          // eslint-disable-next-line camelcase
-          v7_relativeSplatPath: true,
-        }}
-      >
+      <MemoryRouter initialEntries={['/home']}>
         <AccountHeader />
         <RouteControl />
       </MemoryRouter>

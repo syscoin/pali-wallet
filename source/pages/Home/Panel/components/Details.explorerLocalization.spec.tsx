@@ -141,13 +141,7 @@ const openDetailsFromRow = async (locale: keyof typeof resources) => {
   const user = userEvent.setup();
   render(
     <I18nextProvider i18n={instance}>
-      <MemoryRouter
-        future={{
-          ['v7_startTransition']: true,
-          ['v7_relativeSplatPath']: true,
-        }}
-        initialEntries={['/home?tab=activity']}
-      >
+      <MemoryRouter initialEntries={['/home?tab=activity']}>
         <form
           onSubmit={(event) => {
             event.preventDefault();

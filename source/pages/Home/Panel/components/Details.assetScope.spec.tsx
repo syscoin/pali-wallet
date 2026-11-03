@@ -205,13 +205,7 @@ const mount = (routePatch = {}, scoped = true) => {
   };
   render(
     <Provider store={store}>
-      <MemoryRouter
-        future={{
-          ['v7_startTransition']: true,
-          ['v7_relativeSplatPath']: true,
-        }}
-        initialEntries={['/open']}
-      >
+      <MemoryRouter initialEntries={['/open']}>
         <Routes>
           <Route path="/open" element={<Launcher />} />
           <Route element={<AppLayout />}>

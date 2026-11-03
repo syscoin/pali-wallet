@@ -37,7 +37,7 @@ const fixture = () => {
   });
   const Auth = lazy(() => pendingAuth);
   const tree = () => (
-    <HashRouter>
+    <HashRouter useTransitions={false}>
       <RouteProbe />
       <Suspense fallback={<p role="status">Loading authentication view</p>}>
         <Routes>

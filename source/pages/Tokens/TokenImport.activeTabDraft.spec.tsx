@@ -160,7 +160,7 @@ const startCustom = async (utxo: boolean, withApi = true) => {
   };
   const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
   render(
-    <MemoryRouter initialEntries={['/tokens/add']}>
+    <MemoryRouter useTransitions={false} initialEntries={['/tokens/add']}>
       <AddToken />
       <Location />
     </MemoryRouter>

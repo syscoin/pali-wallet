@@ -134,13 +134,7 @@ const start = async (utxo: boolean) => {
     vaultGlobal: { activeSlip44: utxo ? 1 : 60 },
   };
   render(
-    <MemoryRouter
-      initialEntries={['/tokens/add?tab=owned']}
-      future={{
-        ['v7_startTransition']: true,
-        ['v7_relativeSplatPath']: true,
-      }}
-    >
+    <MemoryRouter initialEntries={['/tokens/add?tab=owned']}>
       <Routes>
         <Route path="/tokens/add" element={<AddToken />} />
         <Route path="/home/details" element={<Details />} />

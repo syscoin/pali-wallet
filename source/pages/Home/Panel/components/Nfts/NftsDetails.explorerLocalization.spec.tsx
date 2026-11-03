@@ -103,13 +103,7 @@ it.each(locales)(
     render(
       <I18nextProvider i18n={instance}>
         <Provider store={store}>
-          <MemoryRouter
-            future={{
-              ['v7_startTransition']: true,
-              ['v7_relativeSplatPath']: true,
-            }}
-            initialEntries={['/home/details']}
-          >
+          <MemoryRouter initialEntries={['/home/details']}>
             <NftsDetails
               nftData={
                 store.getState().vault.accountAssets.HDAccount[0].ethereum[0]

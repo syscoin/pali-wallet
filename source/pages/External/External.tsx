@@ -43,9 +43,10 @@ const External: FC = () => {
   return (
     // Don't signal app ready here - let the actual route components handle it
     // Start component (for unauthenticated) and route components (for authenticated)
-    // will signal when they have content ready
+    // will signal when they have content ready. Keep authentication redirects
+    // synchronous, matching the popup when a lazy destination is pending.
 
-    <BrowserRouter>
+    <BrowserRouter useTransitions={false}>
       <div className="mx-auto w-full min-w-popup max-w-popup h-full min-h-popup font-poppins text-xl overflow-x-hidden">
         <Router />
       </div>

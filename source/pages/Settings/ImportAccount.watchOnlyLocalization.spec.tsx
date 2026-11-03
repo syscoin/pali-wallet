@@ -157,13 +157,7 @@ it.each(locales)(
     render(
       <I18nextProvider i18n={instance}>
         <Provider store={store}>
-          <MemoryRouter
-            future={{
-              ['v7_startTransition']: true,
-              ['v7_relativeSplatPath']: true,
-            }}
-            initialEntries={['/settings/account/import']}
-          >
+          <MemoryRouter initialEntries={['/settings/account/import']}>
             <RouteObservation />
             <ImportAccount />
           </MemoryRouter>
@@ -438,13 +432,7 @@ it.each(locales)(
     render(
       <I18nextProvider i18n={instance}>
         <Provider store={store}>
-          <MemoryRouter
-            future={{
-              ['v7_startTransition']: true,
-              ['v7_relativeSplatPath']: true,
-            }}
-            initialEntries={['/settings/account/import']}
-          >
+          <MemoryRouter initialEntries={['/settings/account/import']}>
             <RouteObservation />
             <ImportAccount />
           </MemoryRouter>

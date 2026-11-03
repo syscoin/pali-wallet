@@ -132,13 +132,7 @@ const mount = (
   setAssets(assets);
   render(
     <Provider store={mockStore}>
-      <MemoryRouter
-        initialEntries={['/home?tab=assets']}
-        future={{
-          ['v7_startTransition']: true,
-          ['v7_relativeSplatPath']: true,
-        }}
-      >
+      <MemoryRouter initialEntries={['/home?tab=assets']}>
         {view === 'home' ? (
           <SyscoinAssetsList scope="public-balance-fixture" />
         ) : (

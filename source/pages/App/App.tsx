@@ -55,7 +55,8 @@ const MainApp: FC = () => {
   return (
     <section className="mx-auto h-full min-w-popup min-h-popup md:max-w-2xl">
       <Container>
-        <HashRouter>
+        {/* Auth redirects must commit even while a lazy destination is pending. */}
+        <HashRouter useTransitions={false}>
           <AppWithErrorBoundary />
         </HashRouter>
       </Container>

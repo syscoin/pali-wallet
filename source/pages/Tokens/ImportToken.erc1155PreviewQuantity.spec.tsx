@@ -111,13 +111,7 @@ const metadata = {
 const mount = () =>
   render(
     <Provider store={mockStore}>
-      <MemoryRouter
-        initialEntries={[`/tokens/add?tab=${mockMode}`]}
-        future={{
-          ['v7_startTransition']: true,
-          ['v7_relativeSplatPath']: true,
-        }}
-      >
+      <MemoryRouter initialEntries={[`/tokens/add?tab=${mockMode}`]}>
         <Routes>
           <Route path="/tokens/add" element={<AddToken />} />
           <Route path="/home/details" element={<DetailsView />} />

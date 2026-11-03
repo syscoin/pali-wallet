@@ -172,10 +172,7 @@ function fixture(network: INetwork) {
   const open = () => {
     render(
       <Provider store={store}>
-        <MemoryRouter
-          initialEntries={['/settings/forget-wallet']}
-          future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
-        >
+        <MemoryRouter initialEntries={['/settings/forget-wallet']}>
           <ForgetWallet />
         </MemoryRouter>
       </Provider>
