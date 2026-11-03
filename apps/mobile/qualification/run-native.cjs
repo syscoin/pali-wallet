@@ -3,6 +3,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { spawnSync } = require('child_process');
 const { Buffer } = require('node:buffer');
+const { createCommandRunner, describeQualificationFailure, COLD_BOOT_TIMEOUT_MS } = require('./command-runner.cjs');
 
 if (process.env.CI !== 'true' || process.env.PALI_NATIVE_QUALIFICATION !== '1')
   throw Error('Run only against isolated qualification devices');
@@ -19,16 +20,10 @@ const PUBLIC_PASSWORD = 'PUBLIC native qualification password 2026';
 if (!['ios', 'android'].includes(platform) || !fs.existsSync(artifact))
   throw Error('Expected platform and built qualification artifact');
 fs.mkdirSync(output, { recursive: true });
-const run = (command, args, optional = false) => {
-  const result = spawnSync(command, args, {
-    encoding: 'utf8',
-    timeout: 180000,
-    maxBuffer: 8 * 1024 * 1024,
-  });
-  if (result.status !== 0 && !optional)
-    throw Error(`${command} failed: ${result.stderr?.slice(0, 2000)}`);
-  return result.status === 0 ? result.stdout.trim() : null;
-};
+const redact = (value) => value
+  .split(PUBLIC_PHRASE).join('[public phrase redacted]')
+  .split(PUBLIC_PASSWORD).join('[public password redacted]');
+const run = createCommandRunner(spawnSync, redact);
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const hash = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex');
 const validateReport = (text, phase, scenario) => {
@@ -162,7 +157,7 @@ async function ios() {
     ]);
     try {
       run('xcrun', ['simctl', 'boot', device]);
-      run('xcrun', ['simctl', 'bootstatus', device, '-b']);
+      run('xcrun', ['simctl', 'bootstatus', device, '-b'], false, COLD_BOOT_TIMEOUT_MS);
       run('xcrun', ['simctl', 'install', device, artifact]);
       const container = run('xcrun', [
         'simctl',
@@ -342,18 +337,13 @@ async function android() {
       run('adb', ['shell', 'am', 'force-stop', PACKAGE]);
       if (run('adb', ['shell', 'pidof', '-s', PACKAGE], true))
         throw Error('App process did not stop');
-      const captured = spawnSync(
+      const captured = run.binary(
         'adb',
-        [
-          'exec-out',
-          'cat',
-          `/data/user/0/${PACKAGE}/no_backup/PaliWallet/wallet.sqlite`,
-        ],
-        { maxBuffer: 64 * 1024 * 1024 }
+        ['exec-out', 'cat', `/data/user/0/${PACKAGE}/no_backup/PaliWallet/wallet.sqlite`],
+        false,
+        64 * 1024 * 1024
       );
-      if (captured.status !== 0)
-        throw Error('Could not inspect encrypted test database');
-      const database = databaseEvidence(captured.stdout);
+      const database = databaseEvidence(captured);
       launch(
         `pali-wallet-qualification://run?phase=restart&scenario=${scenario}&address=${created.address}`
       );
@@ -370,12 +360,10 @@ async function android() {
         created.fingerprint !== restored.fingerprint
       )
         throw Error('Cold restart identity or backup fingerprint mismatch');
-      const screenshot = spawnSync('adb', ['exec-out', 'screencap', '-p']);
-      if (screenshot.status === 0)
-        fs.writeFileSync(
-          path.join(output, `android-${scenario}-restart.png`),
-          screenshot.stdout
-        );
+      try {
+        const screenshot = run.binary('adb', ['exec-out', 'screencap', '-p'], true);
+        if (screenshot) fs.writeFileSync(path.join(output, `android-${scenario}-restart.png`), screenshot);
+      } catch { /* Optional screenshot persistence cannot invalidate qualification. */ }
       reports.push({
         scenario,
         database,
@@ -383,12 +371,10 @@ async function android() {
         sessionChanged: true,
       });
     } finally {
-      const screenshot = spawnSync('adb', ['exec-out', 'screencap', '-p']);
-      if (screenshot.status === 0)
-        fs.writeFileSync(
-          path.join(output, `android-${scenario}-final.png`),
-          screenshot.stdout
-        );
+      try {
+        const screenshot = run.binary('adb', ['exec-out', 'screencap', '-p'], true);
+        if (screenshot) fs.writeFileSync(path.join(output, `android-${scenario}-final.png`), screenshot);
+      } catch { /* Preserve the primary failure if cleanup screenshot/write fails. */ }
       run('adb', ['shell', 'am', 'force-stop', PACKAGE], true);
       run('adb', ['uninstall', PACKAGE], true);
     }
@@ -420,9 +406,18 @@ async function android() {
   console.log(
     `${platform}: native import/create and two-process restart qualification passed`
   );
-})().catch(() => {
-  console.error(
-    'Native qualification failed; inspect stage reports and build output.'
-  );
+})().catch((error) => {
+  // Written after best-effort device cleanup; the caught primary error retains
+  // the original command/timeout even if screenshot/shutdown/delete also fail.
+  const failure = describeQualificationFailure(error, redact);
+  try {
+    fs.writeFileSync(path.join(output, `${platform}-failure.json`), `${JSON.stringify({
+      version: 1, status: 'failed', platform,
+      sourceRevision: process.env.GITHUB_SHA || null,
+      runnerImage: process.env.ImageVersion || null,
+      failure,
+    }, null, 2)}\n`);
+  } catch { /* Preserve the primary failure even if artifact writing fails. */ }
+  console.error('Native qualification failed:', JSON.stringify(failure));
   process.exitCode = 1;
 });

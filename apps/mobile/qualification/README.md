@@ -37,3 +37,10 @@ This proves only the simulator/emulator, binary and source revisions recorded in
 the artifacts. Physical-device file protection, app-switcher privacy, backup/D2D
 exclusion, power-loss durability and device performance require separate testing.
 No successful CI result alone is a production release authorization.
+
+Cold iOS simulator boot readiness has a separate ten-minute command budget;
+ordinary commands, including binary database/screenshot reads, retain a
+three-minute limit. Application report deadlines remain five minutes. Failures
+produce a bounded platform failure artifact with the original command, status,
+error/timeout classification and diagnostic tails after best-effort cleanup.
+Binary database output is never included in that artifact.
