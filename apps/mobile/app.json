@@ -1,0 +1,42 @@
+{
+  "expo": {
+    "name": "Pali",
+    "slug": "pali-mobile",
+    "version": "0.1.0",
+    "orientation": "default",
+    "userInterfaceStyle": "dark",
+    "scheme": "pali",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.paliwallet.mobile"
+    },
+    "android": {
+      "package": "com.paliwallet.mobile",
+      "allowBackup": false,
+      "blockedPermissions": [
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.VIBRATE",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ]
+    },
+    "web": {
+      "bundler": "metro",
+      "name": "Pali Mobile Preview"
+    },
+    "plugins": [
+      [
+        "expo-secure-store",
+        {
+          "faceIDPermission": false
+        }
+      ],
+      "./plugins/withMobileSafety.cjs"
+    ],
+    "updates": {
+      "enabled": false
+    }
+  }
+}

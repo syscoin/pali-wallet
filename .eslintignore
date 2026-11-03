@@ -1,4 +1,6 @@
 node_modules/
+# The mobile package has its own lint configuration and required CI job.
+apps/mobile/
 dist/
 build/
 e2e/artifacts/

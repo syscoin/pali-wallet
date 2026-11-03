@@ -1,0 +1,47 @@
+{
+  "name": "@pali/mobile",
+  "version": "0.1.0",
+  "private": true,
+  "main": "index.ts",
+  "scripts": {
+    "start": "EXPO_NO_TELEMETRY=1 expo start",
+    "ios": "EXPO_NO_TELEMETRY=1 expo run:ios",
+    "android": "EXPO_NO_TELEMETRY=1 expo run:android",
+    "web": "EXPO_NO_TELEMETRY=1 expo start --web",
+    "build:web": "EXPO_NO_TELEMETRY=1 expo export --platform web",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test tests/*.test.ts",
+    "test:ui": "playwright test",
+    "lint": "eslint . --max-warnings 0"
+  },
+  "dependencies": {
+    "ethers": "6.17.0",
+    "expo": "58.0.22",
+    "expo-clipboard": "~58.0.4",
+    "expo-secure-store": "~58.0.2",
+    "expo-status-bar": "58.0.4",
+    "expo-system-ui": "~58.0.7",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "react-native": "0.88.1",
+    "react-native-qrcode-svg": "6.3.50",
+    "react-native-safe-area-context": "~5.10.1",
+    "react-native-svg": "15.16.0",
+    "react-native-web": "^0.21.4"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.61.1",
+    "@types/node": "^22.19.0",
+    "@types/react": "~19.2.2",
+    "eslint": "9.39.5",
+    "eslint-config-expo": "58.0.4",
+    "typescript": "~5.9.3"
+  },
+  "overrides": {
+    "glob": "14.0.3",
+    "minimatch": "11.0.4"
+  },
+  "engines": {
+    "node": ">=26.12.1 <27"
+  }
+}

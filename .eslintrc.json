@@ -24,6 +24,7 @@
       "parser": "@typescript-eslint/parser",
       "parserOptions": {
         "project": "**/tsconfig.json",
+        "projectFolderIgnoreList": ["**/node_modules/**", "**/apps/mobile/**"],
         "tsconfigRootDir": ".",
         "sourceType": "module"
       },
