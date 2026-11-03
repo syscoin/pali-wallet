@@ -7,7 +7,7 @@ Paliスマートアカウントは、Paliがユーザーのために作成・接
 ## シンプルな考え方
 
 - 1つのアカウントアドレスが資産を保持し、dappにもそのアドレスが見えます。
-- passkey、ECDSA、composite policyで承認できます。
+- 設定済みのネットワークでは、Pali は ECDSA、P-256 WebAuthn パスキー、SLH-DSA、複合バリデーターに対応します。互換モジュールのデプロイと、必要なローカル鍵または認証情報が必要です。
 - Guardian recoveryは遅延後に active validator を置き換えられます。
 - `wallet_sendCalls` は複数の call を1つの atomic action として実行できます。
 

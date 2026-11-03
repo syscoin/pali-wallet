@@ -7,7 +7,7 @@ Pali 스마트 계정은 Pali가 사용자를 위해 생성, 연결, 실행할 �
 ## 간단한 모델
 
 - 하나의 account address가 자금을 보관하고 dapp도 그 주소를 봅니다.
-- 계정은 passkey, ECDSA 또는 composite policy를 사용할 수 있습니다.
+- 설정된 네트워크에서 Pali는 ECDSA, P-256 WebAuthn 패스키, SLH-DSA 및 복합 검증기를 지원합니다. 호환 모듈이 배포되어 있고 필요한 로컬 키 또는 자격 증명을 사용할 수 있어야 합니다.
 - Guardian recovery는 delay 후 active validator를 교체할 수 있습니다.
 - `wallet_sendCalls`는 여러 call을 하나의 atomic action으로 실행할 수 있습니다.
 

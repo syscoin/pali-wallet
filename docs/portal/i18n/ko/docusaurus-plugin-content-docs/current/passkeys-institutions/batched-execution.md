@@ -2,7 +2,7 @@
 title: 배치 실행
 ---
 
-Pali 스마트 계정은 `wallet_sendCalls`를 통한 batched execution을 지원합니다. 사용자는 여러 call을 검토하고 하나의 account action으로 승인합니다. `atomicRequired`가 true이면 Pali는 선택된 call들을 하나의 smart-account execution으로 준비합니다. Target이 비어 있는 contract deployment call은 이 flow에서 지원되지 않습니다.
+Pali 스마트 계정은 `wallet_sendCalls`를 통한 batched execution을 지원합니다. 모든 `wallet_sendCalls` 요청에서 사용자는 전체 배치를 승인하거나 거부하며 개별 호출을 선택 해제할 수 없습니다. 지원되는 Pali 스마트 계정은 전체 배치를 하나의 계정 실행으로 준비합니다. EOA 호출은 순차적으로 전송되며 이후 호출이 실패해도 이미 브로드캐스트된 호출은 되돌릴 수 없습니다. 이 스마트 계정 흐름은 대상이 빈 컨트랙트 배포 호출을 지원하지 않습니다.
 
 <figure>
   <a className="pali-media-link" href="/img/screens/send-calls-smart-account-batch.png" target="_blank" rel="noreferrer">

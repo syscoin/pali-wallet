@@ -2,7 +2,7 @@
 title: wallet_sendCalls
 ---
 
-Pali supports EIP-5792-style `wallet_sendCalls` for EVM batch requests. This is especially important for smart accounts, where multiple calls can be authorized as one account execution.
+Pali supports EIP-5792-style `wallet_sendCalls` for EVM batch requests. A supported Pali smart account can authorize multiple calls as one account execution.
 
 ## Check capabilities
 
@@ -13,7 +13,7 @@ const capabilities = await window.ethereum.request({
 });
 ```
 
-Pali reports atomic support for Pali smart accounts and unsupported atomic execution for regular EOAs.
+Pali reports atomic support for supported Pali smart accounts and unsupported atomic execution for regular EOAs.
 
 ## Send a batch
 
@@ -45,11 +45,11 @@ const result = await window.ethereum.request({
 
 ## Smart-account behavior
 
-For Pali smart accounts, Pali prepares all selected calls as one account execution batch, requests authorization from the active validator, checks targets against the wallet blacklist, and submits one transaction. If the active validator is passkey-based, the authorization is a WebAuthn assertion. If it is ECDSA-based, configured local owners sign the action hash.
+The user approves or rejects the entire requested batch; individual calls cannot be deselected. For Pali smart accounts, Pali prepares the complete batch as one account execution, requests authorization from the active validator, checks targets against the wallet blacklist, and submits one transaction. A passkey validator uses a WebAuthn assertion; configured local ECDSA owners sign the action hash.
 
 ## EOA behavior
 
-For regular EVM accounts, Pali presents the calls and sends selected calls sequentially. That is not the same as on-chain atomicity. If a dapp requires true atomic execution, use a Pali smart account or a contract designed to batch calls atomically.
+For regular EVM accounts, Pali presents the entire requested batch for approval or rejection and sends its calls sequentially. This is not on-chain atomic execution. If a dapp requires atomic execution, use a supported Pali smart account or a contract designed for atomic batching.
 
 ## Status methods
 

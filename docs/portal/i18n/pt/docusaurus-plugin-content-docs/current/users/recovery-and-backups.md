@@ -12,6 +12,10 @@ Anote a seed phrase da sua carteira e mantenha-a offline. Qualquer pessoa com a 
 
 A opção **Sugerir uma senha fácil de lembrar** cria uma senha de desbloqueio, não sua Frase de Recuperação Secreta. Salve-a no seu gerenciador de senhas. Uma passkey de uma conta inteligente não substitui a senha de desbloqueio da carteira.
 
+## Backup de notas privadas
+
+Antes de recuperar, esquecer, apagar ou substituir uma carteira, faça backup separado de cada nota privada enquanto ela estiver desbloqueada e você ainda souber a senha. Em Privacidade, escolha **Revelar para backup** em cada nota salva e mantenha o backup em segredo: quem o tiver pode sacar. A frase de recuperação não recria notas geradas aleatoriamente, e a recuperação apaga as notas privadas salvas. Se você já esqueceu a senha, não poderá usar a Pali para revelar as notas criptografadas antigas e criar um novo backup antes da recuperação.
+
 ## Se você esquecer a senha
 
 Na tela bloqueada, selecione **Esqueceu a senha? Recupere com a seed**, digite a Frase de Recuperação Secreta desta carteira e escolha uma nova senha. A senha antiga não é necessária. Uma frase diferente é recusada antes de redefinir a carteira.

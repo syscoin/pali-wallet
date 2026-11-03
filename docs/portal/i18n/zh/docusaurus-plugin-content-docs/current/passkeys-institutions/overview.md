@@ -7,7 +7,7 @@ Pali 智能账户是由合约实现的账户，Pali 可以为用户创建、连�
 ## 简单理解
 
 - 一个账户地址持有资产，也是 dapp 看到的地址。
-- 账户可以使用 passkey、ECDSA 或组合策略授权。
+- 在已配置的网络上，Pali 支持 ECDSA、P-256 WebAuthn 通行密钥、SLH-DSA 和组合验证器；兼容模块必须已部署，所需本地密钥或凭据也必须可用。
 - Guardian recovery 可以在延迟后替换当前验证器。
 - `wallet_sendCalls` 可以把多个 call 作为一次原子操作执行。
 

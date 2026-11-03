@@ -2,7 +2,7 @@
 title: wallet_sendCalls
 ---
 
-Pali unterstützt `wallet_sendCalls` im EIP-5792-Stil für EVM-Batch-Requests. Dies ist besonders wichtig für Passkey Smart Accounts, bei denen mehrere Calls mit einer einzigen WebAuthn-Assertion autorisiert werden können.
+Pali unterstützt `wallet_sendCalls` im Stil von EIP-5792 für EVM-Batch-Anfragen. Ein unterstützter Pali Smart Account kann mehrere Calls als eine Account-Ausführung autorisieren.
 
 ## Capabilities prüfen
 
@@ -13,7 +13,7 @@ const capabilities = await window.ethereum.request({
 });
 ```
 
-Pali meldet atomare Unterstützung für Passkey Smart Accounts und nicht unterstützte atomare Ausführung für normale EOAs.
+Pali meldet atomare Unterstützung für unterstützte Pali Smart Accounts und keine atomare Ausführung für reguläre EOAs.
 
 ## Einen Batch senden
 
@@ -23,7 +23,7 @@ const result = await window.ethereum.request({
   params: [
     {
       version: '2.0.0',
-      from: passkeyAccount,
+      from: smartAccount,
       chainId: '0x39',
       atomicRequired: true,
       calls: [
@@ -43,13 +43,13 @@ const result = await window.ethereum.request({
 });
 ```
 
-## Passkey-Verhalten
+## Verhalten von Smart Accounts
 
-Für Passkey Smart Accounts bereitet Pali alle ausgewählten Calls als einen Smart-Account-Ausführungs-Batch vor, fordert eine Passkey-Assertion an und sendet eine Transaktion. Lokale Passkey-Accounts repräsentieren bestätigte on-chain Deployments.
+Der Nutzer genehmigt oder lehnt den gesamten angeforderten Batch ab; einzelne Calls lassen sich nicht abwählen. Bei Pali Smart Accounts bereitet Pali den gesamten Batch als eine Account-Ausführung vor, fordert die Autorisierung des aktiven Validators an, prüft die Ziele gegen die Wallet-Blacklist und sendet eine Transaktion. Ein Passkey-Validator verwendet eine WebAuthn-Assertion; konfigurierte lokale ECDSA-Owner signieren den Action-Hash.
 
 ## EOA-Verhalten
 
-Für normale EVM-Accounts präsentiert Pali die Calls und sendet ausgewählte Calls sequenziell. Das ist nicht dasselbe wie on-chain Atomicity. Wenn eine dapp echte atomare Ausführung benötigt, verwenden Sie einen Passkey Smart Account oder einen Contract, der für atomare Batch-Calls entwickelt wurde.
+Bei regulären EVM-Accounts zeigt Pali den gesamten angeforderten Batch zur Genehmigung oder Ablehnung an und sendet seine Calls sequenziell. Das ist keine atomare On-Chain-Ausführung. Für atomare Ausführung verwenden Sie einen unterstützten Pali Smart Account oder einen dafür ausgelegten Contract.
 
 ## Statusmethoden
 

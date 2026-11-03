@@ -16,7 +16,11 @@ EVM dapps usually ask one account to sign a transaction object. UTXO dapps usual
 
 ## Minimum integration shape
 
+Pass a structured Pali PSBT object, not a raw Base64 string. `syscoinjs-lib` exports `{ psbt: <base64>, assets: <JSON string> }`; provide the asset map when applicable. `sys_sign` returns a signed object in the same format, which can remain partially signed. The returned `assets` field is empty; retain any asset metadata you need separately.
+
 ```js
+import { utils as sys } from 'syscoinjs-lib';
+
 const [address] = await window.pali.request({
   method: 'sys_requestAccounts',
 });
@@ -25,9 +29,11 @@ const changeAddress = await window.pali.request({
   method: 'wallet_getChangeAddress',
 });
 
+// Supply your constructed syscoinjs PSBT and optional asset map.
+const paliPsbt = sys.exportPsbtToJson(psbt, assetsMap);
 const signedPsbt = await window.pali.request({
   method: 'sys_sign',
-  params: [psbtBase64],
+  params: [paliPsbt],
 });
 ```
 

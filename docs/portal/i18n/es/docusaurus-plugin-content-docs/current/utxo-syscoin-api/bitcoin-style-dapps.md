@@ -16,7 +16,11 @@ Las dapps EVM suelen pedir a una cuenta que firme un objeto de transacción. Las
 
 ## Forma mínima de integración
 
+Envía un objeto PSBT estructurado de Pali, no una cadena Base64 sin procesar. `syscoinjs-lib` exporta `{ psbt: <base64>, assets: <cadena JSON> }`; proporciona el mapa de activos cuando corresponda. `sys_sign` devuelve un objeto firmado del mismo formato, que puede quedar parcialmente firmado. El campo `assets` devuelto está vacío; conserva por separado los metadatos de activos que necesites.
+
 ```js
+import { utils as sys } from 'syscoinjs-lib';
+
 const [address] = await window.pali.request({
   method: 'sys_requestAccounts',
 });
@@ -25,9 +29,11 @@ const changeAddress = await window.pali.request({
   method: 'wallet_getChangeAddress',
 });
 
+// Supply your constructed syscoinjs PSBT and optional asset map.
+const paliPsbt = sys.exportPsbtToJson(psbt, assetsMap);
 const signedPsbt = await window.pali.request({
   method: 'sys_sign',
-  params: [psbtBase64],
+  params: [paliPsbt],
 });
 ```
 

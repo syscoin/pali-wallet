@@ -28,7 +28,7 @@ Diese Seite dokumentiert Verhalten, das dapps berücksichtigen sollten.
 
 ## Atomicity
 
-- Passkey Smart Accounts können ausgewählte Batch-Calls durch eine Smart-Account-Ausführung ausführen.
+- Der Nutzer genehmigt oder lehnt den gesamten Batch ab; einzelne Calls lassen sich nicht abwählen. Ein Pali Smart Account kann den Batch in einer Account-Ausführung ausführen.
 - Normale EOA-Batch-Calls sind sequenzielle Wallet-Sends und sollten nicht als echte atomare Ausführung behandelt werden.
 
 ## Subscriptions

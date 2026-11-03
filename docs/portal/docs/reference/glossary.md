@@ -32,7 +32,7 @@ Partially Signed Bitcoin Transaction. A common format for coordinating UTXO tran
 
 ## Smart-account validator
 
-A module that decides whether a smart-account action is authorized. Pali supports ECDSA, P-256 WebAuthn, and composite validators.
+A module that decides whether a smart-account action is authorized. On configured networks, Pali supports ECDSA, P-256 WebAuthn, SLH-DSA and composite validators when the required modules and local keys or credentials are available.
 
 ## SPT
 

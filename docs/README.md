@@ -1,24 +1,29 @@
-# Pali Wallet Browser extension
+# Pali Wallet documentation
 
-This zips contains the build version for Pali wallet for version 2.0.0
+The current user guides and developer API reference are published at [docs.paliwallet.com](https://docs.paliwallet.com). Their source lives in [`portal/`](portal/README.md), including all supported translations.
 
-## Chrome/Brave Installation
+## User guides
 
-To install it manually on chrome follow the below guide:
-https://webkul.com/blog/how-to-install-the-unpacked-extension-in-chrome/
+- [Install and connect](https://docs.paliwallet.com/docs/start-here/install-and-connect)
+- [EVM and UTXO modes](https://docs.paliwallet.com/docs/users/evm-and-utxo-modes)
+- [Recovery and backups](https://docs.paliwallet.com/docs/users/recovery-and-backups)
+- [Privacy and safety](https://docs.paliwallet.com/docs/users/privacy-and-safety)
+- [Privacy policy](https://docs.paliwallet.com/privacy)
+- [Smart-account validators](https://docs.paliwallet.com/docs/users/smart-account-validators)
 
-- If you're installing using Brave just change the chrome:// to brave://
+For a regular installation, follow the store link in the installation guide. ZIPs and browser packages retained in this directory are historical artifacts, not the current release. To build and load a development extension, follow the repository [Getting Started guide](../README.md#getting-started).
 
-## Firefox Installation
+## Developer documentation
 
-To install it manually on firefox follow the below guide:
-https://accessfirefox.org/Install_Addon_Manually.php
+- [Provider discovery](https://docs.paliwallet.com/docs/developers/provider-discovery)
+- [EVM API](https://docs.paliwallet.com/docs/evm-api/overview)
+- [UTXO and Syscoin API](https://docs.paliwallet.com/docs/utxo-syscoin-api/overview)
+- [Smart accounts and passkeys](https://docs.paliwallet.com/docs/passkeys-institutions/overview)
 
-## Opera Intallation
+## Implementation notes
 
-To install it manually download the opera.crx file and follow step 9 of this link:
-https://forums.opera.com/topic/33583/install-chrome-extensions/221?lang=en-US
+- [Private-note storage and imports](privacy-note-import.md)
+- [Privacy-pool synchronization](privacy-pool-sync.md)
+- [Private transactions](privacy-transactions.md)
 
-### Developer Note:
-
-We have tested thoroughly the extension on Brave and Chrome, but still, there might be issues with Firefox and Opera extensions. If you find any issue within Firefox or Opera or even bugs on Brave and Chrome extension please report to us at support@syscoin.org
+For portal development, translations, and production preview instructions, see the [portal README](portal/README.md).

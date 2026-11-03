@@ -16,7 +16,11 @@ EVM dapp은 보통 하나의 account에 transaction object 서명을 요청합�
 
 ## 최소 통합 형태
 
+원시 Base64 문자열이 아닌 구조화된 Pali PSBT 객체를 전달하세요. `syscoinjs-lib`는 `{ psbt: <base64>, assets: <JSON 문자열> }`을 내보내며 필요한 경우 자산 맵을 지정합니다. `sys_sign`은 같은 형식의 서명된 객체를 반환하며 부분 서명 상태일 수 있습니다. 반환된 `assets` 필드는 비어 있으므로 필요한 자산 메타데이터는 별도로 보관하세요.
+
 ```js
+import { utils as sys } from 'syscoinjs-lib';
+
 const [address] = await window.pali.request({
   method: 'sys_requestAccounts',
 });
@@ -25,9 +29,11 @@ const changeAddress = await window.pali.request({
   method: 'wallet_getChangeAddress',
 });
 
+// Supply your constructed syscoinjs PSBT and optional asset map.
+const paliPsbt = sys.exportPsbtToJson(psbt, assetsMap);
 const signedPsbt = await window.pali.request({
   method: 'sys_sign',
-  params: [psbtBase64],
+  params: [paliPsbt],
 });
 ```
 

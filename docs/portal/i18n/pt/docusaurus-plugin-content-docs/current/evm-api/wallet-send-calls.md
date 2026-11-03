@@ -2,7 +2,7 @@
 title: wallet_sendCalls
 ---
 
-A Pali oferece suporte a `wallet_sendCalls` no estilo EIP-5792 para solicitações em lote EVM. Isso é especialmente importante para smart accounts com passkey, onde múltiplas chamadas podem ser autorizadas com uma única asserção WebAuthn.
+A Pali oferece `wallet_sendCalls` no estilo EIP-5792 para solicitações de lote EVM. Uma conta inteligente Pali compatível pode autorizar várias chamadas como uma execução.
 
 ## Verificar capacidades
 
@@ -13,7 +13,7 @@ const capabilities = await window.ethereum.request({
 });
 ```
 
-A Pali reporta suporte atômico para smart accounts com passkey e execução atômica sem suporte para EOAs regulares.
+A Pali informa suporte atômico para contas inteligentes Pali compatíveis e ausência de execução atômica para EOAs comuns.
 
 ## Enviar um lote
 
@@ -23,7 +23,7 @@ const result = await window.ethereum.request({
   params: [
     {
       version: '2.0.0',
-      from: passkeyAccount,
+      from: smartAccount,
       chainId: '0x39',
       atomicRequired: true,
       calls: [
@@ -43,13 +43,13 @@ const result = await window.ethereum.request({
 });
 ```
 
-## Comportamento de passkey
+## Comportamento de contas inteligentes
 
-Para smart accounts com passkey, a Pali prepara todas as chamadas selecionadas como um único lote de execução de smart account, solicita uma asserção de passkey e envia uma transação. Se a conta ainda não estiver implantada, a implantação e a execução opcional de política inicial podem fazer parte do caminho da primeira transação.
+O usuário aprova ou rejeita o lote solicitado inteiro; não é possível desmarcar chamadas individuais. Para contas inteligentes Pali, a Pali prepara todo o lote como uma execução, solicita autorização do validador ativo, verifica os destinos na lista de bloqueio da carteira e envia uma transação. Um validador de passkey usa uma asserção WebAuthn; proprietários ECDSA locais configurados assinam o hash da ação.
 
 ## Comportamento de EOA
 
-Para contas EVM regulares, a Pali apresenta as chamadas e envia as chamadas selecionadas sequencialmente. Isso não é o mesmo que atomicidade on-chain. Se uma dapp exige execução verdadeiramente atômica, use uma smart account com passkey ou um contrato projetado para executar chamadas em lote atomicamente.
+Para contas EVM comuns, a Pali apresenta o lote inteiro para aprovação ou rejeição e envia suas chamadas sequencialmente. Isso não é execução atômica on-chain. Se a dapp exigir atomicidade, use uma conta inteligente Pali compatível ou um contrato projetado para lotes atômicos.
 
 ## Métodos de status
 

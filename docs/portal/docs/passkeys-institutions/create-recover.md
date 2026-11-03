@@ -4,7 +4,7 @@ title: Create and recover smart accounts
 
 `wallet_prepareSmartAccount` creates a Pali smart account for dapp onboarding. Pali derives the account, deploys it through the configured factory, installs the requested validator when needed, connects the account to the requesting dapp, and writes durable account metadata into local wallet state.
 
-The local wallet state represents smart accounts Pali can operate. A smart account may be controlled by a passkey validator, an ECDSA validator, a composite validator, or guardian recovery modules installed after creation.
+The local wallet state represents smart accounts Pali can operate. A smart account can use an ECDSA, passkey, SLH-DSA or composite validator. A separately installed guardian recovery executor can replace a validator after the configured delay.
 
 ## Smart account and factory structure
 
@@ -12,7 +12,7 @@ The smart-account system has these pieces:
 
 - **Factory:** computes deterministic addresses and deploys accounts with initial module data.
 - **Smart account:** executes calls, tracks installed modules, and asks validator modules to approve signatures.
-- **Validators:** authorize actions. Pali supports ECDSA, P-256 WebAuthn passkey, and composite validators.
+- **Validators:** authorize actions. On configured networks, Pali supports ECDSA, P-256 WebAuthn passkey, SLH-DSA and composite validators when compatible modules are deployed and the needed local keys or credentials are available.
 - **Executors:** add account features. Pali uses guardian recovery as an executor module.
 
 The factory account parameters include:

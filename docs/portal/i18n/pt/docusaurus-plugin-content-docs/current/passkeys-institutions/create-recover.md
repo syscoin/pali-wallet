@@ -4,7 +4,7 @@ title: Criar e recuperar smart accounts
 
 `wallet_prepareSmartAccount` cria uma conta inteligente da Pali para integrar usuários por uma dapp. A Pali deriva a conta, implanta-a pela fábrica configurada, instala o validador solicitado quando necessário, conecta a conta à dapp solicitante e grava metadados duráveis da conta no estado local da carteira.
 
-O estado local da carteira representa as contas inteligentes que a Pali pode operar. Uma conta inteligente pode ser controlada por um validador de passkey, um validador ECDSA, um validador composto ou módulos de recuperação por guardiões instalados após sua criação.
+O estado local da carteira representa as contas inteligentes que a Pali pode operar. Uma conta pode usar um validador ECDSA, passkey, SLH-DSA ou composto. Um executor de recuperação por guardiões instalado separadamente pode substituir um validador após o prazo configurado.
 
 ## Estrutura da conta inteligente e da fábrica
 
@@ -12,7 +12,7 @@ O sistema de contas inteligentes tem estas partes:
 
 - **Fábrica:** calcula endereços determinísticos e implanta contas com os dados iniciais dos módulos.
 - **Conta inteligente:** executa chamadas, acompanha os módulos instalados e solicita aos validadores que aprovem assinaturas.
-- **Validadores:** autorizam ações. A Pali suporta ECDSA, passkeys P-256 WebAuthn e validadores compostos.
+- **Validadores:** Em redes configuradas, a Pali suporta ECDSA, passkeys P-256 WebAuthn, SLH-DSA e validadores compostos; os módulos compatíveis devem estar implantados e as chaves ou credenciais locais necessárias devem estar disponíveis.
 - **Executores:** adicionam recursos à conta. A Pali usa a recuperação por guardiões como módulo executor.
 
 Os parâmetros de conta da fábrica incluem:

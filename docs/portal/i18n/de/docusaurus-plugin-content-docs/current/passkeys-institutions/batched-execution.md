@@ -2,7 +2,7 @@
 title: Batch-Ausführung
 ---
 
-Pali Smart Accounts unterstützen Batch-Ausführung über `wallet_sendCalls`. Nutzer prüfen mehrere Calls und autorisieren sie als eine Kontoaktion. Wenn `atomicRequired` true ist, bereitet Pali die ausgewählten Calls als eine Smart-Account-Ausführung vor. Contract-Deployment-Calls mit leerem Target werden in diesem Flow nicht unterstützt.
+Pali Smart Accounts unterstützen Batch-Ausführung über `wallet_sendCalls`. Der Nutzer genehmigt oder lehnt bei jeder `wallet_sendCalls`-Anfrage den gesamten Batch ab; einzelne Calls lassen sich nicht abwählen. Ein unterstützter Pali Smart Account bereitet den vollständigen Batch als eine Account-Ausführung vor. EOA-Calls laufen sequenziell; bereits gesendete Calls lassen sich bei einem späteren Fehler nicht zurückrollen. Contract-Deployment-Calls mit leerem Target werden in diesem Smart-Account-Flow nicht unterstützt.
 
 <figure>
   <a className="pali-media-link" href="/img/screens/send-calls-smart-account-batch.png" target="_blank" rel="noreferrer">
