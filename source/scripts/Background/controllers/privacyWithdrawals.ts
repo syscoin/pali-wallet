@@ -39,6 +39,7 @@ const MAX_UINT = (BigInt(1) << BigInt(256)) - BigInt(1);
 const MAX_NONCE = (BigInt(1) << BigInt(64)) - BigInt(1);
 const PUBLIC_ERRORS = new Set([
   'privacy_note_invalid',
+  'privacy_note_restore_required',
   'privacy_note_not_found',
   'privacy_note_spent',
   'privacy_verification_pending',
@@ -253,7 +254,8 @@ export function createPrivacyWithdrawalsController(
     preparing?.abort.abort();
   };
   const relay = async (
-    attempt: Extract<IPrivacyWithdrawalAttempt, { mode: 'relayed' }>
+    attempt: Extract<IPrivacyWithdrawalAttempt, { mode: 'relayed' }>,
+    assertBeforeSubmit: () => void
   ) => {
     // Exact Classic relayer POST schema from tornadocash/tornado-relayer
     // @2247730603f2c249f90da0b07058325619435387, src/modules/validator.js.
@@ -267,6 +269,13 @@ export function createPrivacyWithdrawalsController(
       }, 15000);
     });
     const run = async () => {
+      // This is still before fetch entry, so a rejected final fence is known
+      // not to have broadcast and may clear only its matching reservation.
+      try {
+        assertBeforeSubmit();
+      } catch (error) {
+        throw sanitize(error);
+      }
       const response = await (options.fetcher || fetch)(
         `${validatePrivacyRelayerEndpoint(
           attempt.endpoint
@@ -822,11 +831,6 @@ export function createPrivacyWithdrawalsController(
         await pending;
       };
       try {
-        const assertBeforeSign = () => {
-          current(intent);
-          if (now() >= intent.expiresAt!)
-            throw fail('privacy_withdrawal_intent_expired');
-        };
         if (intent.selection) {
           await host.relayers.checkRelayer(
             intent.selection.directory,
@@ -836,8 +840,16 @@ export function createPrivacyWithdrawalsController(
           );
           current(intent);
         }
-        await host.beforeSubmission(attempt);
+        const assertReservedCurrent = await host.beforeSubmission(attempt);
         reserved = true;
+        const assertBeforeSign = () => {
+          current(intent);
+          if (typeof assertReservedCurrent !== 'function')
+            throw fail('privacy_withdrawal_context_changed');
+          assertReservedCurrent();
+          if (now() >= intent.expiresAt!)
+            throw fail('privacy_withdrawal_intent_expired');
+        };
         assertBeforeSign();
         entered = true;
         if (attempt.mode === 'direct') {
@@ -848,7 +860,7 @@ export function createPrivacyWithdrawalsController(
             assertBeforeSign
           );
           await record({ transactionHash: result.hash.toLowerCase() });
-        } else await record(await relay(attempt));
+        } else await record(await relay(attempt, assertBeforeSign));
         return {
           intentId: id,
           noteId: attempt.noteId,

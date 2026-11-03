@@ -243,13 +243,14 @@ async function storeCanonicalManifest(
   f: ReturnType<typeof fixture>,
   manifest: { notes: any[]; version: number },
   capacity = 128,
-  rawShard?: string
+  rawShard?: string,
+  shardSize = 16
 ) {
   const shards = [];
   const references = [];
   const groups = [];
-  for (let i = 0; i < manifest.notes.length; i += 16)
-    groups.push(manifest.notes.slice(i, i + 16));
+  for (let i = 0; i < manifest.notes.length; i += shardSize)
+    groups.push(manifest.notes.slice(i, i + shardSize));
   if (!groups.length) groups.push([]);
   for (const [index, notes] of groups.entries()) {
     const plaintext = new TextEncoder().encode(
@@ -548,7 +549,7 @@ it('rejects unsupported capacity values without mutating saved records', async (
 it('bounds sharding for escaped long endpoints and both journal types', async () => {
   const notes = capacityNotes(8).map((note, index) => ({
     ...note,
-    createdAt: Number.MAX_SAFE_INTEGER,
+    createdAt: 8_640_000_000_000_000,
     origin: 'generated' as const,
     deposit: {
       intentId: note.id,
@@ -815,8 +816,17 @@ it('reuses the durable note after failed fee preparation and controller restart'
       withCommitment: (noteId, _session, use) =>
         f.controller.withDepositCommitment(noteId, session, use),
       prepareFees: fees,
-      beforeSubmission: (attempt) =>
-        f.controller.reserveDepositAttempt(attempt, session),
+      beforeSubmission: async (attempt) => {
+        let fence!: () => void;
+        await f.controller.reserveDepositAttempt(
+          attempt,
+          session,
+          (assertion) => {
+            fence = assertion;
+          }
+        );
+        return fence;
+      },
       sendTransaction: send,
       recordBroadcast: (attempt, hash) =>
         f.controller.recordDepositBroadcast(attempt, hash, session),
@@ -2065,6 +2075,7 @@ it.each([
       await f.controller.reserveWithdrawalAttempt(attempt, originalSession);
       captured.assertCurrent();
       if (scenario === 'healthy pre-sign cancellation') forceCancel = true;
+      return () => undefined;
     },
     recordNotBroadcast: clear,
     recordSubmission: jest.fn(),
@@ -2389,7 +2400,7 @@ it('clears a verified note without losing canonical capacity or unrelated custod
 it.each([256, 512] as const)(
   'preserves and rewrites a worst-case encrypted %i-note canonical vault',
   async (capacity) => {
-    const max = Number.MAX_SAFE_INTEGER;
+    const max = 8_640_000_000_000_000;
     const hash = '0x' + 'ab'.repeat(32);
     const endpoint = 'https://a' + '\u0000'.repeat(2039);
     expect(endpoint).toHaveLength(2048);
@@ -2661,6 +2672,7 @@ it('writes one canonical root and shard path for empty and small inventories', a
         'capacity',
         'format',
         'noteCount',
+        'restore',
         'shards',
         'version',
       ]);
@@ -2816,3 +2828,734 @@ it.each(['format', 'version'])(
     expect(f.records).toEqual(before);
   }
 );
+
+async function decryptedVault(f: ReturnType<typeof fixture>) {
+  const bundle = Object.values(f.records)[0];
+  const decrypt = async (envelope: any, domain: string) => {
+    const bytes = await f
+      .getKeyring()
+      .decryptPrivateRecord({ domain, recordId: envelope.recordId, envelope });
+    try {
+      return JSON.parse(new TextDecoder().decode(bytes));
+    } finally {
+      bytes.fill(0);
+    }
+  };
+  const root = await decrypt(bundle.root, PRIVATE_VAULT_DOMAIN);
+  const notes = [];
+  for (const shard of bundle.shards)
+    notes.push(
+      ...(await decrypt(shard, 'org.syscoin.pali.privacy.notes.shard.v2')).notes
+    );
+  return { root, notes };
+}
+
+it('restores atomically after fresh authentication and keeps unknown history blocked after reload', async () => {
+  const f = fixture();
+  const session = f.captureSession();
+  const entry = {
+    note: NOTE,
+    createdAt: 123,
+    history: {
+      withdrawals: [{ mode: 'relayed' as const, outcome: 'unknown' as const }],
+    },
+  };
+  const denied = await f.controller.prepareRestore([entry], session);
+  expect(f.storage.setItem).not.toHaveBeenCalled();
+  await expect(
+    f.controller.commitRestore(denied, [entry], 'wrong-password', session)
+  ).rejects.toThrow('Invalid password');
+  await expect(
+    f.controller.commitRestore(denied, [entry], 'correct-password', session)
+  ).rejects.toThrow('privacy_restore_stale');
+  const plan = await f.controller.prepareRestore([entry], session);
+  expect(JSON.stringify(plan)).not.toContain(NOTE);
+  const receipt = await f.controller.commitRestore(
+    plan,
+    [entry],
+    'correct-password',
+    session
+  );
+  expect(receipt).toMatchObject({
+    id: plan.id,
+    added: 1,
+    duplicates: 0,
+    guarded: 1,
+  });
+  expect(f.storage.setItem).toHaveBeenCalledTimes(1);
+  expect(JSON.stringify(f.records)).not.toContain(NOTE);
+  const restarted = f.create();
+  expect(await restarted.getRestoreReceipt(session)).toEqual(receipt);
+  const note = (await restarted.getNotes()).notes[0];
+  expect(note.phase).toBe('waiting');
+  const use = jest.fn();
+  await expect(
+    restarted.withWithdrawalNote(note.id, session, use)
+  ).rejects.toThrow('privacy_note_restore_required');
+  await expect(
+    restarted.reserveWithdrawalAttempt(withdrawalAttempt(note.id), session)
+  ).rejects.toThrow('privacy_note_restore_required');
+  expect(use).not.toHaveBeenCalled();
+  const backup = await restarted.exportBackupSnapshot(
+    'correct-password',
+    session
+  );
+  expect(backup.notes).toEqual([{ ...entry, reconciliationRequired: true }]);
+  f.setStatus({ phase: 'spent' });
+  expect((await restarted.getNotes()).notes[0].phase).toBe('spent');
+  f.setStatus({ phase: 'verified' });
+  expect((await restarted.getNotes()).notes[0].phase).toBe('waiting');
+});
+
+it('new restores without hints remain guarded and cannot be reused as deposit candidates', async () => {
+  const f = fixture();
+  const session = f.captureSession();
+  const plan = await f.controller.prepareRestore(
+    [{ note: NOTE, createdAt: 1 }],
+    session
+  );
+  await f.controller.commitRestore(
+    plan,
+    [{ note: NOTE, createdAt: 1 }],
+    'correct-password',
+    session
+  );
+  const note = (await f.controller.getNotes()).notes[0];
+  await expect(
+    f.controller.prepareDepositNote('eth-1', note.id, session)
+  ).rejects.toThrow('privacy_note_restore_required');
+  const raw = await decryptedVault(f);
+  expect(raw.notes[0]).toMatchObject({
+    note: NOTE,
+    restoreGuard: { version: 1 },
+  });
+  expect(Object.keys(raw.root).sort()).toEqual([
+    'capacity',
+    'format',
+    'noteCount',
+    'restore',
+    'shards',
+    'version',
+  ]);
+  // The previous reader's strict five-key predicate rejects this canonical root.
+  expect(Object.keys(raw.root)).not.toHaveLength(5);
+});
+
+it('preserves existing live journals and timestamps while adding imported evidence', async () => {
+  const f = fixture();
+  const session = f.captureSession();
+  const local = await f.controller.importNote(NOTE);
+  const attempt = withdrawalAttempt(local.id);
+  await f.controller.reserveWithdrawalAttempt(attempt, session);
+  const before = (await decryptedVault(f)).notes[0];
+  const entry = {
+    note: NOTE,
+    createdAt: 999,
+    history: {
+      withdrawals: [{ mode: 'relayed' as const, outcome: 'unknown' as const }],
+    },
+  };
+  const plan = await f.controller.prepareRestore([entry], session);
+  await f.controller.commitRestore(plan, [entry], 'correct-password', session);
+  const after = (await decryptedVault(f)).notes[0];
+  const { restoreGuard, ...rest } = after;
+  expect(rest).toEqual(before);
+  expect(restoreGuard.history.withdrawals).toHaveLength(2);
+  await f.controller.recordWithdrawalSubmission(
+    attempt,
+    { transactionHash: TX_HASH },
+    session
+  );
+  expect(
+    await f.create().getWithdrawalAttempt(local.id, session)
+  ).toMatchObject({ phase: 'submitted', transactionHash: TX_HASH });
+  const backup = await f.controller.exportBackupSnapshot(
+    'correct-password',
+    session
+  );
+  expect(backup.notes[0]).toMatchObject({
+    createdAt: before.createdAt,
+    reconciliationRequired: true,
+  });
+  expect(backup.notes[0].history!.withdrawals).toHaveLength(3);
+  expect(JSON.stringify(backup)).not.toContain('proofHash');
+  expect(JSON.stringify(backup)).not.toContain('endpoint');
+});
+
+it('trusted unbroadcast cleanup cannot remove an independent restore guard', async () => {
+  const f = fixture();
+  const session = f.captureSession();
+  const local = await f.controller.importNote(NOTE);
+  const attempt = withdrawalAttempt(local.id);
+  await f.controller.reserveWithdrawalAttempt(attempt, session);
+  const plan = await f.controller.prepareRestore(
+    [{ note: NOTE, createdAt: 1, reconciliationRequired: true }],
+    session
+  );
+  await f.controller.commitRestore(
+    plan,
+    [{ note: NOTE, createdAt: 1, reconciliationRequired: true }],
+    'correct-password',
+    session
+  );
+  await f.controller.clearUnbroadcastWithdrawalAttempt(attempt, session);
+  expect(await f.create().getWithdrawalAttempt(local.id, session)).toBeNull();
+  await expect(
+    f.create().withWithdrawalNote(local.id, session, () => undefined)
+  ).rejects.toThrow('privacy_note_restore_required');
+});
+
+it.each(['lock', 'replace'] as const)(
+  'rejects a %s after restore preview without writing another profile',
+  async (change) => {
+    const f = fixture();
+    const session = f.captureSession();
+    const plan = await f.controller.prepareRestore(
+      [{ note: NOTE, createdAt: 1 }],
+      session
+    );
+    if (change === 'lock') f.lock();
+    else f.replaceKeyring('different wallet');
+    await expect(
+      f.controller.commitRestore(
+        plan,
+        [{ note: NOTE, createdAt: 1 }],
+        'correct-password',
+        session
+      )
+    ).rejects.toThrow();
+    expect(f.storage.setItem).not.toHaveBeenCalled();
+  }
+);
+
+it('invalidates a prepared merge if another wallet operation changes the inventory', async () => {
+  const f = fixture();
+  const session = f.captureSession();
+  const plan = await f.controller.prepareRestore(
+    [{ note: SECOND_NOTE, createdAt: 1 }],
+    session
+  );
+  await f.controller.importNote(NOTE);
+  const before = structuredClone(f.records);
+  await expect(
+    f.controller.commitRestore(
+      plan,
+      [{ note: SECOND_NOTE, createdAt: 1 }],
+      'correct-password',
+      session
+    )
+  ).rejects.toThrow('privacy_restore_stale');
+  expect(f.records).toEqual(before);
+});
+
+it('snapshots caller input before preview yields and consumes one token only once', async () => {
+  const f = fixture();
+  const session = f.captureSession();
+  const entries = [{ note: NOTE, createdAt: 1 }];
+  const pending = f.controller.prepareRestore(entries, session);
+  entries[0].note = SECOND_NOTE;
+  const plan = await pending;
+  const results = await Promise.allSettled([
+    f.controller.commitRestore(
+      plan,
+      [{ note: NOTE, createdAt: 1 }],
+      'correct-password',
+      session
+    ),
+    f.controller.commitRestore(
+      plan,
+      [{ note: NOTE, createdAt: 1 }],
+      'correct-password',
+      session
+    ),
+  ]);
+  expect(results.map((r) => r.status).sort()).toEqual([
+    'fulfilled',
+    'rejected',
+  ]);
+  expect(
+    (await f.controller.exportBackupSnapshot('correct-password', session))
+      .notes[0].note
+  ).toBe(NOTE);
+  expect(f.storage.setItem).toHaveBeenCalledTimes(1);
+});
+
+it('rejects forged or cancelled plan summaries and bounds retained previews', async () => {
+  const f = fixture();
+  const session = f.captureSession();
+  const plan = await f.controller.prepareRestore(
+    [{ note: NOTE, createdAt: 1 }],
+    session
+  );
+  await expect(
+    f.controller.commitRestore(
+      { ...plan },
+      [{ note: NOTE, createdAt: 1 }],
+      'correct-password',
+      session
+    )
+  ).rejects.toThrow('privacy_restore_stale');
+  f.controller.cancelRestore(plan);
+  await expect(
+    f.controller.commitRestore(
+      plan,
+      [{ note: NOTE, createdAt: 1 }],
+      'correct-password',
+      session
+    )
+  ).rejects.toThrow('privacy_restore_stale');
+  for (let n = 0; n < 4; n++)
+    await f.controller.prepareRestore([{ note: NOTE, createdAt: n }], session);
+  await expect(
+    f.controller.prepareRestore([{ note: NOTE, createdAt: 5 }], session)
+  ).rejects.toThrow('privacy_vault_unavailable');
+  expect(f.storage.setItem).not.toHaveBeenCalled();
+});
+
+it('keeps prior custody intact when restore encryption or storage rejects before commit', async () => {
+  const f = fixture();
+  const session = f.captureSession();
+  await f.controller.importNote(NOTE);
+  const before = structuredClone(f.records);
+  let plan = await f.controller.prepareRestore(
+    [{ note: SECOND_NOTE, createdAt: 1 }],
+    session
+  );
+  const encrypt = jest
+    .spyOn(f.getKeyring(), 'encryptPrivateRecord')
+    .mockRejectedValueOnce(new Error('failed'));
+  await expect(
+    f.controller.commitRestore(
+      plan,
+      [{ note: SECOND_NOTE, createdAt: 1 }],
+      'correct-password',
+      session
+    )
+  ).rejects.toThrow('privacy_vault_unavailable');
+  expect(f.records).toEqual(before);
+  encrypt.mockRestore();
+  plan = await f.controller.prepareRestore(
+    [{ note: SECOND_NOTE, createdAt: 1 }],
+    session
+  );
+  f.storage.setItem.mockRejectedValueOnce(new Error('failed'));
+  await expect(
+    f.controller.commitRestore(
+      plan,
+      [{ note: SECOND_NOTE, createdAt: 1 }],
+      'correct-password',
+      session
+    )
+  ).rejects.toThrow('privacy_vault_unavailable');
+  expect(f.records).toEqual(before);
+  expect(await f.controller.getRestoreReceipt(session)).toBeNull();
+});
+
+it('writes the restore receipt with the notes when storage commits before losing acknowledgment', async () => {
+  const f = fixture();
+  const session = f.captureSession();
+  const plan = await f.controller.prepareRestore(
+    [
+      { note: NOTE, createdAt: 1 },
+      { note: SECOND_NOTE, createdAt: 2 },
+    ],
+    session
+  );
+  f.storage.setItem.mockImplementationOnce(async (key, value) => {
+    f.records[key] = structuredClone(value);
+    throw new Error('lost acknowledgment');
+  });
+  await expect(
+    f.controller.commitRestore(
+      plan,
+      [
+        { note: NOTE, createdAt: 1 },
+        { note: SECOND_NOTE, createdAt: 2 },
+      ],
+      'correct-password',
+      session
+    )
+  ).rejects.toThrow('privacy_vault_unavailable');
+  expect(await f.create().getRestoreReceipt(session)).toMatchObject({
+    id: plan.id,
+    added: 2,
+  });
+  expect((await f.create().getNotes()).notes).toHaveLength(2);
+  await expect(
+    f.controller.commitRestore(
+      plan,
+      [
+        { note: NOTE, createdAt: 1 },
+        { note: SECOND_NOTE, createdAt: 2 },
+      ],
+      'correct-password',
+      session
+    )
+  ).rejects.toThrow('privacy_restore_stale');
+  expect(f.storage.setItem).toHaveBeenCalledTimes(1);
+});
+
+it('exports only the authenticated current profile and rejects a session switch during export', async () => {
+  const f = fixture();
+  await f.controller.importNote(NOTE);
+  f.replaceKeyring('second synthetic wallet');
+  await f.controller.importNote(SECOND_NOTE);
+  expect(Object.keys(f.records)).toHaveLength(2);
+  const session = f.captureSession();
+  await expect(
+    f.controller.exportBackupSnapshot('wrong-password', session)
+  ).rejects.toThrow('Invalid password');
+  const snapshot = await f.controller.exportBackupSnapshot(
+    'correct-password',
+    session
+  );
+  expect(snapshot.notes.map((note) => note.note)).toEqual([SECOND_NOTE]);
+  f.authenticate.mockImplementationOnce(async (_password, current, reveal) => {
+    current.assertCurrent();
+    const result = await reveal();
+    f.replaceKeyring('third synthetic wallet');
+    return result;
+  });
+  await expect(
+    f.controller.exportBackupSnapshot('correct-password', session)
+  ).rejects.toThrow('privacy_vault_session_changed');
+});
+
+it('reads only guard-free pre-release roots and writes the required restore root field on change', async () => {
+  const f = fixture();
+  await storeCanonicalManifest(f, {
+    version: 1,
+    notes: [{ id: UUID, note: NOTE, createdAt: 1 }],
+  });
+  expect((await f.controller.getNotes()).notes).toHaveLength(1);
+  await f.controller.setCapacity(256);
+  expect((await decryptedVault(f)).root.restore).toEqual({ version: 1 });
+  const other = fixture();
+  await storeCanonicalManifest(other, {
+    version: 1,
+    notes: [
+      {
+        id: UUID,
+        note: NOTE,
+        createdAt: 1,
+        restoreGuard: { version: 1, importedAt: 1, sourceHash: TX_HASH },
+      },
+    ],
+  });
+  await expect(other.controller.getNotes()).rejects.toThrow(
+    'privacy_vault_corrupt'
+  );
+  expect(other.storage.setItem).not.toHaveBeenCalled();
+});
+
+it('rejects malformed authenticated restore metadata instead of discarding the guard', async () => {
+  const f = fixture();
+  const session = f.captureSession();
+  const plan = await f.controller.prepareRestore(
+    [{ note: NOTE, createdAt: 1 }],
+    session
+  );
+  await f.controller.commitRestore(
+    plan,
+    [{ note: NOTE, createdAt: 1 }],
+    'correct-password',
+    session
+  );
+  const bundle = Object.values(f.records)[0];
+  const { root } = await decryptedVault(f);
+  root.restore = {
+    version: 1,
+    receipt: { ...root.restore.receipt, guarded: 513 },
+  };
+  const bytes = new TextEncoder().encode(JSON.stringify(root));
+  try {
+    bundle.root = await f.getKeyring().encryptPrivateRecord({
+      domain: PRIVATE_VAULT_DOMAIN,
+      recordId: bundle.root.recordId,
+      plaintext: bytes,
+    });
+  } finally {
+    bytes.fill(0);
+  }
+  const before = structuredClone(f.records);
+  await expect(f.create().getNotes()).rejects.toThrow('privacy_vault_corrupt');
+  expect(f.records).toEqual(before);
+});
+
+it('binds a commit to its reviewed source and snapshots it before authentication yields', async () => {
+  const f = fixture();
+  const session = f.captureSession();
+  const entries = [{ note: NOTE, createdAt: 1 }];
+  let plan = await f.controller.prepareRestore(entries, session);
+  await expect(
+    f.controller.commitRestore(
+      plan,
+      [{ note: SECOND_NOTE, createdAt: 1 }],
+      'correct-password',
+      session
+    )
+  ).rejects.toThrow('privacy_restore_stale');
+  expect(f.authenticate).not.toHaveBeenCalled();
+  expect(f.storage.setItem).not.toHaveBeenCalled();
+  plan = await f.controller.prepareRestore(entries, session);
+  const pending = f.controller.commitRestore(
+    plan,
+    entries,
+    'correct-password',
+    session
+  );
+  entries[0].note = SECOND_NOTE;
+  await pending;
+  expect(
+    (await f.controller.exportBackupSnapshot('correct-password', session))
+      .notes[0].note
+  ).toBe(NOTE);
+});
+
+it.each(['deposit', 'withdrawal'] as const)(
+  'shares the %s restore fence across core instances and preserves late acknowledgments',
+  async (kind) => {
+    const f = fixture(() => NOTE);
+    const session = f.captureSession();
+    if (kind === 'deposit') f.setStatus({ phase: 'not-found' });
+    const local =
+      kind === 'deposit'
+        ? await f.controller.createDepositNote('eth-1')
+        : await f.controller.importNote(NOTE);
+    let fence!: () => void;
+    const attempt =
+      kind === 'deposit'
+        ? depositAttempt(local.id)
+        : withdrawalAttempt(local.id);
+    if (kind === 'deposit')
+      await f.controller.reserveDepositAttempt(
+        attempt as IPrivacyDepositAttempt,
+        session,
+        (assertion) => {
+          fence = assertion;
+        }
+      );
+    else
+      await f.controller.reserveWithdrawalAttempt(
+        attempt as IPrivacyWithdrawalAttempt,
+        session,
+        (identity) => {
+          fence = identity.assertRestoreCurrent;
+        }
+      );
+    fence();
+    const other = f.create();
+    const entries = [
+      { note: NOTE, createdAt: 1, reconciliationRequired: true as const },
+    ];
+    const plan = await other.prepareRestore(entries, session);
+    await other.commitRestore(plan, entries, 'correct-password', session);
+    expect(fence).toThrow('privacy_note_restore_required');
+    if (kind === 'deposit')
+      await f.controller.recordDepositBroadcast(
+        attempt as IPrivacyDepositAttempt,
+        TX_HASH,
+        session
+      );
+    else
+      await f.controller.recordWithdrawalSubmission(
+        attempt as IPrivacyWithdrawalAttempt,
+        { transactionHash: TX_HASH },
+        session
+      );
+    const stored = (await decryptedVault(f)).notes[0];
+    expect(stored[kind]).toMatchObject({
+      phase: 'submitted',
+      transactionHash: TX_HASH,
+    });
+    expect(stored.restoreGuard).toBeDefined();
+  }
+);
+
+it('discards an in-flight proof result if a restore adds a guard while proving', async () => {
+  const f = fixture();
+  const session = f.captureSession();
+  const local = await f.controller.importNote(NOTE);
+  const entered = deferred(),
+    release = deferred();
+  const proof = f.controller.withWithdrawalNote(local.id, session, async () => {
+    entered.resolve();
+    await release.promise;
+    return 'public-proof';
+  });
+  const rejected = expect(proof).rejects.toThrow(
+    'privacy_note_restore_required'
+  );
+  await entered.promise;
+  const entries = [
+    { note: NOTE, createdAt: 1, reconciliationRequired: true as const },
+  ];
+  const engine = f.create();
+  const ownPlan = await engine.prepareRestore(entries, session);
+  await engine.commitRestore(ownPlan, entries, 'correct-password', session);
+  release.resolve();
+  await rejected;
+});
+
+it('revokes a reservation fence before a restore whose storage acknowledgment is lost', async () => {
+  const f = fixture();
+  const session = f.captureSession();
+  const local = await f.controller.importNote(NOTE);
+  let fence!: () => void;
+  await f.controller.reserveWithdrawalAttempt(
+    withdrawalAttempt(local.id),
+    session,
+    (identity) => {
+      fence = identity.assertRestoreCurrent;
+    }
+  );
+  const entries = [
+    { note: NOTE, createdAt: 1, reconciliationRequired: true as const },
+  ];
+  const plan = await f.controller.prepareRestore(entries, session);
+  f.storage.setItem.mockRejectedValueOnce(new Error('storage failed'));
+  await expect(
+    f.controller.commitRestore(plan, entries, 'correct-password', session)
+  ).rejects.toThrow('privacy_vault_unavailable');
+  expect(fence).toThrow('privacy_note_restore_required');
+  expect((await decryptedVault(f)).notes[0].restoreGuard).toBeUndefined();
+});
+
+it('rechecks the proof fence after a final yielding profile read', async () => {
+  const f = fixture();
+  const session = f.captureSession();
+  const local = await f.controller.importNote(NOTE);
+  const entered = deferred(),
+    release = deferred();
+  const keyring = f.getKeyring();
+  const profile = keyring.getPrivateRecordProfileId.bind(keyring);
+  let pauseAfterProof = false;
+  jest
+    .spyOn(keyring, 'getPrivateRecordProfileId')
+    .mockImplementation(async () => {
+      const value = await profile();
+      if (pauseAfterProof) {
+        pauseAfterProof = false;
+        entered.resolve();
+        await release.promise;
+      }
+      return value;
+    });
+  const result = f.controller.withWithdrawalNote(local.id, session, () => {
+    pauseAfterProof = true;
+    return 'stale-proof';
+  });
+  const rejected = expect(result).rejects.toThrow(
+    'privacy_note_restore_required'
+  );
+  await entered.promise;
+  const other = f.create();
+  const entries = [
+    { note: NOTE, createdAt: 1, reconciliationRequired: true as const },
+  ];
+  const plan = await other.prepareRestore(entries, session);
+  await other.commitRestore(plan, entries, 'correct-password', session);
+  release.resolve();
+  await rejected;
+});
+
+it('rejects a valid extreme-history merge before preview when its authenticated root cannot fit', async () => {
+  const hash = '0x' + 'ab'.repeat(32),
+    from = '0x' + '11'.repeat(20);
+  const notes = capacityNotes(512).map((entry) => ({
+    ...entry,
+    origin: 'generated' as const,
+    deposit: {
+      intentId: entry.id,
+      attemptHash: hash,
+      createdAt: 456,
+      from,
+      nonce: '18446744073709551615',
+      phase: 'submitted' as const,
+      transactionHash: hash,
+    },
+    withdrawal: {
+      intentId: entry.id,
+      attemptHash: hash,
+      proofHash: hash,
+      inputHash: hash,
+      createdAt: 456,
+      mode: 'relayed' as const,
+      phase: 'submitted' as const,
+      endpoint: 'https://a' + '\u0000'.repeat(2039),
+      ensHash: hash,
+      transactionHash: hash,
+      jobId: 'j'.repeat(128),
+    },
+  }));
+  const f = fixture(undefined, (note) => ({
+    poolId: 'eth-1',
+    commitment: keccak256(toUtf8Bytes(note)),
+    nullifierHash: hash,
+  }));
+  await storeCanonicalManifest(f, { version: 1, notes }, 512, undefined, 2);
+  const before = structuredClone(f.records);
+  const history = {
+    withdrawals: Array.from({ length: 14 }, (_, index) => ({
+      mode: 'direct' as const,
+      outcome: 'submitted' as const,
+      from,
+      nonce: String(index),
+      transactionHash: hash,
+    })),
+  };
+  const entries = notes.map((note) => ({
+    note: note.note,
+    createdAt: note.createdAt,
+    history,
+  }));
+  await expect(
+    f.controller.prepareRestore(entries, f.captureSession())
+  ).rejects.toThrow('privacy_note_limit');
+  expect(f.storage.setItem).not.toHaveBeenCalled();
+  expect(f.authenticate).not.toHaveBeenCalled();
+  expect(f.records).toEqual(before);
+});
+
+it.each(['before authentication', 'during encryption'] as const)(
+  'expires a restore preview %s without writing',
+  async (stage) => {
+    let clock = 1000;
+    jest.spyOn(Date, 'now').mockImplementation(() => clock);
+    const f = fixture();
+    const session = f.captureSession();
+    const entries = [{ note: NOTE, createdAt: 1 }];
+    const plan = await f.controller.prepareRestore(entries, session);
+    if (stage === 'before authentication') clock += 300_001;
+    else {
+      const encrypt = f.getKeyring().encryptPrivateRecord.bind(f.getKeyring());
+      jest
+        .spyOn(f.getKeyring(), 'encryptPrivateRecord')
+        .mockImplementation(async (request) => {
+          const envelope = await encrypt(request);
+          clock += 300_001;
+          return envelope;
+        });
+    }
+    await expect(
+      f.controller.commitRestore(plan, entries, 'correct-password', session)
+    ).rejects.toThrow('privacy_restore_stale');
+    expect(f.storage.setItem).not.toHaveBeenCalled();
+  }
+);
+
+it('a duplicate raw-note import cannot strip an existing restore guard', async () => {
+  const f = fixture();
+  const session = f.captureSession();
+  const entries = [{ note: NOTE, createdAt: 1 }];
+  const plan = await f.controller.prepareRestore(entries, session);
+  await f.controller.commitRestore(plan, entries, 'correct-password', session);
+  const before = structuredClone(f.records);
+  const imported = await f.controller.importNote(NOTE);
+  expect(imported.phase).toBe('waiting');
+  expect(f.records).toEqual(before);
+  expect(f.storage.setItem).toHaveBeenCalledTimes(1);
+  await expect(
+    f.controller.withWithdrawalNote(imported.id, session, () => undefined)
+  ).rejects.toThrow('privacy_note_restore_required');
+});

@@ -163,6 +163,7 @@ function setup() {
     }),
     beforeSubmission: jest.fn(async () => {
       events.push('reserve');
+      return () => undefined;
     }),
     recordSubmission: jest.fn(async () => {
       events.push('ack');
@@ -593,6 +594,7 @@ it.each(['context', 'snapshot'] as const)(
     jest.mocked(run.host.beforeSubmission).mockImplementationOnce(async () => {
       if (action === 'context') run.change();
       else run.invalidate();
+      return () => undefined;
     });
     await expect(
       run.controller.submitWithdrawal(review.intentId)
@@ -1344,4 +1346,26 @@ it('does not retry a second invalidation during the same preparation', async () 
   } finally {
     run.controller.close();
   }
+});
+
+it('checks the reservation fence immediately before relay POST and retains known non-broadcast classification', async () => {
+  const run = setup();
+  await run.controller.getRelayers();
+  const review = await run.controller.prepareWithdrawal(relayed());
+  const fence = jest
+    .fn()
+    .mockImplementationOnce(() => undefined)
+    .mockImplementation(() => {
+      throw new Error('privacy_note_restore_required');
+    });
+  jest.mocked(run.host.beforeSubmission).mockResolvedValueOnce(fence);
+  await expect(
+    run.controller.submitWithdrawal(review.intentId)
+  ).rejects.toMatchObject({
+    message: 'privacy_note_restore_required',
+    transactionNotBroadcast: true,
+  });
+  expect(fence).toHaveBeenCalledTimes(2);
+  expect(run.fetcher).not.toHaveBeenCalled();
+  expect(run.host.recordNotBroadcast).toHaveBeenCalledTimes(1);
 });

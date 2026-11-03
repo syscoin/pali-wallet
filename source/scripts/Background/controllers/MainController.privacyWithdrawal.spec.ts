@@ -137,8 +137,13 @@ function setup() {
       session.assertCurrent();
       return use(NOTE, 'eth-1');
     }),
-    reserveWithdrawalAttempt: jest.fn(async (_attempt, session) => {
+    reserveWithdrawalAttempt: jest.fn(async (_attempt, session, onIdentity) => {
       session.assertCurrent();
+      onIdentity?.({
+        assertRestoreCurrent: () => undefined,
+        attemptHash: HASH,
+        profileId: '0x' + '11'.repeat(32),
+      });
       events.push('reserve');
     }),
     recordWithdrawalSubmission: jest.fn(async (_attempt, _ack, session) => {
@@ -1008,3 +1013,143 @@ it.each([
     expect((await vault.getNotes()).notes[0].phase).toBe('verified');
   }
 });
+
+it.each([
+  ['withdrawal', 'before-sign'],
+  ['withdrawal', 'after-broadcast'],
+  ['deposit', 'before-sign'],
+  ['deposit', 'after-broadcast'],
+] as const)(
+  'actual Main %s host fences restore %s and retains acknowledged outcomes',
+  async (kind, stage) => {
+    const { createPrivateVaultController } = await import('./privateVault');
+    const { createPrivacyTransactionsController } = await import(
+      './privacyTransactions'
+    );
+    const ActualKeyring = jest.requireActual(
+      '@sidhujag/sysweb3-keyring'
+    ).KeyringManager;
+    const keyring: any = Object.create(ActualKeyring.prototype);
+    keyring.sessionPassword = { isCleared: () => false };
+    keyring.sessionMnemonic = { isCleared: () => false };
+    keyring.privateRecordSessionRevision = 0;
+    keyring.getDecryptedMnemonic = () => 'synthetic restore host race wallet';
+    keyring.isUnlocked = () => true;
+    const run = setup();
+    run.wallet.getActiveKeyring = () => keyring;
+    run.wallet.getWalletSetupStatus = () => undefined;
+    run.wallet.privacyDepositContexts = new WeakMap();
+    run.provider.getBalance.mockResolvedValue(BigInt('2000000000000000000'));
+    (run.provider.estimateGas as jest.Mock).mockImplementation(() =>
+      Promise.resolve(BigInt(100001))
+    );
+    const records: Record<string, unknown> = {};
+    let sequence = 100;
+    const vault = createPrivateVaultController(
+      {
+        captureSession: () => run.wallet.capturePrivateVaultSession(),
+        authenticate: async (_password, session, reveal) => {
+          session.assertCurrent();
+          return reveal();
+        },
+        readNote: async () => ({
+          phase: kind === 'deposit' ? 'not-found' : 'verified',
+        }),
+      },
+      {
+        storage: {
+          getItem: async (key) => records[key] ?? null,
+          setItem: async (key, value) => {
+            records[key] = structuredClone(value);
+          },
+        },
+        mutex: new AsyncMutex(),
+        now: () => 1000,
+        generate: () => NOTE,
+        randomId: () =>
+          sequence++ === 100
+            ? NOTE_ID
+            : `00000000-0000-4000-8000-${sequence
+                .toString(16)
+                .padStart(12, '0')}`,
+      }
+    );
+    run.wallet.getPrivateVaultController.mockResolvedValue(vault);
+    const entered = deferred(),
+      release = deferred();
+    const signer = jest.fn(async () => {
+      if (stage === 'after-broadcast') {
+        entered.resolve();
+        await release.promise;
+      }
+      return { hash: HASH, nonce: 7 };
+    });
+    Object.defineProperty(run.wallet, 'ethereumTransaction', {
+      configurable: true,
+      value: { web3Provider: run.provider, sendFormattedTransaction: signer },
+    });
+    run.wallet.sendAndSaveTransaction = jest.fn(async () => undefined);
+    run.wallet.sendAndSaveEthTransaction =
+      MainController.prototype.sendAndSaveEthTransaction.bind(run.wallet);
+    jest.mocked(getController).mockReturnValue({ wallet: run.wallet } as any);
+    let review: { intentId: string };
+    if (kind === 'deposit') {
+      run.wallet.privacyTransactionsController = Promise.resolve(
+        createPrivacyTransactionsController(
+          run.wallet.createPrivacyTransactionsHost(),
+          { now: () => 1000, randomId: () => INTENT_ID }
+        )
+      );
+      review = await run.wallet.preparePrivacyDeposit({ poolId: 'eth-1' });
+    } else {
+      await vault.importNote(NOTE);
+      review = await prepare(run.wallet);
+    }
+    if (stage === 'before-sign')
+      jest
+        .mocked(getBlacklistTargetsForEvmCallWithContractType)
+        .mockImplementationOnce(async () => {
+          entered.resolve();
+          await release.promise;
+          return [];
+        });
+    const result = (
+      kind === 'deposit'
+        ? run.wallet.submitPrivacyDeposit(review.intentId)
+        : run.wallet.submitPrivacyWithdrawal(review.intentId)
+    ).then(
+      (value: unknown) => ({ value, error: undefined }),
+      (error: unknown) => ({ value: undefined, error })
+    );
+    await entered.promise;
+    const session = run.wallet.capturePrivateVaultSession();
+    const entries = [
+      { note: NOTE, createdAt: 1, reconciliationRequired: true as const },
+    ];
+    const plan = await vault.prepareRestore(entries, session);
+    await vault.commitRestore(plan, entries, 'synthetic-password', session);
+    release.resolve();
+    const settled = await result;
+    if (stage === 'before-sign') {
+      expect(settled.error).toMatchObject({ transactionNotBroadcast: true });
+      expect(signer).not.toHaveBeenCalled();
+    } else {
+      expect(settled.error).toBeUndefined();
+      expect(settled.value).toMatchObject({
+        phase: 'submitted',
+        transactionHash: HASH,
+      });
+      const journal =
+        kind === 'deposit'
+          ? await vault.getDepositAttempt(NOTE_ID, session)
+          : await vault.getWithdrawalAttempt(NOTE_ID, session);
+      expect(journal).toMatchObject({
+        phase: 'submitted',
+        transactionHash: HASH,
+      });
+    }
+    await expect(
+      vault.withWithdrawalNote(NOTE_ID, session, () => 'must not return')
+    ).rejects.toThrow('privacy_note_restore_required');
+  }
+);

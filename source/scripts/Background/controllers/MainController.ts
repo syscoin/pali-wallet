@@ -162,8 +162,6 @@ import { getNetworkChain } from 'utils/network';
 import { networkRegistrationFingerprint } from 'utils/networkRegistration';
 import { normalizeNftTokenId } from 'utils/nftTokenId';
 import type { IClassicNoteIdentity } from 'utils/privacy/note';
-import type { SpentCompletionRequest } from 'utils/privacy/spentCompletion';
-import type { IPrivacyWithdrawalJournal } from 'utils/privacy/withdrawalTransactionTypes';
 import type {
   IPrivacyNoteReader,
   IPrivateVaultController,
@@ -174,6 +172,7 @@ import {
   getPrivacyServiceOrigin,
   privacyServiceRevision,
 } from 'utils/privacy/service';
+import type { SpentCompletionRequest } from 'utils/privacy/spentCompletion';
 import type {
   IPrivacyDepositSession,
   IPrivacyTransactionsController,
@@ -184,6 +183,7 @@ import {
   privacyFeeQuantity,
   privacyWithdrawalFees,
 } from 'utils/privacy/withdrawalFees';
+import type { IPrivacyWithdrawalJournal } from 'utils/privacy/withdrawalTransactionTypes';
 import type {
   IPrivacyWithdrawalSession,
   IPrivacyWithdrawalAttempt,
@@ -2403,8 +2403,20 @@ class MainController {
           throw new Error('privacy_deposit_insufficient_funds');
         const vault = await this.getPrivateVaultController();
         saved.assertCurrent();
-        await vault.reserveDepositAttempt(attempt, saved.session);
+        let assertRestoreCurrent: (() => void) | undefined;
+        await vault.reserveDepositAttempt(
+          attempt,
+          saved.session,
+          (assertion) => {
+            assertRestoreCurrent = assertion;
+          }
+        );
         saved.assertCurrent();
+        if (!assertRestoreCurrent) throw new Error('privacy_vault_unavailable');
+        return () => {
+          saved.assertCurrent();
+          assertRestoreCurrent!();
+        };
       },
       recordBroadcast: async (attempt, hash) => {
         const saved = original(attempt);
@@ -2420,7 +2432,7 @@ class MainController {
         saved.session.assertCurrent();
         await vault.clearUnbroadcastDepositAttempt(attempt, saved.session);
       },
-      sendTransaction: (transaction, session, onBroadcast) =>
+      sendTransaction: (transaction, session, onBroadcast, assertBeforeSign) =>
         this.sendAndSaveEthTransaction(
           transaction,
           transaction.gasPrice !== undefined,
@@ -2432,6 +2444,7 @@ class MainController {
           {
             expectedContext: session.context,
             assertCurrentContext: session.assertCurrent,
+            assertBeforeSign,
             clearNavigation: false,
             onBroadcast,
           }
@@ -2486,6 +2499,7 @@ class MainController {
     const reservationIdentity = new WeakMap<
       IPrivacyWithdrawalAttempt,
       {
+        assertRestoreCurrent: () => void;
         attemptHash: string;
         profileId: string;
         walletStateGeneration: number;
@@ -2508,7 +2522,9 @@ class MainController {
         if (oldest) this.knownUnbroadcast.delete(oldest);
       }
       this.knownUnbroadcast.set(attempt.intentId, {
-        ...identity,
+        attemptHash: identity.attemptHash,
+        profileId: identity.profileId,
+        walletStateGeneration: identity.walletStateGeneration,
         noteId: attempt.noteId,
         intentId: attempt.intentId,
         context: attempt.context,
@@ -2692,6 +2708,12 @@ class MainController {
               })
           );
           saved.assertCurrent();
+          const identity = reservationIdentity.get(attempt);
+          if (!identity) throw new Error('privacy_vault_unavailable');
+          return () => {
+            saved.assertCurrent();
+            identity.assertRestoreCurrent();
+          };
         } catch (error) {
           // This host has not entered send: identity is scoped to that attempt.
           rememberKnownUnbroadcast(attempt);

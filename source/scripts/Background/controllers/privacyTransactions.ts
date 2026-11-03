@@ -349,14 +349,23 @@ export function createPrivacyTransactionsController(
         return acknowledgement;
       };
       try {
-        await host.beforeSubmission(attempt);
+        const assertReservedCurrent = await host.beforeSubmission(attempt);
         reservationAcknowledged = true;
-        assertCurrent(intent.session);
+        const assertBeforeSign = () => {
+          assertCurrent(intent.session);
+          if (now() >= intent.expiresAt)
+            throw failure('privacy_deposit_intent_expired');
+          if (typeof assertReservedCurrent !== 'function')
+            throw failure('privacy_deposit_context_changed');
+          assertReservedCurrent();
+        };
+        assertBeforeSign();
         senderEntered = true;
         const response = await host.sendTransaction(
           attempt.transaction,
           intent.session,
-          onBroadcast
+          onBroadcast,
+          assertBeforeSign
         );
         await onBroadcast(response);
         return {
