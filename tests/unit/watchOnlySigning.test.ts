@@ -1,5 +1,4 @@
 jest.unmock('syscoinjs-lib');
-jest.unmock('tiny-secp256k1');
 // No physical device transport is needed by this software-account regression.
 jest.mock('@trezor/connect-webextension', () => ({
   __esModule: true,

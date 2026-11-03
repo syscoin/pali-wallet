@@ -11,7 +11,7 @@ const installed = (name: string, anchor?: string) =>
     anchor ? { paths: [path.dirname(require.resolve(anchor))] } : undefined
   );
 const bn4 = installed('bn.js', 'asn1.js');
-const bn5 = installed('bn.js');
+const bn5 = installed('bn.js', '@ethersproject/bignumber');
 const byteFile = (anchor?: string) =>
   path.resolve(
     path.dirname(installed('uint8array-tools', anchor)),
@@ -28,7 +28,6 @@ const bnAnchors = [
   'ethereumjs-util',
   'miller-rabin',
   'public-encrypt',
-  'tiny-secp256k1',
 ];
 
 let directory: string;
@@ -101,7 +100,27 @@ async function compile(source: string, deduplicate = true) {
 }
 
 it('deduplicates the installed identical versions while preserving BN5 and newer byte tools', async () => {
-  const paths = bnAnchors.map((anchor) => installed('bn.js', anchor));
+  // Yarn may already hoist identical copies to one path. Materialize exact
+  // copies so this regression still exercises webpack deduplication itself.
+  const paths = bnAnchors.map((anchor, index) => {
+    const original = installed('bn.js', anchor);
+    const packageRoot = path.resolve(path.dirname(original), '..');
+    const root = path.join(
+      directory,
+      'node_modules',
+      `bn-copy-${index}`,
+      'node_modules',
+      'bn.js'
+    );
+    const resource = path.join(root, 'lib', 'bn.js');
+    fs.mkdirSync(path.dirname(resource), { recursive: true });
+    fs.copyFileSync(
+      path.join(packageRoot, 'package.json'),
+      path.join(root, 'package.json')
+    );
+    fs.copyFileSync(original, resource);
+    return resource;
+  });
   const source = `
     ${paths
       .map(
@@ -123,7 +142,7 @@ it('deduplicates the installed identical versions while preserving BN5 and newer
       separateBn5: RootBN5 !== BN0,
       sameBytes8: a === b,
       separateBytes10: newer.toHex !== a.toHex,
-      product: value.mul(new constructors[8](2)).toString(16),
+      product: value.mul(new constructors[constructors.length - 1](2)).toString(16),
       bnBytes: Array.from(value.toArrayLike(Uint8Array, 'be', 8)),
       bn5Sum: new RootBN5('9007199254740993').addn(1).toString(),
       bytes: a.toHex(buffer),
@@ -139,19 +158,20 @@ it('deduplicates the installed identical versions while preserving BN5 and newer
     resources.filter((resource) =>
       /\/uint8array-tools\/src\/mjs\/browser\.js$/.test(resource)
     );
-  expect(bnResources(baseline.resources)).toHaveLength(10);
+  expect(bnResources(baseline.resources)).toHaveLength(bnAnchors.length + 1);
   expect(bnResources(deduplicated.resources).sort()).toEqual([bn4, bn5].sort());
   expect(byteResources(baseline.resources)).toHaveLength(3);
   expect(byteResources(deduplicated.resources).sort()).toEqual(
     [bytes8, bytes10].sort()
   );
   for (const [build, count] of [
-    [baseline, 9],
+    [baseline, bnAnchors.length],
     [deduplicated, 1],
   ] as const) {
     const bufferEdges = build.dependencies.filter(
       (dependency) =>
-        paths.includes(dependency.from) && dependency.request === 'buffer'
+        [...paths, bn4].includes(dependency.from) &&
+        dependency.request === 'buffer'
     );
     expect(bufferEdges).toHaveLength(count);
     for (const edge of bufferEdges) {
@@ -324,7 +344,10 @@ it('preserves deterministic elliptic secp256k1 signing, verification and recover
   const baseline = await compile(source, false);
   const deduplicated = await compile(source);
   expect(baseline.resources).toContain(installed('bn.js', 'elliptic'));
-  expect(deduplicated.resources).not.toContain(installed('bn.js', 'elliptic'));
+  if (installed('bn.js', 'elliptic') !== bn4)
+    expect(deduplicated.resources).not.toContain(
+      installed('bn.js', 'elliptic')
+    );
   expect(deduplicated.resources).toContain(bn4);
   const generator =
     '0479be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798' +
@@ -360,7 +383,7 @@ it('shares only identical decoder copies with equivalent buffer dependencies', a
       suffix: decoder.end(Buffer.from([0xac])),
     };`);
   expect(resources).toContain(a);
-  expect(resources).not.toContain(b);
+  if (a !== b) expect(resources).not.toContain(b);
   expect(result).toEqual({ shared: true, prefix: '', suffix: '€' });
 
   const root = path.join(directory, 'node_modules', 'string_decoder');
@@ -403,7 +426,7 @@ it('shares matching varuint copies and keeps the previous version separate', asy
       roundTrip: b.decode(a.encode(1000).buffer).numberValue,
     };`);
   expect(resources).toEqual(expect.arrayContaining([a, previous]));
-  expect(resources).not.toContain(b);
+  if (a !== b) expect(resources).not.toContain(b);
   expect(result).toEqual({ shared: true, separate: true, roundTrip: 1000 });
 });
 
@@ -434,7 +457,7 @@ it('shares equivalent safe-buffer copies without merging other versions', async 
     };`);
   expect(baseline.resources).toEqual(expect.arrayContaining([a, b, newer]));
   expect(deduplicated.resources).toContain(a);
-  expect(deduplicated.resources).not.toContain(b);
+  if (a !== b) expect(deduplicated.resources).not.toContain(b);
   expect(deduplicated.resources).toContain(newer);
   // Both versions expose the same underlying Buffer object; module paths
   // above prove that the different version remains in the compilation.

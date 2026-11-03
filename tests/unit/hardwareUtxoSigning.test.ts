@@ -1,15 +1,18 @@
 jest.unmock('syscoinjs-lib');
-jest.unmock('tiny-secp256k1');
 jest.mock('@trezor/connect-webextension', () => ({
   __esModule: true,
-  default: { signTransaction: jest.fn(), dispose: jest.fn(), on: jest.fn() },
-  DEVICE_EVENT: 'device-event',
+  default: {
+    init: jest.fn(),
+    signTransaction: jest.fn(),
+    dispose: jest.fn(),
+  },
 }));
 
 import { HardwareWalletManager } from '@sidhujag/sysweb3-keyring/cjs/hardware-wallet-manager';
 import { LedgerKeyring } from '@sidhujag/sysweb3-keyring/cjs/ledger';
 import { SyscoinTransactions } from '@sidhujag/sysweb3-keyring/cjs/transactions/syscoin';
 import { TrezorKeyring } from '@sidhujag/sysweb3-keyring/cjs/trezor';
+import TrezorTransport from '@sidhujag/sysweb3-keyring/cjs/trezor/connect';
 import http from 'http';
 import https from 'https';
 import { utils as sys } from 'syscoinjs-lib';
@@ -53,8 +56,30 @@ describe.each(['Ledger', 'Trezor'] as const)(
     const request = () => JSON.parse(JSON.stringify(fixture.single));
     const sign = () => sdk.signPSBT({ psbt: request() });
 
-    beforeEach(() => {
+    beforeEach(async () => {
       jest.clearAllMocks();
+      // The installed SDK checks the extension host before loading Connect.
+      // Only its device I/O is mocked; the SDK's adapter and guards still run.
+      Object.assign(chrome, {
+        runtime: {
+          ...chrome.runtime,
+          id: 'pali-public-hardware-fixture',
+          getManifest: () => ({ ['manifest_version']: 3 }),
+          onConnect: { addListener: jest.fn() },
+          onMessageExternal: { addListener: jest.fn() },
+        },
+        tabs: { get: jest.fn(), create: jest.fn(), update: jest.fn() },
+        windows: { getCurrent: jest.fn() },
+      });
+      if (kind === 'Trezor') {
+        await TrezorTransport.init({
+          manifest: {
+            appName: 'Pali public fixture',
+            appUrl: 'https://paliwallet.com',
+            email: 'test@example.invalid',
+          },
+        });
+      }
       jest.spyOn(console, 'log').mockImplementation(() => undefined);
       jest.spyOn(console, 'error').mockImplementation(() => undefined);
       const denyNetwork = () => {
@@ -188,6 +213,9 @@ describe.each(['Ledger', 'Trezor'] as const)(
           inputs: [
             {
               ['prev_hash']: fixture.parentTxs[0].getId(),
+              ['prev_index']: 0,
+              ['address_n']:
+                trezorAdapter.convertToAddressNFormat(UTXO_FIXTURE_PATH),
               ['script_type']: 'SPENDWITNESS',
             },
           ],
@@ -195,30 +223,6 @@ describe.each(['Ledger', 'Trezor'] as const)(
         });
       }
     });
-
-    if (kind === 'Trezor')
-      it('lets installed Connect enhance a BIP84 amount from its exact public parent', () => {
-        const { validateTrezorInputs, enhanceTrezorInputs } =
-          jest.requireActual('@trezor/connect/lib/api/bitcoin/inputs');
-        const converted = trezorAdapter.convertToTrezorFormat({
-          psbt: importFixturePsbt(request()),
-          coin: 'tsys',
-          network: sys.syscoinNetworks.testnet,
-        });
-        expect(() =>
-          validateTrezorInputs(converted.inputs, {
-            network: sys.syscoinNetworks.testnet,
-          })
-        ).not.toThrow();
-        // Connect's validator requires amount for BIP49, not BIP84; its normal
-        // referenced-transaction enhancement can supply this amount. Missing
-        // inline BIP84 amount alone is therefore not a confirmed device failure.
-        expect(converted.inputs[0].amount).toBeUndefined();
-        jest.spyOn(console, 'warn').mockImplementation(() => undefined);
-        enhanceTrezorInputs(converted.inputs, fixture.parentTxs);
-        expect(converted.inputs[0].amount.toString()).toBe('100000');
-        expect(device).not.toHaveBeenCalled();
-      });
 
     it.each(['rejection', 'disconnect'])(
       'does not leak signatures or retry after explicit device %s',
@@ -235,8 +239,8 @@ describe.each(['Ledger', 'Trezor'] as const)(
         if (connectRejection) {
           TrezorConnect.signTransaction.mockResolvedValueOnce({
             success: false,
-            payload: {
-              error: 'denied by the user',
+            error: {
+              message: 'denied by the user',
               code: 'Failure_ActionCancelled',
             },
           });

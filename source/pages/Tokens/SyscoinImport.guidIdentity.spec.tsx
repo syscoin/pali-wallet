@@ -24,7 +24,6 @@ import { getWalletNavigationScope } from 'utils/navigationState';
 import { AddToken } from './AddToken';
 
 jest.unmock('syscoinjs-lib');
-jest.unmock('tiny-secp256k1');
 
 let mockStore: any;
 let mockAssets: ReturnType<typeof SysAssetsController>;

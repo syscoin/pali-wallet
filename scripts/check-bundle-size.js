@@ -28,7 +28,9 @@ const budget = {
   // Finalized failed-withdrawal recovery adds about 22 KB for receipt/root
   // verification, retained history, consent UI and translations. Allow 30 KB
   // for that feature only; all startup ceilings above remain unchanged.
-  package: 9450000,
+  // Connect 10 plus the reviewed lifecycle adapter adds under 200 KB after
+  // removing the legacy UTXO helper graph. Startup caps remain unchanged.
+  package: 9650000,
 };
 const allFiles = (root) =>
   fs.readdirSync(root, { withFileTypes: true }).flatMap((entry) => {
@@ -51,6 +53,7 @@ const scripts = {
     // This packaged recovery chunk is preloaded when the worker evaluates.
     // Include it in startup cost, even though webpack emits a separate file.
     ...[
+      'js/trezor-connect.bundle.js',
       'js/wallet-recovery.bundle.js',
       'js/private-vault.bundle.js',
       'js/note-backup.bundle.js',

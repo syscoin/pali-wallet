@@ -35,7 +35,6 @@ import {
 import ImportPhrase from './ImportPhrase';
 
 jest.unmock('syscoinjs-lib');
-jest.unmock('tiny-secp256k1');
 jest.mock('@trezor/connect-webextension', () => ({
   __esModule: true,
   default: { on: jest.fn(), dispose: jest.fn() },

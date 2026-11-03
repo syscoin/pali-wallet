@@ -1,5 +1,4 @@
 jest.unmock('syscoinjs-lib');
-jest.unmock('tiny-secp256k1');
 // Keep the vault/storage integration real without opening a hardware transport.
 jest.mock('@trezor/connect-webextension', () => ({
   __esModule: true,

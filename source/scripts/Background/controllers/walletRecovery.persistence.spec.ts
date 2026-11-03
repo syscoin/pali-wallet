@@ -32,7 +32,6 @@ import {
 } from './walletRecovery';
 
 jest.unmock('syscoinjs-lib');
-jest.unmock('tiny-secp256k1');
 jest.mock('@sidhujag/sysweb3-keyring', () => ({
   ...jest.requireActual('@sidhujag/sysweb3-keyring/cjs/utils/derivation-paths'),
   ...jest.requireActual('@sidhujag/sysweb3-keyring/cjs/signers'),

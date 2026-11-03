@@ -3,7 +3,6 @@ import { webcrypto } from 'crypto';
 import { HDNodeWallet } from 'ethers';
 
 jest.unmock('syscoinjs-lib');
-jest.unmock('tiny-secp256k1');
 // Use the actual offline SDK helpers without initializing hardware UI channels.
 jest.mock('@sidhujag/sysweb3-keyring', () => ({
   ...jest.requireActual('@sidhujag/sysweb3-keyring/cjs/utils/derivation-paths'),
