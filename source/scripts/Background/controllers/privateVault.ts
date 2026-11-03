@@ -21,6 +21,7 @@ export type {
   IPrivateVaultSession,
   IPrivateVaultStorage,
   IPrivateVaultWithdrawalController,
+  IPrivateVaultRestoreController,
   IPrivateVaultWithdrawalJournal,
 } from '../../../wallet/privateVault';
 

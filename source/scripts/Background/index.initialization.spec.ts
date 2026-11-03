@@ -89,6 +89,10 @@ describe('background initialization ownership', () => {
     privacyRegistrations = [];
     startPrivacyOperation = jest.fn();
     // These factories model evaluation/registration, not operation startup.
+    jest.doMock('./controllers/noteBackup', () => {
+      privacyRegistrations.push('note-backup');
+      return { createExtensionNoteBackupController: startPrivacyOperation };
+    });
     jest.doMock('./controllers/privacyTransactions', () => {
       privacyRegistrations.push('transactions');
       return { createPrivacyTransactionsController: startPrivacyOperation };
@@ -212,6 +216,7 @@ describe('background initialization ownership', () => {
     initializeController.mockReturnValue(construction.promise);
     await loadBackground();
     expect(privacyRegistrations).toEqual([
+      'note-backup',
       'transactions',
       'withdrawals',
       'relayers',

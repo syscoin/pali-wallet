@@ -306,6 +306,91 @@ it('does not load the custody chunk while locked or restoring wallet state', asy
   expect(load).not.toHaveBeenCalled();
 });
 
+it('rejects a note-backup action across a delayed controller load', async () => {
+  const { wallet } = fixture();
+  const release = deferred();
+  const begin = jest.fn(async () => 'opaque-operation');
+  wallet.noteBackupController = release.promise.then(() => ({ begin }));
+  const request = wallet.beginNoteBackup();
+  const rejected = expect(request).rejects.toThrow(
+    'privacy_vault_session_changed'
+  );
+  wallet.advanceWalletSession();
+  release.resolve();
+  await rejected;
+  expect(begin).not.toHaveBeenCalled();
+});
+
+it('revokes note-file staging synchronously when the wallet session advances', () => {
+  const { wallet } = fixture();
+  const events: string[] = [];
+  wallet.noteBackupInvalidators = new Set([
+    () => events.push(`revoked-at-${wallet.walletSessionGeneration}`),
+  ]);
+  wallet.advanceWalletSession();
+  expect(events).toEqual(['revoked-at-1']);
+});
+
+it('drops a note-file response delivered after its session was revoked', async () => {
+  const { wallet } = fixture();
+  const entered = deferred();
+  const release = deferred();
+  const exportEncrypted = jest.fn(async () => {
+    entered.resolve();
+    await release.promise;
+    return { id: 'opaque-operation', file: 'AQID', noteCount: 1, createdAt: 0 };
+  });
+  wallet.noteBackupController = Promise.resolve({ exportEncrypted });
+  const request = wallet.exportEncryptedNoteBackup(
+    'opaque-operation',
+    'wallet',
+    'file'
+  );
+  const rejected = expect(request).rejects.toThrow(
+    'privacy_vault_session_changed'
+  );
+  await entered.promise;
+  wallet.advanceWalletSession();
+  release.resolve();
+  await rejected;
+});
+
+it('allows only ID-bound cancellation after locking without loading a controller', async () => {
+  const { wallet, keyring } = fixture();
+  const load = jest.spyOn(wallet, 'getNoteBackupController');
+  keyring.isUnlocked.mockReturnValue(false);
+  await wallet.cancelNoteBackup('missing-operation');
+  expect(load).not.toHaveBeenCalled();
+  const cancel = jest.fn(async () => undefined);
+  wallet.noteBackupController = Promise.resolve({ cancel });
+  await wallet.cancelNoteBackup('owned-operation');
+  expect(cancel).toHaveBeenCalledWith('owned-operation');
+  await expect(wallet.beginNoteBackup()).rejects.toThrow(
+    'privacy_vault_locked'
+  );
+  expect(load).not.toHaveBeenCalled();
+});
+
+it('never retries an ambiguous note-file commit', async () => {
+  const { wallet } = fixture();
+  const commitImport = jest.fn(async () => {
+    throw new Error('BACKUP_COMMIT_UNCONFIRMED');
+  });
+  const readCommitReceipt = jest.fn(async () => null);
+  wallet.noteBackupController = Promise.resolve({
+    commitImport,
+    readCommitReceipt,
+  });
+  await expect(
+    wallet.commitNoteBackupImport('owned-operation', 'synthetic-password')
+  ).rejects.toThrow('BACKUP_COMMIT_UNCONFIRMED');
+  expect(
+    await wallet.readNoteBackupCommitReceipt('owned-operation')
+  ).toBeNull();
+  expect(commitImport).toHaveBeenCalledTimes(1);
+  expect(readCommitReceipt).toHaveBeenCalledTimes(1);
+});
+
 it('does not transfer an admitted request across a delayed chunk load', async () => {
   const { wallet } = fixture();
   const entered = deferred();
