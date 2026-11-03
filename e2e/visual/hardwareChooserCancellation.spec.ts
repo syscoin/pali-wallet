@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 
 import en from '../../source/assets/locales/en.json';
+import ledgerEn from '../../source/scripts/ledger/locales/en.json';
 import { E2E_CONFIG } from '../harness/config';
 import { clickClosingPopup } from '../harness/dismissRejectedApproval';
 import { PaliWallet } from '../harness/pali';
@@ -34,6 +35,7 @@ test('cancelling the Ledger chooser never imports and leaves retry and close usa
   });
   let wallet: PaliWallet | undefined;
   let hardware: Page | undefined;
+  let device: Page | undefined;
   let status: 'passed' | 'failed' = 'failed';
   const observations: Record<string, unknown> = {
     hardwareDeviceExercised: false,
@@ -65,6 +67,7 @@ test('cancelling the Ledger chooser never imports and leaves retry and close usa
       const evidence = {
         chooserFilters: [] as unknown[],
         importMethods: [] as string[][],
+        importResults: [] as { failed: boolean }[],
       };
       (window as any).__hardwareChooserCancellation = evidence;
       const hid = (navigator as any).hid || {};
@@ -88,8 +91,26 @@ test('cancelling the Ledger chooser never imports and leaves retry and close usa
           request?.type === 'CONTROLLER_ACTION' &&
           request.data?.methods?.join('.') ===
             'wallet.importLedgerAccountFromController'
-        )
+        ) {
           evidence.importMethods.push([...request.data.methods]);
+          const callback = args.at(-1);
+          if (typeof callback === 'function')
+            args[args.length - 1] = (...replies: any[]) => {
+              const response = replies[0];
+              evidence.importResults.push({
+                failed: Boolean(
+                  response &&
+                    (response.error ||
+                      (response.success === false &&
+                        Object.prototype.hasOwnProperty.call(
+                          response,
+                          'error'
+                        )))
+                ),
+              });
+              return callback(...replies);
+            };
+        }
         return (send as any)(...args);
       }) as typeof chrome.runtime.sendMessage;
     });
@@ -115,187 +136,190 @@ test('cancelling the Ledger chooser never imports and leaves retry and close usa
       }
     );
 
-    let chooserCount = 0;
+    const accountSnapshot = () =>
+      wallet!.page.evaluate(async () => {
+        const state: any = await new Promise((resolve) =>
+          chrome.runtime.sendMessage({ type: 'getCurrentState' }, resolve)
+        );
+        const stored: Record<string, any> = await new Promise((resolve) =>
+          chrome.storage.local.get(null, resolve)
+        );
+        const ledger = (value: any) => {
+          const accounts = value?.vault?.accounts || value?.accounts;
+          return accounts?.Ledger ? Object.keys(accounts.Ledger).sort() : null;
+        };
+        return {
+          live: ledger(state),
+          durable: Object.fromEntries(
+            Object.entries(stored)
+              .filter(
+                ([key]) => key === 'state' || /^state-vault-\d+$/.test(key)
+              )
+              .map(([key, value]) => [key, ledger(value)])
+              .sort(([a], [b]) => String(a).localeCompare(String(b)))
+          ),
+        };
+      });
+    const originalAccounts = await accountSnapshot();
+    expect(originalAccounts.live).toEqual([]);
+    expect(Object.values(originalAccounts.durable)).toContainEqual([]);
+    observations.originalAccounts = originalAccounts;
+
+    let imports = 0;
     for (const viewport of [
       { width: 320, height: 360 },
       { width: 400, height: 620 },
     ]) {
       await wallet.step(
-        `cancel and retry without importing at ${viewport.width}px`,
+        `cancel and retry the dedicated Ledger chooser at ${viewport.width}px`,
         async (capture) => {
           try {
             await hardware!.setViewportSize(viewport);
-            const connect = hardware!.locator('#connect-btn');
-            for (let attempt = 0; attempt < 2; attempt += 1) {
-              await expect(connect).toBeEnabled();
+            // Import admission now belongs to the real background controller.
+            // The owned device page, rather than this setup page, opens WebHID.
+            if (imports > 0) await hardware!.locator('#ledger-btn').click();
+            const opened = wallet!.context.waitForEvent('page');
+            await hardware!.locator('#connect-btn').click();
+            imports += 1;
+            device = await opened;
+            await device.setViewportSize(viewport);
+            await expect(device).toHaveURL(/\/ledger\.html#[0-9a-f]{48}$/);
+            const connect = device.locator('#connect');
+            await expect(connect).toBeEnabled();
+            await expect(hardware!.locator('#connect-btn')).toBeDisabled();
+            let chooserCount = 0;
+            for (const boundaryError of [false, false, true]) {
+              await device.evaluate((fail) => {
+                (window as any).__hardwareChooserForceError = fail;
+              }, boundaryError);
               await connect.scrollIntoViewIfNeeded();
               await connect.click();
               chooserCount += 1;
-              // Observe completion or an actual import admission, rather than
-              // mistaking a pre-await render for successful cancellation.
-              await expect
-                .poll(() =>
-                  hardware!.evaluate((expected) => {
-                    const evidence = (window as any)
-                      .__hardwareChooserCancellation;
-                    const button = document.querySelector(
-                      '#connect-btn'
-                    ) as HTMLButtonElement;
-                    return (
-                      evidence.importMethods.length > 0 ||
-                      (evidence.chooserFilters.length === expected &&
-                        !button.disabled)
-                    );
-                  }, chooserCount)
-                )
-                .toBe(true);
-              const evidence = await hardware!.evaluate(
+              // Await the actual device-page error, not the initiating request.
+              await expect(device.locator('#status')).toHaveText(
+                ledgerEn.ledgerHost.connectFailed
+              );
+              await expect(connect).toBeEnabled();
+              const evidence = await device.evaluate(
                 () => (window as any).__hardwareChooserCancellation
               );
-              observations[`chooser-${viewport.width}-${attempt}`] = evidence;
-              expect(evidence.importMethods).toEqual([]);
               expect(evidence.chooserFilters).toHaveLength(chooserCount);
               expect(evidence.chooserFilters.at(-1)).toEqual({
                 filters: [{ vendorId: 0x2c97 }],
               });
-              await expect(connect).toBeEnabled();
-              await expect(connect).not.toHaveAttribute('aria-busy', 'true');
-              await expect(
-                hardware!.getByText(en.settings.walletSelected, {
-                  exact: true,
-                })
-              ).toHaveCount(0);
-              await expect(hardware!.getByRole('dialog')).toHaveCount(0);
+              expect(evidence.importMethods).toEqual([]);
+              await expect(device.locator('#review')).toBeHidden();
+              expect(await accountSnapshot()).toEqual(originalAccounts);
+              observations[`chooser-${viewport.width}-${chooserCount}`] =
+                evidence;
             }
+            await capture(device);
+            // Closing the owned host must settle the original controller call
+            // as an error and leave both live and durable account maps intact.
+            await device.close();
+            device = undefined;
+            await expect
+              .poll(() =>
+                hardware!.evaluate(
+                  () =>
+                    (window as any).__hardwareChooserCancellation.importResults
+                )
+              )
+              .toEqual(
+                Array.from({ length: imports }, () => ({ failed: true }))
+              );
+            const evidence = await hardware!.evaluate(
+              () => (window as any).__hardwareChooserCancellation
+            );
+            expect(evidence.importMethods).toEqual(
+              Array.from({ length: imports }, () => [
+                'wallet',
+                'importLedgerAccountFromController',
+              ])
+            );
+            expect(evidence.chooserFilters).toEqual([]);
+            observations[`controller-${viewport.width}`] = evidence;
+            expect(await accountSnapshot()).toEqual(originalAccounts);
+            await expect(hardware!.getByRole('dialog')).toHaveCount(0);
+            await expect(
+              hardware!.getByText(en.settings.walletSelected, { exact: true })
+            ).toHaveCount(0);
+            await expect(hardware!.locator('#ledger-btn')).toBeVisible();
+            await expect(
+              hardware!.getByText(en.settings.errorCreatingHardWallet, {
+                exact: true,
+              })
+            ).toBeVisible();
             const cancel = hardware!.getByRole('button', {
               name: en.buttons.cancel,
               exact: true,
             });
             await expect(cancel).toBeEnabled();
             await cancel.scrollIntoViewIfNeeded();
-            const reachable = await cancel.evaluate((element) => {
-              const rect = element.getBoundingClientRect();
-              const hit = document.elementFromPoint(
-                rect.left + rect.width / 2,
-                rect.top + rect.height / 2
-              );
-              return (
-                rect.top >= 0 &&
-                rect.bottom <= innerHeight &&
-                rect.left >= 0 &&
-                rect.right <= innerWidth &&
-                !!hit &&
-                (element === hit || element.contains(hit))
-              );
+            await expect
+              .poll(() =>
+                cancel.evaluate((element, errorText) => {
+                  const rect = element.getBoundingClientRect();
+                  const hit = document.elementFromPoint(
+                    rect.left + rect.width / 2,
+                    rect.top + rect.height / 2
+                  );
+                  const toast = Array.from(
+                    document.querySelectorAll('.Toastify__toast')
+                  ).find((node) => node.textContent?.includes(errorText));
+                  const bounds = toast?.getBoundingClientRect();
+                  const style = toast ? getComputedStyle(toast) : undefined;
+                  return {
+                    cancelInViewport:
+                      rect.top >= 0 &&
+                      rect.bottom <= innerHeight &&
+                      rect.left >= 0 &&
+                      rect.right <= innerWidth,
+                    cancelReceivesCenter:
+                      !!hit && (element === hit || element.contains(hit)),
+                    toastVisible:
+                      !!toast &&
+                      !!bounds &&
+                      bounds.width > 0 &&
+                      bounds.height > 0 &&
+                      style?.display !== 'none' &&
+                      style?.visibility !== 'hidden' &&
+                      Number(style?.opacity) > 0,
+                    toastInViewport:
+                      !!bounds &&
+                      bounds.top >= 0 &&
+                      bounds.bottom <= innerHeight &&
+                      bounds.left >= 0 &&
+                      bounds.right <= innerWidth,
+                  };
+                }, en.settings.errorCreatingHardWallet)
+              )
+              .toEqual({
+                cancelInViewport: true,
+                cancelReceivesCenter: true,
+                toastVisible: true,
+                toastInViewport: true,
+              });
+            await info.attach(`hardware-error-cancel-${viewport.width}`, {
+              body: await hardware!.screenshot({ animations: 'allow' }),
+              contentType: 'image/png',
             });
-            expect(reachable).toBe(true);
+            // Let the real notification finish before the next operation.
+            // The generic harness screenshot fast-forwards finite animations,
+            // which would otherwise skip the UI's duplicate-message interval.
+            await expect(
+              hardware!.getByText(en.settings.errorCreatingHardWallet, {
+                exact: true,
+              })
+            ).toHaveCount(0, { timeout: 10000 });
           } finally {
+            if (device && !device.isClosed()) await device.close();
+            device = undefined;
             if (hardware && !hardware.isClosed()) await capture(hardware);
           }
         }
       );
     }
-
-    await wallet.step(
-      'live connection error leaves Cancel reachable at both viewports',
-      async () => {
-        // Exercise the ordinary browser boundary; no toast timer is held or
-        // modified, and no controller result or wallet state is replaced.
-        await hardware!.evaluate(() => {
-          (window as any).__hardwareChooserForceError = true;
-        });
-        for (const viewport of [
-          { width: 320, height: 360 },
-          { width: 400, height: 620 },
-        ]) {
-          await hardware!.setViewportSize(viewport);
-          const connect = hardware!.locator('#connect-btn');
-          await expect(connect).toBeEnabled();
-          await connect.scrollIntoViewIfNeeded();
-          await connect.click();
-          chooserCount += 1;
-          const error = hardware!.getByText(
-            en.settings.errorCreatingHardWallet,
-            {
-              exact: true,
-            }
-          );
-          await expect(error).toBeVisible();
-          const cancel = hardware!.getByRole('button', {
-            name: en.buttons.cancel,
-            exact: true,
-          });
-          await expect(cancel).toBeEnabled();
-          await cancel.scrollIntoViewIfNeeded();
-          const inspectCancel = () =>
-            cancel.evaluate((button, errorText) => {
-              const rect = button.getBoundingClientRect();
-              const hit = document.elementFromPoint(
-                rect.left + rect.width / 2,
-                rect.top + rect.height / 2
-              );
-              const toast = Array.from(
-                document.querySelectorAll('.Toastify__toast')
-              ).find((node) => node.textContent?.includes(errorText));
-              const bounds = toast?.getBoundingClientRect();
-              const style = toast ? getComputedStyle(toast) : undefined;
-              return {
-                cancelInViewport:
-                  rect.top >= 0 &&
-                  rect.bottom <= innerHeight &&
-                  rect.left >= 0 &&
-                  rect.right <= innerWidth,
-                cancelReceivesCenter:
-                  !!hit && (hit === button || button.contains(hit)),
-                toastVisible:
-                  !!toast &&
-                  !!bounds &&
-                  bounds.width > 0 &&
-                  bounds.height > 0 &&
-                  style?.display !== 'none' &&
-                  style?.visibility !== 'hidden' &&
-                  Number(style?.opacity) > 0,
-                toastInViewport:
-                  !!bounds &&
-                  bounds.top >= 0 &&
-                  bounds.bottom <= innerHeight &&
-                  bounds.left >= 0 &&
-                  bounds.right <= innerWidth,
-              };
-            }, en.settings.errorCreatingHardWallet);
-          await expect
-            .poll(
-              async () => {
-                const proof = await inspectCancel();
-                observations[`error-cancel-${viewport.width}`] = proof;
-                return proof;
-              },
-              { timeout: 1500 }
-            )
-            .toEqual({
-              cancelInViewport: true,
-              cancelReceivesCenter: true,
-              toastVisible: true,
-              toastInViewport: true,
-            });
-          await info.attach(`hardware-error-cancel-${viewport.width}`, {
-            body: await hardware!.screenshot({ animations: 'allow' }),
-            contentType: 'image/png',
-          });
-          const evidence = await hardware!.evaluate(
-            () => (window as any).__hardwareChooserCancellation
-          );
-          expect(evidence.importMethods).toEqual([]);
-          expect(evidence.chooserFilters).toHaveLength(chooserCount);
-          expect(evidence.chooserFilters.at(-1)).toEqual({
-            filters: [{ vendorId: 0x2c97 }],
-          });
-          await expect(error).toHaveCount(0, { timeout: 10000 });
-          await expect(hardware!.locator('#ledger-btn')).toBeVisible();
-          await hardware!.locator('#ledger-btn').click();
-        }
-      }
-    );
 
     await wallet.step(
       'close idle hardware setup and keep the wallet usable',
@@ -326,6 +350,7 @@ test('cancelling the Ledger chooser never imports and leaves retry and close usa
   } finally {
     try {
       observations.proxyDeniedConnections = server.blocked.length;
+      if (device && !device.isClosed()) await device.close();
       const evidencePath = info.outputPath('hardware-chooser-evidence.json');
       fs.writeFileSync(evidencePath, JSON.stringify(observations, null, 2));
       await info.attach('hardware-chooser-evidence', {
