@@ -1,0 +1,24 @@
+{
+  "ledgerHost": {
+    "eyebrow": "硬件钱包",
+    "title": "连接您的 Ledger",
+    "description": "连接设备时，请保持此窗口打开。您的私钥始终保留在 Ledger 上。",
+    "start": "解锁 Ledger，然后选择“连接 Ledger”。",
+    "connect": "连接 Ledger",
+    "connecting": "请在设备选择窗口中选择您的 Ledger。",
+    "ready": "已连接。正在等待钱包请求。",
+    "connectFailed": "无法连接。请解锁设备后重试。",
+    "reviewDevice": "请按照 Ledger 上的指示操作，并核对其屏幕上显示的每一项详情。",
+    "complete": "请求已完成。您可以返回 Pali。",
+    "busy": "请先完成当前的 Ledger 请求。",
+    "operationFailed": "Ledger 请求未完成。请返回 Pali 检查或重试。",
+    "unavailable": "请从 Pali 打开此窗口以连接 Ledger。",
+    "disconnected": "连接已断开。请返回 Pali 重新连接。",
+    "warningTitle": "设备显示的详情可能有限",
+    "warning": "此请求可能使用盲签。Ledger 可能无法显示交易或消息的所有详情。只有在您理解此请求的确切内容并信任它时才继续。",
+    "details": "核对请求的确切内容",
+    "cancel": "取消请求",
+    "approve": "继续在设备上核对",
+    "footnote": "Pali 不会将此请求发送至 Ledger 的元数据服务或交易检查服务。关闭此窗口将取消待处理的请求。"
+  }
+}

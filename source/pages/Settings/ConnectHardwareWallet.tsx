@@ -63,16 +63,8 @@ const ConnectHardwareWalletView: FC = () => {
           setIsModalOpen(true);
           break;
         case HardWallets.LEDGER:
-          const LEDGER_USB_VENDOR_ID = 0x2c97;
-
-          if ((navigator as any).hid?.requestDevice) {
-            const devices = await (navigator as any).hid.requestDevice({
-              filters: [{ vendorId: LEDGER_USB_VENDOR_ID }],
-            });
-            if (!devices.length) return;
-          }
-
-          // Ledger connection is handled internally by ensureConnection
+          // The dedicated Ledger window owns the user gesture and selected
+          // HID device; a worker cannot safely transfer that device identity.
           await controllerEmitter(
             ['wallet', 'importLedgerAccountFromController'],
             [],
@@ -83,6 +75,11 @@ const ConnectHardwareWalletView: FC = () => {
           break;
       }
     } catch (error) {
+      if (error?.code === 'HARDWARE_REQUEST_CANCELLED') {
+        setSelectedHardwareWallet(undefined);
+        alert.info(t('send.canceled'));
+        return;
+      }
       // Log error for debugging
       console.log('Hardware wallet connection error:', error);
 

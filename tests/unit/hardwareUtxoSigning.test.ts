@@ -101,7 +101,18 @@ describe.each(['Ledger', 'Trezor'] as const)(
       devicePsbt.finalizeAllInputs();
       signedDeviceReply =
         kind === 'Ledger'
-          ? [[0, partial]]
+          ? {
+              fingerprint: Buffer.from(hd.getMasterFingerprint()).toString(
+                'hex'
+              ),
+              signatures: [
+                {
+                  inputIndex: 0,
+                  pubkeyHex: Buffer.from(partial.pubkey).toString('hex'),
+                  signatureHex: Buffer.from(partial.signature).toString('hex'),
+                },
+              ],
+            }
           : {
               success: true,
               payload: {
@@ -142,20 +153,13 @@ describe.each(['Ledger', 'Trezor'] as const)(
       manager.delay = jest.fn().mockResolvedValue(undefined);
       manager.ensureConnection = jest.fn().mockResolvedValue(undefined);
       manager.getLedgerConnection = jest.fn().mockResolvedValue({});
-      const ledger: any = new LedgerKeyring(manager);
-      ledger.ledgerUtxoClient = {
-        getMasterFingerprint: jest
-          .fn()
-          .mockResolvedValue(
-            Buffer.from(hd.getMasterFingerprint()).toString('hex')
-          ),
-        getExtendedPubkey: jest.fn().mockResolvedValue(fixture.userXpub),
-        signPsbt: (...args: unknown[]) => device(...args),
-      };
-      ledger.ledgerEVMClient = {};
-      // Registration is its own device operation; this test provides an already
-      // registered policy, while retaining actual policy+PSBTv2 construction.
-      ledger.getOrRegisterHmac = jest.fn().mockResolvedValue(Buffer.alloc(32));
+      const ledger = new LedgerKeyring(manager, {
+        getStatus: () => ({ connected: true }),
+        connect: jest.fn(),
+        disconnect: jest.fn(),
+        evm: {} as any,
+        utxo: { signPsbt: (...args: unknown[]) => device(...args) } as any,
+      });
       const trezor: any = Object.create(TrezorKeyring.prototype);
       trezorAdapter = trezor;
       trezor.initialized = true;
@@ -200,13 +204,19 @@ describe.each(['Ledger', 'Trezor'] as const)(
       expect(verifyFixtureSignature(fixture, signed, false)).toBeTruthy();
       expect(device).toHaveBeenCalledTimes(1);
       if (kind === 'Ledger') {
-        const [psbtV2, policy] = device.mock.calls[0];
-        expect(psbtV2.getGlobalInputCount()).toBe(1);
-        expect(psbtV2.getGlobalOutputCount()).toBe(2);
+        const [approved] = device.mock.calls[0];
+        expect(approved).toMatchObject({
+          currency: state.activeNetwork.currency,
+          slip44: 1,
+          accountIndex: 0,
+          accountXpub: fixture.userXpub,
+        });
+        const sent = sys.bitcoinjs.Psbt.fromBase64(approved.psbtBase64);
+        expect(sent.inputCount).toBe(1);
+        expect(sent.txOutputs).toHaveLength(2);
         expect(
-          Buffer.from(psbtV2.getInputNonWitnessUtxo(0)).toString('hex')
+          Buffer.from(sent.data.inputs[0].nonWitnessUtxo).toString('hex')
         ).toBe(Buffer.from(fixture.parentTxs[0].toBuffer()).toString('hex'));
-        expect(policy.descriptorTemplate).toBe('wpkh(@0/**)');
       } else {
         expect(device.mock.calls[0][0]).toMatchObject({
           coin: 'tsys',
@@ -300,5 +310,19 @@ describe.each(['Ledger', 'Trezor'] as const)(
       ).rejects.toThrow();
       expect(device).not.toHaveBeenCalled();
     });
+
+    if (kind === 'Ledger') {
+      it('rejects a tampered device signature before finalizing the transaction', async () => {
+        const reply = JSON.parse(JSON.stringify(signedDeviceReply));
+        reply.signatures[0].signatureHex = `${reply.signatures[0].signatureHex.slice(
+          0,
+          -4
+        )}0001`;
+        device.mockResolvedValueOnce(reply);
+        await expect(sign()).rejects.toThrow(/signature/i);
+        expect(device).toHaveBeenCalledTimes(1);
+        expect(attemptPsbt.data.inputs[0].finalScriptWitness).toBeUndefined();
+      });
+    }
   }
 );

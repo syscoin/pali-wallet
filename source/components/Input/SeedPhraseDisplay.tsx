@@ -1,4 +1,4 @@
-import { isEmpty } from 'lodash';
+import isEmpty from 'lodash/isEmpty';
 import React, { useEffect, useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 

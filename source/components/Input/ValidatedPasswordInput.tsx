@@ -1,5 +1,5 @@
 import { Form, Input } from 'antd';
-import { debounce } from 'lodash';
+import debounce from 'lodash/debounce';
 import React, {
   useState,
   useCallback,

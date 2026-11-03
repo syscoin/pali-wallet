@@ -12,7 +12,6 @@ import {
   waitFor,
 } from '@testing-library/react';
 import { Buffer } from 'buffer';
-import { Signature } from 'ethers/crypto';
 import { verifyMessage } from 'ethers/hash';
 import { Wallet } from 'ethers/wallet';
 import React from 'react';
@@ -21,8 +20,8 @@ import { dispatchBackgroundEvent } from 'utils/browser';
 
 import EthSign from './SignEth';
 
-// Keep the installed SDK, Ledger adapter, cryptography and APDU encoder real.
-// Connect is unused by this Ledger journey; it must not initialize transport.
+// Keep the installed SDK authority checks and cryptography real.
+// The injected semantic Ledger host is the device boundary; no APDU is mocked.
 jest.mock('@trezor/connect-webextension', () => ({
   __esModule: true,
   default: {},
@@ -89,47 +88,34 @@ const mockAlert = { error: jest.fn(), info: jest.fn(), success: jest.fn() };
 let mockState: any;
 let mockQuery: any;
 let mockConfirm: () => Promise<any>;
-let mockTransport: ReturnType<typeof createDeviceTransport>;
+let mockDevice: ReturnType<typeof createDeviceHost>;
 let sdk: EthereumTransactions;
 
 const message = (header = 'metamask.github.io', address = ADDRESS) =>
   `${header} wants you to sign in with your Ethereum account:\n${address}\n\nSign in to the test dapp.\n\nURI: https://metamask.github.io\nVersion: 1\nChain ID: 1\nNonce: 32891757\nIssued At: 2021-09-30T16:25:24.000Z`;
 const encode = (text: string) => `0x${Buffer.from(text).toString('hex')}`;
 
-function createDeviceTransport() {
-  let expectedLength = -1;
+function createDeviceHost() {
   let received = Buffer.alloc(0);
-  const send = jest.fn(
-    async (cla: number, ins: number, p1: number, p2: number, data: Buffer) => {
-      // Decode the real Ledger encoder's wire output, rather than interpreting
-      // its input using a test-only implementation of hex conversion.
-      expect([cla, ins, p2]).toEqual([0xe0, 0x08, 0]);
-      if (p1 === 0) {
-        const pathLength = data[0];
-        expectedLength = data.readUInt32BE(1 + pathLength * 4);
-        received = Buffer.from(data.subarray(1 + pathLength * 4 + 4));
-      } else {
-        expect(p1).toBe(0x80);
-        received = Buffer.concat([received, data]);
-      }
-      expect(received.length).toBeLessThanOrEqual(expectedLength);
-      if (received.length !== expectedLength) return Buffer.alloc(65);
-      // Bridge the Node Buffer and jsdom Uint8Array realms at the fake device
-      // boundary without changing any encoded bytes.
-      const signature = Signature.from(
-        await deviceWallet.signMessage(Uint8Array.from(received))
-      );
-      return Buffer.concat([
-        Buffer.from([signature.v]),
-        Buffer.from(signature.r.slice(2), 'hex'),
-        Buffer.from(signature.s.slice(2), 'hex'),
-      ]);
+  const sign = jest.fn(
+    async ({ messageHex, expectedAddress, accountIndex }: any) => {
+      expect(expectedAddress).toBe(ADDRESS);
+      expect(accountIndex).toBe(0);
+      expect(messageHex).toMatch(/^(?:[0-9a-f]{2})*$/i);
+      received = Buffer.from(messageHex, 'hex');
+      return deviceWallet.signMessage(Uint8Array.from(received));
     }
   );
   return {
     bytes: () => Buffer.from(received),
-    decorateAppAPIMethods: jest.fn(),
-    send,
+    sign,
+    host: {
+      getStatus: () => ({ connected: true }),
+      connect: jest.fn(),
+      disconnect: jest.fn(),
+      utxo: {} as any,
+      evm: { signPersonalMessage: sign } as any,
+    },
   };
 }
 
@@ -170,18 +156,8 @@ beforeEach(() => {
     eventName: 'personal_sign',
     2: 'Example password',
   };
-  mockTransport = createDeviceTransport();
-  // Preserve the adapter's actual ensureConnection and executeWithRetry paths.
-  // These methods emulate only hardware-manager connection/I/O boundaries.
-  const manager = {
-    ensureConnection: jest.fn(async () => undefined),
-    getLedgerConnection: jest.fn(async () => mockTransport),
-    on: jest.fn(),
-    retryOperation: jest.fn(async (operation: () => Promise<any>) =>
-      operation()
-    ),
-  };
-  const ledger = new LedgerKeyring(manager as any);
+  mockDevice = createDeviceHost();
+  const ledger = new LedgerKeyring(undefined, mockDevice.host);
   sdk = new EthereumTransactions(
     () => mockState.vault.activeNetwork,
     () => ({ address: ADDRESS, decryptedPrivateKey: '' }),
@@ -231,7 +207,7 @@ describe.each([false, true])(
           await mockConfirm();
         });
         expect(mockEmitter).not.toHaveBeenCalled();
-        expect(mockTransport.send).not.toHaveBeenCalled();
+        expect(mockDevice.sign).not.toHaveBeenCalled();
         expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
       }
     );
@@ -260,41 +236,33 @@ describe.each([false, true])(
         300000
       );
       expect(mockQuery).toEqual(originalRequest);
-      expect(mockTransport.bytes()).toEqual(Buffer.from(intended, 'utf8'));
-      expect(mockTransport.send).toHaveBeenCalled();
+      expect(mockDevice.bytes()).toEqual(Buffer.from(intended, 'utf8'));
+      expect(mockDevice.sign).toHaveBeenCalled();
       const [[event, signature]] = (dispatchBackgroundEvent as jest.Mock).mock
         .calls;
       expect(event).toBe(`personal_sign.${ORIGIN}`);
       expect(
-        verifyMessage(Uint8Array.from(mockTransport.bytes()), signature)
+        verifyMessage(Uint8Array.from(mockDevice.bytes()), signature)
       ).toBe(ADDRESS);
       if (payload.startsWith('0x'))
         expect(verifyMessage(payload, signature)).not.toBe(ADDRESS);
     });
 
     it.each(['', '0x'])(
-      'accepts valid empty payload %s and surfaces the installed encoder limitation',
+      'signs the valid empty payload %s through the semantic host',
       async (payload) => {
-        // hw-app-eth 6.47.1 emits no APDU for empty bytes, then reads an absent
-        // device reply. Keep that SDK limitation visible instead of replacing
-        // the real encoder with a mock that invents empty-message support.
         await prepare(payload, reversed);
         expect(screen.queryByRole('alert')).toBeNull();
         await act(async () => {
           await mockConfirm();
         });
         expect(mockEmitter).toHaveBeenCalledTimes(1);
-        expect(mockTransport.send).not.toHaveBeenCalled();
-        expect(screen.getByRole('alert').textContent).toContain('undefined');
-        expect(
-          (
-            screen.getByRole('button', {
-              name: 'buttons.cancel',
-            }) as HTMLButtonElement
-          ).disabled
-        ).toBe(false);
-        expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
-        expect(window.close).not.toHaveBeenCalled();
+        expect(mockDevice.sign).toHaveBeenCalledTimes(1);
+        expect(mockDevice.bytes()).toEqual(Buffer.alloc(0));
+        const [[, signature]] = (dispatchBackgroundEvent as jest.Mock).mock
+          .calls;
+        expect(verifyMessage(Uint8Array.from([]), signature)).toBe(ADDRESS);
+        expect(window.close).toHaveBeenCalledTimes(1);
       }
     );
 
@@ -313,7 +281,7 @@ describe.each([false, true])(
           await mockConfirm();
         });
         expect(mockEmitter).not.toHaveBeenCalled();
-        expect(mockTransport.send).not.toHaveBeenCalled();
+        expect(mockDevice.sign).not.toHaveBeenCalled();
       }
     );
 
@@ -332,7 +300,7 @@ describe.each([false, true])(
           'send.invalidPersonalSignMessage'
         );
         expect(mockEmitter).not.toHaveBeenCalled();
-        expect(mockTransport.send).not.toHaveBeenCalled();
+        expect(mockDevice.sign).not.toHaveBeenCalled();
       }
     );
   }
@@ -350,35 +318,9 @@ it.each([`0x${'22'.repeat(20)}`, ADDRESS, ADDRESS.toUpperCase()])(
     const intended = payload.startsWith('0x')
       ? Buffer.from(payload.slice(2), 'hex')
       : Buffer.from(payload, 'utf8');
-    expect(mockTransport.bytes()).toEqual(intended);
+    expect(mockDevice.bytes()).toEqual(intended);
     const [[, signature]] = (dispatchBackgroundEvent as jest.Mock).mock.calls;
     expect(verifyMessage(Uint8Array.from(intended), signature)).toBe(ADDRESS);
     expect(mockQuery).toEqual(originalRequest);
-  }
-);
-
-it.each(['zz', 'a'])(
-  'demonstrates the installed Ledger encoder truncation behind suffix %s',
-  async (suffix) => {
-    // This isolated encoder contract witness never invokes wallet approval or
-    // its controller. The component cases above establish rejection instead.
-    const LedgerEth = jest.requireActual(
-      '@ledgerhq/hw-app-eth/lib/Eth'
-    ).default;
-    const transport = createDeviceTransport();
-    const encoder = new LedgerEth(transport);
-    const intended = message('victim.test');
-    const payload = `${encode(intended)}${suffix}`;
-    const signature = await encoder.signPersonalMessage(
-      "44'/60'/0'/0/0",
-      payload.slice(2)
-    );
-    const joined = `0x${signature.r}${signature.s}${signature.v.toString(16)}`;
-    expect(transport.send.mock.calls.length).toBeGreaterThan(1);
-    expect(transport.bytes()).toEqual(Buffer.from(intended));
-    expect(verifyMessage(Uint8Array.from(transport.bytes()), joined)).toBe(
-      ADDRESS
-    );
-    expect(verifyMessage(payload, joined)).not.toBe(ADDRESS);
   }
 );

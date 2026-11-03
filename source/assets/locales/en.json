@@ -340,7 +340,7 @@
     "assetGuid": "Asset Guid",
     "rbfOption": "Disable this option for Replace-by-fee (RBF). When enabled, allows transaction replacement with higher {{currency}} fees.",
     "zdagOption": "Disable this option for Replace-by-fee (RBF) and enable for Z-DAG, a exclusive {{currency}} feature. Z-DAG enables faster transactions but should not be used for high amounts.",
-    "canceled": "Canceled",
+    "canceled": "Cancelled",
     "pending": "Pending",
     "confirmed": "Confirmed",
     "yes": "Yes",

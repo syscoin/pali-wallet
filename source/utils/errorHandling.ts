@@ -41,8 +41,9 @@ export const isBlacklistError = (error: any): boolean =>
   error?.message?.includes('Connection blocked:');
 
 export const isUserCancellationError = (error: any): boolean => {
-  // Standard EIP-1193 user rejection error (most reliable)
-  if (error?.code === 4001) return true;
+  // Standard provider rejection or typed local hardware cancellation.
+  if (error?.code === 4001 || error?.code === 'HARDWARE_REQUEST_CANCELLED')
+    return true;
 
   const message = error?.message || '';
   const lowerMessage = message.toLowerCase();

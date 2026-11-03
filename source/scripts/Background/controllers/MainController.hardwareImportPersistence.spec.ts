@@ -27,34 +27,12 @@ jest.mock('@trezor/connect-webextension', () => ({
     }),
   },
 }));
-jest.mock('@ledgerhq/hw-transport-webhid', () => ({
-  __esModule: true,
-  default: {
-    create: jest.fn(async () => ({
-      on: jest.fn(),
-      close: jest.fn(async () => undefined),
-    })),
-  },
-}));
-jest.mock('@ledgerhq/hw-app-eth', () => {
-  const getAddress = jest.fn(async (path: string) => {
-    const { HDNodeWallet } = jest.requireActual('ethers');
-    const wallet = HDNodeWallet.fromPhrase(
-      'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about',
-      undefined,
-      `m/${path}`
-    );
-    return { address: wallet.address, publicKey: wallet.publicKey.slice(2) };
-  });
-  return {
-    __esModule: true,
-    default: jest.fn(() => ({ getAddress })),
-    deviceGetAddress: getAddress,
-  };
-});
 jest.mock('scripts/Background', () => ({
   getController: jest.fn(),
   notificationManager: { cleanup: jest.fn() },
+}));
+jest.mock('scripts/Background/ledgerHost', () => ({
+  getLedgerHost: () => mockDeadlineHost,
 }));
 jest.mock(
   'scripts/Background/controllers/providers/patchFetchWithPaliHeaders',
@@ -86,9 +64,30 @@ import { INetworkType, KeyringAccountType } from 'types/network';
 import { AsyncMutex } from 'utils/asyncMutex';
 
 import { ReceiptBalanceRefresh } from './balances/ReceiptBalanceRefresh';
+import { controllerEmitter } from './controllerEmitter';
 
 const TrezorConnect = jest.requireMock('@trezor/connect-webextension').default;
-const ledgerDevice = jest.requireMock('@ledgerhq/hw-app-eth');
+const ledgerDevice = {
+  deviceGetAddress: jest.fn(
+    async ({ accountIndex }: { accountIndex: number }) => {
+      const { HDNodeWallet } = jest.requireActual('ethers');
+      const wallet = HDNodeWallet.fromPhrase(
+        'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about',
+        undefined,
+        `m/44'/60'/0'/0/${accountIndex}`
+      );
+      return { address: wallet.address, publicKey: wallet.publicKey.slice(2) };
+    }
+  ),
+};
+const ledgerHost = {
+  connect: jest.fn(async () => undefined),
+  disconnect: jest.fn(async () => undefined),
+  getStatus: () => ({ connected: true }),
+  evm: { getAddress: ledgerDevice.deviceGetAddress },
+  utxo: {},
+};
+const mockDeadlineHost = { disconnect: jest.fn(async () => undefined) };
 const PHRASE = 'test test test test test test test test test test test junk';
 const FAILURE = 'Synthetic hardware vault write refusal';
 const originalChrome = global.chrome;
@@ -127,7 +126,9 @@ describe.each(['Trezor', 'Ledger'] as const)(
         : ((ledgerDevice as any).deviceGetAddress as jest.Mock);
     const devicePaths = () =>
       deviceRead().mock.calls.map((args: any[]) =>
-        kind === 'Trezor' ? args[0].path : `m/${args[0]}`
+        kind === 'Trezor'
+          ? args[0].path
+          : `m/44'/60'/0'/0/${args[0].accountIndex}`
       );
     const holdNextCommit = () => {
       const nativeSet = chrome.storage.local.set;
@@ -266,7 +267,7 @@ describe.each(['Trezor', 'Ledger'] as const)(
           },
         },
       } as any;
-      manager = new KeyringManager();
+      manager = new KeyringManager(undefined, ledgerHost as any);
       manager.setStorage(chrome.storage.local);
       manager.setVaultStateGetter(() => store.getState().vault);
       const initialAccount = await manager.initializeWalletSecurely(
@@ -343,6 +344,122 @@ describe.each(['Trezor', 'Ledger'] as const)(
         account.address
       );
     });
+
+    if (kind === 'Ledger') {
+      it('preserves typed host cancellation without changing live or durable accounts', async () => {
+        const before = project(store.getState().vault);
+        jest
+          .spyOn(ledgerHost, 'getStatus')
+          .mockReturnValue({ connected: false });
+        jest.spyOn(ledgerHost, 'connect').mockRejectedValueOnce(
+          Object.assign(new Error('Ledger window was closed'), {
+            code: 'HARDWARE_REQUEST_CANCELLED',
+          })
+        );
+        const rejected = expect(importAccount()).rejects.toMatchObject({
+          code: 'HARDWARE_REQUEST_CANCELLED',
+          message: 'Ledger operation was cancelled by the user.',
+        });
+        await jest.advanceTimersByTimeAsync(2200);
+        await rejected;
+        expect(writes).toBe(0);
+        expect(project(store.getState().vault)).toEqual(before);
+        expect(project(await loadSlip44State(60))).toEqual(before);
+        await jest.advanceTimersByTimeAsync(240000);
+        expect(mockDeadlineHost.disconnect).not.toHaveBeenCalled();
+      });
+
+      it('expires discovery and device reads before the UI deadline and discards their late result', async () => {
+        const before = project(store.getState().vault);
+        jest
+          .spyOn(ledgerHost, 'getStatus')
+          .mockReturnValue({ connected: false });
+        jest.spyOn(ledgerHost, 'connect').mockImplementation(async () => {
+          await new Promise<void>((resolve) => setTimeout(resolve, 170000));
+        });
+        const originalRead = deviceRead().getMockImplementation()!;
+        deviceRead().mockImplementationOnce(async (...args: any[]) => {
+          await new Promise<void>((resolve) => setTimeout(resolve, 140000));
+          return originalRead(...args);
+        });
+        let backend: Promise<any> | undefined;
+        (chrome.runtime as any).sendMessage = (
+          _request: unknown,
+          callback: (value: any) => void
+        ) => {
+          backend = importAccount();
+          void backend.then(callback, (error: any) =>
+            callback({ error: error.message })
+          );
+        };
+        const ui = controllerEmitter(
+          ['wallet', 'importLedgerAccountFromController'],
+          [],
+          300000
+        );
+        const timedOut = expect(ui).rejects.toThrow(
+          'Ledger account import timed out'
+        );
+        await jest.advanceTimersByTimeAsync(240000);
+        await timedOut;
+        await expect(backend).rejects.toMatchObject({
+          code: 'HARDWARE_REQUEST_TIMEOUT',
+        });
+        expect(mockDeadlineHost.disconnect).toHaveBeenCalledTimes(1);
+        await jest.advanceTimersByTimeAsync(75000);
+        expect(writes).toBe(0);
+        expect(project(store.getState().vault)).toEqual(before);
+        expect(project(await loadSlip44State(60))).toEqual(before);
+      });
+
+      it('revokes a held durable import if its total deadline expires', async () => {
+        const before = project(store.getState().vault);
+        const held = holdNextCommit();
+        const operation = importAccount();
+        const rejected = expect(operation).rejects.toMatchObject({
+          code: 'HARDWARE_REQUEST_TIMEOUT',
+        });
+        await jest.advanceTimersByTimeAsync(2200);
+        await held.started;
+        await jest.advanceTimersByTimeAsync(240000);
+        expect(mockDeadlineHost.disconnect).not.toHaveBeenCalled();
+        held.release();
+        await rejected;
+        expect(project(store.getState().vault)).toEqual(before);
+        expect(project(await loadSlip44State(60))).toEqual(before);
+      });
+
+      it('acknowledges a committed import without waiting for optional network refresh', async () => {
+        wallet.getLatestUpdateForCurrentAccount = jest.fn(
+          () => new Promise(() => undefined)
+        );
+        const operation = importAccount();
+        await jest.advanceTimersByTimeAsync(2200);
+        await expect(operation).resolves.toMatchObject({ id: 0 });
+        expect(writes).toBe(1);
+        await jest.advanceTimersByTimeAsync(240000);
+        expect(mockDeadlineHost.disconnect).not.toHaveBeenCalled();
+      });
+
+      it('preserves pending device guidance without retrying or importing', async () => {
+        const attempt = jest
+          .spyOn(manager, 'importLedgerAccount')
+          .mockRejectedValueOnce(
+            Object.assign(new Error('Ledger request pending'), {
+              code: 'HARDWARE_SIGNER_BUSY',
+            })
+          );
+        await expect(importAccount()).rejects.toMatchObject({
+          code: 'HARDWARE_SIGNER_BUSY',
+          message:
+            'Finish or close the pending Ledger request, then try again.',
+        });
+        expect(attempt).toHaveBeenCalledTimes(1);
+        expect(writes).toBe(0);
+        await jest.advanceTimersByTimeAsync(240000);
+        expect(mockDeadlineHost.disconnect).not.toHaveBeenCalled();
+      });
+    }
 
     it('keeps failed native hardware import out of live and durable account state', async () => {
       const before = project(store.getState().vault);
