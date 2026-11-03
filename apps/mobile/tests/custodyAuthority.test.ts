@@ -542,3 +542,22 @@ test('a read that completes after disposal cannot change the terminal snapshot',
   assert.equal(f.authority.getSnapshot(), terminal);
   assert.equal(f.events.at(-1), 'close');
 });
+
+test('initialization preserves quarantine after cleanup fails during its storage read', async () => {
+  const f = fixture(true);
+  const entered = deferred<void>();
+  const state = deferred<CustodyStoredState>();
+  f.runtime.storage.readState = async () => {
+    entered.resolve(); return state.promise;
+  };
+  const opening = f.authority.initialize();
+  await entered.promise;
+  f.runtime.session.lock = async () => { throw new Error('cleanup failed'); };
+  f.authority.lock();
+  await Promise.resolve();
+  assert.equal(f.authority.getSnapshot().phase, 'unavailable');
+  state.resolve({ presence: 'existing', backup: 'confirmed' });
+  await rejectsCode(opening, 'UNAVAILABLE');
+  assert.equal(f.authority.getSnapshot().phase, 'unavailable');
+  await rejectsCode(f.authority.unlock(PASSWORD), 'NOT_READY');
+});

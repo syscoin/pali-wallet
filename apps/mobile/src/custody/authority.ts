@@ -155,6 +155,9 @@ export class NativeCustodyAuthority {
         await this.drainLocks();
         if (this.snapshot.phase === 'disposed') return;
         await this.readState();
+        // A lifecycle lock may have started while storage was being read.
+        // Initialization cannot reopen an authority whose cleanup failed.
+        await this.drainLocks();
         if (this.getSnapshot().phase !== 'disposed') {
           this.publish({
             phase: this.snapshot.presence === 'empty' ? 'empty' : 'locked',
