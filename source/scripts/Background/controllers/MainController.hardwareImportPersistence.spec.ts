@@ -346,6 +346,29 @@ describe.each(['Trezor', 'Ledger'] as const)(
     });
 
     if (kind === 'Ledger') {
+      it('preserves typed host cancellation without changing live or durable accounts', async () => {
+        const before = project(store.getState().vault);
+        jest
+          .spyOn(ledgerHost, 'getStatus')
+          .mockReturnValue({ connected: false });
+        jest.spyOn(ledgerHost, 'connect').mockRejectedValueOnce(
+          Object.assign(new Error('Ledger window was closed'), {
+            code: 'HARDWARE_REQUEST_CANCELLED',
+          })
+        );
+        const rejected = expect(importAccount()).rejects.toMatchObject({
+          code: 'HARDWARE_REQUEST_CANCELLED',
+          message: 'Ledger operation was cancelled by the user.',
+        });
+        await jest.advanceTimersByTimeAsync(2200);
+        await rejected;
+        expect(writes).toBe(0);
+        expect(project(store.getState().vault)).toEqual(before);
+        expect(project(await loadSlip44State(60))).toEqual(before);
+        await jest.advanceTimersByTimeAsync(240000);
+        expect(mockDeadlineHost.disconnect).not.toHaveBeenCalled();
+      });
+
       it('expires discovery and device reads before the UI deadline and discards their late result', async () => {
         const before = project(store.getState().vault);
         jest
