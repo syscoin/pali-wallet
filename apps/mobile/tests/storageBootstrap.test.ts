@@ -9,6 +9,7 @@ import { openWalletStorage } from '../src/storage/coordinator.ts';
 import type { NativeStoragePorts } from '../src/storage/coordinator.ts';
 import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
 import { createStorageQualificationDiagnostic } from '../qualification/storage-diagnostics.ts';
+import { createNativePolicyObserver } from '../src/storage/nativePolicyDiagnostic.ts';
 import {
   digest,
   INSTALLATION,
@@ -139,6 +140,31 @@ test('storage failure retains its opening checkpoint and closes its lease before
       stage: 'key-read',
       code: 'STORAGE_UNAVAILABLE',
     });
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test('a native policy subcode preserves the external storage error contract', async () => {
+  const f = await setup();
+  const diagnostic = createStorageQualificationDiagnostic();
+  const observe = createNativePolicyObserver(diagnostic.observe);
+  f.ports.observeOpen = diagnostic.observe;
+  f.ports.policy.acquire = () => observe(async () => {
+    throw { code: 'PALI_STORAGE_POLICY_PROTECTION_CHECK', message: 'SECRET native property' };
+  });
+  try {
+    await assert.rejects(openWalletStorage(f.ports), (error) => {
+      diagnostic.capture(error);
+      return error instanceof Error && error.message === 'STORAGE_UNAVAILABLE';
+    });
+    assert.deepEqual(diagnostic.report(), {
+      stage: 'ios-policy-protection-check',
+      code: 'STORAGE_UNAVAILABLE',
+    });
+    assert.equal(f.record, null);
+    assert.equal(f.opened, 0);
+    assert.equal(f.held, false);
   } finally {
     await f.cleanup();
   }

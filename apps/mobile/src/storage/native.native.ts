@@ -13,6 +13,7 @@ import { requireSqlCipher } from './sqlCipher.ts';
 import { WalletStorageError } from './types.ts';
 import { observeStorageOpen } from './openStages.ts';
 import type { StorageOpenObserver } from './openStages.ts';
+import { createNativePolicyObserver } from './nativePolicyDiagnostic.ts';
 import type {
   OpenWalletStorage,
   SqlConnection,
@@ -28,7 +29,17 @@ export async function openNativeWalletStorage(
   observeOpen?: StorageOpenObserver
 ): Promise<OpenWalletStorage> {
   observeStorageOpen(observeOpen, 'native-module');
-  const policy = requireNativeModule<StoragePolicy>('PaliWalletStorage');
+  const nativePolicy = requireNativeModule<StoragePolicy>('PaliWalletStorage');
+  const observePolicy = observeOpen
+    ? createNativePolicyObserver(observeOpen)
+    : <T,>(operation: () => Promise<T>) => operation();
+  const policy: StoragePolicy = {
+    acquire: () => observePolicy(() => nativePolicy.acquire()),
+    inspect: (token) => observePolicy(() => nativePolicy.inspect(token)),
+    createDatabase: (token) => observePolicy(() => nativePolicy.createDatabase(token)),
+    protect: (token) => observePolicy(() => nativePolicy.protect(token)),
+    release: (token) => observePolicy(() => nativePolicy.release(token)),
+  };
   const keyOptions: SecureStore.SecureStoreOptions = {
     keychainService: WALLET_KEY_SERVICE,
     keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
