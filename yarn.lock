@@ -2729,7 +2729,7 @@
 
 "@sidhujag/sysweb3-keyring@2.0.0":
   version "2.0.0"
-  resolved "file:vendor/sysweb3-keyring/keyring.tgz#07c9632eb2d15fae82c630f3ddb848cc9fe0b6e0"
+  resolved "file:vendor/sysweb3-keyring/keyring.tgz#36233eeeb82254c162514c4fc68ca0789f507d39"
   dependencies:
     "@bitcoinerlab/secp256k1" "^1.2.0"
     "@ledgerhq/context-module" "2.8.0"
