@@ -379,8 +379,77 @@ test('private note files: real download, saved-file verification and fenced rest
         ).toBeVisible({ timeout: 120000 });
         expect(await privateStorage(page)).toEqual(initial);
         await closeDialog(page);
-        await restorePreview(page);
-        await confirmRestore(page, SOURCE_PASSWORD);
+        const preview = await restorePreview(page);
+        // Fault only the UI acknowledgment, after the real background commit.
+        // The production controller, cryptography and storage stay untouched.
+        await page.evaluate(() => {
+          const runtime = chrome.runtime as any;
+          const original = runtime.sendMessage;
+          const probe = {
+            commits: 0,
+            replaced: 0,
+            restore: () => {
+              runtime.sendMessage = original;
+            },
+          };
+          (globalThis as any).__paliBackupAckProbe = probe;
+          runtime.sendMessage = (...args: any[]) => {
+            const [message] = args;
+            const index = args.length - 1;
+            const callback = args[index];
+            if (
+              message?.data?.methods?.join('.') ===
+                'noteBackups.commitImport' &&
+              typeof callback === 'function'
+            ) {
+              probe.commits++;
+              args[index] = (response: any) => {
+                if (response?.confirmed === true) {
+                  probe.replaced++;
+                  callback({
+                    success: false,
+                    error: 'BACKUP_COMMIT_UNCONFIRMED',
+                  });
+                } else callback(response);
+              };
+            }
+            return original.apply(runtime, args);
+          };
+        });
+        try {
+          await preview
+            .getByLabel(copy.walletPassword, { exact: true })
+            .fill(SOURCE_PASSWORD);
+          await preview
+            .getByRole('button', { name: copy.confirmRestore, exact: true })
+            .click();
+          await expect(
+            preview.getByText(copy.unconfirmed, { exact: true })
+          ).toBeVisible({ timeout: 120000 });
+          screenshots.push(
+            await wallet!.shot('backup-unconfirmed-before-dismissal-320x480')
+          );
+          await closeDialog(page);
+          await expect(noteRows(page)).toHaveCount(2);
+          const counts = await page.evaluate(() => {
+            const scope = globalThis as any;
+            const probe = scope.__paliBackupAckProbe;
+            probe.restore();
+            delete scope.__paliBackupAckProbe;
+            return { commits: probe.commits, replaced: probe.replaced };
+          });
+          expect(counts).toEqual({ commits: 1, replaced: 1 });
+          observations.lostCommitAcknowledgment = {
+            ...counts,
+            inventoryRefreshedAfterDismissal: true,
+          };
+        } finally {
+          await page.evaluate(() => {
+            const scope = globalThis as any;
+            scope.__paliBackupAckProbe?.restore();
+            delete scope.__paliBackupAckProbe;
+          });
+        }
         await expect(noteRows(page)).toHaveCount(2);
         observations.initialRestore = await privateStorage(page);
         expect(observations.initialRestore).toMatchObject({
@@ -631,6 +700,7 @@ test('private note files: real download, saved-file verification and fenced rest
           simulated: true,
           actualChromiumDownload: true,
           actualSavedFileReselected: true,
+          commitAcknowledgementFaultInjected: true,
           realProductionCryptoAndControllers: true,
           privateVaultOverridden: false,
           publicSyntheticFixturesOnly: true,

@@ -202,9 +202,7 @@ it('refreshes an initially empty inventory when an unconfirmed restore is dismis
     mockEmitter.mock.calls.filter(([method]) => method[1] === 'getNotes')
   ).toHaveLength(1);
   fireEvent.click(
-    within(dialog)
-      .getAllByRole('button', { name: en.buttons.close, exact: true })
-      .at(-1)!
+    within(dialog).getAllByRole('button', { name: en.buttons.close }).at(-1)!
   );
   await screen.findByRole('button', { name: 'Reveal 0.1 ETH note for backup' });
   expect(
