@@ -23,13 +23,23 @@ export type {
   IPrivateVaultWithdrawalJournal,
 } from '../../../wallet/privateVault';
 
+// Preserve malformed present values so the core can reject them as corrupt.
+// The general getItem helper normalizes falsy values to absence.
+const defaultStorage: IPrivateVaultDependencies['storage'] = {
+  getItem: async (key) => {
+    const records = await chromeStorage.getItems([key]);
+    return records[key] ?? null;
+  },
+  setItem: (key, value) => chromeStorage.setItem(key, value),
+};
+
 /** Extension composition root. Keep host defaults out of the shared engine. */
 export function createPrivateVaultController(
   host: IPrivateVaultHost,
   dependencies: Partial<IPrivateVaultDependencies> = {}
 ): ReturnType<typeof createPrivateVaultCore> {
   return createPrivateVaultCore(host, {
-    storage: dependencies.storage || chromeStorage,
+    storage: dependencies.storage || defaultStorage,
     mutex: dependencies.mutex || walletPersistenceMutex,
     identify: dependencies.identify || identifyClassicNote,
     generate: dependencies.generate || generateClassicNote,

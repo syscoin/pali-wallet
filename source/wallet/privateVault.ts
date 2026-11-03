@@ -245,6 +245,8 @@ const envelopeHash = (value: IEncryptedPrivateRecord): string =>
   );
 /** Raw records remain untrusted until the engine validates their schema. */
 export interface IPrivateVaultStorage {
+  // Only null/undefined mean absence. Preserve malformed present values for
+  // validation, and reject on storage errors rather than returning absence.
   getItem: (key: string) => Promise<unknown>;
   // Resolve only after the host acknowledges the complete record write.
   setItem: (key: string, value: unknown) => Promise<void>;

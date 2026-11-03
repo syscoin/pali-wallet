@@ -176,7 +176,11 @@ test('extension wrapper preserves storage and mutex defaults, with an independen
   const recordClockAtConstruction = Date.now;
   createExtensionVault(f.host);
   const defaults = createCore.mock.calls[0][1];
-  expect(defaults.storage).toBe(chromeStorage);
+  expect(defaults.storage).not.toBe(chromeStorage);
+  expect(defaults.storage).toEqual({
+    getItem: expect.any(Function),
+    setItem: expect.any(Function),
+  });
   expect(defaults.mutex).toBe(walletPersistenceMutex);
   expect(defaults.identify).toBe(identifyClassicNote);
   expect(defaults.generate).toBe(generateClassicNote);
@@ -195,6 +199,116 @@ test('extension wrapper preserves storage and mutex defaults, with an independen
   expect(overridden.storage).toBe(f.storage);
   expect(overridden.deadlineNow()).toBe(12_345);
   expect(overridden.mutex).toBe(walletPersistenceMutex);
+});
+
+function defaultStorageFixture() {
+  const f = fixture();
+  const get = jest.spyOn(chrome.storage.local, 'get').mockImplementation(((
+    keys: string[],
+    callback: (records: Record<string, unknown>) => void
+  ) => {
+    callback(
+      Object.fromEntries(
+        keys
+          .filter((key) => Object.prototype.hasOwnProperty.call(f.records, key))
+          .map((key) => [key, structuredClone(f.records[key])])
+      )
+    );
+  }) as any);
+  const set = jest.spyOn(chrome.storage.local, 'set').mockImplementation(((
+    records: Record<string, unknown>,
+    callback: () => void
+  ) => {
+    Object.assign(f.records, structuredClone(records));
+    callback();
+  }) as any);
+  get.mockClear();
+  set.mockClear();
+  const dependencies: Partial<IPrivateVaultDependencies> = {
+    ...f.dependencies,
+  };
+  delete dependencies.storage;
+  return {
+    ...f,
+    get,
+    set,
+    vault: createExtensionVault(f.host, dependencies),
+  };
+}
+
+test.each([false, 0, ''])(
+  'default extension storage rejects present malformed value %j without writing',
+  async (value) => {
+    const f = defaultStorageFixture();
+    const key =
+      core.PRIVATE_VAULT_STORAGE_PREFIX +
+      (await f.keyring.getPrivateRecordProfileId());
+    f.records[key] = value;
+
+    await expect(f.vault.getNotes()).rejects.toThrow('privacy_vault_corrupt');
+    await expect(f.vault.createDepositNote('eth-1')).rejects.toThrow(
+      'privacy_vault_corrupt'
+    );
+    expect(f.get).toHaveBeenCalledTimes(2);
+    expect(f.get).toHaveBeenNthCalledWith(1, [key], expect.any(Function));
+    expect(f.get).toHaveBeenNthCalledWith(2, [key], expect.any(Function));
+    expect(f.set).not.toHaveBeenCalled();
+    expect(f.records).toEqual({ [key]: value });
+  }
+);
+
+test.each([
+  ['missing', undefined],
+  ['null', null],
+])(
+  'default extension storage keeps %s empty and reopens valid ciphertext',
+  async (_, value) => {
+    const f = defaultStorageFixture();
+    const key =
+      core.PRIVATE_VAULT_STORAGE_PREFIX +
+      (await f.keyring.getPrivateRecordProfileId());
+    if (value !== undefined) f.records[key] = value;
+    await expect(f.vault.getNotes()).resolves.toEqual({ notes: [] });
+    expect(f.set).not.toHaveBeenCalled();
+
+    const created = await f.vault.createDepositNote('eth-1');
+    expect(created.phase).toBe('prepared');
+    expect(f.set).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(f.records[key])).not.toContain(NOTE);
+    expect((await f.vault.getNotes()).notes).toEqual([
+      expect.objectContaining({ id: created.id, poolId: 'eth-1' }),
+    ]);
+    await expect(
+      f.vault.revealNote(created.id, 'synthetic-password')
+    ).resolves.toBe(NOTE);
+    expect(f.set).toHaveBeenCalledTimes(1);
+  }
+);
+
+test('default extension storage read errors cannot become an empty writable vault', async () => {
+  const f = defaultStorageFixture();
+  const descriptor = Object.getOwnPropertyDescriptor(
+    chrome.runtime,
+    'lastError'
+  );
+  Object.defineProperty(chrome.runtime, 'lastError', {
+    configurable: true,
+    value: { message: 'Synthetic Chrome storage failure' },
+  });
+  try {
+    await expect(f.vault.getNotes()).rejects.toThrow(
+      'privacy_vault_unavailable'
+    );
+    await expect(f.vault.createDepositNote('eth-1')).rejects.toThrow(
+      'privacy_vault_unavailable'
+    );
+    expect(f.set).not.toHaveBeenCalled();
+    expect(f.records).toEqual({});
+  } finally {
+    if (descriptor)
+      Object.defineProperty(chrome.runtime, 'lastError', descriptor);
+    else Reflect.deleteProperty(chrome.runtime, 'lastError');
+  }
 });
 
 test('core and legacy wrapper reopen the same real ciphertext across explicit v3 migration', async () => {
