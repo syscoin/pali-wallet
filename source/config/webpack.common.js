@@ -407,6 +407,7 @@ module.exports = {
           chunks(chunk) {
             return [
               'private-vault',
+              'note-backup',
               'privacy-withdrawals',
               'privacy-relayers',
               'privacy-withdrawal',

@@ -31,7 +31,9 @@ the write failed; callers must never automatically replay the commit. Lock or
 profile changes discard the correlation as well as staged private data.
 
 The extension adapter transports only bounded canonical base64 ciphertext and
-public summaries. Its callers must disable automatic reconnect retries. The
+public summaries. Its script must be registered during classic service-worker
+evaluation; creating the service and reading notes remain user initiated.
+Callers must disable automatic reconnect retries. The
 authority drops references to note strings and keys on cleanup; managed memory
 does not permit a claim of provable zeroization. Byte buffers owned here are
 cleared when released. Individual note reveal/import remains a separate flow.

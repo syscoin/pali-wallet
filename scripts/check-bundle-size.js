@@ -21,7 +21,7 @@ const budget = {
   // retain the deduplication savings; startup caps remain unchanged. The
   // measured unpacked production ZIP is about 9.331 MB, with a small buffer.
   // Encrypted whole-note files add 35,425 measured packaged bytes for the
-  // codec, bounded orchestration and lazy extension adapter. Allow 40 KB for
+  // codec, bounded orchestration and registered extension adapter. Allow 40 KB for
   // that reviewed feature; app/external/background startup caps stay unchanged.
   package: 9380000,
 };
@@ -48,6 +48,7 @@ const scripts = {
     ...[
       'js/wallet-recovery.bundle.js',
       'js/private-vault.bundle.js',
+      'js/note-backup.bundle.js',
       'js/privacy-transactions.bundle.js',
       'js/privacy-withdrawals.bundle.js',
       'js/privacy-relayers.bundle.js',

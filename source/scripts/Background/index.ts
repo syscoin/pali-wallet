@@ -46,6 +46,11 @@ void import(
 void import(
   /* webpackChunkName: "private-vault" */ './controllers/privateVault'
 ).catch(() => undefined);
+// Discover the file adapter before MV3 installation seals importScripts URLs.
+// Module evaluation does not instantiate its service, authenticate, or read notes.
+void import(
+  /* webpackChunkName: "note-backup" */ './controllers/noteBackup'
+).catch(() => undefined);
 // MV3 classic workers reject previously unseen script URLs after install.
 // Register optional privacy modules now, without starting a sync, proof or send.
 void import(
