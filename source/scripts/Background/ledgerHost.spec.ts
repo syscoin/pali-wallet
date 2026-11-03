@@ -163,6 +163,15 @@ describe('Ledger authority host broker', () => {
     await f.broker.disconnect();
   });
 
+  it('rejects the current connection if its window creation fails', async () => {
+    const f = fixture();
+    f.api.windows.create.mockRejectedValueOnce(new Error('Cannot open window'));
+    await expect(f.broker.host.connect()).rejects.toMatchObject({
+      code: 'HARDWARE_REQUEST_CANCELLED',
+    });
+    expect(f.broker.host.getStatus().connected).toBe(false);
+  });
+
   it('ignores a cancelled window creation that rejects after a replacement connects', async () => {
     const f = fixture();
     let failCreation!: (error: Error) => void;
@@ -202,6 +211,39 @@ describe('Ledger authority host broker', () => {
       value: { address: 'public' },
     });
     await expect(result).resolves.toEqual({ address: 'public' });
+    await f.broker.disconnect();
+  });
+
+  it('does not let an old abort signal cancel a replacement before cleanup runs', async () => {
+    const f = fixture();
+    const cancellation = new AbortController();
+    const original = f.broker.host.connect(undefined, {
+      signal: cancellation.signal,
+    });
+    const rejected = expect(original).rejects.toMatchObject({
+      code: 'HARDWARE_REQUEST_CANCELLED',
+    });
+    // Start the replacement synchronously, before the rejected operation's
+    // finally block can detach its original AbortSignal listener.
+    const closing = f.broker.disconnect();
+    const replacementReady = f.broker.host.connect();
+    const replacementResult = replacementReady.then(
+      () => true,
+      () => false
+    );
+    cancellation.abort();
+    await closing;
+    await rejected;
+    const url = f.api.windows.create.mock.calls[1][0].url;
+    const replacement = f.port({
+      name: `pali-ledger-host:${url.split('#')[1]}`,
+      sender: { id: 'pali', url, frameId: 0, tab: { windowId: 41 } },
+    });
+    await flush();
+    replacement.onMessage.emit({ type: 'ready' });
+    await expect(replacementResult).resolves.toBe(true);
+    expect(f.broker.host.getStatus().connected).toBe(true);
+    expect(replacement.disconnect).not.toHaveBeenCalled();
     await f.broker.disconnect();
   });
 
