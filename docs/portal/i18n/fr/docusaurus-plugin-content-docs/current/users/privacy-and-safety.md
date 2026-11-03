@@ -34,7 +34,7 @@ Le service de confidentialité fournit les données publiques des pools et l’a
 
 Pali peut utiliser le service de confidentialité par défaut ou votre propre service Sysnode. Pour exécuter votre service, consultez le [guide Sysnode](https://github.com/syscoin/sysnode-backend/blob/main/docs/privacy-standalone.md).
 
-La limite par défaut est de 128 notes enregistrées (jusqu’à 4 MiB). Dans **Capacité des notes**, vous pouvez choisir 256 (jusqu’à 8 MiB) ou 512 (jusqu’à 16 MiB) ; une limite supérieure peut utiliser plus de stockage local et ralentir les opérations du coffre. Modifier la limite ne supprime aucune note, mais les anciennes versions du portefeuille pourraient ne pas lire le format mis à jour.
+La limite par défaut est de 128 notes enregistrées (jusqu’à 4 MiB). Dans **Capacité des notes**, vous pouvez choisir 256 (jusqu’à 8 MiB) ou 512 (jusqu’à 16 MiB) ; une limite supérieure peut utiliser plus de stockage local et ralentir les opérations du coffre. La limite détermine seulement le nombre de notes enregistrables. Le stockage augmente avec les données ; aucun espace n’est réservé à l’avance et aucune note n’est supprimée.
 
 Utilisez **Effacer les notes terminées** pour vérifier et supprimer les notes terminées. Un retrait connu et tout dépôt associé enregistré doivent être finalisés ; les notes non vérifiées restent enregistrées. Le RPC Ethereum sélectionné reçoit le hash du retrait et, le cas échéant, celui du dépôt associé : son fournisseur peut donc les relier. La vérification dépend des réponses de ce RPC.
 

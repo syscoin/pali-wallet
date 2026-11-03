@@ -34,7 +34,7 @@ Der Privatsphäredienst liefert öffentliche Pooldaten und das Relayer-Verzeichn
 
 Pali kann den Standard-Privatsphäredienst oder deinen eigenen Sysnode-Dienst verwenden. Weitere Informationen zum eigenen Dienst findest du in der [Sysnode-Anleitung](https://github.com/syscoin/sysnode-backend/blob/main/docs/privacy-standalone.md).
 
-Standardmäßig können 128 Notizen gespeichert werden (bis zu 4 MiB). Unter **Notizkapazität** kannst du 256 (bis zu 8 MiB) oder 512 (bis zu 16 MiB) wählen. Höhere Limits können mehr lokalen Speicher benötigen und Tresorvorgänge verlangsamen. Die Änderung entfernt keine Notizen; ältere Wallet-Versionen können das aktualisierte Tresorformat möglicherweise nicht lesen.
+Standardmäßig können 128 Notizen gespeichert werden (bis zu 4 MiB). Unter **Notizkapazität** kannst du 256 (bis zu 8 MiB) oder 512 (bis zu 16 MiB) wählen. Höhere Limits können mehr lokalen Speicher benötigen und Tresorvorgänge verlangsamen. Das Limit bestimmt nur die Anzahl speicherbarer Notizen. Der Speicherbedarf wächst mit den Daten; es wird kein Platz im Voraus reserviert und keine Notiz entfernt.
 
 Mit **Abgeschlossene Notizen entfernen** kannst du abgeschlossene Notizen prüfen und entfernen. Eine bekannte Auszahlung und eine gegebenenfalls gespeicherte zugehörige Einzahlung müssen final bestätigt sein; ungeprüfte Notizen bleiben gespeichert. Der ausgewählte Ethereum-RPC erhält den Auszahlungs-Hash und gegebenenfalls den zugehörigen Einzahlungs-Hash, sodass der Anbieter beide verknüpfen kann. Die Prüfung vertraut den Antworten dieses RPC.
 

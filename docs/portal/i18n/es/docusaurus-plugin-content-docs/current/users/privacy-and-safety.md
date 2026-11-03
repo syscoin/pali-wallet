@@ -34,7 +34,7 @@ El servicio de privacidad proporciona datos públicos de los pools y el director
 
 Pali puede usar el servicio de privacidad predeterminado o tu propio servicio Sysnode. Para ejecutar tu propio servicio, consulta la [guía de Sysnode](https://github.com/syscoin/sysnode-backend/blob/main/docs/privacy-standalone.md).
 
-El límite predeterminado es de 128 notas guardadas (hasta 4 MiB). En **Capacidad de notas** puedes elegir 256 (hasta 8 MiB) o 512 (hasta 16 MiB); los límites mayores pueden usar más almacenamiento local y ralentizar las operaciones del almacén. Cambiar el límite no elimina notas, pero las versiones antiguas de la billetera podrían no leer el formato actualizado.
+El límite predeterminado es de 128 notas guardadas (hasta 4 MiB). En **Capacidad de notas** puedes elegir 256 (hasta 8 MiB) o 512 (hasta 16 MiB); los límites mayores pueden usar más almacenamiento local y ralentizar las operaciones del almacén. El límite solo controla cuántas notas se pueden guardar. El almacenamiento crece con los datos; no se reserva espacio de antemano ni se elimina ninguna nota.
 
 Usa **Borrar notas completadas** para verificar y eliminar notas completadas. Un retiro conocido y cualquier depósito relacionado registrado deben estar finalizados; las notas no verificadas permanecen guardadas. El RPC de Ethereum seleccionado recibe el hash del retiro y, si existe, el del depósito relacionado, por lo que su proveedor puede vincularlos. La verificación depende de las respuestas de ese RPC.
 

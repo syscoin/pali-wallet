@@ -15,6 +15,7 @@ import {
   createPrivateVaultController,
   IPrivateVaultSession,
   PRIVATE_VAULT_DOMAIN,
+  PRIVATE_VAULT_FORMAT,
   PRIVATE_VAULT_STORAGE_PREFIX,
 } from './privateVault';
 
@@ -238,6 +239,79 @@ function capacityNotes(count = 128) {
     createdAt: 456,
   }));
 }
+async function storeCanonicalManifest(
+  f: ReturnType<typeof fixture>,
+  manifest: { notes: any[]; version: number },
+  capacity = 128,
+  rawShard?: string
+) {
+  const shards = [];
+  const references = [];
+  const groups = [];
+  for (let i = 0; i < manifest.notes.length; i += 16)
+    groups.push(manifest.notes.slice(i, i + 16));
+  if (!groups.length) groups.push([]);
+  for (const [index, notes] of groups.entries()) {
+    const plaintext = new TextEncoder().encode(
+      rawShard ?? JSON.stringify({ version: manifest.version, notes })
+    );
+    try {
+      const shard = await f.getKeyring().encryptPrivateRecord({
+        domain: 'org.syscoin.pali.privacy.notes.shard.v2',
+        recordId: `00000000-0000-4000-8000-${(200000 + index)
+          .toString(16)
+          .padStart(12, '0')}`,
+        plaintext,
+      });
+      shards.push(shard);
+      references.push({
+        recordId: shard.recordId,
+        count: notes.length,
+        hash: keccak256(
+          toUtf8Bytes(
+            JSON.stringify([
+              shard.version,
+              shard.domain,
+              shard.recordId,
+              shard.profileId,
+              shard.nonce,
+              shard.ciphertext,
+            ])
+          )
+        ),
+      });
+    } finally {
+      plaintext.fill(0);
+    }
+  }
+  const rootPlaintext = new TextEncoder().encode(
+    JSON.stringify({
+      format: PRIVATE_VAULT_FORMAT,
+      version: 1,
+      capacity,
+      noteCount: manifest.notes.length,
+      shards: references,
+    })
+  );
+  try {
+    const envelope = await f.getKeyring().encryptPrivateRecord({
+      domain: PRIVATE_VAULT_DOMAIN,
+      recordId: UUID,
+      plaintext: rootPlaintext,
+    });
+    const key = PRIVATE_VAULT_STORAGE_PREFIX + envelope.profileId;
+    f.records[key] = {
+      format: PRIVATE_VAULT_FORMAT,
+      version: 1,
+      root: envelope,
+      shards,
+    };
+    return key;
+  } finally {
+    rootPlaintext.fill(0);
+  }
+}
+
 async function capacityFixture(notes = capacityNotes()) {
   // Cache only real deterministic note identities, avoiding repeated Pedersen
   // calculations while exercising actual released SDK encryption and storage.
@@ -253,18 +327,7 @@ async function capacityFixture(notes = capacityNotes()) {
     return identity;
   };
   const f = fixture(undefined, identify);
-  const plaintext = new TextEncoder().encode(
-    JSON.stringify({ version: 1, notes })
-  );
-  expect(plaintext.length).toBeLessThan(64 * 1024);
-  const envelope = await f.getKeyring().encryptPrivateRecord({
-    domain: PRIVATE_VAULT_DOMAIN,
-    recordId: UUID,
-    plaintext,
-  });
-  plaintext.fill(0);
-  const key = PRIVATE_VAULT_STORAGE_PREFIX + envelope.profileId;
-  f.records[key] = envelope;
+  const key = await storeCanonicalManifest(f, { version: 1, notes });
   return { f, notes, key, identify };
 }
 function capacityAttempt(
@@ -324,7 +387,7 @@ it.each(['direct', 'relayed'] as const)(
       );
       recordOperationEvidence();
     }
-    expect(f.records[key].version).toBe(2);
+    expect(f.records[key].version).toBe(1);
     expect(f.records[key].shards.length).toBeGreaterThan(1);
     expect(storageWrites).toBe(256);
     expect(encryptedSizes.length).toBeGreaterThanOrEqual(256);
@@ -369,11 +432,11 @@ async function chunkedFixture() {
     const attempt = capacityAttempt(ready.notes[i], i, 'relayed');
     await ready.f.controller.reserveWithdrawalAttempt(attempt, session);
   }
-  expect(ready.f.records[ready.key].version).toBe(2);
+  expect(ready.f.records[ready.key].version).toBe(1);
   return { ...ready, session };
 }
 
-it('preserves encrypted shard roots made with the original UTF-8 encoding', async () => {
+it('preserves canonical encrypted shard roots made with UTF-8 encoding', async () => {
   const { f, key, notes } = await chunkedFixture();
   const bundle = f.records[key];
   const plaintext = await f.getKeyring().decryptPrivateRecord({
@@ -402,7 +465,7 @@ it('preserves encrypted shard roots made with the original UTF-8 encoding', asyn
       })
     );
     expect(root.shards).toEqual(references);
-    const legacyPlaintext = new TextEncoder().encode(
+    const rewrittenPlaintext = new TextEncoder().encode(
       JSON.stringify({ ...root, shards: references })
     );
     try {
@@ -411,11 +474,11 @@ it('preserves encrypted shard roots made with the original UTF-8 encoding', asyn
         root: await f.getKeyring().encryptPrivateRecord({
           domain: PRIVATE_VAULT_DOMAIN,
           recordId: bundle.root.recordId,
-          plaintext: legacyPlaintext,
+          plaintext: rewrittenPlaintext,
         }),
       };
     } finally {
-      legacyPlaintext.fill(0);
+      rewrittenPlaintext.fill(0);
     }
   } finally {
     plaintext.fill(0);
@@ -430,7 +493,7 @@ it('preserves encrypted shard roots made with the original UTF-8 encoding', asyn
   );
 });
 
-it('migrates capacity only on an explicit choice and survives restart', async () => {
+it('changes capacity only on an explicit choice without changing format and survives restart', async () => {
   const { f, key } = await capacityFixture();
   const before = structuredClone(f.records[key]);
   expect(await f.controller.getCapacity()).toEqual({
@@ -446,7 +509,7 @@ it('migrates capacity only on an explicit choice and survives restart', async ()
     noteCount: 128,
     bundleLimitBytes: 8 * 1024 * 1024,
   });
-  expect(f.records[key].version).toBe(3);
+  expect(f.records[key].version).toBe(1);
   const restarted = f.create();
   expect(await restarted.getCapacity()).toMatchObject({
     capacity: 256,
@@ -468,7 +531,7 @@ it('migrates capacity only on an explicit choice and survives restart', async ()
   });
 });
 
-it('rejects unsupported capacity values without mutating legacy records', async () => {
+it('rejects unsupported capacity values without mutating saved records', async () => {
   const f = fixture();
   await expect(f.controller.setCapacity(1024 as any)).rejects.toThrow(
     'privacy_vault_unavailable'
@@ -525,7 +588,7 @@ it('bounds sharding for escaped long endpoints and both journal types', async ()
         session
       );
   }
-  expect(f.records[key].version).toBe(2);
+  expect(f.records[key].version).toBe(1);
   expect(
     encrypt.mock.calls
       .filter(([params]) => params.domain.endsWith('.shard.v2'))
@@ -612,7 +675,7 @@ it('keeps an atomic encrypted bundle readable after failed and uncertain writes'
     f.create().reserveWithdrawalAttempt(attempt, session)
   ).rejects.toThrow('privacy_withdrawal_attempt_exists');
   await f.controller.clearUnbroadcastWithdrawalAttempt(attempt, session);
-  expect(f.records[key].version).toBe(2);
+  expect(f.records[key].version).toBe(1);
   expect(
     await f.create().getWithdrawalAttempt(notes[24].id, session)
   ).toBeNull();
@@ -1049,7 +1112,7 @@ it('rejects altered deposit destinations/commitments and journal ciphertext corr
   await f.controller.reserveDepositAttempt(attempt, session);
   const key = Object.keys(f.records)[0];
   const envelope = f.records[key];
-  envelope.ciphertext = envelope.ciphertext.slice(0, -4) + 'AAAA';
+  envelope.root.ciphertext = envelope.root.ciphertext.slice(0, -4) + 'AAAA';
   await expect(f.create().getDepositAttempt(note.id, session)).rejects.toThrow(
     'privacy_vault_unavailable'
   );
@@ -1514,17 +1577,10 @@ it.each([
   { intentId: UUID, phase: 'submitted', jobId: '../not-a-job' },
 ])('rejects malformed encrypted withdrawal journals %#', async (withdrawal) => {
   const f = fixture();
-  const envelope = await f.getKeyring().encryptPrivateRecord({
-    domain: PRIVATE_VAULT_DOMAIN,
-    recordId: UUID,
-    plaintext: new TextEncoder().encode(
-      JSON.stringify({
-        version: 1,
-        notes: [{ id: UUID, note: NOTE, createdAt: 456, withdrawal }],
-      })
-    ),
+  await storeCanonicalManifest(f, {
+    version: 1,
+    notes: [{ id: UUID, note: NOTE, createdAt: 456, withdrawal }],
   });
-  f.records[PRIVATE_VAULT_STORAGE_PREFIX + envelope.profileId] = envelope;
   await expect(f.controller.getNotes()).rejects.toThrow(
     'privacy_vault_corrupt'
   );
@@ -1551,7 +1607,8 @@ it('rechecks withdrawal status after encryption and refuses tampered encrypted c
   f.setStatus({ phase: 'verified' });
   await f.controller.reserveWithdrawalAttempt(attempt, session);
   const key = Object.keys(f.records)[0];
-  f.records[key].ciphertext = f.records[key].ciphertext.slice(0, -4) + 'AAAA';
+  f.records[key].root.ciphertext =
+    f.records[key].root.ciphertext.slice(0, -4) + 'AAAA';
   await expect(
     f.create().getWithdrawalAttempt(saved.id, session)
   ).rejects.toThrow('privacy_vault_unavailable');
@@ -1609,16 +1666,24 @@ it('persists only an encrypted manifest and returns strict display metadata', as
     'eth-1',
   ])
     expect(saved).not.toContain(secret);
-  const envelope = Object.values(f.records)[0];
-  expect(Object.keys(envelope).sort()).toEqual([
-    'ciphertext',
-    'domain',
-    'nonce',
-    'profileId',
-    'recordId',
+  const bundle = Object.values(f.records)[0];
+  expect(Object.keys(bundle).sort()).toEqual([
+    'format',
+    'root',
+    'shards',
     'version',
   ]);
-  expect(envelope.domain).toBe(PRIVATE_VAULT_DOMAIN);
+  expect(bundle).toMatchObject({ format: PRIVATE_VAULT_FORMAT, version: 1 });
+  for (const envelope of [bundle.root, ...bundle.shards])
+    expect(Object.keys(envelope).sort()).toEqual([
+      'ciphertext',
+      'domain',
+      'nonce',
+      'profileId',
+      'recordId',
+      'version',
+    ]);
+  expect(bundle.root.domain).toBe(PRIVATE_VAULT_DOMAIN);
   expect(await f.controller.getNotes()).toEqual({ notes: [item] });
   expect(f.authenticate).not.toHaveBeenCalled();
 });
@@ -1724,7 +1789,8 @@ it('keeps ciphertext and returns only a static error on decryption failure', asy
   const f = fixture();
   await f.controller.importNote(NOTE);
   const key = Object.keys(f.records)[0];
-  f.records[key].ciphertext = f.records[key].ciphertext.slice(0, -4) + 'AAAA';
+  f.records[key].root.ciphertext =
+    f.records[key].root.ciphertext.slice(0, -4) + 'AAAA';
   const damaged = structuredClone(f.records[key]);
   await expect(f.controller.getNotes()).rejects.toThrow(
     /^privacy_vault_unavailable$/
@@ -1734,13 +1800,7 @@ it('keeps ciphertext and returns only a static error on decryption failure', asy
 
 it('suppresses malformed plaintext from JSON parser errors', async () => {
   const f = fixture();
-  const keyring = f.getKeyring();
-  const envelope = await keyring.encryptPrivateRecord({
-    domain: PRIVATE_VAULT_DOMAIN,
-    recordId: UUID,
-    plaintext: new TextEncoder().encode(`{"${NOTE}`),
-  });
-  f.records[PRIVATE_VAULT_STORAGE_PREFIX + envelope.profileId] = envelope;
+  await storeCanonicalManifest(f, { version: 1, notes: [] }, 128, `{"${NOTE}`);
   await expect(f.controller.getNotes()).rejects.toThrow(
     /^privacy_vault_corrupt$/
   );
@@ -1943,13 +2003,7 @@ it.each([
   },
 ])('rejects invalid encrypted manifest schema %#', async (manifest) => {
   const f = fixture();
-  const keyring = f.getKeyring();
-  const envelope = await keyring.encryptPrivateRecord({
-    domain: PRIVATE_VAULT_DOMAIN,
-    recordId: UUID,
-    plaintext: new TextEncoder().encode(JSON.stringify(manifest)),
-  });
-  f.records[PRIVATE_VAULT_STORAGE_PREFIX + envelope.profileId] = envelope;
+  await storeCanonicalManifest(f, manifest);
   await expect(f.controller.getNotes()).rejects.toThrow(
     /^privacy_vault_corrupt$/
   );
@@ -2064,7 +2118,7 @@ it.each([
   controller.close();
 });
 
-it('preserves the prior vault if a capacity migration write fails', async () => {
+it('preserves the prior vault if a capacity change write fails', async () => {
   const { f, key } = await capacityFixture(capacityNotes(2));
   const before = structuredClone(f.records[key]);
   f.storage.setItem.mockRejectedValueOnce(new Error('storage unavailable'));
@@ -2316,7 +2370,7 @@ it('clear completed refuses to write if proof revalidation exhausts its deadline
   }
 });
 
-it('clears a verified note without losing v3 capacity or unrelated custody', async () => {
+it('clears a verified note without losing canonical capacity or unrelated custody', async () => {
   const { f, completed, unrelated } = await completedClearFixture();
   await f.controller.setCapacity(256);
   expect(await f.controller.clearCompletedNotes([completed.id])).toEqual({
@@ -2333,7 +2387,7 @@ it('clears a verified note without losing v3 capacity or unrelated custody', asy
 });
 
 it.each([256, 512] as const)(
-  'preserves and rewrites a worst-case encrypted %i-note v3 vault',
+  'preserves and rewrites a worst-case encrypted %i-note canonical vault',
   async (capacity) => {
     const max = Number.MAX_SAFE_INTEGER;
     const hash = '0x' + 'ab'.repeat(32);
@@ -2389,6 +2443,7 @@ it.each([256, 512] as const)(
     const shardDomain = 'org.syscoin.pali.privacy.notes.shard.v2';
     const shards = [];
     const references = [];
+    let maximumShardBytes = 0;
     for (let i = 0; i < notes.length; i += 2) {
       const recordId = `00000000-0000-4000-8000-${(1000000 + i)
         .toString(16)
@@ -2397,6 +2452,7 @@ it.each([256, 512] as const)(
         JSON.stringify({ version: 1, notes: notes.slice(i, i + 2) })
       );
       expect(plaintext.length).toBeLessThanOrEqual(32 * 1024);
+      maximumShardBytes = Math.max(maximumShardBytes, plaintext.length);
       const shard = await keyring.encryptPrivateRecord({
         domain: shardDomain,
         recordId,
@@ -2423,13 +2479,15 @@ it.each([256, 512] as const)(
     }
     const rootPlain = new TextEncoder().encode(
       JSON.stringify({
-        version: 3,
+        format: PRIVATE_VAULT_FORMAT,
+        version: 1,
         noteCount: capacity,
         capacity,
         shards: references,
       })
     );
     expect(rootPlain.length).toBeLessThanOrEqual(64 * 1024);
+    const rootBytes = rootPlain.length;
     const root = await keyring.encryptPrivateRecord({
       domain: PRIVATE_VAULT_DOMAIN,
       recordId: UUID,
@@ -2437,7 +2495,7 @@ it.each([256, 512] as const)(
     });
     rootPlain.fill(0);
     const key = PRIVATE_VAULT_STORAGE_PREFIX + profileId;
-    f.records[key] = { version: 3, root, shards };
+    f.records[key] = { format: PRIVATE_VAULT_FORMAT, version: 1, root, shards };
     const bytes = new TextEncoder().encode(
       JSON.stringify(f.records[key])
     ).length;
@@ -2492,13 +2550,16 @@ it.each([256, 512] as const)(
       capacity,
       bytes,
       readMs,
+      rootBytes,
+      maximumShardBytes,
+      shards: shards.length,
     });
   },
   180000
 );
 
 it.each(['tier', 'count', 'schema', 'bytes'] as const)(
-  'rejects an authenticated malformed v3 %s without changing storage',
+  'rejects an authenticated malformed canonical %s without changing storage',
   async (kind) => {
     const { f, key } = await capacityFixture(capacityNotes(2));
     await f.controller.setCapacity(256);
@@ -2516,6 +2577,7 @@ it.each(['tier', 'count', 'schema', 'bytes'] as const)(
     if (kind === 'schema') root.unexpected = true;
     if (kind === 'bytes') {
       root.capacity = 128;
+      root.noteCount = 97;
       // Envelopes satisfy the pre-decrypt size bound, but their combined
       // encoded size exceeds this selected tier's 4 MiB bundle limit.
       bundle.shards = Array.from({ length: 97 }, (_, index) => ({
@@ -2525,9 +2587,9 @@ it.each(['tier', 'count', 'schema', 'bytes'] as const)(
           .padStart(12, '0')}`,
         ciphertext: 'A'.repeat(Math.ceil((32 * 1024 + 16) / 3) * 4),
       }));
-      root.shards = bundle.shards.map((shard: any, index: number) => ({
+      root.shards = bundle.shards.map((shard: any) => ({
         recordId: shard.recordId,
-        count: index === 0 ? 2 : 0,
+        count: 1,
         hash: keccak256(
           new TextEncoder().encode(
             JSON.stringify([
@@ -2561,5 +2623,196 @@ it.each(['tier', 'count', 'schema', 'bytes'] as const)(
     );
     expect(f.storage.setItem).toHaveBeenCalledTimes(writes);
     expect(f.records[key]).toEqual(saved);
+  }
+);
+
+it('writes one canonical root and shard path for empty and small inventories', async () => {
+  const f = fixture();
+  expect(await f.controller.getNotes()).toEqual({ notes: [] });
+  expect(await f.controller.getCapacity()).toMatchObject({
+    capacity: 128,
+    noteCount: 0,
+    storedBytes: 0,
+  });
+  expect(f.storage.setItem).not.toHaveBeenCalled();
+
+  const emptyStart = performance.now();
+  await f.controller.setCapacity(256);
+  const emptyWriteMs = performance.now() - emptyStart;
+  const key = Object.keys(f.records)[0];
+  const assertCanonical = async (count: number, capacity: number) => {
+    const bundle = f.records[key];
+    expect(Object.keys(bundle).sort()).toEqual([
+      'format',
+      'root',
+      'shards',
+      'version',
+    ]);
+    expect(bundle).toMatchObject({ format: PRIVATE_VAULT_FORMAT, version: 1 });
+    expect(bundle.shards).toHaveLength(1);
+    const rootPlain = await f.getKeyring().decryptPrivateRecord({
+      domain: PRIVATE_VAULT_DOMAIN,
+      recordId: bundle.root.recordId,
+      envelope: bundle.root,
+    });
+    try {
+      const root = JSON.parse(new TextDecoder().decode(rootPlain));
+      expect(Object.keys(root).sort()).toEqual([
+        'capacity',
+        'format',
+        'noteCount',
+        'shards',
+        'version',
+      ]);
+      expect(root).toMatchObject({
+        format: PRIVATE_VAULT_FORMAT,
+        version: 1,
+        noteCount: count,
+        capacity,
+      });
+      expect(root.shards).toHaveLength(1);
+      expect(root.shards[0].count).toBe(count);
+    } finally {
+      rootPlain.fill(0);
+    }
+    expect((await f.create().getNotes()).notes).toHaveLength(count);
+  };
+  await assertCanonical(0, 256);
+  const emptyBytes = new TextEncoder().encode(
+    JSON.stringify(f.records[key])
+  ).length;
+  await f.controller.setCapacity(128);
+  await assertCanonical(0, 128);
+  const smallStart = performance.now();
+  const note = await f.controller.importNote(NOTE);
+  const smallWriteMs = performance.now() - smallStart;
+  const readStart = performance.now();
+  await assertCanonical(1, 128);
+  const smallReadAndInspectionMs = performance.now() - readStart;
+  const smallBytes = new TextEncoder().encode(
+    JSON.stringify(f.records[key])
+  ).length;
+  console.info('Canonical empty and single-note vault (desktop test only)', {
+    emptyBytes,
+    smallBytes,
+    emptyWriteMs,
+    smallWriteMs,
+    smallReadAndInspectionMs,
+  });
+  expect(await f.create().revealNote(note.id, 'correct-password')).toBe(NOTE);
+  expect(f.storage.setItem).toHaveBeenCalledTimes(3);
+  expect(JSON.stringify(f.records)).not.toContain(NOTE);
+});
+
+it.each([
+  'old-single',
+  'old-sharded',
+  'old-capacity',
+  'unknown-format',
+  'future-version',
+])(
+  'preserves unsupported development data (%s) without reading it as empty or rewriting it',
+  async (kind) => {
+    const f = fixture();
+    const key = await storeCanonicalManifest(f, {
+      version: 1,
+      notes: [{ id: UUID, note: NOTE, createdAt: 456 }],
+    });
+    const bundle = f.records[key];
+    if (kind === 'old-single') {
+      const plain = new TextEncoder().encode(
+        JSON.stringify({
+          version: 1,
+          notes: [{ id: UUID, note: NOTE, createdAt: 456 }],
+        })
+      );
+      try {
+        f.records[key] = await f.getKeyring().encryptPrivateRecord({
+          domain: PRIVATE_VAULT_DOMAIN,
+          recordId: UUID,
+          plaintext: plain,
+        });
+      } finally {
+        plain.fill(0);
+      }
+    } else if (kind === 'old-sharded' || kind === 'old-capacity') {
+      const plain = await f.getKeyring().decryptPrivateRecord({
+        domain: PRIVATE_VAULT_DOMAIN,
+        recordId: bundle.root.recordId,
+        envelope: bundle.root,
+      });
+      let legacyPlain!: Uint8Array;
+      try {
+        const root = JSON.parse(new TextDecoder().decode(plain));
+        delete root.format;
+        root.version = kind === 'old-sharded' ? 2 : 3;
+        if (kind === 'old-sharded') delete root.capacity;
+        legacyPlain = new TextEncoder().encode(JSON.stringify(root));
+        bundle.root = await f.getKeyring().encryptPrivateRecord({
+          domain: PRIVATE_VAULT_DOMAIN,
+          recordId: bundle.root.recordId,
+          plaintext: legacyPlain,
+        });
+        delete bundle.format;
+        bundle.version = root.version;
+      } finally {
+        plain.fill(0);
+        legacyPlain?.fill(0);
+      }
+    } else if (kind === 'unknown-format') bundle.format = 'different-vault';
+    else bundle.version = 2;
+    const before = structuredClone(f.records);
+    for (const readOrWrite of [
+      () => f.controller.getNotes(),
+      () => f.controller.getCapacity(),
+      () => f.controller.importNote(SECOND_NOTE),
+      () => f.controller.createDepositNote('eth-1'),
+      () => f.controller.setCapacity(256),
+      () => f.controller.revealNote(UUID, 'correct-password'),
+    ]) {
+      await expect(readOrWrite()).rejects.toThrow(
+        'privacy_vault_unsupported_format'
+      );
+      expect(f.records).toEqual(before);
+      expect(f.storage.setItem).not.toHaveBeenCalled();
+    }
+    expect(f.readNote).not.toHaveBeenCalled();
+  }
+);
+
+it.each(['format', 'version'])(
+  'rejects a canonical outer record whose authenticated root has a different %s',
+  async (field) => {
+    const f = fixture();
+    const key = await storeCanonicalManifest(f, { version: 1, notes: [] });
+    const bundle = f.records[key];
+    const plain = await f.getKeyring().decryptPrivateRecord({
+      domain: PRIVATE_VAULT_DOMAIN,
+      recordId: bundle.root.recordId,
+      envelope: bundle.root,
+    });
+    let changed!: Uint8Array;
+    try {
+      const root = JSON.parse(new TextDecoder().decode(plain));
+      root[field] = field === 'format' ? 'different-vault' : 2;
+      changed = new TextEncoder().encode(JSON.stringify(root));
+      bundle.root = await f.getKeyring().encryptPrivateRecord({
+        domain: PRIVATE_VAULT_DOMAIN,
+        recordId: bundle.root.recordId,
+        plaintext: changed,
+      });
+    } finally {
+      plain.fill(0);
+      changed?.fill(0);
+    }
+    const before = structuredClone(f.records);
+    await expect(f.controller.getNotes()).rejects.toThrow(
+      'privacy_vault_corrupt'
+    );
+    await expect(f.controller.importNote(NOTE)).rejects.toThrow(
+      'privacy_vault_corrupt'
+    );
+    expect(f.storage.setItem).not.toHaveBeenCalled();
+    expect(f.records).toEqual(before);
   }
 );

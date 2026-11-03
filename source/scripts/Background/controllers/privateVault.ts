@@ -9,6 +9,7 @@ import { chromeStorage } from 'utils/storageAPI';
 
 export {
   PRIVATE_VAULT_DOMAIN,
+  PRIVATE_VAULT_FORMAT,
   PRIVATE_VAULT_STORAGE_PREFIX,
 } from '../../../wallet/privateVault';
 export type {

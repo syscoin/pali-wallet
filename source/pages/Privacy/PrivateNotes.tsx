@@ -49,6 +49,7 @@ function NotesView() {
     remember,
     forget,
     unavailable,
+    unsupportedFormat,
   } = usePrivateNotes();
   const verificationPending = notes.some(
     ({ phase }) => phase === 'waiting' || phase === 'not-found'
@@ -340,7 +341,11 @@ function NotesView() {
         {loading
           ? t('privacy.checking')
           : unavailable
-          ? t('privacy.notesUnavailable')
+          ? t(
+              unsupportedFormat
+                ? 'privacy.notesUnsupported'
+                : 'privacy.notesUnavailable'
+            )
           : !notes.length
           ? t('privacy.noNotes')
           : null}
