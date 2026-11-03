@@ -1587,6 +1587,7 @@
     }
   },
   "privacy": {
+    "title": "Privatsphäre",
     "bundle": {
       "snapshotTime": "Zeitpunkt der Momentaufnahme: {{time}}",
       "empty": "Diese Sicherung enthält keine Notizen.",
@@ -1627,7 +1628,6 @@
       "busy": "Ein anderer Sicherungsvorgang wird noch abgeschlossen. Versuche es gleich erneut.",
       "failed": "Der Sicherungsvorgang konnte nicht abgeschlossen werden. Versuche es erneut."
     },
-    "title": "Privatsphäre",
     "prepare": "Privatsphäre vorbereiten",
     "description": "Öffentliche Pooldaten im Hintergrund synchronisieren.",
     "scopeNotice": "Zahle auf Ethereum ein, verwalte private Notizen und hebe damit Guthaben ab.",

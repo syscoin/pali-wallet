@@ -1587,6 +1587,7 @@
     }
   },
   "privacy": {
+    "title": "Privacidad",
     "bundle": {
       "snapshotTime": "Fecha de la instantánea: {{time}}",
       "empty": "Esta copia no contiene notas.",
@@ -1627,7 +1628,6 @@
       "busy": "Otra operación de copia aún está terminando. Inténtalo de nuevo en breve.",
       "failed": "No se pudo completar la operación de copia. Inténtalo de nuevo."
     },
-    "title": "Privacidad",
     "prepare": "Preparar privacidad",
     "description": "Sincroniza los datos públicos del fondo en segundo plano.",
     "scopeNotice": "Deposita, gestiona y retira fondos con notas privadas en Ethereum.",

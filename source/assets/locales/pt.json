@@ -1587,6 +1587,7 @@
     }
   },
   "privacy": {
+    "title": "Privacidade",
     "bundle": {
       "snapshotTime": "Data do instantâneo: {{time}}",
       "empty": "Este backup não contém notas.",
@@ -1627,7 +1628,6 @@
       "busy": "Outra operação de backup ainda está terminando. Tente novamente em breve.",
       "failed": "Não foi possível concluir a operação de backup. Tente novamente."
     },
-    "title": "Privacidade",
     "prepare": "Preparar privacidade",
     "description": "Sincronize os dados públicos do pool em segundo plano.",
     "scopeNotice": "Deposite, gerencie notas privadas e saque fundos no Ethereum.",

@@ -1587,6 +1587,7 @@
     }
   },
   "privacy": {
+    "title": "隐私",
     "bundle": {
       "snapshotTime": "快照时间：{{time}}",
       "empty": "此备份不包含票据。",
@@ -1627,7 +1628,6 @@
       "busy": "另一项备份操作仍在结束中，请稍后重试。",
       "failed": "无法完成备份操作，请重试。"
     },
-    "title": "隐私",
     "prepare": "准备隐私功能",
     "description": "在后台同步资金池公开数据。",
     "scopeNotice": "在 Ethereum 上存款、管理私密凭证并提款。",

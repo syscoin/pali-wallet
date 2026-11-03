@@ -1587,6 +1587,7 @@
     }
   },
   "privacy": {
+    "title": "Confidentialité",
     "bundle": {
       "snapshotTime": "Date de l’instantané : {{time}}",
       "empty": "Cette sauvegarde ne contient aucune note.",
@@ -1627,7 +1628,6 @@
       "busy": "Une autre opération de sauvegarde se termine. Réessayez dans un instant.",
       "failed": "L’opération de sauvegarde n’a pas abouti. Réessayez."
     },
-    "title": "Confidentialité",
     "prepare": "Préparer la confidentialité",
     "description": "Synchronisez les données publiques du pool en arrière-plan.",
     "scopeNotice": "Déposez des fonds, gérez vos notes privées et retirez des fonds sur Ethereum.",
