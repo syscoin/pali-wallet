@@ -222,7 +222,7 @@ it('runs four isolated visual shards and fails the aggregate unless every shard 
     '    name: visual regression shard ${{ matrix.shard }}/4'
   );
   expect(visual).toContain('        shard: [1, 2, 3, 4]');
-  expect(visual).toContain('    timeout-minutes: 35');
+  expect(visual).toContain('    timeout-minutes: 45');
   expect(visual).toContain('      fail-fast: false');
   expect(visual).toContain(
     '        run: yarn e2e:visual --update-snapshots=missing --shard=${{ matrix.shard }}/4 --workers=1'

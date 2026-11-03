@@ -62,7 +62,7 @@ jobs:
   visual:
     name: visual regression shard ${{ matrix.shard }}/4
     runs-on: ubuntu-latest
-    # Isolated runners retain one worker and all evidence without raising the limit.
+    # Isolated runners retain one worker and all required evidence.
     # The 150-test shards can finish near 30 minutes; retain time for artifact uploads.
     timeout-minutes: 45
     strategy:
