@@ -283,6 +283,16 @@ export class LedgerHostBroker {
 }
 
 let broker: LedgerHostBroker | undefined;
+let guardInstalled = false;
+const installUnownedPortGuard = () => {
+  if (guardInstalled || !globalThis.chrome?.runtime?.onConnect) return;
+  guardInstalled = true;
+  chrome.runtime.onConnect.addListener((port) => {
+    // A page opened before the first device request has no owner. Do not leave
+    // it attached merely because the device broker has not been constructed.
+    if (!broker && port.name.startsWith(LEDGER_HOST_PORT)) port.disconnect();
+  });
+};
 const activeHost = () => (broker ??= new LedgerHostBroker()).host;
 // Software wallet initialization must not initialize device-only browser APIs.
 const lazyHost: LedgerHost = {
@@ -304,4 +314,7 @@ const lazyHost: LedgerHost = {
     signPsbt: (...args) => activeHost().utxo.signPsbt(...args),
   },
 };
-export const getLedgerHost = (): LedgerHost => lazyHost;
+export const getLedgerHost = (): LedgerHost => {
+  installUnownedPortGuard();
+  return lazyHost;
+};

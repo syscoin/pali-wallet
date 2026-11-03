@@ -50,6 +50,40 @@ const flush = async () => {
   await Promise.resolve();
 };
 
+it('rejects unowned device pages before lazily constructing browser device APIs', async () => {
+  const original = global.chrome;
+  const onConnect = event();
+  const api = { runtime: { onConnect } };
+  Object.defineProperty(api, 'windows', {
+    get: () => {
+      throw new Error('Device API touched during software startup');
+    },
+  });
+  try {
+    global.chrome = api as any;
+    let host: any;
+    jest.isolateModules(() => {
+      const { getLedgerHost } = require('./ledgerHost');
+      host = getLedgerHost();
+      expect(getLedgerHost()).toBe(host);
+    });
+    expect(onConnect.addListener).toHaveBeenCalledTimes(1);
+    expect(host.getStatus()).toEqual({ connected: false });
+    await host.disconnect();
+    const unowned = {
+      name: `pali-ledger-host:${'0'.repeat(48)}`,
+      disconnect: jest.fn(),
+    };
+    const unrelated = { name: 'pali-ordinary-page', disconnect: jest.fn() };
+    onConnect.emit(unowned);
+    onConnect.emit(unrelated);
+    expect(unowned.disconnect).toHaveBeenCalledTimes(1);
+    expect(unrelated.disconnect).not.toHaveBeenCalled();
+  } finally {
+    global.chrome = original;
+  }
+});
+
 describe('Ledger authority host broker', () => {
   beforeEach(() => jest.useFakeTimers());
   afterEach(() => jest.useRealTimers());
