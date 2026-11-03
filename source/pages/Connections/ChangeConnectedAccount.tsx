@@ -87,7 +87,7 @@ export const ChangeConnectedAccount = () => {
           } bg-bkg-2`}
         >
           <div className="flex flex-wrap items-center justify-between gap-2 w-full">
-            <div className="flex items-center gap-3 flex-1 basis-48 min-w-0">
+            <div className="flex items-center gap-3 flex-1 basis-44 min-w-0">
               <div className="relative">
                 <AccountIdenticon
                   account={account}
@@ -131,7 +131,8 @@ export const ChangeConnectedAccount = () => {
                 </div>
               </div>
             </div>
-            <div className="ml-auto flex items-center gap-3 flex-shrink-0">
+            {/* Keep the loading skeleton and a short balance in one footprint. */}
+            <div className="ml-auto flex items-center justify-end gap-3 flex-shrink-0 min-w-[80px] min-h-10">
               <div className="text-right">
                 <LazyAccountBalance
                   account={account}
