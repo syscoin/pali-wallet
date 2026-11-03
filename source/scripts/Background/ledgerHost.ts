@@ -180,9 +180,23 @@ export class LedgerHostBroker {
     }
   }
 
+  private async focusOwnedWindow(): Promise<void> {
+    const generation = this.generation;
+    const windowId = this.windowId;
+    if (windowId === undefined) throw CANCELLED();
+    try {
+      await this.api.windows.update(windowId, { focused: true });
+    } catch {
+      if (generation === this.generation) await this.disconnect();
+      throw CANCELLED();
+    }
+    if (generation !== this.generation || windowId !== this.windowId)
+      throw CANCELLED();
+  }
+
   private connect(): Promise<void> {
     if (this.connecting) return this.connecting;
-    if (this.port && this.deviceReady) return Promise.resolve();
+    if (this.port && this.deviceReady) return this.focusOwnedWindow();
     const existingPort = this.port;
     const bytes = new Uint8Array(24);
     crypto.getRandomValues(bytes);
@@ -215,9 +229,7 @@ export class LedgerHostBroker {
         () => void this.disconnect()
       );
     else if (this.windowId !== undefined)
-      void this.api.windows
-        .update(this.windowId, { focused: true })
-        .catch(() => void this.disconnect());
+      void this.focusOwnedWindow().catch(() => undefined);
     void promise
       .finally(() => {
         if (this.connecting === promise) {
