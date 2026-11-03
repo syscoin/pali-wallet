@@ -167,13 +167,65 @@ async function auditEncryptedNotes(
           resolve({
             count: records.length,
             encryptedOnly:
-              records.every(
-                ([, value]) =>
-                  value?.version === 1 &&
-                  typeof value.ciphertext === 'string' &&
-                  typeof value.nonce === 'string' &&
-                  !('notes' in value)
-              ) && secrets.every((secret) => !serialized.includes(secret)),
+              records.every(([key, value]) => {
+                const profile = key.slice('state-private-vault-v1:'.length);
+                const encryptedRecord = (
+                  record: any,
+                  domain: string,
+                  limit: number
+                ) =>
+                  record &&
+                  typeof record === 'object' &&
+                  !Array.isArray(record) &&
+                  Object.keys(record).sort().join(',') ===
+                    'ciphertext,domain,nonce,profileId,recordId,version' &&
+                  record.version === 1 &&
+                  record.domain === domain &&
+                  record.profileId === profile &&
+                  /^0x[0-9a-f]{64}$/.test(record.profileId) &&
+                  typeof record.recordId === 'string' &&
+                  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(
+                    record.recordId
+                  ) &&
+                  typeof record.nonce === 'string' &&
+                  /^[A-Za-z0-9+/]{16}$/.test(record.nonce) &&
+                  typeof record.ciphertext === 'string' &&
+                  record.ciphertext.length >= 24 &&
+                  record.ciphertext.length <= Math.ceil((limit + 16) / 3) * 4 &&
+                  /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(
+                    record.ciphertext
+                  );
+                return (
+                  value &&
+                  typeof value === 'object' &&
+                  !Array.isArray(value) &&
+                  Object.keys(value).sort().join(',') ===
+                    'format,root,shards,version' &&
+                  value.format === 'pali-private-note-vault' &&
+                  value.version === 1 &&
+                  Array.isArray(value.shards) &&
+                  value.shards.length >= 1 &&
+                  value.shards.length <= 512 &&
+                  encryptedRecord(
+                    value.root,
+                    'org.syscoin.pali.privacy.notes.v1',
+                    64 * 1024
+                  ) &&
+                  value.shards.every((shard: any) =>
+                    encryptedRecord(
+                      shard,
+                      'org.syscoin.pali.privacy.notes.shard.v2',
+                      32 * 1024
+                    )
+                  ) &&
+                  new Set([
+                    value.root.recordId,
+                    ...value.shards.map((shard: any) => shard.recordId),
+                  ]).size ===
+                    value.shards.length + 1 &&
+                  JSON.stringify(value).length <= 16 * 1024 * 1024
+                );
+              }) && secrets.every((secret) => !serialized.includes(secret)),
           });
         });
       }),

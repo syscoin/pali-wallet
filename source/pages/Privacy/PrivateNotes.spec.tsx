@@ -1448,3 +1448,23 @@ it.each(['acknowledged', 'acknowledgement lost'])(
     expect(screen.getByLabelText(en.privacy.capacity.label)).toHaveValue('256');
   }
 );
+
+it('explains unsupported development data without showing an empty vault or overwriting it', async () => {
+  mockEmitter.mockRejectedValue(new Error('privacy_vault_unsupported_format'));
+  render(<PrivateNotes />);
+  expect(await screen.findByText(en.privacy.notesUnsupported)).toBeVisible();
+  expect(screen.queryByText(en.privacy.noNotes)).not.toBeInTheDocument();
+  expect(mockEmitter).toHaveBeenCalledTimes(1);
+  expect(mockEmitter).toHaveBeenCalledWith(
+    ['privateVault', 'getNotes'],
+    [],
+    10000,
+    false
+  );
+  mockEmitter.mockResolvedValue({ notes: [note] });
+  fireEvent.click(screen.getByRole('button', { name: en.privacy.retry }));
+  expect(await screen.findByText(en.privacy.notePhase.verified)).toBeVisible();
+  expect(
+    screen.queryByText(en.privacy.notesUnsupported)
+  ).not.toBeInTheDocument();
+});

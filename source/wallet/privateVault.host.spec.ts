@@ -1,5 +1,6 @@
 import { KeyringManager } from '@sidhujag/sysweb3-keyring';
 import { webcrypto } from 'crypto';
+import { keccak256, toUtf8Bytes } from 'ethers';
 
 import { createPrivateVaultController as createExtensionVault } from '../scripts/Background/controllers/privateVault';
 import { AsyncMutex, walletPersistenceMutex } from '../utils/asyncMutex';
@@ -311,7 +312,7 @@ test('default extension storage read errors cannot become an empty writable vaul
   }
 });
 
-test('core and legacy wrapper reopen the same real ciphertext across explicit v3 migration', async () => {
+test('shared core and extension wrapper reopen the same canonical ciphertext across capacity changes', async () => {
   const f = fixture();
   const shared = core.createPrivateVaultController(f.host, f.dependencies);
   const imported = await shared.importNote(NOTE);
@@ -325,14 +326,17 @@ test('core and legacy wrapper reopen the same real ciphertext across explicit v3
   expect(f.storage.setItem).toHaveBeenCalledTimes(1);
 
   await extension.setCapacity(256);
-  const migrated = structuredClone(f.records);
-  expect(Object.values(migrated)[0]).toMatchObject({ version: 3 });
+  const resized = structuredClone(f.records);
+  expect(Object.values(resized)[0]).toMatchObject({
+    format: core.PRIVATE_VAULT_FORMAT,
+    version: 1,
+  });
   const reopened = core.createPrivateVaultController(f.host, f.dependencies);
   expect(await reopened.getCapacity()).toMatchObject({
     capacity: 256,
     noteCount: 1,
   });
-  expect(f.records).toEqual(migrated);
+  expect(f.records).toEqual(resized);
   await extension.importNote(SECOND_NOTE);
   expect((await reopened.getNotes()).notes).toHaveLength(2);
   const persisted = JSON.stringify(f.records);
@@ -393,17 +397,56 @@ test('cleanup deadline advances independently of fixed record timestamps', async
       },
     ],
   };
-  const plaintext = new TextEncoder().encode(JSON.stringify(manifest));
+  const shardPlain = new TextEncoder().encode(JSON.stringify(manifest));
   try {
-    const envelope = await f.keyring.encryptPrivateRecord({
-      domain: core.PRIVATE_VAULT_DOMAIN,
-      recordId: RECORD_ID,
-      plaintext,
+    const shard = await f.keyring.encryptPrivateRecord({
+      domain: 'org.syscoin.pali.privacy.notes.shard.v2',
+      recordId: INTENT_ID,
+      plaintext: shardPlain,
     });
-    f.records[core.PRIVATE_VAULT_STORAGE_PREFIX + envelope.profileId] =
-      envelope;
+    const rootPlain = new TextEncoder().encode(
+      JSON.stringify({
+        format: core.PRIVATE_VAULT_FORMAT,
+        version: 1,
+        capacity: 128,
+        noteCount: 1,
+        shards: [
+          {
+            recordId: shard.recordId,
+            count: 1,
+            hash: keccak256(
+              toUtf8Bytes(
+                JSON.stringify([
+                  shard.version,
+                  shard.domain,
+                  shard.recordId,
+                  shard.profileId,
+                  shard.nonce,
+                  shard.ciphertext,
+                ])
+              )
+            ),
+          },
+        ],
+      })
+    );
+    try {
+      const envelope = await f.keyring.encryptPrivateRecord({
+        domain: core.PRIVATE_VAULT_DOMAIN,
+        recordId: RECORD_ID,
+        plaintext: rootPlain,
+      });
+      f.records[core.PRIVATE_VAULT_STORAGE_PREFIX + envelope.profileId] = {
+        format: core.PRIVATE_VAULT_FORMAT,
+        version: 1,
+        root: envelope,
+        shards: [shard],
+      };
+    } finally {
+      rootPlain.fill(0);
+    }
   } finally {
-    plaintext.fill(0);
+    shardPlain.fill(0);
   }
   const before = structuredClone(f.records);
   f.host.prepareCompletionProof = jest.fn(async () => {

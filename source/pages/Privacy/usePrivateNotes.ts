@@ -66,6 +66,7 @@ export function usePrivateNotes() {
   const [notes, setNotes] = useState<IPrivateNoteView[]>([]);
   const [loading, setLoading] = useState(true);
   const [unavailable, setUnavailable] = useState(false);
+  const [unsupportedFormat, setUnsupportedFormat] = useState(false);
   const owner = useRef({ active: false, pending: false, request: 0 });
   const isActive = useCallback(
     () => owner.current.active && document.visibilityState !== 'hidden',
@@ -95,9 +96,15 @@ export function usePrivateNotes() {
         }
         setNotes(next);
         setUnavailable(false);
-      } catch {
-        if (isActive() && owner.current.request === request)
+        setUnsupportedFormat(false);
+      } catch (error) {
+        if (isActive() && owner.current.request === request) {
           setUnavailable(true);
+          setUnsupportedFormat(
+            error instanceof Error &&
+              error.message === 'privacy_vault_unsupported_format'
+          );
+        }
       } finally {
         if (isActive() && owner.current.request === request) {
           owner.current.pending = false;
@@ -135,6 +142,7 @@ export function usePrivateNotes() {
         owner.current.pending = false;
         setLoading(false);
         setUnavailable(false);
+        setUnsupportedFormat(false);
         setNotes((current) => [
           note,
           ...current.filter(({ id }) => id !== note.id),
@@ -165,5 +173,6 @@ export function usePrivateNotes() {
     remember,
     forget,
     unavailable,
+    unsupportedFormat,
   };
 }

@@ -35,8 +35,10 @@ import type {
 
 export const PRIVATE_VAULT_STORAGE_PREFIX = 'state-private-vault-v1:';
 export const PRIVATE_VAULT_DOMAIN = 'org.syscoin.pali.privacy.notes.v1';
-const MAX_NOTES = 128; // Legacy v1/v2 bound.
-const MAX_V3_NOTES = 512;
+export const PRIVATE_VAULT_FORMAT = 'pali-private-note-vault';
+const PRIVATE_VAULT_VERSION = 1;
+const DEFAULT_CAPACITY = 128;
+const MAX_NOTES = 512;
 const capacityValid = (value: unknown): value is PrivateVaultCapacity =>
   value === 128 || value === 256 || value === 512;
 const capacityBudget = (capacity: PrivateVaultCapacity): number =>
@@ -44,7 +46,6 @@ const capacityBudget = (capacity: PrivateVaultCapacity): number =>
 const MAX_PLAINTEXT_BYTES = 64 * 1024;
 const MAX_SHARD_BYTES = 32 * 1024;
 const MAX_SHARD_NOTES = 16;
-const MAX_BUNDLE_BYTES = 4 * 1024 * 1024;
 const PRIVATE_VAULT_SHARD_DOMAIN = 'org.syscoin.pali.privacy.notes.shard.v2';
 const PROFILE = /^0x[0-9a-f]{64}$/;
 const UUID =
@@ -64,6 +65,7 @@ const PUBLIC_ERRORS = new Set([
   'privacy_note_missing',
   'privacy_note_not_found',
   'privacy_vault_corrupt',
+  'privacy_vault_unsupported_format',
   'privacy_vault_locked',
   'privacy_vault_session_changed',
   'privacy_vault_unavailable',
@@ -211,12 +213,10 @@ interface IManifest {
   version: 1;
 }
 interface IContext {
-  chunked?: boolean;
-  capacity?: PrivateVaultCapacity;
-  capacityFormat?: boolean;
-  storedBytes?: number;
+  capacity: PrivateVaultCapacity;
   profileId: string;
   session: IPrivateVaultSession;
+  storedBytes: number;
 }
 
 interface IShardReference {
@@ -225,9 +225,10 @@ interface IShardReference {
   recordId: string;
 }
 interface IVaultBundle {
+  format: typeof PRIVATE_VAULT_FORMAT;
   root: IEncryptedPrivateRecord;
   shards: IEncryptedPrivateRecord[];
-  version: 2 | 3;
+  version: typeof PRIVATE_VAULT_VERSION;
 }
 
 const envelopeHash = (value: IEncryptedPrivateRecord): string =>
@@ -821,7 +822,7 @@ export function createPrivateVaultController(
       !PROFILE.test(profileId)
     )
       throw new Error('privacy_vault_unavailable');
-    return { session, profileId };
+    return { session, profileId, capacity: DEFAULT_CAPACITY, storedBytes: 0 };
   };
 
   const assertProfile = async (context: IContext) => {
@@ -906,7 +907,7 @@ export function createPrivateVaultController(
       context,
       storage.getItem(PRIVATE_VAULT_STORAGE_PREFIX + context.profileId)
     );
-    context.capacity = 128;
+    context.capacity = DEFAULT_CAPACITY;
     context.storedBytes = 0;
     if (stored === null || stored === undefined)
       return { manifest: { version: 1, notes: [] } };
@@ -914,122 +915,105 @@ export function createPrivateVaultController(
       const serialized = new TextEncoder().encode(JSON.stringify(stored));
       context.storedBytes = serialized.length;
       serialized.fill(0);
-      let data: IManifest;
-      let recordId: string;
-      context.capacityFormat = stored.version === 3;
-      context.chunked = stored.version === 2 || context.capacityFormat;
-      if (context.chunked) {
-        const bundle = stored as IVaultBundle;
-        if (
-          !bundle ||
-          typeof bundle !== 'object' ||
-          Array.isArray(bundle) ||
-          Object.keys(bundle).length !== 3 ||
-          !Array.isArray(bundle.shards) ||
-          bundle.shards.length < 1 ||
-          bundle.shards.length >
-            (context.capacityFormat ? MAX_V3_NOTES : MAX_NOTES)
-        )
-          throw new Error('privacy_vault_corrupt');
-        checkEnvelope(
-          context,
-          bundle.root,
-          PRIVATE_VAULT_DOMAIN,
-          MAX_PLAINTEXT_BYTES
-        );
-        for (const shard of bundle.shards)
-          checkEnvelope(
-            context,
-            shard,
-            PRIVATE_VAULT_SHARD_DOMAIN,
-            MAX_SHARD_BYTES
-          );
-        if (
-          new TextEncoder().encode(JSON.stringify(bundle)).length >
-          (context.capacityFormat ? capacityBudget(512) : MAX_BUNDLE_BYTES)
-        )
-          throw new Error('privacy_vault_corrupt');
-        const root = await decrypt(
-          context,
-          bundle.root,
-          PRIVATE_VAULT_DOMAIN,
-          MAX_PLAINTEXT_BYTES
-        );
-        if (
-          !root ||
-          root.version !== bundle.version ||
-          Object.keys(root).length !== (context.capacityFormat ? 4 : 3) ||
-          (context.capacityFormat && !capacityValid(root.capacity)) ||
-          !Number.isInteger(root.noteCount) ||
-          root.noteCount < 0 ||
-          root.noteCount >
-            (context.capacityFormat ? root.capacity : MAX_NOTES) ||
-          !Array.isArray(root.shards) ||
-          root.shards.length !== bundle.shards.length
-        )
-          throw new Error('privacy_vault_corrupt');
-        if (context.capacityFormat) {
-          context.capacity = root.capacity;
-          if (
-            new TextEncoder().encode(JSON.stringify(bundle)).length >
-            capacityBudget(root.capacity)
-          )
-            throw new Error('privacy_vault_corrupt');
-        }
-        const recordIds = new Set([bundle.root.recordId]);
-        const notes: IStoredNote[] = [];
-        for (const [index, envelope] of bundle.shards.entries()) {
-          const reference: IShardReference = root.shards[index];
-          if (
-            !reference ||
-            Object.keys(reference).length !== 3 ||
-            reference.recordId !== envelope.recordId ||
-            recordIds.has(reference.recordId) ||
-            !Number.isInteger(reference.count) ||
-            reference.count < 0 ||
-            reference.count > MAX_SHARD_NOTES ||
-            reference.hash !== envelopeHash(envelope)
-          )
-            throw new Error('privacy_vault_corrupt');
-          recordIds.add(reference.recordId);
-          const shard = await decrypt(
-            context,
-            envelope,
-            PRIVATE_VAULT_SHARD_DOMAIN,
-            MAX_SHARD_BYTES
-          );
-          if (
-            !shard ||
-            shard.version !== 1 ||
-            Object.keys(shard).length !== 2 ||
-            !Array.isArray(shard.notes) ||
-            shard.notes.length !== reference.count
-          )
-            throw new Error('privacy_vault_corrupt');
-          notes.push(...shard.notes);
-          if (notes.length > (context.capacity || MAX_NOTES))
-            throw new Error('privacy_vault_corrupt');
-        }
-        if (notes.length !== root.noteCount)
-          throw new Error('privacy_vault_corrupt');
-        data = { version: 1, notes };
-        recordId = bundle.root.recordId;
-      } else {
-        data = await decrypt(
-          context,
-          stored,
-          PRIVATE_VAULT_DOMAIN,
-          MAX_PLAINTEXT_BYTES
-        );
-        recordId = stored.recordId;
-      }
+      if (!stored || typeof stored !== 'object' || Array.isArray(stored))
+        throw new Error('privacy_vault_corrupt');
+      // Pre-release layouts are deliberately not inferred or migrated. A
+      // distinct discriminator prevents an old version 1 envelope from being
+      // mistaken for the canonical first-release bundle.
       if (
-        !data ||
-        data.version !== 1 ||
-        !Array.isArray(data.notes) ||
-        data.notes.length > (context.capacity || MAX_NOTES)
+        stored.format !== PRIVATE_VAULT_FORMAT ||
+        stored.version !== PRIVATE_VAULT_VERSION
+      )
+        throw new Error('privacy_vault_unsupported_format');
+      const bundle = stored as IVaultBundle;
+      if (
+        Object.keys(bundle).length !== 4 ||
+        !Array.isArray(bundle.shards) ||
+        bundle.shards.length < 1 ||
+        bundle.shards.length > MAX_NOTES
       )
         throw new Error('privacy_vault_corrupt');
+      checkEnvelope(
+        context,
+        bundle.root,
+        PRIVATE_VAULT_DOMAIN,
+        MAX_PLAINTEXT_BYTES
+      );
+      for (const shard of bundle.shards)
+        checkEnvelope(
+          context,
+          shard,
+          PRIVATE_VAULT_SHARD_DOMAIN,
+          MAX_SHARD_BYTES
+        );
+      if (context.storedBytes > capacityBudget(512))
+        throw new Error('privacy_vault_corrupt');
+      const root = await decrypt(
+        context,
+        bundle.root,
+        PRIVATE_VAULT_DOMAIN,
+        MAX_PLAINTEXT_BYTES
+      );
+      if (
+        !root ||
+        typeof root !== 'object' ||
+        Array.isArray(root) ||
+        root.format !== PRIVATE_VAULT_FORMAT ||
+        root.version !== PRIVATE_VAULT_VERSION ||
+        Object.keys(root).length !== 5 ||
+        !capacityValid(root.capacity) ||
+        !Number.isInteger(root.noteCount) ||
+        root.noteCount < 0 ||
+        root.noteCount > root.capacity ||
+        !Array.isArray(root.shards) ||
+        root.shards.length !== bundle.shards.length ||
+        root.shards.length > Math.max(1, root.noteCount) ||
+        context.storedBytes > capacityBudget(root.capacity)
+      )
+        throw new Error('privacy_vault_corrupt');
+      context.capacity = root.capacity;
+      const recordIds = new Set([bundle.root.recordId]);
+      const storedNotes: IStoredNote[] = [];
+      for (const [index, envelope] of bundle.shards.entries()) {
+        const reference: IShardReference = root.shards[index];
+        if (
+          !reference ||
+          typeof reference !== 'object' ||
+          Array.isArray(reference) ||
+          Object.keys(reference).length !== 3 ||
+          reference.recordId !== envelope.recordId ||
+          recordIds.has(reference.recordId) ||
+          !Number.isInteger(reference.count) ||
+          reference.count < (root.noteCount === 0 ? 0 : 1) ||
+          reference.count > MAX_SHARD_NOTES ||
+          reference.hash !== envelopeHash(envelope)
+        )
+          throw new Error('privacy_vault_corrupt');
+        recordIds.add(reference.recordId);
+        const shard = await decrypt(
+          context,
+          envelope,
+          PRIVATE_VAULT_SHARD_DOMAIN,
+          MAX_SHARD_BYTES
+        );
+        if (
+          !shard ||
+          typeof shard !== 'object' ||
+          Array.isArray(shard) ||
+          shard.version !== 1 ||
+          Object.keys(shard).length !== 2 ||
+          !Array.isArray(shard.notes) ||
+          shard.notes.length !== reference.count
+        )
+          throw new Error('privacy_vault_corrupt');
+        storedNotes.push(...shard.notes);
+        if (storedNotes.length > context.capacity)
+          throw new Error('privacy_vault_corrupt');
+      }
+      if (storedNotes.length !== root.noteCount)
+        throw new Error('privacy_vault_corrupt');
+      const data: IManifest = { version: 1, notes: storedNotes };
+      const recordId = bundle.root.recordId;
       const ids = new Set<string>();
       const commitments = new Set<string>();
       const notes = data.notes.map((entry: IStoredNote) => {
@@ -1076,6 +1060,7 @@ export function createPrivateVaultController(
         [
           'privacy_vault_session_changed',
           'privacy_vault_unavailable',
+          'privacy_vault_unsupported_format',
           'Private record session changed',
         ].includes(error.message)
       )
@@ -1173,89 +1158,70 @@ export function createPrivateVaultController(
     recordId?: string,
     beforeWrite?: () => Promise<void>
   ) => {
-    if (notes.length > (context.capacity || MAX_NOTES))
-      throw new Error('privacy_note_limit');
-    const manifest = { version: 1, notes };
-    const plain = new TextEncoder().encode(JSON.stringify(manifest));
-    const fitsSingle = plain.length <= MAX_PLAINTEXT_BYTES;
-    plain.fill(0);
-    let stored: IEncryptedPrivateRecord | IVaultBundle;
-    if (!context.chunked && fitsSingle) {
-      stored = await encrypt(
-        context,
-        PRIVATE_VAULT_DOMAIN,
-        recordId || nextId(),
-        manifest,
-        MAX_PLAINTEXT_BYTES
+    if (notes.length > context.capacity) throw new Error('privacy_note_limit');
+    // Every saved inventory uses one authenticated root and bounded shards,
+    // including empty and small inventories. No alternate writer or migration.
+    const groups: IStoredNote[][] = [];
+    let current: IStoredNote[] = [];
+    for (const note of notes) {
+      const candidate = [...current, note];
+      const encoded = new TextEncoder().encode(
+        JSON.stringify({ version: 1, notes: candidate })
       );
-    } else {
-      // Keep the single atomic profile write while bounding each SDK record.
-      // The encrypted root authenticates every ordered shard; none can be
-      // omitted, swapped or copied from a previous update independently.
-      const groups: IStoredNote[][] = [];
-      let current: IStoredNote[] = [];
-      for (const note of notes) {
-        const candidate = [...current, note];
-        const encoded = new TextEncoder().encode(
-          JSON.stringify({ version: 1, notes: candidate })
-        );
-        const fits = encoded.length <= MAX_SHARD_BYTES;
-        encoded.fill(0);
-        if (current.length && (!fits || candidate.length > MAX_SHARD_NOTES)) {
-          groups.push(current);
-          current = [note];
-        } else current = candidate;
-      }
-      if (current.length || !groups.length) groups.push(current);
-      const shards: IEncryptedPrivateRecord[] = [];
-      const references: IShardReference[] = [];
-      const rootId = recordId || nextId();
-      const ids = new Set([rootId]);
-      for (const group of groups) {
-        const shardId = nextId();
-        if (ids.has(shardId)) throw new Error('privacy_vault_unavailable');
-        ids.add(shardId);
-        const shard = await encrypt(
-          context,
-          PRIVATE_VAULT_SHARD_DOMAIN,
-          shardId,
-          { version: 1, notes: group },
-          MAX_SHARD_BYTES
-        );
-        shards.push(shard);
-        references.push({
-          recordId: shardId,
-          hash: envelopeHash(shard),
-          count: group.length,
-        });
-      }
-      const root = await encrypt(
-        context,
-        PRIVATE_VAULT_DOMAIN,
-        rootId,
-        context.capacityFormat
-          ? {
-              version: 3,
-              noteCount: notes.length,
-              capacity: context.capacity!,
-              shards: references,
-            }
-          : { version: 2, noteCount: notes.length, shards: references },
-        MAX_PLAINTEXT_BYTES
-      );
-      stored = { version: context.capacityFormat ? 3 : 2, root, shards };
-      const encoded = new TextEncoder().encode(JSON.stringify(stored));
-      const fits =
-        encoded.length <=
-        (context.capacityFormat
-          ? capacityBudget(context.capacity!)
-          : MAX_BUNDLE_BYTES);
+      const fits = encoded.length <= MAX_SHARD_BYTES;
       encoded.fill(0);
-      if (!fits) throw new Error('privacy_note_limit');
+      if (current.length && (!fits || candidate.length > MAX_SHARD_NOTES)) {
+        groups.push(current);
+        current = [note];
+      } else current = candidate;
     }
+    if (current.length || !groups.length) groups.push(current);
+    const shards: IEncryptedPrivateRecord[] = [];
+    const references: IShardReference[] = [];
+    const rootId = recordId || nextId();
+    const ids = new Set([rootId]);
+    for (const group of groups) {
+      const shardId = nextId();
+      if (ids.has(shardId)) throw new Error('privacy_vault_unavailable');
+      ids.add(shardId);
+      const shard = await encrypt(
+        context,
+        PRIVATE_VAULT_SHARD_DOMAIN,
+        shardId,
+        { version: 1, notes: group },
+        MAX_SHARD_BYTES
+      );
+      shards.push(shard);
+      references.push({
+        recordId: shardId,
+        hash: envelopeHash(shard),
+        count: group.length,
+      });
+    }
+    const root = await encrypt(
+      context,
+      PRIVATE_VAULT_DOMAIN,
+      rootId,
+      {
+        format: PRIVATE_VAULT_FORMAT,
+        version: PRIVATE_VAULT_VERSION,
+        noteCount: notes.length,
+        capacity: context.capacity,
+        shards: references,
+      },
+      MAX_PLAINTEXT_BYTES
+    );
+    const stored: IVaultBundle = {
+      format: PRIVATE_VAULT_FORMAT,
+      version: PRIVATE_VAULT_VERSION,
+      root,
+      shards,
+    };
     const serialized = new TextEncoder().encode(JSON.stringify(stored));
     context.storedBytes = serialized.length;
     serialized.fill(0);
+    if (context.storedBytes > capacityBudget(context.capacity))
+      throw new Error('privacy_note_limit');
     await assertProfile(context);
     if (beforeWrite) await beforeWrite();
     context.session.assertCurrent();
@@ -1273,7 +1239,7 @@ export function createPrivateVaultController(
     context.session.assertCurrent();
     getPrivacyPool(poolId);
     const { manifest, recordId } = await load(context);
-    if (manifest.notes.length >= (context.capacity || MAX_NOTES))
+    if (manifest.notes.length >= context.capacity)
       throw new Error('privacy_note_limit');
     const raw = generate(poolId);
     const identity = identify(raw);
@@ -1886,7 +1852,7 @@ export function createPrivateVaultController(
           context.session.assertCurrent();
           const { manifest } = await load(context);
           await assertProfile(context);
-          const capacity = context.capacity || 128;
+          const capacity = context.capacity;
           return {
             capacity,
             noteCount: manifest.notes.length,
@@ -1910,8 +1876,6 @@ export function createPrivateVaultController(
             throw new Error('privacy_note_limit');
           if (context.capacity !== capacity) {
             context.capacity = capacity;
-            context.capacityFormat = true;
-            context.chunked = true;
             await persist(context, manifest.notes, recordId);
           }
           await assertProfile(context);
@@ -1950,7 +1914,7 @@ export function createPrivateVaultController(
             await assertProfile(context);
             return view(existing, identity, status);
           }
-          if (manifest.notes.length >= (context.capacity || MAX_NOTES))
+          if (manifest.notes.length >= context.capacity)
             throw new Error('privacy_note_limit');
           const note: IStoredNote = {
             id: nextId(),

@@ -34,7 +34,7 @@ The Privacy service supplies public pool data and the relayer directory; the sel
 
 Pali can use its default Privacy service or your own Sysnode service. To run your own service, see the [Sysnode standalone guide](https://github.com/syscoin/sysnode-backend/blob/main/docs/privacy-standalone.md).
 
-The default limit is 128 saved notes (up to 4 MiB). In **Note capacity**, you can choose 256 (up to 8 MiB) or 512 (up to 16 MiB); higher limits can use more local storage and slow vault operations. Changing the limit removes no notes, but older wallet versions may not read the updated vault format.
+The default limit is 128 saved notes (up to 4 MiB). In **Note capacity**, you can choose 256 (up to 8 MiB) or 512 (up to 16 MiB); higher limits can use more local storage and slow vault operations. The limit changes only how many notes can be saved. Storage grows with saved data; no space is reserved in advance, and no notes are removed.
 
 Use **Clear completed notes** to verify and remove completed notes. A known withdrawal must be finalized, as must any recorded related deposit; unverified notes remain saved. The selected Ethereum RPC receives the withdrawal transaction hash and, if present, the related deposit transaction hash, so its provider can link them. The check relies on that RPC's responses.
 

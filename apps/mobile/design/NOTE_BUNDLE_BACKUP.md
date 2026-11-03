@@ -148,7 +148,7 @@ Persist an import receipt and minimal encrypted journal needed to distinguish co
 
 The release must pass these with synthetic notes on each supported host before real funds are used:
 
-- Export with no notes, every supported pool, mixed prepared/funded/spent/unknown records, all profile groups, every supported source storage version, and maximum supported inventory. Counts match the frozen inventory; no filtered-out note disappears.
+- Export with no notes, every supported pool, mixed prepared/funded/spent/unknown records, all profile groups, the canonical internal note format (and any explicitly supported future versions), and maximum supported inventory. Counts match the frozen inventory; no filtered-out note disappears.
 - Locked/corrupt/unavailable profile during inventory; a whole export fails explicitly instead of silently excluding it. Concurrent note creation/change forces a new snapshot/coverage result.
 - Fresh authorization rejection, password mismatch, weak/oversized password and Unicode edge cases. No fallback to wallet/device key or plaintext output; no secrets appear in UI snapshots, logs or errors.
 - Identical exports yield different salt/nonce/ciphertext. Cross-host vectors prove exact password bytes, header authentication, KDF profile, encoding and tag handling.

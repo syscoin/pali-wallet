@@ -291,6 +291,8 @@ it.each([
       records[key] = structuredClone(value);
     }),
   };
+  // The note identity stays fixed; encrypted root/shards need distinct UUIDs.
+  let recordSequence = 100;
   const vault = createPrivateVaultController(
     {
       captureSession: () => run.wallet.capturePrivateVaultSession(),
@@ -301,7 +303,12 @@ it.each([
       storage,
       mutex: new AsyncMutex(),
       now: () => 1000,
-      randomId: () => NOTE_ID,
+      randomId: () =>
+        recordSequence++ === 100
+          ? NOTE_ID
+          : `00000000-0000-4000-8000-${recordSequence
+              .toString(16)
+              .padStart(12, '0')}`,
     }
   );
   run.wallet.getPrivateVaultController.mockResolvedValue(vault);

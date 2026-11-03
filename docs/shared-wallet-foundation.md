@@ -30,7 +30,15 @@ The runtime also needs standards-compatible UTF-8 encoding/decoding and the engi
 
 ## Compatibility and authority boundaries
 
-The persisted schema, encryption domains, profile binding, storage keys, note capacities, public error strings, status rules and write ordering are unchanged. Existing v1/v2/v3 records continue through the same validation and migration paths. A different host does not gain the ability to decrypt a profile's records merely by reading its storage.
+The encryption domains, profile binding, storage keys, note capacities, status rules and write ordering are unchanged. Pre-release note layouts have been consolidated into one explicitly identified first-release format; this is an intentional compatibility break for development data, not a migration. A different host does not gain the ability to decrypt a profile's records merely by reading its storage.
+
+### Canonical note format
+
+Every persisted inventory, including an empty one, has an outer `{ format: "pali-private-note-vault", version: 1, root, shards }` record. The authenticated root repeats the format and version and contains `capacity`, `noteCount` and the ordered shard references. Each reference binds the shard's record UUID, envelope hash and note count. Shard plaintext remains `{ version: 1, notes }`. The outer record, root and shards are committed as one complete storage write.
+
+The default capacity is 128; users may explicitly choose 256 or 512. There is no up-front storage reservation. Shard plaintext remains bounded at 32 KiB, root plaintext at 64 KiB, and the complete serialized bundle at 4/8/16 MiB according to capacity. Reducing capacity below the retained note count fails without a write.
+
+Only a missing record (`null` or `undefined`) means an empty, not-yet-persisted vault. Bare pre-release version 1/2/3 records, unknown discriminators and unknown versions are rejected without mutation. The UI explains that unsupported development data must be opened in its matching development build and backed up. No automatic conversion, reset, deletion or overwrite is performed. Malformed canonical ciphertext remains a corruption/unavailability error; its contents never enter a public error.
 
 Raw-note and deposit/withdrawal capabilities remain inside the trusted wallet authority. Do not expose the engine, its host object or its full return value through an arbitrary UI/controller bridge. Continue projecting only the existing allowlisted public methods and DTOs. Extracting a module does not authorize extra message methods or alter password requirements.
 
