@@ -308,12 +308,16 @@ async function android() {
   ]);
   if (!badging.startsWith(`package: name='${PACKAGE}'`))
     throw Error('Refusing a production app identifier');
-  const nativeLibraries = run(path.join(sdk, 'build-tools', tools, 'aapt'), [
+  const apkEntries = run(path.join(sdk, 'build-tools', tools, 'aapt'), [
     'list',
     artifact,
-  ])
-    .split('\n')
-    .filter((file) => /^lib\/.*\.so$/.test(file));
+  ]).split('\n');
+  const nativeLibraries = apkEntries.filter((file) => /^lib\/.*\.so$/.test(file));
+  fs.writeFileSync(path.join(output, 'android-apk-startup.json'), JSON.stringify({
+    packageMatches: true,
+    mainActivityMatches: badging.includes(`launchable-activity: name='${PACKAGE}.MainActivity'`),
+    mainBundlePresent: apkEntries.includes('assets/index.android.bundle'),
+  }, null, 2));
   for (const abi of ['arm64-v8a', 'x86_64']) {
     for (const library of [
       'libQuickCrypto.so',

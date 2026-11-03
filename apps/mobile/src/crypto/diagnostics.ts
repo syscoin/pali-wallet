@@ -76,6 +76,10 @@ export type CryptoInstallDiagnostic = Readonly<{
 }>;
 export type CryptoLoadDiagnostic = Readonly<{
   error: CryptoInstallDiagnostic['error'];
+  stage: 'guard-setup' | 'module-load' | 'handler-restore';
+  messageReadable: boolean;
+  stackReadable: boolean;
+  locations: readonly Readonly<{ bundle: 'ios' | 'android'; kind: 'bytecode' | 'source'; line: number; column: number }>[];
   markers: Readonly<{ quickCrypto: boolean; nitroModules: boolean; nativeHybrid: boolean; quickBase64: boolean; turboModule: boolean }>;
 }>;
 export type CryptoDiagnostic = Readonly<{ bootstrap: CryptoBootstrapStep; fullCase?: CryptoFullCase; install?: CryptoInstallDiagnostic; load?: CryptoLoadDiagnostic }>;
@@ -98,8 +102,15 @@ function isCryptoInstallDiagnostic(value: unknown): value is CryptoInstallDiagno
 function isCryptoLoadDiagnostic(value: unknown): value is CryptoLoadDiagnostic {
   if (!isRecord(value) || !isRecord(value.markers)) return false;
   const fields = ['quickCrypto', 'nitroModules', 'nativeHybrid', 'quickBase64', 'turboModule'];
-  return Object.keys(value).length === 2 && Object.keys(value).every((key) => key === 'error' || key === 'markers') &&
+  return Object.keys(value).length === 6 && Object.keys(value).every((key) => ['error', 'stage', 'messageReadable', 'stackReadable', 'locations', 'markers'].includes(key)) &&
     CRYPTO_INSTALL_ERROR_KINDS.includes(value.error as CryptoLoadDiagnostic['error']) &&
+    ['guard-setup', 'module-load', 'handler-restore'].includes(value.stage as string) &&
+    typeof value.messageReadable === 'boolean' && typeof value.stackReadable === 'boolean' &&
+    Array.isArray(value.locations) && value.locations.length <= 8 && value.locations.every((location: unknown) =>
+      isRecord(location) && Object.keys(location).length === 4 && Object.keys(location).every((key) => ['bundle', 'kind', 'line', 'column'].includes(key)) &&
+      ['ios', 'android'].includes(location.bundle as string) && ['bytecode', 'source'].includes(location.kind as string) &&
+      Number.isSafeInteger(location.line) && (location.line as number) >= 1 && (location.line as number) <= 100000000 &&
+      Number.isSafeInteger(location.column) && (location.column as number) >= 0 && (location.column as number) <= 2147483647) &&
     Object.keys(value.markers).length === fields.length &&
     fields.every((key) => typeof (value.markers as Record<string, unknown>)[key] === 'boolean');
 }

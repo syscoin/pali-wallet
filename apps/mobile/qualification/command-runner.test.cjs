@@ -123,8 +123,8 @@ for (const diagnosticsAvailable of [true, false]) test(`Android cleanup preserve
   const spawn = (command, args, options) => {
     calls.push({ command, args, options });
     const ok = (stdout) => ({ status: 0, stdout });
-    if (command.endsWith('/aapt') && args[0] === 'dump') return ok("package: name='com.paliwallet.qualification'");
-    if (command.endsWith('/aapt')) return ok(['arm64-v8a', 'x86_64'].flatMap((abi) => ['libQuickCrypto.so', 'libNitroModules.so', 'libexpo-sqlite.so'].map((file) => `lib/${abi}/${file}`)).join('\n'));
+    if (command.endsWith('/aapt') && args[0] === 'dump') return ok("package: name='com.paliwallet.qualification'\nlaunchable-activity: name='com.paliwallet.qualification.MainActivity'");
+    if (command.endsWith('/aapt')) return ok([...['arm64-v8a', 'x86_64'].flatMap((abi) => ['libQuickCrypto.so', 'libNitroModules.so', 'libexpo-sqlite.so'].map((file) => `lib/${abi}/${file}`)), 'assets/index.android.bundle'].join('\n'));
     if (args.includes('screencap')) return ok(Buffer.from('public PNG fixture'));
     if (args.includes('cat')) {
       if (args.some((value) => value.endsWith('pali-native-qualification-startup.json'))) return { status: 1, stderr: 'not present' };
@@ -162,7 +162,9 @@ for (const diagnosticsAvailable of [true, false]) test(`Android cleanup preserve
   assert.deepEqual(Array.from(logcat.args), ['logcat', '-b', 'main', '-b', 'system', '-b', 'crash', '-d', '-t', '300', '-v', 'brief', '*:E']);
   assert(calls.some((call) => JSON.stringify(call.args) === JSON.stringify(['shell', 'dumpsys', 'activity', 'exit-info', 'com.paliwallet.qualification'])));
   const runtime = writes.find((write) => write.file.endsWith('/android-import-runtime-diagnostics.json'));
-  assert.deepEqual(JSON.parse(runtime.data), { processRunning: false, logcatAvailable: diagnosticsAvailable, exitInfoAvailable: diagnosticsAvailable, codes: diagnosticsAvailable ? ['SIGABRT'] : [], modules: [], libraries: diagnosticsAvailable ? ['libhermes.so'] : [], exitReasons: diagnosticsAvailable ? ['CRASH_NATIVE'] : [] });
+  assert.deepEqual(JSON.parse(runtime.data), { processRunning: false, logcatAvailable: diagnosticsAvailable, exitInfoAvailable: diagnosticsAvailable, codes: diagnosticsAvailable ? ['SIGABRT'] : [], modules: [], libraries: diagnosticsAvailable ? ['libhermes.so'] : [], exceptions: [], causes: [], frames: [], exitReasons: diagnosticsAvailable ? ['CRASH_NATIVE'] : [] });
+  const apk = writes.find((write) => write.file.endsWith('/android-apk-startup.json'));
+  assert.deepEqual(JSON.parse(apk.data), { packageMatches: true, mainActivityMatches: true, mainBundlePresent: true });
   assert(!runtime.data.includes('synthetic_secret_token_42'));
   assert(screenshotWriteFailed);
   const artifact = writes.find((write) => write.file.endsWith('/android-failure.json'));

@@ -8,7 +8,8 @@ test('Android runtime evidence retains only fixed code/module/library identifier
   assert(result.codes.includes('UnsatisfiedLinkError'));
   assert(result.modules.includes('PaliWalletCrypto'));
   assert(result.libraries.includes('libQuickCrypto.so'));
-  assert.deepEqual(Object.keys(result).sort(), ['codes', 'libraries', 'modules']);
+  assert.deepEqual(Object.keys(result).sort(), ['causes', 'codes', 'exceptions', 'frames', 'libraries', 'modules']);
+  assert.deepEqual(result.exceptions, ['java.lang.UnsatisfiedLinkError']);
   assert(!JSON.stringify(result).includes('com.example.NativeBridge.install'));
   assert(!JSON.stringify(result).includes('secret-'));
   assert(JSON.stringify(summarizeAndroidLog('x'.repeat(200000))).length < 1000);
@@ -20,6 +21,7 @@ test('Android runtime evidence discards identifier-shaped secrets embedded in me
     codes: ['ReferenceError'],
     modules: [],
     libraries: [],
+    exceptions: [], causes: [], frames: [],
   });
 });
 
@@ -27,8 +29,22 @@ test('Java crash classification retains fixed common exceptions from arbitrary e
   const log = 'E/UnknownTag: java.lang.IllegalStateException java.lang.NullPointerException RuntimeException NoSuchMethodError NoSuchFieldError VerifyError ClassCastException ExceptionInInitializerError StackOverflowError OutOfMemoryError synthetic_secret_token_42';
   assert.deepEqual(summarizeAndroidLog(log), {
     codes: ['IllegalStateException', 'NullPointerException', 'RuntimeException', 'NoSuchMethodError', 'NoSuchFieldError', 'VerifyError', 'ClassCastException', 'ExceptionInInitializerError', 'StackOverflowError', 'OutOfMemoryError'],
-    modules: [], libraries: [],
+    modules: [], libraries: [], exceptions: [], causes: [], frames: [],
   });
+});
+
+test('Android crash details retain only exact allowlisted exception, cause and frame identifiers', () => {
+  const log = `E/AndroidRuntime( 1234): java.lang.RuntimeException: synthetic_secret_token_42
+E/AndroidRuntime( 1234):   at android.app.ActivityThread.handleBindApplication(ActivityThread.java:7890)
+E/AndroidRuntime( 1234): Caused by: java.lang.ClassNotFoundException: synthetic_secret_token_42
+E/AndroidRuntime( 1234):   at com.paliwallet.qualification.MainApplication.onCreate(MainApplication.kt:29)
+E/AndroidRuntime( 1234):   at com.facebook.react.synthetic_secret_token_42(secret.java:1)
+E/AndroidRuntime( 1234): Caused by: com.private.synthetic_secret_token_42: secret`;
+  const result = summarizeAndroidLog(log);
+  assert.deepEqual(result.exceptions, ['java.lang.RuntimeException']);
+  assert.deepEqual(result.causes, ['java.lang.ClassNotFoundException']);
+  assert.deepEqual(result.frames, ['android.app.ActivityThread.handleBindApplication', 'com.paliwallet.qualification.MainApplication.onCreate']);
+  assert(!JSON.stringify(result).includes('synthetic_secret_token_42'));
 });
 
 test('Android exit history maps only the dedicated process reason codes to fixed labels', () => {

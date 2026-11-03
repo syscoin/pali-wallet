@@ -55,11 +55,17 @@ jobs:
       - run: npx --no-install expo prebuild --platform ios --no-install
       - run: pod install --project-directory=ios
       - name: Build real iOS simulator binary
-        run: >-
-          xcodebuild -workspace ios/PaliQualification.xcworkspace
-          -scheme PaliQualification -configuration Release -sdk iphonesimulator
-          -derivedDataPath "$RUNNER_TEMP/pali-native-ios-build"
-          CODE_SIGNING_ALLOWED=NO build
+        env:
+          SOURCEMAP_FILE: ${{ runner.temp }}/pali-native-ios/ios-main.jsbundle.map
+        run: |
+          mkdir -p "$RUNNER_TEMP/pali-native-ios"
+          xcodebuild -workspace ios/PaliQualification.xcworkspace \
+            -scheme PaliQualification -configuration Release -sdk iphonesimulator \
+            -derivedDataPath "$RUNNER_TEMP/pali-native-ios-build" \
+            CODE_SIGNING_ALLOWED=NO build
+          node qualification/source-map-evidence.cjs preserve ios \
+            "$RUNNER_TEMP/pali-native-ios-build/Build/Products/Release-iphonesimulator/PaliQualification.app/main.jsbundle" \
+            "$SOURCEMAP_FILE" "$RUNNER_TEMP/pali-native-ios"
       - name: Exercise native bridge and two-process persistence
         env:
           QUALIFICATION_ARTIFACTS: ${{ runner.temp }}/pali-native-ios
@@ -119,7 +125,12 @@ jobs:
       - run: node scripts/configure-native-qualification.cjs
       - run: npx --no-install expo prebuild --platform android --no-install
       - name: Build real Android binary
-        run: cd android && ./gradlew :app:assembleRelease --no-daemon --max-workers 2 -PreactNativeArchitectures=arm64-v8a,x86_64
+        run: |
+          (cd android && ./gradlew :app:assembleRelease --no-daemon --max-workers 2 -PreactNativeArchitectures=arm64-v8a,x86_64)
+          node qualification/source-map-evidence.cjs preserve android \
+            android/app/build/generated/assets/react/release/index.android.bundle \
+            android/app/build/generated/sourcemaps/react/release/index.android.bundle.map \
+            "$RUNNER_TEMP/pali-native-android"
       - name: Start isolated API 35 emulator
         timeout-minutes: 15
         run: |

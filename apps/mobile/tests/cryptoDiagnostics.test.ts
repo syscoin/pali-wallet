@@ -106,13 +106,16 @@ test('load diagnostics retain fixed module markers and reject any additional pay
   assert.throws(() => loadQuickCrypto(() => { throw original; }, (value) => { diagnostic = value; }, {
     getGlobalHandler: () => handler, setGlobalHandler: (value) => { handler = value; },
   }), (error) => error === original);
-  assert.deepEqual(diagnostic, { error: 'type-error', markers: {
+  assert.deepEqual(diagnostic, { error: 'type-error', stage: 'module-load', messageReadable: true, stackReadable: true, locations: [], markers: {
     quickCrypto: true, nitroModules: true, nativeHybrid: true, quickBase64: true, turboModule: true,
   } });
   assert(!JSON.stringify(diagnostic).includes('synthetic_secret_token_42'));
   assert(isCryptoDiagnostic({ bootstrap: 'quick-crypto-load', load: diagnostic }));
   for (const load of [
     { ...diagnostic, message: 'secret' }, { ...diagnostic, error: 'secret' },
+    { ...diagnostic, stage: 'secret' }, { ...diagnostic, locations: [{ bundle: 'ios', kind: 'source', line: 1, column: 0, secret: true }] },
+    { ...diagnostic, locations: [{ bundle: 'private', kind: 'source', line: 1, column: 0 }] },
+    { ...diagnostic, locations: [{ bundle: 'ios', kind: 'source', line: 1, column: -1 }] },
     { ...diagnostic, markers: { ...diagnostic!.markers, arbitrary: true } },
     { ...diagnostic, markers: { ...diagnostic!.markers, quickCrypto: 'secret' } },
   ]) assert.equal(isCryptoDiagnostic({ bootstrap: 'quick-crypto-load', load }), false);
@@ -132,4 +135,43 @@ test('load marker inspection is bounded and never invokes exception getters', ()
     assert.deepEqual(diagnostic?.markers, { quickCrypto: false, nitroModules: false, nativeHybrid: false, quickBase64: false, turboModule: false });
   }
   assert.equal(getterCalls, 0);
+});
+
+test('load diagnostics retain only bounded numeric bundle locations with source-map columns', () => {
+  const original = new Error('synthetic_secret_token_42');
+  Object.defineProperty(original, 'stack', { value: `Error: synthetic_secret_token_42
+    at privateName (address at main.jsbundle:1:41)
+    at privateName (/private/secret/index.android.bundle:3:5)
+    at privateName (secret.js:1:999)
+    at privateName (main.jsbundle:0:4)
+    at privateName (main.jsbundle:1:0)
+    at privateName (address at main.jsbundle:1:41)` });
+  let diagnostic: CryptoLoadDiagnostic | undefined;
+  let handler: (error: unknown, isFatal?: boolean) => void = () => undefined;
+  assert.throws(() => loadQuickCrypto(() => { throw original; }, (value) => { diagnostic = value; }, {
+    getGlobalHandler: () => handler, setGlobalHandler: (value) => { handler = value; },
+  }), (error) => error === original);
+  assert.deepEqual(diagnostic?.locations, [
+    { bundle: 'ios', kind: 'bytecode', line: 1, column: 41 },
+    { bundle: 'android', kind: 'source', line: 3, column: 4 },
+  ]);
+  assert(!JSON.stringify(diagnostic).includes('private'));
+  assert(!JSON.stringify(diagnostic).includes('secret'));
+  assert(isCryptoDiagnostic({ bootstrap: 'quick-crypto-load', load: diagnostic }));
+});
+
+test('load stack locations never invoke an arbitrary accessor and remain bounded', () => {
+  let reads = 0;
+  const accessor = Object.defineProperty(new Error(), 'stack', { get() { reads++; throw Error('secret'); } });
+  const oversized = Object.defineProperty(new Error(), 'stack', { value: 'x'.repeat(16384) + '\n    at f (main.jsbundle:1:2)' });
+  const many = Object.defineProperty(new Error(), 'stack', { value: Array.from({ length: 50 }, (_, index) => `    at f (address at main.jsbundle:1:${index})`).join('\n') });
+  for (const [original, count] of [[accessor, 0], [oversized, 0], [many, 8]] as const) {
+    let diagnostic: CryptoLoadDiagnostic | undefined;
+    let handler: (error: unknown, isFatal?: boolean) => void = () => undefined;
+    assert.throws(() => loadQuickCrypto(() => { throw original; }, (value) => { diagnostic = value; }, {
+      getGlobalHandler: () => handler, setGlobalHandler: (value) => { handler = value; },
+    }), (error) => error === original);
+    assert.equal(diagnostic?.locations.length, count);
+  }
+  assert.equal(reads, 0);
 });
