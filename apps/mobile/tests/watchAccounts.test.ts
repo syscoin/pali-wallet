@@ -1,0 +1,182 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { accountIdentity, parseAccountSelection, projectAccounts } from '../src/core/accountDirectory.ts';
+import { WatchAccounts } from '../src/core/watchAccounts.ts';
+import { createEvmWatchAccount, WatchOnlyAuthority } from '../src/core/watchOnlyAuthority.ts';
+import type { PublicAccount } from '../src/core/types.ts';
+import type { NativeWalletCatalogueSnapshot } from '../src/custody/walletCatalogue.ts';
+import { NATIVE_NETWORKS } from '../src/custody/networkContext.ts';
+
+const ADDRESS = '0x52908400098527886E0F7030069857D2E4169EE7';
+const OTHER = '0x1111111111111111111111111111111111111111';
+const account = createEvmWatchAccount('public_1', 'Public account', ADDRESS);
+const deferred = <T>() => {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => { resolve = done; });
+  return { promise, resolve };
+};
+function storage(initial: readonly PublicAccount[] = [account]) {
+  let saved = initial;
+  const writes: readonly PublicAccount[][] = [];
+  let readFailure = false;
+  let writeFailure = false;
+  const model = new WatchAccounts({
+    async load() { if (readFailure) throw Error('storage read failure'); return saved; },
+    async compareAndSet(expected, next) {
+      assert.deepEqual(expected, saved, 'compare-and-set must use the loaded public snapshot');
+      if (writeFailure) throw Error('storage write failure');
+      saved = next;
+      (writes as PublicAccount[][]).push([...next]);
+    },
+  });
+  return {
+    model, writes,
+    get saved() { return saved; },
+    set readFailure(value: boolean) { readFailure = value; },
+    set writeFailure(value: boolean) { writeFailure = value; },
+  };
+}
+
+test('public chooser keeps authorities distinct even when local IDs and addresses collide', () => {
+  const catalogue: NativeWalletCatalogueSnapshot = {
+    revision: 0, removed: [], networks: NATIVE_NETWORKS,
+    active: { accountId: 'hd:60:0', networkId: 'ethereum' },
+    accounts: [{ id: 'hd:60:0', type: 'HDAccount', slip44: 60, index: 0, label: 'Wallet', address: ADDRESS }],
+  };
+  // The projector never assumes its two independent inputs share an ID namespace.
+  const collidingPublic = { ...account, id: 'hd:60:0' };
+  const entries = projectAccounts(catalogue, [collidingPublic]);
+  assert.equal(entries.length, 2);
+  assert.equal(entries[0]!.address, entries[1]!.address);
+  assert.notEqual(entries[0]!.identity, entries[1]!.identity);
+  assert.equal(entries[0]!.identity, 'hd/hd:60:0');
+  assert.equal(entries[1]!.identity, 'watch/hd:60:0');
+  assert.equal(entries[0]!.capabilities.signing, 'native-unlock-required');
+  assert.equal(entries[1]!.capabilities.signing, 'unavailable');
+  assert.equal(entries[1]!.capabilities.recovery, 'unavailable');
+  assert.equal(accountIdentity({ kind: 'watch', id: 'same' }), 'watch/same');
+  assert.equal(Object.isFrozen(entries), true);
+});
+
+test('persisted selection is bounded navigation data, never capability or keyring state', () => {
+  assert.deepEqual(parseAccountSelection({ kind: 'hd', id: 'hd:60:0' }), { kind: 'hd', id: 'hd:60:0' });
+  assert.deepEqual(parseAccountSelection({ kind: 'watch', id: account.id }), { kind: 'watch', id: account.id });
+  assert.equal(parseAccountSelection(null), null);
+  for (const value of [undefined, [], {}, { kind: 'HDAccount', id: 'hd:60:0' },
+    { kind: 'hd', id: 'hd:60:0', unlocked: true }, { kind: 'watch', id: 'x'.repeat(65) },
+    { kind: 'watch', id: '__proto__', capabilities: { signing: true } }, { kind: 'hd', id: 'hd:60:-1' }]) {
+    assert.throws(() => parseAccountSelection(value));
+  }
+});
+
+test('a public storage read failure preserves known accounts and cannot overwrite them with an empty replacement', async () => {
+  const f = storage();
+  await f.model.load();
+  f.readFailure = true;
+  await assert.rejects(f.model.load(), /Nothing has been replaced/);
+  assert.equal(f.model.getSnapshot().status, 'unavailable');
+  assert.deepEqual(f.model.getSnapshot().accounts, [account]);
+  await assert.rejects(f.model.change({ kind: 'add', id: 'new', name: 'New', address: OTHER }), /Reopen/);
+  assert.equal(f.writes.length, 0);
+  assert.deepEqual(f.saved, [account]);
+  f.readFailure = false;
+  await f.model.load();
+  assert.equal(f.model.getSnapshot().status, 'ready');
+});
+
+test('first-read failure never admits a mutation against the initial empty display', async () => {
+  const f = storage();
+  f.readFailure = true;
+  await assert.rejects(f.model.load());
+  assert.equal(f.model.getSnapshot().accounts.length, 0);
+  await assert.rejects(f.model.change({ kind: 'remove', id: account.id }), /Reopen/);
+  assert.equal(f.writes.length, 0);
+  assert.deepEqual(f.saved, [account]);
+});
+
+test('add, rename, and remove commit the existing public store and survive a new controller', async () => {
+  const f = storage();
+  await f.model.load();
+  await f.model.change({ kind: 'add', id: 'public_2', name: '  Savings  ', address: OTHER });
+  assert.equal(f.saved[1]!.name, 'Savings');
+  assert.equal(f.saved[1]!.addresses.ethereum, OTHER);
+  await f.model.change({ kind: 'rename', id: 'public_2', name: '  Renamed savings  ' });
+  assert.equal(f.saved[1]!.name, 'Renamed savings');
+  await f.model.change({ kind: 'remove', id: account.id });
+  const reopened = new WatchAccounts({ load: async () => f.saved, compareAndSet: async () => assert.fail('read-only reopen') });
+  await reopened.load();
+  assert.deepEqual(reopened.getSnapshot().accounts.map(({ id, name }) => ({ id, name })), [{ id: 'public_2', name: 'Renamed savings' }]);
+  assert.equal(f.writes.length, 3);
+});
+
+test('write failure quarantines public mutations until the persisted snapshot is reloaded', async () => {
+  const f = storage();
+  await f.model.load();
+  f.writeFailure = true;
+  await assert.rejects(f.model.change({ kind: 'rename', id: account.id, name: 'New name' }), /could not be verified/);
+  assert.equal(f.model.getSnapshot().status, 'unavailable');
+  assert.deepEqual(f.model.getSnapshot().accounts, [account]);
+  f.writeFailure = false;
+  await assert.rejects(f.model.change({ kind: 'remove', id: account.id }), /Reopen/);
+  await f.model.load();
+  await f.model.change({ kind: 'rename', id: account.id, name: 'New name' });
+  assert.equal(f.saved[0]!.name, 'New name');
+});
+
+test('simultaneous mutations cannot race their compare-and-set or admit a stale rename', async () => {
+  const gate = deferred<void>();
+  let writes = 0;
+  const model = new WatchAccounts({ load: async () => [account], compareAndSet: async () => { writes++; await gate.promise; } });
+  await model.load();
+  const rename = model.change({ kind: 'rename', id: account.id, name: 'New name' });
+  assert.equal(model.getSnapshot().busy, true);
+  await assert.rejects(model.change({ kind: 'remove', id: account.id }), /still saving/);
+  await assert.rejects(model.load(), /still saving/);
+  gate.resolve();
+  await rename;
+  assert.equal(writes, 1);
+  assert.equal(model.getSnapshot().accounts[0]!.name, 'New name');
+});
+
+test('watch lifecycle revocation aborts balances and late completions cannot restore a visible account or signing', async () => {
+  const result = deferred<{ chainId: number; units: string }>();
+  let signal: AbortSignal | undefined;
+  const authority = new WatchOnlyAuthority([account], { readBalance: async (_network, _address, current) => { signal = current; return result.promise; } });
+  authority.unlock();
+  const pending = authority.refresh();
+  authority.lock();
+  assert.equal(signal!.aborted, true);
+  result.resolve({ chainId: 1, units: '1000000000000000000' });
+  await pending;
+  assert.equal(authority.getSnapshot().status, 'locked');
+  assert.equal(authority.getSnapshot().balance.status, 'unknown');
+  assert.equal(authority.getSnapshot().capabilities.send, false);
+  await assert.rejects(authority.prepareTransfer({ recipient: OTHER, amount: '1' }), /SIGNING_UNAVAILABLE/);
+  await assert.rejects(authority.confirmTransfer({} as never), /SIGNING_UNAVAILABLE/);
+});
+
+test('restored public selection remains locked with no balance query or native capability', async () => {
+  let queries = 0;
+  const second = createEvmWatchAccount('public_2', 'Second', OTHER);
+  const authority = new WatchOnlyAuthority([account, second], { async readBalance() { queries++; return { chainId: 1, units: '0' }; } });
+  authority.restoreSelection(second.id);
+  assert.equal(authority.getSnapshot().status, 'locked');
+  assert.equal(authority.getSnapshot().selectedAccountId, second.id);
+  assert.equal(authority.getSnapshot().capabilities.receive, false);
+  assert.equal(authority.getSnapshot().capabilities.send, false);
+  assert.equal(queries, 0);
+  await assert.rejects(authority.refresh(), /locked/);
+  await assert.rejects(authority.prepareTransfer({ recipient: ADDRESS, amount: '1' }), /SIGNING_UNAVAILABLE/);
+  authority.unlock();
+  assert.throws(() => authority.restoreSelection(account.id));
+});
+
+test('a reentrant privacy lock never delivers the superseded ready snapshot to later observers', () => {
+  const authority = new WatchOnlyAuthority([account], { async readBalance() { return { chainId: 1, units: '0' }; } });
+  const later: string[] = [];
+  authority.subscribe((snapshot) => { if (snapshot.status === 'ready') authority.lock(); });
+  authority.subscribe((snapshot) => later.push(snapshot.status));
+  authority.unlock();
+  assert.deepEqual(later, ['locked']);
+  assert.equal(authority.getSnapshot().status, 'locked');
+});

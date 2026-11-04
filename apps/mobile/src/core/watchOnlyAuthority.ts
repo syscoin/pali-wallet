@@ -105,6 +105,7 @@ export class WatchOnlyAuthority implements WalletAuthority {
   private locked = true;
   private balance: PublicBalance = Object.freeze({ status: 'unknown' });
   private pending: AbortController | null = null;
+  private cachedSnapshot: PublicSnapshot | null = null;
 
   constructor(
     accounts: readonly PublicAccount[],
@@ -120,12 +121,13 @@ export class WatchOnlyAuthority implements WalletAuthority {
   }
 
   getSnapshot(): PublicSnapshot {
+    if (this.cachedSnapshot) return this.cachedSnapshot;
     const receive =
       !this.locked &&
       !!this.accounts.find((a) => a.id === this.accountId)?.addresses[
         this.networkId
       ];
-    return Object.freeze({
+    this.cachedSnapshot = Object.freeze({
       status: !this.accounts.length
         ? 'empty'
         : this.locked
@@ -146,6 +148,7 @@ export class WatchOnlyAuthority implements WalletAuthority {
         walletConnect: false,
       }),
     });
+    return this.cachedSnapshot;
   }
 
   subscribe(listener: (snapshot: PublicSnapshot) => void): () => void {
@@ -154,8 +157,13 @@ export class WatchOnlyAuthority implements WalletAuthority {
   }
 
   private publish(): void {
+    this.cachedSnapshot = null;
     const snapshot = this.getSnapshot();
-    for (const listener of this.listeners) listener(snapshot);
+    for (const listener of [...this.listeners]) {
+      // A synchronous lock from an observer must not leak a stale ready state.
+      if (this.cachedSnapshot !== snapshot) break;
+      if (this.listeners.has(listener)) { try { listener(snapshot); } catch { /* Observers cannot interrupt revocation. */ } }
+    }
   }
 
   private invalidate(): void {
@@ -177,6 +185,16 @@ export class WatchOnlyAuthority implements WalletAuthority {
   lock(): void {
     this.invalidate();
     this.locked = true;
+    this.publish();
+  }
+
+  /** Restore a saved public navigation hint without opening balances or custody. */
+  restoreSelection(id: string): void {
+    if (!this.locked) throw new Error('Selection restoration requires a locked view');
+    const account = this.accounts.find((entry) => entry.id === id);
+    if (!account) return;
+    this.invalidate(); this.accountId = id;
+    if (!account.addresses[this.networkId]) this.networkId = Object.keys(account.addresses)[0] as NetworkId;
     this.publish();
   }
 

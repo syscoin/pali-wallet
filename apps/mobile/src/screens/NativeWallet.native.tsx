@@ -12,13 +12,14 @@ import { NativeNetworks } from './NativeNetworks';
 import { createNativeNetworkView, type NativeNetworkView } from '../custody/networkView';
 import { nativeSigningEnabled, type EvmNetworkId } from '../custody/networkContext';
 import { NativeAccounts } from './NativeAccounts';
+import { WalletAccounts, type WatchWalletBridge } from './WalletAccounts';
 import { NativeActivityScreen } from './NativeActivity';
 import type { NativeWalletCatalogueSnapshot } from '../custody/walletCatalogue';
 import type { PublicCustodySource } from '../portfolio/nativePortfolio';
 import type { Erc20Metadata } from '../../../../source/shared/erc20';
 
 type Controllers = ReturnType<typeof createNativeWalletControllers>;
-type Stage = 'choose' | 'create' | 'import' | 'backup-auth' | 'words' | 'challenge' | 'send' | 'accounts' | 'networks' | 'activity';
+type Stage = 'choose' | 'create' | 'import' | 'backup-auth' | 'words' | 'challenge' | 'send' | 'accounts' | 'manage-hd' | 'networks' | 'activity';
 const INITIAL: CustodySnapshot = { phase: 'opening', revision: 0, presence: 'unknown', backup: 'unknown', account: null, error: null };
 
 function message(error: unknown): string {
@@ -44,7 +45,13 @@ function SecretInput({ label, value, onChange, multiline = false, disabled = fal
   /></View>;
 }
 
-export function NativeWalletScreen({ onExit }: { onExit(): void }) {
+export type NativeWalletProps = { onExit(): void; accounts?: WatchWalletBridge; initialAccountId?: string; onSelectedNative?(id: string): void };
+
+export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelectedNative }: NativeWalletProps) {
+  const bridge = useRef(accounts);
+  const selectedNative = useRef(onSelectedNative);
+  useLayoutEffect(() => { bridge.current = accounts; selectedNative.current = onSelectedNative; }, [accounts, onSelectedNative]);
+  const requestedAccount = useRef(initialAccountId);
   const controllers = useRef<Controllers | null>(null);
   const [publicSource, setPublicSource] = useState<PublicCustodySource | null>(null);
   const [accountView, setAccountView] = useState<Controllers['accounts'] | null>(null);
@@ -92,7 +99,9 @@ export function NativeWalletScreen({ onExit }: { onExit(): void }) {
     const unsubscribe = local.authority.subscribe((state) => {
       if (!mounted.current || controllers.current !== local) return;
       setSnapshot(state); setPublicSource(publicView); setTransferView(local.transfers); setTokenView(local.tokens); setActivityView(local.activity); setNetworkView(networks);
-      setCatalogue(local.authority.getCatalogue());
+      const nextCatalogue = local.authority.getCatalogue();
+      setCatalogue(nextCatalogue); bridge.current?.onNativeCatalogue(nextCatalogue);
+      if (nextCatalogue) selectedNative.current?.(nextCatalogue.active.accountId);
       setAccountView(local.authority.supportsAccountManagement() ? local.accounts : null);
       if (!['ready', 'backup-required', 'authenticating'].includes(state.phase)) clearSecrets();
     });
@@ -108,6 +117,7 @@ export function NativeWalletScreen({ onExit }: { onExit(): void }) {
     const lifecycle = AppState.addEventListener('change', (state) => { if (state !== 'active') revoke(); });
     const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', revoke) : null;
     return () => {
+      bridge.current?.onNativeCatalogue(null);
       mounted.current = false; lifecycleEpoch.current++; unsubscribe(); clear(); lifecycle.remove(); blur?.remove();
       local.disposeTokens(); local.disposeTransfers(); local.backup.dispose(); local.authority.lock(); void local.authority.dispose().catch(() => undefined);
       if (controllers.current === local) controllers.current = null;
@@ -153,8 +163,24 @@ export function NativeWalletScreen({ onExit }: { onExit(): void }) {
     stage === 'words' ? 'Your recovery phrase' : stage === 'challenge' ? 'Check your backup' :
     stage === 'backup-auth' ? 'Back up your wallet' : stage === 'import' ? 'Restore your wallet' : stage === 'create' ? 'Protect your wallet' : 'Make it yours';
   const accountLabel = catalogue?.accounts.find((account) => account.id === catalogue.active.accountId)?.label ?? 'Account 1';
-  if (stage === 'accounts' && accountView && ['ready', 'authenticating'].includes(snapshot.phase))
-    return <NativeAccounts controller={accountView} onBack={() => setStage('choose')} />;
+  const selectWatch = (selection: import('../core/accountDirectory').AccountSelection) => {
+    if (selection.kind !== 'watch') return;
+    // Revoke credentials, reviews, transfer work and secret presentation before routing.
+    revoke();
+    bridge.current?.onSelectWatch(selection);
+  };
+  if (stage === 'accounts' && accounts && snapshot.phase !== 'authenticating')
+    return <WalletAccounts {...accounts} catalogue={catalogue} active={catalogue ? { kind: 'hd', id: catalogue.active.accountId } : null}
+      onBack={() => setStage('choose')} onSelect={async (selection) => {
+        if (selection.kind === 'watch') { selectWatch(selection); return; }
+        requestedAccount.current = selection.id;
+        if (snapshot.phase === 'ready' && accountView && catalogue && selection.id !== catalogue.active.accountId)
+          await accountView.execute({ kind: 'select', id: selection.id }, accountView.getContextRevision(), catalogue.revision);
+        setStage('choose');
+      }} onManageHd={snapshot.phase === 'ready' && accountView ? () => setStage('manage-hd') : undefined}
+      onAdd={async (input) => { revoke(); setStage('accounts'); await accounts.onAdd(input); }} />;
+  if (stage === 'manage-hd' && accountView && ['ready', 'authenticating'].includes(snapshot.phase))
+    return <NativeAccounts controller={accountView} onBack={() => setStage(accounts ? 'accounts' : 'choose')} />;
   if (stage === 'networks' && networkView && ['ready', 'authenticating'].includes(snapshot.phase))
     return <NativeNetworks controller={networkView} onBack={() => setStage('choose')} />;
   if (stage === 'activity' && activityView && snapshot.phase === 'ready')
@@ -168,15 +194,23 @@ export function NativeWalletScreen({ onExit }: { onExit(): void }) {
     <SecretInput label="Password" value={password} onChange={setPassword} disabled={busy} />
     <Button title="Unlock wallet" disabled={busy || !password} onPress={() => {
       const entered = password; setPassword(''); void perform(async ({ authority }) => {
-        await authority.unlock(entered); setStage(authority.getSnapshot().backup === 'confirmed' ? 'choose' : 'backup-auth');
+        await authority.unlock(entered);
+        const requested = requestedAccount.current; const current = authority.getCatalogue();
+        if (requested && current && authority.getSnapshot().phase === 'ready' && current.active.accountId !== requested && current.accounts.some((entry) => entry.id === requested)) {
+          await controllers.current!.accounts.execute({ kind: 'select', id: requested }, authority.getSnapshot().revision, current.revision);
+        }
+        if (authority.getSnapshot().phase === 'ready' || authority.getSnapshot().phase === 'backup-required')
+          setStage(authority.getSnapshot().backup === 'confirmed' ? 'choose' : 'backup-auth');
       });
     }} />
+    {accounts && !busy && <Button title="View watch accounts" variant="secondary" onPress={() => { revoke(); setStage('accounts'); }} />}
   </>;
   else if (snapshot.phase === 'empty' && stage === 'choose') body = <>
     <PaliMark size={72} /><Text style={styles.h1}>A wallet that stays yours.</Text>
     <Text style={styles.muted}>Create a recovery phrase, or bring one you already own.</Text>
     <Button title="Create a wallet" onPress={() => setStage('create')} />
     <Button title="I have a recovery phrase" variant="secondary" onPress={() => setStage('import')} />
+    {accounts && <Button title="View watch accounts" variant="quiet" onPress={() => setStage('accounts')} />}
   </>;
   else if (snapshot.phase === 'empty') body = <>
     {stage === 'import' && <SecretInput label="Recovery phrase" multiline value={phrase} onChange={setPhrase} disabled={busy} />}
@@ -214,7 +248,7 @@ export function NativeWalletScreen({ onExit }: { onExit(): void }) {
   else if (snapshot.phase === 'ready' && stage === 'send' && transferView && snapshot.account && nativeSigningEnabled(snapshot.account.network)) return <NativeSend controller={transferView} token={sendToken ?? undefined} accountLabel={accountLabel} onBack={() => { setSendToken(null); setStage('choose'); }} />;
   else if (snapshot.phase === 'ready' && publicSource) return <NativePortfolio
     tokenView={tokenView ?? undefined}
-    source={publicSource} accountLabel={accountLabel} onManageAccounts={accountView ? () => setStage('accounts') : undefined} onExit={exit} onLock={revoke}
+    source={publicSource} accountLabel={accountLabel} onManageAccounts={accounts || accountView ? () => setStage(accounts ? 'accounts' : 'manage-hd') : undefined} onExit={exit} onLock={revoke}
     onSend={snapshot.account && nativeSigningEnabled(snapshot.account.network) ? () => { setSendToken(null); setStage('send'); } : undefined}
     onSendToken={snapshot.account?.network === 'ethereum' ? (token) => { setSendToken(token); setStage('send'); } : undefined}
     onManageNetworks={networkView ? () => setStage('networks') : undefined}

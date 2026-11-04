@@ -1,0 +1,11 @@
+# Account navigation and public watch storage
+
+`accountDirectory.ts` projects recovery-phrase accounts and separately stored watch accounts into a common public chooser. The key is the pair `(kind, id)`, never an address or a bare local ID. Its capabilities describe which authority would be needed; they do not authorize a signing operation. Watch entries have no signing or recovery capability.
+
+The native authority remains the sole owner of authentication, account derivation, seed presentation and transaction signing. Its public catalogue is available only while unlocked. Lock, background and unmount clear that projection. The watch-side chooser offers an opaque route back to the normal native unlock screen without exposing cached native account names or addresses. Switching from the native chooser cancels backup presentation and synchronously locks native custody before opening a watch account; pending native work retains its existing cancellation and disposal guards.
+
+Watch accounts remain in `pali.mobile.public-accounts.v1`, in the existing `{version: 1, accounts}` shape and with their explicit network mappings. They are not inserted into the keyring catalogue or migrated into the encrypted wallet. Mutations compare a fresh validated read with the displayed snapshot, write once, and verify by reading back. A failed read, stale snapshot or uncertain write preserves the prior display and disables mutations until a successful reopen. The web build remains ephemeral.
+
+`pali.mobile.account-selection.v1` stores only a bounded `{kind, id}` navigation hint. Restoring it cannot authenticate native custody or open watch balances. An unknown account hint is ignored, and an unreadable hint is reported without overwriting it.
+
+Watch onboarding accepts EVM public addresses only. Extended public keys, descriptors, UTXO watch accounts, private keys and recovery phrases are not imported by this flow. Actual balances are read from the registered chain RPC, and Receive uses the exact selected public address. It has no sample send, signing, seed export, private-key export or native authentication controls.
