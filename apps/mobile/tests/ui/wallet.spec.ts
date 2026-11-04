@@ -9,7 +9,7 @@ for (const id of ['syscoin', 'bitcoin'] as const) {
     const responses: Record<string, unknown> = {
       [`${network.endpoint}/api/`]: { blockbook: { coin: network.blockbookCoin, network: network.symbol, decimals: 8, initialSync: false, inSync: true, inSyncMempool: true, bestHeight: 123 }, backend: { chain: 'main' } },
       [`${network.endpoint}/api/v2/block-index/0`]: { blockHash: network.genesisHash },
-      [`${network.endpoint}/api/v2/address/${address}?details=tokens`]: { address, balance: '0', unconfirmedBalance: '-123', unconfirmedTxs: 1 },
+      [`${network.endpoint}/api/v2/address/${address}?details=tokenBalances&tokens=nonzero`]: { address, balance: '0', unconfirmedBalance: '-123', unconfirmedTxs: 1 },
     };
     await page.route('**/*', async (route) => {
       const request = route.request(), url = request.url();
@@ -32,7 +32,7 @@ for (const id of ['syscoin', 'bitcoin'] as const) {
     await page.getByRole('button', { name: 'Confirm watch account', exact: true }).click();
     await expect(page.getByLabel(`${network.name} confirmed balance 0.0 ${network.symbol}`, { exact: true })).toBeVisible();
     await expect(page.getByLabel(`Pending balance change -0.00000123 ${network.symbol}`, { exact: true })).toBeVisible();
-    expect(calls).toEqual([`${network.endpoint}/api/`, `${network.endpoint}/api/v2/block-index/0`, `${network.endpoint}/api/v2/address/${address}?details=tokens`]);
+    expect(calls).toEqual([`${network.endpoint}/api/`, `${network.endpoint}/api/v2/block-index/0`, `${network.endpoint}/api/v2/address/${address}?details=tokenBalances&tokens=nonzero`]);
     await expect(page.getByRole('button', { name: 'Send', exact: true })).toHaveCount(0);
     await page.getByRole('button', { name: 'Receive', exact: true }).click();
     await expect(page.getByRole('img', { name: `QR code for ${network.name} address ${address}` })).toBeVisible();
@@ -94,7 +94,7 @@ test('watch-only validates before RPC, preserves zero and cannot sign', async ({
   await page.goto('/');
   await page.getByRole('button', { name: 'Watch an account' }).click();
   await expect(
-    page.getByText(/Balance lookups share this public address/)
+    page.getByText('Use public information only. Never enter a recovery phrase or private key.', { exact: true })
   ).toBeVisible();
   await page
     .getByRole('textbox', { name: 'Public EVM address' })

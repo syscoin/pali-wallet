@@ -1,5 +1,19 @@
 import { expect, test } from '@playwright/test';
-for (const width of [390, 320]) test(`saved predecessor replay is explicit at ${width}px`, async ({ page }) => {
+
+test.use({
+  baseURL: process.env.PALI_NATIVE_SEND_UI_URL ?? 'http://127.0.0.1:4179',
+});
+test.beforeEach(async ({ page }) => {
+  await page.route(/^https?:\/\//, async (route) => {
+    const url = new URL(route.request().url());
+    if (url.hostname !== '127.0.0.1' || !['4179', '4181'].includes(url.port)) {
+      await route.abort();
+      throw new Error(`Unexpected external request: ${url.origin}`);
+    }
+    await route.continue();
+  });
+});
+for (const width of [390, 320]) test(`saved predecessor replay is explicit at ${width}px`, async ({ page }, testInfo) => {
   await page.setViewportSize({width,height:844});
   await page.goto('/?erc20-send');
   await page.waitForFunction(() => !!window.__erc20SendFixture);
@@ -13,9 +27,9 @@ for (const width of [390, 320]) test(`saved predecessor replay is explicit at ${
   await expect(page.getByText('PREVIOUS TRANSACTION · NONCE 0')).toBeVisible();
   await expect(page.getByTestId('native-send-recipient')).toHaveText('Contract creation');
   expect(await page.evaluate(()=>window.__erc20SendFixture.broadcasts().length)).toBe(0);
-  await page.screenshot({path:`/private/tmp/pali-exact-replay-implementation/native-replay-${width}.png`,fullPage:true});
+  await page.screenshot({path:testInfo.outputPath(`native-replay-${width}.png`),fullPage:true});
   await page.getByRole('button',{name:`Transaction ${hashes.first.slice(0,10)}…`,exact:true}).scrollIntoViewIfNeeded();
-  await page.screenshot({path:`/private/tmp/pali-exact-replay-implementation/native-replay-gap-${width}.png`,fullPage:true});
+  await page.screenshot({path:testInfo.outputPath(`native-replay-gap-${width}.png`),fullPage:true});
   await page.getByRole('button',{name:`Transaction ${hashes.first.slice(0,10)}…`,exact:true}).click();
   await expect(page.getByText(hashes.first,{exact:true})).toBeVisible();
   await expect(page.getByTestId('native-send-confirm')).toHaveText('Resend signed transaction');
