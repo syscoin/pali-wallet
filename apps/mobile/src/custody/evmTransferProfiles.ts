@@ -1,7 +1,7 @@
 import { getNativeNetwork, type EvmNetworkId } from './networkContext.ts';
 
-export type EvmFeeModel = 'execution-only' | 'nitro-inclusive-gas' | 'op-jovian' | 'rollux-legacy' | 'unqualified';
-export type EvmSettlementModel = 'ethereum-finalized' | 'nevm-depth-observation' | 'nevm-depth-12' | 'unqualified';
+export type EvmFeeModel = 'execution-only' | 'nitro-inclusive-gas' | 'zkos-inclusive-gas' | 'op-jovian' | 'rollux-legacy' | 'unqualified';
+export type EvmSettlementModel = 'ethereum-finalized' | 'nevm-depth-observation' | 'nevm-depth-12' | 'zkos-finalized-executed' | 'unqualified';
 export type EvmTransferProfile = Readonly<{
   id: string;
   version: 1;
@@ -30,8 +30,8 @@ const profiles: readonly EvmTransferProfile[] = Object.freeze([
   { networkId: 'rollux', id: 'rollux-legacy-gpo-v1', feeModel: 'rollux-legacy', feeSourceQualified: true, settlement: 'unqualified',
     oracle: Object.freeze({ address: '0x420000000000000000000000000000000000000f', proxyCodeHash,
       implementation: '0xf2ad472ade2009ef5eeb26b7fe27ba9fd27de46a', implementationCodeHash: '0xe6aa9feb138f683e03915040bea23c79437eba752f49d49bd0628e2edd2af1ad', version: '1.0.0' }) },
-  { networkId: 'zksys-testnet', id: 'zksys-unqualified-v1', feeModel: 'unqualified', feeSourceQualified: false, settlement: 'unqualified' },
-].map((profile) => Object.freeze({ ...profile, version: 1 as const, newSendEnabled: profile.networkId === 'syscoin-nevm-testnet' })) as EvmTransferProfile[]);
+  { networkId: 'zksys-testnet', id: 'zkos-inclusive-finalized-executed-v1', feeModel: 'zkos-inclusive-gas', feeSourceQualified: true, settlement: 'zkos-finalized-executed' },
+].map((profile) => Object.freeze({ ...profile, version: 1 as const, newSendEnabled: ['syscoin-nevm-testnet', 'zksys-testnet'].includes(profile.networkId) })) as EvmTransferProfile[]);
 
 /** Fixed registrations only; callers cannot supply a policy or grant signing. */
 export function getEvmTransferProfile(id: EvmNetworkId): EvmTransferProfile {

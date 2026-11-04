@@ -28,7 +28,9 @@ import type {
 
 const recipient = '0x1111111111111111111111111111111111111111';
 let sendContext = getNativeSendContext(
-  new URLSearchParams(window.location.search).has('nevm-send')
+  new URLSearchParams(window.location.search).has('zksys-send')
+    ? 'zksys-testnet'
+    : new URLSearchParams(window.location.search).has('nevm-send')
     ? 'syscoin-nevm-testnet'
     : 'ethereum'
 );

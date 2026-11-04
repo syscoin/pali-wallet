@@ -481,27 +481,35 @@ async function raceSdk() {
     },
   };
 }
-function localTransferRpc(networkId: 'ethereum' | 'syscoin-nevm-testnet' = 'ethereum') {
+type TransferTestNetwork = 'ethereum' | 'syscoin-nevm-testnet' | 'zksys-testnet';
+function localTransferRpc(networkId: TransferTestNetwork = 'ethereum') {
   const broadcasts: string[] = [];
+  const requests: { method: string; params: any[] }[] = [];
+  let baseFee = 1n, priorityFee = 1n;
+  let estimateGas = (_transaction: Record<string, unknown>) => 21000n;
   let included = false;
   let reading: { method: string; entered: ReturnType<typeof deferredAccount>; released: ReturnType<typeof deferredAccount> } | undefined;
   let gate: { entered: ReturnType<typeof deferredAccount>; released: ReturnType<typeof deferredAccount> } | undefined;
   const rpc = new NativeTransferRpc({ networkId, fetch: async (url, init) => {
     assert.equal(url, getNativeNetwork(networkId).rpcUrl);
     const body = JSON.parse(String(init.body));
+    requests.push(structuredClone({ method: body.method, params: body.params }));
     if (reading && reading.method === body.method) { const current = reading; current.entered.resolve(); await current.released.promise; }
     let result: unknown;
     if (body.method === 'eth_chainId') result = `0x${BigInt(getNativeNetwork(networkId).chainId).toString(16)}`;
     else if (body.method === 'eth_getBalance') result = '0x10000000000000000';
     else if (body.method === 'eth_getTransactionCount') result = included ? '0x1' : '0x0';
-    else if (body.method === 'eth_feeHistory') result = { oldestBlock: '0x1', baseFeePerGas: ['0x1', '0x1'] };
-    else if (body.method === 'eth_maxPriorityFeePerGas') result = '0x1';
-    else if (body.method === 'eth_estimateGas') result = '0x5208';
+    else if (body.method === 'eth_feeHistory') result = { oldestBlock: '0x64', baseFeePerGas: [`0x${baseFee.toString(16)}`, `0x${baseFee.toString(16)}`] };
+    else if (body.method === 'eth_maxPriorityFeePerGas') result = `0x${priorityFee.toString(16)}`;
+    else if (body.method === 'eth_estimateGas') result = `0x${estimateGas(body.params[0]).toString(16)}`;
     else if (body.method === 'eth_getTransactionReceipt') {
       const tx = included && broadcasts[0] ? Transaction.from(broadcasts[0]) : null;
       result = tx ? { transactionHash: tx.hash, from: tx.from, to: tx.to, status: '0x1', blockNumber: '0x59', blockHash: '0x' + '2'.repeat(64) } : null;
     }
-    else if (body.method === 'eth_getBlockByNumber') result = { number: body.params[0] === 'finalized' ? '0x20' : body.params[0] === 'latest' ? '0x64' : body.params[0], hash: '0x' + '2'.repeat(64) };
+    else if (body.method === 'eth_getBlockByNumber') result = {
+      number: body.params[0] === 'finalized' ? (networkId === 'zksys-testnet' ? '0x64' : '0x20') : body.params[0] === 'latest' ? '0x64' : body.params[0],
+      hash: '0x' + '2'.repeat(64), baseFeePerGas: `0x${baseFee.toString(16)}`, gasLimit: '0x1c9c380',
+    };
     else if (body.method === 'eth_sendRawTransaction') {
       broadcasts.push(body.params[0]);
       if (gate) { const current = gate; current.entered.resolve(); await current.released.promise; }
@@ -509,7 +517,12 @@ function localTransferRpc(networkId: 'ethereum' | 'syscoin-nevm-testnet' = 'ethe
     } else throw Error('Unexpected fixture RPC');
     return new Response(JSON.stringify({ jsonrpc: '2.0', id: body.id, result }), { headers: { 'content-type': 'application/json' } });
   } });
-  return { rpc, broadcasts, include() { included = true; }, holdRead(method: string) {
+  return { rpc, broadcasts, requests, include() { included = true; },
+    setFees(fees: { baseFee?: bigint; priorityFee?: bigint; estimateGas?: (transaction: Record<string, unknown>) => bigint }) {
+      baseFee = fees.baseFee ?? baseFee;
+      priorityFee = fees.priorityFee ?? priorityFee;
+      estimateGas = fees.estimateGas ?? estimateGas;
+    }, holdRead(method: string) {
     const current = { method, entered: deferredAccount(), released: deferredAccount() }; reading = current;
     return { entered: current.entered.promise, release() { reading = undefined; current.released.resolve(); } };
   }, holdBroadcast() {
@@ -522,11 +535,13 @@ async function prepareAccountTransfer(transfers: NativeTransfers) {
   return transfers.getSnapshot().review!.id;
 }
 
+for (const networkId of ['ethereum', 'zksys-testnet'] as const) {
 for (const phase of ['password', 'hydration'] as const) {
-  test(`account selection is BUSY during real SDK transfer ${phase} and cannot retarget signing`, async () => {
-    const sdk = await raceSdk(), f = await readyAccounts(sdk.loadSdk), network = localTransferRpc();
+  test(`${networkId} account selection is BUSY during real SDK transfer ${phase} and cannot retarget signing`, async () => {
+    const sdk = await raceSdk(), f = await readyAccounts(sdk.loadSdk), network = localTransferRpc(networkId);
     const transfers = new NativeTransfers(f.authority, () => f.runtime.transfers, { rpc: network.rpc });
     try {
+    await f.authority.selectNetwork(networkId, f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision);
       await f.execute({ kind: 'create', label: 'Savings', password: PASSWORD });
       const from = f.authority.getSnapshot().account!.address;
       const review = await prepareAccountTransfer(transfers);
@@ -544,10 +559,11 @@ for (const phase of ['password', 'hydration'] as const) {
   });
 }
 
-test('synchronous selection reentrancy from SDK signing is denied before authority publication', async () => {
-  const sdk = await raceSdk(), f = await readyAccounts(sdk.loadSdk), network = localTransferRpc();
+test(`${networkId} synchronous selection reentrancy from SDK signing is denied before authority publication`, async () => {
+  const sdk = await raceSdk(), f = await readyAccounts(sdk.loadSdk), network = localTransferRpc(networkId);
   const transfers = new NativeTransfers(f.authority, () => f.runtime.transfers, { rpc: network.rpc });
   try {
+    await f.authority.selectNetwork(networkId, f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision);
     await f.execute({ kind: 'create', label: 'Savings', password: PASSWORD });
     let attempted: Promise<void> | undefined;
     const revision = f.authority.getSnapshot().revision;
@@ -560,12 +576,13 @@ test('synchronous selection reentrancy from SDK signing is denied before authori
 });
 
 for (const phase of ['journal-read', 'journal-write', 'broadcast'] as const) {
-  test(`A-B-A account selection invalidates held ${phase} and preserves its original journal`, async () => {
-    const f = await readyAccounts(), network = localTransferRpc();
+  test(`${networkId} A-B-A account selection invalidates held ${phase} and preserves its original journal`, async () => {
+    const f = await readyAccounts(), network = localTransferRpc(networkId);
     const transfers = new NativeTransfers(f.authority, () => f.runtime.transfers, { rpc: network.rpc });
     const entered = deferredAccount(), release = deferredAccount();
     let broadcastHold: ReturnType<typeof network.holdBroadcast> | undefined;
     try {
+    await f.authority.selectNetwork(networkId, f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision);
       await f.execute({ kind: 'create', label: 'Savings', password: PASSWORD });
       await f.execute({ kind: 'select', id: 'hd:60:0' });
       const oldRevision = f.authority.getSnapshot().revision;
@@ -595,6 +612,8 @@ for (const phase of ['journal-read', 'journal-write', 'broadcast'] as const) {
       assert.equal(transfers.getSnapshot().review, null);
     } finally { release.resolve(); broadcastHold?.release(); f.disk.onRecord(); transfers.dispose(); await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
   });
+}
+
 }
 
 test('account selection waits for active backup authentication and invalidates a completed old challenge', async () => {
@@ -715,7 +734,7 @@ test('all EVM contexts preserve SDK HD addresses while only reviewed native send
       await select(network.id);
       assert.equal(f.authority.getSnapshot().account!.network, network.id);
       assert.equal(f.authority.getSnapshot().account!.address, address);
-      if (!['ethereum', 'syscoin-nevm-testnet'].includes(network.id)) {
+      if (!['ethereum', 'syscoin-nevm-testnet', 'zksys-testnet'].includes(network.id)) {
         const state = f.authority.getSnapshot();
         await assert.rejects(f.runtime.transfers!.authorize(PASSWORD, () => undefined), /NOT_READY/);
         await assert.rejects(f.runtime.transfers!.journal(() => undefined), /NOT_READY/);
@@ -739,35 +758,39 @@ test('all EVM contexts preserve SDK HD addresses while only reviewed native send
   } finally { await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
 });
 
-test('installed SDK signs chain5700 offline and retains same-nonce Ethereum/testnet journal siblings across restart', async () => {
+test('installed SDK retains same-address same-nonce Ethereum, NEVM and zkSYS journal siblings across restart', async () => {
   const f = await readyAccounts();
   try {
     await f.execute({ kind: 'create', label: 'Cross-chain', password: PASSWORD });
     const account = f.authority.getSnapshot().account!.address;
     const transaction = (chainId: string) => ({ type: 2 as const, from: account, to: ADDRESS, chainId,
       nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' });
-    const ethereum = await f.runtime.transfers!.sign(transaction('1'), PASSWORD, () => undefined);
-    const firstJournal = await f.runtime.transfers!.journal(() => undefined);
-    await firstJournal.saveSigned(ethereum.rawTransaction); await firstJournal.transition(ethereum.hash, 'attempted');
-    await f.authority.selectNetwork('syscoin-nevm-testnet', f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision);
-    await assert.rejects(f.runtime.transfers!.sign(transaction('1'), PASSWORD, () => undefined), /INVALID_INPUT/);
-    const nevm = await f.runtime.transfers!.sign(transaction('5700'), PASSWORD, () => undefined);
-    const parsed = Transaction.from(nevm.rawTransaction);
-    assert.equal(parsed.chainId, 5700n); assert.equal(parsed.from, account); assert.equal(parsed.nonce, 0);
-    assert.notEqual(nevm.hash, ethereum.hash);
-    const secondJournal = await f.runtime.transfers!.journal(() => undefined);
-    await secondJournal.saveSigned(nevm.rawTransaction); await secondJournal.transition(nevm.hash, 'attempted');
+    const signedByNetwork = new Map<TransferTestNetwork, { rawTransaction: string; hash: string }>();
+    for (const networkId of ['ethereum', 'syscoin-nevm-testnet', 'zksys-testnet'] as const) {
+      await f.authority.selectNetwork(networkId, f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision);
+      const chainId = getNativeNetwork(networkId).chainId;
+      const wrongChainId = networkId === 'ethereum' ? '57057' : '1';
+      await assert.rejects(f.runtime.transfers!.sign(transaction(wrongChainId), PASSWORD, () => undefined), /INVALID_INPUT/);
+      const signed = await f.runtime.transfers!.sign(transaction(chainId), PASSWORD, () => undefined);
+      const parsed = Transaction.from(signed.rawTransaction);
+      assert.equal(parsed.chainId, BigInt(chainId)); assert.equal(parsed.from, account); assert.equal(parsed.nonce, 0);
+      const journal = await f.runtime.transfers!.journal(() => undefined);
+      await journal.saveSigned(signed.rawTransaction); await journal.transition(signed.hash, 'attempted');
+      signedByNetwork.set(networkId, signed);
+    }
+    assert.equal(new Set([...signedByNetwork.values()].map((entry) => entry.hash)).size, 3);
     const stored = structuredClone(f.disk.records.get('native-evm-transfer-v1:hd:60:1')) as any;
     assert.equal(stored.version, 2);
-    assert.deepEqual(stored.entries.map((entry: any) => [entry.registration.chainId, entry.nonce]), [['1', 0], ['5700', 0]]);
+    assert.deepEqual(stored.entries.map((entry: any) => [entry.registration.chainId, entry.nonce]), [['1', 0], ['5700', 0], ['57057', 0]]);
     await f.authority.dispose();
     let runtime!: KeyringRuntime;
     const reopened = new NativeCustodyAuthority({ async open() { runtime = await f.disk.factory.open() as KeyringRuntime; return runtime; } });
     await reopened.initialize(); await reopened.unlock(PASSWORD);
-    assert.equal(reopened.getSnapshot().account?.network, 'syscoin-nevm-testnet');
-    assert.equal((await (await runtime.transfers!.journal(() => undefined)).load())!.rawTransaction, nevm.rawTransaction);
-    await reopened.selectNetwork('ethereum', reopened.getSnapshot().revision, reopened.getCatalogue()!.revision);
-    assert.equal((await (await runtime.transfers!.journal(() => undefined)).load())!.rawTransaction, ethereum.rawTransaction);
+    assert.equal(reopened.getSnapshot().account?.network, 'zksys-testnet');
+    for (const networkId of ['zksys-testnet', 'syscoin-nevm-testnet', 'ethereum'] as const) {
+      await reopened.selectNetwork(networkId, reopened.getSnapshot().revision, reopened.getCatalogue()!.revision);
+      assert.equal((await (await runtime.transfers!.journal(() => undefined)).load())!.rawTransaction, signedByNetwork.get(networkId)!.rawTransaction);
+    }
     await reopened.manageAccounts({ kind: 'select', id: 'hd:60:0' }, reopened.getSnapshot().revision, reopened.getCatalogue()!.revision);
     await assert.rejects(reopened.manageAccounts({ kind: 'remove', id: 'hd:60:1', password: PASSWORD }, reopened.getSnapshot().revision, reopened.getCatalogue()!.revision), /PENDING_TRANSFER/);
     assert.deepEqual(f.disk.records.get('native-evm-transfer-v1:hd:60:1'), stored);
@@ -775,17 +798,18 @@ test('installed SDK signs chain5700 offline and retains same-nonce Ethereum/test
   } finally { await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
 });
 
-test('NEVM native controller submits and explicitly retries exact installed-SDK bytes before depth confirmation', async () => {
-  const f = await readyAccounts(), network = localTransferRpc('syscoin-nevm-testnet');
+for (const networkId of ['syscoin-nevm-testnet', 'zksys-testnet'] as const) {
+test(`${networkId} native controller retries exact installed-SDK bytes before its terminal settlement`, async () => {
+  const f = await readyAccounts(), network = localTransferRpc(networkId);
   const transfers = new NativeTransfers(f.authority, () => f.runtime.transfers, { rpc: network.rpc });
   try {
-    await f.authority.selectNetwork('syscoin-nevm-testnet', f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision);
+    await f.authority.selectNetwork(networkId, f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision);
     const review = await prepareAccountTransfer(transfers);
-    assert.equal(transfers.getSnapshot().review!.context.chainId, '5700');
+    assert.equal(transfers.getSnapshot().review!.context.chainId, getNativeNetwork(networkId).chainId);
     assert.equal(transfers.getSnapshot().review!.context.symbol, 'TSYS');
     await transfers.confirm(review, PASSWORD);
     assert.equal(network.broadcasts.length, 1);
-    assert.equal(Transaction.from(network.broadcasts[0]!).chainId, 5700n);
+    assert.equal(Transaction.from(network.broadcasts[0]!).chainId, BigInt(getNativeNetwork(networkId).chainId));
     await transfers.recover(true);
     assert.equal(transfers.getSnapshot().review!.retry, true);
     await transfers.confirm(transfers.getSnapshot().review!.id, PASSWORD);
@@ -794,21 +818,21 @@ test('NEVM native controller submits and explicitly retries exact installed-SDK 
     network.include();
     await transfers.recover();
     assert.equal(transfers.getSnapshot().phase, 'confirmed');
-    assert.equal(transfers.getSnapshot().context!.settlement.kind, 'nevm-depth-12');
+    assert.equal(transfers.getSnapshot().context!.settlement.kind, networkId === 'zksys-testnet' ? 'zkos-finalized-executed' : 'nevm-depth-12');
     assert.equal((await (await f.runtime.transfers!.journal(() => undefined)).load())!.phase, 'confirmed');
   } finally { transfers.dispose(); await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
 });
 
-test('NEVM A-B-A cancels a pending quote without adopting its late context', async () => {
-  const f = await readyAccounts(), network = localTransferRpc('syscoin-nevm-testnet');
+test(`${networkId} A-B-A cancels a pending quote without adopting its late context`, async () => {
+  const f = await readyAccounts(), network = localTransferRpc(networkId);
   const transfers = new NativeTransfers(f.authority, () => f.runtime.transfers, { rpc: network.rpc });
   const hold = network.holdRead('eth_feeHistory');
   try {
     const select = (id: string) => f.authority.selectNetwork(id, f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision);
-    await select('syscoin-nevm-testnet');
+    await select(networkId);
     const preparing = transfers.prepare(ADDRESS, '0.001'); void preparing.catch(() => undefined);
     await hold.entered;
-    await select('ethereum'); await select('syscoin-nevm-testnet');
+    await select('ethereum'); await select(networkId);
     hold.release();
     await assert.rejects(preparing, /CANCELLED/);
     assert.equal(transfers.getSnapshot().review, null);
@@ -818,11 +842,11 @@ test('NEVM A-B-A cancels a pending quote without adopting its late context', asy
 });
 
 for (const phase of ['password', 'hydration'] as const) {
-  test(`NEVM network switching cannot enter while installed SDK ${phase} work is active`, async () => {
-    const sdk = await raceSdk(), f = await readyAccounts(sdk.loadSdk), network = localTransferRpc('syscoin-nevm-testnet');
+  test(`${networkId} network switching cannot enter while installed SDK ${phase} work is active`, async () => {
+    const sdk = await raceSdk(), f = await readyAccounts(sdk.loadSdk), network = localTransferRpc(networkId);
     const transfers = new NativeTransfers(f.authority, () => f.runtime.transfers, { rpc: network.rpc });
     try {
-      await f.authority.selectNetwork('syscoin-nevm-testnet', f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision);
+      await f.authority.selectNetwork(networkId, f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision);
       const review = await prepareAccountTransfer(transfers);
       const hold = sdk.hold(phase);
       const signing = transfers.confirm(review, PASSWORD);
@@ -831,20 +855,20 @@ for (const phase of ['password', 'hydration'] as const) {
       await assert.rejects(f.authority.selectNetwork('ethereum', before.revision, f.authority.getCatalogue()!.revision), /BUSY/);
       assert.equal(f.authority.getSnapshot(), before);
       hold.release(); await signing;
-      assert.equal(Transaction.from(network.broadcasts[0]!).chainId, 5700n);
+      assert.equal(Transaction.from(network.broadcasts[0]!).chainId, BigInt(getNativeNetwork(networkId).chainId));
     } finally { transfers.dispose(); await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
   });
 }
 
 for (const phase of ['journal-write', 'broadcast'] as const) {
-  test(`NEVM A-B-A during ${phase} preserves the original exact-byte recovery record`, async () => {
-    const f = await readyAccounts(), network = localTransferRpc('syscoin-nevm-testnet');
+  test(`${networkId} A-B-A during ${phase} preserves the original exact-byte recovery record`, async () => {
+    const f = await readyAccounts(), network = localTransferRpc(networkId);
     const transfers = new NativeTransfers(f.authority, () => f.runtime.transfers, { rpc: network.rpc });
     const entered = deferredAccount(), release = deferredAccount();
     let broadcastHold: ReturnType<typeof network.holdBroadcast> | undefined;
     try {
       const select = (id: string) => f.authority.selectNetwork(id, f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision);
-      await select('syscoin-nevm-testnet');
+      await select(networkId);
       const review = await prepareAccountTransfer(transfers);
       if (phase === 'journal-write') f.disk.onRecord(async (kind, key) => {
         if (kind === 'create' && key === 'native-evm-transfer-v1') { entered.resolve(); await release.promise; }
@@ -852,18 +876,76 @@ for (const phase of ['journal-write', 'broadcast'] as const) {
       else broadcastHold = network.holdBroadcast();
       const signing = transfers.confirm(review, PASSWORD); void signing.catch(() => undefined);
       await (broadcastHold?.entered ?? entered.promise);
-      await select('ethereum'); await select('syscoin-nevm-testnet');
+      await select('ethereum'); await select(networkId);
       release.resolve(); broadcastHold?.release();
       await assert.rejects(signing, /CANCELLED/);
       f.disk.onRecord();
       const entry = await (await f.runtime.transfers!.journal(() => undefined)).load();
-      assert.equal(Transaction.from(entry!.rawTransaction).chainId, 5700n);
+      assert.equal(Transaction.from(entry!.rawTransaction).chainId, BigInt(getNativeNetwork(networkId).chainId));
       assert.equal(entry!.phase, phase === 'journal-write' ? 'signed' : 'attempted');
       await transfers.recover(true);
       assert.equal(transfers.getSnapshot().review!.retry, true);
       assert.equal(transfers.getSnapshot().hash, entry!.hash);
-      assert.equal(transfers.getSnapshot().review!.context.chainId, '5700');
+      assert.equal(transfers.getSnapshot().review!.context.chainId, getNativeNetwork(networkId).chainId);
     } finally { release.resolve(); broadcastHold?.release(); f.disk.onRecord(); transfers.dispose(); await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
+  });
+}
+
+}
+
+for (const expensiveAfterReview of [false, true]) {
+  test(`zkSYS confirmation ${expensiveAfterReview ? 'expires when approved fees need more gas' : 'keeps approved fees when the suggested tip changes'}`, async () => {
+    const sdk = await raceSdk(), f = await readyAccounts(sdk.loadSdk), network = localTransferRpc('zksys-testnet');
+    const transfers = new NativeTransfers(f.authority, () => f.runtime.transfers, { rpc: network.rpc });
+    let signatures = 0;
+    sdk.onSign(() => { signatures++; });
+    let currentBase = 10n;
+    const gasFor = (transaction: Record<string, unknown>) => {
+      const cap = BigInt(String(transaction.maxFeePerGas));
+      const price = currentBase + BigInt(String(transaction.maxPriorityFeePerGas));
+      return (price > cap ? cap : price) < 10n ? 30000n : 21000n;
+    };
+    network.setFees({ baseFee: currentBase, priorityFee: 0n, estimateGas: gasFor });
+    try {
+      await f.authority.selectNetwork('zksys-testnet', f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision);
+      const id = await prepareAccountTransfer(transfers);
+      const approved = transfers.getSnapshot().review!;
+      assert.equal(approved.priorityFeePerGas, '0');
+      assert.equal(approved.maximumFeePerGas, '20');
+      assert.equal(approved.gasLimit, '21000');
+      currentBase = expensiveAfterReview ? 1n : 10n;
+      network.setFees({ baseFee: currentBase, priorityFee: 9n });
+      if (expensiveAfterReview) {
+        await assert.rejects(transfers.confirm(id, PASSWORD), /EXPIRED/);
+        assert.equal(network.broadcasts.length, 0);
+        assert.equal(await (await f.runtime.transfers!.journal(() => undefined)).load(), null);
+      } else {
+        await transfers.confirm(id, PASSWORD);
+        assert.equal(network.broadcasts.length, 1);
+        const signed = Transaction.from(network.broadcasts[0]!);
+        assert.equal(signed.chainId, 57057n);
+        assert.equal(signed.maxFeePerGas, 20n);
+        assert.equal(signed.maxPriorityFeePerGas, 0n);
+        assert.equal(signed.gasLimit, 21000n);
+      }
+      assert.equal(signatures, expensiveAfterReview ? 0 : 1);
+      const estimates = network.requests.filter((request) => request.method === 'eth_estimateGas');
+      assert.equal(estimates.length, 2);
+      for (const request of estimates) {
+        assert.equal(request.params[1], 'pending');
+        assert.deepEqual(request.params[0], {
+          type: '0x2', chainId: '0xdee1', from: ADDRESS,
+          to: '0x1111111111111111111111111111111111111111',
+          nonce: '0x0', value: '0x38d7ea4c68000', data: '0x',
+          maxFeePerGas: '0x14', maxPriorityFeePerGas: '0x0',
+        });
+      }
+      if (expensiveAfterReview) {
+        // Re-estimating a newly suggested envelope would understate the old envelope's need.
+        assert.equal(gasFor({ maxFeePerGas: '0xb', maxPriorityFeePerGas: '0x9' }), 21000n);
+        assert.equal(gasFor(estimates[1]!.params[0]), 30000n);
+      }
+    } finally { transfers.dispose(); await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
   });
 }
 

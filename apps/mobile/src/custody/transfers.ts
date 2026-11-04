@@ -614,9 +614,12 @@ export class NativeTransfers {
         guard();
         entry = stored;
       } else {
-        const latest = approved.public.intent
-          ? await rpc.prepareToken(address, approved.public.intent, signal)
-          : await rpc.prepare(
+        let latest;
+        if (approved.public.intent) latest = await rpc.prepareToken(address, approved.public.intent, signal);
+        else if (context.settlement.kind === 'zkos-finalized-executed') {
+          if (approved.transaction.type !== 2) throw new NativeTransferError('FAILED');
+          latest = await rpc.requote(approved.transaction, signal);
+        } else latest = await rpc.prepare(
               address,
               approved.transaction.to,
               approved.transaction.value,
@@ -761,6 +764,10 @@ export class NativeTransfers {
     );
   }
   private terminalMessage(phase: string, intent?: Erc20TransferIntent, context?: NativeSendContext): string {
+    if (context?.settlement.kind === 'zkos-finalized-executed' && phase === 'confirmed')
+      return 'Settlement confirmed at the zkSYS finalized execution boundary.';
+    if (context?.settlement.kind === 'zkos-finalized-executed' && phase === 'reverted')
+      return 'Transfer reverted at the zkSYS finalized execution boundary. Network fees may still apply.';
     if (context?.settlement.kind === 'nevm-depth-12' && phase === 'confirmed')
       return 'Depth confirmed after 12 confirmations. This is a confirmation-depth observation, not protocol finality.';
     if (context?.settlement.kind === 'nevm-depth-12' && phase === 'reverted')
@@ -839,7 +846,8 @@ export class NativeTransfers {
           phase: receipt ? 'pending' : 'unknown',
           hash: entry.hash,
           message: receipt
-            ? context.settlement.kind === 'nevm-depth-12' ? 'Included in a block. Waiting for 12 confirmations.' : 'Included in a block. Waiting for finality.'
+            ? context.settlement.kind === 'nevm-depth-12' ? 'Included in a block. Waiting for 12 confirmations.'
+              : context.settlement.kind === 'zkos-finalized-executed' ? 'Included in a block. Waiting for zkSYS settlement confirmation.' : 'Included in a block. Waiting for finality.'
             : 'Submission is unconfirmed. Do not create another transfer for this nonce.',
         });
     });

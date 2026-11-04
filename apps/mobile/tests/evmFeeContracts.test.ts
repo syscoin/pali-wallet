@@ -56,12 +56,13 @@ test('refresh retains exact envelope for reduced estimates but rejects increases
   assert.throws(() => assertFeeRefreshApproved({ ...approved }, quote('rollux', [extra('99')]), 100), { code: 'REVIEW_REQUIRED' });
 });
 
-test('profile registry enables only fixed NEVM testnet and states other unqualified receipt semantics', () => {
-  for (const network of NATIVE_NETWORKS) assert.equal(getEvmTransferProfile(network.id).newSendEnabled, network.id === 'syscoin-nevm-testnet');
+test('profile registry enables fixed testnets and distinguishes their settlement semantics', () => {
+  for (const network of NATIVE_NETWORKS) assert.equal(getEvmTransferProfile(network.id).newSendEnabled, ['syscoin-nevm-testnet', 'zksys-testnet'].includes(network.id));
   assert.equal(getEvmTransferProfile('arbitrum').feeModel, 'nitro-inclusive-gas');
   assert.equal(getEvmTransferProfile('arbitrum').settlement, 'unqualified');
   assert.equal(getEvmTransferProfile('syscoin-nevm').settlement, 'nevm-depth-observation');
-  assert.equal(getEvmTransferProfile('zksys-testnet').feeSourceQualified, false);
+  assert.equal(getEvmTransferProfile('zksys-testnet').feeSourceQualified, true);
+  assert.equal(getEvmTransferProfile('zksys-testnet').settlement, 'zkos-finalized-executed');
 });
 
 
@@ -80,10 +81,10 @@ test('public assembly rejects invented profiles, changed registrations and omitt
   assert.throws(() => quote('base', [extra('1')]), { code: 'INVALID_INPUT' });
   assert.throws(() => quote('base', [{ kind: 'operator', estimateUnits: '1', enforceableByEnvelope: false }, extra('1')]), { code: 'INVALID_INPUT' });
   assert.throws(() => quote('rollux', [extra('1'), { kind: 'operator', estimateUnits: '1', enforceableByEnvelope: false }]), { code: 'INVALID_INPUT' });
-  for (const id of ['ethereum', 'syscoin-nevm', 'syscoin-nevm-testnet', 'arbitrum'] as const) {
+  for (const id of ['ethereum', 'syscoin-nevm', 'syscoin-nevm-testnet', 'arbitrum', 'zksys-testnet'] as const) {
     assert.throws(() => quote(id, [extra('1')]), { code: 'INVALID_INPUT' });
   }
-  assert.throws(() => quote('zksys-testnet'), { code: 'UNQUALIFIED_PROFILE' });
+  assert.equal(quote('zksys-testnet').extras.length, 0);
 });
 
 test('component accessors cannot run while assembling an uncapped fee quote', () => {

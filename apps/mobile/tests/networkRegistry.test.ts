@@ -19,7 +19,7 @@ test('extension defaults and all seven mobile read identities share one pure reg
     assert.equal(native.symbol, definition.network.currency.toUpperCase());
     assert.match(native.registrationHash, /^0x[0-9a-f]{64}$/);
     if (definition.testnet) assert.match(publicNetwork.name, /testnet/i);
-    assert.equal(nativeSigningEnabled(native.id), native.id === 'ethereum' || native.id === 'syscoin-nevm-testnet');
+    assert.equal(nativeSigningEnabled(native.id), ['ethereum', 'syscoin-nevm-testnet', 'zksys-testnet'].includes(native.id));
   }
   assert.equal(new Set(NATIVE_NETWORKS.map((network) => network.registrationHash)).size, 7);
 });

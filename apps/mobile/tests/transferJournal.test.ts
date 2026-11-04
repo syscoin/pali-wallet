@@ -82,6 +82,22 @@ function fixture() {
   };
 }
 
+test('historical Ethereum legacy bytes above the new-send gas ceiling remain recoverable', async () => {
+  const f = fixture();
+  const signed = await wallet.signTransaction({ type: 0, chainId: 1, nonce: 0,
+    to: '0x1111111111111111111111111111111111111111', value: 1n,
+    gasLimit: 17000000n, gasPrice: 2n });
+  const entry = await f.journal.saveSigned(signed);
+  await f.journal.transition(entry.hash, 'attempted');
+  const before = structuredClone(f.value());
+  const reopened = new NativeTransferJournal(f.port, scope, f.guard, () => 2000);
+  assert.equal((await reopened.load())?.rawTransaction, signed);
+  assert.deepEqual(f.value(), before);
+  const terminal = await reopened.transition(entry.hash, 'confirmed');
+  assert.equal(terminal.rawTransaction, signed);
+  assert.equal(terminal.phase, 'confirmed');
+});
+
 test('durably saves exact signed bytes and requires attempted before submitted', async () => {
   const f = fixture();
   const signed = await raw();

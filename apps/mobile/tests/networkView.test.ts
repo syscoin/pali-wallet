@@ -35,7 +35,7 @@ test('network projection is stable, frozen, public-only and labels unsupported s
   assert.equal(first.selectedId, 'ethereum');
   assert.equal(first.revision, 3);
   assert.equal(first.networks.length, 7);
-  assert.deepEqual(first.networks.filter(network => network.canSign).map(network => network.id), ['ethereum', 'syscoin-nevm-testnet']);
+  assert.deepEqual(first.networks.filter(network => network.canSign).map(network => network.id), ['ethereum', 'syscoin-nevm-testnet', 'zksys-testnet']);
   for (const network of first.networks) {
     assert.equal(Object.isFrozen(network), true);
     assert.deepEqual(Object.keys(network).sort(), ['canSign', 'id', 'name', 'symbol', 'testnet']);

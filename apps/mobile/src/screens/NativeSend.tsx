@@ -103,6 +103,8 @@ export function NativeSend({
     capturedContext.testnet ? ' · Test network' : ''
   }`;
   const depthConfirmed = capturedContext.settlement.kind === 'nevm-depth-12';
+  const zkSysSettlement =
+    capturedContext.settlement.kind === 'zkos-finalized-executed';
   const networkArticle = capturedContext.networkId === 'ethereum' ? 'an' : 'a';
   const reviewedToken = review?.intent?.token;
   const outcomeToken = snapshot.intent?.token;
@@ -307,8 +309,9 @@ export function NativeSend({
                   {capturedContext.symbol}
                 </Text>
                 <Text style={s.hint}>
-                  The final network fee may be lower. It cannot exceed this
-                  limit.
+                  {zkSysSettlement
+                    ? 'This limit includes execution, proving and data costs. The final network fee may be lower.'
+                    : 'The final network fee may be lower. It cannot exceed this limit.'}
                 </Text>
                 {!reviewedToken && (
                   <>
@@ -332,6 +335,12 @@ export function NativeSend({
                 <Notice
                   title="12-confirmation depth policy"
                   body="Pali marks this transfer depth confirmed after 12 confirmations. Depth confirmation is not protocol finality."
+                />
+              )}
+              {zkSysSettlement && (
+                <Notice
+                  title="zkSYS settlement policy"
+                  body="Settlement confirmation uses the zkSYS RPC's finalized execution boundary. A receipt alone does not establish settlement."
                 />
               )}
               {review.retry && (
@@ -369,12 +378,16 @@ export function NativeSend({
                   {snapshot.phase === 'confirmed'
                     ? depthConfirmed
                       ? 'Depth confirmed'
+                      : zkSysSettlement
+                      ? 'Settlement confirmed'
                       : outcomeToken
                       ? 'Transaction confirmed'
                       : 'Transfer confirmed'
                     : snapshot.phase === 'reverted'
                     ? depthConfirmed
                       ? 'Reverted · depth confirmed'
+                      : zkSysSettlement
+                      ? 'Reverted · settlement confirmed'
                       : 'Transfer reverted'
                     : snapshot.phase === 'nonce-consumed'
                     ? 'Check account history'

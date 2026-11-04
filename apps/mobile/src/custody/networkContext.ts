@@ -22,8 +22,11 @@ export function getNativeNetwork(id: string): NativeNetworkRegistration {
   if (!network) throw new Error('Unsupported native network');
   return network;
 }
+/** New-send ceilings: zkOS and Ethereum EIP-7825 cap each transaction at 2^24. */
+export const nativeTransferGasLimit = (id: EvmNetworkId): bigint =>
+  id === 'zksys-testnet' || id === 'ethereum' ? 16777216n : 30000000n;
 export type NativeSendContext = Readonly<{
-  networkId: 'ethereum' | 'syscoin-nevm-testnet';
+  networkId: 'ethereum' | 'syscoin-nevm-testnet' | 'zksys-testnet';
   chainId: string;
   registrationHash: string;
   rpcUrl: string;
@@ -31,10 +34,10 @@ export type NativeSendContext = Readonly<{
   symbol: string;
   decimals: 18;
   testnet: boolean;
-  settlement: Readonly<{ kind: 'ethereum-finalized' } | { kind: 'nevm-depth-12'; confirmations: 12 }>;
+  settlement: Readonly<{ kind: 'ethereum-finalized' } | { kind: 'nevm-depth-12'; confirmations: 12 } | { kind: 'zkos-finalized-executed' }>;
 }>;
 const sendCapabilities = Object.freeze(Object.fromEntries(NATIVE_NETWORKS.map((network) => [network.id,
-  Object.freeze({ native: network.id === 'ethereum' || network.id === 'syscoin-nevm-testnet', erc20: network.id === 'ethereum' }),
+  Object.freeze({ native: ['ethereum', 'syscoin-nevm-testnet', 'zksys-testnet'].includes(network.id), erc20: network.id === 'ethereum' }),
 ])) as Record<EvmNetworkId, Readonly<{ native: boolean; erc20: boolean }>>);
 const sendContexts: readonly NativeSendContext[] = Object.freeze(NATIVE_NETWORKS
   .filter((network) => sendCapabilities[network.id].native)
@@ -44,7 +47,8 @@ const sendContexts: readonly NativeSendContext[] = Object.freeze(NATIVE_NETWORKS
     name: EVM_NETWORK_DEFINITIONS.find((definition) => definition.id === network.id)!.name,
     symbol: network.symbol, decimals: network.decimals, testnet: network.testnet,
     settlement: Object.freeze(network.id === 'ethereum' ? { kind: 'ethereum-finalized' as const }
-      : { kind: 'nevm-depth-12' as const, confirmations: 12 as const }),
+      : network.id === 'syscoin-nevm-testnet' ? { kind: 'nevm-depth-12' as const, confirmations: 12 as const }
+      : { kind: 'zkos-finalized-executed' as const }),
   })));
 export function getNativeSendContext(id: string): NativeSendContext {
   const context = sendContexts.find((value) => value.networkId === id);

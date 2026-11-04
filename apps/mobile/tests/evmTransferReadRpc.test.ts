@@ -79,12 +79,15 @@ test('execution-only and inclusive-gas profiles quote exact unsigned envelopes w
   }
 });
 
-test('unqualified profiles fail before RPC and accept no caller policy override', async () => {
-  for (const id of ['zksys-testnet'] as const) {
-    const f = fixture(id);
-    await assert.rejects(f.rpc.quoteFees(transaction(id), signal(), () => undefined), { code: 'UNQUALIFIED_PROFILE' });
-    assert.equal(f.calls.length, 0);
-  }
+test('zkSYS uses its fixed inclusive-gas profile and estimates the exact unsigned fee fields', async () => {
+  const f = fixture('zksys-testnet');
+  const quote = await f.rpc.quoteFees(transaction('zksys-testnet'), signal(), () => undefined);
+  assert.equal(quote.profileId, 'zkos-inclusive-finalized-executed-v1');
+  assert.deepEqual(quote.extras, []);
+  assert.deepEqual(f.calls.find(c => c.method === 'eth_estimateGas')?.params, [{
+    from, to, data: '0x', value: '0x64', maxFeePerGas: '0xa', maxPriorityFeePerGas: '0x2',
+    type: '0x2', chainId: '0xdee1', nonce: '0x0',
+  }, '0x64']);
 });
 
 test('input snapshot survives mutation during quote and A-B-A guard cancellation rejects stale results', async () => {
