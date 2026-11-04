@@ -195,9 +195,9 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
       const entered = password; setPassword(''); void perform(async ({ authority }) => {
         await authority.unlock(entered);
         const requested = requestedAccount.current; const current = authority.getCatalogue();
-        // This hint restores one entry into native custody. Later unlocks use the
-        // durable selection, including changes made by NativeAccounts.
-        if (authority.getSnapshot().phase === 'ready') requestedAccount.current = undefined;
+        // Consume the hint once authenticated, even if backup must finish first.
+        // Later unlocks use the native catalogue's durable active selection.
+        if (['ready', 'backup-required'].includes(authority.getSnapshot().phase)) requestedAccount.current = undefined;
         if (requested && current && authority.getSnapshot().phase === 'ready' && current.active.accountId !== requested && current.accounts.some((entry) => entry.id === requested)) {
           await controllers.current!.accounts.execute({ kind: 'select', id: requested }, authority.getSnapshot().revision, current.revision);
         }

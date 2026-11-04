@@ -1,5 +1,7 @@
 // Actual custody/transfer controllers, with deterministic in-memory runtime ports.
 import { NativeCustodyAuthority } from '../../src/custody/authority';
+import { SeedBackupFlow } from '../../src/custody/seedBackup';
+import { KeyringRuntimeError, type KeyringRuntime } from '../../src/custody/keyringRuntime';
 import { NativeTransfers, type NativeTransferRuntime } from '../../src/custody/transfers';
 import { NativeTransferRpc } from '../../src/custody/transferRpc';
 import { NativeTransferJournal } from '../../src/custody/transferJournal';
@@ -12,12 +14,17 @@ import type { KeyringStoragePort } from '../../src/storage/types';
 import { NATIVE_NETWORKS } from '../../src/custody/networkContext';
 import { ADDRESS, SECOND, audit, events, unlockGate, signGate } from './state';
 
+const needsInitialBackup = new URLSearchParams(window.location.search).has('backup-required');
+let backupConfirmed = !needsInitialBackup;
+const publicBackupWords = Object.freeze([...Array<string>(11).fill('abandon'), 'about']);
+const fingerprint = '1'.repeat(64);
+
 let catalogue: NativeWalletCatalogueSnapshot = Object.freeze<NativeWalletCatalogueSnapshot>({
   revision: 0, removed: [], networks: NATIVE_NETWORKS,
   active: { accountId: 'hd:60:0', networkId: 'ethereum' },
   accounts: [
     { id: 'hd:60:0', type: 'HDAccount', index: 0, slip44: 60, label: 'Account 1', address: ADDRESS },
-    { id: 'hd:60:1', type: 'HDAccount', index: 1, slip44: 60, label: 'Account 2', address: SECOND },
+    ...(needsInitialBackup ? [] : [{ id: 'hd:60:1', type: 'HDAccount' as const, index: 1, slip44: 60 as const, label: 'Account 2', address: SECOND }]),
   ],
 });
 export let latestAuthority: NativeCustodyAuthority | null = null;
@@ -45,9 +52,10 @@ export function createNativeWalletControllers() {
             guard();
             let account: NativeWalletCatalogueSnapshot['accounts'][number] | undefined;
             if (request.kind === 'create') {
-              if (request.password !== 'public-password' || catalogue.accounts.length !== 2) throw Error('Invalid synthetic account creation');
+              if (request.password !== 'public-password' || catalogue.accounts.length > 2) throw Error('Invalid synthetic account creation');
               // Public fixture only: exercise real account-management UI without deriving a key.
-              account = { id: 'hd:60:2', type: 'HDAccount' as const, index: 2, slip44: 60 as const, label: request.label, address: '0x2222222222222222222222222222222222222222' };
+              const index = catalogue.accounts.length;
+              account = { id: `hd:60:${index}`, type: 'HDAccount' as const, index, slip44: 60 as const, label: request.label, address: index === 1 ? SECOND : '0x2222222222222222222222222222222222222222' };
               catalogue = Object.freeze({ ...catalogue, accounts: [...catalogue.accounts, account] });
             } else if (request.kind === 'select') {
               account = catalogue.accounts.find((candidate) => candidate.id === request.id);
@@ -76,7 +84,7 @@ export function createNativeWalletControllers() {
       async lock() { sessionUnlocked = false; events.push('lock'); },
     },
     storage: {
-      async readState() { return { presence: 'existing', backup: 'confirmed' }; },
+      async readState() { return { presence: 'existing', backup: backupConfirmed ? 'confirmed' : 'unconfirmed' }; },
       async close() { audit.closed++; events.push('close'); },
     },
   };
@@ -97,10 +105,23 @@ export function createNativeWalletControllers() {
     subscribe: (listener) => authority.subscribe(() => listener()),
     execute: (...args) => authority.manageAccounts(...args), cancel: () => authority.cancelAccountOperation(),
   };
-  const backup = {
-    cancel() { events.push('backup:cancel'); }, dispose() {}, onClear() { return () => undefined; },
-    async begin() { throw Error('Fixture never exports keys'); }, async confirm() { throw Error('Fixture never exports keys'); },
+  const backupRuntime: KeyringRuntime['backup'] = {
+    async readPhrase(password) {
+      if (!sessionUnlocked) throw Error('Locked fixture session');
+      if (password !== 'public-password') throw new KeyringRuntimeError('INVALID_CREDENTIAL');
+      return publicBackupWords;
+    },
+    async fingerprint() {
+      if (!sessionUnlocked) throw Error('Locked fixture session');
+      return fingerprint;
+    },
+    async confirm(expected) {
+      if (!sessionUnlocked || expected !== fingerprint) throw Error('Invalid fixture backup confirmation');
+      backupConfirmed = true; events.push('backup:confirmed');
+    },
   };
+  const backup = new SeedBackupFlow(authority, () => backupRuntime);
+  backup.onClear(() => events.push('backup:cancel'));
   return { authority, transfers: transfers.view, tokens: tokens.view, activity, accounts, backup,
     disposeTokens: () => tokens.dispose(), disposeTransfers: () => transfers.dispose() };
 }

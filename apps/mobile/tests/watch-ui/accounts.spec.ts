@@ -126,6 +126,57 @@ for (const change of ['select', 'create', 'shared-select', 'stale-create'] as co
   });
 }
 
+test('backup-required authentication consumes the hint before backup completion and account creation', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('pali-public-selection-fixture-v1', JSON.stringify({ kind: 'hd', id: 'hd:60:0' })));
+  await page.goto('/?backup-required=1');
+  await page.getByRole('textbox', { name: 'Password', exact: true }).fill('public-password');
+  await page.getByRole('button', { name: 'Unlock wallet', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Show recovery phrase', exact: true })).toBeVisible();
+  expect(await page.evaluate(() => window.__watchFixture.nativePhase())).toBe('backup-required');
+  await expect(page.getByRole('button', { name: 'Send', exact: true })).toHaveCount(0);
+  await page.getByRole('textbox', { name: 'Confirm your password', exact: true }).fill('public-password');
+  await page.getByRole('button', { name: 'Show recovery phrase', exact: true }).click();
+  await page.getByRole('button', { name: "I've written them down", exact: true }).click();
+  for (const input of await page.getByRole('textbox', { name: /^Word [0-9]+$/ }).all()) {
+    await input.fill(await input.getAttribute('aria-label') === 'Word 12' ? 'about' : 'abandon');
+  }
+  await page.getByRole('button', { name: 'Confirm backup', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeVisible();
+  expect(await page.evaluate(() => window.__watchFixture.events().filter((event) => event === 'backup:confirmed').length)).toBe(1);
+  await page.getByRole('button', { name: 'Accounts', exact: true }).click();
+  await page.getByRole('button', { name: 'Manage recovery phrase accounts', exact: true }).click();
+  await page.getByRole('button', { name: 'Add account', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Account name', exact: true }).fill('Savings');
+  await page.getByRole('textbox', { name: 'Confirm wallet password', exact: true }).fill('public-password');
+  await page.getByRole('button', { name: 'Create account', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Select Savings', exact: true })).toContainText('Selected');
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await expect(page.getByText('Savings · Ethereum', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Lock wallet', exact: true }).click();
+  await unlock(page);
+  await expect(page.getByText('Savings · Ethereum', { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => window.__watchFixture.selection())).toEqual({ kind: 'hd', id: 'hd:60:1' });
+  await page.getByRole('button', { name: 'Receive', exact: true }).click();
+  await expect(page.getByTestId('native-receive-address')).toHaveText(SECOND);
+  expect((await fixture(page)).signs).toBe(0);
+});
+
+test('cancelled native authentication retains the initial account hint for the next unlock', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('pali-public-selection-fixture-v1', JSON.stringify({ kind: 'hd', id: 'hd:60:1' })));
+  await page.goto('/');
+  await page.evaluate(() => window.__watchFixture.delayUnlock(true));
+  await page.getByRole('textbox', { name: 'Password', exact: true }).fill('public-password');
+  await page.getByRole('button', { name: 'Unlock wallet', exact: true }).click();
+  await expect(page.getByText('Unlocking your wallet securely…', { exact: true })).toBeVisible();
+  await page.evaluate(() => { window.__watchFixture.lifecycle('background'); window.__watchFixture.lifecycle('active'); window.__watchFixture.releaseUnlock(); });
+  await page.getByRole('textbox', { name: 'Password', exact: true }).fill('public-password');
+  await expect(page.getByRole('button', { name: 'Unlock wallet', exact: true })).toBeEnabled();
+  await unlock(page);
+  await expect(page.getByText('Account 2 · Ethereum', { exact: true })).toBeVisible();
+  expect((await fixture(page)).signs).toBe(0);
+});
+
 test('pending native authentication cannot revive signing after exit and watch selection', async ({ page }) => {
   await page.goto('/'); await openNative(page);
   await page.evaluate(() => window.__watchFixture.delayUnlock(true));
