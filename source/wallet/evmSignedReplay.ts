@@ -2,7 +2,7 @@ import {
   captureEvmSubmission,
   submitSignedEvmTransaction,
   evmSubmissionFailure,
-} from '@sidhujag/sysweb3-keyring/cjs/software.js';
+} from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-submission.js';
 import { getAddress } from 'ethers/address';
 import { Transaction } from 'ethers/transaction';
 

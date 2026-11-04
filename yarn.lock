@@ -2708,10 +2708,10 @@
   resolved "https://registry.npmjs.org/@sidhujag/sysweb3-core/-/sysweb3-core-1.0.29.tgz#ba86f171956513e423d2c328c9098ddbc76774d1"
   integrity sha512-ZQGSdwHG2Q9FX+PbHj3MnV6I413z+pN2Sm2qjoi1TrOqWZHXVnzfhjvxkj9s3djfTD56OAiu1nW2TUhX98rrdQ==
 
-"@sidhujag/sysweb3-keyring@2.0.0":
-  version "2.0.0"
-  resolved "https://registry.npmjs.org/@sidhujag/sysweb3-keyring/-/sysweb3-keyring-2.0.0.tgz#e41da3599515a8e99dbcd59ab95a19dba2873029"
-  integrity sha512-KAi6EQOv150UDf4N7QfIaeEBM1j1Es/MbZREG1je7+q51/0KnngCynIBhYJm20PeK7i4q5FC92NBzIeJnEXnlQ==
+"@sidhujag/sysweb3-keyring@2.1.1":
+  version "2.1.1"
+  resolved "https://registry.npmjs.org/@sidhujag/sysweb3-keyring/-/sysweb3-keyring-2.1.1.tgz#0c829afa14309a4ffa1b3e59e62782c3d2030723"
+  integrity sha512-KDu+ZM3yRzEgCmDBOwQhbD3hO5XMUKwU1k56DqNl9aL6st8EMnvsmWeXpoopyX60YZr61KsmXfF8lyfuVgMKpA==
   dependencies:
     "@bitcoinerlab/secp256k1" "^1.2.0"
     "@ledgerhq/context-module" "2.8.0"
@@ -2720,7 +2720,7 @@
     "@ledgerhq/device-transport-kit-web-hid" "1.2.4"
     "@metamask/eth-sig-util" "^8.2.0"
     "@sidhujag/sysweb3-core" "^1.0.29"
-    "@sidhujag/sysweb3-network" "^1.0.109"
+    "@sidhujag/sysweb3-network" "^1.0.111"
     "@sidhujag/sysweb3-utils" "^1.1.280"
     "@trezor/connect-webextension" "10.0.1"
     bip32 "^5.0.1"
@@ -2728,15 +2728,16 @@
     bitcoin-ops "^1.4.1"
     bitcoinjs-lib "^7.0.5"
     bs58check "^3.0.1"
+    buffer "^6.0.3"
     crypto-js "^4.1.1"
     ethers "^6.17.0"
     rxjs "7.8.2"
     varuint-bitcoin "^2.0.0"
 
-"@sidhujag/sysweb3-network@^1.0.109", "@sidhujag/sysweb3-network@^1.0.110":
-  version "1.0.110"
-  resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-network/-/sysweb3-network-1.0.110.tgz#a22ca7eb525bef2f5ed7dcab93669be8e7208eac"
-  integrity sha512-VBBlP7X1ThIFwf3HYXtgL3lEbvr+ZV7uFFuD+2jwhisdOyadmBQJ2Kkl9cY/oLhJB4zU5cHiZnjfZkF4OHRGpQ==
+"@sidhujag/sysweb3-network@1.0.111", "@sidhujag/sysweb3-network@^1.0.109", "@sidhujag/sysweb3-network@^1.0.111":
+  version "1.0.111"
+  resolved "https://registry.npmjs.org/@sidhujag/sysweb3-network/-/sysweb3-network-1.0.111.tgz#ae1cb05f1db48a1ecd11142ccf6b39dc211a5cff"
+  integrity sha512-DcjJMO+F222UA4UPm4T+OWDOxbFolO6SW8WW9RLIE0yBhkU8qexGEJ14beXeuqTpIK9Feg3NVricyV413B+q7A==
   dependencies:
     eth-chains "^1.0.0"
     ethers "^6.17.0"

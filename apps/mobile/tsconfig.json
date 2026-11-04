@@ -13,6 +13,12 @@
       "@sidhujag/sysweb3-keyring": [
         "./node_modules/@sidhujag/sysweb3-keyring/types/index.d.ts"
       ],
+      "@sidhujag/sysweb3-keyring/cjs/*.js": [
+        "./node_modules/@sidhujag/sysweb3-keyring/types/*.d.ts"
+      ],
+      "@sidhujag/sysweb3-keyring/cjs/*": [
+        "./node_modules/@sidhujag/sysweb3-keyring/types/*.d.ts"
+      ],
       "ethers/crypto": ["./node_modules/ethers/lib.esm/crypto/index.d.ts"],
       "ethers/utils": ["./node_modules/ethers/lib.esm/utils/index.d.ts"]
     }
