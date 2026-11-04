@@ -120,7 +120,9 @@ function fixture() {
       else if (body.method === 'eth_getBalance') result = availableBalance;
       else if (body.method === 'eth_getTransactionCount')
         result =
-          body.params[1] === 'finalized' ? (final ? '0x1' : '0x0') : nonce;
+          body.params[1] !== 'pending' ? (final ? '0x1' : '0x0') : nonce;
+      else if (body.method === 'eth_getBlockByNumber')
+        result = { number: body.params[0] === 'finalized' ? '0x20' : body.params[0], hash: '0x' + '2'.repeat(64) };
       else if (body.method === 'eth_feeHistory')
         result = { oldestBlock: '0x1', baseFeePerGas: ['0x1', baseFee] };
       else if (body.method === 'eth_maxPriorityFeePerGas') result = '0x1';

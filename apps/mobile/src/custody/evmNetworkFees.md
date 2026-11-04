@@ -4,9 +4,10 @@
 transaction journal, `eth_sendRawTransaction` method, network selector or UI.
 Its caller supplies a synchronous revision guard; every asynchronous boundary
 checks the guard, and request groups abort on failure. Input fields are detached
-and validated before the first await. The existing Ethereum preparation,
-confirmation, receipt and broadcast path is unchanged. These adapters are not
-wired into `NativeTransfers` yet. No additional network can send.
+and validated before the first await. Ethereum receipt recovery uses the canonical receipt adapter through
+`NativeTransferRpc.receipt`; its public result shape is unchanged. Preparation,
+fee review, confirmation signing and broadcast are unchanged. Fee adapters remain
+unwired into `NativeTransfers`. No additional network can send.
 
 ## Fees and consent
 
@@ -39,7 +40,7 @@ values must not be mixed with these timestamps.
 
 | Network | Fee query | Receipt observation / remaining send gate |
 | --- | --- | --- |
-| Ethereum | EIP-1559 execution only | New adapter checks canonical receipt block, finalized height and consumed nonce; existing terminal path remains unchanged pending integration review. |
+| Ethereum | EIP-1559 execution only | Recovery checks canonical receipt block, finalized height and consumed nonce before making the saved transaction terminal. |
 | NEVM 57 / 5700 | Execution-only candidate | Finalized-tag response is labelled `nevm-depth-observation`; never terminal-eligible here. Explicit confirmation policy and native qualification remain. |
 | Arbitrum One | Supplied gas limit includes publication cost; verify `eth_estimateGas` fits it, add no separate L1 surcharge | Settlement unqualified; matching node fee/finality and native qualification remain. |
 | Base | Source-pinned Jovian GPO: `getL1FeeUpperBound(unsignedByteLength)` and `getOperatorFee(gasLimit)` | Both extras are estimates; settlement and native qualification remain. |
@@ -86,7 +87,7 @@ Runtime fingerprint checks therefore run on every quote.
 
 ## Receipts, bounds and verification
 
-New Ethereum receipt observations match transaction hash, sender and recipient;
+Ethereum receipt observations match transaction hash, sender and recipient;
 fetch the canonical block at the receipt height; require its hash to match;
 require finalized height at least the receipt height and nonce consumption at
 that finalized height; repeat the receipt and check the finalized block hash.
@@ -99,6 +100,11 @@ receipt that could offer retry. Only Ethereum can mark this observation terminal
 NEVM stays observation-only and unqualified settlement profiles refuse it.
 Malformed admitted bodies, recognized RPC errors and transport failures do not
 select this path. The receipt budget remains 16 KiB.
+The existing public receipt shape maps these observations to confirmed/reverted
+plus a separate finalized flag. An orphan or inconsistent block response is an
+invalid observation; the journal remains unresolved. A caller abort maps to
+`CANCELLED`; a read deadline or unavailable endpoint maps to `UNAVAILABLE`, and
+malformed/profile-mismatch observations map to `INVALID_RESPONSE`.
 NEVM tags are depth lookbacks in the matched Geth source, with observed 11/12
 block lags; they are not independent ChainLock proof. Other settlement profiles
 remain unqualified and cannot return terminal eligibility.

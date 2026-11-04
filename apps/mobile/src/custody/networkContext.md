@@ -39,8 +39,9 @@ authorize submission or query the hardcoded Ethereum transfer RPC. CAS-protected
 recovery identities; their presence does not enable additional signing.
 
 The additive read-only fee and receipt adapters are described in
-[evmNetworkFees.md](evmNetworkFees.md). They do not change the existing Ethereum
-transfer path or enable any additional chain. Source-pinned Base and Rollux
+[evmNetworkFees.md](evmNetworkFees.md). Their fee quotes do not change Ethereum signing or broadcast. Ethereum
+receipt recovery now uses the canonical observation checks; no additional chain
+is enabled. Source-pinned Base and Rollux
 oracle queries use unsigned payloads only. Their L1/operator charges remain
 estimates, with no absolute maximum total. Arbitrum's gas estimate includes L1
 publication cost; NEVM finalized tags provide depth observations rather than

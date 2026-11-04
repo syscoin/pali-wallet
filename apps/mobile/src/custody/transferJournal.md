@@ -33,8 +33,14 @@ every live account’s complete retained container before publishing ready.
 
 The host saves signed bytes and awaits `attempted` before broadcasting. A restart
 keeps signed/attempted/submitted entries unresolved and uses their exact hash.
-Receipt/finality observations alone produce terminal states; nonce-consumed does
-not claim that the original transaction succeeded. Retry requires fresh consent
+Ethereum confirmed/reverted terminal states require the saved receipt block
+hash to match the canonical block at that height, finalized height to cover the
+receipt, and the saved nonce to be consumed there. A repeated matching receipt
+and final block identity complete the observation. Inconsistent or orphan
+receipts leave the exact journal entry unresolved. These remain provider
+observations rather than independent consensus proofs. A missing receipt with
+consumed finalized nonce produces only nonce-consumed and does not claim that the
+original transaction succeeded. Retry requires fresh consent
 and reuses the exact saved bytes. The journal itself never sends network traffic.
 
 Removal validates every entry and refuses any unresolved, malformed or unknown

@@ -12,6 +12,7 @@ function fixture(overrides: Record<string, unknown> = {}) {
   const calls: { method: string; params: unknown[]; init: RequestInit }[] = [];
   const values: Record<string, unknown> = {
     eth_chainId: '0x1',
+    eth_getBlockByNumber: (body: { params: string[] }) => ({ number: body.params[0] === 'finalized' ? '0x20' : body.params[0], hash: '0x' + '2'.repeat(64) }),
     eth_getTransactionCount: '0x0',
     eth_getBalance: '0x10000000000000000',
     eth_feeHistory: { oldestBlock: '0x1', baseFeePerGas: ['0x64', '0x6e'] },
@@ -217,4 +218,28 @@ test('reports only nonce consumption when a different finalized transaction may 
     ),
     { status: 'nonce-consumed', finalized: true }
   );
+});
+
+test('receipt canonicality and finalized height both gate terminal eligibility', async () => {
+  const hash = '0x' + '1'.repeat(64);
+  const receipt = { transactionHash: hash, from: sender.address, to: recipient, status: '0x1', blockNumber: '0xa', blockHash: '0x' + '2'.repeat(64) };
+  const expected = { hash, from: sender.address, to: recipient, nonce: '0' };
+  const orphan = fixture({ eth_getTransactionReceipt: receipt, eth_getTransactionCount: '0x1',
+    eth_getBlockByNumber: (body: { params: string[] }) => ({ number: body.params[0] === 'finalized' ? '0x20' : body.params[0], hash: '0x' + '3'.repeat(64) }) });
+  await assert.rejects(orphan.rpc.receipt(expected, signal()), { code: 'INVALID_RESPONSE' });
+  const beforeFinal = fixture({ eth_getTransactionReceipt: receipt, eth_getTransactionCount: '0x1',
+    eth_getBlockByNumber: (body: { params: string[] }) => ({ number: body.params[0] === 'finalized' ? '0x9' : body.params[0], hash: '0x' + '2'.repeat(64) }) });
+  assert.equal((await beforeFinal.rpc.receipt(expected, signal()))?.finalized, false);
+});
+
+test('receipt error mapping distinguishes caller cancellation, deadline and malformed responses', async () => {
+  const expected = { hash: '0x' + '1'.repeat(64), from: sender.address, to: recipient, nonce: '0' };
+  const timed = new NativeTransferRpc({ timeoutMs: 5, fetch: async () => new Promise(() => undefined) });
+  await assert.rejects(timed.receipt(expected, signal()), { code: 'UNAVAILABLE' });
+  const controller = new AbortController(); controller.abort();
+  await assert.rejects(timed.receipt(expected, controller.signal), { code: 'CANCELLED' });
+  const malformed = fixture({ eth_getTransactionReceipt: { transactionHash: '0x00' } });
+  await assert.rejects(malformed.rpc.receipt(expected, signal()), { code: 'INVALID_RESPONSE' });
+  const unavailable = fixture({ eth_getTransactionReceipt: () => { throw Error('Endpoint unavailable'); } });
+  await assert.rejects(unavailable.rpc.receipt(expected, signal()), { code: 'UNAVAILABLE' });
 });
