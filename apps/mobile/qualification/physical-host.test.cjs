@@ -102,6 +102,14 @@ function report(phase, scenario, runId) {
     nevmChainId: '5700',
     nevmJournalContainerVersion: 2,
     nevmRestoredFromJournal: phase === 'restart',
+    nativeZksysVerified: true,
+    zksysAccountId: 'hd:60:4', zksysAccountIndex: 4,
+    zksysAddress: scenario === 'import' ? '0x51cA8ff9f1C0a99f88E86B8112eA3237F55374cA' : '0x' + '44'.repeat(20),
+    zksysTransferHash: '0x' + '9'.repeat(64), zksysChainId: '57057', zksysJournalContainerVersion: 2,
+    zksysSignatures: phase === 'create' ? 1 : 0,
+    zksysAuthorizations: phase === 'create' ? 0 : 1,
+    zksysInjectedBroadcasts: 1, zksysFeeEstimates: phase === 'create' ? 2 : 0,
+    zksysRestoredFromJournal: phase === 'restart',
     physicalRunId: runId,
     physicalBundleIdentifier: PHYSICAL_BUNDLES[scenario],
     physicalSourceRevision: SOURCE,
@@ -986,6 +994,10 @@ test('physical report checks preserve exact HD/ERC20/NEVM evidence and refuse an
     'nativeNevmVerified', 'nevmAccountId', 'nevmAccountIndex', 'nevmAddress',
     'nevmTransferHash', 'nevmEthereumTransferHash', 'nevmChainId',
     'nevmJournalContainerVersion', 'nevmRestoredFromJournal',
+    'nativeZksysVerified', 'zksysAccountId', 'zksysAccountIndex', 'zksysAddress',
+    'zksysTransferHash', 'zksysChainId', 'zksysJournalContainerVersion',
+    'zksysSignatures', 'zksysAuthorizations', 'zksysInjectedBroadcasts',
+    'zksysFeeEstimates', 'zksysRestoredFromJournal',
   ]) {
     const incomplete = { ...first };
     delete incomplete[key];
@@ -996,6 +1008,10 @@ test('physical report checks preserve exact HD/ERC20/NEVM evidence and refuse an
     { nevmEthereumTransferHash: '0x' + '9'.repeat(64) },
     { nevmChainId: '1' },
     { nevmRestoredFromJournal: false },
+    { zksysTransferHash: '0x' + 'a'.repeat(64) },
+    { zksysChainId: '5700' },
+    { zksysSignatures: 1 },
+    { zksysFeeEstimates: 2 },
   ]) assert.throws(() => assertPhysicalRestart(first, { ...second, ...mutation }));
   assert.throws(() =>
     decodePhysicalReport(

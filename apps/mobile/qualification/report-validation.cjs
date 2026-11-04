@@ -15,6 +15,7 @@ const {
   isNevmQualificationReport,
   matchesNevmRestartEvidence,
 } = require('./nevm-transfer.ts');
+const { isZksysQualificationReport, matchesZksysRestartEvidence } = require('./zksys-transfer.ts');
 const {
   assertSimulatorRefusal,
   TIMED_CRYPTO_CASES,
@@ -69,6 +70,18 @@ const FIELDS = new Set([
   'nevmChainId',
   'nevmJournalContainerVersion',
   'nevmRestoredFromJournal',
+  'nativeZksysVerified',
+  'zksysAccountId',
+  'zksysAccountIndex',
+  'zksysAddress',
+  'zksysTransferHash',
+  'zksysChainId',
+  'zksysJournalContainerVersion',
+  'zksysSignatures',
+  'zksysAuthorizations',
+  'zksysInjectedBroadcasts',
+  'zksysFeeEstimates',
+  'zksysRestoredFromJournal',
 ]);
 
 /** Pure shared checks. File persistence remains owned by the platform runner. */
@@ -96,6 +109,7 @@ function decodeNativeReport(
     !isHdQualificationReport(report) ||
     !isErc20QualificationReport(report) ||
     !isNevmQualificationReport(report) ||
+    !isZksysQualificationReport(report) ||
     (report.cryptoDiagnostic !== undefined &&
       !isCryptoDiagnostic(report.cryptoDiagnostic)) ||
     !isStorageQualificationDiagnostic(
@@ -216,7 +230,8 @@ function assertPhysicalRestart(created, restored) {
     created.physicalSourceRevision !== restored.physicalSourceRevision ||
     !matchesHdRestartEvidence(created, restored) ||
     !matchesErc20RestartEvidence(created, restored) ||
-    !matchesNevmRestartEvidence(created, restored)
+    !matchesNevmRestartEvidence(created, restored) ||
+    !matchesZksysRestartEvidence(created, restored)
   )
     throw Error('Physical cold restart identity mismatch');
 }

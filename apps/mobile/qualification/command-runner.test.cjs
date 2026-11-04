@@ -5,6 +5,7 @@ const { Buffer } = require('node:buffer');
 const { createCommandRunner, describeQualificationFailure, COLD_BOOT_TIMEOUT_MS } = require('./command-runner.cjs');
 const { isErc20QualificationReport, matchesErc20RestartEvidence } = require('./erc20-transfer.ts');
 const { matchesNevmRestartEvidence } = require('./nevm-transfer.ts');
+const { matchesZksysRestartEvidence } = require('./zksys-transfer.ts');
 
 const erc20Evidence = (phase = 'create') => ({
   nativeErc20Verified: true, erc20AccountId: 'hd:60:2', erc20AccountIndex: 2,
@@ -19,6 +20,14 @@ const nevmEvidence = (phase = 'create') => ({
   nevmTransferHash: '0x' + '7'.repeat(64), nevmEthereumTransferHash: '0x' + '8'.repeat(64),
   nevmChainId: '5700', nevmJournalContainerVersion: 2,
   nevmRestoredFromJournal: phase === 'restart',
+});
+const zksysEvidence = (phase = 'create') => ({
+  nativeZksysVerified: true, zksysAccountId: 'hd:60:4', zksysAccountIndex: 4,
+  zksysAddress: '0x51cA8ff9f1C0a99f88E86B8112eA3237F55374cA',
+  zksysTransferHash: '0x' + '9'.repeat(64), zksysChainId: '57057', zksysJournalContainerVersion: 2,
+  zksysSignatures: phase === 'create' ? 1 : 0, zksysAuthorizations: phase === 'create' ? 0 : 1,
+  zksysInjectedBroadcasts: 1, zksysFeeEstimates: phase === 'create' ? 2 : 0,
+  zksysRestoredFromJournal: phase === 'restart',
 });
 
 test('only explicit cold-boot wait receives600s while ordinary commands keep180s', () => {
@@ -147,7 +156,7 @@ for (const diagnosticsAvailable of [true, false]) test(`Android cleanup preserve
       if (args.some((value) => value.endsWith('pali-native-qualification-startup.json'))) return { status: 1, stderr: 'not present' };
       if (args.some((value) => value.endsWith('pali-native-qualification-load-error.json'))) return { status: 1, stderr: 'not present' };
       if (args[0] === 'exec-out') return { status: null, stdout: Buffer.from('PRIVATE_DATABASE_BYTES'), error: Object.assign(Error('database read timeout'), { code: 'ETIMEDOUT' }) };
-      return ok(JSON.stringify({ version: 1, status: 'passed', phase: 'create', scenario: 'import', platform: 'android', networkCalls: 0, nativeBridgeExercised: true, sdkVersion: '2.0.0', nativeSigningVerified: true, nativeHdAccountsVerified: true, selectedAccountId: 'hd:60:1', selectedAccountIndex: 1, journalContainerVersion: 2, firstTransferHash: '0x' + 'c'.repeat(64), address: '0x6Fac4D18c912343BF86fa7049364Dd4E424Ab9C0', transferHash: '0x' + 'b'.repeat(64), fingerprint: 'a'.repeat(64), cryptoEvidence: { passed: true, productionIterations: 900000 }, mnemonicEntropyVerified: false, storageDiagnostic: { stage: 'ready' }, ...erc20Evidence(), ...nevmEvidence() }));
+      return ok(JSON.stringify({ version: 1, status: 'passed', phase: 'create', scenario: 'import', platform: 'android', networkCalls: 0, nativeBridgeExercised: true, sdkVersion: '2.0.0', nativeSigningVerified: true, nativeHdAccountsVerified: true, selectedAccountId: 'hd:60:1', selectedAccountIndex: 1, journalContainerVersion: 2, firstTransferHash: '0x' + 'c'.repeat(64), address: '0x6Fac4D18c912343BF86fa7049364Dd4E424Ab9C0', transferHash: '0x' + 'b'.repeat(64), fingerprint: 'a'.repeat(64), cryptoEvidence: { passed: true, productionIterations: 900000 }, mnemonicEntropyVerified: false, storageDiagnostic: { stage: 'ready' }, ...erc20Evidence(), ...nevmEvidence(), ...zksysEvidence() }));
     }
     if (args.includes('pidof')) return ok(++pidReads === 1 ? '1234' : '');
     if (args.includes('logcat')) return diagnosticsAvailable ? ok('F/libc: SIGABRT libhermes.so synthetic_secret_token_42 PUBLIC native qualification password 2026') : { status: 1, stderr: 'synthetic_secret_token_42' };
@@ -251,7 +260,7 @@ function reportWaitFixture() {
   });
   const report = JSON.stringify({ version: 1, status: 'passed', phase: 'create', scenario: 'import', platform: 'android',
     networkCalls: 0, nativeBridgeExercised: true, sdkVersion: '2.0.0', nativeSigningVerified: true, nativeHdAccountsVerified: true, selectedAccountId: 'hd:60:1', selectedAccountIndex: 1, journalContainerVersion: 2, firstTransferHash: '0x' + 'c'.repeat(64), address: '0x6Fac4D18c912343BF86fa7049364Dd4E424Ab9C0', transferHash: '0x' + 'b'.repeat(64), mnemonicEntropyVerified: false,
-    fingerprint: 'a'.repeat(64), cryptoEvidence: { passed: true, productionIterations: 900000 }, storageDiagnostic: { stage: 'ready' }, ...erc20Evidence(), ...nevmEvidence() });
+    fingerprint: 'a'.repeat(64), cryptoEvidence: { passed: true, productionIterations: 900000 }, storageDiagnostic: { stage: 'ready' }, ...erc20Evidence(), ...nevmEvidence(), ...zksysEvidence() });
   return { wait, validate, saved, report, now: () => now };
 }
 
@@ -268,7 +277,7 @@ test('the actual report parser preserves producer storage evidence and rejects u
   failed.observe('sqlcipher-journal-readback');
   failed.capture(new WalletStorageError('STORAGE_UNAVAILABLE'));
   const failure = { ...passed, status: 'failed', failedStage: 'open SQLCipher and device key', storageDiagnostic: failed.report() };
-  for (const key of ['nativeHdAccountsVerified', 'selectedAccountId', 'selectedAccountIndex', 'journalContainerVersion', 'firstTransferHash', ...Object.keys(erc20Evidence()), ...Object.keys(nevmEvidence())]) delete failure[key];
+  for (const key of ['nativeHdAccountsVerified', 'selectedAccountId', 'selectedAccountIndex', 'journalContainerVersion', 'firstTransferHash', ...Object.keys(erc20Evidence()), ...Object.keys(nevmEvidence()), ...Object.keys(zksysEvidence())]) delete failure[key];
   assert.throws(() => fixture.validate(JSON.stringify(failure), 'create', 'import'), /sqlcipher-journal-readback/);
   assert.deepEqual(fixture.saved.at(-1).storageDiagnostic, failed.report());
   const beforeOpen = { ...failure, failedStage: 'native crypto bridge and full vectors', storageDiagnostic: {} };
@@ -373,6 +382,30 @@ test('NEVM restart matches both chains and cannot reuse old Ethereum-only eviden
   assert.equal(matchesNevmRestartEvidence({}, {}), false);
 });
 
+test('full custody reports require zkSYS controller, exact-fee and restart counters', () => {
+  const fixture = reportWaitFixture();
+  const passed = JSON.parse(fixture.report);
+  assert.equal(fixture.validate(JSON.stringify(passed), 'create', 'import').nativeZksysVerified, true);
+  for (const key of Object.keys(zksysEvidence())) {
+    const missing = { ...passed }; delete missing[key];
+    assert.throws(() => fixture.validate(JSON.stringify(missing), 'create', 'import'), /Unexpected qualification report schema/);
+  }
+  for (const mutation of [
+    { zksysAccountId: 'hd:60:3' }, { zksysAccountIndex: 3 }, { zksysAddress: passed.nevmAddress },
+    { zksysTransferHash: passed.nevmTransferHash }, { zksysTransferHash: passed.nevmEthereumTransferHash },
+    { zksysChainId: 57057 }, { zksysChainId: '5700' }, { zksysJournalContainerVersion: 1 },
+    { zksysSignatures: 0 }, { zksysAuthorizations: 1 }, { zksysInjectedBroadcasts: 0 },
+    { zksysFeeEstimates: 1 }, { zksysRestoredFromJournal: true },
+  ]) assert.throws(() => fixture.validate(JSON.stringify({ ...passed, ...mutation }), 'create', 'import'));
+  const restored = { ...passed, phase: 'restart', ...erc20Evidence('restart'), ...nevmEvidence('restart'), ...zksysEvidence('restart') };
+  assert(matchesZksysRestartEvidence(passed, restored));
+  for (const mutation of [
+    { zksysTransferHash: '0x' + 'f'.repeat(64) }, { zksysFeeEstimates: 2 },
+    { zksysSignatures: 1 }, { zksysAuthorizations: 0 }, { fingerprint: 'f'.repeat(64) },
+  ]) assert.equal(matchesZksysRestartEvidence(passed, { ...restored, ...mutation }), false);
+  assert.equal(matchesZksysRestartEvidence({}, {}), false);
+});
+
 test('the actual Android runner requires ERC20 and NEVM restart evidence in addition to existing HD evidence', async () => {
   const { runInNewContext } = require('node:vm');
   const { matchesHdRestartEvidence } = require('./hd-accounts.ts');
@@ -397,7 +430,7 @@ test('the actual Android runner requires ERC20 and NEVM restart evidence in addi
     run.binary = () => Buffer.alloc(4096, 0x61);
     const base = JSON.parse(reportWaitFixture().report);
     const created = { ...base, sessionId: 'create-session' };
-    const restored = { ...base, phase: 'restart', ...erc20Evidence('restart'), ...nevmEvidence('restart'), sessionId: 'restart-session', ...change };
+    const restored = { ...base, phase: 'restart', ...erc20Evidence('restart'), ...nevmEvidence('restart'), ...zksysEvidence('restart'), sessionId: 'restart-session', ...change };
     // The mismatch used below deliberately passes the pre-existing HD check.
     assert.equal(matchesHdRestartEvidence(created, restored), true);
     const android = runInNewContext(source.slice(start, end) + '\nandroid;', {
@@ -407,7 +440,7 @@ test('the actual Android runner requires ERC20 and NEVM restart evidence in addi
       waitReport: async (_read, requestedPhase, scenario) => ({ ...(requestedPhase === 'create' ? created : restored), scenario }),
       androidProcessRunning: () => true,
       databaseEvidence: (bytes) => { assert.equal(bytes.length, 4096); return { plaintextHeader: false }; },
-      matchesHdRestartEvidence, matchesErc20RestartEvidence, matchesNevmRestartEvidence,
+      matchesHdRestartEvidence, matchesErc20RestartEvidence, matchesNevmRestartEvidence, matchesZksysRestartEvidence,
       captureFixtureLoadError: () => false, redact: (text) => text,
       latestAndroidExitPid: diagnostics.latestAndroidExitPid,
       summarizeAndroidLog: diagnostics.summarizeAndroidLog,
@@ -418,10 +451,12 @@ test('the actual Android runner requires ERC20 and NEVM restart evidence in addi
   };
   const result = await exercise();
   assert.equal(result.reports.length, 2);
-  assert(result.reports.every((report) => report.hdAccountsRestored && report.signedTransferRestored && report.erc20TransferRestored && report.nevmTransferRestored));
+  assert(result.reports.every((report) => report.hdAccountsRestored && report.signedTransferRestored && report.erc20TransferRestored && report.nevmTransferRestored && report.zksysTransferRestored));
   await assert.rejects(exercise({ erc20TransferHash: '0x' + 'f'.repeat(64) }), /Cold restart identity/);
   await assert.rejects(exercise({ nevmTransferHash: '0x' + 'f'.repeat(64) }), /Cold restart identity/);
   await assert.rejects(exercise({ nevmEthereumTransferHash: '0x' + 'f'.repeat(64) }), /Cold restart identity/);
+  await assert.rejects(exercise({ zksysTransferHash: '0x' + 'f'.repeat(64) }), /Cold restart identity/);
+  await assert.rejects(exercise({ zksysSignatures: 1 }), /Cold restart identity/);
 });
 
 test('Android liveness maps only pidof exit one to absence and preserves transport or command failure', () => {
