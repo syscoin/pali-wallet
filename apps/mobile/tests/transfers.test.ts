@@ -12,6 +12,12 @@ const wallet = Wallet.fromPhrase(
   'test test test test test test test test test test test junk'
 );
 const to = '0x1111111111111111111111111111111111111111';
+const token = Object.freeze({
+  contractAddress: '0x3333333333333333333333333333333333333333',
+  name: 'Public fixture token',
+  symbol: 'FIX',
+  decimals: 2,
+});
 function fixture() {
   let state: CustodySnapshot = {
     phase: 'ready',
@@ -34,6 +40,7 @@ function fixture() {
   let signGate: Promise<void> | null = null;
   let failWrite = false;
   const broadcasts: string[] = [];
+  const rpcMethods: string[] = [];
   const source = {
     getSnapshot: () => state,
     subscribe(listener: (state: CustodySnapshot) => void) {
@@ -76,6 +83,11 @@ function fixture() {
     },
   };
   const runtime = {
+    async token(contractAddress: string, guard: () => void) {
+      guard();
+      assert.equal(contractAddress, token.contractAddress);
+      return token;
+    },
     async journal(guard: () => void) {
       guard();
       return new NativeTransferJournal(
@@ -115,14 +127,26 @@ function fixture() {
   const rpc = new NativeTransferRpc({
     fetch: async (_url, init) => {
       const body = JSON.parse(String(init.body));
+      rpcMethods.push(body.method);
       let result: unknown;
       if (body.method === 'eth_chainId') result = '0x1';
+      else if (body.method === 'eth_getCode') result = '0x6000';
+      else if (body.method === 'eth_call')
+        result =
+          '0x' +
+          (body.params[0].data === '0x313ce567'
+            ? 2n
+            : body.params[0].data.startsWith('0x70a08231')
+            ? 10000n
+            : 1n)
+            .toString(16)
+            .padStart(64, '0');
       else if (body.method === 'eth_getBalance') result = availableBalance;
       else if (body.method === 'eth_getTransactionCount')
         result =
           body.params[1] !== 'pending' ? (final ? '0x1' : '0x0') : nonce;
       else if (body.method === 'eth_getBlockByNumber')
-        result = { number: body.params[0] === 'finalized' ? '0x20' : body.params[0], hash: '0x' + '2'.repeat(64) };
+        result = { number: ['latest', 'finalized'].includes(body.params[0]) ? '0x20' : body.params[0], hash: '0x' + '2'.repeat(64) };
       else if (body.method === 'eth_feeHistory')
         result = { oldestBlock: '0x1', baseFeePerGas: ['0x1', baseFee] };
       else if (body.method === 'eth_maxPriorityFeePerGas') result = '0x1';
@@ -163,6 +187,7 @@ function fixture() {
     transfers,
     records,
     broadcasts,
+    rpcMethods,
     runtime,
     source,
     signatures: () => signatures,
@@ -218,6 +243,74 @@ async function review(f: ReturnType<typeof fixture>) {
   assert(result);
   return result;
 }
+
+for (const [kind, amount] of [
+  ['zero', '0'],
+  ['over-precision', '1.001'],
+  ['malformed', '1e3'],
+] as const) {
+  test(`invalid ERC20 ${kind} amount leaves an editable controller and accepts correction`, async () => {
+    const f = fixture();
+    const before = f.source.getSnapshot();
+    const phases: string[] = [];
+    f.transfers.subscribe((snapshot) => phases.push(snapshot.phase));
+    try {
+      await assert.rejects(
+        f.transfers.prepareToken(token.contractAddress, to, amount),
+        { code: 'INVALID_INPUT' }
+      );
+      assert.equal(f.transfers.getSnapshot().phase, 'idle');
+      assert.equal(f.transfers.getSnapshot().review, null);
+      assert.equal(f.transfers.getSnapshot().hash, null);
+      assert.deepEqual(phases, ['preparing', 'idle']);
+      assert.equal(f.source.getSnapshot(), before);
+      assert.deepEqual(f.records, {});
+      assert.equal(f.rpcMethods.length, 0);
+      assert.equal(f.signatures(), 0);
+      assert.deepEqual(f.broadcasts, []);
+
+      await f.transfers.prepareToken(token.contractAddress, to, '1.23');
+      const corrected = f.transfers.getSnapshot();
+      assert.equal(corrected.phase, 'review');
+      assert.equal(corrected.review?.amountUnits, '123');
+      assert.equal(corrected.review?.recipient, to);
+      assert.equal(
+        corrected.review?.intent?.token.contractAddress,
+        token.contractAddress
+      );
+      assert.equal(f.source.getSnapshot(), before);
+      assert(f.rpcMethods.includes('eth_estimateGas'));
+      assert.equal(f.signatures(), 0);
+      assert.deepEqual(f.records, {});
+    } finally {
+      f.close();
+    }
+  });
+}
+
+test('invalid ERC20 amount cannot reset or replace an unresolved native journal', async () => {
+  const f = fixture();
+  try {
+    f.loseAcknowledgment();
+    const approved = await review(f);
+    await f.transfers.confirm(approved.id, 'public-password');
+    const before = structuredClone(f.records);
+    const hash = f.transfers.getSnapshot().hash;
+    const calls = f.rpcMethods.length;
+    await assert.rejects(
+      f.transfers.prepareToken(token.contractAddress, to, '0'),
+      { code: 'PENDING_TRANSFER' }
+    );
+    assert.equal(f.transfers.getSnapshot().phase, 'unknown');
+    assert.equal(f.transfers.getSnapshot().hash, hash);
+    assert.deepEqual(f.records, before);
+    assert.equal(f.rpcMethods.length, calls);
+    assert.equal(f.signatures(), 1);
+    assert.equal(f.broadcasts.length, 1);
+  } finally {
+    f.close();
+  }
+});
 
 test('real signed bytes are journaled before one network submission and never exposed to UI', async () => {
   const f = fixture();

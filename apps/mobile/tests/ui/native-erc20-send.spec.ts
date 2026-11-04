@@ -24,6 +24,77 @@ async function prepare(page: Page, amount = '2.5') {
   await expect(password(page)).toBeVisible();
 }
 
+for (const [kind, amount] of [
+  ['zero', '0'],
+  ['over-precision', '1.0000001'],
+  ['malformed', '1e3'],
+] as const) {
+  test(`invalid ERC20 ${kind} amount remains editable and can be corrected on the same screen`, async ({
+    page,
+  }) => {
+    await page.goto('/?erc20-send');
+    const recipientInput = page.getByLabel('Ethereum address', { exact: true });
+    const amountInput = page.getByLabel('Amount in FIX', { exact: true });
+    await recipientInput.fill(recipient);
+    await amountInput.fill(amount);
+    await amountInput.evaluate((input) =>
+      input.setAttribute('data-recovery-screen', 'original')
+    );
+    await page.getByTestId('native-send-review').click();
+    await expect(
+      page.getByText(
+        'Enter an Ethereum address and an amount greater than zero.',
+        { exact: true }
+      )
+    ).toBeVisible();
+    expect(
+      await page.evaluate(() => ({
+        rpc: window.__erc20SendFixture.rpcMethods(),
+        signatures: window.__erc20SendFixture.signatures(),
+        authorizations: window.__erc20SendFixture.authorizations(),
+        broadcasts: window.__erc20SendFixture.broadcasts(),
+        journal: window.__erc20SendFixture.journal(),
+      }))
+    ).toEqual({
+      rpc: [],
+      signatures: 0,
+      authorizations: 0,
+      broadcasts: [],
+      journal: null,
+    });
+    await expect(amountInput).toBeEditable();
+    await expect(recipientInput).toBeEditable();
+    await expect(recipientInput).toHaveValue(recipient);
+    await expect(amountInput).toHaveValue(amount);
+    await expect(amountInput).toHaveAttribute(
+      'data-recovery-screen',
+      'original'
+    );
+    await expect(page.getByTestId('native-send-review')).toBeEnabled();
+    await expect(
+      page.getByText('Checking the network…', { exact: true })
+    ).toHaveCount(0);
+    await expect(password(page)).toHaveCount(0);
+
+    await amountInput.fill('2.5');
+    await page.getByTestId('native-send-review').click();
+    await expect(password(page)).toBeVisible();
+    await expect(password(page)).toHaveValue('');
+    await expect(page.getByTestId('native-send-amount')).toHaveText('2.5');
+    await expect(page.getByTestId('native-send-recipient')).toHaveText(recipient);
+    await expect(page.getByTestId('native-send-confirm')).toBeDisabled();
+    expect(
+      await page.evaluate(() => window.__erc20SendFixture.rpcMethods())
+    ).toContain('eth_estimateGas');
+    expect(
+      await page.evaluate(() => window.__erc20SendFixture.signatures())
+    ).toBe(0);
+    expect(
+      await page.evaluate(() => window.__erc20SendFixture.journal())
+    ).toBeNull();
+  });
+}
+
 test('real ERC20 controller shows asset intent and preserves exact signed bytes and precision over reload/retry', async ({
   page,
 }, info) => {

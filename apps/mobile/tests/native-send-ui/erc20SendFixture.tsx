@@ -88,6 +88,7 @@ const storage: KeyringStoragePort = {
   },
 };
 const broadcasts: string[] = [];
+const rpcMethods: string[] = [];
 let signatures = 0;
 let authorizations = 0;
 let finalized = false;
@@ -103,6 +104,7 @@ const block = (number: string) => ({
 const rpc = new NativeTransferRpc({
   fetch: async (_url, init) => {
     const request = JSON.parse(String(init.body));
+    rpcMethods.push(request.method);
     if (request.method === 'eth_feeHistory' && heldQuote) await heldQuote;
     let result: unknown;
     if (request.method === 'eth_chainId') result = '0x1';
@@ -227,6 +229,8 @@ declare global {
       signatures(): number;
       authorizations(): number;
       broadcasts(): readonly string[];
+      rpcMethods(): readonly string[];
+      journal(): unknown;
       finalized(): void;
       revise(): void;
       setRuntimePrecision(value: number): void;
@@ -241,6 +245,8 @@ window.__erc20SendFixture = {
   signatures: () => signatures,
   authorizations: () => authorizations,
   broadcasts: () => [...broadcasts],
+  rpcMethods: () => [...rpcMethods],
+  journal: () => localStorage.getItem(key('native-evm-transfer-v1')),
   finalized: () => {
     finalized = true;
   },

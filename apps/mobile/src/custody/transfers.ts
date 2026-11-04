@@ -533,6 +533,8 @@ export class NativeTransfers {
           amountUnits: parseTokenAmount(amount, token.decimals),
         });
       } catch {
+        assertCurrent();
+        this.publish({ phase: 'idle' });
         throw new NativeTransferError('INVALID_INPUT');
       }
       if (intent.token.contractAddress !== contract)
