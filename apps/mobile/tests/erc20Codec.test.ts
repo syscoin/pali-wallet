@@ -1,13 +1,19 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { copyFile, mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import {
   formatTokenUnits,
-  normalizeErc20Address,
   parseErc20Decimals,
-  parseErc20Metadata,
   parseErc20Text,
   parseErc20Units,
 } from '../../../source/shared/erc20.ts';
+import {
+  normalizeErc20Address,
+  parseErc20Metadata,
+} from '../src/portfolio/erc20Metadata.ts';
 
 const contractAddress = '0x52908400098527886E0F7030069857D2E4169EE7';
 const metadata = {
@@ -16,6 +22,24 @@ const metadata = {
   name: 'Example token',
   symbol: 'EXAMPLE',
 };
+test('the shared codec loads without an extension dependency installation', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'pali-isolated-erc20-'));
+  try {
+    const isolated = path.join(directory, 'erc20.ts');
+    await copyFile(
+      new URL('../../../source/shared/erc20.ts', import.meta.url),
+      isolated
+    );
+    const codec = await import(pathToFileURL(isolated).href);
+    assert.equal(
+      codec.formatTokenUnits('9007199254740993', 2),
+      '90071992547409.93'
+    );
+    assert.equal(codec.parseErc20Decimals(255n), 255);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
 test('ERC20 identities normalize checksums and reject incomplete, zero or incorrectly checksummed contracts', () => {
   assert.equal(
     normalizeErc20Address(contractAddress.toLowerCase()),

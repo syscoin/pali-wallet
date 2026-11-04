@@ -1,11 +1,10 @@
 import {
   ERC20_TEXT_LIMITS,
-  normalizeErc20Address,
   parseErc20Decimals,
-  parseErc20Metadata,
   parseErc20Text,
   parseErc20Units,
 } from '../../../../source/shared/erc20.ts';
+import { normalizeErc20Address, parseErc20Metadata } from './erc20Metadata.ts';
 import type { Erc20Metadata } from '../../../../source/shared/erc20.ts';
 import { normalizePublicAddress } from '../core/addresses.ts';
 import { getNativeNetwork } from '../custody/networkContext.ts';

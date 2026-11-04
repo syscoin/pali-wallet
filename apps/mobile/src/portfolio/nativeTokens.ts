@@ -1,9 +1,9 @@
 import { getAddress } from 'ethers/address';
 import {
-  parseErc20Metadata,
   parseErc20Units,
   type Erc20Metadata,
 } from '../../../../source/shared/erc20.ts';
+import { parseErc20Metadata } from './erc20Metadata.ts';
 import { createErc20Reader, type Erc20Reader } from './erc20ReadRpc.ts';
 import type { NativeTokenInventory } from './tokenRegistry.ts';
 import { NativeTokenRegistryError } from './tokenRegistry.ts';

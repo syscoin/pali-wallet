@@ -1,8 +1,6 @@
 import { getAddress } from 'ethers/address';
-import {
-  parseErc20Metadata,
-  type Erc20Metadata,
-} from '../../../../source/shared/erc20.ts';
+import { type Erc20Metadata } from '../../../../source/shared/erc20.ts';
+import { parseErc20Metadata } from './erc20Metadata.ts';
 import { decodeStorageValue, encodeStorageValue } from '../storage/json.ts';
 import type { KeyringStoragePort } from '../storage/types.ts';
 import {
