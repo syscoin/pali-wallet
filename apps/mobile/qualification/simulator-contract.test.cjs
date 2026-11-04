@@ -86,11 +86,12 @@ test('only complete native crypto plus a classified strict protection refusal qu
   }
 });
 
-async function runFixture({ limited = true, report = refusal(), target = 'iphonesimulator', mixedOutput = false, http = false, httpFailure = false, cleanupFailure = false } = {}) {
+async function runFixture({ limited = true, report = refusal(), target = 'iphonesimulator', mixedOutput = false, http = false, httpFailure = false, cleanupFailure = false, diagnosticFailure = false } = {}) {
   const source = readFileSync(require.resolve('./run-native.cjs'), 'utf8');
   const writes = [], calls = [];
   const original = JSON.stringify(report, null, 3) + '\n';
   let httpVerifications = 0, httpClosed = false;
+  const httpEvents = [];
   const spawn = (command, args) => {
     calls.push({ command, args });
     const ok = (stdout = '') => ({ status: 0, stdout });
@@ -117,7 +118,13 @@ async function runFixture({ limited = true, report = refusal(), target = 'iphone
         begin: async () => `&httpPort=45454&httpToken=${'a'.repeat(32)}`,
         verify: async () => { if (httpFailure) throw Error('HTTP_QUALIFICATION_REPORT_INVALID'); httpVerifications++; return { nativeHttpQualified: true }; },
         assertComplete: (count) => assert.equal(httpVerifications, count),
-        close: async () => { httpClosed = true; if (cleanupFailure) throw Error('HTTP_CLEANUP_FAILED'); },
+        diagnostic: async () => {
+          httpEvents.push('diagnostic');
+          if (diagnosticFailure) throw Error('HTTP_DIAGNOSTIC_FAILED');
+          return { version: 1, kind: 'native-http-diagnostic', status: 'failed', diagnosticOnly: true,
+            failedCase: 'abort-stream', server: { counts: { body: 1 }, closed: { body: false } } };
+        },
+        close: async () => { httpEvents.push('close'); httpClosed = true; if (cleanupFailure) throw Error('HTTP_CLEANUP_FAILED'); },
       }) };
       if (name === 'fs') return {
         existsSync: (file) => file.endsWith('/ios-qualification.json') ? mixedOutput : true, mkdirSync() {},
@@ -133,7 +140,7 @@ async function runFixture({ limited = true, report = refusal(), target = 'iphone
     },
     process: fakeProcess, console: { error() {}, log() {} }, setTimeout,
   });
-  return { writes, calls, fakeProcess, original, httpVerifications, httpClosed };
+  return { writes, calls, fakeProcess, original, httpVerifications, httpClosed, httpEvents };
 }
 
 test('real limited runner preserves the failed report and writes only a separate non-custody artifact', async () => {
@@ -197,4 +204,17 @@ test('missing HTTP proof or failed cleanup cannot produce a qualified limited ag
       assert(!failure.includes('HTTP_CLEANUP_FAILED'));
     }
   }
+});
+test('real runner records diagnostic-only HTTP evidence before cleanup without replacing its primary error', async () => {
+  const fixture = await runFixture({ http: true, httpFailure: true, cleanupFailure: true });
+  const diagnostic = JSON.parse(fixture.writes.find((write) => write.file.endsWith('/ios-http-diagnostic.json')).data);
+  assert.equal(diagnostic.status, 'failed'); assert.equal(diagnostic.diagnosticOnly, true); assert.equal(diagnostic.failedCase, 'abort-stream');
+  assert.equal(diagnostic.server.closed.body, false);
+  assert.deepEqual(fixture.httpEvents, ['diagnostic', 'close']);
+  const failure = fixture.writes.find((write) => write.file.endsWith('/ios-failure.json')).data;
+  assert(failure.includes('HTTP_QUALIFICATION_REPORT_INVALID')); assert(!failure.includes('HTTP_CLEANUP_FAILED'));
+  const unavailable = await runFixture({ http: true, httpFailure: true, cleanupFailure: true, diagnosticFailure: true });
+  assert.equal(unavailable.fakeProcess.exitCode, 1);
+  assert(unavailable.writes.find((write) => write.file.endsWith('/ios-failure.json')).data.includes('HTTP_QUALIFICATION_REPORT_INVALID'));
+  assert(!unavailable.writes.some((write) => write.file.endsWith('/ios-simulator-limited.json')));
 });

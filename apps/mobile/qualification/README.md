@@ -39,6 +39,12 @@ extra-field or inconsistent evidence fails qualification. Owned timers, sockets,
 child processes and reverse mappings are closed on failure as well as success.
 The existing `networkCalls: 0` records forbidden global transport attempts; the
 separate host audit records the explicit local native HTTP requests.
+Failed HTTP cases write only a fixed case label, with best-effort bounded partial
+server counters and stream-close flags collected before shutdown. These records
+are explicitly failed diagnostics and cannot satisfy the passing sidecar schema.
+Ambiguous reverse-install timeouts or transport loss permit cleanup only after
+prior absence and exact serial/port readback; collisions and unknown ownership
+never authorize removal.
 
 HTTP executes after native crypto qualification and before storage admission.
 The iOS Simulator's original failed storage report and refusal schema remain

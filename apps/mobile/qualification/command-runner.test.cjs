@@ -461,6 +461,7 @@ test('the actual Android runner requires ERC20 and NEVM restart evidence in addi
     const android = runInNewContext(source.slice(start, end) + '\nandroid;', {
       process: { env: { ANDROID_HOME: '/public-sdk' } },
       httpEnabled: false, httpCompanion: undefined,
+      httpRead: undefined, captureHttpDiagnostic: async () => undefined,
       fs: { readdirSync: () => ['35.0.0'], writeFileSync() {}, readFileSync: () => Buffer.from('public APK fixture') },
       prepareAndroidRoot: require('./native-readiness.cjs').prepareAndroidRoot,
       path: require('node:path'), run, platform: 'android', PACKAGE: 'com.paliwallet.qualification', artifact: '/public.apk', output: '/public-output',

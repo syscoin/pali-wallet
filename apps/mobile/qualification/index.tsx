@@ -282,17 +282,28 @@ function QualificationApp() {
           // Run before protected-storage admission, in a separate report: an
           // iOS Simulator storage refusal must never become custody success.
           stage = 'native HTTP transport';
-          const [{ walletFetch }, { fetch: cookieFetch }, { qualifyNativeHttp }] = await Promise.all([
+          const [{ walletFetch }, { fetch: cookieFetch }, { qualifyNativeHttp, HttpQualificationError }] = await Promise.all([
             import('../src/platform/http'), import('expo/fetch'), import('./http-native.ts'),
           ]);
-          const evidence = await qualifyNativeHttp({ launch: parameters.http, build,
-            walletFetch, cookieFetch: cookieFetch as typeof walletFetch,
-            phase: parameters.phase, scenario: parameters.scenario, platform: Platform.OS as 'ios' | 'android',
-            sessionId: Constants.sessionId, networkCalls: () => networkCalls });
           if (!FileSystem.documentDirectory) throw Error('HTTP_QUALIFICATION_REPORT_UNAVAILABLE');
           const destination = `${FileSystem.documentDirectory}pali-native-http-${parameters.http.token}.json`;
-          await FileSystem.writeAsStringAsync(`${destination}.tmp`, JSON.stringify(evidence));
-          await FileSystem.moveAsync({ from: `${destination}.tmp`, to: destination });
+          try {
+            const evidence = await qualifyNativeHttp({ launch: parameters.http, build,
+              walletFetch, cookieFetch: cookieFetch as typeof walletFetch,
+              phase: parameters.phase, scenario: parameters.scenario, platform: Platform.OS as 'ios' | 'android',
+              sessionId: Constants.sessionId, networkCalls: () => networkCalls });
+            await FileSystem.writeAsStringAsync(`${destination}.tmp`, JSON.stringify(evidence));
+            await FileSystem.moveAsync({ from: `${destination}.tmp`, to: destination });
+          } catch (error) {
+            if (error instanceof HttpQualificationError) {
+              const diagnostic = { ...build, kind: 'native-http-diagnostic', status: 'failed', diagnosticOnly: true,
+                failedCase: error.failedCase, token: parameters.http.token, phase: parameters.phase,
+                scenario: parameters.scenario, platform: Platform.OS, sessionId: Constants.sessionId };
+              await FileSystem.writeAsStringAsync(`${destination}.tmp`, JSON.stringify(diagnostic))
+                .then(() => FileSystem.moveAsync({ from: `${destination}.tmp`, to: destination })).catch(() => undefined);
+            }
+            throw error;
+          }
         }
         const [
           { NativeCustodyAuthority },

@@ -88,9 +88,12 @@ async function createHttpFixture() {
       if (active || typeof token !== 'string' || !/^[0-9a-f]{32}$/.test(token)) throw Error('HTTP_FIXTURE_BEGIN_INVALID');
       active = { token, counts: Object.fromEntries(ROUTES.map((route) => [route, 0])), invalid: 0, closed: { before: false, body: false, oversize: false }, waiters: new Set() };
     },
-    snapshot(token) {
+    inspect(token) {
       if (!active || !equal(token, active.token)) throw Error('HTTP_FIXTURE_TOKEN_INVALID');
-      const result = { token: active.token, port, counts: { ...active.counts }, invalid: active.invalid, closed: { ...active.closed } };
+      return { token: active.token, port, counts: { ...active.counts }, invalid: active.invalid, closed: { ...active.closed } };
+    },
+    snapshot(token) {
+      const result = this.inspect(token);
       active = undefined;
       return result;
     },
@@ -112,7 +115,7 @@ if (require.main === module) {
       try {
         if (!message || !Number.isSafeInteger(message.id)) throw Error('HTTP_FIXTURE_MESSAGE_INVALID');
         if (message.kind === 'begin') { fixture.begin(message.token); process.send({ id: message.id, ok: true }); }
-        else if (message.kind === 'snapshot') process.send({ id: message.id, ok: true, value: fixture.snapshot(message.token) });
+        else if (message.kind === 'snapshot' || message.kind === 'inspect') process.send({ id: message.id, ok: true, value: fixture[message.kind](message.token) });
         else if (message.kind === 'close') void stop();
         else throw Error('HTTP_FIXTURE_MESSAGE_INVALID');
       } catch { process.send({ id: message?.id, ok: false }); }

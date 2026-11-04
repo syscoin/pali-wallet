@@ -4,7 +4,8 @@ const { Buffer } = require('node:buffer');
 const { randomBytes, createHash } = require('node:crypto');
 const { readFileSync } = require('node:fs');
 const path = require('node:path');
-const { assertHttpReport } = require('./http-contract.ts');
+const { assertHttpReport, httpDiagnosticCase } = require('./http-contract.ts');
+const { isAmbiguousCommandFailure } = require('./command-runner.cjs');
 const { ROUTES } = require('./http-server.cjs');
 
 function assertAudit(value, token, port) {
@@ -16,6 +17,27 @@ function assertAudit(value, token, port) {
       Object.values(value.closed).some((closed) => closed !== true)) throw Error('HTTP_FIXTURE_AUDIT_FAILED');
 }
 
+function reverseMappings(text) {
+  if (typeof text !== 'string' || text.length > 32768) throw Error('HTTP_FIXTURE_REVERSE_LIST_INVALID');
+  return text.split(/\r?\n/).filter((line) => line.trim()).map((line) => {
+    const parts = line.trim().split(/\s+/);
+    if (parts.length !== 3 || parts.some((part) => part.length > 256) || parts.slice(1).some((part) =>
+      !/^(?:tcp:[0-9]{1,5}|local(?:abstract|reserved|filesystem):\S+)$/.test(part) ||
+      part.startsWith('tcp:') && Number(part.slice(4)) > 65535)) throw Error('HTTP_FIXTURE_REVERSE_LIST_INVALID');
+    return parts;
+  });
+}
+
+function partialAudit(value, token, port) {
+  if (!value || Object.keys(value).sort().join(',') !== 'closed,counts,invalid,port,token' || value.token !== token || value.port !== port ||
+      !Number.isSafeInteger(value.invalid) || value.invalid < 0 || value.invalid > 100000 ||
+      !value.counts || Object.keys(value.counts).length !== ROUTES.length ||
+      ROUTES.some((route) => !Number.isSafeInteger(value.counts[route]) || value.counts[route] < 0 || value.counts[route] > 100000) ||
+      !value.closed || Object.keys(value.closed).sort().join(',') !== 'before,body,oversize' ||
+      Object.values(value.closed).some((closed) => typeof closed !== 'boolean')) return null;
+  return { counts: { ...value.counts }, invalid: value.invalid, closed: { ...value.closed } };
+}
+
 async function startHttpCompanion({ platform, sourceRevision, run, spawn = fork }) {
   if (!['ios', 'android'].includes(platform) || !/^[0-9a-f]{40}$/.test(sourceRevision || ''))
     throw Error('HTTP_FIXTURE_SOURCE_REQUIRED');
@@ -24,7 +46,7 @@ async function startHttpCompanion({ platform, sourceRevision, run, spawn = fork 
     execArgv: [], stdio: ['ignore', 'ignore', 'ignore', 'ipc'], env: { PALI_HTTP_FIXTURE: '1' },
   });
   const pending = new Map();
-  let nextId = 0, port, mapped = false, active, stopped = false, serial;
+  let nextId = 0, port, mapped = false, active, stopped = false, serial, failedCase = 'unavailable';
   let readyResolve, readyReject;
   const ready = new Promise((resolve, reject) => { readyResolve = resolve; readyReject = reject; });
   child.on('message', (message) => {
@@ -47,9 +69,9 @@ async function startHttpCompanion({ platform, sourceRevision, run, spawn = fork 
     pending.clear();
   };
   child.on('error', lost); child.on('exit', lost);
-  const rpc = (kind, token) => new Promise((resolve, reject) => {
+  const rpc = (kind, token, timeout = 5000) => new Promise((resolve, reject) => {
     const id = ++nextId;
-    const timer = setTimeout(() => { pending.delete(id); reject(Error('HTTP_FIXTURE_COMMAND_TIMEOUT')); }, 5000);
+    const timer = setTimeout(() => { pending.delete(id); reject(Error('HTTP_FIXTURE_COMMAND_TIMEOUT')); }, timeout);
     pending.set(id, { resolve, reject, timer });
     child.send({ id, kind, token }, (error) => { if (error) { clearTimeout(timer); pending.delete(id); reject(Error('HTTP_FIXTURE_COMMAND_FAILED')); } });
   });
@@ -75,14 +97,25 @@ async function startHttpCompanion({ platform, sourceRevision, run, spawn = fork 
       if (!/^emulator-[0-9]+$/.test(serial) || run('adb', ['-s', serial, 'shell', 'getprop', 'ro.kernel.qemu']) !== '1')
         throw Error('HTTP_FIXTURE_REQUIRES_CI_EMULATOR');
       // Never overwrite another owner's mapping and never use --remove-all.
-      const existing = run('adb', ['-s', serial, 'reverse', '--list']);
-      if (existing.split(/\r?\n/).some((line) => line.split(/\s+/).slice(1).includes(`tcp:${port}`)))
+      const existing = reverseMappings(run('adb', ['-s', serial, 'reverse', '--list']));
+      if (existing.some((parts) => parts[1] === `tcp:${port}`))
         throw Error('HTTP_FIXTURE_REVERSE_COLLISION');
-      run('adb', ['-s', serial, 'reverse', '--no-rebind', `tcp:${port}`, `tcp:${port}`]);
+      const installArgs = ['-s', serial, 'reverse', '--no-rebind', `tcp:${port}`, `tcp:${port}`];
+      try { run('adb', installArgs); }
+      catch (error) {
+        if (isAmbiguousCommandFailure(error, 'adb', installArgs)) {
+          try {
+            const rows = reverseMappings(run('adb', ['-s', serial, 'reverse', '--list'], false, 5000));
+            const samePort = rows.filter((parts) => parts[1] === `tcp:${port}`);
+            // Prior absence + typed lost acknowledgement + exact readback only.
+            mapped = samePort.length === 1 && samePort[0][0] === serial && samePort[0][2] === `tcp:${port}`;
+          } catch { /* Unknown mapping ownership never permits removal. */ }
+        }
+        throw error;
+      }
       mapped = true;
-      if (!run('adb', ['-s', serial, 'reverse', '--list']).split(/\r?\n/).some((line) => {
-        const parts = line.trim().split(/\s+/); return parts.length === 3 && parts[1] === `tcp:${port}` && parts[2] === `tcp:${port}`;
-      })) throw Error('HTTP_FIXTURE_REVERSE_UNVERIFIED');
+      if (!reverseMappings(run('adb', ['-s', serial, 'reverse', '--list'])).some((parts) =>
+        parts[1] === `tcp:${port}` && parts[2] === `tcp:${port}`)) throw Error('HTTP_FIXTURE_REVERSE_UNVERIFIED');
     }
   } catch (error) { await close().catch(() => undefined); throw error; }
   finally { clearTimeout(timer); }
@@ -94,6 +127,7 @@ async function startHttpCompanion({ platform, sourceRevision, run, spawn = fork 
       const token = randomBytes(16).toString('hex');
       await rpc('begin', token);
       active = { sourceRevision, lockfileSha256, token, phase, scenario, platform };
+      failedCase = 'unavailable';
       return `&httpPort=${port}&httpToken=${token}`;
     },
     async verify(read, sessionId) {
@@ -103,11 +137,26 @@ async function startHttpCompanion({ platform, sourceRevision, run, spawn = fork 
       const report = JSON.parse(text);
       assertHttpReport(report, active);
       if (report.sessionId !== sessionId) throw Error('HTTP_FIXTURE_SESSION_MISMATCH');
-      const audit = await rpc('snapshot', active.token);
+      failedCase = 'host-verification';
+      const audit = await rpc('inspect', active.token);
       assertAudit(audit, active.token, port);
+      await rpc('snapshot', active.token);
       records.push({ nativeHttpQualified: true, report, audit });
       active = undefined;
       return records.at(-1);
+    },
+    async diagnostic(read = () => undefined) {
+      if (!active) return undefined;
+      try {
+        const text = read(`pali-native-http-${active.token}.json`);
+        if (typeof text === 'string' && Buffer.byteLength(text) <= 8192)
+          failedCase = httpDiagnosticCase(JSON.parse(text), active) ?? failedCase;
+      } catch { /* Missing or malformed native evidence remains unavailable. */ }
+      let server = null;
+      try { server = partialAudit(await rpc('inspect', active.token, 1000), active.token, port); }
+      catch { /* Diagnostic loss must not replace the original failure. */ }
+      return { version: 1, kind: 'native-http-diagnostic', status: 'failed', diagnosticOnly: true,
+        ...active, failedCase, server };
     },
     assertComplete(expected) {
       const phases = expected === 1 ? ['import:create'] : expected === 4

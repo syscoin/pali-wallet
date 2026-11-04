@@ -3,6 +3,8 @@ export const HTTP_CASES = Object.freeze([
   'exact-get-url', 'redirect-refused', 'seeded-cookie-omitted',
   'abort-before-headers', 'abort-stream', 'limit-stream', 'healthy-after-cancel',
 ] as const);
+export type HttpCase = typeof HTTP_CASES[number];
+export type HttpFailureCase = HttpCase | 'host-verification' | 'unavailable';
 export type HttpLaunch = Readonly<{ port: number; token: string }>;
 export type HttpBuild = Readonly<{ version: 1; sourceRevision: string; lockfileSha256: string }>;
 export type HttpReport = Readonly<{
@@ -33,4 +35,14 @@ export function assertHttpReport(value: unknown, expected: Omit<HttpReport, 'ver
       typeof value.sessionId !== 'string' || !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(value.sessionId) ||
       !Array.isArray(value.cases) || value.cases.length !== HTTP_CASES.length || value.cases.some((entry, index) => entry !== HTTP_CASES[index]))
     throw Error('HTTP_QUALIFICATION_REPORT_INVALID');
+}
+
+/** Diagnostics are a distinct schema and can never satisfy assertHttpReport. */
+export function httpDiagnosticCase(value: unknown, expected: Record<string, unknown>): HttpCase | undefined {
+  if (!exact(value, ['version', 'kind', 'status', 'diagnosticOnly', 'failedCase', 'sourceRevision', 'lockfileSha256', 'token', 'phase', 'scenario', 'platform', 'sessionId']) ||
+      value.version !== 1 || value.kind !== 'native-http-diagnostic' || value.status !== 'failed' || value.diagnosticOnly !== true ||
+      Object.entries(expected).some(([key, entry]) => value[key] !== entry) ||
+      typeof value.sessionId !== 'string' || !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(value.sessionId) ||
+      !HTTP_CASES.includes(value.failedCase as HttpCase)) return undefined;
+  return value.failedCase as HttpCase;
 }

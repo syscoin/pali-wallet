@@ -30,6 +30,8 @@ const httpEnabled = process.env.PALI_NATIVE_HTTP_QUALIFICATION === '1';
 if (httpEnabled && !/^[0-9a-f]{40}$/.test(process.env.GITHUB_SHA || ''))
   throw Error('Native HTTP qualification requires an immutable source revision');
 let httpCompanion;
+let httpRead;
+let httpDiagnosticSaved = false;
 const artifact = path.resolve(process.argv[3] || '');
 const output = path.resolve(
   process.env.QUALIFICATION_ARTIFACTS ||
@@ -60,6 +62,17 @@ const androidProcessRunning = () =>
   );
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const hash = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex');
+async function captureHttpDiagnostic() {
+  if (!httpCompanion || httpDiagnosticSaved) return;
+  try {
+    const diagnostic = await httpCompanion.diagnostic?.(httpRead);
+    if (!diagnostic) return;
+    const text = JSON.stringify(diagnostic, null, 2);
+    if (Buffer.byteLength(text) > 8192) return;
+    fs.writeFileSync(path.join(output, `${platform}-http-diagnostic.json`), `${text}\n`);
+    httpDiagnosticSaved = true;
+  } catch { /* Partial diagnostics never replace the original failure. */ }
+}
 const validateReport = (text, phase, scenario) => {
   const report = decodeNativeReport(text, platform, phase, scenario, simulatorContract);
   fs.writeFileSync(
@@ -211,6 +224,7 @@ async function ios() {
         PACKAGE,
         'data',
       ]));
+      httpRead = (name) => fs.readFileSync(path.join(container, 'Documents', name), 'utf8');
       const read = (phase) => {
         try {
           return fs.readFileSync(
@@ -319,7 +333,8 @@ async function ios() {
         importedAccountRestored: true,
         journalContainerVersion: 2,
       });
-    } finally {
+    } catch (error) { await captureHttpDiagnostic(); throw error; }
+    finally {
       if (container) {
         for (const [stage, suffix] of [['quick-crypto-load', 'load-error'], ['software-sdk-load', 'sdk-load-error']]) {
           try {
@@ -408,6 +423,7 @@ async function android() {
     run('adb', ['uninstall', PACKAGE], true); // Dedicated test package only.
     try {
       run('adb', ['install', artifact]);
+      httpRead = (name) => run('adb', ['shell', 'cat', `/data/user/0/${PACKAGE}/files/${name}`], false, 5000);
       const read = (phase) =>
         run(
           'adb',
@@ -526,7 +542,8 @@ async function android() {
         importedAccountRestored: true,
         journalContainerVersion: 2,
       });
-    } finally {
+    } catch (error) { await captureHttpDiagnostic(); throw error; }
+    finally {
       try {
         for (const [stage, suffix] of [['quick-crypto-load', 'load-error'], ['software-sdk-load', 'sdk-load-error']]) {
           captureFixtureLoadError(run('adb', ['shell', 'cat', `/data/user/0/${PACKAGE}/files/pali-native-qualification-${suffix}.json`], true), scenario, stage);
@@ -710,7 +727,10 @@ async function android() {
     }
   } catch (error) { primaryFailure = error; throw error; }
   finally {
-    if (primaryFailure) await httpCompanion?.close().catch(() => undefined);
+    if (primaryFailure) {
+      await captureHttpDiagnostic();
+      await httpCompanion?.close().catch(() => undefined);
+    }
     else await httpCompanion?.close();
   }
   fs.writeFileSync(
