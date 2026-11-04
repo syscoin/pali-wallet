@@ -217,6 +217,7 @@ export class NativeWalletCatalogue {
   private readonly storage: KeyringStoragePort;
   constructor(storage: KeyringStoragePort) { this.storage = storage; }
   get requiresReopen(): boolean { return this.uncertain; }
+  /** Stored allocation boundary for record validation; the SDK chooses new HD indices. */
   get nextIndex(): number { if (!this.record) return changed(); return this.record.nextIndex; }
   get nextImportedIndex(): number { if (!this.record) return changed(); return this.record.nextImportedIndex; }
 
@@ -290,13 +291,14 @@ export class NativeWalletCatalogue {
       let retiredIndices = record.retiredIndices;
       if (mutation.kind === 'create' || mutation.kind === 'restore') {
         object(mutation, ['kind', 'index', 'address', 'publicKey', 'label']);
-        if (accounts.length + importedAccounts.length >= MAX_HD_ACCOUNTS || (mutation.kind === 'create' && nextIndex > MAX_HD_ACCOUNT_INDEX)) throw new WalletCatalogueError('CATALOGUE_LIMIT');
-        if (mutation.kind === 'create' ? mutation.index !== nextIndex : !retiredIndices.includes(mutation.index)) return changed();
+        if (accounts.length + importedAccounts.length >= MAX_HD_ACCOUNTS || mutation.index > MAX_HD_ACCOUNT_INDEX) throw new WalletCatalogueError('CATALOGUE_LIMIT');
+        if (mutation.kind === 'create' ? mutation.index !== nextIndex && !retiredIndices.includes(mutation.index) : !retiredIndices.includes(mutation.index)) return changed();
         const key = publicIdentity({ address: mutation.address, publicKey: mutation.publicKey });
         accounts.push(Object.freeze({ id: accountId(mutation.index), type: 'HDAccount', index: mutation.index, slip44: 60, ...key, label: label(mutation.label) }));
         accounts.sort((a, b) => a.index - b.index);
         active = Object.freeze({ accountId: accountId(mutation.index), networkId: record.active.networkId });
-        if (mutation.kind === 'create') nextIndex++;
+        // Keep existing recovery bookkeeping coherent when the SDK reuses a removed index.
+        if (mutation.index === nextIndex) nextIndex++;
         else retiredIndices = Object.freeze(retiredIndices.filter((index) => index !== mutation.index));
       } else if (mutation.kind === 'import') {
         object(mutation, ['kind', 'index', 'address', 'publicKey', 'label', 'envelope']);

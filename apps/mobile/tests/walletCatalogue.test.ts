@@ -174,7 +174,7 @@ const derived = (index: number) => {
   return { address: computeAddress(publicKey), publicKey };
 };
 
-test('HD allocation stays monotonic while removed identities can be explicitly restored', async () => {
+test('SDK-created HD gaps consume existing bookkeeping and explicit restore remains available', async () => {
   const f = await fixture();
   try {
     const catalogue = new NativeWalletCatalogue(f.storage.keyringStorage);
@@ -187,10 +187,13 @@ test('HD allocation stays monotonic while removed identities can be explicitly r
     state = await catalogue.mutate(state.revision, { kind: 'remove', id: 'hd:60:1', journal: null }, current);
     assert.deepEqual(state.removed, [{ id: 'hd:60:1', index: 1 }]);
     assert.equal(catalogue.nextIndex, 2);
-    state = await catalogue.mutate(state.revision, { kind: 'create', index: 2, ...derived(2), label: 'New account' }, current);
-    assert.equal(catalogue.nextIndex, 3);
+    state = await catalogue.mutate(state.revision, { kind: 'create', index: 1, ...derived(1), label: 'Gap replacement' }, current);
+    assert.equal(catalogue.nextIndex, 2);
+    assert.deepEqual(state.removed, []);
+    state = await catalogue.mutate(state.revision, { kind: 'select', id: 'hd:60:0' }, current);
+    state = await catalogue.mutate(state.revision, { kind: 'remove', id: 'hd:60:1', journal: null }, current);
     state = await catalogue.mutate(state.revision, { kind: 'restore', index: 1, ...derived(1), label: 'Restored savings' }, current);
-    assert.equal(catalogue.nextIndex, 3);
+    assert.equal(catalogue.nextIndex, 2);
     assert.equal(state.active.accountId, 'hd:60:1');
     assert.equal(state.accounts.find((a) => a.index === 1)?.address, derived(1).address);
     assert.deepEqual(state.removed, []);
@@ -198,7 +201,7 @@ test('HD allocation stays monotonic while removed identities can be explicitly r
     const fresh = new NativeWalletCatalogue(f.storage.keyringStorage);
     const restored = await fresh.reconcile(f.identity, current, async (index) => derived(index));
     assert.deepEqual(restored, state);
-    assert.equal(fresh.nextIndex, 3);
+    assert.equal(fresh.nextIndex, 2);
   } finally { await f.cleanup(); }
 });
 

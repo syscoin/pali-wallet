@@ -343,7 +343,7 @@ export function createKeyringRuntimeFactory(
             // Expected eligibility failures leave the current authority/reviews intact.
             if ((request.kind === 'create' || request.kind === 'restore') && catalogueSnapshot.accounts.length >= MAX_HD_ACCOUNTS)
               throw new KeyringRuntimeError('ACCOUNT_LIMIT');
-            if (request.kind === 'create' && catalogue.nextIndex > MAX_HD_ACCOUNT_INDEX)
+            if (request.kind === 'create' && catalogue.nextIndex > MAX_HD_ACCOUNT_INDEX && !catalogueSnapshot.removed.length)
               throw new KeyringRuntimeError('ACCOUNT_LIMIT');
             if (request.kind === 'restore' && !catalogueSnapshot.removed.some((account) => account.index === request.index))
               throw new KeyringRuntimeError('INVALID_INPUT');
@@ -379,10 +379,19 @@ export function createKeyringRuntimeFactory(
                   let derived: IKeyringAccountState | undefined;
                   let mutation;
                   if (request.kind === 'create' || request.kind === 'restore') {
-                    const index = request.kind === 'create' ? catalogue.nextIndex : request.index;
-                    derived = await deriveAt(index, captured, assertCurrent);
+                    if (request.kind === 'create') {
+                      // Use the extension's SDK allocator, which fills gaps in live HD accounts.
+                      const created = await keyring.addNewAccount(request.label);
+                      current(captured); checkGuard(assertCurrent);
+                      if (!created || !Number.isSafeInteger(created.id) || created.id < 1 || created.id > MAX_HD_ACCOUNT_INDEX ||
+                          before.accounts.some((account) => account.type === 'HDAccount' && account.index === created.id))
+                        throw new KeyringRuntimeError('CANCELLED');
+                      derived = checkedAccount(created, created.id);
+                    } else {
+                      derived = await deriveAt(request.index, captured, assertCurrent);
+                    }
                     current(captured); checkGuard(assertCurrent);
-                    mutation = { kind: request.kind, index, address: derived.address, publicKey: derived.xpub, label: request.label } as const;
+                    mutation = { kind: request.kind, index: derived.id, address: derived.address, publicKey: derived.xpub, label: request.label } as const;
                   } else {
                     mutation = request.kind === 'remove' ? { kind: 'remove' as const, id: request.id, journal: null as JournalRemovalSnapshot | null } : request;
                     if (request.kind === 'remove') {

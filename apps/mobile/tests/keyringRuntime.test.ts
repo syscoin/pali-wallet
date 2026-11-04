@@ -401,7 +401,7 @@ async function readyAccounts(loadSdk?: KeyringRuntimeDependencies['loadSdk']) {
   return { disk, authority, get runtime() { return runtime; }, execute };
 }
 
-test('real SDK HD accounts create, select, rename, remove and restore without reusing indices', async () => {
+test('real SDK HD accounts reuse deleted indices and preserve explicit restore', async () => {
   const f = await readyAccounts();
   try {
     assert.equal(f.authority.supportsAccountManagement(), true);
@@ -415,7 +415,11 @@ test('real SDK HD accounts create, select, rename, remove and restore without re
     await f.execute({ kind: 'remove', id: second.id, password: PASSWORD });
     assert.deepEqual(f.authority.getCatalogue()!.removed, [{ id: second.id, index: 1 }]);
     await f.execute({ kind: 'create', label: 'New account', password: PASSWORD });
-    assert.equal(f.authority.getCatalogue()!.accounts.at(-1)!.index, 2);
+    assert.equal(f.authority.getCatalogue()!.accounts.at(-1)!.index, 1);
+    assert.equal(f.authority.getSnapshot().account?.address, second.address);
+    assert.deepEqual(f.authority.getCatalogue()!.removed, []);
+    await f.execute({ kind: 'select', id: 'hd:60:0' });
+    await f.execute({ kind: 'remove', id: second.id, password: PASSWORD });
     await f.execute({ kind: 'restore', index: 1, label: 'Restored savings', password: PASSWORD });
     assert.equal(f.authority.getSnapshot().account?.address, second.address);
     const signed = await f.runtime.transfers!.sign({ type: 2, from: second.address,
@@ -494,6 +498,8 @@ async function raceSdk() {
   let exports = 0;
   let imports = 0;
   let unlocks = 0;
+  let allocations = 0;
+  let allocationPatch: Record<string, unknown> | undefined;
   const hold = async (phase: string) => {
     if (gate?.phase !== phase) return;
     const current = gate; current.entered.resolve(); await current.released.promise;
@@ -501,6 +507,12 @@ async function raceSdk() {
   class RaceKeyring extends sdk.SoftwareKeyring {
     constructor(host: ConstructorParameters<typeof sdk.SoftwareKeyring>[0]) {
       super(host);
+      const allocate = this.addNewAccount.bind(this);
+      this.addNewAccount = async (...args) => {
+        allocations++; await hold('create-before');
+        const result = await allocate(...args); await hold('create-after');
+        return allocationPatch ? { ...result, ...allocationPatch } : result;
+      };
       const hydrate = this.createFirstAccount.bind(this);
       this.createFirstAccount = async (...args) => { const result = hydrate(...args); await hold('hydration'); return result; };
       const sign = this.signPreparedEvmTransaction.bind(this);
@@ -531,6 +543,8 @@ async function raceSdk() {
     get exports() { return exports; },
     get imports() { return imports; },
     get unlocks() { return unlocks; },
+    get allocations() { return allocations; },
+    setAllocationPatch(value?: Record<string, unknown>) { allocationPatch = value; },
     setExportResult(value?: string) { exportResult = value; },
     failExport() { exportError = true; },
     hold(phase: string) {
@@ -756,7 +770,7 @@ test('known ineligible account requests preserve the ready authority and its rev
 });
 
 
-test('runtime count and highwater preflight reject before authentication or authority revocation', async () => {
+test('runtime count preflight rejects while an allocation boundary with reusable gaps remains usable', async () => {
   const f = await readyAccounts();
   try {
     const original = structuredClone(f.disk.records.get(WALLET_CATALOGUE_KEY)) as Record<string, any>;
@@ -774,9 +788,17 @@ test('runtime count and highwater preflight reject before authentication or auth
         await f.authority.unlock(PASSWORD);
       }
       const before = f.authority.getSnapshot(), writes = f.disk.successWrites;
-      await assert.rejects(f.execute({ kind: 'create', label: 'Limit', password: PASSWORD }), /ACCOUNT_LIMIT/);
-      assert.equal(f.authority.getSnapshot(), before);
-      assert.equal(f.disk.successWrites, writes);
+      if (shape === 'count') {
+        await assert.rejects(f.execute({ kind: 'create', label: 'Limit', password: PASSWORD }), /ACCOUNT_LIMIT/);
+        assert.equal(f.authority.getSnapshot(), before);
+        assert.equal(f.disk.successWrites, writes);
+      } else {
+        await f.execute({ kind: 'create', label: 'Reused gap', password: PASSWORD });
+        assert.equal(f.authority.getCatalogue()!.active.accountId, 'hd:60:1');
+        assert.equal(f.authority.getCatalogue()!.removed.length, 4094);
+        const saved = f.disk.records.get(WALLET_CATALOGUE_KEY) as { nextIndex: number };
+        assert.equal(saved.nextIndex, 4096);
+      }
     }
   } finally { await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
 });
@@ -1630,4 +1652,56 @@ test('creation and import reject weak passwords before the SDK creates a seed va
       assert.equal(disk.records.has('vault-keys'), false);
     }
   } finally { await runtime.storage.close(); }
+});
+
+
+test('delete-nonlatest then add uses the same SDK allocator as extension and preserves imported/retired scope', async () => {
+  const sdk = await raceSdk(), f = await readyAccounts(sdk.loadSdk);
+  try {
+    await f.execute({ kind: 'create', label: 'First extra', password: PASSWORD });
+    const first = f.authority.getCatalogue()!.accounts.find((account) => account.id === 'hd:60:1')!;
+    await f.execute({ kind: 'create', label: 'Retained extra', password: PASSWORD });
+    const retained = f.authority.getCatalogue()!.accounts.find((account) => account.id === 'hd:60:2')!;
+    await importTestKey(f);
+    await f.execute({ kind: 'select', id: 'hd:60:0' });
+    await f.execute({ kind: 'remove', id: 'imported:60:0', password: PASSWORD });
+    await importTestKey(f, '0x' + '2'.padStart(64, '0'), 'Retained imported');
+    await f.execute({ kind: 'select', id: 'hd:60:0' });
+    await f.execute({ kind: 'remove', id: 'hd:60:1', password: PASSWORD });
+    const before = structuredClone(f.disk.records.get(WALLET_CATALOGUE_KEY)) as Record<string, unknown>;
+    await f.execute({ kind: 'create', label: 'Gap replacement', password: PASSWORD });
+    const snapshot = f.authority.getCatalogue()!;
+    assert.equal(sdk.allocations, 3);
+    assert.equal(snapshot.active.accountId, 'hd:60:1');
+    assert.equal(snapshot.accounts.find((account) => account.id === first.id)?.address, first.address);
+    assert.deepEqual(snapshot.accounts.find((account) => account.id === retained.id), retained);
+    assert.deepEqual(snapshot.removed, []);
+    const after = f.disk.records.get(WALLET_CATALOGUE_KEY) as Record<string, unknown>;
+    for (const key of ['nextIndex', 'importedAccounts', 'retiredImportedIndices', 'nextImportedIndex'])
+      assert.deepEqual(after[key], before[key], key);
+  } finally { await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
+});
+
+for (const phase of ['create-before', 'create-after']) test(`lock during SDK allocation at ${phase} discards the returned account`, async () => {
+  const sdk = await raceSdk(), f = await readyAccounts(sdk.loadSdk), hold = sdk.hold(phase);
+  try {
+    const before = structuredClone(f.disk.records.get(WALLET_CATALOGUE_KEY));
+    const pending = f.execute({ kind: 'create', label: 'Cancelled', password: PASSWORD }); void pending.catch(() => undefined);
+    await hold.entered; f.authority.lock(); hold.release();
+    await assert.rejects(pending, /CANCELLED/);
+    assert.deepEqual(f.disk.records.get(WALLET_CATALOGUE_KEY), before);
+    assert.equal(f.authority.getSnapshot().phase, 'locked');
+    await f.authority.unlock(PASSWORD);
+    assert.equal(f.authority.getCatalogue()!.accounts.length, 1);
+  } finally { hold.release(); await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
+});
+
+for (const id of [0, 1.5, 4096]) test(`invalid SDK-allocated id ${id} cannot replace an account or alter its catalogue`, async () => {
+  const sdk = await raceSdk(), f = await readyAccounts(sdk.loadSdk);
+  try {
+    sdk.setAllocationPatch({ id });
+    const before = structuredClone(f.disk.records.get(WALLET_CATALOGUE_KEY));
+    await assert.rejects(f.execute({ kind: 'create', label: 'Rejected', password: PASSWORD }), /CANCELLED/);
+    assert.deepEqual(f.disk.records.get(WALLET_CATALOGUE_KEY), before);
+  } finally { await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
 });
