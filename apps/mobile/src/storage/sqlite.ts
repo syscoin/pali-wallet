@@ -102,7 +102,7 @@ function validatePair(pair: Pair): 'empty' | 'existing' {
     throw failure();
   }
   // First native release creates only the current authenticated SDK envelope.
-  // Legacy CBC/migration metadata is not inferred as a fresh native wallet.
+  // Only the shared SDK authenticated envelope is admitted for native custody.
   if (
     !exact(envelope, ['v', 'alg', 'iv', 'ct']) ||
     envelope.v !== 4 ||
@@ -190,7 +190,6 @@ export class SqliteWalletStorage implements OpenWalletStorage {
       const version = await db.getFirstAsync<{ user_version: number }>(
         'PRAGMA user_version'
       );
-      let migrate = false;
       if (initialize && tables.length === 0 && version?.user_version === 0) {
         await storage.transaction(async () => {
           await db.execAsync(TABLE);
@@ -200,11 +199,9 @@ export class SqliteWalletStorage implements OpenWalletStorage {
             'INSERT INTO wallet_metadata (key, value) VALUES (?, ?)',
             ['installation', installationId]
           );
-          await db.execAsync('PRAGMA user_version = 2');
+          await db.execAsync('PRAGMA user_version = 1');
         });
-      } else if (version?.user_version === 1 && tables.length === 2 && tables[0]?.name === 'keyring_records' && tables[0].sql === TABLE && tables[1]?.name === 'wallet_metadata' && tables[1].sql === META) {
-        migrate = true;
-      } else if (version?.user_version !== 2 || tables.length !== 3 || tables[0]?.name !== 'keyring_records' || tables[0].sql !== TABLE ||
+      } else if (version?.user_version !== 1 || tables.length !== 3 || tables[0]?.name !== 'keyring_records' || tables[0].sql !== TABLE ||
         tables[1]?.name !== 'private_note_records' || tables[1].sql !== NOTES || tables[2]?.name !== 'wallet_metadata' || tables[2].sql !== META) throw failure();
       const installation = await db.getFirstAsync<{ value: unknown }>(
         "SELECT CASE WHEN typeof(value) = 'text' AND length(CAST(value AS BLOB)) = 32 THEN value ELSE NULL END AS value FROM wallet_metadata WHERE key = 'installation'"
@@ -227,10 +224,6 @@ export class SqliteWalletStorage implements OpenWalletStorage {
       );
       if (health?.quick_check !== 'ok') throw failure();
       await storage.readState();
-      if (migrate) await storage.transaction(async () => {
-        await db.execAsync(NOTES);
-        await db.execAsync('PRAGMA user_version = 2');
-      });
       // Reject malformed or orphaned note rows before handing an owner to a runtime.
       await storage.notes.read();
       return storage;

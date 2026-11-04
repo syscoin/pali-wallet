@@ -18,7 +18,7 @@ const adapter: PublicBip84ValidationPort = { canonicalize({ accountKey }) { if (
 const record = (id = 'key', networkId: UtxoNetworkId = 'bitcoin', key = KEY): StoredWatchAccount => ({ kind: 'bip84-public', id, name: id, networkId, policy: 'bip84-p2wpkh', accountKey: key, checkpoint: null });
 const json = (value: unknown) => new Response(JSON.stringify(value), { headers: { 'content-type': 'application/json' } });
 function fixture(records: readonly StoredWatchAccount[] = [record()]) {
-  let raw = JSON.stringify({ version: 2, records }), used = false, error = false, failAck = false, reads = 0;
+  let raw = JSON.stringify({ version: 1, records }), used = false, error = false, failAck = false, reads = 0;
   let blockReadAt: number | undefined, blockFetchAt: number | undefined;
   let readGate: Promise<void> | undefined, writeGate: Promise<void> | undefined, fetchGate: Promise<void> | undefined;
   const readEntered = deferred<void>(), writeEntered = deferred<void>(), fetchEntered = deferred<void>();
@@ -42,7 +42,7 @@ function fixture(records: readonly StoredWatchAccount[] = [record()]) {
     set readGate(value: Promise<void> | undefined) { readGate = value; }, set writeGate(value: Promise<void> | undefined) { writeGate = value; }, set fetchGate(value: Promise<void> | undefined) { fetchGate = value; } };
 }
 
-test('legacy constructor omits observation metadata and keeps single-address behavior', async () => {
+test('address constructor omits observation metadata and keeps single-address behavior', async () => {
   const account = createEvmWatchAccount('old', 'Old', '0x1111111111111111111111111111111111111111');
   const owner = new WatchOnlyAuthority([account], { readBalance: async () => ({ chainId: 1, units: '0' }) });
   owner.unlock(); await owner.refresh(); assert.equal('accountObservation' in owner.getSnapshot(), false);
@@ -215,7 +215,7 @@ test('late derived-index mismatch invalidates the entire observation without a c
 });
 
 test('cancellation inside a validation callback stops later callbacks and the guarded write', async () => {
-  let raw = JSON.stringify({ version: 2, records: [record()] }), active = true, armed = false, calls = 0, writes = 0;
+  let raw = JSON.stringify({ version: 1, records: [record()] }), active = true, armed = false, calls = 0, writes = 0;
   const repository = createPublicAccountStorage({ get: async () => raw, async set(_key, value) { writes++; raw = value; } }, {
     canonicalize(request) { calls++; if (armed) active = false; return adapter.canonicalize(request); },
     deriveFirstReceive(request) { calls++; return adapter.deriveFirstReceive(request); },
@@ -252,7 +252,7 @@ test('factory cancellation during binding rejects admission without retaining a 
 
 for (const callback of ['first canonicalization', 'second canonicalization', 'first address'] as const) {
   test(`exceptional callback cancellation during ${callback} keeps unchanged sibling records usable`, async () => {
-    let raw = JSON.stringify({ version: 2, records: [record()] });
+    let raw = JSON.stringify({ version: 1, records: [record()] });
     const original = raw;
     let reads = 0, writes = 0, canonicalizations = 0, active = true, armed = true;
     const revokeAndThrow = () => { armed = false; active = false; throw Error('fixture callback failed after cancellation'); };
@@ -287,7 +287,7 @@ for (const callback of ['first canonicalization', 'second canonicalization', 'fi
 }
 
 test('a validation callback failure while current still refuses all writes until reread', async () => {
-  let raw = JSON.stringify({ version: 2, records: [record()] }), reads = 0, writes = 0, armed = true;
+  let raw = JSON.stringify({ version: 1, records: [record()] }), reads = 0, writes = 0, armed = true;
   const repository = createPublicAccountStorage({
     async get() { reads++; return raw; },
     async set(_key, value) { writes++; raw = value; },

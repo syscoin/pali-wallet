@@ -42,9 +42,9 @@ iOS/Android behavior. Those require device qualification of the final binary.
 ## Recovery inventory reads
 
 The internal `OpenWalletStorage.recovery` read methods take one bounded, coherent snapshot
-of all record and metadata rows. It does not mutate, migrate, decrypt or authorize
+of all record and metadata rows. It does not mutate, decrypt or authorize
 anything. `readIdentity` distinguishes a stable data binding from the current
-encrypted-pair digest; legacy stores use that digest as their initial binding,
+encrypted-pair digest; new wallets use that digest as their initial binding,
 without an eager metadata write. Optional identity metadata must match the exact
 current pair and still requires SDK root/profile authentication after unlock.
 `getWalletFingerprint`, backup receipts and authentication retain their existing

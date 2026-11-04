@@ -4,11 +4,11 @@ This prerequisite does not expose note import, creation, backup files or a priva
 note UI. There is deliberately no production note writer. A future writer must be
 admitted by the existing authenticated runtime and reviewed separately.
 
-Schema 2 adds `private_note_records` to the existing SQLCipher database and owner
-queue. An exact schema-1 database migrates by creating this empty table and
-advancing `user_version`; existing keyring and metadata bytes are not rewritten.
-Unexpected tables, schemas and versions refuse opening. Schema-1 readers refuse
-schema 2. The generic keyring interface remains limited to 64 KiB per value and
+The initial canonical SQLCipher schema creates `keyring_records`,
+`wallet_metadata` and `private_note_records` in one transaction on a new, empty
+database. The tables share one owner queue. Opening existing storage never
+changes its schema. Unexpected or incomplete schemas and versions fail closed
+without rewriting, deleting or resetting their contents. The generic keyring interface remains limited to 64 KiB per value and
 64 records.
 
 The new domain accepts at most one current-profile row, up to 16 MiB of encrypted

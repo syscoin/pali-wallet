@@ -40,7 +40,7 @@ export function createPublicAccountStorage(port: PublicStoragePort, bip84?: Publ
   let queue: Promise<void> = Promise.resolve();
   let accountsUnavailable = false;
   let recordsEpoch = 0;
-  const codec = bip84 === undefined ? null : createWatchAccountCodec(bip84);
+  const codec = createWatchAccountCodec(bip84);
   const snapshots = new WeakMap<WatchRecordSnapshot, { raw: string | null; used: boolean; epoch: number }>();
   function serialized<T>(operation: () => Promise<T>): Promise<T> {
     const result = queue.then(operation);
@@ -48,15 +48,10 @@ export function createPublicAccountStorage(port: PublicStoragePort, bip84?: Publ
     return result;
   }
   async function readAccounts(): Promise<readonly PublicAccount[]> {
-    const raw = await port.get(PUBLIC_ACCOUNTS_KEY);
-    // Only an explicit missing key is empty. Corrupt/unknown records are retained.
-    if (raw === null) return Object.freeze([]);
-    assertSize(raw, 32 * 1024);
-    const parsed: unknown = JSON.parse(raw);
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('Unsupported public account configuration');
-    const record = parsed as Record<string, unknown>;
-    if (record.version !== 1 || Object.keys(record).some((key) => key !== 'version' && key !== 'accounts')) throw new Error('Unsupported public account configuration');
-    return validatePublicAccounts(record.accounts);
+    const decoded = codec.decode(await readRecordRaw());
+    // The address editor cannot discard an account key or discovery checkpoint.
+    if (decoded.records.some((record) => record.kind !== 'address')) throw new Error('Use the public account record editor for account keys');
+    return decoded.accounts;
   }
   async function readSelection(): Promise<AccountSelection | null> {
     const raw = await port.get(ACCOUNT_SELECTION_KEY);
@@ -92,7 +87,7 @@ export function createPublicAccountStorage(port: PublicStoragePort, bip84?: Publ
     const detached = snapshotWatchRecords(next);
     return serialized(async () => {
       const ticket = snapshots.get(expected);
-      if (!codec || !ticket || ticket.used) throw new Error('Reopen saved watch records before saving');
+      if (!ticket || ticket.used) throw new Error('Reopen saved watch records before saving');
       if (accountsUnavailable) throw new Error('Saved watch records are unavailable. Reopen them before saving.');
       if (ticket.epoch !== recordsEpoch) throw new Error('Reopen saved watch records before saving');
       // A cancelled guarded attempt is consumed without declaring durable data corrupt.
@@ -106,7 +101,7 @@ export function createPublicAccountStorage(port: PublicStoragePort, bip84?: Publ
       try {
         const current = await readRecordRaw();
         checkpointGuard(guard);
-        // Validate every v2 read, even when the raw comparison will reject it.
+        // Validate every read, even when the raw comparison will reject it.
         const currentDecoded = codec.decode(current, boundary);
         checkpointGuard(guard);
         if (current !== ticket.raw || JSON.stringify(currentDecoded.records) !== JSON.stringify(expected.records) ||
@@ -129,7 +124,7 @@ export function createPublicAccountStorage(port: PublicStoragePort, bip84?: Publ
       }
     });
   }
-  const records = codec && Object.freeze({
+  const records = Object.freeze({
     load: (): Promise<WatchRecordSnapshot> => serialized(async () => {
       try {
         const raw = await readRecordRaw();
@@ -148,8 +143,8 @@ export function createPublicAccountStorage(port: PublicStoragePort, bip84?: Publ
     },
   });
   return Object.freeze({
-    // Legacy calls deliberately refuse every v2 document, including address-only
-    // v2. They must never project away a key record or its checkpoint on save.
+    // Address-only editing uses the same canonical records and codec. It refuses
+    // account-key records rather than projecting away their checkpoints.
     loadAccounts: (): Promise<readonly PublicAccount[]> => serialized(async () => {
       try { const accounts = await readAccounts(); accountsUnavailable = false; return accounts; }
       catch (cause) { accountsUnavailable = true; recordsEpoch++; throw cause; }
@@ -157,8 +152,7 @@ export function createPublicAccountStorage(port: PublicStoragePort, bip84?: Publ
     compareAndSetAccounts: (expected: readonly PublicAccount[], accounts: readonly PublicAccount[]): Promise<void> => {
       const validated = validatePublicAccounts(accounts);
       const expectedJson = JSON.stringify(validatePublicAccounts(expected));
-      const raw = JSON.stringify({ version: 1, accounts: validated });
-      assertSize(raw, 32 * 1024);
+      const raw = codec.encode(codec.validate(validated.map((account) => ({ kind: 'address', ...account }))).records);
       return serialized(async () => {
         if (accountsUnavailable) throw new Error('Saved watch accounts are unavailable. Reopen them before saving.');
         if (JSON.stringify(await readAccounts()) !== expectedJson) throw new Error('Saved watch accounts changed. Reopen them before saving.');
@@ -179,7 +173,7 @@ export function createPublicAccountStorage(port: PublicStoragePort, bip84?: Publ
         if (JSON.stringify(await readSelection()) !== JSON.stringify(checked)) throw new Error('Saved account choice could not be verified.');
       });
     },
-    // No adapter is installed by production platform construction today.
+    // Account-key records additionally require the trusted public SDK adapter.
     records,
   });
 }

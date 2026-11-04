@@ -33,17 +33,37 @@ async function fixture(observe?: (rows: readonly unknown[]) => void) {
     async reopen() { await storage.close(); owned = connect(); storage = await SqliteWalletStorage.open(owned.connection, digest, INSTALLATION, false); },
     async close() { await storage.close().catch(() => undefined); await rm(directory, { recursive: true, force: true }); } };
 }
-test('schema1 migration preserves all existing bytes; schema2 refuses the exact old-reader predicate', async () => {
+test('new storage creates the complete canonical schema directly and reopens without writes', async () => {
   const f = await fixture(); try {
     const before = f.db.prepare('SELECT * FROM keyring_records ORDER BY key').all(), metadata = f.db.prepare('SELECT * FROM wallet_metadata ORDER BY key').all();
-    f.db.exec('DROP TABLE private_note_records; PRAGMA user_version = 1'); await f.reopen();
-    assert.equal(f.db.prepare('PRAGMA user_version').get()!.user_version, 2);
-    assert.equal(f.db.prepare("SELECT name FROM sqlite_master WHERE type IN ('table','view','trigger','index') AND name NOT LIKE 'sqlite_%' LIMIT 3").all().length, 3);
+    assert.equal(f.db.prepare('PRAGMA user_version').get()!.user_version, 1);
+    assert.deepEqual(f.db.prepare("SELECT name FROM sqlite_master WHERE type IN ('table','view','trigger','index') AND name NOT LIKE 'sqlite_%' ORDER BY name").all().map((row) => row.name), ['keyring_records', 'private_note_records', 'wallet_metadata']);
+    const snap = await f.storage.recovery.readSnapshot(); await f.reopen();
     assert.deepEqual(f.db.prepare('SELECT * FROM keyring_records ORDER BY key').all(), before);
     assert.deepEqual(f.db.prepare('SELECT * FROM wallet_metadata ORDER BY key').all(), metadata);
-    const snap = await f.storage.recovery.readSnapshot(); await f.reopen(); assert.ok(sameRecoverySnapshot(snap, await f.storage.recovery.readSnapshot()));
+    assert.ok(sameRecoverySnapshot(snap, await f.storage.recovery.readSnapshot()));
   } finally { await f.close(); }
 });
+
+for (const shape of ['missing-note-table', 'different-version'] as const) for (const initialize of [false, true]) {
+  test(`noncanonical ${shape} is refused unchanged with initialize=${initialize}`, async () => {
+    const f = await fixture(); let connection: ReturnType<typeof nodeConnection> | undefined;
+    try {
+      if (shape === 'missing-note-table') f.db.exec('DROP TABLE private_note_records');
+      else f.db.exec('PRAGMA user_version = 2');
+      const schema = f.db.prepare("SELECT name, sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY name").all();
+      const before = f.db.prepare('SELECT * FROM keyring_records ORDER BY key').all(), metadata = f.db.prepare('SELECT * FROM wallet_metadata ORDER BY key').all();
+      await f.storage.close(); const writes: string[] = [];
+      connection = nodeConnection(f.file, { before(kind, sql) { if (kind === 'run' || kind === 'exec') writes.push(sql); } });
+      await assert.rejects(SqliteWalletStorage.open(connection.connection, digest, INSTALLATION, initialize), { code: 'STORAGE_CORRUPT' });
+      assert.deepEqual(writes, []);
+      assert.deepEqual(connection.database.prepare("SELECT name, sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY name").all(), schema);
+      assert.deepEqual(connection.database.prepare('SELECT * FROM keyring_records ORDER BY key').all(), before);
+      assert.deepEqual(connection.database.prepare('SELECT * FROM wallet_metadata ORDER BY key').all(), metadata);
+      assert.equal(connection.database.prepare('PRAGMA user_version').get()!.user_version, shape === 'missing-note-table' ? 1 : 2);
+    } finally { await connection?.connection.closeAsync(); await f.close(); }
+  });
+}
 test('domain is read-only; absent, present and malformed remain distinct and reads preserve bytes', async () => {
   const f = await fixture(); try {
     assert.deepEqual(Object.keys(f.storage.notes), ['read']); assert.deepEqual(await f.storage.notes.read(), []);
@@ -90,23 +110,25 @@ test('shared envelope snapshot accepts plain cross-realm data and rejects access
 });
 
 
-for (const phase of ['before-create', 'after-commit'] as const) test(`schema migration ${phase} leaves one complete old or new schema without changing records`, async () => {
-  const f = await fixture(); let fault = false;
-  let connection: ReturnType<typeof nodeConnection> | undefined;
+for (const phase of ['before-create', 'after-commit'] as const) test(`canonical creation ${phase} leaves either an empty database or the complete schema`, async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'pali-note-create-'));
+  const file = path.join(directory, 'wallet.sqlite'); let fault = false;
+  const connection = nodeConnection(file, {
+    before(kind, sql) { if (phase === 'before-create' && kind === 'exec' && sql.startsWith('CREATE TABLE private_note_records')) { fault = true; throw new Error('synthetic creation failure'); } },
+    after(kind, sql) { if (phase === 'after-commit' && kind === 'exec' && sql === 'COMMIT') { fault = true; throw new Error('synthetic creation lost acknowledgement'); } },
+  });
   try {
-    const before = f.db.prepare('SELECT * FROM keyring_records ORDER BY key').all();
-    f.db.exec('DROP TABLE private_note_records; PRAGMA user_version = 1'); await f.storage.close();
-    connection = nodeConnection(f.file, {
-      before(kind, sql) { if (phase === 'before-create' && kind === 'exec' && sql.startsWith('CREATE TABLE private_note_records')) { fault = true; throw new Error('synthetic migration failure'); } },
-      after(kind, sql) { if (phase === 'after-commit' && kind === 'exec' && sql === 'COMMIT') { fault = true; throw new Error('synthetic migration lost acknowledgement'); } },
-    });
-    await assert.rejects(SqliteWalletStorage.open(connection.connection, digest, INSTALLATION, false)); assert.equal(fault, true);
-    assert.equal(connection.database.prepare('PRAGMA user_version').get()!.user_version, phase === 'before-create' ? 1 : 2);
-    assert.deepEqual(connection.database.prepare('SELECT * FROM keyring_records ORDER BY key').all(), before);
-    await connection.connection.closeAsync(); connection = undefined;
-    await f.reopen(); assert.deepEqual(f.db.prepare('SELECT * FROM keyring_records ORDER BY key').all(), before);
-    assert.equal(f.db.prepare('PRAGMA user_version').get()!.user_version, 2);
-  } finally { await connection?.connection.closeAsync(); await f.close(); }
+    await assert.rejects(SqliteWalletStorage.open(connection.connection, digest, INSTALLATION, true)); assert.equal(fault, true);
+    assert.equal(connection.database.prepare('PRAGMA user_version').get()!.user_version, phase === 'before-create' ? 0 : 1);
+    assert.equal(connection.database.prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").get()!.count, phase === 'before-create' ? 0 : 3);
+  } finally { await connection.connection.closeAsync(); }
+  const reopened = nodeConnection(file);
+  try {
+    const storage = await SqliteWalletStorage.open(reopened.connection, digest, INSTALLATION, phase === 'before-create');
+    assert.deepEqual(await storage.readState(), { presence: 'empty', backup: 'unconfirmed' });
+    assert.equal(reopened.database.prepare('PRAGMA user_version').get()!.user_version, 1);
+    await storage.close();
+  } finally { await rm(directory, { recursive: true, force: true }); }
 });
 
 

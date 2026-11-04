@@ -7,7 +7,8 @@ const ADDRESS = '0x52908400098527886E0F7030069857D2E4169EE7';
 const OTHER = '0x1111111111111111111111111111111111111111';
 const first = createEvmWatchAccount('watch_1', 'First', ADDRESS);
 const second = createEvmWatchAccount('watch_2', 'Second', OTHER);
-const encode = (accounts: readonly unknown[]) => JSON.stringify({ version: 1, accounts });
+const document = (accounts: readonly unknown[]) => ({ version: 1, records: accounts.map((account) => ({ kind: 'address', ...(account as object) })) });
+const encode = (accounts: readonly unknown[]) => JSON.stringify(document(accounts));
 function fixture(raw: string | null = encode([first])) {
   const data: Record<string, string> = raw === null ? {} : { [PUBLIC_ACCOUNTS_KEY]: raw };
   const writes: { key: string; value: string }[] = [];
@@ -18,19 +19,19 @@ function fixture(raw: string | null = encode([first])) {
   return { data, writes, repository };
 }
 
-test('public repository preserves the v1 record format and explicit legacy network mappings', async () => {
-  const legacy = { id: 'old', name: 'Original', addresses: { ethereum: ADDRESS } };
-  const f = fixture(encode([legacy]));
-  assert.deepEqual(await f.repository.loadAccounts(), [legacy]);
-  await f.repository.compareAndSetAccounts([legacy], [legacy, second]);
-  assert.deepEqual(JSON.parse(f.data[PUBLIC_ACCOUNTS_KEY]!), { version: 1, accounts: [legacy, second] });
+test('public repository uses the canonical record format and explicit network mappings', async () => {
+  const mapped = { id: 'old', name: 'Original', addresses: { ethereum: ADDRESS } };
+  const f = fixture(encode([mapped]));
+  assert.deepEqual(await f.repository.loadAccounts(), [mapped]);
+  await f.repository.compareAndSetAccounts([mapped], [mapped, second]);
+  assert.deepEqual(JSON.parse(f.data[PUBLIC_ACCOUNTS_KEY]!), document([mapped, second]));
   assert.deepEqual(Object.keys((await f.repository.loadAccounts())[0]!.addresses), ['ethereum']);
   assert.deepEqual(Object.keys(f.data), [PUBLIC_ACCOUNTS_KEY]);
 });
 
 test('only absent public records are empty; invalid saved records cannot be overwritten', async () => {
   assert.deepEqual(await fixture(null).repository.loadAccounts(), []);
-  for (const raw of ['not json', 'null', '[]', JSON.stringify({ version: 2, accounts: [] }),
+  for (const raw of ['not json', 'null', '[]', JSON.stringify({ version: 2, records: [] }), JSON.stringify({ version: 1, accounts: [] }),
     JSON.stringify({ version: 1, accounts: [], keyring: {} }), encode([{ ...first, privateKey: 'bad' }]),
     JSON.stringify({ version: 1, accounts: [{ ...first, addresses: { bitcoin: ADDRESS } }] }), ' '.repeat(32769)]) {
     const f = fixture(raw);

@@ -47,7 +47,7 @@ function ownFields(value: unknown, keys: readonly string[]): Record<string, unkn
 }
 function recordView(snapshot: WatchRecordSnapshot) {
   const data = ownFields(snapshot, ['version', 'records', 'accounts']);
-  if (data.version !== 1 && data.version !== 2) throw new Error('Invalid public account record version');
+  if (data.version !== 1) throw new Error('Invalid public account record version');
   const records = snapshotWatchRecords(data.records), accounts = validatePublicAccounts(data.accounts);
   if (records.length !== accounts.length || records.some((record, i) => record.id !== accounts[i]?.id || record.name !== accounts[i]?.name ||
     record.kind === 'address' && JSON.stringify(record.addresses) !== JSON.stringify(accounts[i]?.addresses))) throw new Error('Public account projection changed');
