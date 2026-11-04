@@ -50,9 +50,19 @@ Full reports require the ERC20 address, transaction and intent hashes, fixed HD2
 identity, per-phase signature/authorization counters and exactly one injected
 submission. Create/restart hashes and the wallet fingerprint must match. These
 checks add native controller/signing/persistence evidence; they do not establish
-live-network token execution or token-delivery behavior. The limited iOS
-Simulator refusal occurs before all HD and ERC20 cases and cannot carry these
-success fields.
+live-network token execution or token-delivery behavior.
+
+A separate native-coin case creates HD index 3 and signs two transactions with
+the installed SDK: one on Ethereum and one on the fixed Syscoin NEVM testnet
+(chain 5700). Both use nonce zero and retain distinct entries in the same
+version-2 account journal. The new process selects HD3, verifies both signed
+envelopes and hashes from durable storage without signing again, and returns to
+HD1 on Ethereum. Both phases compare the complete prior HD0/HD1 native and HD2
+ERC20 journal rows, so chain qualification cannot silently replace that evidence.
+Full Android and physical-iPhone reports require the HD3 identity, both hashes,
+chain 5700, journal version and phase-specific restart flag; each host runner
+compares them across the cold restart. The limited iOS Simulator refusal occurs
+before all HD, ERC20 and NEVM cases and cannot carry these success fields.
 
 The full native crypto fixture runs through the actual bridge on each launch,
 including unchanged 20k/900k KDF profiles and authentication-error classification.
@@ -60,6 +70,10 @@ JavaScript fetch/XHR/WebSocket requests are blocked. A fixed public-fixture Ethe
 opaque fingerprint, signed-transaction hashes and OS/build hashes; phrases, passwords, keys and database
 contents are never exported into artifacts. A database read after process death
 checks the SQLCipher header and absence of known fixture credential strings.
+The NEVM case is offline signing and persistence evidence. It does not contact
+the testnet, fund an account, broadcast, or qualify live 12-confirmation
+settlement behavior. Passing source tests or building this harness alone does
+not establish native execution; that requires the recorded native artifact run.
 
 Fresh iOS simulator devices isolate scenarios, including Keychain state. Android
 uninstalls only the dedicated qualification package between scenarios. The runner
@@ -119,7 +133,7 @@ Binary database output is never included in that artifact.
 `run-physical-ios.cjs` is a separate host runner. It never falls back to
 Simulator, changes production storage policy, or accepts a caller-selected app
 identifier. It runs the same native creation/import, backup, wrong-password,
-HD-account and offline ERC20 journal/retry checks described above. It does not
+HD-account, offline ERC20 journal/retry and chain-5700 signing/restart checks described above. It does not
 qualify the normal app's UI, Activity, physical privacy behavior, or live-network
 transactions.
 
@@ -208,7 +222,7 @@ from its own launch receipt and rechecks both before termination; a reused PID
 is never killed. Reports bind a fresh random run ID, source and bundle identity,
 so a stale report cannot satisfy a later run. Each report must pass the shared
 native validators plus complete physical crypto/check evidence. Create/restart
-must preserve account, fingerprint, HD and ERC20 transaction identity while the
+must preserve account, fingerprint, HD, ERC20 and chain-5700 transaction identity while the
 native process session changes.
 
 Before contacting a device, the runner copies the admitted apps into a private

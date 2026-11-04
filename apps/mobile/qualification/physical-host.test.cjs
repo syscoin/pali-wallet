@@ -91,6 +91,17 @@ function report(phase, scenario, runId) {
     erc20Authorizations: phase === 'create' ? 0 : 1,
     erc20InjectedBroadcasts: 1,
     erc20RestoredFromJournal: phase === 'restart',
+    nativeNevmVerified: true,
+    nevmAccountId: 'hd:60:3',
+    nevmAccountIndex: 3,
+    nevmAddress: scenario === 'import'
+      ? '0xF3f50213C1d2e255e4B2bAD430F8A38EEF8D718E'
+      : '0x' + '33'.repeat(20),
+    nevmTransferHash: '0x' + '7'.repeat(64),
+    nevmEthereumTransferHash: '0x' + '8'.repeat(64),
+    nevmChainId: '5700',
+    nevmJournalContainerVersion: 2,
+    nevmRestoredFromJournal: phase === 'restart',
     physicalRunId: runId,
     physicalBundleIdentifier: PHYSICAL_BUNDLES[scenario],
     physicalSourceRevision: SOURCE,
@@ -956,7 +967,7 @@ test('device context changes stop the run without terminating an unproven proces
     f.cleanup();
   }
 });
-test('physical report checks preserve exact HD/ERC20 evidence and refuse an extra field', () => {
+test('physical report checks preserve exact HD/ERC20/NEVM evidence and refuse an extra field', () => {
   const first = report('create', 'import', 'c'.repeat(32));
   const second = report('restart', 'import', 'c'.repeat(32));
   const expected = {
@@ -971,6 +982,21 @@ test('physical report checks preserve exact HD/ERC20 evidence and refuse an extr
     first.fingerprint
   );
   assert.doesNotThrow(() => assertPhysicalRestart(first, second));
+  for (const key of [
+    'nativeNevmVerified', 'nevmAccountId', 'nevmAccountIndex', 'nevmAddress',
+    'nevmTransferHash', 'nevmEthereumTransferHash', 'nevmChainId',
+    'nevmJournalContainerVersion', 'nevmRestoredFromJournal',
+  ]) {
+    const incomplete = { ...first };
+    delete incomplete[key];
+    assert.throws(() => decodePhysicalReport(JSON.stringify(incomplete), expected));
+  }
+  for (const mutation of [
+    { nevmTransferHash: '0x' + '9'.repeat(64) },
+    { nevmEthereumTransferHash: '0x' + '9'.repeat(64) },
+    { nevmChainId: '1' },
+    { nevmRestoredFromJournal: false },
+  ]) assert.throws(() => assertPhysicalRestart(first, { ...second, ...mutation }));
   assert.throws(() =>
     decodePhysicalReport(
       JSON.stringify({ ...first, secret: 'untrusted' }),

@@ -11,6 +11,7 @@ const {
 const { isCryptoDiagnostic } = require('../src/crypto/diagnostics.ts');
 const { matchesHdRestartEvidence } = require('./hd-accounts.ts');
 const { matchesErc20RestartEvidence } = require('./erc20-transfer.ts');
+const { matchesNevmRestartEvidence } = require('./nevm-transfer.ts');
 const { createCommandRunner, describeQualificationFailure, COLD_BOOT_TIMEOUT_MS } = require('./command-runner.cjs');
 const { qualificationMode, assertSimulatorTarget } = require('./simulator-contract.cjs');
 const { decodeNativeReport, assertFullNativeReport } = require('./report-validation.cjs');
@@ -269,7 +270,8 @@ async function ios() {
         created.address !== restored.address ||
         created.fingerprint !== restored.fingerprint ||
         !matchesHdRestartEvidence(created, restored) ||
-        !matchesErc20RestartEvidence(created, restored)
+        !matchesErc20RestartEvidence(created, restored) ||
+        !matchesNevmRestartEvidence(created, restored)
       )
         throw Error('Cold restart identity or backup fingerprint mismatch');
       run('xcrun', [
@@ -287,6 +289,7 @@ async function ios() {
         signedTransferRestored: true,
         hdAccountsRestored: true,
         erc20TransferRestored: true,
+        nevmTransferRestored: true,
         journalContainerVersion: 2,
       });
     } finally {
@@ -446,7 +449,8 @@ async function android() {
         created.address !== restored.address ||
         created.fingerprint !== restored.fingerprint ||
         !matchesHdRestartEvidence(created, restored) ||
-        !matchesErc20RestartEvidence(created, restored)
+        !matchesErc20RestartEvidence(created, restored) ||
+        !matchesNevmRestartEvidence(created, restored)
       )
         throw Error('Cold restart identity or backup fingerprint mismatch');
       try {
@@ -471,6 +475,7 @@ async function android() {
         signedTransferRestored: true,
         hdAccountsRestored: true,
         erc20TransferRestored: true,
+        nevmTransferRestored: true,
         journalContainerVersion: 2,
       });
     } finally {
