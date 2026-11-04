@@ -7,7 +7,8 @@ import { SigningKey, keccak256 } from 'ethers/crypto';
 import { Wallet } from 'ethers/wallet';
 import { inspectRecoveryInventory, readRecoveryInventory } from '../src/custody/recoveryInventory.ts';
 import { NativeWalletCatalogue, WALLET_CATALOGUE_KEY } from '../src/custody/walletCatalogue.ts';
-import { importedKeyIdentity, IMPORTED_EVM_DOMAIN } from '../src/custody/importedAccounts.ts';
+import { importedKeyIdentity } from '../src/custody/importedAccounts.ts';
+import { IMPORTED_RECOVERY_DOMAIN } from '../../../source/wallet/importedAccountRecovery.ts';
 import { getNativeNetwork } from '../src/custody/networkContext.ts';
 import { ACTIVITY_STORAGE_KEY } from '../src/activity/historyStore.ts';
 import { NATIVE_TOKEN_REGISTRY_KEY } from '../src/portfolio/tokenRegistry.ts';
@@ -138,7 +139,7 @@ test('inventory counts the shared signed bundle, imported envelopes, tokens and 
     const catalogue = f.value(WALLET_CATALOGUE_KEY);
     catalogue.nextImportedIndex = 1;
     catalogue.importedAccounts = [{ ...imported, type: 'Imported', slip44: 60, label: 'Private account name',
-      envelope: { version: 1, domain: IMPORTED_EVM_DOMAIN, recordId: imported.id, profileId, nonce: 'A'.repeat(16), ciphertext: 'A'.repeat(24) } }];
+      recovery: { version: 1, identity: { kind: 'ethereum', slip44: 60, id: imported.index, address: imported.address, xpub: imported.publicKey }, envelope: { version: 1, domain: IMPORTED_RECOVERY_DOMAIN, recordId: `imported:60:${imported.index}`, profileId, nonce: 'A'.repeat(16), ciphertext: 'A'.repeat(24) } } }];
     f.put(WALLET_CATALOGUE_KEY, catalogue);
     await f.putSigned(signedBundle());
     const network = getNativeNetwork('ethereum');

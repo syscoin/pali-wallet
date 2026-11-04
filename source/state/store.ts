@@ -9,6 +9,12 @@ import isEqual from 'lodash/isEqual';
 import { thunk, ThunkMiddleware } from 'redux-thunk';
 
 import {
+  importedRecoveryStorageKeyForIdentity,
+  snapshotImportedRecoveryEntry,
+  type ImportedRecoveryEntry,
+  type ImportedRecoveryIdentity,
+} from '../wallet/importedAccountRecovery';
+import {
   IKeyringAccountState,
   INetwork,
   ISmartAccountMetadata,
@@ -410,9 +416,17 @@ type AccountRemovalCommit = {
   accountId: number;
   accountType: KeyringAccountType;
   grants: IDApp[];
+  importedRecovery?: {
+    identity: ImportedRecoveryIdentity;
+    profileId: string;
+  };
   isSameWallet: () => boolean;
   retireSessions: () => void;
 };
+
+type ImportedRecoveryMutation =
+  | { entry: ImportedRecoveryEntry; kind: 'add' }
+  | { identity: ImportedRecoveryIdentity; kind: 'remove'; profileId: string };
 
 type VaultMutationAction =
   | ReturnType<typeof setAccountLabel>
@@ -427,7 +441,8 @@ function persistVaultMutation(
   mutation: VaultMutationAction[] | (() => VaultMutationAction[]),
   assertCurrent: () => void,
   removal?: AccountRemovalCommit,
-  isSameWallet = removal?.isSameWallet
+  isSameWallet = removal?.isSameWallet,
+  importedRecovery?: ImportedRecoveryMutation
 ): Promise<void> {
   return walletPersistenceMutex.runExclusive(async () => {
     const assertCommitCurrent = () => {
@@ -447,6 +462,40 @@ function persistVaultMutation(
       }
     };
     assertCommitCurrent();
+    let recoveryWrites: Record<string, unknown> | undefined;
+    let recoveryRollback: Record<string, unknown> | undefined;
+    let recoveryBefore: Record<string, unknown> | undefined;
+    let recoveryBeforeKeys: string[] | undefined;
+    const priorLastPersistedState = lastPersistedState;
+    if (importedRecovery) {
+      const expected =
+        importedRecovery.kind === 'add'
+          ? snapshotImportedRecoveryEntry(importedRecovery.entry)
+          : undefined;
+      const identity =
+        importedRecovery.kind === 'add'
+          ? expected!.identity
+          : importedRecovery.identity;
+      const profileId =
+        importedRecovery.kind === 'add'
+          ? expected!.envelope.profileId
+          : importedRecovery.profileId;
+      const key = importedRecoveryStorageKeyForIdentity(identity, profileId);
+      const slip44 = store.getState().vaultGlobal.activeSlip44;
+      if (slip44 === null)
+        throw new Error('Imported recovery vault is unavailable');
+      recoveryBeforeKeys = [key, `state-vault-${slip44}`, 'state'];
+      recoveryBefore = await chromeStorage.getItems(recoveryBeforeKeys);
+      const saved = recoveryBefore[key];
+      assertCommitCurrent();
+      if (saved !== undefined && saved !== null) {
+        const previous = snapshotImportedRecoveryEntry(saved, identity);
+        if (previous.envelope.profileId !== profileId || expected)
+          throw new Error('Imported recovery record already exists or changed');
+      }
+      recoveryWrites = { [key]: expected ?? null };
+      recoveryRollback = { [key]: saved ?? null };
+    }
     const actions = typeof mutation === 'function' ? mutation() : mutation;
     const state = store.getState();
     const sourceSlip44 = state.vaultGlobal.activeSlip44;
@@ -464,6 +513,29 @@ function persistVaultMutation(
       actions.reduce((current, action) => vault(current, action), state.vault),
       false
     );
+    if (importedRecovery) {
+      const expected =
+        importedRecovery.kind === 'add'
+          ? importedRecovery.entry.identity
+          : importedRecovery.identity;
+      const account = (
+        importedRecovery.kind === 'add' ? stagedVault : sourceVault
+      ).accounts.Imported[expected.id];
+      if (
+        expected.slip44 !== sourceSlip44 ||
+        expected.kind !== sourceVault.activeNetwork.kind ||
+        !account ||
+        account.address !== expected.address ||
+        account.xpub !== expected.xpub ||
+        account.id !== expected.id ||
+        !account.isImported ||
+        account.isLedgerWallet ||
+        account.isTrezorWallet ||
+        account.isSmartAccount ||
+        !account.xprv
+      )
+        throw new Error('Imported recovery account context changed');
+    }
     const mainState = removal
       ? {
           ...getMainStateForStorage(state),
@@ -475,17 +547,65 @@ function persistVaultMutation(
       : isMainStateUnchanged(state)
       ? undefined
       : getMainStateForStorage(state);
-    await saveCommittedWalletState(sourceSlip44, stagedVault, mainState);
-    if (mainState) lastPersistedState = mainState;
+    // Ordinary mutations keep their existing write-failure contract. Imports
+    // and removals with private copies must also reconcile a rejected write:
+    // Chrome may have committed the complete batch before losing its reply.
+    if (!recoveryWrites) {
+      await saveCommittedWalletState(sourceSlip44, stagedVault, mainState);
+      if (mainState) lastPersistedState = mainState;
+    }
     let publicationActions = actions;
     try {
+      if (recoveryWrites) {
+        await saveCommittedWalletState(
+          sourceSlip44,
+          stagedVault,
+          mainState,
+          recoveryWrites
+        );
+        if (mainState) lastPersistedState = mainState;
+      }
       assertCommitCurrent();
+      if (recoveryWrites) {
+        const key = Object.keys(recoveryWrites)[0];
+        const saved = await chromeStorage.getItems([
+          key,
+          `state-vault-${sourceSlip44}`,
+        ]);
+        assertCommitCurrent();
+        if (
+          JSON.stringify(saved[key]) !== JSON.stringify(recoveryWrites[key]) ||
+          JSON.stringify(saved[`state-vault-${sourceSlip44}`]) !==
+            JSON.stringify(stagedVault)
+        )
+          throw new Error(
+            'Imported account recovery commit was not acknowledged'
+          );
+      }
       // Asset lists may receive newer balances while storage is pending.
       // Reapply the same membership edit to the latest list, not an old array.
       if (typeof mutation === 'function') publicationActions = mutation();
     } catch (error) {
       assertWalletPersistenceAllowed();
       if (isSameWallet && !isSameWallet()) throw error;
+      if (recoveryBefore && recoveryBeforeKeys) {
+        let unchanged = false;
+        try {
+          const observed = await chromeStorage.getItems(recoveryBeforeKeys);
+          unchanged = recoveryBeforeKeys.every(
+            (key) =>
+              JSON.stringify(observed[key] ?? null) ===
+              JSON.stringify(recoveryBefore![key] ?? null)
+          );
+        } catch {
+          /* An unreadable outcome still needs a verified repair. */
+        }
+        if (isSameWallet && !isSameWallet()) throw error;
+        if (unchanged) {
+          lastPersistedState = priorLastPersistedState;
+          throw error;
+        }
+      }
       const current = store.getState();
       let repairVault =
         current.vaultGlobal.activeSlip44 === sourceSlip44 &&
@@ -505,12 +625,50 @@ function persistVaultMutation(
       const repairMainState = getMainStateForStorage(store.getState());
       // Repair the source slot, never the newly active vault. Do not repopulate
       // a cache that lock/reset may have cleared while storage was pending.
-      await saveCommittedWalletState(
-        sourceSlip44,
-        repairVault,
-        repairMainState
-      );
-      lastPersistedState = repairMainState;
+      try {
+        let repairFailed = false;
+        let repairFailure: unknown;
+        try {
+          await saveCommittedWalletState(
+            sourceSlip44,
+            repairVault,
+            repairMainState,
+            recoveryRollback
+          );
+        } catch (failure) {
+          repairFailed = true;
+          repairFailure = failure;
+        }
+        if (recoveryRollback) {
+          const vaultKey = `state-vault-${sourceSlip44}`;
+          const saved = await chromeStorage.getItems([
+            vaultKey,
+            'state',
+            ...Object.keys(recoveryRollback),
+          ]);
+          if (isSameWallet && !isSameWallet()) throw error;
+          if (
+            JSON.stringify(saved[vaultKey]) !== JSON.stringify(repairVault) ||
+            JSON.stringify(saved.state) !== JSON.stringify(repairMainState) ||
+            Object.keys(recoveryRollback).some(
+              (key) =>
+                JSON.stringify(saved[key] ?? null) !==
+                JSON.stringify(recoveryRollback![key] ?? null)
+            )
+          )
+            throw new Error(
+              'Imported account recovery repair was not acknowledged'
+            );
+        } else if (repairFailed) throw repairFailure;
+        lastPersistedState = repairMainState;
+      } catch (repairError) {
+        // Do not let a later save publish the old Redux account collection over
+        // an unclassified account/private-copy pair. The existing write gate
+        // remains closed until storage can be reconciled.
+        if (recoveryRollback && (!isSameWallet || isSameWallet()))
+          walletPersistenceGate.blocked = true;
+        throw repairError;
+      }
       throw error;
     }
     publicationActions.forEach((action) => store.dispatch(action));
@@ -577,7 +735,11 @@ export function persistAccountRemoval(
   return persistVaultMutation(
     [removeAccount({ id: removal.accountId, type: removal.accountType })],
     assertCurrent,
-    removal
+    removal,
+    removal.isSameWallet,
+    removal.importedRecovery
+      ? { kind: 'remove', ...removal.importedRecovery }
+      : undefined
   );
 }
 
@@ -591,7 +753,8 @@ export function persistAccountCreation(
     | KeyringAccountType.Trezor
     | KeyringAccountType.Ledger,
   assertCurrent: () => void,
-  isSameWallet: () => boolean
+  isSameWallet: () => boolean,
+  importedRecovery?: ImportedRecoveryEntry
 ): Promise<void> {
   return persistVaultMutation(
     [
@@ -600,7 +763,8 @@ export function persistAccountCreation(
     ],
     assertCurrent,
     undefined,
-    isSameWallet
+    isSameWallet,
+    importedRecovery ? { kind: 'add', entry: importedRecovery } : undefined
   );
 }
 

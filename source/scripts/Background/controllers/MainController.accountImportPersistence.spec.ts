@@ -17,6 +17,7 @@ import http from 'http';
 import https from 'https';
 import { utils as sys } from 'syscoinjs-lib';
 
+import { attachImportedRecoveryCryptoFixture } from '../../../../tests/fixtures/importedRecoveryCrypto';
 import { loadSlip44State, walletPersistenceGate } from 'state/paliStorage';
 import store, { persistCommittedWalletState } from 'state/store';
 import {
@@ -187,6 +188,7 @@ describe.each(['private', 'watch'] as const)(
       // Actual SDK derives/encrypts/allocates and reads the actual Redux vault.
       // Only the already-unlocked public synthetic session is supplied.
       manager = new KeyringManager();
+      attachImportedRecoveryCryptoFixture(manager);
       manager.setVaultStateGetter(() => store.getState().vault);
       manager.isUnlocked = () => true;
       manager.withSecureData = (operation: (password: string) => unknown) =>

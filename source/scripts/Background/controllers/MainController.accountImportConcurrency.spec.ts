@@ -13,16 +13,24 @@ jest.mock('./providers/patchFetchWithPaliHeaders', () => ({
 }));
 
 import { KeyringManager } from '@sidhujag/sysweb3-keyring';
+import { webcrypto } from 'crypto';
 import http from 'http';
 import https from 'https';
 
+import { getController } from '..';
+import { attachImportedRecoveryCryptoFixture } from '../../../../tests/fixtures/importedRecoveryCrypto';
+import {
+  importedRecoveryStorageKey,
+  readImportedRecoverySecret,
+} from '../../../wallet/importedAccountRecovery';
+import { handleMasterControllerResponses } from '../handlers/handleMasterControllerResponses';
 import { loadSlip44State, walletPersistenceGate } from 'state/paliStorage';
-import store from 'state/store';
+import store, { persistAccountLabel } from 'state/store';
 import { restoreVaultSnapshot } from 'state/vault';
 import vaultCache from 'state/vaultCache';
 import { setActiveSlip44 } from 'state/vaultGlobal';
 import { INetworkType, KeyringAccountType } from 'types/network';
-import { walletPersistenceMutex } from 'utils/asyncMutex';
+import { AsyncMutex, walletPersistenceMutex } from 'utils/asyncMutex';
 import { chromeStorage } from 'utils/storageAPI';
 
 import MainController from './MainController';
@@ -89,6 +97,15 @@ beforeEach(() => {
   );
   store.dispatch(setActiveSlip44(60));
   disk = {};
+  jest
+    .spyOn(chromeStorage, 'getItems')
+    .mockImplementation(async (names) =>
+      Object.fromEntries(
+        names
+          .filter((key) => Object.hasOwn(disk, key))
+          .map((key) => [key, structuredClone(disk[key])])
+      )
+    );
   jest.spyOn(chromeStorage, 'setItems').mockImplementation(async (items) => {
     Object.assign(disk, structuredClone(items));
   });
@@ -103,6 +120,7 @@ beforeEach(() => {
   // Only authentication/session setup is synthetic. SDK import validation,
   // public-key derivation, account-ID allocation and encryption remain real.
   manager = new KeyringManager();
+  attachImportedRecoveryCryptoFixture(manager);
   manager.setVaultStateGetter(() => store.getState().vault);
   manager.isUnlocked = () => true;
   manager.withSecureData = (operation: (password: string) => unknown) =>
@@ -110,6 +128,9 @@ beforeEach(() => {
   wallet = Object.create(MainController.prototype);
   wallet.walletSessionGeneration = 0;
   wallet.walletStateGeneration = 0;
+  wallet.authenticationMutex = new AsyncMutex();
+  wallet.checkRateLimit = jest.fn().mockResolvedValue(0);
+  wallet.resetRateLimit = jest.fn().mockResolvedValue(undefined);
   wallet.getActiveKeyring = () => manager;
   wallet.resetAutoLockTimer = jest.fn();
   wallet.getLatestUpdateForCurrentAccount = jest
@@ -121,6 +142,7 @@ afterEach(() => {
   jest.clearAllTimers();
   jest.useRealTimers();
   vaultCache.clearCache();
+  walletPersistenceGate.blocked = false;
   jest.restoreAllMocks();
 });
 
@@ -266,4 +288,311 @@ it('an SDK failure does not block a separate import or clean retry', async () =>
       (account: any) => account.address
     )
   ).toEqual([second.address, retry.address]);
+});
+
+it('the real controller commits a real SDK recovery envelope with its imported account', async () => {
+  const originalCrypto = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
+  Object.defineProperty(globalThis, 'crypto', {
+    configurable: true,
+    value: webcrypto,
+  });
+  const sdk = jest.requireActual('@sidhujag/sysweb3-keyring/cjs/software.js');
+  const values = new Map<string, unknown>();
+  const software = new sdk.SoftwareKeyring(
+    sdk.createSoftwareKeyringHost({
+      async get(key: string) {
+        return values.get(key);
+      },
+      async set(key: string, value: unknown) {
+        values.set(key, value);
+      },
+      async deleteItem(key: string) {
+        values.delete(key);
+      },
+      async createManyIfAbsent(items: Record<string, unknown>) {
+        if (Object.keys(items).some((key) => values.has(key))) return false;
+        Object.entries(items).forEach(([key, value]) => values.set(key, value));
+        return true;
+      },
+    })
+  );
+  software.setVaultStateGetter(() => store.getState().vault);
+  try {
+    await software.initializeSession(
+      'test test test test test test test test test test test junk',
+      'Public recovery fixture 1!'
+    );
+    wallet.getActiveKeyring = () => software;
+    const account = await wallet.importAccountFromPrivateKey(
+      keys[0],
+      'Real protected import'
+    );
+    const profile = await software.getPrivateRecordProfileId();
+    const recoveryKey = `state-imported-account-recovery-v1:${profile}:imported:60:${account.id}`;
+    const copy = disk[recoveryKey];
+    expect(importedRecoveryStorageKey(copy)).toBe(recoveryKey);
+    expect(copy.identity.address).toBe(account.address);
+    expect(disk['state-vault-60'].accounts.Imported[account.id].xprv).toBe(
+      account.xprv
+    );
+    expect(JSON.stringify(copy)).not.toContain(keys[0]);
+    const opened = await readImportedRecoverySecret(
+      software,
+      copy,
+      copy.identity,
+      () => undefined
+    );
+    expect(opened.secret).toBe(keys[0]);
+    expect(account).not.toHaveProperty('recovery');
+  } finally {
+    await software.destroy();
+    if (originalCrypto)
+      Object.defineProperty(globalThis, 'crypto', originalCrypto);
+  }
+});
+
+it('repairs a committed-but-rejected controller import before another vault edit or retry', async () => {
+  jest.mocked(chromeStorage.setItems).mockImplementationOnce(async (items) => {
+    Object.assign(disk, structuredClone(items));
+    throw Error('Lost controller import acknowledgement');
+  });
+  await expect(
+    wallet.importAccountFromPrivateKey(keys[0], 'Unacknowledged')
+  ).rejects.toThrow('Lost controller import acknowledgement');
+  expect(store.getState().vault.accounts.Imported[0]).toBeUndefined();
+  await persistAccountLabel(
+    0,
+    KeyringAccountType.HDAccount,
+    'Safe subsequent edit',
+    () => undefined
+  );
+  expect(disk['state-vault-60'].accounts.Imported[0]).toBeUndefined();
+  expect(
+    Object.entries(disk).filter(
+      ([key, value]) =>
+        key.startsWith('state-imported-account-recovery-v1:') && value !== null
+    )
+  ).toEqual([]);
+  const retried = await wallet.importAccountFromPrivateKey(
+    keys[0],
+    'Acknowledged retry'
+  );
+  expect(retried.id).toBe(0);
+  expect(disk['state-vault-60'].accounts.Imported[0].address).toBe(
+    retried.address
+  );
+  expect(
+    Object.entries(disk).filter(
+      ([key, value]) =>
+        key.startsWith('state-imported-account-recovery-v1:') && value !== null
+    )
+  ).toHaveLength(1);
+});
+
+const deferred = <T>() => {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => (resolve = done));
+  return { promise, resolve };
+};
+
+const failImportRepair = async () => {
+  jest.mocked(chromeStorage.setItems).mockImplementationOnce(async (items) => {
+    Object.assign(disk, structuredClone(items));
+    throw Error('Lost import acknowledgement');
+  });
+  // An acknowledged no-op is not proof that the original account/copy pair
+  // was restored. The real persistence path must classify it as uncertain.
+  jest.mocked(chromeStorage.setItems).mockResolvedValueOnce(undefined);
+  await expect(wallet.importAccountFromPrivateKey(keys[0])).rejects.toThrow(
+    'Imported account recovery repair was not acknowledged'
+  );
+  expect(walletPersistenceGate.blocked).toBe(true);
+  expect(store.getState().vault.accounts.Imported[0]).toBeUndefined();
+  expect(disk['state-vault-60'].accounts.Imported[0]).toBeDefined();
+  expect(
+    Object.keys(disk).filter((key) =>
+      key.startsWith('state-imported-account-recovery-v1:')
+    )
+  ).toHaveLength(1);
+  return structuredClone(disk);
+};
+
+it('denies secret exports and SDK signing after an actual uncertain import repair without changing retained data', async () => {
+  manager.getSeed = jest.fn().mockResolvedValue('synthetic seed');
+  manager.getPrivateKeyByAccountId = jest
+    .fn()
+    .mockResolvedValue('synthetic key');
+  Object.assign(manager.ethereumTransaction, {
+    signPersonalMessage: jest.fn(),
+  });
+  const retained = await failImportRepair();
+  const writes = jest.mocked(chromeStorage.setItems).mock.calls.length;
+
+  expect(wallet.getWalletSetupStatus()).toBe('recovery-required');
+  await expect(wallet.getSeed('public password')).rejects.toThrow(
+    'Wallet setup'
+  );
+  await expect(
+    wallet.getPrivateKeyByAccountId(0, 'HDAccount', 'public password')
+  ).rejects.toThrow('Wallet setup');
+  expect(() => wallet.ethereumTransaction.signPersonalMessage({})).toThrow(
+    'Wallet setup'
+  );
+  expect(manager.getSeed).not.toHaveBeenCalled();
+  expect(manager.getPrivateKeyByAccountId).not.toHaveBeenCalled();
+  expect(
+    manager.ethereumTransaction.signPersonalMessage
+  ).not.toHaveBeenCalled();
+  expect(chromeStorage.setItems).toHaveBeenCalledTimes(writes);
+  expect(disk).toEqual(retained);
+});
+
+it.each(['getSeed', 'getPrivateKeyByAccountId'])(
+  'discards an in-flight %s result when an actual import repair becomes uncertain',
+  async (method) => {
+    const started = deferred<void>();
+    const result = deferred<string>();
+    manager[method] = jest.fn(() => {
+      started.resolve();
+      return result.promise;
+    });
+    const pending =
+      method === 'getSeed'
+        ? wallet.getSeed('public password')
+        : wallet.getPrivateKeyByAccountId(0, 'HDAccount', 'public password');
+    const rejected = expect(pending).rejects.toThrow('Wallet session changed');
+    await started.promise;
+    const retained = await failImportRepair();
+    const writes = jest.mocked(chromeStorage.setItems).mock.calls.length;
+    result.resolve('synthetic secret must not escape');
+    await rejected;
+    expect(wallet.resetRateLimit).not.toHaveBeenCalled();
+    expect(chromeStorage.setItems).toHaveBeenCalledTimes(writes);
+    expect(disk).toEqual(retained);
+  }
+);
+
+it('rejects a previously admitted export queued behind authentication after uncertain repair', async () => {
+  const entered = deferred<void>();
+  const release = deferred<void>();
+  const held = wallet.authenticationMutex.runExclusive(async () => {
+    entered.resolve();
+    await release.promise;
+  });
+  await entered.promise;
+  manager.getSeed = jest.fn().mockResolvedValue('synthetic seed');
+  const pending = wallet.getSeed('public password');
+  const rejected = expect(pending).rejects.toThrow('Wallet session changed');
+  const retained = await failImportRepair();
+  release.resolve();
+  await held;
+  await rejected;
+  expect(manager.getSeed).not.toHaveBeenCalled();
+  expect(disk).toEqual(retained);
+});
+
+const invokeSdk = (method: string, sendResponse: (value: unknown) => void) => {
+  Object.assign(chrome.runtime, {
+    getURL: (path = '') => `chrome-extension://pali-extension/${path}`,
+    id: 'pali-extension',
+  });
+  handleMasterControllerResponses({ wallet } as any);
+  const calls = jest.mocked(chrome.runtime.onMessage.addListener).mock.calls;
+  const listener = calls[calls.length - 1][0];
+  expect(
+    listener(
+      {
+        type: 'CONTROLLER_ACTION',
+        data: {
+          methods: ['wallet', 'ethereumTransaction', method],
+          params: [],
+        },
+      },
+      {
+        id: 'pali-extension',
+        url: 'chrome-extension://pali-extension/app.html',
+      },
+      sendResponse
+    )
+  ).toBe(true);
+};
+
+it.each(['ethSign', 'signPersonalMessage', 'signTypedData'])(
+  'does not send an in-flight %s signature to the popup after an actual uncertain import repair',
+  async (method) => {
+    const started = deferred<void>();
+    const result = deferred<string>();
+    const completed = deferred<void>();
+    Object.assign(manager.ethereumTransaction, {
+      [method]: jest.fn(() => {
+        started.resolve();
+        return result.promise;
+      }),
+    });
+    const sendResponse = jest.fn(() => completed.resolve());
+    jest.spyOn(console, 'error').mockImplementation();
+    invokeSdk(method, sendResponse);
+    await started.promise;
+    const retained = await failImportRepair();
+    result.resolve('synthetic signature must not escape');
+    await completed.promise;
+    expect(sendResponse).toHaveBeenCalledWith({
+      error: 'Wallet setup is in progress. Signing is unavailable.',
+      success: false,
+    });
+    expect(disk).toEqual(retained);
+  }
+);
+
+it('keeps healthy message signing and an already acknowledged transaction result intact', async () => {
+  const result = deferred<{ hash: string }>();
+  const started = deferred<void>();
+  const completed = deferred<void>();
+  Object.assign(manager.ethereumTransaction, {
+    signPersonalMessage: jest.fn().mockResolvedValue('synthetic signature'),
+    sendFormattedTransaction: jest.fn(() => {
+      started.resolve();
+      return result.promise;
+    }),
+  });
+  const healthy = deferred<void>();
+  const healthyResponse = jest.fn(() => healthy.resolve());
+  invokeSdk('signPersonalMessage', healthyResponse);
+  await healthy.promise;
+  expect(healthyResponse).toHaveBeenCalledWith('synthetic signature');
+
+  const sendResponse = jest.fn(() => completed.resolve());
+  invokeSdk('sendFormattedTransaction', sendResponse);
+  await started.promise;
+  const retained = await failImportRepair();
+  const acknowledged = { hash: `0x${'a'.repeat(64)}` };
+  result.resolve(acknowledged);
+  await completed.promise;
+  expect(sendResponse).toHaveBeenCalledWith(acknowledged);
+  expect(disk).toEqual(retained);
+});
+
+it('discards an in-flight internal smart-account message signature after uncertain repair', async () => {
+  const started = deferred<void>();
+  const result = deferred<string>();
+  Object.assign(manager.ethereumTransaction, {
+    ethSign: jest.fn(() => {
+      started.resolve();
+      return result.promise;
+    }),
+  });
+  jest.mocked(getController).mockReturnValue({ wallet } as any);
+  const pending = wallet.signSmartAccountActionDigestInternal(
+    [
+      store.getState().vault.accounts.HDAccount[0].address,
+      `0x${'b'.repeat(64)}`,
+    ],
+    { id: 0, type: KeyringAccountType.HDAccount }
+  );
+  const rejected = expect(pending).rejects.toThrow('Wallet setup');
+  await started.promise;
+  const retained = await failImportRepair();
+  result.resolve('synthetic signature must not escape');
+  await rejected;
+  expect(disk).toEqual(retained);
 });

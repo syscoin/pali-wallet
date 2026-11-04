@@ -1501,6 +1501,8 @@ test('installed SDK imported accounts persist AEAD, cold-reopen and sign/export 
     assert.equal(f.authority.getCatalogue()!.active.accountId, 'imported:60:0');
     await f.execute({ kind: 'select', id: 'hd:60:0' });
     await f.execute({ kind: 'remove', id: 'imported:60:0', password: PASSWORD });
+    await importTestKey(f, '0x' + '2'.padStart(64, '0'), 'Reused slot');
+    assert.equal(f.authority.getCatalogue()!.active.accountId, 'imported:60:0');
     await importTestKey(f);
     assert.equal(f.authority.getCatalogue()!.active.accountId, 'imported:60:1');
     assert.equal(f.authority.getSnapshot().account!.address, importedAddress());
@@ -1623,7 +1625,7 @@ test('a corrupt imported envelope prevents partial unlock and preserves every sa
     await importTestKey(f); f.authority.lock();
     const original = structuredClone(f.disk.records.get(WALLET_CATALOGUE_KEY)) as any;
     for (const field of ['ciphertext', 'profileId', 'recordId', 'domain']) {
-      const row = structuredClone(original), e = row.importedAccounts[0].envelope;
+      const row = structuredClone(original), e = row.importedAccounts[0].recovery.envelope;
       e[field] = field === 'ciphertext' ? (e[field][0] === 'A' ? 'B' : 'A') + e[field].slice(1) : 'wrong';
       f.disk.records.set(WALLET_CATALOGUE_KEY, row); const before = JSON.stringify([...f.disk.records]);
       await assert.rejects(f.authority.unlock(PASSWORD), /OPERATION_FAILED/);
