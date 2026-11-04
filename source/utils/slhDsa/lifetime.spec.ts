@@ -8,6 +8,13 @@ const mockStorage = new Map<string, unknown>();
 jest.mock('utils/storageAPI', () => ({
   chromeStorage: {
     getItem: jest.fn(async (key: string) => mockStorage.get(key) ?? null),
+    getItems: jest.fn(async (keys: string[]) =>
+      Object.fromEntries(
+        keys
+          .filter((key) => mockStorage.has(key))
+          .map((key) => [key, mockStorage.get(key)])
+      )
+    ),
     removeItem: jest.fn(async (key: string) => mockStorage.delete(key)),
     setItem: jest.fn(async (key: string, value: unknown) => {
       mockStorage.set(key, value);
@@ -289,7 +296,9 @@ describe('SLH-DSA local lifetime accounting', () => {
   it('rejects an old envelope readback instead of accepting the same key/version', async () => {
     await saveEncryptedSLHDSAState(makeState(7), crypto);
     const oldEnvelope = mockStorage.get(storageKey);
-    jest.mocked(chromeStorage.getItem).mockResolvedValueOnce(oldEnvelope);
+    jest
+      .mocked(chromeStorage.getItems)
+      .mockResolvedValueOnce({ [storageKey]: oldEnvelope });
 
     await expect(
       saveEncryptedSLHDSAState(makeState(8), crypto)
@@ -300,11 +309,11 @@ describe('SLH-DSA local lifetime accounting', () => {
     const readStarted = deferred<void>();
     const readback = deferred<unknown>();
     jest
-      .mocked(chromeStorage.getItem)
-      .mockResolvedValueOnce(null)
+      .mocked(chromeStorage.getItems)
+      .mockResolvedValueOnce({})
       .mockImplementationOnce(() => {
         readStarted.resolve();
-        return readback.promise;
+        return readback.promise as Promise<Record<string, unknown>>;
       });
     const registering = registerRuntimeSLHDSAState(makeState(7));
     const rejected = expect(registering).rejects.toThrow(
@@ -313,7 +322,7 @@ describe('SLH-DSA local lifetime accounting', () => {
     await readStarted.promise;
     clearRuntimeSLHDSAStates();
     configureSLHDSASessionStateCrypto(crypto);
-    readback.resolve(mockStorage.get(storageKey));
+    readback.resolve({ [storageKey]: mockStorage.get(storageKey) });
 
     await rejected;
     await expect(signSLHDSAActionHashLocal(signParams)).rejects.toThrow(

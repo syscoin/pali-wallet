@@ -44,6 +44,7 @@ import {
   importAccountWithRecovery,
   type ImportedRecoveryEntry,
 } from '../../../wallet/importedAccountRecovery';
+import { createSlhDsaProfileStateCrypto } from '../../../wallet/slhDsaStateCrypto';
 import { checkForUpdates } from '../handlers/handlePaliUpdates';
 import { getLedgerHost } from '../ledgerHost';
 import {
@@ -7734,29 +7735,13 @@ class MainController {
   }
 
   private getSLHDSASessionStateCrypto() {
-    const run = async (method: string, value: string) => {
-      this.assertWalletReadyForSigning();
-      const keyring = this.getActiveKeyring() as any;
-      const generation = this.walletSessionGeneration;
-      if (
-        typeof keyring.encryptSLHDSASessionState !== 'function' ||
-        typeof keyring.decryptSLHDSASessionState !== 'function'
-      ) {
-        throw new Error(
-          'Current sysweb3-keyring build does not support SLH-DSA session state encryption'
-        );
-      }
-      const result = await keyring[method](value);
+    this.assertWalletReadyForSigning();
+    const keyring = this.getActiveKeyring();
+    const generation = this.walletSessionGeneration;
+    return createSlhDsaProfileStateCrypto(keyring, () => {
       this.assertWalletReadyForSigning();
       this.assertCurrentWalletSession(generation, keyring);
-      return result;
-    };
-    return {
-      decrypt: (cipherText: string) =>
-        run('decryptSLHDSASessionState', cipherText),
-      encrypt: (plainText: string) =>
-        run('encryptSLHDSASessionState', plainText),
-    };
+    });
   }
 
   private configureSLHDSASessionStateCrypto() {

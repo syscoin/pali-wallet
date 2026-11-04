@@ -79,6 +79,8 @@ describe('wallet setup signing capability admission', () => {
     };
     keyring = {
       isUnlocked: jest.fn(() => true),
+      encryptPrivateRecord: jest.fn(),
+      decryptPrivateRecord: jest.fn(),
       getSeed: jest.fn(async () => 'synthetic seed fixture'),
       getPrivateKeyByAccountId: jest.fn(
         async () => 'synthetic private-key fixture'
@@ -246,14 +248,15 @@ describe('wallet setup signing capability admission', () => {
 
   it('blocks later use of captured SLH session crypto and network mutation before setup state changes', async () => {
     const crypto = wallet.getSLHDSASessionStateCrypto();
+    wallet.getActiveKeyring.mockClear();
     wallet.networkRequestGeneration = 7;
     wallet.recoveryJournalPending = true;
-    await expect(crypto.decrypt('encrypted fixture')).rejects.toThrow(
-      'Wallet setup'
-    );
-    await expect(crypto.encrypt('plaintext fixture')).rejects.toThrow(
-      'Wallet setup'
-    );
+    await expect(
+      crypto.decrypt('encrypted fixture', 'fixture')
+    ).rejects.toThrow('Wallet setup');
+    await expect(
+      crypto.encrypt('plaintext fixture', 'fixture')
+    ).rejects.toThrow('Wallet setup');
     await expect(wallet.setActiveNetwork({ chainId: 1 })).rejects.toThrow(
       'Wallet setup'
     );
