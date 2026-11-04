@@ -229,12 +229,14 @@ function reportWaitFixture() {
   const { isCryptoDiagnostic } = require('../src/crypto/diagnostics.ts');
   const { isHdQualificationReport } = require('./hd-accounts.ts');
   const { isStorageQualificationDiagnostic } = require('./storage-diagnostics.ts');
+  const { decodeNativeReport, assertFullNativeReport } = require('./report-validation.cjs');
   const source = readFileSync(require.resolve('./run-native.cjs'), 'utf8');
   const start = source.indexOf('const validateReport =');
   const end = source.indexOf('const databaseEvidence =', start);
   let now = 0;
   const saved = [];
   const { waitReport: wait, validateReport: validate } = runInNewContext(source.slice(start, end) + '\n({ waitReport, validateReport });', {
+    decodeNativeReport, assertFullNativeReport,
     isHdQualificationReport, isErc20QualificationReport, isCryptoDiagnostic, isStorageQualificationDiagnostic, simulatorContract: false, PUBLIC_PHRASE: 'public fixture', PUBLIC_PASSWORD: 'public password', platform: 'android',
     fs: { writeFileSync(_file, text) { saved.push(JSON.parse(text)); } }, path: { join: () => 'unused' }, output: 'unused',
     Date: { now: () => now }, sleep: async (milliseconds) => { now += milliseconds; },

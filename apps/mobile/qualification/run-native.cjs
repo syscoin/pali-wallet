@@ -9,11 +9,11 @@ const {
   latestAndroidExitPid,
 } = require('./log-diagnostics.cjs');
 const { isCryptoDiagnostic } = require('../src/crypto/diagnostics.ts');
-const { isStorageQualificationDiagnostic } = require('./storage-diagnostics.ts');
-const { isHdQualificationReport, matchesHdRestartEvidence } = require('./hd-accounts.ts');
-const { isErc20QualificationReport, matchesErc20RestartEvidence } = require('./erc20-transfer.ts');
+const { matchesHdRestartEvidence } = require('./hd-accounts.ts');
+const { matchesErc20RestartEvidence } = require('./erc20-transfer.ts');
 const { createCommandRunner, describeQualificationFailure, COLD_BOOT_TIMEOUT_MS } = require('./command-runner.cjs');
-const { qualificationMode, assertSimulatorRefusal, assertSimulatorTarget } = require('./simulator-contract.cjs');
+const { qualificationMode, assertSimulatorTarget } = require('./simulator-contract.cjs');
+const { decodeNativeReport, assertFullNativeReport } = require('./report-validation.cjs');
 
 if (process.env.CI !== 'true' || process.env.PALI_NATIVE_QUALIFICATION !== '1')
   throw Error('Run only against isolated qualification devices');
@@ -51,86 +51,12 @@ const androidProcessRunning = () =>
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const hash = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex');
 const validateReport = (text, phase, scenario) => {
-  if (
-    !text ||
-    text.length > 100000 ||
-    text.includes(PUBLIC_PHRASE) ||
-    text.includes(PUBLIC_PASSWORD)
-  )
-    throw Error('Invalid qualification report');
-  const report = JSON.parse(text);
-  const allowed = new Set([
-    'version',
-    'status',
-    'phase',
-    'scenario',
-    'platform',
-    'osVersion',
-    'sessionId',
-    'address',
-    'fingerprint',
-    'checks',
-    'networkCalls',
-    'nativeBridgeExercised',
-    'sdkVersion',
-    'nativeSigningVerified',
-    'transferHash',
-    'pendingProcessTermination',
-    'failedStage',
-    'cryptoEvidence',
-    'cryptoDiagnostic',
-    'mnemonicEntropyVerified',
-    'storageDiagnostic',
-    'nativeHdAccountsVerified',
-    'selectedAccountId',
-    'selectedAccountIndex',
-    'firstTransferHash',
-    'journalContainerVersion',
-    'nativeErc20Verified',
-    'erc20AccountId',
-    'erc20AccountIndex',
-    'erc20Address',
-    'erc20TransferHash',
-    'erc20IntentHash',
-    'erc20Signatures',
-    'erc20Authorizations',
-    'erc20InjectedBroadcasts',
-    'erc20RestoredFromJournal',
-  ]);
-  if (
-    Object.keys(report).some((key) => !allowed.has(key)) ||
-    !isHdQualificationReport(report) ||
-    !isErc20QualificationReport(report) ||
-    (report.cryptoDiagnostic !== undefined && !isCryptoDiagnostic(report.cryptoDiagnostic)) ||
-    !isStorageQualificationDiagnostic(report.storageDiagnostic, report.status, report.failedStage) ||
-    report.phase !== phase ||
-    report.scenario !== scenario ||
-    report.platform !== platform ||
-    report.version !== 1
-  )
-    throw Error('Unexpected qualification report schema');
-  if (simulatorContract) assertSimulatorRefusal(report);
+  const report = decodeNativeReport(text, platform, phase, scenario, simulatorContract);
   fs.writeFileSync(
     path.join(output, `${platform}-${scenario}-${phase}.json`),
     simulatorContract ? text : `${JSON.stringify(report, null, 2)}\n`
   );
-  if (simulatorContract) return report;
-  if (
-    report.status !== 'passed' ||
-    report.networkCalls !== 0 ||
-    report.nativeBridgeExercised !== true ||
-    report.nativeSigningVerified !== true ||
-    report.sdkVersion !== '2.0.0' ||
-    !/^0x[0-9a-f]{64}$/.test(report.transferHash || '') ||
-    report.mnemonicEntropyVerified !==
-      (phase === 'create' && scenario === 'generate') ||
-    !/^[0-9a-f]{64}$/.test(report.fingerprint || '') ||
-    report.cryptoEvidence?.passed !== true ||
-    report.cryptoEvidence?.productionIterations !== 900000
-  )
-    throw Error(
-      `Native qualification failed at ${report.failedStage || phase} (${JSON.stringify(report.cryptoDiagnostic || {})}; storage ${JSON.stringify(report.storageDiagnostic)})`
-    );
+  if (!simulatorContract) assertFullNativeReport(report);
   return report;
 };
 const captureFixtureLoadError = (text, scenario, stage = 'quick-crypto-load') => {
