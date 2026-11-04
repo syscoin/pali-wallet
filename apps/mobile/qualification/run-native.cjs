@@ -10,6 +10,7 @@ const {
 } = require('./log-diagnostics.cjs');
 const { isCryptoDiagnostic } = require('../src/crypto/diagnostics.ts');
 const { isStorageQualificationDiagnostic } = require('./storage-diagnostics.ts');
+const { isHdQualificationReport, matchesHdRestartEvidence } = require('./hd-accounts.ts');
 const { createCommandRunner, describeQualificationFailure, COLD_BOOT_TIMEOUT_MS } = require('./command-runner.cjs');
 const { qualificationMode, assertSimulatorRefusal, assertSimulatorTarget } = require('./simulator-contract.cjs');
 
@@ -79,9 +80,15 @@ const validateReport = (text, phase, scenario) => {
     'cryptoDiagnostic',
     'mnemonicEntropyVerified',
     'storageDiagnostic',
+    'nativeHdAccountsVerified',
+    'selectedAccountId',
+    'selectedAccountIndex',
+    'firstTransferHash',
+    'journalContainerVersion',
   ]);
   if (
     Object.keys(report).some((key) => !allowed.has(key)) ||
+    !isHdQualificationReport(report) ||
     (report.cryptoDiagnostic !== undefined && !isCryptoDiagnostic(report.cryptoDiagnostic)) ||
     !isStorageQualificationDiagnostic(report.storageDiagnostic, report.status, report.failedStage) ||
     report.phase !== phase ||
@@ -323,7 +330,7 @@ async function ios() {
         created.sessionId === restored.sessionId ||
         created.address !== restored.address ||
         created.fingerprint !== restored.fingerprint ||
-        created.transferHash !== restored.transferHash
+        !matchesHdRestartEvidence(created, restored)
       )
         throw Error('Cold restart identity or backup fingerprint mismatch');
       run('xcrun', [
@@ -339,6 +346,8 @@ async function ios() {
         processRestartVerified: true,
         sessionChanged: true,
         signedTransferRestored: true,
+        hdAccountsRestored: true,
+        journalContainerVersion: 2,
       });
     } finally {
       if (container) {
@@ -496,7 +505,7 @@ async function android() {
         created.sessionId === restored.sessionId ||
         created.address !== restored.address ||
         created.fingerprint !== restored.fingerprint ||
-        created.transferHash !== restored.transferHash
+        !matchesHdRestartEvidence(created, restored)
       )
         throw Error('Cold restart identity or backup fingerprint mismatch');
       try {
@@ -519,6 +528,8 @@ async function android() {
         processRestartVerified: true,
         sessionChanged: true,
         signedTransferRestored: true,
+        hdAccountsRestored: true,
+        journalContainerVersion: 2,
       });
     } finally {
       try {

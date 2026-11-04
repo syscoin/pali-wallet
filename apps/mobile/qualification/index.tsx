@@ -31,6 +31,7 @@ const PUBLIC_PHRASE =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 const PUBLIC_PASSWORD = 'PUBLIC native qualification password 2026';
 const EXPECTED_ADDRESS = '0x9858EfFD232B4033E47d90003D41EC34EcaEda94';
+const EXPECTED_HD_ADDRESS = '0x6Fac4D18c912343BF86fa7049364Dd4E424Ab9C0';
 type Phase = 'create' | 'restart';
 type Scenario = 'import' | 'generate';
 type Check = { name: string; durationMs: number };
@@ -93,8 +94,7 @@ function QualificationApp() {
       const mnemonicEntropy: Uint8Array[] = [];
       let observingGeneration = false;
       let mnemonicEntropyVerified = false;
-      let nativeSigningVerified = false;
-      let transferHash: string | undefined;
+      let expectedHdAddress: string | undefined;
       let networkCalls = 0;
       const check = async <T,>(
         name: string,
@@ -295,6 +295,9 @@ function QualificationApp() {
           await check('fresh password-backed seed confirmation', async () => {
             const presentation = await backup!.begin(PUBLIC_PASSWORD);
             expect(presentation.words.length === 12);
+            const { HDNodeWallet } = await import('ethers/wallet');
+            expectedHdAddress = HDNodeWallet.fromPhrase(presentation.words.join(' '), undefined, "m/44'/60'/0'/0/1").address;
+            if (parameters!.scenario === 'import') expect(expectedHdAddress === EXPECTED_HD_ADDRESS);
             if (parameters!.scenario === 'import')
               expect(presentation.words.join(' ') === PUBLIC_PHRASE);
             else {
@@ -340,67 +343,16 @@ function QualificationApp() {
           );
           expect(authority.getSnapshot().phase === 'ready');
         }
-        const address = authority.getSnapshot().account?.address;
-        expect(address && /^0x[0-9a-fA-F]{40}$/.test(address));
-        if (parameters.scenario === 'import')
-          expect(address === EXPECTED_ADDRESS);
-        if (parameters.phase === 'restart')
-          expect(address === parameters.address);
-        await check(
-          'native prepared signature and durable transfer journal',
-          async () => {
-            const transfer = runtime?.transfers;
-            if (!transfer || !address)
-              throw Error('QUALIFICATION_TRANSFER_UNAVAILABLE');
-            const assertCurrent = () =>
-              expect(
-                authority!.getSnapshot().phase === 'ready' &&
-                  authority!.getSnapshot().account?.address === address
-              );
-            const journal = await transfer.journal(assertCurrent);
-            const { Transaction } = await import('ethers/transaction');
-            if (parameters!.phase === 'create') {
-              const signed = await transfer.sign(
-                {
-                  type: 2,
-                  from: address,
-                  to: '0x1111111111111111111111111111111111111111',
-                  chainId: '1',
-                  nonce: '0',
-                  value: '123',
-                  gasLimit: '21000',
-                  data: '0x',
-                  maxFeePerGas: '3',
-                  maxPriorityFeePerGas: '1',
-                },
-                PUBLIC_PASSWORD,
-                assertCurrent
-              );
-              const stored = await journal.saveSigned(signed.rawTransaction);
-              expect(stored.hash === signed.hash);
-              await journal.transition(stored.hash, 'attempted');
-            }
-            const stored = await journal.load();
-            expect(stored?.phase === 'attempted');
-            if (!stored) throw Error('QUALIFICATION_TRANSFER_MISSING');
-            const signed = Transaction.from(stored.rawTransaction);
-            expect(
-              signed.isSigned() &&
-                signed.from === address &&
-                signed.hash === stored.hash &&
-                signed.chainId === 1n &&
-                signed.nonce === 0 &&
-                signed.value === 123n &&
-                signed.gasLimit === 21000n &&
-                signed.to === '0x1111111111111111111111111111111111111111' &&
-                signed.data === '0x' &&
-                signed.maxFeePerGas === 3n &&
-                signed.maxPriorityFeePerGas === 1n
-            );
-            transferHash = stored.hash;
-            nativeSigningVerified = true;
-          }
-        );
+        const rootAccount = authority.getCatalogue()?.accounts.find((account) => account.index === 0);
+        expect(rootAccount && /^0x[0-9a-fA-F]{40}$/.test(rootAccount.address));
+        if (parameters.scenario === 'import') expect(rootAccount?.address === EXPECTED_ADDRESS);
+        const { qualifyNativeHdAccounts } = await import('./hd-accounts.ts');
+        const hdEvidence = await qualifyNativeHdAccounts({
+          phase: parameters.phase, authority, runtime: runtime!, storage: storage!, password: PUBLIC_PASSWORD,
+          expectedSecondAddress: expectedHdAddress ?? (parameters.scenario === 'import' ? EXPECTED_HD_ADDRESS : undefined),
+          expectedRestartAddress: parameters.address, check,
+        });
+        const { address } = hdEvidence;
         await check('synchronous lock and wrong password refusal', async () => {
           authority!.lock();
           expect(
@@ -428,6 +380,8 @@ function QualificationApp() {
             expect(presentation.words.length === 12);
             if (parameters!.scenario === 'import')
               expect(presentation.words.join(' ') === PUBLIC_PHRASE);
+            const { HDNodeWallet } = await import('ethers/wallet');
+            expect(HDNodeWallet.fromPhrase(presentation.words.join(' '), undefined, "m/44'/60'/0'/0/1").address === address);
             backup!.cancel();
           });
           await check('lock and drain native database close', async () => {
@@ -445,7 +399,6 @@ function QualificationApp() {
           platform: Platform.OS,
           osVersion: String(Platform.Version),
           sessionId: Constants.sessionId,
-          address,
           fingerprint,
           checks,
           networkCalls,
@@ -468,8 +421,7 @@ function QualificationApp() {
           mnemonicEntropyVerified,
           nativeBridgeExercised: true,
           sdkVersion: '2.0.0',
-          nativeSigningVerified,
-          transferHash,
+          ...hdEvidence,
           storageDiagnostic: storageDiagnostic.report(),
           pendingProcessTermination: parameters.phase === 'create',
         };
