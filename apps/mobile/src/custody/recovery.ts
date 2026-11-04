@@ -26,6 +26,7 @@ type Dependencies = Readonly<{
   openStorage(): Promise<OpenWalletStorage>;
   loadSdk?: () => Promise<Sdk>;
   monotonicMilliseconds?: () => number;
+  assertActive?: () => void;
 }>;
 const fail = (code: RecoveryErrorCode): never => { throw new RecoveryError(code); };
 const translated = (error: unknown): RecoveryError => error instanceof RecoveryError ? error :
@@ -61,6 +62,8 @@ export class NativeRecoveryCoordinator {
   private check(generation: number, deadline: number, guard: () => void): void {
     if (this.disposed || generation !== this.generation || this.now() > deadline) return fail('CANCELLED');
     try {
+      const active: unknown = this.dependencies.assertActive?.();
+      if (active !== undefined) { if (active && (typeof active === 'object' || typeof active === 'function')) void Promise.resolve(active).catch(() => undefined); return fail('CANCELLED'); }
       const result: unknown = guard();
       if (result !== undefined) {
         if (result && (typeof result === 'object' || typeof result === 'function')) void Promise.resolve(result).catch(() => undefined);

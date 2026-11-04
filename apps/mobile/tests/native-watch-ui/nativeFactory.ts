@@ -1,3 +1,4 @@
+import { custodyIdle, securityPreferences } from './security';
 // Actual custody/transfer controllers, with deterministic in-memory runtime ports.
 import { NativeCustodyAuthority } from '../../src/custody/authority';
 import { SeedBackupFlow } from '../../src/custody/seedBackup';
@@ -52,6 +53,7 @@ const store: KeyringStoragePort = {
 };
 export function createNativeWalletControllers() {
   const runtime: CustodyRuntime = {
+    security: { async reauthenticateIdlePolicy(password, check) { check(); events.push('idle:auth'); await unlockGate(); if (password !== fixturePassword) throw new KeyringRuntimeError('INVALID_CREDENTIAL'); check(); } },
     networks: {
       getSelectedId: () => catalogue.active.networkId,
       reserve(id, expectedRevision) {
@@ -140,7 +142,7 @@ export function createNativeWalletControllers() {
       async close() { audit.closed++; events.push('close'); },
     },
   };
-  const authority = new NativeCustodyAuthority({ open: async () => runtime });
+  const authority = new NativeCustodyAuthority({ open: async () => runtime }, { preferences: securityPreferences, assertActive: custodyIdle.captureGuard() });
   latestAuthority = authority;
   retiredAuthorities.push(authority);
   const transferRuntime: NativeTransferRuntime = {

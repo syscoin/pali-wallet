@@ -1,11 +1,11 @@
+import { securityPreferences, watchIdle, custodyIdle } from './src/platform/security';
+import { IdleActivityBoundary, IdleTextInput, IdlePressable } from './src/screens/IdleActivityBoundary';
 import React, { useState, useEffect, useRef, useCallback, useSyncExternalStore } from 'react';
 import {
   View,
-  Pressable,
   ScrollView,
   StyleSheet,
   Modal,
-  TextInput,
   Platform,
   AppState,
   AccessibilityInfo,
@@ -227,6 +227,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
   }, []);
   const [filter, setFilter] = useState<NetworkId | 'all'>('all');
   const [snapshot, setSnapshot] = useState(blankSnapshot);
+  useEffect(() => { if (snapshot.status !== 'ready') watchIdle.allowNewInput(); }, [snapshot.status]);
   const [watchAuthority, setWatchAuthority] = useState<WatchOnlyAuthority | null>(null);
   const route: Route =
     !preview &&
@@ -285,7 +286,11 @@ function AppContent({ availableWatchNetworks }: AppProps) {
   const connect = (accounts: readonly PublicAccount[]) => {
     removeListener.current?.();
     authority.current?.lock();
-    const next = new WatchOnlyAuthority(accounts, balanceReader);
+    let next: WatchOnlyAuthority;
+    const owner = {};
+    next = new WatchOnlyAuthority(accounts, balanceReader, Date.now, {
+      begin: () => watchIdle.begin(owner, () => next.lock()), check: () => watchIdle.check(owner), stop: () => watchIdle.stop(owner),
+    });
     authority.current = next; setWatchAuthority(next);
     setSnapshot(next.getSnapshot());
     removeListener.current = next.subscribe(setSnapshot);
@@ -322,6 +327,8 @@ function AppContent({ availableWatchNetworks }: AppProps) {
     };
   }, [watchAccounts]);
   useEffect(() => {
+    const hide = () => { lifecycleGeneration.current++; authority.current?.lock(); setSheet(null); setAmount(''); setRecipient(''); };
+    const blur = AppState.addEventListener('blur', hide);
     const sub = AppState.addEventListener('change', (state) => {
       foreground.current = state === 'active';
       if (state !== 'active') {
@@ -334,7 +341,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
           go('locked');
       }
     });
-    return () => sub.remove();
+    return () => { sub.remove(); blur.remove(); };
   }, [preview, requestedRoute, setSheet]);
   useEffect(() => {
     if (route === 'design' || route === 'native' || route === 'accounts' || route === 'add' || Platform.OS === 'web') return;
@@ -614,7 +621,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
               pali
             </Text>
           </View>
-          <Pressable
+          <IdlePressable
             accessibilityRole="button"
             accessibilityLabel="Switch account"
             onPress={() => setSheet('accounts')}
@@ -631,7 +638,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
               {preview ? 'Personal wallet' : activeAccount?.name}
             </Text>
             <Icon name="chevron-down" size={15} color={colors.muted} />
-          </Pressable>
+          </IdlePressable>
         </View>
         <View style={s.balanceBlock}>
           <View
@@ -645,7 +652,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
             <Text style={styles.muted}>
               {preview ? 'Total balance' : 'Observed balance'}
             </Text>
-            <Pressable
+            <IdlePressable
               accessibilityRole="button"
               accessibilityLabel={
                 hideBalances ? 'Show balances' : 'Hide balances'
@@ -654,7 +661,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
               onPress={() => setHideBalances(!hideBalances)}
             >
               <Icon name="eye" size={18} color={colors.muted} />
-            </Pressable>
+            </IdlePressable>
           </View>
           <Text
             adjustsFontSizeToFit
@@ -713,7 +720,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
         )}
         <View style={[s.sectionLine, { marginTop: 32 }]}>
           <Text style={styles.sectionHeading}>Assets</Text>
-          <Pressable
+          <IdlePressable
             accessibilityRole="button"
             onPress={() => setSheet('filter')}
             style={s.smallButton}
@@ -726,11 +733,11 @@ function AppContent({ availableWatchNetworks }: AppProps) {
                 : liveNetwork.name}
             </Text>
             <Icon name="chevron-down" size={14} color={colors.muted} />
-          </Pressable>
+          </IdlePressable>
         </View>
         <Card>
           {assets.map((a, index) => (
-            <Pressable
+            <IdlePressable
               key={a.id}
               accessibilityRole="button"
               accessibilityLabel={`${a.name}, ${a.network}, ${
@@ -763,7 +770,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
                     : a.symbol}
                 </Text>
               </View>
-            </Pressable>
+            </IdlePressable>
           ))}
         </Card>
         {!preview && (
@@ -781,14 +788,14 @@ function AppContent({ availableWatchNetworks }: AppProps) {
         )}
         <View style={[s.sectionLine, { marginTop: 28 }]}>
           <Text style={styles.sectionHeading}>Recent activity</Text>
-          <Pressable
+          <IdlePressable
             accessibilityRole="button"
             onPress={() => go('activity')}
             style={s.smallButton}
           >
             <Text style={{ color: colors.blue, fontSize: 13 }}>View all</Text>
             <Icon name="arrow-right" size={15} color={colors.blue} />
-          </Pressable>
+          </IdlePressable>
         </View>
         {preview ? (
           <Card>
@@ -821,7 +828,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
           <>
             <View style={s.chips}>
               {['All activity', 'Received', 'Sent'].map((f) => (
-                <Pressable
+                <IdlePressable
                   key={f}
                   accessibilityRole="button"
                   style={[
@@ -838,7 +845,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
                   >
                     {f}
                   </Text>
-                </Pressable>
+                </IdlePressable>
               ))}
             </View>
             <Label>Recent transactions</Label>
@@ -1055,7 +1062,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
           }
         >
           <Header title={`Send ${current.symbol}`} onBack={back} />
-          <Pressable
+          <IdlePressable
             accessibilityRole="button"
             onPress={() => setSheet('send')}
             style={[s.assetRow, styles.card, { marginBottom: 24 }]}
@@ -1066,9 +1073,9 @@ function AppContent({ availableWatchNetworks }: AppProps) {
               <Text style={s.subtext}>{current.network}</Text>
             </View>
             <Icon name="chevron-down" color={colors.muted} />
-          </Pressable>
+          </IdlePressable>
           <Text style={{ fontWeight: '500', marginBottom: 10 }}>To</Text>
-          <TextInput
+          <IdleTextInput
             accessibilityLabel="Sample recipient"
             value={recipient}
             onChangeText={setRecipient}
@@ -1081,7 +1088,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
           />
           <Label>Amount</Label>
           <View style={s.amountInput}>
-            <TextInput
+            <IdleTextInput
               accessibilityLabel={`Amount in ${current.symbol}`}
               value={amount}
               onChangeText={setAmount}
@@ -1280,13 +1287,13 @@ function AppContent({ availableWatchNetworks }: AppProps) {
               >
                 DESIGN PREVIEW · SAMPLE DATA
               </Text>
-              <Pressable
+              <IdlePressable
                 accessibilityRole="button"
                 onPress={exit}
                 style={{ padding: 8, minHeight: 44, justifyContent: 'center' }}
               >
                 <Text style={{ fontSize: 12, color: colors.muted }}>Exit</Text>
-              </Pressable>
+              </IdlePressable>
             </View>
           )}
           {!preview &&
@@ -1308,7 +1315,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
                   { id: 'settings', label: 'Settings', icon: 'settings' },
                 ] as const
               ).map((tab) => (
-                <Pressable
+                <IdlePressable
                   key={tab.id}
                   accessibilityRole="tab"
                   accessibilityState={{ selected: route === tab.id }}
@@ -1335,7 +1342,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
                   >
                     {tab.label}
                   </Text>
-                </Pressable>
+                </IdlePressable>
               ))}
             </View>
           )}
@@ -1353,7 +1360,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
           onRequestClose={() => setSheet(null)}
         >
           <View style={s.modal}>
-            <Pressable
+            <IdlePressable
               accessibilityLabel="Close sheet"
               accessibilityRole="button"
               style={StyleSheet.absoluteFill}
@@ -1390,14 +1397,14 @@ function AppContent({ availableWatchNetworks }: AppProps) {
                         : 'Choose an asset and network'}
                     </Text>
                   </View>
-                  <Pressable
+                  <IdlePressable
                     accessibilityRole="button"
                     accessibilityLabel="Close"
                     onPress={() => setSheet(null)}
                     style={styles.iconButton}
                   >
                     <Icon name="close" />
-                  </Pressable>
+                  </IdlePressable>
                 </View>
                 {displayedSheet === 'accounts' ? (
                   <>
@@ -1461,7 +1468,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
                       />
                     )}
                     {networkChoices.map((a, index) => (
-                      <Pressable
+                      <IdlePressable
                         key={a.id}
                         accessibilityRole="button"
                         accessibilityLabel={`Choose ${a.name} on ${a.network}`}
@@ -1500,7 +1507,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
                           size={18}
                           color={colors.muted}
                         />
-                      </Pressable>
+                      </IdlePressable>
                     ))}
                   </Card>
                 )}
@@ -1522,7 +1529,7 @@ function TransactionRow({
   onPress: () => void;
 }) {
   return (
-    <Pressable
+    <IdlePressable
       accessibilityRole="button"
       onPress={onPress}
       style={[s.assetRow, !last && s.line]}
@@ -1555,13 +1562,19 @@ function TransactionRow({
         </Text>
         <Text style={s.subtext}>{tx.when.split(' · ')[0]}</Text>
       </View>
-    </Pressable>
+    </IdlePressable>
   );
+}
+function SecurityGate(props: AppProps) {
+  const state = useSyncExternalStore(securityPreferences.subscribe, securityPreferences.getSnapshot, securityPreferences.getSnapshot);
+  useEffect(() => { if (state.status !== 'ready') { custodyIdle.allowNewInput(); watchIdle.allowNewInput(); } }, [state.status]);
+  useEffect(() => { void securityPreferences.load().catch(() => undefined); return () => { custodyIdle.invalidate(); watchIdle.invalidate(); }; }, []);
+  return state.status === 'ready' ? <IdleActivityBoundary><AppContent {...props} /></IdleActivityBoundary> : <Screen><Header title="Security settings" /><Notice title={state.status === 'opening' ? 'Opening security settings' : 'Security settings unavailable'} body="Your saved data has not been replaced. Retry before opening your accounts." />{state.status === 'unavailable' && <Button title="Retry security settings" onPress={() => { void securityPreferences.load().catch(() => undefined); }} />}</Screen>;
 }
 export default function App(props: AppProps = {}) {
   return (
     <SafeAreaProvider>
-      <AppContent {...props} />
+      <SecurityGate {...props} />
     </SafeAreaProvider>
   );
 }

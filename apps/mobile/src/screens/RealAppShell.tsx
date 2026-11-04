@@ -1,5 +1,6 @@
+import { IdlePressable } from './IdleActivityBoundary';
 import React from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, Header, Icon, Notice, Screen, Text } from '../ui';
 
@@ -31,14 +32,14 @@ export function RealAppShell({ tab, onTab, immersive = false, children }: {
     <View style={s.content}>{children}</View>
     {!immersive && <SafeAreaView edges={['bottom']} style={s.safe}>
       <View accessibilityRole="tablist" accessibilityLabel="Main navigation" style={s.tabs}>
-        {TABS.map((item) => <Pressable key={item.id} accessibilityRole="tab" accessibilityLabel={item.label}
+        {TABS.map((item) => <IdlePressable key={item.id} accessibilityRole="tab" accessibilityLabel={item.label}
           accessibilityShowsLargeContentViewer accessibilityLargeContentTitle={item.label}
           accessibilityState={{ selected: tab === item.id }} aria-selected={tab === item.id} onPress={() => onTab(item.id)}
           style={({ pressed }) => [s.tab, pressed && s.pressed]}>
           <View style={[s.icon, tab === item.id && s.selected]}><Icon name={item.icon} color={tab === item.id ? colors.blue : colors.muted} /></View>
           <Text testID={`main-tab-caption-${item.id}`} numberOfLines={1} maxFontSizeMultiplier={1.25}
             adjustsFontSizeToFit minimumFontScale={1} style={[s.label, tab === item.id && s.selectedLabel]}>{item.label}</Text>
-        </Pressable>)}
+        </IdlePressable>)}
       </View>
     </SafeAreaView>}
   </View>;

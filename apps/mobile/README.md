@@ -56,6 +56,12 @@ Native onboarding offers wallet creation, phrase restoration, and watch-only acc
 
 The commands disable Expo CLI telemetry. Over-the-air updates are disabled in app configuration. These settings do not replace review of release builds or third-party dependency behavior.
 
+## Foreground auto-lock
+
+The development candidate adds Settings → Auto-lock for native wallets and watch accounts, with separate device-local values. The default is five minutes; choose Off or 5–120 whole minutes. Off never disables background/inactive or Android focus-loss locking. Increasing a native timeout or selecting Off requires fresh password authentication. Reads, asynchronous completions and background work do not extend the deadline.
+
+The setting uses dedicated protected storage, outside wallet records. Failed reads retain saved bytes and offer Retry; no native memory fallback or destructive reset is provided. A permanently malformed preference record has no qualified repair flow yet. See [idle-lock behavior and qualification limits](docs/idle-lock.md).
+
 ## Current behavior
 
 Native and watch sessions share operational **Wallet / Activity / Tools / Settings** tabs using their existing controllers. Wallet retains each account's supported balance, receive and send flows; Activity is available for native Ethereum accounts and, in the follow-on development candidate, confirmed transactions for a single watched SYS/BTC address. Tools opens account management and, for native accounts, network selection. Settings opens native Security & backups, lock/hide and development-build information. Only the active public tab is mounted. Authentication, seed/key presentation and approvals use dedicated screens without tabs; stale navigation cannot restore a previous account or session. The separate design explorer continues to use inert sample data.

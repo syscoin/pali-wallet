@@ -42,6 +42,7 @@ export type KeyringRuntimeDependencies = Readonly<{
   ensureCryptoReady(): Promise<void>;
   openStorage(): Promise<OpenWalletStorage>;
   loadSdk?: () => Promise<SoftwareSdk>;
+  assertActive?: () => void;
 }>;
 
 /** Internal host capabilities consumed by context-bound controllers, never public DTOs. */
@@ -135,6 +136,7 @@ export function createKeyringRuntimeFactory(
 
         const current = (captured: number) => {
           if (closed || captured !== generation) throw new Error('CANCELLED');
+          if (dependencies.assertActive) { try { checkGuard(dependencies.assertActive); } catch { throw new KeyringRuntimeError('CANCELLED'); } }
           if (catalogue.requiresReopen || tokens.requiresReopen || journalRequiresReopen(storage.keyringStorage)) throw new KeyringRuntimeError('CLEANUP_FAILED');
         };
         const lock = (): Promise<void> => {
@@ -514,6 +516,15 @@ export function createKeyringRuntimeFactory(
         };
         return {
           accounts,
+          security: {
+            reauthenticateIdlePolicy: (password, assertCurrent) => run(async (captured) => {
+              current(captured); checkGuard(assertCurrent);
+              if (!keyring.isUnlocked() || !catalogueSnapshot) throw new KeyringRuntimeError('NOT_READY');
+              if (!await authenticate(password, captured)) throw new KeyringRuntimeError('INVALID_CREDENTIAL');
+              current(captured); checkGuard(assertCurrent);
+              await hydrate(captured); current(captured); checkGuard(assertCurrent);
+            }),
+          },
           imports,
           networks,
           tokens: {

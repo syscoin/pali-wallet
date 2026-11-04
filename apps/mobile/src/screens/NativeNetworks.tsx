@@ -1,5 +1,6 @@
+import { IdleTextInput, IdlePressable } from './IdleActivityBoundary';
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { BackHandler, Keyboard, KeyboardAvoidingView, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { BackHandler, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeNetworkSnapshot, NativeNetworkView } from '../custody/networkView';
 import { colors, Header, Notice, Screen, styles, Text } from '../ui';
@@ -17,7 +18,7 @@ function NetworkOption<Id extends string>({ network, selected, busy, onSelect }:
   busy: boolean;
   onSelect(id: Id): Promise<void>;
 }) {
-  return <Pressable accessibilityRole="radio"
+  return <IdlePressable accessibilityRole="radio"
     accessibilityLabel={`${network.name}, ${network.symbol}${network.testnet ? ', test network' : ''}${network.canSign ? '' : ', balance and receive only'}`}
     accessibilityState={{ checked: selected, disabled: busy }} aria-checked={selected} disabled={busy}
     onPress={() => { void onSelect(network.id); }}
@@ -29,7 +30,7 @@ function NetworkOption<Id extends string>({ network, selected, busy, onSelect }:
     <View style={[s.check, selected && s.checked]}>
       {selected && <Text style={s.checkText}>✓</Text>}
     </View>
-  </Pressable>;
+  </IdlePressable>;
 }
 
 /** Switching requests a guarded context change; this screen never grants signing authority. */
@@ -100,7 +101,7 @@ export function NativeNetworks<Id extends string>({ controller, onBack }: {
       <Screen>
         <Header title="Networks" subtitle="Choose a network for this account" onBack={close} />
         <Text style={styles.muted}>Your address works across these networks. Your assets stay on the network where they were sent.</Text>
-        <TextInput accessibilityLabel="Search networks" placeholder="Search networks" placeholderTextColor={colors.muted}
+        <IdleTextInput accessibilityLabel="Search networks" placeholder="Search networks" placeholderTextColor={colors.muted}
           value={query} onChangeText={setQuery} maxLength={80} editable={!busy} autoCapitalize="none" autoCorrect={false}
           spellCheck={false} autoComplete="off" style={s.search} />
         {busy && <Notice title="Switching networks…" body="Pali is updating your wallet context." />}

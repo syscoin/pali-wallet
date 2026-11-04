@@ -2,12 +2,13 @@ import React from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, Card, colors, Header, Notice, Row, Screen, Text } from '../ui';
 
-export function RealSettings({ accountLabel, watchOnly, onSecurity, onLock, onBack }: {
-  accountLabel: string; watchOnly: boolean; onSecurity?: () => void; onLock(): void; onBack(): void;
+export function RealSettings({ accountLabel, watchOnly, onSecurity, onAutoLock, onLock, onBack }: {
+  accountLabel: string; watchOnly: boolean; onSecurity?: () => void; onAutoLock?: () => void; onLock(): void; onBack(): void;
 }) {
   return <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: colors.bg }}><Screen>
     <Header title="Settings" subtitle={accountLabel} onBack={onBack} />
     {onSecurity && <Card><Row title="Security & backups" subtitle="Recovery phrase and account private key" icon="shield" onPress={onSecurity} last /></Card>}
+    {onAutoLock && <Card><Row title="Auto-lock" subtitle="Foreground inactivity" icon="lock" onPress={onAutoLock} last /></Card>}
     {watchOnly && <Notice title="Watch-only account" body="This account contains a public address, not its private key or recovery phrase. Keep backups in the wallet that controls it." />}
     <Notice title="Device privacy" body="Pali hides and locks the current session when the app leaves the foreground. Public blockchain activity remains public." />
     <Card style={{ padding: 18, gap: 8 }}><Text style={{ fontSize: 18, fontWeight: '600' }}>About Pali</Text>

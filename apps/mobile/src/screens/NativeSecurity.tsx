@@ -1,5 +1,6 @@
+import { IdleTextInput } from './IdleActivityBoundary';
 import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
-import { ActivityIndicator, BackHandler, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, BackHandler, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { HdKeyExportFlow, HdKeyExportPresentation } from '../custody/hdKeyExport';
 import { Button, Card, colors, Header, Notice, Row, Screen, styles, Text } from '../ui';
@@ -104,7 +105,7 @@ export function NativeSecurity({ keyExport, accountId, accountType, accountLabel
             <Button title="Hide private key" onPress={hide} />
             <Text style={styles.muted}>The key is visible only for this session. Hiding it requires a fresh password confirmation to reveal it again.</Text>
           </> : <>
-            <View style={s.field}><Text style={s.label}>Confirm your wallet password</Text><TextInput
+            <View style={s.field}><Text style={s.label}>Confirm your wallet password</Text><IdleTextInput
               accessibilityLabel="Confirm your wallet password" value={password} onChangeText={setPassword} editable={!busy}
               autoCapitalize="none" autoCorrect={false} spellCheck={false} autoComplete="off"
               importantForAutofill="noExcludeDescendants" textContentType="none" secureTextEntry contextMenuHidden={false}

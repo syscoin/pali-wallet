@@ -60,6 +60,7 @@ export interface CustodyRuntime {
   readonly accounts?: NativeAccountRuntime;
   readonly imports?: NativeImportRuntime;
   readonly networks?: NativeNetworkRuntime;
+  readonly security?: { reauthenticateIdlePolicy(password: string, assertCurrent: () => void): Promise<void> };
   readonly session: {
     createWallet(password: string): Promise<void>;
     importWallet(phrase: string, password: string): Promise<void>;

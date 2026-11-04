@@ -1,3 +1,4 @@
+import { IdleTextInput } from './IdleActivityBoundary';
 import React, {
   useEffect,
   useLayoutEffect,
@@ -12,7 +13,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
-  TextInput,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -191,7 +191,7 @@ export function NativeSend({
   ) => (
     <View style={s.field}>
       <Text style={s.label}>{label}</Text>
-      <TextInput
+      <IdleTextInput
         accessibilityLabel={label}
         value={value}
         onChangeText={change}

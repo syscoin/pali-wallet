@@ -142,12 +142,16 @@ export class WatchOnlyAuthority implements WalletAuthority {
   private balance: PublicBalance = Object.freeze({ status: 'unknown' });
   private pending: AbortController | null = null;
   private cachedSnapshot: PublicSnapshot | null = null;
+  private readonly idle?: { begin(): void; check(): boolean; stop(): void };
+  private checkingIdle = false;
 
   constructor(
     accounts: readonly PublicAccount[],
     reader: BalanceReader,
-    now: () => number = Date.now
+    now: () => number = Date.now,
+    idle?: { begin(): void; check(): boolean; stop(): void }
   ) {
+    this.idle = idle;
     this.accounts = validatePublicAccounts(accounts);
     this.reader = reader;
     this.now = now;
@@ -157,6 +161,7 @@ export class WatchOnlyAuthority implements WalletAuthority {
   }
 
   getSnapshot(): PublicSnapshot {
+    if (!this.locked && this.idle && !this.checkingIdle) { this.checkingIdle = true; try { if (!this.idle.check()) this.lock(); } finally { this.checkingIdle = false; } }
     if (this.cachedSnapshot) return this.cachedSnapshot;
     const receive =
       !this.locked &&
@@ -213,12 +218,14 @@ export class WatchOnlyAuthority implements WalletAuthority {
   unlock(): void {
     if (!this.accounts.length) return;
     this.invalidate();
+    this.idle?.begin();
     this.locked = false;
     this.publish();
   }
 
   /** Call on background/inactive as well as explicit lock. */
   lock(): void {
+    this.idle?.stop();
     this.invalidate();
     this.locked = true;
     this.publish();
@@ -242,6 +249,7 @@ export class WatchOnlyAuthority implements WalletAuthority {
   }
 
   selectAccount(id: string): void {
+    this.getSnapshot();
     if (this.locked) throw new Error('Wallet is locked');
     const account = this.accounts.find((entry) => entry.id === id);
     if (!account) throw new Error('Unknown account');
@@ -253,6 +261,7 @@ export class WatchOnlyAuthority implements WalletAuthority {
   }
 
   selectNetwork(id: NetworkId): void {
+    this.getSnapshot();
     if (this.locked) throw new Error('Wallet is locked');
     const network = getNetwork(id);
     if (
@@ -266,6 +275,7 @@ export class WatchOnlyAuthority implements WalletAuthority {
   }
 
   async refresh(): Promise<void> {
+    this.getSnapshot();
     if (this.locked) throw new Error('Wallet is locked');
     const account = this.accounts.find((entry) => entry.id === this.accountId);
     const address = account?.addresses[this.networkId];

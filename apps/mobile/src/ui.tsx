@@ -1,3 +1,4 @@
+import { beginIdleInteraction, recordIdleActivity } from './platform/security';
 import React from 'react';
 import {
   Image,
@@ -267,7 +268,8 @@ export function Button({
       accessibilityRole="button"
       accessibilityState={{ disabled }}
       disabled={disabled}
-      onPress={onPress}
+      onPressIn={beginIdleInteraction}
+      onPress={() => { if (recordIdleActivity()) void onPress?.(); }}
       testID={testID}
       style={({ pressed }) => [
         styles.button,
@@ -362,7 +364,7 @@ export function Header({
     <View style={styles.header}>
       {onBack ? (
         <Pressable
-          onPress={onBack}
+          onPress={() => { if (recordIdleActivity()) onBack?.(); }}
           accessibilityRole="button"
           accessibilityLabel="Back"
           hitSlop={6}
@@ -450,7 +452,8 @@ export function Row({
     return (
       <Pressable
         accessibilityRole="button"
-        onPress={onPress}
+        onPressIn={beginIdleInteraction}
+      onPress={() => { if (recordIdleActivity()) void onPress?.(); }}
         style={({ pressed }) => [
           rowStyle,
           pressed && { backgroundColor: colors.raised },

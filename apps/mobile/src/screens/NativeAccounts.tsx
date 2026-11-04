@@ -1,5 +1,6 @@
+import { IdleTextInput, IdlePressable } from './IdleActivityBoundary';
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { BackHandler, Keyboard, KeyboardAvoidingView, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { BackHandler, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeAccountRequest, NativeAccountView } from '../custody/accounts';
 import { Button, Card, colors, Header, Notice, Screen, styles, Text } from '../ui';
@@ -73,7 +74,7 @@ export function NativeAccounts({ controller, onBack, onImport }: { controller: N
     void run(request, form.contextRevision, form.catalogueRevision).finally(() => { entered = ''; });
   };
   const field = (title: string, value: string, change: (text: string) => void, secret = false) => <View style={s.field}>
-    <Text style={s.label}>{title}</Text><TextInput accessibilityLabel={title} value={value} onChangeText={change}
+    <Text style={s.label}>{title}</Text><IdleTextInput accessibilityLabel={title} value={value} onChangeText={change}
       editable={!busy} maxLength={secret ? 1024 : 64} secureTextEntry={secret} autoCapitalize="none" autoCorrect={false}
       spellCheck={false} autoComplete="off" textContentType="none" importantForAutofill="noExcludeDescendants" style={s.input} />
   </View>;
@@ -89,7 +90,7 @@ export function NativeAccounts({ controller, onBack, onImport }: { controller: N
         {!!form.address && <Card style={s.identity}><Text style={s.name}>{form.label}</Text><Text selectable style={s.address}>{form.address}</Text></Card>}
         {form.kind === 'remove' ? <>
           <Notice title="Your funds stay at this address" body={form.accountType === 'Imported' ? 'Removing this account removes its saved key from this wallet. Your recovery phrase cannot restore it. Keep the original key backed up separately. This does not move funds or cancel transactions.' : 'Removing an account hides it on this device. You can restore this recovery-phrase account from Removed accounts. This does not move funds or cancel transactions.'} tone="amber" />
-          {form.accountType === 'Imported' && <Pressable accessibilityRole="checkbox" accessibilityLabel="I have the original private key backed up" accessibilityState={{ checked: removeAcknowledged }} aria-checked={removeAcknowledged} onPress={() => setRemoveAcknowledged((value) => !value)} style={s.acknowledgement}><Text>{removeAcknowledged ? '✓' : '□'} I have the original private key backed up.</Text></Pressable>}
+          {form.accountType === 'Imported' && <IdlePressable accessibilityRole="checkbox" accessibilityLabel="I have the original private key backed up" accessibilityState={{ checked: removeAcknowledged }} aria-checked={removeAcknowledged} onPress={() => setRemoveAcknowledged((value) => !value)} style={s.acknowledgement}><Text>{removeAcknowledged ? '✓' : '□'} I have the original private key backed up.</Text></IdlePressable>}
         </> : <>
           {field('Account name', name, setName)}
           {form.kind !== 'rename' && <Notice title={form.kind === 'restore' ? 'Return to the same address' : 'One recovery phrase, another address'} body={form.kind === 'restore' ? 'Pali will restore the original account address.' : 'This account is derived from your existing recovery phrase. Keep that phrase backed up offline.'} />}
@@ -98,12 +99,12 @@ export function NativeAccounts({ controller, onBack, onImport }: { controller: N
       </> : <>
         <Text style={styles.muted}>Choose the account you want to use. Recovery phrase accounts and imported-key accounts have separate backups.</Text>
         {snapshot.accounts.map((account) => <Card key={account.id} style={s.account}>
-          <Pressable accessibilityRole="button" accessibilityLabel={`Select ${account.label}`} disabled={busy}
+          <IdlePressable accessibilityRole="button" accessibilityLabel={`Select ${account.label}`} disabled={busy}
             onPress={() => { if (account.id !== snapshot.active.accountId) void run({ kind: 'select', id: account.id }, controller.getContextRevision(), snapshot.revision); }}>
             <View style={s.row}><Text style={s.name}>{account.label}</Text>{account.id === snapshot.active.accountId && <Text style={s.selected}>Selected</Text>}</View>
             <Text style={s.kind}>{account.type === 'Imported' ? 'Imported key · Separate backup' : 'Recovery phrase account'}</Text>
             <Text selectable style={s.address}>{account.address}</Text>
-          </Pressable>
+          </IdlePressable>
           <View style={s.actions}><Button title="Rename" variant="quiet" onPress={() => open({ kind: 'rename', id: account.id, label: account.label, address: account.address })} />
             {(account.type !== 'HDAccount' || account.index !== 0) && account.id !== snapshot.active.accountId && <Button title="Remove" variant="quiet" onPress={() => open({ kind: 'remove', id: account.id, label: account.label, address: account.address, accountType: account.type })} />}</View>
         </Card>)}

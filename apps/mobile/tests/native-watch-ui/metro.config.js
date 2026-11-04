@@ -6,6 +6,7 @@ config.watchFolders = [path.resolve(mobileRoot, '../..')];
 config.resolver.nodeModulesPaths = [path.join(mobileRoot, 'node_modules')];
 config.resolver.resolveRequest = (context, moduleName, platform) => {
   const origin = context.originModulePath;
+  if (['./src/platform/security', '../platform/security', './platform/security', './security'].includes(moduleName)) return { type: 'sourceFile', filePath: path.join(__dirname, 'security.ts') };
   const local = (name) => ({ type: 'sourceFile', filePath: path.join(__dirname, name) });
   if (origin === path.join(mobileRoot, 'App.tsx') && moduleName === './src/platform') return local('platform.ts');
   if (origin === path.join(mobileRoot, 'App.tsx') && moduleName === './src/screens/NativeWallet') {
