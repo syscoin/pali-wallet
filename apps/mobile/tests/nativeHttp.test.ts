@@ -132,6 +132,7 @@ test('native factory explicitly wires one owned transport to all network consume
     '../custody/authority.ts': { NativeCustodyAuthority: capture('authority') },
     '../custody/keyringRuntime.ts': { createKeyringRuntimeFactory: () => ({ open() {} }) },
     '../custody/recovery.ts': { NativeRecoveryCoordinator: capture('recovery') },
+    '../custody/recoveryInventory.ts': { readRecoveryInventory() { assert.fail('unexpected inventory read'); } },
     '../custody/seedBackup.ts': { SeedBackupFlow: capture('backup') },
     '../custody/hdKeyExport.ts': { HdKeyExportFlow: capture('key') },
     '../custody/transfers.ts': { NativeTransfers: capture('transfers') },

@@ -13,6 +13,7 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
   }
   if (origin.endsWith('/src/screens/NativeWallet.native.tsx') && moduleName === '../platform/nativeFactory') return local('nativeFactory.ts');
   if (origin.endsWith('/src/screens/NativeWallet.native.tsx') && moduleName === '../platform/privacyShield.native') return local('privacy.ts');
+  if (origin.endsWith('/src/screens/NativeRecovery.tsx') && moduleName.includes('findNodeHandle')) return local('recoveryNativeUi.ts');
   return context.resolveRequest(context, moduleName, platform);
 };
 module.exports = config;

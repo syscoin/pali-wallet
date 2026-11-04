@@ -16,6 +16,8 @@ import type { CustodyRuntime } from '../../src/custody/types';
 import type { KeyringStoragePort } from '../../src/storage/types';
 import { NATIVE_NETWORKS } from '../../src/custody/networkContext';
 import { ADDRESS, SECOND, audit, events, unlockGate, signGate, keyReadGate, PUBLIC_TEST_KEY, keyFailure, importGate, importFailure } from './state';
+import { recoveryAudit, recoveryGate } from './recoveryState';
+import type { RecoveryInventory } from '../../src/custody/recoveryInventory';
 
 const needsInitialBackup = new URLSearchParams(window.location.search).has('backup-required');
 let backupConfirmed = !needsInitialBackup;
@@ -37,6 +39,7 @@ export let latestAuthority: NativeCustodyAuthority | null = null;
 export let latestTransfers: NativeTransfers | null = null;
 export const retiredAuthorities: NativeCustodyAuthority[] = [];
 let sessionUnlocked = false;
+let fixturePassword = 'public-password';
 let nextImportedIndex = 0;
 const importedKeys = new Map<string, string>();
 const stored: Record<string, unknown> = {};
@@ -122,7 +125,7 @@ export function createNativeWalletControllers() {
       async unlock(password) {
         audit.unlocks++; events.push('unlock:start');
         await unlockGate();
-        sessionUnlocked = password === 'public-password';
+        sessionUnlocked = password === fixturePassword;
         events.push('unlock:finish');
         return { authenticated: sessionUnlocked };
       },
@@ -190,7 +193,37 @@ export function createNativeWalletControllers() {
   keyExport.onClear(() => events.push('key:cancel'));
   const imports: NativeImportView = { submit: (...args) => authority.importEvmAccount(...args), cancel: () => authority.cancelAccountOperation() };
   return { authority, keyExport, imports, balanceReader: createBalanceReader({ fetch: fixtureFetch }), transfers: transfers.view, tokens: tokens.view, activity, accounts, backup,
+    async readRecoveryInventory(): Promise<RecoveryInventory> {
+      return { status: 'needs-matching-phrase-verification', reason: null, backup: backupConfirmed ? 'confirmed' : 'unconfirmed', privateNotes: 'not-supported',
+        counts: { hdAccounts: catalogue.accounts.filter((a) => a.type === 'HDAccount').length, importedKeys: importedKeys.size, retiredHdAccounts: 0, retiredImportedAccounts: 0,
+          journalRecords: 0, pendingTransactions: 0, terminalTransactions: 0, tokenEntries: 0, historySummaries: 0, cachedTransactions: 0, activityPreferences: 0 } };
+    },
     disposeTokens: () => tokens.dispose(), disposeTransfers: () => transfers.dispose() };
+}
+/** This adapter tests real UI ownership, not the already tested storage protocol. */
+export function createNativeRecoveryCoordinator(controllers: ReturnType<typeof createNativeWalletControllers>) {
+  recoveryAudit.created++;
+  const proof = Object.freeze({}); let cancelled = false, replacement = '', pending: Promise<unknown> = Promise.resolve();
+  return {
+    prepare(phrase: string, password: string, guard: () => void) {
+      recoveryAudit.prepared++; cancelled = false;
+      pending = (async () => {
+        guard(); await controllers.authority.dispose(); await recoveryGate('prepare'); guard();
+        if (cancelled) throw Error('CANCELLED');
+        if (phrase !== publicBackupWords.join(' ')) throw Error('WRONG_PHRASE');
+        replacement = password; return proof;
+      })(); return pending;
+    },
+    commit(value: unknown) {
+      pending = (async () => {
+        if (value !== proof || cancelled) throw Error('CANCELLED');
+        fixturePassword = replacement; replacement = ''; recoveryAudit.committed++;
+        await recoveryGate('commit'); if (cancelled) throw Error('CANCELLED'); return 'committed-locked';
+      })(); return pending;
+    },
+    cancel() { cancelled = true; replacement = ''; },
+    async dispose() { await pending.catch(() => undefined); await recoveryGate('dispose'); recoveryAudit.disposed++; },
+  };
 }
 export const fixtureFetch: typeof fetch = async (_url, init) => {
   const request = JSON.parse(String(init?.body));

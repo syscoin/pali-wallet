@@ -8,6 +8,7 @@ import { HDNodeWallet, Wallet } from 'ethers/wallet';
 import { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import { createKeyringRuntimeFactory, type KeyringRuntime } from '../src/custody/keyringRuntime.ts';
 import { NativeRecoveryCoordinator } from '../src/custody/recovery.ts';
+import { NativeRecoveryFlow } from '../src/custody/recoveryFlow.ts';
 import { readRecoveryInventory } from '../src/custody/recoveryInventory.ts';
 import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
 import type { OpenWalletStorage } from '../src/storage/types.ts';
@@ -592,4 +593,34 @@ test('failure to capture the original pair still closes its lease and returns no
     try { await replacement.initialize(); await replacement.unlock(OLD); assert.equal(replacement.getSnapshot().phase, 'ready'); }
     finally { await replacement.dispose(); }
   } finally { await recovery.dispose(); await f.close(); }
+});
+
+test('recovery view model drives the real SDK and SQLite coordinator then requires explicit fresh-owner unlock', async () => {
+  const f = await fixture(); f.owner.lock(); let coordinator: NativeRecoveryCoordinator | undefined;
+  const before = f.read(); let completed = false;
+  const flow = new NativeRecoveryFlow({
+    readInventory: () => readRecoveryInventory(f.store), isCurrent: () => true,
+    createCoordinator() { coordinator = f.coordinator(); return coordinator; },
+    async finish(outcome) {
+      assert.equal(outcome.kind, 'success');
+      await coordinator!.dispose(); await f.owner.dispose(); await f.reopen();
+      assert.equal(f.owner.getSnapshot().phase, 'locked'); completed = true;
+    },
+  });
+  const waitFor = async (condition: () => boolean) => {
+    const deadline = performance.now() + 20000;
+    while (!condition() && performance.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 5));
+    assert(condition(), `unexpected recovery phase: ${flow.getSnapshot().phase}`);
+  };
+  try {
+    flow.start(); await waitFor(() => flow.getSnapshot().phase === 'scope'); flow.enter();
+    assert.equal(flow.submit({ phrase: PHRASE, password: NEXT, confirmation: NEXT }), true);
+    await waitFor(() => flow.getSnapshot().phase === 'review');
+    assert.equal(f.owner.getSnapshot().phase, 'disposed'); assert.deepEqual(f.read(), before);
+    assert(!JSON.stringify(flow.getSnapshot()).includes(PHRASE)); assert(!JSON.stringify(flow.getSnapshot()).includes(NEXT));
+    flow.commit(); await waitFor(() => completed && flow.getSnapshot().phase === 'closed');
+    assert.deepEqual(retained(f.read()), retained(before));
+    await assert.rejects(f.owner.unlock(OLD)); await f.owner.unlock(NEXT);
+    assert.equal(f.owner.getSnapshot().phase, 'ready');
+  } finally { flow.cancel(); await coordinator?.dispose(); await f.close(); }
 });

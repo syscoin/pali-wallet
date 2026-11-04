@@ -94,7 +94,7 @@ export function NativeSecurity({ keyExport, accountId, accountType, accountLabel
         </> : mode === 'recovery' ? <>
           <Text style={s.heading}>Keep your recovery phrase offline</Text>
           <Text style={styles.muted}>Your recovery phrase restores this wallet’s derived accounts. Imported accounts need their original private keys backed up separately. A private key restores only its one EVM account; it is not a complete wallet backup.</Text>
-          <Text style={styles.muted}>If you lose this device or forget its password, use your recovery phrase when setting up Pali on a new device. This screen cannot reset your password or replace an existing wallet.</Text>
+          <Text style={styles.muted}>If you forget this device’s password, lock your wallet and choose Forgot password? to verify the matching recovery phrase and preserve supported saved records. On a new or lost device, the phrase restores derived accounts; imported keys still need their separate backups.</Text>
           <Notice title="Keep secrets to yourself" body="Pali support will never ask for recovery words, private keys or your password. Never enter them into a website or send them to anyone." tone="amber" />
         </> : <>
           <Card style={s.identity}><Text style={s.label}>{accountLabel}</Text><Text style={s.address}>{address}</Text></Card>

@@ -69,7 +69,7 @@ test('Security uses the actual seed backup flow and offers no reset or clipboard
   await openSecurity(page);
   await expect(page.getByText('Recovery phrase backed up', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Recovery guide', exact: false }).click();
-  await expect(page.getByText(/This screen cannot reset your password or replace an existing wallet/)).toBeVisible();
+  await expect(page.getByText(/lock your wallet and choose Forgot password/)).toBeVisible();
   await expect(page.getByRole('button', { name: /Reset|Restore|Import|Copy|Share/ })).toHaveCount(0);
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await page.getByRole('button', { name: 'View recovery phrase', exact: false }).click();

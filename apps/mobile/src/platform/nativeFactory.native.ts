@@ -1,4 +1,4 @@
-import { NativeCustodyAuthority } from '../custody/authority.ts';
+import { CustodyOperationError, NativeCustodyAuthority } from '../custody/authority.ts';
 import { createKeyringRuntimeFactory } from '../custody/keyringRuntime.ts';
 import type { KeyringRuntime } from '../custody/keyringRuntime.ts';
 import { SeedBackupFlow } from '../custody/seedBackup.ts';
@@ -16,6 +16,8 @@ import type { NativeAccountView } from '../custody/accounts.ts';
 import { openNativeWalletStorage } from '../storage/native';
 import { ensureNativeCryptoReady } from './cryptoBootstrap';
 import { NativeRecoveryCoordinator } from '../custody/recovery.ts';
+import { readRecoveryInventory as readStoredRecoveryInventory, type RecoveryInventory } from '../custody/recoveryInventory.ts';
+import type { OpenWalletStorage } from '../storage/types.ts';
 
 async function openStorage() {
   const crypto = await ensureNativeCryptoReady();
@@ -25,10 +27,14 @@ async function openStorage() {
   });
 }
 
-function factory() {
+function factory(onStorageOpened?: (storage: OpenWalletStorage) => void) {
   return createKeyringRuntimeFactory({
     ensureCryptoReady: async () => { await ensureNativeCryptoReady(); },
-    openStorage,
+    openStorage: async () => {
+      const storage = await openStorage();
+      onStorageOpened?.(storage);
+      return storage;
+    },
   });
 }
 
@@ -45,7 +51,8 @@ export function createNativeCustodyAuthority(): NativeCustodyAuthority {
 
 export function createNativeWalletControllers() {
   let runtime: KeyringRuntime | undefined;
-  const base = factory();
+  let ownedStorage: OpenWalletStorage | undefined;
+  const base = factory((storage) => { ownedStorage = storage; });
   const authority = new NativeCustodyAuthority({
     async open() { runtime = await base.open() as KeyringRuntime; return runtime; },
   });
@@ -67,6 +74,21 @@ export function createNativeWalletControllers() {
     submit: (...args: Parameters<NativeImportView['submit']>) => authority.importEvmAccount(...args),
     cancel: () => authority.cancelAccountOperation(),
   });
-  return { authority, backup, keyExport, imports, accounts, activity, balanceReader, transfers: transfers.view, tokens: tokens.view,
+  // Public counts from this owner's existing lease only; never retire or reopen it.
+  const readRecoveryInventory = async (): Promise<RecoveryInventory> => {
+    const storage = ownedStorage;
+    if (!storage) throw new CustodyOperationError('CANCELLED');
+    const revision = authority.getSnapshot().revision;
+    const assertCurrent = () => {
+      const snapshot = authority.getSnapshot();
+      if (ownedStorage !== storage || snapshot.phase !== 'locked' || snapshot.revision !== revision)
+        throw new CustodyOperationError('CANCELLED');
+    };
+    assertCurrent();
+    const inventory = await readStoredRecoveryInventory(storage);
+    assertCurrent();
+    return inventory;
+  };
+  return { authority, backup, keyExport, imports, accounts, activity, balanceReader, readRecoveryInventory, transfers: transfers.view, tokens: tokens.view,
     disposeTokens: () => tokens.dispose(), disposeTransfers: () => transfers.dispose() };
 }

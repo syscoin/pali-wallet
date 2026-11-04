@@ -5,6 +5,7 @@ import { AppState, Platform, Share } from 'react-native';
 import App from '../../App';
 import { latestAuthority, retiredAuthorities, latestTransfers, fixtureFetch, fixtureCatalogue } from './nativeFactory';
 import { audit, events, publicShares, setWatchBalanceMode, readAccounts, readSelection, setReadFailure, setDelayUnlock, setDelaySign, releaseUnlock, releaseSign, setDelayKeyRead, releaseKeyRead, setKeyFailure, setDelayImport, releaseImport, setImportFailure } from './state';
+import { recoveryAudit, holdRecovery, releaseRecovery } from './recoveryState';
 
 Platform.OS = new URLSearchParams(window.location.search).has('android') ? 'android' : 'ios';
 let appState = 'active';
@@ -46,6 +47,9 @@ declare global {
       transferPhase(): string | null;
       reviewId(): string | null;
       confirmReview(id: string): Promise<string>;
+      recoveryAudit(): typeof recoveryAudit;
+      holdRecovery(stage: 'prepare' | 'commit' | 'dispose'): void;
+      releaseRecovery(stage: 'prepare' | 'commit' | 'dispose'): void;
     };
   }
 }
@@ -62,5 +66,6 @@ window.__watchFixture = {
   transferPhase: () => latestTransfers?.getSnapshot().phase ?? null,
   reviewId: () => latestTransfers?.getSnapshot().review?.id ?? null,
   async confirmReview(id) { try { await latestTransfers!.view.confirm(id, 'public-password'); return 'accepted'; } catch (cause) { return cause instanceof Error ? cause.message : 'rejected'; } },
+  recoveryAudit: () => ({ ...recoveryAudit }), holdRecovery, releaseRecovery,
 };
 registerRootComponent(() => <App availableWatchNetworks={new URLSearchParams(window.location.search).has('disabled-utxo') ? ['evm'] : ['evm', 'syscoin', 'bitcoin']} />);

@@ -1,7 +1,10 @@
 import { nativeAccountSelection } from '../core/accountDirectory';
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ActivityIndicator, AppState, BackHandler, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, TextInput, View } from 'react-native';
-import { createNativeWalletControllers } from '../platform/nativeFactory';
+import { createNativeRecoveryCoordinator, createNativeWalletControllers } from '../platform/nativeFactory';
+import { NativeControllerLifecycle } from '../custody/nativeControllerLifecycle';
+import { NativeRecoveryFlow, type RecoveryOutcome } from '../custody/recoveryFlow';
+import { NativeRecovery } from './NativeRecovery';
 import { ensurePrivacyShield } from '../platform/privacyShield.native';
 import type { CustodySnapshot } from '../custody/types';
 import type { SeedBackupPresentation } from '../custody/seedBackup';
@@ -28,8 +31,11 @@ import { RealSettings } from './RealSettings';
 import { useRealShell } from './useRealShell';
 
 type Controllers = ReturnType<typeof createNativeWalletControllers>;
+const nativeLifecycle = new NativeControllerLifecycle({ create: createNativeWalletControllers, protect: ensurePrivacyShield, recovery: createNativeRecoveryCoordinator });
+// Nonsecret operation outcome survives route departure while cleanup is pending.
+let savedRecoveryOutcome: RecoveryOutcome | null = null;
 type RootOrigin = Readonly<{ tab: RealTab; context: string; identity: string; epoch: number }>;
-type Stage = 'choose' | 'create' | 'import' | 'backup-auth' | 'words' | 'challenge' | 'send' | 'accounts' | 'manage-hd' | 'networks' | 'security' | 'import-key';
+type Stage = 'choose' | 'create' | 'import' | 'backup-auth' | 'words' | 'challenge' | 'send' | 'accounts' | 'manage-hd' | 'networks' | 'security' | 'import-key' | 'recovery';
 const INITIAL: CustodySnapshot = { phase: 'opening', revision: 0, presence: 'unknown', backup: 'unknown', account: null, error: null };
 
 function message(error: unknown): string {
@@ -63,6 +69,11 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   useLayoutEffect(() => { bridge.current = accounts; selectedNative.current = onSelectedNative; }, [accounts, onSelectedNative]);
   const requestedAccount = useRef(initialAccountId);
   const controllers = useRef<Controllers | null>(null);
+  const screenToken = useRef<object>({});
+  const detachSubscriptions = useRef<() => void>(() => undefined);
+  const recoveryRef = useRef<NativeRecoveryFlow | null>(null);
+  const [recoveryFlow, setRecoveryFlow] = useState<NativeRecoveryFlow | null>(null);
+  const [recoveryOutcome, setRecoveryOutcome] = useState<RecoveryOutcome | null>(savedRecoveryOutcome);
   const [publicSource, setPublicSource] = useState<PublicCustodySource | null>(null);
   const [balanceReader, setBalanceReader] = useState<Controllers['balanceReader'] | null>(null);
   const [accountView, setAccountView] = useState<Controllers['accounts'] | null>(null);
@@ -97,10 +108,11 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   }, []);
   const revoke = useCallback(() => {
     epoch.current++;
+    recoveryRef.current?.cancel();
     rootOrigin.current = null;
     importRequest.current.active = false; setImportActiveToken(null); setImportScope(null);
     controllers.current?.keyExport.cancel(); controllers.current?.backup.cancel(); controllers.current?.authority.lock();
-    Keyboard.dismiss(); clearSecrets(); setSendToken(null); setStage('choose'); setError('');
+    Keyboard.dismiss(); clearSecrets(); setSendToken(null); if (!recoveryRef.current) setStage('choose'); setError('');
   }, [clearSecrets]);
   const exit = useCallback(() => { revoke(); onExit(); }, [onExit, revoke]);
   const readyContext = useCallback(() => {
@@ -129,7 +141,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   useLayoutEffect(() => {
     latestBack.current = () => {
       // Full-screen leaf flows own their Back behavior regardless of listener order.
-      if (stage === 'accounts' && accounts && snapshot.phase !== 'authenticating' ||
+      if (stage === 'recovery' || stage === 'accounts' && accounts && snapshot.phase !== 'authenticating' ||
           stage === 'manage-hd' && accountView && ['ready', 'authenticating'].includes(snapshot.phase) ||
           stage === 'networks' && networkView && ['ready', 'authenticating'].includes(snapshot.phase) ||
           stage === 'security' && snapshot.phase === 'ready' && catalogue && snapshot.account && keyExportView ||
@@ -141,16 +153,21 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     };
   });
 
-  useEffect(() => {
-    const lifecycleEpoch = epoch;
-    mounted.current = true;
-    const local = createNativeWalletControllers(); controllers.current = local;
+  const clearOwnerView = useCallback(() => {
+    detachSubscriptions.current(); detachSubscriptions.current = () => undefined;
+    controllers.current = null;
+    setPublicSource(null); setBalanceReader(null); setAccountView(null); setNetworkView(null);
+    setCatalogue(null); setTransferView(null); setTokenView(null); setKeyExportView(null); setActivityView(null);
+    bridge.current?.onNativeCatalogue(null);
+  }, []);
+  const attach = useCallback((local: Controllers) => {
+    detachSubscriptions.current(); controllers.current = local;
     const networks = createNativeNetworkView(local.authority);
     const publicView: PublicCustodySource = Object.freeze({
       getSnapshot: () => local.authority.getSnapshot(),
       subscribe: (listener: Parameters<PublicCustodySource['subscribe']>[0]) => local.authority.subscribe(listener),
     });
-    const unsubscribe = local.authority.subscribe((state) => {
+    const update = (state: CustodySnapshot) => {
       if (!mounted.current || controllers.current !== local) return;
       setSnapshot(state); setPublicSource(publicView); setBalanceReader(local.balanceReader); setTransferView(local.transfers); setTokenView(local.tokens); setActivityView(local.activity); setKeyExportView(local.keyExport); setNetworkView(networks);
       const nextCatalogue = local.authority.getCatalogue();
@@ -159,25 +176,76 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
       setAccountView(local.authority.supportsAccountManagement() ? local.accounts : null);
       if (['locked', 'unavailable', 'disposed'].includes(state.phase)) rootOrigin.current = null;
       if (!['ready', 'backup-required', 'authenticating'].includes(state.phase)) clearSecrets();
-    });
+    };
+    const unsubscribe = local.authority.subscribe(update);
+    update(local.authority.getSnapshot());
     const clear = local.backup.onClear(() => { setPresentation(null); setAnswers(['', '', '']); });
-    void (async () => {
-      try {
-        await ensurePrivacyShield();
-        if (!mounted.current || controllers.current !== local) return;
-        setProtectedScreen(true);
-        await local.authority.initialize();
-      } catch { if (mounted.current && controllers.current === local) setError('Secure wallet storage is unavailable. Close and reopen Pali to try again.'); }
-    })();
-    const lifecycle = AppState.addEventListener('change', (state) => { if (state !== 'active') revoke(); });
+    detachSubscriptions.current = () => { unsubscribe(); clear(); };
+    setProtectedScreen(true);
+  }, [clearSecrets]);
+  const install = useCallback(async () => {
+    try {
+      const local = await nativeLifecycle.acquire(screenToken.current, () => mounted.current && AppState.currentState === 'active');
+      if (local && mounted.current && nativeLifecycle.current(screenToken.current) === local) attach(local);
+    } catch {
+      if (mounted.current) { setProtectedScreen(false); setError('Secure wallet storage is unavailable. Close and reopen Pali to try again.'); }
+      throw new Error('REOPEN_REQUIRED');
+    }
+  }, [attach]);
+  useEffect(() => {
+    const lifecycleEpoch = epoch, ownedToken = screenToken.current;
+    mounted.current = true;
+    void install().catch(() => undefined);
+    const lifecycle = AppState.addEventListener('change', (state) => {
+      if (state !== 'active') revoke();
+      else if (!controllers.current && !recoveryRef.current) void install().catch(() => undefined);
+    });
     const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', revoke) : null;
     return () => {
-      bridge.current?.onNativeCatalogue(null);
-      mounted.current = false; lifecycleEpoch.current++; unsubscribe(); clear(); lifecycle.remove(); blur?.remove();
-      local.disposeTokens(); local.disposeTransfers(); local.keyExport.dispose(); local.backup.dispose(); local.authority.lock(); void local.authority.dispose().catch(() => undefined);
-      if (controllers.current === local) controllers.current = null;
+      mounted.current = false; lifecycleEpoch.current++; recoveryRef.current?.cancel();
+      detachSubscriptions.current(); detachSubscriptions.current = () => undefined;
+      bridge.current?.onNativeCatalogue(null); controllers.current = null;
+      lifecycle.remove(); blur?.remove();
+      void nativeLifecycle.release(ownedToken).catch(() => undefined);
     };
-  }, [clearSecrets, revoke]);
+  }, [install, revoke]);
+
+  const openRecovery = () => {
+    const local = controllers.current;
+    if (!local || recoveryRef.current || submitting.current || !protectedScreen || AppState.currentState !== 'active' ||
+        local.authority.getSnapshot().phase !== 'locked' || nativeLifecycle.current(screenToken.current) !== local) return;
+    rootOrigin.current = null; requestedAccount.current = undefined; feedbackRequest.current++;
+    clearSecrets(); setError(''); setSendToken(null); const captured = ++epoch.current;
+    let flow!: NativeRecoveryFlow, recoveryStarted = false;
+    flow = new NativeRecoveryFlow({
+      readInventory: () => local.readRecoveryInventory(),
+      createCoordinator: () => { recoveryStarted = true; return nativeLifecycle.startRecovery(screenToken.current, local); },
+      isCurrent: () => mounted.current && recoveryRef.current === flow && controllers.current === local && epoch.current === captured && AppState.currentState === 'active',
+      leave: exit,
+      finish: async (outcome) => {
+        savedRecoveryOutcome = outcome;
+        const retired = recoveryStarted || nativeLifecycle.hasRecovery(screenToken.current);
+        // Install the process-wide drain before rendering or invoking the bridge.
+        const draining = retired ? nativeLifecycle.release(screenToken.current, outcome.cleanupFailed === true) : null;
+        if (mounted.current) setRecoveryOutcome(outcome);
+        try {
+          if (retired) {
+            clearOwnerView(); setSnapshot(INITIAL); setProtectedScreen(false);
+            await draining;
+          }
+          if (mounted.current && recoveryRef.current === flow) {
+            if (retired && AppState.currentState === 'active') await install();
+            recoveryRef.current = null; setRecoveryFlow(null); setStage('choose');
+          }
+        } catch {
+          const failed = Object.freeze({ ...outcome, cleanupFailed: true }); savedRecoveryOutcome = failed;
+          if (mounted.current) { setRecoveryOutcome(failed); recoveryRef.current = null; setRecoveryFlow(null); setStage('choose'); }
+          throw new Error('REOPEN_REQUIRED');
+        }
+      },
+    });
+    recoveryRef.current = flow; setRecoveryFlow(flow); setStage('recovery');
+  };
 
   // Keep listener order stable so Receive can consume Back before wallet exit.
   useEffect(() => {
@@ -245,6 +313,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     revoke();
     bridge.current?.onSelectWatch(selection);
   };
+  if (stage === 'recovery' && recoveryFlow) return <NativeRecovery flow={recoveryFlow} />;
   if (stage === 'accounts' && accounts && snapshot.phase !== 'authenticating')
     return <WalletAccounts {...accounts} catalogue={catalogue} active={catalogue ? nativeAccountSelection(catalogue.active.accountId) : null}
       onBack={closeStage} onSelect={async (selection) => {
@@ -306,7 +375,10 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
         const requested = requestedAccount.current; const current = authority.getCatalogue();
         // Consume the hint once authenticated, even if backup must finish first.
         // Later unlocks use the native catalogue's durable active selection.
-        if (['ready', 'backup-required'].includes(authority.getSnapshot().phase)) requestedAccount.current = undefined;
+        if (['ready', 'backup-required'].includes(authority.getSnapshot().phase)) {
+          requestedAccount.current = undefined;
+          savedRecoveryOutcome = null; setRecoveryOutcome(null);
+        }
         if (requested && current && authority.getSnapshot().phase === 'ready' && current.active.accountId !== requested && current.accounts.some((entry) => entry.id === requested)) {
           await controllers.current!.accounts.execute({ kind: 'select', id: requested }, authority.getSnapshot().revision, current.revision);
         }
@@ -314,6 +386,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
           setStage(authority.getSnapshot().backup === 'confirmed' ? 'choose' : 'backup-auth');
       });
     }} />
+    <Button title="Forgot password?" variant="quiet" disabled={busy} onPress={openRecovery} />
     {accounts && !busy && <Button title="View watch accounts" variant="secondary" onPress={() => { revoke(); setStage('accounts'); }} />}
   </>;
   else if (snapshot.phase === 'empty' && stage === 'choose') body = <>
@@ -384,6 +457,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
 
   return <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
     <Screen><Header title={title} onBack={exit} subtitle="Development build · Use a test wallet" />
+      {recoveryOutcome && <Notice title={recoveryOutcome.kind === 'success' ? 'Password change completed' : recoveryOutcome.kind === 'uncertain' ? 'Check your password' : 'Recovery update'} body={recoveryOutcome.message + (recoveryOutcome.cleanupFailed ? ' The wallet could not be reopened. Close and reopen Pali to unlock.' : '')} tone={recoveryOutcome.kind === 'success' ? undefined : 'amber'} />}
       {body}
       {snapshot.error && <NativeCustodyFeedback error={snapshot.error} />}
       {busy && <ActivityIndicator accessibilityLabel="Working" color={colors.pink} />}
