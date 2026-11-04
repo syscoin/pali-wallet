@@ -3,6 +3,7 @@ import test from 'node:test';
 import { idleMinutes, weakensIdlePolicy } from '../../../source/shared/idleLockPolicy.ts';
 import { IdleLock } from '../src/core/idleLock.ts';
 import { SecurityPreferences } from '../src/core/securityPreferences.ts';
+import { createSecurityRuntime } from '../src/core/securityRuntime.ts';
 import { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import type { CustodyRuntime } from '../src/custody/types.ts';
 const guard = () => undefined;
@@ -23,3 +24,22 @@ test('host timer functions retain their required global receiver',()=>{const c=c
 test('concurrent preference saves retire the other compare token without merging modes accidentally',async()=>{const f=prefs(),a=await f.p.load(),b=await f.p.load();const first=f.p.save(a,'custody',30,guard),second=f.p.save(b,'watch',0,guard);await first;await assert.rejects(second);const current=await f.p.load();assert.equal(current.custodyIdleMinutes,30);assert.equal(current.watchIdleMinutes,5);assert.equal(f.writes(),1);});
 test('a cancellation during an acknowledged write requires reopen and cannot replay its old token',async()=>{let raw:string|null=null,release!:()=>void,entered!:()=>void,current=true;const started=new Promise<void>(r=>{entered=r;});const held=new Promise<void>(r=>{release=r;});let writes=0;const p=new SecurityPreferences({get:async()=>raw,set:async value=>{writes++;entered();await held;raw=value;}});const before=await p.load();const save=p.save(before,'watch',15,()=>{if(!current)throw Error();});await started;current=false;release();await assert.rejects(save);assert.equal(p.getSnapshot().status,'unavailable');const reopened=await p.load();assert.equal(reopened.watchIdleMinutes,15);await assert.rejects(p.save(before,'watch',0,guard));assert.equal(writes,1);});
 test('invalid clock samples lock once even when idle is disabled',()=>{for(const bad of [NaN,Infinity,-1]){let time=0,locks=0;const idle=new IdleLock(()=>({monotonic:time,wall:time}));idle.setPolicy(0);idle.begin({},()=>locks++);time=bad;assert.equal(idle.check(),false);assert.equal(idle.check(),false);assert.equal(locks,1);idle.stop();}});
+test('rejected interaction cannot poison a later fresh activation', () => {
+ const c=clock(), runtime=createSecurityRuntime({get:async()=>null,set:async()=>undefined},c.now), owner={};
+ runtime.watchIdle.begin(owner,()=>runtime.watchIdle.stop(owner)); c.add(300001);
+ assert.equal(runtime.beginIdleInteraction(),false);
+ runtime.watchIdle.allowNewInput();
+ assert.equal(runtime.recordIdleActivity(),true);
+ runtime.watchIdle.stop();runtime.custodyIdle.stop();
+});
+test('captured press cannot act after expiry and rearming the same owner', () => {
+ const c=clock(), idle=new IdleLock(c.now,c.schedule,c.cancel), owner={};
+ idle.begin(owner,()=>idle.stop(owner)); const press=idle.captureInteraction();
+ c.add(300001);assert.equal(press(),false);idle.begin(owner,()=>idle.stop(owner));
+ assert.equal(press(),false);assert.equal(idle.captureInteraction()(),true);idle.stop();
+});
+test('a press begun after the deadline stays rejected after a new input interval', () => {
+ const c=clock(), idle=new IdleLock(c.now,c.schedule,c.cancel), owner={};
+ idle.begin(owner,()=>idle.stop(owner));c.add(300001);const expiredPress=idle.captureInteraction();
+ idle.begin(owner,()=>idle.stop(owner));assert.equal(expiredPress(),false);idle.stop();
+});

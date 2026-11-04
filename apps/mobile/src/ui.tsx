@@ -1,8 +1,7 @@
-import { beginIdleInteraction, recordIdleActivity } from './platform/security';
+import { IdlePressable } from './screens/IdleActivityBoundary';
 import React from 'react';
 import {
   Image,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text as NativeText,
@@ -264,12 +263,11 @@ export function Button({
       ? colors.blue
       : colors.text;
   return (
-    <Pressable
+    <IdlePressable
       accessibilityRole="button"
       accessibilityState={{ disabled }}
       disabled={disabled}
-      onPressIn={beginIdleInteraction}
-      onPress={() => { if (recordIdleActivity()) void onPress?.(); }}
+      onPress={onPress}
       testID={testID}
       style={({ pressed }) => [
         styles.button,
@@ -307,7 +305,7 @@ export function Button({
       >
         {title}
       </Text>
-    </Pressable>
+    </IdlePressable>
   );
 }
 
@@ -363,8 +361,8 @@ export function Header({
   return (
     <View style={styles.header}>
       {onBack ? (
-        <Pressable
-          onPress={() => { if (recordIdleActivity()) onBack?.(); }}
+        <IdlePressable
+          onPress={onBack}
           accessibilityRole="button"
           accessibilityLabel="Back"
           hitSlop={6}
@@ -374,7 +372,7 @@ export function Header({
           ]}
         >
           <Icon name="arrow-left" />
-        </Pressable>
+        </IdlePressable>
       ) : null}
       <View style={{ flex: 1, gap: 3 }}>
         <Text
@@ -450,17 +448,16 @@ export function Row({
   ];
   if (onPress)
     return (
-      <Pressable
+      <IdlePressable
         accessibilityRole="button"
-        onPressIn={beginIdleInteraction}
-      onPress={() => { if (recordIdleActivity()) void onPress?.(); }}
+        onPress={onPress}
         style={({ pressed }) => [
           rowStyle,
           pressed && { backgroundColor: colors.raised },
         ]}
       >
         {content}
-      </Pressable>
+      </IdlePressable>
     );
   return <View style={rowStyle}>{content}</View>;
 }

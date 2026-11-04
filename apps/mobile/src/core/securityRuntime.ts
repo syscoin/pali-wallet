@@ -8,8 +8,11 @@ export function createSecurityRuntime(port: PreferencePort, clock?: IdleClock) {
     if (state.status === 'ready' && state.value) { custodyIdle.setPolicy(state.value.custodyIdleMinutes); watchIdle.setPolicy(state.value.watchIdleMinutes); }
     else { custodyIdle.invalidate(); watchIdle.invalidate(); }
   });
-  let deniedInteraction = false;
-  const beginIdleInteraction = () => { const native = custodyIdle.userActivity(), watch = watchIdle.userActivity(); deniedInteraction = !native || !watch; return !deniedInteraction; };
-  return { securityPreferences, custodyIdle, watchIdle, beginIdleInteraction,
-    recordIdleActivity: () => !deniedInteraction && beginIdleInteraction() };
+  const beginIdleInteraction = () => { const native = custodyIdle.userActivity(), watch = watchIdle.userActivity(); return native && watch; };
+  const captureIdleInteraction = () => {
+    const native = custodyIdle.captureInteraction(), watch = watchIdle.captureInteraction();
+    return () => { const nativeCurrent = native(), watchCurrent = watch(); return nativeCurrent && watchCurrent; };
+  };
+  return { securityPreferences, custodyIdle, watchIdle, beginIdleInteraction, captureIdleInteraction,
+    recordIdleActivity: beginIdleInteraction };
 }

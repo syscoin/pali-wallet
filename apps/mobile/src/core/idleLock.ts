@@ -4,6 +4,7 @@ export class IdleLock {
   private owner: object | null = null;
   private expired = false;
   private generation = 0;
+  private interval = 0;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private minutes = DEFAULT_IDLE_MINUTES;
   private activity: IdleClockSample | null = null;
@@ -25,6 +26,7 @@ export class IdleLock {
   }
   stop(owner?: object): void {
     if (owner && this.owner !== owner) return;
+    this.interval++;
     this.generation++; if (this.timer !== null) this.cancel(this.timer); this.timer = null;
     this.owner = null; this.revoke = null; this.activity = this.previous = null;
   }
@@ -47,6 +49,11 @@ export class IdleLock {
   }
   assertCurrent(owner?: object): void { if (!this.check(owner)) throw new Error('CANCELLED'); }
   captureGuard(): () => void { const owner = this.owner; return () => { if (!owner) throw new Error('CANCELLED'); this.assertCurrent(owner); }; }
+  /** A press belongs to one interval even if its screen is later rearmed. */
+  captureInteraction(): () => boolean {
+    const interval = this.interval, accepted = this.userActivity();
+    return () => accepted && interval === this.interval && this.userActivity();
+  }
   userActivity(): boolean {
     if (!this.owner) return !this.expired;
     if (!this.check()) return false;
