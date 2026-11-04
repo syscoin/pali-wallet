@@ -239,7 +239,7 @@ function parse(raw: string, expectedProfile?: string): Bundle {
       hashes.has(data.hash) ||
       typeof data.chainId !== 'string' ||
       !/^[1-9][0-9]{0,77}$/.test(data.chainId) ||
-      BigInt(data.chainId) >= 1n << 256n ||
+      BigInt(data.chainId) >= BigInt(1) << BigInt(256) ||
       typeof data.from !== 'string' ||
       getAddress(data.from).toLowerCase() !== data.from ||
       !Number.isSafeInteger(data.nonce) ||
