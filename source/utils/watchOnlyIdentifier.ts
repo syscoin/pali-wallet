@@ -3,7 +3,7 @@ import { Buffer } from 'buffer';
 import { isAddress } from 'ethers/address';
 import { utils as syscoinUtils } from 'syscoinjs-lib';
 
-import { isPublicExtendedKey } from '../wallet/extendedPublicKey';
+import { isPublicExtendedKey } from '../wallet/extendedPublicKey.ts';
 
 const DESCRIPTOR_ROOTS = new Set([
   'addr',

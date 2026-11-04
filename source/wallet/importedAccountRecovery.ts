@@ -1,6 +1,6 @@
 import { assertJsonTextBudget } from '../shared/jsonTextBudget.ts';
 
-import { isPublicExtendedKey } from './extendedPublicKey';
+import { isPublicExtendedKey } from './extendedPublicKey.ts';
 import type { IEncryptedPrivateRecord } from '@sidhujag/sysweb3-keyring';
 
 export const IMPORTED_RECOVERY_STORAGE_PREFIX =
