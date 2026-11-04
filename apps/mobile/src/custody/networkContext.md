@@ -34,15 +34,17 @@ enters the catalogue or public projection.
 
 The native network picker uses this durable selection and labels test networks.
 New public EVM watch accounts can read all registrations; existing watch records
-retain only their explicitly saved network/address mappings. Native transfer entry points remain explicitly gated to
-Ethereum; selecting another network cannot access an Ethereum journal, sign,
-authorize submission or query the hardcoded Ethereum transfer RPC. CAS-protected per-account multi-network journal containers now preserve
+retain only their explicitly saved network/address mappings. Native transfer capabilities are explicit: Ethereum supports native ETH and
+ERC20; fixed Syscoin NEVM Testnet (5700) supports native TSYS only. Other
+networks remain read-only. Reviews, RPC instances and signing requests bind the
+selected immutable registration and endpoint. Selecting another network cannot
+access the prior network's journal or authorize its pending operation. CAS-protected per-account multi-network journal containers now preserve
 recovery identities; their presence does not enable additional signing.
 
 The additive read-only fee and receipt adapters are described in
 [evmNetworkFees.md](evmNetworkFees.md). Their fee quotes do not change Ethereum signing or broadcast. Ethereum
-receipt recovery now uses the canonical observation checks; no additional chain
-is enabled. Source-pinned Base and Rollux
+receipt recovery now uses the canonical observation checks; NEVM testnet native sending uses the separate explicit 12-confirmation depth
+policy; no other new chain is enabled. Source-pinned Base and Rollux
 oracle queries use unsigned payloads only. Their L1/operator charges remain
 estimates, with no absolute maximum total. Arbitrum's gas estimate includes L1
 publication cost; NEVM finalized tags provide depth observations rather than

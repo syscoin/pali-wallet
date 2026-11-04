@@ -22,5 +22,38 @@ export function getNativeNetwork(id: string): NativeNetworkRegistration {
   if (!network) throw new Error('Unsupported native network');
   return network;
 }
-/** Stage 1 adds context/read identities only. Signing remains Ethereum-only. */
-export const nativeSigningEnabled = (id: EvmNetworkId): boolean => id === 'ethereum';
+export type NativeSendContext = Readonly<{
+  networkId: 'ethereum' | 'syscoin-nevm-testnet';
+  chainId: string;
+  registrationHash: string;
+  rpcUrl: string;
+  name: string;
+  symbol: string;
+  decimals: 18;
+  testnet: boolean;
+  settlement: Readonly<{ kind: 'ethereum-finalized' } | { kind: 'nevm-depth-12'; confirmations: 12 }>;
+}>;
+const sendCapabilities = Object.freeze(Object.fromEntries(NATIVE_NETWORKS.map((network) => [network.id,
+  Object.freeze({ native: network.id === 'ethereum' || network.id === 'syscoin-nevm-testnet', erc20: network.id === 'ethereum' }),
+])) as Record<EvmNetworkId, Readonly<{ native: boolean; erc20: boolean }>>);
+const sendContexts: readonly NativeSendContext[] = Object.freeze(NATIVE_NETWORKS
+  .filter((network) => sendCapabilities[network.id].native)
+  .map((network) => Object.freeze({
+    networkId: network.id as NativeSendContext['networkId'], chainId: network.chainId,
+    registrationHash: network.registrationHash, rpcUrl: network.rpcUrl,
+    name: EVM_NETWORK_DEFINITIONS.find((definition) => definition.id === network.id)!.name,
+    symbol: network.symbol, decimals: network.decimals, testnet: network.testnet,
+    settlement: Object.freeze(network.id === 'ethereum' ? { kind: 'ethereum-finalized' as const }
+      : { kind: 'nevm-depth-12' as const, confirmations: 12 as const }),
+  })));
+export function getNativeSendContext(id: string): NativeSendContext {
+  const context = sendContexts.find((value) => value.networkId === id);
+  if (!context) throw new Error('Native sending is unavailable for this network');
+  return context;
+}
+export function getNativeSendCapabilities(id: EvmNetworkId) {
+  getNativeNetwork(id);
+  return sendCapabilities[id];
+}
+export const nativeSigningEnabled = (id: EvmNetworkId): boolean => getNativeSendCapabilities(id).native;
+export const erc20SigningEnabled = (id: EvmNetworkId): boolean => getNativeSendCapabilities(id).erc20;

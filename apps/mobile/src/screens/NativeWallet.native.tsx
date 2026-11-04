@@ -10,7 +10,7 @@ import { NativeSend } from './NativeSend';
 import { NativeCustodyFeedback } from './NativeCustodyFeedback';
 import { NativeNetworks } from './NativeNetworks';
 import { createNativeNetworkView, type NativeNetworkView } from '../custody/networkView';
-import { nativeSigningEnabled, type EvmNetworkId } from '../custody/networkContext';
+import { erc20SigningEnabled, getNativeSendContext, nativeSigningEnabled, type EvmNetworkId } from '../custody/networkContext';
 import { NativeAccounts } from './NativeAccounts';
 import { WalletAccounts, type WatchWalletBridge } from './WalletAccounts';
 import { NativeActivityScreen } from './NativeActivity';
@@ -247,12 +247,12 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     }} />
     <Button title="Lock wallet" variant="quiet" onPress={revoke} />
   </>;
-  else if (snapshot.phase === 'ready' && stage === 'send' && transferView && snapshot.account && nativeSigningEnabled(snapshot.account.network)) return <NativeSend controller={transferView} token={sendToken ?? undefined} accountLabel={accountLabel} onBack={() => { setSendToken(null); setStage('choose'); }} />;
+  else if (snapshot.phase === 'ready' && stage === 'send' && transferView && snapshot.account && nativeSigningEnabled(snapshot.account.network)) return <NativeSend controller={transferView} context={getNativeSendContext(snapshot.account.network)} token={sendToken ?? undefined} accountLabel={accountLabel} onBack={() => { setSendToken(null); setStage('choose'); }} />;
   else if (snapshot.phase === 'ready' && publicSource) return <NativePortfolio
     tokenView={tokenView ?? undefined}
     source={publicSource} accountLabel={accountLabel} onManageAccounts={accounts || accountView ? () => setStage(accounts ? 'accounts' : 'manage-hd') : undefined} onExit={exit} onLock={revoke}
     onSend={snapshot.account && nativeSigningEnabled(snapshot.account.network) ? () => { setSendToken(null); setStage('send'); } : undefined}
-    onSendToken={snapshot.account?.network === 'ethereum' ? (token) => { setSendToken(token); setStage('send'); } : undefined}
+    onSendToken={snapshot.account && erc20SigningEnabled(snapshot.account.network) ? (token) => { setSendToken(token); setStage('send'); } : undefined}
     onManageNetworks={networkView ? () => setStage('networks') : undefined}
     onViewRecovery={() => setStage('backup-auth')}
     onActivity={snapshot.account?.network === 'ethereum' ? () => setStage('activity') : undefined}

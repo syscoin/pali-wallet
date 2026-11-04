@@ -149,7 +149,7 @@ for (const stage of ['initial', 'repeated'] as const) {
 }
 
 test('generic oversized receipt preserves NEVM observation-only semantics and refuses unqualified settlement', async () => {
-  for (const id of ['syscoin-nevm', 'syscoin-nevm-testnet'] as const) {
+  for (const id of ['syscoin-nevm'] as const) {
     const f = fixture({ id });
     assert.deepEqual(await f.rpc.receipt(expected, signal(), guard), {
       status: 'nonce-consumed',

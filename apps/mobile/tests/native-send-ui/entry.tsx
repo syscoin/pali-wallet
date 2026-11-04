@@ -6,7 +6,10 @@ import { Erc20SendFixture } from './erc20SendFixture';
 import { NetworkPickerFixture } from './networkPickerFixture';
 import { registerRootComponent } from 'expo';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { NATIVE_NETWORKS } from '../../src/custody/networkContext';
+import {
+  getNativeSendContext,
+  NATIVE_NETWORKS,
+} from '../../src/custody/networkContext';
 import { NativeCustodyFeedback } from '../../src/screens/NativeCustodyFeedback';
 import type { CustodyErrorCode } from '../../src/custody/types';
 import { Text } from '../../src/ui';
@@ -24,7 +27,13 @@ import type {
 } from '../../src/custody/transfers';
 
 const recipient = '0x1111111111111111111111111111111111111111';
+let sendContext = getNativeSendContext(
+  new URLSearchParams(window.location.search).has('nevm-send')
+    ? 'syscoin-nevm-testnet'
+    : 'ethereum'
+);
 const idle = (): NativeTransferSnapshot => ({
+  context: sendContext,
   phase: 'idle',
   review: null,
   hash: null,
@@ -58,11 +67,13 @@ const controller: NativeTransferView = {
     clearTimeout(expiry);
     const amountUnits = parseDecimalAmount(amount, 18).toString();
     publish({
+      context: sendContext,
       phase: 'review',
       hash: null,
       message: null,
       intent: null,
       review: Object.freeze({
+        context: sendContext,
         id: `fixture-review-${++sequence}`,
         from: '0x2222222222222222222222222222222222222222',
         recipient: to,
@@ -82,8 +93,10 @@ const controller: NativeTransferView = {
     if (snapshot.review?.id !== id || !password)
       throw Error('Invalid fixture confirmation');
     confirmations.push({ id, password });
+    const context = snapshot.review.context;
     clearTimeout(expiry);
     publish({
+      context,
       phase: 'pending',
       review: null,
       hash: '0x' + '1'.repeat(64),
@@ -100,6 +113,8 @@ declare global {
       refreshReview(): void;
       reviewId(): string | null;
       confirmations(): readonly { id: string; password: string }[];
+      changeContext(): void;
+      settle(status: 'confirmed' | 'reverted' | 'nonce-consumed'): void;
     };
   }
 }
@@ -113,6 +128,11 @@ window.__nativeSendFixture = {
     }),
   reviewId: () => snapshot.review?.id ?? null,
   confirmations: () => confirmations,
+  changeContext: () => {
+    sendContext = getNativeSendContext('ethereum');
+    publish({ ...snapshot, context: sendContext });
+  },
+  settle: (phase) => publish({ ...snapshot, phase }),
 };
 
 const accountAddress = (index: number) =>
@@ -262,7 +282,11 @@ function Fixture() {
           />
         )
       ) : (
-        <NativeSend controller={controller} onBack={() => undefined} />
+        <NativeSend
+          controller={controller}
+          context={sendContext}
+          onBack={() => undefined}
+        />
       )}
     </SafeAreaProvider>
   );
