@@ -14,7 +14,7 @@ type Element = { type: unknown; props: Record<string, unknown>; children: unknow
 type Cell = { value?: unknown; deps?: readonly unknown[]; cleanup?: () => void };
 type Snapshot = { phase: string; inventory: unknown; error: string; fieldErrors: Record<string, string> };
 const inventory = { status: 'needs-matching-phrase-verification', reason: null, backup: 'unconfirmed', privateNotes: 'not-supported', counts: {
-  hdAccounts: 3, importedKeys: 2, retiredHdAccounts: 4, retiredImportedAccounts: 1,
+  hdAccounts: 3, importedKeys: 2,
   retainedSignedTransactions: 5, tokenEntries: 6,
   historySummaries: 7, cachedTransactions: 8, activityPreferences: 9,
 } };
@@ -159,15 +159,20 @@ for (const order of ['parent-first', 'child-first'] as const) test(`real Android
   f.dispose(); parent.remove(); f.hardware(); assert.equal(f.defaults(), 1);
 });
 
-test('inventory shows exact public counts and preserves backup/not-supported distinctions', () => {
+test('inventory shows exact public counts and preserves backup/private-note distinctions', () => {
   const f = setup('scope'); let tree = f.render();
   assert.match(text(tree), /Seed-derived accounts 3/); assert.match(text(tree), /Imported keys saved on this device 2/);
   assert.match(text(tree), /Saved transactions 5/); assert.match(text(tree), /6 tokens · 7 saved summaries/);
-  assert.match(text(tree), /not confirmed/); assert.match(text(tree), /Private notes are not supported/);
+  assert.match(text(tree), /not confirmed/); assert.match(text(tree), /No private notes are saved on this device/);
   const details = all(tree).find((e) => e.props.accessibilityLabel === 'Saved-data details')!; press(details); tree = f.render();
-  assert.match(text(tree), /Retired seed-derived account records 4/); assert.match(text(tree), /Cached transactions 8/);
+  assert.match(text(tree), /Cached transactions 8/); assert.match(text(tree), /Activity preferences 9/);
+  assert.doesNotMatch(text(tree), /Retired/);
+  f.snapshot.inventory = { ...inventory, privateNotes: 'requires-matching-phrase-verification' }; tree = f.render();
+  assert.match(text(tree), /Saved private notes will be verified and kept/);
+  assert.doesNotMatch(text(tree), /No private notes are saved/);
   f.snapshot.inventory = { status: 'unavailable', counts: null }; tree = f.render();
   assert.equal(button(tree, 'Continue').props.disabled, true); assert.doesNotMatch(text(tree), /Seed-derived accounts|0 tokens/);
+  assert.ok(all(tree).some((entry) => entry.props.title === 'Saved data unavailable' && entry.props.body === 'Your saved wallet could not be verified for this recovery. Nothing has been reset.'));
   f.dispose();
 });
 

@@ -24,7 +24,7 @@ const publicBackupWords = Object.freeze([...Array<string>(11).fill('abandon'), '
 const fingerprint = '1'.repeat(64);
 
 let catalogue: NativeWalletCatalogueSnapshot = Object.freeze<NativeWalletCatalogueSnapshot>({
-  revision: 0, removed: [], networks: NATIVE_NETWORKS,
+  revision: 0, networks: NATIVE_NETWORKS,
   active: { accountId: 'hd:60:0', networkId: 'ethereum' },
   accounts: [
     { id: 'hd:60:0', type: 'HDAccount', index: 0, slip44: 60, label: 'Account 1', address: ADDRESS },
@@ -191,7 +191,7 @@ export function createNativeWalletControllers() {
   return { authority, keyExport, imports, balanceReader: createBalanceReader({ fetch: fixtureFetch }), transfers: transfers.view, tokens: tokens.view, activity, accounts, backup,
     async readRecoveryInventory(): Promise<RecoveryInventory> {
       return { status: 'needs-matching-phrase-verification', reason: null, backup: backupConfirmed ? 'confirmed' : 'unconfirmed', privateNotes: 'not-supported',
-        counts: { hdAccounts: catalogue.accounts.filter((a) => a.type === 'HDAccount').length, importedKeys: importedKeys.size, retiredHdAccounts: 0, retiredImportedAccounts: 0, retainedSignedTransactions: 0, tokenEntries: 0, historySummaries: 0, cachedTransactions: 0, activityPreferences: 0 } };
+        counts: { hdAccounts: catalogue.accounts.filter((a) => a.type === 'HDAccount').length, importedKeys: importedKeys.size, retainedSignedTransactions: 0, tokenEntries: 0, historySummaries: 0, cachedTransactions: 0, activityPreferences: 0 } };
     },
     disposeTokens: () => tokens.dispose(), disposeTransfers: () => transfers.dispose() };
 }

@@ -15,6 +15,7 @@ const { decodeNativeReport, assertFullNativeReport } = createRequire(import.meta
 const { importedEvidence } = createRequire(import.meta.url)('../qualification/imported-report-fixture.cjs');
 
 const root = fileURLToPath(new NodeURL('../', import.meta.url));
+const sdkVersion = createRequire(import.meta.url)('../package.json').dependencies['@sidhujag/sysweb3-keyring'];
 const erc20Evidence = (phase = 'create') => ({
   nativeErc20Verified: true, erc20AccountId: 'hd:60:2', erc20AccountIndex: 2,
   erc20Address: '0xb6716976A3ebe8D39aCEB04372f22Ff8e6802D7A',
@@ -172,12 +173,12 @@ test('native report validation requires the generated mnemonic entropy evidence'
   const end = source.indexOf('const waitReport =', start);
   assert(start >= 0 && end > start);
   const validate = runInNewContext(source.slice(start, end) + '\nvalidateReport;', {
-    decodeNativeReport, assertFullNativeReport,
+    decodeNativeReport, assertFullNativeReport, simulatorVersion: undefined,
     isHdQualificationReport, isErc20QualificationReport, isCryptoDiagnostic, isStorageQualificationDiagnostic, simulatorContract: false, PUBLIC_PHRASE: 'public fixture', PUBLIC_PASSWORD: 'public password', platform: 'ios',
     fs: { writeFileSync() {} }, path: { join: () => 'unused' }, output: 'unused',
   }) as (text: string, phase: string, scenario: string) => unknown;
   const report = { version: 1, status: 'passed', phase: 'create', scenario: 'generate', platform: 'ios',
-    networkCalls: 0, nativeBridgeExercised: true, sdkVersion: '2.0.0', nativeSigningVerified: true, nativeHdAccountsVerified: true, nativeHdKeyRevealVerified: true, selectedAccountId: 'hd:60:1', selectedAccountIndex: 1, journalContainerVersion: 1, firstTransferHash: '0x' + 'c'.repeat(64), address: '0x6Fac4D18c912343BF86fa7049364Dd4E424Ab9C0', transferHash: '0x' + 'b'.repeat(64), fingerprint: 'a'.repeat(64),
+    networkCalls: 0, nativeBridgeExercised: true, sdkVersion, nativeSigningVerified: true, nativeHdAccountsVerified: true, nativeHdKeyRevealVerified: true, selectedAccountId: 'hd:60:1', selectedAccountIndex: 1, journalContainerVersion: 1, firstTransferHash: '0x' + 'c'.repeat(64), address: '0x6Fac4D18c912343BF86fa7049364Dd4E424Ab9C0', transferHash: '0x' + 'b'.repeat(64), fingerprint: 'a'.repeat(64),
     cryptoEvidence: { passed: true, productionIterations: 900000 }, cryptoDiagnostic: { bootstrap: 'ready', fullCase: 'random-view-boundaries' }, mnemonicEntropyVerified: true, storageDiagnostic: { stage: 'ready' }, ...erc20Evidence(), ...nevmEvidence(), ...zksysEvidence(), ...importedEvidence() };
   assert.doesNotThrow(() => validate(JSON.stringify(report), 'create', 'generate'));
   assert.throws(() => validate(JSON.stringify({ ...report, selectedAccountId: 'hd:60:0' }), 'create', 'generate'));
@@ -212,7 +213,7 @@ test('a pre-parameter startup failure is read immediately instead of waiting for
   const start = source.indexOf('const validateReport =');
   const end = source.indexOf('const databaseEvidence =', start);
   const wait = runInNewContext(source.slice(start, end) + '\nwaitReport;', {
-    decodeNativeReport, assertFullNativeReport,
+    decodeNativeReport, assertFullNativeReport, simulatorVersion: undefined,
     isHdQualificationReport, isErc20QualificationReport, isCryptoDiagnostic, isStorageQualificationDiagnostic, simulatorContract: false, PUBLIC_PHRASE: 'public fixture', PUBLIC_PASSWORD: 'public password', platform: 'android',
     fs: { writeFileSync() {} }, path: { join: () => 'unused' }, output: 'unused',
   }) as (read: () => string | null, phase: string, scenario: string, startup: () => string) => Promise<unknown>;

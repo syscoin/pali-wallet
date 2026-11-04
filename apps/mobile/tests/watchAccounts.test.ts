@@ -45,7 +45,7 @@ function storage(initial: readonly PublicAccount[] = [account], beforeWrite?: ()
 
 test('public chooser keeps authorities distinct even when local IDs and addresses collide', () => {
   const catalogue: NativeWalletCatalogueSnapshot = {
-    revision: 0, removed: [], networks: NATIVE_NETWORKS,
+    revision: 0, networks: NATIVE_NETWORKS,
     active: { accountId: 'hd:60:0', networkId: 'ethereum' },
     accounts: [{ id: 'hd:60:0', type: 'HDAccount', slip44: 60, index: 0, label: 'Wallet', address: ADDRESS }],
   };
@@ -210,7 +210,11 @@ test('a reentrant privacy lock never delivers the superseded ready snapshot to l
 test('Imported selection is advisory, kind-bound and separate from watch and HD identities', () => {
   const imported = parseAccountSelection({ kind: 'imported', id: 'imported:60:0' });
   assert.deepEqual(imported, { kind: 'imported', id: 'imported:60:0' });
+  for (const kind of ['hd', 'imported'] as const) {
+    const selection = { kind, id: `${kind}:60:4096` };
+    assert.deepEqual(parseAccountSelection(selection), selection);
+  }
   for (const selection of [{ kind: 'hd', id: 'imported:60:0' }, { kind: 'imported', id: 'hd:60:0' },
-    { kind: 'imported', id: 'imported:60:4096' }, { kind: 'imported', id: 'imported:60:00' }])
+    { kind: 'imported', id: 'imported:60:9007199254740992' }, { kind: 'imported', id: 'imported:60:00' }])
     assert.throws(() => parseAccountSelection(selection));
 });

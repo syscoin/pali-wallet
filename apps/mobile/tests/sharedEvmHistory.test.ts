@@ -12,12 +12,13 @@ test('shared explorer merge keeps the real transaction body and token ownership 
   const event = { hash: hash(1).toUpperCase(), from: other, to: owner, contractAddress: contract, value: '5', timeStamp: '1700000000' };
   const rows = mergeEvmExplorerTransactions([base], [event], 4444, true);
   assert.equal(rows.length, 1);
-  assert.equal(rows[0].to, contract);
-  assert.equal(rows[0].tokenRecipient, owner);
-  assert.equal(rows[0].txreceipt_status, '0');
-  assert.equal(rows[0].isError, '1');
-  assert.equal(getEvmHistoryDirection(rows[0], owner), 'received');
-  assert.equal(belongsToEvmHistoryAccount(rows[0], owner), true);
+  const row = rows[0]; assert.ok(row);
+  assert.equal(row.to, contract);
+  assert.equal(row.tokenRecipient, owner);
+  assert.equal(row.txreceipt_status, '0');
+  assert.equal(row.isError, '1');
+  assert.equal(getEvmHistoryDirection(row, owner), 'received');
+  assert.equal(belongsToEvmHistoryAccount(row, owner), true);
 });
 
 test('shared representative selection preserves sender identity, reorg placement and input rows', () => {
@@ -40,9 +41,9 @@ test('normalized explorer pages replace local signed summaries by hash without r
   const remote = { ...local, hash: hash(3).toUpperCase(), blockNumber: 42, blockHash: hash(30), confirmations: 3, txreceipt_status: '0', historySource: EVM_TRANSACTION_HISTORY_SOURCE.ExplorerTransaction as string };
   const before = JSON.stringify([local, remote]);
   const rows = mergeEvmExplorerTransactions([local], [], 4444, false, [remote]);
-  assert.equal(rows.length, 1); assert.equal(rows[0], remote);
-  assert.equal((rows[0] as typeof remote).txreceipt_status, '0');
-  assert.equal(rows[0].value, local.value);
+  assert.equal(rows.length, 1); const row = rows[0]; assert.ok(row); assert.equal(row, remote);
+  assert.ok('txreceipt_status' in row); assert.equal(row.txreceipt_status, '0');
+  assert.equal(row.value, local.value);
   assert.equal(JSON.stringify([local, remote]), before);
   assert.equal(Object.hasOwn(local, 'blockNumber'), false);
 });
@@ -67,7 +68,7 @@ test('normalized merge keeps initial full rows at equal priority and still annot
   const later = { ...full, value: '99', timestamp: 11 };
   const event = { hash: full.hash.toUpperCase(), from: other, to: owner, contractAddress: contract, value: '5', timeStamp: '1700000000' };
   const rows = mergeEvmExplorerTransactions([full], [event], 4444, true, [later]);
-  assert.equal(rows.length, 1); assert.equal(rows[0].value, '0');
-  assert.equal((rows[0] as any).tokenRecipient, owner);
-  assert.equal(rows[0].to, contract);
+  assert.equal(rows.length, 1); const row = rows[0]; assert.ok(row); assert.equal(row.value, '0');
+  assert.ok('tokenRecipient' in row); assert.equal(row.tokenRecipient, owner);
+  assert.equal(row.to, contract);
 });

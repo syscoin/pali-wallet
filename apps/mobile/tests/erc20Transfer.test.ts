@@ -232,7 +232,7 @@ test('token quote rejects false returns, changed precision, insufficient balance
     );
   }
 });
-test('broadcast accepts only signed native transfers or the exact supplied token intent', async () => {
+test('generic broadcast preserves signed bytes and enforces an explicitly supplied token intent', async () => {
   const signer = Wallet.fromPhrase(
     'test test test test test test test test test test test junk'
   );
@@ -248,11 +248,11 @@ test('broadcast accepts only signed native transfers or the exact supplied token
     maxPriorityFeePerGas: 1,
   });
   const { rpc, requests } = fixture();
-  await assert.rejects(
-    rpc.broadcast(raw, keccak256(raw), new AbortController().signal),
-    { code: 'INVALID_RESPONSE' }
+  assert.equal(
+    await rpc.broadcast(raw, keccak256(raw), new AbortController().signal),
+    keccak256(raw)
   );
-  assert.equal(requests.length, 0);
+  const readsBeforeInvalidIntent = requests.length;
   await assert.rejects(
     rpc.broadcast(raw, keccak256(raw), new AbortController().signal, {
       ...intent,
@@ -260,7 +260,7 @@ test('broadcast accepts only signed native transfers or the exact supplied token
     }),
     { code: 'INVALID_RESPONSE' }
   );
-  assert.equal(requests.length, 0);
+  assert.equal(requests.length, readsBeforeInvalidIntent);
   assert.equal(
     await rpc.broadcast(
       raw,
@@ -269,5 +269,9 @@ test('broadcast accepts only signed native transfers or the exact supplied token
       intent
     ),
     keccak256(raw)
+  );
+  assert.deepEqual(
+    requests.filter((request) => request.method === 'eth_sendRawTransaction').map((request) => request.params),
+    [[raw], [raw]]
   );
 });

@@ -8,7 +8,7 @@ import type { CustodySnapshot } from '../src/custody/types.ts';
 const address = '0x52908400098527886E0F7030069857D2E4169EE7';
 function fixture() {
   let state: CustodySnapshot = { phase: 'ready', revision: 12, presence: 'existing', backup: 'confirmed', account: { network: 'ethereum', address }, error: null };
-  let catalogue: NativeWalletCatalogueSnapshot | null = Object.freeze<NativeWalletCatalogueSnapshot>({ revision: 3, removed: [], accounts: [], networks: NATIVE_NETWORKS, active: { accountId: 'hd:60:0', networkId: 'ethereum' } });
+  let catalogue: NativeWalletCatalogueSnapshot | null = Object.freeze<NativeWalletCatalogueSnapshot>({ revision: 3, accounts: [], networks: NATIVE_NETWORKS, active: { accountId: 'hd:60:0', networkId: 'ethereum' } });
   const listeners = new Set<(value: CustodySnapshot) => void>();
   const requests: unknown[][] = [];
   let cancels = 0;
@@ -63,7 +63,7 @@ test('network verification and persistence share one detached registration snaps
   const entered = new Promise<void>((resolve) => { started = resolve; });
   const held = new Promise<void>((resolve) => { finish = resolve; });
   const state: CustodySnapshot = { phase: 'ready', revision: 1, presence: 'existing', backup: 'confirmed', account: { network: 'ethereum', address }, error: null };
-  const catalogue = { revision: 1, removed: [], accounts: [], networks: NATIVE_NETWORKS, active: { accountId: 'hd:60:0', networkId: 'ethereum' } };
+  const catalogue = { revision: 1, accounts: [], networks: NATIVE_NETWORKS, active: { accountId: 'hd:60:0', networkId: 'ethereum' } };
   const saved: unknown[] = [];
   const view = createNativeNetworkView({ getSnapshot: () => state, getCatalogue: () => catalogue, subscribe: () => () => undefined,
     selectNetwork: async () => undefined, cancelAccountOperation: () => undefined,
