@@ -166,6 +166,35 @@ test('imported identity removal is atomic and the shared SDK can reuse the remov
   } finally { await f.close(); }
 });
 
+test('SDK gap reuse keeps imported zero before a retained imported one across storage reopen', async () => {
+  const f = await fixture();
+  try {
+    const model = await f.open();
+    const first = await importMutation(f, 0), { id: _firstId, ...firstInput } = first;
+    let state = await model.mutate(0, firstInput, current);
+    const secondKey = '0x' + '2'.padStart(64, '0');
+    const second = await importMutation(f, 1, secondKey), { id: _secondId, ...secondInput } = second;
+    state = await model.mutate(state.revision, secondInput, current);
+    const before = await f.storage.keyringStorage.get(WALLET_CATALOGUE_KEY) as { importedAccounts: StoredImportedAccount[] };
+    const retained = before.importedAccounts[1];
+    state = await model.mutate(state.revision, { kind: 'select', id: 'hd:60:0' }, current);
+    state = await model.mutate(state.revision, { kind: 'remove', id: 'imported:60:0', journal: null }, current);
+    delete f.stage.state.accounts.Imported[0];
+    const replacementKey = '0x' + '3'.padStart(64, '0');
+    const replacement = await importMutation(f, 0, replacementKey), { id: _replacementId, ...replacementInput } = replacement;
+    state = await model.mutate(state.revision, replacementInput, current);
+    const stored = await f.storage.keyringStorage.get(WALLET_CATALOGUE_KEY) as { importedAccounts: StoredImportedAccount[]; nextImportedIndex: number; retiredImportedIndices: number[] };
+    assert.deepEqual(stored.importedAccounts.map(account => account.index), [0, 1]);
+    assert.deepEqual(stored.importedAccounts[1], retained);
+    assert.equal(stored.nextImportedIndex, 2); assert.deepEqual(stored.retiredImportedIndices, []);
+    await f.reopen();
+    const reopened = await f.open();
+    assert.deepEqual(await reopened.reconcile(f.root, current, undefined, f.readImport), state);
+    assert.equal(await openSecret(f.stage.keyring, stored.importedAccounts[0]!.recovery), replacementKey);
+    assert.equal(await openSecret(f.stage.keyring, stored.importedAccounts[1]!.recovery), secondKey);
+  } finally { await f.close(); }
+});
+
 test('HD and Imported aliases share one sender-owned pending record with immutable signer attribution', async () => {
   const f = await fixture();
   try {

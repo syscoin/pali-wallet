@@ -289,6 +289,7 @@ export class NativeWalletCatalogue {
         const id = nativeAccountId('Imported', mutation.index);
         importedAccounts.push(Object.freeze({ id, type: 'Imported', index: mutation.index, slip44: 60,
           ...key, label: label(mutation.label), recovery: snapshotImportedRecoveryEntry(mutation.recovery, { kind: 'ethereum', slip44: 60, id: mutation.index, address: key.address, xpub: key.publicKey }) }));
+        importedAccounts.sort((a, b) => a.index - b.index);
         if (mutation.index === nextImportedIndex) nextImportedIndex++;
         else retiredImportedIndices = Object.freeze(retiredImportedIndices.filter((index) => index !== mutation.index));
         active = Object.freeze({ accountId: id, networkId: record.active.networkId });

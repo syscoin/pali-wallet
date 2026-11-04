@@ -1533,6 +1533,39 @@ test('installed SDK imported accounts persist AEAD, cold-reopen and sign/export 
   } finally { await f.authority.dispose(); f.disk.restoreNetwork(); }
 });
 
+test('SDK imported gap reuse retains the higher account through cold reopen, export and signing', async () => {
+  const f = await readyAccounts();
+  let reopened: NativeCustodyAuthority | undefined;
+  try {
+    const secondKey = '0x' + '2'.padStart(64, '0'), replacementKey = '0x' + '3'.padStart(64, '0');
+    await importTestKey(f);
+    await importTestKey(f, secondKey, 'Retained one');
+    const before = structuredClone(f.disk.records.get(WALLET_CATALOGUE_KEY)) as { importedAccounts: { index: number }[] };
+    const retained = before.importedAccounts.find(account => account.index === 1);
+    await f.execute({ kind: 'select', id: 'hd:60:0' });
+    await f.execute({ kind: 'remove', id: 'imported:60:0', password: PASSWORD });
+    await importTestKey(f, replacementKey, 'Reused zero');
+    const stored = f.disk.records.get(WALLET_CATALOGUE_KEY) as { importedAccounts: { index: number }[] };
+    assert.deepEqual(stored.importedAccounts.map(account => account.index), [0, 1]);
+    assert.deepEqual(stored.importedAccounts[1], retained);
+    assert.equal(f.authority.getCatalogue()!.active.accountId, 'imported:60:0');
+    await f.authority.dispose();
+    let runtime!: KeyringRuntime;
+    reopened = new NativeCustodyAuthority({ async open() { runtime = await f.disk.factory.open() as KeyringRuntime; return runtime; } });
+    await reopened.initialize(); await reopened.unlock(PASSWORD);
+    for (const [id, key] of [['imported:60:0', replacementKey], ['imported:60:1', secondKey]] as const) {
+      await reopened.manageAccounts({ kind: 'select', id }, reopened.getSnapshot().revision, reopened.getCatalogue()!.revision);
+      assert.equal(reopened.getSnapshot().account!.address, importedAddress(key));
+      const flow: HdKeyExportFlow = new HdKeyExportFlow(reopened, () => runtime.keyExport);
+      try { assert.equal((await flow.begin(PASSWORD)).privateKey, key); } finally { flow.dispose(); }
+      const signed = await runtime.transfers!.sign({ type: 2, from: importedAddress(key), to: ADDRESS,
+        chainId: '1', nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, PASSWORD, () => undefined);
+      assert.equal(Transaction.from(signed.rawTransaction).from, importedAddress(key));
+    }
+    assert.deepEqual((f.disk.records.get(WALLET_CATALOGUE_KEY) as { importedAccounts: unknown[] }).importedAccounts[1], retained);
+  } finally { await reopened?.dispose(); await f.authority.dispose(); f.disk.restoreNetwork(); }
+});
+
 test('imported admission rejects duplicates and malformed private form inputs without changing authority', async () => {
   const f = await readyAccounts();
   try {
