@@ -1,7 +1,7 @@
 import { assertJsonWorkBudget } from '../../../../source/utils/requestPayloadBudget.ts';
 import { normalizePublicAddress } from './addresses.ts';
 import { loadedBalance } from './amounts.ts';
-import { getNetwork } from './networks.ts';
+import { getNetwork, NETWORKS } from './networks.ts';
 import type {
   NetworkId,
   PublicAccount,
@@ -11,6 +11,7 @@ import type {
   TransferIntent,
   TransferReview,
   WalletAuthority,
+  WalletNetwork,
 } from './types.ts';
 
 export interface BalanceReader {
@@ -76,6 +77,21 @@ export function validatePublicAccounts(
       return Object.freeze({ id, name, addresses: Object.freeze(normalized) });
     })
   );
+}
+
+/** A public EVM address is valid across the registered EVM chains. Keep Ethereum as the initial selection. */
+export function createEvmWatchAccount(id: string, name: string, address: string): PublicAccount {
+  const normalized = normalizePublicAddress(address, 'ethereum');
+  const addresses: Partial<Record<NetworkId, string>> = { ethereum: normalized };
+  for (const network of NETWORKS) {
+    if (network.canWatch && network.kind === 'evm') addresses[network.id] = normalized;
+  }
+  return validatePublicAccounts([{ id, name, addresses }])[0]!;
+}
+
+/** Existing records retain their explicit address mappings; missing networks are never inferred. */
+export function getWatchNetworks(account: PublicAccount | undefined): readonly WalletNetwork[] {
+  return Object.freeze(NETWORKS.filter((network) => network.canWatch && !!account?.addresses[network.id]));
 }
 
 export class WatchOnlyAuthority implements WalletAuthority {
