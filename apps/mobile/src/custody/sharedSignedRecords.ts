@@ -26,13 +26,8 @@ export function createNativeSignedRecordView(
     nonce: entry.nonce, createdAt: entry.createdAt,
     ...(intent ? { intent } : {}),
   }); };
-  const latest = () => checked(async () => {
-    const values = await records.listSender(session, network.chainId, account.address);
-    const chosen = [...values].sort((a,b) => b.createdAt-a.createdAt || b.nonce-a.nonce || a.hash.localeCompare(b.hash))[0];
-    return chosen ? records.readExact(session,network.chainId,account.address,chosen.hash) : null;
-  });
   return Object.freeze({
-    async load() { const entry=await latest(); return entry ? map(entry) : null; },
+    async load() { return checked(async () => { const entry=await records.readCurrent(session,network.chainId,account.address); return entry ? map(entry) : null; }); },
     saveSigned(rawTransaction: string, intent?: Erc20TransferIntent) { return checked(async () => {
       const tx=Transaction.from(rawTransaction);
       if (tx.to === null) throw new TransferJournalError('CORRUPT');

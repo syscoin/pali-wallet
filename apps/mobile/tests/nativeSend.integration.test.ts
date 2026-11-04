@@ -199,6 +199,7 @@ async function cancellationFixture() {
       assert.ok(globalThis.crypto.subtle);
     },
     async openStorage() {
+      const fresh = !existsSync(file);
       let native!: ReturnType<typeof nodeConnection>;
       native = nodeConnection(file, { after: async (kind, sql) => {
         if (kind === 'all' && sql.includes('FROM evm_signed_records')) await pause('storage-read');
@@ -219,18 +220,19 @@ async function cancellationFixture() {
         native.connection,
         digest,
         INSTALLATION,
-        true
+        fresh
       );
       return storage;
     },
     loadSdk: async () => ({ ...sdk, SoftwareKeyring: ControlledKeyring }),
   });
-  const authority = new NativeCustodyAuthority({
+  const createAuthority = () => new NativeCustodyAuthority({
     async open() {
       runtime = (await base.open()) as KeyringRuntime;
       return runtime;
     },
   });
+  let authority = createAuthority();
   const broadcasts: string[] = [];
   let loseResponse = false;
   const largeReceipt = {
@@ -314,8 +316,8 @@ async function cancellationFixture() {
     throw error;
   }
   return {
-    authority,
-    runtime,
+    get authority() { return authority; },
+    get runtime() { return runtime; },
     broadcasts,
     recovery: largeReceipt,
     requests,
@@ -368,6 +370,14 @@ async function cancellationFixture() {
         rpc,
       });
     },
+    async reopen() {
+      transfers.dispose();
+      await authority.dispose();
+      authority = createAuthority();
+      await authority.initialize();
+      await authority.unlock(PASSWORD);
+      transfers = new NativeTransfers(authority, () => runtime.transfers, { rpc });
+    },
     async readJournal() {
       return (await (await runtime.transfers!.journal(() => undefined)).load()) ?? undefined;
     },
@@ -378,6 +388,78 @@ async function cancellationFixture() {
     },
   };
 }
+
+test('wall-clock rollback cannot hide an unresolved signed transfer after a cold reopen', async () => {
+  const originalNow = Date.now;
+  let wallClock = 2_000_000_000_000;
+  Date.now = () => wallClock;
+  let f: Awaited<ReturnType<typeof cancellationFixture>> | undefined;
+  try {
+    f = await cancellationFixture();
+    await f.transfers.prepare(RECIPIENT, '0.001');
+    await f.transfers.confirm(f.transfers.getSnapshot().review!.id);
+    const older = await f.readJournal() as TransferJournalEntry;
+    const first = Transaction.from(older.rawTransaction);
+    f.setRecovery({
+      receipt: { transactionHash: older.hash, from: first.from, to: RECIPIENT,
+        status: '0x1', blockNumber: '0x10', blockHash: '0x' + '1'.repeat(64) },
+      nonce: '0x1', canonicalHash: '0x' + '1'.repeat(64),
+    });
+    await f.transfers.recover();
+    assert.equal((await f.readJournal())!.phase, 'confirmed');
+
+    // Move only the wall-clock presentation timestamp backwards. Consent
+    // deadlines continue to use the controller's actual monotonic clock.
+    wallClock -= 60 * 60 * 1000;
+    f.setRecovery({ receipt: null, nonce: '0x1', canonicalHash: '0x' + '1'.repeat(64) });
+    await f.transfers.prepare(RECIPIENT, '0.002');
+    await f.transfers.confirm(f.transfers.getSnapshot().review!.id);
+    const unresolvedHash = f.transfers.getSnapshot().hash!;
+    assert.equal(f.transfers.getSnapshot().phase, 'pending');
+    assert.equal(Transaction.from(f.broadcasts.at(-1)!).nonce, 1);
+    assert.notEqual(unresolvedHash, older.hash);
+    const signatures = f.signatures;
+    const broadcasts = [...f.broadcasts];
+    assert.equal(signatures, 2);
+    assert.equal(broadcasts.length, 2);
+    const retained = await f.readDurableJournal();
+    assert.equal(inspectEvmSignedBundle(retained!).transactions, 2);
+    const unresolved = (JSON.parse(retained!).entries as { hash: string; createdAt: number; phase: string }[])
+      .find((entry) => entry.hash === unresolvedHash)!;
+    assert.equal(unresolved.phase, 'submitted');
+    assert(unresolved.createdAt < older.createdAt);
+
+    await f.reopen();
+    assert.equal(f.authority.getSnapshot().phase, 'ready');
+    assert.equal((await f.readJournal())!.hash, unresolvedHash);
+    for (const prepare of [
+      () => f!.transfers.prepare(RECIPIENT, '0.003'),
+      () => f!.transfers.prepareToken('0x2222222222222222222222222222222222222222', RECIPIENT, '1'),
+    ]) {
+      const beforeRequests: number = f.requests.length;
+      await assert.rejects(prepare(), { code: 'PENDING_TRANSFER' });
+      assert.equal(f.transfers.getSnapshot().hash, unresolvedHash);
+      assert.equal(f.transfers.getSnapshot().review, null);
+      assert.equal(f.requests.length, beforeRequests, 'pending admission must precede quote or token reads');
+    }
+    const beforeRecovery = f.requests.length;
+    await f.transfers.recover();
+    const receiptReads = f.requests.slice(beforeRecovery).filter((request) => request.method === 'eth_getTransactionReceipt');
+    assert.deepEqual(receiptReads.map((request) => request.params[0]), [unresolvedHash]);
+    assert.equal(f.transfers.getSnapshot().hash, unresolvedHash);
+    assert.equal(f.transfers.getSnapshot().phase, 'unknown');
+    await f.transfers.recover(true);
+    assert.equal(f.transfers.getSnapshot().hash, unresolvedHash);
+    assert.equal(f.transfers.getSnapshot().review!.retry, true);
+    assert.equal(f.transfers.getSnapshot().review!.nonce, '1');
+    assert.equal(f.signatures, signatures);
+    assert.deepEqual(f.broadcasts, broadcasts);
+    assert.equal(await f.readDurableJournal(), retained, 'status/retry review preserves both exact signed records');
+  } finally {
+    try { await f?.close(); }
+    finally { Date.now = originalNow; }
+  }
+});
 
 for (const retry of [false, true]) {
   for (const cancellation of ['back', 'dispose', 'lock'] as const) {

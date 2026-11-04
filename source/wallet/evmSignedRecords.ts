@@ -684,6 +684,32 @@ export class EvmSignedRecords {
       );
     });
   }
+  /**
+   * Select a sender's current work from authenticated append order. Wall-clock
+   * timestamps are presentation metadata: clock changes cannot hide unresolved
+   * signed bytes behind a completed transaction.
+   */
+  readCurrent(
+    session: EvmSignedRecordSession,
+    chainId: string,
+    address: string
+  ): Promise<EvmRetainedSignedRecord | null> {
+    const from = getAddress(address).toLowerCase();
+    return this.exclusive(async () => {
+      const id = await profile(session);
+      const { bundle } = await this.load(session, id);
+      let latest: Entry | undefined;
+      let unresolved: Entry | undefined;
+      for (const entry of bundle?.entries ?? []) {
+        if (entry.chainId !== chainId || entry.from !== from) continue;
+        latest = entry;
+        if (['signed', 'attempted', 'submitted'].includes(entry.phase))
+          unresolved = entry;
+      }
+      const entry = unresolved ?? latest;
+      return entry ? this.materialize(session, entry) : null;
+    });
+  }
   readRecent(
     session: EvmSignedRecordSession,
     chainId: string,
