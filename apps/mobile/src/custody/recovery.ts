@@ -20,7 +20,7 @@ declare const proofBrand: unique symbol;
 export type RecoveryProof = Readonly<{ [proofBrand]: true }>;
 type Ready = { proof: RecoveryProof; storage: OpenWalletStorage; plan: RecoveryWritePlan; before: RecoveryStorageSnapshot; after: RecoveryStorageSnapshot; generation: number; deadline: number; guard: () => void };
 type Dependencies = Readonly<{
-  owner: Pick<NativeCustodyAuthority, 'getSnapshot' | 'dispose'>;
+  owner: Pick<NativeCustodyAuthority, 'getSnapshot' | 'retireForRecovery'>;
   retireControllers(): void;
   ensureCryptoReady(): Promise<void>;
   openStorage(): Promise<OpenWalletStorage>;
@@ -82,7 +82,7 @@ export class NativeRecoveryCoordinator {
     let ownerRevision: number;
     try {
       const owner = this.dependencies.owner.getSnapshot(); ownerRevision = owner.revision;
-      if (this.disposed || this.completed || this.unavailable || (!this.retired && owner.phase !== 'locked')) return reject('NOT_READY');
+      if (this.disposed || this.completed || this.unavailable || (this.retired && this.ownedPair === null) || (!this.retired && owner.phase !== 'locked')) return reject('NOT_READY');
     } catch { return reject('UNAVAILABLE'); }
     if (typeof phrase !== 'string' || !phrase.isWellFormed() || phrase.length > 4096 ||
         typeof password !== 'string' || !password.isWellFormed() || password.length > 1024 || new TextEncoder().encode(password).length > 1024 || [...password].length < 12 || typeof assertCurrent !== 'function')
@@ -99,7 +99,12 @@ export class NativeRecoveryCoordinator {
         if (!this.retired) {
           const owner = this.dependencies.owner.getSnapshot();
           if (owner.phase !== 'locked' || owner.revision !== ownerRevision) return fail('CANCELLED');
-          this.dependencies.retireControllers(); await this.dependencies.owner.dispose(); this.retired = true;
+          this.dependencies.retireControllers();
+          const fingerprint = await this.dependencies.owner.retireForRecovery();
+          this.retired = true;
+          if (typeof fingerprint !== 'string' || !/^[0-9a-f]{64}$/.test(fingerprint)) return fail('UNAVAILABLE');
+          // Bind the original lease even if cancellation occurred while it drained.
+          this.ownedPair = fingerprint;
         }
         check(); await this.dependencies.ensureCryptoReady(); check();
         storage = await this.dependencies.openStorage(); check();
@@ -107,10 +112,7 @@ export class NativeRecoveryCoordinator {
         if (!port?.prepareReplacement || !port.plannedSnapshot || !port.commitReplacement || !port.recordFailureForPair) return fail('UNAVAILABLE');
         await storage.authGuard.checkAllowed(); check();
         const before = await port.readSnapshot(); check();
-        if (before.identity) {
-          if (this.ownedPair !== null && this.ownedPair !== before.identity.pairFingerprint) return fail('STATE_CHANGED');
-          this.ownedPair = before.identity.pairFingerprint;
-        }
+        if (this.ownedPair !== before.identity?.pairFingerprint) return fail('STATE_CHANGED');
         if (!before.identity || inspectRecoveryInventory(before).status !== 'needs-matching-phrase-verification') return fail('INVALID_SAVED_DATA');
         const sdk = await (this.dependencies.loadSdk?.() ?? import('@sidhujag/sysweb3-keyring/cjs/software.js')); check();
         const values = new Map<string, unknown>();

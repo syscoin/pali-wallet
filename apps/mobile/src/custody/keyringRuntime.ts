@@ -120,6 +120,7 @@ export function createKeyringRuntimeFactory(
         let active: Promise<unknown> | null = null;
         let reserved: object | null = null;
         let closing: Promise<void> | null = null;
+        let recoveryRetirement: Promise<string> | null = null;
         let authenticatedPair: string | null = null;
         let verifiedIdentity: WalletIdentityRead | null = null;
         const readIdentity = async (): Promise<WalletIdentityRead> => {
@@ -149,6 +150,36 @@ export function createKeyringRuntimeFactory(
           return pending.then(() => {
             if (catalogue.requiresReopen || tokens.requiresReopen || journalRequiresReopen(storage.keyringStorage)) throw new KeyringRuntimeError('CLEANUP_FAILED');
           });
+        };
+        const closeRuntime = (capturePair: boolean): Promise<void> => {
+          if (closing) return closing;
+          let resolveClose!: () => void, rejectClose!: (error: KeyringRuntimeError) => void;
+          let pairFingerprint: string | undefined;
+          // Install both admissions before lock can invoke any injected callback.
+          closing = new Promise<void>((resolve, reject) => { resolveClose = resolve; rejectClose = reject; });
+          if (capturePair) recoveryRetirement = closing.then(() => {
+            if (!pairFingerprint) throw new KeyringRuntimeError('CLEANUP_FAILED');
+            return pairFingerprint;
+          });
+          closed = true;
+          const work = active;
+          let revocation: Promise<void>;
+          try { revocation = lock(); } catch { revocation = Promise.reject(new KeyringRuntimeError('CLEANUP_FAILED')); }
+          void (async () => {
+            await Promise.allSettled([work, revocation]);
+            let failed = false;
+            try { await keyring.lockWallet(); } catch { failed = true; }
+            if (capturePair && !failed) {
+              try {
+                const fingerprint = await storage.getWalletFingerprint();
+                if (typeof fingerprint !== 'string' || !/^[0-9a-f]{64}$/.test(fingerprint)) throw new Error('Invalid retirement');
+                pairFingerprint = fingerprint;
+              } catch { failed = true; }
+            }
+            try { await storage.close(); } catch { failed = true; }
+            if (failed) throw new KeyringRuntimeError('CLEANUP_FAILED');
+          })().then(resolveClose, () => rejectClose(new KeyringRuntimeError('CLEANUP_FAILED')));
+          return closing;
         };
         const run = <T>(operation: (captured: number) => Promise<T>): Promise<T> => {
           if (closed) return Promise.reject(new Error('CANCELLED'));
@@ -654,21 +685,13 @@ export function createKeyringRuntimeFactory(
           },
           storage: {
             readState: () => storage.readState(),
-            close() {
-              if (!closing) {
-                closed = true;
-                const work = active;
-                const revocation = lock();
-                closing = (async () => {
-                  await Promise.allSettled([work, revocation]);
-                  let failed = false;
-                  try { await keyring.lockWallet(); } catch { failed = true; }
-                  try { await storage.close(); } catch { failed = true; }
-                  if (failed) throw new KeyringRuntimeError('CLEANUP_FAILED');
-                })();
-              }
-              return closing;
+            retireForRecovery() {
+              if (recoveryRetirement) return recoveryRetirement;
+              if (closing) return Promise.reject(new KeyringRuntimeError('CLEANUP_FAILED'));
+              closeRuntime(true);
+              return recoveryRetirement!;
             },
+            close: () => closeRuntime(false),
           },
           backup: {
             readPhrase: (password) => run(async (captured) => {

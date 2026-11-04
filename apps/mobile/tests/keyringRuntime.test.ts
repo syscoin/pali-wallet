@@ -97,6 +97,35 @@ function memoryDisk(loadSdk?: KeyringRuntimeDependencies['loadSdk']) {
   };
 }
 
+test('recovery retirement captures the original runtime pair and ordinary close joins the same drain', async () => {
+  const disk = memoryDisk(); disk.denyNetwork();
+  const runtime = await disk.factory.open() as KeyringRuntime;
+  try {
+    await runtime.session.importWallet(PHRASE, PASSWORD);
+    const pair = await runtime.backup!.fingerprint(), before = JSON.stringify([...disk.records]);
+    const retiring = runtime.storage.retireForRecovery!();
+    assert.equal(runtime.storage.retireForRecovery!(), retiring);
+    const closing = runtime.storage.close(); assert.equal(runtime.storage.close(), closing);
+    await assert.rejects(runtime.session.unlock(PASSWORD), /CANCELLED/);
+    assert.equal(await retiring, pair); await closing;
+    assert.equal(disk.closes, 1); assert.equal(JSON.stringify([...disk.records]), before);
+    assert.equal(await runtime.storage.retireForRecovery!(), pair);
+    assert.equal(disk.closes, 1);
+  } finally { await runtime.storage.close().catch(() => undefined); disk.restoreNetwork(); }
+});
+
+test('an ordinarily closed runtime cannot reopen recovery ownership or read a replacement pair', async () => {
+  const disk = memoryDisk(); disk.denyNetwork();
+  const runtime = await disk.factory.open() as KeyringRuntime;
+  try {
+    await runtime.session.importWallet(PHRASE, PASSWORD);
+    const before = JSON.stringify([...disk.records]);
+    await runtime.storage.close();
+    await assert.rejects(runtime.storage.retireForRecovery!(), { code: 'CLEANUP_FAILED' });
+    assert.equal(disk.closes, 1); assert.equal(JSON.stringify([...disk.records]), before);
+  } finally { await runtime.storage.close().catch(() => undefined); disk.restoreNetwork(); }
+});
+
 test('real published software SDK imports, locks and cold-reopens at production KDF', async () => {
   const disk = memoryDisk(); disk.denyNetwork();
   const authority = new NativeCustodyAuthority(disk.factory);

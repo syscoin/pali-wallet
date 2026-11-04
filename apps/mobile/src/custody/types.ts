@@ -76,6 +76,8 @@ export interface CustodyRuntime {
      * must be bound to this wallet; creation/import starts unconfirmed.
      */
     readState(): Promise<CustodyStoredState>;
+    /** Drain and revoke the runtime; capture its pair while the original lease is held, then close. */
+    retireForRecovery?(): Promise<string>;
     /** Wait for pending commits; never delete records as cleanup. */
     close(): Promise<void>;
   };

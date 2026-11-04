@@ -48,12 +48,16 @@ async function fixture(loadRuntimeSdk?: () => Promise<typeof sdk>, confirmed = t
   let leased = false, initialized = false, opens = 0, retires = 0;
   let hook: SqlHook | undefined;
   let afterHook: SqlHook | undefined;
+  const dispatched: string[] = [];
+  let dispatchHook: ((sql: string) => void) | undefined;
   let failurePause: ReturnType<typeof latch> | undefined;
   let runtime!: KeyringRuntime;
   let store!: SqliteWalletStorage;
   const open = async (): Promise<OpenWalletStorage> => {
     assert.equal(leased, false, 'old authority must release its database lease'); leased = true; opens++;
     const owned = nodeConnection(file, { before: (...args) => hook?.(...args), after: (...args) => afterHook?.(...args) });
+    const exec = owned.connection.execAsync.bind(owned.connection);
+    owned.connection.execAsync = (sql) => { dispatched.push(sql); dispatchHook?.(sql); return exec(sql); };
     try { store = await SqliteWalletStorage.open(owned.connection, digest, INSTALLATION, !initialized); initialized = true; }
     catch (error) { await owned.connection.closeAsync(); leased = false; throw error; }
     const local = store;
@@ -74,8 +78,8 @@ async function fixture(loadRuntimeSdk?: () => Promise<typeof sdk>, confirmed = t
   };
   let owner = await newOwner(); await owner.importPhrase(PHRASE, OLD);
   if (confirmed) { await runtime.backup.confirm(await runtime.backup.fingerprint()); await owner.refreshAuthenticatedMetadata(); }
-  const coordinator = (loadSdk?: () => Promise<typeof sdk>) => new NativeRecoveryCoordinator({ owner,
-    retireControllers() { retires++; }, ensureCryptoReady: async () => undefined, openStorage: open, loadSdk });
+  const coordinator = (loadSdk?: () => Promise<typeof sdk>, monotonicMilliseconds?: () => number) => new NativeRecoveryCoordinator({ owner,
+    retireControllers() { retires++; }, ensureCryptoReady: async () => undefined, openStorage: open, loadSdk, monotonicMilliseconds });
   const read = () => {
     const db = new DatabaseSync(file, { readOnly: true });
     try { return { records: db.prepare('SELECT * FROM keyring_records ORDER BY key').all() as { key: string; value: string }[],
@@ -92,7 +96,8 @@ async function fixture(loadRuntimeSdk?: () => Promise<typeof sdk>, confirmed = t
       const db = new DatabaseSync(file);
       try { db.prepare('INSERT OR REPLACE INTO wallet_metadata VALUES (?, ?)').run(key, encodeStorageValue(value)); } finally { db.close(); }
     },
-    get opens() { return opens; }, get retires() { return retires; },
+    get opens() { return opens; }, get retires() { return retires; }, dispatched,
+    setDispatch(value?: (sql: string) => void) { dispatchHook = value; },
     setHook(value?: SqlHook) { hook = value; }, setAfter(value?: SqlHook) { afterHook = value; }, pauseFailure(value: ReturnType<typeof latch>) { failurePause = value; },
     async reopen() { await owner.dispose(); owner = await newOwner(); return owner; },
     async close() { hook = undefined; afterHook = undefined; await owner.dispose().catch(() => undefined); if (leased) await store.close().catch(() => undefined); await rm(directory, { recursive: true, force: true }); } };
@@ -372,4 +377,124 @@ test('a reentrant cancellation from the final commit guard rolls back before COM
     assert.equal(cancelled, true);
     assert.deepEqual(f.read(), before);
   } finally { f.setAfter(); await recovery.dispose(); await f.close(); }
+});
+
+for (const boundary of ['cancellation', 'expiry'] as const) {
+  test(`microtask ${boundary} after the operation guard stops before COMMIT dispatch`, async () => {
+    const f = await fixture(); f.owner.lock(); let time = 0;
+    const recovery = f.coordinator(undefined, () => time);
+    let metadataWrites = 0, queued = false, revoked = false;
+    const guard = () => {
+      if (metadataWrites === 3 && !queued) {
+        queued = true;
+        queueMicrotask(() => { revoked = true; if (boundary === 'cancellation') recovery.cancel(); else time = 600001; });
+      }
+    };
+    try {
+      const before = f.read(), proof = await recovery.prepare(PHRASE, NEXT, guard);
+      f.dispatched.length = 0;
+      f.setAfter((_kind, sql) => { if (sql.startsWith('INSERT INTO wallet_metadata')) metadataWrites++; });
+      await assert.rejects(recovery.commit(proof), { code: 'CANCELLED' });
+      assert.equal(revoked, true);
+      assert.equal(f.dispatched.includes('COMMIT'), false, 'revoked recovery must not dispatch a commit');
+      assert.equal(f.dispatched.includes('ROLLBACK'), true);
+      assert.deepEqual(f.read(), before);
+    } finally { f.setAfter(); await recovery.dispose(); await f.close(); }
+  });
+}
+
+test('cancellation after COMMIT dispatch reconciles the complete new pair without compensation', async () => {
+  const f = await fixture(); f.owner.lock(); const recovery = f.coordinator();
+  let queued = false;
+  try {
+    const before = f.read(), proof = await recovery.prepare(PHRASE, NEXT, () => undefined);
+    f.dispatched.length = 0;
+    f.setDispatch((sql) => { if (sql === 'COMMIT' && !queued) { queued = true; queueMicrotask(() => recovery.cancel()); } });
+    await assert.rejects(recovery.commit(proof), { code: 'CANCELLED' });
+    f.setDispatch();
+    assert.equal(queued, true);
+    assert.equal(f.dispatched.filter((sql) => sql === 'COMMIT').length, 1);
+    assert.deepEqual(retained(f.read()), retained(before));
+    assert.notDeepEqual(f.read().records.filter((row) => ['vault', 'vault-keys'].includes(row.key)),
+      before.records.filter((row) => ['vault', 'vault-keys'].includes(row.key)));
+    await f.reopen(); await f.owner.unlock(NEXT);
+    assert.equal(f.owner.getSnapshot().phase, 'ready');
+  } finally { f.setDispatch(); await recovery.dispose(); await f.close(); }
+});
+
+test('cancellation before the first snapshot cannot let an old helper adopt a newer pair', async () => {
+  const f = await fixture(); f.owner.lock(); const old = f.coordinator();
+  let next: NativeRecoveryCoordinator | undefined, cancelled = false;
+  try {
+    f.setAfter((_kind, sql) => {
+      if (!cancelled && sql.includes('ORDER BY source, key LIMIT 69')) { cancelled = true; old.cancel(); }
+    });
+    await assert.rejects(old.prepare(PHRASE, NEXT, () => undefined), { code: 'CANCELLED' });
+    f.setAfter(); assert.equal(cancelled, true);
+    await f.reopen(); next = f.coordinator();
+    await next.commit(await next.prepare(PHRASE, NEXT, () => undefined));
+    const newer = f.read();
+    await assert.rejects(old.prepare(PHRASE, `${NEXT} stale`, () => undefined), { code: 'STATE_CHANGED' });
+    assert.deepEqual(f.read(), newer);
+  } finally { f.setAfter(); await old.dispose(); await next?.dispose(); await f.close(); }
+});
+
+test('the first in-flight recovery retains its original pair across retirement and a newer recovery', async () => {
+  const f = await fixture(); f.owner.lock(); const pause = latch();
+  const old = new NativeRecoveryCoordinator({ owner: f.owner, retireControllers() {}, openStorage: f.open,
+    ensureCryptoReady: async () => { pause.enter(); await pause.gate; } });
+  let next: NativeRecoveryCoordinator | undefined;
+  try {
+    const pending = old.prepare(PHRASE, `${NEXT} stale`, () => undefined);
+    await pause.reached;
+    await f.reopen(); next = f.coordinator();
+    await next.commit(await next.prepare(PHRASE, NEXT, () => undefined));
+    const newer = f.read(); pause.release();
+    await assert.rejects(pending, { code: 'STATE_CHANGED' });
+    assert.deepEqual(f.read(), newer);
+    await f.reopen(); await f.owner.unlock(NEXT);
+    assert.equal(f.owner.getSnapshot().phase, 'ready');
+  } finally { pause.release(); await old.dispose(); await next?.dispose(); await f.close(); }
+});
+
+test('original-pair capture drains runtime work outside authority pending before releasing its lease', async () => {
+  const pause = latch(); let hold = false;
+  class DelayedPhrase extends sdk.SoftwareKeyring {
+    constructor(...args: ConstructorParameters<typeof sdk.SoftwareKeyring>) {
+      super(...args); const read = this.getSeed.bind(this);
+      this.getSeed = async (password) => { const phrase = await read(password); if (hold) { pause.enter(); await pause.gate; } return phrase; };
+    }
+  }
+  const f = await fixture(async () => ({ ...sdk, SoftwareKeyring: DelayedPhrase }));
+  const original = await f.store.getWalletFingerprint(); hold = true;
+  const reading = f.runtime.backup!.readPhrase(OLD).catch((error: unknown) => error);
+  await pause.reached;
+  const owned = f.store, readPair = owned.getWalletFingerprint.bind(owned); let captures = 0;
+  owned.getWalletFingerprint = async () => { captures++; assert.equal(hold, false); assert.equal(f.opens, 1); const pair = await readPair(); assert.equal(pair, original); return pair; };
+  f.owner.lock(); const recovery = f.coordinator();
+  try {
+    const pending = recovery.prepare(PHRASE, NEXT, () => undefined);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(captures, 0); assert.equal(f.opens, 1);
+    await assert.rejects(f.open(), /old authority must release its database lease/);
+    hold = false; pause.release();
+    assert.ok(await reading instanceof Error, 'the retired reader cannot disclose its phrase');
+    const proof = await pending; assert.equal(captures, 1); assert.equal(f.opens, 2);
+    await recovery.commit(proof); await f.reopen(); await f.owner.unlock(NEXT);
+    assert.equal(f.owner.getSnapshot().phase, 'ready');
+  } finally { hold = false; pause.release(); await recovery.dispose(); await f.close(); }
+});
+
+test('failure to capture the original pair still closes its lease and returns no recovery proof', async () => {
+  const f = await fixture(); f.owner.lock(); const recovery = f.coordinator();
+  const before = f.read();
+  f.store.getWalletFingerprint = async () => { throw Error('private capture diagnostic'); };
+  try {
+    await assert.rejects(recovery.prepare(PHRASE, NEXT, () => undefined), { code: 'UNAVAILABLE', message: 'UNAVAILABLE' });
+    assert.deepEqual(f.read(), before);
+    // A failed retirement remains failed; a fresh owner must qualify a new lease.
+    const replacement = new NativeCustodyAuthority(createKeyringRuntimeFactory({ ensureCryptoReady: async () => undefined, openStorage: f.open }));
+    try { await replacement.initialize(); await replacement.unlock(OLD); assert.equal(replacement.getSnapshot().phase, 'ready'); }
+    finally { await replacement.dispose(); }
+  } finally { await recovery.dispose(); await f.close(); }
 });

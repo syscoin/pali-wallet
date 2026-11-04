@@ -246,11 +246,14 @@ export class SqliteWalletStorage implements OpenWalletStorage {
     return pending;
   }
 
-  private async transaction<T>(operation: () => Promise<T>): Promise<T> {
+  private async transaction<T>(operation: () => Promise<T>, beforeCommit?: () => void): Promise<T> {
     let commitStarted = false;
     try {
       await this.db.execAsync('BEGIN IMMEDIATE');
       const result = await operation();
+      // The awaited operation permits queued cancellation/expiry to run. Check
+      // again in the same turn that dispatches COMMIT, before it can be durable.
+      beforeCommit?.();
       commitStarted = true;
       await this.db.execAsync('COMMIT');
       return result;
@@ -542,7 +545,7 @@ export class SqliteWalletStorage implements OpenWalletStorage {
         await this.db.runAsync('INSERT INTO wallet_metadata (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value', [row.key, row.value]); check();
       }
       check();
-    })).then(() => { this.authenticationWindow = null; });
+    }, check)).then(() => { this.authenticationWindow = null; });
   }
 
   getWalletFingerprint(): Promise<string> {

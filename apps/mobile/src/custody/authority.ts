@@ -35,6 +35,7 @@ export class NativeCustodyAuthority {
   private initialization: Promise<void> | null = null;
   private pending: Promise<void> | null = null;
   private disposal: Promise<void> | null = null;
+  private recoveryRetirement: Promise<string> | null = null;
   private closing: Promise<void> | null = null;
   private locks: Promise<void> = Promise.resolve();
   private lockFailed = false;
@@ -450,7 +451,18 @@ export class NativeCustodyAuthority {
     return this.closing;
   }
 
-  dispose(): Promise<void> {
+  /** Only this owner's original runtime may supply recovery's freshness identity. */
+  retireForRecovery(): Promise<string> {
+    if (this.recoveryRetirement) return this.recoveryRetirement;
+    if (this.disposal || this.snapshot.phase !== 'locked' || !this.runtime)
+      return Promise.reject(new CustodyOperationError('NOT_READY'));
+    this.startDisposal(true);
+    return this.recoveryRetirement!;
+  }
+
+  dispose(): Promise<void> { return this.startDisposal(false); }
+
+  private startDisposal(capturePair: boolean): Promise<void> {
     if (this.disposal) return this.disposal;
     // Install the promise before notifying observers to make reentrant disposal
     // idempotent, including disposal initiated during an authentication event.
@@ -459,6 +471,11 @@ export class NativeCustodyAuthority {
     this.disposal = new Promise<void>((resolve, reject) => {
       resolveDisposal = resolve;
       rejectDisposal = reject;
+    });
+    let pairFingerprint: string | undefined;
+    if (capturePair) this.recoveryRetirement = this.disposal.then(() => {
+      if (!pairFingerprint) throw new CustodyOperationError('CLEANUP_FAILED');
+      return pairFingerprint;
     });
     this.revision++;
     this.publish({ phase: 'disposed', account: null, error: null });
@@ -471,6 +488,13 @@ export class NativeCustodyAuthority {
       this.requestLock();
       let failed = false;
       try { await this.drainLocks(); } catch { failed = true; }
+      if (capturePair && !failed) {
+        try {
+          const fingerprint = await this.runtime?.storage.retireForRecovery?.();
+          if (typeof fingerprint !== 'string' || !/^[0-9a-f]{64}$/.test(fingerprint)) throw new Error('Invalid retirement');
+          pairFingerprint = fingerprint;
+        } catch { failed = true; }
+      }
       try { await this.close(); } catch { failed = true; }
       if (failed) throw new CustodyOperationError('CLEANUP_FAILED');
     })().then(resolveDisposal, () => rejectDisposal(new CustodyOperationError('CLEANUP_FAILED')));
