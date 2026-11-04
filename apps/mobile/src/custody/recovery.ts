@@ -180,6 +180,16 @@ export class NativeRecoveryCoordinator {
           else if (imported.has(journal.id) ? imported.get(journal.id) !== journal.address : journal.pending > 0) return fail('INVALID_SAVED_DATA');
           check();
         }
+        if (before.notes.length) {
+          // Shared canonical reader authenticates every root/shard and validates all
+          // retained notes and inert journals. No status reads, writes or jobs exist here.
+          const { readPrivateVaultBundle } = await import('../../../../source/wallet/privateVaultInspection.ts'); check();
+          for (const row of before.notes) {
+            if (row.walletBindingId !== before.identity.walletBindingId || row.profileId !== profileId) return fail('INVALID_SAVED_DATA');
+            try { await readPrivateVaultBundle(JSON.parse(row.value), { keyring, generation, assertCurrent: check }); check(); }
+            catch { check(); return fail('INVALID_SAVED_DATA'); }
+          }
+        }
         const pair = { vault: values.get('vault'), keys: values.get('vault-keys') };
         const plan = await port.prepareReplacement(before, pair, root); check();
         const after = port.plannedSnapshot(plan);

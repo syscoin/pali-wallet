@@ -19,6 +19,7 @@ import { getNativeNetwork } from '../src/custody/networkContext.ts';
 import { ACTIVITY_STORAGE_KEY } from '../src/activity/historyStore.ts';
 import { createActivityScope } from '../src/activity/types.ts';
 import { NATIVE_TOKEN_REGISTRY_KEY } from '../src/portfolio/tokenRegistry.ts';
+import { readPrivateVaultBundle, envelopeHash } from '../../../source/wallet/privateVaultInspection.ts';
 import { digest, INSTALLATION, nodeConnection, validPair, type SqlHook } from './storageHelpers.ts';
 
 const PHRASE = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
@@ -86,14 +87,15 @@ async function fixture(loadRuntimeSdk?: () => Promise<typeof sdk>, confirmed = t
   const read = () => {
     const db = new DatabaseSync(file, { readOnly: true });
     try { return { records: db.prepare('SELECT * FROM keyring_records ORDER BY key').all() as { key: string; value: string }[],
-      metadata: db.prepare('SELECT * FROM wallet_metadata ORDER BY key').all() as { key: string; value: string }[] }; }
+      metadata: db.prepare('SELECT * FROM wallet_metadata ORDER BY key').all() as { key: string; value: string }[],
+      notes: db.prepare('SELECT * FROM private_note_records ORDER BY profile_id').all() }; }
     finally { db.close(); }
   };
   const write = (key: string, value: unknown) => {
     const db = new DatabaseSync(file);
     try { db.prepare('INSERT OR REPLACE INTO keyring_records VALUES (?, ?)').run(key, encodeStorageValue(value)); } finally { db.close(); }
   };
-  return { get owner() { return owner; }, get runtime() { return runtime; }, get store() { return store; }, open, read, write, coordinator,
+  return { notes(profile: string, value: unknown, binding: string) { const db = new DatabaseSync(file); try { db.prepare('INSERT OR REPLACE INTO private_note_records VALUES (?, ?, ?)').run(profile, binding, JSON.stringify(value)); } finally { db.close(); } }, get owner() { return owner; }, get runtime() { return runtime; }, get store() { return store; }, open, read, write, coordinator,
     remove(key: string) { const db = new DatabaseSync(file); try { db.prepare('DELETE FROM keyring_records WHERE key = ?').run(key); } finally { db.close(); } },
     meta(key: string, value: unknown) {
       const db = new DatabaseSync(file);
@@ -523,7 +525,7 @@ test('cancellation before the first snapshot cannot let an old helper adopt a ne
   let next: NativeRecoveryCoordinator | undefined, cancelled = false;
   try {
     f.setAfter((_kind, sql) => {
-      if (!cancelled && sql.includes('ORDER BY source, key LIMIT 69')) { cancelled = true; old.cancel(); }
+      if (!cancelled && sql.includes('ORDER BY source, key LIMIT 70')) { cancelled = true; old.cancel(); }
     });
     await assert.rejects(old.prepare(PHRASE, NEXT, () => undefined), { code: 'CANCELLED' });
     f.setAfter(); assert.equal(cancelled, true);
@@ -623,4 +625,98 @@ test('recovery view model drives the real SDK and SQLite coordinator then requir
     await assert.rejects(f.owner.unlock(OLD)); await f.owner.unlock(NEXT);
     assert.equal(f.owner.getSnapshot().phase, 'ready');
   } finally { flow.cancel(); await coordinator?.dispose(); await f.close(); }
+});
+
+/** Synthetic bearer notes only; real released SDK encryption, no private SDK fields. */
+async function noteBundle(count = 17) {
+  const values = new Map<string, unknown>();
+  const keyring = new sdk.SoftwareKeyring(sdk.createSoftwareKeyringHost({
+    async get(key) { return values.get(key); }, async set(key, value) { values.set(key, value); }, async deleteItem(key) { values.delete(key); },
+    async createManyIfAbsent(items) { if (Object.keys(items).some((key) => values.has(key))) return false; Object.entries(items).forEach(([k, v]) => values.set(k, v)); return true; },
+  }));
+  await keyring.initializeSession(PHRASE, OLD);
+  const profile = await keyring.getPrivateRecordProfileId(); let seq = 0;
+  const id = () => `00000000-0000-4000-8000-${(++seq).toString().padStart(12, '0')}`;
+  const notes = Array.from({ length: count }, (_, i) => ({ id: id(), createdAt: 1, note: `tornado-eth-1-1-0x${(i + 1).toString(16).padStart(124, '0')}` }));
+  const shards = [];
+  for (let i = 0; i < notes.length; i += 16) shards.push(await keyring.encryptPrivateRecord({ domain: 'org.syscoin.pali.privacy.notes.shard.v2', recordId: id(), plaintext: new TextEncoder().encode(JSON.stringify({ version: 1, notes: notes.slice(i, i + 16) })) }));
+  if (!shards.length) shards.push(await keyring.encryptPrivateRecord({ domain: 'org.syscoin.pali.privacy.notes.shard.v2', recordId: id(), plaintext: new TextEncoder().encode(JSON.stringify({ version: 1, notes: [] })) }));
+  const root = await keyring.encryptPrivateRecord({ domain: 'org.syscoin.pali.privacy.notes.v1', recordId: id(), plaintext: new TextEncoder().encode(JSON.stringify({
+    format: 'pali-private-note-vault', version: 1, noteCount: count, capacity: count > 128 ? 512 : 128, restore: { version: 1 },
+    shards: shards.map((shard, i) => ({ recordId: shard.recordId, hash: envelopeHash(shard), count: Math.min(16, count - i * 16) })),
+  })) });
+  return { keyring, profile, bundle: { format: 'pali-private-note-vault', version: 1, root, shards } };
+}
+
+test('realSDK multi-shard note domain survives password recovery byte-for-byte alongside existing records', async () => {
+  const f = await fixture(), data = await noteBundle(); let recovery: NativeRecoveryCoordinator | undefined;
+  try {
+    f.notes(data.profile, data.bundle, await f.store.getWalletFingerprint());
+    const original = f.read(); const inventory = await readRecoveryInventory(f.store);
+    assert.equal(inventory.privateNotes, 'requires-matching-phrase-verification');
+    assert.equal(JSON.stringify(inventory).includes(data.profile), false);
+    f.owner.lock(); recovery = f.coordinator(); const proof = await recovery.prepare(PHRASE, NEXT, () => undefined);
+    assert.equal(await recovery.commit(proof), 'committed-locked');
+    assert.deepEqual(f.read().notes, original.notes); assert.deepEqual(retained(f.read()), retained(original));
+    await f.reopen(); await f.owner.unlock(NEXT);
+    const result = await readPrivateVaultBundle(data.bundle, { keyring: data.keyring, generation: 1, assertCurrent() {} });
+    assert.equal(result.manifest.notes.length, 17);
+  } finally { await data.keyring.lockWallet(); await recovery?.dispose(); await f.close(); }
+});
+
+test('matching phrase plus damaged retained note AEAD refuses recovery without any rewrite', async () => {
+  const f = await fixture(), data = await noteBundle(1); let recovery: NativeRecoveryCoordinator | undefined;
+  try {
+    data.bundle.shards[0]!.ciphertext = (data.bundle.shards[0]!.ciphertext[0] === 'A' ? 'B' : 'A') + data.bundle.shards[0]!.ciphertext.slice(1);
+    // Authenticate a root which references the damaged shard, so this reaches
+    // the SDK AEAD rejection rather than only the outer shard-hash check.
+    const rootBytes = await data.keyring.decryptPrivateRecord({ domain: data.bundle.root.domain, recordId: data.bundle.root.recordId, envelope: data.bundle.root });
+    const root = JSON.parse(new TextDecoder().decode(rootBytes)); rootBytes.fill(0);
+    root.shards[0].hash = envelopeHash(data.bundle.shards[0]!);
+    data.bundle.root = await data.keyring.encryptPrivateRecord({ domain: data.bundle.root.domain, recordId: data.bundle.root.recordId, plaintext: new TextEncoder().encode(JSON.stringify(root)) });
+    f.notes(data.profile, data.bundle, await f.store.getWalletFingerprint()); f.owner.lock(); recovery = f.coordinator(); const before = f.read();
+    await assert.rejects(recovery.prepare(PHRASE, NEXT, () => undefined), { code: 'INVALID_SAVED_DATA' }); assert.deepEqual(f.read(), before);
+  } finally { await data.keyring.lockWallet(); await recovery?.dispose(); await f.close(); }
+});
+
+test('a changed note row after proof invalidates the whole replacement CAS', async () => {
+  const f = await fixture(), data = await noteBundle(1); let recovery: NativeRecoveryCoordinator | undefined;
+  try {
+    const binding = await f.store.getWalletFingerprint(); f.notes(data.profile, data.bundle, binding); f.owner.lock(); recovery = f.coordinator();
+    const proof = await recovery.prepare(PHRASE, NEXT, () => undefined);
+    data.bundle.root.ciphertext = (data.bundle.root.ciphertext[0] === 'A' ? 'B' : 'A') + data.bundle.root.ciphertext.slice(1); f.notes(data.profile, data.bundle, binding); const changed = f.read();
+    await assert.rejects(recovery.commit(proof), { code: 'STATE_CHANGED' }); assert.deepEqual(f.read(), changed);
+  } finally { await data.keyring.lockWallet(); await recovery?.dispose(); await f.close(); }
+});
+
+test('shared actualSDK inspector accepts the512-note boundary and returns no authority for a513th note', async () => {
+  const data = await noteBundle(512);
+  try {
+    const session = { keyring: data.keyring, generation: 1, assertCurrent() {} };
+    const result = await readPrivateVaultBundle(data.bundle, session); assert.equal(result.manifest.notes.length, 512); assert.equal(result.capacity, 512);
+    const forged = { ...data.bundle, shards: [...data.bundle.shards, data.bundle.shards[0]!] };
+    await assert.rejects(readPrivateVaultBundle(forged, session));
+  } finally { await data.keyring.lockWallet(); }
+});
+
+test('cancellation during actualSDK note decrypt discards successful stale work and preserves bytes', async () => {
+  const f = await fixture(), data = await noteBundle(1), pause = latch(); let recovery: NativeRecoveryCoordinator | undefined;
+  class Delayed extends sdk.SoftwareKeyring {
+    override async decryptPrivateRecord(params: Parameters<typeof data.keyring.decryptPrivateRecord>[0]) { pause.enter(); await pause.gate; return super.decryptPrivateRecord(params); }
+  }
+  try {
+    f.notes(data.profile, data.bundle, await f.store.getWalletFingerprint()); f.owner.lock(); recovery = f.coordinator(async () => ({ ...sdk, SoftwareKeyring: Delayed }));
+    const before = f.read(), pending = recovery.prepare(PHRASE, NEXT, () => undefined); await pause.reached; recovery.cancel(); pause.release();
+    await assert.rejects(pending, { code: 'CANCELLED' }); assert.deepEqual(f.read(), before);
+  } finally { pause.release(); await data.keyring.lockWallet(); await recovery?.dispose(); await f.close(); }
+});
+
+test('wrong valid phrase with retained notes counts one failure and leaves every note byte intact', async () => {
+  const f = await fixture(), data = await noteBundle(1); let recovery: NativeRecoveryCoordinator | undefined;
+  try {
+    f.notes(data.profile, data.bundle, await f.store.getWalletFingerprint()); f.owner.lock(); recovery = f.coordinator(); const before = f.read();
+    await assert.rejects(recovery.prepare(WRONG, NEXT, () => undefined), { code: 'WRONG_PHRASE' });
+    assert.deepEqual(f.read().notes, before.notes); assert.deepEqual(f.read().records, before.records);
+    assert.equal(JSON.parse(f.read().metadata.find((row) => row.key === 'auth')!.value).failures, 1);
+  } finally { await data.keyring.lockWallet(); await recovery?.dispose(); await f.close(); }
 });

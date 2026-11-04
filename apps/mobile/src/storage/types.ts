@@ -58,12 +58,15 @@ export type WalletIdentityRead = Readonly<{
   root: Readonly<{ address: string; publicKey: string; profileId: string }> | null;
   verification: 'requires-unlock';
 }>;
+/** Read-only encrypted note row. No production creation/replacement port exists yet. */
+export type NoteDomainRow = Readonly<{ profileId: string; walletBindingId: string; value: string }>;
 /** Private, byte-preserving host snapshot; never a screen or public account DTO. */
 export type RecoveryStorageSnapshot = Readonly<{
   identity: WalletIdentityRead | null;
   state: WalletStoredState;
   records: readonly Readonly<{ key: string; value: string }>[];
   metadata: readonly Readonly<{ key: string; value: string }>[];
+  notes: readonly NoteDomainRow[];
 }>;
 /** Opaque, storage-owned one-use replacement; never a UI value. */
 declare const recoveryWriteBrand: unique symbol;
@@ -72,6 +75,8 @@ export type RecoveryRoot = NonNullable<WalletIdentityRead['root']>;
 
 export interface OpenWalletStorage {
   readonly keyringStorage: KeyringStoragePort;
+  /** Read-only domain, sharing this owner’s SQL queue and lease. */
+  readonly notes?: Readonly<{ read(): Promise<readonly NoteDomainRow[]> }>;
   readonly authGuard: Readonly<{
     checkAllowed(): Promise<void>;
     recordFailure(): Promise<void>;

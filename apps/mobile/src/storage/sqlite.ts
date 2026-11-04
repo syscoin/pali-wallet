@@ -1,3 +1,4 @@
+import { inspectNoteDomain, NOTE_DOMAIN_MAX_BYTES } from './noteDomain.ts';
 import {
   decodeStorageValue,
   encodeStorageValue,
@@ -17,14 +18,18 @@ import type {
   RecoveryStorageSnapshot,
   RecoveryWritePlan,
   RecoveryRoot,
+  NoteDomainRow,
 } from './types.ts';
 
 const TABLE = `CREATE TABLE keyring_records (key TEXT PRIMARY KEY NOT NULL CHECK(typeof(key) = 'text' AND length(CAST(key AS BLOB)) BETWEEN 1 AND 256), value TEXT NOT NULL CHECK(typeof(value) = 'text' AND length(CAST(value AS BLOB)) <= 65536))`;
 const META = `CREATE TABLE wallet_metadata (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL CHECK(typeof(value) = 'text' AND length(CAST(value AS BLOB)) <= 1024))`;
+const NOTES = `CREATE TABLE private_note_records (profile_id TEXT PRIMARY KEY NOT NULL CHECK(typeof(profile_id) = 'text' AND length(profile_id) = 66), wallet_binding TEXT NOT NULL CHECK(typeof(wallet_binding) = 'text' AND length(wallet_binding) = 64), value TEXT NOT NULL CHECK(typeof(value) = 'text' AND length(CAST(value AS BLOB)) <= 16777216))`;
 const boundedColumns = `CASE WHEN typeof(value) = 'text' AND length(CAST(value AS BLOB)) <= ? THEN value ELSE NULL END AS value, typeof(value) AS storage_type, length(CAST(value AS BLOB)) AS storage_bytes`;
 const GET = `SELECT ${boundedColumns} FROM keyring_records WHERE key = ?`;
 const PAIR = `SELECT 'record' AS source, key, ${boundedColumns} FROM keyring_records WHERE key IN ('vault', 'vault-keys') UNION ALL SELECT 'meta' AS source, key, ${boundedColumns} FROM wallet_metadata WHERE key IN ('backup', 'auth', 'identity')`;
-const SNAPSHOT = `SELECT 'record' AS source, CASE WHEN typeof(key) = 'text' AND length(CAST(key AS BLOB)) BETWEEN 1 AND 256 THEN key ELSE NULL END AS key, ${boundedColumns} FROM keyring_records UNION ALL SELECT 'meta' AS source, CASE WHEN typeof(key) = 'text' AND length(CAST(key AS BLOB)) BETWEEN 1 AND 256 THEN key ELSE NULL END AS key, ${boundedColumns} FROM wallet_metadata ORDER BY source, key LIMIT 69`;
+const SNAPSHOT = `SELECT 'record' AS source, CASE WHEN typeof(key) = 'text' AND length(CAST(key AS BLOB)) BETWEEN 1 AND 256 THEN key ELSE NULL END AS key, ${boundedColumns}, NULL AS wallet_binding FROM keyring_records UNION ALL SELECT 'meta' AS source, CASE WHEN typeof(key) = 'text' AND length(CAST(key AS BLOB)) BETWEEN 1 AND 256 THEN key ELSE NULL END AS key, ${boundedColumns}, NULL AS wallet_binding FROM wallet_metadata UNION ALL SELECT 'note' AS source, CASE WHEN typeof(profile_id) = 'text' AND length(profile_id) = 66 THEN profile_id ELSE NULL END AS key, ${boundedColumns}, CASE WHEN typeof(wallet_binding) = 'text' AND length(wallet_binding) = 64 THEN wallet_binding ELSE NULL END AS wallet_binding FROM private_note_records ORDER BY source, key LIMIT 70`;
+
+const NOTE_ROWS = `SELECT 'note' AS source, CASE WHEN typeof(profile_id) = 'text' AND length(profile_id) = 66 THEN profile_id ELSE NULL END AS key, ${boundedColumns}, CASE WHEN typeof(wallet_binding) = 'text' AND length(wallet_binding) = 64 THEN wallet_binding ELSE NULL END AS wallet_binding FROM private_note_records ORDER BY profile_id LIMIT 2`;
 const failure = () => new WalletStorageError('STORAGE_CORRUPT');
 const safeError = (error: unknown) =>
   error instanceof WalletStorageError
@@ -35,7 +40,7 @@ type StoredRow = {
   storage_type: unknown;
   storage_bytes: unknown;
 };
-type PairRow = StoredRow & { source: string; key: string };
+type PairRow = StoredRow & { source: string; key: string; wallet_binding?: unknown };
 type Pair = { vault?: string; keys?: string; backup?: string; auth?: string; identity?: string };
 type AuthRecord = {
   version: 1;
@@ -115,6 +120,7 @@ function validatePair(pair: Pair): 'empty' | 'existing' {
 export class SqliteWalletStorage implements OpenWalletStorage {
   readonly keyringStorage: KeyringStoragePort;
   readonly authGuard: OpenWalletStorage['authGuard'];
+  readonly notes: NonNullable<OpenWalletStorage['notes']>;
   readonly recovery: NonNullable<OpenWalletStorage['recovery']>;
   private tail: Promise<void> = Promise.resolve();
   private closing: Promise<void> | null = null;
@@ -151,6 +157,7 @@ export class SqliteWalletStorage implements OpenWalletStorage {
       compareAndSet: (key: string, expected: unknown, value: unknown, removeIfEqual?: Readonly<Record<string, unknown>>) =>
         this.compareAndSet(key, expected, value, removeIfEqual),
     });
+    this.notes = Object.freeze({ read: () => this.queued(() => this.readNotes()) });
     this.authGuard = Object.freeze({
       checkAllowed: () => this.checkAllowed(),
       recordFailure: () => this.recordAuthentication(false),
@@ -176,30 +183,27 @@ export class SqliteWalletStorage implements OpenWalletStorage {
     const storage = new SqliteWalletStorage(db, digest, now, monotonicMilliseconds, installationId);
     try {
       const tables = await db.getAllAsync<{ name: string; sql: string }>(
-        "SELECT CASE WHEN length(name) <= 64 THEN name ELSE NULL END AS name, CASE WHEN length(CAST(sql AS BLOB)) <= 1024 THEN sql ELSE NULL END AS sql FROM sqlite_master WHERE type IN ('table', 'view', 'trigger', 'index') AND name NOT LIKE 'sqlite_%' ORDER BY name LIMIT 3"
+        "SELECT CASE WHEN length(name) <= 64 THEN name ELSE NULL END AS name, CASE WHEN length(CAST(sql AS BLOB)) <= 1024 THEN sql ELSE NULL END AS sql FROM sqlite_master WHERE type IN ('table', 'view', 'trigger', 'index') AND name NOT LIKE 'sqlite_%' ORDER BY name LIMIT 4"
       );
       const version = await db.getFirstAsync<{ user_version: number }>(
         'PRAGMA user_version'
       );
+      let migrate = false;
       if (initialize && tables.length === 0 && version?.user_version === 0) {
         await storage.transaction(async () => {
           await db.execAsync(TABLE);
           await db.execAsync(META);
+          await db.execAsync(NOTES);
           await db.runAsync(
             'INSERT INTO wallet_metadata (key, value) VALUES (?, ?)',
             ['installation', installationId]
           );
-          await db.execAsync('PRAGMA user_version = 1');
+          await db.execAsync('PRAGMA user_version = 2');
         });
-      } else if (
-        tables.length !== 2 ||
-        version?.user_version !== 1 ||
-        tables[0]?.name !== 'keyring_records' ||
-        tables[0].sql !== TABLE ||
-        tables[1]?.name !== 'wallet_metadata' ||
-        tables[1].sql !== META
-      )
-        throw failure();
+      } else if (version?.user_version === 1 && tables.length === 2 && tables[0]?.name === 'keyring_records' && tables[0].sql === TABLE && tables[1]?.name === 'wallet_metadata' && tables[1].sql === META) {
+        migrate = true;
+      } else if (version?.user_version !== 2 || tables.length !== 3 || tables[0]?.name !== 'keyring_records' || tables[0].sql !== TABLE ||
+        tables[1]?.name !== 'private_note_records' || tables[1].sql !== NOTES || tables[2]?.name !== 'wallet_metadata' || tables[2].sql !== META) throw failure();
       const installation = await db.getFirstAsync<{ value: unknown }>(
         "SELECT CASE WHEN typeof(value) = 'text' AND length(CAST(value AS BLOB)) = 32 THEN value ELSE NULL END AS value FROM wallet_metadata WHERE key = 'installation'"
       );
@@ -221,6 +225,12 @@ export class SqliteWalletStorage implements OpenWalletStorage {
       );
       if (health?.quick_check !== 'ok') throw failure();
       await storage.readState();
+      if (migrate) await storage.transaction(async () => {
+        await db.execAsync(NOTES);
+        await db.execAsync('PRAGMA user_version = 2');
+      });
+      // Reject malformed or orphaned note rows before handing an owner to a runtime.
+      await storage.notes.read();
       return storage;
     } catch (error) {
       throw safeError(error);
@@ -469,19 +479,40 @@ export class SqliteWalletStorage implements OpenWalletStorage {
     });
   }
 
+  private async readNotes(): Promise<readonly NoteDomainRow[]> {
+    const rows = await this.db.getAllAsync<PairRow>(NOTE_ROWS, [NOTE_DOMAIN_MAX_BYTES]);
+    if (rows.length > 1) throw failure();
+    const notes = rows.map((row) => {
+      if (typeof row.key !== 'string' || typeof row.wallet_binding !== 'string') throw failure();
+      return Object.freeze({ profileId: row.key, walletBindingId: row.wallet_binding, value: admittedRow(row, NOTE_DOMAIN_MAX_BYTES) });
+    });
+    if (notes.length) {
+      const pair = await this.pair();
+      if (validatePair(pair) !== 'existing') throw failure();
+      const identity = readWalletIdentity(await this.fingerprint(pair), pair.identity);
+      inspectNoteDomain(notes, identity.walletBindingId, identity.root?.profileId);
+    }
+    return Object.freeze(notes);
+  }
+
   /** One bounded SELECT gives a coherent SQLite snapshot without a write transaction. */
   private async captureSnapshot(): Promise<RecoveryStorageSnapshot> {
-      const rows = await this.db.getAllAsync<PairRow>(SNAPSHOT, [STORAGE_LIMITS.valueBytes, 1024]);
-      if (rows.length > STORAGE_LIMITS.records + 4) throw failure();
+      const rows = await this.db.getAllAsync<PairRow>(SNAPSHOT, [STORAGE_LIMITS.valueBytes, 1024, NOTE_DOMAIN_MAX_BYTES]);
+      if (rows.length > STORAGE_LIMITS.records + 5) throw failure();
       const records: { key: string; value: string }[] = [], metadata: { key: string; value: string }[] = [];
       const seen = new Set<string>(), pair: Pair = {};
+      const notes: NoteDomainRow[] = [];
       for (const row of rows) {
-        if (!['record', 'meta'].includes(row.source)) throw failure();
+        if (!['record', 'meta', 'note'].includes(row.source)) throw failure();
         validateStorageKey(row.key);
         const id = `${row.source}:${row.key}`;
         if (seen.has(id)) throw failure();
         seen.add(id);
-        const value = admittedRow(row, row.source === 'meta' ? 1024 : STORAGE_LIMITS.valueBytes);
+        const value = admittedRow(row, row.source === 'meta' ? 1024 : row.source === 'note' ? NOTE_DOMAIN_MAX_BYTES : STORAGE_LIMITS.valueBytes);
+        if (row.source === 'note') {
+          if (typeof row.wallet_binding !== 'string') throw failure();
+          notes.push(Object.freeze({ profileId: row.key, walletBindingId: row.wallet_binding, value })); continue;
+        }
         if (row.source === 'meta' && !['installation', 'backup', 'auth', 'identity'].includes(row.key)) throw failure();
         (row.source === 'record' ? records : metadata).push(Object.freeze({ key: row.key, value }));
         if (row.source === 'record' && row.key === 'vault') pair.vault = value;
@@ -494,7 +525,9 @@ export class SqliteWalletStorage implements OpenWalletStorage {
           !metadata.some((row) => row.key === 'installation' && row.value === this.installationId)) throw failure();
       const state = await this.storedState(pair);
       const identity = state.presence === 'empty' ? null : readWalletIdentity(await this.fingerprint(pair), pair.identity);
-      return Object.freeze({ identity, state, records: Object.freeze(records), metadata: Object.freeze(metadata) });
+      if (notes.length && !identity) throw failure();
+      if (identity) inspectNoteDomain(notes, identity.walletBindingId, identity.root?.profileId);
+      return Object.freeze({ identity, state, records: Object.freeze(records), metadata: Object.freeze(metadata), notes: Object.freeze(notes) });
   }
 
   private readSnapshot(): Promise<RecoveryStorageSnapshot> {
@@ -514,7 +547,7 @@ export class SqliteWalletStorage implements OpenWalletStorage {
       const metadata = new Map(before.metadata.map((row) => [row.key, row.value]));
       metadata.set('identity', identity); metadata.set('auth', auth);
       if (before.state.backup === 'confirmed') metadata.set('backup', encodeStorageValue({ version: 1, fingerprint }));
-      const after: RecoveryStorageSnapshot = Object.freeze({ identity: checkedIdentity, state: before.state,
+      const after: RecoveryStorageSnapshot = Object.freeze({ identity: checkedIdentity, state: before.state, notes: before.notes,
         records: Object.freeze(before.records.map((row) => Object.freeze({ key: row.key, value: row.key === 'vault' ? pair.vault! : row.key === 'vault-keys' ? pair.keys! : row.value }))),
         metadata: Object.freeze([...metadata].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([key, value]) => Object.freeze({ key, value }))) });
       const plan = Object.freeze({}) as RecoveryWritePlan;

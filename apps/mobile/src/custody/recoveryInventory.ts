@@ -1,3 +1,4 @@
+import { inspectNoteDomain } from '../storage/noteDomain.ts';
 import { decodeStorageValue, STORAGE_LIMITS } from '../storage/json.ts';
 import type { OpenWalletStorage, RecoveryStorageSnapshot } from '../storage/types.ts';
 import { ACTIVITY_STORAGE_KEY, inspectRecoveryHistory } from '../activity/historyStore.ts';
@@ -17,11 +18,11 @@ export type RecoveryInventory = Readonly<{
   reason: 'missing-catalogue' | 'unsupported-record' | 'invalid-record' | 'storage-unavailable' | null;
   backup: 'confirmed' | 'unconfirmed' | 'unknown';
   counts: RecoveryInventoryCounts | null;
-  privateNotes: 'not-supported';
+  privateNotes: 'not-supported' | 'requires-matching-phrase-verification';
 }>;
 const result = (status: RecoveryInventory['status'], reason: RecoveryInventory['reason'],
-  backup: RecoveryInventory['backup'], counts: RecoveryInventoryCounts | null): RecoveryInventory =>
-  Object.freeze({ status, reason, backup, counts: counts && Object.freeze(counts), privateNotes: 'not-supported' });
+  backup: RecoveryInventory['backup'], counts: RecoveryInventoryCounts | null, hasNotes = false): RecoveryInventory =>
+  Object.freeze({ status, reason, backup, counts: counts && Object.freeze(counts), privateNotes: hasNotes ? 'requires-matching-phrase-verification' : 'not-supported' });
 const zero = (): RecoveryInventoryCounts => ({ hdAccounts: 0, importedKeys: 0, retiredHdAccounts: 0, retiredImportedAccounts: 0,
   journalRecords: 0, pendingTransactions: 0, terminalTransactions: 0, tokenEntries: 0, historySummaries: 0, cachedTransactions: 0, activityPreferences: 0 });
 
@@ -36,13 +37,14 @@ export function inspectRecoveryInventory(snapshot: RecoveryStorageSnapshot): Rec
       !/^native-evm-transfer-v1(?::(?:hd|imported):60:(?:0|[1-9][0-9]{0,3}))?$/.test(key))
       return result('unavailable', 'unsupported-record', backup, null);
     if (snapshot.state.presence === 'empty') {
-      if (snapshot.identity || records.size) throw new Error();
+      if (snapshot.identity || records.size || snapshot.notes.length) throw new Error();
       return result('empty', null, backup, zero());
     }
     if (!snapshot.identity) throw new Error();
     const rawCatalogue = records.get(WALLET_CATALOGUE_KEY);
     if (rawCatalogue === undefined) return result('unavailable', 'missing-catalogue', backup, null);
     const binding = snapshot.identity.walletBindingId;
+    inspectNoteDomain(snapshot.notes, binding, snapshot.identity.root?.profileId);
     const catalogue = inspectRecoveryCatalogue(decodeStorageValue(rawCatalogue), binding);
     const root = snapshot.identity.root;
     if (root && (root.address !== catalogue.root.address || root.publicKey !== catalogue.root.publicKey)) throw new Error();
@@ -76,7 +78,7 @@ export function inspectRecoveryInventory(snapshot: RecoveryStorageSnapshot): Rec
         counts.activityPreferences = history.preferences;
       }
     }
-    return result('needs-matching-phrase-verification', null, backup, counts);
+    return result('needs-matching-phrase-verification', null, backup, counts, snapshot.notes.length > 0);
   } catch { return result('unavailable', 'invalid-record', backup, null); }
 }
 
