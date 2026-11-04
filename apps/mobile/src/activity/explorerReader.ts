@@ -160,7 +160,7 @@ export class ActivityExplorerReader {
         throw new ActivityError('INVALID');
       return result.result;
     };
-    if (parseRpcQuantity(await call('eth_chainId', [])) !== 1n)
+    if (parseRpcQuantity(await call('eth_chainId', [])) !== BigInt(scope.network.chainId))
       throw new ActivityError('CHANGED');
     return parseRpcQuantity(await call('eth_blockNumber', [])).toString();
   }

@@ -5,7 +5,7 @@ import { CustodyRuntimeError } from './types.ts';
 import { normalizePublicAddress } from '../core/addresses.ts';
 import { decodeStorageValue, encodeStorageValue } from '../storage/json.ts';
 
-/** Selected EVM key expectation (legacy type name); never caller-granted SDK authority. */
+/** Selected EVM key expectation never caller-granted SDK authority. */
 export type HdKeyExportScope = Readonly<{
   authorityRevision: number;
   catalogueRevision: number;
@@ -40,7 +40,7 @@ export function snapshotHdKeyExportScope(input: HdKeyExportScope): HdKeyExportSc
         parseNativeAccountId(value.accountId).index !== value.index || typeof value.address !== 'string' ||
         normalizePublicAddress(value.address, 'ethereum') !== value.address ||
         typeof value.networkId !== 'string' || typeof value.registrationHash !== 'string' ||
-        getNativeNetwork(value.networkId).registrationHash !== value.registrationHash)
+        !/^0x[0-9a-f]{64}$/.test(value.registrationHash))
       throw new Error('INVALID_INPUT');
     return Object.freeze(value);
   } catch { throw new CustodyRuntimeError('INVALID_INPUT'); }
@@ -55,7 +55,7 @@ function capture(authority: NativeCustodyAuthority): HdKeyExportScope {
       state.account.network !== catalogue.active.networkId) throw new Error('NOT_READY');
   return snapshotHdKeyExportScope({ authorityRevision: state.revision, catalogueRevision: catalogue.revision,
     accountId: selected.id, index: selected.index, address: selected.address,
-    networkId: catalogue.active.networkId, registrationHash: getNativeNetwork(catalogue.active.networkId).registrationHash });
+    networkId: catalogue.active.networkId, registrationHash: getNativeNetwork(catalogue.active.networkId, catalogue.networks).registrationHash });
 }
 
 /** Owns short-lived presentations only; no secret-bearing observable snapshot. */

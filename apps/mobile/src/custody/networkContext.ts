@@ -1,63 +1,72 @@
 import { keccak256 } from 'ethers/crypto';
 import { toUtf8Bytes } from 'ethers/utils';
-import { EVM_NETWORK_DEFINITIONS, type EvmNetworkId } from '../../../../source/shared/evmNetworks.ts';
-export type { EvmNetworkId } from '../../../../source/shared/evmNetworks.ts';
+import { EVM_NETWORK_DEFINITIONS } from '../../../../source/shared/evmNetworks.ts';
 
+/** A saved registration ID, not a compile-time list of supported EVM chains. */
+export type EvmNetworkId = string;
 export type NativeNetworkRegistration = Readonly<{
-  id: EvmNetworkId; kind: 'evm'; chainId: string; slip44: 60; rpcUrl: string;
+  id: EvmNetworkId; name: string; kind: 'evm'; chainId: string; slip44: 60; rpcUrl: string;
   symbol: string; decimals: 18; testnet: boolean; registrationHash: string;
 }>;
+const fields = ['id', 'name', 'kind', 'chainId', 'slip44', 'rpcUrl', 'symbol', 'decimals', 'testnet'] as const;
+/** Strict detached snapshot: persisted registrations, never defaults, own their endpoints. */
+export function snapshotNativeNetwork(input: unknown): NativeNetworkRegistration {
+  if (!input || typeof input !== 'object' || Array.isArray(input) ||
+      ![Object.prototype, null].includes(Object.getPrototypeOf(input))) throw new Error('Invalid EVM registration');
+  const keys = Reflect.ownKeys(input);
+  if (keys.length !== fields.length + 1 || keys.some((key) => typeof key !== 'string' || ![...fields, 'registrationHash'].includes(key as typeof fields[number]))) throw new Error('Invalid EVM registration');
+  const raw: Record<string, unknown> = Object.create(null);
+  for (const key of [...fields, 'registrationHash']) {
+    const descriptor = Object.getOwnPropertyDescriptor(input, key);
+    if (!descriptor?.enumerable || !('value' in descriptor)) throw new Error('Invalid EVM registration');
+    raw[key] = descriptor.value;
+  }
+  if (typeof raw.id !== 'string' || !/^[a-zA-Z0-9][a-zA-Z0-9:_-]{0,63}$/.test(raw.id) ||
+      typeof raw.name !== 'string' || !raw.name.isWellFormed() || raw.name.trim() !== raw.name || !raw.name || raw.name.length > 64 || /[\u0000-\u001f\u007f-\u009f]/.test(raw.name) ||
+      raw.kind !== 'evm' || typeof raw.chainId !== 'string' || !/^[1-9][0-9]{0,15}$/.test(raw.chainId) ||
+      BigInt(raw.chainId) > BigInt(Number.MAX_SAFE_INTEGER) || raw.slip44 !== 60 || raw.decimals !== 18 ||
+      typeof raw.testnet !== 'boolean' || typeof raw.symbol !== 'string' || !/^[A-Z0-9]{1,12}$/.test(raw.symbol) ||
+      typeof raw.rpcUrl !== 'string' || raw.rpcUrl.length > 2048) throw new Error('Invalid EVM registration');
+  const url = new URL(raw.rpcUrl);
+  if (url.username || url.password || url.hash || (url.protocol !== 'https:' &&
+      !(url.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)))) throw new Error('Invalid EVM endpoint');
+  const registrationHash = keccak256(toUtf8Bytes(JSON.stringify(fields.map((key) => raw[key]))));
+  if (raw.registrationHash !== registrationHash) throw new Error('Invalid EVM registration fingerprint');
+  return Object.freeze(raw) as NativeNetworkRegistration;
+}
+export function createNativeNetwork(data: Omit<NativeNetworkRegistration, 'registrationHash'>): NativeNetworkRegistration {
+  return snapshotNativeNetwork({ ...data, registrationHash: keccak256(toUtf8Bytes(JSON.stringify(fields.map((key) => data[key])))) });
+}
 export const NATIVE_NETWORKS: readonly NativeNetworkRegistration[] = Object.freeze(
-  EVM_NETWORK_DEFINITIONS.map(({ id, network, testnet }) => {
-    const data = { id, kind: 'evm' as const, chainId: String(network.chainId), slip44: 60 as const,
-      rpcUrl: network.url, symbol: network.currency.toUpperCase(), decimals: 18 as const, testnet };
-    const registrationHash = keccak256(toUtf8Bytes(JSON.stringify([
-      data.id, data.kind, data.chainId, data.slip44, data.rpcUrl, data.symbol, data.decimals, data.testnet,
-    ])));
-    return Object.freeze({ ...data, registrationHash });
-  })
+  EVM_NETWORK_DEFINITIONS.map(({ id, name, network, testnet }) => createNativeNetwork({ id, name, kind: 'evm', chainId: String(network.chainId),
+    slip44: 60, rpcUrl: network.url, symbol: network.currency.toUpperCase(), decimals: 18, testnet }))
 );
-export function getNativeNetwork(id: string): NativeNetworkRegistration {
-  const network = NATIVE_NETWORKS.find((value) => value.id === id);
-  if (!network) throw new Error('Unsupported native network');
+export function getNativeNetwork(id: string, registrations: readonly NativeNetworkRegistration[] = NATIVE_NETWORKS): NativeNetworkRegistration {
+  const network = registrations.find((value) => value.id === id);
+  if (!network) throw new Error('Unknown EVM registration');
   return network;
 }
-/** New-send ceilings: zkOS and Ethereum EIP-7825 cap each transaction at 2^24. */
-export const nativeTransferGasLimit = (id: EvmNetworkId): bigint =>
-  id === 'zksys-testnet' || id === 'ethereum' ? 16777216n : 30000000n;
+/** Resource bounds are checked against the selected chain's RPC block gas limit. */
+export const nativeTransferGasLimit = (_id?: EvmNetworkId): bigint => BigInt(Number.MAX_SAFE_INTEGER);
 export type NativeSendContext = Readonly<{
-  networkId: 'ethereum' | 'syscoin-nevm-testnet' | 'zksys-testnet';
-  chainId: string;
-  registrationHash: string;
-  rpcUrl: string;
-  name: string;
-  symbol: string;
-  decimals: 18;
-  testnet: boolean;
-  settlement: Readonly<{ kind: 'ethereum-finalized' } | { kind: 'nevm-depth-12'; confirmations: 12 } | { kind: 'zkos-finalized-executed' }>;
+  networkId: EvmNetworkId; chainId: string; registrationHash: string; rpcUrl: string;
+  name: string; symbol: string; decimals: 18; testnet: boolean;
 }>;
-const sendCapabilities = Object.freeze(Object.fromEntries(NATIVE_NETWORKS.map((network) => [network.id,
-  Object.freeze({ native: ['ethereum', 'syscoin-nevm-testnet', 'zksys-testnet'].includes(network.id), erc20: network.id === 'ethereum' }),
-])) as Record<EvmNetworkId, Readonly<{ native: boolean; erc20: boolean }>>);
-const sendContexts: readonly NativeSendContext[] = Object.freeze(NATIVE_NETWORKS
-  .filter((network) => sendCapabilities[network.id].native)
-  .map((network) => Object.freeze({
-    networkId: network.id as NativeSendContext['networkId'], chainId: network.chainId,
-    registrationHash: network.registrationHash, rpcUrl: network.rpcUrl,
-    name: EVM_NETWORK_DEFINITIONS.find((definition) => definition.id === network.id)!.name,
-    symbol: network.symbol, decimals: network.decimals, testnet: network.testnet,
-    settlement: Object.freeze(network.id === 'ethereum' ? { kind: 'ethereum-finalized' as const }
-      : network.id === 'syscoin-nevm-testnet' ? { kind: 'nevm-depth-12' as const, confirmations: 12 as const }
-      : { kind: 'zkos-finalized-executed' as const }),
-  })));
-export function getNativeSendContext(id: string): NativeSendContext {
-  const context = sendContexts.find((value) => value.networkId === id);
-  if (!context) throw new Error('Native sending is unavailable for this network');
+const contexts = new WeakMap<NativeNetworkRegistration, NativeSendContext>();
+export function getNativeSendContext(input: string | NativeNetworkRegistration, registrations?: readonly NativeNetworkRegistration[]): NativeSendContext {
+  const network = typeof input === 'string' ? getNativeNetwork(input, registrations) : input;
+  let context = contexts.get(network);
+  if (!context) {
+    snapshotNativeNetwork(network);
+    context = Object.freeze({ networkId: network.id, chainId: network.chainId, registrationHash: network.registrationHash,
+      rpcUrl: network.rpcUrl, name: network.name,
+      symbol: network.symbol, decimals: network.decimals, testnet: network.testnet });
+    contexts.set(network, context);
+  }
   return context;
 }
-export function getNativeSendCapabilities(id: EvmNetworkId) {
-  getNativeNetwork(id);
-  return sendCapabilities[id];
-}
-export const nativeSigningEnabled = (id: EvmNetworkId): boolean => getNativeSendCapabilities(id).native;
-export const erc20SigningEnabled = (id: EvmNetworkId): boolean => getNativeSendCapabilities(id).erc20;
+const evmId = (id: string) => typeof id === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9:_-]{0,63}$/.test(id) && id !== 'bitcoin' && id !== 'syscoin';
+/** UI eligibility only; signing additionally validates the selected saved registration. */
+export const getNativeSendCapabilities = (id: EvmNetworkId) => Object.freeze({ native: evmId(id), erc20: evmId(id) });
+export const nativeSigningEnabled = (id: EvmNetworkId): boolean => evmId(id);
+export const erc20SigningEnabled = (id: EvmNetworkId): boolean => evmId(id);

@@ -51,7 +51,7 @@ const evidence = (phase: 'create' | 'restart') => ({
   zksysAccountIndex: 4,
   zksysAddress: FIFTH_ADDRESS,
   zksysChainId: '57057',
-  zksysJournalContainerVersion: 2,
+  zksysJournalContainerVersion: 1,
   zksysSignatures: phase === 'create' ? 1 : 0,
   zksysAuthorizations: phase === 'create' ? 0 : 1,
   zksysInjectedBroadcasts: 1,
@@ -282,7 +282,7 @@ for (const scenario of ['import', 'generate'] as const) {
         assert.equal(signed.chainId, 57057n);
         assert.equal(signed.nonce, 0);
         assert.equal(signed.maxPriorityFeePerGas, 0n);
-        assert.equal(signed.maxFeePerGas, 20n);
+        assert.equal(signed.maxFeePerGas, 25n);
         assert.equal(signed.gasLimit, 36000n);
         assert.equal(signed.value, 789n);
         assert.equal(stored.entries[0]!.phase, 'attempted');

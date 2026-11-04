@@ -113,7 +113,7 @@ for (const kind of ['native', 'watch', 'activity'] as const) {
       const dependencies = { react: render.api, 'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
         'expo-clipboard': {}, 'react-native-qrcode-svg': 'QRCode', '../ui': ui, '../core/amounts': core, '../core/networks': core,
         '../core/utxoNetworks': { getUtxoNetwork }, '../core/watchOnlyAuthority': core,
-        '../custody/networkContext': { getNativeNetwork: () => ({ id: 'ethereum' }), nativeSigningEnabled: () => false },
+        '../custody/networkContext': { getNativeNetwork: () => ({ id: 'ethereum' }), getNativeSendContext: () => ({ networkId: 'ethereum', name: 'Ethereum', symbol: 'ETH', decimals: 18 }), nativeSigningEnabled: () => false },
         '../custody/testnetFaucet': { getTestnetFaucet: () => null }, './TestnetFaucetCard': {},
         './NativeTokens': {}, '../platformRpc': {}, '../platform/http': {}, '../portfolio/nativePortfolio': {},
         '../../../../source/shared/erc20': {},
@@ -136,7 +136,7 @@ for (const kind of ['native', 'watch', 'activity'] as const) {
       const authority = new core.WatchOnlyAuthority([account], { async readBalance() { return { chainId: 1, units: '0' }; } });
       authority.unlock(); await authority.refresh();
       const props = () => kind === 'native' ? {
-        model: { isCurrent: () => true }, snapshot: { account: { address: account.addresses.ethereum, network: 'ethereum', revision: 1 }, status: 'available', units: '0', updatedAt: 1 },
+        model: { isCurrent: () => true, getNetworkRegistration: () => ({ id: 'ethereum' }) }, snapshot: { account: { address: account.addresses.ethereum, network: 'ethereum', revision: 1 }, status: 'available', units: '0', updatedAt: 1 },
         accountLabel: 'Public account', onExit() { exits++; }, onLock() {}, onViewRecovery() {}, navigation: shell.navigation,
       } : kind === 'activity' ? { controller: { async setView() {} },
         snapshot: { status: 'ready', rows: [], accountAddress: account.addresses.ethereum, view: { filter: 'all', showZero: false, anchor: null, offset: 0 }, truncated: false },

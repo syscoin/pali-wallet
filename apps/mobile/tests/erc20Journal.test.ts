@@ -27,6 +27,7 @@ const token = {
 };
 const intent = snapshotErc20TransferIntent({
   kind: 'erc20-transfer',
+  chainId: '1',
   token,
   recipient,
   amountUnits: '123',
@@ -104,7 +105,7 @@ test('journal requires exact token intent for nonempty calldata and preserves it
       intent
     );
   const persisted = f.rows.get('native-evm-transfer-v1') as any;
-  assert.equal(persisted.version, 2);
+  assert.equal(persisted.version, 1);
   assert.deepEqual(persisted.entries[0].intent, intent);
   assert.doesNotThrow(() => terminalJournalForRemoval(persisted, scope));
   const native = await signed(1, '0x', 1n, recipient);

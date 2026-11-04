@@ -379,9 +379,11 @@ export class NativeActivityHistory {
           (r) => `${localScopeKey(r)}:${r.hash}` === id
         );
         if (old) {
-          if (encodeStorageValue(old) !== encodeStorageValue(checked))
+          if (encodeStorageValue(old) === encodeStorageValue(checked)) return data;
+          // Receipt outcome can change after a reorg; immutable transaction fields cannot.
+          if (encodeStorageValue({ ...old, phase: checked.phase }) !== encodeStorageValue(checked))
             throw new ActivityError('INVALID');
-          return data;
+          return packed({ ...data, archived: data.archived.map((record) => record === old ? checked : record) }, id);
         }
         return packed({ ...data, archived: [...data.archived, checked] }, id);
       },

@@ -21,13 +21,13 @@ const nevmEvidence = (phase = 'create') => ({
   nativeNevmVerified: true, nevmAccountId: 'hd:60:3', nevmAccountIndex: 3,
   nevmAddress: '0xF3f50213C1d2e255e4B2bAD430F8A38EEF8D718E',
   nevmTransferHash: '0x' + '7'.repeat(64), nevmEthereumTransferHash: '0x' + '8'.repeat(64),
-  nevmChainId: '5700', nevmJournalContainerVersion: 2,
+  nevmChainId: '5700', nevmJournalContainerVersion: 1,
   nevmRestoredFromJournal: phase === 'restart',
 });
 const zksysEvidence = (phase = 'create') => ({
   nativeZksysVerified: true, zksysAccountId: 'hd:60:4', zksysAccountIndex: 4,
   zksysAddress: '0x51cA8ff9f1C0a99f88E86B8112eA3237F55374cA',
-  zksysTransferHash: '0x' + '9'.repeat(64), zksysChainId: '57057', zksysJournalContainerVersion: 2,
+  zksysTransferHash: '0x' + '9'.repeat(64), zksysChainId: '57057', zksysJournalContainerVersion: 1,
   zksysSignatures: phase === 'create' ? 1 : 0, zksysAuthorizations: phase === 'create' ? 0 : 1,
   zksysInjectedBroadcasts: 1, zksysFeeEstimates: phase === 'create' ? 2 : 0,
   zksysRestoredFromJournal: phase === 'restart',
@@ -160,7 +160,7 @@ for (const diagnosticsAvailable of [true, false]) test(`Android cleanup preserve
       if (args.some((value) => value.endsWith('pali-native-qualification-startup.json'))) return { status: 1, stderr: 'not present' };
       if (args.some((value) => value.endsWith('pali-native-qualification-load-error.json'))) return { status: 1, stderr: 'not present' };
       if (args[0] === 'exec-out') return { status: null, stdout: Buffer.from('PRIVATE_DATABASE_BYTES'), error: Object.assign(Error('database read timeout'), { code: 'ETIMEDOUT' }) };
-      return ok(JSON.stringify({ version: 1, status: 'passed', phase: 'create', scenario: 'import', platform: 'android', networkCalls: 0, nativeBridgeExercised: true, sdkVersion: '2.0.0', nativeSigningVerified: true, nativeHdAccountsVerified: true, nativeHdKeyRevealVerified: true, selectedAccountId: 'hd:60:1', selectedAccountIndex: 1, journalContainerVersion: 2, firstTransferHash: '0x' + 'c'.repeat(64), address: '0x6Fac4D18c912343BF86fa7049364Dd4E424Ab9C0', transferHash: '0x' + 'b'.repeat(64), fingerprint: 'a'.repeat(64), cryptoEvidence: { passed: true, productionIterations: 900000 }, mnemonicEntropyVerified: false, storageDiagnostic: { stage: 'ready' }, ...erc20Evidence(), ...nevmEvidence(), ...zksysEvidence(), ...importedEvidence() }));
+      return ok(JSON.stringify({ version: 1, status: 'passed', phase: 'create', scenario: 'import', platform: 'android', networkCalls: 0, nativeBridgeExercised: true, sdkVersion: '2.0.0', nativeSigningVerified: true, nativeHdAccountsVerified: true, nativeHdKeyRevealVerified: true, selectedAccountId: 'hd:60:1', selectedAccountIndex: 1, journalContainerVersion: 1, firstTransferHash: '0x' + 'c'.repeat(64), address: '0x6Fac4D18c912343BF86fa7049364Dd4E424Ab9C0', transferHash: '0x' + 'b'.repeat(64), fingerprint: 'a'.repeat(64), cryptoEvidence: { passed: true, productionIterations: 900000 }, mnemonicEntropyVerified: false, storageDiagnostic: { stage: 'ready' }, ...erc20Evidence(), ...nevmEvidence(), ...zksysEvidence(), ...importedEvidence() }));
     }
     if (args.includes('pidof')) return ok(++pidReads === 1 ? '1234' : '');
     if (args.includes('logcat')) return diagnosticsAvailable ? ok('F/libc: SIGABRT libhermes.so synthetic_secret_token_42 PUBLIC native qualification password 2026') : { status: 1, stderr: 'synthetic_secret_token_42' };
@@ -268,7 +268,7 @@ function reportWaitFixture() {
     Date: { now: () => now }, sleep: async (milliseconds) => { now += milliseconds; },
   });
   const report = JSON.stringify({ version: 1, status: 'passed', phase: 'create', scenario: 'import', platform: 'android',
-    networkCalls: 0, nativeBridgeExercised: true, sdkVersion: '2.0.0', nativeSigningVerified: true, nativeHdAccountsVerified: true, nativeHdKeyRevealVerified: true, selectedAccountId: 'hd:60:1', selectedAccountIndex: 1, journalContainerVersion: 2, firstTransferHash: '0x' + 'c'.repeat(64), address: '0x6Fac4D18c912343BF86fa7049364Dd4E424Ab9C0', transferHash: '0x' + 'b'.repeat(64), mnemonicEntropyVerified: false,
+    networkCalls: 0, nativeBridgeExercised: true, sdkVersion: '2.0.0', nativeSigningVerified: true, nativeHdAccountsVerified: true, nativeHdKeyRevealVerified: true, selectedAccountId: 'hd:60:1', selectedAccountIndex: 1, journalContainerVersion: 1, firstTransferHash: '0x' + 'c'.repeat(64), address: '0x6Fac4D18c912343BF86fa7049364Dd4E424Ab9C0', transferHash: '0x' + 'b'.repeat(64), mnemonicEntropyVerified: false,
     fingerprint: 'a'.repeat(64), cryptoEvidence: { passed: true, productionIterations: 900000 }, storageDiagnostic: { stage: 'ready' }, ...erc20Evidence(), ...nevmEvidence(), ...zksysEvidence(), ...importedEvidence() });
   return { wait, validate, saved, report, now: () => now };
 }
@@ -369,7 +369,7 @@ test('full custody reports require chain-scoped NEVM evidence and omit it on fai
     { nevmTransferHash: passed.transferHash }, { nevmTransferHash: passed.firstTransferHash },
     { nevmTransferHash: passed.erc20TransferHash }, { nevmTransferHash: passed.nevmEthereumTransferHash },
     { nevmEthereumTransferHash: passed.transferHash }, { nevmEthereumTransferHash: '0x123' },
-    { nevmChainId: '1' }, { nevmChainId: 5700 }, { nevmJournalContainerVersion: 1 },
+    { nevmChainId: '1' }, { nevmChainId: 5700 }, { nevmJournalContainerVersion: 2 },
     { nevmRestoredFromJournal: true },
   ]) assert.throws(() => fixture.validate(JSON.stringify({ ...passed, ...mutation }), 'create', 'import'));
   const failed = {
@@ -402,7 +402,7 @@ test('full custody reports require zkSYS controller, exact-fee and restart count
   for (const mutation of [
     { zksysAccountId: 'hd:60:3' }, { zksysAccountIndex: 3 }, { zksysAddress: passed.nevmAddress },
     { zksysTransferHash: passed.nevmTransferHash }, { zksysTransferHash: passed.nevmEthereumTransferHash },
-    { zksysChainId: 57057 }, { zksysChainId: '5700' }, { zksysJournalContainerVersion: 1 },
+    { zksysChainId: 57057 }, { zksysChainId: '5700' }, { zksysJournalContainerVersion: 2 },
     { zksysSignatures: 0 }, { zksysAuthorizations: 1 }, { zksysInjectedBroadcasts: 0 },
     { zksysFeeEstimates: 1 }, { zksysRestoredFromJournal: true },
   ]) assert.throws(() => fixture.validate(JSON.stringify({ ...passed, ...mutation }), 'create', 'import'));

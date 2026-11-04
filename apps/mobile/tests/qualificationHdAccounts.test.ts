@@ -83,11 +83,11 @@ for (const scenario of ['import', 'generate'] as const) {
       assert.equal(created.address, expectedSecondAddress);
       assert.equal(created.selectedAccountId, 'hd:60:1');
       assert.notEqual(created.transferHash, created.firstTransferHash);
-      assert.equal(created.journalContainerVersion, 2);
+      assert.equal(created.journalContainerVersion, 1);
       const checkContainers = async () => {
         for (const index of [0, 1]) {
           const row = await physicalStorage.keyringStorage.get(nativeTransferJournalKey(index)) as TransferJournalContainer;
-          assert.equal(row.version, 2);
+          assert.equal(row.version, 1);
           assert.equal(row.account.id, `hd:60:${index}`);
           assert.equal(row.entries.length, 1);
           assert.equal(row.entries[0]!.phase, 'attempted');
@@ -114,7 +114,7 @@ for (const scenario of ['import', 'generate'] as const) {
         { address: '0x1111111111111111111111111111111111111111' },
         { selectedAccountId: 'hd:60:0' },
         { selectedAccountIndex: 0 },
-        { journalContainerVersion: 1 },
+        { journalContainerVersion: 2 },
         { transferHash: '0x' + 'a'.repeat(64) },
         { firstTransferHash: '0x' + 'b'.repeat(64) },
         { firstTransferHash: created.transferHash },

@@ -29,7 +29,7 @@ function savedSnapshot(): RecoveryStorageSnapshot {
     identity: { walletBindingId: BINDING, pairFingerprint: BINDING, root: null, verification: 'requires-unlock' },
     state: { presence: 'existing', backup: 'confirmed' }, metadata: [],
     records: [{ key: WALLET_CATALOGUE_KEY, value: JSON.stringify({
-      version: 2, revision: 0, walletFingerprint: BINDING, nextIndex: 1, retiredIndices: [],
+      version: 1, revision: 0, walletFingerprint: BINDING, nextIndex: 1, retiredIndices: [],
       nextImportedIndex: 0, retiredImportedIndices: [], importedAccounts: [],
       accounts: [{ id: 'hd:60:0', type: 'HDAccount', index: 0, slip44: 60,
         address: ADDRESS, publicKey: PUBLIC_KEY, label: 'Private account label' }],

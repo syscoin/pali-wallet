@@ -6,9 +6,9 @@ test('network picker shows scope and passes both captured revisions to selection
   await page.goto('/?networks=1');
   await expect(page.getByRole('radio', { checked: true })).toHaveAccessibleName('Ethereum, ETH');
   await expect(page.getByText('Test networks', { exact: true })).toBeVisible();
-  await expect(page.getByText('Balance and receive only')).toHaveCount(6);
-  await page.getByRole('radio', { name: 'Base, ETH, balance and receive only', exact: true }).click();
-  await expect(page.getByRole('radio', { checked: true })).toHaveAccessibleName('Base, ETH, balance and receive only');
+  await expect(page.getByText('Balance and receive only')).toHaveCount(0);
+  await page.getByRole('radio', { name: 'Base, ETH', exact: true }).click();
+  await expect(page.getByRole('radio', { checked: true })).toHaveAccessibleName('Base, ETH');
   expect(await page.evaluate(() => window.__nativeNetworksFixture.requests())).toEqual([
     { id: 'base', contextRevision: 19, catalogueRevision: 4 },
   ]);
@@ -27,9 +27,9 @@ test('search distinguishes test networks and leaves selection unchanged for no r
 
 test('duplicate taps and context replacement cannot revive a pending selection', async ({ page }) => {
   await page.goto('/?networks=1&hold=1');
-  await page.getByRole('radio', { name: 'Base, ETH, balance and receive only', exact: true }).click();
+  await page.getByRole('radio', { name: 'Base, ETH', exact: true }).click();
   await expect(page.getByText('Switching networks…', { exact: true })).toBeVisible();
-  await expect(page.getByRole('radio', { name: 'Base, ETH, balance and receive only', exact: true })).toBeDisabled();
+  await expect(page.getByRole('radio', { name: 'Base, ETH', exact: true })).toBeDisabled();
   await page.evaluate(() => { window.__nativeNetworksFixture.replace(); window.__nativeNetworksFixture.release(); });
   await expect(page.getByText('Switching networks…', { exact: true })).toHaveCount(0);
   expect(await page.evaluate(() => window.__nativeNetworksFixture.requests())).toHaveLength(1);
@@ -39,7 +39,7 @@ test('duplicate taps and context replacement cannot revive a pending selection',
 
 test('back cancels a held network operation without applying a late result', async ({ page }) => {
   await page.goto('/?networks=1&hold=1');
-  await page.getByRole('radio', { name: 'Base, ETH, balance and receive only', exact: true }).click();
+  await page.getByRole('radio', { name: 'Base, ETH', exact: true }).click();
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await expect(page.getByText('Picker closed', { exact: true })).toBeVisible();
   await page.evaluate(() => window.__nativeNetworksFixture.release());
@@ -50,7 +50,7 @@ test('back cancels a held network operation without applying a late result', asy
 test('busy rejection is visible and the narrow screen has no horizontal overflow', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 320, height: 740 });
   await page.goto('/?networks=1&busy=1');
-  await page.getByRole('radio', { name: 'Base, ETH, balance and receive only', exact: true }).click();
+  await page.getByRole('radio', { name: 'Base, ETH', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('Wait for the current wallet operation');
   await expect(page.getByRole('radio', { checked: true })).toHaveAccessibleName('Ethereum, ETH');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
@@ -60,11 +60,11 @@ test('busy rejection is visible and the narrow screen has no horizontal overflow
 
 test('replacing a controller retires its work without blocking or clearing newer work', async ({ page }) => {
   await page.goto('/?networks=1&hold=1');
-  await page.getByRole('radio', { name: 'Base, ETH, balance and receive only', exact: true }).click();
+  await page.getByRole('radio', { name: 'Base, ETH', exact: true }).click();
   await expect(page.getByText('Switching networks…', { exact: true })).toBeVisible();
   await page.evaluate(() => window.__nativeNetworksFixture.replaceController());
   await expect(page.getByText('Switching networks…', { exact: true })).toHaveCount(0);
-  const rollux = page.getByRole('radio', { name: 'Rollux, SYS, balance and receive only', exact: true });
+  const rollux = page.getByRole('radio', { name: 'Rollux, SYS', exact: true });
   await expect(rollux).toBeEnabled();
   await rollux.click();
   await expect(page.getByText('Switching networks…', { exact: true })).toBeVisible();
@@ -73,13 +73,13 @@ test('replacing a controller retires its work without blocking or clearing newer
   await expect(rollux).toBeDisabled();
   await page.evaluate(() => window.__nativeNetworksFixture.releaseReplacement());
   await expect(page.getByText('Switching networks…', { exact: true })).toHaveCount(0);
-  await expect(page.getByRole('radio', { checked: true })).toHaveAccessibleName('Rollux, SYS, balance and receive only');
+  await expect(page.getByRole('radio', { checked: true })).toHaveAccessibleName('Rollux, SYS');
 });
 
 
 test('returning to a retired controller cannot revive its busy state', async ({ page }) => {
   await page.goto('/?networks=1&hold=1');
-  const base = page.getByRole('radio', { name: 'Base, ETH, balance and receive only', exact: true });
+  const base = page.getByRole('radio', { name: 'Base, ETH', exact: true });
   await base.click();
   await expect(page.getByText('Switching networks…', { exact: true })).toBeVisible();
   await page.evaluate(() => window.__nativeNetworksFixture.replaceController());
@@ -90,4 +90,18 @@ test('returning to a retired controller cannot revive its busy state', async ({ 
   await page.evaluate(() => window.__nativeNetworksFixture.release());
   await expect(base).toBeEnabled();
   await expect(page.getByRole('radio', { checked: true })).toHaveAccessibleName('Ethereum, ETH');
+});
+
+test('custom EVM network form saves the supplied name and chain on a narrow screen', async ({ page }, testInfo) => {
+  await page.goto('/?networks=1');
+  await page.getByRole('button', { name: 'Add network', exact: true }).click();
+  await page.getByLabel('Network name', { exact: true }).fill('Custom EVM test');
+  await page.getByLabel('RPC URL', { exact: true }).fill('https://custom.example/rpc');
+  await page.getByLabel('Chain ID', { exact: true }).fill('123456');
+  await page.getByLabel('Currency symbol', { exact: true }).fill('GAS');
+  await page.setViewportSize({ width: 320, height: 720 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('custom-network-form.png'), fullPage: true });
+  await page.getByRole('button', { name: 'Save network', exact: true }).click();
+  await expect(page.getByRole('radio', { name: 'Custom EVM test, GAS', exact: true })).toBeVisible();
 });

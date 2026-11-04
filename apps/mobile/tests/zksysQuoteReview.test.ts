@@ -71,6 +71,9 @@ function fixture() {
         case 'eth_getBalance':
           result = '0x10000000000000000';
           break;
+        case 'eth_gasPrice':
+          result = '0x64';
+          break;
         case 'eth_feeHistory':
           result = { oldestBlock: '0x63', baseFeePerGas: [baseFee, baseFee] };
           break;

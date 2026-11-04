@@ -159,7 +159,7 @@ function codeResult(value: unknown): void {
 
 /** Fixed read-only methods, bounded calls and one deadline per observation. */
 export function createErc20Reader(
-  options: { fetch?: FetchLike; timeoutMs?: number } = {}
+  options: { fetch?: FetchLike; timeoutMs?: number; registrations?: () => readonly import('../custody/networkContext.ts').NativeNetworkRegistration[] | undefined } = {}
 ): Erc20Reader {
   const fetcher = options.fetch ?? ((url, init) => fetch(url, init));
   const timeoutMs = options.timeoutMs ?? 12_000;
@@ -211,7 +211,7 @@ export function createErc20Reader(
     let network: ReturnType<typeof getNativeNetwork>;
     let holder: string;
     try {
-      network = getNativeNetwork(networkId);
+      network = getNativeNetwork(networkId, options.registrations?.());
       holder = normalizePublicAddress(address, networkId);
     } catch {
       return fail('INVALID_INPUT');

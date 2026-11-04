@@ -1,5 +1,5 @@
 import { normalizePublicAddress } from '../core/addresses.ts';
-import { getNetwork } from '../core/networks.ts';
+import { getNativeNetwork } from '../custody/networkContext.ts';
 import type { EvmNetworkId } from '../custody/networkContext.ts';
 import { assertBaseUnits } from '../core/amounts.ts';
 import type { BalanceReader } from '../core/watchOnlyAuthority.ts';
@@ -21,6 +21,7 @@ export type NativePortfolioSnapshot = Readonly<{
 /** Only the custody authority's public projection crosses this boundary. */
 export interface PublicCustodySource {
   getSnapshot(): CustodySnapshot;
+  getCatalogue?(): import('../custody/walletCatalogue.ts').NativeWalletCatalogueSnapshot | null;
   subscribe(listener: (snapshot: CustodySnapshot) => void): () => void;
 }
 
@@ -70,6 +71,8 @@ export class NativePortfolioController {
     this.now = now;
   }
 
+  getNetworkRegistration(id: string) { return getNativeNetwork(id, this.source.getCatalogue?.()?.networks); }
+
   private readAccount(): NativePortfolioAccount | null {
     try {
       const current = this.source.getSnapshot();
@@ -77,8 +80,7 @@ export class NativePortfolioController {
         current.phase !== 'ready' || !current.account ||
         !Number.isSafeInteger(current.revision) || current.revision < 0
       ) return null;
-      const network = getNetwork(current.account.network);
-      if (network.kind !== 'evm' || !network.canWatch) return null;
+      const network = getNativeNetwork(current.account.network, this.source.getCatalogue?.()?.networks);
       return Object.freeze({
         address: normalizePublicAddress(current.account.address, network.id),
         network: network.id as EvmNetworkId,
@@ -217,7 +219,7 @@ export class NativePortfolioController {
       if (!this.current(request)) return;
       if (!result) throw new Error('Invalid observation');
       const { chainId, units } = result;
-      if (chainId !== getNetwork(account.network).chainId) throw new Error('Invalid chain');
+      if (chainId !== Number(this.getNetworkRegistration(account.network).chainId)) throw new Error('Invalid chain');
       assertBaseUnits(units);
       const updatedAt = this.now();
       if (!Number.isFinite(updatedAt) || updatedAt < 0) throw new Error('Invalid time');

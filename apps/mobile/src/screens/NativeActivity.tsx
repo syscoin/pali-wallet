@@ -30,14 +30,10 @@ import type {
 } from '../activity/nativeActivity';
 
 const status = (row: ActivityRow) =>
-  row.observation?.status === 'finalized'
+  row.observation?.status === 'confirmed'
     ? 'Confirmed'
-    : row.observation?.status === 'finalized-reverted'
-    ? 'Reverted · finalized'
-    : row.observation?.status === 'included'
-    ? 'Included · awaiting finality'
     : row.observation?.status === 'reverted'
-    ? 'Reverted · awaiting finality'
+    ? 'Reverted'
     : row.observation?.status === 'pending'
     ? 'Pending'
     : row.local?.phase === 'nonce-consumed'
@@ -84,28 +80,28 @@ function zeroOnly(row: ActivityRow) {
     row.observation.events.every((event) => event.amountUnits === '0')
   );
 }
-function amount(row: ActivityRow): string {
+function amount(row: ActivityRow, symbol: string): string {
   if (row.local)
     return row.local.token
       ? `${formatTokenUnits(row.local.amountUnits, row.local.token.decimals)} ${
           row.local.token.symbol
         }`
-      : `${formatBaseUnits(row.local.amountUnits, 18)} ETH`;
+      : `${formatBaseUnits(row.local.amountUnits, 18)} ${symbol}`;
   if (!row.observation)
-    return row.candidate?.tokenHint ? 'ERC20 activity' : 'Ethereum activity';
+    return row.candidate?.tokenHint ? 'ERC20 activity' : 'Network activity';
   if (row.observation.events.length)
     return `${row.observation.events.length} token transfer event${
       row.observation.events.length === 1 ? '' : 's'
     }`;
-  return `${formatBaseUnits(row.observation.valueUnits, 18)} ETH`;
+  return `${formatBaseUnits(row.observation.valueUnits, 18)} ${symbol}`;
 }
-function fee(row: ActivityRow): string {
+function fee(row: ActivityRow, symbol: string): string {
   try {
     if (
       row.observation?.feeUnits !== null &&
       row.observation?.feeUnits !== undefined
     )
-      return `${formatBaseUnits(row.observation.feeUnits, 18)} ETH`;
+      return `${formatBaseUnits(row.observation.feeUnits, 18)} ${symbol}`;
   } catch {
     // A malformed observation must not prevent navigation or hide other details.
   }
@@ -309,7 +305,7 @@ function NativeActivityContent({
       <View style={s.header}>
         <Header
           title={chosen ? 'Transaction details' : 'Activity'}
-          subtitle={`${accountLabel} · Ethereum`}
+          subtitle={`${accountLabel}${snapshot.networkName ? ` · ${snapshot.networkName}` : ''}`}
           onBack={close}
         />
       </View>
@@ -412,7 +408,7 @@ function NativeActivityContent({
                 else rowViews.current.delete(item.hash);
               }}
               accessibilityRole="button"
-              accessibilityLabel={`${amount(item)}, ${status(
+              accessibilityLabel={`${amount(item, snapshot.nativeSymbol ?? 'ETH')}, ${status(
                 item
               )}. View transaction details`}
               onPress={() =>
@@ -425,7 +421,7 @@ function NativeActivityContent({
               style={s.item}
             >
               <View style={s.itemHeader}>
-                <Text style={s.amount}>{amount(item)}</Text>
+                <Text style={s.amount}>{amount(item, snapshot.nativeSymbol ?? 'ETH')}</Text>
                 <Text style={s.direction}>
                   {direction(item, owner) === 'unknown'
                     ? 'Activity'
@@ -476,7 +472,7 @@ function NativeActivityContent({
       </View>
       {chosen && (
         <ScrollView contentContainerStyle={s.content}>
-          <Text style={s.detailAmount}>{amount(chosen)}</Text>
+          <Text style={s.detailAmount}>{amount(chosen, snapshot.nativeSymbol ?? 'ETH')}</Text>
           <Text style={styles.muted}>{status(chosen)}</Text>
           {chosen.local?.token && (
             <Notice
@@ -529,7 +525,7 @@ function NativeActivityContent({
               </>
             )}
             <Text style={s.label}>NETWORK FEE</Text>
-            <Text>{fee(chosen)}</Text>
+            <Text>{fee(chosen, snapshot.nativeSymbol ?? 'ETH')}</Text>
             {chosen.observation?.block && (
               <>
                 <Text style={s.label}>BLOCK</Text>

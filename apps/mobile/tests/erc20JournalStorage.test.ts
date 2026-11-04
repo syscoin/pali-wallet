@@ -31,6 +31,7 @@ const token = {
 };
 const intent = snapshotErc20TransferIntent({
   kind: 'erc20-transfer',
+  chainId: '1',
   token,
   recipient,
   amountUnits: '1',

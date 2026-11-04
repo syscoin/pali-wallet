@@ -1,5 +1,4 @@
 import { getAddress } from 'ethers/address';
-import { getNetwork } from './networks.ts';
 import type { NetworkId } from './types.ts';
 import { normalizeUtxoAddress } from './utxoAddresses.ts';
 
@@ -8,13 +7,7 @@ export function normalizePublicAddress(
   address: string,
   networkId: NetworkId
 ): string {
-  const network = getNetwork(networkId);
-  // Syntax validation is independent of UI enablement. UTXO records remain
-  // explicit single-network watch data and never grant signing capability.
-  if (network.id === 'syscoin' || network.id === 'bitcoin') return normalizeUtxoAddress(address, network.id);
-  if (!network.canWatch || network.kind !== 'evm') {
-    throw new Error('Address watching is not available for this network yet');
-  }
+  if (networkId === 'syscoin' || networkId === 'bitcoin') return normalizeUtxoAddress(address, networkId);
   if (typeof address !== 'string' || address !== address.trim()) {
     throw new Error('Enter an address without whitespace');
   }

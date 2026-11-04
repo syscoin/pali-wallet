@@ -206,6 +206,7 @@ export async function qualifyNativeErc20Transfer(
   const calldata = encodeErc20Transfer(recipient, amountUnits);
   const expectedIntent = Object.freeze({
     kind: 'erc20-transfer' as const,
+    chainId: '1',
     token,
     recipient,
     amountUnits,
@@ -264,7 +265,7 @@ export async function qualifyNativeErc20Transfer(
     )) as import('../src/custody/transferJournal.ts').TransferJournalContainer;
     const registration = getNativeNetwork('ethereum');
     expect(
-      raw?.version === 2 &&
+      raw?.version === 1 &&
         raw.walletFingerprint === fingerprint &&
         raw.account.id === 'hd:60:2' &&
         raw.account.index === 2 &&
@@ -306,7 +307,7 @@ export async function qualifyNativeErc20Transfer(
       return transfer.authorize(credential, assertCurrent);
     },
   };
-  const rpc = new NativeTransferRpc({
+  const rpc = new NativeTransferRpc({ networkId: 'ethereum',
     fetch: async (url, init) => {
       guard();
       expect(
@@ -348,7 +349,7 @@ export async function qualifyNativeErc20Transfer(
             ['latest', 'finalized', '0x123'].includes(params[0] as string) &&
             params[1] === false
         );
-        result = { number: '0x123', hash: '0x' + 'a'.repeat(64) };
+        result = { number: '0x123', hash: '0x' + 'a'.repeat(64), baseFeePerGas: '0x1', gasLimit: '0x1c9c380' };
       } else if (body.method === 'eth_getCode') {
         same([token.contractAddress, '0x123']);
         result = '0x6000';
@@ -356,12 +357,13 @@ export async function qualifyNativeErc20Transfer(
         expect(
           params.length === 2 &&
             params[0] === address &&
-            ['pending', '0x123'].includes(params[1] as string)
+            ['pending', 'latest', '0x123'].includes(params[1] as string)
         );
         result = '0x0';
       } else if (body.method === 'eth_getBalance') {
         same([address, 'pending']);
         result = '0xde0b6b3a7640000';
+      } else if (body.method === 'eth_gasPrice') { same([]); result = '0x2';
       } else if (body.method === 'eth_feeHistory') {
         same(['0x1', 'latest', []]);
         result = { oldestBlock: '0x123', baseFeePerGas: ['0x1', '0x1'] };
@@ -369,7 +371,7 @@ export async function qualifyNativeErc20Transfer(
         same([]);
         result = '0x1';
       } else if (body.method === 'eth_estimateGas') {
-        same([unsigned, '0x123']);
+        same([{ ...unsigned, type: '0x2', chainId: '0x1', nonce: '0x0', maxFeePerGas: '0x3', maxPriorityFeePerGas: '0x1' }, 'pending']);
         result = '0xc350';
       } else if (body.method === 'eth_call') {
         if (

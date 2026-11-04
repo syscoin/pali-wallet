@@ -13,14 +13,14 @@ export type HdQualificationEvidence = Readonly<{
   nativeHdAccountsVerified: true;
   selectedAccountId: 'hd:60:1';
   selectedAccountIndex: 1;
-  journalContainerVersion: 2;
+  journalContainerVersion: 1;
 }>;
 
 export function isHdQualificationReport(report: Record<string, unknown>): boolean {
   const fields = ['nativeHdAccountsVerified', 'selectedAccountId', 'selectedAccountIndex', 'firstTransferHash', 'journalContainerVersion'];
   if (report.status === 'failed') return fields.every((field) => !Object.hasOwn(report, field));
   return report.status === 'passed' && report.nativeHdAccountsVerified === true &&
-    report.selectedAccountId === 'hd:60:1' && report.selectedAccountIndex === 1 && report.journalContainerVersion === 2 &&
+    report.selectedAccountId === 'hd:60:1' && report.selectedAccountIndex === 1 && report.journalContainerVersion === 1 &&
     typeof report.address === 'string' && /^0x[0-9a-fA-F]{40}$/.test(report.address) &&
     (report.scenario !== 'import' || report.address === '0x6Fac4D18c912343BF86fa7049364Dd4E424Ab9C0') &&
     typeof report.firstTransferHash === 'string' && /^0x[0-9a-f]{64}$/.test(report.firstTransferHash) &&
@@ -104,7 +104,7 @@ export async function qualifyNativeHdAccounts(options: Readonly<{
     const fingerprint = await storage.getWalletFingerprint();
     guard();
     const registration = getNativeNetwork('ethereum');
-    requireEvidence(row?.version === 2 && Number.isSafeInteger(row.revision) && row.revision >= 1 &&
+    requireEvidence(row?.version === 1 && Number.isSafeInteger(row.revision) && row.revision >= 1 &&
       row.walletFingerprint === fingerprint && row.account.id === `hd:60:${index}` && row.account.index === index &&
       row.account.type === 'HDAccount' && row.account.slip44 === 60 && row.account.address === address &&
       row.entries.length === 1 && row.entries[0]?.phase === 'attempted' && row.entries[0].hash === stored.hash &&
@@ -176,5 +176,5 @@ export async function qualifyNativeHdAccounts(options: Readonly<{
   }
   requireEvidence(transferHash !== firstTransferHash && catalogue().active.accountId === 'hd:60:1' && selected() === address);
   return Object.freeze({ address, transferHash, firstTransferHash, nativeSigningVerified: true,
-    nativeHdAccountsVerified: true, selectedAccountId: 'hd:60:1', selectedAccountIndex: 1, journalContainerVersion: 2 });
+    nativeHdAccountsVerified: true, selectedAccountId: 'hd:60:1', selectedAccountIndex: 1, journalContainerVersion: 1 });
 }

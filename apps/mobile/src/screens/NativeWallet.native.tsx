@@ -1,3 +1,4 @@
+import { walletFetch } from '../platform/http';
 import { nativeAccountSelection } from '../core/accountDirectory';
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ActivityIndicator, AppState, BackHandler, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, TextInput, View } from 'react-native';
@@ -162,9 +163,10 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   }, []);
   const attach = useCallback((local: Controllers) => {
     detachSubscriptions.current(); controllers.current = local;
-    const networks = createNativeNetworkView(local.authority);
+    const networks = createNativeNetworkView(local.authority, { fetch: walletFetch });
     const publicView: PublicCustodySource = Object.freeze({
       getSnapshot: () => local.authority.getSnapshot(),
+      getCatalogue: () => local.authority.getCatalogue(),
       subscribe: (listener: Parameters<PublicCustodySource['subscribe']>[0]) => local.authority.subscribe(listener),
     });
     const update = (state: CustodySnapshot) => {
@@ -298,7 +300,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
       },
     });
     setImportScope({ contextRevision: context.revision, catalogueRevision: current.revision,
-      networkLabel: EVM_NETWORK_DEFINITIONS.find((network) => network.id === context.account!.network)!.name, token, imports: scoped });
+      networkLabel: getNativeSendContext(context.account!.network, current.networks).name, token, imports: scoped });
     setStage('import-key');
   };
   const locked = snapshot.phase === 'locked';
@@ -429,7 +431,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     }} />
     <Button title="Lock wallet" variant="quiet" onPress={revoke} />
   </>;
-  else if (snapshot.phase === 'ready' && stage === 'send' && transferView && snapshot.account && nativeSigningEnabled(snapshot.account.network)) return <NativeSend controller={transferView} context={getNativeSendContext(snapshot.account.network)} token={sendToken ?? undefined} accountLabel={accountLabel} onBack={() => { setSendToken(null); closeStage(); }} />;
+  else if (snapshot.phase === 'ready' && stage === 'send' && transferView && snapshot.account && nativeSigningEnabled(snapshot.account.network)) return <NativeSend controller={transferView} context={getNativeSendContext(snapshot.account.network, catalogue?.networks)} token={sendToken ?? undefined} accountLabel={accountLabel} onBack={() => { setSendToken(null); closeStage(); }} />;
   else if (snapshot.phase === 'ready' && publicSource) {
     const onAccounts = () => openStage(accounts ? 'accounts' : 'manage-hd');
     let content: React.ReactNode;
@@ -441,10 +443,10 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     onSendToken={snapshot.account && erc20SigningEnabled(snapshot.account.network) ? (token) => { setSendToken(token); openStage('send'); } : undefined}
     onManageNetworks={networkView ? () => openStage('networks') : undefined}
     onViewRecovery={() => openStage('backup-auth')} onSecurity={() => openStage('security')}
-    onActivity={snapshot.account?.network === 'ethereum' ? () => shell.select('activity') : undefined}
+    onActivity={() => shell.select('activity')}
     navigation={shell.navigation}
   />;
-    else if (shell.tab === 'activity') content = snapshot.account?.network === 'ethereum' && activityView
+    else if (shell.tab === 'activity') content = activityView
       ? <NativeActivityScreen controller={activityView} accountLabel={accountLabel} onBack={() => shell.finishLeave('wallet')} navigation={shell.navigation} />
       : <UnavailableActivity accountLabel={accountLabel} watchOnly={false} onBack={() => shell.select('wallet')} />;
     else if (shell.tab === 'tools') content = <RealTools accountLabel={accountLabel}

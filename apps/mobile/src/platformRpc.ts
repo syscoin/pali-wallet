@@ -1,6 +1,6 @@
 import { EVM_NETWORK_DEFINITIONS } from '../../../source/shared/evmNetworks.ts';
 import { normalizePublicAddress } from './core/addresses.ts';
-import { getNetwork } from './core/networks.ts';
+import { getNativeNetwork, type NativeNetworkRegistration } from './custody/networkContext.ts';
 import type { NetworkId } from './core/types.ts';
 import type { BalanceReader } from './core/watchOnlyAuthority.ts';
 
@@ -169,7 +169,7 @@ export function parseRpcResult(text: string, expectedId: number): bigint {
 }
 
 export function createBalanceReader(
-  options: { fetch?: FetchLike; timeoutMs?: number } = {}
+  options: { fetch?: FetchLike; timeoutMs?: number; registrations?: () => readonly NativeNetworkRegistration[] | undefined } = {}
 ): BalanceReader {
   const fetcher: FetchLike = options.fetch ?? ((url, init) => fetch(url, init));
   const timeoutMs = options.timeoutMs ?? REQUEST_TIMEOUT_MS;
@@ -180,9 +180,9 @@ export function createBalanceReader(
   return {
     async readBalance(networkId, address, externalSignal) {
       checkAborted(externalSignal);
-      const network = getNetwork(networkId);
-      const endpoint = RPC_ENDPOINTS[networkId];
-      if (network.kind !== 'evm' || !network.chainId || !endpoint)
+      const network = getNativeNetwork(networkId, options.registrations?.());
+      const endpoint = network.rpcUrl;
+      if (!endpoint)
         throw new Error('This network is not available for balance lookup');
       const canonicalAddress = normalizePublicAddress(address, networkId);
       const controller = new AbortController();
@@ -236,7 +236,7 @@ export function createBalanceReader(
           canonicalAddress,
           'latest',
         ]);
-        return { chainId: network.chainId, units: units.toString() };
+        return { chainId: Number(network.chainId), units: units.toString() };
       } finally {
         controller.abort();
         clearTimeout(timer);

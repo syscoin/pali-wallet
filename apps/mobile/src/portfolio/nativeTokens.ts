@@ -11,7 +11,7 @@ import type {
   NativePortfolioAccount,
   PublicCustodySource,
 } from './nativePortfolio.ts';
-import { getNativeNetwork } from '../custody/networkContext.ts';
+import { getNativeNetwork, getNativeSendContext, type NativeSendContext } from '../custody/networkContext.ts';
 
 export interface NativeTokenRuntime {
   load(assertCurrent: () => void): Promise<NativeTokenInventory>;
@@ -34,6 +34,7 @@ export type NativeTokenItem = Readonly<{
 }>;
 export type NativeTokenSnapshot = Readonly<{
   account: NativePortfolioAccount | null;
+  network?: Pick<NativeSendContext, 'name' | 'chainId' | 'symbol' | 'testnet'> | null;
   status: 'unavailable' | 'loading' | 'ready' | 'error';
   items: readonly NativeTokenItem[];
   preview: Readonly<{ metadata: Erc20Metadata; units: string }> | null;
@@ -65,7 +66,7 @@ const initial = (
   account: NativePortfolioAccount | null = null
 ): NativeTokenSnapshot =>
   Object.freeze({
-    account,
+    account, network: null,
     status: account ? 'loading' : 'unavailable',
     items: Object.freeze([]),
     preview: null,
@@ -156,7 +157,7 @@ export class NativeTokens {
         state.revision < 0
       )
         return null;
-      const network = getNativeNetwork(state.account.network);
+      const network = getNativeNetwork(state.account.network, this.source.getCatalogue?.()?.networks);
       return Object.freeze({
         address: getAddress(state.account.address),
         network: network.id,
@@ -194,7 +195,7 @@ export class NativeTokens {
     if (!same(account, this.state.account)) {
       this.cancel();
       this.inventoryRevision = null;
-      this.state = initial(account);
+      this.state = Object.freeze({ ...initial(account), network: account ? getNativeSendContext(getNativeNetwork(account.network, this.source.getCatalogue?.()?.networks)) : null });
       this.unpublished = true;
       if (notify) this.emit();
       return true;

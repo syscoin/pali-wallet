@@ -1,3 +1,4 @@
+import { createNativeNetwork } from '../src/custody/networkContext.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -36,7 +37,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
   };
 }
 
-test('legacy wallet migration is durable, idempotent and exposes no key or fingerprint', async () => {
+test('new wallet catalogue creation is durable, idempotent and exposes no key or fingerprint', async () => {
   const f = await fixture();
   try {
     const before = await f.storage.keyringStorage.get('vault');
@@ -79,7 +80,7 @@ for (const point of ['before-commit', 'lost-ack'] as const) {
   });
 }
 
-test('corrupt, foreign-wallet and unsupported catalogues never become replacement migrations', async () => {
+test('corrupt, foreign-wallet and unsupported catalogues are preserved without replacement', async () => {
   const f = await fixture();
   try {
     await new NativeWalletCatalogue(f.storage.keyringStorage).reconcile(f.identity, current);
@@ -152,7 +153,7 @@ test('single-flight admission and atomic independent creators preserve one catal
 });
 
 
-test('a reentrant current-context callback cannot start a second migration', async () => {
+test('a reentrant current-context callback cannot start a second initialization', async () => {
   const f = await fixture();
   try {
     const catalogue = new NativeWalletCatalogue(f.storage.keyringStorage);
@@ -257,7 +258,7 @@ test('terminal-only removal keeps storage bounded through more than 64 HD accoun
       const journal = new NativeTransferJournal(f.storage.keyringStorage, { walletFingerprint: f.identity.walletFingerprint, address: signer.address, chainId: '1' }, current, () => 1, index, undefined, (record, guard) => history.archiveTerminal(record, guard));
       const signed = await journal.saveSigned(await signer.signTransaction({ type: 2, chainId: 1, nonce: 0, to: ADDRESS, value: 1n, gasLimit: 21000n, maxFeePerGas: 2n, maxPriorityFeePerGas: 1n }));
       state = await catalogue.mutate(state.revision, { kind: 'select', id: 'hd:60:0' }, current);
-      await assert.rejects(catalogue.mutate(state.revision, { kind: 'remove', id: `hd:60:${index}`, journal: signed }, current), /PENDING_TRANSFER/);
+      await assert.rejects(catalogue.mutate(state.revision, { kind: 'remove', id: `hd:60:${index}`, journal: await f.storage.keyringStorage.get(nativeTransferJournalKey(index)) as any }, current), /PENDING_TRANSFER/);
       await journal.transition(signed.hash, 'attempted');
       await journal.transition(signed.hash, 'confirmed');
       state = await catalogue.mutate(state.revision, { kind: 'remove', id: `hd:60:${index}`, journal: await journal.removalSnapshot() }, current);
@@ -315,74 +316,39 @@ test('active-account and monotonic highwater limits fail explicitly without trun
 });
 
 
-function legacyV1(record: Record<string, any>): Record<string, any> {
-  const { importedAccounts: _imports, nextImportedIndex: _next, retiredImportedIndices: _retired, ...original } = record;
-  return { ...original, version: 1, networks: [{ id: 'ethereum', kind: 'evm', chainId: '1', slip44: 60,
-    rpcUrl: 'https://ethereum-rpc.publicnode.com', symbol: 'ETH', decimals: 18 }], active: { ...record.active, networkId: 'ethereum' } };
-}
-
-test('committed v1 migrates once after authenticated identities match, preserving accounts and journal bytes', async () => {
-  const f = await fixture();
-  try {
-    const original = new NativeWalletCatalogue(f.storage.keyringStorage);
-    let state = await original.reconcile(f.identity, current);
-    state = await original.mutate(state.revision, { kind: 'create', index: 1, ...derived(1), label: 'Retired' }, current);
-    state = await original.mutate(state.revision, { kind: 'select', id: 'hd:60:0' }, current);
-    state = await original.mutate(state.revision, { kind: 'remove', id: 'hd:60:1', journal: null }, current);
-    state = await original.mutate(state.revision, { kind: 'create', index: 2, ...derived(2), label: 'Savings' }, current);
-    const old = legacyV1(await f.storage.keyringStorage.get(WALLET_CATALOGUE_KEY) as Record<string, any>);
-    await f.storage.keyringStorage.set(WALLET_CATALOGUE_KEY, old);
-    const journal = { recovery: 'unchanged existing journal' };
-    await f.storage.keyringStorage.set('native-evm-transfer-v1', journal);
-    await f.reopen();
-    const migrated = await new NativeWalletCatalogue(f.storage.keyringStorage).reconcile(f.identity, current, async (index) => derived(index));
-    assert.deepEqual(migrated.accounts, state.accounts);
-    assert.deepEqual(migrated.removed, state.removed);
-    assert.deepEqual(migrated.active, state.active);
-    assert.equal(migrated.networks.length, 7);
-    assert.equal(migrated.revision, state.revision + 1);
-    assert.deepEqual(await f.storage.keyringStorage.get('native-evm-transfer-v1'), journal);
-    assert.equal((await f.storage.keyringStorage.get(WALLET_CATALOGUE_KEY) as any).version, 2);
-    await f.reopen();
-    assert.deepEqual(await new NativeWalletCatalogue(f.storage.keyringStorage).reconcile(f.identity, current, async (index) => derived(index)), migrated);
-  } finally { await f.cleanup(); }
-});
-
-for (const phase of ['before-commit', 'lost-ack'] as const) {
-  test(`v1 migration ${phase} reopens one complete version without overwriting account history`, async () => {
-    let enabled = false;
-    const fail: SqlHook = (kind, sql) => { if (enabled && kind === 'exec' && sql === 'COMMIT') { enabled = false; throw Error('migration interrupted'); } };
-    const f = await fixture(phase === 'lost-ack' ? { after: fail } : { before: fail });
-    try {
-      await new NativeWalletCatalogue(f.storage.keyringStorage).reconcile(f.identity, current);
-      const prior = legacyV1(await f.storage.keyringStorage.get(WALLET_CATALOGUE_KEY) as Record<string, any>);
-      await f.storage.keyringStorage.set(WALLET_CATALOGUE_KEY, prior);
-      const catalogue = new NativeWalletCatalogue(f.storage.keyringStorage);
-      enabled = true;
-      await assert.rejects(catalogue.reconcile(f.identity, current));
-      assert.equal(catalogue.requiresReopen, true);
-      await f.reopen();
-      assert.equal((await f.storage.keyringStorage.get(WALLET_CATALOGUE_KEY) as any).version, phase === 'lost-ack' ? 2 : 1);
-      const recovered = await new NativeWalletCatalogue(f.storage.keyringStorage).reconcile(f.identity, current);
-      assert.equal(recovered.revision, prior.revision + 1);
-      assert.equal(recovered.accounts[0]!.address, ADDRESS);
-    } finally { await f.cleanup(); }
-  });
-}
-
-test('v1 endpoint mismatch and v2 registration tampering are never replacement migrations', async () => {
+test('one canonical catalogue shape rejects incomplete development formats without writes', async () => {
   const f = await fixture();
   try {
     await new NativeWalletCatalogue(f.storage.keyringStorage).reconcile(f.identity, current);
     const original = await f.storage.keyringStorage.get(WALLET_CATALOGUE_KEY) as Record<string, any>;
-    const old = legacyV1(original); old.networks[0]!.rpcUrl = 'https://wrong.invalid';
-    for (const corrupted of [old, { ...original, networks: original.networks.map((network: any) => ({ ...network, registrationHash: '0x' + '1'.repeat(64) })) }]) {
-      await f.storage.keyringStorage.set(WALLET_CATALOGUE_KEY, corrupted);
-      const catalogue = new NativeWalletCatalogue(f.storage.keyringStorage);
-      await assert.rejects(catalogue.reconcile(f.identity, current), /CATALOGUE_INVALID/);
-      assert.equal(catalogue.requiresReopen, false);
-      assert.deepEqual(await f.storage.keyringStorage.get(WALLET_CATALOGUE_KEY), corrupted);
+    const missing = { ...original }; delete missing.importedAccounts;
+    for (const row of [{ ...original, version: 2 }, missing, { ...original, networks: [{ ...original.networks[0], rpcUrl: 'https://changed.example' }] }]) {
+      await f.storage.keyringStorage.set(WALLET_CATALOGUE_KEY, row);
+      await assert.rejects(new NativeWalletCatalogue(f.storage.keyringStorage).reconcile(f.identity, current), /CATALOGUE_INVALID/);
+      assert.deepEqual(await f.storage.keyringStorage.get(WALLET_CATALOGUE_KEY), row);
     }
+  } finally { await f.cleanup(); }
+});
+
+test('custom registration survives reopen, explicit edits and removal without default rewriting', async () => {
+  const f = await fixture();
+  try {
+    const catalogue = new NativeWalletCatalogue(f.storage.keyringStorage);
+    let state = await catalogue.reconcile(f.identity, current);
+    const custom = createNativeNetwork({ id: 'custom:421614', name: 'Custom test network', kind: 'evm', chainId: '421614', rpcUrl: 'https://rpc.example/custom', slip44: 60, symbol: 'GAS', decimals: 18, testnet: true });
+    state = await catalogue.mutate(state.revision, { kind: 'save-network', registration: custom }, current);
+    state = await catalogue.mutate(state.revision, { kind: 'select-network', id: custom.id }, current);
+    assert.deepEqual(state.networks.find((network) => network.id === custom.id), custom);
+    const row = await f.storage.keyringStorage.get(WALLET_CATALOGUE_KEY);
+    await f.reopen();
+    const reopened = new NativeWalletCatalogue(f.storage.keyringStorage);
+    state = await reopened.reconcile(f.identity, current);
+    assert.deepEqual(await f.storage.keyringStorage.get(WALLET_CATALOGUE_KEY), row);
+    assert.equal(state.active.networkId, custom.id);
+    await assert.rejects(reopened.mutate(state.revision, { kind: 'remove-network', id: custom.id }, current));
+    state = await reopened.mutate(state.revision, { kind: 'select-network', id: 'ethereum' }, current);
+    state = await reopened.mutate(state.revision, { kind: 'remove-network', id: custom.id }, current);
+    assert.equal(state.networks.some((network) => network.id === custom.id), false);
   } finally { await f.cleanup(); }
 });
 
@@ -399,27 +365,6 @@ test('network selection preserves HD identity and counters while stale writers c
     await assert.rejects(catalogue.mutate(start.revision, { kind: 'select-network', id: 'base' }, current), /CATALOGUE_CONTEXT_CHANGED/);
     await f.reopen();
     assert.equal((await new NativeWalletCatalogue(f.storage.keyringStorage).reconcile(f.identity, current)).active.networkId, 'rollux');
-  } finally { await f.cleanup(); }
-});
-
-
-test('revocation during v1 identity verification cannot commit a migration', async () => {
-  const f = await fixture();
-  try {
-    const original = new NativeWalletCatalogue(f.storage.keyringStorage);
-    const first = await original.reconcile(f.identity, current);
-    await original.mutate(first.revision, { kind: 'create', index: 1, ...derived(1), label: 'Savings' }, current);
-    const old = legacyV1(await f.storage.keyringStorage.get(WALLET_CATALOGUE_KEY) as Record<string, any>);
-    await f.storage.keyringStorage.set(WALLET_CATALOGUE_KEY, old);
-    let entered!: () => void, release!: () => void, valid = true;
-    const started = new Promise<void>((resolve) => { entered = resolve; });
-    const held = new Promise<void>((resolve) => { release = resolve; });
-    const catalogue = new NativeWalletCatalogue(f.storage.keyringStorage);
-    const pending = catalogue.reconcile(f.identity, () => { if (!valid) throw Error('CANCELLED'); }, async (index) => { entered(); await held; return derived(index); });
-    await started; valid = false; release();
-    await assert.rejects(pending, /CANCELLED/);
-    assert.equal(catalogue.requiresReopen, false);
-    assert.deepEqual(await f.storage.keyringStorage.get(WALLET_CATALOGUE_KEY), old);
   } finally { await f.cleanup(); }
 });
 
@@ -443,5 +388,40 @@ test('a new pending chain after terminal-container validation prevents account c
     await assert.rejects(catalogue.mutate(state.revision, { kind: 'remove', id: 'hd:60:1', journal: terminal }, current), /CATALOGUE_CONTEXT_CHANGED/);
     assert.equal((await base.load())!.phase, 'signed');
     assert.equal((await f.storage.keyringStorage.get(WALLET_CATALOGUE_KEY) as any).accounts.length, 2);
+  } finally { await f.cleanup(); }
+});
+
+test('explicit same-chain RPC/name edits preserve journal bytes, tokens and archived history', async () => {
+  const f = await fixture();
+  try {
+    const { getNativeNetwork } = await import('../src/custody/networkContext.ts');
+    const { NativeTokenRegistry } = await import('../src/portfolio/tokenRegistry.ts');
+    const { createActivityScope } = await import('../src/activity/types.ts');
+    const catalogue = new NativeWalletCatalogue(f.storage.keyringStorage);
+    let state = await catalogue.reconcile(f.identity, current);
+    const before = getNativeNetwork('ethereum', state.networks);
+    const signer = new Wallet('0x' + '1'.padStart(64, '0'));
+    const owner = { walletFingerprint: f.identity.walletFingerprint, address: signer.address, chainId: '1' };
+    const history = new NativeActivityHistory(f.storage.keyringStorage);
+    const journal = new NativeTransferJournal(f.storage.keyringStorage, owner, current, () => 1, 0, before, (record, guard) => history.archiveTerminal(record, guard));
+    const raw = await signer.signTransaction({ type: 2, chainId: 1, nonce: 0, to: '0x1111111111111111111111111111111111111111', value: 1n, gasLimit: 25200n, maxFeePerGas: 2n, maxPriorityFeePerGas: 1n });
+    const pending = await journal.saveSigned(raw); await journal.transition(pending.hash, 'attempted');
+    const tokens = new NativeTokenRegistry(f.storage.keyringStorage);
+    const scope = { ...owner, accountId: 'hd:60:0', network: before.id, registrationHash: before.registrationHash };
+    const token = { contractAddress: '0x2222222222222222222222222222222222222222', name: 'Token', symbol: 'T', decimals: 6 };
+    await tokens.add(scope, 0, token, current);
+    const edited = createNativeNetwork({ ...before, name: 'Ethereum custom provider', rpcUrl: 'https://other.example/rpc' });
+    state = await catalogue.mutate(state.revision, { kind: 'save-network', registration: edited }, current);
+    const changed = new NativeTransferJournal(f.storage.keyringStorage, owner, current, () => 2, 0, edited, (record, guard) => history.archiveTerminal(record, guard));
+    assert.equal((await changed.load())!.rawTransaction, raw);
+    assert.deepEqual((await tokens.load({ ...scope, registrationHash: edited.registrationHash }, current)).items, [token]);
+    await changed.transition(pending.hash, 'confirmed');
+    await changed.removalSnapshot();
+    assert.equal((await history.load(createActivityScope(owner.walletFingerprint, 'hd:60:0', owner.address, edited), current)).archived[0]!.hash, pending.hash);
+    const row = await f.storage.keyringStorage.get(nativeTransferJournalKey(0)) as any;
+    assert.equal(JSON.stringify(row.entries[0].registration), JSON.stringify(before), 'original provider provenance stays immutable');
+    await f.reopen();
+    await new NativeWalletCatalogue(f.storage.keyringStorage).reconcile(f.identity, current);
+    assert.equal((await new NativeTransferJournal(f.storage.keyringStorage, owner, current, () => 3, 0, edited).load())!.rawTransaction, raw);
   } finally { await f.cleanup(); }
 });

@@ -1,18 +1,12 @@
+import { NATIVE_NETWORKS, getNativeSendContext } from '../../src/custody/networkContext';
 // Public deterministic UI fixture. No storage, RPC or signing authority is loaded.
 import React, { useLayoutEffect, useState } from 'react';
 import type { NativeNetworkSnapshot, NativeNetworkView } from '../../src/custody/networkView';
 import { NativeNetworks } from '../../src/screens/NativeNetworks';
 import { Text } from '../../src/ui';
 
-const networks = [
-  { id: 'ethereum', name: 'Ethereum', symbol: 'ETH', testnet: false, canSign: true },
-  { id: 'syscoin-nevm', name: 'Syscoin NEVM', symbol: 'SYS', testnet: false, canSign: false },
-  { id: 'rollux', name: 'Rollux', symbol: 'SYS', testnet: false, canSign: false },
-  { id: 'base', name: 'Base', symbol: 'ETH', testnet: false, canSign: false },
-  { id: 'arbitrum', name: 'Arbitrum One', symbol: 'ETH', testnet: false, canSign: false },
-  { id: 'syscoin-testnet', name: 'Syscoin NEVM Testnet', symbol: 'TSYS', testnet: true, canSign: false },
-  { id: 'zksys-testnet', name: 'zkTanenbaum', symbol: 'TSYS', testnet: true, canSign: false },
-];
+const networks = NATIVE_NETWORKS.map((registration) => ({ id: registration.id, name: getNativeSendContext(registration).name,
+  symbol: registration.symbol, testnet: registration.testnet, canSign: true, registration }));
 let snapshot: NativeNetworkSnapshot | null = Object.freeze({ revision: 4, selectedId: 'ethereum', networks });
 let contextRevision = 19;
 let cancelled = 0;
@@ -27,6 +21,12 @@ const controller: NativeNetworkView = {
   getContextRevision: () => contextRevision,
   subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
   cancel() { cancelled++; contextRevision++; },
+  async save(registration, expectedContextRevision, expectedCatalogueRevision) {
+    if (!snapshot || contextRevision !== expectedContextRevision || snapshot.revision !== expectedCatalogueRevision) throw Error('CANCELLED');
+    snapshot = Object.freeze({ ...snapshot, revision: snapshot.revision + 1, networks: [...snapshot.networks.filter((network) => network.id !== registration.id),
+      { id: registration.id, name: registration.name, symbol: registration.symbol, testnet: registration.testnet, canSign: true, registration }] });
+    contextRevision++; notify();
+  },
   async select(id, expectedContextRevision, expectedCatalogueRevision) {
     if (!snapshot || contextRevision !== expectedContextRevision || snapshot.revision !== expectedCatalogueRevision) throw Error('CANCELLED');
     requests.push({ id, contextRevision: expectedContextRevision, catalogueRevision: expectedCatalogueRevision });

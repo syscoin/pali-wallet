@@ -124,7 +124,7 @@ function fixture() {
       return { rawTransaction: raw, hash: keccak256(raw) };
     },
   };
-  const rpc = new NativeTransferRpc({
+  const rpc = new NativeTransferRpc({ networkId: 'ethereum',
     fetch: async (_url, init) => {
       const body = JSON.parse(String(init.body));
       rpcMethods.push(body.method);
@@ -146,7 +146,8 @@ function fixture() {
         result =
           body.params[1] !== 'pending' ? (final ? '0x1' : '0x0') : nonce;
       else if (body.method === 'eth_getBlockByNumber')
-        result = { number: ['latest', 'finalized'].includes(body.params[0]) ? '0x20' : body.params[0], hash: '0x' + '2'.repeat(64) };
+        result = { number: body.params[0] === 'latest' ? '0x20' : body.params[0], hash: '0x' + '2'.repeat(64), baseFeePerGas: baseFee, gasLimit: '0x1c9c380' };
+      else if (body.method === 'eth_gasPrice') result = '0x2';
       else if (body.method === 'eth_feeHistory')
         result = { oldestBlock: '0x1', baseFeePerGas: ['0x1', baseFee] };
       else if (body.method === 'eth_maxPriorityFeePerGas') result = '0x1';
@@ -630,7 +631,7 @@ test('rechecks the original approved maximum cost when fees and balance decrease
   const f = fixture();
   try {
     const approved = await review(f);
-    assert.equal(approved.totalUnits, '1000000000063000');
+    assert.equal(approved.totalUnits, '1000000000075600');
     f.lowerFeesWithReducedBalance();
     await assert.rejects(f.transfers.confirm(approved.id, 'public-password'), { code: 'INSUFFICIENT_BALANCE' });
     assert.equal(f.signatures(), 0);

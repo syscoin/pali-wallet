@@ -1,4 +1,4 @@
-import { getNativeNetwork, NATIVE_NETWORKS, type NativeNetworkRegistration } from './networkContext.ts';
+import { getNativeNetwork, snapshotNativeNetwork, NATIVE_NETWORKS, type NativeNetworkRegistration } from './networkContext.ts';
 
 const faucet = Object.freeze({ url: 'https://faucet-zk.tanenbaum.io/' });
 
@@ -13,8 +13,9 @@ export class TestnetFaucetError extends Error {
 
 /** Public handoff metadata is deliberately separate from signing registrations. */
 export function getTestnetFaucet(registration: NativeNetworkRegistration): Readonly<{ url: string }> | null {
-  if (!NATIVE_NETWORKS.includes(registration)) throw new TestnetFaucetError('INVALID_CONTEXT');
-  return registration === getNativeNetwork('zksys-testnet') && registration.chainId === '57057' && registration.testnet
+  try { registration = snapshotNativeNetwork(registration); } catch { throw new TestnetFaucetError('INVALID_CONTEXT'); }
+  if (!NATIVE_NETWORKS.some((network) => network.registrationHash === registration.registrationHash)) return null;
+  return registration.registrationHash === getNativeNetwork('zksys-testnet').registrationHash && registration.chainId === '57057' && registration.testnet
     ? faucet : null;
 }
 

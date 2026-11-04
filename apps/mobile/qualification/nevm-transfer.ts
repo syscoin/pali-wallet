@@ -26,7 +26,7 @@ export type NevmQualificationEvidence = Readonly<{
   nevmTransferHash: string;
   nevmEthereumTransferHash: string;
   nevmChainId: '5700';
-  nevmJournalContainerVersion: 2;
+  nevmJournalContainerVersion: 1;
   nevmRestoredFromJournal: boolean;
 }>;
 
@@ -63,7 +63,7 @@ export function isNevmQualificationReport(
     ) &&
     new Set(hashes).size === hashes.length &&
     report.nevmChainId === '5700' &&
-    report.nevmJournalContainerVersion === 2 &&
+    report.nevmJournalContainerVersion === 1 &&
     report.nevmRestoredFromJournal === (report.phase === 'restart')
   );
 }
@@ -252,7 +252,7 @@ export async function qualifyNativeNevmTransfer(
       (item) => item.registration.chainId === registration.chainId
     );
     expect(
-      row.version === 2 &&
+      row.version === 1 &&
         Number.isSafeInteger(row.revision) &&
         row.revision >= 1 &&
         row.walletFingerprint === fingerprint &&
@@ -367,7 +367,7 @@ export async function qualifyNativeNevmTransfer(
     nevmTransferHash: nevm.hash,
     nevmEthereumTransferHash: ethereum.hash,
     nevmChainId: '5700',
-    nevmJournalContainerVersion: 2,
+    nevmJournalContainerVersion: 1,
     nevmRestoredFromJournal: phase === 'restart',
   });
 }

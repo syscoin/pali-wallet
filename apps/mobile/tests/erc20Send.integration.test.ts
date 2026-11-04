@@ -81,7 +81,7 @@ test('real SDK and SQLite bind ERC20 intent, reject changed funding, and retry i
       },
     });
     await authority.initialize();
-    const rpc = new NativeTransferRpc({
+    const rpc = new NativeTransferRpc({ networkId: 'ethereum',
       fetch: async (_url, init) => {
         const b = JSON.parse(String(init.body));
         let result: unknown;
@@ -92,13 +92,14 @@ test('real SDK and SQLite bind ERC20 intent, reject changed funding, and retry i
               b.params[0] === 'latest' || b.params[0] === 'finalized'
                 ? '0x123'
                 : b.params[0],
-            hash: '0x' + 'a'.repeat(64),
+            hash: '0x' + 'a'.repeat(64), baseFeePerGas: `0x${values.base.toString(16)}`, gasLimit: '0x1c9c380',
           };
         else if (b.method === 'eth_getCode') result = '0x6000';
         else if (b.method === 'eth_getTransactionCount')
           result = values.finalized ? '0x1' : `0x${values.nonce.toString(16)}`;
         else if (b.method === 'eth_getBalance')
           result = `0x${values.eth.toString(16)}`;
+        else if (b.method === 'eth_gasPrice') result = `0x${(values.base + 1).toString(16)}`;
         else if (b.method === 'eth_feeHistory')
           result = {
             oldestBlock: '0x123',

@@ -1,3 +1,4 @@
+import { getNativeSendContext } from '../../src/custody/networkContext';
 // Synthetic public wallet only. Production never imports this fixture.
 import React, { useState, useSyncExternalStore } from 'react';
 import { Wallet } from 'ethers/wallet';
@@ -98,14 +99,14 @@ let releaseQuote: (() => void) | undefined;
 const word = (value: bigint | number) =>
   `0x${BigInt(value).toString(16).padStart(64, '0')}`;
 const block = (number: string) => ({
-  number,
+  number, baseFeePerGas: '0x1', gasLimit: '0x1c9c380',
   hash: `0x${BigInt(number).toString(16).padStart(64, '0')}`,
 });
-const rpc = new NativeTransferRpc({
+const rpc = new NativeTransferRpc({ networkId: 'ethereum',
   fetch: async (_url, init) => {
     const request = JSON.parse(String(init.body));
     rpcMethods.push(request.method);
-    if (request.method === 'eth_feeHistory' && heldQuote) await heldQuote;
+    if (request.method === 'eth_gasPrice' && heldQuote) await heldQuote;
     let result: unknown;
     if (request.method === 'eth_chainId') result = '0x1';
     else if (request.method === 'eth_getCode') result = '0x6000';
@@ -113,6 +114,7 @@ const rpc = new NativeTransferRpc({
       result =
         request.params[1] === 'pending' ? '0x0' : finalized ? '0x1' : '0x0';
     else if (request.method === 'eth_getBalance') result = '0xde0b6b3a7640000';
+    else if (request.method === 'eth_gasPrice') result = '0x2';
     else if (request.method === 'eth_feeHistory')
       result = { oldestBlock: '0x20', baseFeePerGas: ['0x1', '0x1'] };
     else if (request.method === 'eth_maxPriorityFeePerGas') result = '0x1';
@@ -296,6 +298,7 @@ export function Erc20SendFixture() {
     <NativeSend
       key={snapshot.revision}
       controller={controller.view}
+      context={getNativeSendContext('ethereum')}
       token={token}
       onBack={() => setVisible(false)}
     />

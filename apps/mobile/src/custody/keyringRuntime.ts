@@ -6,7 +6,7 @@ import type { CustodyRuntime, CustodyRuntimeFactory } from './types.ts';
 import { CustodyRuntimeError } from './types.ts';
 import { type JournalRemovalSnapshot, NativeTransferJournal, TransferJournalError, journalRequiresReopen } from './transferJournal.ts';
 import { NativeWalletCatalogue, WalletCatalogueError, MAX_HD_ACCOUNTS, MAX_HD_ACCOUNT_INDEX } from './walletCatalogue.ts';
-import { getNativeNetwork, nativeSigningEnabled, type EvmNetworkId } from './networkContext.ts';
+import { getNativeNetwork, snapshotNativeNetwork, nativeSigningEnabled } from './networkContext.ts';
 import type { NativeAccountRequest, NativeAccountRuntime, NativeNetworkRuntime } from './accounts.ts';
 import { decodeStorageValue, encodeStorageValue } from '../storage/json.ts';
 import type { NativeWalletCatalogueSnapshot } from './walletCatalogue.ts';
@@ -238,7 +238,7 @@ export function createKeyringRuntimeFactory(
             [a.index, { ...state.accounts.Imported[a.index]!, label: a.label }]));
           const selected = next.accounts.find((a) => a.id === next.active.accountId)!;
           state.activeAccount = { id: selected.index, type: selected.type === 'HDAccount' ? sdk.KeyringAccountType.HDAccount : sdk.KeyringAccountType.Imported };
-          const network = getNativeNetwork(next.active.networkId);
+          const network = getNativeNetwork(next.active.networkId, next.networks);
           state.activeNetwork = { ...state.activeNetwork, chainId: Number(network.chainId), slip44: network.slip44,
             url: network.rpcUrl, currency: network.symbol, label: network.id };
           catalogueSnapshot = next;
@@ -277,9 +277,10 @@ export function createKeyringRuntimeFactory(
             });
           current(captured);
           state.accounts.HDAccount = Object.fromEntries(derived);
+          const checkedNetwork = getNativeNetwork(nextCatalogue.active.networkId, nextCatalogue.networks);
           for (const account of nextCatalogue.accounts) {
-            await new NativeTransferJournal(storage.keyringStorage, { walletFingerprint, address: account.address, chainId: '1' },
-              () => current(captured), Date.now, account.index, undefined, undefined, account.type).load();
+            await new NativeTransferJournal(storage.keyringStorage, { walletFingerprint, address: account.address, chainId: checkedNetwork.chainId },
+              () => current(captured), Date.now, account.index, checkedNetwork, undefined, account.type).load();
             current(captured);
           }
           publishAccounts(nextCatalogue);
@@ -326,17 +327,17 @@ export function createKeyringRuntimeFactory(
             throw new KeyringRuntimeError('CANCELLED');
           return verifiedIdentity.walletBindingId;
         };
-        const reserveContext = (input: NativeAccountRequest | { kind: 'select-network'; id: EvmNetworkId }, expectedRevision: number, networkSelection = false) => {
+        const reserveContext = (input: NativeAccountRequest | import('./accounts.ts').NativeNetworkRequest, expectedRevision: number, networkSelection = false) => {
             if (closed || !keyring.isUnlocked() || !catalogueSnapshot) throw new KeyringRuntimeError('NOT_READY');
             if (active || reserved) throw new KeyringRuntimeError('BUSY');
             if (typeof keyring.deriveEvmHdRuntimeAccount !== 'function' || catalogueSnapshot.revision !== expectedRevision) throw new KeyringRuntimeError('CANCELLED');
-            const request = decodeStorageValue(encodeStorageValue(input)) as NativeAccountRequest | { kind: 'select-network'; id: EvmNetworkId };
-            if (!request || typeof request !== 'object' || Array.isArray(request) || (!networkSelection && request.kind === 'select-network')) throw new KeyringRuntimeError('INVALID_INPUT');
+            const request = decodeStorageValue(encodeStorageValue(input)) as NativeAccountRequest | import('./accounts.ts').NativeNetworkRequest;
+            if (!request || typeof request !== 'object' || Array.isArray(request) || (!networkSelection && ['select-network', 'save-network', 'remove-network'].includes(request.kind))) throw new KeyringRuntimeError('INVALID_INPUT');
             const fields = request.kind === 'create' ? ['kind', 'label', 'password'] : request.kind === 'restore'
               ? ['kind', 'index', 'label', 'password'] : request.kind === 'rename' ? ['kind', 'id', 'label']
-              : request.kind === 'remove' ? ['kind', 'id', 'password'] : request.kind === 'select' || request.kind === 'select-network' ? ['kind', 'id'] : [];
+              : request.kind === 'remove' ? ['kind', 'id', 'password'] : request.kind === 'save-network' ? ['kind', 'registration'] : request.kind === 'select' || request.kind === 'select-network' || request.kind === 'remove-network' ? ['kind', 'id'] : [];
             if (!fields.length || Object.keys(request).sort().join(',') !== fields.sort().join(',') ||
-                ('id' in request && request.kind !== 'select-network' && (typeof request.id !== 'string' || (() => { try { parseNativeAccountId(request.id); return false; } catch { return true; } })())) ||
+                ('id' in request && !['select-network', 'remove-network'].includes(request.kind) && (typeof request.id !== 'string' || (() => { try { parseNativeAccountId(request.id); return false; } catch { return true; } })())) ||
                 ('index' in request && (!Number.isSafeInteger(request.index) || request.index < 1 || request.index > 4095)) ||
                 ('label' in request && (typeof request.label !== 'string' || !request.label.isWellFormed() || !request.label || request.label.trim() !== request.label || request.label.length > 64 || /[\u0000-\u001f\u007f-\u009f]/.test(request.label))))
               throw new KeyringRuntimeError('INVALID_INPUT');
@@ -348,8 +349,9 @@ export function createKeyringRuntimeFactory(
               throw new KeyringRuntimeError('ACCOUNT_LIMIT');
             if (request.kind === 'restore' && !catalogueSnapshot.removed.some((account) => account.index === request.index))
               throw new KeyringRuntimeError('INVALID_INPUT');
-            if (request.kind === 'select-network') getNativeNetwork(request.id);
-            if ('id' in request && request.kind !== 'select-network') {
+            if (request.kind === 'select-network' || request.kind === 'remove-network') getNativeNetwork(request.id, catalogueSnapshot.networks);
+            if (request.kind === 'save-network') snapshotNativeNetwork(request.registration);
+            if ('id' in request && !['select-network', 'remove-network'].includes(request.kind)) {
               const target = catalogueSnapshot.accounts.find((account) => account.id === request.id);
               if (!target) throw new KeyringRuntimeError('INVALID_INPUT');
               if (request.kind === 'remove' && ((target.type === 'HDAccount' && target.index === 0) || target.id === catalogueSnapshot.active.accountId || catalogueSnapshot.accounts.length <= 1))
@@ -391,7 +393,8 @@ export function createKeyringRuntimeFactory(
                       if (!account) throw new KeyringRuntimeError('CANCELLED');
                       const fingerprint = await dataBinding(captured, assertCurrent);
                       current(captured); checkGuard(assertCurrent);
-                      const journal = new NativeTransferJournal(storage.keyringStorage, { walletFingerprint: fingerprint, address: account.address, chainId: '1' }, () => { current(captured); checkGuard(assertCurrent); }, Date.now, account.index, undefined, (record, guard) => activityHistory.archiveTerminal(record, guard), account.type);
+                      const registration = getNativeNetwork(before.active.networkId, before.networks);
+                      const journal = new NativeTransferJournal(storage.keyringStorage, { walletFingerprint: fingerprint, address: account.address, chainId: registration.chainId }, () => { current(captured); checkGuard(assertCurrent); }, Date.now, account.index, registration, (record, guard) => activityHistory.archiveTerminal(record, guard), account.type);
                       const pending = await journal.removalSnapshot();
                       current(captured); checkGuard(assertCurrent);
                       mutation = { kind: 'remove' as const, id: request.id, journal: pending };
@@ -464,10 +467,9 @@ export function createKeyringRuntimeFactory(
         };
         const networks: NativeNetworkRuntime = {
           getSelectedId: () => closed || tokens.requiresReopen || journalRequiresReopen(storage.keyringStorage) || !keyring.isUnlocked() ? null : catalogueSnapshot?.active.networkId ?? null,
-          reserve: (id, expectedRevision) => {
-            if (typeof id !== 'string') throw new KeyringRuntimeError('INVALID_INPUT');
-            const network = getNativeNetwork(id);
-            return reserveContext({ kind: 'select-network', id: network.id }, expectedRevision, true);
+          reserve: (input, expectedRevision) => {
+            const request = typeof input === 'string' ? { kind: 'select-network' as const, id: input } : input;
+            return reserveContext(request, expectedRevision, true);
           },
         };
         const canSign = () => !!catalogueSnapshot && nativeSigningEnabled(catalogueSnapshot.active.networkId);
@@ -478,7 +480,7 @@ export function createKeyringRuntimeFactory(
           const selected = catalogueSnapshot!.accounts.find((account) => account.id === catalogueSnapshot!.active.accountId)!;
           const networkId = catalogueSnapshot!.active.networkId;
           const fingerprint = await dataBinding(captured, guard); guard();
-          return { scope: createActivityScope(fingerprint, selected.id, selected.address, networkId), guard, index: selected.index, type: selected.type };
+          return { scope: createActivityScope(fingerprint, selected.id, selected.address, getNativeNetwork(networkId, catalogueSnapshot!.networks)), guard, index: selected.index, type: selected.type };
         };
         const checkActivityContext = async (scope: ActivityScope, assertCurrent: () => void) => {
           const context = await activityContext(assertCurrent);
@@ -497,7 +499,7 @@ export function createKeyringRuntimeFactory(
           const task = Promise.resolve().then(async () => {
             check();
             const selected = catalogueSnapshot!.accounts.find((account) => account.id === catalogueSnapshot!.active.accountId)!;
-            const network = getNativeNetwork(catalogueSnapshot!.active.networkId);
+            const network = getNativeNetwork(catalogueSnapshot!.active.networkId, catalogueSnapshot!.networks);
             const walletFingerprint = await dataBinding(captured, check); check();
             const result = await action(Object.freeze({ walletFingerprint, accountId: selected.id, address: selected.address,
               network: network.id, chainId: network.chainId, registrationHash: network.registrationHash }), check);
@@ -544,7 +546,7 @@ export function createKeyringRuntimeFactory(
                   if (catalogue.revision !== scope.catalogueRevision || selected.type !== parseNativeAccountId(scope.accountId).type ||
                       selected.slip44 !== 60 || selected.id !== scope.accountId || selected.index !== scope.index ||
                       selected.address !== scope.address || catalogue.active.networkId !== scope.networkId ||
-                      getNativeNetwork(catalogue.active.networkId).registrationHash !== scope.registrationHash ||
+                      getNativeNetwork(catalogue.active.networkId, catalogue.networks).registrationHash !== scope.registrationHash ||
                       state.activeAccount.id !== selected.index || state.activeAccount.type !== selected.type)
                     throw new KeyringRuntimeError('CANCELLED');
                 };
@@ -635,7 +637,7 @@ export function createKeyringRuntimeFactory(
               const fingerprint = await dataBinding(captured, assertCurrent);
               current(captured); checkGuard(assertCurrent);
               const address = normalizePublicAddress(selected.address, 'ethereum');
-              const network = getNativeNetwork(catalogueSnapshot!.active.networkId);
+              const network = getNativeNetwork(catalogueSnapshot!.active.networkId, catalogueSnapshot!.networks);
               return new NativeTransferJournal(storage.keyringStorage, { walletFingerprint: fingerprint, address, chainId: network.chainId }, () => { current(captured); checkGuard(assertCurrent); }, Date.now, selected.index, network, (record, guard) => activityHistory.archiveTerminal(record, guard), selected.type);
             },
             authorize: (password, assertCurrent) => {
@@ -656,10 +658,9 @@ export function createKeyringRuntimeFactory(
               try {
                 intent = inputIntent === undefined ? undefined : snapshotErc20TransferIntent(inputIntent);
                 assertTransferIntentEnvelope(transaction, intent);
-                if (transaction.chainId !== getNativeNetwork(catalogueSnapshot!.active.networkId).chainId)
+                if (transaction.chainId !== getNativeNetwork(catalogueSnapshot!.active.networkId, catalogueSnapshot!.networks).chainId)
                   throw new KeyringRuntimeError('INVALID_INPUT');
-                if (catalogueSnapshot!.active.networkId === 'zksys-testnet')
-                  snapshotUnsignedTransfer(transaction as Parameters<typeof snapshotUnsignedTransfer>[0], getNativeNetwork('zksys-testnet'));
+                snapshotUnsignedTransfer(transaction as Parameters<typeof snapshotUnsignedTransfer>[0], getNativeNetwork(catalogueSnapshot!.active.networkId, catalogueSnapshot!.networks));
               } catch { return Promise.reject(new KeyringRuntimeError('INVALID_INPUT')); }
               return run(async (captured) => {
               if (!keyring.isUnlocked()) throw new KeyringRuntimeError('CANCELLED');
@@ -669,11 +670,10 @@ export function createKeyringRuntimeFactory(
               await hydrate(captured);
               current(captured); checkGuard(assertCurrent);
               assertTransferIntentEnvelope(transaction, intent);
-              const network = getNativeNetwork(catalogueSnapshot!.active.networkId);
+              const network = getNativeNetwork(catalogueSnapshot!.active.networkId, catalogueSnapshot!.networks);
               if (!nativeSigningEnabled(network.id) || transaction.chainId !== network.chainId)
                 throw new KeyringRuntimeError('INVALID_INPUT');
-              if (network.id === 'zksys-testnet')
-                snapshotUnsignedTransfer(transaction as Parameters<typeof snapshotUnsignedTransfer>[0], network);
+              snapshotUnsignedTransfer(transaction as Parameters<typeof snapshotUnsignedTransfer>[0], network);
               const signed = keyring.signPreparedEvmTransaction({
                 account: { id: selectedAccount().index, type: selectedAccount().type, expectedAddress: transaction.from },
                 network: { kind: 'ethereum', chainId: network.chainId, slip44: 60, url: network.rpcUrl },

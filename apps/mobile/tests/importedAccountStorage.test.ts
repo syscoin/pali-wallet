@@ -105,21 +105,16 @@ test('single-row imported storage reopens, preserves the SDK pair and hides ever
   } finally { await f.close(); }
 });
 
-test('old exact v2 records read without rewrites; mixed expanded fields are never defaults', async () => {
+test('incomplete imported-account catalogue shapes are rejected without filling missing defaults', async () => {
   const f = await fixture();
   try {
     await f.open();
-    const old = await f.storage.keyringStorage.get(WALLET_CATALOGUE_KEY) as any;
-    delete old.importedAccounts; delete old.nextImportedIndex; delete old.retiredImportedIndices;
-    await f.storage.keyringStorage.set(WALLET_CATALOGUE_KEY, old);
-    const model = await f.open(); assert.deepEqual(await f.storage.keyringStorage.get(WALLET_CATALOGUE_KEY), old);
-    await model.mutate(old.revision, { kind: 'rename', id: 'hd:60:0', label: 'Same wallet' }, current);
-    const expanded = await f.storage.keyringStorage.get(WALLET_CATALOGUE_KEY) as any;
-    assert.deepEqual(expanded.importedAccounts, []); assert.equal(expanded.nextImportedIndex, 0);
-    for (const record of [{ ...old, nextImportedIndex: 0 }, { ...old, importedAccounts: [] }, { ...expanded, retiredImportedIndices: undefined }]) {
-      if (record.retiredImportedIndices === undefined) delete record.retiredImportedIndices;
-      await f.storage.keyringStorage.set(WALLET_CATALOGUE_KEY, record);
-      await assert.rejects(f.open()); assert.deepEqual(await f.storage.keyringStorage.get(WALLET_CATALOGUE_KEY), record);
+    const canonical = await f.storage.keyringStorage.get(WALLET_CATALOGUE_KEY) as any;
+    for (const field of ['importedAccounts', 'nextImportedIndex', 'retiredImportedIndices']) {
+      const incomplete = { ...canonical }; delete incomplete[field];
+      await f.storage.keyringStorage.set(WALLET_CATALOGUE_KEY, incomplete);
+      await assert.rejects(f.open());
+      assert.deepEqual(await f.storage.keyringStorage.get(WALLET_CATALOGUE_KEY), incomplete);
     }
   } finally { await f.close(); }
 });

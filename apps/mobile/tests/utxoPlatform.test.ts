@@ -62,7 +62,7 @@ for (const id of ['syscoin', 'bitcoin'] as const) {
       assert.equal(init.signal?.aborted, true, 'Owned native request listeners must be released on completion');
     }
     assert.equal(NATIVE_NETWORKS.some((n) => String(n.id) === id), false);
-    assert.throws(() => nativeSigningEnabled(id as unknown as Parameters<typeof nativeSigningEnabled>[0]), /Unsupported native network/);
+    assert.equal(nativeSigningEnabled(id), false);
   });
 }
 

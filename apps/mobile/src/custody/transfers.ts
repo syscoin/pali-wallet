@@ -2,6 +2,7 @@ import { Transaction } from 'ethers/transaction';
 import type { PreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/software.js';
 import { parseDecimalAmount } from '../core/amounts.ts';
 import { normalizePublicAddress } from '../core/addresses.ts';
+import type { NativeWalletCatalogueSnapshot } from './walletCatalogue.ts';
 import type { CustodySnapshot } from './types.ts';
 import {
   NativeTransferJournal,
@@ -72,6 +73,7 @@ export interface NativeTransferRuntime {
   authorize(password: string, assertCurrent: () => void): Promise<void>;
 }
 type Source = {
+  getCatalogue?(): NativeWalletCatalogueSnapshot | null;
   getSnapshot(): CustodySnapshot;
   subscribe(listener: (snapshot: CustodySnapshot) => void): () => void;
   lock(): void;
@@ -289,11 +291,11 @@ export class NativeTransfers {
     )
       return Promise.reject(new NativeTransferError('NOT_READY'));
     let context: NativeSendContext;
-    try { context = getNativeSendContext(captured.account.network); }
+    try { context = getNativeSendContext(captured.account.network, this.source.getCatalogue?.()?.networks); }
     catch { return Promise.reject(new NativeTransferError('NOT_READY')); }
-    let rpc = this.rpc ?? this.rpcs.get(context.networkId);
-    if (!rpc) { rpc = new NativeTransferRpc({ networkId: context.networkId, fetch: this.fetcher }); this.rpcs.set(context.networkId, rpc); }
-    if (rpc.context !== context) return Promise.reject(new NativeTransferError('NOT_READY'));
+    let rpc = this.rpc ?? this.rpcs.get(context.registrationHash);
+    if (!rpc) { const registration = this.source.getCatalogue?.()?.networks.find((network) => network.id === context.networkId); rpc = new NativeTransferRpc({ networkId: context.networkId, registration, fetch: this.fetcher }); this.rpcs.set(context.registrationHash, rpc); }
+    if (rpc.context.registrationHash !== context.registrationHash) return Promise.reject(new NativeTransferError('NOT_READY'));
     const address = normalizePublicAddress(
       captured.account.address,
       context.networkId
@@ -304,7 +306,9 @@ export class NativeTransfers {
     this.active = true;
     const assertCurrent = () => {
       const current = this.source.getSnapshot();
+      const currentRegistration = this.source.getCatalogue?.()?.networks.find((network) => network.id === context.networkId);
       if (
+        (this.source.getCatalogue && currentRegistration?.registrationHash !== context.registrationHash) ||
         this.disposed ||
         generation !== this.generation ||
         controller.signal.aborted ||
@@ -422,7 +426,7 @@ export class NativeTransfers {
     transaction: PreparedEvmTransaction,
     existing: TransferJournalEntry | null,
     inputIntent?: Erc20TransferIntent,
-    context = getNativeSendContext(this.source.getSnapshot().account!.network)
+    context = getNativeSendContext(this.source.getSnapshot().account!.network, this.source.getCatalogue?.()?.networks)
   ) {
     const intent = existing?.intent ?? inputIntent;
     assertTransferIntentEnvelope(transaction, intent);
@@ -559,6 +563,7 @@ export class NativeTransfers {
       try {
         intent = snapshotErc20TransferIntent({
           kind: 'erc20-transfer',
+        chainId: context.chainId,
           token,
           recipient: to,
           amountUnits: parseTokenAmount(amount, token.decimals),
@@ -591,7 +596,7 @@ export class NativeTransfers {
     if (this.expiry !== null) clearTimeout(this.expiry);
     this.expiry = null;
     return this.perform(async ({ assertCurrent, runtime, signal, address, context, rpc }) => {
-      if (approved.public.context !== context) throw new NativeTransferError('EXPIRED');
+      if (approved.public.context.registrationHash !== context.registrationHash) throw new NativeTransferError('EXPIRED');
       let startedSubmission = false;
       const guard = () => {
         assertCurrent();
@@ -612,25 +617,14 @@ export class NativeTransfers {
         if (
           !stored ||
           stored.hash !== approved.existing.hash ||
-          !equalTransferIntent(stored.intent, approved.public.intent) ||
-          isTerminal(stored.phase)
+          !equalTransferIntent(stored.intent, approved.public.intent)
         )
           throw new NativeTransferError('EXPIRED');
         await this.runSecretOperation(() => runtime.authorize(password, guard));
         guard();
         entry = stored;
       } else {
-        let latest;
-        if (approved.public.intent) latest = await rpc.prepareToken(address, approved.public.intent, signal);
-        else if (context.settlement.kind === 'zkos-finalized-executed') {
-          if (approved.transaction.type !== 2) throw new NativeTransferError('FAILED');
-          latest = await rpc.requote(approved.transaction, signal);
-        } else latest = await rpc.prepare(
-              address,
-              approved.transaction.to,
-              approved.transaction.value,
-              signal
-            );
+        const latest = await rpc.requote(approved.transaction, signal, approved.public.intent);
         guard();
         if (
           latest.transaction.to !== approved.transaction.to ||
@@ -639,7 +633,7 @@ export class NativeTransfers {
           latest.transaction.nonce !== approved.transaction.nonce ||
           BigInt(latest.transaction.gasLimit) >
             BigInt(approved.transaction.gasLimit) ||
-          BigInt(latest.transaction.maxFeePerGas) >
+          BigInt(latest.transaction.type === 0 ? latest.transaction.gasPrice : latest.transaction.maxFeePerGas) >
             BigInt(approved.public.maximumFeePerGas)
         )
           throw new NativeTransferError('EXPIRED');
@@ -769,22 +763,14 @@ export class NativeTransfers {
           }
     );
   }
-  private terminalMessage(phase: string, intent?: Erc20TransferIntent, context?: NativeSendContext): string {
-    if (context?.settlement.kind === 'zkos-finalized-executed' && phase === 'confirmed')
-      return 'Settlement confirmed at the zkSYS finalized execution boundary.';
-    if (context?.settlement.kind === 'zkos-finalized-executed' && phase === 'reverted')
-      return 'Transfer reverted at the zkSYS finalized execution boundary. Network fees may still apply.';
-    if (context?.settlement.kind === 'nevm-depth-12' && phase === 'confirmed')
-      return 'Depth confirmed after 12 confirmations. This is a confirmation-depth observation, not protocol finality.';
-    if (context?.settlement.kind === 'nevm-depth-12' && phase === 'reverted')
-      return 'Transfer reverted and depth confirmed after 12 confirmations. Network fees may still apply.';
+  private terminalMessage(phase: string, intent?: Erc20TransferIntent, _context?: NativeSendContext): string {
     if (phase === 'confirmed')
       return intent
         ? 'Transaction confirmed. Check the token balance for the received amount; token contracts may deduct fees or apply other rules.'
         : 'Transfer confirmed.';
     if (phase === 'reverted')
       return 'Transfer reverted. Network fees may still apply.';
-    return 'This saved transfer can no longer be retried. Its result is unavailable. Check your account history before sending again.';
+    return 'The account nonce has advanced, but this transfer’s result is unavailable. Refresh its status before retrying.';
   }
   recover(offerRetry = false): Promise<void> {
     if (this.disposed)
@@ -823,14 +809,6 @@ export class NativeTransfers {
         return;
       }
       this.publish({ intent: entry.intent ?? null });
-      if (isTerminal(entry.phase)) {
-        this.publish({
-          phase: entry.phase,
-          hash: entry.hash,
-          message: this.terminalMessage(entry.phase, entry.intent, context),
-        });
-        return;
-      }
       this.publish({ hash: entry.hash });
       const tx = this.transaction(entry);
       const receipt = await rpc.receipt(
@@ -838,7 +816,7 @@ export class NativeTransfers {
         signal
       );
       assertCurrent();
-      if (receipt && (receipt.terminalEligible ?? receipt.finalized)) {
+      if (receipt) {
         await journal.transition(entry.hash, receipt.status);
         assertCurrent();
         this.publish({
@@ -846,16 +824,16 @@ export class NativeTransfers {
           hash: entry.hash,
           message: this.terminalMessage(receipt.status, entry.intent, context),
         });
-      } else if (!receipt && offerRetry) this.showReview(tx, entry, undefined, context);
-      else
-        this.publish({
-          phase: receipt ? 'pending' : 'unknown',
-          hash: entry.hash,
-          message: receipt
-            ? context.settlement.kind === 'nevm-depth-12' ? 'Included in a block. Waiting for 12 confirmations.'
-              : context.settlement.kind === 'zkos-finalized-executed' ? 'Included in a block. Waiting for zkSYS settlement confirmation.' : 'Included in a block. Waiting for finality.'
-            : 'Submission is unconfirmed. Do not create another transfer for this nonce.',
-        });
+      } else if (offerRetry) {
+        if (isTerminal(entry.phase)) await journal.transition(entry.hash, 'submitted');
+        assertCurrent();
+        this.showReview(tx, entry, undefined, context);
+      } else {
+        if (isTerminal(entry.phase)) await journal.transition(entry.hash, 'submitted');
+        assertCurrent();
+        this.publish({ phase: 'unknown', hash: entry.hash,
+          message: 'No current receipt was found. The saved transaction remains available; check its status before sending again.' });
+      }
     });
   }
 }

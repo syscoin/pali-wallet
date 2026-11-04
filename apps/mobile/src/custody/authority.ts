@@ -82,11 +82,18 @@ export class NativeCustodyAuthority {
     }, expectedRevision);
   }
 
-  /** Stage-1 host capability; network UI and non-Ethereum send are separate work. */
+  /** Selection revokes outstanding reviews before changing the saved EVM context. */
   selectNetwork(id: string, expectedRevision: number, expectedCatalogueRevision: number): Promise<void> {
     return this.manageContext((runtime) => {
       if (!runtime.networks) throw new CustodyRuntimeError('NOT_READY');
       return runtime.networks.reserve(id, expectedCatalogueRevision);
+    }, expectedRevision);
+  }
+
+  manageNetwork(request: import('./accounts.ts').NativeNetworkRequest, expectedRevision: number, expectedCatalogueRevision: number): Promise<void> {
+    return this.manageContext((runtime) => {
+      if (!runtime.networks) throw new CustodyRuntimeError('NOT_READY');
+      return runtime.networks.reserve(request, expectedCatalogueRevision);
     }, expectedRevision);
   }
 

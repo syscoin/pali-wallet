@@ -71,7 +71,7 @@ test('replacement review clears the password while same-review updates preserve 
   ).toEqual([]);
 });
 
-test('NEVM native send renders captured testnet and TSYS labels through depth confirmation', async ({
+test('NEVM native send renders captured testnet and TSYS labels through ordinary confirmation', async ({
   page,
 }) => {
   await page.goto('/?nevm-send');
@@ -95,7 +95,7 @@ test('NEVM native send renders captured testnet and TSYS labels through depth co
   ).toBeVisible();
   await expect(
     page.getByText('12-confirmation depth policy', { exact: true })
-  ).toBeVisible();
+  ).toHaveCount(0);
   await expect(
     page.getByText(
       'Use test funds only. This transfer is on Syscoin NEVM Testnet (chain 5700).',
@@ -115,18 +115,15 @@ test('NEVM native send renders captured testnet and TSYS labels through depth co
   await page.getByTestId('native-send-confirm').click();
   await page.evaluate(() => window.__nativeSendFixture.settle('confirmed'));
   await expect(
-    page.getByText('Depth confirmed', { exact: true })
+    page.getByText('Transfer confirmed', { exact: true })
   ).toBeVisible();
   await expect(
     page.getByText('Syscoin NEVM Testnet transaction', { exact: true })
   ).toBeVisible();
-  await expect(
-    page.getByText('Transfer confirmed', { exact: true })
-  ).toHaveCount(0);
   await expect(page.getByText(/finalized/i)).toHaveCount(0);
 });
 
-test('NEVM reverted receipt keeps a depth label instead of protocol finality', async ({
+test('NEVM reverted receipt uses ordinary reverted status', async ({
   page,
 }) => {
   await page.goto('/?nevm-send');
@@ -139,7 +136,7 @@ test('NEVM reverted receipt keeps a depth label instead of protocol finality', a
   await page.getByTestId('native-send-confirm').click();
   await page.evaluate(() => window.__nativeSendFixture.settle('reverted'));
   await expect(
-    page.getByText('Reverted · depth confirmed', { exact: true })
+    page.getByText('Transfer reverted', { exact: true })
   ).toBeVisible();
   await expect(
     page.getByText('Account 1 · Syscoin NEVM Testnet · Test network', {
@@ -152,11 +149,11 @@ test('NEVM reverted receipt keeps a depth label instead of protocol finality', a
   await expect(
     page.getByText('Check account history', { exact: true })
   ).toBeVisible();
-  await expect(page.getByText('Depth confirmed', { exact: true })).toHaveCount(
+  await expect(page.getByText('Transfer confirmed', { exact: true })).toHaveCount(
     0
   );
   await expect(
-    page.getByText('Reverted · depth confirmed', { exact: true })
+    page.getByText('Transfer reverted', { exact: true })
   ).toHaveCount(0);
 });
 
@@ -169,7 +166,7 @@ async function prepareZkSys(page: Page) {
   await expect(passwordInput(page)).toBeVisible();
 }
 
-test('zkSYS review keeps captured chain57057 labels and inclusive fee through settlement', async ({
+test('zkSYS review keeps captured chain57057 labels through ordinary confirmation', async ({
   page,
 }) => {
   await page.goto('/?zksys-send');
@@ -189,10 +186,10 @@ test('zkSYS review keeps captured chain57057 labels and inclusive fee through se
   ).toBeVisible();
   await expect(
     page.getByText('zkSYS settlement policy', { exact: true })
-  ).toBeVisible();
+  ).toHaveCount(0);
   await expect(
     page.getByText(
-      'This limit includes execution, proving and data costs. The final network fee may be lower.',
+      'The final fee depends on network execution. This review limits the gas price and gas used by this transaction.',
       { exact: true }
     )
   ).toBeVisible();
@@ -215,19 +212,18 @@ test('zkSYS review keeps captured chain57057 labels and inclusive fee through se
   await passwordInput(page).fill('Fixture zkSYS password');
   await page.getByTestId('native-send-confirm').click();
   await expect(page.getByText('Transfer pending', { exact: true })).toBeVisible();
-  await expect(page.getByText('Settlement confirmed', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('Transfer confirmed', { exact: true })).toHaveCount(0);
   await page.evaluate(() => window.__nativeSendFixture.settle('confirmed'));
   await expect(
-    page.getByText('Settlement confirmed', { exact: true })
+    page.getByText('Transfer confirmed', { exact: true })
   ).toBeVisible();
   await expect(
     page.getByText('zkTanenbaum Testnet transaction', { exact: true })
   ).toBeVisible();
   await expect(page.getByText(/Ethereum|Depth confirmed/i)).toHaveCount(0);
-  await expect(page.getByText('Transfer confirmed', { exact: true })).toHaveCount(0);
 });
 
-test('zkSYS reverted and unavailable-outcome states retain distinct settlement wording', async ({
+test('zkSYS reverted and unavailable-outcome states retain distinct ordinary outcomes', async ({
   page,
 }) => {
   await page.goto('/?zksys-send');
@@ -236,16 +232,16 @@ test('zkSYS reverted and unavailable-outcome states retain distinct settlement w
   await page.getByTestId('native-send-confirm').click();
   await page.evaluate(() => window.__nativeSendFixture.settle('reverted'));
   await expect(
-    page.getByText('Reverted · settlement confirmed', { exact: true })
+    page.getByText('Transfer reverted', { exact: true })
   ).toBeVisible();
   await expect(page.getByText(/Ethereum|Depth confirmed/i)).toHaveCount(0);
   await page.evaluate(() => window.__nativeSendFixture.settle('nonce-consumed'));
   await expect(
     page.getByText('Check account history', { exact: true })
   ).toBeVisible();
-  await expect(page.getByText('Settlement confirmed', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('Transfer confirmed', { exact: true })).toHaveCount(0);
   await expect(
-    page.getByText('Reverted · settlement confirmed', { exact: true })
+    page.getByText('Transfer reverted', { exact: true })
   ).toHaveCount(0);
 });
 

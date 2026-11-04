@@ -48,6 +48,8 @@ export type NativeActivitySnapshot = Readonly<{
   rows: readonly ActivityRow[];
   view: ActivityViewState;
   accountAddress: string | null;
+  networkName?: string | null;
+  nativeSymbol?: string | null;
   explorerUrl: string | null;
   loadingMore: boolean;
   hasMore: boolean;
@@ -71,13 +73,13 @@ const initial = (): NativeActivitySnapshot =>
     status: 'locked',
     rows: [],
     view: DEFAULT_ACTIVITY_VIEW,
-    accountAddress: null,
+    accountAddress: null, networkName: null, nativeSymbol: null,
     explorerUrl: null,
     loadingMore: false,
     hasMore: false,
     error: null,
     coverage:
-      'Only direct Ethereum transactions and ERC20 transfer events are included.',
+      'Direct transactions and ERC20 transfer events from the selected network are included.',
     truncated: false,
   });
 
@@ -202,11 +204,17 @@ export class NativeActivity {
       this.publish({
         status: 'ready',
         view: saved.view,
-        accountAddress: scope.address,
+        accountAddress: scope.address, networkName: scope.network.name, nativeSymbol: scope.network.symbol,
         explorerUrl: scope.explorerUrl,
         truncated: saved.truncated,
       });
       this.renderRows(true);
+      if (!scope.apiUrl) {
+        this.feeds.txlist.done = true; this.feeds.tokentx.done = true;
+        this.publish({ coverage: 'Saved transfers only. Add an explorer data source to discover other activity.' });
+        this.renderRows(true);
+        return;
+      }
       const timeout = setTimeout(() => {
         if (generation === this.generation) this.request?.abort();
       }, 30000);
@@ -429,8 +437,7 @@ export class NativeActivity {
       truncated:
         this.snapshot.truncated ||
         (atDisplayLimit && (candidates.length > this.visible || moreToLoad)),
-      coverage:
-        'Direct Ethereum transactions and ERC20 transfer events only. Internal ETH transfers are not included. Explorer data is checked against the RPC; older activity may require loading.',
+      coverage: this.scope?.apiUrl ? 'Direct transactions and ERC20 transfer events only. Internal transfers are not included. Explorer data is checked against the RPC; older activity may require loading.' : 'Saved transfers only. Add an explorer data source to discover other activity.',
     });
     this.hydrate(rows.slice(0, Math.min(rows.length, 20)).map((r) => r.hash));
   }
@@ -459,7 +466,7 @@ export class NativeActivity {
       this.workers++;
       this.checking.add(hash);
       void this.receipts
-        .read(hash, scope.address, signal, guard)
+        .read(hash, scope.address, signal, guard, scope.network)
         .then((observation) => {
           guard();
           if (observation)

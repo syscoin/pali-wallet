@@ -28,7 +28,7 @@ export type ZksysQualificationEvidence = Readonly<{
   zksysAddress: string;
   zksysTransferHash: string;
   zksysChainId: '57057';
-  zksysJournalContainerVersion: 2;
+  zksysJournalContainerVersion: 1;
   zksysSignatures: number;
   zksysAuthorizations: number;
   zksysInjectedBroadcasts: 1;
@@ -71,7 +71,7 @@ export function isZksysQualificationReport(
     ) &&
     new Set(hashes).size === hashes.length &&
     report.zksysChainId === '57057' &&
-    report.zksysJournalContainerVersion === 2 &&
+    report.zksysJournalContainerVersion === 1 &&
     report.zksysSignatures === (report.phase === 'create' ? 1 : 0) &&
     report.zksysAuthorizations === (report.phase === 'create' ? 0 : 1) &&
     report.zksysInjectedBroadcasts === 1 &&
@@ -245,7 +245,7 @@ export async function qualifyNativeZksysTransfer(
         tx.value === 789n &&
         tx.data === '0x' &&
         tx.gasLimit === 36000n &&
-        tx.maxFeePerGas === 20n &&
+        tx.maxFeePerGas === 25n &&
         tx.maxPriorityFeePerGas === 0n &&
         tx.hash === entry.hash &&
         tx.serialized === entry.rawTransaction
@@ -255,7 +255,7 @@ export async function qualifyNativeZksysTransfer(
     )) as TransferJournalContainer;
     guard();
     expect(
-      row?.version === 2 &&
+      row?.version === 1 &&
         row.walletFingerprint === fingerprint &&
         row.account.id === account.id &&
         row.account.index === 4 &&
@@ -351,13 +351,14 @@ export async function qualifyNativeZksysTransfer(
         expect(
           params.length === 2 &&
             params[0] === address &&
-            ['pending', '0x5a'].includes(params[1] as string)
+            ['pending', 'latest', '0x5a'].includes(params[1] as string)
         );
         result = '0x0';
       } else if (body.method === 'eth_getBalance') {
         expect(phase === 'create');
         same([address, 'pending']);
         result = '0xde0b6b3a7640000';
+      } else if (body.method === 'eth_gasPrice') { same([]); result = '0xa';
       } else if (body.method === 'eth_feeHistory') {
         expect(phase === 'create');
         same(['0x1', 'latest', []]);
@@ -370,14 +371,14 @@ export async function qualifyNativeZksysTransfer(
         expect(phase === 'create' && ++estimates <= 2);
         same([
           {
-            type: '0x2',
-            chainId: '0xdee1',
             from: address,
             to: recipient,
-            nonce: '0x0',
             value: '0x315',
             data: '0x',
-            maxFeePerGas: '0x14',
+            type: '0x2',
+            chainId: '0xdee1',
+            nonce: '0x0',
+            maxFeePerGas: '0x19',
             maxPriorityFeePerGas: '0x0',
           },
           'pending',
@@ -430,7 +431,7 @@ export async function qualifyNativeZksysTransfer(
             review &&
               !review.retry &&
               review.context.chainId === '57057' &&
-              review.totalUnits === '720789'
+              review.totalUnits === '900789'
           );
           await controller.confirm(review.id, password);
           guard();
@@ -482,7 +483,7 @@ export async function qualifyNativeZksysTransfer(
       zksysAddress: address,
       zksysTransferHash: saved.hash,
       zksysChainId: '57057',
-      zksysJournalContainerVersion: 2,
+      zksysJournalContainerVersion: 1,
       zksysSignatures: signatures,
       zksysAuthorizations: authorizations,
       zksysInjectedBroadcasts: 1,

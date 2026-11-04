@@ -82,7 +82,7 @@ function fixture() {
   };
 }
 
-test('historical Ethereum legacy bytes above the new-send gas ceiling remain recoverable', async () => {
+test('type0 bytes retain their exact generic EVM gas limit across restart', async () => {
   const f = fixture();
   const signed = await wallet.signTransaction({ type: 0, chainId: 1, nonce: 0,
     to: '0x1111111111111111111111111111111111111111', value: 1n,

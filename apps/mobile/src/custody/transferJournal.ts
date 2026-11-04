@@ -3,7 +3,7 @@ import { keccak256 } from 'ethers/crypto';
 import { Transaction } from 'ethers/transaction';
 import { decodeStorageValue, encodeStorageValue } from '../storage/json.ts';
 import type { KeyringStoragePort } from '../storage/types.ts';
-import { getNativeNetwork, NATIVE_NETWORKS, type NativeNetworkRegistration } from './networkContext.ts';
+import { snapshotNativeNetwork, NATIVE_NETWORKS, type NativeNetworkRegistration } from './networkContext.ts';
 import { assertTransferIntentEnvelope, snapshotErc20TransferIntent, type Erc20TransferIntent } from './transferIntent.ts';
 import type { LocalActivityRecord, TerminalActivityRecord } from '../activity/types.ts';
 import { nativeAccountId, parseNativeAccountId, type NativeAccountType } from './accountIdentity.ts';
@@ -21,7 +21,8 @@ export function nativeTransferJournalKey(accountIndex: number, type: NativeAccou
   return type === 'HDAccount' && accountIndex === 0 ? STORAGE_KEY : `${STORAGE_KEY}:${id}`;
 }
 export type TransferJournalPhase = 'signed' | 'attempted' | 'submitted' | 'confirmed' | 'reverted' | 'nonce-consumed';
-export type TransferJournalScope = Readonly<{ walletFingerprint: string; address: string; chainId: string }>;
+export type TransferJournalOwner = Readonly<{ walletFingerprint: string; address: string }>;
+export type TransferJournalScope = TransferJournalOwner & Readonly<{ chainId: string }>;
 /** Existing private transfer-host DTO; never persisted as the container itself. */
 export type TransferJournalEntry = Readonly<{
   version: 1; scope: TransferJournalScope; phase: TransferJournalPhase;
@@ -34,11 +35,11 @@ type ContainerEntry = Readonly<{
   intent?: Erc20TransferIntent;
 }>;
 export type TransferJournalContainer = Readonly<{
-  version: 2; revision: number; walletFingerprint: string;
+  version: 1; revision: number; walletFingerprint: string;
   account: Readonly<{ id: string; index: number; type: NativeAccountType; slip44: 60; address: string }>;
   entries: readonly ContainerEntry[];
 }>;
-export type JournalRemovalSnapshot = TransferJournalContainer | TransferJournalEntry;
+export type JournalRemovalSnapshot = TransferJournalContainer;
 export class TransferJournalError extends Error {
   readonly code: 'CORRUPT' | 'CONTEXT_CHANGED' | 'PENDING_TRANSFER' | 'INVALID_TRANSITION' | 'CAPACITY' | 'CONFLICT' | 'REOPEN_REQUIRED' | 'HISTORY_UNAVAILABLE';
   constructor(code: TransferJournalError['code']) { super(code); this.name = 'TransferJournalError'; this.code = code; }
@@ -62,23 +63,21 @@ function exact(value: unknown, keys: readonly string[]): Record<string, unknown>
 function clone(value: unknown): unknown {
   try { return decodeStorageValue(encodeStorageValue(value)); } catch { return corrupt(); }
 }
+function ownerSnapshot(value: TransferJournalOwner): TransferJournalOwner {
+  const owner = exact(value, ['walletFingerprint', 'address']);
+  if (typeof owner.walletFingerprint !== 'string' || !/^[0-9a-f]{64}$/.test(owner.walletFingerprint) || typeof owner.address !== 'string') return corrupt();
+  let address: string;
+  try { address = getAddress(owner.address); } catch { return corrupt(); }
+  if (/^0x0{40}$/i.test(address)) return corrupt();
+  return Object.freeze({ walletFingerprint: owner.walletFingerprint, address });
+}
 function scopeSnapshot(value: TransferJournalScope): TransferJournalScope {
   const scope = exact(value, ['walletFingerprint', 'address', 'chainId']);
-  if (typeof scope.walletFingerprint !== 'string' || !/^[0-9a-f]{64}$/.test(scope.walletFingerprint) ||
-      typeof scope.chainId !== 'string' || !/^[1-9][0-9]{0,15}$/.test(scope.chainId) ||
-      !NATIVE_NETWORKS.some((network) => network.chainId === scope.chainId) || typeof scope.address !== 'string') return corrupt();
-  let address: string;
-  try { address = getAddress(scope.address); } catch { return corrupt(); }
-  if (/^0x0{40}$/i.test(address)) return corrupt();
-  return Object.freeze({ walletFingerprint: scope.walletFingerprint, address, chainId: scope.chainId });
+  if (typeof scope.chainId !== 'string' || !/^[1-9][0-9]{0,15}$/.test(scope.chainId) || BigInt(scope.chainId) > BigInt(Number.MAX_SAFE_INTEGER)) return corrupt();
+  return Object.freeze({ ...ownerSnapshot({ walletFingerprint: scope.walletFingerprint as string, address: scope.address as string }), chainId: scope.chainId });
 }
 function registrationSnapshot(value: unknown): NativeNetworkRegistration {
-  const raw = exact(value, ['id', 'kind', 'chainId', 'slip44', 'rpcUrl', 'symbol', 'decimals', 'testnet', 'registrationHash']);
-  if (typeof raw.id !== 'string') return corrupt();
-  let expected: NativeNetworkRegistration;
-  try { expected = getNativeNetwork(raw.id); } catch { return corrupt(); }
-  if (Object.entries(expected).some(([key, field]) => raw[key] !== field)) return corrupt();
-  return expected;
+  try { return snapshotNativeNetwork(value); } catch { return corrupt(); }
 }
 function signedIdentity(raw: unknown, scope: TransferJournalScope, intent?: Erc20TransferIntent): { hash: string; nonce: number } {
   if (typeof raw !== 'string' || raw.length > MAX_RAW_CHARACTERS || !/^0x(?:[0-9a-f]{2})+$/.test(raw)) return corrupt();
@@ -93,71 +92,58 @@ function signedIdentity(raw: unknown, scope: TransferJournalScope, intent?: Erc2
     return { hash, nonce: tx.nonce };
   } catch { return corrupt(); }
 }
-function entrySnapshot(value: unknown, scope: TransferJournalScope, legacy: boolean): ContainerEntry {
-  const data = exact(value, legacy
-    ? ['version', 'scope', 'phase', 'rawTransaction', 'hash', 'nonce', 'createdAt']
-    : ['registration', 'phase', 'rawTransaction', 'hash', 'nonce', 'createdAt',
-      ...(value && typeof value === 'object' && Object.hasOwn(value, 'intent') ? ['intent'] : [])]);
-  let registration: NativeNetworkRegistration;
-  if (legacy) {
-    if (data.version !== 1) return corrupt();
-    const recorded = scopeSnapshot(data.scope as TransferJournalScope);
-    if (recorded.chainId !== '1' || recorded.walletFingerprint !== scope.walletFingerprint || recorded.address !== scope.address)
-      throw new TransferJournalError('CONTEXT_CHANGED');
-    registration = getNativeNetwork('ethereum');
-  } else registration = registrationSnapshot(data.registration);
+function entrySnapshot(value: unknown, scope: TransferJournalOwner): ContainerEntry {
+  const data = exact(value, ['registration', 'phase', 'rawTransaction', 'hash', 'nonce', 'createdAt',
+    ...(value && typeof value === 'object' && Object.hasOwn(value, 'intent') ? ['intent'] : [])]);
+  const registration = registrationSnapshot(data.registration);
   if (!['signed', 'attempted', 'submitted', 'confirmed', 'reverted', 'nonce-consumed'].includes(data.phase as string) ||
       !Number.isSafeInteger(data.createdAt) || (data.createdAt as number) < 0) return corrupt();
   let intent: Erc20TransferIntent | undefined;
-  try { if (!legacy && Object.hasOwn(data, 'intent')) intent = snapshotErc20TransferIntent(data.intent); } catch { return corrupt(); }
+  try { if (Object.hasOwn(data, 'intent')) intent = snapshotErc20TransferIntent(data.intent); } catch { return corrupt(); }
   const identity = signedIdentity(data.rawTransaction, { ...scope, chainId: registration.chainId }, intent);
   if (identity.hash !== data.hash || identity.nonce !== data.nonce) return corrupt();
   return Object.freeze({ registration, phase: data.phase as TransferJournalPhase, rawTransaction: data.rawTransaction as string,
     hash: identity.hash, nonce: identity.nonce, createdAt: data.createdAt as number, ...(intent ? { intent } : {}) });
 }
-function container(scope: TransferJournalScope, index: number, revision: number, entries: readonly ContainerEntry[], type: NativeAccountType = 'HDAccount'): TransferJournalContainer {
-  return Object.freeze({ version: 2, revision, walletFingerprint: scope.walletFingerprint,
+function container(scope: TransferJournalOwner, index: number, revision: number, entries: readonly ContainerEntry[], type: NativeAccountType = 'HDAccount'): TransferJournalContainer {
+  return Object.freeze({ version: 1, revision, walletFingerprint: scope.walletFingerprint,
     account: Object.freeze({ id: nativeAccountId(type, index), index, type, slip44: 60, address: scope.address }),
     entries: Object.freeze([...entries].sort((a, b) => Number(a.registration.chainId) - Number(b.registration.chainId))) });
 }
-function decode(value: unknown, scope: TransferJournalScope, index: number, type: NativeAccountType = 'HDAccount'): { value: TransferJournalContainer; legacy: boolean } {
+function decode(value: unknown, scope: TransferJournalOwner, index: number, type: NativeAccountType = 'HDAccount'): { value: TransferJournalContainer } {
   const raw = clone(value);
-  if ((raw as { version?: unknown } | null)?.version === 1) {
-    if (type !== 'HDAccount') return corrupt();
-    return { value: container(scope, index, 0, [entrySnapshot(raw, scope, true)]), legacy: true };
-  }
   const data = exact(raw, ['version', 'revision', 'walletFingerprint', 'account', 'entries']);
   const account = exact(data.account, ['id', 'index', 'type', 'slip44', 'address']);
-  if (data.version !== 2 || !Number.isSafeInteger(data.revision) || (data.revision as number) < 0 ||
+  if (data.version !== 1 || !Number.isSafeInteger(data.revision) || (data.revision as number) < 0 ||
       !Array.isArray(data.entries) || data.entries.length < 1 || data.entries.length > MAX_JOURNAL_ENTRIES) return corrupt();
   if (data.walletFingerprint !== scope.walletFingerprint || account.id !== nativeAccountId(type, index) || account.index !== index ||
       account.type !== type || account.slip44 !== 60 || account.address !== scope.address)
     throw new TransferJournalError('CONTEXT_CHANGED');
-  const entries = data.entries.map((entry) => entrySnapshot(entry, scope, false));
+  const entries = data.entries.map((entry) => entrySnapshot(entry, scope));
   if (new Set(entries.map((entry) => entry.registration.chainId)).size !== entries.length ||
       entries.some((entry, i) => i > 0 && Number(entries[i - 1]!.registration.chainId) >= Number(entry.registration.chainId))) return corrupt();
-  return { value: container(scope, index, data.revision as number, entries, type), legacy: false };
+  return { value: container(scope, index, data.revision as number, entries, type) };
 }
 function hostEntry(entry: ContainerEntry, scope: TransferJournalScope): TransferJournalEntry {
   return Object.freeze({ version: 1, scope: Object.freeze({ ...scope, chainId: entry.registration.chainId }), phase: entry.phase,
     rawTransaction: entry.rawTransaction, hash: entry.hash, nonce: entry.nonce, createdAt: entry.createdAt,
     ...(entry.intent ? { intent: entry.intent } : {}) });
 }
-/** Read every chain sibling without migrating, broadcasting or exposing signed bytes. */
+/** Read every chain sibling without writing, broadcasting or exposing signed bytes. */
 export function inspectRecoveryJournal(key: string, value: unknown, walletFingerprint: string) {
   const account = key === STORAGE_KEY ? parseNativeAccountId('hd:60:0') : parseNativeAccountId(key.slice(STORAGE_KEY.length + 1));
   if (nativeTransferJournalKey(account.index, account.type) !== key) return corrupt();
   const raw = clone(value) as { version?: unknown; scope?: { address?: unknown }; account?: { address?: unknown } } | null;
-  const address = raw?.version === 1 ? raw.scope?.address : raw?.account?.address;
-  const scope = scopeSnapshot({ walletFingerprint, address: address as string, chainId: '1' });
+  const address = raw?.account?.address;
+  const scope = ownerSnapshot({ walletFingerprint, address: address as string });
   const parsed = decode(value, scope, account.index, account.type).value;
   return Object.freeze({ ...account, address: scope.address, transactions: parsed.entries.length,
     pending: parsed.entries.filter((entry) => !terminal(entry.phase)).length });
 }
 /** Exact whole-row snapshot, never a selected-chain projection, for atomic cleanup. */
-export function terminalJournalForRemoval(value: JournalRemovalSnapshot, scope: TransferJournalScope, accountIndex = 0, type: NativeAccountType = 'HDAccount'): JournalRemovalSnapshot {
+export function terminalJournalForRemoval(value: JournalRemovalSnapshot, scope: TransferJournalOwner, accountIndex = 0, type: NativeAccountType = 'HDAccount'): JournalRemovalSnapshot {
   nativeTransferJournalKey(accountIndex, type);
-  const expected = scopeSnapshot(scope);
+  const expected = ownerSnapshot({ walletFingerprint: scope.walletFingerprint, address: scope.address });
   const parsed = decode(value, expected, accountIndex, type);
   if (parsed.value.entries.some((entry) => !terminal(entry.phase))) throw new TransferJournalError('PENDING_TRANSFER');
   return clone(value) as JournalRemovalSnapshot;
@@ -203,7 +189,8 @@ export class NativeTransferJournal {
   }
   private selected(value: TransferJournalContainer): ContainerEntry | undefined {
     const entry = value.entries.find((item) => item.registration.chainId === this.scope.chainId);
-    if (entry && entry.registration.registrationHash !== this.registration.registrationHash) throw new TransferJournalError('CONTEXT_CHANGED');
+    // Stored registration remains immutable provenance. Explicit settings edits
+    // select the current RPC for this same chain without changing signed bytes.
     return entry;
   }
   private async read() {
@@ -241,7 +228,7 @@ export class NativeTransferJournal {
       for (let attempt = 0; attempt < CAS_ATTEMPTS; attempt++) {
         const old = await this.read();
         const change = await operation(old?.value ?? null);
-        const next = change.next ?? (old?.legacy ? old.value : undefined);
+        const next = change.next;
         if (!next) return change.result;
         if (next.entries.length > MAX_JOURNAL_ENTRIES) throw new TransferJournalError('CAPACITY');
         if (await this.write(old?.raw, next)) return change.result;
@@ -308,7 +295,14 @@ export class NativeTransferJournal {
         await this.archive(old);
       }
       if (value?.revision === Number.MAX_SAFE_INTEGER) throw new TransferJournalError('CAPACITY');
-      const entries = [...(value?.entries ?? []).filter((item) => item.registration.chainId !== this.scope.chainId), entry];
+      let retained = (value?.entries ?? []).filter((item) => item.registration.chainId !== this.scope.chainId);
+      if (retained.length >= MAX_JOURNAL_ENTRIES) {
+        const retired = retained.filter((item) => item.phase === 'confirmed' || item.phase === 'reverted').sort((a, b) => a.createdAt - b.createdAt)[0];
+        if (!retired) throw new TransferJournalError('CAPACITY');
+        await this.archive(retired);
+        retained = retained.filter((item) => item !== retired);
+      }
+      const entries = [...retained, entry];
       return { next: container(this.scope, this.index, value ? value.revision + 1 : 0, entries, this.type), result: hostEntry(entry, this.scope) };
     }) as Promise<TransferJournalEntry>;
   }
@@ -319,7 +313,8 @@ export class NativeTransferJournal {
       if (!value || !old || old.hash !== hash) throw new TransferJournalError('INVALID_TRANSITION');
       if (old.phase === phase) return { result: hostEntry(old, this.scope) };
       const allowed = (phase === 'attempted' && old.phase === 'signed') || (phase === 'submitted' && old.phase === 'attempted') ||
-        ((phase === 'confirmed' || phase === 'reverted' || phase === 'nonce-consumed') && ['attempted', 'submitted'].includes(old.phase)) ||
+        ((phase === 'confirmed' || phase === 'reverted' || phase === 'nonce-consumed') && ['attempted', 'submitted', 'confirmed', 'reverted', 'nonce-consumed'].includes(old.phase)) ||
+        (phase === 'submitted' && ['confirmed', 'reverted', 'nonce-consumed'].includes(old.phase)) ||
         (phase === 'nonce-consumed' && old.phase === 'signed');
       if (!allowed) throw new TransferJournalError('INVALID_TRANSITION');
       if (value.revision === Number.MAX_SAFE_INTEGER) throw new TransferJournalError('CAPACITY');

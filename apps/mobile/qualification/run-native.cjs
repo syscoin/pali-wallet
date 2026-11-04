@@ -336,7 +336,7 @@ async function ios() {
         nevmTransferRestored: true,
         zksysTransferRestored: true,
         importedAccountRestored: true,
-        journalContainerVersion: 2,
+        journalContainerVersion: 1,
       });
     } catch (error) { await captureHttpDiagnostic(); throw error; }
     finally {
@@ -547,7 +547,7 @@ async function android() {
         nevmTransferRestored: true,
         zksysTransferRestored: true,
         importedAccountRestored: true,
-        journalContainerVersion: 2,
+        journalContainerVersion: 1,
       });
     } catch (error) { await captureHttpDiagnostic(); throw error; }
     finally {

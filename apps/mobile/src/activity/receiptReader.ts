@@ -1,6 +1,6 @@
 import { getAddress } from 'ethers/address';
 import { boundedResponseText, parseRpcQuantity } from '../platformRpc.ts';
-import { getNativeNetwork } from '../custody/networkContext.ts';
+import { snapshotNativeNetwork, type NativeNetworkRegistration } from '../custody/networkContext.ts';
 import { assertBaseUnits } from '../core/amounts.ts';
 
 const TRANSFER_TOPIC =
@@ -31,10 +31,8 @@ export type ActivityTransactionObservation = Readonly<{
   block: Readonly<{ hash: string; number: string }> | null;
   status:
     | 'pending'
-    | 'included'
-    | 'finalized'
+    | 'confirmed'
     | 'reverted'
-    | 'finalized-reverted'
     | 'unknown';
   events: readonly ActivityTransferEvent[];
   feeUnits: string | null;
@@ -302,7 +300,6 @@ function assertPair(transaction: Transaction, receipt: Receipt) {
 
 /** Indexed rows are hints; this adapter only returns bounded observations from the registered Ethereum RPC. */
 export class ActivityReceiptReader {
-  private readonly endpoint = getNativeNetwork('ethereum').rpcUrl;
   private readonly fetcher: (
     url: string,
     init: RequestInit
@@ -328,8 +325,11 @@ export class ActivityReceiptReader {
     inputHash: string,
     inputOwner: string,
     external: AbortSignal,
-    guard: () => void
+    guard: () => void,
+    registration: NativeNetworkRegistration
   ): Promise<ActivityTransactionObservation | null> {
+    registration = snapshotNativeNetwork(registration);
+    const endpoint = registration.rpcUrl;
     let expectedHash: string, owner: string;
     try {
       expectedHash = hash(inputHash);
@@ -353,7 +353,7 @@ export class ActivityReceiptReader {
       const id = ++this.sequence;
       if (!Number.isSafeInteger(id)) return fail('UNAVAILABLE');
       const response = await cancellable(
-        this.fetcher(this.endpoint, {
+        this.fetcher(endpoint, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -407,7 +407,7 @@ export class ActivityReceiptReader {
       return body.result;
     };
     const checkChain = async () => {
-      if (quantity(await read('eth_chainId', [])) !== 1n)
+      if (quantity(await read('eth_chainId', [])) !== BigInt(registration.chainId))
         fail('CONTEXT_CHANGED');
     };
     const canonical = async (block: Block | Receipt['block']) => {
@@ -462,22 +462,6 @@ export class ActivityReceiptReader {
       )
         return fail('IRRELEVANT');
       const included = await canonical(receipt.block);
-      const finalized = readBlock(
-        await read('eth_getBlockByNumber', ['finalized', false])
-      );
-      await canonical(finalized);
-      const isFinalized =
-        BigInt(receipt.block.number) <= BigInt(finalized.number);
-      if (isFinalized) {
-        rawReceipt = await read('eth_getTransactionReceipt', [expectedHash]);
-        if (
-          rawReceipt === null ||
-          readReceipt(rawReceipt, expectedHash, owner).identity !==
-            receipt.identity
-        )
-          return fail('CONTEXT_CHANGED');
-        await canonical(receipt.block);
-      }
       await checkChain();
       check();
       return Object.freeze({
@@ -488,13 +472,7 @@ export class ActivityReceiptReader {
         nonce: transaction.nonce,
         timestamp: included.timestamp,
         block: Object.freeze({ hash: included.hash, number: included.number }),
-        status: receipt.succeeded
-          ? isFinalized
-            ? 'finalized'
-            : 'included'
-          : isFinalized
-          ? 'finalized-reverted'
-          : 'reverted',
+        status: receipt.succeeded ? 'confirmed' : 'reverted',
         events: receipt.events,
         feeUnits: receipt.feeUnits,
       });

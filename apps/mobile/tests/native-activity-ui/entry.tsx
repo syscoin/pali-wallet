@@ -82,7 +82,7 @@ class Receipts extends ActivityReceiptReader {
       nonce: String(n),
       timestamp: 1700000000000 - n * 1000,
       block: { hash: hash(1000), number: '1000' },
-      status: 'finalized',
+      status: 'confirmed',
       feeUnits: invalidFee ? ((1n << 256n) ** 2n).toString() : '21000',
       events:
         n === 3

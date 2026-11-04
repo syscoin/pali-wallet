@@ -26,9 +26,14 @@ export interface NativeAccountView {
   cancel(): void;
 }
 
+export type NativeNetworkRequest =
+  | Readonly<{ kind: 'select-network'; id: string }>
+  | Readonly<{ kind: 'save-network'; registration: import('./networkContext.ts').NativeNetworkRegistration }>
+  | Readonly<{ kind: 'remove-network'; id: string }>;
+
 /** Durable network selection consumed by the native network picker. */
 export interface NativeNetworkRuntime {
-  reserve(id: string, expectedCatalogueRevision: number): {
+  reserve(id: string | NativeNetworkRequest, expectedCatalogueRevision: number): {
     execute(assertCurrent: () => void): Promise<void>;
     cancel(): void;
   };

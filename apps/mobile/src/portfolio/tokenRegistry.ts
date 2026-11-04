@@ -5,7 +5,6 @@ import { parseErc20Metadata } from './erc20Metadata.ts';
 import { decodeStorageValue, encodeStorageValue } from '../storage/json.ts';
 import type { KeyringStoragePort } from '../storage/types.ts';
 import {
-  getNativeNetwork,
   type EvmNetworkId,
 } from '../custody/networkContext.ts';
 
@@ -80,12 +79,8 @@ function scope(value: unknown): NativeTokenScope {
     typeof v.network !== 'string'
   )
     return fail('INVALID');
-  const network = getNativeNetwork(v.network);
-  if (
-    v.chainId !== network.chainId ||
-    v.registrationHash !== network.registrationHash
-  )
-    return fail('INVALID');
+  if (typeof v.chainId !== 'string' || !/^[1-9][0-9]{0,15}$/.test(v.chainId) ||
+      BigInt(v.chainId) > BigInt(Number.MAX_SAFE_INTEGER) || typeof v.registrationHash !== 'string' || !/^0x[0-9a-f]{64}$/.test(v.registrationHash)) return fail('INVALID');
   return Object.freeze(v as NativeTokenScope);
 }
 function decode(value: unknown, expected: Pick<NativeTokenScope, 'walletFingerprint'>): RecordValue {
@@ -163,15 +158,9 @@ export function inspectRecoveryTokens(value: unknown, walletFingerprint: string)
     accounts: Object.freeze(record.entries.map((row) => Object.freeze({ id: row.accountId, address: row.address }))) });
 }
 const identity = (e: Entry) =>
-  `${e.accountId}:${e.address}:${e.network}:${e.chainId}:${
-    e.registrationHash
-  }:${e.metadata.contractAddress.toLowerCase()}`;
+  `${e.accountId}:${e.address}:${e.chainId}:${e.metadata.contractAddress.toLowerCase()}`;
 const sameScope = (entry: Entry, current: NativeTokenScope) =>
-  entry.accountId === current.accountId &&
-  entry.address === current.address &&
-  entry.network === current.network &&
-  entry.chainId === current.chainId &&
-  entry.registrationHash === current.registrationHash;
+  entry.accountId === current.accountId && entry.address === current.address && entry.chainId === current.chainId;
 function projected(
   record: RecordValue,
   current: NativeTokenScope

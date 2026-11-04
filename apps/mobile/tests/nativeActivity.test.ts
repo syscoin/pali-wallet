@@ -12,7 +12,7 @@ const TOKEN = '0x3333333333333333333333333333333333333333';
 const FP = 'a'.repeat(64);
 const hash = (index: number) => `0x${index.toString(16).padStart(64, '0')}`;
 const candidate = (index: number, block = 1000 - index, tokenHint = false): ActivityCandidate => ({ hash: hash(index), blockNumber: String(block), timestamp: 1700000000000 - index * 1000, tokenHint });
-const observation = (id: string, owner = OWNER, status: ActivityTransactionObservation['status'] = 'finalized'): ActivityTransactionObservation => ({
+const observation = (id: string, owner = OWNER, status: ActivityTransactionObservation['status'] = 'confirmed'): ActivityTransactionObservation => ({
   hash: id, from: owner, to: OTHER, valueUnits: '1', nonce: '0', timestamp: 1700000000000,
   block: { hash: hash(999), number: '1000' }, status, events: [], feeUnits: '21000',
 });
@@ -110,7 +110,7 @@ test('a healthy feed remains visible when the other feed fails, with explicit pa
   assert.equal(f.controller.getSnapshot().status, 'ready');
   assert.deepEqual(f.controller.getSnapshot().rows.map((row) => row.hash), [hash(1)]);
   assert.match(f.controller.getSnapshot().error ?? '', /feed.*unavailable/i);
-  assert.match(f.controller.getSnapshot().coverage, /Internal ETH transfers are not included/);
+  assert.match(f.controller.getSnapshot().coverage, /Internal transfers are not included/);
 });
 
 test('both failed feeds preserve cached and locally submitted history instead of saving an empty list', async () => {
@@ -331,12 +331,12 @@ test('conflicting fresh block hints reject the whole page without replacing acce
 
 test('inspect refreshes an existing included observation without losing filter or anchor', async () => {
   let reads = 0;
-  const receipts = new FakeReceipts((call) => observation(call.hash, call.owner, ++reads === 1 ? 'included' : 'finalized'));
+  const receipts = new FakeReceipts((call) => observation(call.hash, call.owner, ++reads === 1 ? 'pending' : 'confirmed'));
   const view: ActivityViewState = { filter: 'sent', showZero: false, anchor: hash(1), offset: 10 };
   const f = fixture({ explorer: new FakeExplorer(({ feed }) => feed === 'txlist' ? [candidate(1)] : []), receipts, view });
-  await f.controller.refresh(); await until(() => f.controller.getSnapshot().rows[0]?.observation?.status === 'included');
+  await f.controller.refresh(); await until(() => f.controller.getSnapshot().rows[0]?.observation?.status === 'pending');
   f.controller.inspect(hash(1));
-  await until(() => f.controller.getSnapshot().rows[0]?.observation?.status === 'finalized');
+  await until(() => f.controller.getSnapshot().rows[0]?.observation?.status === 'confirmed');
   assert.equal(reads, 2); assert.deepEqual(f.controller.getSnapshot().view, view);
 });
 
@@ -346,7 +346,7 @@ test('a failed receipt lookup remains a visible unavailable row and can be retri
   const f = fixture({ explorer: new FakeExplorer(({ feed }) => feed === 'txlist' ? [candidate(1)] : []), receipts });
   await f.controller.refresh(); await until(() => f.controller.getSnapshot().rows[0]?.unavailable === true);
   assert.equal(f.controller.getSnapshot().rows[0]?.observation, undefined);
-  f.controller.inspect(hash(1)); await until(() => f.controller.getSnapshot().rows[0]?.observation?.status === 'finalized');
+  f.controller.inspect(hash(1)); await until(() => f.controller.getSnapshot().rows[0]?.observation?.status === 'confirmed');
   assert.equal(reads, 2);
 });
 

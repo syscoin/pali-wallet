@@ -11,6 +11,7 @@ import {
 /** Saved interpretation of a reviewed token transfer; never reloaded on retry. */
 export type Erc20TransferIntent = Readonly<{
   kind: 'erc20-transfer';
+  chainId: string;
   token: Erc20Metadata;
   recipient: string;
   amountUnits: string;
@@ -26,7 +27,7 @@ export function snapshotErc20TransferIntent(
     ![Object.prototype, null].includes(Object.getPrototypeOf(value))
   )
     throw new Error('Invalid transfer intent');
-  const fields = ['kind', 'token', 'recipient', 'amountUnits'];
+  const fields = ['kind', 'chainId', 'token', 'recipient', 'amountUnits'];
   const keys = Reflect.ownKeys(value);
   if (
     keys.length !== fields.length ||
@@ -41,8 +42,11 @@ export function snapshotErc20TransferIntent(
   };
   if (own('kind') !== 'erc20-transfer')
     throw new Error('Invalid transfer intent');
+  const chainId = own('chainId');
+  if (typeof chainId !== 'string' || !/^[1-9][0-9]{0,15}$/.test(chainId) || BigInt(chainId) > BigInt(Number.MAX_SAFE_INTEGER)) throw new Error('Invalid transfer chain');
   const intent = Object.freeze({
     kind: 'erc20-transfer' as const,
+    chainId,
     token: parseErc20Metadata(own('token')),
     recipient: normalizeErc20Address(own('recipient')),
     amountUnits: parseErc20Units(own('amountUnits')),
@@ -58,6 +62,7 @@ export function equalTransferIntent(
   if (!left || !right) return left === right;
   return (
     left.kind === right.kind &&
+    left.chainId === right.chainId &&
     left.recipient === right.recipient &&
     left.amountUnits === right.amountUnits &&
     left.token.contractAddress === right.token.contractAddress &&
@@ -104,7 +109,7 @@ export function assertTransferIntentEnvelope(
   }
   const checked = snapshotErc20TransferIntent(intent);
   if (
-    chainId !== '1' ||
+    chainId !== checked.chainId ||
     to !== checked.token.contractAddress ||
     value !== '0' ||
     data !== encodeErc20Transfer(checked.recipient, checked.amountUnits)

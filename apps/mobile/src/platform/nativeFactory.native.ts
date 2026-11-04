@@ -58,9 +58,9 @@ export function createNativeWalletControllers() {
   });
   const backup = new SeedBackupFlow(authority, () => runtime?.backup);
   const keyExport = new HdKeyExportFlow(authority, () => runtime?.keyExport);
-  const balanceReader = createBalanceReader({ fetch: walletFetch });
+  const balanceReader = createBalanceReader({ fetch: walletFetch, registrations: () => authority.getCatalogue()?.networks });
   const transfers = new NativeTransfers(authority, () => runtime?.transfers, { fetch: walletFetch });
-  const tokens = new NativeTokens(authority, () => runtime?.tokens, createErc20Reader({ fetch: walletFetch }), Date.now, () => authority.lock());
+  const tokens = new NativeTokens(authority, () => runtime?.tokens, createErc20Reader({ fetch: walletFetch, registrations: () => authority.getCatalogue()?.networks }), Date.now, () => authority.lock());
   const activity = new NativeActivity(authority, () => runtime?.activity,
     new ActivityExplorerReader(walletFetch), new ActivityReceiptReader({ fetch: walletFetch }));
   const accounts: NativeAccountView = Object.freeze({

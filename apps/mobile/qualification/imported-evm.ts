@@ -14,7 +14,7 @@ export const IMPORTED_REPORT_FIELDS = Object.freeze(['nativeImportedVerified', '
   'importedAuthorizations', 'importedInjectedBroadcasts', 'importedRestoredFromJournal', 'importedKeyRevealVerified']);
 export type ImportedQualificationEvidence = Readonly<{
   nativeImportedVerified: true; importedAccountId: 'imported:60:1'; importedAccountIndex: 1; importedAddress: string;
-  importedChainIds: readonly string[]; importedTransferHashes: readonly string[]; importedJournalContainerVersion: 2;
+  importedChainIds: readonly string[]; importedTransferHashes: readonly string[]; importedJournalContainerVersion: 1;
   importedSignatures: number; importedAuthorizations: number; importedInjectedBroadcasts: 3;
   importedRestoredFromJournal: boolean; importedKeyRevealVerified: true;
 }>;
@@ -27,7 +27,7 @@ export function isImportedQualificationReport(report: Record<string, unknown>): 
     (report.scenario === 'import' || report.scenario === 'generate') && report.networkCalls === 0 &&
     report.nativeImportedVerified === true && report.importedAccountId === 'imported:60:1' && report.importedAccountIndex === 1 &&
     report.importedAddress === ADDRESS && ![report.address, report.erc20Address, report.nevmAddress, report.zksysAddress].includes(ADDRESS) &&
-    report.importedJournalContainerVersion === 2 && report.importedKeyRevealVerified === true &&
+    report.importedJournalContainerVersion === 1 && report.importedKeyRevealVerified === true &&
     Array.isArray(chains) && chains.length === 3 && [0, 1, 2].every((i) => chains[i] === CHAINS[i]) &&
     Array.isArray(hashes) && hashes.length === 3 && [0, 1, 2].every((i) => typeof hashes[i] === 'string' && /^0x[0-9a-f]{64}$/.test(hashes[i])) &&
     new Set(hashes).size === 3 && hashes.every((hash) => !otherHashes.includes(hash)) && report.importedSignatures === (report.phase === 'create' ? 3 : 0) &&
@@ -113,6 +113,7 @@ export async function qualifyNativeImportedEvm(options: Readonly<{
         result = { number, hash: '0x' + (number === '0x64' ? 'a' : 'b').repeat(64), baseFeePerGas: '0xa', gasLimit: '0x1000000' };
       } else if (body.method === 'eth_getTransactionCount') { expect(p[0] === ADDRESS); result = '0x0'; }
       else if (body.method === 'eth_getBalance') { expect(phase === 'create' && p[0] === ADDRESS); result = '0xde0b6b3a7640000'; }
+      else if (body.method === 'eth_gasPrice') { result = '0xb'; }
       else if (body.method === 'eth_feeHistory') { expect(phase === 'create'); result = { oldestBlock: '0x64', baseFeePerGas: ['0xa', '0xa'] }; }
       else if (body.method === 'eth_maxPriorityFeePerGas') { expect(phase === 'create'); result = '0x1'; }
       else if (body.method === 'eth_estimateGas') { expect(phase === 'create'); result = network === 'zksys-testnet' ? '0x7530' : '0x5208'; }
@@ -160,7 +161,7 @@ export async function qualifyNativeImportedEvm(options: Readonly<{
   });
   for (let i = 0; i < 5; i++) expect(encodeStorageValue(await storage.keyringStorage.get(nativeTransferJournalKey(i))) === older[i]);
   const container = await storage.keyringStorage.get(nativeTransferJournalKey(1, 'Imported')) as import('../src/custody/transferJournal.ts').TransferJournalContainer;
-  expect(container.version === 2 && container.account.type === 'Imported' && container.account.id === 'imported:60:1' &&
+  expect(container.version === 1 && container.account.type === 'Imported' && container.account.id === 'imported:60:1' &&
     container.account.index === 1 && container.account.address === ADDRESS && container.entries.length === 3 &&
     container.entries.every((entry, i) => entry.registration.chainId === CHAINS[i] && entry.hash === hashes[i] &&
       entry.phase === (phase === 'create' ? 'attempted' : 'submitted')));
@@ -170,7 +171,7 @@ export async function qualifyNativeImportedEvm(options: Readonly<{
   expect(state().account?.address === hd1.address && catalogue().active.accountId === hd1.id);
   expect(signatures === (phase === 'create' ? 3 : 0) && authorizations === (phase === 'create' ? 0 : 3) && broadcasts === 3);
   return Object.freeze({ nativeImportedVerified: true, importedAccountId: 'imported:60:1', importedAccountIndex: 1, importedAddress: ADDRESS,
-    importedChainIds: CHAINS, importedTransferHashes: Object.freeze(hashes), importedJournalContainerVersion: 2,
+    importedChainIds: CHAINS, importedTransferHashes: Object.freeze(hashes), importedJournalContainerVersion: 1,
     importedSignatures: signatures, importedAuthorizations: authorizations, importedInjectedBroadcasts: 3,
     importedRestoredFromJournal: phase === 'restart', importedKeyRevealVerified: true });
 }

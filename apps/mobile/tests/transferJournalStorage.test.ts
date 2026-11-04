@@ -42,27 +42,35 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
 }
 
 for (const phase of ['signed', 'attempted', 'submitted', 'confirmed', 'reverted', 'nonce-consumed'] as TransferJournalPhase[]) {
-  test(`legacy ${phase} migrates in place with identical Ethereum bytes and survives restart`, async () => {
+  test(`canonical ${phase} journal reads without writing and preserves bytes across restart`, async () => {
     const f = await fixture();
     try {
-      const signed = await raw();
-      await f.port.set(nativeTransferJournalKey(0), { version: 1,
-        scope: { walletFingerprint: f.fingerprint, address: wallet.address, chainId: '1' },
-        phase, rawTransaction: signed, hash: keccak256(signed), nonce: 0, createdAt: 42 });
-      assert.equal(await f.journal('base').load(), null, 'reading another chain must retain the old Ethereum entry');
-      const container = await f.value();
-      assert.equal(container.version, 2);
-      assert.equal(container.entries.length, 1);
-      assert.equal(container.entries[0]!.rawTransaction, signed);
-      assert.equal(container.entries[0]!.phase, phase);
-      assert.equal(container.entries[0]!.registration.id, 'ethereum');
+      const signed = await raw(); const journal = f.journal();
+      const first = await journal.saveSigned(signed);
+      if (phase !== 'signed') await journal.transition(first.hash, 'attempted');
+      if (phase !== 'signed' && phase !== 'attempted') await journal.transition(first.hash, phase);
+      const original = await f.value();
+      assert.equal(await f.journal('base').load(), null);
+      assert.deepEqual(await f.value(), original);
       await f.reopen();
       assert.equal((await f.journal().load())!.rawTransaction, signed);
       assert.equal((await f.journal().load())!.phase, phase);
-      assert.deepEqual(await f.value(), container, 'a v2 read does not migrate or rewrite again');
+      assert.deepEqual(await f.value(), original);
     } finally { await f.cleanup(); }
   });
 }
+
+test('old development flat journal shape is rejected and retained verbatim', async () => {
+  const f = await fixture();
+  try {
+    const signed = await raw();
+    const old = { version: 1, scope: { walletFingerprint: f.fingerprint, address: wallet.address, chainId: '1' },
+      phase: 'attempted', rawTransaction: signed, hash: keccak256(signed), nonce: 0, createdAt: 42 };
+    await f.port.set(nativeTransferJournalKey(0), old);
+    await assert.rejects(f.journal().load(), /CORRUPT/);
+    assert.deepEqual(await f.value(), old);
+  } finally { await f.cleanup(); }
+});
 
 test('independent storage wrappers merge concurrent different-chain writes and transitions through CAS', async () => {
   const f = await fixture();
@@ -116,22 +124,19 @@ for (const phase of ['before-commit', 'lost-ack'] as const) {
   });
 }
 
-for (const operation of ['create', 'migration', 'transition'] as const) {
+for (const operation of ['create', 'transition'] as const) {
   test(`context revocation after acknowledged ${operation} discards only the stale result`, async () => {
     let enabled = false, current = true;
     const f = await fixture({ after: (kind, sql) => { if (enabled && kind === 'exec' && sql === 'COMMIT') { enabled = false; current = false; } } });
     try {
       const signed = await raw();
-      if (operation === 'migration') await f.port.set(nativeTransferJournalKey(0), { version: 1,
-        scope: { walletFingerprint: f.fingerprint, address: wallet.address, chainId: '1' },
-        phase: 'attempted', rawTransaction: signed, hash: keccak256(signed), nonce: 0, createdAt: 42 });
       if (operation === 'transition') await f.journal().saveSigned(signed);
       const guarded = f.journal('ethereum', 0, wallet, f.port, () => { if (!current) throw Error('REVOKED'); });
       enabled = true;
-      const action = operation === 'create' ? guarded.saveSigned(signed) : operation === 'migration' ? guarded.load() : guarded.transition(keccak256(signed), 'attempted');
+      const action = operation === 'create' ? guarded.saveSigned(signed) : guarded.transition(keccak256(signed), 'attempted');
       await assert.rejects(action, /REVOKED/);
       assert.equal(journalRequiresReopen(f.port), false);
-      assert.equal((await f.value()).version, 2);
+      assert.equal((await f.value()).version, 1);
       const fresh = await f.journal().load();
       assert.equal(fresh!.rawTransaction, signed);
       assert.equal(fresh!.phase, operation === 'create' ? 'signed' : 'attempted');
@@ -210,5 +215,34 @@ test('revoked readback after a true commit does not quarantine the acknowledged 
     await assert.rejects(journal.saveSigned(signed), /REVOKED/);
     assert.equal(journalRequiresReopen(f.port), false);
     assert.equal((await f.journal().load())!.rawTransaction, signed);
+  } finally { await f.cleanup(); }
+});
+
+test('terminal journal capacity is reclaimed only after durable archive acknowledgment', async () => {
+  const f = await fixture();
+  try {
+    const { createNativeNetwork } = await import('../src/custody/networkContext.ts');
+    const history = new (await import('../src/activity/historyStore.ts')).NativeActivityHistory(f.port);
+    const network = (index: number) => createNativeNetwork({ id: `chain-${index}`, name: `Chain ${index}`, kind: 'evm', chainId: String(index), slip44: 60,
+      rpcUrl: `https://chain-${index}.example`, symbol: 'GAS', decimals: 18, testnet: true });
+    const make = (index: number, archive = (record: import('../src/activity/types.ts').TerminalActivityRecord, check: () => void) => history.archiveTerminal(record, check)) =>
+      new NativeTransferJournal(f.port, { walletFingerprint: f.fingerprint, address: wallet.address, chainId: String(index) }, () => undefined,
+        () => index, 0, network(index), archive);
+    const sign = (index: number) => wallet.signTransaction({ type: 2, chainId: index, nonce: 0, to: '0x1111111111111111111111111111111111111111', value: 1n,
+      gasLimit: 25200n, maxFeePerGas: 2n, maxPriorityFeePerGas: 1n });
+    for (let index = 100; index < 112; index++) {
+      const journal = make(index), entry = await journal.saveSigned(await sign(index));
+      await journal.transition(entry.hash, 'attempted'); await journal.transition(entry.hash, 'confirmed');
+    }
+    const before = await f.value();
+    const refused = make(112, async () => { throw new Error('Archive failed'); });
+    await assert.rejects(refused.saveSigned(await sign(112)), { code: 'HISTORY_UNAVAILABLE' });
+    assert.deepEqual(await f.value(), before);
+    await make(112).saveSigned(await sign(112));
+    const after = await f.value();
+    assert.equal(after.entries.length, 12);
+    assert.equal(after.entries.some((entry) => entry.registration.chainId === '100'), false);
+    const scope = (await import('../src/activity/types.ts')).createActivityScope(f.fingerprint, 'hd:60:0', wallet.address, network(100));
+    assert.equal((await history.load(scope, () => undefined)).archived[0]!.hash, before.entries[0]!.hash);
   } finally { await f.cleanup(); }
 });

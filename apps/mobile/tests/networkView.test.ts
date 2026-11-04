@@ -27,7 +27,7 @@ function fixture() {
     } };
 }
 
-test('network projection is stable, frozen, public-only and labels unsupported signing capabilities', () => {
+test('network projection is stable, frozen, public-only and projects all saved EVM capabilities', () => {
   const f = fixture(); const first = f.view.getSnapshot()!;
   assert.equal(f.view.getSnapshot(), first);
   assert.equal(Object.isFrozen(first), true);
@@ -35,10 +35,10 @@ test('network projection is stable, frozen, public-only and labels unsupported s
   assert.equal(first.selectedId, 'ethereum');
   assert.equal(first.revision, 3);
   assert.equal(first.networks.length, 7);
-  assert.deepEqual(first.networks.filter(network => network.canSign).map(network => network.id), ['ethereum', 'syscoin-nevm-testnet', 'zksys-testnet']);
+  assert.deepEqual(first.networks.filter(network => network.canSign).map(network => network.id), NATIVE_NETWORKS.map((network) => network.id));
   for (const network of first.networks) {
     assert.equal(Object.isFrozen(network), true);
-    assert.deepEqual(Object.keys(network).sort(), ['canSign', 'id', 'name', 'symbol', 'testnet']);
+    assert.deepEqual(Object.keys(network).sort(), ['canSign', 'id', 'name', 'registration', 'symbol', 'testnet']);
   }
   assert.equal(f.requests.length, 0);
 });
@@ -53,4 +53,26 @@ test('network selection forwards both captured revisions and teardown removes ob
   assert.equal(f.view.getSnapshot(), null);
   f.view.cancel(); assert.equal(f.cancels(), 1);
   stop(); assert.equal(f.listeners.size, 0);
+});
+
+test('network verification and persistence share one detached registration snapshot', async () => {
+  const { createNativeNetwork } = await import('../src/custody/networkContext.ts');
+  const original = createNativeNetwork({ id: 'custom:4444', name: 'Custom', kind: 'evm', chainId: '4444', slip44: 60, rpcUrl: 'https://first.example', symbol: 'T', decimals: 18, testnet: true });
+  const mutable = { ...original };
+  let finish!: () => void, started!: () => void;
+  const entered = new Promise<void>((resolve) => { started = resolve; });
+  const held = new Promise<void>((resolve) => { finish = resolve; });
+  const state: CustodySnapshot = { phase: 'ready', revision: 1, presence: 'existing', backup: 'confirmed', account: { network: 'ethereum', address }, error: null };
+  const catalogue = { revision: 1, removed: [], accounts: [], networks: NATIVE_NETWORKS, active: { accountId: 'hd:60:0', networkId: 'ethereum' } };
+  const saved: unknown[] = [];
+  const view = createNativeNetworkView({ getSnapshot: () => state, getCatalogue: () => catalogue, subscribe: () => () => undefined,
+    selectNetwork: async () => undefined, cancelAccountOperation: () => undefined,
+    manageNetwork: async (request) => { saved.push(request); } }, { fetch: async (url, init) => {
+      assert.equal(url, original.rpcUrl); const request = JSON.parse(String(init.body)); started(); await held;
+      return new Response(JSON.stringify({ jsonrpc: '2.0', id: request.id, result: '0x115c' }), { headers: { 'content-type': 'application/json' } });
+    } });
+  const pending = view.save!(mutable, 1, 1); await entered;
+  Object.assign(mutable, createNativeNetwork({ ...original, chainId: '5555', rpcUrl: 'https://second.example' }));
+  finish(); await pending;
+  assert.deepEqual(saved, [{ kind: 'save-network', registration: original }]);
 });

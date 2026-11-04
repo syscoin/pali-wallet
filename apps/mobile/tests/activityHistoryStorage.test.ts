@@ -132,7 +132,7 @@ test('ERC20 archive preserves the reviewed recipient and token units independent
   const f = await fixture();
   try {
     const token = { contractAddress: TOKEN, decimals: 6, symbol: 'TOK', name: 'Fixture token' };
-    const intent = { kind: 'erc20-transfer' as const, token, recipient: RECIPIENT, amountUnits: '1234567' };
+    const intent = { kind: 'erc20-transfer' as const, chainId: '1', token, recipient: RECIPIENT, amountUnits: '1234567' };
     const signed = await wallet.signTransaction({ type: 2, chainId: 1, nonce: 0, to: TOKEN, value: 0n,
       gasLimit: 50000n, maxFeePerGas: 2n, maxPriorityFeePerGas: 1n, data: encodeErc20Transfer(RECIPIENT, intent.amountUnits) });
     const initial = f.journal();
@@ -154,7 +154,7 @@ for (const operation of ['replacement', 'removal'] as const) {
     const f = await fixture();
     try {
       const token = { contractAddress: TOKEN, decimals: 255, symbol: '😀'.repeat(64), name: '😀'.repeat(128) };
-      const intent = { kind: 'erc20-transfer' as const, token, recipient: RECIPIENT, amountUnits: '1' };
+      const intent = { kind: 'erc20-transfer' as const, chainId: '1', token, recipient: RECIPIENT, amountUnits: '1' };
       const signed = await wallet.signTransaction({ type: 2, chainId: 1, nonce: 0, to: TOKEN, value: 0n,
         gasLimit: 50000n, maxFeePerGas: 2n, maxPriorityFeePerGas: 1n, data: encodeErc20Transfer(RECIPIENT, intent.amountUnits) });
       const initial = f.journal();
@@ -437,5 +437,17 @@ test('imported history retains its own identity across retirement and never appe
     assert.deepEqual((await history.load(reimportedScope, guard)).archived, []);
     await f.reopen();
     assert.deepEqual((await f.history().load(importedScope, guard)).archived.map((entry) => entry.hash), [entryHash(2)]);
+  } finally { await f.cleanup(); }
+});
+
+test('revising an observed outcome preserves immutable archived transaction identity', async () => {
+  const f = await fixture();
+  try {
+    const history = f.history(), original = f.record(1);
+    await history.archiveTerminal(original, guard);
+    await history.archiveTerminal({ ...original, phase: 'reverted' }, guard);
+    assert.equal((await history.load(f.scope(), guard)).archived[0]!.phase, 'reverted');
+    await assert.rejects(history.archiveTerminal({ ...original, phase: 'reverted', amountUnits: '999' }, guard), { code: 'INVALID' });
+    assert.equal((await history.load(f.scope(), guard)).archived[0]!.amountUnits, original.amountUnits);
   } finally { await f.cleanup(); }
 });

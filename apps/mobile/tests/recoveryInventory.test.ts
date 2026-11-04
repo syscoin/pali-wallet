@@ -47,7 +47,7 @@ async function signed(chainId = 1, signer = wallet) {
 }
 async function journal(fingerprint: string, index = 0, phase = 'signed', type: 'HDAccount' | 'Imported' = 'HDAccount') {
   const id = `${type === 'HDAccount' ? 'hd' : 'imported'}:60:${index}`;
-  return { version: 2, revision: 0, walletFingerprint: fingerprint,
+  return { version: 1, revision: 0, walletFingerprint: fingerprint,
     account: { id, index, type, slip44: 60, address: wallet.address },
     entries: await Promise.all(['ethereum', 'syscoin-nevm-testnet', 'zksys-testnet'].map(async (network) => {
       const registration = getNativeNetwork(network), rawTransaction = await signed(Number(registration.chainId));
@@ -58,7 +58,7 @@ function assertReadsOnly(statements: string[]) {
   assert.equal(statements.some((sql) => /^(INSERT|UPDATE|DELETE|BEGIN|COMMIT|CREATE|ALTER|DROP)/i.test(sql)), false, statements.join('\n'));
 }
 
-test('legacy inventory is read-only, byte preserving and never claims phrase or root verification', async () => {
+test('unverified inventory is read-only, byte preserving and never claims phrase or root verification', async () => {
   const f = await fixture();
   try {
     const before = f.bytes(); f.sql.length = 0;
@@ -195,7 +195,7 @@ test('malformed known domains and noncatalogued identities fail closed without c
   } finally { await f.close(); }
 });
 
-test('legacy catalogue and journal formats are inspected without invoking their migration writers', async () => {
+test('incomplete development catalogue and journal shapes are rejected without rewriting', async () => {
   const f = await fixture();
   try {
     const catalogue = f.value(WALLET_CATALOGUE_KEY); catalogue.version = 1;
@@ -206,7 +206,7 @@ test('legacy catalogue and journal formats are inspected without invoking their 
     f.put(nativeTransferJournalKey(0), { version: 1, scope: { walletFingerprint: f.fingerprint, address: wallet.address, chainId: '1' },
       phase: 'attempted', rawTransaction, hash: keccak256(rawTransaction), nonce: 0, createdAt: 1 });
     const before = f.bytes(); f.sql.length = 0;
-    assert.equal((await readRecoveryInventory(f.storage)).counts?.pendingTransactions, 1);
+    assert.equal((await readRecoveryInventory(f.storage)).status, 'unavailable');
     assert.equal(f.bytes(), before); assertReadsOnly(f.sql);
     assert.equal(f.value(WALLET_CATALOGUE_KEY).version, 1);
     assert.equal(f.value(nativeTransferJournalKey(0)).version, 1);

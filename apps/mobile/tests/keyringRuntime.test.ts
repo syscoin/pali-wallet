@@ -12,7 +12,7 @@ import { HdKeyExportFlow, type HdKeyExportScope } from '../src/custody/hdKeyExpo
 import { keccak256, SigningKey } from 'ethers/crypto';
 import { Transaction } from 'ethers/transaction';
 import { HDNodeWallet, Wallet } from 'ethers/wallet';
-import { getNativeNetwork, NATIVE_NETWORKS } from '../src/custody/networkContext.ts';
+import { getNativeNetwork, createNativeNetwork, NATIVE_NETWORKS, type NativeNetworkRegistration } from '../src/custody/networkContext.ts';
 import { WALLET_CATALOGUE_KEY } from '../src/custody/walletCatalogue.ts';
 
 const PHRASE = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
@@ -540,7 +540,7 @@ async function raceSdk() {
   };
 }
 type TransferTestNetwork = 'ethereum' | 'syscoin-nevm-testnet' | 'zksys-testnet';
-function localTransferRpc(networkId: TransferTestNetwork = 'ethereum') {
+function localTransferRpc(networkId: TransferTestNetwork = 'ethereum', selected: NativeNetworkRegistration = getNativeNetwork(networkId)) {
   const broadcasts: string[] = [];
   const requests: { method: string; params: any[] }[] = [];
   let baseFee = 1n, priorityFee = 1n;
@@ -548,15 +548,16 @@ function localTransferRpc(networkId: TransferTestNetwork = 'ethereum') {
   let included = false;
   let reading: { method: string; entered: ReturnType<typeof deferredAccount>; released: ReturnType<typeof deferredAccount> } | undefined;
   let gate: { entered: ReturnType<typeof deferredAccount>; released: ReturnType<typeof deferredAccount> } | undefined;
-  const rpc = new NativeTransferRpc({ networkId, fetch: async (url, init) => {
-    assert.equal(url, getNativeNetwork(networkId).rpcUrl);
+  const rpc = new NativeTransferRpc({ networkId, registration: selected, fetch: async (url, init) => {
+    assert.equal(url, selected.rpcUrl);
     const body = JSON.parse(String(init.body));
     requests.push(structuredClone({ method: body.method, params: body.params }));
     if (reading && reading.method === body.method) { const current = reading; current.entered.resolve(); await current.released.promise; }
     let result: unknown;
-    if (body.method === 'eth_chainId') result = `0x${BigInt(getNativeNetwork(networkId).chainId).toString(16)}`;
+    if (body.method === 'eth_chainId') result = `0x${BigInt(selected.chainId).toString(16)}`;
     else if (body.method === 'eth_getBalance') result = '0x10000000000000000';
     else if (body.method === 'eth_getTransactionCount') result = included ? '0x1' : '0x0';
+    else if (body.method === 'eth_gasPrice') result = `0x${(baseFee + priorityFee).toString(16)}`;
     else if (body.method === 'eth_feeHistory') result = { oldestBlock: '0x64', baseFeePerGas: [`0x${baseFee.toString(16)}`, `0x${baseFee.toString(16)}`] };
     else if (body.method === 'eth_maxPriorityFeePerGas') result = `0x${priorityFee.toString(16)}`;
     else if (body.method === 'eth_estimateGas') result = `0x${estimateGas(body.params[0]).toString(16)}`;
@@ -782,7 +783,7 @@ test('runtime count and highwater preflight reject before authentication or auth
 });
 
 
-test('all EVM contexts preserve SDK HD addresses while only reviewed native send contexts enable signing', async () => {
+test('all EVM contexts preserve SDK HD addresses and all valid EVM registrations use prepared signing', async () => {
   const f = await readyAccounts();
   try {
     await f.execute({ kind: 'create', label: 'Savings', password: PASSWORD });
@@ -792,13 +793,8 @@ test('all EVM contexts preserve SDK HD addresses while only reviewed native send
       await select(network.id);
       assert.equal(f.authority.getSnapshot().account!.network, network.id);
       assert.equal(f.authority.getSnapshot().account!.address, address);
-      if (!['ethereum', 'syscoin-nevm-testnet', 'zksys-testnet'].includes(network.id)) {
-        const state = f.authority.getSnapshot();
-        await assert.rejects(f.runtime.transfers!.authorize(PASSWORD, () => undefined), /NOT_READY/);
-        await assert.rejects(f.runtime.transfers!.journal(() => undefined), /NOT_READY/);
-        await assert.rejects(f.runtime.transfers!.sign({ type: 2, from: address, to: ADDRESS, chainId: network.chainId, nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, PASSWORD, () => undefined), /NOT_READY/);
-        assert.equal(f.authority.getSnapshot(), state);
-      }
+      const signed = await f.runtime.transfers!.sign({ type: 2, from: address, to: ADDRESS, chainId: network.chainId, nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, PASSWORD, () => undefined);
+      assert.equal(Transaction.from(signed.rawTransaction).chainId, BigInt(network.chainId));
     }
     await select('syscoin-nevm');
     await f.execute({ kind: 'create', label: 'New on NEVM context', password: PASSWORD });
@@ -838,7 +834,7 @@ test('installed SDK retains same-address same-nonce Ethereum, NEVM and zkSYS jou
     }
     assert.equal(new Set([...signedByNetwork.values()].map((entry) => entry.hash)).size, 3);
     const stored = structuredClone(f.disk.records.get('native-evm-transfer-v1:hd:60:1')) as any;
-    assert.equal(stored.version, 2);
+    assert.equal(stored.version, 1);
     assert.deepEqual(stored.entries.map((entry: any) => [entry.registration.chainId, entry.nonce]), [['1', 0], ['5700', 0], ['57057', 0]]);
     await f.authority.dispose();
     let runtime!: KeyringRuntime;
@@ -857,7 +853,7 @@ test('installed SDK retains same-address same-nonce Ethereum, NEVM and zkSYS jou
 });
 
 for (const networkId of ['syscoin-nevm-testnet', 'zksys-testnet'] as const) {
-test(`${networkId} native controller retries exact installed-SDK bytes before its terminal settlement`, async () => {
+test(`${networkId} native controller retries exact installed-SDK bytes before its ordinary receipt confirmation`, async () => {
   const f = await readyAccounts(), network = localTransferRpc(networkId);
   const transfers = new NativeTransfers(f.authority, () => f.runtime.transfers, { rpc: network.rpc });
   try {
@@ -876,7 +872,7 @@ test(`${networkId} native controller retries exact installed-SDK bytes before it
     network.include();
     await transfers.recover();
     assert.equal(transfers.getSnapshot().phase, 'confirmed');
-    assert.equal(transfers.getSnapshot().context!.settlement.kind, networkId === 'zksys-testnet' ? 'zkos-finalized-executed' : 'nevm-depth-12');
+    assert.equal(transfers.getSnapshot().context!.chainId, getNativeNetwork(networkId).chainId);
     assert.equal((await (await f.runtime.transfers!.journal(() => undefined)).load())!.phase, 'confirmed');
   } finally { transfers.dispose(); await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
 });
@@ -884,7 +880,7 @@ test(`${networkId} native controller retries exact installed-SDK bytes before it
 test(`${networkId} A-B-A cancels a pending quote without adopting its late context`, async () => {
   const f = await readyAccounts(), network = localTransferRpc(networkId);
   const transfers = new NativeTransfers(f.authority, () => f.runtime.transfers, { rpc: network.rpc });
-  const hold = network.holdRead('eth_feeHistory');
+  const hold = network.holdRead('eth_gasPrice');
   try {
     const select = (id: string) => f.authority.selectNetwork(id, f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision);
     await select(networkId);
@@ -969,8 +965,8 @@ for (const expensiveAfterReview of [false, true]) {
       const id = await prepareAccountTransfer(transfers);
       const approved = transfers.getSnapshot().review!;
       assert.equal(approved.priorityFeePerGas, '0');
-      assert.equal(approved.maximumFeePerGas, '20');
-      assert.equal(approved.gasLimit, '21000');
+      assert.equal(approved.maximumFeePerGas, '25');
+      assert.equal(approved.gasLimit, '25200');
       currentBase = expensiveAfterReview ? 1n : 10n;
       network.setFees({ baseFee: currentBase, priorityFee: 9n });
       if (expensiveAfterReview) {
@@ -982,9 +978,9 @@ for (const expensiveAfterReview of [false, true]) {
         assert.equal(network.broadcasts.length, 1);
         const signed = Transaction.from(network.broadcasts[0]!);
         assert.equal(signed.chainId, 57057n);
-        assert.equal(signed.maxFeePerGas, 20n);
+        assert.equal(signed.maxFeePerGas, 25n);
         assert.equal(signed.maxPriorityFeePerGas, 0n);
-        assert.equal(signed.gasLimit, 21000n);
+        assert.equal(signed.gasLimit, 25200n);
       }
       assert.equal(signatures, expensiveAfterReview ? 0 : 1);
       const estimates = network.requests.filter((request) => request.method === 'eth_estimateGas');
@@ -995,7 +991,7 @@ for (const expensiveAfterReview of [false, true]) {
           type: '0x2', chainId: '0xdee1', from: ADDRESS,
           to: '0x1111111111111111111111111111111111111111',
           nonce: '0x0', value: '0x38d7ea4c68000', data: '0x',
-          maxFeePerGas: '0x14', maxPriorityFeePerGas: '0x0',
+          maxFeePerGas: '0x19', maxPriorityFeePerGas: '0x0',
         });
       }
       if (expensiveAfterReview) {
@@ -1049,7 +1045,7 @@ test('network A-B-A cancels held Ethereum journal work without touching its pend
     const pending = transfers.confirm(review, PASSWORD); void pending.catch(() => undefined);
     await entered.promise;
     await f.authority.selectNetwork('base', f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision);
-    await assert.rejects(f.runtime.transfers!.journal(() => undefined), /NOT_READY/);
+    assert.equal(f.authority.getSnapshot().account?.network, 'base');
     await f.authority.selectNetwork('ethereum', f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision);
     release.resolve(); await assert.rejects(pending, /CANCELLED/);
     const entry = await (await f.runtime.transfers!.journal(() => undefined)).load();
@@ -1287,10 +1283,10 @@ test('HD key export rejects forged scopes, accessors and asynchronous guards', a
     const scope = selectedKeyScope(f); let reads = 0;
     const accessor = { ...scope }; Object.defineProperty(accessor, 'index', { enumerable: true, get() { reads++; return 0; } });
     for (const input of [accessor, { ...scope, accountType: 'Imported' }, { ...scope, index: [0] },
-      { ...scope, authorityRevision: -1 }, { ...scope, registrationHash: '0x' + '1'.repeat(64) }])
+      { ...scope, authorityRevision: -1 }])
       await assert.rejects(f.runtime.keyExport!.readSelected(input as HdKeyExportScope, PASSWORD, () => undefined), /INVALID_INPUT/);
     assert.equal(reads, 0); assert.equal(sdk.exports, 0);
-    for (const input of [{ ...scope, index: 1, accountId: 'hd:60:1' }, { ...scope, catalogueRevision: scope.catalogueRevision + 1 }]) {
+    for (const input of [{ ...scope, registrationHash: '0x' + '1'.repeat(64) }, { ...scope, index: 1, accountId: 'hd:60:1' }, { ...scope, catalogueRevision: scope.catalogueRevision + 1 }]) {
       await assert.rejects(f.runtime.keyExport!.readSelected(input, PASSWORD, () => undefined), /CANCELLED/);
       f.authority.lock(); await f.authority.unlock(PASSWORD);
     }
@@ -1617,4 +1613,32 @@ test('imported removal checks every chain, archives terminal rows, and never con
     assert.deepEqual(f.disk.records.get('native-evm-transfer-v1'), hdRow);
     assert.equal(JSON.stringify([...f.disk.records]).includes(first.hash), true, 'terminal imported history is retained');
   } finally { await f.authority.dispose(); f.disk.restoreNetwork(); }
+});
+
+test('explicit same-chain RPC edits preserve tokens, exact-byte retries and cold unlock', async () => {
+  const f = await readyAccounts(), originalRpc = localTransferRpc();
+  const first = new NativeTransfers(f.authority, () => f.runtime.transfers, { rpc: originalRpc.rpc });
+  let retry: NativeTransfers | undefined;
+  try {
+    const token = { contractAddress: '0x3333333333333333333333333333333333333333', name: 'Token', symbol: 'TOK', decimals: 6 };
+    await f.runtime.tokens!.add(0, token, () => undefined);
+    const review = await prepareAccountTransfer(first);
+    await first.confirm(review, PASSWORD);
+    const original = originalRpc.broadcasts[0]!;
+    const registration = createNativeNetwork({ ...getNativeNetwork('ethereum'), name: 'My Ethereum provider', rpcUrl: 'https://changed.example/rpc' });
+    await f.authority.manageNetwork({ kind: 'save-network', registration }, f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision);
+    assert.equal((await f.runtime.tokens!.load(() => undefined)).items[0]!.contractAddress, token.contractAddress);
+    assert.equal((await (await f.runtime.transfers!.journal(() => undefined)).load())!.rawTransaction, original);
+    const nextRpc = localTransferRpc('ethereum', registration);
+    retry = new NativeTransfers(f.authority, () => f.runtime.transfers, { rpc: nextRpc.rpc });
+    await retry.recover(true);
+    const retryReview = retry.getSnapshot().review!;
+    assert.equal(retryReview.context.rpcUrl, registration.rpcUrl);
+    assert.equal(retryReview.retry, true);
+    await retry.confirm(retryReview.id, PASSWORD);
+    assert.deepEqual(nextRpc.broadcasts, [original]);
+    f.authority.lock(); await f.authority.unlock(PASSWORD);
+    assert.equal(f.authority.getSnapshot().phase, 'ready');
+    assert.equal((await (await f.runtime.transfers!.journal(() => undefined)).load())!.rawTransaction, original);
+  } finally { first.dispose(); retry?.dispose(); await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
 });

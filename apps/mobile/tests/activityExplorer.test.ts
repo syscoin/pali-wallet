@@ -54,7 +54,7 @@ test('registered Activity scope distinguishes wallet, account, address, endpoint
   assert.notEqual(another.key, scope.key); assert.notEqual(another.sourceId, scope.sourceId);
   assert.notEqual(createActivityScope('b'.repeat(64), 'hd:60:0', OWNER, 'ethereum').key, scope.key);
   assert.notEqual(createActivityScope(fingerprint, 'hd:60:0', OTHER, 'ethereum').key, scope.key);
-  assert.throws(() => createActivityScope(fingerprint, 'hd:60:0', OWNER, 'base'), { code: 'UNAVAILABLE' });
+  assert.notEqual(createActivityScope(fingerprint, 'hd:60:0', OWNER, 'base').key, scope.key);
   assert.throws(() => createActivityScope('bad', 'hd:60:0', OWNER, 'ethereum'), { code: 'INVALID' });
   assert.equal(scope.apiUrl, 'https://api.routescan.io/v2/network/mainnet/evm/1/etherscan/api');
 });

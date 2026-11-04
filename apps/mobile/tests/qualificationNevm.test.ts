@@ -48,7 +48,7 @@ const report = (phase: 'create' | 'restart') => ({
   nevmTransferHash: '0x' + 'd'.repeat(64),
   nevmEthereumTransferHash: '0x' + 'e'.repeat(64),
   nevmChainId: '5700',
-  nevmJournalContainerVersion: 2,
+  nevmJournalContainerVersion: 1,
   nevmRestoredFromJournal: phase === 'restart',
 });
 
@@ -70,7 +70,7 @@ test('NEVM report requires complete bounded evidence and exact restart identity'
     { nevmEthereumTransferHash: report('create').erc20TransferHash },
     { nevmChainId: 5700 },
     { nevmChainId: '1' },
-    { nevmJournalContainerVersion: 1 },
+    { nevmJournalContainerVersion: 2 },
     { nevmRestoredFromJournal: false },
     { phase: ['restart'] },
     { scenario: ['import'] },
@@ -318,14 +318,14 @@ for (const scenario of ['import', 'generate'] as const) {
         const container = structuredClone(
           disk.records.get(nativeTransferJournalKey(3))
         ) as TransferJournalContainer;
-        assert.equal(container.version, 2);
+        assert.equal(container.version, 1);
         assert.equal(container.entries.length, 2);
         for (const [index, network, value] of [
           [0, 'ethereum', 456n],
           [1, 'syscoin-nevm-testnet', 789n],
         ] as const) {
           const entry = container.entries[index]!;
-          assert.deepEqual(entry.registration, getNativeNetwork(network));
+          assert.deepEqual(entry.registration, { ...getNativeNetwork(network) });
           assert.equal(entry.phase, 'attempted');
           assert.equal(entry.nonce, 0);
           const signed = Transaction.from(entry.rawTransaction);
