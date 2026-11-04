@@ -16,6 +16,7 @@ const {
   matchesNevmRestartEvidence,
 } = require('./nevm-transfer.ts');
 const { isZksysQualificationReport, matchesZksysRestartEvidence } = require('./zksys-transfer.ts');
+const { isHdKeyRevealQualificationReport, matchesHdKeyRevealRestartEvidence } = require('./hd-key-reveal.ts');
 const {
   assertSimulatorRefusal,
   TIMED_CRYPTO_CASES,
@@ -47,6 +48,7 @@ const FIELDS = new Set([
   'mnemonicEntropyVerified',
   'storageDiagnostic',
   'nativeHdAccountsVerified',
+  'nativeHdKeyRevealVerified',
   'selectedAccountId',
   'selectedAccountIndex',
   'firstTransferHash',
@@ -110,6 +112,7 @@ function decodeNativeReport(
     !isErc20QualificationReport(report) ||
     !isNevmQualificationReport(report) ||
     !isZksysQualificationReport(report) ||
+    !isHdKeyRevealQualificationReport(report) ||
     (report.cryptoDiagnostic !== undefined &&
       !isCryptoDiagnostic(report.cryptoDiagnostic)) ||
     !isStorageQualificationDiagnostic(
@@ -133,6 +136,7 @@ function assertFullNativeReport(report) {
     report.networkCalls !== 0 ||
     report.nativeBridgeExercised !== true ||
     report.nativeSigningVerified !== true ||
+    !isHdKeyRevealQualificationReport(report) ||
     report.sdkVersion !== '2.0.0' ||
     !/^0x[0-9a-f]{64}$/.test(report.transferHash || '') ||
     report.mnemonicEntropyVerified !==
@@ -231,7 +235,8 @@ function assertPhysicalRestart(created, restored) {
     !matchesHdRestartEvidence(created, restored) ||
     !matchesErc20RestartEvidence(created, restored) ||
     !matchesNevmRestartEvidence(created, restored) ||
-    !matchesZksysRestartEvidence(created, restored)
+    !matchesZksysRestartEvidence(created, restored) ||
+    !matchesHdKeyRevealRestartEvidence(created, restored)
   )
     throw Error('Physical cold restart identity mismatch');
 }

@@ -6,6 +6,7 @@ const { createCommandRunner, describeQualificationFailure, COLD_BOOT_TIMEOUT_MS 
 const { isErc20QualificationReport, matchesErc20RestartEvidence } = require('./erc20-transfer.ts');
 const { matchesNevmRestartEvidence } = require('./nevm-transfer.ts');
 const { matchesZksysRestartEvidence } = require('./zksys-transfer.ts');
+const { matchesHdKeyRevealRestartEvidence } = require('./hd-key-reveal.ts');
 
 const erc20Evidence = (phase = 'create') => ({
   nativeErc20Verified: true, erc20AccountId: 'hd:60:2', erc20AccountIndex: 2,
@@ -156,7 +157,7 @@ for (const diagnosticsAvailable of [true, false]) test(`Android cleanup preserve
       if (args.some((value) => value.endsWith('pali-native-qualification-startup.json'))) return { status: 1, stderr: 'not present' };
       if (args.some((value) => value.endsWith('pali-native-qualification-load-error.json'))) return { status: 1, stderr: 'not present' };
       if (args[0] === 'exec-out') return { status: null, stdout: Buffer.from('PRIVATE_DATABASE_BYTES'), error: Object.assign(Error('database read timeout'), { code: 'ETIMEDOUT' }) };
-      return ok(JSON.stringify({ version: 1, status: 'passed', phase: 'create', scenario: 'import', platform: 'android', networkCalls: 0, nativeBridgeExercised: true, sdkVersion: '2.0.0', nativeSigningVerified: true, nativeHdAccountsVerified: true, selectedAccountId: 'hd:60:1', selectedAccountIndex: 1, journalContainerVersion: 2, firstTransferHash: '0x' + 'c'.repeat(64), address: '0x6Fac4D18c912343BF86fa7049364Dd4E424Ab9C0', transferHash: '0x' + 'b'.repeat(64), fingerprint: 'a'.repeat(64), cryptoEvidence: { passed: true, productionIterations: 900000 }, mnemonicEntropyVerified: false, storageDiagnostic: { stage: 'ready' }, ...erc20Evidence(), ...nevmEvidence(), ...zksysEvidence() }));
+      return ok(JSON.stringify({ version: 1, status: 'passed', phase: 'create', scenario: 'import', platform: 'android', networkCalls: 0, nativeBridgeExercised: true, sdkVersion: '2.0.0', nativeSigningVerified: true, nativeHdAccountsVerified: true, nativeHdKeyRevealVerified: true, selectedAccountId: 'hd:60:1', selectedAccountIndex: 1, journalContainerVersion: 2, firstTransferHash: '0x' + 'c'.repeat(64), address: '0x6Fac4D18c912343BF86fa7049364Dd4E424Ab9C0', transferHash: '0x' + 'b'.repeat(64), fingerprint: 'a'.repeat(64), cryptoEvidence: { passed: true, productionIterations: 900000 }, mnemonicEntropyVerified: false, storageDiagnostic: { stage: 'ready' }, ...erc20Evidence(), ...nevmEvidence(), ...zksysEvidence() }));
     }
     if (args.includes('pidof')) return ok(++pidReads === 1 ? '1234' : '');
     if (args.includes('logcat')) return diagnosticsAvailable ? ok('F/libc: SIGABRT libhermes.so synthetic_secret_token_42 PUBLIC native qualification password 2026') : { status: 1, stderr: 'synthetic_secret_token_42' };
@@ -259,7 +260,7 @@ function reportWaitFixture() {
     Date: { now: () => now }, sleep: async (milliseconds) => { now += milliseconds; },
   });
   const report = JSON.stringify({ version: 1, status: 'passed', phase: 'create', scenario: 'import', platform: 'android',
-    networkCalls: 0, nativeBridgeExercised: true, sdkVersion: '2.0.0', nativeSigningVerified: true, nativeHdAccountsVerified: true, selectedAccountId: 'hd:60:1', selectedAccountIndex: 1, journalContainerVersion: 2, firstTransferHash: '0x' + 'c'.repeat(64), address: '0x6Fac4D18c912343BF86fa7049364Dd4E424Ab9C0', transferHash: '0x' + 'b'.repeat(64), mnemonicEntropyVerified: false,
+    networkCalls: 0, nativeBridgeExercised: true, sdkVersion: '2.0.0', nativeSigningVerified: true, nativeHdAccountsVerified: true, nativeHdKeyRevealVerified: true, selectedAccountId: 'hd:60:1', selectedAccountIndex: 1, journalContainerVersion: 2, firstTransferHash: '0x' + 'c'.repeat(64), address: '0x6Fac4D18c912343BF86fa7049364Dd4E424Ab9C0', transferHash: '0x' + 'b'.repeat(64), mnemonicEntropyVerified: false,
     fingerprint: 'a'.repeat(64), cryptoEvidence: { passed: true, productionIterations: 900000 }, storageDiagnostic: { stage: 'ready' }, ...erc20Evidence(), ...nevmEvidence(), ...zksysEvidence() });
   return { wait, validate, saved, report, now: () => now };
 }
@@ -277,7 +278,7 @@ test('the actual report parser preserves producer storage evidence and rejects u
   failed.observe('sqlcipher-journal-readback');
   failed.capture(new WalletStorageError('STORAGE_UNAVAILABLE'));
   const failure = { ...passed, status: 'failed', failedStage: 'open SQLCipher and device key', storageDiagnostic: failed.report() };
-  for (const key of ['nativeHdAccountsVerified', 'selectedAccountId', 'selectedAccountIndex', 'journalContainerVersion', 'firstTransferHash', ...Object.keys(erc20Evidence()), ...Object.keys(nevmEvidence()), ...Object.keys(zksysEvidence())]) delete failure[key];
+  for (const key of ['nativeHdAccountsVerified', 'nativeHdKeyRevealVerified', 'selectedAccountId', 'selectedAccountIndex', 'journalContainerVersion', 'firstTransferHash', ...Object.keys(erc20Evidence()), ...Object.keys(nevmEvidence()), ...Object.keys(zksysEvidence())]) delete failure[key];
   assert.throws(() => fixture.validate(JSON.stringify(failure), 'create', 'import'), /sqlcipher-journal-readback/);
   assert.deepEqual(fixture.saved.at(-1).storageDiagnostic, failed.report());
   const beforeOpen = { ...failure, failedStage: 'native crypto bridge and full vectors', storageDiagnostic: {} };
@@ -406,6 +407,21 @@ test('full custody reports require zkSYS controller, exact-fee and restart count
   assert.equal(matchesZksysRestartEvidence({}, {}), false);
 });
 
+test('full custody reports require secret-free HD key reveal proof on both launches', () => {
+  const fixture = reportWaitFixture();
+  const created = JSON.parse(fixture.report);
+  const restored = { ...created, phase: 'restart', ...erc20Evidence('restart'), ...nevmEvidence('restart'), ...zksysEvidence('restart') };
+  for (const report of [created, restored]) {
+    assert.equal(fixture.validate(JSON.stringify(report), report.phase, 'import').nativeHdKeyRevealVerified, true);
+    const missing = { ...report }; delete missing.nativeHdKeyRevealVerified;
+    for (const changed of [missing, ...[false, 1, 'true', null, {}].map((value) => ({ ...report, nativeHdKeyRevealVerified: value })),
+      { ...report, privateKey: 'forbidden' }, { ...report, keyHash: 'forbidden' }])
+      assert.throws(() => fixture.validate(JSON.stringify(changed), report.phase, 'import'));
+  }
+  assert(matchesHdKeyRevealRestartEvidence(created, restored));
+  assert.equal(matchesHdKeyRevealRestartEvidence(created, { ...restored, nativeHdKeyRevealVerified: false }), false);
+});
+
 test('the actual Android runner requires ERC20 and NEVM restart evidence in addition to existing HD evidence', async () => {
   const { runInNewContext } = require('node:vm');
   const { matchesHdRestartEvidence } = require('./hd-accounts.ts');
@@ -440,7 +456,7 @@ test('the actual Android runner requires ERC20 and NEVM restart evidence in addi
       waitReport: async (_read, requestedPhase, scenario) => ({ ...(requestedPhase === 'create' ? created : restored), scenario }),
       androidProcessRunning: () => true,
       databaseEvidence: (bytes) => { assert.equal(bytes.length, 4096); return { plaintextHeader: false }; },
-      matchesHdRestartEvidence, matchesErc20RestartEvidence, matchesNevmRestartEvidence, matchesZksysRestartEvidence,
+      matchesHdRestartEvidence, matchesErc20RestartEvidence, matchesNevmRestartEvidence, matchesZksysRestartEvidence, matchesHdKeyRevealRestartEvidence,
       captureFixtureLoadError: () => false, redact: (text) => text,
       latestAndroidExitPid: diagnostics.latestAndroidExitPid,
       summarizeAndroidLog: diagnostics.summarizeAndroidLog,

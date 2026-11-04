@@ -58,7 +58,7 @@ function report(phase, scenario, runId) {
     nativeBridgeExercised: true,
     sdkVersion: '2.0.0',
     nativeSigningVerified: true,
-    nativeHdAccountsVerified: true,
+    nativeHdAccountsVerified: true, nativeHdKeyRevealVerified: true,
     selectedAccountId: 'hd:60:1',
     selectedAccountIndex: 1,
     journalContainerVersion: 2,
@@ -991,6 +991,7 @@ test('physical report checks preserve exact HD/ERC20/NEVM evidence and refuse an
   );
   assert.doesNotThrow(() => assertPhysicalRestart(first, second));
   for (const key of [
+    'nativeHdKeyRevealVerified',
     'nativeNevmVerified', 'nevmAccountId', 'nevmAccountIndex', 'nevmAddress',
     'nevmTransferHash', 'nevmEthereumTransferHash', 'nevmChainId',
     'nevmJournalContainerVersion', 'nevmRestoredFromJournal',
@@ -1004,6 +1005,7 @@ test('physical report checks preserve exact HD/ERC20/NEVM evidence and refuse an
     assert.throws(() => decodePhysicalReport(JSON.stringify(incomplete), expected));
   }
   for (const mutation of [
+    { nativeHdKeyRevealVerified: false },
     { nevmTransferHash: '0x' + '9'.repeat(64) },
     { nevmEthereumTransferHash: '0x' + '9'.repeat(64) },
     { nevmChainId: '1' },
@@ -1013,6 +1015,11 @@ test('physical report checks preserve exact HD/ERC20/NEVM evidence and refuse an
     { zksysSignatures: 1 },
     { zksysFeeEstimates: 2 },
   ]) assert.throws(() => assertPhysicalRestart(first, { ...second, ...mutation }));
+  for (const value of [false, 1, 'true', null, {}])
+    assert.throws(() => decodePhysicalReport(JSON.stringify({ ...first, nativeHdKeyRevealVerified: value }), expected));
+  const missingReveal = { ...second }; delete missingReveal.nativeHdKeyRevealVerified;
+  assert.throws(() => decodePhysicalReport(JSON.stringify(missingReveal), { ...expected, phase: 'restart' }));
+  assert.throws(() => assertPhysicalRestart(first, missingReveal));
   assert.throws(() =>
     decodePhysicalReport(
       JSON.stringify({ ...first, secret: 'untrusted' }),

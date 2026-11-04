@@ -431,6 +431,10 @@ function QualificationApp() {
           expectedFifthAddress: expectedZksysAddress ?? (parameters.scenario === 'import' ? EXPECTED_ZKSYS_HD_ADDRESS : undefined), check,
         });
         expect(authority.getSnapshot().account?.address === address && authority.getCatalogue()?.active.accountId === 'hd:60:1');
+        const { qualifyNativeHdKeyReveal } = await import('./hd-key-reveal.ts');
+        const keyRevealEvidence = await qualifyNativeHdKeyReveal({
+          authority, runtime: runtime!, storage: storage!, password: PUBLIC_PASSWORD, expectedAddress: address, check,
+        });
         await check('synchronous lock and wrong password refusal', async () => {
           authority!.lock();
           expect(
@@ -504,6 +508,7 @@ function QualificationApp() {
           ...erc20Evidence,
           ...nevmEvidence,
           ...zksysEvidence,
+          ...keyRevealEvidence,
           storageDiagnostic: storageDiagnostic.report(),
           pendingProcessTermination: parameters.phase === 'create',
         };
