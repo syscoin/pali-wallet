@@ -25,6 +25,12 @@ export function useRealShell(scope: string | null, currentScope: () => string | 
   }, [gate]);
   const select = useCallback((next: RealTab) => navigate(next, true), [navigate]);
   const finishLeave = useCallback((next: RealTab) => navigate(next, false), [navigate]);
+  // Only the session owner uses this after checking its captured flow context.
+  const restoreRoot = useCallback((next: RealTab, identity: string) => {
+    if (AppState.currentState !== 'active') return;
+    gate.invalidate(); selected.current = next; back.current = null; leave.current = null;
+    setView({ scope: identity, tab: next, immersive: false });
+  }, [gate]);
   const registerBack = useCallback((handler: () => boolean) => { back.current = handler; return () => { if (back.current === handler) back.current = null; }; }, []);
   const registerLeave = useCallback((handler: (navigate: () => void) => void) => { leave.current = handler; return () => { if (leave.current === handler) leave.current = null; }; }, []);
   const setImmersive = useCallback((value: boolean) => { setView((previous) => previous.immersive === value ? previous : { ...previous, immersive: value }); }, []);
@@ -33,5 +39,5 @@ export function useRealShell(scope: string | null, currentScope: () => string | 
     if (back.current?.()) return;
     if (current.current() && tab !== 'wallet') select('wallet'); else onExit.current();
   };
-  return { tab, select, finishLeave, immersive, navigation, goBack };
+  return { tab, select, finishLeave, restoreRoot, immersive, navigation, goBack };
 }

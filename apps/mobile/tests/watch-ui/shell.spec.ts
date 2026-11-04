@@ -142,7 +142,8 @@ test('account management, imported-key review and send approval exclude tabs', a
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await page.getByRole('button', { name: 'Back', exact: true }).click();
-  await tabs(page);
+  await tabs(page, 'Tools');
+  await chooseTab(page, 'Wallet');
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(page.getByRole('tab')).toHaveCount(0);
   await page.getByRole('textbox', { name: 'Ethereum address', exact: true }).fill('0x1111111111111111111111111111111111111111');
@@ -240,6 +241,31 @@ test('background cancels pending private presentation and requires unlock before
   expect(await page.evaluate(() => window.__watchFixture.events().includes('key:finish'))).toBe(false);
   await unlock(page);
   expect(await page.evaluate(() => window.__watchFixture.oldPhases())).toEqual(['ready']);
+});
+
+test('clearing Security returns to its originating Settings tab', async ({ page }) => {
+  await openNative(page); await unlock(page); await openSecurity(page);
+  await page.getByRole('button', { name: 'Reveal account private key', exact: false }).click();
+  await page.getByRole('textbox', { name: 'Confirm your wallet password', exact: true }).fill('public-password');
+  await page.getByRole('button', { name: 'Reveal private key', exact: true }).click();
+  await expect(page.getByText(PUBLIC_KEY, { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await expect(page.getByText(PUBLIC_KEY, { exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await tabs(page, 'Settings');
+  await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible();
+  await expect(page.getByRole('textbox', { name: /password/i })).toHaveCount(0);
+});
+
+test('a changed native account invalidates the old originating tab before Back', async ({ page }) => {
+  await openNative(page); await unlock(page); await openSecurity(page);
+  await page.evaluate(() => window.__watchFixture.selectAccount('hd:60:1'));
+  await expect(page.getByRole('tab')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await tabs(page, 'Wallet');
+  await expect(page.getByText('Account 2 · Ethereum', { exact: true })).toBeVisible();
+  await expect(page.getByText(PUBLIC_KEY, { exact: true })).toHaveCount(0);
+  expect(await page.evaluate(() => window.__watchFixture.catalogue().active.accountId)).toBe('hd:60:1');
 });
 
 test('all four labels remain visible, operable and unclipped at 320px with large text', async ({ page }, testInfo) => {
