@@ -24,7 +24,7 @@ import type { OpenWalletStorage } from '../src/storage/types.ts';
 
 const PHRASE =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
-const PASSWORD = 'PUBLIC NEVM native qualification test password';
+const PASSWORD = 'PUBLIC NEVM native qualification test password 1!';
 const FOURTH_ADDRESS = '0xF3f50213C1d2e255e4B2bAD430F8A38EEF8D718E';
 process.env.NODE_ENV = 'production';
 delete process.env.SYSWEB3_PBKDF2_ENC_ITERS;

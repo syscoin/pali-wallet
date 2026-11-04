@@ -25,7 +25,7 @@ const {
 } = require('./simulator-contract.cjs');
 const PUBLIC_PHRASE =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
-const PUBLIC_PASSWORD = 'PUBLIC native qualification password 2026';
+const PUBLIC_PASSWORD = 'PUBLIC native qualification password 2026!';
 const FIELDS = new Set([
   ...IMPORTED_REPORT_FIELDS,
   'version',

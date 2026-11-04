@@ -163,7 +163,7 @@ for (const diagnosticsAvailable of [true, false]) test(`Android cleanup preserve
       return ok(JSON.stringify({ version: 1, status: 'passed', phase: 'create', scenario: 'import', platform: 'android', networkCalls: 0, nativeBridgeExercised: true, sdkVersion: '2.0.0', nativeSigningVerified: true, nativeHdAccountsVerified: true, nativeHdKeyRevealVerified: true, selectedAccountId: 'hd:60:1', selectedAccountIndex: 1, journalContainerVersion: 2, firstTransferHash: '0x' + 'c'.repeat(64), address: '0x6Fac4D18c912343BF86fa7049364Dd4E424Ab9C0', transferHash: '0x' + 'b'.repeat(64), fingerprint: 'a'.repeat(64), cryptoEvidence: { passed: true, productionIterations: 900000 }, mnemonicEntropyVerified: false, storageDiagnostic: { stage: 'ready' }, ...erc20Evidence(), ...nevmEvidence(), ...zksysEvidence(), ...importedEvidence() }));
     }
     if (args.includes('pidof')) return ok(++pidReads === 1 ? '1234' : '');
-    if (args.includes('logcat')) return diagnosticsAvailable ? ok('F/libc: SIGABRT libhermes.so synthetic_secret_token_42 PUBLIC native qualification password 2026') : { status: 1, stderr: 'synthetic_secret_token_42' };
+    if (args.includes('logcat')) return diagnosticsAvailable ? ok('F/libc: SIGABRT libhermes.so synthetic_secret_token_42 PUBLIC native qualification password 2026!') : { status: 1, stderr: 'synthetic_secret_token_42' };
     if (args.includes('exit-info')) return diagnosticsAvailable ? ok('timestamp=public pid=1234\n process=com.paliwallet.qualification reason=5 (APP CRASH(NATIVE))\n description=synthetic_secret_token_42') : { status: 1, stderr: 'synthetic_secret_token_42' };
     return ok('');
   };
@@ -198,7 +198,7 @@ for (const diagnosticsAvailable of [true, false]) test(`Android cleanup preserve
     assert(calls.some((call) => call.args.includes('--pid') && call.args.includes('1234')));
     assert(writes.some((write) => write.file.endsWith('/android-import-fixture-crash.log')));
     assert(writes.some((write) => write.file.endsWith('/android-import-fixture-process.log')));
-    assert(writes.filter((write) => write.file.endsWith('.log')).every((write) => !write.data.includes('PUBLIC native qualification password 2026')));
+    assert(writes.filter((write) => write.file.endsWith('.log')).every((write) => !write.data.includes('PUBLIC native qualification password 2026!')));
   }
   const apk = writes.find((write) => write.file.endsWith('/android-apk-startup.json'));
   assert.deepEqual(JSON.parse(apk.data), { packageMatches: true, mainActivityMatches: true, mainBundlePresent: true });

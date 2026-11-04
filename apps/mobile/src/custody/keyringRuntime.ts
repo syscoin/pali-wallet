@@ -1,3 +1,4 @@
+import { isNativeNewPassword, isNativePasswordInput } from './password.ts';
 import type { IKeyringAccountState } from '@sidhujag/sysweb3-keyring/cjs/software.js';
 import { normalizePublicAddress } from '../core/addresses.ts';
 import { RPC_ENDPOINTS } from '../platformRpc.ts';
@@ -64,9 +65,7 @@ export interface KeyringRuntime extends CustodyRuntime {
 
 function validPassword(password: unknown, creating: boolean): asserts password is string {
   if (
-    typeof password !== 'string' || !password.isWellFormed() ||
-    password.length === 0 || new TextEncoder().encode(password).length > 1024 ||
-    (creating && [...password].length < 12)
+    !(creating ? isNativeNewPassword(password) : isNativePasswordInput(password))
   ) throw new KeyringRuntimeError('INVALID_INPUT');
 }
 

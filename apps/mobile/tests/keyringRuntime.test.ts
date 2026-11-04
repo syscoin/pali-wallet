@@ -16,7 +16,7 @@ import { getNativeNetwork, NATIVE_NETWORKS } from '../src/custody/networkContext
 import { WALLET_CATALOGUE_KEY } from '../src/custody/walletCatalogue.ts';
 
 const PHRASE = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
-const PASSWORD = 'Only a public test password';
+const PASSWORD = 'Only a public test password 1!';
 const ADDRESS = '0x9858EfFD232B4033E47d90003D41EC34EcaEda94';
 process.env.NODE_ENV = 'production';
 delete process.env.SYSWEB3_PBKDF2_ENC_ITERS;
@@ -1617,4 +1617,17 @@ test('imported removal checks every chain, archives terminal rows, and never con
     assert.deepEqual(f.disk.records.get('native-evm-transfer-v1'), hdRow);
     assert.equal(JSON.stringify([...f.disk.records]).includes(first.hash), true, 'terminal imported history is retained');
   } finally { await f.authority.dispose(); f.disk.restoreNetwork(); }
+});
+
+test('creation and import reject weak passwords before the SDK creates a seed vault', async () => {
+  const disk = memoryDisk();
+  const runtime = await disk.factory.open();
+  try {
+    for (const password of ['only twelve lowercase letters', 'Abcdefghijk1', 'Abcdefghijk!', 'Abcdefghij1!' + 'é'.repeat(507)]) {
+      await assert.rejects(runtime.session.createWallet(password), { code: 'INVALID_INPUT' });
+      await assert.rejects(runtime.session.importWallet(PHRASE, password), { code: 'INVALID_INPUT' });
+      assert.equal(disk.records.has('vault'), false);
+      assert.equal(disk.records.has('vault-keys'), false);
+    }
+  } finally { await runtime.storage.close(); }
 });

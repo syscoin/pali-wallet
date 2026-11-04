@@ -1,3 +1,4 @@
+import * as passwordPolicy from '../src/custody/password.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -62,6 +63,7 @@ function setup(phase = 'entry') {
   };
   const ui = { ...Object.fromEntries(['Button', 'Card', 'Icon', 'Notice', 'Screen', 'Text'].map((name) => [name, name])), colors: {}, styles: {} };
   const loaded = evaluate(readFileSync(new NodeURL('../src/screens/NativeRecovery.tsx', import.meta.url), 'utf8'), {
+    '../custody/password': passwordPolicy,
     react: hook, 'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' }, '../ui': ui,
   });
   const snapshot: Snapshot = { phase, inventory, error: '', fieldErrors: {} };
@@ -194,6 +196,7 @@ for (const order of ['parent-first', 'child-first'] as const) test(`actual Nativ
     react: root.hook, 'react-native': leaf.native, '../ui': { ...leaf.ui, Header: 'Header', PaliMark: 'PaliMark' },
     '../platform/nativeFactory': { createNativeWalletControllers: () => controllers, createNativeRecoveryCoordinator: () => { throw Error('not used before verification'); } },
     '../platform/privacyShield.native': { async ensurePrivacyShield() {} },
+    '../custody/password': passwordPolicy,
     '../custody/nativeControllerLifecycle': { NativeControllerLifecycle }, '../custody/recoveryFlow': { NativeRecoveryFlow },
     './NativeRecovery': { NativeRecovery: leaf.component }, '../custody/networkView': { createNativeNetworkView: () => ({}) },
     './useRealShell': { useRealShell: () => ({ tab: 'wallet', navigation: {}, goBack() { exits++; }, restoreRoot() {} }) },

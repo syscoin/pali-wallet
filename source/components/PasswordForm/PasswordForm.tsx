@@ -2,6 +2,7 @@ import { Form, Input } from 'antd';
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { WALLET_PASSWORD_PATTERN } from '../../shared/passwordPolicy';
 import { Button } from 'components/index';
 import { OnboardingLayout } from 'components/Layout/OnboardingLayout';
 import { generateMemorablePassword } from 'utils/memorablePassword';
@@ -99,8 +100,7 @@ export const PasswordForm: React.FC<IPasswordForm> = ({ onSubmit }) => {
             },
             {
               // Strong password requirements: 12+ chars, uppercase, lowercase, number, special char
-              pattern:
-                /^(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]).{12,}$/,
+              pattern: WALLET_PASSWORD_PATTERN,
               message: '',
             },
           ]}

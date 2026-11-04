@@ -24,8 +24,8 @@ import { digest, INSTALLATION, nodeConnection, validPair, type SqlHook } from '.
 
 const PHRASE = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 const WRONG = 'legal winner thank year wave sausage worth useful legal winner thank yellow';
-const OLD = 'PUBLIC old recovery password';
-const NEXT = 'PUBLIC new recovery password';
+const OLD = 'PUBLIC old recovery password 1!';
+const NEXT = 'PUBLIC new recovery password 1!';
 const KEY = `0x${'11'.repeat(32)}`;
 const KEY2 = `0x${'22'.repeat(32)}`;
 const importedWallet = new Wallet(KEY);

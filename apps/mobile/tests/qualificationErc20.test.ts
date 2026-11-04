@@ -27,7 +27,7 @@ import { digest, INSTALLATION, nodeConnection } from './storageHelpers.ts';
 
 const PHRASE =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
-const PASSWORD = 'PUBLIC ERC20 native qualification test password';
+const PASSWORD = 'PUBLIC ERC20 native qualification test password!';
 const report = (phase: 'create' | 'restart') => ({
   status: 'passed',
   phase,

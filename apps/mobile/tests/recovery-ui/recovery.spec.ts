@@ -2,7 +2,7 @@ import { test, expect, type Page } from '@playwright/test';
 
 const PHRASE = `${'abandon '.repeat(11)}about`;
 const WORDS24 = `${'abandon '.repeat(23)}art`;
-const PASSWORD = 'public fixture password';
+const PASSWORD = 'Public fixture password 1!';
 test.beforeEach(async ({ page }) => {
   await page.route('**/*', async (route) => {
     if (new URL(route.request().url()).origin === 'http://127.0.0.1:4188') { await route.continue(); return; }
@@ -114,4 +114,19 @@ test('reading remains cancellable and 320px large-text footer stays operable', a
   await expect(page.getByRole('button', { name: 'Verify wallet', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Verify wallet', exact: true }).click();
   await expect(page.locator('input, textarea')).toHaveCount(0);
+});
+
+
+test('weak new passwords remain editable and the shared requirements fit a narrow screen', async ({ page }, info) => {
+  await page.setViewportSize({ width: 320, height: 568 });
+  await entry(page); await fill(page);
+  const weak = 'only lowercase password';
+  await page.getByLabel('New password', { exact: true }).fill(weak);
+  await page.getByLabel('Confirm new password', { exact: true }).fill(weak);
+  await page.getByRole('button', { name: 'Verify wallet', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('uppercase and lowercase letters, a number and a symbol');
+  expect((await page.evaluate(() => window.__recoveryFixture.audit())).admissions).toBe(0);
+  await expect(page.getByRole('textbox', { name: /New password/ }).first()).toHaveValue(weak);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: info.outputPath('password-policy-narrow-public.png'), fullPage: true });
 });

@@ -40,7 +40,7 @@ const output = path.resolve(
 const PACKAGE = 'com.paliwallet.qualification';
 const PUBLIC_PHRASE =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
-const PUBLIC_PASSWORD = 'PUBLIC native qualification password 2026';
+const PUBLIC_PASSWORD = 'PUBLIC native qualification password 2026!';
 if (!['ios', 'android'].includes(platform) || !fs.existsSync(artifact))
   throw Error('Expected platform and built qualification artifact');
 if (simulatorContract && fs.existsSync(path.join(output, 'ios-qualification.json')))

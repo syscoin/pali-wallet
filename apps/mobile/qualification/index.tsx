@@ -36,7 +36,7 @@ import type { FullCryptoQualification } from '../src/crypto/qualificationFull.ts
 // qualification configuration and never imported by the production entry.
 const PUBLIC_PHRASE =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
-const PUBLIC_PASSWORD = 'PUBLIC native qualification password 2026';
+const PUBLIC_PASSWORD = 'PUBLIC native qualification password 2026!';
 const EXPECTED_ADDRESS = '0x9858EfFD232B4033E47d90003D41EC34EcaEda94';
 const EXPECTED_HD_ADDRESS = '0x6Fac4D18c912343BF86fa7049364Dd4E424Ab9C0';
 const EXPECTED_ERC20_HD_ADDRESS = '0xb6716976A3ebe8D39aCEB04372f22Ff8e6802D7A';

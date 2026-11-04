@@ -1,3 +1,4 @@
+import { isNativeNewPassword, NEW_PASSWORD_HELP } from '../custody/password';
 import { nativeAccountSelection } from '../core/accountDirectory';
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ActivityIndicator, AppState, BackHandler, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, TextInput, View } from 'react-native';
@@ -269,8 +270,8 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
 
   const createOrImport = () => {
     if (password !== confirmation) { setError('Your passwords do not match.'); return; }
-    if (!password.isWellFormed() || [...password].length < 12 || new TextEncoder().encode(password).length > 1024) {
-      setError('Use a password with at least 12 characters.'); return;
+    if (!isNativeNewPassword(password)) {
+      setError(NEW_PASSWORD_HELP); return;
     }
     const enteredPassword = password; const enteredPhrase = phrase; const importing = stage === 'import';
     clearSecrets();
@@ -398,7 +399,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   </>;
   else if (snapshot.phase === 'empty') body = <>
     {stage === 'import' && <SecretInput label="Recovery phrase" multiline value={phrase} onChange={setPhrase} disabled={busy} />}
-    <Text style={styles.muted}>{stage === 'import' ? 'Enter your 12 or 24 words in order.' : 'Pali will create a new 12-word recovery phrase.'} Choose a unique password with at least 12 characters.</Text>
+    <Text style={styles.muted}>{stage === 'import' ? 'Enter your 12 or 24 words in order.' : 'Pali will create a new 12-word recovery phrase.'} {NEW_PASSWORD_HELP}</Text>
     <SecretInput label="New password" value={password} onChange={setPassword} disabled={busy} />
     <SecretInput label="Confirm password" value={confirmation} onChange={setConfirmation} disabled={busy} />
     <Notice title="Your password stays on this device" body="Your recovery phrase can restore your wallet without this password. Keep it private and backed up offline." />
