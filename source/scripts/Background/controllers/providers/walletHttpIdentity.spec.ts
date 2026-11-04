@@ -520,3 +520,199 @@ test('a prior installation completing after malformed configuration cannot reope
   await f.identity.configure([valid]);
   expect(f.identity.isReady(valid)).toBe(true);
 });
+
+function heldUpdate(f: ReturnType<typeof fixture>) {
+  let entered!: () => void;
+  let release!: () => void;
+  const started = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const original = f.store.updateDynamicRules.getMockImplementation()!;
+  f.store.updateDynamicRules.mockImplementationOnce(async (options) => {
+    entered();
+    await held;
+    return original(options);
+  });
+  return { started, release };
+}
+
+for (const phase of ['add', 'remove'] as const) {
+  test(`installed active origin dispatches synchronously during unrelated candidate ${phase}`, async () => {
+    const f = fixture();
+    const active = 'https://active.public-fixture.invalid/rpc';
+    const candidate = 'https://candidate.public-fixture.invalid/rpc';
+    await f.identity.configure([active]);
+    let operationEntered!: () => void;
+    let finishOperation!: () => void;
+    const operationStarted = new Promise<void>((resolve) => {
+      operationEntered = resolve;
+    });
+    const operationHeld = new Promise<void>((resolve) => {
+      finishOperation = resolve;
+    });
+    let update = phase === 'add' ? heldUpdate(f) : undefined;
+    const probing = f.identity.withBackend(candidate, async () => {
+      operationEntered();
+      await operationHeld;
+    });
+    void probing.catch(() => undefined);
+    if (phase === 'add') await update!.started;
+    else {
+      await operationStarted;
+      update = heldUpdate(f);
+      finishOperation();
+      await update.started;
+    }
+    const sent: Request[] = [];
+    const fetcher = createPaliFetch(async (input) => {
+      sent.push(input as Request);
+      return new Response('ok');
+    }, f.identity);
+    try {
+      const sending = fetcher(active, {
+        method: 'POST',
+        headers: { Authorization: 'Bearer public-active' },
+        body: '010203',
+      });
+      void sending.catch(() => undefined);
+      expect(sent).toHaveLength(1);
+      await sending;
+      expect(sent[0].headers.get('Authorization')).toBe('Bearer public-active');
+      expect(await sent[0].text()).toBe('010203');
+      if (phase === 'add') {
+        await expect(
+          fetcher(candidate, { method: 'POST', body: 'new-origin' })
+        ).rejects.toThrow('identification is unavailable');
+        expect(sent).toHaveLength(1);
+      }
+    } finally {
+      update!.release();
+      finishOperation();
+      await probing;
+    }
+  });
+}
+
+test('queued removal then re-add blocks the active origin across the potential unmarked interval', async () => {
+  const f = fixture(),
+    active = 'https://active.public-fixture.invalid',
+    other = 'https://other.public-fixture.invalid';
+  await f.identity.configure([active]);
+  const removing = heldUpdate(f);
+  const removed = f.identity.configure([other]);
+  const readded = f.identity.configure([active, other]);
+  await removing.started;
+  const adding = heldUpdate(f);
+  const sent = jest.fn(async () => new Response('ok'));
+  const fetcher = createPaliFetch(sent, f.identity);
+  try {
+    expect(f.identity.isReady(active)).toBe(false);
+    await expect(
+      fetcher(active, { method: 'POST', body: '010203' })
+    ).rejects.toThrow('identification is unavailable');
+    removing.release();
+    await adding.started;
+    // The old rule was removed, while the re-add has not yet reached Chrome.
+    expect(f.identity.isReady(active)).toBe(false);
+    await expect(
+      fetcher(active, { method: 'POST', body: '010203' })
+    ).rejects.toThrow('identification is unavailable');
+    expect(sent).not.toHaveBeenCalled();
+  } finally {
+    removing.release();
+    adding.release();
+    await removed;
+    await readded;
+  }
+  expect(f.identity.isReady(active)).toBe(true);
+  await fetcher(active, { method: 'POST', body: '010203' });
+  expect(sent).toHaveBeenCalledTimes(1);
+});
+
+test('failed unrelated atomic rule update keeps installed active origin ready without inventing a new installation', async () => {
+  const f = fixture(),
+    active = 'https://active.public-fixture.invalid',
+    candidate = 'https://candidate.public-fixture.invalid';
+  await f.identity.configure([active]);
+  const before = structuredClone(f.rules());
+  f.fail();
+  await expect(f.identity.configure([active, candidate])).rejects.toThrow(
+    'rule installation failed'
+  );
+  expect(f.rules()).toEqual(before);
+  const sent = jest.fn(async () => new Response('ok'));
+  const fetcher = createPaliFetch(sent, f.identity);
+  const sending = fetcher(active, { method: 'POST', body: '010203' });
+  void sending.catch(() => undefined);
+  expect(sent).toHaveBeenCalledTimes(1);
+  await sending;
+  await expect(
+    fetcher(candidate, { method: 'POST', body: '010203' })
+  ).rejects.toThrow('identification is unavailable');
+  expect(sent).toHaveBeenCalledTimes(1);
+});
+
+test('an explicit probe retains its configured origin through an overlapping registry change', async () => {
+  const f = fixture(),
+    active = 'https://active.public-fixture.invalid',
+    other = 'https://other.public-fixture.invalid';
+  await f.identity.configure([active]);
+  let entered!: () => void, release!: () => void;
+  const started = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const sent: Request[] = [];
+  const fetcher = createPaliFetch(async (input) => {
+    sent.push(input as Request);
+    return new Response('ok');
+  }, f.identity);
+  const probing = f.identity.withBackend(active, async () => {
+    entered();
+    await held;
+    return fetcher(active, { method: 'POST', body: 'public-read' });
+  });
+  await started;
+  try {
+    await f.identity.configure([other]);
+    expect(f.identity.isReady(active)).toBe(true);
+  } finally {
+    release();
+    await probing;
+  }
+  expect(sent).toHaveLength(1);
+  expect(sent[0].headers.get('User-Agent')).toBe('PaliWallet');
+  await f.identity.configure([other]);
+  expect(f.identity.isBackend(active)).toBe(false);
+});
+
+test('removing an installed origin cannot fall through unrelated fetch while its rule update is pending', async () => {
+  const f = fixture(),
+    active = 'https://active.public-fixture.invalid',
+    other = 'https://other.public-fixture.invalid';
+  await f.identity.configure([active]);
+  const held = heldUpdate(f);
+  const removal = f.identity.configure([other]);
+  await held.started;
+  const transport = jest.fn(async () => new Response('ok'));
+  try {
+    expect(f.identity.isBackend(active)).toBe(true);
+    expect(f.identity.isReady(active)).toBe(false);
+    await expect(
+      createPaliFetch(transport, f.identity)(active, {
+        method: 'POST',
+        body: '010203',
+      })
+    ).rejects.toThrow('identification is unavailable');
+    expect(transport).not.toHaveBeenCalled();
+  } finally {
+    held.release();
+    await removal;
+  }
+  expect(f.identity.isBackend(active)).toBe(false);
+});
