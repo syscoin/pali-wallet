@@ -52,7 +52,9 @@ function owns(raw: Record<string, unknown>, owner: UtxoActivityContext, input: b
   let matched = false;
   for (const address of addresses) {
     if (typeof address !== 'string' || address.length > 200 || !/^[\x20-\x7e]*$/.test(address)) return fail();
-    if (address.toLowerCase() === owner.address) {
+    // Base58 is case-sensitive. Canonical Bech32 may also arrive uppercase;
+    // the shared codec below rejects mixed-case or otherwise invalid aliases.
+    if (address === owner.address || address.toLowerCase() === owner.address) {
       if (!raw.isAddress || addresses.length !== 1 || normalizeUtxoAddress(address, owner.networkId) !== owner.address) return fail();
       matched = true;
     }

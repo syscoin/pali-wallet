@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createUtxoActivityReader, parseUtxoActivityTransaction, UtxoWatchActivity, type UtxoActivityContext } from '../src/core/utxoActivity.ts';
 import { getUtxoNetwork } from '../src/core/utxoNetworks.ts';
+import { normalizeUtxoAddress } from '../src/core/utxoAddresses.ts';
 import { WatchOnlyAuthority } from '../src/core/watchOnlyAuthority.ts';
 const BTC = 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4', SYS = 'sys1qw508d6qejxtdg4y5r3zarvary0c5xw7kyhct58';
 const H = 'a'.repeat(64), BLOCK = 'b'.repeat(64), ID = (n: number) => n.toString(16).padStart(64, '0');
@@ -13,9 +14,9 @@ function tx(id = ID(1), address = BTC) {
     vin: [{ n: 0, txid: ID(900), isAddress: true, addresses: [address], value: '1100000000' }],
     vout: [{ n: 0, isAddress: true, addresses: [address], value: '100000000' }, { n: 1, isAddress: true, addresses: ['1OtherLegacyScript'], value: '900000000' }] };
 }
-function fixture(options: { count?: number; replace?: (path: string, value: any, calls: string[]) => unknown; network?: 'bitcoin' | 'syscoin'; hold?: (path: string) => Promise<void> } = {}) {
+function fixture(options: { count?: number; replace?: (path: string, value: any, calls: string[]) => unknown; network?: 'bitcoin' | 'syscoin'; address?: string; hold?: (path: string) => Promise<void> } = {}) {
   const calls: string[] = [], signals: AbortSignal[] = [];
-  const network = getUtxoNetwork(options.network ?? 'bitcoin'), address = network.id === 'bitcoin' ? BTC : SYS;
+  const network = getUtxoNetwork(options.network ?? 'bitcoin'), address = options.address ?? (network.id === 'bitcoin' ? BTC : SYS);
   const count = options.count ?? 23;
   let active = 0, maximum = 0;
   const fetch = async (url: string, init: RequestInit) => {
@@ -235,4 +236,71 @@ test('duplicate load actions share no extra I/O and focus loss requires a fresh 
   assert.equal(f.calls.filter(p => p.includes('/address/')).length, 1);
   c.setFocused(false); pause.resolve(); await pending; assert.equal(c.getSnapshot().status, 'consent');
   const calls = f.calls.length; await c.load(); c.setFocused(true); assert.equal(f.calls.length, calls); c.dispose();
+});
+
+
+const BASE58_OWNERS = [
+  ['P2PKH', '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa'],
+  ['P2SH', '3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy'],
+] as const;
+for (const [kind, address] of BASE58_OWNERS) {
+  test(`${kind} activity preserves canonical Base58 ownership for outgoing, incoming and zero-net amounts`, () => {
+    assert.equal(normalizeUtxoAddress(address, 'bitcoin'), address);
+    const scope = { ...owner, address }, at = { height: 200, hash: H };
+    const outgoing = parseUtxoActivityTransaction(tx(ID(1), address), ID(1), scope, at);
+    assert.equal(outgoing.spentUnits, '1100000000');
+    assert.equal(outgoing.receivedUnits, '100000000');
+    assert.equal(outgoing.netUnits, '-1000000000');
+    const incoming = tx(ID(1), address);
+    incoming.vin[0]!.addresses = ['1UnrelatedScript'];
+    const received = parseUtxoActivityTransaction(incoming, ID(1), scope, at);
+    assert.equal(received.spentUnits, '0'); assert.equal(received.receivedUnits, '100000000'); assert.equal(received.netUnits, '100000000');
+    const self = tx(ID(1), address);
+    self.vout = [{ ...self.vout[0]!, value: '1100000000' }];
+    self.value = self.valueIn; self.fees = '0';
+    const same = parseUtxoActivityTransaction(self, ID(1), scope, at);
+    assert.equal(same.spentUnits, '1100000000'); assert.equal(same.receivedUnits, '1100000000'); assert.equal(same.netUnits, '0');
+  });
+
+  test(`${kind} full activity page uses exact-case address and retains verified transaction direction`, async () => {
+    const f = fixture({ address, count: 1 });
+    const page = await createUtxoActivityReader(f).readPage({ ...owner, address }, { page: 1 }, signal());
+    assert.equal(page.context.address, address);
+    assert.equal(page.rows.length, 1); assert.equal(page.rows[0]!.netUnits, '-1000000000');
+    assert(f.calls.includes(`/api/v2/address/${address}?details=txids&pageSize=20&page=1&to=200`));
+    assert(f.signals.every(value => value.aborted));
+  });
+
+  test(`${kind} unrelated addresses and case variants are never attributed to the owner`, () => {
+    const scope = { ...owner, address }, at = { height: 200, hash: H };
+    const other = BASE58_OWNERS.find(([, value]) => value !== address)![1];
+    const caseVariant = address.toLowerCase();
+    assert.notEqual(caseVariant, address);
+    for (const destination of [other, caseVariant, 'OP_RETURN 0102']) {
+      const raw = tx(ID(1), address);
+      raw.vout[0]!.addresses = [destination];
+      if (destination.startsWith('OP_RETURN')) raw.vout[0]!.isAddress = false;
+      const row = parseUtxoActivityTransaction(raw, ID(1), scope, at);
+      assert.equal(row.spentUnits, '1100000000'); assert.equal(row.receivedUnits, '0'); assert.equal(row.netUnits, '-1100000000');
+    }
+  });
+
+  test(`${kind} claimed ownership still requires an address and one bounded source`, () => {
+    for (const change of [
+      (raw: ReturnType<typeof tx>) => { raw.vin[0]!.isAddress = false; },
+      (raw: ReturnType<typeof tx>) => { raw.vin[0]!.addresses.push('unrelated'); },
+      (raw: ReturnType<typeof tx>) => { raw.vin[0]!.addresses = [address, ...Array(8).fill('unrelated')]; },
+    ]) {
+      const raw = tx(ID(1), address); change(raw);
+      assert.throws(() => parseUtxoActivityTransaction(raw, ID(1), { ...owner, address }, { height: 200, hash: H }));
+    }
+  });
+}
+
+test('Bech32 uppercase normalizes for ownership while mixed-case ownership still fails closed', () => {
+  const at = { height: 200, hash: H };
+  const upper = parseUtxoActivityTransaction(tx(ID(1), BTC.toUpperCase()), ID(1), owner, at);
+  assert.equal(upper.spentUnits, '1100000000'); assert.equal(upper.receivedUnits, '100000000');
+  const mixed = BTC.slice(0, 4).toUpperCase() + BTC.slice(4);
+  assert.throws(() => parseUtxoActivityTransaction(tx(ID(1), mixed), ID(1), owner, at));
 });
