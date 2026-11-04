@@ -86,21 +86,32 @@ export function createWatchAccountCodec(port: PublicBip84ValidationPort) {
     try { return operation(); } catch { return invalid(); }
   };
   const validatedLists = new WeakSet<readonly StoredWatchAccount[]>();
-  function validate(input: unknown): DecodedWatchRecords {
+  function validate(input: unknown, boundary?: () => void): DecodedWatchRecords {
+    const checkBoundary = () => {
+      if (!boundary) return;
+      const result: unknown = boundary();
+      if (result !== undefined) {
+        if (result instanceof Promise) void Promise.prototype.then.call(result, undefined, () => undefined);
+        return invalid();
+      }
+    };
+    const guarded = <T>(operation: () => T): T => {
+      checkBoundary(); const result = invoke(operation); checkBoundary(); return result;
+    };
     const detached = snapshotWatchRecords(input), accounts: PublicAccount[] = [], keys = new Set<string>();
     const records = detached.map((record): StoredWatchAccount => {
       if (record.kind === 'address') {
         accounts.push(Object.freeze({ id: record.id, name: record.name, addresses: record.addresses })); return record;
       }
       const request = Object.freeze({ networkId: record.networkId, accountKey: record.accountKey });
-      const output = dataRecord(invoke(() => canonicalize(request)), ['canonicalKey']);
+      const output = dataRecord(guarded(() => canonicalize(request)), ['canonicalKey']);
       if (typeof output.canonicalKey !== 'string' || !/^zpub[1-9A-HJ-NP-Za-km-z]{96,108}$/.test(output.canonicalKey)) return invalid();
       const key = output.canonicalKey;
-      if (dataRecord(invoke(() => canonicalize(Object.freeze({ networkId: record.networkId, accountKey: key }))), ['canonicalKey']).canonicalKey !== key) return invalid();
+      if (dataRecord(guarded(() => canonicalize(Object.freeze({ networkId: record.networkId, accountKey: key }))), ['canonicalKey']).canonicalKey !== key) return invalid();
       const identity = `${record.networkId}:${key}`;
       if (keys.has(identity)) return invalid();
       keys.add(identity);
-      const first = dataRecord(invoke(() => derive(Object.freeze({ networkId: record.networkId, canonicalKey: key }))), ['address']);
+      const first = dataRecord(guarded(() => derive(Object.freeze({ networkId: record.networkId, canonicalKey: key }))), ['address']);
       const address = normalizeUtxoAddress(first.address, record.networkId);
       accounts.push(Object.freeze({ id: record.id, name: record.name, addresses: Object.freeze({ [record.networkId]: address }) }));
       return Object.freeze({ ...record, accountKey: key });
@@ -112,7 +123,7 @@ export function createWatchAccountCodec(port: PublicBip84ValidationPort) {
   }
   return Object.freeze({
     validate,
-    decode(raw: string | null): DecodedWatchRecords {
+    decode(raw: string | null, boundary?: () => void): DecodedWatchRecords {
       if (raw === null) return Object.freeze({ version: 1, records: Object.freeze([]), accounts: Object.freeze([]) });
       assertWatchRecordSize(raw);
       let parsed: unknown;
@@ -125,7 +136,7 @@ export function createWatchAccountCodec(port: PublicBip84ValidationPort) {
         return Object.freeze({ version: 1, accounts, records: Object.freeze(accounts.map((account) => Object.freeze({ kind: 'address' as const, ...account }))) });
       }
       if (version !== 2) return invalid();
-      return validate(dataRecord(parsed, ['version', 'records']).records);
+      return validate(dataRecord(parsed, ['version', 'records']).records, boundary);
     },
     encode(records: readonly StoredWatchAccount[]): string {
       if (!validatedLists.has(records)) return invalid();

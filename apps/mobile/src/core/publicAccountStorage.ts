@@ -17,6 +17,23 @@ function assertSize(raw: string, limit: number): void {
 
 /** Internal snapshot; only this repository can admit it as a compare token. */
 export type WatchRecordSnapshot = DecodedWatchRecords;
+export type WatchRecordRepository = Readonly<{
+  load(): Promise<WatchRecordSnapshot>;
+  saveCheckpoint(expected: WatchRecordSnapshot, id: string, checkpoint: Bip84DiscoveryCursor | null, assertCurrent?: () => void): Promise<WatchRecordSnapshot>;
+}>;
+class CheckpointCancelledError extends Error {
+  constructor() { super('Checkpoint save was cancelled before dispatch'); this.name = 'CheckpointCancelledError'; }
+}
+function checkpointGuard(guard: (() => void) | undefined): void {
+  if (!guard) return;
+  try {
+    const result: unknown = guard();
+    if (result !== undefined) {
+      if (result instanceof Promise) void Promise.prototype.then.call(result, undefined, () => undefined);
+      throw new CheckpointCancelledError();
+    }
+  } catch { throw new CheckpointCancelledError(); }
+}
 
 /** One same-process serialized repository. This is not cross-process atomic CAS. */
 export function createPublicAccountStorage(port: PublicStoragePort, bip84?: PublicBip84ValidationPort) {
@@ -70,7 +87,7 @@ export function createPublicAccountStorage(port: PublicStoragePort, bip84?: Publ
       }
     }
   }
-  function compareAndSetRecords(expected: WatchRecordSnapshot, next: unknown): Promise<WatchRecordSnapshot> {
+  function compareAndSetRecords(expected: WatchRecordSnapshot, next: unknown, guard?: () => void): Promise<WatchRecordSnapshot> {
     // Detach before entering the queue; no host validation callback runs here.
     const detached = snapshotWatchRecords(next);
     return serialized(async () => {
@@ -78,17 +95,25 @@ export function createPublicAccountStorage(port: PublicStoragePort, bip84?: Publ
       if (!codec || !ticket || ticket.used) throw new Error('Reopen saved watch records before saving');
       if (accountsUnavailable) throw new Error('Saved watch records are unavailable. Reopen them before saving.');
       if (ticket.epoch !== recordsEpoch) throw new Error('Reopen saved watch records before saving');
-      const validated = codec.validate(detached);
+      // A cancelled guarded attempt is consumed without declaring durable data corrupt.
+      if (guard) { ticket.used = true; checkpointGuard(guard); }
+      const boundary = guard ? () => checkpointGuard(guard) : undefined;
+      const validated = codec.validate(detached, boundary);
+      checkpointGuard(guard);
       retainedSources(expected, validated.records);
       const raw = codec.encode(validated.records);
       ticket.used = true;
       try {
         const current = await readRecordRaw();
+        checkpointGuard(guard);
         // Validate every v2 read, even when the raw comparison will reject it.
-        const currentDecoded = codec.decode(current);
+        const currentDecoded = codec.decode(current, boundary);
+        checkpointGuard(guard);
         if (current !== ticket.raw || JSON.stringify(currentDecoded.records) !== JSON.stringify(expected.records) ||
             JSON.stringify(currentDecoded.accounts) !== JSON.stringify(expected.accounts))
           throw new Error('Saved watch accounts changed. Reopen them before saving.');
+        checkpointGuard(guard);
+        // After this dispatch, always drain and verify; revocation cannot undo set.
         try { await port.set(PUBLIC_ACCOUNTS_KEY, raw); }
         catch { throw new Error('Saved watch records could not be verified. Reopen them before saving.'); }
         const persisted = await readRecordRaw();
@@ -98,7 +123,10 @@ export function createPublicAccountStorage(port: PublicStoragePort, bip84?: Publ
           throw new Error('Saved watch accounts could not be verified.');
         recordsEpoch++;
         return issue(decoded, persisted);
-      } catch (cause) { accountsUnavailable = true; recordsEpoch++; throw cause; }
+      } catch (cause) {
+        if (!(cause instanceof CheckpointCancelledError)) { accountsUnavailable = true; recordsEpoch++; }
+        throw cause;
+      }
     });
   }
   const records = codec && Object.freeze({
@@ -110,12 +138,13 @@ export function createPublicAccountStorage(port: PublicStoragePort, bip84?: Publ
         return issue(decoded, raw);
       } catch (cause) { accountsUnavailable = true; recordsEpoch++; throw cause; }
     }),
-    compareAndSet: compareAndSetRecords,
-    saveCheckpoint: (expected: WatchRecordSnapshot, id: string, checkpoint: Bip84DiscoveryCursor | null): Promise<WatchRecordSnapshot> => {
+    compareAndSet: (expected: WatchRecordSnapshot, next: unknown) => compareAndSetRecords(expected, next),
+    saveCheckpoint: (expected: WatchRecordSnapshot, id: string, checkpoint: Bip84DiscoveryCursor | null, assertCurrent?: () => void): Promise<WatchRecordSnapshot> => {
+      if (assertCurrent !== undefined && typeof assertCurrent !== 'function') return Promise.reject(new Error('Invalid checkpoint guard'));
       if (!snapshots.has(expected)) return Promise.reject(new Error('Reopen saved watch records before saving'));
       const target = expected.records.find((record) => record.id === id);
       if (!target || target.kind !== 'bip84-public') return Promise.reject(new Error('This public account is no longer available'));
-      return compareAndSetRecords(expected, expected.records.map((record) => record === target ? { ...record, checkpoint } : record));
+      return compareAndSetRecords(expected, expected.records.map((record) => record === target ? { ...record, checkpoint } : record), assertCurrent);
     },
   });
   return Object.freeze({

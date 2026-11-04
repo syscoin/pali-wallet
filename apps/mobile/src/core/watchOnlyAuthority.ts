@@ -4,17 +4,61 @@ import { assertBaseUnits, loadedBalance } from './amounts.ts';
 import { getNetwork, NETWORKS } from './networks.ts';
 import { getUtxoNetwork, type UtxoNetworkId } from './utxoNetworks.ts';
 import type { UtxoBalance } from './utxoBalanceReader.ts';
+import { Bip84Discovery, type Bip84DiscoverySnapshot, type PublicBip84Deriver } from './bip84Discovery.ts';
+import type { UtxoAddressUsageReader } from './utxoAddressUsage.ts';
+import type { WatchRecordRepository, WatchRecordSnapshot } from './publicAccountStorage.ts';
+import { snapshotWatchRecords, type StoredWatchAccount } from './watchAccountCodec.ts';
 import type {
   NetworkId,
   PublicAccount,
   PublicBalance,
   PublicSnapshot,
+  PublicAccountObservation,
   SubmissionStatus,
   TransferIntent,
   TransferReview,
   WalletAuthority,
   WalletNetwork,
 } from './types.ts';
+
+type BoundSource = Readonly<{ derive(request: Readonly<{ branch: 0 | 1; index: number }>): Readonly<{ address: string; branch: 0 | 1; index: number }> }>;
+type RecordOpenOptions = Readonly<{
+  repository: WatchRecordRepository; reader: BalanceReader; usageReader: UtxoAddressUsageReader;
+  bindPublicAccount(request: Readonly<{ networkId: UtxoNetworkId; canonicalKey: string }>): BoundSource;
+  signal: AbortSignal; now?: () => number;
+}>;
+type AccountSource = Readonly<{ record: Extract<StoredWatchAccount, { kind: 'bip84-public' }>; derive: PublicBip84Deriver }>;
+type RecordSession = {
+  repository: WatchRecordRepository; snapshot: WatchRecordSnapshot; identity: string;
+  sources: ReadonlyMap<string, AccountSource>; usageReader: UtxoAddressUsageReader;
+  operation: AbortController | null; scanner: { source: AccountSource; value: Bip84Discovery } | null;
+  guard: (() => void) | null;
+};
+function ownFields(value: unknown, keys: readonly string[]): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || ![Object.prototype, null].includes(Object.getPrototypeOf(value)) || Reflect.ownKeys(value).length !== keys.length)
+    throw new Error('Invalid public account read binding');
+  const copy: Record<string, unknown> = Object.create(null);
+  for (const key of keys) {
+    const d = Object.getOwnPropertyDescriptor(value, key);
+    if (!d?.enumerable || !Object.hasOwn(d, 'value')) throw new Error('Invalid public account read binding');
+    copy[key] = d.value;
+  }
+  return copy;
+}
+function recordView(snapshot: WatchRecordSnapshot) {
+  const data = ownFields(snapshot, ['version', 'records', 'accounts']);
+  if (data.version !== 1 && data.version !== 2) throw new Error('Invalid public account record version');
+  const records = snapshotWatchRecords(data.records), accounts = validatePublicAccounts(data.accounts);
+  if (records.length !== accounts.length || records.some((record, i) => record.id !== accounts[i]?.id || record.name !== accounts[i]?.name ||
+    record.kind === 'address' && JSON.stringify(record.addresses) !== JSON.stringify(accounts[i]?.addresses))) throw new Error('Public account projection changed');
+  return { records, accounts, identity: JSON.stringify({ version: data.version, records, accounts }) };
+}
+function admissionCancelled(): Error { return new Error('Public account opening was cancelled'); }
+function ownFunction(value: unknown, name: string): (...args: never[]) => unknown {
+  const d = value && typeof value === 'object' ? Object.getOwnPropertyDescriptor(value, name) : undefined;
+  if (!d?.enumerable || !Object.hasOwn(d, 'value') || typeof d.value !== 'function') throw new Error('Missing public account read port');
+  return d.value;
+}
 
 export interface BalanceReader {
   /** Implementations must verify the connected chain before returning an observation. */
@@ -142,6 +186,53 @@ export class WatchOnlyAuthority implements WalletAuthority {
   private balance: PublicBalance = Object.freeze({ status: 'unknown' });
   private pending: AbortController | null = null;
   private cachedSnapshot: PublicSnapshot | null = null;
+  private recordSession: RecordSession | null = null;
+  private observation: PublicAccountObservation | null = null;
+
+  /** Internal factory only; storage/SDK ports are not composed by production yet. */
+  static async openRecords(options: RecordOpenOptions): Promise<WatchOnlyAuthority> {
+    const load = ownFunction(options.repository, 'load') as WatchRecordRepository['load'];
+    const save = ownFunction(options.repository, 'saveCheckpoint') as WatchRecordRepository['saveCheckpoint'];
+    const open = ownFunction(options.usageReader, 'open') as UtxoAddressUsageReader['open'];
+    const bind = ownFunction(options, 'bindPublicAccount') as RecordOpenOptions['bindPublicAccount'];
+    const signal = options.signal;
+    let rejectAdmission!: (error: Error) => void;
+    const stopped = new Promise<never>((_resolve, reject) => { rejectAdmission = reject; });
+    const abort = () => rejectAdmission(admissionCancelled());
+    signal.addEventListener('abort', abort, { once: true });
+    const check = () => { if (signal.aborted) throw admissionCancelled(); };
+    try {
+      check();
+      const snapshot = await Promise.race([Promise.resolve().then(() => { check(); return load(); }), stopped]);
+      check(); const view = recordView(snapshot), sources = new Map<string, AccountSource>();
+      for (const record of view.records) {
+        if (record.kind !== 'bip84-public') continue;
+        check();
+        const output: unknown = bind(Object.freeze({ networkId: record.networkId, canonicalKey: record.accountKey }));
+        if (output instanceof Promise) { void output.catch(() => undefined); throw new Error('Public binding must be synchronous'); }
+        const method = ownFields(output, ['derive']).derive;
+        if (typeof method !== 'function') throw new Error('Invalid public derivation binding');
+        const derive: PublicBip84Deriver = (request) => {
+          if (request.networkId !== record.networkId) throw new Error('Public derivation network changed');
+          const result: unknown = method(Object.freeze({ branch: request.branch, index: request.index }));
+          if (result instanceof Promise) { void result.catch(() => undefined); throw new Error('Public derivation must be synchronous'); }
+          const data = ownFields(result, ['address', 'branch', 'index']);
+          if (data.branch !== request.branch || data.index !== request.index) throw new Error('Public derivation index changed');
+          return Object.freeze({ branch: request.branch, index: request.index, address: normalizePublicAddress(data.address as string, record.networkId) });
+        };
+        const first = derive({ networkId: record.networkId, branch: 0, index: 0 }); check();
+        const projection = view.accounts.find((account) => account.id === record.id)!;
+        if (Object.keys(projection.addresses).length !== 1 || projection.addresses[record.networkId] !== first.address) throw new Error('Public first address does not match stored projection');
+        sources.set(record.id, Object.freeze({ record, derive }));
+      }
+      check();
+      const authority = new WatchOnlyAuthority(view.accounts, options.reader, options.now);
+      authority.recordSession = { repository: Object.freeze({ load, saveCheckpoint: save }), snapshot, identity: view.identity,
+        sources, usageReader: Object.freeze({ open }), operation: null, scanner: null, guard: null };
+      return authority;
+    } catch { throw signal.aborted ? admissionCancelled() : new Error('Saved public accounts could not be opened'); }
+    finally { signal.removeEventListener('abort', abort); }
+  }
 
   constructor(
     accounts: readonly PublicAccount[],
@@ -183,8 +274,26 @@ export class WatchOnlyAuthority implements WalletAuthority {
         biometrics: false,
         walletConnect: false,
       }),
+      ...(this.currentSource() ? { accountObservation: this.publicObservation(this.currentSource()!) } : {}),
     });
     return this.cachedSnapshot;
+  }
+
+  private currentSource(): AccountSource | undefined {
+    const source = this.recordSession?.sources.get(this.accountId ?? '');
+    return source?.record.networkId === this.networkId ? source : undefined;
+  }
+  private publicObservation(source: AccountSource): PublicAccountObservation {
+    const value = this.observation ?? this.observed(source, 'unknown');
+    return Object.freeze({ ...value, canContinue: !this.locked && !this.recordSession?.operation &&
+      value.status === 'partial' && value.reason === 'pass-limit' && !!this.recordSession?.scanner });
+  }
+  private observed(source: AccountSource, status: PublicAccountObservation['status'], result?: Bip84DiscoverySnapshot): PublicAccountObservation {
+    return Object.freeze({ kind: 'bip84-public', accountId: source.record.id, networkId: source.record.networkId,
+      policy: 'bip84-p2wpkh', status, reason: result?.reason === 'pass-limit' || result?.reason === 'index-limit' ? result.reason : status === 'unavailable' ? 'read-failed' : null,
+      totals: result?.totals ?? null, coverage: result ? Object.freeze(result.cursor.branches.map((branch) => Object.freeze({ ...branch }))) : null,
+      observedAddresses: result?.observedAddresses ?? 0, observedThisPass: result?.observedThisPass ?? 0,
+      observationsSpanPasses: result?.observationsSpanPasses ?? false, anchor: result?.anchor ?? null, canContinue: false });
   }
 
   subscribe(listener: (snapshot: PublicSnapshot) => void): () => void {
@@ -207,6 +316,10 @@ export class WatchOnlyAuthority implements WalletAuthority {
     this.pending?.abort();
     this.pending = null;
     this.balance = Object.freeze({ status: 'unknown' });
+    this.recordSession?.operation?.abort();
+    this.recordSession?.scanner?.value.cancel();
+    if (this.recordSession) { this.recordSession.scanner = null; this.recordSession.guard = null; }
+    this.observation = null;
   }
 
   /** Privacy lock only. It does not authenticate or unlock any signing key. */
@@ -226,7 +339,7 @@ export class WatchOnlyAuthority implements WalletAuthority {
 
   /** A departing public screen may cancel its read without locking the session. */
   cancelRefresh(): void {
-    if (!this.pending) return;
+    if (!this.pending && !this.recordSession?.operation && !this.recordSession?.scanner) return;
     this.invalidate();
     this.publish();
   }
@@ -267,6 +380,7 @@ export class WatchOnlyAuthority implements WalletAuthority {
 
   async refresh(): Promise<void> {
     if (this.locked) throw new Error('Wallet is locked');
+    if (this.currentSource()) return this.refreshAccount('refresh');
     const account = this.accounts.find((entry) => entry.id === this.accountId);
     const address = account?.addresses[this.networkId];
     if (!account || !address) throw new Error('No active address');
@@ -313,6 +427,57 @@ export class WatchOnlyAuthority implements WalletAuthority {
         this.pending = null;
         this.publish();
       }
+    }
+  }
+
+  /** Only a same-context live partial scan can continue; persisted hints never skip work. */
+  async continueDiscovery(): Promise<void> {
+    return this.refreshAccount('resume');
+  }
+  private async refreshAccount(mode: 'refresh' | 'resume'): Promise<void> {
+    const session = this.recordSession, source = this.currentSource();
+    if (this.locked) throw new Error('Wallet is locked');
+    if (!session || !source) throw new Error('Account discovery is unavailable');
+    if (session.operation) throw new Error('Account discovery is already in progress');
+    if (mode === 'resume' && (session.scanner?.source !== source || session.scanner.value.getSnapshot().status !== 'partial' ||
+        session.scanner.value.getSnapshot().reason !== 'pass-limit')) throw new Error('No live partial discovery to continue');
+    const request = new AbortController(), generation = this.generation;
+    session.operation = request; this.pending = request;
+    const current = () => this.recordSession === session && session.operation === request && this.pending === request &&
+      !request.signal.aborted && !this.locked && this.generation === generation && this.currentSource() === source;
+    const check = () => { if (!current()) throw new Error('Account discovery was cancelled'); };
+    session.guard = check;
+    this.observation = this.observed(source, 'loading'); this.balance = Object.freeze({ status: 'unknown' });
+    this.publish();
+    try {
+      check(); const snapshot = await session.repository.load(); check();
+      const before = recordView(snapshot);
+      if (before.identity !== session.identity) throw new Error('Saved watch accounts changed. Reopen them.');
+      session.snapshot = snapshot;
+      if (mode === 'refresh') {
+        session.scanner?.value.cancel();
+        const scanner: Bip84Discovery = new Bip84Discovery({ scope: { networkId: source.record.networkId, sourceId: source.record.id },
+          derive: source.derive, reader: session.usageReader, restoredCursor: source.record.checkpoint ?? undefined,
+          assertCurrent: () => { if (session.scanner?.value !== scanner || !session.guard) throw new Error('Stale discovery'); session.guard(); } });
+        session.scanner = { source, value: scanner };
+      }
+      check();
+      const result = await session.scanner!.value.scan(mode); check();
+      const saved = await session.repository.saveCheckpoint(snapshot, source.record.id, result.cursor, check); check();
+      const view = recordView(saved);
+      const expectedRecords = before.records.map((record) => record.id === source.record.id ? { ...record, checkpoint: result.cursor } : record);
+      if (JSON.stringify(view.accounts) !== JSON.stringify(this.accounts) || JSON.stringify(view.records) !== JSON.stringify(expectedRecords))
+        throw new Error('Public account source changed');
+      session.snapshot = saved; session.identity = view.identity;
+      this.observation = this.observed(source, result.status === 'gap-reached' ? 'gap-reached' : 'partial', result);
+    } catch {
+      session.scanner?.value.cancel(); session.scanner = null;
+      if (current()) this.observation = this.observed(source, 'unavailable');
+    } finally {
+      const publish = current();
+      if (session.operation === request) { session.operation = null; session.guard = null; }
+      if (this.pending === request) this.pending = null;
+      if (publish) this.publish();
     }
   }
 
