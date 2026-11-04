@@ -21,6 +21,8 @@ import type { NativeTokenRuntime } from '../portfolio/nativeTokens.ts';
 import { NativeActivityHistory } from '../activity/historyStore.ts';
 import { createActivityScope, type ActivityScope } from '../activity/types.ts';
 import type { NativeActivityRuntime } from '../activity/nativeActivity.ts';
+import { computeAddress } from 'ethers/transaction';
+import { snapshotHdKeyExportScope, type NativeHdKeyExportRuntime } from './hdKeyExport.ts';
 
 type SoftwareSdk = typeof import('@sidhujag/sysweb3-keyring/cjs/software.js');
 type IndexedKeyring = InstanceType<SoftwareSdk['SoftwareKeyring']> & {
@@ -40,8 +42,10 @@ export type KeyringRuntimeDependencies = Readonly<{
   loadSdk?: () => Promise<SoftwareSdk>;
 }>;
 
-/** Internal capability consumed by the epoch-bound backup controller only. */
+/** Internal host capabilities consumed by context-bound controllers, never public DTOs. */
 export interface KeyringRuntime extends CustodyRuntime {
+  /** Selected HD key only, consumed by the context-bound secret presentation flow. */
+  readonly keyExport?: NativeHdKeyExportRuntime;
   readonly activity?: NativeActivityRuntime;
   /** Local public token descriptors only; never exposes the underlying store. */
   readonly tokens?: NativeTokenRuntime;
@@ -366,6 +370,44 @@ export function createKeyringRuntimeFactory(
             remove: (revision, contract, guard) => tokenOperation(guard, (scope, check) => tokens.remove(scope, revision, contract, check)),
           },
           catalogue: { getSnapshot: () => closed || tokens.requiresReopen || journalRequiresReopen(storage.keyringStorage) || !keyring.isUnlocked() ? null : catalogueSnapshot },
+          keyExport: {
+            readSelected: (input, password, assertCurrent) => {
+              let scope;
+              try {
+                scope = snapshotHdKeyExportScope(input);
+                if (typeof assertCurrent !== 'function') throw new KeyringRuntimeError('INVALID_INPUT');
+              } catch { return Promise.reject(new KeyringRuntimeError('INVALID_INPUT')); }
+              return run(async (captured) => {
+                const check = () => {
+                  current(captured); checkGuard(assertCurrent);
+                  current(captured);
+                  const catalogue = catalogueSnapshot;
+                  const selected = catalogue?.accounts.find((account) => account.id === catalogue.active.accountId);
+                  if (!keyring.isUnlocked() || !catalogue || !selected) throw new KeyringRuntimeError('NOT_READY');
+                  if (catalogue.revision !== scope.catalogueRevision || selected.type !== 'HDAccount' ||
+                      selected.slip44 !== 60 || selected.id !== scope.accountId || selected.index !== scope.index ||
+                      selected.address !== scope.address || catalogue.active.networkId !== scope.networkId ||
+                      getNativeNetwork(catalogue.active.networkId).registrationHash !== scope.registrationHash ||
+                      state.activeAccount.id !== selected.index || state.activeAccount.type !== sdk.KeyringAccountType.HDAccount)
+                    throw new KeyringRuntimeError('CANCELLED');
+                };
+                check();
+                const stored = await storage.readState(); check();
+                if (stored.presence !== 'existing' || stored.backup !== 'confirmed') throw new KeyringRuntimeError('NOT_READY');
+                if (!await authenticate(password, captured)) throw new KeyringRuntimeError('INVALID_CREDENTIAL');
+                check();
+                await hydrate(captured); check();
+                // The SDK selector is fixed here; no account type or alternate index comes from a screen.
+                const privateKey = await keyring.getPrivateKeyByAccountId(scope.index, sdk.KeyringAccountType.HDAccount, password);
+                check();
+                if (typeof privateKey !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(privateKey) ||
+                    BigInt(privateKey) === 0n || BigInt(privateKey) >= 0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141n ||
+                    computeAddress(privateKey) !== scope.address) throw new KeyringRuntimeError('OPERATION_FAILED');
+                check();
+                return privateKey.toLowerCase();
+              });
+            },
+          },
           session: {
             createWallet: (password) => run(async (captured) => {
               validPassword(password, true);

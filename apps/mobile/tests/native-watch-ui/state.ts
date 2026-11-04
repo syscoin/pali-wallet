@@ -5,15 +5,23 @@ import { createEvmWatchAccount } from '../../src/core/watchOnlyAuthority';
 export const ADDRESS = '0x52908400098527886E0F7030069857D2E4169EE7';
 export const SECOND = '0x1111111111111111111111111111111111111111';
 export const events: string[] = [];
-export const audit = { unlocks: 0, signs: 0, broadcasts: 0, closed: 0, readFailures: 0, writes: 0 };
+export const audit = { unlocks: 0, signs: 0, broadcasts: 0, closed: 0, keyReads: 0, keyAttempts: 0, readFailures: 0, writes: 0 };
 let pendingUnlock: (() => void) | null = null;
 let pendingSign: (() => void) | null = null;
+let pendingKeyRead: (() => void) | null = null;
+export const PUBLIC_TEST_KEY = `0x${"1".repeat(64)}`;
+export let delayKeyRead = false;
+export let keyFailure: 'AUTH_THROTTLED' | null = null;
+export function setKeyFailure(value: typeof keyFailure) { keyFailure = value; }
 export let delayUnlock = false;
 export let delaySign = false;
 export let failRead = new URLSearchParams(window.location.search).has('read-failure');
 export function setReadFailure(value: boolean) { failRead = value; }
 export function setDelayUnlock(value: boolean) { delayUnlock = value; }
 export function setDelaySign(value: boolean) { delaySign = value; }
+export function setDelayKeyRead(value: boolean) { delayKeyRead = value; }
+export async function keyReadGate() { if (delayKeyRead) await new Promise<void>((resolve) => { pendingKeyRead = resolve; }); }
+export function releaseKeyRead() { delayKeyRead = false; pendingKeyRead?.(); pendingKeyRead = null; }
 export async function unlockGate() { if (delayUnlock) await new Promise<void>((resolve) => { pendingUnlock = resolve; }); }
 export async function signGate() { if (delaySign) await new Promise<void>((resolve) => { pendingSign = resolve; }); }
 export function releaseUnlock() { delayUnlock = false; pendingUnlock?.(); pendingUnlock = null; }

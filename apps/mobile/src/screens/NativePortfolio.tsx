@@ -22,6 +22,7 @@ type Props = {
   onExit(): void;
   onLock(): void;
   onViewRecovery(): void;
+  onSecurity?(): void;
   onSend?(): void;
   onSendToken?(token: Erc20Metadata): void;
   reader?: BalanceReader;
@@ -35,18 +36,18 @@ type Feedback = { scope: string; text: string; failed?: boolean } | null;
 const scopeOf = (account: NativePortfolioAccount) => `${account.revision}:${account.network}:${account.address}`;
 
 /** Only the custody authority's public account projection reaches this screen. */
-export function NativePortfolio({ source, onExit, onLock, onViewRecovery, onSend, onSendToken, reader, accountLabel = 'Account 1', onManageAccounts, onManageNetworks, onActivity, tokenView }: Props) {
+export function NativePortfolio({ source, onExit, onLock, onViewRecovery, onSecurity, onSend, onSendToken, reader, accountLabel = 'Account 1', onManageAccounts, onManageNetworks, onActivity, tokenView }: Props) {
   const balanceReader = useMemo(() => reader ?? createBalanceReader(), [reader]);
   const model = useMemo(() => new NativePortfolioController(source, balanceReader), [source, balanceReader]);
   const snapshot = useSyncExternalStore(model.subscribe, model.getSnapshot, model.getSnapshot);
   useLayoutEffect(() => model.connect(), [model]);
   const scope = snapshot.account ? scopeOf(snapshot.account) : 'unavailable';
-  return <NativePortfolioContent key={scope} model={model} snapshot={snapshot} onExit={onExit} onLock={onLock} onViewRecovery={onViewRecovery} onSend={onSend} onSendToken={onSendToken} accountLabel={accountLabel} onManageAccounts={onManageAccounts} onManageNetworks={onManageNetworks} onActivity={onActivity} tokenView={tokenView} />;
+  return <NativePortfolioContent key={scope} model={model} snapshot={snapshot} onExit={onExit} onLock={onLock} onViewRecovery={onViewRecovery} onSecurity={onSecurity} onSend={onSend} onSendToken={onSendToken} accountLabel={accountLabel} onManageAccounts={onManageAccounts} onManageNetworks={onManageNetworks} onActivity={onActivity} tokenView={tokenView} />;
 }
 
-function NativePortfolioContent({ model, snapshot, onExit, onLock, onViewRecovery, onSend, onSendToken, accountLabel, onManageAccounts, onManageNetworks, onActivity, tokenView }: {
+function NativePortfolioContent({ model, snapshot, onExit, onLock, onViewRecovery, onSecurity, onSend, onSendToken, accountLabel, onManageAccounts, onManageNetworks, onActivity, tokenView }: {
   model: NativePortfolioController; snapshot: NativePortfolioSnapshot;
-  onExit(): void; onLock(): void; onViewRecovery(): void; onSend?(): void; onSendToken?(token: Erc20Metadata): void; accountLabel: string; onManageAccounts?(): void; onManageNetworks?(): void; onActivity?(): void; tokenView?: NativeTokenView;
+  onExit(): void; onLock(): void; onViewRecovery(): void; onSecurity?(): void; onSend?(): void; onSendToken?(token: Erc20Metadata): void; accountLabel: string; onManageAccounts?(): void; onManageNetworks?(): void; onActivity?(): void; tokenView?: NativeTokenView;
 }) {
   const [receiveScope, setReceiveScope] = useState<string | null>(null);
   const [tokenTitle, setTokenTitle] = useState<string | null>(null);
@@ -162,7 +163,7 @@ function NativePortfolioContent({ model, snapshot, onExit, onLock, onViewRecover
         {tokenView && <NativeTokens controller={tokenView} onBackHandlerChange={setTokenBack} onModeChange={setTokenTitle}
           onSend={account?.network === 'ethereum' && onSendToken ? (token) => { if (model.isCurrent(account)) onSendToken(token); } : undefined}
           onReceive={() => { if (account && model.isCurrent(account)) { invalidateActions(); setReceiveScope(scopeOf(account)); } }} />}
-        {!tokenTitle && <Card style={s.tools}>{onActivity && <Row title="Activity" subtitle="Transactions and token transfer events" icon="clock" onPress={onActivity} />}{onManageNetworks && <Row title="Network" subtitle={`${networkName}${network.testnet ? ' · Test network' : ''}`} icon="globe" onPress={onManageNetworks} />}<Row title="View recovery phrase" subtitle="Confirm your password to continue" icon="shield" onPress={onViewRecovery} /><Row title="Lock wallet" icon="lock" onPress={onLock} last /></Card>}
+        {!tokenTitle && <Card style={s.tools}>{onActivity && <Row title="Activity" subtitle="Transactions and token transfer events" icon="clock" onPress={onActivity} />}{onManageNetworks && <Row title="Network" subtitle={`${networkName}${network.testnet ? ' · Test network' : ''}`} icon="globe" onPress={onManageNetworks} />}<Row title={onSecurity ? "Security & backups" : "View recovery phrase"} subtitle={onSecurity ? "Recovery phrase and account key" : "Confirm your password to continue"} icon="shield" onPress={onSecurity ?? onViewRecovery} /><Row title="Lock wallet" icon="lock" onPress={onLock} last /></Card>}
       </>}
       {currentFeedback && <Text accessibilityRole={currentFeedback.failed ? 'alert' : undefined} accessibilityLiveRegion="polite" style={[s.feedback, currentFeedback.failed && { color: colors.red }]}>{currentFeedback.text}</Text>}
       <Text style={s.buildLabel}>Development build · Use a test wallet</Text>
