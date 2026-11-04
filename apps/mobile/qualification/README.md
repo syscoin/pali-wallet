@@ -148,11 +148,21 @@ Record exact source, dependency, binary, signing/device and OS identities.
 Simulator build/crypto/refusal evidence cannot satisfy that release gate.
 
 Cold iOS simulator boot readiness has a separate ten-minute command budget;
-ordinary commands, including binary database/screenshot reads, retain a
+ordinary app commands, including binary database/screenshot reads, retain a
 three-minute limit. Application report deadlines remain five minutes. Failures
 produce a bounded platform failure artifact with the original command, status,
 error/timeout classification and diagnostic tails after best-effort cleanup.
 Binary database output is never included in that artifact.
+
+Android setup bounds each connection/root command to 30 seconds and the UID
+probe to 10 seconds. One exact `adb root` closed-transport error may proceed to
+reconnection, but app installation requires an explicit UID 0 readback. The
+original root error is retained in `android-root-readiness.json`; nonroot,
+nontransient errors and failed reconnection stop the run. No app action is retried.
+An iOS launch failure records up to two ten-second diagnostic probes before
+deleting the owned simulator. `ios-<scenario>-<phase>-launch.json` contains only
+service flags and log-category counts, not raw messages. The launch is never
+repeated or treated as successful by diagnostic collection.
 
 ## Signed physical-iPhone harness
 

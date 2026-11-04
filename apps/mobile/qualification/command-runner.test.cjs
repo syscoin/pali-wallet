@@ -154,6 +154,7 @@ for (const diagnosticsAvailable of [true, false]) test(`Android cleanup preserve
     const ok = (stdout) => ({ status: 0, stdout });
     if (command.endsWith('/aapt') && args[0] === 'dump') return ok("package: name='com.paliwallet.qualification'\nlaunchable-activity: name='com.paliwallet.qualification.MainActivity'");
     if (command.endsWith('/aapt')) return ok([...['arm64-v8a', 'x86_64'].flatMap((abi) => ['libQuickCrypto.so', 'libNitroModules.so', 'libexpo-sqlite.so'].map((file) => `lib/${abi}/${file}`)), 'assets/index.android.bundle'].join('\n'));
+    if (args[0] === 'shell' && args[1] === 'id') return ok('0');
     if (args.includes('screencap')) return ok(Buffer.from('public PNG fixture'));
     if (args.includes('cat')) {
       if (args.some((value) => value.endsWith('pali-native-qualification-startup.json'))) return { status: 1, stderr: 'not present' };
@@ -212,7 +213,8 @@ for (const diagnosticsAvailable of [true, false]) test(`Android cleanup preserve
   assert.equal(report.failure.stdoutBytes, Buffer.byteLength('PRIVATE_DATABASE_BYTES'));
   assert(!artifact.data.includes('PRIVATE_DATABASE_BYTES'));
   assert(!artifact.data.includes('cleanup write failure'));
-  assert(calls.every((call) => call.options.timeout === 180000));
+  assert.deepEqual(calls.filter((call) => call.args[0] === 'wait-for-device' || call.args[0] === 'root' || call.args[1] === 'id').map((call) => call.options.timeout), [30000, 30000, 30000, 10000]);
+  assert(calls.filter((call) => call.args[0] !== 'wait-for-device' && call.args[0] !== 'root' && call.args[1] !== 'id').every((call) => call.options.timeout === 180000));
 });
 
 test('the real iOS runner launches the isolated app directly with its public argument', async () => {
@@ -442,6 +444,7 @@ test('the actual Android runner requires ERC20 and NEVM restart evidence in addi
       if (args.includes('start')) phase = args[args.indexOf('-d') + 1].includes('phase=restart') ? 'restart' : 'create';
       if (args.includes('force-stop')) phase = 'stopped';
       if (args.includes('pidof')) return phase === 'stopped' ? '' : phase === 'create' ? '100' : '101';
+      if (args[0] === 'shell' && args[1] === 'id') return '0';
       if (args.includes('getprop')) return '35';
       return '';
     };
@@ -454,6 +457,7 @@ test('the actual Android runner requires ERC20 and NEVM restart evidence in addi
     const android = runInNewContext(source.slice(start, end) + '\nandroid;', {
       process: { env: { ANDROID_HOME: '/public-sdk' } },
       fs: { readdirSync: () => ['35.0.0'], writeFileSync() {}, readFileSync: () => Buffer.from('public APK fixture') },
+      prepareAndroidRoot: require('./native-readiness.cjs').prepareAndroidRoot,
       path: require('node:path'), run, platform: 'android', PACKAGE: 'com.paliwallet.qualification', artifact: '/public.apk', output: '/public-output',
       waitReport: async (_read, requestedPhase, scenario) => ({ ...(requestedPhase === 'create' ? created : restored), scenario }),
       androidProcessRunning: () => true,

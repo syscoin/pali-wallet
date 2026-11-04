@@ -17,6 +17,7 @@ const { matchesZksysRestartEvidence } = require('./zksys-transfer.ts');
 const { matchesHdKeyRevealRestartEvidence } = require('./hd-key-reveal.ts');
 const { createCommandRunner, describeQualificationFailure, COLD_BOOT_TIMEOUT_MS } = require('./command-runner.cjs');
 const { qualificationMode, assertSimulatorTarget } = require('./simulator-contract.cjs');
+const { prepareAndroidRoot, launchIos } = require('./native-readiness.cjs');
 const { decodeNativeReport, assertFullNativeReport } = require('./report-validation.cjs');
 
 if (process.env.CI !== 'true' || process.env.PALI_NATIVE_QUALIFICATION !== '1')
@@ -208,14 +209,8 @@ async function ios() {
           return null;
         }
       };
-      run('xcrun', [
-        'simctl',
-        'launch',
-        device,
-        PACKAGE,
-        '-PaliQualificationURL',
-        `pali-wallet-qualification://run?phase=create&scenario=${scenario}`,
-      ]);
+      launchIos(run, device, `pali-wallet-qualification://run?phase=create&scenario=${scenario}`,
+        (evidence) => fs.writeFileSync(path.join(output, `ios-${scenario}-create-launch.json`), `${JSON.stringify(evidence, null, 2)}\n`));
       const created = await waitReport(
         () => read('create'),
         'create',
@@ -254,14 +249,8 @@ async function ios() {
           )
         )
       );
-      run('xcrun', [
-        'simctl',
-        'launch',
-        device,
-        PACKAGE,
-        '-PaliQualificationURL',
-        `pali-wallet-qualification://run?phase=restart&scenario=${scenario}&address=${created.address}`,
-      ]);
+      launchIos(run, device, `pali-wallet-qualification://run?phase=restart&scenario=${scenario}&address=${created.address}`,
+        (evidence) => fs.writeFileSync(path.join(output, `ios-${scenario}-restart-launch.json`), `${JSON.stringify(evidence, null, 2)}\n`));
       const restored = await waitReport(
         () => read('restart'),
         'restart',
@@ -376,8 +365,8 @@ async function android() {
         throw Error('Required JNI library missing from qualification APK');
     }
   }
-  run('adb', ['root']);
-  run('adb', ['wait-for-device']);
+  prepareAndroidRoot(run, (evidence) => fs.writeFileSync(
+    path.join(output, 'android-root-readiness.json'), `${JSON.stringify(evidence, null, 2)}\n`));
   const reports = [];
   for (const scenario of ['import', 'generate']) {
     run('adb', ['uninstall', PACKAGE], true); // Dedicated test package only.
