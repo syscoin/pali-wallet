@@ -215,3 +215,12 @@ test('HTTP build gate is source-bound, fixture-only and leaves production config
     assert(safety.includes("app.$['android:usesCleartextTraffic'] = 'false'"));
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
+test('fixture native configuration permits only the explicit loopback exception', () => {
+  const plugin = require('./withHttpFixture.cjs');
+  assert.throws(() => plugin({ ios: { bundleIdentifier: 'com.paliwallet.mobile' }, android: { package: 'com.paliwallet.mobile' } }));
+  const config = plugin({ ios: { bundleIdentifier: 'com.paliwallet.qualification' },
+    android: { package: 'com.paliwallet.qualification' }, extra: { paliHttpQualification: build } });
+  assert.deepEqual(config.ios.infoPlist.NSAppTransportSecurity, {
+    NSExceptionDomains: { '127.0.0.1': { NSExceptionAllowsInsecureHTTPLoads: true } },
+  });
+});

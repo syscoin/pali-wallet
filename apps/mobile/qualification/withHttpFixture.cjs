@@ -8,7 +8,6 @@ module.exports = function withHttpFixture(config) {
       config.android?.package !== 'com.paliwallet.qualification' || !config.extra?.paliHttpQualification)
     throw Error('HTTP fixture configuration requires the isolated qualification identity');
   config.ios.infoPlist = { ...config.ios.infoPlist, NSAppTransportSecurity: {
-    NSAllowsLocalNetworking: true,
     NSExceptionDomains: { '127.0.0.1': { NSExceptionAllowsInsecureHTTPLoads: true } },
   } };
   config = withAndroidManifest(config, (result) => {
