@@ -126,7 +126,7 @@ function fixture() {
       else if (body.method === 'eth_maxPriorityFeePerGas') result = '0x1';
       else if (body.method === 'eth_estimateGas') result = '0x5208';
       else if (body.method === 'eth_sendRawTransaction') {
-        const record = Object.values(records)[0] as { phase: string };
+        const record = (Object.values(records)[0] as { entries: { phase: string }[] }).entries[0]!;
         assert(['attempted', 'submitted'].includes(record.phase));
         broadcasts.push(body.params[0]);
         if (dropped) throw Error('Acknowledgment lost');
@@ -359,7 +359,7 @@ test('finalized receipt releases the journal and records the result', async () =
     await f.transfers.recover();
     assert.equal(f.transfers.getSnapshot().phase, 'confirmed');
     assert.equal(
-      (Object.values(f.records)[0] as { phase: string }).phase,
+      (Object.values(f.records)[0] as { entries: { phase: string }[] }).entries[0]!.phase,
       'confirmed'
     );
   } finally {
@@ -377,7 +377,7 @@ test('a reentrant observer can lock before submission without leaking signed byt
       code: 'CANCELLED',
     });
     assert.equal(f.broadcasts.length, 0);
-    const entry = Object.values(f.records)[0] as { phase: string };
+    const entry = (Object.values(f.records)[0] as { entries: { phase: string }[] }).entries[0]!;
     assert.equal(entry.phase, 'attempted');
     assert.equal(f.transfers.getSnapshot().hash, null);
   } finally {

@@ -3,7 +3,7 @@ import type { PreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/softw
 import { parseDecimalAmount } from '../core/amounts.ts';
 import { normalizePublicAddress } from '../core/addresses.ts';
 import type { CustodySnapshot } from './types.ts';
-import { NativeTransferJournal } from './transferJournal.ts';
+import { NativeTransferJournal, TransferJournalError } from './transferJournal.ts';
 import type { TransferJournalEntry } from './transferJournal.ts';
 import { NativeTransferRpc, NativeTransferRpcError } from './transferRpc.ts';
 
@@ -268,6 +268,10 @@ export class NativeTransfers {
         });
       })
       .catch((error: unknown) => {
+        // Journal uncertainty outlives transfer cancellation. Retire only the
+        // captured wallet; a late old-runtime error cannot lock its replacement.
+        if (error instanceof TransferJournalError && error.code === 'REOPEN_REQUIRED' && this.runtime() === runtime)
+          this.source.lock();
         try {
           assertCurrent();
         } catch {

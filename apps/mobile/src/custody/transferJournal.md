@@ -1,13 +1,49 @@
-# Native transfer journal
+# Native transfer journal containers
 
-`NativeTransferJournal` is an internal prerequisite for native transfers. It does not enable sending by itself, and it is not exposed to screens. Its storage port must be the wallet-owned transactional SQLCipher adapter.
+Each live HD account has one encrypted SQLCipher row at its existing key:
+`native-evm-transfer-v1` for index 0, or `native-evm-transfer-v1:hd:60:<index>`.
+Value version 2 contains a monotonic revision, wallet fingerprint, exact public HD
+account identity and a bounded list of entries. Each entry holds the complete
+registered network identity, phase, signed bytes, hash, nonce and creation time.
+The internal transfer DTO remains separate from the durable container.
 
-The current scope is seed-derived Ethereum accounts and plain ETH transfers (signed type 0 or type 2, chain ID 1, empty calldata). The journal validates the serialized transaction, recovers the sender, computes its hash locally and binds it to the wallet fingerprint. Records and calldata remain bounded.
+A version 1 Ethereum row is strictly validated and migrated in place by CAS. Its
+signed bytes, phase and nonce survive unchanged, including when first opened
+from another network context. Missing rows use atomic create-if-absent. Unknown,
+malformed or foreign account/registration data is preserved and rejected.
+The container admits at most 12 entries and 64 KiB of encoded JSON; signed bytes
+remain bounded to 4096 characters. Current registered chains fit within one row
+per account, avoiding account-times-network exhaustion of the 64-row store.
+No terminal history eviction is added in this phase.
 
-The host must save the signed bytes and then await the durable `attempted` transition before calling a network broadcaster. A failed or ambiguous write stops submission. A process restart treats `attempted` and `submitted` records as unresolved and queries the same hash. It must not automatically choose another nonce or create a replacement. A later wallet lock cannot revoke signed bytes already returned by the SDK.
+Every existing-row mutation uses exact-snapshot compare-and-set, never `set`.
+Independent stale readers retry a definite false up to three times and preserve
+other-chain entries. They never resign or replace an unresolved same-chain nonce.
+The shared process queue covers read, mutation and readback. Chain ID plus account
+address identifies a nonce domain; the full registration additionally pins the
+trusted endpoint. A registration mismatch cannot create a second nonce domain.
 
-Only the receipt-validation host may mark an attempted transaction confirmed or reverted. The journal itself does not query or establish chain inclusion/finality. It never deletes an unresolved transaction. Terminal records may be replaced only by a strictly later nonce. On eligible account removal, a terminal journal may instead be pruned in the same compare-and-set transaction as the catalogue change, requiring its exact validated value; an absent journal must remain absent. Pending or unknown outcomes are never pruned. Account zero retains the legacy global key; other indices have stable scoped keys. Activity/history storage remains a separate feature.
+Rejected, nonboolean or ambiguous write acknowledgements quarantine the storage
+capability until close and fresh reopen. A known successful commit followed only
+by context revocation preserves the row and discards the stale result without
+quarantining the wallet. Readback failures or contradictions require reopen.
+The runtime retires SDK secrets synchronously before announcing quarantine and
+still drains active work and closes storage. Authenticated hydration validates
+every live account’s complete retained container before publishing ready.
 
-Instances sharing the wallet storage capability share a serialized queue, and initial creation uses the adapter's atomic create-if-absent operation. The native storage lease excludes multiple owners within the application process; cross-process exclusion is not established. The supported deployment uses one wallet-authority process. Public UI projections must omit raw transaction bytes and the wallet fingerprint.
+The host saves signed bytes and awaits `attempted` before broadcasting. A restart
+keeps signed/attempted/submitted entries unresolved and uses their exact hash.
+Receipt/finality observations alone produce terminal states; nonce-consumed does
+not claim that the original transaction succeeded. Retry requires fresh consent
+and reuses the exact saved bytes. The journal itself never sends network traffic.
 
-The send authority may also retire a record as `nonce-consumed` when the RPC reports a finalized account nonce greater than its saved nonce but cannot provide the original receipt. This does not label the original transfer successful or failed. The UI keeps its hash, explains the unavailable outcome, and requires a new explicit transfer decision. It never retries an obsolete nonce automatically. Finality observations retain the configured RPC trust assumption; they are not independent consensus proofs.
+Removal validates every entry and refuses any unresolved, malformed or unknown
+outcome. The exact fully-terminal row (or required absence) participates in the
+catalogue removal transaction. A new or changed pending chain before commit
+prevents deletion. Restoring an HD index restores the address, not pruned terminal
+history. Cross-process exclusion remains unqualified; supported ownership is one
+wallet authority process with one storage capability.
+
+Phase A changes persistence and recovery only. Runtime signing and submission
+remain Ethereum-only. Non-Ethereum fee, receipt and native-signing qualification
+must complete before any new send capability is enabled.

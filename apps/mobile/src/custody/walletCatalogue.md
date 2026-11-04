@@ -55,9 +55,10 @@ CAS result requires a fresh reconciliation and cannot be treated as success.
 Index zero permanently retains the original `native-evm-transfer-v1` journal key;
 other indices use `native-evm-transfer-v1:hd:60:<index>`. Selection never moves or
 retargets journal entries. Removal refuses signed, attempted, submitted, malformed
-or foreign-scope entries. Within the same SQL transaction as removal, the journal
-must still be absent or byte-equal to its validated terminal (confirmed, reverted
-or nonce-consumed) snapshot. Only that terminal row is deleted. Thus removed
+or foreign-scope entries on any chain in the account container. Within the same
+SQL transaction as removal, the whole row must still be absent or byte-equal to
+its validated fully-terminal (confirmed, reverted or nonce-consumed) snapshot.
+Only that complete terminal row is deleted. Thus removed
 indices do not accumulate journal rows past the store's 64-record bound. Restore
 recovers the original address, not pruned completed local transaction history.
 The legacy global journal is never deleted by account removal. Pending and

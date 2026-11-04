@@ -35,8 +35,8 @@ enters the catalogue or public projection.
 There is no native network picker wiring yet. Public watch-only reads can use
 all registrations. Native transfer entry points remain explicitly gated to
 Ethereum; selecting another network cannot access an Ethereum journal, sign,
-authorize submission or query the hardcoded Ethereum transfer RPC. The next
-slice must provide CAS-protected per-account multi-network journal containers.
+authorize submission or query the hardcoded Ethereum transfer RPC. CAS-protected per-account multi-network journal containers now preserve
+recovery identities; their presence does not enable additional signing.
 
 Seven successful chain/fee RPC probes are not send qualification. Future send
 needs per-chain fee and receipt conformance and native offline signing. OP-stack

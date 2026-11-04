@@ -1,6 +1,6 @@
 import { getAddress } from 'ethers/address';
 import { computeAddress } from 'ethers/transaction';
-import { nativeTransferJournalKey, terminalJournalForRemoval, type TransferJournalEntry } from './transferJournal.ts';
+import { nativeTransferJournalKey, terminalJournalForRemoval, type JournalRemovalSnapshot } from './transferJournal.ts';
 import { NATIVE_NETWORKS, getNativeNetwork, type NativeNetworkRegistration, type EvmNetworkId } from './networkContext.ts';
 import { decodeStorageValue, encodeStorageValue } from '../storage/json.ts';
 import type { KeyringStoragePort } from '../storage/types.ts';
@@ -42,7 +42,7 @@ export type CatalogueMutation =
   | Readonly<{ kind: 'select'; id: string }>
   | Readonly<{ kind: 'select-network'; id: EvmNetworkId }>
   | Readonly<{ kind: 'rename'; id: string; label: string }>
-  | Readonly<{ kind: 'remove'; id: string; journal: TransferJournalEntry | null }>;
+  | Readonly<{ kind: 'remove'; id: string; journal: JournalRemovalSnapshot | null }>;
 
 export class WalletCatalogueError extends Error {
   readonly code: 'CATALOGUE_INVALID' | 'CATALOGUE_CONTEXT_CHANGED' | 'CATALOGUE_REOPEN_REQUIRED' | 'CATALOGUE_BUSY' | 'CATALOGUE_LIMIT' | 'CATALOGUE_NOT_REMOVABLE';
@@ -244,7 +244,7 @@ export class NativeWalletCatalogue {
         else if (mutation.kind === 'rename') accounts = accounts.map((a) => a.id === account.id ? Object.freeze({ ...a, label: label(mutation.label) }) : a);
         else if (mutation.kind === 'remove') {
           if (account.index === 0 || account.id === active.accountId || accounts.length <= 1) throw new WalletCatalogueError('CATALOGUE_NOT_REMOVABLE');
-          const entry = mutation.journal === null ? undefined : terminalJournalForRemoval(mutation.journal, { walletFingerprint: record.walletFingerprint, address: account.address, chainId: '1' });
+          const entry = mutation.journal === null ? undefined : terminalJournalForRemoval(mutation.journal, { walletFingerprint: record.walletFingerprint, address: account.address, chainId: '1' }, account.index);
           cleanup = { [nativeTransferJournalKey(account.index)]: entry };
           accounts = accounts.filter((a) => a.id !== account.id);
           retiredIndices = Object.freeze([...retiredIndices, account.index].sort((a, b) => a - b));

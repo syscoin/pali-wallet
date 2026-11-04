@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Wallet } from 'ethers/wallet';
 import { keccak256 } from 'ethers/crypto';
-import { NativeTransferJournal } from '../src/custody/transferJournal.ts';
+import { NativeTransferJournal, journalRequiresReopen } from '../src/custody/transferJournal.ts';
 import type { KeyringStoragePort } from '../src/storage/types.ts';
 
 const wallet = Wallet.fromPhrase(
@@ -35,6 +35,8 @@ function fixture() {
   const port: KeyringStoragePort = {
     async compareAndSet(_key, expected, next) {
       if (value === undefined || JSON.stringify(value) !== JSON.stringify(expected)) return false;
+      writes++;
+      if (fail) throw new Error('Write unavailable');
       value = structuredClone(next); return true;
     },
     async get() {
@@ -144,9 +146,11 @@ test('ambiguous storage failure never advances the returned submission state', a
   f.fail();
   await assert.rejects(
     f.journal.transition(entry.hash, 'attempted'),
-    /Write unavailable/
+    /REOPEN_REQUIRED/
   );
-  assert.equal((await f.journal.load())?.phase, 'signed');
+  assert.equal(journalRequiresReopen(f.port), true);
+  await assert.rejects(f.journal.load(), /REOPEN_REQUIRED/);
+  assert.equal((await new NativeTransferJournal({ ...f.port }, scope, f.guard).load())?.phase, 'signed');
 });
 
 test('lock before queued storage work prevents journal mutation', async () => {
@@ -193,21 +197,14 @@ test('rejects wrong account, chain, contract calls and unprotected legacy signat
 test('rejects tampered persisted identity, fields and wallet binding', async () => {
   const f = fixture();
   await f.journal.saveSigned(await raw());
-  const saved = structuredClone(f.value()) as Record<string, unknown>;
+  const saved = structuredClone(f.value()) as any;
   for (const patch of [
-    { hash: '0x' + '0'.repeat(64) },
-    { nonce: 5 },
-    { phase: 'unknown' },
-    { extra: true },
-    { rawTransaction: '0x12' },
+    { hash: '0x' + '0'.repeat(64) }, { nonce: 5 }, { phase: 'unknown' }, { extra: true }, { rawTransaction: '0x12' },
   ]) {
-    f.corrupt({ ...saved, ...patch });
+    f.corrupt({ ...saved, entries: [{ ...saved.entries[0], ...patch }] });
     await assert.rejects(f.journal.load(), { code: 'CORRUPT' });
   }
-  f.corrupt({
-    ...saved,
-    scope: { ...scope, walletFingerprint: '2'.repeat(64) },
-  });
+  f.corrupt({ ...saved, walletFingerprint: '2'.repeat(64) });
   await assert.rejects(f.journal.load(), { code: 'CONTEXT_CHANGED' });
 });
 
@@ -226,16 +223,17 @@ test('does not allow an old transaction hash to change a later signed entry', as
 test('a lost write acknowledgment stays unresolved after reopen and cannot permit a replacement', async () => {
   const f = fixture();
   const entry = await f.journal.saveSigned(await raw());
-  const set = f.port.set;
-  f.port.set = async (...args) => {
-    await set(...args);
-    throw new Error('Acknowledgment lost');
+  const compare = f.port.compareAndSet;
+  f.port.compareAndSet = async (...args) => {
+    const result = await compare(...args);
+    if (result) throw new Error('Acknowledgment lost');
+    return result;
   };
   await assert.rejects(
     f.journal.transition(entry.hash, 'attempted'),
-    /Acknowledgment lost/
+    /REOPEN_REQUIRED/
   );
-  const reopened = new NativeTransferJournal(f.port, scope, f.guard);
+  const reopened = new NativeTransferJournal({ ...f.port, compareAndSet: compare }, scope, f.guard);
   assert.equal((await reopened.load())?.phase, 'attempted');
   await assert.rejects(reopened.saveSigned(await raw(1)), {
     code: 'PENDING_TRANSFER',
@@ -245,12 +243,14 @@ test('a lost write acknowledgment stays unresolved after reopen and cannot permi
 test('lock during an acknowledged journal write withholds authority to broadcast', async () => {
   const f = fixture();
   const entry = await f.journal.saveSigned(await raw());
-  const set = f.port.set;
-  f.port.set = async (...args) => {
-    await set(...args);
+  const compare = f.port.compareAndSet;
+  f.port.compareAndSet = async (...args) => {
+    const result = await compare(...args);
     f.revoke();
+    return result;
   };
   await assert.rejects(f.journal.transition(entry.hash, 'attempted'), /Locked/);
+  assert.equal(journalRequiresReopen(f.port), false);
   const reopened = new NativeTransferJournal(f.port, scope, () => undefined);
   assert.equal((await reopened.load())?.phase, 'attempted');
 });

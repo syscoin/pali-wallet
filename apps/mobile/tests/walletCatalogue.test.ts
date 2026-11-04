@@ -257,8 +257,8 @@ test('terminal-only removal keeps storage bounded through more than 64 HD accoun
       state = await catalogue.mutate(state.revision, { kind: 'select', id: 'hd:60:0' }, current);
       await assert.rejects(catalogue.mutate(state.revision, { kind: 'remove', id: `hd:60:${index}`, journal: signed }, current), /PENDING_TRANSFER/);
       await journal.transition(signed.hash, 'attempted');
-      const terminal = await journal.transition(signed.hash, 'confirmed');
-      state = await catalogue.mutate(state.revision, { kind: 'remove', id: `hd:60:${index}`, journal: terminal }, current);
+      await journal.transition(signed.hash, 'confirmed');
+      state = await catalogue.mutate(state.revision, { kind: 'remove', id: `hd:60:${index}`, journal: await journal.removalSnapshot() }, current);
       assert.equal(await f.storage.keyringStorage.get(nativeTransferJournalKey(index)), undefined);
     }
     assert.equal(state.accounts.length, 1);
@@ -417,5 +417,27 @@ test('revocation during v1 identity verification cannot commit a migration', asy
     await assert.rejects(pending, /CANCELLED/);
     assert.equal(catalogue.requiresReopen, false);
     assert.deepEqual(await f.storage.keyringStorage.get(WALLET_CATALOGUE_KEY), old);
+  } finally { await f.cleanup(); }
+});
+
+
+test('a new pending chain after terminal-container validation prevents account cleanup', async () => {
+  const f = await fixture();
+  try {
+    const catalogue = new NativeWalletCatalogue(f.storage.keyringStorage);
+    let state = await catalogue.reconcile(f.identity, current);
+    state = await catalogue.mutate(state.revision, { kind: 'create', index: 1, ...derived(1), label: 'Savings' }, current);
+    state = await catalogue.mutate(state.revision, { kind: 'select', id: 'hd:60:0' }, current);
+    const signer = new Wallet('0x' + '3'.padStart(64, '0'));
+    const scope = { walletFingerprint: f.identity.walletFingerprint, address: signer.address, chainId: '1' };
+    const ethereum = new NativeTransferJournal(f.storage.keyringStorage, scope, current, () => 1, 1);
+    const first = await ethereum.saveSigned(await signer.signTransaction({ type: 2, chainId: 1, nonce: 0, to: ADDRESS, value: 1, gasLimit: 21000, maxFeePerGas: 2, maxPriorityFeePerGas: 1 }));
+    await ethereum.transition(first.hash, 'nonce-consumed');
+    const terminal = await ethereum.removalSnapshot();
+    const base = new NativeTransferJournal(f.storage.keyringStorage, { ...scope, chainId: '8453' }, current, () => 1, 1);
+    await base.saveSigned(await signer.signTransaction({ type: 2, chainId: 8453, nonce: 0, to: ADDRESS, value: 1, gasLimit: 21000, maxFeePerGas: 2, maxPriorityFeePerGas: 1 }));
+    await assert.rejects(catalogue.mutate(state.revision, { kind: 'remove', id: 'hd:60:1', journal: terminal }, current), /CATALOGUE_CONTEXT_CHANGED/);
+    assert.equal((await base.load())!.phase, 'signed');
+    assert.equal((await f.storage.keyringStorage.get(WALLET_CATALOGUE_KEY) as any).accounts.length, 2);
   } finally { await f.cleanup(); }
 });

@@ -11,7 +11,7 @@ import { SeedBackupFlow } from '../src/custody/seedBackup.ts';
 import { keccak256, SigningKey } from 'ethers/crypto';
 import { Transaction } from 'ethers/transaction';
 import { HDNodeWallet } from 'ethers/wallet';
-import { NATIVE_NETWORKS } from '../src/custody/networkContext.ts';
+import { getNativeNetwork, NATIVE_NETWORKS } from '../src/custody/networkContext.ts';
 import { WALLET_CATALOGUE_KEY } from '../src/custody/walletCatalogue.ts';
 
 const PHRASE = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
@@ -778,4 +778,148 @@ test('network A-B-A cancels held Ethereum journal work without touching its pend
     assert.equal(Transaction.from(entry!.rawTransaction).from, ADDRESS);
     assert.equal(network.broadcasts.length, 0);
   } finally { release.resolve(); f.disk.onRecord(); transfers.dispose(); await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
+});
+
+
+test('account removal checks every chain in its container and deletes only a fully terminal row', async () => {
+  const f = await readyAccounts();
+  try {
+    await f.execute({ kind: 'create', label: 'Savings', password: PASSWORD });
+    const address = f.authority.getSnapshot().account!.address;
+    const signed = await f.runtime.transfers!.sign({ type: 2, from: address, to: ADDRESS, chainId: '1', nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, PASSWORD, () => undefined);
+    const journal = await f.runtime.transfers!.journal(() => undefined);
+    await journal.saveSigned(signed.rawTransaction); await journal.transition(signed.hash, 'nonce-consumed');
+    const key = 'native-evm-transfer-v1:hd:60:1';
+    const value = structuredClone(f.disk.records.get(key)) as any;
+    const fixtureSigner = HDNodeWallet.fromPhrase(PHRASE, undefined, "m/44'/60'/0'/0/1");
+    const otherRaw = await fixtureSigner.signTransaction({ type: 2, to: ADDRESS, chainId: 57, nonce: 0, value: 1, gasLimit: 21000, maxFeePerGas: 2, maxPriorityFeePerGas: 1 });
+    value.entries.push({ registration: getNativeNetwork('syscoin-nevm'), phase: 'attempted', rawTransaction: otherRaw, hash: keccak256(otherRaw), nonce: 0, createdAt: 1000 });
+    f.disk.records.set(key, value);
+    await f.execute({ kind: 'select', id: 'hd:60:0' });
+    await assert.rejects(f.execute({ kind: 'remove', id: 'hd:60:1', password: PASSWORD }), /PENDING_TRANSFER/);
+    assert.deepEqual(f.disk.records.get(key), value);
+    await f.authority.unlock(PASSWORD);
+    value.entries[1].phase = 'confirmed';
+    f.disk.records.set(key, structuredClone(value));
+    await f.execute({ kind: 'remove', id: 'hd:60:1', password: PASSWORD });
+    assert.equal(f.disk.records.has(key), false);
+    await f.execute({ kind: 'restore', index: 1, label: 'Restored', password: PASSWORD });
+    assert.equal(f.authority.getSnapshot().account!.address, address);
+  } finally { await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
+});
+
+test('ambiguous journal acknowledgement quarantines authority but reopening preserves its attempted bytes', async () => {
+  const f = await readyAccounts(), network = localTransferRpc();
+  const transfers = new NativeTransfers(f.authority, () => f.runtime.transfers, { rpc: network.rpc });
+  try {
+    const review = await prepareAccountTransfer(transfers);
+    f.disk.loseCasAcknowledgement();
+    await assert.rejects(transfers.confirm(review, PASSWORD));
+    assert.equal(f.authority.getSnapshot().phase, 'unavailable');
+    assert.equal(network.broadcasts.length, 0);
+    const value = structuredClone(f.disk.records.get('native-evm-transfer-v1')) as any;
+    assert.equal(value.entries[0].phase, 'attempted');
+    await assert.rejects(f.authority.dispose(), /CLEANUP_FAILED/);
+    assert.equal(f.disk.closes, 1);
+    let runtime!: KeyringRuntime;
+    const reopened = new NativeCustodyAuthority({ async open() { runtime = await f.disk.factory.open() as KeyringRuntime; return runtime; } });
+    await reopened.initialize(); await reopened.unlock(PASSWORD);
+    const saved = await (await runtime.transfers!.journal(() => undefined)).load();
+    assert.equal(saved!.rawTransaction, value.entries[0].rawTransaction);
+    assert.equal(saved!.phase, 'attempted');
+    await reopened.dispose();
+  } finally { transfers.dispose(); await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
+});
+
+
+test('an ambiguous journal acknowledgement after background lock cannot be unlocked without reopening', async () => {
+  const f = await readyAccounts(), network = localTransferRpc();
+  const transfers = new NativeTransfers(f.authority, () => f.runtime.transfers, { rpc: network.rpc });
+  const entered = deferredAccount(), release = deferredAccount();
+  try {
+    const review = await prepareAccountTransfer(transfers);
+    f.disk.onRecord(async (kind, key) => { if (kind === 'create' && key === 'native-evm-transfer-v1') { f.disk.onRecord(); entered.resolve(); await release.promise; } });
+    f.disk.loseNextAcknowledgement();
+    const pending = transfers.confirm(review, PASSWORD); void pending.catch(() => undefined);
+    await entered.promise;
+    f.authority.lock(); release.resolve();
+    await assert.rejects(pending, /CANCELLED/);
+    assert.equal(f.authority.getSnapshot().phase, 'unavailable');
+    await assert.rejects(f.authority.unlock(PASSWORD), /NOT_READY/);
+    assert.equal(network.broadcasts.length, 0);
+    await assert.rejects(f.authority.dispose(), /CLEANUP_FAILED/);
+    let runtime!: KeyringRuntime;
+    const reopened = new NativeCustodyAuthority({ async open() { runtime = await f.disk.factory.open() as KeyringRuntime; return runtime; } });
+    await reopened.initialize(); await reopened.unlock(PASSWORD);
+    assert.equal((await (await runtime.transfers!.journal(() => undefined)).load())!.phase, 'signed');
+    await reopened.dispose();
+  } finally { release.resolve(); f.disk.onRecord(); transfers.dispose(); await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
+});
+
+
+test('fresh runtime validates the complete retained container before publishing ready', async () => {
+  const f = await readyAccounts();
+  try {
+    const tx = { type: 2 as const, from: ADDRESS, to: '0x1111111111111111111111111111111111111111', chainId: '1', nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' };
+    const signed = await f.runtime.transfers!.sign(tx, PASSWORD, () => undefined);
+    await (await f.runtime.transfers!.journal(() => undefined)).saveSigned(signed.rawTransaction);
+    const row = structuredClone(f.disk.records.get('native-evm-transfer-v1')) as any;
+    row.entries[0].registration.rpcUrl = 'https://untrusted.invalid';
+    f.disk.records.set('native-evm-transfer-v1', row);
+    await f.authority.dispose();
+    const reopened = new NativeCustodyAuthority(f.disk.factory);
+    await reopened.initialize();
+    await assert.rejects(reopened.unlock(PASSWORD), /OPERATION_FAILED/);
+    assert.equal(reopened.getSnapshot().phase, 'locked');
+    assert.equal(reopened.getSnapshot().account, null);
+    assert.deepEqual(f.disk.records.get('native-evm-transfer-v1'), row);
+    await reopened.dispose();
+  } finally { await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
+});
+
+test('journal quarantine rejects every later secret operation on the same runtime', async () => {
+  const f = await readyAccounts();
+  try {
+    const tx = { type: 2 as const, from: ADDRESS, to: '0x1111111111111111111111111111111111111111', chainId: '1', nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' };
+    const signed = await f.runtime.transfers!.sign(tx, PASSWORD, () => undefined);
+    const journal = await f.runtime.transfers!.journal(() => undefined);
+    await journal.saveSigned(signed.rawTransaction);
+    f.disk.loseCasAcknowledgement();
+    await assert.rejects(journal.transition(signed.hash, 'attempted'), /REOPEN_REQUIRED/);
+    const records = JSON.stringify([...f.disk.records]);
+    const credentials = f.disk.successWrites;
+    const operations = [
+      () => f.runtime.session.unlock(PASSWORD),
+      () => f.runtime.session.createWallet(PASSWORD),
+      () => f.runtime.session.importWallet(PHRASE, PASSWORD),
+      () => f.runtime.backup.readPhrase(PASSWORD),
+      () => f.runtime.backup.confirm('1'.repeat(64)),
+      () => f.runtime.transfers!.sign(tx, PASSWORD, () => undefined),
+      () => f.runtime.transfers!.authorize(PASSWORD, () => undefined),
+    ];
+    for (const operation of operations) await assert.rejects(operation(), /CLEANUP_FAILED|CANCELLED/);
+    assert.equal(f.disk.successWrites, credentials);
+    assert.equal(JSON.stringify([...f.disk.records]), records);
+    f.authority.lock();
+    await assert.rejects(f.authority.unlock(PASSWORD), /UNAVAILABLE/);
+    assert.equal(f.authority.getSnapshot().phase, 'unavailable');
+  } finally { await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
+});
+
+
+test('journal ambiguity retires an already-running secret operation before it returns recovery words', async () => {
+  const sdk = await raceSdk(), f = await readyAccounts(sdk.loadSdk);
+  try {
+    const signed = await f.runtime.transfers!.sign({ type: 2, from: ADDRESS, to: '0x1111111111111111111111111111111111111111', chainId: '1', nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, PASSWORD, () => undefined);
+    const journal = await f.runtime.transfers!.journal(() => undefined);
+    await journal.saveSigned(signed.rawTransaction);
+    const hold = sdk.hold('password');
+    const secret = f.runtime.backup.readPhrase(PASSWORD); void secret.catch(() => undefined);
+    await hold.entered;
+    f.disk.loseCasAcknowledgement();
+    await assert.rejects(journal.transition(signed.hash, 'attempted'), /REOPEN_REQUIRED/);
+    hold.release();
+    await assert.rejects(secret, /CLEANUP_FAILED/);
+    await assert.rejects(f.runtime.session.readEthereumAddress(), /NOT_READY/);
+  } finally { await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
 });

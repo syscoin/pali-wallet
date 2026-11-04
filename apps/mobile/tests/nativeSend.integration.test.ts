@@ -13,6 +13,7 @@ import {
 import { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import { NativeTransfers } from '../src/custody/transfers.ts';
 import { NativeTransferRpc } from '../src/custody/transferRpc.ts';
+import type { TransferJournalContainer } from '../src/custody/transferJournal.ts';
 import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
 import { digest, INSTALLATION, nodeConnection } from './storageHelpers.ts';
 
@@ -77,9 +78,10 @@ test('shared SDK and SQLite retain exact pending bytes across a process-style au
         else if (b.method === 'eth_sendRawTransaction') {
           const persisted = (await storage!.keyringStorage.get(
             'native-evm-transfer-v1'
-          )) as { phase: string; rawTransaction: string };
-          assert(['attempted', 'submitted'].includes(persisted.phase));
-          assert.equal(persisted.rawTransaction, b.params[0]);
+          )) as { entries: { registration: { chainId: string }; phase: string; rawTransaction: string }[] };
+          const entry = persisted.entries.find((value) => value.registration.chainId === '1');
+          assert(entry && ['attempted', 'submitted'].includes(entry.phase));
+          assert.equal(entry.rawTransaction, b.params[0]);
           submitted.push(b.params[0]);
           if (loseResponse)
             throw Error('Lost response after network acceptance');
@@ -144,6 +146,8 @@ async function cancellationFixture() {
   let storage!: SqliteWalletStorage;
   let runtime!: KeyringRuntime;
   let signatures = 0;
+  let sdkInstance!: InstanceType<typeof sdk.SoftwareKeyring>;
+  let journalGate: { phase: 'signed' | 'attempted'; written: boolean; entered(): void; release: Promise<void> } | null = null;
   let gate: {
     stage: 'password' | 'hydrate';
     entered(): void;
@@ -161,6 +165,7 @@ async function cancellationFixture() {
   class ControlledKeyring extends sdk.SoftwareKeyring {
     constructor(host: ConstructorParameters<typeof sdk.SoftwareKeyring>[0]) {
       super(host);
+      sdkInstance = this;
       const hydrate = this.createFirstAccount;
       this.createFirstAccount = async (...args) => {
         const result = await hydrate(...args);
@@ -188,7 +193,17 @@ async function cancellationFixture() {
     },
     async openStorage() {
       storage = await SqliteWalletStorage.open(
-        nodeConnection(file).connection,
+        nodeConnection(file, { after: async (kind, sql) => {
+          const current = journalGate;
+          if (!current) return;
+          if (kind === 'run' && sql.startsWith(current.phase === 'signed'
+            ? 'INSERT INTO keyring_records' : 'UPDATE keyring_records')) current.written = true;
+          if (current.written && kind === 'exec' && sql === 'COMMIT') {
+            current.entered();
+            await current.release;
+            throw Error('Lost journal commit acknowledgement');
+          }
+        } }).connection,
         digest,
         INSTALLATION,
         true
@@ -256,7 +271,8 @@ async function cancellationFixture() {
           };
         }
       } else if (request.method === 'eth_getBlockByNumber') {
-        result = { number: '0xb', hash: '0x' + '9'.repeat(64) };
+        const number = request.params[0] === 'finalized' ? '0xb' : request.params[0];
+        result = { number, hash: '0x' + (number === '0xa' ? '8' : '9').repeat(64) };
       } else if (request.method === 'eth_sendRawTransaction') {
         broadcasts.push(request.params[0]);
         if (loseResponse) throw Error('Lost acknowledgement');
@@ -288,15 +304,28 @@ async function cancellationFixture() {
     runtime,
     broadcasts,
     recovery,
-    get transfers() {
-      return transfers;
+    get transfers() { return transfers; },
+    rpc,
+    get signatures() { return signatures; },
+    get sdkUnlocked() { return sdkInstance.isUnlocked(); },
+    holdJournal(phase: 'signed' | 'attempted') {
+      let entered!: () => void;
+      let resume!: () => void;
+      const started = new Promise<void>((resolve) => { entered = resolve; });
+      const release = new Promise<void>((resolve) => { resume = resolve; });
+      journalGate = { phase, written: false, entered, release };
+      return { started, finish() { journalGate = null; resume(); } };
     },
-    get signatures() {
-      return signatures;
+    async readDurableJournal() {
+      // Observe durable bytes independently of the quarantined runtime port.
+      const { DatabaseSync } = await import('node:sqlite');
+      const observer = new DatabaseSync(file, { readOnly: true });
+      try {
+        const row = observer.prepare('SELECT value FROM keyring_records WHERE key = ?').get('native-evm-transfer-v1') as { value: string } | undefined;
+        return row ? JSON.parse(row.value) : undefined;
+      } finally { observer.close(); }
     },
-    loseResponse() {
-      loseResponse = true;
-    },
+    loseResponse() { loseResponse = true; },
     hold(stage: 'password' | 'hydrate') {
       let entered!: () => void;
       let resume!: () => void;
@@ -325,8 +354,8 @@ async function cancellationFixture() {
     },
     async close() {
       transfers.dispose();
-      await authority.dispose();
-      await rm(directory, { recursive: true, force: true });
+      try { await authority.dispose(); }
+      finally { await rm(directory, { recursive: true, force: true }); }
     },
   };
 }
@@ -408,12 +437,9 @@ for (const repeated of [false, true]) {
     try {
       await f.transfers.prepare(RECIPIENT, '0.001');
       await f.transfers.confirm(f.transfers.getSnapshot().review!.id, PASSWORD);
-      const pending = (await f.readJournal()) as {
-        phase: string;
-        hash: string;
-        rawTransaction: string;
-      };
-      assert.equal(pending.phase, 'submitted');
+      const pending = (await f.readJournal()) as TransferJournalContainer;
+      assert.equal(pending.entries.length, 1);
+      assert.equal(pending.entries[0]!.phase, 'submitted');
       f.recovery.oversized = true;
       f.recovery.repeated = repeated;
       // A pending-state nonce alone must not release the saved transaction.
@@ -437,7 +463,8 @@ for (const repeated of [false, true]) {
       assert.equal(f.transfers.getSnapshot().review, null);
       assert.deepEqual(await f.readJournal(), {
         ...pending,
-        phase: 'nonce-consumed',
+        revision: pending.revision + 1,
+        entries: pending.entries.map((entry) => ({ ...entry, phase: 'nonce-consumed' })),
       });
       await f.transfers.prepare(RECIPIENT, '0.002');
       assert.equal(f.transfers.getSnapshot().review!.nonce, '1');
@@ -447,6 +474,88 @@ for (const repeated of [false, true]) {
       assert.equal(Transaction.from(f.broadcasts[1]!).nonce, 1);
     } finally {
       await f.close();
+    }
+  });
+}
+
+for (const phase of ['signed', 'attempted'] as const) {
+  test(`cancelled post-sign ${phase} acknowledgement still quarantines the current authority`, async () => {
+    const f = await cancellationFixture();
+    let hold: ReturnType<typeof f.holdJournal> | undefined;
+    let pending: Promise<void> | undefined;
+    try {
+      await f.transfers.prepare(RECIPIENT, '0.001');
+      hold = f.holdJournal(phase);
+      pending = f.transfers.confirm(f.transfers.getSnapshot().review!.id, PASSWORD);
+      const rejected = assert.rejects(pending, { code: 'CANCELLED' });
+      await hold.started;
+      assert.equal(f.signatures, 1);
+      assert.equal(f.sdkUnlocked, true);
+      const before = f.authority.getSnapshot();
+      const retained = await f.readDurableJournal();
+      assert.equal(retained.entries[0].phase, phase);
+      f.transfers.cancel();
+      assert.equal(f.authority.getSnapshot(), before, 'Back after signing does not itself lock custody');
+      hold.finish();
+      await rejected; pending = undefined;
+      assert.equal(f.authority.getSnapshot().phase, 'unavailable');
+      assert.equal(f.authority.getSnapshot().error, 'UNAVAILABLE');
+      assert.equal(f.authority.getSnapshot().account, null);
+      assert.equal(f.sdkUnlocked, false, 'the actual SDK session is retired');
+      await assert.rejects(f.runtime.session.readEthereumAddress(), /NOT_READY/);
+      assert.equal(f.broadcasts.length, 0);
+      assert.deepEqual(await f.readDurableJournal(), retained);
+      await assert.rejects(f.runtime.backup.readPhrase(PASSWORD), /CLEANUP_FAILED/);
+    } finally {
+      hold?.finish();
+      await pending?.catch(() => undefined);
+      await f.close().catch(() => undefined);
+    }
+  });
+
+  test(`a cancelled old-runtime ${phase} failure cannot lock the replacement authority`, async () => {
+    const old = await cancellationFixture();
+    const replacement = await cancellationFixture();
+    let active = old;
+    let locks = 0;
+    const listeners = new Set<Parameters<typeof old.authority.subscribe>[0]>();
+    const unsubscribe = [old, replacement].map((owner) => owner.authority.subscribe((snapshot) => {
+      if (active === owner) for (const listener of listeners) listener(snapshot);
+    }));
+    const transfers = new NativeTransfers({
+      getSnapshot: () => active.authority.getSnapshot(),
+      subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
+      lock() { locks++; active.authority.lock(); },
+    }, () => active.runtime.transfers, { rpc: old.rpc });
+    let hold: ReturnType<typeof old.holdJournal> | undefined;
+    let pending: Promise<void> | undefined;
+    try {
+      await transfers.prepare(RECIPIENT, '0.001');
+      hold = old.holdJournal(phase);
+      pending = transfers.confirm(transfers.getSnapshot().review!.id, PASSWORD);
+      const rejected = assert.rejects(pending, { code: 'CANCELLED' });
+      await hold.started;
+      const retained = await old.readDurableJournal();
+      transfers.cancel();
+      old.authority.lock();
+      active = replacement;
+      const before = replacement.authority.getSnapshot();
+      hold.finish();
+      await rejected; pending = undefined;
+      assert.equal(locks, 0, 'late failure must not forward a lock to a different runtime');
+      assert.equal(replacement.authority.getSnapshot(), before);
+      assert.equal(replacement.sdkUnlocked, true);
+      assert.equal(await replacement.runtime.session.readEthereumAddress(), before.account!.address);
+      assert.equal(await replacement.readJournal(), undefined);
+      assert.deepEqual(await old.readDurableJournal(), retained);
+      assert.equal(old.sdkUnlocked, false);
+      assert.equal(old.broadcasts.length, 0);
+    } finally {
+      hold?.finish();
+      await pending?.catch(() => undefined);
+      transfers.dispose(); unsubscribe.forEach((stop) => stop());
+      await old.close().catch(() => undefined);
+      await replacement.close();
     }
   });
 }
