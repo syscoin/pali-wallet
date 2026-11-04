@@ -1,6 +1,7 @@
 import { Transaction } from 'ethers/transaction';
 import { keccak256 } from 'ethers/crypto';
 import { getAddress } from 'ethers/address';
+import { assertEvmGasLimit } from '@sidhujag/sysweb3-keyring/cjs/evm-fees.js';
 import { assertBaseUnits } from '../core/amounts.ts';
 import { snapshotNativeNetwork, type NativeNetworkRegistration } from './networkContext.ts';
 export class EvmTransferReadError extends Error {
@@ -55,6 +56,7 @@ export function snapshotUnsignedTransfer(value: EvmUnsignedTransfer, network: Na
   const nonce = units(data.nonce), valueUnits = units(data.value), gas = units(data.gasLimit);
   if (/^0x0{40}$/i.test(from) || /^0x0{40}$/i.test(to) || nonce > BigInt(Number.MAX_SAFE_INTEGER) ||
       gas < 21000n || gas > BigInt(Number.MAX_SAFE_INTEGER) || (data.data === '0x' && valueUnits === 0n)) return rejectRead('INVALID_INPUT');
+  try { assertEvmGasLimit(gas, BigInt(network.chainId)); } catch { return rejectRead('INVALID_INPUT'); }
   const common = { from, to, chainId: network.chainId, nonce: nonce.toString(), value: valueUnits.toString(), gasLimit: gas.toString(), data: data.data };
   if (data.type === 0) return Object.freeze({ ...common, type: 0, gasPrice: units(data.gasPrice).toString() });
   const cap = units(data.maxFeePerGas), tip = units(data.maxPriorityFeePerGas);

@@ -1,4 +1,5 @@
 import { keccak256 } from 'ethers/crypto';
+import { assertEvmGasLimit } from '@sidhujag/sysweb3-keyring/cjs/evm-fees.js';
 import { Transaction } from 'ethers/transaction';
 import { normalizePublicAddress } from '../core/addresses.ts';
 import { assertBaseUnits } from '../core/amounts.ts';
@@ -287,6 +288,7 @@ export class NativeTransferRpc {
       )
         return Promise.reject(new NativeTransferRpcError('INVALID_RESPONSE'));
       if (tx.gasLimit < 21000n || tx.gasLimit > BigInt(Number.MAX_SAFE_INTEGER)) return invalid();
+      assertEvmGasLimit(tx.gasLimit, tx.chainId);
       assertTransferIntentEnvelope(
         {
           chainId: tx.chainId.toString(),

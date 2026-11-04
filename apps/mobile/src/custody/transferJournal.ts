@@ -1,4 +1,5 @@
 import { getAddress } from 'ethers/address';
+import { assertEvmGasLimit } from '@sidhujag/sysweb3-keyring/cjs/evm-fees.js';
 import { keccak256 } from 'ethers/crypto';
 import { Transaction } from 'ethers/transaction';
 import { decodeStorageValue, encodeStorageValue } from '../storage/json.ts';
@@ -86,6 +87,7 @@ function signedIdentity(raw: unknown, scope: TransferJournalScope, intent?: Erc2
     if (!tx.isSigned() || (tx.type !== 0 && tx.type !== 2) || tx.chainId !== BigInt(scope.chainId) ||
         tx.from !== scope.address || !tx.to || tx.accessList?.length ||
         tx.serialized !== raw || !Number.isSafeInteger(tx.nonce)) return corrupt();
+    assertEvmGasLimit(tx.gasLimit, tx.chainId);
     assertTransferIntentEnvelope({ chainId: tx.chainId.toString(), to: tx.to, value: tx.value.toString(), data: tx.data }, intent);
     const hash = keccak256(raw);
     if (tx.hash !== hash) return corrupt();

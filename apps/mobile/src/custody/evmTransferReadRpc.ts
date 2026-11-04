@@ -1,5 +1,5 @@
 import { getAddress } from 'ethers/address';
-import { getEvmFeeData, bufferedEvmGasLimit } from '@sidhujag/sysweb3-keyring/cjs/evm-fees.js';
+import { getEvmFeeData, bufferedEvmGasLimit, assertEvmGasLimit } from '@sidhujag/sysweb3-keyring/cjs/evm-fees.js';
 import { boundedResponseText, parseRpcQuantity } from '../platformRpc.ts';
 import { getNativeNetwork, snapshotNativeNetwork, type EvmNetworkId, type NativeNetworkRegistration } from './networkContext.ts';
 import { assembleFeeQuote, checkedReadHash, EvmTransferReadError, guardedRead, readOwnData,
@@ -166,8 +166,13 @@ export class EvmTransferReadRpc {
       read.assertCurrent();
       if (estimate < 21000n || estimate > sampled.gasLimit) return rejectRead('INVALID_RESPONSE');
       const gas = bufferedEvmGasLimit(estimate);
-      if (gas > sampled.gasLimit) return rejectRead('INVALID_RESPONSE');
+      try { assertEvmGasLimit(gas, BigInt(this.network.chainId), sampled.gasLimit); }
+      catch { return rejectRead('INVALID_RESPONSE'); }
       if (approved && gas > BigInt(approved.gasLimit)) return rejectRead('REVIEW_REQUIRED');
+      if (approved) {
+        try { assertEvmGasLimit(BigInt(approved.gasLimit), BigInt(this.network.chainId), sampled.gasLimit); }
+        catch { return rejectRead('REVIEW_REQUIRED'); }
+      }
       const tx = snapshotUnsignedTransfer({ ...request, ...selectedFees, chainId: this.network.chainId,
         nonce: nonce.toString(), gasLimit: (approved ? BigInt(approved.gasLimit) : gas).toString() }, this.network);
       const rate = tx.type === 0 ? tx.gasPrice : tx.maxFeePerGas;
@@ -182,6 +187,8 @@ export class EvmTransferReadRpc {
     return this.operation(signal, guard, async (read) => {
       await this.checkChain(read);
       const sampled = block(await read('eth_getBlockByNumber', ['latest', false]));
+      try { assertEvmGasLimit(BigInt(transaction.gasLimit), BigInt(this.network.chainId), sampled.gasLimit); }
+      catch { return rejectRead('REVIEW_REQUIRED'); }
       const cap = BigInt(transaction.type === 0 ? transaction.gasPrice : transaction.maxFeePerGas);
       const price = transaction.type === 0 ? cap : (sampled.baseFee ?? rejectRead('INVALID_RESPONSE')) + BigInt(transaction.maxPriorityFeePerGas);
       if (transaction.type === 2 && cap < (sampled.baseFee ?? 0n)) return rejectRead('REVIEW_REQUIRED');
