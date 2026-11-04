@@ -48,10 +48,10 @@ function partialPostAudit(value, token, port) {
   return { ...value, counts: structuredClone(value.counts), closed: { ...value.closed }, requests: value.requests.map(r => ({ ...r })) };
 }
 function handlePostRoute(request, response, route, state) {
-  const count = state.counts[route]; count.started++;
+  const count = state.counts[route], ordinal = ++count.started;
   const invalid = () => { state.invalid++; if (!response.destroyed) { response.writeHead(400); response.end(); } };
   const headers = request.headers;
-  if (count.started > expectedCount(route) || headers.cookie !== undefined || headers.cookie2 !== undefined || headers.referer !== undefined ||
+  if (ordinal > expectedCount(route) || headers.cookie !== undefined || headers.cookie2 !== undefined || headers.referer !== undefined ||
       headers.accept !== 'application/json' || headers['cache-control'] !== 'no-store, no-cache' || headers.pragma !== 'no-cache') { invalid(); return; }
   const notify = () => { for (const [predicate, complete] of [...state.waiters]) if (predicate()) complete(); };
   const ok = body => { response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); response.end(body); };
@@ -64,8 +64,8 @@ function handlePostRoute(request, response, route, state) {
     const timer = setTimeout(() => { state.waiters.delete(entry); invalid(); }, 6000);
     state.waiters.add(entry); response.once('close', () => { clearTimeout(timer); state.waiters.delete(entry); }); return;
   }
-  const length = headers['content-length'];
-  if (request.method !== 'POST' || headers['content-type'] !== 'application/json' ||
+  const length = headers['content-length'], expected = POST_BODIES[route][ordinal - 1];
+  if (typeof expected !== 'string' || request.method !== 'POST' || headers['content-type'] !== 'application/json' ||
       length !== undefined && (!/^(0|[1-9][0-9]*)$/.test(length) || Number(length) > POST_REQUEST_LIMIT) ||
       headers['transfer-encoding'] !== undefined && headers['transfer-encoding'] !== 'chunked' ||
       length !== undefined && headers['transfer-encoding'] !== undefined) { invalid(); return; }
@@ -78,17 +78,17 @@ function handlePostRoute(request, response, route, state) {
   request.once('error', () => { if (!ended) failBody(); });
   request.once('end', () => {
     ended = true; clearTimeout(bodyTimer); if (failed) return;
-    const bytes = Buffer.concat(chunks), expected = POST_BODIES[route][count.started - 1];
+    const bytes = Buffer.concat(chunks);
     if (length !== undefined && Number(length) !== size || !bytes.equals(Buffer.from(expected))) { invalid(); return; }
     count.completed++;
     if (state.requests.length >= 32) { invalid(); return; }
     const actual = JSON.parse(bytes.toString('utf8'));
-    state.requests.push({ route, ordinal: count.completed, id: actual.id, bytes: size, bodySha256: sha(bytes),
+    state.requests.push({ route, ordinal, id: actual.id, bytes: size, bodySha256: sha(bytes),
       payloadSha256: route === 'post-lost' ? sha(Buffer.from(actual.params[0].slice(2), 'hex')) : null }); notify();
     const id = JSON.parse(expected).id;
     const result = route === 'post-zero' && id === 2 ? '0x0' : id === 1 ? '0x1' : POST_QUANTITY;
     const body = JSON.stringify({ jsonrpc: '2.0', id, result });
-    if (route === 'post-lost' && count.completed === 1) { state.lostResponses++; response.destroy(); return; }
+    if (route === 'post-lost' && ordinal === 1) { state.lostResponses++; response.destroy(); return; }
     if (route === 'post-id') { ok(JSON.stringify({ jsonrpc: '2.0', id: id + 1, result })); return; }
     if (route === 'post-error') { ok(JSON.stringify({ jsonrpc: '2.0', id, result, error: { code: -32603, message: 'fixture error' } })); return; }
     if (route === 'post-malformed') { ok('{"jsonrpc":'); return; }
