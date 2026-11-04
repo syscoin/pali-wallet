@@ -21,6 +21,20 @@ import vaultReducer, { restoreVaultSnapshot } from './vault';
 import vaultCache from './vaultCache';
 import { setActiveSlip44 } from './vaultGlobal';
 
+// Chrome persists JSON objects with sorted keys, including nested objects.
+const chromeStored = (value: any): any =>
+  JSON.parse(
+    JSON.stringify(value, (_key, item) =>
+      item && typeof item === 'object' && !Array.isArray(item)
+        ? Object.fromEntries(
+            Object.keys(item)
+              .sort()
+              .map((key) => [key, item[key]])
+          )
+        : item
+    )
+  );
+
 const profileId = `0x${'a'.repeat(64)}`;
 const vaultKey = 'state-vault-60';
 const account = (id: number): IKeyringAccountState => ({
@@ -145,6 +159,53 @@ describe('atomic private imported-recovery records', () => {
     expect(JSON.stringify(store.getState().vault)).not.toContain(
       IMPORTED_RECOVERY_DOMAIN
     );
+  });
+
+  it('accepts Chrome-reordered JSON acknowledgement without quarantining a committed import', async () => {
+    disk = chromeStored(disk);
+    writes.mockImplementation(async (items) => {
+      Object.assign(disk, chromeStored(items));
+    });
+    await add();
+    expect(store.getState().vault.accounts.Imported[0]).toMatchObject({
+      id: 0,
+      address: account(0).address,
+      xpub: account(0).xpub,
+      xprv: account(0).xprv,
+      isImported: true,
+    });
+    expect(store.getState().vault.activeAccount).toEqual({
+      id: 0,
+      type: KeyringAccountType.Imported,
+    });
+    expect(disk[importedRecoveryStorageKey(entry(0))]).toEqual(entry(0));
+    expect(walletPersistenceGate.blocked).toBe(false);
+  });
+
+  it('accepts Chrome-reordered repair after a committed import loses its acknowledgement', async () => {
+    disk = chromeStored(disk);
+    const before = structuredClone(disk);
+    writes.mockImplementation(async (items) => {
+      Object.assign(disk, chromeStored(items));
+    });
+    writes.mockImplementationOnce(async (items) => {
+      Object.assign(disk, chromeStored(items));
+      throw Error('Lost ordered import acknowledgement');
+    });
+    await expect(add()).rejects.toThrow('Lost ordered import acknowledgement');
+    expect(disk[vaultKey]).toEqual(before[vaultKey]);
+    expect(disk[importedRecoveryStorageKey(entry(0))]).toBeNull();
+    expect(store.getState().vault.accounts.Imported[0]).toBeUndefined();
+    expect(walletPersistenceGate.blocked).toBe(false);
+  });
+
+  it('classifies a Chrome-reordered no-op write as unchanged rather than poisoning storage', async () => {
+    disk = chromeStored(disk);
+    const before = structuredClone(disk);
+    writes.mockResolvedValueOnce(undefined);
+    await expect(add()).rejects.toThrow('commit was not acknowledged');
+    expect(disk).toEqual(before);
+    expect(walletPersistenceGate.blocked).toBe(false);
   });
 
   it('does not publish either record when the storage batch rejects', async () => {

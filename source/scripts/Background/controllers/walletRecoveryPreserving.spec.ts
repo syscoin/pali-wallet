@@ -57,6 +57,20 @@ jest.mock('utils/storageAPI', () => ({
   },
 }));
 
+// Chrome persists JSON objects with sorted keys, including nested objects.
+const chromeStored = (value: any): any =>
+  JSON.parse(
+    JSON.stringify(value, (_key, item) =>
+      item && typeof item === 'object' && !Array.isArray(item)
+        ? Object.fromEntries(
+            Object.keys(item)
+              .sort()
+              .map((key) => [key, item[key]])
+          )
+        : item
+    )
+  );
+
 const sdk = jest.requireActual('@sidhujag/sysweb3-keyring/cjs/software.js');
 const phrase =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
@@ -487,6 +501,55 @@ it.each([
       }
       expect(injected).toBe(true);
       expect(mockRecords[JOURNAL]).toBeUndefined();
+      expect(f.wallet.isUnlocked()).toBe(false);
+    } finally {
+      await f.close();
+    }
+  }
+);
+
+it.each([false, true])(
+  'preserves the complete wallet with Chrome-reordered objects (lost marker acknowledgement %s)',
+  async (lostMarkerAcknowledgement) => {
+    const f = await fixture();
+    try {
+      mockRecords = chromeStored(mockRecords);
+      const before = structuredClone(mockRecords);
+      let lost = false;
+      mockWrite = async (items) => {
+        Object.assign(mockRecords, chromeStored(items));
+        if (
+          lostMarkerAcknowledgement &&
+          !lost &&
+          items[JOURNAL]?.committedFingerprint
+        ) {
+          lost = true;
+          throw Error('Lost reordered marker acknowledgement');
+        }
+      };
+      await f.recover();
+      expect(mockRecords[JOURNAL]).toBeUndefined();
+      expect(mockRecords['sysweb3-vault']).not.toBe(before['sysweb3-vault']);
+      expect(mockRecords[EVM_SIGNED_RECORD_PREFIX + f.profile]).toBe(
+        before[EVM_SIGNED_RECORD_PREFIX + f.profile]
+      );
+      expect(
+        mockRecords[importedRecoveryStorageKey(f.imported.recovery)]
+      ).toEqual(before[importedRecoveryStorageKey(f.imported.recovery)]);
+      expect(mockRecords[PRIVATE_VAULT_STORAGE_PREFIX + f.profile]).toEqual(
+        before[PRIVATE_VAULT_STORAGE_PREFIX + f.profile]
+      );
+      expect(mockRecords[getSLHDSAStateStorageKey(f.pq.keyId)]).toEqual(
+        before[getSLHDSAStateStorageKey(f.pq.keyId)]
+      );
+      expect(
+        await f.keyring.getPrivateKeyByAccountId(
+          f.imported.account.id,
+          'Imported',
+          next
+        )
+      ).toBe(`0x${'11'.repeat(32)}`);
+      expect(walletPersistenceGate.blocked).toBe(false);
       expect(f.wallet.isUnlocked()).toBe(false);
     } finally {
       await f.close();

@@ -8,6 +8,7 @@ import isEqual from 'lodash/isEqual';
 // Assuming redux-thunk v3+, which exports 'thunk' and ThunkMiddleware type
 import { thunk, ThunkMiddleware } from 'redux-thunk';
 
+import { jsonStorageEqual } from '../shared/jsonStorageEqual';
 import {
   importedRecoveryStorageKeyForIdentity,
   snapshotImportedRecoveryEntry,
@@ -597,9 +598,8 @@ function persistVaultMutation(
         ]);
         assertCommitCurrent();
         if (
-          JSON.stringify(saved[key]) !== JSON.stringify(recoveryWrites[key]) ||
-          JSON.stringify(saved[`state-vault-${sourceSlip44}`]) !==
-            JSON.stringify(stagedVault)
+          !jsonStorageEqual(saved[key], recoveryWrites[key]) ||
+          !jsonStorageEqual(saved[`state-vault-${sourceSlip44}`], stagedVault)
         )
           throw new Error(
             'Imported account recovery commit was not acknowledged'
@@ -615,10 +615,11 @@ function persistVaultMutation(
         let unchanged = false;
         try {
           const observed = await chromeStorage.getItems(recoveryBeforeKeys);
-          unchanged = recoveryBeforeKeys.every(
-            (key) =>
-              JSON.stringify(observed[key] ?? null) ===
-              JSON.stringify(recoveryBefore![key] ?? null)
+          unchanged = recoveryBeforeKeys.every((key) =>
+            jsonStorageEqual(
+              observed[key] ?? null,
+              recoveryBefore![key] ?? null
+            )
           );
         } catch {
           /* An unreadable outcome still needs a verified repair. */
@@ -671,12 +672,14 @@ function persistVaultMutation(
           ]);
           if (isSameWallet && !isSameWallet()) throw error;
           if (
-            JSON.stringify(saved[vaultKey]) !== JSON.stringify(repairVault) ||
-            JSON.stringify(saved.state) !== JSON.stringify(repairMainState) ||
+            !jsonStorageEqual(saved[vaultKey], repairVault) ||
+            !jsonStorageEqual(saved.state, repairMainState) ||
             Object.keys(recoveryRollback).some(
               (key) =>
-                JSON.stringify(saved[key] ?? null) !==
-                JSON.stringify(recoveryRollback![key] ?? null)
+                !jsonStorageEqual(
+                  saved[key] ?? null,
+                  recoveryRollback![key] ?? null
+                )
             )
           )
             throw new Error(

@@ -19,6 +19,7 @@ const { dataSlice, hexlify } =
   require('ethers/utils') as typeof import('ethers/utils');
 /* eslint-enable @typescript-eslint/no-var-requires */
 
+import { jsonStorageEqual } from '../../../shared/jsonStorageEqual';
 import { isStrongWalletPassword } from '../../../shared/passwordPolicy';
 import { EVM_SIGNED_RECORD_PREFIX } from '../../../wallet/evmSignedRecords';
 import { walletPersistenceGate } from 'state/paliStorage';
@@ -193,8 +194,7 @@ const assertCommittedRecords = async (
     journal.committedIdentity!.slip44
   );
   if (
-    JSON.stringify(publicIdentity) !==
-      JSON.stringify(journal.committedIdentity) ||
+    !jsonStorageEqual(publicIdentity, journal.committedIdentity) ||
     (await committedFingerprint(records, publicIdentity)) !==
       journal.committedFingerprint
   )
@@ -523,8 +523,10 @@ const reconcileWithinLock = async (
   await context.rehydrate(state);
   const restored = context.getState().vault;
   if (
-    JSON.stringify(recoveryAccountRecords(restored.accounts)) !==
-      JSON.stringify(recoveryAccountRecords(vault.accounts)) ||
+    !jsonStorageEqual(
+      recoveryAccountRecords(restored.accounts),
+      recoveryAccountRecords(vault.accounts)
+    ) ||
     restored.activeNetwork?.slip44 !== vault.activeNetwork?.slip44 ||
     restored.activeNetwork?.slip44 !== slip44
   )
@@ -781,10 +783,7 @@ export const runWalletSetup = async (
       try {
         await context.storage.setItem(JOURNAL_KEY, journal);
         const persisted = (await getAll())[JOURNAL_KEY];
-        if (
-          JSON.stringify(await validateJournal(persisted)) !==
-          JSON.stringify(journal)
-        )
+        if (!jsonStorageEqual(await validateJournal(persisted), journal))
           throw new Error('Wallet recovery backup was not saved');
       } catch (error) {
         const pending = await context.storage.getItems([JOURNAL_KEY]);
@@ -814,15 +813,17 @@ export const runWalletSetup = async (
         const current = await getAll();
         if (
           (await digest(snapshot(current))) !== journal.checksum ||
-          JSON.stringify(await validateJournal(current[JOURNAL_KEY])) !==
-            JSON.stringify(journal)
+          !jsonStorageEqual(
+            await validateJournal(current[JOURNAL_KEY]),
+            journal
+          )
         )
           throw new Error('Wallet storage changed during recovery');
         assertInstalledSession();
         await context.storage.setItems(after);
         const committed = snapshot(await getAll());
         assertInstalledSession();
-        if ((await digest(committed)) !== (await digest(after)))
+        if (!jsonStorageEqual(committed, after))
           throw new Error('Recovered wallet was not durably saved');
         const state = { ...after.state };
         delete state.vault;
@@ -831,9 +832,10 @@ export const runWalletSetup = async (
         const active =
           after[`state-vault-${after.state.vaultGlobal.activeSlip44}`];
         if (
-          JSON.stringify(
-            recoveryAccountRecords(context.getState().vault.accounts)
-          ) !== JSON.stringify(recoveryAccountRecords(active.accounts))
+          !jsonStorageEqual(
+            recoveryAccountRecords(context.getState().vault.accounts),
+            recoveryAccountRecords(active.accounts)
+          )
         )
           throw new Error('Recovered account records were not restored');
       });
@@ -842,7 +844,7 @@ export const runWalletSetup = async (
       await context.persistenceMutex.runExclusive(async () => {
         assertInstalledSession();
         const current = await getAll();
-        if ((await digest(snapshot(current))) !== (await digest(after)))
+        if (!jsonStorageEqual(snapshot(current), after))
           throw new Error('Recovered wallet storage changed');
         const committedIdentity = savedCommittedIdentity(current);
         const committed = {
@@ -858,7 +860,7 @@ export const runWalletSetup = async (
         const observed = await getAll();
         assertInstalledSession();
         const marker = await validateJournal(observed[JOURNAL_KEY]);
-        if (JSON.stringify(marker) !== JSON.stringify(committed))
+        if (!jsonStorageEqual(marker, committed))
           throw new Error('Wallet recovery commit was not saved');
         await assertCommittedRecords(observed, marker);
       });
@@ -882,8 +884,8 @@ export const runWalletSetup = async (
         keys.every(
           (key) =>
             admittedKeys.includes(key) &&
-            [before[key], after[key]].some(
-              (value) => JSON.stringify(value) === JSON.stringify(observed[key])
+            [before[key], after[key]].some((value) =>
+              jsonStorageEqual(value, observed[key])
             )
         );
       if (durableJournal.checksum !== journal.checksum || !admittedPartialWrite)
