@@ -25,8 +25,15 @@ import {
 } from '../../../wallet/importedAccountRecovery';
 import { handleMasterControllerResponses } from '../handlers/handleMasterControllerResponses';
 import { loadSlip44State, walletPersistenceGate } from 'state/paliStorage';
-import store, { persistAccountLabel } from 'state/store';
-import { restoreVaultSnapshot } from 'state/vault';
+import store, {
+  persistAccountLabel,
+  persistCommittedWalletState,
+} from 'state/store';
+import {
+  restoreVaultSnapshot,
+  setAccountPropertyByIdAndType,
+  setActiveAccount,
+} from 'state/vault';
 import vaultCache from 'state/vaultCache';
 import { setActiveSlip44 } from 'state/vaultGlobal';
 import { INetworkType, KeyringAccountType } from 'types/network';
@@ -596,3 +603,96 @@ it('discards an in-flight internal smart-account message signature after uncerta
   await rejected;
   expect(disk).toEqual(retained);
 });
+
+it.each([false, true])(
+  'removes an actual rolling-address import coherently (lost acknowledgement: %s)',
+  async (loseAcknowledgement) => {
+    const { BIP32Factory } = jest.requireActual('bip32');
+    const secp = jest.requireActual('@bitcoinerlab/secp256k1');
+    const { getNetworkConfig } = jest.requireActual(
+      '@sidhujag/sysweb3-network'
+    );
+    const { convertExtendedKeyVersion } = jest.requireActual(
+      '@sidhujag/sysweb3-keyring/cjs/utils/derivation-paths'
+    );
+    const bitcoin = jest.requireActual('syscoinjs-lib').utils.bitcoinjs;
+    const config = getNetworkConfig(0, 'Bitcoin');
+    const node = BIP32Factory(secp)
+      .fromSeed(Buffer.alloc(32, 9), config.networks.mainnet)
+      .derivePath("m/84'/0'/0'");
+    const secret = convertExtendedKeyVersion(
+      node.toBase58(),
+      config.types.zPubType.mainnet.zprv
+    );
+    const initial = store.getState().vault;
+    store.dispatch(
+      restoreVaultSnapshot({
+        ...initial,
+        isBitcoinBased: true,
+        activeNetwork: {
+          ...initial.activeNetwork,
+          kind: INetworkType.Syscoin,
+          slip44: 0,
+          currency: 'Bitcoin',
+        },
+      } as any)
+    );
+    store.dispatch(setActiveSlip44(0));
+    const imported = await wallet.importAccountFromPrivateKey(
+      secret,
+      'Rolling import'
+    );
+    const copyKey = Object.keys(disk).find((key) =>
+      key.startsWith('state-imported-account-recovery-v1:')
+    )!;
+    const copy = structuredClone(disk[copyKey]);
+    const advancedAddress = bitcoin.payments.p2wpkh({
+      pubkey: node.derive(0).derive(7).publicKey,
+      network: config.networks.mainnet,
+    }).address;
+    expect(advancedAddress).not.toBe(imported.address);
+    store.dispatch(
+      setAccountPropertyByIdAndType({
+        id: imported.id,
+        type: KeyringAccountType.Imported,
+        property: 'address',
+        value: advancedAddress,
+      } as any)
+    );
+    store.dispatch(
+      setActiveAccount({ id: 0, type: KeyringAccountType.HDAccount })
+    );
+    await persistCommittedWalletState(true);
+    expect(disk[copyKey]).toEqual(copy);
+    const retire = jest.fn();
+    jest.mocked(getController).mockReturnValue({
+      dapp: {
+        captureAccountSessionRetirement: () => ({ grants: [], retire }),
+      },
+    } as any);
+    if (loseAcknowledgement) {
+      jest
+        .mocked(chromeStorage.setItems)
+        .mockImplementationOnce(async (items) => {
+          Object.assign(disk, structuredClone(items));
+          throw Error('Lost rolling-account removal acknowledgement');
+        });
+      await expect(
+        wallet.removeAccount(imported.id, KeyringAccountType.Imported)
+      ).rejects.toThrow('Lost rolling-account removal acknowledgement');
+      expect(disk['state-vault-0'].accounts.Imported[imported.id].address).toBe(
+        advancedAddress
+      );
+      expect(disk[copyKey]).toEqual(copy);
+      expect(retire).not.toHaveBeenCalled();
+      return;
+    }
+    await wallet.removeAccount(imported.id, KeyringAccountType.Imported);
+    expect(
+      disk['state-vault-0'].accounts.Imported[imported.id]
+    ).toBeUndefined();
+    expect(disk[copyKey]).toBeNull();
+    expect(store.getState().vault.accounts.HDAccount[0]).toBeDefined();
+    expect(retire).toHaveBeenCalledTimes(1);
+  }
+);

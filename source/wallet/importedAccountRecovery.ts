@@ -1,5 +1,6 @@
 import { assertJsonTextBudget } from '../shared/jsonTextBudget.ts';
 
+import { isPublicExtendedKey } from './extendedPublicKey';
 import type { IEncryptedPrivateRecord } from '@sidhujag/sysweb3-keyring';
 
 export const IMPORTED_RECOVERY_STORAGE_PREFIX =
@@ -149,6 +150,25 @@ export function snapshotImportedRecoveryEntry(
     }) as unknown as IEncryptedPrivateRecord,
   });
 }
+
+/** The extended key is stable when a UTXO account advances its receive address. */
+export function assertImportedRecoveryAccount(
+  entry: ImportedRecoveryEntry,
+  current: ImportedRecoveryIdentity
+): void {
+  const saved = snapshotImportedRecoveryEntry(entry).identity;
+  const expected = snapshotImportedRecoveryIdentity(current);
+  if (
+    saved.kind !== expected.kind ||
+    saved.slip44 !== expected.slip44 ||
+    saved.id !== expected.id ||
+    saved.xpub !== expected.xpub ||
+    (saved.address !== expected.address &&
+      !(saved.kind === 'syscoin' && isPublicExtendedKey(saved.xpub)))
+  )
+    invalid();
+}
+
 export function importedRecoveryStorageKey(
   entry: ImportedRecoveryEntry
 ): string {
