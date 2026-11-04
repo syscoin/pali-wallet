@@ -9,6 +9,7 @@ import { getNetwork } from '../core/networks';
 import { formatBaseUnits } from '../core/amounts';
 import type { BalanceReader } from '../core/watchOnlyAuthority';
 import { createBalanceReader } from '../platformRpc';
+import { walletFetch } from '../platform/http';
 import { NativePortfolioController } from '../portfolio/nativePortfolio';
 import type { NativeTokenView } from '../portfolio/nativeTokens';
 import { NativeTokens } from './NativeTokens';
@@ -37,7 +38,7 @@ const scopeOf = (account: NativePortfolioAccount) => `${account.revision}:${acco
 
 /** Only the custody authority's public account projection reaches this screen. */
 export function NativePortfolio({ source, onExit, onLock, onViewRecovery, onSecurity, onSend, onSendToken, reader, accountLabel = 'Account 1', onManageAccounts, onManageNetworks, onActivity, tokenView }: Props) {
-  const balanceReader = useMemo(() => reader ?? createBalanceReader(), [reader]);
+  const balanceReader = useMemo(() => reader ?? createBalanceReader({ fetch: walletFetch }), [reader]);
   const model = useMemo(() => new NativePortfolioController(source, balanceReader), [source, balanceReader]);
   const snapshot = useSyncExternalStore(model.subscribe, model.getSnapshot, model.getSnapshot);
   useLayoutEffect(() => model.connect(), [model]);

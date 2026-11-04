@@ -223,6 +223,7 @@ export function createBalanceReader(
         ]);
         return { chainId: network.chainId, units: units.toString() };
       } finally {
+        controller.abort();
         clearTimeout(timer);
         externalSignal.removeEventListener('abort', abort);
       }

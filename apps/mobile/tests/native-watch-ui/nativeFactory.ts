@@ -5,6 +5,7 @@ import { HdKeyExportFlow } from '../../src/custody/hdKeyExport';
 import { KeyringRuntimeError, type KeyringRuntime } from '../../src/custody/keyringRuntime';
 import { NativeTransfers, type NativeTransferRuntime } from '../../src/custody/transfers';
 import { NativeTransferRpc } from '../../src/custody/transferRpc';
+import { createBalanceReader } from '../../src/platformRpc';
 import { importedKeyIdentity, normalizeImportedKey, type NativeImportView } from '../../src/custody/importedAccounts';
 import { NativeTransferJournal } from '../../src/custody/transferJournal';
 import { NativeActivity } from '../../src/activity/nativeActivity';
@@ -176,7 +177,7 @@ export function createNativeWalletControllers() {
   const keyExport = new HdKeyExportFlow(authority, () => keyRuntime);
   keyExport.onClear(() => events.push('key:cancel'));
   const imports: NativeImportView = { submit: (...args) => authority.importEvmAccount(...args), cancel: () => authority.cancelAccountOperation() };
-  return { authority, keyExport, imports, transfers: transfers.view, tokens: tokens.view, activity, accounts, backup,
+  return { authority, keyExport, imports, balanceReader: createBalanceReader({ fetch: fixtureFetch }), transfers: transfers.view, tokens: tokens.view, activity, accounts, backup,
     disposeTokens: () => tokens.dispose(), disposeTransfers: () => transfers.dispose() };
 }
 export const fixtureFetch: typeof fetch = async (_url, init) => {

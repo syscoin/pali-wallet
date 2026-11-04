@@ -6,6 +6,11 @@ import { HdKeyExportFlow } from '../custody/hdKeyExport.ts';
 import { NativeTransfers } from '../custody/transfers.ts';
 import { NativeTokens } from '../portfolio/nativeTokens.ts';
 import { NativeActivity } from '../activity/nativeActivity.ts';
+import { ActivityExplorerReader } from '../activity/explorerReader.ts';
+import { ActivityReceiptReader } from '../activity/receiptReader.ts';
+import { createErc20Reader } from '../portfolio/erc20ReadRpc.ts';
+import { createBalanceReader } from '../platformRpc.ts';
+import { walletFetch } from './http';
 import type { NativeImportView } from '../custody/importedAccounts.ts';
 import type { NativeAccountView } from '../custody/accounts.ts';
 import { openNativeWalletStorage } from '../storage/native';
@@ -36,9 +41,11 @@ export function createNativeWalletControllers() {
   });
   const backup = new SeedBackupFlow(authority, () => runtime?.backup);
   const keyExport = new HdKeyExportFlow(authority, () => runtime?.keyExport);
-  const transfers = new NativeTransfers(authority, () => runtime?.transfers);
-  const tokens = new NativeTokens(authority, () => runtime?.tokens, undefined, Date.now, () => authority.lock());
-  const activity = new NativeActivity(authority, () => runtime?.activity);
+  const balanceReader = createBalanceReader({ fetch: walletFetch });
+  const transfers = new NativeTransfers(authority, () => runtime?.transfers, { fetch: walletFetch });
+  const tokens = new NativeTokens(authority, () => runtime?.tokens, createErc20Reader({ fetch: walletFetch }), Date.now, () => authority.lock());
+  const activity = new NativeActivity(authority, () => runtime?.activity,
+    new ActivityExplorerReader(walletFetch), new ActivityReceiptReader({ fetch: walletFetch }));
   const accounts: NativeAccountView = Object.freeze({
     getSnapshot: () => authority.getCatalogue(),
     getContextRevision: () => authority.getSnapshot().revision,
@@ -50,6 +57,6 @@ export function createNativeWalletControllers() {
     submit: (...args: Parameters<NativeImportView['submit']>) => authority.importEvmAccount(...args),
     cancel: () => authority.cancelAccountOperation(),
   });
-  return { authority, backup, keyExport, imports, accounts, activity, transfers: transfers.view, tokens: tokens.view,
+  return { authority, backup, keyExport, imports, accounts, activity, balanceReader, transfers: transfers.view, tokens: tokens.view,
     disposeTokens: () => tokens.dispose(), disposeTransfers: () => transfers.dispose() };
 }
