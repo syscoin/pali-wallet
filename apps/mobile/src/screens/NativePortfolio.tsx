@@ -1,9 +1,10 @@
 import React, { useCallback, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { ActivityIndicator, BackHandler, Share, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, AppState, BackHandler, Linking, Share, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import QRCode from 'react-native-qrcode-svg';
-import { nativeSigningEnabled } from '../custody/networkContext';
+import { getNativeNetwork, nativeSigningEnabled } from '../custody/networkContext';
+import { getTestnetFaucet, openTestnetFaucet } from '../custody/testnetFaucet';
 import { getNetwork } from '../core/networks';
 import { formatBaseUnits } from '../core/amounts';
 import type { BalanceReader } from '../core/watchOnlyAuthority';
@@ -11,6 +12,7 @@ import { createBalanceReader } from '../platformRpc';
 import { NativePortfolioController } from '../portfolio/nativePortfolio';
 import type { NativeTokenView } from '../portfolio/nativeTokens';
 import { NativeTokens } from './NativeTokens';
+import { TestnetFaucetCard } from './TestnetFaucetCard';
 import type { Erc20Metadata } from '../../../../source/shared/erc20';
 import type { NativePortfolioAccount, NativePortfolioSnapshot, PublicCustodySource } from '../portfolio/nativePortfolio';
 import { Button, Card, Coin, colors, Header, Notice, Row, Screen, styles, Text } from '../ui';
@@ -49,7 +51,7 @@ function NativePortfolioContent({ model, snapshot, onExit, onLock, onViewRecover
   const [receiveScope, setReceiveScope] = useState<string | null>(null);
   const [tokenTitle, setTokenTitle] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<Feedback>(null);
-  const [pendingAction, setPendingAction] = useState<'copy' | 'share' | null>(null);
+  const [pendingAction, setPendingAction] = useState<'copy' | 'share' | 'faucet' | null>(null);
   const lifecycle = useRef({ alive: false, epoch: 0, busy: false });
   const tokenBack = useRef<(() => boolean) | null>(null);
   const setTokenBack = useCallback((handler: (() => boolean) | null) => { tokenBack.current = handler; }, []);
@@ -61,6 +63,7 @@ function NativePortfolioContent({ model, snapshot, onExit, onLock, onViewRecover
   const receiving = !!scope && receiveScope === scope;
   const loading = snapshot.status === 'loading';
   const canSend = !!account && nativeSigningEnabled(account.network) && !!onSend;
+  const faucet = account ? getTestnetFaucet(getNativeNetwork(account.network)) : null;
 
   const invalidateActions = useCallback(() => {
     lifecycle.current.epoch++; lifecycle.current.busy = false;
@@ -69,8 +72,9 @@ function NativePortfolioContent({ model, snapshot, onExit, onLock, onViewRecover
   useLayoutEffect(() => {
     const current = lifecycle.current;
     current.alive = true;
-    return () => { current.alive = false; current.epoch++; current.busy = false; };
-  }, []);
+    const subscription = AppState.addEventListener('change', (state) => { if (state !== 'active') invalidateActions(); });
+    return () => { current.alive = false; current.epoch++; current.busy = false; subscription.remove(); };
+  }, [invalidateActions]);
   useLayoutEffect(() => {
     const back = BackHandler.addEventListener('hardwareBackPress', () => {
       if (!receiving) return false;
@@ -80,9 +84,10 @@ function NativePortfolioContent({ model, snapshot, onExit, onLock, onViewRecover
   }, [receiving, invalidateActions]);
 
   const back = () => { if (receiving) { setReceiveScope(null); invalidateActions(); } else if (!tokenBack.current?.()) onExit(); };
-  const publicAction = async (kind: 'copy' | 'share') => {
+  const publicAction = async (kind: 'copy' | 'share' | 'faucet') => {
     const current = account;
     if (!current || !model.isCurrent(current) || lifecycle.current.busy) return;
+    if (kind === 'faucet' && AppState.currentState !== 'active') return;
     lifecycle.current.busy = true;
     const request = ++lifecycle.current.epoch;
     setPendingAction(kind); setFeedback(null);
@@ -93,15 +98,20 @@ function NativePortfolioContent({ model, snapshot, onExit, onLock, onViewRecover
         const copied = await Clipboard.setStringAsync(current.address);
         if (copied === false) throw new Error('COPY_FAILED');
       }
-      else {
+      else if (kind === 'share') {
         const result = await Share.share({ title: `${networkName} receive address`, message: `${networkName} (${symbol}) address\n${current.address}` });
         completed = !result || result.action === Share.sharedAction;
+      } else {
+        await openTestnetFaucet(getNativeNetwork(current.network), (url) => Linking.openURL(url), () => {
+          if (!lifecycle.current.alive || lifecycle.current.epoch !== request || AppState.currentState !== 'active' || !model.isCurrent(current))
+            throw new Error('CANCELLED');
+        });
       }
       if (lifecycle.current.alive && lifecycle.current.epoch === request && model.isCurrent(current) && completed)
-        setFeedback({ scope: scopeOf(current), text: kind === 'copy' ? `${networkName} address copied.` : `${networkName} address shared.` });
+        setFeedback({ scope: scopeOf(current), text: kind === 'copy' ? `${networkName} address copied.` : kind === 'share' ? `${networkName} address shared.` : 'Faucet opened in your browser. Paste your address there to request test funds.' });
     } catch {
       if (lifecycle.current.alive && lifecycle.current.epoch === request && model.isCurrent(current))
-        setFeedback({ scope: scopeOf(current), text: kind === 'copy' ? 'Could not copy this address. Try again.' : 'Could not share this address. Try again.', failed: true });
+        setFeedback({ scope: scopeOf(current), text: kind === 'copy' ? 'Could not copy this address. Try again.' : kind === 'share' ? 'Could not share this address. Try again.' : 'Could not open the faucet. Try again.', failed: true });
     } finally {
       if (lifecycle.current.alive && lifecycle.current.epoch === request) { lifecycle.current.busy = false; setPendingAction(null); }
     }
@@ -110,6 +120,7 @@ function NativePortfolioContent({ model, snapshot, onExit, onLock, onViewRecover
   const amount = snapshot.status === 'available' && snapshot.units !== null ? formatBaseUnits(snapshot.units, network.decimals) : null;
   const statusText = loading ? `Loading ${networkName} balance…` : snapshot.status === 'error' ? 'Balance unavailable' : 'Balance not loaded';
   const currentFeedback = feedback?.scope === scope ? feedback : null;
+  const faucetCard = faucet && account && <TestnetFaucetCard registration={getNativeNetwork(account.network)} busy={!!pendingAction} opening={pendingAction === 'faucet'} onCopy={receiving ? undefined : () => void publicAction('copy')} onOpen={() => void publicAction('faucet')} />;
   const actions = receiving ? <View style={s.actions}>
     <Button title="Copy address" icon="copy" style={s.flex} disabled={!account || !!pendingAction} onPress={() => publicAction('copy')} testID="native-receive-copy" />
     <Button title="Share address" icon="share" variant="secondary" style={s.flex} disabled={!account || !!pendingAction} onPress={() => publicAction('share')} testID="native-receive-share" />
@@ -125,6 +136,7 @@ function NativePortfolioContent({ model, snapshot, onExit, onLock, onViewRecover
         </View>
         <Text selectable style={s.receiveAddress} accessibilityLabel={`${networkName} address ${account.address}`} testID="native-receive-address">{account.address}</Text>
         <Notice title="Check the network" body={`Use ${networkName}${network.testnet ? ' (test network)' : ''} for this address. Check the network in the sending wallet before transferring funds.`} />
+        {faucetCard}
       </> : <>
         {!tokenTitle && <>
         <View style={s.hero}>
@@ -145,6 +157,7 @@ function NativePortfolioContent({ model, snapshot, onExit, onLock, onViewRecover
         {canSend && <Button title={loading ? 'Refreshing…' : 'Refresh'} icon="refresh" variant="quiet" disabled={loading} onPress={() => model.refresh()} testID="native-portfolio-refresh" />}
         <Text style={s.privacy}>Refreshing shares this public address with the {networkName} RPC provider.</Text>
         <Card style={s.accountCard}><Text style={s.label}>{accountLabel.toUpperCase()} · {networkName.toUpperCase()}</Text><Text selectable style={s.address}>{account.address}</Text></Card>
+        {faucetCard}
         </>}
         {tokenView && <NativeTokens controller={tokenView} onBackHandlerChange={setTokenBack} onModeChange={setTokenTitle}
           onSend={account?.network === 'ethereum' && onSendToken ? (token) => { if (model.isCurrent(account)) onSendToken(token); } : undefined}

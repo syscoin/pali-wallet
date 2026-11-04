@@ -1,6 +1,7 @@
 // Isolated browser fixture: the production app never imports this entrypoint.
 import React, { useSyncExternalStore } from 'react';
 import { NativeNetworkPortfolioFixture } from './nativeNetworkPortfolioFixture';
+import { NativeFaucetFixture } from './nativeFaucetFixture';
 import { NativeTokenPortfolioFixture } from './nativeTokenPortfolioFixture';
 import { Erc20SendFixture } from './erc20SendFixture';
 import { NetworkPickerFixture } from './networkPickerFixture';
@@ -270,7 +271,9 @@ function Fixture() {
   );
   return (
     <SafeAreaProvider>
-      {new URLSearchParams(window.location.search).has('erc20-send') ? (
+      {new URLSearchParams(window.location.search).has('faucet') ? (
+        <NativeFaucetFixture />
+      ) : new URLSearchParams(window.location.search).has('erc20-send') ? (
         <Erc20SendFixture />
       ) : new URLSearchParams(window.location.search).has('token-portfolio') ? (
         <NativeTokenPortfolioFixture />
