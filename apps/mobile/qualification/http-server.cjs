@@ -4,7 +4,7 @@ const { timingSafeEqual } = require('node:crypto');
 const { POST_ROUTES } = require('./post-fixtures.ts');
 const { createPostState, postSnapshot, handlePostRoute } = require('./post-server.cjs');
 
-const ROUTES = Object.freeze(['exact', 'redirect', 'target', 'seed', 'cookie-present', 'cookie-omitted', 'clear-cookie',
+const ROUTES = Object.freeze(['exact', 'identify', 'redirect', 'target', 'seed', 'cookie-present', 'cookie-omitted', 'clear-cookie',
   'before', 'before-ready', 'before-closed', 'body', 'body-closed', 'oversize', 'oversize-closed', 'healthy']);
 const equal = (a, b) => typeof a === 'string' && a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 
@@ -26,6 +26,20 @@ async function createHttpFixture() {
     const state = active;
     const route = match[2];
     if (POST_ROUTES.includes(route)) { handlePostRoute(request, response, route, state.post); return; }
+    if (route === 'identify') {
+      state.counts[route]++;
+      const parts = [];
+      let bytes = 0;
+      request.on('data', part => { bytes += part.length; if (bytes > 128) request.destroy(); else parts.push(part); });
+      request.on('end', () => {
+        if (request.method !== 'POST' || request.headers['user-agent'] !== 'PaliWallet' ||
+            request.headers.authorization !== 'Bearer public-http-fixture' || Buffer.concat(parts).toString() !== 'pali-http-identity-fixture') {
+          state.invalid++; response.writeHead(400); response.end(); return;
+        }
+        response.writeHead(200, { 'Content-Type': 'application/json' }); response.end('{"ok":true}');
+      });
+      return;
+    }
     if (request.method !== 'GET' || request.headers['content-length'] !== undefined || request.headers['transfer-encoding'] !== undefined) {
       state.invalid++; response.writeHead(400); response.end(); return;
     }

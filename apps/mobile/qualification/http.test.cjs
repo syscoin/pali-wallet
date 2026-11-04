@@ -14,6 +14,7 @@ const { createHttpFixture, ROUTES } = require('./http-server.cjs');
 const { startHttpCompanion, assertAudit } = require('./http-companion.cjs');
 const { qualifyNativeHttp } = require('./http-native.ts');
 const { qualifyNativePost } = require('./post-native.ts');
+const { paliHttpHeaders } = require('../../../source/shared/paliHttpIdentity.ts');
 const { createNativeHttpFetch } = require('../src/platform/httpPolicy.ts');
 const { POST_CASES } = require('./post-contract.ts');
 const { POST_BODIES, POST_CONTROLS, POST_ROUTES, POST_RETRY_PAYLOAD } = require('./post-fixtures.ts');
@@ -58,7 +59,7 @@ function cookieControl() {
   return async (url, init) => {
     const headers = new Headers(init.headers);
     if (init.credentials === 'include' && cookie) headers.set('Cookie', cookie);
-    const result = await fetch(url, { ...init, headers });
+    const result = await fetch(url, { ...init, headers: paliHttpHeaders(init.headers), headers });
     if (init.credentials === 'include') {
       const set = result.headers.get('set-cookie');
       if (set) cookie = set.includes('Max-Age=0') ? undefined : set.split(';')[0];
@@ -70,7 +71,7 @@ test('actual loopback fixture exercises all helper cases and independent server 
   const fixture = await createHttpFixture(); fixture.begin(expected.token);
   try {
     const value = await qualifyNativeHttp({ launch: { port: fixture.port, token: expected.token }, build,
-      walletFetch: (url, init) => fetch(url, { ...init, credentials: 'omit', redirect: 'error' }), cookieFetch: cookieControl(),
+      walletFetch: (url, init) => fetch(url, { ...init, headers: paliHttpHeaders(init.headers), credentials: 'omit', redirect: 'error' }), cookieFetch: cookieControl(),
       phase: 'create', scenario: 'import', platform: 'ios', sessionId: report().sessionId, networkCalls: () => 0 });
     assertHttpReport(value, expected);
     assertAudit(fixture.snapshot(expected.token), expected.token, fixture.port);
@@ -80,7 +81,7 @@ test('redirect-following adapter fails; fixture sees forbidden target rather tha
   const fixture = await createHttpFixture(); fixture.begin(expected.token);
   try {
     await assert.rejects(qualifyNativeHttp({ launch: { port: fixture.port, token: expected.token }, build,
-      walletFetch: (url, init) => fetch(url, { ...init, redirect: 'follow' }), cookieFetch: cookieControl(),
+      walletFetch: (url, init) => fetch(url, { ...init, headers: paliHttpHeaders(init.headers), redirect: 'follow' }), cookieFetch: cookieControl(),
       phase: 'create', scenario: 'import', platform: 'ios', sessionId: report().sessionId, networkCalls: () => 0 }));
     assert.equal(fixture.snapshot(expected.token).counts.target, 1);
   } finally { await fixture.close(); }
@@ -88,7 +89,7 @@ test('redirect-following adapter fails; fixture sees forbidden target rather tha
 test('late successful completion after abort cannot be reported as native HTTP qualification', async () => {
   const fixture = await createHttpFixture(); fixture.begin(expected.token);
   try {
-    const walletFetch = (url, init) => fetch(url, { ...init, credentials: 'omit', redirect: 'error' }).catch((error) => {
+    const walletFetch = (url, init) => fetch(url, { ...init, headers: paliHttpHeaders(init.headers), credentials: 'omit', redirect: 'error' }).catch((error) => {
       if (url.includes('/before?') && init.signal.aborted) return new Response('{"ok":true}');
       throw error;
     });
@@ -111,7 +112,7 @@ for (const [name, chunks, complete, passes] of [
   const fixture = await createHttpFixture(); fixture.begin(expected.token);
   try {
     const walletFetch = async (url, init) => {
-      const response = await fetch(url, { ...init, credentials: 'omit', redirect: 'error' });
+      const response = await fetch(url, { ...init, headers: paliHttpHeaders(init.headers), credentials: 'omit', redirect: 'error' });
       if (!url.includes('/body?')) return response;
       return new Response(new ReadableStream({ start(controller) {
         for (const text of chunks) controller.enqueue(new TextEncoder().encode(text));
@@ -295,7 +296,7 @@ test('real child IPC, same-source sidecar, server audit and shutdown compose wit
     endpoint = `http://127.0.0.1:${launch.port}/${launch.token}/exact?q=exact`;
     const value = await qualifyNativeHttp({ launch, build: { ...build,
       lockfileSha256: createHash('sha256').update(readFileSync(require.resolve('../package-lock.json'))).digest('hex') },
-      walletFetch: (url, init) => fetch(url, { ...init, credentials: 'omit', redirect: 'error' }), cookieFetch: cookieControl(),
+      walletFetch: (url, init) => fetch(url, { ...init, headers: paliHttpHeaders(init.headers), credentials: 'omit', redirect: 'error' }), cookieFetch: cookieControl(),
       phase: 'create', scenario: 'import', platform: 'ios', sessionId: report().sessionId, networkCalls: () => 0 });
     const post = await qualifyNativePost({ launch, build: { ...build, lockfileSha256: value.lockfileSha256 },
       walletFetch: createNativeHttpFetch(fetch), phase: 'create', scenario: 'import', platform: 'ios', sessionId: value.sessionId, networkCalls: () => 0 });

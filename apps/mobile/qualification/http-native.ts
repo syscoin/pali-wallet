@@ -47,6 +47,12 @@ export async function qualifyNativeHttp(options: Readonly<{
   let currentCase: HttpCase = 'exact-get-url';
   try {
   await query('exact');
+  currentCase = 'client-identification';
+  await owned(async signal => {
+    const response = await walletFetch(url('identify'), { method: 'POST', signal,
+      headers: { Authorization: 'Bearer public-http-fixture' }, body: 'pali-http-identity-fixture' });
+    assert(response.ok && await boundedResponseText(response, signal, 1024) === '{"ok":true}');
+  });
   currentCase = 'redirect-refused';
   await owned(async (signal) => {
     let rejected = false;

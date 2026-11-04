@@ -61,6 +61,7 @@ test('installed RN Request rewrites GET and drops redirect policy; native Expo f
   assert.equal(f.calls[0]!.init.credentials, 'omit'); assert.equal(f.calls[0]!.init.redirect, 'error');
   assert.equal(f.calls[0]!.init.headers.find(([key]: string[]) => key === 'cache-control')[1], 'no-store, no-cache');
   assert.equal(f.calls[0]!.init.headers.find(([key]: string[]) => key === 'pragma')[1], 'no-cache');
+  assert.equal(f.calls[0]!.init.headers.find(([key]: string[]) => key === 'user-agent')[1], 'PaliWallet');
   assert.equal(Object.hasOwn(f.calls[0]!.init, 'cache'), false); assert.equal(Object.hasOwn(f.calls[0]!.init, 'referrerPolicy'), false);
   signal.abort(); assert.equal(f.cancelled(), 1);
 });
@@ -87,6 +88,7 @@ test('native policy strips explicit cookies/referrer, preserves caller headers a
   const sent = new Headers(f.calls[0]!.init.headers);
   for (const key of ['Cookie', 'Cookie2', 'Referer']) assert.equal(sent.has(key), false);
   assert.equal(sent.get('Authorization'), 'fixture-api-key');
+  assert.equal(sent.get('User-Agent'), 'PaliWallet');
   assert.equal(headers.Cookie, 'fixture-cookie');
   await assert.rejects(f.fetch('https://public.example/', null as unknown as RequestInit), /Invalid wallet request options/);
   await assert.rejects(f.fetch('https://public.example/', { headers: { 'bad\nname': 'fixture' } }), /Invalid wallet request headers/);

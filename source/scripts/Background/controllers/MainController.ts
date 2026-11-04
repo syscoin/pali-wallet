@@ -307,6 +307,7 @@ import {
   PromiseTargets,
 } from './promises/cancellablesPromises';
 import { patchFetchWithPaliHeaders } from './providers/patchFetchWithPaliHeaders';
+import { withWalletBackend } from './providers/walletHttpIdentity';
 import type { SentryWalletScope } from './sentry';
 import type { SentryController } from './sentry';
 import SmartAccountController from './smartAccount';
@@ -5128,10 +5129,10 @@ class MainController {
     try {
       let result;
       if (data.isSyscoinRpc) {
-        const sysRpcResult = await getSysRpc(data);
+        const sysRpcResult = await withWalletBackend(data.url, () => getSysRpc(data));
         result = sysRpcResult?.rpc?.formattedNetwork;
       } else {
-        const ethRpcResult = await getEthRpc(data, false);
+        const ethRpcResult = await withWalletBackend(data.url, () => getEthRpc(data, false));
         result = ethRpcResult?.formattedNetwork;
       }
 
@@ -10841,7 +10842,9 @@ class MainController {
   public async testExplorerApi(apiUrl: string) {
     // The evmTransactionsController.testExplorerApi doesn't need a web3Provider
     // It just makes HTTP requests to test the API endpoint
-    return this.evmTransactionsController.testExplorerApi(apiUrl);
+    return withWalletBackend(apiUrl, () =>
+      this.evmTransactionsController.testExplorerApi(apiUrl)
+    );
   }
 
   /**
@@ -11628,12 +11631,14 @@ class MainController {
     minLatency: number = 500
   ): Promise<{ data?: any; error?: string; success: boolean }> {
     try {
-      const result = await validateRpcBatchUniversal(
-        url,
-        networkType,
-        chainId,
-        maxLatency,
-        minLatency
+      const result = await withWalletBackend(url, () =>
+        validateRpcBatchUniversal(
+          url,
+          networkType,
+          chainId,
+          maxLatency,
+          minLatency
+        )
       );
       return result;
     } catch (error: any) {

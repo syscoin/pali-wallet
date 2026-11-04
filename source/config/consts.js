@@ -20,6 +20,7 @@ const MV2_OPTIONS = {
     'activeTab',
     'clipboardWrite',
     'unlimitedStorage',
+    'declarativeNetRequestWithHostAccess',
     'http://localhost:8545/',
   ],
   content_security_policy: "script-src 'self'; object-src 'self'",
@@ -96,6 +97,7 @@ const MV3_OPTIONS = {
     'offscreen',
     'scripting',
     'notifications',
+    'declarativeNetRequestWithHostAccess',
   ],
   host_permissions: [
     'http://*/*',
