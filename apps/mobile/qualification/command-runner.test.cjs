@@ -95,7 +95,7 @@ test('the real runner writes the original boot failure artifact after cleanup al
     if (command === 'plutil') return ok(args.includes('CFBundleIdentifier') ? 'com.paliwallet.qualification' : 'PaliQualification');
     if (args.includes('runtimes')) return ok(JSON.stringify({ runtimes: [{ isAvailable: true, identifier: 'com.apple.CoreSimulator.SimRuntime.iOS-26-5', version: '26.5' }] }));
     if (args.includes('devicetypes')) return ok(JSON.stringify({ devicetypes: [{ identifier: 'com.apple.CoreSimulator.SimDeviceType.iPhone-17' }] }));
-    if (args.includes('create')) return ok('public-device');
+    if (args.includes('create')) return ok('11111111-2222-3333-4444-555555555555');
     if (args.includes('boot')) return ok('');
     if (args.includes('bootstatus')) return { status: null, signal: 'SIGTERM', error: Object.assign(Error('boot deadline'), { code: 'ETIMEDOUT' }), stderr: 'public boot still pending' };
     return { status: 9, stderr: 'cleanup failure must not replace boot deadline' };
@@ -116,7 +116,7 @@ test('the real runner writes the original boot failure artifact after cleanup al
   assert(artifact);
   const report = JSON.parse(artifact.data);
   assert.equal(report.failure.command, 'xcrun');
-  assert.deepEqual(report.failure.args, ['simctl', 'bootstatus', 'public-device', '-b']);
+  assert.deepEqual(report.failure.args, ['simctl', 'bootstatus', '11111111-2222-3333-4444-555555555555', '-b']);
   assert.equal(report.failure.timeoutMs, 600000);
   assert.equal(report.failure.timedOut, true);
   assert.equal(report.failure.stderrTail, 'public boot still pending');
@@ -227,7 +227,11 @@ test('the real iOS runner launches the isolated app directly with its public arg
     if (command === 'plutil') return ok(args.includes('CFBundleIdentifier') ? 'com.paliwallet.qualification' : 'PaliQualification');
     if (args.includes('runtimes')) return ok(JSON.stringify({ runtimes: [{ isAvailable: true, identifier: 'com.apple.CoreSimulator.SimRuntime.iOS-26-5', version: '26.5' }] }));
     if (args.includes('devicetypes')) return ok(JSON.stringify({ devicetypes: [{ identifier: 'com.apple.CoreSimulator.SimDeviceType.iPhone-17' }] }));
-    if (args.includes('create')) return ok('public-device');
+    if (args.includes('create')) return ok('11111111-2222-3333-4444-555555555555');
+    if (args.includes('devices')) return ok(JSON.stringify({ devices: { 'com.apple.CoreSimulator.SimRuntime.iOS-26-5': [
+      { udid: '11111111-2222-3333-4444-555555555555', isAvailable: true, state: 'Booted' },
+    ] } }));
+    if (args.includes('launchctl')) return ok('12\t0\tcom.apple.SpringBoard\n');
     if (args.includes('get_app_container')) return ok('/public-container');
     if (args.includes('launch')) return { status: 7, stderr: 'stop fixture after observing launch arguments' };
     return ok('');
@@ -242,7 +246,7 @@ test('the real iOS runner launches the isolated app directly with its public arg
     process: { env: { CI: 'true', PALI_NATIVE_QUALIFICATION: '1' }, argv: ['node', 'runner', 'ios', '/public-app'] },
     console: { error() {}, log() {} }, setTimeout,
   });
-  assert.deepEqual(Array.from(calls.find((call) => call.args.includes('launch')).args), ['simctl', 'launch', 'public-device', 'com.paliwallet.qualification', '-PaliQualificationURL', 'pali-wallet-qualification://run?phase=create&scenario=import']);
+  assert.deepEqual(Array.from(calls.find((call) => call.args.includes('launch')).args), ['simctl', 'launch', '11111111-2222-3333-4444-555555555555', 'com.paliwallet.qualification', '-PaliQualificationURL', 'pali-wallet-qualification://run?phase=create&scenario=import']);
   assert(!calls.some((call) => call.args.includes('openurl')));
 });
 

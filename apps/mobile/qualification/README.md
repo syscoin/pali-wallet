@@ -159,10 +159,25 @@ probe to 10 seconds. One exact `adb root` closed-transport error may proceed to
 reconnection, but app installation requires an explicit UID 0 readback. The
 original root error is retained in `android-root-readiness.json`; nonroot,
 nontransient errors and failed reconnection stop the run. No app action is retried.
+Before each iOS app launch, a separate 30-second readiness deadline requires the
+exact newly created simulator UUID to be available under the selected runtime,
+Booted, and running SpringBoard. Missing, ambiguous or malformed inventory,
+truncated service inventory, or an already-running qualification app stops the
+run. Only readiness probes repeat; the app launch does not.
+`ios-<scenario>-<phase>-readiness.json` records that proof or its failed stage.
+`ios-<scenario>-stages.json` records running/completed/failed setup, launch and
+report stages with bounded elapsed times and no command output.
+
 An iOS launch failure records up to two ten-second diagnostic probes before
-deleting the owned simulator. `ios-<scenario>-<phase>-launch.json` contains only
-service flags and log-category counts, not raw messages. The launch is never
-repeated or treated as successful by diagnostic collection.
+deleting the owned simulator. The log query covers the full launch wait plus a
+minute of margin, rounded up to minutes and capped at 15 minutes. Version 2 of
+`ios-<scenario>-<phase>-launch.json` contains only service flags, log-category
+counts and explicit window/truncation/parse-confidence flags, not raw messages.
+Counts marked complete apply only to the queried system processes and messages
+containing the qualification package marker; they do not prove an absence of
+other errors. The launch is never repeated or treated as successful by these
+diagnostics. These runner changes are not evidence that an earlier launch stall
+has been fixed; a new exact-head artifact run remains required.
 
 ## Signed physical-iPhone harness
 

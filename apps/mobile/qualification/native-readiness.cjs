@@ -1,4 +1,6 @@
 const { describeQualificationFailure } = require('./command-runner.cjs');
+const { performance } = require('node:perf_hooks');
+const { inspectIosServices } = require('./ios-runner-diagnostics.cjs');
 
 const CONNECTION_TIMEOUT_MS = 30000;
 const PROBE_TIMEOUT_MS = 10000;
@@ -42,16 +44,17 @@ function prepareAndroidRoot(run, record) {
   }
 }
 
-function summarizeIosLaunch(services, logs) {
-  const serviceLines = typeof services === 'string' ? services.slice(0, 65536).split('\n') : [];
-  const app = serviceLines.filter((line) => line.includes(`UIKitApplication:${PACKAGE}[`));
-  const springboard = serviceLines.filter((line) => /\tcom\.apple\.SpringBoard$/.test(line));
-  const running = (lines) => lines.some((line) => /^[1-9][0-9]*\s/.test(line));
+function summarizeIosLaunch(services, logs, fullAttemptRequested = false) {
+  const limit = 262144;
+  const logsAvailable = typeof logs === 'string';
+  const logsTruncated = logsAvailable && logs.length > limit;
+  let logParseErrors = 0;
   const counts = { matched: 0, failure: 0, timeout: 0, termination: 0 };
-  if (typeof logs === 'string') {
-    for (const line of logs.slice(0, 65536).split('\n')) {
+  if (logsAvailable) {
+    for (const line of logs.slice(0, limit).split('\n')) {
+      if (!line.trim()) continue;
       let entry;
-      try { entry = JSON.parse(line); } catch { continue; }
+      try { entry = JSON.parse(line); } catch { logParseErrors++; continue; }
       if (typeof entry?.eventMessage !== 'string' || !entry.eventMessage.includes(PACKAGE)) continue;
       counts.matched++;
       if (/fail|denied|refused|error/i.test(entry.eventMessage)) counts.failure++;
@@ -59,25 +62,34 @@ function summarizeIosLaunch(services, logs) {
       if (/terminat|exited|crash/i.test(entry.eventMessage)) counts.termination++;
     }
   }
-  return Object.freeze({ servicesAvailable: typeof services === 'string', appServiceListed: app.length > 0,
-    appPidPresent: running(app), springboardPidPresent: running(springboard),
-    logsAvailable: typeof logs === 'string', logCounts: Object.freeze(counts) });
+  return Object.freeze({ ...inspectIosServices(services), logsAvailable, logsTruncated, logParseErrors,
+    fullAttemptRequested, logCounts: Object.freeze(counts),
+    logCountConfidence: !logsAvailable ? 'unavailable' : fullAttemptRequested && !logsTruncated && logParseErrors === 0 ? 'complete-for-query' : 'lower-bound',
+    logCountScope: 'selected-system-processes-with-package-marker' });
 }
 
 /** The original launch is attempted exactly once; observations do not grant success. */
-function launchIos(run, device, link, record, now = Date.now) {
+function launchIos(run, device, link, record, now = () => performance.now()) {
   const started = now();
   try {
     return run('xcrun', ['simctl', 'launch', device, PACKAGE, '-PaliQualificationURL', link]);
   } catch (error) {
-    const elapsedMs = Math.max(0, Math.min(600000, now() - started));
+    const duration = now() - started;
+    const elapsedMs = Math.max(0, Math.min(600000, duration));
     // Only the freshly-created, caller-owned simulator is queried. No raw system
     // or app log messages enter the artifact, even if they contain secret text.
     let services = null, logs = null;
     try { services = run('xcrun', ['simctl', 'spawn', device, 'launchctl', 'list'], true, PROBE_TIMEOUT_MS); } catch { /* diagnostic only */ }
-    try { logs = run('xcrun', ['simctl', 'spawn', device, 'log', 'show', '--style', 'ndjson', '--last', '2m',
+    const untilQuery = now() - started;
+    // Minute units are supported by the pinned log tool. Include the whole wait
+    // plus a minute of margin, bounded even if the clock or host misbehaves.
+    const validClock = Number.isFinite(untilQuery) && untilQuery >= duration && duration >= 0;
+    const lookbackMinutes = validClock ? Math.min(15, Math.max(1, Math.ceil((untilQuery + 60000) / 60000))) : 15;
+    const fullAttemptRequested = validClock && lookbackMinutes * 60000 >= untilQuery + 60000;
+    try { logs = run('xcrun', ['simctl', 'spawn', device, 'log', 'show', '--style', 'ndjson', '--last', `${lookbackMinutes}m`,
       '--predicate', 'process == "SpringBoard" OR process == "runningboardd" OR process == "launchd"'], true, PROBE_TIMEOUT_MS); } catch { /* diagnostic only */ }
-    try { record(Object.freeze({ version: 1, stage: 'launch', elapsedMs, ...summarizeIosLaunch(services, logs) })); }
+    try { record(Object.freeze({ version: 2, stage: 'launch', elapsedMs, lookbackMinutes,
+      ...summarizeIosLaunch(services, logs, fullAttemptRequested) })); }
     catch { /* preserve the original launch failure */ }
     throw error;
   }

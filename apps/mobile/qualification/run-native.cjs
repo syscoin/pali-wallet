@@ -18,6 +18,7 @@ const { matchesHdKeyRevealRestartEvidence } = require('./hd-key-reveal.ts');
 const { createCommandRunner, describeQualificationFailure, COLD_BOOT_TIMEOUT_MS } = require('./command-runner.cjs');
 const { qualificationMode, assertSimulatorTarget } = require('./simulator-contract.cjs');
 const { prepareAndroidRoot, launchIos } = require('./native-readiness.cjs');
+const { prepareIosSimulator, createIosStageRecorder, assertOwnedIosDevice } = require('./ios-runner-diagnostics.cjs');
 const { decodeNativeReport, assertFullNativeReport } = require('./report-validation.cjs');
 
 if (process.env.CI !== 'true' || process.env.PALI_NATIVE_QUALIFICATION !== '1')
@@ -171,30 +172,36 @@ async function ios() {
   }
   const reports = [];
   for (const scenario of (simulatorContract ? ['import'] : ['import', 'generate'])) {
-    const device = run('xcrun', [
-      'simctl',
-      'create',
-      `PaliQualification-${scenario}-${Date.now()}`,
-      type.identifier,
-      runtime.identifier,
-    ]);
+    const stage = createIosStageRecorder((evidence) => fs.writeFileSync(
+      path.join(output, `ios-${scenario}-stages.json`), `${JSON.stringify(evidence, null, 2)}\n`));
+    const device = await stage('create', () => {
+      const created = run('xcrun', [
+        'simctl',
+        'create',
+        `PaliQualification-${scenario}-${Date.now()}`,
+        type.identifier,
+        runtime.identifier,
+      ]);
+      assertOwnedIosDevice(created, runtime.identifier);
+      return created;
+    });
     let container;
     try {
-      run('xcrun', ['simctl', 'boot', device]);
-      run(
+      await stage('boot', () => run('xcrun', ['simctl', 'boot', device]));
+      await stage('bootstatus', () => run(
         'xcrun',
         ['simctl', 'bootstatus', device, '-b'],
         false,
         COLD_BOOT_TIMEOUT_MS
-      );
-      run('xcrun', ['simctl', 'install', device, artifact]);
-      container = run('xcrun', [
+      ));
+      await stage('install', () => run('xcrun', ['simctl', 'install', device, artifact]));
+      container = await stage('container', () => run('xcrun', [
         'simctl',
         'get_app_container',
         device,
         PACKAGE,
         'data',
-      ]);
+      ]));
       const read = (phase) => {
         try {
           return fs.readFileSync(
@@ -209,14 +216,16 @@ async function ios() {
           return null;
         }
       };
-      launchIos(run, device, `pali-wallet-qualification://run?phase=create&scenario=${scenario}`,
-        (evidence) => fs.writeFileSync(path.join(output, `ios-${scenario}-create-launch.json`), `${JSON.stringify(evidence, null, 2)}\n`));
-      const created = await waitReport(
+      await stage('readiness-create', () => prepareIosSimulator(run, device, runtime.identifier,
+        (evidence) => fs.writeFileSync(path.join(output, `ios-${scenario}-create-readiness.json`), `${JSON.stringify(evidence, null, 2)}\n`)));
+      await stage('launch-create', () => launchIos(run, device, `pali-wallet-qualification://run?phase=create&scenario=${scenario}`,
+        (evidence) => fs.writeFileSync(path.join(output, `ios-${scenario}-create-launch.json`), `${JSON.stringify(evidence, null, 2)}\n`)));
+      const created = await stage('report-create', () => waitReport(
         () => read('create'),
         'create',
         scenario,
         () => read('startup')
-      );
+      ));
       if (simulatorContract) {
         // The original report remains failed. No database read, restart or
         // full-custody aggregate follows this expected protection refusal.
@@ -237,7 +246,7 @@ async function ios() {
         'screenshot',
         path.join(output, `ios-${scenario}-create.png`),
       ]);
-      run('xcrun', ['simctl', 'terminate', device, PACKAGE]);
+      await stage('terminate', () => run('xcrun', ['simctl', 'terminate', device, PACKAGE]));
       const database = databaseEvidence(
         fs.readFileSync(
           path.join(
@@ -249,14 +258,16 @@ async function ios() {
           )
         )
       );
-      launchIos(run, device, `pali-wallet-qualification://run?phase=restart&scenario=${scenario}&address=${created.address}`,
-        (evidence) => fs.writeFileSync(path.join(output, `ios-${scenario}-restart-launch.json`), `${JSON.stringify(evidence, null, 2)}\n`));
-      const restored = await waitReport(
+      await stage('readiness-restart', () => prepareIosSimulator(run, device, runtime.identifier,
+        (evidence) => fs.writeFileSync(path.join(output, `ios-${scenario}-restart-readiness.json`), `${JSON.stringify(evidence, null, 2)}\n`)));
+      await stage('launch-restart', () => launchIos(run, device, `pali-wallet-qualification://run?phase=restart&scenario=${scenario}&address=${created.address}`,
+        (evidence) => fs.writeFileSync(path.join(output, `ios-${scenario}-restart-launch.json`), `${JSON.stringify(evidence, null, 2)}\n`)));
+      const restored = await stage('report-restart', () => waitReport(
         () => read('restart'),
         'restart',
         scenario,
         () => read('startup')
-      );
+      ));
       if (
         created.sessionId === restored.sessionId ||
         created.address !== restored.address ||

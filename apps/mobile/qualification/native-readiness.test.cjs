@@ -86,15 +86,18 @@ test('iOS failure collects bounded owned-device summaries without relaunching or
     if (args.includes('launchctl')) return ok(`PID\tStatus\tLabel\n12\t0\tcom.apple.SpringBoard\n34\t0\tUIKitApplication:${PACKAGE}[public]\n${secret}`);
     return ok(JSON.stringify({ eventMessage: `${PACKAGE} launch failed timeout ${secret}` }) + '\n' + JSON.stringify({ eventMessage: `another.app ${secret}` }));
   });
-  let clock = 0;
-  assert.throws(() => launchIos(run, 'owned-simulator', 'public-link', (value) => evidence.push(value), () => clock += 180000),
+  const times = [0, 180000, 180005];
+  assert.throws(() => launchIos(run, 'owned-simulator', 'public-link', (value) => evidence.push(value), () => times.shift()),
     (error) => describeQualificationFailure(error).errorCode === 'ETIMEDOUT');
   assert.equal(calls.filter((call) => call.args[1] === 'launch').length, 1);
   assert(calls.every((call) => call.args[2] === 'owned-simulator'));
   assert.deepEqual(calls.map((call) => call.timeout), [180000, 10000, 10000]);
-  assert.deepEqual(evidence, [{ version: 1, stage: 'launch', elapsedMs: 180000, servicesAvailable: true,
+  assert.equal(calls[2].args[calls[2].args.indexOf('--last') + 1], '5m');
+  assert.deepEqual(evidence, [{ version: 2, stage: 'launch', elapsedMs: 180000, lookbackMinutes: 5, servicesAvailable: true, servicesTruncated: false,
     appServiceListed: true, appPidPresent: true, springboardPidPresent: true, logsAvailable: true,
-    logCounts: { matched: 1, failure: 1, timeout: 1, termination: 0 } }]);
+    logsTruncated: false, logParseErrors: 0, fullAttemptRequested: true,
+    logCounts: { matched: 1, failure: 1, timeout: 1, termination: 0 },
+    logCountConfidence: 'complete-for-query', logCountScope: 'selected-system-processes-with-package-marker' }]);
   assert(!JSON.stringify(evidence).includes(secret));
 });
 
@@ -109,9 +112,12 @@ test('iOS success needs no diagnostics and broken diagnostics cannot replace the
 });
 
 test('iOS summary discards malformed messages and bounds input before parsing', () => {
-  const summary = summarizeIosLaunch(null, 'not JSON\n' + ' '.repeat(65536) + JSON.stringify({ eventMessage: `${PACKAGE} crash` }));
+  const summary = summarizeIosLaunch(null, 'not JSON\n' + ' '.repeat(262144) + JSON.stringify({ eventMessage: `${PACKAGE} crash` }), true);
   assert.deepEqual(summary.logCounts, { matched: 0, failure: 0, timeout: 0, termination: 0 });
   assert.equal(summary.servicesAvailable, false);
+  assert.equal(summary.logsTruncated, true);
+  assert.equal(summary.logParseErrors, 1);
+  assert.equal(summary.logCountConfidence, 'lower-bound');
 });
 
 async function runActualAndroid(rootResult, uid) {
@@ -163,7 +169,11 @@ test('real iOS runner captures launch diagnostics before deleting owned simulato
     if (command === 'plutil') return ok(args.includes('CFBundleIdentifier') ? PACKAGE : 'PaliQualification');
     if (args.includes('runtimes')) return ok(JSON.stringify({ runtimes: [{ isAvailable: true, identifier: 'com.apple.CoreSimulator.SimRuntime.iOS-26-5', version: '26.5' }] }));
     if (args.includes('devicetypes')) return ok(JSON.stringify({ devicetypes: [{ identifier: 'com.apple.CoreSimulator.SimDeviceType.iPhone-17' }] }));
-    if (args.includes('create')) return ok('owned-simulator');
+    if (args.includes('create')) return ok('11111111-2222-3333-4444-555555555555');
+    if (args.includes('devices')) return ok(JSON.stringify({ devices: { 'com.apple.CoreSimulator.SimRuntime.iOS-26-5': [
+      { udid: '11111111-2222-3333-4444-555555555555', isAvailable: true, state: 'Booted' },
+    ] } }));
+    if (args.includes('launchctl')) return ok('12\t0\tcom.apple.SpringBoard\n');
     if (args.includes('get_app_container')) return ok('/public-container');
     if (args[1] === 'launch') return { status: null, signal: 'SIGTERM', error: Object.assign(Error('launch deadline'), { code: 'ETIMEDOUT' }) };
     return ok('');
@@ -183,6 +193,12 @@ test('real iOS runner captures launch diagnostics before deleting owned simulato
   const failure = JSON.parse(writes.find((entry) => entry.file.endsWith('ios-failure.json')).data);
   assert.equal(failure.failure.errorCode, 'ETIMEDOUT');
   assert.equal(failure.failure.args[1], 'launch');
+  const stages = JSON.parse(writes.filter((entry) => entry.file.endsWith('ios-import-stages.json')).at(-1).data);
+  assert.equal(stages.stages.at(-1).stage, 'launch-create');
+  assert.equal(stages.stages.at(-1).status, 'failed');
+  const ready = JSON.parse(writes.find((entry) => entry.file.endsWith('ios-import-create-readiness.json')).data);
+  assert.equal(ready.status, 'ready');
+  assert.equal(ready.runtime, 'com.apple.CoreSimulator.SimRuntime.iOS-26-5');
   assert(!writes.some((entry) => entry.file.endsWith('ios-qualification.json')));
 });
 
