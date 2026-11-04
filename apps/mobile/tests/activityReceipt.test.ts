@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { ActivityReceiptReader } from '../src/activity/receiptReader.ts';
 import { getNativeNetwork } from '../src/custody/networkContext.ts';
+import { formatBaseUnits } from '../src/core/amounts.ts';
 
 const OWNER = '0x1111111111111111111111111111111111111111';
 const OTHER = '0x2222222222222222222222222222222222222222';
@@ -154,6 +155,22 @@ test('malformed RPC envelopes, quantities, content types and oversized receipt b
   }
   const huge = fixture((call) => call.method === 'eth_getTransactionReceipt' ? receipt({ padding: 'x'.repeat(256 * 1024) }) : undefined);
   await assert.rejects(huge.reader.read(HASH, OWNER, signal(), () => undefined), { code: 'UNAVAILABLE' });
+});
+
+test('derived fees stay within the shared display amount domain', async () => {
+  const maximum = `0x${'f'.repeat(64)}`;
+  for (const effectiveGasPrice of ['0x2', maximum]) {
+    const overflow = fixture((call) => call.method === 'eth_getTransactionReceipt'
+      ? receipt({ gasUsed: maximum, effectiveGasPrice }) : undefined);
+    await assert.rejects(overflow.reader.read(HASH, OWNER, signal(), () => undefined), { code: 'INVALID_RESPONSE' });
+  }
+  for (const gasUsed of ['0x0', '0x1']) {
+    const bounded = fixture((call) => call.method === 'eth_getTransactionReceipt'
+      ? receipt({ gasUsed, effectiveGasPrice: maximum }) : undefined);
+    const result = await bounded.reader.read(HASH, OWNER, signal(), () => undefined);
+    assert.equal(result?.feeUnits, (BigInt(gasUsed) * BigInt(maximum)).toString());
+    assert.doesNotThrow(() => formatBaseUnits(result!.feeUnits!, 18));
+  }
 });
 
 test('guards revoke reads before address disclosure and after an A-B-A change; asynchronous guards reject', async () => {

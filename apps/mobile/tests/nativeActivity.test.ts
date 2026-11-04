@@ -123,6 +123,69 @@ test('both failed feeds preserve cached and locally submitted history instead of
   assert(f.cacheWrites.every((write) => write.rows.some((row) => row.hash === hash(9))));
 });
 
+test('load-more retries a failed head without overwriting cached history before recovery', async () => {
+  let headReads = 0;
+  const explorer = new FakeExplorer(({ feed }) => feed === 'txlist' ? [candidate(9), candidate(10)] : [], () => {
+    if (++headReads <= 2) throw Error('head unavailable');
+    return '1000';
+  });
+  const f = fixture({ explorer, cached: [candidate(9)] });
+  await f.controller.refresh();
+  await f.controller.loadMore();
+  assert.equal(headReads, 2);
+  assert.equal(explorer.pages.length, 0);
+  assert.equal(f.cacheWrites.length, 0);
+  assert.deepEqual(f.controller.getSnapshot().rows.map((row) => row.hash), [hash(9)]);
+  await f.controller.loadMore();
+  assert.equal(headReads, 3);
+  assert.equal(f.controller.getSnapshot().error, null);
+  assert.deepEqual(f.controller.getSnapshot().rows.map((row) => row.hash).sort(), [hash(9), hash(10)].sort());
+  assert.equal(f.cacheWrites.length, 1);
+  assert.deepEqual(f.cacheWrites[0]?.rows.map((row) => row.hash).sort(), [hash(9), hash(10)].sort());
+});
+
+test('refresh persists recent discoveries ahead of old cached hints for an offline reopen', async () => {
+  let headReads = 0;
+  const explorer = new FakeExplorer(({ feed }) => feed === 'txlist'
+    ? Array.from({ length: 20 }, (_, index) => candidate(index + 1)) : [], () => {
+    if (++headReads > 1) throw Error('offline');
+    return '1000';
+  });
+  const f = fixture({ explorer, cached: Array.from({ length: 24 }, (_, index) => candidate(index + 100, 1)) });
+  await f.controller.refresh();
+  assert.deepEqual(f.cacheWrites.at(-1)?.rows.map((row) => row.hash).sort(), Array.from({ length: 20 }, (_, index) => hash(index + 1)));
+  await f.controller.refresh();
+  assert.deepEqual(f.controller.getSnapshot().rows.map((row) => row.hash).sort(), Array.from({ length: 20 }, (_, index) => hash(index + 1)));
+  assert.match(f.controller.getSnapshot().error ?? '', /could not be fully loaded/);
+});
+
+test('cached fallback survives late hydration after refresh times out before a page frontier', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const pending = deferred<ActivityTransactionObservation | null>();
+  const receipts = new FakeReceipts((call) => call.hash === hash(9) ? pending.promise : observation(call.hash));
+  let timedOut = false;
+  const explorer = new FakeExplorer(({ feed, signal }) => timedOut
+    ? feed === 'txlist' ? [candidate(9), candidate(10)] : []
+    : new Promise((_resolve, reject) => {
+      signal.addEventListener('abort', () => reject(Error('timeout')), { once: true });
+    }));
+  const f = fixture({ explorer, receipts, cached: [candidate(9)] });
+  const refreshing = f.controller.refresh();
+  for (let turn = 0; turn < 20 && explorer.pages.length === 0; turn++) await Promise.resolve();
+  assert.equal(explorer.pages.length, 1);
+  t.mock.timers.tick(30000);
+  await refreshing;
+  pending.resolve(observation(hash(9)));
+  for (let turn = 0; turn < 20; turn++) await Promise.resolve();
+  assert.deepEqual(f.controller.getSnapshot().rows.map((row) => row.hash), [hash(9)]);
+  assert.equal(f.cacheWrites.length, 0);
+  assert.match(f.controller.getSnapshot().error ?? '', /could not be fully loaded/);
+  timedOut = true;
+  await f.controller.loadMore();
+  assert.deepEqual(f.controller.getSnapshot().rows.map((row) => row.hash).sort(), [hash(9), hash(10)].sort());
+  assert.equal(f.controller.getSnapshot().error, null);
+});
+
 test('load-more preserves cursors, deduplicates boundary rows and keeps the saved list position', async () => {
   const explorer = new FakeExplorer(({ feed, page }) => feed === 'tokentx' ? [] : page === 1
     ? Array.from({ length: 20 }, (_, index) => candidate(index + 1)) : [candidate(20), candidate(21)]);
@@ -146,6 +209,50 @@ test('duplicate-only ERC20 pages can advance to older transactions within the bo
   await f.controller.refresh();
   assert.deepEqual(new Set(f.controller.getSnapshot().rows.map((row) => row.hash)), new Set([hash(1), hash(2)]));
   assert(explorer.pages.length <= 6);
+});
+
+test('event-heavy token history can continue across more than ten bounded load actions', async () => {
+  const explorer = new FakeExplorer(({ feed, page }) => feed === 'txlist' ? [] : page <= 80
+    ? Array.from({ length: 20 }, () => candidate(Math.ceil(page / 20), 1000 - Math.ceil(page / 20), true)) : []);
+  const f = fixture({ explorer });
+  await f.controller.refresh();
+  let actions = 0;
+  while (f.controller.getSnapshot().hasMore && actions++ < 20) {
+    const before = explorer.pages.length;
+    await f.controller.loadMore();
+    assert(explorer.pages.length - before <= 6);
+  }
+  assert(actions > 10);
+  assert.deepEqual(f.controller.getSnapshot().rows.map((row) => row.hash).sort(), [1, 2, 3, 4].map(hash));
+  assert.equal(explorer.pages.filter((call) => call.feed === 'tokentx').at(-1)?.page, 81);
+  assert.equal(f.controller.getSnapshot().hasMore, false);
+  assert.equal(f.controller.getSnapshot().truncated, false);
+  assert.equal(f.controller.getSnapshot().error, null);
+});
+
+test('finished feeds retain navigation to already loaded rows and report the display cap', async () => {
+  const finite = fixture({ explorer: new FakeExplorer(({ feed }) => Array.from({ length: 15 }, (_, index) =>
+    candidate(index + (feed === 'txlist' ? 1 : 16)))) });
+  await finite.controller.refresh();
+  assert.equal(finite.controller.getSnapshot().rows.length, 20);
+  assert.equal(finite.controller.getSnapshot().hasMore, true);
+  const requests = finite.explorer.pages.length;
+  await finite.controller.loadMore();
+  assert.equal(finite.controller.getSnapshot().rows.length, 30);
+  assert.equal(finite.explorer.pages.length, requests);
+  assert.equal(finite.controller.getSnapshot().hasMore, false);
+  assert.equal(finite.controller.getSnapshot().truncated, false);
+
+  const capped = fixture({ explorer: new FakeExplorer(({ feed, page }) => feed === 'tokentx' ? [] :
+    Array.from({ length: 20 }, (_, index) => candidate((page - 1) * 20 + index + 1))) });
+  await capped.controller.refresh();
+  for (let action = 0; action < 9; action++) await capped.controller.loadMore();
+  assert.equal(capped.controller.getSnapshot().rows.length, 200);
+  assert.equal(capped.controller.getSnapshot().hasMore, false);
+  assert.equal(capped.controller.getSnapshot().truncated, true);
+  const cappedRequests = capped.explorer.pages.length;
+  await capped.controller.loadMore();
+  assert.equal(capped.explorer.pages.length, cappedRequests);
 });
 
 test('repeated full ordinary pages remain bounded and never imply completed history', async () => {
@@ -172,6 +279,54 @@ test('a failed older page is retried at the same cursor and retains the current 
   await f.controller.loadMore();
   assert.equal(f.controller.getSnapshot().rows.length, 21);
   assert.deepEqual(explorer.pages.filter((call) => call.feed === 'txlist').map((call) => call.page), [1, 2, 2]);
+});
+
+test('repeated older-page failures do not spend the remaining history display capacity', async () => {
+  let unavailable = true;
+  const explorer = new FakeExplorer(({ feed, page }) => {
+    if (feed === 'tokentx') return [];
+    if (page === 1) return Array.from({ length: 20 }, (_, index) => candidate(index + 1));
+    if (unavailable) throw Error('temporary page failure');
+    return [candidate(21)];
+  });
+  const f = fixture({ explorer });
+  await f.controller.refresh();
+  for (let attempt = 0; attempt < 12; attempt++) {
+    await f.controller.loadMore();
+    assert.equal(f.controller.getSnapshot().hasMore, true);
+    assert.equal(f.controller.getSnapshot().rows.length, 20);
+  }
+  unavailable = false;
+  await f.controller.loadMore();
+  assert.equal(f.controller.getSnapshot().rows.length, 21);
+  assert.equal(f.controller.getSnapshot().hasMore, false);
+  assert.equal(f.controller.getSnapshot().truncated, false);
+  assert.equal(f.controller.getSnapshot().error, null);
+  assert.deepEqual(explorer.pages.filter((call) => call.feed === 'txlist').map((call) => call.page), [1, ...Array(13).fill(2)]);
+});
+
+test('a refresh replaces stale cached block hints after a transaction is re-included', async () => {
+  const explorer = new FakeExplorer(({ feed }) => feed === 'txlist' ? [candidate(1, 101), candidate(2, 100)] : []);
+  const f = fixture({ explorer, cached: [candidate(1, 99)] });
+  for (let refresh = 0; refresh < 2; refresh++) {
+    await f.controller.refresh();
+    assert.equal(f.controller.getSnapshot().error, null);
+    assert.deepEqual(f.controller.getSnapshot().rows.map((row) => row.hash).sort(), [hash(1), hash(2)]);
+    assert.equal(f.controller.getSnapshot().rows.find((row) => row.hash === hash(1))?.candidate?.blockNumber, '101');
+    assert.equal(f.cacheWrites.at(-1)?.rows.find((row) => row.hash === hash(1))?.blockNumber, '101');
+  }
+});
+
+test('conflicting fresh block hints reject the whole page without replacing accepted rows', async () => {
+  let pages = 0;
+  const explorer = new FakeExplorer(() => ++pages === 1 ? [candidate(1, 101)] :
+    [candidate(2, 100, true), candidate(1, 102, true)]);
+  const f = fixture({ explorer, cached: [candidate(1, 99)] });
+  await f.controller.refresh();
+  assert.match(f.controller.getSnapshot().error ?? '', /feed.*unavailable/i);
+  assert.deepEqual(f.controller.getSnapshot().rows.map((row) => row.hash), [hash(1)]);
+  assert.equal(f.controller.getSnapshot().rows[0]?.candidate?.blockNumber, '101');
+  assert.equal(f.controller.getSnapshot().rows[0]?.candidate?.tokenHint, false);
 });
 
 test('inspect refreshes an existing included observation without losing filter or anchor', async () => {

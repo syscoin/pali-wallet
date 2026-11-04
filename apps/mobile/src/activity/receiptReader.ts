@@ -1,6 +1,7 @@
 import { getAddress } from 'ethers/address';
 import { boundedResponseText, parseRpcQuantity } from '../platformRpc.ts';
 import { getNativeNetwork } from '../custody/networkContext.ts';
+import { assertBaseUnits } from '../core/amounts.ts';
 
 const TRANSFER_TOPIC =
   '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
@@ -258,10 +259,16 @@ function readReceipt(
     BigInt(left.logIndex) < BigInt(right.logIndex) ? -1 : 1
   );
   let feeUnits: string | null = null;
-  if (raw.gasUsed !== undefined && raw.effectiveGasPrice !== undefined)
+  if (raw.gasUsed !== undefined && raw.effectiveGasPrice !== undefined) {
     feeUnits = (
       quantity(raw.gasUsed) * quantity(raw.effectiveGasPrice)
     ).toString();
+    try {
+      assertBaseUnits(feeUnits);
+    } catch {
+      return fail('INVALID_RESPONSE');
+    }
+  }
   const from = address(raw.from),
     to = raw.to === null ? null : address(raw.to);
   return Object.freeze({

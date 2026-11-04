@@ -1,4 +1,5 @@
 import { getAddress } from 'ethers/address';
+import { parseErc20Metadata } from '../portfolio/erc20Metadata.ts';
 import { decodeStorageValue, encodeStorageValue } from '../storage/json.ts';
 import type { KeyringStoragePort } from '../storage/types.ts';
 import {
@@ -110,27 +111,11 @@ export function validateTerminalActivity(
   )
     return invalid();
   if (data.token !== undefined) {
-    const token = exact(data.token, [
-      'contractAddress',
-      'decimals',
-      'symbol',
-      'name',
-    ]);
-    if (
-      typeof token.contractAddress !== 'string' ||
-      getAddress(token.contractAddress) !== token.contractAddress ||
-      !Number.isSafeInteger(token.decimals) ||
-      (token.decimals as number) < 0 ||
-      (token.decimals as number) > 255 ||
-      typeof token.symbol !== 'string' ||
-      token.symbol.length > 32 ||
-      typeof token.name !== 'string' ||
-      token.name.length > 128 ||
-      /[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/.test(
-        token.symbol + token.name
-      )
-    )
+    try {
+      data.token = parseErc20Metadata(data.token);
+    } catch {
       return invalid();
+    }
   }
   return Object.freeze(data as unknown as TerminalActivityRecord);
 }
@@ -314,7 +299,8 @@ export class NativeActivityHistory {
   private mutate(
     fingerprint: string,
     guard: () => void,
-    change: (data: Document) => Document
+    change: (data: Document) => Document,
+    protect?: string
   ): Promise<void> {
     return this.exclusive(async () => {
       if (this.requiresReopen) throw new ActivityError('REOPEN_REQUIRED');
@@ -325,7 +311,7 @@ export class NativeActivityHistory {
         const next = change(data);
         guard();
         if (encodeStorageValue(next) === encodeStorageValue(data)) return;
-        const stored = { ...next, revision: data.revision + 1 };
+        const stored = packed({ ...next, revision: data.revision + 1 }, protect);
         let committed: boolean;
         try {
           committed =
@@ -375,17 +361,22 @@ export class NativeActivityHistory {
   ): Promise<void> {
     const checked = validateTerminalActivity(record);
     const id = `${localScopeKey(checked)}:${checked.hash}`;
-    return this.mutate(checked.walletFingerprint, guard, (data) => {
-      const old = data.archived.find(
-        (r) => `${localScopeKey(r)}:${r.hash}` === id
-      );
-      if (old) {
-        if (encodeStorageValue(old) !== encodeStorageValue(checked))
-          throw new ActivityError('INVALID');
-        return data;
-      }
-      return packed({ ...data, archived: [...data.archived, checked] }, id);
-    });
+    return this.mutate(
+      checked.walletFingerprint,
+      guard,
+      (data) => {
+        const old = data.archived.find(
+          (r) => `${localScopeKey(r)}:${r.hash}` === id
+        );
+        if (old) {
+          if (encodeStorageValue(old) !== encodeStorageValue(checked))
+            throw new ActivityError('INVALID');
+          return data;
+        }
+        return packed({ ...data, archived: [...data.archived, checked] }, id);
+      },
+      id
+    );
   }
   async load(
     scope: ActivityScope,

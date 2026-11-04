@@ -41,6 +41,8 @@ let fail = false,
 const waiting: (() => void)[] = [];
 let savedView: ActivityViewState = DEFAULT_ACTIVITY_VIEW;
 let saveDelay = 0;
+let tokenPrecision: number | null = null;
+let invalidFee = false;
 class Explorer extends ActivityExplorerReader {
   async head() {
     return '1000';
@@ -73,7 +75,7 @@ class Receipts extends ActivityReceiptReader {
       timestamp: 1700000000000 - n * 1000,
       block: { hash: hash(1000), number: '1000' },
       status: 'finalized',
-      feeUnits: '21000',
+      feeUnits: invalidFee ? ((1n << 256n) ** 2n).toString() : '21000',
       events:
         n === 3
           ? [
@@ -94,7 +96,30 @@ const runtime: NativeActivityRuntime = {
   async load() {
     return {
       scope,
-      local: null,
+      local:
+        tokenPrecision === null
+          ? null
+          : {
+              walletFingerprint: scope.walletFingerprint,
+              accountId: scope.accountId,
+              address: owner,
+              networkId: scope.network.id,
+              registrationHash: scope.network.registrationHash,
+              chainId: scope.network.chainId,
+              hash: hash(1),
+              phase: 'confirmed',
+              nonce: 1,
+              createdAt: 1700000000000,
+              recipient,
+              amountUnits: '1',
+              maximumFeeUnits: '21000',
+              token: {
+                contractAddress: recipient,
+                name: 'Precision token',
+                symbol: 'PRECISE',
+                decimals: tokenPrecision,
+              },
+            },
       saved: {
         archived: [],
         candidates: [],
@@ -126,6 +151,8 @@ declare global {
       delaySave(milliseconds: number): void;
       savedView(): ActivityViewState;
       clearView(): void;
+      tokenPrecision(value: number): void;
+      invalidFee(value: boolean): void;
     };
   }
 }
@@ -148,6 +175,12 @@ window.__activityFixture = {
   },
   clearView() {
     savedView = DEFAULT_ACTIVITY_VIEW;
+  },
+  tokenPrecision(value) {
+    tokenPrecision = value;
+  },
+  invalidFee(value) {
+    invalidFee = value;
   },
 };
 function Fixture() {

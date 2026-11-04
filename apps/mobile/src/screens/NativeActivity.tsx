@@ -21,6 +21,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import { Button, Card, colors, Header, Notice, styles, Text } from '../ui';
 import { formatBaseUnits } from '../core/amounts';
+import { formatTokenUnits } from '../../../../source/shared/erc20';
 import type {
   ActivityRow,
   NativeActivity,
@@ -84,10 +85,11 @@ function zeroOnly(row: ActivityRow) {
 }
 function amount(row: ActivityRow): string {
   if (row.local)
-    return `${formatBaseUnits(
-      row.local.amountUnits,
-      row.local.token?.decimals ?? 18
-    )} ${row.local.token?.symbol ?? 'ETH'}`;
+    return row.local.token
+      ? `${formatTokenUnits(row.local.amountUnits, row.local.token.decimals)} ${
+          row.local.token.symbol
+        }`
+      : `${formatBaseUnits(row.local.amountUnits, 18)} ETH`;
   if (!row.observation)
     return row.candidate?.tokenHint ? 'ERC20 activity' : 'Ethereum activity';
   if (row.observation.events.length)
@@ -95,6 +97,18 @@ function amount(row: ActivityRow): string {
       row.observation.events.length === 1 ? '' : 's'
     }`;
   return `${formatBaseUnits(row.observation.valueUnits, 18)} ETH`;
+}
+function fee(row: ActivityRow): string {
+  try {
+    if (
+      row.observation?.feeUnits !== null &&
+      row.observation?.feeUnits !== undefined
+    )
+      return `${formatBaseUnits(row.observation.feeUnits, 18)} ETH`;
+  } catch {
+    // A malformed observation must not prevent navigation or hide other details.
+  }
+  return 'Actual fee not verified';
 }
 
 export function NativeActivityScreen({
@@ -325,8 +339,8 @@ function NativeActivityContent({
               </View>
               {snapshot.truncated && (
                 <Notice
-                  title="Recent activity saved on this device"
-                  body="Older local records have been pruned. Load indexed history for older transactions; unavailable explorer data may leave gaps."
+                  title="Activity history is limited"
+                  body="This view and its saved history have limits. Older records may be omitted; the explorer may have additional indexed activity."
                 />
               )}
               {!!snapshot.error && (
@@ -494,11 +508,7 @@ function NativeActivityContent({
               </>
             )}
             <Text style={s.label}>NETWORK FEE</Text>
-            <Text>
-              {chosen.observation?.feeUnits
-                ? `${formatBaseUnits(chosen.observation.feeUnits, 18)} ETH`
-                : 'Actual fee not verified'}
-            </Text>
+            <Text>{fee(chosen)}</Text>
             {chosen.observation?.block && (
               <>
                 <Text style={s.label}>BLOCK</Text>

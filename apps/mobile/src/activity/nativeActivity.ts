@@ -90,7 +90,9 @@ export class NativeActivity {
   private generation = 0;
   private visible = 20;
   private endblock: string | null = null;
+  private cachedFallback = false;
   private candidates = new Map<string, ActivityCandidate>();
+  private freshCandidates = new Set<string>();
   private locals = new Map<string, LocalActivityRecord>();
   private observations = new Map<string, ActivityTransactionObservation>();
   private unavailable = new Set<string>();
@@ -178,12 +180,14 @@ export class NativeActivity {
     const signal = this.request.signal;
     const guard = () => this.guard(generation, revision);
     this.candidates.clear();
+    this.freshCandidates.clear();
     this.locals.clear();
     this.observations.clear();
     this.unavailable.clear();
     this.visible = 20;
     this.feeds = { txlist: this.feed(), tokentx: this.feed() };
     this.endblock = null;
+    this.cachedFallback = true;
     this.publish({ ...initial(), status: 'loading' });
     try {
       const runtime = this.runtime();
@@ -213,16 +217,18 @@ export class NativeActivity {
         guard();
         await runtime.saveCache(
           scope,
-          [...this.candidates.values()].slice(0, 24),
+          this.orderedCandidates().slice(0, 24),
           guard
         );
         guard();
       } finally {
         clearTimeout(timeout);
       }
+      this.cachedFallback = false;
       this.renderRows();
     } catch {
       if (generation !== this.generation) return;
+      this.cachedFallback = true;
       this.publish({
         status: this.scope ? 'ready' : 'unavailable',
         error:
@@ -286,14 +292,27 @@ export class NativeActivity {
         );
         // tokentx does not include logIndex: distinct full pages may legitimately
         // contain only events from one hash. Bound work per action, not by these projections.
+        const updates = new Map<string, ActivityCandidate>();
         for (const row of rows) {
-          const old = this.candidates.get(row.hash);
-          if (old && old.blockNumber !== row.blockNumber)
+          const old = updates.get(row.hash) ?? this.candidates.get(row.hash);
+          // Persisted block hints may predate a reorg. Only discoveries from
+          // this refresh must agree, including duplicate hashes in one page.
+          if (
+            old &&
+            (updates.has(row.hash) || this.freshCandidates.has(row.hash)) &&
+            old.blockNumber !== row.blockNumber
+          )
             throw new ActivityError('INVALID');
-          this.candidates.set(
+          updates.set(
             row.hash,
-            old ? { ...old, tokenHint: old.tokenHint || row.tokenHint } : row
+            old ? { ...row, tokenHint: old.tokenHint || row.tokenHint } : row
           );
+        }
+        for (const [hash, row] of updates) {
+          if (!this.candidates.has(hash) && this.candidates.size >= 240)
+            continue;
+          this.candidates.set(hash, row);
+          this.freshCandidates.add(hash);
         }
         feed.fingerprint = fingerprint;
         feed.page++;
@@ -320,7 +339,12 @@ export class NativeActivity {
       }
     }
     guard();
-    this.publish({ loadingMore: false });
+    this.publish({
+      loadingMore: false,
+      error: Object.values(this.feeds).some((feed) => feed.error)
+        ? this.snapshot.error
+        : null,
+    });
     this.renderRows();
   }
   async loadMore(): Promise<void> {
@@ -328,10 +352,17 @@ export class NativeActivity {
       this.snapshot.loadingMore ||
       !this.scope ||
       !this.request ||
-      this.visible >= 200
+      (this.visible >= 200 && this.orderedCandidates().length >= this.visible)
     )
       return;
-    this.visible += 20;
+    if (this.endblock === null || this.request.signal.aborted) {
+      await this.refresh();
+      return;
+    }
+    // Retries and duplicate event pages continue the current target. They do
+    // not consume capacity that is reserved for distinct transactions.
+    if (this.orderedCandidates().length >= this.visible)
+      this.visible = Math.min(200, this.visible + 20);
     const generation = this.generation,
       revision = this.source.getSnapshot().revision;
     const guard = () => this.guard(generation, revision);
@@ -353,8 +384,9 @@ export class NativeActivity {
         });
     }
   }
-  private renderRows(includeCached = false) {
+  private renderRows(includeCached = this.cachedFallback) {
     const records = new Map<string, ActivityRow>();
+    const candidates = this.orderedCandidates(includeCached);
     for (const local of this.locals.values())
       records.set(local.hash, {
         hash: local.hash,
@@ -362,10 +394,7 @@ export class NativeActivity {
         checking: false,
         unavailable: false,
       });
-    for (const candidate of this.orderedCandidates(includeCached).slice(
-      0,
-      this.visible
-    ))
+    for (const candidate of candidates.slice(0, this.visible))
       records.set(candidate.hash, {
         ...records.get(candidate.hash),
         hash: candidate.hash,
@@ -391,10 +420,15 @@ export class NativeActivity {
             a.local?.createdAt ??
             0)
       );
+    const moreToLoad = Object.values(this.feeds).some((f) => !f.done);
+    const atDisplayLimit = this.visible >= 200 && candidates.length >= 200;
     this.publish({
       rows,
       hasMore:
-        this.visible < 200 && Object.values(this.feeds).some((f) => !f.done),
+        !atDisplayLimit && (candidates.length > this.visible || moreToLoad),
+      truncated:
+        this.snapshot.truncated ||
+        (atDisplayLimit && (candidates.length > this.visible || moreToLoad)),
       coverage:
         'Direct Ethereum transactions and ERC20 transfer events only. Internal ETH transfers are not included. Explorer data is checked against the RPC; older activity may require loading.',
     });

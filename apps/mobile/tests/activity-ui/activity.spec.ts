@@ -1,4 +1,95 @@
 import { test, expect } from '@playwright/test';
+for (const decimals of [19, 255]) {
+  test(`Activity renders a valid ${decimals}-decimal token in the list and details`, async ({
+    page,
+  }) => {
+    await page.addInitScript((precision) => {
+      Object.defineProperty(window, '__activityFixture', {
+        configurable: true,
+        set(value) {
+          Object.defineProperty(window, '__activityFixture', {
+            value,
+            configurable: true,
+          });
+          value.tokenPrecision(precision);
+        },
+      });
+    }, decimals);
+    const errors: string[] = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    await page.goto('/');
+    const exactAmount = `0.${'0'.repeat(decimals - 1)}1 PRECISE`;
+    const row = page.getByRole('button', {
+      name: new RegExp('PRECISE.*View transaction details'),
+    });
+    await expect(row).toContainText(exactAmount);
+    await row.click();
+    await expect(
+      page.getByText('Transaction details', { exact: true })
+    ).toBeVisible();
+    await expect(
+      page.getByText(exactAmount, { exact: true }).last()
+    ).toBeVisible();
+    expect(errors).toEqual([]);
+  });
+}
+test('Activity details remain usable when an invalid fee reaches the view', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(window, '__activityFixture', {
+      configurable: true,
+      set(value) {
+        Object.defineProperty(window, '__activityFixture', {
+          value,
+          configurable: true,
+        });
+        value.invalidFee(true);
+      },
+    });
+  });
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await page.goto('/');
+  await page
+    .getByRole('button', { name: /1\.0 ETH, Confirmed/ })
+    .first()
+    .click();
+  await expect(
+    page.getByText('Actual fee not verified', { exact: true })
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await expect(
+    page.getByText('Activity', { exact: true }).first()
+  ).toBeVisible();
+  expect(errors).toEqual([]);
+});
+test('confirmed address copy writes the complete address to the clipboard', async ({
+  page,
+  context,
+}) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.goto('/');
+  await page.evaluate(() =>
+    navigator.clipboard.writeText('fixture-before-copy')
+  );
+  await page
+    .getByRole('button', { name: /1\.0 ETH, Confirmed/ })
+    .first()
+    .click();
+  await page
+    .getByRole('button', { name: 'Copy sender address', exact: true })
+    .click();
+  await page
+    .getByRole('button', { name: 'Copy full address', exact: true })
+    .click();
+  await expect
+    .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+    .toBe(`0x${'11'.repeat(20)}`);
+  await expect(
+    page.getByText('Copy this address?', { exact: true })
+  ).not.toBeVisible();
+});
 test('actual Activity component loads, filters zero-value events, and requires full-address copy confirmation', async ({
   page,
 }) => {

@@ -149,6 +149,56 @@ test('ERC20 archive preserves the reviewed recipient and token units independent
   } finally { await f.cleanup(); }
 });
 
+for (const operation of ['replacement', 'removal'] as const) {
+  test(`full-range reviewed ERC20 metadata survives terminal ${operation}`, async () => {
+    const f = await fixture();
+    try {
+      const token = { contractAddress: TOKEN, decimals: 255, symbol: '😀'.repeat(64), name: '😀'.repeat(128) };
+      const intent = { kind: 'erc20-transfer' as const, token, recipient: RECIPIENT, amountUnits: '1' };
+      const signed = await wallet.signTransaction({ type: 2, chainId: 1, nonce: 0, to: TOKEN, value: 0n,
+        gasLimit: 50000n, maxFeePerGas: 2n, maxPriorityFeePerGas: 1n, data: encodeErc20Transfer(RECIPIENT, intent.amountUnits) });
+      const initial = f.journal();
+      const saved = await initial.saveSigned(signed, intent);
+      await initial.transition(saved.hash, 'attempted');
+      await initial.transition(saved.hash, 'confirmed');
+      const before = await f.value();
+      const history = f.history();
+      const journal = f.journal('ethereum', 0, f.port, (record, check) => history.archiveTerminal(record, check));
+      if (operation === 'replacement') await journal.saveSigned(await raw(1));
+      else assert.deepEqual(await journal.removalSnapshot(), before);
+      assert.deepEqual((await history.load(f.scope(), guard)).archived[0]?.token, token);
+      await f.reopen();
+      assert.deepEqual((await f.history().load(f.scope(), guard)).archived[0]?.token, token);
+    } finally { await f.cleanup(); }
+  });
+}
+
+test('archive rejects malformed or unsafe ERC20 metadata without persisting it', async () => {
+  const f = await fixture();
+  try {
+    const token = { contractAddress: TOKEN, decimals: 18, symbol: 'TOK', name: 'Fixture token' };
+    const invalid = [
+      { ...token, symbol: 'A'.repeat(65) },
+      { ...token, name: '😀'.repeat(129) },
+      { ...token, symbol: 'TOK\u200b' },
+      { ...token, name: 'Token\u202e' },
+      { ...token, decimals: 256 },
+      { ...token, decimals: -1 },
+      { ...token, extra: true },
+      { ...token, name: '' },
+    ];
+    const history = f.history();
+    for (const metadata of invalid)
+      await assert.rejects(async () => history.archiveTerminal(f.record(1, { token: metadata }), guard));
+    let accessed = false;
+    await assert.rejects(async () => history.archiveTerminal(f.record(1, { token: {
+      ...token, get symbol() { accessed = true; return 'TOK'; },
+    } }), guard));
+    assert.equal(accessed, false);
+    assert.equal(await f.port.get(ACTIVITY_STORAGE_KEY), undefined);
+  } finally { await f.cleanup(); }
+});
+
 for (const failure of ['write', 'readback'] as const) {
   test(`archive ${failure} failure preserves the old journal and prevents its CAS`, async () => {
     const f = await fixture();
@@ -292,6 +342,47 @@ test('byte pruning stays inside the global document budget with explicit coverag
     assert.equal(snapshot.truncated, true);
     assert.equal(snapshot.archived.at(-1)?.hash, entryHash(49));
     assert(new TextEncoder().encode(encodeStorageValue(await f.port.get(ACTIVITY_STORAGE_KEY))).length <= 60 * 1024);
+  } finally { await f.cleanup(); }
+});
+
+test('archive byte cap includes revision digit growth and preserves the newly archived record', async () => {
+  const f = await fixture();
+  try {
+    const limit = 60 * 1024;
+    const maximumUnits = ((1n << 256n) - 1n).toString();
+    const records = Array.from({ length: 48 }, (_, index) => f.record(index + 1, {
+      token: { contractAddress: TOKEN, decimals: 255, name: '\uffff'.repeat(128), symbol: '\uffff'.repeat(32) },
+      amountUnits: maximumUnits, maximumFeeUnits: maximumUnits,
+    }));
+    const proposed = { version: 1, walletFingerprint: f.fingerprint, revision: 99, truncated: false,
+      archived: records, cached: [], views: [] as { sourceId: string; view: { filter: 'all'; showZero: false; anchor: null; offset: number } }[] };
+    const bytes = () => new TextEncoder().encode(encodeStorageValue(proposed)).length;
+    while (bytes() <= limit && proposed.views.length < 20)
+      proposed.views.push({ sourceId: f.scope(proposed.views.length).sourceId, view: { filter: 'all', showZero: false, anchor: null, offset: 0 } });
+    assert(bytes() > limit);
+    // Adjust valid old metadata until adding the next record exactly fills the
+    // pre-increment budget. The 99 -> 100 revision then needs one more byte.
+    for (let index = 0; bytes() > limit && index < records.length - 1; index++) {
+      const record = records[index]!;
+      const excess = bytes() - limit;
+      const remove = Math.min(127, Math.floor(excess / 3));
+      let name = record.token!.name.slice(remove);
+      const remainder = excess - remove * 3;
+      if (remainder === 1) name = `é${name.slice(1)}`;
+      else if (remainder === 2) name = `A${name.slice(1)}`;
+      records[index] = { ...record, token: { ...record.token!, name } };
+    }
+    assert.equal(bytes(), limit);
+    const newest = records.at(-1)!;
+    await f.port.set(ACTIVITY_STORAGE_KEY, { ...proposed, archived: records.slice(0, -1) });
+    await f.history().archiveTerminal(newest, guard);
+    const stored = await f.port.get(ACTIVITY_STORAGE_KEY) as typeof proposed;
+    assert.equal(stored.revision, 100);
+    assert(new TextEncoder().encode(encodeStorageValue(stored)).length <= limit);
+    assert.equal(stored.truncated, true);
+    assert.deepEqual(stored.archived.at(-1), newest);
+    await f.reopen();
+    assert.equal((await f.history().load(f.scope(), guard)).archived.at(-1)?.hash, newest.hash);
   } finally { await f.cleanup(); }
 });
 
