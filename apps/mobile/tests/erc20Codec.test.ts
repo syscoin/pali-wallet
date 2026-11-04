@@ -3,7 +3,7 @@ import test from 'node:test';
 import { copyFile, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { pathToFileURL, URL as NodeURL } from 'node:url';
 import {
   formatTokenUnits,
   parseErc20Decimals,
@@ -27,7 +27,7 @@ test('the shared codec loads without an extension dependency installation', asyn
   try {
     const isolated = path.join(directory, 'erc20.ts');
     await copyFile(
-      new URL('../../../source/shared/erc20.ts', import.meta.url),
+      new NodeURL('../../../source/shared/erc20.ts', import.meta.url),
       isolated
     );
     const codec = await import(pathToFileURL(isolated).href);
