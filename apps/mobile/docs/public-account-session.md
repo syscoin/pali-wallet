@@ -43,7 +43,9 @@ The existing repository's checkpoint API accepts an optional synchronous guard.
 Before dispatch, the guarded path checks before/after SDK-validation callbacks, after the awaited
 current read, and immediately before dispatching its one write. Async/non-undefined
 guards reject. Pre-dispatch cancellation consumes the attempt without declaring
-durable data corrupt. The source record and checkpoint comparison remain the
+durable data corrupt, including when a validation callback throws after revoking
+the operation. Genuine validation errors while current still refuse the save.
+The source record and checkpoint comparison remain the
 same full-document CAS; no document/schema change was added.
 
 Once `set` has been dispatched while current, lifecycle cancellation cannot undo
@@ -52,6 +54,11 @@ still drains and verifies the write/readback; the owner discards its late result
 never claims rollback and never silently replays it. Failed or ambiguous saves
 hide totals and discard continuation state; future work revalidates storage and
 changed records require a fresh owner. No new store or compensating write exists.
+
+Cancellation hides observations immediately, but the repository and its admission
+slot still depend on pending storage reads/writes settling. A permanently hung
+storage port cannot be made responsive by this controller; bounded native storage
+completion and real SDK latency remain qualification requirements.
 
 Deterministic tests use the actual repository, scanner and bounded usage reader
 with an injected synthetic public deriver and response fixture. They establish

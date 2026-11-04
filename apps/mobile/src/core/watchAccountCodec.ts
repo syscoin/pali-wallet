@@ -96,7 +96,9 @@ export function createWatchAccountCodec(port: PublicBip84ValidationPort) {
       }
     };
     const guarded = <T>(operation: () => T): T => {
-      checkBoundary(); const result = invoke(operation); checkBoundary(); return result;
+      checkBoundary();
+      try { return invoke(operation); }
+      finally { checkBoundary(); }
     };
     const detached = snapshotWatchRecords(input), accounts: PublicAccount[] = [], keys = new Set<string>();
     const records = detached.map((record): StoredWatchAccount => {

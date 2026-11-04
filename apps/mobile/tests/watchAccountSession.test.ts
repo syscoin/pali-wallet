@@ -249,3 +249,61 @@ test('factory cancellation during binding rejects admission without retaining a 
   } }), /cancelled/);
   assert.equal(f.calls.length, 0); assert.equal(f.writes.length, 0);
 });
+
+for (const callback of ['first canonicalization', 'second canonicalization', 'first address'] as const) {
+  test(`exceptional callback cancellation during ${callback} keeps unchanged sibling records usable`, async () => {
+    let raw = JSON.stringify({ version: 2, records: [record()] });
+    const original = raw;
+    let reads = 0, writes = 0, canonicalizations = 0, active = true, armed = true;
+    const revokeAndThrow = () => { armed = false; active = false; throw Error('fixture callback failed after cancellation'); };
+    const repository = createPublicAccountStorage({
+      async get() { reads++; canonicalizations = 0; return raw; },
+      async set(_key, value) { writes++; raw = value; },
+    }, {
+      canonicalize(request) {
+        canonicalizations++;
+        if (armed && reads === 3 && (callback === 'first canonicalization' && canonicalizations === 1 ||
+            callback === 'second canonicalization' && canonicalizations === 2)) revokeAndThrow();
+        return adapter.canonicalize(request);
+      },
+      deriveFirstReceive(request) {
+        if (armed && reads === 3 && callback === 'first address') revokeAndThrow();
+        return adapter.deriveFirstReceive(request);
+      },
+    }).records!;
+    const first = await repository.load(), sibling = await repository.load();
+    const cursor = { version: 1 as const, scope: { networkId: 'bitcoin' as const, sourceId: 'key' },
+      branches: [{ nextIndex: 20, lastUsedIndex: -1 }, { nextIndex: 20, lastUsedIndex: -1 }] };
+    await assert.rejects(repository.saveCheckpoint(first, 'key', cursor, () => {
+      if (!active) throw Error('cancelled');
+    }), { name: 'CheckpointCancelledError' });
+    assert.equal(writes, 0); assert.equal(raw, original);
+    active = true;
+    await repository.saveCheckpoint(sibling, 'key', cursor);
+    assert.equal(writes, 1);
+    await assert.rejects(repository.saveCheckpoint(first, 'key', cursor), /Reopen/);
+    assert.equal(writes, 1);
+  });
+}
+
+test('a validation callback failure while current still refuses all writes until reread', async () => {
+  let raw = JSON.stringify({ version: 2, records: [record()] }), reads = 0, writes = 0, armed = true;
+  const repository = createPublicAccountStorage({
+    async get() { reads++; return raw; },
+    async set(_key, value) { writes++; raw = value; },
+  }, {
+    ...adapter,
+    canonicalize(request) {
+      if (armed && reads === 3) { armed = false; throw Error('fixture validation failed'); }
+      return adapter.canonicalize(request);
+    },
+  }).records!;
+  const first = await repository.load(), sibling = await repository.load();
+  const cursor = { version: 1 as const, scope: { networkId: 'bitcoin' as const, sourceId: 'key' },
+    branches: [{ nextIndex: 20, lastUsedIndex: -1 }, { nextIndex: 20, lastUsedIndex: -1 }] };
+  await assert.rejects(repository.saveCheckpoint(first, 'key', cursor, () => undefined), /Invalid saved watch account records/);
+  await assert.rejects(repository.saveCheckpoint(sibling, 'key', cursor), /unavailable/);
+  assert.equal(writes, 0);
+  await repository.saveCheckpoint(await repository.load(), 'key', cursor);
+  assert.equal(writes, 1);
+});
