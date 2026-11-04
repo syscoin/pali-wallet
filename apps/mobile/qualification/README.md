@@ -216,12 +216,21 @@ runs if persisting that stage fails; unvalidated identities are never cleaned.
 
 An iOS launch failure records up to two ten-second diagnostic probes before
 deleting the owned simulator. The log query covers the full launch wait plus a
-minute of margin, rounded up to minutes and capped at 15 minutes. Version 2 of
+minute of margin, rounded up to minutes and capped at 15 minutes. Version 3 of
 `ios-<scenario>-<phase>-launch.json` contains only service flags, log-category
 counts and explicit window/truncation/parse-confidence flags, not raw messages.
+If the log query fails, it also records its exit status, allowlisted error code
+and signal, requested timeout, and bounded elapsed time. Unknown codes/signals
+become `other`; command output and exception text are omitted.
 Counts marked complete apply only to the queried system processes and messages
 containing the qualification package marker; they do not prove an absence of
-other errors. The launch is never repeated or treated as successful by these
+other errors. After a failed first launch, `ios-<scenario>-create-launch-reports.json`
+records whether existing startup/create reports could be read. Each regular-file
+read is limited to 100,001 bytes; reports over 100,000 bytes are rejected. Opening
+is nonblocking, symlinks are refused, and nonregular files are closed without reading. The
+separate diagnostic-only artifact is limited to 8 KiB and retains only validated
+status, phase, check count, and fixed crypto/storage checkpoints. A reported
+success cannot qualify the failed launch. The launch is never repeated or treated as successful by these
 diagnostics. These runner changes are not evidence that an earlier launch stall
 has been fixed; a new exact-head artifact run remains required.
 

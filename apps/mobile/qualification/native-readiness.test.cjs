@@ -93,7 +93,7 @@ test('iOS failure collects bounded owned-device summaries without relaunching or
   assert(calls.every((call) => call.args[2] === 'owned-simulator'));
   assert.deepEqual(calls.map((call) => call.timeout), [180000, 10000, 10000]);
   assert.equal(calls[2].args[calls[2].args.indexOf('--last') + 1], '5m');
-  assert.deepEqual(evidence, [{ version: 2, stage: 'launch', elapsedMs: 180000, lookbackMinutes: 5, servicesAvailable: true, servicesTruncated: false,
+  assert.deepEqual(evidence, [{ version: 3, stage: 'launch', elapsedMs: 180000, lookbackMinutes: 5, servicesAvailable: true, servicesTruncated: false,
     appServiceListed: true, appPidPresent: true, springboardPidPresent: true, logsAvailable: true,
     logsTruncated: false, logParseErrors: 0, fullAttemptRequested: true,
     logCounts: { matched: 1, failure: 1, timeout: 1, termination: 0 },
