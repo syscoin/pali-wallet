@@ -12,6 +12,10 @@ const {
   matchesErc20RestartEvidence,
 } = require('./erc20-transfer.ts');
 const {
+  isNevmQualificationReport,
+  matchesNevmRestartEvidence,
+} = require('./nevm-transfer.ts');
+const {
   assertSimulatorRefusal,
   TIMED_CRYPTO_CASES,
   CHECKS,
@@ -56,6 +60,15 @@ const FIELDS = new Set([
   'erc20Authorizations',
   'erc20InjectedBroadcasts',
   'erc20RestoredFromJournal',
+  'nativeNevmVerified',
+  'nevmAccountId',
+  'nevmAccountIndex',
+  'nevmAddress',
+  'nevmTransferHash',
+  'nevmEthereumTransferHash',
+  'nevmChainId',
+  'nevmJournalContainerVersion',
+  'nevmRestoredFromJournal',
 ]);
 
 /** Pure shared checks. File persistence remains owned by the platform runner. */
@@ -82,6 +95,7 @@ function decodeNativeReport(
     Object.keys(report).some((key) => !FIELDS.has(key)) ||
     !isHdQualificationReport(report) ||
     !isErc20QualificationReport(report) ||
+    !isNevmQualificationReport(report) ||
     (report.cryptoDiagnostic !== undefined &&
       !isCryptoDiagnostic(report.cryptoDiagnostic)) ||
     !isStorageQualificationDiagnostic(
@@ -201,7 +215,8 @@ function assertPhysicalRestart(created, restored) {
     created.physicalBundleIdentifier !== restored.physicalBundleIdentifier ||
     created.physicalSourceRevision !== restored.physicalSourceRevision ||
     !matchesHdRestartEvidence(created, restored) ||
-    !matchesErc20RestartEvidence(created, restored)
+    !matchesErc20RestartEvidence(created, restored) ||
+    !matchesNevmRestartEvidence(created, restored)
   )
     throw Error('Physical cold restart identity mismatch');
 }

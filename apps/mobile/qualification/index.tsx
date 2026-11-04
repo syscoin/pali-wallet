@@ -39,6 +39,7 @@ const PUBLIC_PASSWORD = 'PUBLIC native qualification password 2026';
 const EXPECTED_ADDRESS = '0x9858EfFD232B4033E47d90003D41EC34EcaEda94';
 const EXPECTED_HD_ADDRESS = '0x6Fac4D18c912343BF86fa7049364Dd4E424Ab9C0';
 const EXPECTED_ERC20_HD_ADDRESS = '0xb6716976A3ebe8D39aCEB04372f22Ff8e6802D7A';
+const EXPECTED_NEVM_HD_ADDRESS = '0xF3f50213C1d2e255e4B2bAD430F8A38EEF8D718E';
 type Phase = 'create' | 'restart';
 type Scenario = 'import' | 'generate';
 type Check = { name: string; durationMs: number };
@@ -120,6 +121,7 @@ function QualificationApp() {
       let mnemonicEntropyVerified = false;
       let expectedHdAddress: string | undefined;
       let expectedErc20Address: string | undefined;
+      let expectedNevmAddress: string | undefined;
       let networkCalls = 0;
       const check = async <T,>(
         name: string,
@@ -350,8 +352,10 @@ function QualificationApp() {
             const { HDNodeWallet } = await import('ethers/wallet');
             expectedHdAddress = HDNodeWallet.fromPhrase(presentation.words.join(' '), undefined, "m/44'/60'/0'/0/1").address;
             expectedErc20Address = HDNodeWallet.fromPhrase(presentation.words.join(' '), undefined, "m/44'/60'/0'/0/2").address;
+            expectedNevmAddress = HDNodeWallet.fromPhrase(presentation.words.join(' '), undefined, "m/44'/60'/0'/0/3").address;
             if (parameters!.scenario === 'import') expect(expectedHdAddress === EXPECTED_HD_ADDRESS);
             if (parameters!.scenario === 'import') expect(expectedErc20Address === EXPECTED_ERC20_HD_ADDRESS);
+            if (parameters!.scenario === 'import') expect(expectedNevmAddress === EXPECTED_NEVM_HD_ADDRESS);
             if (parameters!.scenario === 'import')
               expect(presentation.words.join(' ') === PUBLIC_PHRASE);
             else {
@@ -411,6 +415,11 @@ function QualificationApp() {
         const erc20Evidence = await qualifyNativeErc20Transfer({
           phase: parameters.phase, authority, runtime: runtime!, storage: storage!, password: PUBLIC_PASSWORD,
           expectedThirdAddress: expectedErc20Address ?? (parameters.scenario === 'import' ? EXPECTED_ERC20_HD_ADDRESS : undefined), check,
+        });
+        const { qualifyNativeNevmTransfer } = await import('./nevm-transfer.ts');
+        const nevmEvidence = await qualifyNativeNevmTransfer({
+          phase: parameters.phase, authority, runtime: runtime!, storage: storage!, password: PUBLIC_PASSWORD,
+          expectedFourthAddress: expectedNevmAddress ?? (parameters.scenario === 'import' ? EXPECTED_NEVM_HD_ADDRESS : undefined), check,
         });
         expect(authority.getSnapshot().account?.address === address && authority.getCatalogue()?.active.accountId === 'hd:60:1');
         await check('synchronous lock and wrong password refusal', async () => {
@@ -484,6 +493,7 @@ function QualificationApp() {
           sdkVersion: '2.0.0',
           ...hdEvidence,
           ...erc20Evidence,
+          ...nevmEvidence,
           storageDiagnostic: storageDiagnostic.report(),
           pendingProcessTermination: parameters.phase === 'create',
         };
