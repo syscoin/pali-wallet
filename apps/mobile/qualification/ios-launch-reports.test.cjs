@@ -53,7 +53,7 @@ test('special report paths cannot block collection or follow a link outside the 
     const external = path.join(container, 'outside-report.json');
     fs.writeFileSync(external, JSON.stringify(report()));
     fs.symlinkSync(external, path.join(documents, filename('create')));
-    const child = spawnSync(process.execPath, ['-e', `
+    const child = spawnSync(process.execPath, ['--import', require.resolve('../scripts/register-shared-test-dependencies.mjs'), '-e', `
       const assert = require('node:assert/strict');
       const { captureIosLaunchReports } = require(${JSON.stringify(require.resolve('./ios-launch-reports.cjs'))});
       let count = 0;

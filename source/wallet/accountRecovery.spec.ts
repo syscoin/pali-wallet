@@ -441,9 +441,9 @@ it('stages persisted JSON records without a global structuredClone implementatio
     expect(result.groups[0].accounts.HDAccount[0].address).toBe(
       f.group.accounts.HDAccount[0].address
     );
-    expect((result.groups[0].accounts.HDAccount[0] as any).extraMetadata).toEqual(
-      f.group.accounts.HDAccount[0].extraMetadata
-    );
+    expect(
+      (result.groups[0].accounts.HDAccount[0] as any).extraMetadata
+    ).toEqual(f.group.accounts.HDAccount[0].extraMetadata);
   } finally {
     if (clone) Object.defineProperty(globalThis, 'structuredClone', clone);
     await f.keyring.destroy();

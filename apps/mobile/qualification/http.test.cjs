@@ -57,9 +57,9 @@ test('HTTP report and server audit require every current-run field, case and clo
 function cookieControl() {
   let cookie;
   return async (url, init) => {
-    const headers = new Headers(init.headers);
+    const headers = paliHttpHeaders(init.headers);
     if (init.credentials === 'include' && cookie) headers.set('Cookie', cookie);
-    const result = await fetch(url, { ...init, headers: paliHttpHeaders(init.headers), headers });
+    const result = await fetch(url, { ...init, headers });
     if (init.credentials === 'include') {
       const set = result.headers.get('set-cookie');
       if (set) cookie = set.includes('Max-Age=0') ? undefined : set.split(';')[0];
