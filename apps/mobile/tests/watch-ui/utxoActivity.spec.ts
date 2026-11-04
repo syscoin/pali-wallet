@@ -14,8 +14,8 @@ async function delayClipboard(page: Page) {
     } });
   });
 }
-async function open(page: Page, network = 'bitcoin') {
-  await page.goto(`/?utxo-activity=${network}`);
+async function open(page: Page, network = 'bitcoin', android = false) {
+  await page.goto(`/?utxo-activity=${network}${android ? '&android=1' : ''}`);
   await page.getByRole('button', { name: 'View my accounts', exact: true }).click();
   await page.getByRole('tab', { name: 'Activity', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Load confirmed activity', exact: true })).toBeVisible();
@@ -89,7 +89,7 @@ test('unavailable, empty and stale views remain distinct; SYS asset data is not 
 });
 
 test('leaving a slow request and Android focus loss revoke consent without automatic return requests', async ({ page }) => {
-  await open(page);
+  await open(page, 'bitcoin', true);
   await page.evaluate(() => window.__watchFixture.activity.mode('slow'));
   await page.getByRole('button', { name: 'Load confirmed activity', exact: true }).click();
   await expect(page.getByLabel('Loading confirmed activity', { exact: true })).toBeVisible();
@@ -102,10 +102,18 @@ test('leaving a slow request and Android focus loss revoke consent without autom
   expect(await page.evaluate(() => window.__watchFixture.activity.calls().length)).toBe(left);
   await load(page);
   await page.evaluate(() => window.__watchFixture.blur());
-  await expect(page.getByRole('button', { name: 'Load confirmed activity', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'View my accounts', exact: true })).toBeVisible();
+  await expect(page.getByRole('tab')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Net change −10.0 BTC', exact: true })).toHaveCount(0);
   const blurred = await page.evaluate(() => window.__watchFixture.activity.calls().length);
-  await page.getByRole('button', { name: 'Load confirmed activity', exact: true }).click();
+  await page.evaluate(() => window.__watchFixture.lifecycle('active'));
   expect(await page.evaluate(() => window.__watchFixture.activity.calls().length)).toBe(blurred);
+  await page.getByRole('button', { name: 'View my accounts', exact: true }).click();
+  await page.getByRole('tab', { name: 'Activity', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Load confirmed activity', exact: true })).toBeVisible();
+  expect(await page.evaluate(() => window.__watchFixture.activity.calls().length)).toBe(blurred);
+  await load(page);
+  expect(await page.evaluate(() => window.__watchFixture.activity.calls().length)).toBeGreaterThan(blurred);
 });
 
 test('narrow and scaled text keeps the active activity and detail usable', async ({ page }, testInfo) => {

@@ -26,7 +26,7 @@ async function openImport(page: Page) {
 async function preview(page: Page, key = KEY, name = NAME) {
   await page.getByRole('textbox', { name: 'Account name', exact: true }).fill(name);
   await page.getByRole('textbox', { name: 'EVM private key', exact: true }).fill(key);
-  await page.getByRole('button', { name: 'Review account', exact: true }).click();
+  await page.getByRole('button', { name: 'Review address', exact: true }).click();
 }
 async function submit(page: Page, password = 'public-password') {
   await page.getByRole('checkbox', { name: 'I have a separate backup of this private key', exact: true }).check();
@@ -137,7 +137,7 @@ for (const departure of ['back', 'background', 'inactive', 'blur', 'new-unlock']
   });
 }
 
-test('imported removal requires its own backup warning and reimport creates a new identity', async ({ page }) => {
+test('imported removal requires its own backup warning and reimport reuses the SDK slot', async ({ page }) => {
   await openWallet(page); await openImport(page); await preview(page); await submit(page); await imported(page);
   await page.getByRole('button', { name: 'Accounts', exact: true }).click();
   await page.getByRole('button', { name: 'Select Account 1 (wallet)', exact: true }).click();
@@ -153,7 +153,7 @@ test('imported removal requires its own backup warning and reimport creates a ne
   await page.getByRole('button', { name: 'Import private key', exact: true }).click();
   await preview(page); await submit(page);
   await expect(page.getByText(`${NAME} · Ethereum`, { exact: true })).toBeVisible();
-  expect(await page.evaluate(() => window.__watchFixture.catalogue().active.accountId)).toBe('imported:60:1');
+  expect(await page.evaluate(() => window.__watchFixture.catalogue().active.accountId)).toBe('imported:60:0');
 });
 
 test('a shared-address watch remains public and separate from its imported key account', async ({ page }) => {
@@ -184,14 +184,23 @@ test('leaving a review and opening a new import clears every entered secret and 
   await page.getByRole('button', { name: 'Import private key', exact: true }).click();
   await expect(page.getByRole('textbox', { name: 'EVM private key', exact: true })).toHaveValue('');
   await expect(page.getByRole('textbox', { name: 'Account name', exact: true })).toHaveValue('');
-  await expect(page.getByRole('button', { name: 'Review account', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Review address', exact: true })).toBeDisabled();
   expect(await page.content()).not.toContain('not-submitted-password');
   expect((await page.evaluate(() => window.__watchFixture.audit())).importAttempts).toBe(0);
 });
 
-test('the combined 20-account limit disables both native creation entries', async ({ page }) => {
+test('native account creation and import remain available beyond twenty accounts', async ({ page }) => {
   await openWallet(page, '?account-limit=1'); await manage(page);
-  await expect(page.getByRole('button', { name: 'Import private key', exact: true })).toBeDisabled();
-  await expect(page.getByRole('button', { name: 'Add account', exact: true })).toBeDisabled();
-  await expect(page.getByText('Account limit reached', { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => window.__watchFixture.catalogue().accounts.length)).toBe(20);
+  await expect(page.getByRole('button', { name: 'Import private key', exact: true })).toBeEnabled();
+  await page.getByRole('button', { name: 'Add account', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Account name', exact: true }).fill('Account twenty-one');
+  await page.getByRole('textbox', { name: 'Confirm wallet password', exact: true }).fill('public-password');
+  await page.getByRole('button', { name: 'Create account', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => window.__watchFixture.catalogue().accounts.length)).toBe(21);
+  expect(await page.evaluate(() => window.__watchFixture.catalogue().active.accountId)).toBe('hd:60:20');
+  await page.getByRole('button', { name: 'Import private key', exact: true }).click();
+  await preview(page); await submit(page); await imported(page);
+  expect(await page.evaluate(() => window.__watchFixture.catalogue().accounts.length)).toBe(22);
+  expect((await page.evaluate(() => window.__watchFixture.audit())).broadcasts).toBe(0);
 });

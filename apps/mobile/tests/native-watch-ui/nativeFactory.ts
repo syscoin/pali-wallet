@@ -39,7 +39,13 @@ export let latestTransfers: NativeTransfers | null = null;
 export const retiredAuthorities: NativeCustodyAuthority[] = [];
 let sessionUnlocked = false;
 let fixturePassword = 'public-password';
-let nextImportedIndex = 0;
+// Match the pinned SDK allocator: removed slots are reusable within each bucket.
+const nextAccountIndex = (type: 'HDAccount' | 'Imported') => {
+  const used = new Set(catalogue.accounts.filter((account) => account.type === type).map((account) => account.index));
+  let index = 0;
+  while (used.has(index)) index++;
+  return index;
+};
 const importedKeys = new Map<string, string>();
 export function createNativeWalletControllers() {
   const runtime: CustodyRuntime = {
@@ -69,7 +75,7 @@ export function createNativeWalletControllers() {
             let items = [...catalogue.accounts];
             if (request.kind === 'create') {
               if (request.password !== 'public-password') throw new KeyringRuntimeError('INVALID_CREDENTIAL');
-              const index = Math.max(...items.filter((a) => a.type === 'HDAccount').map((a) => a.index)) + 1;
+              const index = nextAccountIndex('HDAccount');
               const account = { id: `hd:60:${index}`, type: 'HDAccount' as const, index, slip44: 60 as const, label: request.label,
                 address: index === 1 ? SECOND : '0x2222222222222222222222222222222222222222' };
               items.push(account); active = account.id;
@@ -93,17 +99,16 @@ export function createNativeWalletControllers() {
     imports: {
       reserve(input, password, expectedRevision) {
         if (expectedRevision !== catalogue.revision) throw new KeyringRuntimeError('CANCELLED');
-        const key = normalizeImportedKey(input.privateKey), identity = importedKeyIdentity(key, nextImportedIndex);
+        const key = normalizeImportedKey(input.privateKey), identity = importedKeyIdentity(key, nextAccountIndex('Imported'));
         if (input.expectedAddress !== identity.address || !input.label.trim()) throw new KeyringRuntimeError('INVALID_INPUT');
         if (catalogue.accounts.some((account) => account.address === identity.address)) throw new KeyringRuntimeError('DUPLICATE_ACCOUNT');
-        if (catalogue.accounts.length >= 20) throw new KeyringRuntimeError('ACCOUNT_LIMIT');
         return { cancel() {}, async execute(guard) {
           guard(); audit.importAttempts++; events.push('import:start');
           await importGate();
           if (importFailure) throw new KeyringRuntimeError(importFailure);
           if (password !== 'public-password') throw new KeyringRuntimeError('INVALID_CREDENTIAL');
           guard();
-          importedKeys.set(identity.id, key); nextImportedIndex++;
+          importedKeys.set(identity.id, key);
           const account = { id: identity.id, type: 'Imported' as const, index: identity.index, slip44: 60 as const, label: input.label, address: identity.address };
           catalogue = Object.freeze({ ...catalogue, accounts: [...catalogue.accounts, account], revision: catalogue.revision + 1,
             active: { ...catalogue.active, accountId: account.id } });
@@ -227,8 +232,9 @@ export const fixtureFetch: typeof fetch = async (_url, init) => {
     case 'eth_chainId': result = '0x1'; break;
     case 'eth_getBalance': result = '0x10000000000000000'; break;
     case 'eth_getTransactionCount': result = '0x0'; break;
-    case 'eth_getBlockByNumber': result = { number: '0x20', hash: '0x' + '2'.repeat(64) }; break;
-    case 'eth_feeHistory': result = { oldestBlock: '0x1', baseFeePerGas: ['0x1', '0x1'] }; break;
+    case 'eth_getBlockByNumber': result = { number: '0x20', hash: '0x' + '2'.repeat(64), gasLimit: '0x1c9c380', baseFeePerGas: '0x1' }; break;
+    case 'eth_gasPrice': result = '0x3'; break;
+    case 'eth_feeHistory': result = { oldestBlock: '0x1', baseFeePerGas: ['0x1', '0x1'], reward: [['0x1', '0x1', '0x1']] }; break;
     case 'eth_maxPriorityFeePerGas': result = '0x1'; break;
     case 'eth_estimateGas': result = '0x5208'; break;
     case 'eth_getTransactionReceipt': result = null; break;

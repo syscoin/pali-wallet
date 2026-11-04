@@ -219,7 +219,7 @@ test('review and pending signing are revoked before a watch account becomes acti
   await page.getByRole('button', { name: 'Review transfer', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Confirm and send', exact: true })).toBeVisible();
   await page.evaluate(() => window.__watchFixture.delaySign(true));
-  await page.getByRole('textbox', { name: 'Confirm your wallet password', exact: true }).fill('public-password');
+  await expect(page.getByRole('textbox', { name: /password/i })).toHaveCount(0);
   await page.getByRole('button', { name: 'Confirm and send', exact: true }).click();
   await expect.poll(async () => (await fixture(page)).signs).toBe(1);
   await page.getByRole('button', { name: 'Back', exact: true }).click();
