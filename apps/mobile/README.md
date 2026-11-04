@@ -4,7 +4,7 @@ A React Native / Expo SDK 58 mobile app in the extension repository. The reviewe
 
 The implementation starts from extension source `4470e54e8777cca2a4fe7c712409f60eeb4fa401`. The handoff's reference checkout at `88cc9c9a8959b5dccc7ff43f136d60203782918a` adds documentation changes. The supplied screen deck and video are product references, not evidence of native security or working transaction support.
 
-The [capability ledger](design/PARITY_MATRIX.md#current-implementation-ledger) records the implemented scope and remaining gates. This description is reconciled against source `4b95d251e9357bc593bff0e606ccc431ccf55529`. Historical test results below remain tied to their tested revisions; they do not qualify this composed source.
+The [capability ledger](design/PARITY_MATRIX.md#current-implementation-ledger) records the implemented scope and remaining gates. This description is reconciled against source `03928b18f6ec6b6d40d7eb300e6e8fd0f5acc9c8`. The [shared-core audit](docs/shared-core-audit.md) records actual host boundaries. Historical test results below remain tied to their tested revisions; they do not qualify this composed source.
 
 ## Full-wallet design target
 
@@ -119,7 +119,7 @@ The mobile lockfile overrides `glob` to 14.0.3 and `minimatch` to 11.0.4 for the
 
 ## Shared SDK dependencies
 
-At this source basis, lockfiles pin official `@sidhujag/sysweb3-keyring` 2.1.1,
+At this source basis, lockfiles pin official `@sidhujag/sysweb3-keyring` 2.1.2,
 `@sidhujag/sysweb3-network` 1.0.111 and `syscoinjs-lib` 1.0.277 archives with
 integrity hashes. The latter defers legacy
 Ethereum-proof imports until an explicit proof operation; ordinary wallet

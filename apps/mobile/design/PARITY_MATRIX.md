@@ -2,7 +2,7 @@
 
 Original design basis: November 2, 2026, extension source **`4470e54e8777cca2a4fe7c712409f60eeb4fa401`**. The handoff reference `88cc9c9a8959b5dccc7ff43f136d60203782918a` adds documentation, not wallet behavior. The detailed capability rows retain that design inventory, with the implemented note-bundle enhancement recorded below.
 
-**Current implementation source basis: `4b95d251e9357bc593bff0e606ccc431ccf55529`**, reconciled November 4, 2026. This is a composed development candidate. The historical native evidence below belongs only to its recorded heads; source presence, a reviewed patch or a signed test build does not qualify this current composition.
+**Current implementation source basis: `03928b18f6ec6b6d40d7eb300e6e8fd0f5acc9c8`**, reconciled November 4, 2026. This is a composed development candidate; see the [shared-core audit](../docs/shared-core-audit.md). The historical native evidence below belongs only to its recorded heads; source presence, a reviewed patch or a signed test build does not qualify this current composition.
 
 **Target:** carry every supported extension user journey into mobile, preserving account/network restrictions, consent, errors and recovery semantics. The source implements only part of that target. A designed screen, an implemented controller and a native-qualified flow are three different statuses; none alone establishes a shipping release or complete feature equivalence.
 
