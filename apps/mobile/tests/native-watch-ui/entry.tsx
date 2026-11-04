@@ -1,3 +1,4 @@
+import { idleFixture } from './security';
 // Synthetic adapters exercise the actual App and native screens. No live funds or RPC.
 import React from 'react';
 import { registerRootComponent } from 'expo';
@@ -25,6 +26,7 @@ declare global {
   interface Window {
     __watchFixture: {
       activity: typeof activityFixture;
+      idle: typeof idleFixture;
       audit(): typeof audit;
       events(): string[];
       shares(): string[];
@@ -58,7 +60,7 @@ declare global {
   }
 }
 window.__watchFixture = {
-  activity: activityFixture,
+  activity: activityFixture, idle: idleFixture,
   audit: () => ({ ...audit }), events: () => [...events], shares: () => [...publicShares], watchBalance: setWatchBalanceMode, accounts: readAccounts, selection: readSelection,
   readFailure: setReadFailure, delayUnlock: setDelayUnlock, releaseUnlock, delaySign: setDelaySign, releaseSign,
   lifecycle(state) { appState = state; for (const listener of [...listeners.get('change') ?? []]) listener(state); },

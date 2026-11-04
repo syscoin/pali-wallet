@@ -1,3 +1,4 @@
+import { IdleTextInput, IdlePressable } from './IdleActivityBoundary';
 import React, {
   useCallback,
   useEffect,
@@ -10,9 +11,7 @@ import {
   ActivityIndicator,
   BackHandler,
   Keyboard,
-  Pressable,
   StyleSheet,
-  TextInput,
   View,
 } from 'react-native';
 import { formatTokenUnits } from '../../../../source/shared/erc20';
@@ -256,7 +255,7 @@ function TokenContent({
                 />
               ) : null}
               {snapshot.items.map((item) => (
-                <Pressable
+                <IdlePressable
                   key={item.metadata.contractAddress}
                   accessibilityRole="button"
                   accessibilityLabel={`View token contract ${item.metadata.contractAddress} on ${network.name}`}
@@ -286,7 +285,7 @@ function TokenContent({
                     </Text>
 
                   </Card>
-                </Pressable>
+                </IdlePressable>
               ))}
               <Button
                 title="Import token"
@@ -315,7 +314,7 @@ function TokenContent({
               </Text>
               <View style={s.field}>
                 <Text style={s.label}>CONTRACT ADDRESS</Text>
-                <TextInput
+                <IdleTextInput
                   accessibilityLabel="Token contract address"
                   value={contract}
                   editable={!busy}

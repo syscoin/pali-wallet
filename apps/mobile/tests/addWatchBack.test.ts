@@ -5,6 +5,7 @@ import test from 'node:test';
 import { URL as NodeURL } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
+import { createIdleComponentFixture, expandIdleElements } from './idleComponentFixture.ts';
 import * as core from '../src/core/index.ts';
 import { WatchAccounts } from '../src/core/watchAccounts.ts';
 import { getUtxoNetwork } from '../src/core/utxoNetworks.ts';
@@ -81,7 +82,7 @@ function renderer() {
   return { api, instance,
     render(owner: Instance, component: Component, props: Record<string, unknown>) {
       current = owner; owner.next = 0;
-      const result = component(props); owner.layouts.splice(0).forEach((run) => run()); return result;
+      const result = component(props); owner.layouts.splice(0).forEach((run) => run()); return expandIdleElements(result);
     },
     flush(owner: Instance) { owner.effects.splice(0).forEach((run) => run()); },
     dispose(owner: Instance) { owner.cells.forEach((hook) => hook.cleanup?.()); },
@@ -110,7 +111,8 @@ for (const kind of ['native', 'watch', 'activity'] as const) {
       const ui = { ...Object.fromEntries(['Button', 'Card', 'Coin', 'Header', 'Notice', 'Row', 'Screen', 'Text'].map((name) => [name, name])), colors: {}, styles: {} };
       const load = (name: string) => readFileSync(new NodeURL(`../${name}`, import.meta.url), 'utf8');
       const hooks = evaluate(load('src/screens/useRealShell.ts'), { react: render.api, 'react-native': native, '../navigation/tabDeparture': { TabDeparture } });
-      const dependencies = { react: render.api, 'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
+      const idle = createIdleComponentFixture(render.api, native);
+      const dependencies = { './IdleActivityBoundary': idle.components, react: render.api, 'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
         'expo-clipboard': {}, 'react-native-qrcode-svg': 'QRCode', '../ui': ui, '../core/amounts': core, '../core/networks': core,
         '../core/utxoNetworks': { getUtxoNetwork }, '../core/watchOnlyAuthority': core,
         '../custody/networkContext': { getNativeNetwork: () => ({ id: 'ethereum' }), getNativeSendContext: () => ({ networkId: 'ethereum', name: 'Ethereum', symbol: 'ETH', decimals: 18 }), nativeSigningEnabled: () => false },
@@ -176,7 +178,7 @@ function find(tree: unknown, predicate: (element: Element) => boolean): Element 
 function get(tree: Element, predicate: (element: Element) => boolean): Element {
   const found = find(tree, predicate); assert.ok(found, 'Expected rendered element'); return found;
 }
-function press(element: Element) { return (element.props.onPress as () => void)(); }
+function press(element: Element) { return (element.props.onPress as (event: object) => void)({ nativeEvent: {} }); }
 function control(tree: Element, label: string) { return get(tree, (element) => element.props.accessibilityLabel === label); }
 function named(tree: Element, text: string) {
   return get(tree, (element) => typeof element.props.onPress === 'function' && !!find(element, (child) => child.children.includes(text)));
@@ -202,17 +204,22 @@ async function fixture(path: 'app' | 'accounts', order: 'parent-first' | 'child-
     ...Object.fromEntries(['View', 'Pressable', 'ScrollView', 'TextInput', 'Text', 'Modal', 'KeyboardAvoidingView', 'ActivityIndicator'].map((name) => [name, name])),
   };
   const source = (name: string) => readFileSync(new NodeURL(`../${name}`, import.meta.url), 'utf8');
+  const idle = createIdleComponentFixture(render.api, native);
+  await idle.ready;
   const onboarding = evaluate(source('src/screens/Onboarding.tsx'), {
+    './IdleActivityBoundary': idle.components,
     react: render.api, 'react-native': native, '../ui': ui,
     '../core/watchOnlyAuthority': core, '../core/networks': core, '../core/utxoNetworks': { getUtxoNetwork },
   });
   const AddWatch = onboarding.AddWatchAccount as Component;
   const accounts = evaluate(source('src/screens/WalletAccounts.tsx'), {
+    './IdleActivityBoundary': idle.components,
     react: render.api, 'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' }, '../ui': ui,
     '../core/accountDirectory': { projectAccounts: () => [], accountIdentity: () => '' }, './Onboarding': onboarding, '../core/networks': core,
   });
   // Only expose the real internal component to this VM; production exports stay unchanged.
   const app = evaluate(`${source('App.tsx')}\nexport { AppContent };`, {
+    './src/platform/security': idle.security, './src/screens/IdleActivityBoundary': idle.components,
     react: render.api, 'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView', SafeAreaProvider: 'SafeAreaProvider' },
     'expo-status-bar': { StatusBar: 'StatusBar' }, 'expo-clipboard': {}, 'react-native-qrcode-svg': 'QRCode', './src/ui': ui,
     './src/screens/Onboarding': onboarding, './src/screens/NativeWallet': {}, './src/screens/WalletAccounts': accounts,

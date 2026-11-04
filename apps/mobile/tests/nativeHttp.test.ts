@@ -5,6 +5,7 @@ import { createRequire } from 'node:module';
 import { URL as NodeURL } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
+import { createSecurityTestFixture } from './idleComponentFixture.ts';
 import { createNativeHttpFetch, type WalletHttpFetch } from '../src/platform/httpPolicy.ts';
 import { createBalanceReader } from '../src/platformRpc.ts';
 import { ActivityExplorerReader } from '../src/activity/explorerReader.ts';
@@ -122,13 +123,16 @@ test('owned native transport propagates fetch rejection without retry or fallbac
   assert.equal(calls, 1);
 });
 
-test('native factory explicitly wires one owned transport to all network consumers', () => {
+test('native factory explicitly wires one owned transport to all network consumers', async () => {
+  const security = createSecurityTestFixture(); await security.securityPreferences.load();
+  security.custodyIdle.begin({}, () => undefined);
   const captures: Record<string, any[]> = {};
   const retired: string[] = [];
   const capture = (name: string) => class { view = {}; constructor(...args: any[]) { (captures[name] ??= []).push(args); } dispose() { retired.push(name); } };
   const fetcher: WalletHttpFetch = async () => { throw Error('no HTTP in wiring test'); };
   const balance = { readBalance() {} };
   const factory = evaluate('../src/platform/nativeFactory.native.ts', {
+    './security': security,
     '../custody/authority.ts': { NativeCustodyAuthority: capture('authority') },
     '../custody/keyringRuntime.ts': { createKeyringRuntimeFactory: () => ({ open() {} }) },
     '../custody/recovery.ts': { NativeRecoveryCoordinator: capture('recovery') },

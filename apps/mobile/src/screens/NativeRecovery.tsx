@@ -1,5 +1,6 @@
+import { IdleTextInput, IdlePressable } from './IdleActivityBoundary';
 import React, { useCallback, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { AccessibilityInfo, ActivityIndicator, AppState, BackHandler, findNodeHandle, Keyboard, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text as NativeText, TextInput, View } from 'react-native';
+import { AccessibilityInfo, ActivityIndicator, AppState, BackHandler, findNodeHandle, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, Text as NativeText, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeRecoveryFlow } from '../custody/recoveryFlow';
 import type { RecoveryInventory } from '../custody/recoveryInventory';
@@ -99,8 +100,8 @@ export function NativeRecovery({ flow }: { flow: NativeRecoveryFlow }) {
     <KeyboardAvoidingView style={s.fill} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Screen footer={<View style={s.actions}>{footer}</View>}>
         <View style={s.header}>
-          <Pressable accessibilityRole="button" accessibilityLabel="Back" onPress={back}
-            style={({ pressed }) => [s.back, pressed && { opacity: 0.65 }]}><Icon name="arrow-left" /></Pressable>
+          <IdlePressable accessibilityRole="button" accessibilityLabel="Back" onPress={back}
+            style={({ pressed }) => [s.back, pressed && { opacity: 0.65 }]}><Icon name="arrow-left" /></IdlePressable>
           <NativeText ref={heading} accessibilityRole="header" allowFontScaling style={[styles.text, s.title]}>{titles[snapshot.phase]}</NativeText>
         </View>
         {progress && <View style={s.progress}>
@@ -137,7 +138,7 @@ function SecretField({ name, label, value, update, error, multiline = false }: {
   const id = `recovery-${name}`;
   return <View style={s.field}>
     <Text nativeID={`${id}-label`} style={s.label}>{label}</Text>
-    <TextInput accessibilityLabel={label} accessibilityHint={error}
+    <IdleTextInput accessibilityLabel={label} accessibilityHint={error}
       aria-labelledby={error ? `${id}-label ${id}-error` : `${id}-label`}
       value={value} onChangeText={(next) => update(name, next)}
       autoCapitalize="none" autoCorrect={false} spellCheck={false} autoComplete="off"
@@ -166,10 +167,10 @@ function Inventory({ inventory, details, toggle }: { inventory: RecoveryInventor
     <Card style={s.inventory}>{rows.map(([label, count]) => <View key={label} style={s.inventoryRow}>
       <Text style={s.inventoryLabel}>{label}</Text><Text style={s.count}>{count}</Text>
     </View>)}</Card>
-    <Pressable accessibilityRole="button" accessibilityLabel="Saved-data details" accessibilityState={{ expanded: details }} onPress={toggle} style={s.details}>
+    <IdlePressable accessibilityRole="button" accessibilityLabel="Saved-data details" accessibilityState={{ expanded: details }} onPress={toggle} style={s.details}>
       <Text style={s.link}>{details ? 'Hide saved-data details' : 'Saved-data details'}</Text>
       <Icon name="chevron-down" color={colors.blue} />
-    </Pressable>
+    </IdlePressable>
     {details && <Card style={s.inventory}>{more.map(([label, count]) => <View key={label} style={s.inventoryRow}>
       <Text style={s.inventoryLabel}>{label}</Text><Text style={s.count}>{count}</Text>
     </View>)}</Card>}

@@ -1,3 +1,4 @@
+import { IdlePressable } from './IdleActivityBoundary';
 import React, {
   useCallback,
   useEffect,
@@ -12,7 +13,6 @@ import {
   FlatList,
   Linking,
   Modal,
-  Pressable,
   ScrollView,
   StyleSheet,
   View,
@@ -402,7 +402,7 @@ function NativeActivityContent({
             </View>
           }
           renderItem={({ item }) => (
-            <Pressable
+            <IdlePressable
               ref={(node) => {
                 if (node) rowViews.current.set(item.hash, node);
                 else rowViews.current.delete(item.hash);
@@ -435,7 +435,7 @@ function NativeActivityContent({
               {item.unavailable && (
                 <Text style={styles.muted}>RPC details unavailable</Text>
               )}
-            </Pressable>
+            </IdlePressable>
           )}
           ListEmptyComponent={
             snapshot.status !== 'loading' ? (

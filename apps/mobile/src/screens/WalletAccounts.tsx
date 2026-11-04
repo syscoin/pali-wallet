@@ -1,5 +1,6 @@
+import { IdleTextInput, IdlePressable } from './IdleActivityBoundary';
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { ActivityIndicator, BackHandler, KeyboardAvoidingView, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, BackHandler, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { accountIdentity, projectAccounts, type AccountSelection } from '../core/accountDirectory';
 import type { WatchAccountState } from '../core/watchAccounts';
@@ -59,11 +60,11 @@ export function WalletAccounts(props: WalletAccountsProps) {
       {form && typeof form !== 'string' ? <>
         <Notice title={form.name} body={form.kind === 'remove' ? 'This removes only the public address saved on this device. It does not move funds. You can add this address again.' : 'Names are saved on this device and do not change the public address.'} />
         <Text selectable style={s.address}>{form.address}</Text>
-        {form.kind === 'rename' && <><Text style={styles.muted}>Account name</Text><TextInput accessibilityLabel="Watch account name" value={name} onChangeText={setName} editable={!busy} maxLength={40} autoCorrect={false} style={s.input} /></>}
+        {form.kind === 'rename' && <><Text style={styles.muted}>Account name</Text><IdleTextInput accessibilityLabel="Watch account name" value={name} onChangeText={setName} editable={!busy} maxLength={40} autoCorrect={false} style={s.input} /></>}
       </> : <>
         <Text style={styles.muted}>Wallet accounts unlock through your wallet. Imported keys need separate backups. Watch accounts can view balances and receive addresses only.</Text>
         {entries.map((entry) => <Card key={entry.identity} style={s.account}>
-          <Pressable accessibilityRole="button" accessibilityLabel={`Select ${entry.name} (${entry.selection.kind !== 'watch' ? 'wallet' : 'watch-only'})`} disabled={busy || props.watch.busy || entry.selection.kind === 'watch' && props.watch.status !== 'ready'} onPress={() => void run(() => props.onSelect(entry.selection))}>
+          <IdlePressable accessibilityRole="button" accessibilityLabel={`Select ${entry.name} (${entry.selection.kind !== 'watch' ? 'wallet' : 'watch-only'})`} disabled={busy || props.watch.busy || entry.selection.kind === 'watch' && props.watch.status !== 'ready'} onPress={() => void run(() => props.onSelect(entry.selection))}>
             <View style={s.row}><Text style={s.name}>{entry.name}</Text>{entry.identity === selected && <Text style={s.selected}>Selected</Text>}</View>
             <Text style={s.kind}>{entry.selection.kind === 'hd' ? 'Recovery phrase account' : entry.selection.kind === 'imported' ? 'Imported key · Separate backup' : (() => {
               const watched = props.watch.accounts.find((account) => account.id === entry.selection.id)!;
@@ -71,7 +72,7 @@ export function WalletAccounts(props: WalletAccountsProps) {
               return network.kind === 'utxo' ? `Watch-only · ${network.name} · Single address` : 'Watch-only · Public EVM address';
             })()}</Text>
             <Text selectable style={s.address}>{entry.address}</Text>
-          </Pressable>
+          </IdlePressable>
           {entry.selection.kind === 'watch' && <View style={s.actions}>
             <Button title={`Rename ${entry.name}`} variant="quiet" disabled={!canManageWatch} onPress={() => { setName(entry.name); setForm({ kind: 'rename', id: entry.selection.id, name: entry.name, address: entry.address }); setError(''); }} />
             <Button title={`Remove ${entry.name}`} variant="quiet" disabled={!canManageWatch} onPress={() => { setForm({ kind: 'remove', id: entry.selection.id, name: entry.name, address: entry.address }); setError(''); }} />

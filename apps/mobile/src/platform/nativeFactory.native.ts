@@ -1,3 +1,4 @@
+import { custodyIdle, securityPreferences } from './security';
 import { CustodyOperationError, NativeCustodyAuthority } from '../custody/authority.ts';
 import { createKeyringRuntimeFactory } from '../custody/keyringRuntime.ts';
 import type { KeyringRuntime } from '../custody/keyringRuntime.ts';
@@ -27,8 +28,13 @@ async function openStorage() {
   });
 }
 
-function factory(onStorageOpened?: (storage: OpenWalletStorage) => void) {
+function custodyGuard() {
+  const guard = custodyIdle.captureGuard();
+  return () => { if (securityPreferences.getSnapshot().status !== 'ready') throw new Error('CANCELLED'); guard(); };
+}
+function factory(onStorageOpened?: (storage: OpenWalletStorage) => void, assertActive = custodyGuard()) {
   return createKeyringRuntimeFactory({
+    assertActive,
     ensureCryptoReady: async () => { await ensureNativeCryptoReady(); },
     openStorage: async () => {
       const storage = await openStorage();
@@ -42,7 +48,7 @@ function factory(onStorageOpened?: (storage: OpenWalletStorage) => void) {
 export function createNativeRecoveryCoordinator(controllers: ReturnType<typeof createNativeWalletControllers>) {
   return new NativeRecoveryCoordinator({ owner: controllers.authority,
     retireControllers() { controllers.disposeTokens(); controllers.disposeTransfers(); controllers.keyExport.dispose(); controllers.backup.dispose(); },
-    ensureCryptoReady: async () => { await ensureNativeCryptoReady(); }, openStorage });
+    ensureCryptoReady: async () => { await ensureNativeCryptoReady(); }, openStorage, assertActive: custodyGuard() });
 }
 
 export function createNativeCustodyAuthority(): NativeCustodyAuthority {
@@ -52,10 +58,11 @@ export function createNativeCustodyAuthority(): NativeCustodyAuthority {
 export function createNativeWalletControllers() {
   let runtime: KeyringRuntime | undefined;
   let ownedStorage: OpenWalletStorage | undefined;
-  const base = factory((storage) => { ownedStorage = storage; });
+  const assertActive = custodyGuard();
+  const base = factory((storage) => { ownedStorage = storage; }, assertActive);
   const authority = new NativeCustodyAuthority({
     async open() { runtime = await base.open() as KeyringRuntime; return runtime; },
-  });
+  }, { preferences: securityPreferences, assertActive });
   const backup = new SeedBackupFlow(authority, () => runtime?.backup);
   const keyExport = new HdKeyExportFlow(authority, () => runtime?.keyExport);
   const balanceReader = createBalanceReader({ fetch: walletFetch, registrations: () => authority.getCatalogue()?.networks });

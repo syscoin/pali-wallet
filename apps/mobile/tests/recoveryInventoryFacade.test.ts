@@ -4,6 +4,7 @@ import { URL as NodeURL } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import test from 'node:test';
 import ts from 'typescript';
+import { createSecurityTestFixture } from './idleComponentFixture.ts';
 import { CustodyOperationError, NativeCustodyAuthority } from '../src/custody/authority.ts';
 import { readRecoveryInventory } from '../src/custody/recoveryInventory.ts';
 import { NATIVE_NETWORKS } from '../src/custody/networkContext.ts';
@@ -39,7 +40,9 @@ function savedSnapshot(): RecoveryStorageSnapshot {
 }
 
 /** Execute the real factory, authority and inventory parser; replace only native/SDK ports. */
-function fixture(existing = true) {
+async function fixture(existing = true) {
+  const security = createSecurityTestFixture(); await security.securityPreferences.load();
+  security.custodyIdle.begin({}, () => undefined);
   const counts = { opens: 0, snapshotReads: 0, stateReads: 0, closes: 0, retirements: 0, writes: 0 };
   const stored: CustodyStoredState = existing
     ? { presence: 'existing', backup: 'confirmed' } : { presence: 'empty', backup: 'unconfirmed' };
@@ -66,6 +69,7 @@ function fixture(existing = true) {
   };
   class PassiveController { readonly view = {}; dispose() {} }
   const dependencies: Record<string, unknown> = {
+    './security': security,
     '../custody/authority.ts': { NativeCustodyAuthority, CustodyOperationError },
     '../custody/keyringRuntime.ts': {
       createKeyringRuntimeFactory: (options: KeyringRuntimeDependencies): CustodyRuntimeFactory => ({
@@ -104,7 +108,7 @@ function fixture(existing = true) {
 }
 
 test('locked inventory facade reads the original handle, returns only public counts and never opens or retires another owner', async () => {
-  const f = fixture(), controllers = f.factory.createNativeWalletControllers();
+  const f = await fixture(), controllers = f.factory.createNativeWalletControllers();
   await assert.rejects(controllers.readRecoveryInventory(), cancelled);
   assert.equal(f.counts.opens, 0);
   await controllers.authority.initialize();
@@ -129,12 +133,12 @@ test('locked inventory facade reads the original handle, returns only public cou
 });
 
 test('facade rejects empty, ready and disposed owners before reading inventory', async () => {
-  const empty = fixture(false), emptyControllers = empty.factory.createNativeWalletControllers();
+  const empty = await fixture(false), emptyControllers = empty.factory.createNativeWalletControllers();
   await emptyControllers.authority.initialize();
   await assert.rejects(emptyControllers.readRecoveryInventory(), cancelled);
   assert.equal(empty.counts.snapshotReads, 0);
   await emptyControllers.authority.dispose();
-  const f = fixture(), controllers = f.factory.createNativeWalletControllers();
+  const f = await fixture(), controllers = f.factory.createNativeWalletControllers();
   await controllers.authority.initialize();
   await controllers.authority.unlock('fixture password');
   assert.equal(controllers.authority.getSnapshot().phase, 'ready');
@@ -146,7 +150,7 @@ test('facade rejects empty, ready and disposed owners before reading inventory',
 
 for (const change of ['lock', 'unlock-relock', 'dispose', 'recovery-retirement'] as const) {
   test(`pending inventory is discarded after ${change}, even when the phase returns to locked`, async () => {
-    const f = fixture(), controllers = f.factory.createNativeWalletControllers();
+    const f = await fixture(), controllers = f.factory.createNativeWalletControllers();
     await controllers.authority.initialize();
     const gate = deferred<RecoveryStorageSnapshot>();
     f.setSnapshotRead(() => gate.promise);
@@ -171,7 +175,7 @@ for (const change of ['lock', 'unlock-relock', 'dispose', 'recovery-retirement']
 }
 
 test('inventory read failures retain unavailable and never expose storage errors or manufacture empty counts', async () => {
-  const f = fixture(), controllers = f.factory.createNativeWalletControllers();
+  const f = await fixture(), controllers = f.factory.createNativeWalletControllers();
   await controllers.authority.initialize();
   f.setSnapshotRead(async () => { throw Error(PRIVATE_ERROR); });
   const inventory = await controllers.readRecoveryInventory();
@@ -182,7 +186,7 @@ test('inventory read failures retain unavailable and never expose storage errors
 });
 
 test('standalone custody factory does not expose inventory or acquire an additional handle', async () => {
-  const f = fixture(), authority = f.factory.createNativeCustodyAuthority();
+  const f = await fixture(), authority = f.factory.createNativeCustodyAuthority();
   assert.equal('readRecoveryInventory' in authority, false);
   await authority.initialize();
   assert.equal(f.counts.opens, 1); assert.equal(f.counts.snapshotReads, 0);

@@ -22,7 +22,7 @@ process.env.NODE_ENV = 'production';
 delete process.env.SYSWEB3_PBKDF2_ENC_ITERS;
 delete process.env.SYSWEB3_PBKDF2_AUTH_ITERS;
 
-function memoryDisk(loadSdk?: KeyringRuntimeDependencies['loadSdk']) {
+function memoryDisk(loadSdk?: KeyringRuntimeDependencies['loadSdk'], assertActive?: () => void) {
   const records = new Map<string, unknown>();
   let confirmation: string | undefined;
   let failures = 0;
@@ -79,7 +79,7 @@ function memoryDisk(loadSdk?: KeyringRuntimeDependencies['loadSdk']) {
   });
   const factory = createKeyringRuntimeFactory({ ensureCryptoReady: async () => {
     assert.ok(globalThis.crypto.subtle, 'Node supplies real WebCrypto for this control');
-  }, openStorage: open, loadSdk });
+  }, openStorage: open, loadSdk, assertActive });
   return {
     records, factory,
     onRecord(hook?: (kind: string, key: string) => Promise<void>) { recordHook = hook; },
@@ -1699,4 +1699,21 @@ test('unlocking again cannot revive an old review or sign it for a newly selecte
     assert.equal(Transaction.from(network.broadcasts[0]!).from, selected);
     assert.deepEqual([sdk.unlocks, sdk.hydrations], before);
   } finally { transfers.dispose(); await f.authority.dispose(); f.disk.restoreNetwork(); }
+});
+
+
+test('idle policy reauthentication uses the real shared throttle and counts rejection after idle expiry', async () => {
+  const controlled = await controlledSdk(); let active = true;
+  const disk = memoryDisk(controlled.loadSdk, () => { if (!active) throw Error('CANCELLED'); }); disk.denyNetwork();
+  const runtime = await disk.factory.open() as KeyringRuntime;
+  try {
+    await runtime.session.importWallet(PHRASE, PASSWORD);
+    const hold = controlled.hold(), pending = runtime.security!.reauthenticateIdlePolicy('wrong password', () => undefined);
+    await hold.started; active = false; hold.finish();
+    await assert.rejects(pending, /CANCELLED/);
+    assert.equal(disk.failureWrites, 1); assert.equal(disk.failures, 1);
+    active = true; await runtime.session.unlock(PASSWORD);
+    await runtime.security!.reauthenticateIdlePolicy(PASSWORD, () => undefined);
+    assert.equal(disk.failures, 0);
+  } finally { await runtime.storage.close(); disk.restoreNetwork(); }
 });

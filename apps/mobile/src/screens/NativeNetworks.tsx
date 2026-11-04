@@ -1,5 +1,6 @@
+import { IdleTextInput, IdlePressable } from './IdleActivityBoundary';
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { BackHandler, Keyboard, KeyboardAvoidingView, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { BackHandler, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { createNativeNetwork, type NativeNetworkRegistration } from '../custody/networkContext';
 import type { NativeNetworkSnapshot, NativeNetworkView } from '../custody/networkView';
@@ -19,7 +20,7 @@ function NetworkOption<Id extends string>({ network, selected, busy, onSelect, o
   onSelect(id: Id): Promise<void>;
   onEdit?: (registration: NativeNetworkRegistration) => void;
 }) {
-  return <View style={[s.network, s.networkRow, selected && s.active]}><Pressable accessibilityRole="radio"
+  return <View style={[s.network, s.networkRow, selected && s.active]}><IdlePressable accessibilityRole="radio"
     accessibilityLabel={`${network.name}, ${network.symbol}${network.testnet ? ', test network' : ''}${network.canSign ? '' : ', balance and receive only'}`}
     accessibilityState={{ checked: selected, disabled: busy }} aria-checked={selected} disabled={busy}
     onPress={() => { void onSelect(network.id); }}
@@ -31,7 +32,7 @@ function NetworkOption<Id extends string>({ network, selected, busy, onSelect, o
     <View style={[s.check, selected && s.checked]}>
       {selected && <Text style={s.checkText}>✓</Text>}
     </View>
-  </Pressable>{network.registration && onEdit && <Pressable accessibilityRole="button" accessibilityLabel={`Edit ${network.name}`} disabled={busy} onPress={() => onEdit(network.registration!)} style={s.editNetwork}><Text style={s.more}>⋯</Text></Pressable>}</View>;
+  </IdlePressable>{network.registration && onEdit && <IdlePressable accessibilityRole="button" accessibilityLabel={`Edit ${network.name}`} disabled={busy} onPress={() => onEdit(network.registration!)} style={s.editNetwork}><Text style={s.more}>⋯</Text></IdlePressable>}</View>;
 }
 
 /** Switching requests a guarded context change; this screen never grants signing authority. */
@@ -126,7 +127,7 @@ export function NativeNetworks<Id extends string>({ controller, onBack }: {
     }
   };
   const field = (key: 'name' | 'chainId' | 'rpcUrl' | 'symbol', label: string) => <View style={s.field}>
-    <Text style={s.help}>{label}</Text><TextInput accessibilityLabel={label} value={form?.[key] ?? ''}
+    <Text style={s.help}>{label}</Text><IdleTextInput accessibilityLabel={label} value={form?.[key] ?? ''}
       onChangeText={(value) => setForm((old) => old && { ...old, [key]: value })} editable={!busy && !(key === 'chainId' && !!form?.id)}
       autoCapitalize="none" autoCorrect={false} spellCheck={false} keyboardType={key === 'chainId' ? 'number-pad' : key === 'rpcUrl' ? 'url' : 'default'}
       maxLength={key === 'rpcUrl' ? 2048 : key === 'chainId' ? 16 : key === 'symbol' ? 12 : 64} style={s.search} /></View>;
@@ -140,17 +141,17 @@ export function NativeNetworks<Id extends string>({ controller, onBack }: {
         <Header title={form ? form.id ? "Edit network" : "Add network" : "Networks"} subtitle="Choose a network for this account" onBack={form ? () => { controller.cancel(); setForm(null); } : close} />
         {form ? <>
           {field('name', 'Network name')}{field('rpcUrl', 'RPC URL')}{field('chainId', 'Chain ID')}{field('symbol', 'Currency symbol')}
-          <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: form.testnet, disabled: busy }} disabled={busy}
+          <IdlePressable accessibilityRole="checkbox" accessibilityState={{ checked: form.testnet, disabled: busy }} disabled={busy}
             onPress={() => setForm((value) => value && { ...value, testnet: !value.testnet })} style={s.network}>
             <Text>{form.testnet ? '✓ ' : ''}This is a test network</Text>
-          </Pressable>
+          </IdlePressable>
           <Text style={s.help}>RPC changes apply to pending status checks and retries you approve.</Text>
           <Button title={busy ? 'Checking network…' : 'Save network'} disabled={busy} onPress={() => { void save(); }} />
           {form.id && controller.remove && <Button title="Remove network" variant="quiet" disabled={busy || form.id === snapshot?.selectedId} onPress={() => { void save(true); }} />}
           {form.id === snapshot?.selectedId && <Text style={s.help}>Switch to another network before removing this one.</Text>}
           <Button title="Cancel" variant="quiet" disabled={busy} onPress={() => setForm(null)} />
         </> : <>
-        <TextInput accessibilityLabel="Search networks" placeholder="Search networks" placeholderTextColor={colors.muted}
+        <IdleTextInput accessibilityLabel="Search networks" placeholder="Search networks" placeholderTextColor={colors.muted}
           value={query} onChangeText={setQuery} maxLength={80} editable={!busy} autoCapitalize="none" autoCorrect={false}
           spellCheck={false} autoComplete="off" style={s.search} />
         {busy && <Notice title="Switching networks…" body="Pali is updating your wallet context." />}
