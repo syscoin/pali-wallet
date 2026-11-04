@@ -46,7 +46,7 @@ async function startHttpCompanion({ platform, sourceRevision, run, spawn = fork 
     execArgv: [], stdio: ['ignore', 'ignore', 'ignore', 'ipc'], env: { PALI_HTTP_FIXTURE: '1' },
   });
   const pending = new Map();
-  let nextId = 0, port, mapped = false, active, stopped = false, serial, failedCase = 'unavailable';
+  let nextId = 0, port, mapped = false, active, stopped = false, serial, finalAudit, failedCase = 'unavailable';
   let readyResolve, readyReject;
   const ready = new Promise((resolve, reject) => { readyResolve = resolve; readyReject = reject; });
   child.on('message', (message) => {
@@ -108,7 +108,8 @@ async function startHttpCompanion({ platform, sourceRevision, run, spawn = fork 
             const rows = reverseMappings(run('adb', ['-s', serial, 'reverse', '--list'], false, 5000));
             const samePort = rows.filter((parts) => parts[1] === `tcp:${port}`);
             // Prior absence + typed lost acknowledgement + exact readback only.
-            mapped = samePort.length === 1 && samePort[0][0] === serial && samePort[0][2] === `tcp:${port}`;
+            // The -s argument binds the device; column zero may be '(reverse)'.
+            mapped = samePort.length === 1 && samePort[0][2] === `tcp:${port}`;
           } catch { /* Unknown mapping ownership never permits removal. */ }
         }
         throw error;
@@ -127,6 +128,7 @@ async function startHttpCompanion({ platform, sourceRevision, run, spawn = fork 
       const token = randomBytes(16).toString('hex');
       await rpc('begin', token);
       active = { sourceRevision, lockfileSha256, token, phase, scenario, platform };
+      finalAudit = undefined;
       failedCase = 'unavailable';
       return `&httpPort=${port}&httpToken=${token}`;
     },
@@ -138,9 +140,8 @@ async function startHttpCompanion({ platform, sourceRevision, run, spawn = fork 
       assertHttpReport(report, active);
       if (report.sessionId !== sessionId) throw Error('HTTP_FIXTURE_SESSION_MISMATCH');
       failedCase = 'host-verification';
-      const audit = await rpc('inspect', active.token);
+      const audit = finalAudit = await rpc('snapshot', active.token);
       assertAudit(audit, active.token, port);
-      await rpc('snapshot', active.token);
       records.push({ nativeHttpQualified: true, report, audit });
       active = undefined;
       return records.at(-1);
@@ -152,9 +153,11 @@ async function startHttpCompanion({ platform, sourceRevision, run, spawn = fork 
         if (typeof text === 'string' && Buffer.byteLength(text) <= 8192)
           failedCase = httpDiagnosticCase(JSON.parse(text), active) ?? failedCase;
       } catch { /* Missing or malformed native evidence remains unavailable. */ }
-      let server = null;
-      try { server = partialAudit(await rpc('inspect', active.token, 1000), active.token, port); }
-      catch { /* Diagnostic loss must not replace the original failure. */ }
+      let server = partialAudit(finalAudit, active.token, port);
+      if (!server) {
+        try { server = partialAudit(await rpc('inspect', active.token, 1000), active.token, port); }
+        catch { /* Diagnostic loss must not replace the original failure. */ }
+      }
       return { version: 1, kind: 'native-http-diagnostic', status: 'failed', diagnosticOnly: true,
         ...active, failedCase, server };
     },

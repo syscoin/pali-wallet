@@ -124,12 +124,13 @@ test('cache-busting or foreign-token URLs fail closed without a generic proxy', 
   } finally { await fixture.close(); }
 });
 
-function childControl() {
+function childControl(snapshot = (value) => value) {
   const child = new EventEmitter(); child.exitCode = null; child.signalCode = null;
   child.send = (message, callback) => {
     callback?.();
     if (message.kind === 'begin') child.token = message.token;
-    const value = ['snapshot', 'inspect'].includes(message.kind) ? { ...audit(), token: child.token } : undefined;
+    let value = ['snapshot', 'inspect'].includes(message.kind) ? { ...audit(), token: child.token } : undefined;
+    if (message.kind === 'snapshot') child.lastSnapshot = value = snapshot(value);
     queueMicrotask(() => child.emit('message', { id: message.id, ok: true, value }));
   };
   child.kill = () => { child.signalCode = 'SIGTERM'; queueMicrotask(() => child.emit('exit')); return true; };
@@ -160,6 +161,32 @@ test('companion owns only one reverse mapping and requires matching sidecar/sess
     ['-s', 'emulator-5554', 'reverse', '--list'], ['-s', 'emulator-5554', 'reverse', '--no-rebind', 'tcp:45454', 'tcp:45454'],
     ['-s', 'emulator-5554', 'reverse', '--list'], ['-s', 'emulator-5554', 'reverse', '--remove', 'tcp:45454']]);
   assert.equal(child.signalCode, 'SIGTERM');
+});
+test('final snapshot is authoritative when traffic changes after a clean inspect', async () => {
+  let child;
+  const companion = await startHttpCompanion({ platform: 'ios', sourceRevision: build.sourceRevision,
+    run() { throw Error('No device commands'); },
+    spawn: () => (child = childControl((value) => ({ ...value, invalid: 1, counts: { ...value.counts, target: 1 } }))) });
+  try {
+    const token = new URLSearchParams(await companion.begin('create', 'import')).get('httpToken');
+    const value = { ...report(), token, lockfileSha256: createHash('sha256').update(readFileSync(require.resolve('../package-lock.json'))).digest('hex') };
+    await assert.rejects(companion.verify(() => JSON.stringify(value), value.sessionId), /AUDIT_FAILED/);
+    assert.equal(child.lastSnapshot.counts.target, 1);
+    assert.equal(companion.records.length, 0); assert.throws(() => companion.assertComplete(1));
+    assert.equal((await companion.diagnostic()).server.counts.target, 1);
+  } finally { await companion.close(); }
+});
+test('a valid final snapshot is the exact audit recorded for qualification', async () => {
+  let child;
+  const companion = await startHttpCompanion({ platform: 'ios', sourceRevision: build.sourceRevision,
+    run() { throw Error('No device commands'); }, spawn: () => (child = childControl()) });
+  try {
+    const token = new URLSearchParams(await companion.begin('create', 'import')).get('httpToken');
+    const value = { ...report(), token, lockfileSha256: createHash('sha256').update(readFileSync(require.resolve('../package-lock.json'))).digest('hex') };
+    const recorded = await companion.verify(() => JSON.stringify(value), value.sessionId);
+    assert.equal(recorded.audit, child.lastSnapshot);
+    companion.assertComplete(1);
+  } finally { await companion.close(); }
 });
 test('reverse collision never removes someone else mapping; cleanup error still terminates child', async () => {
   let child; const commands = [];
@@ -196,8 +223,8 @@ for (const [name, result, readback, removed] of [
   ['lost transport acknowledgement', { status: null, error: { code: 'ECONNRESET' } }, 'emulator-5554 tcp:45454 tcp:45454', true],
   ['normal collision', { status: 1, stderr: 'cannot rebind existing socket' }, 'emulator-5554 tcp:45454 tcp:45454', false],
   ['untyped failure', Error('unknown failure'), 'emulator-5554 tcp:45454 tcp:45454', false],
-  ['other serial', { status: null, error: { code: 'ETIMEDOUT' } }, 'other tcp:45454 tcp:45454', false],
-  ['other destination', { status: null, error: { code: 'ETIMEDOUT' } }, 'emulator-5554 tcp:45454 tcp:9000', false],
+  ['AOSP reverse transport label', { status: null, error: { code: 'ETIMEDOUT' } }, '(reverse) tcp:45454 tcp:45454', true],
+  ['foreign destination', { status: null, error: { code: 'ETIMEDOUT' } }, '(reverse) tcp:45454 tcp:9000', false],
   ['unknown readback', { status: null, error: { code: 'ETIMEDOUT' } }, 'unparseable', false],
   ['absent readback', { status: null, error: { code: 'ETIMEDOUT' } }, '', false],
 ]) test(`reverse cleanup distinguishes ${name}`, async () => {
