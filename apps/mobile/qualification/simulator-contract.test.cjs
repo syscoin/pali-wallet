@@ -56,6 +56,8 @@ test('only complete native crypto plus a classified strict protection refusal qu
     (r) => { r.erc20TransferHash = '0x' + 'd'.repeat(64); },
     (r) => { r.nativeNevmVerified = true; },
     (r) => { r.nevmTransferHash = '0x' + '7'.repeat(64); },
+    (r) => { r.nativeZksysVerified = true; },
+    (r) => { r.zksysTransferHash = '0x' + '9'.repeat(64); },
     (r) => { r.storageDiagnostic.stage = 'ios-policy-protection-unknown'; },
     (r) => { r.storageDiagnostic.stage = 'ios-policy-protection-read'; },
     (r) => { r.storageDiagnostic.stage = 'ios-policy-protection-check'; },

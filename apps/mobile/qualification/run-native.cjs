@@ -12,6 +12,7 @@ const { isCryptoDiagnostic } = require('../src/crypto/diagnostics.ts');
 const { matchesHdRestartEvidence } = require('./hd-accounts.ts');
 const { matchesErc20RestartEvidence } = require('./erc20-transfer.ts');
 const { matchesNevmRestartEvidence } = require('./nevm-transfer.ts');
+const { matchesZksysRestartEvidence } = require('./zksys-transfer.ts');
 const { createCommandRunner, describeQualificationFailure, COLD_BOOT_TIMEOUT_MS } = require('./command-runner.cjs');
 const { qualificationMode, assertSimulatorTarget } = require('./simulator-contract.cjs');
 const { decodeNativeReport, assertFullNativeReport } = require('./report-validation.cjs');
@@ -271,7 +272,8 @@ async function ios() {
         created.fingerprint !== restored.fingerprint ||
         !matchesHdRestartEvidence(created, restored) ||
         !matchesErc20RestartEvidence(created, restored) ||
-        !matchesNevmRestartEvidence(created, restored)
+        !matchesNevmRestartEvidence(created, restored) ||
+        !matchesZksysRestartEvidence(created, restored)
       )
         throw Error('Cold restart identity or backup fingerprint mismatch');
       run('xcrun', [
@@ -290,6 +292,7 @@ async function ios() {
         hdAccountsRestored: true,
         erc20TransferRestored: true,
         nevmTransferRestored: true,
+        zksysTransferRestored: true,
         journalContainerVersion: 2,
       });
     } finally {
@@ -450,7 +453,8 @@ async function android() {
         created.fingerprint !== restored.fingerprint ||
         !matchesHdRestartEvidence(created, restored) ||
         !matchesErc20RestartEvidence(created, restored) ||
-        !matchesNevmRestartEvidence(created, restored)
+        !matchesNevmRestartEvidence(created, restored) ||
+        !matchesZksysRestartEvidence(created, restored)
       )
         throw Error('Cold restart identity or backup fingerprint mismatch');
       try {
@@ -476,6 +480,7 @@ async function android() {
         hdAccountsRestored: true,
         erc20TransferRestored: true,
         nevmTransferRestored: true,
+        zksysTransferRestored: true,
         journalContainerVersion: 2,
       });
     } finally {

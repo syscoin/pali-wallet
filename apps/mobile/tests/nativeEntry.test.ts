@@ -28,6 +28,14 @@ const nevmEvidence = (phase = 'create') => ({
   nevmChainId: '5700', nevmJournalContainerVersion: 2,
   nevmRestoredFromJournal: phase === 'restart',
 });
+const zksysEvidence = (phase = 'create') => ({
+  nativeZksysVerified: true, zksysAccountId: 'hd:60:4', zksysAccountIndex: 4,
+  zksysAddress: '0x51cA8ff9f1C0a99f88E86B8112eA3237F55374cA',
+  zksysTransferHash: '0x' + '9'.repeat(64), zksysChainId: '57057', zksysJournalContainerVersion: 2,
+  zksysSignatures: phase === 'create' ? 1 : 0, zksysAuthorizations: phase === 'create' ? 0 : 1,
+  zksysInjectedBroadcasts: 1, zksysFeeEstimates: phase === 'create' ? 2 : 0,
+  zksysRestoredFromJournal: phase === 'restart',
+});
 
 test('application evaluation waits for the complete crypto gate', async () => {
   let release!: () => void;
@@ -169,7 +177,7 @@ test('native report validation requires the generated mnemonic entropy evidence'
   }) as (text: string, phase: string, scenario: string) => unknown;
   const report = { version: 1, status: 'passed', phase: 'create', scenario: 'generate', platform: 'ios',
     networkCalls: 0, nativeBridgeExercised: true, sdkVersion: '2.0.0', nativeSigningVerified: true, nativeHdAccountsVerified: true, selectedAccountId: 'hd:60:1', selectedAccountIndex: 1, journalContainerVersion: 2, firstTransferHash: '0x' + 'c'.repeat(64), address: '0x6Fac4D18c912343BF86fa7049364Dd4E424Ab9C0', transferHash: '0x' + 'b'.repeat(64), fingerprint: 'a'.repeat(64),
-    cryptoEvidence: { passed: true, productionIterations: 900000 }, cryptoDiagnostic: { bootstrap: 'ready', fullCase: 'random-view-boundaries' }, mnemonicEntropyVerified: true, storageDiagnostic: { stage: 'ready' }, ...erc20Evidence(), ...nevmEvidence() };
+    cryptoEvidence: { passed: true, productionIterations: 900000 }, cryptoDiagnostic: { bootstrap: 'ready', fullCase: 'random-view-boundaries' }, mnemonicEntropyVerified: true, storageDiagnostic: { stage: 'ready' }, ...erc20Evidence(), ...nevmEvidence(), ...zksysEvidence() };
   assert.doesNotThrow(() => validate(JSON.stringify(report), 'create', 'generate'));
   assert.throws(() => validate(JSON.stringify({ ...report, selectedAccountId: 'hd:60:0' }), 'create', 'generate'));
   assert.throws(() => validate(JSON.stringify({ ...report, journalContainerVersion: 1 }), 'create', 'generate'));
@@ -187,7 +195,7 @@ test('native report validation requires the generated mnemonic entropy evidence'
         ...report,
         phase: 'restart',
         mnemonicEntropyVerified: false,
-        ...erc20Evidence('restart'), ...nevmEvidence('restart'),
+        ...erc20Evidence('restart'), ...nevmEvidence('restart'), ...zksysEvidence('restart'),
       }),
       'restart',
       'generate'

@@ -62,7 +62,23 @@ ERC20 journal rows, so chain qualification cannot silently replace that evidence
 Full Android and physical-iPhone reports require the HD3 identity, both hashes,
 chain 5700, journal version and phase-specific restart flag; each host runner
 compares them across the cold restart. The limited iOS Simulator refusal occurs
-before all HD, ERC20 and NEVM cases and cannot carry these success fields.
+before all HD, ERC20, NEVM and zkSYS cases and cannot carry these success fields.
+
+The zkSYS case uses a separate HD index 4 account on fixed chain 57057. It runs
+the actual native transfer controller with a bounded injected RPC, including
+fee selection before estimation and confirmation's re-estimation of the exact
+approved type-2 cap and zero priority fee. The injected suggestion changes
+before confirmation; the approved fee fields remain unchanged. The installed
+SDK signs once, the journal records the bytes before submission, and a lost
+injected response leaves the transaction unresolved. After process restart,
+the controller requires password authorization and retries those same bytes
+with no new signature or fee estimate. Both phases preserve the complete HD0–3
+journal rows and finish on HD1/Ethereum. Reports require HD4 identity/hash,
+chain/version, and fixed per-phase signing, authorization, estimate and injected
+submission counters. Both host runners match this evidence across restart.
+These are development qualification cases. They do not establish deployed
+zkSYS fee/finality behavior, native execution without an artifact run, or live
+transaction acceptance; those remain separate pre-merge and pre-broadcast gates.
 
 The full native crypto fixture runs through the actual bridge on each launch,
 including unchanged 20k/900k KDF profiles and authentication-error classification.
@@ -133,7 +149,7 @@ Binary database output is never included in that artifact.
 `run-physical-ios.cjs` is a separate host runner. It never falls back to
 Simulator, changes production storage policy, or accepts a caller-selected app
 identifier. It runs the same native creation/import, backup, wrong-password,
-HD-account, offline ERC20 journal/retry and chain-5700 signing/restart checks described above. It does not
+HD-account, offline ERC20 journal/retry and chain-5700/57057 signing/restart checks described above. It does not
 qualify the normal app's UI, Activity, physical privacy behavior, or live-network
 transactions.
 
@@ -222,7 +238,7 @@ from its own launch receipt and rechecks both before termination; a reused PID
 is never killed. Reports bind a fresh random run ID, source and bundle identity,
 so a stale report cannot satisfy a later run. Each report must pass the shared
 native validators plus complete physical crypto/check evidence. Create/restart
-must preserve account, fingerprint, HD, ERC20 and chain-5700 transaction identity while the
+must preserve account, fingerprint, HD, ERC20 and chain-5700/57057 transaction identity while the
 native process session changes.
 
 Before contacting a device, the runner copies the admitted apps into a private
