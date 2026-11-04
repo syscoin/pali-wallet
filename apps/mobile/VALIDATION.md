@@ -2,7 +2,7 @@
 
 ## Current source status
 
-The native development flow implements creation/import, password unlock, seed backup, multiple seed-derived Ethereum accounts (create/select/rename/remove/restore), and per-account ETH portfolio, receive and send operations. SQLCipher storage retains the signed-transaction journal before submission. Watch-only accounts and design previews remain separate. Full extension feature equivalence remains incomplete. An end-to-end native testnet transfer, physical-device behavior and signed release artifacts remain unqualified. This paragraph records source status, not new execution evidence; see [README.md](README.md) and [SECURITY.md](SECURITY.md) for current scope and release gates.
+The [capability ledger](design/PARITY_MATRIX.md#current-implementation-ledger) pins the reviewed source and separates implemented flows, missing features and revision-bound native evidence. It includes HD/imported EVM accounts, three native-coin send networks, Ethereum ERC20 sends/activity, and fixed single-address SYS/BTC public watching. SQLCipher stores signed bytes before submission; watch-only and design previews have no signing authority. Prior offline Android evidence and iOS Simulator's expected storage refusal do not establish current-head physical-device or live-transfer qualification. Full extension feature equivalence remains incomplete. This paragraph records source status, not a new test run; see [README.md](README.md), [SECURITY.md](SECURITY.md) and the [qualification contract](qualification/README.md).
 
 ## Historical foundation validation — November 2, 2026
 
