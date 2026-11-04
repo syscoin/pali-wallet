@@ -43,8 +43,15 @@ export function createNativeWalletControllers() {
           cancel() {},
           async execute(guard) {
             guard();
-            if (request.kind !== 'select') throw Error('This fixture only selects HD accounts');
-            const account = catalogue.accounts.find((candidate) => candidate.id === request.id);
+            let account: NativeWalletCatalogueSnapshot['accounts'][number] | undefined;
+            if (request.kind === 'create') {
+              if (request.password !== 'public-password' || catalogue.accounts.length !== 2) throw Error('Invalid synthetic account creation');
+              // Public fixture only: exercise real account-management UI without deriving a key.
+              account = { id: 'hd:60:2', type: 'HDAccount' as const, index: 2, slip44: 60 as const, label: request.label, address: '0x2222222222222222222222222222222222222222' };
+              catalogue = Object.freeze({ ...catalogue, accounts: [...catalogue.accounts, account] });
+            } else if (request.kind === 'select') {
+              account = catalogue.accounts.find((candidate) => candidate.id === request.id);
+            } else throw Error('This fixture only selects or creates HD accounts');
             if (!account) throw Error('Unknown fixture HD account');
             catalogue = Object.freeze({ ...catalogue, revision: catalogue.revision + 1, active: { ...catalogue.active, accountId: account.id } });
             guard();

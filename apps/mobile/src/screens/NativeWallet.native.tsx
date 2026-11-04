@@ -173,7 +173,6 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     return <WalletAccounts {...accounts} catalogue={catalogue} active={catalogue ? { kind: 'hd', id: catalogue.active.accountId } : null}
       onBack={() => setStage('choose')} onSelect={async (selection) => {
         if (selection.kind === 'watch') { selectWatch(selection); return; }
-        requestedAccount.current = selection.id;
         if (snapshot.phase === 'ready' && accountView && catalogue && selection.id !== catalogue.active.accountId)
           await accountView.execute({ kind: 'select', id: selection.id }, accountView.getContextRevision(), catalogue.revision);
         setStage('choose');
@@ -196,6 +195,9 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
       const entered = password; setPassword(''); void perform(async ({ authority }) => {
         await authority.unlock(entered);
         const requested = requestedAccount.current; const current = authority.getCatalogue();
+        // This hint restores one entry into native custody. Later unlocks use the
+        // durable selection, including changes made by NativeAccounts.
+        if (authority.getSnapshot().phase === 'ready') requestedAccount.current = undefined;
         if (requested && current && authority.getSnapshot().phase === 'ready' && current.active.accountId !== requested && current.accounts.some((entry) => entry.id === requested)) {
           await controllers.current!.accounts.execute({ kind: 'select', id: requested }, authority.getSnapshot().revision, current.revision);
         }

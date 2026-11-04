@@ -76,6 +76,56 @@ test('HD account choice survives watch navigation and reload but still requires 
   await expect(page.getByRole('button', { name: 'Send', exact: true })).toHaveCount(0);
 });
 
+for (const change of ['select', 'create', 'shared-select', 'stale-create'] as const) {
+  test(`the initial HD hint is consumed before a managed ${change} and relock`, async ({ page }) => {
+    const initialId = change === 'stale-create' ? 'hd:60:2' : 'hd:60:1';
+    await page.addInitScript((id) => localStorage.setItem('pali-public-selection-fixture-v1', JSON.stringify({ kind: 'hd', id })), initialId);
+    await page.goto('/');
+    if (change === 'select') {
+      await page.getByRole('textbox', { name: 'Password', exact: true }).fill('wrong-password');
+      await page.getByRole('button', { name: 'Unlock wallet', exact: true }).click();
+      await expect(page.getByText('That password is incorrect. Please try again.', { exact: true })).toBeVisible();
+    }
+    await unlock(page);
+    // A failed password retains a valid hint; a missing account hint is ignored.
+    await expect(page.getByText(`${change === 'stale-create' ? 'Account 1' : 'Account 2'} · Ethereum`, { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Accounts', exact: true }).click();
+    if (change === 'shared-select') {
+      await page.getByRole('button', { name: 'Select Account 1 (wallet)', exact: true }).click();
+      await expect(page.getByText('Account 1 · Ethereum', { exact: true })).toBeVisible();
+      await page.getByRole('button', { name: 'Accounts', exact: true }).click();
+    }
+    await page.getByRole('button', { name: 'Manage recovery phrase accounts', exact: true }).click();
+    if (change === 'select' || change === 'shared-select') {
+      await page.getByRole('button', { name: `Select Account ${change === 'select' ? '1' : '2'}`, exact: true }).click();
+    } else {
+      await page.getByRole('button', { name: 'Add account', exact: true }).click();
+      await page.getByRole('textbox', { name: 'Account name', exact: true }).fill('Savings');
+      await page.getByRole('textbox', { name: 'Confirm wallet password', exact: true }).fill('public-password');
+      await page.getByRole('button', { name: 'Create account', exact: true }).click();
+    }
+    if (change === 'stale-create') {
+      await expect(page.getByRole('button', { name: 'Select Savings', exact: true })).toContainText('Selected');
+      await page.getByRole('button', { name: 'Select Account 1', exact: true }).click();
+    }
+    const name = change === 'select' || change === 'stale-create' ? 'Account 1' : change === 'shared-select' ? 'Account 2' : 'Savings';
+    const address = change === 'select' || change === 'stale-create' ? ADDRESS : change === 'shared-select' ? SECOND : '0x2222222222222222222222222222222222222222';
+    const id = change === 'select' || change === 'stale-create' ? 'hd:60:0' : change === 'shared-select' ? 'hd:60:1' : 'hd:60:2';
+    await expect(page.getByRole('button', { name: `Select ${name}`, exact: true })).toContainText('Selected');
+    await page.getByRole('button', { name: 'Back', exact: true }).click();
+    await page.getByRole('button', { name: 'Back', exact: true }).click();
+    await expect(page.getByText(`${name} · Ethereum`, { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Lock wallet', exact: true }).click();
+    await unlock(page);
+    await expect(page.getByText(`${name} · Ethereum`, { exact: true })).toBeVisible();
+    expect(await page.evaluate(() => window.__watchFixture.selection())).toEqual({ kind: 'hd', id });
+    await page.getByRole('button', { name: 'Receive', exact: true }).click();
+    await expect(page.getByTestId('native-receive-address')).toHaveText(address);
+    expect((await fixture(page)).unlocks).toBe(change === 'select' ? 3 : 2);
+    expect((await fixture(page)).signs).toBe(0);
+  });
+}
+
 test('pending native authentication cannot revive signing after exit and watch selection', async ({ page }) => {
   await page.goto('/'); await openNative(page);
   await page.evaluate(() => window.__watchFixture.delayUnlock(true));
