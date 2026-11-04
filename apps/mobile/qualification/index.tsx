@@ -14,6 +14,7 @@ import type { PhysicalLaunch } from './physical-contract.ts';
 import { captureQualificationCryptoLoad, captureQualificationModuleLoad } from './capture-crypto-load.ts';
 import { qualifyNativeHandleContract } from './native-handle-contract.ts';
 import { createStorageQualificationDiagnostic } from './storage-diagnostics.ts';
+import { httpBuild, type HttpLaunch } from './http-contract.ts';
 
 import type { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import type { KeyringRuntime } from '../src/custody/keyringRuntime.ts';
@@ -49,6 +50,7 @@ type LaunchParameters = {
   scenario: Scenario;
   address: string | null;
   physical?: never;
+  http?: HttpLaunch;
 } | PhysicalLaunch;
 const expect = (value: unknown) => {
   if (!value) throw Error('QUALIFICATION_ASSERTION_FAILED');
@@ -272,6 +274,26 @@ function QualificationApp() {
           enumerable: true,
           writable: false,
         });
+        const httpConfiguration = Constants.expoConfig?.extra?.paliHttpQualification;
+        if (httpConfiguration !== undefined || (!parameters.physical && parameters.http)) {
+          if (parameters.physical || !parameters.http || !['ios', 'android'].includes(Platform.OS))
+            throw Error('HTTP_QUALIFICATION_BUILD_INVALID');
+          const build = httpBuild(httpConfiguration);
+          // Run before protected-storage admission, in a separate report: an
+          // iOS Simulator storage refusal must never become custody success.
+          stage = 'native HTTP transport';
+          const [{ walletFetch }, { fetch: cookieFetch }, { qualifyNativeHttp }] = await Promise.all([
+            import('../src/platform/http'), import('expo/fetch'), import('./http-native.ts'),
+          ]);
+          const evidence = await qualifyNativeHttp({ launch: parameters.http, build,
+            walletFetch, cookieFetch: cookieFetch as typeof walletFetch,
+            phase: parameters.phase, scenario: parameters.scenario, platform: Platform.OS as 'ios' | 'android',
+            sessionId: Constants.sessionId, networkCalls: () => networkCalls });
+          if (!FileSystem.documentDirectory) throw Error('HTTP_QUALIFICATION_REPORT_UNAVAILABLE');
+          const destination = `${FileSystem.documentDirectory}pali-native-http-${parameters.http.token}.json`;
+          await FileSystem.writeAsStringAsync(`${destination}.tmp`, JSON.stringify(evidence));
+          await FileSystem.moveAsync({ from: `${destination}.tmp`, to: destination });
+        }
         const [
           { NativeCustodyAuthority },
           { createKeyringRuntimeFactory },

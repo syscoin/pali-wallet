@@ -19,3 +19,11 @@ test('untrusted launch arguments cannot select an alternate route, credential, o
   for (const value of [undefined, null, {}, '', 'x'.repeat(2049), base.replace('run?', 'other?'), base.replace('run?', 'run/path?'), base.replace('qualification:', 'mobile:'), base.replace('//run', '//user@run'), base + '&phase=restart', base + '&unknown=1', base + '#fragment', base + '&address=0x' + '11'.repeat(20), base.replace('create', 'restart'), base.replace('create', 'delete'), base.replace('import', 'restore')])
     assert.throws(() => parseQualificationLaunch(value), /QUALIFICATION_LINK_INVALID/);
 });
+
+test('HTTP companion accepts only a paired fixed-loopback port and fresh token', () => {
+  const base = 'pali-wallet-qualification://run?phase=create&scenario=import';
+  assert.deepEqual(parseQualificationLaunch(`${base}&httpPort=45454&httpToken=${'a'.repeat(32)}`).http,
+    { port: 45454, token: 'a'.repeat(32) });
+  for (const suffix of ['&httpPort=45454', `&httpToken=${'a'.repeat(32)}`, `&httpPort=65536&httpToken=${'a'.repeat(32)}`,
+    `&httpPort=45454&httpToken=${'a'.repeat(32)}&host=external.invalid`]) assert.throws(() => parseQualificationLaunch(base + suffix));
+});

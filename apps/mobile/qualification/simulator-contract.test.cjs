@@ -86,10 +86,11 @@ test('only complete native crypto plus a classified strict protection refusal qu
   }
 });
 
-async function runFixture({ limited = true, report = refusal(), target = 'iphonesimulator', mixedOutput = false } = {}) {
+async function runFixture({ limited = true, report = refusal(), target = 'iphonesimulator', mixedOutput = false, http = false, httpFailure = false, cleanupFailure = false } = {}) {
   const source = readFileSync(require.resolve('./run-native.cjs'), 'utf8');
   const writes = [], calls = [];
   const original = JSON.stringify(report, null, 3) + '\n';
+  let httpVerifications = 0, httpClosed = false;
   const spawn = (command, args) => {
     calls.push({ command, args });
     const ok = (stdout = '') => ({ status: 0, stdout });
@@ -107,10 +108,17 @@ async function runFixture({ limited = true, report = refusal(), target = 'iphone
     return ok();
   };
   const fakeProcess = { env: { CI: 'true', PALI_NATIVE_QUALIFICATION: '1', QUALIFICATION_ARTIFACTS: '/public-output',
+    ...(http ? { PALI_NATIVE_HTTP_QUALIFICATION: '1' } : {}),
     GITHUB_SHA: 'a'.repeat(40), ImageVersion: 'public-image' },
   argv: ['node', 'runner', 'ios', '/public-app', ...(limited ? ['--ios-simulator-contract'] : [])], exitCode: 0 };
   await runInNewContext(source, {
     require(name) {
+      if (name === './http-companion.cjs') return { startHttpCompanion: async () => ({
+        begin: async () => `&httpPort=45454&httpToken=${'a'.repeat(32)}`,
+        verify: async () => { if (httpFailure) throw Error('HTTP_QUALIFICATION_REPORT_INVALID'); httpVerifications++; return { nativeHttpQualified: true }; },
+        assertComplete: (count) => assert.equal(httpVerifications, count),
+        close: async () => { httpClosed = true; if (cleanupFailure) throw Error('HTTP_CLEANUP_FAILED'); },
+      }) };
       if (name === 'fs') return {
         existsSync: (file) => file.endsWith('/ios-qualification.json') ? mixedOutput : true, mkdirSync() {},
         writeFileSync(file, data) { writes.push({ file, data }); },
@@ -125,7 +133,7 @@ async function runFixture({ limited = true, report = refusal(), target = 'iphone
     },
     process: fakeProcess, console: { error() {}, log() {} }, setTimeout,
   });
-  return { writes, calls, fakeProcess, original };
+  return { writes, calls, fakeProcess, original, httpVerifications, httpClosed };
 }
 
 test('real limited runner preserves the failed report and writes only a separate non-custody artifact', async () => {
@@ -168,4 +176,25 @@ test('limited runner fails on unknown protection, incomplete crypto or a physica
 
 test('limited runner refuses an output directory already containing full custody evidence', async () => {
   await assert.rejects(runFixture({ mixedOutput: true }), /must not contain full custody evidence/);
+});
+
+test('HTTP-enabled limited runner requires its sidecar and still preserves the failed custody report', async () => {
+  const fixture = await runFixture({ http: true });
+  assert.equal(fixture.fakeProcess.exitCode, 0);
+  assert.equal(fixture.httpVerifications, 1); assert.equal(fixture.httpClosed, true);
+  const limited = JSON.parse(fixture.writes.find((write) => write.file.endsWith('/ios-simulator-limited.json')).data);
+  assert.equal(limited.nativeHttpQualified, true); assert.equal(limited.custodyQualified, false);
+  assert.equal(fixture.writes.find((write) => write.file.endsWith('/ios-import-create.json')).data, fixture.original);
+});
+test('missing HTTP proof or failed cleanup cannot produce a qualified limited aggregate', async () => {
+  for (const options of [{ httpFailure: true }, { cleanupFailure: true }, { httpFailure: true, cleanupFailure: true }]) {
+    const fixture = await runFixture({ http: true, ...options });
+    assert.equal(fixture.fakeProcess.exitCode, 1); assert.equal(fixture.httpClosed, true);
+    assert(!fixture.writes.some((write) => write.file.endsWith('/ios-simulator-limited.json')));
+    if (options.httpFailure) {
+      const failure = fixture.writes.find((write) => write.file.endsWith('/ios-failure.json')).data;
+      assert(failure.includes('HTTP_QUALIFICATION_REPORT_INVALID'));
+      assert(!failure.includes('HTTP_CLEANUP_FAILED'));
+    }
+  }
 });

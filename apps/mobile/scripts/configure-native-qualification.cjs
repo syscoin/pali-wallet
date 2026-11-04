@@ -26,6 +26,15 @@ if (pkg.dependencies['@sidhujag/sysweb3-keyring'] !== '2.0.0')
   throw Error('Unexpected shared keyring version');
 const productionEntry = fs.readFileSync(path.join(root, 'index.ts'));
 const physicalScenario = process.env.PALI_PHYSICAL_QUALIFICATION;
+const httpEnabled = process.env.PALI_NATIVE_HTTP_QUALIFICATION === '1';
+let http;
+if (httpEnabled) {
+  if (physicalScenario !== undefined || !/^[0-9a-f]{40}$/.test(process.env.GITHUB_SHA || '') ||
+      app.expo.extra?.paliHttpQualification)
+    throw Error('HTTP qualification requires an immutable simulator/Android fixture');
+  http = { version: 1, sourceRevision: process.env.GITHUB_SHA,
+    lockfileSha256: crypto.createHash('sha256').update(fs.readFileSync(path.join(root, 'package-lock.json'))).digest('hex') };
+}
 let physical;
 if (physicalScenario !== undefined) {
   const { PHYSICAL_BUNDLES } = require('../qualification/physical-contract.ts');
@@ -59,6 +68,7 @@ const receipt = {
   qualificationEntry: 'qualification/index.tsx',
   keyringVersion: '2.0.0',
   ...(physical ? { physical } : {}),
+  ...(http ? { http } : {}),
 };
 pkg.main = receipt.qualificationEntry;
 app.expo.name = 'PaliQualification';
@@ -66,6 +76,10 @@ app.expo.slug = 'pali-native-qualification';
 app.expo.scheme = 'pali-wallet-qualification';
 app.expo.ios.bundleIdentifier = receipt.identifier;
 app.expo.android.package = receipt.identifier;
+if (http) {
+  app.expo.extra = { ...app.expo.extra, paliHttpQualification: http };
+  app.expo.plugins = [...(app.expo.plugins || []), './qualification/withHttpFixture.cjs'];
+}
 if (physical) {
   app.expo.name =
     physicalScenario === 'import'

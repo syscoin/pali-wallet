@@ -42,7 +42,7 @@ test('qualification configuration is explicit, isolated, and preserves the produ
     );
     assert.notEqual(
       spawnSync(process.execPath, [command], {
-        env: { ...process.env, CI: 'false', PALI_NATIVE_QUALIFICATION: '1' },
+        env: { ...process.env, CI: 'false', PALI_NATIVE_QUALIFICATION: '1', PALI_NATIVE_HTTP_QUALIFICATION: '0' },
       }).status,
       0
     );
@@ -52,7 +52,7 @@ test('qualification configuration is explicit, isolated, and preserves the produ
     );
     assert.equal(
       spawnSync(process.execPath, [command], {
-        env: { ...process.env, CI: 'true', PALI_NATIVE_QUALIFICATION: '1' },
+        env: { ...process.env, CI: 'true', PALI_NATIVE_QUALIFICATION: '1', PALI_NATIVE_HTTP_QUALIFICATION: '0' },
       }).status,
       0
     );
@@ -72,7 +72,7 @@ test('qualification configuration is explicit, isolated, and preserves the produ
     );
     assert.notEqual(
       spawnSync(process.execPath, [command], {
-        env: { ...process.env, CI: 'true', PALI_NATIVE_QUALIFICATION: '1' },
+        env: { ...process.env, CI: 'true', PALI_NATIVE_QUALIFICATION: '1', PALI_NATIVE_HTTP_QUALIFICATION: '0' },
       }).status,
       0
     );
