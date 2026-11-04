@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { fileURLToPath, URL as NodeURL } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import test from 'node:test';
@@ -10,6 +11,7 @@ import { isHdQualificationReport } from '../qualification/hd-accounts.ts';
 import { isErc20QualificationReport } from '../qualification/erc20-transfer.ts';
 import { isStorageQualificationDiagnostic } from '../qualification/storage-diagnostics.ts';
 import { loadAfterNativeCrypto } from '../src/startup/loadAfterCrypto.ts';
+const { decodeNativeReport, assertFullNativeReport } = createRequire(import.meta.url)('../qualification/report-validation.cjs');
 
 const root = fileURLToPath(new NodeURL('../', import.meta.url));
 const erc20Evidence = (phase = 'create') => ({
@@ -154,6 +156,7 @@ test('native report validation requires the generated mnemonic entropy evidence'
   const end = source.indexOf('const waitReport =', start);
   assert(start >= 0 && end > start);
   const validate = runInNewContext(source.slice(start, end) + '\nvalidateReport;', {
+    decodeNativeReport, assertFullNativeReport,
     isHdQualificationReport, isErc20QualificationReport, isCryptoDiagnostic, isStorageQualificationDiagnostic, simulatorContract: false, PUBLIC_PHRASE: 'public fixture', PUBLIC_PASSWORD: 'public password', platform: 'ios',
     fs: { writeFileSync() {} }, path: { join: () => 'unused' }, output: 'unused',
   }) as (text: string, phase: string, scenario: string) => unknown;
@@ -193,6 +196,7 @@ test('a pre-parameter startup failure is read immediately instead of waiting for
   const start = source.indexOf('const validateReport =');
   const end = source.indexOf('const databaseEvidence =', start);
   const wait = runInNewContext(source.slice(start, end) + '\nwaitReport;', {
+    decodeNativeReport, assertFullNativeReport,
     isHdQualificationReport, isErc20QualificationReport, isCryptoDiagnostic, isStorageQualificationDiagnostic, simulatorContract: false, PUBLIC_PHRASE: 'public fixture', PUBLIC_PASSWORD: 'public password', platform: 'android',
     fs: { writeFileSync() {} }, path: { join: () => 'unused' }, output: 'unused',
   }) as (read: () => string | null, phase: string, scenario: string, startup: () => string) => Promise<unknown>;

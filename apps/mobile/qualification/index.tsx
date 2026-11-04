@@ -4,6 +4,13 @@ import * as FileSystem from 'expo-file-system/legacy';
 import React, { useEffect, useState } from 'react';
 import { Linking, Platform, Text, View } from 'react-native';
 import { assertQualificationBuild, parseQualificationLaunch } from './launch-parameters.ts';
+import {
+  physicalBuild,
+  physicalLaunch,
+  physicalReportFields,
+  resetPhysicalFixture,
+} from './physical-contract.ts';
+import type { PhysicalLaunch } from './physical-contract.ts';
 import { captureQualificationCryptoLoad, captureQualificationModuleLoad } from './capture-crypto-load.ts';
 import { qualifyNativeHandleContract } from './native-handle-contract.ts';
 import { createStorageQualificationDiagnostic } from './storage-diagnostics.ts';
@@ -35,27 +42,44 @@ const EXPECTED_ERC20_HD_ADDRESS = '0xb6716976A3ebe8D39aCEB04372f22Ff8e6802D7A';
 type Phase = 'create' | 'restart';
 type Scenario = 'import' | 'generate';
 type Check = { name: string; durationMs: number };
+type LaunchParameters = {
+  phase: Phase;
+  scenario: Scenario;
+  address: string | null;
+  physical?: never;
+} | PhysicalLaunch;
 const expect = (value: unknown) => {
   if (!value) throw Error('QUALIFICATION_ASSERTION_FAILED');
 };
 
-async function launchParameters(): Promise<{
-  phase: Phase;
-  scenario: Scenario;
-  address: string | null;
-}> {
-  assertQualificationBuild(
-    Constants.expoConfig?.ios?.bundleIdentifier,
-    Constants.expoConfig?.android?.package
-  );
+async function launchParameters(): Promise<LaunchParameters> {
+  const physical = Constants.expoConfig?.extra?.paliPhysicalQualification;
+  if (physical === undefined) {
+    assertQualificationBuild(
+      Constants.expoConfig?.ios?.bundleIdentifier,
+      Constants.expoConfig?.android?.package
+    );
+  }
   if (Platform.OS === 'ios') {
     // NSArgumentDomain is read only by this dedicated fixture entry. Direct
-    // simctl launch avoids SpringBoard's confirmation for external URL opens.
+    // native launch avoids SpringBoard's confirmation for external URL opens.
     const { Settings } =
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       require('react-native') as typeof import('react-native');
-    return parseQualificationLaunch(Settings.get('PaliQualificationURL'));
+    const raw = Settings.get('PaliQualificationURL');
+    if (physical !== undefined) {
+      if (Constants.executionEnvironment === 'storeClient')
+        throw Error('PHYSICAL_QUALIFICATION_STANDALONE_REQUIRED');
+      return physicalLaunch(raw, physicalBuild(
+        physical,
+        Constants.expoConfig?.ios?.bundleIdentifier,
+        Constants.expoConfig?.android?.package
+      ));
+    }
+    return parseQualificationLaunch(raw);
   }
+  if (physical !== undefined)
+    throw Error('PHYSICAL_QUALIFICATION_IOS_REQUIRED');
   const initial = await Linking.getInitialURL();
   const raw =
     initial ??
@@ -122,6 +146,26 @@ function QualificationApp() {
           forbiddenTransport as unknown as typeof XMLHttpRequest;
         globalThis.WebSocket =
           forbiddenTransport as unknown as typeof WebSocket;
+        if (parameters.phase === 'reset') {
+          // Deliberate host-requested cleanup in this fixed fixture's private
+          // Keychain group. The production entry never imports this module.
+          const [secure, keys] = await Promise.all([
+            import('expo-secure-store'),
+            import('../src/storage/coordinator.ts'),
+          ]);
+          const options = {
+            keychainService: keys.WALLET_KEY_SERVICE,
+            keychainAccessible: secure.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+            requireAuthentication: false,
+          };
+          const report = await resetPhysicalFixture(parameters, {
+            deleteKey: () => secure.deleteItemAsync(keys.WALLET_KEY_NAME, options),
+            readKey: () => secure.getItemAsync(keys.WALLET_KEY_NAME, options),
+          });
+          await writeReport('reset', report);
+          setStatus('Explicit physical fixture key reset acknowledged');
+          return;
+        }
         await check('Hermes text and string capabilities', async () => {
           expect(typeof ''.isWellFormed === 'function');
           expect('Pali'.isWellFormed() && !'\ud800'.isWellFormed());
@@ -408,6 +452,7 @@ function QualificationApp() {
         }
         expect(networkCalls === 0);
         const report = {
+          ...(parameters.physical ? physicalReportFields(parameters) : {}),
           version: 1,
           status: 'passed',
           phase: parameters.phase,
@@ -451,6 +496,7 @@ function QualificationApp() {
         backup?.dispose();
         await authority?.dispose().catch(() => undefined);
         const report = {
+          ...(parameters?.physical ? physicalReportFields(parameters) : {}),
           version: 1,
           status: 'failed',
           phase: parameters?.phase ?? 'unknown',
@@ -498,10 +544,13 @@ function QualificationApp() {
   );
 }
 
-async function writeReport(phase: Phase | 'startup', report: object) {
+async function writeReport(phase: Phase | 'startup' | 'reset', report: object) {
   if (!FileSystem.documentDirectory)
     throw Error('QUALIFICATION_REPORT_UNAVAILABLE');
-  const output = `${FileSystem.documentDirectory}pali-native-qualification-${phase}.json`;
+  const runId = 'physicalRunId' in report ? report.physicalRunId : undefined;
+  if (runId !== undefined && (typeof runId !== 'string' || !/^[0-9a-f]{32}$/.test(runId)))
+    throw Error('PHYSICAL_REPORT_ID_INVALID');
+  const output = `${FileSystem.documentDirectory}pali-native-qualification-${phase}${runId ? `-${runId}` : ''}.json`;
   await FileSystem.writeAsStringAsync(
     `${output}.tmp`,
     JSON.stringify(report, null, 2)
