@@ -25,7 +25,7 @@ BackHandler.addEventListener = ((_event: string, listener: () => boolean) => {
 }) as typeof BackHandler.addEventListener;
 const inventory: RecoveryInventory = Object.freeze({
   status: 'needs-matching-phrase-verification', reason: null, backup: 'unconfirmed', privateNotes: 'not-supported',
-  counts: Object.freeze({ hdAccounts: 3, importedKeys: 2, retiredHdAccounts: 4, retiredImportedAccounts: 1,
+  counts: Object.freeze({ hdAccounts: 3, importedKeys: 2,
     retainedSignedTransactions: 5, tokenEntries: 6,
     historySummaries: 7, cachedTransactions: 8, activityPreferences: 9 }),
 });

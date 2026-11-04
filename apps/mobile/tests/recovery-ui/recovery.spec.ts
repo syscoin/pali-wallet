@@ -23,19 +23,22 @@ test('scope gives exact saved-data and imported-backup limits without a phrase-m
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Recover access', exact: true })).toBeVisible();
   await expect(page.getByText('Seed-derived accounts', { exact: true })).toBeVisible();
+  await expect(page.getByText('Seed-derived accounts', { exact: true }).locator('..')).toContainText('3');
+  await expect(page.getByText('Imported keys saved on this device', { exact: true }).locator('..')).toContainText('2');
   await expect(page.getByText('6 tokens · 7 saved summaries', { exact: true })).toBeVisible();
   const saved = page.getByText('Saved transactions', { exact: true }).locator('..');
   await expect(saved).toContainText('5');
   await expect(page.getByText('Pending transaction records', { exact: true })).toHaveCount(0);
   await expect(page.getByText('Journal records', { exact: true })).toHaveCount(0);
   await expect(page.getByText(/Existing recovery phrase backup: not confirmed/)).toBeVisible();
-  await expect(page.getByText('Private notes are not supported by this recovery.', { exact: true })).toBeVisible();
+  await expect(page.getByText('No private notes are saved on this device.', { exact: true })).toBeVisible();
   await expect(page.getByText(/phrase alone cannot recreate imported accounts on a new or lost device/)).toBeVisible();
   await expect(page.getByRole('tab')).toHaveCount(0);
   await expect(page.getByText('Your phrase matches this saved wallet.', { exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Saved-data details', exact: true }).click();
-  await expect(page.getByText('Retired imported account records', { exact: true })).toBeVisible();
-  await expect(page.getByText('Cached transactions', { exact: true })).toBeVisible();
+  await expect(page.getByText('Retired imported account records', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('Cached transactions', { exact: true }).locator('..')).toContainText('8');
+  await expect(page.getByText('Activity preferences', { exact: true }).locator('..')).toContainText('9');
   await page.screenshot({ path: info.outputPath('recovery-scope-public.png'), fullPage: true });
 });
 
