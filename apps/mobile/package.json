@@ -12,8 +12,7 @@
     "typecheck": "tsc --noEmit",
     "test": "node --test tests/*.test.ts",
     "test:ui": "playwright test",
-    "lint": "eslint . --max-warnings 0",
-    "postinstall": "node scripts/verify-staged-keyring.cjs"
+    "lint": "eslint . --max-warnings 0"
   },
   "dependencies": {
     "@craftzdog/react-native-buffer": "6.1.2",

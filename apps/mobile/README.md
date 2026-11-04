@@ -67,9 +67,12 @@ Product quality includes safe-area layout, keyboard avoidance, accessible touch 
 
 The mobile lockfile overrides `glob` to 14.0.3 and `minimatch` to 11.0.4 for the upstream cancellation/amplification advisories. These affect build tooling; keep the overrides under review when upgrading Expo.
 
-## Temporary dependency staging
+## Shared SDK dependencies
 
-This branch uses integrity-pinned local sysweb3-keyring 2.0.0 and syscoinjs-lib 1.0.276 archives while npm publication is deferred. The latter defers legacy Ethereum-proof imports until an explicit proof operation; ordinary wallet initialization does not load that dependency tree. `scripts/verify-staged-keyring.cjs` checks each archive hash, version and every installed package file; CI runs it explicitly even when dependency lifecycle scripts are disabled. Replace the local lockfile source and remove this staging gate only after verifying each published archive has identical integrity.
+The lockfiles pin the npm archives for `@sidhujag/sysweb3-keyring` 2.0.0 and
+`syscoinjs-lib` 1.0.276 by SHA-512 integrity. The latter defers legacy
+Ethereum-proof imports until an explicit proof operation; ordinary wallet
+initialization does not load that dependency tree.
 
 Native startup uses QuickCrypto's own scheduler without adding `process.browser`
 or a synthetic Node version. Crypto, Buffer and stream adapters remain required

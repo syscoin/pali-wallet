@@ -1,7 +1,6 @@
 # Mobile dependency advisory gate
 
-The mobile package has its own npm lockfile. Run `npm ci --ignore-scripts`,
-`node scripts/verify-staged-keyring.cjs` while SDK staging is present, and
+The mobile package has its own npm lockfile. Run `npm ci --ignore-scripts` and
 `npm audit --audit-level=moderate`. CI rejects moderate and higher advisories.
 The 2026-11-03 lockfile reports no moderate, high or critical advisories.
 
@@ -17,7 +16,7 @@ The native software keyring import does not load Ledger modules.
 Four low-severity dependency nodes remain for
 [GHSA-848j-6mx2-7j84](https://github.com/advisories/GHSA-848j-6mx2-7j84),
 rooted in elliptic 6.6.1 under the old eth-proof/Merkle-trie dependency chain.
-The staged syscoinjs-lib 1.0.276 loads that chain only when a bridge-proof
+The pinned syscoinjs-lib 1.0.276 loads that chain only when a bridge-proof
 operation is requested; it remains installed to preserve that functionality.
 There is no patched elliptic release in the registry at this audit. The current
 native transfer path signs through the shared keyring's bitcoinerlab secp256k1
@@ -26,6 +25,6 @@ native app. This is a static reachability assessment, not an exploit test or a
 claim that future features cannot reach it. Reassess before enabling that path
 or changing those dependencies. No advisory is globally ignored.
 
-The staged SDK archive and its source/inventory hashes remain unchanged by
-these host dependency resolutions. Native binary and device qualification
-remain separate release requirements.
+The SDK versions and archive integrities remain unchanged by these host
+dependency resolutions. Native binary and device qualification remain separate
+release requirements.
