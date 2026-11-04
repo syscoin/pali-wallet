@@ -381,23 +381,25 @@ export class NativeTransfers {
             error.code as 'TOKEN_CHANGED' | 'TOKEN_TRANSFER_REJECTED'
           );
         }
-        if (error instanceof NativeTransferError) {
-          if (error.code === 'EXPIRED')
-            this.publish({
+        if ((error instanceof NativeTransferError && error.code === 'EXPIRED') ||
+            (error instanceof NativeTransferRpcError && error.code === 'REVIEW_REQUIRED')) {
+          this.publish({
               phase: this.snapshot.hash ? 'unknown' : 'idle',
               review: null,
               message: this.snapshot.hash
                 ? 'A signed transaction was saved before the review expired. Check it before sending again.'
                 : 'The review expired or network conditions changed. Review the transfer again.',
             });
-          throw error;
+          throw new NativeTransferError('EXPIRED');
         }
+        if (error instanceof NativeTransferError) throw error;
         if (!(error instanceof NativeTransferRpcError)) this.source.lock();
         this.publish({
           phase: 'unavailable',
           review: null,
-          message:
-            'The transfer could not be completed. Your pending transaction has been preserved.',
+          message: this.snapshot.hash
+            ? 'The transfer could not be completed. Your pending transaction has been preserved.'
+            : 'The request could not be completed. Try again or check Activity for an existing transaction.',
         });
         throw new NativeTransferError('FAILED');
       })

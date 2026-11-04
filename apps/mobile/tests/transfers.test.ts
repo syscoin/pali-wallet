@@ -564,6 +564,60 @@ test('insufficient funds is reported without inventing a pending transaction', a
   }
 });
 
+test('unexpected post-broadcast journal failure stays truthful after locking clears the visible hash', async () => {
+  const f = fixture();
+  const open = f.runtime.journal;
+  f.runtime.journal = async (guard) => {
+    const journal = await open(guard);
+    const transition = journal.transition.bind(journal);
+    journal.transition = async (hash, phase) => {
+      if (phase === 'submitted') throw Error('Unexpected storage failure after broadcast');
+      return transition(hash, phase);
+    };
+    return journal;
+  };
+  try {
+    const approved = await review(f);
+    await assert.rejects(f.transfers.confirm(approved.id, 'public-password'), { code: 'FAILED' });
+    assert.equal(f.broadcasts.length, 1);
+    assert.equal(f.source.getSnapshot().phase, 'locked');
+    const state = f.transfers.getSnapshot();
+    assert.equal(state.hash, null);
+    assert.match(state.message ?? '', /check Activity for an existing transaction/);
+    assert.doesNotMatch(state.message ?? '', /not sent|no new transaction|pending transaction.*preserved/i);
+    const row = Object.values(f.records)[0] as { entries: { rawTransaction: string; phase: string }[] };
+    assert.equal(row.entries[0]!.rawTransaction, f.broadcasts[0]);
+    assert.equal(row.entries[0]!.phase, 'attempted');
+  } finally { f.close(); }
+});
+
+test('unexpected recovery journal failure does not claim an existing submitted transaction was never sent', async () => {
+  const f = fixture();
+  try {
+    const approved = await review(f);
+    await f.transfers.confirm(approved.id, 'public-password');
+    const before = structuredClone(f.records);
+    f.finalize();
+    const open = f.runtime.journal;
+    f.runtime.journal = async (guard) => {
+      const journal = await open(guard);
+      const transition = journal.transition.bind(journal);
+      journal.transition = async (hash, phase) => {
+        if (phase === 'confirmed') throw Error('Unexpected storage failure during recovery');
+        return transition(hash, phase);
+      };
+      return journal;
+    };
+    await assert.rejects(f.transfers.recover(), { code: 'FAILED' });
+    assert.equal(f.source.getSnapshot().phase, 'locked');
+    assert.equal(f.transfers.getSnapshot().hash, null);
+    assert.match(f.transfers.getSnapshot().message ?? '', /check Activity for an existing transaction/);
+    assert.doesNotMatch(f.transfers.getSnapshot().message ?? '', /not sent|no new transaction|pending transaction.*preserved/i);
+    assert.deepEqual(f.records, before);
+    assert.equal(f.broadcasts.length, 1);
+  } finally { f.close(); }
+});
+
 
 test('expiry after a durable signed record preserves its recovery identity without broadcasting', async () => {
   const f = fixture(); const original = f.runtime.journal;

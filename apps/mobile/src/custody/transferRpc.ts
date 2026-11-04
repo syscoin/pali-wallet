@@ -54,6 +54,7 @@ export class NativeTransferRpcError extends Error {
     | 'CANCELLED'
     | 'INVALID_RESPONSE'
     | 'UNAVAILABLE'
+    | 'REVIEW_REQUIRED'
     | 'INSUFFICIENT_BALANCE'
     | 'INSUFFICIENT_TOKEN_BALANCE'
     | 'TOKEN_CHANGED'
@@ -307,32 +308,41 @@ export class NativeTransferRpc {
     sender: string, recipient: string, value: bigint, signal: AbortSignal,
     approved?: NativeTransferQuote['transaction']
   ): Promise<NativeTransferQuote> {
+    const quantity = (value: unknown): bigint => {
+      try { return parseRpcQuantity(value); } catch { return invalid(); }
+    };
+    const validUnits = (value: bigint): void => {
+      try { assertBaseUnits(value.toString()); } catch { return invalid(); }
+    };
     return this.operation(signal, async (local) => {
       await this.checkChain(local);
       const sampled = object(await this.call('eth_getBlockByNumber', ['latest', false], local));
-      const height = parseRpcQuantity(sampled.number);
+      const height = quantity(sampled.number);
       const sampledHash = checkedHash(sampled.hash);
-      const sampledBaseFee = parseRpcQuantity(sampled.baseFeePerGas);
-      const blockGasLimit = parseRpcQuantity(sampled.gasLimit);
+      const sampledBaseFee = quantity(sampled.baseFeePerGas);
+      const blockGasLimit = quantity(sampled.gasLimit);
       const [rawNonce, rawBalance, rawHistory, rawPriority] = await Promise.all([
         this.call('eth_getTransactionCount', [sender, 'pending'], local),
         this.call('eth_getBalance', [sender, 'pending'], local),
         this.call('eth_feeHistory', ['0x1', 'latest', []], local),
         this.call('eth_maxPriorityFeePerGas', [], local),
       ]);
-      const nonce = parseRpcQuantity(rawNonce), balance = parseRpcQuantity(rawBalance);
+      const nonce = quantity(rawNonce), balance = quantity(rawBalance);
       const history = object(rawHistory);
       if (!Array.isArray(history.baseFeePerGas) || history.baseFeePerGas.length !== 2 ||
           nonce > BigInt(Number.MAX_SAFE_INTEGER) || blockGasLimit < 21000n) return invalid();
-      parseRpcQuantity(history.oldestBlock);
-      parseRpcQuantity(history.baseFeePerGas[0]);
-      const nextBaseFee = parseRpcQuantity(history.baseFeePerGas[1]);
-      const selectedTip = parseRpcQuantity(rawPriority);
+      quantity(history.oldestBlock);
+      quantity(history.baseFeePerGas[0]);
+      const nextBaseFee = quantity(history.baseFeePerGas[1]);
+      const selectedTip = quantity(rawPriority);
       const baseFee = sampledBaseFee > nextBaseFee ? sampledBaseFee : nextBaseFee;
       const tip = approved ? BigInt(approved.maxPriorityFeePerGas) : selectedTip;
       const maxFee = approved ? BigInt(approved.maxFeePerGas) : baseFee * 2n + tip;
-      assertBaseUnits(maxFee.toString());
-      if (maxFee === 0n || tip > maxFee || maxFee < baseFee || approved && BigInt(approved.nonce) !== nonce) return invalid();
+      validUnits(maxFee);
+      if (maxFee === 0n || tip > maxFee) return invalid();
+      if (approved && (maxFee < baseFee || BigInt(approved.nonce) !== nonce))
+        throw new NativeTransferRpcError('REVIEW_REQUIRED');
+      if (maxFee < baseFee) return invalid();
       const hex = (number: bigint) => `0x${number.toString(16)}`;
       // Bind estimation to the fields that will actually be signed. RPC itself also
       // supports omitted fees; explicit fields avoid changing the native-resource budget.
@@ -341,15 +351,15 @@ export class NativeTransferRpc {
         nonce: hex(nonce), value: hex(value), data: '0x',
         maxFeePerGas: hex(maxFee), maxPriorityFeePerGas: hex(tip),
       }, 'pending'], local);
-      const estimate = parseRpcQuantity(rawGas);
+      const estimate = quantity(rawGas);
       if (estimate < 21000n || estimate > blockGasLimit || estimate > nativeTransferGasLimit(this.context.networkId)) return invalid();
       const gas = estimate === 21000n ? estimate : (estimate * 12n + 9n) / 10n;
       if (gas > blockGasLimit || gas > nativeTransferGasLimit(this.context.networkId)) return invalid();
       const maximumFee = gas * maxFee, total = value + maximumFee;
-      assertBaseUnits(maximumFee.toString()); assertBaseUnits(total.toString());
+      validUnits(maximumFee); validUnits(total);
       if (total > balance) throw new NativeTransferRpcError('INSUFFICIENT_BALANCE');
       const repeated = object(await this.call('eth_getBlockByNumber', [hex(height), false], local));
-      if (parseRpcQuantity(repeated.number) !== height || checkedHash(repeated.hash) !== sampledHash) return invalid();
+      if (quantity(repeated.number) !== height || checkedHash(repeated.hash) !== sampledHash) return invalid();
       await this.checkChain(local);
       return Object.freeze({
         transaction: Object.freeze({ type: 2, from: sender, to: recipient, chainId: this.context.chainId,

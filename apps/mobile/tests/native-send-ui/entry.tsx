@@ -94,6 +94,15 @@ const controller: NativeTransferView = {
   async confirm(id, password) {
     if (snapshot.review?.id !== id || !password)
       throw Error('Invalid fixture confirmation');
+    const quoteFailure = new URLSearchParams(window.location.search).get('quoteFailure');
+    if (quoteFailure) {
+      clearTimeout(expiry);
+      const expired = quoteFailure === 'base-fee' || quoteFailure === 'nonce';
+      publish({ ...snapshot, phase: expired ? 'idle' : 'unavailable', review: null, hash: null,
+        message: expired ? 'The review expired or network conditions changed. Review the transfer again.'
+          : 'The request could not be completed. Try again or check Activity for an existing transaction.' });
+      throw Error(expired ? 'EXPIRED' : 'FAILED');
+    }
     confirmations.push({ id, password });
     const context = snapshot.review.context;
     clearTimeout(expiry);

@@ -236,7 +236,7 @@ test('requote preserves the approved cap and zero tip when new suggestions chang
         : r,
   });
   await assert.rejects(tooExpensive.rpc.requote(approved, signal()), {
-    code: 'INVALID_RESPONSE',
+    code: 'REVIEW_REQUIRED',
   });
   assert(!tooExpensive.calls.some((c) => c.method === 'eth_estimateGas'));
 });
@@ -262,13 +262,13 @@ test('zkSYS rejects gas-cap overflow, total overflow, unaffordable native collat
         ? { oldestBlock: '0x63', baseFeePerGas: ['0x1', '0x' + 'f'.repeat(64)] }
         : r,
   });
-  await assert.rejects(overflow.rpc.prepare(sender, recipient, '1', signal()));
+  await assert.rejects(overflow.rpc.prepare(sender, recipient, '1', signal()), { code: 'INVALID_RESPONSE' });
   const quote = await fixture().rpc.prepare(sender, recipient, '1', signal());
   const nonce = fixture({
     update: (c, r) => (c.method === 'eth_getTransactionCount' ? '0x1' : r),
   });
   await assert.rejects(nonce.rpc.requote(quote.transaction, signal()), {
-    code: 'INVALID_RESPONSE',
+    code: 'REVIEW_REQUIRED',
   });
   assert.throws(() =>
     snapshotUnsignedTransfer(

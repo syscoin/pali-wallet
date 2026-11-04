@@ -248,3 +248,23 @@ test('zkSYS reverted and unavailable-outcome states retain distinct settlement w
     page.getByText('Reverted · settlement confirmed', { exact: true })
   ).toHaveCount(0);
 });
+
+for (const kind of ['base-fee', 'nonce', 'malformed'] as const) {
+  test(`zkSYS ${kind} quote failure shows truthful pre-signing recovery`, async ({ page }) => {
+    await page.goto(`/?zksys-send&quoteFailure=${kind}`);
+    await prepareZkSys(page);
+    const prior = await page.evaluate(() => window.__nativeSendFixture.reviewId());
+    await passwordInput(page).fill('Public fixture password');
+    await page.getByTestId('native-send-confirm').click();
+    await expect(passwordInput(page)).toHaveCount(0);
+    if (kind === 'malformed')
+      await expect(page.getByText('This request could not be completed. Try again or check Activity for an existing transaction.', { exact: true })).toBeVisible();
+    else
+      await expect(page.getByText('Network conditions changed or this review expired. Review the transfer again.', { exact: true })).toBeVisible();
+    await expect(page.getByText(/pending transaction|transaction has been preserved/i)).toHaveCount(0);
+    expect(await page.evaluate(() => window.__nativeSendFixture.confirmations())).toEqual([]);
+    await page.getByTestId('native-send-review').click();
+    await expect(passwordInput(page)).toHaveValue('');
+    expect(await page.evaluate(() => window.__nativeSendFixture.reviewId())).not.toBe(prior);
+  });
+}
